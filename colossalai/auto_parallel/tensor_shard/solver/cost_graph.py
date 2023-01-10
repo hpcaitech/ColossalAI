@@ -1,5 +1,6 @@
-from colossalai.auto_parallel.tensor_shard.constants import INFINITY_COST
 import torch
+
+from colossalai.auto_parallel.tensor_shard.constants import INFINITY_COST
 
 
 class CostGraph:
@@ -7,7 +8,7 @@ class CostGraph:
     A graph data structure to simplify the edge cost graph. It has two main functions:
     1. To feed the quadratic resharding costs into solver, we need to linearize it. We build edge_cost in
     CostGraph, and it stored every combinations of strategies for a src-dst node pair in an 1D list.
-    2. To reduce the searching space, we merge computationally-trivial operators, such as 
+    2. To reduce the searching space, we merge computationally-trivial operators, such as
     element-wise operators, transpose, and reduction, into their following nodes. The merging infomation will
     be given by the StrategiesVector depending on the type of target node and following nodes.
 
@@ -62,16 +63,40 @@ class CostGraph:
                             edge_cost[(j, i)] = resharding_cost_item.total
                 self.edge_costs[node_pair] = edge_cost
             # add parents and children attribute to node
-            parent_nodes = [node for node in strategies_vector.predecessor_nodes]
-            children_nodes = [node for node in strategies_vector.successor_nodes]
+            # parent_nodes = [node for node in strategies_vector.predecessor_nodes]
+            # children_nodes = [node for node in strategies_vector.successor_nodes]
+            parent_nodes = []
+            children_nodes = []
+
+            def _check_tensor_in_node(data):
+                """
+                This method is used to check whether the data has a tensor inside or not.
+                """
+                has_tensor_flag = False
+                if isinstance(data, torch.Tensor):
+                    return True
+                elif isinstance(data, (tuple, list)):
+                    for d in data:
+                        has_tensor_flag = has_tensor_flag or _check_tensor_in_node(d)
+                return has_tensor_flag
+
+            for node in strategies_vector.predecessor_nodes:
+                if _check_tensor_in_node(node._meta_data):
+                    parent_nodes.append(node)
+            for node in strategies_vector.successor_nodes:
+                if _check_tensor_in_node(node._meta_data):
+                    children_nodes.append(node)
+
             setattr(dst_node, 'parents', parent_nodes)
             setattr(dst_node, 'children', children_nodes)
-            # self._remove_invalid_node(dst_node, 'parents')
-            # self._remove_invalid_node(dst_node, 'children')
 
             if self.simplify and strategies_vector.check_merge():
                 for followed_node in strategies_vector.predecessor_nodes:
-                    self.merge_pair.append((followed_node, dst_node))
+                    # we only merge node pairs which src node has a tensor element inside.
+                    # This is necessay because the node without a tensor element inside will not
+                    # be assigned any strategy.
+                    if _check_tensor_in_node(followed_node._meta_data):
+                        self.merge_pair.append((followed_node, dst_node))
 
     def get_edge_cost(self, src_node, dst_node):
         return self.edge_costs[(src_node, dst_node)]
@@ -79,14 +104,14 @@ class CostGraph:
     def merge_node(self, src_node, dst_node):
         '''
         To merge dst_node into src_node, we need to do it in following steps:
-        
+
         1. For each strategy in dst_node, we need to pick an appropriate strategy
-        of src_node to merge, it is important because the logical resharding costs 
-        between the parents node of src_node and merged node depend on the src_node 
+        of src_node to merge, it is important because the logical resharding costs
+        between the parents node of src_node and merged node depend on the src_node
         strategies dispatching. For example, for the graph 0->1->2, after merging node 1
         into node 2, edge_costs[(node 0, node 2)][(0, 0)] = edge_costs[(node 0, node 1)][(0, x)]
         x represents the picking strategy of node 1 merged into node 2 strategy 0.
-        
+
         2. We need to accumulate the extra costs introduced by merging nodes, the extra costs
         contains two parts, one is resharding costs between src_node strategy and dst_node strategy,
         another is the origin extra costs in src_node strategy.
@@ -98,10 +123,9 @@ class CostGraph:
             src_node(Node): The node will be merged into dst_node.
             dst_node(Node): The node to integrate src_node.
         '''
-        src_node_index = dst_node.parents.index(src_node)
         # build merge_map
         merge_map = {}
-        for src_index, strategy in enumerate(src_node.strategies_vector):
+        for src_index, _ in enumerate(src_node.strategies_vector):
             min_cost = INFINITY_COST
             lowest_cost_index = -1
             for dst_index, dst_strategy in enumerate(dst_node.strategies_vector):
@@ -139,7 +163,6 @@ class CostGraph:
             for i in range(self.node_lens[src_node]):
                 for j in range(self.node_lens[child_node]):
                     dst_strate_index = merge_map[i]
-                    # dst_strategy = dst_node.strategies_vector[dst_strate_index]
                     edge_cost[(i, j)] = self.edge_costs[old_node_pair][(dst_strate_index, j)]
             if new_node_pair not in self.edge_costs:
                 self.edge_costs[new_node_pair] = edge_cost

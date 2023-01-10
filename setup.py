@@ -1,26 +1,44 @@
 import os
-import subprocess
 import re
-from setuptools import find_packages, setup, Extension
+from datetime import datetime
+
+from setuptools import find_packages, setup
+
+from op_builder.utils import get_cuda_bare_metal_version
+
+try:
+    import torch
+    from torch.utils.cpp_extension import CUDA_HOME, BuildExtension, CUDAExtension
+    print("\n\ntorch.__version__  = {}\n\n".format(torch.__version__))
+    TORCH_MAJOR = int(torch.__version__.split('.')[0])
+    TORCH_MINOR = int(torch.__version__.split('.')[1])
+
+    if TORCH_MAJOR < 1 or (TORCH_MAJOR == 1 and TORCH_MINOR < 10):
+        raise RuntimeError("Colossal-AI requires Pytorch 1.10 or newer.\n"
+                           "The latest stable release can be obtained from https://pytorch.org/")
+    TORCH_AVAILABLE = True
+except ImportError:
+    TORCH_AVAILABLE = False
+    CUDA_HOME = None
 
 # ninja build does not work unless include_dirs are abs path
 this_dir = os.path.dirname(os.path.abspath(__file__))
-build_cuda_ext = True
+build_cuda_ext = False
 ext_modules = []
+is_nightly = int(os.environ.get('NIGHTLY', '0')) == 1
 
-if int(os.environ.get('NO_CUDA_EXT', '0')) == 1:
-    build_cuda_ext = False
+if int(os.environ.get('CUDA_EXT', '0')) == 1:
+    if not TORCH_AVAILABLE:
+        raise ModuleNotFoundError(
+            "PyTorch is not found while CUDA_EXT=1. You need to install PyTorch first in order to build CUDA extensions"
+        )
 
+    if not CUDA_HOME:
+        raise RuntimeError(
+            "CUDA_HOME is not found while CUDA_EXT=1. You need to export CUDA_HOME environment vairable or install CUDA Toolkit first in order to build CUDA extensions"
+        )
 
-def get_cuda_bare_metal_version(cuda_dir):
-    raw_output = subprocess.check_output([cuda_dir + "/bin/nvcc", "-V"], universal_newlines=True)
-    output = raw_output.split()
-    release_idx = output.index("release") + 1
-    release = output[release_idx].split(".")
-    bare_metal_major = release[0]
-    bare_metal_minor = release[1][0]
-
-    return raw_output, bare_metal_major, bare_metal_minor
+    build_cuda_ext = True
 
 
 def check_cuda_torch_binary_vs_bare_metal(cuda_dir):
@@ -92,29 +110,24 @@ def fetch_readme():
 
 
 def get_version():
-    with open('version.txt') as f:
+    setup_file_path = os.path.abspath(__file__)
+    project_path = os.path.dirname(setup_file_path)
+    version_txt_path = os.path.join(project_path, 'version.txt')
+    version_py_path = os.path.join(project_path, 'colossalai/version.py')
+
+    with open(version_txt_path) as f:
         version = f.read().strip()
         if build_cuda_ext:
             torch_version = '.'.join(torch.__version__.split('.')[:2])
             cuda_version = '.'.join(get_cuda_bare_metal_version(CUDA_HOME)[1:])
             version += f'+torch{torch_version}cu{cuda_version}'
-        return version
 
+    # write version into version.py
+    with open(version_py_path, 'w') as f:
+        f.write(f"__version__ = '{version}'\n")
 
-if build_cuda_ext:
-    try:
-        import torch
-        from torch.utils.cpp_extension import (CUDA_HOME, BuildExtension, CUDAExtension)
-        print("\n\ntorch.__version__  = {}\n\n".format(torch.__version__))
-        TORCH_MAJOR = int(torch.__version__.split('.')[0])
-        TORCH_MINOR = int(torch.__version__.split('.')[1])
+    return version
 
-        if TORCH_MAJOR < 1 or (TORCH_MAJOR == 1 and TORCH_MINOR < 8):
-            raise RuntimeError("Colossal-AI requires Pytorch 1.8 or newer.\n"
-                               "The latest stable release can be obtained from https://pytorch.org/")
-    except ImportError:
-        print('torch is not found. CUDA extension will not be installed')
-        build_cuda_ext = False
 
 if build_cuda_ext:
     build_cuda_ext = check_cuda_availability(CUDA_HOME) and check_cuda_torch_binary_vs_bare_metal(CUDA_HOME)
@@ -125,111 +138,63 @@ if build_cuda_ext:
     # and
     # https://github.com/NVIDIA/apex/issues/456
     # https://github.com/pytorch/pytorch/commit/eb7b39e02f7d75c26d8a795ea8c7fd911334da7e#diff-4632522f237f1e4e728cb824300403ac
-    version_dependent_macros = ['-DVERSION_GE_1_1', '-DVERSION_GE_1_3', '-DVERSION_GE_1_5']
 
-    def cuda_ext_helper(name, sources, extra_cuda_flags, extra_cxx_flags=[]):
-        return CUDAExtension(
-            name=name,
-            sources=[os.path.join('colossalai/kernel/cuda_native/csrc', path) for path in sources],
-            include_dirs=[os.path.join(this_dir, 'colossalai/kernel/cuda_native/csrc/kernels/include')],
-            extra_compile_args={
-                'cxx': ['-O3'] + version_dependent_macros + extra_cxx_flags,
-                'nvcc': append_nvcc_threads(['-O3', '--use_fast_math'] + version_dependent_macros + extra_cuda_flags)
-            })
+    from op_builder import ALL_OPS
+    for name, builder_cls in ALL_OPS.items():
+        print(f'===== Building Extension {name} =====')
+        ext_modules.append(builder_cls().builder())
 
-    cc_flag = []
-    for arch in torch.cuda.get_arch_list():
-        res = re.search(r'sm_(\d+)', arch)
-        if res:
-            arch_cap = res[1]
-            if int(arch_cap) >= 60:
-                cc_flag.extend(['-gencode', f'arch=compute_{arch_cap},code={arch}'])
+if is_nightly:
+    # use date as the nightly version
+    version = datetime.today().strftime('%Y.%m.%d')
+    package_name = 'colossalai-nightly'
+else:
+    version = get_version()
+    package_name = 'colossalai'
 
-    extra_cuda_flags = ['-lineinfo']
-
-    ext_modules.append(
-        cuda_ext_helper('colossal_C', [
-            'colossal_C_frontend.cpp', 'multi_tensor_sgd_kernel.cu', 'multi_tensor_scale_kernel.cu',
-            'multi_tensor_adam.cu', 'multi_tensor_l2norm_kernel.cu', 'multi_tensor_lamb.cu'
-        ], extra_cuda_flags + cc_flag))
-
-    extra_cuda_flags = [
-        '-U__CUDA_NO_HALF_OPERATORS__', '-U__CUDA_NO_HALF_CONVERSIONS__', '--expt-relaxed-constexpr',
-        '--expt-extended-lambda'
-    ]
-
-    ext_modules.append(
-        cuda_ext_helper('colossal_scaled_upper_triang_masked_softmax',
-                        ['scaled_upper_triang_masked_softmax.cpp', 'scaled_upper_triang_masked_softmax_cuda.cu'],
-                        extra_cuda_flags + cc_flag))
-
-    ext_modules.append(
-        cuda_ext_helper('colossal_scaled_masked_softmax',
-                        ['scaled_masked_softmax.cpp', 'scaled_masked_softmax_cuda.cu'], extra_cuda_flags + cc_flag))
-
-    ext_modules.append(
-        cuda_ext_helper('colossal_moe_cuda', ['moe_cuda.cpp', 'moe_cuda_kernel.cu'], extra_cuda_flags + cc_flag))
-
-    extra_cuda_flags = ['-maxrregcount=50']
-
-    ext_modules.append(
-        cuda_ext_helper('colossal_layer_norm_cuda', ['layer_norm_cuda.cpp', 'layer_norm_cuda_kernel.cu'],
-                        extra_cuda_flags + cc_flag))
-
-    extra_cuda_flags = [
-        '-std=c++14', '-U__CUDA_NO_HALF_OPERATORS__', '-U__CUDA_NO_HALF_CONVERSIONS__', '-U__CUDA_NO_HALF2_OPERATORS__',
-        '-DTHRUST_IGNORE_CUB_VERSION_CHECK'
-    ]
-
-    ext_modules.append(
-        cuda_ext_helper('colossal_multihead_attention', [
-            'multihead_attention_1d.cpp', 'kernels/cublas_wrappers.cu', 'kernels/transform_kernels.cu',
-            'kernels/dropout_kernels.cu', 'kernels/normalize_kernels.cu', 'kernels/softmax_kernels.cu',
-            'kernels/general_kernels.cu', 'kernels/cuda_util.cu'
-        ], extra_cuda_flags + cc_flag))
-
-    extra_cxx_flags = ['-std=c++14', '-lcudart', '-lcublas', '-g', '-Wno-reorder', '-fopenmp', '-march=native']
-    ext_modules.append(cuda_ext_helper('cpu_adam', ['cpu_adam.cpp'], extra_cuda_flags, extra_cxx_flags))
-
-setup(
-    name='colossalai',
-    version=get_version(),
-    packages=find_packages(exclude=(
-        'benchmark',
-        'docker',
-        'tests',
-        'docs',
-        'examples',
-        'tests',
-        'scripts',
-        'requirements',
-        '*.egg-info',
-    )),
-    description='An integrated large-scale model training system with efficient parallelization techniques',
-    long_description=fetch_readme(),
-    long_description_content_type='text/markdown',
-    license='Apache Software License 2.0',
-    url='https://www.colossalai.org',
-    project_urls={
-        'Forum': 'https://github.com/hpcaitech/ColossalAI/discussions',
-        'Bug Tracker': 'https://github.com/hpcaitech/ColossalAI/issues',
-        'Examples': 'https://github.com/hpcaitech/ColossalAI-Examples',
-        'Documentation': 'http://colossalai.readthedocs.io',
-        'Github': 'https://github.com/hpcaitech/ColossalAI',
-    },
-    ext_modules=ext_modules,
-    cmdclass={'build_ext': BuildExtension} if ext_modules else {},
-    install_requires=fetch_requirements('requirements/requirements.txt'),
-    entry_points='''
+setup(name=package_name,
+      version=version,
+      packages=find_packages(exclude=(
+          'benchmark',
+          'docker',
+          'tests',
+          'docs',
+          'examples',
+          'tests',
+          'scripts',
+          'requirements',
+          '*.egg-info',
+      )),
+      description='An integrated large-scale model training system with efficient parallelization techniques',
+      long_description=fetch_readme(),
+      long_description_content_type='text/markdown',
+      license='Apache Software License 2.0',
+      url='https://www.colossalai.org',
+      project_urls={
+          'Forum': 'https://github.com/hpcaitech/ColossalAI/discussions',
+          'Bug Tracker': 'https://github.com/hpcaitech/ColossalAI/issues',
+          'Examples': 'https://github.com/hpcaitech/ColossalAI-Examples',
+          'Documentation': 'http://colossalai.readthedocs.io',
+          'Github': 'https://github.com/hpcaitech/ColossalAI',
+      },
+      ext_modules=ext_modules,
+      cmdclass={'build_ext': BuildExtension} if ext_modules else {},
+      install_requires=fetch_requirements('requirements/requirements.txt'),
+      entry_points='''
         [console_scripts]
         colossalai=colossalai.cli:cli
     ''',
-    python_requires='>=3.6',
-    classifiers=[
-        'Programming Language :: Python :: 3',
-        'License :: OSI Approved :: Apache Software License',
-        'Environment :: GPU :: NVIDIA CUDA',
-        'Topic :: Scientific/Engineering :: Artificial Intelligence',
-        'Topic :: System :: Distributed Computing',
-    ],
-)
+      python_requires='>=3.6',
+      classifiers=[
+          'Programming Language :: Python :: 3',
+          'License :: OSI Approved :: Apache Software License',
+          'Environment :: GPU :: NVIDIA CUDA',
+          'Topic :: Scientific/Engineering :: Artificial Intelligence',
+          'Topic :: System :: Distributed Computing',
+      ],
+      package_data={
+          'colossalai': [
+              '_C/*.pyi', 'kernel/cuda_native/csrc/*', 'kernel/cuda_native/csrc/kernel/*',
+              'kernel/cuda_native/csrc/kernels/include/*'
+          ]
+      })

@@ -1,4 +1,4 @@
 from .pipelinable import PipelinableContext, PipelinableModel
-from .layer_sepc import LayerSpec
+from .layer_spec import LayerSpec
 
 __all__ = ['PipelinableModel', 'PipelinableContext', 'LayerSpec']

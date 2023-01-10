@@ -3,11 +3,20 @@ from typing import Any, Dict, List, NamedTuple, Tuple
 
 import torch
 import torch.fx
-from colossalai.fx._compatibility import compatibility
-from colossalai.fx.profiler import (GraphInfo, activation_size, calculate_fwd_in, calculate_fwd_out, calculate_fwd_tmp,
-                                    profile_function, profile_method, profile_module)
 from torch.fx.node import Argument, Node, Target
 from torch.utils._pytree import tree_map
+
+from colossalai.fx._compatibility import compatibility, is_compatible_with_meta
+from colossalai.fx.profiler import (
+    GraphInfo,
+    activation_size,
+    calculate_fwd_in,
+    calculate_fwd_out,
+    calculate_fwd_tmp,
+    profile_function,
+    profile_method,
+    profile_module,
+)
 
 
 @compatibility(is_backward_compatible=True)
@@ -52,7 +61,7 @@ class MetaInfoProp(torch.fx.Interpreter):
         DIM_HIDDEN = 16
         DIM_OUT = 16
         model = torch.nn.Sequential(
-            torch.nn.Linear(DIM_IN, DIM_HIDDEN), 
+            torch.nn.Linear(DIM_IN, DIM_HIDDEN),
             torch.nn.Linear(DIM_HIDDEN, DIM_OUT),
             )
         input_sample = torch.rand(BATCH_SIZE, DIM_IN)
@@ -60,9 +69,9 @@ class MetaInfoProp(torch.fx.Interpreter):
         interp = MetaInfoProp(gm)
         interp.run(input_sample)
         print(interp.summary(format='kb'))    # don't panic if some statistics are 0.00 MB
-        
-        
-        # output of above code is 
+
+
+        # output of above code is
             Op type       Op    Forward FLOPs    Backward FLOPs    FWD_OUT    FWD_TMP    BWD_OUT    BWD_TMP
         -----------  -------  ---------------  ----------------  ---------  ---------  ---------  ---------
         placeholder  input_1          0 FLOPs           0 FLOPs    0.00 KB    0.00 KB    0.00 KB    0.00 KB
@@ -248,8 +257,8 @@ class MetaInfoProp(torch.fx.Interpreter):
 
     def summary(self, unit: str = 'MB') -> str:
         """
-        Summarizes the memory and FLOPs statistics of the `GraphModule` in 
-        tabular format. Note that this API requires the ``tabulate`` module 
+        Summarizes the memory and FLOPs statistics of the `GraphModule` in
+        tabular format. Note that this API requires the ``tabulate`` module
         to be installed.
         """
         # https://github.com/pytorch/pytorch/blob/master/torch/fx/graph.py
@@ -306,3 +315,38 @@ class MetaInfoProp(torch.fx.Interpreter):
         ]
 
         return tabulate(node_summaries, headers=headers, stralign='right')
+
+
+def metainfo_trace(gm: torch.fx.GraphModule, *args, verbose: bool = False, unit: str = "MB", **kwargs) -> None:
+    """
+    MetaInfo tracing API
+
+    Given a ``GraphModule`` and a sample input, this API will trace the MetaInfo of a single training cycle,
+    and annotate them on ``gm.graph``.
+
+    Uses:
+        >>> model = ...
+        >>> gm = symbolic_trace(model)
+        >>> args = ...  # sample input to the ``GraphModule``
+        >>> metainfo_trace(gm, *args)
+
+    Args:
+        gm (torch.fx.GraphModule): The ``GraphModule`` to be annotated with MetaInfo.
+        verbose (bool, optional): Whether to show ``MetaInfoProp.summary()`. Defaults to False.
+        unit (str, optional): The unit of memory. Defaults to "MB".
+
+    Returns:
+        torch.fx.GraphModule: The ``GraphModule`` annotated with MetaInfo.
+    """
+    device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
+    interp = MetaInfoProp(gm.to(device))
+    if is_compatible_with_meta():
+        from colossalai.fx.profiler import MetaTensor
+        args = tree_map(lambda x: MetaTensor(x, fake_device=device), args)
+        kwargs = tree_map(lambda x: MetaTensor(x, fake_device=device), kwargs)
+    interp.propagate(*args, **kwargs)
+    if verbose:
+        interp.summary(unit)
+    gm.to('cpu')
+    del interp
+    return gm

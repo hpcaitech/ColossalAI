@@ -4,12 +4,23 @@
 import time
 
 import torch
+
 from colossalai.constants import INPUT_GROUP_3D, OUTPUT_GROUP_3D, WEIGHT_GROUP_3D
 from colossalai.core import global_context
 from colossalai.logging import get_dist_logger
-from colossalai.nn import (Classifier3D, CrossEntropyLoss3D, Embedding3D, LayerNorm3D, Linear3D, PatchEmbedding3D,
-                           VanillaClassifier, VanillaPatchEmbedding, VocabParallelClassifier3D,
-                           VocabParallelCrossEntropyLoss3D, VocabParallelEmbedding3D)
+from colossalai.nn import (
+    Classifier3D,
+    CrossEntropyLoss3D,
+    Embedding3D,
+    LayerNorm3D,
+    Linear3D,
+    PatchEmbedding3D,
+    VanillaClassifier,
+    VanillaPatchEmbedding,
+    VocabParallelClassifier3D,
+    VocabParallelCrossEntropyLoss3D,
+    VocabParallelEmbedding3D,
+)
 from colossalai.nn.layer.parallel_3d._utils import get_parallel_mode_from_env
 from colossalai.utils import get_current_device, print_rank_0
 
@@ -20,7 +31,6 @@ def check_linear():
     rank = torch.distributed.get_rank()
     logger = get_dist_logger()
     device = get_current_device()
-    dtype = torch.float32
     INPUT_SIZE = HIDDEN_SIZE
     OUTPUT_SIZE = 2 * HIDDEN_SIZE
 
@@ -32,16 +42,16 @@ def check_linear():
     i = global_context.get_local_rank(weight_parallel_mode)
     k = global_context.get_local_rank(output_parallel_mode)
 
-    layer = Linear3D(INPUT_SIZE, OUTPUT_SIZE, dtype=dtype, bias=True)
+    layer = Linear3D(INPUT_SIZE, OUTPUT_SIZE, bias=True)
     layer = layer.to(device)
     layer_master = torch.nn.Linear(INPUT_SIZE, OUTPUT_SIZE)
     layer_master = layer_master.to(device)
 
-    weight_master = layer_master.weight.data.transpose(0, 1)
+    weight_master = layer_master.weight.data.transpose(0, 1).contiguous()
     torch.distributed.broadcast(weight_master, src=0)
     weight = torch.chunk(weight_master, DEPTH, dim=0)[k]
     weight = torch.chunk(weight, DEPTH, dim=-1)[j]
-    weight = torch.chunk(weight, DEPTH, dim=-1)[i]
+    weight = torch.chunk(weight, DEPTH, dim=0)[i]
     layer.weight.data.copy_(weight)
     bias_master = layer_master.bias.data
     torch.distributed.broadcast(bias_master, src=0)
@@ -49,7 +59,7 @@ def check_linear():
     layer.bias.data.copy_(bias)
 
     A_shape = (BATCH_SIZE, SEQ_LENGTH, INPUT_SIZE)
-    A_master = torch.randn(A_shape, dtype=dtype, device=device)
+    A_master = torch.randn(A_shape, device=device)
     torch.distributed.broadcast(A_master, src=0)
     A = torch.chunk(A_master, DEPTH, dim=0)[i]
     A = torch.chunk(A, DEPTH, dim=-1)[k]
@@ -72,7 +82,7 @@ def check_linear():
     logger.info('Rank {} linear forward: {}'.format(rank, check_equal(out, C)))
 
     grad_shape = C_master.shape
-    grad_master = torch.randn(grad_shape, dtype=dtype, device=get_current_device())
+    grad_master = torch.randn(grad_shape, device=get_current_device())
     torch.distributed.broadcast(grad_master, src=0)
     grad = torch.chunk(grad_master, DEPTH, dim=0)[i]
     grad = torch.chunk(grad, DEPTH, dim=-1)[j]
@@ -94,7 +104,7 @@ def check_linear():
     B_grad = layer_master.weight.grad.transpose(0, 1)
     B_grad = torch.chunk(B_grad, DEPTH, dim=0)[k]
     B_grad = torch.chunk(B_grad, DEPTH, dim=-1)[j]
-    B_grad = torch.chunk(B_grad, DEPTH, dim=-1)[i]
+    B_grad = torch.chunk(B_grad, DEPTH, dim=0)[i]
     logger.info('Rank {} linear backward (weight_grad): {}'.format(rank, check_equal(B_grad, layer.weight.grad)))
 
     bias_grad = layer_master.bias.grad
@@ -108,7 +118,6 @@ def check_layernorm():
     rank = torch.distributed.get_rank()
     logger = get_dist_logger()
     device = get_current_device()
-    dtype = torch.float32
     INPUT_SIZE = HIDDEN_SIZE
 
     input_parallel_mode = get_parallel_mode_from_env(INPUT_GROUP_3D)
@@ -119,7 +128,7 @@ def check_layernorm():
     i = global_context.get_local_rank(weight_parallel_mode)
     k = global_context.get_local_rank(output_parallel_mode)
 
-    norm = LayerNorm3D(INPUT_SIZE, eps=1e-6, dtype=dtype)
+    norm = LayerNorm3D(INPUT_SIZE, eps=1e-6)
     norm = norm.to(device)
     norm_master = torch.nn.LayerNorm(INPUT_SIZE, eps=1e-6)
     norm_master = norm_master.to(device)
@@ -134,7 +143,7 @@ def check_layernorm():
     norm.bias.data.copy_(bias)
 
     A_shape = (BATCH_SIZE, SEQ_LENGTH, INPUT_SIZE)
-    A_master = torch.randn(A_shape, dtype=dtype, device=device)
+    A_master = torch.randn(A_shape, device=device)
     torch.distributed.broadcast(A_master, src=0)
     A = torch.chunk(A_master, DEPTH, dim=0)[i]
     A = torch.chunk(A, DEPTH, dim=-1)[k]
@@ -159,7 +168,7 @@ def check_layernorm():
     logger.info('Rank {} layernorm forward: {}'.format(rank, check_equal(out, C)))
 
     grad_shape = C_master.shape
-    grad_master = torch.randn(grad_shape, dtype=dtype, device=device)
+    grad_master = torch.randn(grad_shape, device=device)
     torch.distributed.broadcast(grad_master, src=0)
     grad = torch.chunk(grad_master, DEPTH, dim=0)[i]
     grad = torch.chunk(grad, DEPTH, dim=-1)[k]
@@ -193,7 +202,6 @@ def check_classifier_no_given_weight():
     rank = torch.distributed.get_rank()
     logger = get_dist_logger()
     device = get_current_device()
-    dtype = torch.float32
     INPUT_SIZE = HIDDEN_SIZE
 
     input_parallel_mode = get_parallel_mode_from_env(INPUT_GROUP_3D)
@@ -204,10 +212,10 @@ def check_classifier_no_given_weight():
     i = global_context.get_local_rank(weight_parallel_mode)
     k = global_context.get_local_rank(output_parallel_mode)
 
-    layer = Classifier3D(INPUT_SIZE, NUM_CLASSES, dtype=dtype, bias=True)
+    layer = Classifier3D(INPUT_SIZE, NUM_CLASSES, bias=True)
     layer = layer.to(device)
 
-    layer_master = VanillaClassifier(INPUT_SIZE, NUM_CLASSES, bias=True, dtype=dtype)
+    layer_master = VanillaClassifier(INPUT_SIZE, NUM_CLASSES, bias=True)
     layer_master = layer_master.to(device)
 
     weight_master = layer_master.weight.data
@@ -219,7 +227,7 @@ def check_classifier_no_given_weight():
     layer.bias.data.copy_(bias_master)
 
     A_shape = (BATCH_SIZE, SEQ_LENGTH, INPUT_SIZE)
-    A_master = torch.randn(A_shape, dtype=dtype, device=device)
+    A_master = torch.randn(A_shape, device=device)
     torch.distributed.broadcast(A_master, src=0)
     A = torch.chunk(A_master, DEPTH, dim=0)[i]
     A = torch.chunk(A, DEPTH, dim=-1)[k]
@@ -242,7 +250,7 @@ def check_classifier_no_given_weight():
     logger.info('Rank {} classifier (no given weight) forward: {}'.format(rank, check_equal(out, C)))
 
     grad_shape = C_master.shape
-    grad_master = torch.randn(grad_shape, dtype=dtype, device=get_current_device())
+    grad_master = torch.randn(grad_shape, device=get_current_device())
     torch.distributed.broadcast(grad_master, src=0)
     grad = torch.chunk(grad_master, DEPTH, dim=0)[i]
     grad = torch.chunk(grad, DEPTH, dim=0)[j]
@@ -283,7 +291,6 @@ def check_vocab_parallel_classifier_no_given_weight():
     rank = torch.distributed.get_rank()
     logger = get_dist_logger()
     device = get_current_device()
-    dtype = torch.float32
     INPUT_SIZE = HIDDEN_SIZE
 
     input_parallel_mode = get_parallel_mode_from_env(INPUT_GROUP_3D)
@@ -295,10 +302,10 @@ def check_vocab_parallel_classifier_no_given_weight():
     k = global_context.get_local_rank(output_parallel_mode)
 
     layer = VocabParallelClassifier3D(INPUT_SIZE, VOCAB_SIZE, bias=True)
-    layer = layer.to(dtype).to(device)
+    layer = layer.to(device)
 
     layer_master = VanillaClassifier(INPUT_SIZE, VOCAB_SIZE, bias=True)
-    layer_master = layer_master.to(dtype).to(device)
+    layer_master = layer_master.to(device)
 
     weight_master = layer_master.weight.data
     torch.distributed.broadcast(weight_master, src=0)
@@ -312,7 +319,7 @@ def check_vocab_parallel_classifier_no_given_weight():
     layer.bias.data.copy_(bias)
 
     A_shape = (BATCH_SIZE, SEQ_LENGTH, INPUT_SIZE)
-    A_master = torch.randn(A_shape, dtype=dtype, device=device)
+    A_master = torch.randn(A_shape, device=device)
     torch.distributed.broadcast(A_master, src=0)
     A = torch.chunk(A_master, DEPTH, dim=0)[i]
     A = torch.chunk(A, DEPTH, dim=-1)[k]
@@ -336,7 +343,7 @@ def check_vocab_parallel_classifier_no_given_weight():
     logger.info('Rank {} vocab parallel classifier (no given weight) forward: {}'.format(rank, check_equal(out, C)))
 
     grad_shape = C_master.shape
-    grad_master = torch.randn(grad_shape, dtype=dtype, device=device)
+    grad_master = torch.randn(grad_shape, device=device)
     torch.distributed.broadcast(grad_master, src=0)
     grad = torch.chunk(grad_master, DEPTH, dim=0)[i]
     grad = torch.chunk(grad, DEPTH, dim=-1)[j]
@@ -455,7 +462,6 @@ def check_vocab_parallel_classifier_given_embed_weight():
     rank = torch.distributed.get_rank()
     logger = get_dist_logger()
     device = get_current_device()
-    dtype = torch.float32
 
     input_parallel_mode = get_parallel_mode_from_env(INPUT_GROUP_3D)
     weight_parallel_mode = get_parallel_mode_from_env(WEIGHT_GROUP_3D)
@@ -466,10 +472,10 @@ def check_vocab_parallel_classifier_given_embed_weight():
     k = global_context.get_local_rank(output_parallel_mode)
 
     embed = VocabParallelEmbedding3D(VOCAB_SIZE, HIDDEN_SIZE)
-    embed = embed.to(dtype).to(device)
+    embed = embed.to(device)
 
     embed_master = torch.nn.Embedding(VOCAB_SIZE, HIDDEN_SIZE)
-    embed_master = embed_master.to(dtype).to(device)
+    embed_master = embed_master.to(device)
 
     weight_master = embed_master.weight.data
     torch.distributed.broadcast(weight_master, src=0)
@@ -479,10 +485,10 @@ def check_vocab_parallel_classifier_given_embed_weight():
     embed.weight.data.copy_(weight)
 
     layer = VocabParallelClassifier3D(HIDDEN_SIZE, VOCAB_SIZE, weight=embed.weight, bias=False)
-    layer = layer.to(dtype).to(device)
+    layer = layer.to(device)
 
     layer_master = VanillaClassifier(HIDDEN_SIZE, VOCAB_SIZE, weight=embed_master.weight, bias=False)
-    layer_master = layer_master.to(dtype).to(device)
+    layer_master = layer_master.to(device)
 
     A_shape = (BATCH_SIZE, SEQ_LENGTH)
     A_master = torch.randint(VOCAB_SIZE, A_shape, device=device)
@@ -504,7 +510,7 @@ def check_vocab_parallel_classifier_given_embed_weight():
     logger.info('Rank {} vocab parallel classifier (given embed weight) forward: {}'.format(rank, check_equal(out, C)))
 
     grad_shape = C_master.shape
-    grad_master = torch.randn(grad_shape, dtype=dtype, device=device)
+    grad_master = torch.randn(grad_shape, device=device)
     torch.distributed.broadcast(grad_master, src=0)
     grad = torch.chunk(grad_master, DEPTH, dim=0)[i]
     grad = torch.chunk(grad, DEPTH, dim=-1)[j]
@@ -546,12 +552,12 @@ def check_patch_embed():
     i = global_context.get_local_rank(weight_parallel_mode)
     k = global_context.get_local_rank(output_parallel_mode)
 
-    layer = PatchEmbedding3D(IMG_SIZE, 4, 3, HIDDEN_SIZE, dtype=dtype)
+    layer = PatchEmbedding3D(IMG_SIZE, 4, 3, HIDDEN_SIZE)
     torch.nn.init.ones_(layer.cls_token)
     torch.nn.init.ones_(layer.pos_embed)
     layer = layer.to(device)
 
-    layer_master = VanillaPatchEmbedding(IMG_SIZE, 4, 3, HIDDEN_SIZE, dtype=dtype)
+    layer_master = VanillaPatchEmbedding(IMG_SIZE, 4, 3, HIDDEN_SIZE)
     torch.nn.init.ones_(layer_master.cls_token)
     torch.nn.init.ones_(layer_master.pos_embed)
     layer_master = layer_master.to(device)
@@ -566,7 +572,7 @@ def check_patch_embed():
     layer.bias.data.copy_(proj_bias)
 
     A_shape = (BATCH_SIZE, 3, IMG_SIZE, IMG_SIZE)
-    A_master = torch.randn(A_shape, dtype=dtype, device=device)
+    A_master = torch.randn(A_shape, device=device)
     torch.distributed.broadcast(A_master, src=0)
     A = A_master.clone()
 
@@ -586,7 +592,7 @@ def check_patch_embed():
     logger.info('Rank {} patch embed forward: {}'.format(rank, check_equal(out, C)))
 
     grad_shape = C_master.shape
-    grad_master = torch.randn(grad_shape, dtype=dtype, device=device)
+    grad_master = torch.randn(grad_shape, device=device)
     torch.distributed.broadcast(grad_master, src=0)
     grad = torch.chunk(grad_master, DEPTH, dim=0)[i]
     grad = torch.chunk(grad, DEPTH, dim=-1)[k]
@@ -639,9 +645,9 @@ def check_embed():
     k = global_context.get_local_rank(output_parallel_mode)
 
     layer = Embedding3D(VOCAB_SIZE, HIDDEN_SIZE)
-    layer = layer.to(dtype).to(device)
+    layer = layer.to(device)
     layer_master = torch.nn.Embedding(VOCAB_SIZE, HIDDEN_SIZE)
-    layer_master = layer_master.to(dtype).to(device)
+    layer_master = layer_master.to(device)
 
     weight_master = layer_master.weight.data
     torch.distributed.broadcast(weight_master, src=0)
@@ -669,7 +675,7 @@ def check_embed():
     logger.info('Rank {} embed forward: {}'.format(rank, check_equal(out, C)))
 
     grad_shape = C_master.shape
-    grad_master = torch.randn(grad_shape, dtype=dtype, device=device)
+    grad_master = torch.randn(grad_shape, device=device)
     torch.distributed.broadcast(grad_master, src=0)
     grad = torch.chunk(grad_master, DEPTH, dim=0)[i]
     grad = torch.chunk(grad, DEPTH, dim=-1)[k]
@@ -686,10 +692,7 @@ def check_embed():
 
     B_grad = layer_master.weight.grad
     B_grad = torch.chunk(B_grad, DEPTH, dim=-1)[k]
-    if j == k:
-        logger.info('Rank {} embed backward (weight_grad): {}'.format(rank, check_equal(B_grad, layer.weight.grad)))
-    else:
-        logger.info('Rank {} embed backward (weight_grad): {}'.format(rank, layer.weight.grad is None))
+    logger.info('Rank {} embed backward (weight_grad): {}'.format(rank, check_equal(B_grad, layer.weight.grad)))
 
     return fwd_end - fwd_start, bwd_end - bwd_start
 
@@ -709,9 +712,9 @@ def check_vocab_parallel_embed():
     k = global_context.get_local_rank(output_parallel_mode)
 
     layer = VocabParallelEmbedding3D(VOCAB_SIZE, HIDDEN_SIZE)
-    layer = layer.to(dtype).to(device)
+    layer = layer.to(device)
     layer_master = torch.nn.Embedding(VOCAB_SIZE, HIDDEN_SIZE)
-    layer_master = layer_master.to(dtype).to(device)
+    layer_master = layer_master.to(device)
 
     weight_master = layer_master.weight.data
     torch.distributed.broadcast(weight_master, src=0)
@@ -741,7 +744,7 @@ def check_vocab_parallel_embed():
     logger.info('Rank {} vocab parallel embed forward: {}'.format(rank, check_equal(out, C)))
 
     grad_shape = C_master.shape
-    grad_master = torch.randn(grad_shape, dtype=dtype, device=device)
+    grad_master = torch.randn(grad_shape, device=device)
     torch.distributed.broadcast(grad_master, src=0)
     grad = torch.chunk(grad_master, DEPTH, dim=0)[i]
     grad = torch.chunk(grad, DEPTH, dim=-1)[k]
@@ -771,7 +774,6 @@ def check_loss():
     rank = torch.distributed.get_rank()
     logger = get_dist_logger()
     device = get_current_device()
-    dtype = torch.float32
 
     input_parallel_mode = get_parallel_mode_from_env(INPUT_GROUP_3D)
     weight_parallel_mode = get_parallel_mode_from_env(WEIGHT_GROUP_3D)
@@ -783,7 +785,7 @@ def check_loss():
     criterion_master = torch.nn.CrossEntropyLoss()
 
     out_shape = (BATCH_SIZE, NUM_CLASSES)
-    out_master = torch.randn(out_shape, dtype=dtype, device=device)
+    out_master = torch.randn(out_shape, device=device)
     target_master = torch.randint(NUM_CLASSES, (BATCH_SIZE,), dtype=torch.long, device=device)
     torch.distributed.broadcast(out_master, src=0)
     torch.distributed.broadcast(target_master, src=0)
@@ -836,7 +838,7 @@ def check_vocab_parallel_loss():
     criterion_master = torch.nn.CrossEntropyLoss()
 
     out_shape = (BATCH_SIZE, NUM_CLASSES)
-    out_master = torch.randn(out_shape, dtype=dtype, device=device)
+    out_master = torch.randn(out_shape, device=device)
     target_master = torch.randint(NUM_CLASSES, (BATCH_SIZE,), dtype=torch.long, device=device)
     torch.distributed.broadcast(out_master, src=0)
     torch.distributed.broadcast(target_master, src=0)

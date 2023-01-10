@@ -1,9 +1,12 @@
 import math
+from typing import Optional
+
 import torch
 
+from colossalai.kernel.op_builder import CPUAdamBuilder
 from colossalai.registry import OPTIMIZERS
+
 from .nvme_optimizer import NVMeOptimizer
-from typing import Optional
 
 
 @OPTIMIZERS.register_module
@@ -11,12 +14,12 @@ class CPUAdam(NVMeOptimizer):
     """Implements Adam algorithm.
 
     Supports parameters updating on both GPU and CPU, depanding on the device of paramters.
-    But the parameters and gradients should on the same device: 
+    But the parameters and gradients should on the same device:
       * Parameters on CPU and gradients on CPU is allowed.
       * Parameters on GPU and gradients on GPU is allowed.
       * Parameters on GPU and gradients on CPU is **not** allowed.
 
-    Requires ColossalAI to be installed via ``pip install .``.
+    `CPUAdam` requires CUDA extensions which can be built during installation or runtime.
 
     This version of CPU Adam accelates parameters updating on CPU with SIMD.
     Support of AVX2 or AVX512 is required.
@@ -44,7 +47,7 @@ class CPUAdam(NVMeOptimizer):
             (default: False) NOT SUPPORTED yet in CPUAdam!
         adamw_mode (boolean, optional): Apply L2 regularization or weight decay
             True for decoupled weight decay(also known as AdamW) (default: True)
-        simd_log (boolean, optional): whether to show if you are using SIMD to 
+        simd_log (boolean, optional): whether to show if you are using SIMD to
             accelerate. (default: False)
         nvme_offload_fraction (float, optional): Fraction of optimizer states to be offloaded to NVMe. Defaults to 0.0.
         nvme_offload_dir (Optional[str], optional): Directory to save NVMe offload files.
@@ -74,10 +77,7 @@ class CPUAdam(NVMeOptimizer):
         default_args = dict(lr=lr, betas=betas, eps=eps, weight_decay=weight_decay, bias_correction=bias_correction)
         super(CPUAdam, self).__init__(model_params, default_args, nvme_offload_fraction, nvme_offload_dir)
         self.adamw_mode = adamw_mode
-        try:
-            import cpu_adam
-        except ImportError:
-            raise ImportError('Please install colossalai from source code to use CPUAdam')
+        cpu_adam = CPUAdamBuilder().load()
         self.cpu_adam_op = cpu_adam.CPUAdamOptimizer(lr, betas[0], betas[1], eps, weight_decay, adamw_mode)
 
     def torch_adam_update(self,
@@ -114,7 +114,7 @@ class CPUAdam(NVMeOptimizer):
         data.addcdiv_(exp_avg, denom, value=-step_size)
 
     @torch.no_grad()
-    def step(self, closure=None):
+    def step(self, closure=None, div_scale: float = -1):
         loss = None
         if closure is not None:
             with torch.enable_grad():
@@ -149,9 +149,10 @@ class CPUAdam(NVMeOptimizer):
                     self._pre_update(p, 'exp_avg', 'exp_avg_sq')
                     self.cpu_adam_op.step(state['step'], group['lr'], beta1, beta2, group['eps'], group['weight_decay'],
                                           group['bias_correction'], p.data, p.grad.data, state['exp_avg'],
-                                          state['exp_avg_sq'], -1)
+                                          state['exp_avg_sq'], div_scale)
                     self._post_update(p, 'exp_avg', 'exp_avg_sq')
                 elif target_device.type == 'cuda':
+                    assert div_scale == -1, "div_scale should remain default"
                     assert state['exp_avg'].device.type == 'cuda', "exp_avg should stay on cuda"
                     assert state['exp_avg_sq'].device.type == 'cuda', "exp_avg should stay on cuda"
 

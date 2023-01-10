@@ -1,5 +1,6 @@
-import torch
 import operator
+
+import torch
 
 __all__ = [
     'ELEMENTWISE_MODULE_OP', 'ELEMENTWISE_FUNC_OP', 'RESHAPE_FUNC_OP', 'CONV_MODULE_OP', 'CONV_FUNC_OP',
@@ -25,7 +26,14 @@ ELEMENTWISE_METHOD_OP = [
     # TODO: contiguous maybe need some extra processes.
     torch.Tensor.contiguous
 ]
-RESHAPE_FUNC_OP = [torch.flatten, torch.reshape]
+RESHAPE_FUNC_OP = [
+    torch.flatten,
+    torch.reshape,
+    torch.transpose,
+    torch.split,
+    torch.permute,
+    operator.getitem,
+]
 RESHAPE_METHOD_OP = [
     torch.Tensor.view,
     torch.Tensor.unsqueeze,
@@ -35,7 +43,7 @@ RESHAPE_METHOD_OP = [
 ]
 BCAST_FUNC_OP = [
     torch.add, torch.sub, torch.mul, torch.div, torch.floor_divide, torch.true_divide, operator.add, operator.sub,
-    operator.mul, operator.floordiv, operator.truediv, torch.matmul, torch.where, operator.pow, torch.pow, torch.tanh
+    operator.mul, operator.floordiv, operator.truediv, torch.matmul, operator.pow, torch.pow
 ]
 CONV_MODULE_OP = [
     torch.nn.Conv1d, torch.nn.Conv2d, torch.nn.Conv3d, torch.nn.ConvTranspose1d, torch.nn.ConvTranspose2d,

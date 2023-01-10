@@ -1,3 +1,4 @@
+import builtins
 import math
 import operator
 from copy import deepcopy
@@ -6,14 +7,17 @@ from typing import Dict, List
 import torch
 from torch.fx import Graph, Node
 
-from colossalai.auto_parallel.tensor_shard.node_handler import (OuputHandler, PlacehodlerHandler, operator_registry)
-from colossalai.auto_parallel.tensor_shard.sharding_strategy import (ShardingStrategy, StrategiesVector)
-from colossalai.auto_parallel.tensor_shard.utils import (generate_resharding_costs, generate_sharding_spec)
+from colossalai.auto_parallel.tensor_shard.node_handler import (
+    GetattrHandler,
+    OutputHandler,
+    PlaceholderHandler,
+    operator_registry,
+)
+from colossalai.auto_parallel.tensor_shard.sharding_strategy import StrategiesVector
+from colossalai.auto_parallel.tensor_shard.utils import generate_resharding_costs, generate_sharding_spec
 from colossalai.device.device_mesh import DeviceMesh
-from colossalai.tensor.shape_consistency import ShapeConsistencyManager
-from colossalai.tensor.sharding_spec import ShardingSpec
 
-from .options import SolverOptions
+from .options import DataloaderOption, SolverOptions
 
 __all__ = ['StrategiesConstructor']
 
@@ -37,6 +41,7 @@ class StrategiesConstructor:
         self.leaf_strategies = []
         self.strategy_map = {}
         self.solver_options = solver_options
+        self.no_strategy_nodes = []
 
     def remove_duplicated_strategy(self, strategies_vector):
         '''
@@ -47,10 +52,6 @@ class StrategiesConstructor:
         name_checklist = []
         remove_list = []
         for strategy in strategies_vector:
-            if strategy is None:
-                print(strategies_vector.node.name)
-                print(strategies_vector)
-                assert False
             if strategy.name not in name_checklist:
                 name_checklist.append(strategy.name)
             else:
@@ -62,34 +63,46 @@ class StrategiesConstructor:
         """
         This method is to build the strategy vector for each node in the computation graph.
         """
+
+        def _check_no_strategy_for_node(node):
+            if node.op in ('placeholder', 'get_attr', 'output'):
+                return False
+
+            def _check_no_strategy_for_data(data):
+                label = True
+                if isinstance(data, torch.Tensor):
+                    return False
+                elif isinstance(data, (tuple, list)):
+                    for d in data:
+                        label = label and _check_no_strategy_for_data(d)
+                return label
+
+            return _check_no_strategy_for_data(node._meta_data)
+
         for node in self.nodes:
             strategies_vector = StrategiesVector(node)
+
+            if _check_no_strategy_for_node(node):
+                self.no_strategy_nodes.append(node)
+                pass
+
             # placeholder node
-            if node.op == 'placeholder':
-                placeholder_handler = PlacehodlerHandler(node, self.device_mesh, strategies_vector)
+            elif node.op == 'placeholder':
+                if self.solver_options.dataloader_option == DataloaderOption.DISTRIBUTED:
+                    placeholder_option = 'distributed'
+                else:
+                    assert self.solver_options.dataloader_option == DataloaderOption.REPLICATED, f'placeholder_option {self.solver_options.dataloader_option} is not supported'
+                    placeholder_option = 'replicated'
+                placeholder_handler = PlaceholderHandler(node,
+                                                         self.device_mesh,
+                                                         strategies_vector,
+                                                         placeholder_option=placeholder_option)
                 placeholder_handler.register_strategy()
 
             # get_attr node
-            if node.op == 'get_attr':
-                # Same as placeholder nodes, if solver_options.fast is True, we just let them in
-                # fully replicate status, then strategies of following node will be treated equally due
-                # to replicate status has no resharding cost to other status. At the same time, the searching
-                # space is smaller than enumerating all the possible sharding spec for the get_attr node.
-                # Otherwise, all the possible sharding spec for the get_attr node will be enumerated.
-                if self.solver_options.fast:
-                    # create sharding strategy for get_attr
-                    name = 'Replica Attribute'
-                    dim_partition_dict = {}
-                    output_sharding_spec = generate_sharding_spec(node, self.device_mesh, dim_partition_dict)
-                    # TODO: use meta_info_prop to profile memory cost
-                    memory_cost = 0
-                    sharding_strategy_attribute = ShardingStrategy(name, output_sharding_spec, memory_cost=memory_cost)
-                    strategies_vector.append(sharding_strategy_attribute)
-
-            # # get_attr node
-            # elif node.op == 'get_attr':
-            #     # TODO: implement getattr node handler
-            #     pass
+            elif node.op == 'get_attr':
+                getattr_handler = GetattrHandler(node, self.device_mesh, strategies_vector)
+                getattr_handler.register_strategy()
 
             # call_module node
             elif node.op == 'call_module':
@@ -98,28 +111,51 @@ class StrategiesConstructor:
                 submod_type = type(submod)
                 handler = operator_registry.get(submod_type)(node, self.device_mesh, strategies_vector)
                 handler.register_strategy()
+                # attach metainfo_vector to node
+                if hasattr(handler, 'metainfo_vector'):
+                    setattr(node, 'metainfo_vector', handler.metainfo_vector)
 
             # call_function node
             elif node.op == 'call_function':
                 target = node.target
                 handler = operator_registry.get(target)(node, self.device_mesh, strategies_vector)
                 handler.register_strategy()
+                # attach metainfo_vector to node
+                if hasattr(handler, 'metainfo_vector'):
+                    setattr(node, 'metainfo_vector', handler.metainfo_vector)
 
             # call_method node
             elif node.op == 'call_method':
                 method = getattr(node.args[0]._meta_data.__class__, node.target)
                 handler = operator_registry.get(method)(node, self.device_mesh, strategies_vector)
                 handler.register_strategy()
+                # attach metainfo_vector to node
+                if hasattr(handler, 'metainfo_vector'):
+                    setattr(node, 'metainfo_vector', handler.metainfo_vector)
 
             # output node
             elif node.op == 'output':
-                output_handler = OuputHandler(node, self.device_mesh, strategies_vector)
+                if self.solver_options.dataloader_option == DataloaderOption.DISTRIBUTED:
+                    output_option = 'distributed'
+                else:
+                    assert self.solver_options.dataloader_option == DataloaderOption.REPLICATED, f'placeholder_option {self.solver_options.dataloader_option} is not supported'
+                    output_option = 'replicated'
+                output_handler = OutputHandler(node, self.device_mesh, strategies_vector, output_option=output_option)
                 output_handler.register_strategy()
 
-            if len(strategies_vector) <= 0:
-                print(node.name)
-            assert len(strategies_vector) > 0
             self.remove_duplicated_strategy(strategies_vector)
             setattr(node, 'strategies_vector', strategies_vector)
             self.leaf_strategies.append(strategies_vector)
             self.strategy_map[node] = strategies_vector
+
+        # remove no strategy nodes
+        remove_list = []
+        for strategies_vector in self.leaf_strategies:
+            if len(strategies_vector) == 0:
+                remove_list.append(strategies_vector.node)
+
+        for node in remove_list:
+            if node.strategies_vector in self.leaf_strategies:
+                self.leaf_strategies.remove(node.strategies_vector)
+            if node in self.strategy_map:
+                self.strategy_map.pop(node)

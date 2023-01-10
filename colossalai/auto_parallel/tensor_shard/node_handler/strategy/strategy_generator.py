@@ -17,6 +17,7 @@ from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.tensor.shape_consistency import CollectiveCommPattern, CommSpec, ShapeConsistencyManager
 from colossalai.tensor.sharding_spec import ShardingSpec
+from colossalai.tensor.utils import convert_dim_partition_dict
 
 
 class StrategyGenerator(ABC):
@@ -67,21 +68,41 @@ class StrategyGenerator(ABC):
 
         Args:
             mapping (Dict[str, Dict[int, List[int]]]): the key of the mapping is the operation data name and the value is a dim partition dictionary.
+
+        Notes:
+            The op_data.data is commonly type of torch.Tensor, torch.nn.Parameter, so the sharding spec is easy to create from the shape of the data.
+            However, if the op_data.data is of other non-iterative types, such as float or int, we should return None. If the op_data.data is of some iterative types, such as
+            list or tuple, we should return a list of ShardingSpec objects follow the same rule as above mentioned.
         """
         results = {}
         for op_data_name, dim_partition_dict in mapping.items():
             if op_data_name in self.op_data:
                 op_data = self.op_data[op_data_name]
-                if isinstance(op_data.data, tuple) and isinstance(op_data.data[0], torch.Tensor):
-                    sharding_spec = []
-                    for output, dim_partition_dict_element in zip(op_data.data, dim_partition_dict):
+
+                def _to_sharding_spec(
+                        data: any, logical_shape: any,
+                        dim_partition_dict: Dict[int, List[int]]) -> Union[ShardingSpec, List[ShardingSpec], None]:
+                    """
+                    This is a recursive function to convert the dim partition dict to a ShardingSpec object.
+                    """
+                    if isinstance(data, torch.Tensor):
+                        dim_size = len(logical_shape)
+                        dim_partition_dict = convert_dim_partition_dict(dim_size, dim_partition_dict)
                         sharding_spec = ShardingSpec(device_mesh=self.device_mesh,
-                                                     entire_shape=output.shape,
-                                                     dim_partition_dict=dim_partition_dict_element)
-                else:
-                    sharding_spec = ShardingSpec(device_mesh=self.device_mesh,
-                                                 entire_shape=op_data.logical_shape,
-                                                 dim_partition_dict=dim_partition_dict)
+                                                     entire_shape=logical_shape,
+                                                     dim_partition_dict=dim_partition_dict)
+                        return sharding_spec
+                    elif isinstance(data, (list, tuple)):
+                        sharding_spec = []
+                        for data_element, logical_shape_element, dim_partition_dict_element in zip(
+                                data, logical_shape, dim_partition_dict):
+                            sharding_spec.append(
+                                _to_sharding_spec(data_element, logical_shape_element, dim_partition_dict_element))
+                        return sharding_spec
+                    else:
+                        return None
+
+                sharding_spec = _to_sharding_spec(op_data.data, op_data.logical_shape, dim_partition_dict)
                 results[op_data_name] = sharding_spec
         return results
 
@@ -109,7 +130,8 @@ class StrategyGenerator(ABC):
                                  communication_pattern: CollectiveCommPattern,
                                  logical_process_axis: Union[int, List[int]],
                                  comm_type: CommType,
-                                 arg_index: int = -1) -> CommAction:
+                                 arg_index: int = -1,
+                                 key_for_kwarg: any = None) -> CommAction:
         """
         A factory method to produce a CommAction object.
         """
@@ -117,7 +139,8 @@ class StrategyGenerator(ABC):
                                                                 communication_pattern=communication_pattern,
                                                                 logical_process_axis=logical_process_axis),
                           comm_type=comm_type,
-                          arg_index=arg_index)
+                          arg_index=arg_index,
+                          key_for_kwarg=key_for_kwarg)
 
     def update_communication_cost(self, strategy: ShardingStrategy) -> ShardingStrategy:
         """
@@ -180,13 +203,40 @@ class StrategyGenerator(ABC):
         Args:
             strategy (ShardingStrategy): the ShardingStrategy generated.
             key (str): the name of the operation data defined by the generator.
-
         """
         op_data = self.op_data[key]
-        sharded_shape = strategy.sharding_specs[op_data].get_sharded_shape_per_device()
-        dtype = self.op_data[key].data.dtype
-        size_per_elem_bytes = torch.tensor([], dtype=dtype).element_size()
-        return reduce(operator.mul, sharded_shape) * size_per_elem_bytes
+
+        def _compute_size_in_bytes_helper(sharding_spec, meta_data):
+            sharded_shape = sharding_spec.get_sharded_shape_per_device()
+            if len(sharded_shape) == 0:
+                num_elements = 1
+            else:
+                num_elements = reduce(operator.mul, sharded_shape)
+            dtype = getattr(meta_data, 'dtype')
+            size_per_elem_bytes = torch.tensor([], dtype=dtype).element_size()
+            return num_elements * size_per_elem_bytes
+
+        if isinstance(op_data.data, tuple):
+            assert isinstance(strategy.sharding_specs[op_data], list), \
+                'sharding_spec of op_data should be a list of sharding specs if op_data.data is a tuple.'
+            total_bytes = 0
+            for index, sharding_spec in enumerate(strategy.sharding_specs[op_data]):
+                meta_data = op_data.data[index]
+                if isinstance(meta_data, torch.Tensor):
+                    element_bytes = _compute_size_in_bytes_helper(sharding_spec, meta_data)
+                else:
+                    # if meta_data is not a tensor, we count the memroy as 0
+                    element_bytes = 0
+                total_bytes += element_bytes
+
+        else:
+            if isinstance(op_data.data, torch.Tensor):
+                total_bytes = _compute_size_in_bytes_helper(strategy.sharding_specs[op_data], op_data.data)
+            else:
+                # if op_data.data is not a tensor, we count the memroy as 0
+                total_bytes = 0
+
+        return total_bytes
 
     def generate(self) -> List[ShardingStrategy]:
         """
@@ -244,6 +294,5 @@ class OutputStrategyGenerator(StrategyGenerator):
 
     def __init__(self, operation_data_mapping: Dict[str, OperationData], device_mesh: DeviceMesh,
                  predecessor_nodes: List[Node]):
-        self.op_data = operation_data_mapping
-        self.device_mesh = device_mesh
+        super().__init__(operation_data_mapping, device_mesh)
         self.predecessor_nodes = predecessor_nodes

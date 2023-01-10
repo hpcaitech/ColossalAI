@@ -1,12 +1,36 @@
 import torch
-
 from torch.fx import symbolic_trace
 from torch.fx.node import Node
+
 from colossalai.fx.passes.split_module import split_module
 
 
 def pipe_split():
     pass
+
+
+def avgnode_split_pass(gm: torch.fx.GraphModule, pp_size: int):
+    """
+    In avgnode_split_pass, simpliy split graph by node number.
+    """
+    mod_graph = gm.graph
+    avg_num_node = len(mod_graph.nodes) // pp_size
+    accumulate_num_node = 0
+    for node in mod_graph.nodes:
+        if pp_size <= 1:
+            break
+        accumulate_num_node += 1
+        if accumulate_num_node >= avg_num_node:
+            accumulate_num_node = 0
+            pp_size -= 1
+            if node.next.op == 'output':
+                with mod_graph.inserting_before(node):
+                    split_node = mod_graph.create_node('call_function', pipe_split)
+            else:
+                with mod_graph.inserting_after(node):
+                    split_node = mod_graph.create_node('call_function', pipe_split)
+    gm.recompile()
+    return gm
 
 
 def balanced_split_pass(gm: torch.fx.GraphModule, pp_size: int):
@@ -37,6 +61,21 @@ def balanced_split_pass(gm: torch.fx.GraphModule, pp_size: int):
             else:
                 with mod_graph.inserting_after(node):
                     split_node = mod_graph.create_node('call_function', pipe_split)
+    if pp_size > 1:
+        node_counter = 0
+        for node in mod_graph.nodes:
+            if pp_size <= 1:
+                break
+            if node.op == 'placeholder':
+                continue
+            elif node_counter == 0:
+                node_counter += 1
+            else:
+                pp_size -= 1
+                node_counter = 0
+                with mod_graph.inserting_before(node):
+                    split_node = mod_graph.create_node('call_function', pipe_split)
+
     gm.recompile()
     return gm
 
@@ -102,7 +141,7 @@ def uniform_split_pass(gm: torch.fx.GraphModule, pp_size: int):
     return gm
 
 
-def split_with_split_nodes_pass(annotated_gm: torch.fx.GraphModule):
+def split_with_split_nodes_pass(annotated_gm: torch.fx.GraphModule, merge_output=False):
     # TODO(lyl): use partition IR to assign partition ID to each node.
     # Currently: analyzing graph -> annotate graph by inserting split node -> use split module pass to split graph
     # In future: graph to partitions -> analyzing partition IR -> recombining partitions to get best performance -> assign partition ID to each node
@@ -114,7 +153,7 @@ def split_with_split_nodes_pass(annotated_gm: torch.fx.GraphModule):
             part_idx += 1
         return part_idx
 
-    split_mod = split_module(annotated_gm, None, split_callback)
+    split_mod = split_module(annotated_gm, None, split_callback, merge_output)
     split_submodules = []
     for name, submodule in split_mod.named_modules():
         if isinstance(submodule, torch.fx.GraphModule):

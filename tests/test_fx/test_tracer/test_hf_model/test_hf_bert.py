@@ -1,7 +1,7 @@
 import pytest
 import torch
 import transformers
-from utils import trace_model_and_compare_output
+from hf_tracer_utils import trace_model_and_compare_output
 
 BATCH_SIZE = 2
 SEQ_LENGTH = 16

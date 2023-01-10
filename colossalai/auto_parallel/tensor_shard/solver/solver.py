@@ -32,7 +32,8 @@ class Solver:
                  memory_budget: float = -1.0,
                  solution_numbers: int = 1,
                  forward_only: bool = False,
-                 memory_increasing_coefficient: float = 1.3):
+                 memory_increasing_coefficient: float = 1.3,
+                 verbose=True):
         '''
         Solver class will integrate information provided by the components and use ILP solver to find a possible optimal strategies combination for target computing graph.
         Argument:
@@ -64,6 +65,7 @@ class Solver:
         self.last_s_val = None
         # The last objective value of the best ILP solution.
         self.last_objective = None
+        self.verbose = verbose
 
     def _recover_merged_node_strategy(self):
         '''
@@ -152,12 +154,16 @@ class Solver:
                 if self.forward_only:
                     origin_communication_cost = communication_cost_item.fwd
                     compute_cost = compute_cost_item.fwd
+                    # extract MemoryCost item from the memory TrainCycleItem
                     memory_cost = memory_cost_item.fwd
                 else:
                     origin_communication_cost = communication_cost_item.total
                     compute_cost = compute_cost_item.total
+                    # extract MemoryCost item from the memory TrainCycleItem
                     memory_cost = memory_cost_item.total
 
+                # extract the memory cost in float from MemoryCost item and sum them up
+                memory_cost = memory_cost.parameter + memory_cost.activation + memory_cost.buffer
                 compute_costs.append(compute_cost)
                 # node in extra_node_costs means it has some extra communication
                 # cost from node merging, so we need to add those extra communication
@@ -177,7 +183,7 @@ class Solver:
         # omit initial value for nodes
         s_init_np = None
 
-        return node_nums, memory_budget, strategies_len, following_nodes, edge_pairs, alias_set, liveness_set, compute_costs, communication_costs, memory_costs, resharding_costs, alias_convert_costs, s_init_np
+        return node_nums, memory_budget, strategies_len, following_nodes, edge_pairs, alias_set, liveness_set, compute_costs, communication_costs, memory_costs, resharding_costs, alias_convert_costs, s_init_np, self.verbose
 
     def _call_solver_serialized_args(self,
                                      node_nums,
@@ -192,7 +198,8 @@ class Solver:
                                      memory_costs,
                                      resharding_costs,
                                      alias_convert_costs,
-                                     s_init_np=None):
+                                     s_init_np=None,
+                                     verbose=True):
         """
         Call the solver with serialized arguments.
         """
@@ -363,6 +370,8 @@ class Solver:
             for liveness_stage in liveness_set:
                 mem = 0
                 for live_variable in liveness_stage.unique_live_vars:
+                    if live_variable.node not in self.node_index_dict:
+                        continue
                     node_index = self.node_index_dict[live_variable.node]
                     mem += lpSum(s[node_index][j] * m[node_index][j] for j in range(len(s[node_index])))
                 prob += mem <= memory_budget
@@ -406,8 +415,6 @@ class Solver:
         #         for col in range(len(s[j])):
         #             if v[idx][row * C + col] > 0.5:
         #                 prob += s[i][row] + s[j][col] <= 1
-
-        verbose = True
 
         msg = verbose
         time_limit = 600

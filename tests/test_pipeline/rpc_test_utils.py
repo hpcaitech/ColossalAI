@@ -20,6 +20,33 @@ def color_debug(text, prefix=' ', color='blue'):
     color = color.upper()
     print(getattr(Back, color), prefix, Style.RESET_ALL, text)
 
+class MLP(nn.Module):
+    def __init__(self, dim: int, layers: int):
+        super().__init__()
+        self.layers = torch.nn.ModuleList()
+
+        for _ in range(layers):
+            self.layers.append(nn.Linear(dim, dim, bias=False))
+
+    def forward(self, x):
+        for layer in self.layers:
+            x = layer(x)
+        return x.sum()
+    
+class DAG_MLP(nn.Module):
+    def __init__(self, dim: int, layers: int):
+        super().__init__()
+        self.layers = torch.nn.ModuleList()
+        self.dag_layer = nn.Linear(dim, dim, bias=False)
+
+        for _ in range(layers):
+            self.layers.append(nn.Linear(dim, dim, bias=False))
+
+    def forward(self, x, y):
+        for layer in self.layers:
+            x = layer(x)
+            y = self.dag_layer(y)
+        return x.sum(), y.sum()
 
 class RpcTestModel(nn.Module):
 

@@ -1,74 +1,29 @@
-name: Release bdist wheel for Nightly versions
+name: Publish Nightly Version to PyPI
 
 on:
-  schedule:
-    # run at 00:00 of every Sunday 
-    - cron:  '0 0 * * 6'
   workflow_dispatch:
-  
-jobs:
-  matrix_preparation:
-    name: Prepare Container List
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
-    steps:
-    - id: set-matrix
-      run: |
-        matrix="[\"hpcaitech/cuda-conda:11.3\", \"hpcaitech/cuda-conda:10.2\"]"
-        echo $matrix
-        echo "::set-output name=matrix::{\"container\":$(echo $matrix)}"
+  schedule:
+    - cron:  '0 0 * * 6' # release on every Sunday 00:00 UTC time
 
-  build:
-    name: Release bdist wheels
-    needs: matrix_preparation
-    if: github.repository == 'hpcaitech/ColossalAI' && contains(fromJson('["FrankLeeeee", "ver217", "feifeibear", "kurisusnowdeng"]'), github.actor)
-    runs-on: [self-hosted, gpu]
-    strategy:
-      fail-fast: false
-      matrix: ${{fromJson(needs.matrix_preparation.outputs.matrix)}}
-    container:
-      image: ${{ matrix.container }}
-      options: --gpus all --rm
-    steps:
-      - uses: actions/checkout@v2
-        with:
-          fetch-depth: 0
-      # cub is for cuda 10.2
-      - name: Copy scripts and checkout
-        run: |
-          cp -r ./.github/workflows/scripts/* ./
-          ln -s /github/home/pip_wheels ./pip_wheels
-          wget https://github.com/NVIDIA/cub/archive/refs/tags/1.8.0.zip
-          unzip 1.8.0.zip
-      - name: Build bdist wheel
-        run: |
-          pip install beautifulsoup4 requests packaging
-          python ./build_colossalai_wheel.py --nightly
-      - name: 🚀 Deploy
-        uses: garygrossgarten/github-action-scp@release
-        with:
-          local: all_dist
-          remote: ${{ secrets.PRIVATE_PYPI_NIGHTLY_DIR }}
-          host: ${{ secrets.PRIVATE_PYPI_HOST }}
-          username: ${{ secrets.PRIVATE_PYPI_USER }}
-          password: ${{ secrets.PRIVATE_PYPI_PASSWD }}
-  remove_old_build:
-    name: Remove old nightly build
+jobs:
+  build-n-publish:
+    if: github.event_name == 'workflow_dispatch' || github.repository == 'hpcaitech/ColossalAI'
+    name: Build and publish Python 🐍 distributions 📦 to PyPI
     runs-on: ubuntu-latest
-    needs: build
+    timeout-minutes: 20
     steps:
-      - name: executing remote ssh commands using password
-        uses: appleboy/ssh-action@master
-        env:
-          BUILD_DIR: ${{ secrets.PRIVATE_PYPI_NIGHTLY_DIR }}
-        with:
-          host: ${{ secrets.PRIVATE_PYPI_HOST }}
-          username: ${{ secrets.PRIVATE_PYPI_USER }}
-          password: ${{ secrets.PRIVATE_PYPI_PASSWD }}
-          envs: BUILD_DIR
-          script: |
-            cd $BUILD_DIR
-            find . -type f -mtime +0 -exec rm -f {} +
-          script_stop: true
-        
+    - uses: actions/checkout@v2
+
+    - uses: actions/setup-python@v2
+      with:
+        python-version: '3.8.14'
+
+    - run: NIGHTLY=1 python setup.py sdist build
+
+    # publish to PyPI if executed on the main branch
+    - name: Publish package to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        user: __token__
+        password: ${{ secrets.PYPI_API_TOKEN }}
+        verbose: true

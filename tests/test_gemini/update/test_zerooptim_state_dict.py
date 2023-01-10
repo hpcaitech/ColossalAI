@@ -9,12 +9,12 @@ import colossalai
 from colossalai.gemini.chunk import ChunkManager, search_chunk_configuration
 from colossalai.gemini.gemini_mgr import GeminiManager
 from colossalai.nn.optimizer import HybridAdam
+from colossalai.nn.optimizer.zero_optimizer import ZeroOptimizer
 from colossalai.nn.parallel import ZeroDDP
 from colossalai.testing import parameterize, rerun_if_address_is_in_use
 from colossalai.utils import free_port
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils.model.colo_init_context import ColoInitContext
-from colossalai.zero import ZeroOptimizer
 from tests.components_to_test.registry import non_distributed_component_funcs
 from tests.test_tensor.common_utils import debug_print, set_seed
 
@@ -50,11 +50,11 @@ def exam_zero_optim_state_dict(placement_policy, keep_gathered):
 
     set_seed(dist.get_rank() * 3 + 128)
     model.train()
-    for i, (input_ids, attn_mask) in enumerate(train_dataloader):
+    for i, (input_ids, label) in enumerate(train_dataloader):
         if i > 0:
             break
         optim.zero_grad()
-        logits = model(input_ids, attn_mask)
+        logits = model(input_ids)
         logits = logits.float()
         loss = criterion(logits, input_ids)
         optim.backward(loss)

@@ -1,22 +1,37 @@
+from typing import Any, Optional, Tuple
+
 import torch
 import torch.distributed as dist
 from torch import Tensor
-from typing import Any, Tuple, Optional
 from torch.distributed import ProcessGroup
 
 COL_MOE_KERNEL_FLAG = False
-try:
-    import colossal_moe_cuda
 
-    COL_MOE_KERNEL_FLAG = True
-except ImportError:
-    print("If you want to activate cuda mode for MoE, please install with cuda_ext!")
+try:
+    from colossalai._C import moe
+except:
+    moe = None
+
+
+def build_moe_if_not_prebuilt():
+    # load moe kernel during runtime if not pre-built
+    global moe
+    if moe is None:
+        from colossalai.kernel.op_builder import MOEBuilder
+        moe = MOEBuilder().load()
 
 
 class AllGather(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx: Any, inputs: Tensor, group: Optional[ProcessGroup] = None) -> Tensor:
+
+        global moe
+
+        if moe is None:
+            from colossalai.kernel.op_builder import MOEBuilder
+            moe = MOEBuilder().load()
+
         if ctx is not None:
             ctx.comm_grp = group
 
@@ -89,7 +104,10 @@ class MoeDispatch(torch.autograd.Function):
         s = tokens.size(0)
         h = tokens.size(1)
 
-        expert_input = colossal_moe_cuda.dispatch_forward(s, ec, h, tokens, mask, dest_idx)
+        # load moe kernel during runtime if not pre-built
+        build_moe_if_not_prebuilt()
+
+        expert_input = moe.dispatch_forward(s, ec, h, tokens, mask, dest_idx)
 
         ctx.save_for_backward(mask, dest_idx)
         ctx.s = s
@@ -101,7 +119,7 @@ class MoeDispatch(torch.autograd.Function):
     @staticmethod
     def backward(ctx, output_grad):
         mask, dest_idx = ctx.saved_tensors
-        d_tokens = colossal_moe_cuda.dispatch_backward(ctx.s, ctx.ec, ctx.h, output_grad, mask, dest_idx)
+        d_tokens = moe.dispatch_backward(ctx.s, ctx.ec, ctx.h, output_grad, mask, dest_idx)
         return d_tokens, None, None, None
 
 
@@ -116,9 +134,12 @@ class MoeCombine(torch.autograd.Function):
         c = ec // e
         h = expert_tokens.size(-1)
 
+        # load moe kernel during runtime if not pre-built
+        build_moe_if_not_prebuilt()
+
         fp16_flag = (expert_tokens.dtype == torch.float16)
         cb_input = expert_tokens.to(torch.float32) if fp16_flag else expert_tokens
-        ctokens = colossal_moe_cuda.combine_forward(s, e, c, h, cb_input, logits, mask, dest_idx)
+        ctokens = moe.combine_forward(s, e, c, h, cb_input, logits, mask, dest_idx)
         output = ctokens.to(torch.float16) if fp16_flag else ctokens
 
         ctx.save_for_backward(expert_tokens, logits, mask, dest_idx)
@@ -137,8 +158,7 @@ class MoeCombine(torch.autograd.Function):
         cb_grad = tokens_grad.to(torch.float32) if tokens_grad.dtype is torch.float16 \
             else tokens_grad
         cb_input = expert_tokens.to(torch.float32) if ctx.fp16_flag else expert_tokens
-        d_expert, d_logits = colossal_moe_cuda.combine_backward(ctx.s, ctx.e, ctx.c, ctx.h, cb_grad, cb_input, logits,
-                                                                mask, dest_idx)
+        d_expert, d_logits = moe.combine_backward(ctx.s, ctx.e, ctx.c, ctx.h, cb_grad, cb_input, logits, mask, dest_idx)
         d_expert = d_expert.to(torch.float16) if ctx.fp16_flag else d_expert
 
         return d_expert, d_logits, None, None, None
@@ -148,6 +168,8 @@ def moe_cumsum(inputs: Tensor):
     dim0 = inputs.size(0)
     flag = (dim0 <= 1024) or (dim0 <= 2048 and dim0 % 2 == 0) or (dim0 % 4 == 0)
     if flag and COL_MOE_KERNEL_FLAG:
-        return colossal_moe_cuda.cumsum_sub_one(inputs)
+        # load moe kernel during runtime if not pre-built
+        build_moe_if_not_prebuilt()
+        return moe.cumsum_sub_one(inputs)
     else:
         return torch.cumsum(inputs, dim=0) - 1

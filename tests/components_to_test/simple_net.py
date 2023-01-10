@@ -1,9 +1,12 @@
 import torch
 import torch.nn as nn
+
 from colossalai.nn import CheckpointModule
-from .utils.dummy_data_generator import DummyDataGenerator
-from .registry import non_distributed_component_funcs
 from colossalai.utils.cuda import get_current_device
+
+from .registry import non_distributed_component_funcs
+from .utils.dummy_data_generator import DummyDataGenerator
+
 
 class SimpleNet(CheckpointModule):
     """
@@ -29,7 +32,6 @@ class SimpleNet(CheckpointModule):
         return x
 
 
-
 class DummyDataLoader(DummyDataGenerator):
 
     def generate(self):
@@ -41,7 +43,7 @@ class DummyDataLoader(DummyDataGenerator):
 @non_distributed_component_funcs.register(name='simple_net')
 def get_training_components():
 
-    def model_builder(checkpoint=True):
+    def model_builder(checkpoint=False):
         return SimpleNet(checkpoint)
 
     trainloader = DummyDataLoader()

@@ -1,5 +1,6 @@
-from functools import reduce
 import operator
+from functools import reduce
+
 import torch
 import torch.distributed as dist
 
@@ -11,7 +12,7 @@ class DeviceMesh:
     can be viewed as a 1x16 or a 4x4 logical mesh). Each mesh dimension has its
     own latency and bandwidth. We use alpha-beta model to model the
     communication cost.
-    
+
     Arguments:
         physical_mesh_id (torch.Tensor): physical view of the devices in global rank.
         mesh_shape (torch.Size): shape of logical view.
@@ -23,6 +24,7 @@ class DeviceMesh:
             during initializing the DeviceMesh instance if the init_process_group set to True.
             Otherwise, users need to call create_process_groups_for_logical_mesh manually to init logical process group.
             (default: False)
+        need_flatten(bool, optional): initialize flatten_device_mesh during initializing the DeviceMesh instance if the need_flatten set to True.
     """
 
     def __init__(self,
@@ -49,8 +51,11 @@ class DeviceMesh:
         self.need_flatten = need_flatten
         if self.init_process_group:
             self.process_groups_dict = self.create_process_groups_for_logical_mesh()
-        if self.need_flatten:
+        if self.need_flatten and self._logical_mesh_id.dim() > 1:
             self.flatten_device_mesh = self.flatten()
+            # Create a new member `flatten_device_meshes` to distinguish from original flatten methods (Because I'm not sure if there are functions that rely on the self.flatten())
+            self.flatten_device_meshes = FlattenDeviceMesh(self.physical_mesh_id, self.mesh_shape, self.mesh_alpha,
+                                                           self.mesh_beta)
 
     @property
     def shape(self):
@@ -63,6 +68,18 @@ class DeviceMesh:
     @property
     def logical_mesh_id(self):
         return self._logical_mesh_id
+
+    def __deepcopy__(self, memo):
+        cls = self.__class__
+        result = cls.__new__(cls)
+        memo[id(self)] = result
+        for k, v in self.__dict__.items():
+            if k != 'process_groups_dict':
+                setattr(result, k, __import__("copy").deepcopy(v, memo))
+            else:
+                setattr(result, k, v)
+
+        return result
 
     def flatten(self):
         """
@@ -90,7 +107,7 @@ class DeviceMesh:
     def create_process_groups_for_logical_mesh(self):
         '''
         This method is used to initialize the logical process groups which will be used in communications
-        among logical device mesh. 
+        among logical device mesh.
         Note: if init_process_group set to False, you have to call this method manually. Otherwise,
         the communication related function, such as ShapeConsistencyManager.apply will raise errors.
         '''
@@ -186,3 +203,38 @@ class DeviceMesh:
         penalty_factor = num_devices / 2.0
         return (self.mesh_alpha[mesh_dim] + self.mesh_beta[mesh_dim] *
                 (num_devices - 1) / num_devices / num_devices * num_bytes * penalty_factor + 0.001)
+
+
+class FlattenDeviceMesh(DeviceMesh):
+
+    def __init__(self, physical_mesh_id, mesh_shape, mesh_alpha=None, mesh_beta=None):
+        super().__init__(physical_mesh_id,
+                         mesh_shape,
+                         mesh_alpha,
+                         mesh_beta,
+                         init_process_group=False,
+                         need_flatten=False)
+        # Different from flatten(), mesh_shape leaves unchanged, mesh_alpha and mesh_beta are scalars
+        self.mesh_alpha = max(self.mesh_alpha)
+        self.mesh_beta = min(self.mesh_beta)
+        # Different from original process_groups_dict, rank_list is not stored
+        self.process_number_dict = self.create_process_numbers_for_logical_mesh()
+
+    def create_process_numbers_for_logical_mesh(self):
+        '''
+        Build 1d DeviceMesh in column-major(0) and row-major(1)
+        for example:
+            mesh_shape = (2,4)
+            # [[0, 1, 2, 3],
+            #  [4, 5, 6, 7]]
+            # return {0: [0, 4, 1, 5, 2, 6, 3, 7], 1: [0, 1, 2, 3, 4, 5, 6, 7]}
+        '''
+        num_devices = reduce(operator.mul, self.mesh_shape, 1)
+        process_numbers_dict = {}
+        process_numbers_dict[0] = torch.arange(num_devices).reshape(self.mesh_shape).transpose(1, 0).flatten().tolist()
+        process_numbers_dict[1] = torch.arange(num_devices).reshape(self.mesh_shape).flatten().tolist()
+        return process_numbers_dict
+
+    def mix_gather_cost(self, num_bytes):
+        num_devices = reduce(operator.mul, self.mesh_shape, 1)
+        return (self.mesh_alpha + self.mesh_beta * (num_devices - 1) / num_devices * num_bytes + 0.1)

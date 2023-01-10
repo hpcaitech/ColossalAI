@@ -6,10 +6,24 @@ from typing import Any, Callable, Dict, List, Tuple, Type, Union
 import torch
 import torch.distributed.rpc as rpc
 import torch.multiprocessing as mp
-from colossalai.initialize import launch
-from colossalai.pipeline.pipeline_process_group import ppg
 from torch._C._distributed_rpc import _is_current_rpc_agent_set
 from torch.futures import Future
+
+from colossalai.initialize import launch
+from colossalai.pipeline.pipeline_process_group import ppg
+
+
+def pyobj_map(obj: Any, fn: Callable, process_types: Union[Type, Tuple[Type]] = ()) -> Any:
+    if isinstance(obj, process_types):
+        return fn(obj)
+    elif type(obj) is dict:
+        return {k: pyobj_map(obj[k], fn, process_types) for k in obj}
+    elif type(obj) is tuple:
+        return tuple(pyobj_map(o, fn, process_types) for o in obj)
+    elif type(obj) is list:
+        return list(pyobj_map(o, fn, process_types) for o in obj)
+    else:
+        return obj
 
 
 def pytree_map(obj: Any, fn: Callable, process_types: Union[Type, Tuple[Type]] = (), map_all: bool = False) -> Any:
@@ -19,10 +33,10 @@ def pytree_map(obj: Any, fn: Callable, process_types: Union[Type, Tuple[Type]] =
         obj (:class:`Any`): object to process
         fn (:class:`Callable`): a function to process subobject in obj
         process_types (:class: `type | tuple[type]`): types to determine the type to process
-        map_all (:class: `bool`): if map_all is True, then any type of element will use fn 
+        map_all (:class: `bool`): if map_all is True, then any type of element will use fn
 
     Returns:
-        :class:`Any`: returns have the same structure of `obj` and type in process_types after map of `fn` 
+        :class:`Any`: returns have the same structure of `obj` and type in process_types after map of `fn`
     """
     if isinstance(obj, dict):
         return {k: pytree_map(obj[k], fn, process_types, map_all) for k in obj}
@@ -137,5 +151,5 @@ def parse_args():
     parser.add_argument('--device', type=str, choices=['cpu', 'cuda'], default='cuda')
     parser.add_argument('--master_addr', type=str, default='localhost')
     parser.add_argument('--master_port', type=str, default='29020')
-    parser.add_argument('--num_worker_threads', type=str, default=128)
+    parser.add_argument('--num_worker_threads', type=int, default=128)
     return parser.parse_args()

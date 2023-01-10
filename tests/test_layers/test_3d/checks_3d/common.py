@@ -12,8 +12,8 @@ NUM_BLOCKS = 2
 IMG_SIZE = 16
 VOCAB_SIZE = 16
 
+
 def check_equal(A, B):
     eq = torch.allclose(A, B, rtol=1e-3, atol=1e-2)
-    assert eq
+    assert eq, f"\nA = {A}\nB = {B}"
     return eq
-

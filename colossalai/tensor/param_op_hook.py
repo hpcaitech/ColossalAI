@@ -1,16 +1,19 @@
-import torch
-from contextlib import contextmanager
 from abc import ABC, abstractmethod
-from typing import List, Tuple, Any
+from contextlib import contextmanager
+from typing import Any, List, Tuple
+
+import torch
+
 from colossalai.tensor.colo_tensor import ColoTensor
-from colossalai.tensor import ColoTensorSpec
+from colossalai.tensor.tensor_spec import ColoTensorSpec
 
 
-class ParamOpHook(ABC):
-    """Hook which is triggered by each operation when operands contain ColoParameter.
+class ColoParamOpHook(ABC):
+    """
+    Hook which is triggered by each operation when operands contain ColoParameter.
     To customize it, you must inherit this abstract class, and implement ``pre_forward``,
-    ``post_forward``, ``pre_backward`` and ``post_backward``. These four methods take a list
-    of ColoParameter.
+    ``post_forward``, ``pre_backward`` and ``post_backward``.
+    These four methods apply a list of ColoParameter as input args.
     """
 
     @abstractmethod
@@ -30,68 +33,79 @@ class ParamOpHook(ABC):
         pass
 
 
-class ParamOpHookManager:
-    """Manage your param op hooks. It only has static methods.
+class ColoParamOpHookManager:
+    """
+    Manage your param op hooks. It only has static methods.
     The only static method you should call is ``use_hooks(*hooks)``.
     """
-    hooks: Tuple[ParamOpHook, ...] = tuple()
+    hooks: Tuple[ColoParamOpHook, ...] = tuple()
 
     @staticmethod
     @contextmanager
-    def use_hooks(*hooks: ParamOpHook):
+    def use_hooks(*hooks: ColoParamOpHook):
         """Change the param op hooks you use. Nested calling is allowed.
 
         Example:
-            >>> with ParamOpHookManager.use_hooks(*hooks):
+            >>> with ColoParamOpHookManager.use_hooks(*hooks):
             >>>     do_something()
-            >>>     with ParamOpHookManager.use_hooks():
+            >>>     with ColoParamOpHookManager.use_hooks():
             >>>         // clear hooks
             >>>         do_something()
         """
         try:
-            old_param_op_hooks = ParamOpHookManager.hooks
-            ParamOpHookManager.hooks = hooks
+            old_param_op_hooks = ColoParamOpHookManager.hooks
+            ColoParamOpHookManager.hooks = hooks
             yield
         finally:
-            ParamOpHookManager.hooks = old_param_op_hooks
+            ColoParamOpHookManager.hooks = old_param_op_hooks
 
     @staticmethod
     def _trigger_pre_forward(params: List[torch.Tensor]) -> None:
-        for hook in ParamOpHookManager.hooks:
+        for hook in ColoParamOpHookManager.hooks:
             hook.pre_forward(params)
 
     @staticmethod
     def _trigger_post_forward(params: List[torch.Tensor]) -> None:
-        for hook in ParamOpHookManager.hooks:
+        for hook in ColoParamOpHookManager.hooks:
             hook.post_forward(params)
 
     @staticmethod
     def _trigger_pre_backward(params: List[torch.Tensor]) -> None:
-        for hook in ParamOpHookManager.hooks:
+        for hook in ColoParamOpHookManager.hooks:
             hook.pre_backward(params)
 
     @staticmethod
     def _trigger_post_backward(params: List[torch.Tensor]) -> None:
-        for hook in ParamOpHookManager.hooks:
+        for hook in ColoParamOpHookManager.hooks:
             hook.post_backward(params)
 
     @staticmethod
     def pre_op(params: List[torch.Tensor], *args: Any) -> list:
-        ParamOpHookManager._trigger_pre_forward(params)
-        args_info = _get_colo_tensors_info(*args)
-        rets = PreFwdPostBwd.apply(params, *args)
-        return _update_colo_tensors(args_info, *rets)
+        ColoParamOpHookManager._trigger_pre_forward(params)
+        grad_args, rear_args = _get_grad_args(*args)
+        colo_info = _get_colo_tensors_info(*grad_args)
+        rets = PreFwdPostBwd.apply(params, *grad_args)
+        update_args = _update_colo_tensors(colo_info, *rets)
+        if rear_args is None:
+            return update_args
+        else:
+            arg_zero = (tuple(update_args),)
+            return arg_zero + rear_args
 
     @staticmethod
     def post_op(params: List[torch.Tensor], arg: Any) -> Any:
-        ParamOpHookManager._trigger_post_forward(params)
-        arg_info = _get_colo_tensors_info(arg)
+        ColoParamOpHookManager._trigger_post_forward(params)
+        colo_info = _get_colo_tensors_info(arg)
         ret = PostFwdPreBwd.apply(params, arg)
-        return _unpack_args(_update_colo_tensors(arg_info, ret))
+        res = _update_colo_tensors(colo_info, ret)
+        if len(res) == 1:
+            return res[0]
+        else:
+            return res
 
     @staticmethod
     def has_hook() -> bool:
-        return len(ParamOpHookManager.hooks) > 0
+        return len(ColoParamOpHookManager.hooks) > 0
 
 
 class PreFwdPostBwd(torch.autograd.Function):
@@ -99,11 +113,11 @@ class PreFwdPostBwd(torch.autograd.Function):
     @staticmethod
     def forward(ctx, params, *args):
         ctx.params = params
-        return _unpack_args(args)
+        return args
 
     @staticmethod
     def backward(ctx, *grads):
-        ParamOpHookManager._trigger_post_backward(ctx.params)
+        ColoParamOpHookManager._trigger_post_backward(ctx.params)
         return (None,) + grads
 
 
@@ -116,14 +130,51 @@ class PostFwdPreBwd(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, *grads):
-        ParamOpHookManager._trigger_pre_backward(ctx.params)
+        ColoParamOpHookManager._trigger_pre_backward(ctx.params)
         return (None,) + grads
 
 
-def _unpack_args(args):
-    if len(args) == 1:
-        return args[0]
-    return args
+def _is_grad_tensor(obj) -> bool:
+    if torch.is_tensor(obj):
+        if obj.grad_fn is not None or obj.requires_grad:
+            return True
+    return False
+
+
+def _has_grad_tensor(obj) -> bool:
+    if isinstance(obj, tuple) or isinstance(obj, list):
+        for x in obj:
+            if _has_grad_tensor(x):
+                return True
+        return False
+    elif isinstance(obj, dict):
+        for x in obj.values():
+            if _has_grad_tensor(x):
+                return True
+        return False
+    else:
+        return _is_grad_tensor(obj)
+
+
+def _get_grad_args(*args):
+    # if there is no grad tensors, do nothing
+    if not _has_grad_tensor(args):
+        return args, None
+    # returns the identical args if there is a grad tensor
+    for obj in args:
+        if _is_grad_tensor(obj):
+            return args, None
+    # otherwise, the first arguement should be a tuple of grad tensors
+    # if there is no grad tensor, the backward of PreFwdPostBwd can't be triggered
+    arg_zero = args[0]
+    if not isinstance(arg_zero, tuple):
+        raise NotImplementedError("Some torch function is incompatible because of its complcated inputs.")
+    check_grad_flag = False
+    for obj in arg_zero:
+        check_grad_flag |= _is_grad_tensor(obj)
+    if not check_grad_flag:
+        raise NotImplementedError("Some torch function is incompatible because of its complcated inputs.")
+    return arg_zero, args[1:]
 
 
 def _get_colo_tensors_info(*args) -> list:

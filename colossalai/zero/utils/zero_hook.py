@@ -2,23 +2,22 @@ from typing import Optional
 
 import torch
 import torch.distributed as dist
+
+from colossalai.gemini.memory_tracer import MemStatsCollector
+from colossalai.gemini.ophooks import BaseOpHook
+from colossalai.gemini.stateful_tensor import TensorState
+from colossalai.gemini.stateful_tensor_mgr import StatefulTensorMgr
 from colossalai.logging import get_dist_logger
 from colossalai.registry import OPHOOKS
-
 from colossalai.utils import get_current_device
-
 from colossalai.zero.shard_utils import BaseShardStrategy
-from colossalai.gemini.ophooks import BaseOpHook
-
-from colossalai.gemini.stateful_tensor_mgr import StatefulTensorMgr
-from colossalai.gemini.memory_tracer import MemStatsCollector
-from colossalai.gemini.stateful_tensor import TensorState
 
 
 @OPHOOKS.register_module
 class ZeroHook(BaseOpHook):
     """
     A hook to process sharded param for ZeRO method.
+    Warning: this class has been deprecated after version 0.1.12
     """
 
     def __init__(self,
@@ -68,7 +67,7 @@ class ZeroHook(BaseOpHook):
 
         # record model data statistics
         if self._memstarts_collector:
-            self._memstarts_collector.sample_model_data()
+            self._memstarts_collector.record_model_data_volume()
 
     def pre_fwd_exec(self, module: torch.nn.Module, *args):
         self.adjust_module_data(module)

@@ -1,4 +1,3 @@
-torch>=1.8
 numpy
 tqdm
 psutil
@@ -8,3 +7,4 @@ rich
 click
 fabric
 contexttimer
+ninja

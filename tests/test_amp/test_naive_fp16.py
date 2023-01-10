@@ -1,17 +1,15 @@
+import copy
+from functools import partial
+
+import pytest
 import torch
-import colossalai
 import torch.multiprocessing as mp
-from colossalai.amp import convert_to_naive_amp, convert_to_apex_amp
-from tests.components_to_test.registry import non_distributed_component_funcs
+
+import colossalai
+from colossalai.amp import convert_to_apex_amp, convert_to_naive_amp
 from colossalai.testing import assert_close_loose, rerun_if_address_is_in_use
 from colossalai.utils import free_port
-from colossalai.amp import convert_to_naive_amp, convert_to_apex_amp
-
 from tests.components_to_test.registry import non_distributed_component_funcs
-
-import copy
-import pytest
-from functools import partial
 
 
 def check_equal(a, b):
@@ -23,7 +21,7 @@ def check_equal(a, b):
 
 def run_naive_amp():
     """
-    In this test, we compare the naive fp16 optimizer implemented in colossalai 
+    In this test, we compare the naive fp16 optimizer implemented in colossalai
     and fp32 torch optimizer
     """
 
@@ -41,11 +39,12 @@ def run_naive_amp():
         apex_amp_model = copy.deepcopy(naive_amp_model)
 
         # create optimizer
-        naive_amp_optimizer = optim_class(naive_amp_model.parameters(), lr=1e-3)
-        apex_amp_optimizer = optim_class(apex_amp_model.parameters(), lr=1e-3)
+        # we use SGD here, since the correctness of gradient clipping can't be tested with Adam
+        naive_amp_optimizer = torch.optim.SGD(naive_amp_model.parameters(), lr=1e-3)
+        apex_amp_optimizer = torch.optim.SGD(apex_amp_model.parameters(), lr=1e-3)
 
         # inject naive and apex amp
-        naive_amp_config = dict(initial_scale=128)
+        naive_amp_config = dict(initial_scale=128, clip_grad_norm=1.0)
         naive_amp_model, naive_amp_optimizer = convert_to_naive_amp(naive_amp_model, naive_amp_optimizer,
                                                                     naive_amp_config)
         apex_amp_config = dict(opt_level='O2', loss_scale=128, keep_batchnorm_fp32=False)
@@ -62,12 +61,16 @@ def run_naive_amp():
         assert_close_loose(naive_amp_output, apex_amp_output)
 
         # backward
-        naive_amp_optimizer.backward(naive_amp_output.mean())
-        apex_amp_optimizer.backward(apex_amp_output.mean())
+        # use sum() to get big gradient
+        naive_amp_optimizer.backward(naive_amp_output.sum())
+        apex_amp_optimizer.backward(apex_amp_output.sum())
 
         # check grad
         for naive_amp_param, apex_amp_param in zip(naive_amp_model.parameters(), apex_amp_model.parameters()):
             assert_close_loose(naive_amp_param.grad, apex_amp_param.grad)
+
+        # clip gradient
+        apex_amp_optimizer.clip_grad_norm(model=apex_amp_model, max_norm=1.0)
 
         # step
         naive_amp_optimizer.step()

@@ -3,22 +3,31 @@
 
 import torch
 import torch.distributed as dist
+from torch.distributed import ProcessGroup
+from torch.optim import Optimizer
+
+from colossalai.context import ParallelMode
+from colossalai.core import global_context as gpc
+from colossalai.kernel.op_builder import FusedOptimBuilder
+from colossalai.logging import get_dist_logger
+from colossalai.utils import clip_grad_norm_fp32, copy_tensor_parallel_attributes, multi_tensor_applier
+
+from ._utils import has_inf_or_nan, zero_gard_by_list
+from .grad_scaler import BaseGradScaler
 
 try:
-    import colossal_C
+    from colossalai._C import fused_optim
 except:
-    print('Colossalai should be built with cuda extension to use the FP16 optimizer')
-
-from torch.optim import Optimizer
-from colossalai.core import global_context as gpc
-from colossalai.context import ParallelMode
-from colossalai.logging import get_dist_logger
-from colossalai.utils import (copy_tensor_parallel_attributes, clip_grad_norm_fp32, multi_tensor_applier)
-from torch.distributed import ProcessGroup
-from .grad_scaler import BaseGradScaler
-from ._utils import has_inf_or_nan, zero_gard_by_list
+    fused_optim = None
 
 __all__ = ['FP16Optimizer']
+
+
+def load_fused_optim():
+    global fused_optim
+
+    if fused_optim is None:
+        fused_optim = FusedOptimBuilder().load()
 
 
 def _multi_tensor_copy_this_to_that(this, that, overflow_buf=None):
@@ -33,7 +42,9 @@ def _multi_tensor_copy_this_to_that(this, that, overflow_buf=None):
     if overflow_buf:
         overflow_buf.fill_(0)
         # Scaling with factor `1.0` is equivalent to copy.
-        multi_tensor_applier(colossal_C.multi_tensor_scale, overflow_buf, [this, that], 1.0)
+        global fused_optim
+        load_fused_optim()
+        multi_tensor_applier(fused_optim.multi_tensor_scale, overflow_buf, [this, that], 1.0)
     else:
         for this_, that_ in zip(this, that):
             that_.copy_(this_)
@@ -41,7 +52,7 @@ def _multi_tensor_copy_this_to_that(this, that, overflow_buf=None):
 
 class FP16Optimizer(Optimizer):
     """Float16 optimizer for fp16 and bf16 data types.
-    
+
     Args:
         optimizer (torch.optim.Optimizer): base optimizer such as Adam or SGD
         grad_scaler (BaseGradScaler): grad scaler for gradient chose in
@@ -73,8 +84,8 @@ class FP16Optimizer(Optimizer):
 
         # get process group
         def _get_process_group(parallel_mode):
-            if gpc.is_initialized(ParallelMode.DATA) and gpc.get_world_size(ParallelMode.DATA):
-                return gpc.get_group(ParallelMode.DATA)
+            if gpc.is_initialized(parallel_mode) and gpc.get_world_size(parallel_mode):
+                return gpc.get_group(parallel_mode)
             else:
                 return None
 
@@ -149,6 +160,12 @@ class FP16Optimizer(Optimizer):
                 f"grad_scaler = {self._grad_scaler.__class__.__name__}"
                 f"==========================================",
                 ranks=[0])
+
+    @property
+    def max_norm(self):
+        """Returns the maximum norm of gradient clipping.
+        """
+        return self._clip_grad_max_norm
 
     @property
     def grad_scaler(self):

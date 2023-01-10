@@ -1,12 +1,14 @@
-import torch
-import colossalai
-import pytest
-import torch.multiprocessing as mp
 from functools import partial
+
+import pytest
+import torch
+import torch.multiprocessing as mp
+
+import colossalai
 from colossalai.gemini.chunk import ChunkManager
-from colossalai.testing import rerun_if_address_is_in_use, parameterize
+from colossalai.tensor import ColoTensor, ColoTensorSpec, ProcessGroup
+from colossalai.testing import parameterize, rerun_if_address_is_in_use
 from colossalai.utils import free_port
-from colossalai.tensor import ProcessGroup, ColoTensor, ColoTensorSpec
 from tests.test_tensor.common_utils import debug_print
 
 CUDA_MEM_0 = {False: 512, True: 1024}
@@ -29,7 +31,7 @@ def exam_chunk_memory(keep_gathered, pin_memory):
     assert chunk_manager.total_mem['cuda'] == 0
 
     for p in params:
-        chunk_manager.append_tensor(p, 'param', 2, pin_memory=pin_memory)
+        chunk_manager.register_tensor(p, 'param', 2, pin_memory=pin_memory)
     chunk_manager.close_all_groups()
     assert chunk_manager.total_mem['cpu'] == CPU_MEM[keep_gathered][pin_memory]
     assert chunk_manager.total_mem['cuda'] == CUDA_MEM_0[keep_gathered]

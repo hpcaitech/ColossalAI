@@ -1,11 +1,11 @@
 import torch
 import torch.nn as nn
 
-from colossalai.auto_parallel.tensor_shard.node_handler.output_handler import \
-    OuputHandler
-from colossalai.auto_parallel.tensor_shard.sharding_strategy import (OperationData, OperationDataType, StrategiesVector)
+from colossalai.auto_parallel.tensor_shard.node_handler.output_handler import OutputHandler
+from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationData, OperationDataType, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.fx import ColoGraphModule, ColoTracer
+from colossalai.testing import assert_close, parameterize, rerun_if_address_is_in_use
 
 
 class OutputModel(nn.Module):
@@ -18,7 +18,9 @@ class OutputModel(nn.Module):
         return x, y
 
 
-def test_output_handler():
+@parameterize('output_option', ['distributed', 'replicated'])
+@rerun_if_address_is_in_use()
+def test_output_handler(output_option):
     model = OutputModel()
     tracer = ColoTracer()
     # graph():
@@ -37,7 +39,10 @@ def test_output_handler():
     output_strategies_vector = StrategiesVector(output_node)
 
     # build handler
-    otuput_handler = OuputHandler(node=output_node, device_mesh=device_mesh, strategies_vector=output_strategies_vector)
+    otuput_handler = OutputHandler(node=output_node,
+                                   device_mesh=device_mesh,
+                                   strategies_vector=output_strategies_vector,
+                                   output_option=output_option)
 
     otuput_handler.register_strategy(compute_resharding_cost=False)
     # check operation data mapping
@@ -49,10 +54,12 @@ def test_output_handler():
         assert op_data.data is not None
 
     assert mapping['output'].name == "output"
-    assert mapping['output'].data.is_meta
     assert mapping['output'].type == OperationDataType.OUTPUT
     strategy_name_list = [val.name for val in otuput_handler.strategies_vector]
-    assert "Replica Output" in strategy_name_list
+    if output_option == 'distributed':
+        assert "Distributed Output" in strategy_name_list
+    else:
+        assert "Replica Output" in strategy_name_list
 
 
 if __name__ == '__main__':

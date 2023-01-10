@@ -1,19 +1,24 @@
-import torch
 import itertools
-import torch.distributed as dist
-from functools import partial
-from colossalai.zero.utils.zero_hook_v2 import ZeROHookV2
-from colossalai.tensor.param_op_hook import ParamOpHookManager
-from colossalai.gemini.gemini_mgr import GeminiManager
-from typing import Dict, Iterable, List, Optional, Set
-from colossalai.logging import get_dist_logger
 from collections import OrderedDict
-from colossalai.tensor.colo_parameter import ColoParameter, ColoTensor, ColoTensorSpec
-from colossalai.tensor import ProcessGroup as ColoProcessGroup
-from .reducer import Reducer
+from functools import partial
+from typing import Dict, Iterable, List, Optional, Set
 
-from colossalai.gemini.chunk import TensorState, Chunk, ChunkManager
+import torch
+import torch.distributed as dist
+
+from colossalai.gemini.chunk import Chunk, ChunkManager, TensorState
+from colossalai.gemini.gemini_mgr import GeminiManager
+from colossalai.gemini.memory_tracer import OrderedParamGenerator
+from colossalai.logging import get_dist_logger
 from colossalai.nn.parallel.utils import get_temp_total_chunk_on_cuda
+from colossalai.tensor import ProcessGroup as ColoProcessGroup
+from colossalai.tensor.colo_parameter import ColoParameter, ColoTensor, ColoTensorSpec
+from colossalai.tensor.param_op_hook import ColoParamOpHookManager
+from colossalai.utils import get_current_device
+from colossalai.zero.utils.gemini_hook import GeminiZeROHook
+
+from .reducer import Reducer
+from .utils import get_static_torch_model
 
 try:
     from torch.nn.modules.module import _EXTRA_STATE_KEY_SUFFIX, _IncompatibleKeys
@@ -185,25 +190,16 @@ class ColoDDP(torch.nn.Module):
 
 
 class ZeroDDP(ColoDDP):
-    """ZeRO-DP for ColoTensor. Nested ZeroDDP is not supported now.
-    We can configure chunk and gemini via ChunkManager and GeminiManager respectively.
+    """ZeRO DDP for ColoTensor.
+    Warning: Nested ZeroDDP is not supported now.
+    It is designed to be used with ChunkManager and GeminiManager.
     For more details, see the API reference of ``ChunkManager`` and ``GeminiManager``.
-
-    Example:
-        >>> model = torch.nn.Linear(20, 1)
-        >>> placement_policy = 'cuda'
-        >>> chunk_size = ChunkManager.search_chunk_size(model, search_range, n_grids) if use_chunk else None
-        >>> chunk_manager = ChunkManager(chunk_size, enable_distributed_storage=use_zero, init_device=GeminiManager.get_default_device(placement_policy))
-        >>> gemini_manager = GeminiManager(placement_policy, chunk_manager)
-        >>> model = ZeroDDP(model, gemini_manager)
-        >>> logits = model(x)
-        >>> loss = criterion(logits, labels)
-        >>> model.backward(loss)
 
     Args:
         module (torch.nn.Module): Module to apply ZeRO-DP.
         gemini_manager (GeminiManager): Manages the chunk manager and heterogeneous momery space.
             For more details, see the API reference of ``GeminiManager``.
+        pin_memory (bool): Chunks on CPU Memory use pin-memory.
         force_outputs_fp32 (bool): If set to True, outputs will be fp32. Otherwise, outputs will be fp16.  Defaults to False.
     """
 
@@ -216,13 +212,24 @@ class ZeroDDP(ColoDDP):
         self.gemini_manager = gemini_manager
         self.chunk_manager: ChunkManager = gemini_manager.chunk_manager
         self.force_outputs_fp32 = force_outputs_fp32
-        self.param_op_hook = ZeROHookV2(gemini_manager)
+        self.param_op_hook = GeminiZeROHook(gemini_manager)
         self.fp32_params: List[ColoTensor] = []
         self.overflow_counter = 0
         self.grads_device: Dict[torch.Tensor, torch.device] = {}
 
-        # TODO: get param order and filter unused params
-        for p in module.parameters():
+        cpu_offload = self.gemini_manager.policy_name != 'cuda'
+
+        if self.gemini_manager._premade_memstats_:
+            # build chunk in param runtime visited order.
+            param_order = self.gemini_manager.memstats()._param_runtime_order
+        else:
+            # build chunk in param initialized order.
+            # Note: in this way, it can not get filter unused params during runtime.
+            param_order = OrderedParamGenerator()
+            for p in module.parameters():
+                param_order.append(p)
+
+        for p in param_order.generate():
             assert isinstance(p, ColoParameter)
 
             if getattr(p, '_ddp_to_ignore', False):
@@ -232,28 +239,40 @@ class ZeroDDP(ColoDDP):
             fp32_data = p.data.float()
             fp32_p = ColoTensor(fp32_data, spec=ColoTensorSpec(p.process_group))
             p.data = p.data.half()
-
             dp_world_size = p.process_group.dp_world_size()
-            self.chunk_manager.append_tensor(p, 'fp16_param', dp_world_size, pin_memory)
-            self.chunk_manager.append_tensor(fp32_p, 'fp32_param', dp_world_size, pin_memory)
+            self.chunk_manager.register_tensor(tensor=p,
+                                               group_type='fp16_param',
+                                               config_key=dp_world_size,
+                                               cpu_offload=cpu_offload,
+                                               pin_memory=pin_memory)
+            self.chunk_manager.register_tensor(tensor=fp32_p,
+                                               group_type='fp32_param',
+                                               config_key=dp_world_size,
+                                               cpu_offload=cpu_offload,
+                                               pin_memory=pin_memory)
             self.fp32_params.append(fp32_p)
             self.grads_device[p] = self.gemini_manager.default_device
+
         self.chunk_manager.close_all_groups()
         self._cast_buffers()
 
-        params_list = [p for p in module.parameters() if not getattr(p, '_ddp_to_ignore', False)]
+        params_list = [p for p in param_order.generate() if not getattr(p, '_ddp_to_ignore', False)]
         for p, fp32_p in zip(params_list, self.fp32_params):
             chunk_16 = self.chunk_manager.get_chunk(p)
             chunk_32 = self.chunk_manager.get_chunk(fp32_p)
             chunk_32.init_pair(chunk_16)
+
+            # keep gathered chunks are in CUDA
+            if chunk_16.keep_gathered:
+                self.grads_device[p] = get_current_device()
 
         self._logger = get_dist_logger()
 
     def forward(self, *args, **kwargs):
         args, kwargs = _cast_float(args, torch.half), _cast_float(kwargs, torch.half)
         self.module.zero_grad(set_to_none=True)
-        self.gemini_manager.pre_iter()
-        with ParamOpHookManager.use_hooks(self.param_op_hook):
+        self.gemini_manager.pre_iter(*args)
+        with ColoParamOpHookManager.use_hooks(self.param_op_hook):
             outputs = self.module(*args, **kwargs)
         if self.force_outputs_fp32:
             return _cast_float(outputs, torch.float)
@@ -266,7 +285,9 @@ class ZeroDDP(ColoDDP):
             p.grad = None
 
     def _post_backward(self):
-        assert self.chunk_manager.accessed_mem == 0
+        if self.chunk_manager.accessed_mem != 0:
+            raise RuntimeError("ZERO DDP error: the synchronization of gradients doesn't exit properly.",
+                               "The most possible reason is that the model is not compatible with ZeroDDP.")
         self._setup_grads_ptr()
         self._logger.debug(
             f'comp cuda demand time: {self.gemini_manager._comp_cuda_demand_time}, layout time: {self.gemini_manager._layout_time}, evict time: {self.gemini_manager._evict_time}, CPU->CUDA vol: {self.gemini_manager._h2d_volume}B, CUDA->CPU vol: {self.gemini_manager._d2h_volume}'
@@ -274,12 +295,12 @@ class ZeroDDP(ColoDDP):
         self.gemini_manager.post_iter()
 
     def backward(self, loss: torch.Tensor):
-        with self.param_op_hook.switch_to_backward(), ParamOpHookManager.use_hooks(self.param_op_hook):
+        with self.param_op_hook.switch_to_backward(), ColoParamOpHookManager.use_hooks(self.param_op_hook):
             loss.backward()
         self._post_backward()
 
     def backward_by_grad(self, tensor, grad):
-        with self.param_op_hook.switch_to_backward(), ParamOpHookManager.use_hooks(self.param_op_hook):
+        with self.param_op_hook.switch_to_backward(), ColoParamOpHookManager.use_hooks(self.param_op_hook):
             torch.autograd.backward(tensor, grad)
         self._post_backward()
 
@@ -287,16 +308,21 @@ class ZeroDDP(ColoDDP):
         empty_grad = torch.empty_like(grad)
         free_storage(empty_grad)
         with torch._C.DisableTorchFunction():
-            self.chunk_manager.trans_tensor_state(p, TensorState.READY_FOR_REDUCE)
             chunk = self.chunk_manager.get_chunk(p)
+            assert chunk.tensors_info[p].state == TensorState.HOLD_AFTER_BWD
+            self.chunk_manager.trans_tensor_state(p, TensorState.READY_FOR_REDUCE)
             chunk.copy_tensor_to_chunk_slice(p, grad)
             reduced = self.chunk_manager.reduce_chunk(chunk)
             if reduced:
                 if chunk.is_gathered:
-                    chunk.chunk_total.div_(chunk.pg_size)
+                    chunk.cuda_global_chunk.div_(chunk.pg_size)
                 else:
                     chunk.cuda_shard.div_(chunk.pg_size)
+                # check overflow elements
                 self.overflow_counter += chunk.has_inf_or_nan
+                # record l2 norm for gradient clipping
+                if chunk.l2_norm_flag:
+                    chunk.set_l2_norm()
                 self.chunk_manager.move_chunk(chunk, self.grads_device[p], force_copy=True)
         return empty_grad
 
@@ -307,12 +333,10 @@ class ZeroDDP(ColoDDP):
         for tensor in chunk.get_tensors():
             self.grads_device[tensor] = device
 
-    def state_dict(self, destination=None, prefix='', keep_vars=False, only_rank_0: bool = True):
-        r"""Returns a dictionary containing a whole state of the module.
-
-        Both parameters and persistent buffers (e.g. running averages) are
-        included. Keys are corresponding parameter and buffer names.
-        Parameters and buffers set to ``None`` are not included.
+    def state_dict(self, destination=None, prefix='', keep_vars=False, only_rank_0: bool = True, strict: bool = True):
+        """
+        Args:
+            strict (bool): whether to reture the whole model state as the pytorch `Module.state_dict()`
 
         Returns:
             dict:
@@ -322,7 +346,30 @@ class ZeroDDP(ColoDDP):
 
             >>> module.state_dict().keys()
             ['bias', 'weight']
+        """
+        if strict:
+            assert keep_vars is False, "`state_dict` with parameter, `keep_vars=True`, is not supported now."
+            torch_model = get_static_torch_model(zero_ddp_model=self, only_rank_0=only_rank_0)
+            return torch_model.state_dict(destination=destination, prefix=prefix, keep_vars=keep_vars)
+        return self._non_strict_state_dict(destination=destination,
+                                           prefix=prefix,
+                                           keep_vars=keep_vars,
+                                           only_rank_0=only_rank_0)
 
+    def _non_strict_state_dict(self, destination=None, prefix='', keep_vars=False, only_rank_0: bool = True):
+        """Returns a dictionary containing a whole state of the module.
+
+        Both parameters and persistent buffers (e.g. running averages) are included.
+        Keys are corresponding parameter and buffer names.
+        Parameters and buffers set to ``None`` are not included.
+
+        Warning: The non strict state dict would ignore the parameters if the tensors of the parameters
+            are shared with other parameters which have been included in the dictionary.
+            When you need to load the state dict, you should set the argument `strict` to False.
+
+        Returns:
+            dict:
+                a dictionary containing a whole state of the module
         """
         if destination is None:
             destination = OrderedDict()
@@ -335,6 +382,35 @@ class ZeroDDP(ColoDDP):
             if hook_result is not None:
                 destination = hook_result
         return destination
+
+    def _get_param_to_save_data(self, param_list: List[torch.nn.Parameter], only_rank_0: bool) -> Dict:
+        """
+        get param content from chunks.
+
+        Args:
+            param_list (_type_): a list of torch.nn.Parameters
+            only_rank_0 (_type_): _description_
+
+        Returns:
+            Dict: a dict whose key is param name and value is param with correct payload
+        """
+        # save parameters
+        param_to_save_data = dict()
+        chunk_list = self.chunk_manager.get_chunks(param_list)
+        for chunk in chunk_list:
+            temp_chunk = get_temp_total_chunk_on_cuda(chunk)
+
+            for tensor, tensor_info in chunk.tensors_info.items():
+                record_tensor = torch.empty([0])
+                record_flag = (not only_rank_0) | (dist.get_rank(chunk.torch_pg) == 0)
+                if record_flag:
+                    record_tensor = temp_chunk[tensor_info.offset:tensor_info.end].view(tensor.shape).cpu()
+
+                assert tensor not in param_to_save_data
+                param_to_save_data[tensor] = record_tensor
+
+            del temp_chunk
+        return param_to_save_data
 
     def _save_to_state_dict(self, destination, prefix, keep_vars, only_rank_0=True):
         r"""Saves module state to `destination` dictionary, containing a state
@@ -351,23 +427,8 @@ class ZeroDDP(ColoDDP):
         """
         assert keep_vars is False, "`state_dict` with parameter, `keep_vars=True`, is not supported now."
 
-        # save parameters
-        param_to_save_data = dict()
-        chunk_list = self.chunk_manager.get_chunks(self.fp32_params)
-        for chunk in chunk_list:
-            temp_chunk = get_temp_total_chunk_on_cuda(chunk)
-
-            for tensor, tensor_info in chunk.tensors_info.items():
-                record_tensor = torch.empty([0])
-                record_flag = (not only_rank_0) | (dist.get_rank(chunk.torch_pg) == 0)
-                if record_flag:
-                    record_tensor = temp_chunk[tensor_info.offset:tensor_info.end].view(tensor.shape).cpu()
-
-                assert tensor not in param_to_save_data
-                param_to_save_data[tensor] = record_tensor
-
-            del temp_chunk
-
+        param_to_save_data = self._get_param_to_save_data(self.fp32_params, only_rank_0)
+        # TODO: (HELSON) deal with ddp ignored parameters
         for (name, p), fp32_p in zip(self.named_parameters(), self.fp32_params):
             if p is not None:
                 assert fp32_p in param_to_save_data, "Parameter '{}' is neglected in the chunk list".format(name)
@@ -519,7 +580,7 @@ class ZeroDDP(ColoDDP):
                 load(parameter_name, tensor, partial(load_fp32_parameter, parameter_slice))
 
             if chunk.is_gathered:
-                chunk.chunk_total.copy_(temp_chunk)
+                chunk.cuda_global_chunk.copy_(temp_chunk)
             elif chunk.cuda_shard is not None:
                 chunk.cuda_shard.copy_(temp_chunk[chunk.shard_begin:chunk.shard_end])
             else:

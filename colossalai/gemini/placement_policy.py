@@ -1,22 +1,24 @@
+import functools
 from abc import ABC, abstractmethod
 from time import time
-from typing import List, Optional, Tuple, Dict
+from typing import Dict, List, Optional, Tuple, Type
+
 import torch
+
+from colossalai.gemini.chunk import Chunk, ChunkManager
+from colossalai.gemini.memory_tracer import ChunkMemStatsCollector
 from colossalai.utils import get_current_device
 from colossalai.utils.memory import colo_device_memory_capacity
-
-from colossalai.gemini.memory_tracer.memstats_collector import MemStatsCollectorV2
-from typing import Type
-import functools
-from colossalai.gemini.chunk import Chunk, ChunkManager
 
 
 class PlacementPolicy(ABC):
     need_mem_stats: bool = False
 
-    def __init__(self, chunk_manager: ChunkManager, mem_stats_collector: Optional[MemStatsCollectorV2] = None) -> None:
+    def __init__(self,
+                 chunk_manager: ChunkManager,
+                 mem_stats_collector: Optional[ChunkMemStatsCollector] = None) -> None:
         self.chunk_manager = chunk_manager
-        self.mem_stats_collector: Optional[MemStatsCollectorV2] = mem_stats_collector
+        self.mem_stats_collector: Optional[ChunkMemStatsCollector] = mem_stats_collector
 
     @abstractmethod
     def evict_tensors(self, can_evict_chunks: List[Chunk], **kwargs) -> Tuple[int, float]:
@@ -29,7 +31,9 @@ class PlacementPolicy(ABC):
 
 class CPUPlacementPolicy(PlacementPolicy):
 
-    def __init__(self, chunk_manager: ChunkManager, mem_stats_collector: Optional[MemStatsCollectorV2] = None) -> None:
+    def __init__(self,
+                 chunk_manager: ChunkManager,
+                 mem_stats_collector: Optional[ChunkMemStatsCollector] = None) -> None:
         super().__init__(chunk_manager, mem_stats_collector=mem_stats_collector)
 
     def evict_tensors(self, can_evict_chunks: List[Chunk], **kwargs) -> Tuple[int, float]:
@@ -44,7 +48,9 @@ class CPUPlacementPolicy(PlacementPolicy):
 
 class CUDAPlacementPolicy(PlacementPolicy):
 
-    def __init__(self, chunk_manager: ChunkManager, mem_stats_collector: Optional[MemStatsCollectorV2] = None) -> None:
+    def __init__(self,
+                 chunk_manager: ChunkManager,
+                 mem_stats_collector: Optional[ChunkMemStatsCollector] = None) -> None:
         assert torch.cuda.is_available(), 'Cannot use CUDATensorPlacementPolicy when CUDA is not available'
         super().__init__(chunk_manager, mem_stats_collector=mem_stats_collector)
 
@@ -65,7 +71,9 @@ class AutoPlacementPolicy(PlacementPolicy):
     _warmup_non_model_data_ratio: float = 0.8
     _steady_cuda_cap_ratio: float = 0.9
 
-    def __init__(self, chunk_manager: ChunkManager, mem_stats_collector: Optional[MemStatsCollectorV2] = None) -> None:
+    def __init__(self,
+                 chunk_manager: ChunkManager,
+                 mem_stats_collector: Optional[ChunkMemStatsCollector] = None) -> None:
         super().__init__(chunk_manager, mem_stats_collector=mem_stats_collector)
 
     def evict_tensors(self,
@@ -154,7 +162,9 @@ class ConstPlacementPolicy(PlacementPolicy):
     need_mem_stats: bool = False
     _accessed_memory_boundary = 512 * 1024**2
 
-    def __init__(self, chunk_manager: ChunkManager, mem_stats_collector: Optional[MemStatsCollectorV2] = None) -> None:
+    def __init__(self,
+                 chunk_manager: ChunkManager,
+                 mem_stats_collector: Optional[ChunkMemStatsCollector] = None) -> None:
         super().__init__(chunk_manager, mem_stats_collector=mem_stats_collector)
 
     def evict_tensors(self,
@@ -226,7 +236,7 @@ class PlacementPolicyFactory:
         return PlacementPolicyFactory.policies[policy_name]
 
     @staticmethod
-    def get_polocy_names():
+    def get_policy_names():
         return tuple(PlacementPolicyFactory.policies.keys())
 
     @staticmethod

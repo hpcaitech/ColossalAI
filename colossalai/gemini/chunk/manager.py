@@ -1,10 +1,11 @@
-import torch
-from typing import Optional, Dict, Deque, Set, List, Tuple, Iterable
 from collections import deque
+from typing import Deque, Dict, Iterable, List, Optional, Set, Tuple
 
-from colossalai.utils import get_current_device
+import torch
+
+from colossalai.gemini.chunk import Chunk, ChunkFullError, TensorState
 from colossalai.tensor import ColoTensor
-from colossalai.gemini.chunk import ChunkFullError, TensorState, Chunk
+from colossalai.utils import get_current_device
 
 
 class ChunkManager:
@@ -16,13 +17,13 @@ class ChunkManager:
         init_device (torch.device): optional, the device on which the chunk is initialized. The default is None.
     """
 
-    def __init__(self, chunk_configuration: Dict[int, Dict], init_device: Optional[torch.device] = None) -> None:
+    def __init__(self, chunk_configuration, init_device: Optional[torch.device] = None) -> None:
 
         self.device = init_device or get_current_device()
-        self.size_config: Dict[int, int] = dict()
+        self.dp_degree_chunk_size_dict: Dict[int, int] = dict()
         self.kwargs_config = chunk_configuration
         for k, v in self.kwargs_config.items():
-            self.size_config[k] = v.pop('chunk_size')
+            self.dp_degree_chunk_size_dict[k] = v.pop('chunk_size')
             v['init_device'] = self.device
 
         self.chunk_groups: Dict[str, Deque] = dict()
@@ -31,20 +32,28 @@ class ChunkManager:
         self.accessed_mem: int = 0
         self.total_mem: Dict[str, int] = {'cpu': 0, 'cuda': 0}
 
-    def append_tensor(self, tensor: ColoTensor, group_type: str, config_key: int, pin_memory: bool = False) -> None:
-        """Append a tensor to a chunk.
+    def register_tensor(self,
+                        tensor: ColoTensor,
+                        group_type: str,
+                        config_key: int,
+                        cpu_offload: bool = False,
+                        pin_memory: bool = False) -> None:
+        """
+        Register a tensor to the chunk manager.
+        Then, the tensor should be accessed by `get_chunks`.
 
         Args:
             tensor: the tensor appended to the chunk
-            group_type: the data type of the group
-            config_key: the key of the group's name, usually the size of the dp world
+            group_type: the data type of the group.
+            config_key: the key of the group's name, the size of the dp world
+            cpu_offload: if True, the chunk will be closed on CPU
             pin_memory: whether the chunk is pinned in the cpu memory
         """
         assert tensor not in self.tensor_chunk_map
         assert isinstance(tensor, ColoTensor), "Please feed ColoTensor to this ChunkManager"
-        assert config_key in self.size_config
+        assert config_key in self.dp_degree_chunk_size_dict
 
-        chunk_size = self.size_config[config_key]
+        chunk_size = self.dp_degree_chunk_size_dict[config_key]
         chunk_kwargs = self.kwargs_config[config_key]
         group_name = "{}_{}".format(group_type, config_key)
         chunk_group = self.__get_chunk_group(group_name)
@@ -67,6 +76,7 @@ class ChunkManager:
                 chunk_size=chunk_size,
                 process_group=tensor.process_group,
                 dtype=tensor.dtype,
+                cpu_shard_init=cpu_offload,
                 pin_memory=pin_memory,
                 **chunk_kwargs,
             )
@@ -206,9 +216,8 @@ class ChunkManager:
         return self.chunk_groups[group_name]
 
     def __close_one_chunk(self, chunk: Chunk):
-        device = get_current_device() if chunk.keep_gathered else self.device    # keep gathered chunk in cuda
         self.__sub_memroy_usage(chunk.memory_usage)
-        chunk.close_chunk(device)
+        chunk.close_chunk()
         self.__add_memory_usage(chunk.memory_usage)
 
     def __sub_memroy_usage(self, usage: Dict[str, int]):

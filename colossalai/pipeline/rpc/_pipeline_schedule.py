@@ -3,10 +3,11 @@ from typing import Callable, Dict, List
 
 import torch
 import torch.distributed as dist
-from colossalai.pipeline.pipeline_process_group import ppg
-from colossalai.pipeline.rpc._pipeline_base import (Phase, PipelineEngineBase, UniqueKey, WorkerBase, WorkItem)
 from torch._C._distributed_rpc import PyRRef
 from torch.futures import Future
+
+from colossalai.pipeline.pipeline_process_group import ppg
+from colossalai.pipeline.rpc._pipeline_base import Phase, PipelineEngineBase, UniqueKey, WorkerBase, WorkItem
 
 # Implementation of different Pipeline schedule
 # <strategy>Worker defines the worker for each stage
@@ -86,11 +87,8 @@ class OneFOneBWorker(WorkerBase):
                 outstanding_min = actual_stage_num - pp_rank - 1
                 outstanding_max = actual_stage_num - pp_rank
                 self.outstanding_range = (outstanding_min, outstanding_max)
-            elif target_key.microbatch_id == num_microbatches - 1:
+            if target_key.microbatch_id == num_microbatches - 1:
                 self.outstanding_range = (0, 0)
-
-        with self.work_list_condition_lock:
-            self.work_list_condition_lock.wait_for(lambda: target_key in self.work_list)
 
         return target_key
 

@@ -1,9 +1,13 @@
-import torch
 import functools
-from .memory_tracer.memstats_collector import MemStatsCollectorV2
-from typing import List, Optional, Tuple
 from time import time
+from typing import List, Optional, Tuple
+
+import torch
+
 from colossalai.gemini.chunk import Chunk, ChunkManager
+from colossalai.gemini.memory_tracer import MemStats
+
+from .memory_tracer import ChunkMemStatsCollector
 from .placement_policy import PlacementPolicyFactory
 
 
@@ -21,13 +25,20 @@ class GeminiManager:
             If it's 'auto', they are moving dynamically based on CPU and CUDA memory usage. It will utilize heterogeneous memory space evenly and well.
             Note that 'auto' policy can only work well when no other processes use CUDA during your training.
         chunk_manager (ChunkManager): A ``ChunkManager`` instance.
+        memstats (MemStats, optional): a mem stats collected by a runtime mem tracer. if None then GeminiManager will collect it during a warmup iteration.
     """
 
-    def __init__(self, placement_policy: str, chunk_manager: ChunkManager) -> None:
-        assert placement_policy in PlacementPolicyFactory.get_polocy_names()
+    def __init__(self, placement_policy: str, chunk_manager: ChunkManager, memstats: Optional[MemStats] = None) -> None:
+
+        assert placement_policy in PlacementPolicyFactory.get_policy_names()
+        self.policy_name = placement_policy
         policy_cls = PlacementPolicyFactory.create(placement_policy)
         self._chunk_manager = chunk_manager
-        self._mem_stats_collector = MemStatsCollectorV2(chunk_manager) if policy_cls.need_mem_stats else None
+
+        self._premade_memstats_ = memstats is not None
+        self._memstats = memstats
+        self._mem_stats_collector = ChunkMemStatsCollector(chunk_manager,
+                                                           self._memstats) if policy_cls.need_mem_stats else None
         self._placement_policy = policy_cls(chunk_manager, self._mem_stats_collector)
         self._compute_list: List[Tuple[Chunk, ...]] = []
         self._compute_idx: int = -1
@@ -39,7 +50,20 @@ class GeminiManager:
         self._warmup = True
         self._comp_cuda_demand_time = 0
 
-    def pre_iter(self):
+    def memstats(self):
+        """memstats
+
+        get the memory statistics during training.
+        The stats could be collected by a runtime memory tracer, or collected by the GeminiManager.
+        Note, for the latter, you can not access the memstats before warmup iteration finishes.
+        """
+        if self._premade_memstats_:
+            return self._memstats
+        else:
+            assert not self._warmup, "Gemini Manager has memstats after warm up! Now is during warmup."
+            return self._mem_stats_collector._memstats
+
+    def pre_iter(self, *args):
         if self._mem_stats_collector and self._warmup:
             self._mem_stats_collector.start_collection()
 
@@ -57,7 +81,7 @@ class GeminiManager:
         self._comp_cuda_demand_time = 0
 
     def adjust_layout(self, chunks: Tuple[Chunk, ...]) -> None:
-        """ Adjust the layout of statefuil tensor according to the information provided
+        """ Adjust the layout of stateful tensors according to the information provided
         by mem_stats_collector, which should belongs to a Sharded Model.
         """
         # find stateful tensor in state COMPUTE
@@ -109,9 +133,9 @@ class GeminiManager:
         if self._mem_stats_collector:
             self._mem_stats_collector.sample_overall_data()
 
-    def sample_model_data(self):
+    def record_model_data_volume(self):
         if self._mem_stats_collector:
-            self._mem_stats_collector.sample_model_data()
+            self._mem_stats_collector.record_model_data_volume()
 
     @property
     def chunk_manager(self):

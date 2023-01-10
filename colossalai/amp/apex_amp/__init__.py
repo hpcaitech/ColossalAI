@@ -1,6 +1,7 @@
-from .apex_amp import ApexAMPOptimizer
 import torch.nn as nn
 from torch.optim import Optimizer
+
+from .apex_amp import ApexAMPOptimizer
 
 
 def convert_to_apex_amp(model: nn.Module, optimizer: Optimizer, amp_config):

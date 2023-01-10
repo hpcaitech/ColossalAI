@@ -2,8 +2,14 @@
 
 #include <ATen/cuda/CUDAContext.h>
 #include <torch/extension.h>
+#include <torch/torch.h>
 
+#if TORCH_VERSION_MAJOR > 1 || \
+    (TORCH_VERSION_MAJOR == 1 && TORCH_VERSION_MINOR >= 13)
+#include <torch/csrc/distributed/c10d/Types.hpp>
+#else
 #include <c10d/Types.hpp>
+#endif
 #include <iostream>
 
 #include "context.h"

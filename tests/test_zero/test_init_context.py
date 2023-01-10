@@ -3,22 +3,21 @@
 
 from functools import partial
 
-import colossalai
 import pytest
 import torch
 import torch.multiprocessing as mp
+from common import CONFIG
+
+import colossalai
+from colossalai.gemini.memory_tracer.utils import colo_model_mem_usage
 from colossalai.logging import get_dist_logger
 from colossalai.testing import parameterize, rerun_if_address_is_in_use
 from colossalai.utils import free_port
 from colossalai.utils.cuda import get_current_device
-from colossalai.gemini.memory_tracer.model_data_memtracer import \
-    colo_model_mem_usage
 from colossalai.utils.memory import colo_device_memory_used
 from colossalai.zero.init_ctx import ZeroInitContext
-from colossalai.zero.shard_utils import (BucketTensorShardStrategy, TensorShardStrategy)
+from colossalai.zero.shard_utils import BucketTensorShardStrategy, TensorShardStrategy
 from tests.components_to_test.registry import non_distributed_component_funcs
-
-from common import CONFIG
 
 
 @parameterize("init_device_type", ['cpu', 'cuda'])
@@ -26,7 +25,12 @@ from common import CONFIG
 def run_model_test(init_device_type, shard_strategy_class):
     logger = get_dist_logger("test_zero_init")
 
-    for get_components_func in non_distributed_component_funcs:
+    for name, get_components_func in non_distributed_component_funcs._registry.items():
+        # because the ZeroInitContext automatically turns parameters to fp16
+        # and the beit model use tensor.erfinv_() function to initialize weights
+        # tensor.erfinv_() doesn't support Half in CPU, we omit the beit model
+        if name == 'beit':
+            continue
         model_builder, _, _, _, _ = get_components_func()
         if init_device_type == 'cuda':
             init_device = get_current_device()
@@ -71,4 +75,4 @@ def test_zero_init_context(world_size):
 
 
 if __name__ == '__main__':
-    test_zero_init_context(4)
+    test_zero_init_context(1)

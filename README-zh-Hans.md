@@ -1,14 +1,14 @@
 # Colossal-AI
 <div id="top" align="center">
 
-   [![logo](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/Colossal-AI_logo.png)](https://www.colossalai.org/)
+   [![logo](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/colossal-ai_logo_vertical.png)](https://www.colossalai.org/)
 
    Colossal-AI: 一个面向大模型时代的通用深度学习系统
 
-   <h3> <a href="https://arxiv.org/abs/2110.14883"> 论文 </a> | 
-   <a href="https://www.colossalai.org/"> 文档 </a> | 
-   <a href="https://github.com/hpcaitech/ColossalAI-Examples"> 例程 </a> |   
-   <a href="https://github.com/hpcaitech/ColossalAI/discussions"> 论坛 </a> | 
+   <h3> <a href="https://arxiv.org/abs/2110.14883"> 论文 </a> |
+   <a href="https://www.colossalai.org/"> 文档 </a> |
+   <a href="https://github.com/hpcaitech/ColossalAI-Examples"> 例程 </a> |
+   <a href="https://github.com/hpcaitech/ColossalAI/discussions"> 论坛 </a> |
    <a href="https://medium.com/@hpcaitech"> 博客 </a></h3>
 
    [![Build](https://github.com/hpcaitech/ColossalAI/actions/workflows/build.yml/badge.svg)](https://github.com/hpcaitech/ColossalAI/actions/workflows/build.yml)
@@ -22,41 +22,50 @@
 
 </div>
 
+## 新闻
+* [2023/01] [Hardware Savings Up to 46 Times for AIGC and  Automatic Parallelism](https://www.hpc-ai.tech/blog/colossal-ai-0-2-0)
+* [2022/11] [Diffusion Pretraining and Hardware Fine-Tuning Can Be Almost 7X Cheaper](https://www.hpc-ai.tech/blog/diffusion-pretraining-and-hardware-fine-tuning-can-be-almost-7x-cheaper)
+* [2022/10] [Use a Laptop to Analyze 90% of Proteins, With a Single-GPU Inference Sequence Exceeding 10,000](https://www.hpc-ai.tech/blog/use-a-laptop-to-analyze-90-of-proteins-with-a-single-gpu-inference-sequence-exceeding)
+* [2022/10] [Embedding Training With 1% GPU Memory and 100 Times Less Budget for Super-Large Recommendation Model](https://www.hpc-ai.tech/blog/embedding-training-with-1-gpu-memory-and-10-times-less-budget-an-open-source-solution-for)
+* [2022/09] [HPC-AI Tech Completes $6 Million Seed and Angel Round Fundraising](https://www.hpc-ai.tech/blog/hpc-ai-tech-completes-6-million-seed-and-angel-round-fundraising-led-by-bluerun-ventures-in-the)
+
 
 ## 目录
 <ul>
  <li><a href="#为何选择-Colossal-AI">为何选择 Colossal-AI</a> </li>
  <li><a href="#特点">特点</a> </li>
  <li>
-   <a href="#并行训练样例展示">并行训练样例展示</a> 
+   <a href="#并行训练样例展示">并行训练样例展示</a>
    <ul>
-     <li><a href="#ViT">ViT</a></li>
      <li><a href="#GPT-3">GPT-3</a></li>
      <li><a href="#GPT-2">GPT-2</a></li>
      <li><a href="#BERT">BERT</a></li>
      <li><a href="#PaLM">PaLM</a></li>
      <li><a href="#OPT">OPT</a></li>
+     <li><a href="#ViT">ViT</a></li>
      <li><a href="#推荐系统模型">推荐系统模型</a></li>
    </ul>
  </li>
 <li>
-   <a href="#单GPU训练样例展示">单GPU训练样例展示</a> 
+   <a href="#单GPU训练样例展示">单GPU训练样例展示</a>
    <ul>
      <li><a href="#GPT-2-Single">GPT-2</a></li>
      <li><a href="#PaLM-Single">PaLM</a></li>
    </ul>
  </li>
 <li>
-   <a href="#推理-Energon-AI-样例展示">推理 (Energon-AI) 样例展示</a> 
+   <a href="#推理-Energon-AI-样例展示">推理 (Energon-AI) 样例展示</a>
    <ul>
      <li><a href="#GPT-3-Inference">GPT-3</a></li>
      <li><a href="#OPT-Serving">1750亿参数OPT在线推理服务</a></li>
+     <li><a href="#BLOOM-Inference">1750亿参数 BLOOM</a></li>
    </ul>
  </li>
 <li>
-   <a href="#Colossal-AI-in-the-Real-World">Colossal-AI 成功案例</a> 
+   <a href="#Colossal-AI-in-the-Real-World">Colossal-AI 成功案例</a>
    <ul>
-     <li><a href="#xTrimoMultimer">xTrimoMultimer: 蛋白质单体与复合物结构预测</a></li>
+     <li><a href="#AIGC">AIGC: 加速 Stable Diffusion</a></li>
+     <li><a href="#生物医药">生物医药: 加速AlphaFold蛋白质结构预测</a></li>
    </ul>
  </li>
  <li>
@@ -69,11 +78,6 @@
  <li><a href="#使用-Docker">使用 Docker</a></li>
  <li><a href="#社区">社区</a></li>
  <li><a href="#做出贡献">做出贡献</a></li>
- <li><a href="#快速预览">快速预览</a></li>
-   <ul>
-     <li><a href="#几行代码开启分布式训练">几行代码开启分布式训练</a></li>
-     <li><a href="#构建一个简单的2维并行模型">构建一个简单的2维并行模型</a></li>
-   </ul>
  <li><a href="#引用我们">引用我们</a></li>
 </ul>
 
@@ -98,6 +102,7 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
   - 1维, [2维](https://arxiv.org/abs/2104.05343), [2.5维](https://arxiv.org/abs/2105.14500), [3维](https://arxiv.org/abs/2105.14450) 张量并行
   - [序列并行](https://arxiv.org/abs/2105.13120)
   - [零冗余优化器 (ZeRO)](https://arxiv.org/abs/1910.02054)
+  - [自动并行](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/gpt/auto_parallel_with_gpt)
 - 异构内存管理
   - [PatrickStar](https://arxiv.org/abs/2108.05818)
 - 使用友好
@@ -105,16 +110,11 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 - 推理
   - [Energon-AI](https://github.com/hpcaitech/EnergonAI)
 - Colossal-AI 成功案例
-  - [xTrimoMultimer: 蛋白质单体与复合物结构预测](https://github.com/biomap-research/xTrimoMultimer)
+  - 生物医药: [FastFold](https://github.com/hpcaitech/FastFold) 加速蛋白质结构预测 AlphaFold 训练与推理
 <p align="right">(<a href="#top">返回顶端</a>)</p>
 
 ## 并行训练样例展示
-### ViT
-<p align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/ViT.png" width="450" />
-</p>
 
-- 14倍批大小和5倍训练速度（张量并行=64）
 
 ### GPT-3
 <p align="center">
@@ -131,7 +131,7 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/(updated)GPT-2.png" width=800>
 
 - 用相同的硬件训练24倍大的模型
-- 超3倍的吞吐量 
+- 超3倍的吞吐量
 
 ### BERT
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/BERT.png" width=800/>
@@ -145,10 +145,16 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/OPT_update.png" width=800/>
 
 - [Open Pretrained Transformer (OPT)](https://github.com/facebookresearch/metaseq), 由Meta发布的1750亿语言模型，由于完全公开了预训练参数权重，因此促进了下游任务和应用部署的发展。
-- 加速45%，仅用几行代码以低成本微调OPT。[[样例]](https://github.com/hpcaitech/ColossalAI-Examples/tree/main/language/opt) [[在线推理]](https://service.colossalai.org/opt) 
+- 加速45%，仅用几行代码以低成本微调OPT。[[样例]](https://github.com/hpcaitech/ColossalAI-Examples/tree/main/language/opt) [[在线推理]](https://service.colossalai.org/opt)
 
 请访问我们的 [文档](https://www.colossalai.org/) 和 [例程](https://github.com/hpcaitech/ColossalAI-Examples) 以了解详情。
 
+### ViT
+<p align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/ViT.png" width="450" />
+</p>
+
+- 14倍批大小和5倍训练速度（张量并行=64）
 
 ### 推荐系统模型
 - [Cached Embedding](https://github.com/hpcaitech/CachedEmbedding), 使用软件Cache实现Embeddings，用更少GPU显存训练更大的模型。
@@ -178,7 +184,7 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 
 - 用相同的硬件训练34倍大的模型
 
-<p align="right">(<a href="#top">back to top</a>)</p>
+<p align="right">(<a href="#top">返回顶端</a>)</p>
 
 
 ## 推理 (Energon-AI) 样例展示
@@ -195,22 +201,81 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 
 - [OPT推理服务](https://service.colossalai.org/opt): 无需注册，免费体验1750亿参数OPT在线推理服务
 
+<p id="BLOOM-Inference" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/BLOOM%20Inference.PNG" width=800/>
+</p>
 
-<p align="right">(<a href="#top">back to top</a>)</p>
+- [BLOOM](https://github.com/hpcaitech/EnergonAI/tree/main/examples/bloom): 降低1750亿参数BLOOM模型部署推理成本超10倍
+
+<p align="right">(<a href="#top">返回顶端</a>)</p>
 
 ## Colossal-AI 成功案例
 
-### xTrimoMultimer: 蛋白质单体与复合物结构预测
+### AIGC
+加速AIGC(AI内容生成)模型，如[Stable Diffusion v1](https://github.com/CompVis/stable-diffusion) 和 [Stable Diffusion v2](https://github.com/Stability-AI/stablediffusion)
+
+<p id="diffusion_train" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/Stable%20Diffusion%20v2.png" width=800/>
+</p>
+
+- [训练](https://github.com/hpcaitech/ColossalAI/tree/main/examples/images/diffusion): 减少5.6倍显存消耗，硬件成本最高降低46倍(从A100到RTX3060)
+
+<p id="diffusion_demo" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/DreamBooth.png" width=800/>
+</p>
+
+- [DreamBooth微调](https://github.com/hpcaitech/ColossalAI/tree/main/examples/images/dreambooth): 仅需3-5张目标主题图像个性化微调
+
+<p id="inference" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/Stable%20Diffusion%20Inference.jpg" width=800/>
+</p>
+
+- [推理](https://github.com/hpcaitech/ColossalAI/tree/main/examples/images/diffusion): GPU推理显存消耗降低2.5倍
+
+
+<p align="right">(<a href="#top">返回顶端</a>)</p>
+
+### 生物医药
+
+加速 [AlphaFold](https://alphafold.ebi.ac.uk/) 蛋白质结构预测
+
+<p id="FastFold" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/FastFold.jpg" width=800/>
+</p>
+
+- [FastFold](https://github.com/hpcaitech/FastFold): 加速AlphaFold训练与推理、数据前处理、推理序列长度超过10000残基
+
 <p id="xTrimoMultimer" align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/xTM_Prediction.jpg" width=380/>
-<p></p>
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/xTrimoMultimer_Table.jpg" width=800/>
 </p>
 
 - [xTrimoMultimer](https://github.com/biomap-research/xTrimoMultimer): 11倍加速蛋白质单体与复合物结构预测
 
+<p align="right">(<a href="#top">返回顶端</a>)</p>
 
 ## 安装
+
+### 从PyPI安装
+
+您可以用下面的命令直接从PyPI上下载并安装Colossal-AI。我们默认不会安装PyTorch扩展包
+
+```bash
+pip install colossalai
+```
+
+但是，如果你想在安装时就直接构建PyTorch扩展，您可以设置环境变量`CUDA_EXT=1`.
+
+```bash
+CUDA_EXT=1 pip install colossalai
+```
+
+**否则，PyTorch扩展只会在你实际需要使用他们时在运行时里被构建。**
+
+与此同时，我们也每周定时发布Nightly版本，这能让你提前体验到新的feature和bug fix。你可以通过以下命令安装Nightly版本。
+
+```bash
+pip install colossalai-nightly
+```
 
 ### 从官方安装
 
@@ -231,10 +296,10 @@ pip install -r requirements/requirements.txt
 pip install .
 ```
 
-如果您不想安装和启用 CUDA 内核融合（使用融合优化器时强制安装）：
+我们默认在`pip install`时不安装PyTorch扩展，而是在运行时临时编译，如果你想要提前安装这些扩展的话（在使用融合优化器时会用到），可以使用一下命令。
 
 ```shell
-NO_CUDA_EXT=1 pip install .
+CUDA_EXT=1 pip install .
 ```
 
 <p align="right">(<a href="#top">返回顶端</a>)</p>
@@ -283,31 +348,6 @@ docker run -ti --gpus all --rm --ipc=host colossalai bash
 
 <p align="right">(<a href="#top">返回顶端</a>)</p>
 
-## 快速预览
-
-### 几行代码开启分布式训练
-
-```python
-parallel = dict(
-    pipeline=2,
-    tensor=dict(mode='2.5d', depth = 1, size=4)
-)
-```
-
-### 几行代码开启异构训练
-
-```python
-zero = dict(
-    model_config=dict(
-        tensor_placement_policy='auto',
-        shard_strategy=TensorShardStrategy(),
-        reuse_fp16_shard=True
-    ),
-    optimizer_config=dict(initial_scale=2**5, gpu_margin_mem_ratio=0.2)
-)
-```
-
-<p align="right">(<a href="#top">返回顶端</a>)</p>
 
 ## 引用我们
 

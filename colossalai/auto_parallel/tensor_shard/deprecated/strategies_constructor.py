@@ -1,18 +1,21 @@
+import builtins
+import math
+import operator
+from copy import deepcopy
+from typing import Dict, List
+
+import torch
 from torch.fx import Graph, Node
-from colossalai.tensor.sharding_spec import ShardingSpec
+
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.tensor.shape_consistency import ShapeConsistencyManager
+from colossalai.tensor.sharding_spec import ShardingSpec
+
+from ._utils import generate_resharding_costs, generate_sharding_spec
+from .constants import *
+from .op_handler import *
 from .options import SolverOptions
 from .sharding_strategy import ShardingStrategy, StrategiesVector
-from .op_handler import *
-from .constants import *
-from copy import deepcopy
-import math
-import torch
-import operator
-from typing import Dict, List
-from ._utils import generate_sharding_spec, generate_resharding_costs
-import builtins
 
 __all__ = ['StrategiesConstructor']
 

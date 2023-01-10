@@ -1,8 +1,10 @@
-import torch
 import collections
-from itertools import repeat
-from ..registry import meta_patched_function
 import math
+from itertools import repeat
+
+import torch
+
+from ...registry import meta_patched_function
 
 
 def _ntuple(n, name="parse"):

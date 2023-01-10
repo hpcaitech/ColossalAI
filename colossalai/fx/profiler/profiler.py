@@ -11,7 +11,7 @@ from torch.utils._pytree import tree_map
 from .._compatibility import compatibility
 from .constants import ALIAS_ATEN, OUTPUT_SAVED_MOD, OUTPUT_SAVED_OPS
 from .dataflow import GraphInfo, Phase, autograd_graph_analysis, is_phase
-from .memory import activation_size, parameter_size
+from .memory_utils import activation_size, parameter_size
 from .opcount import flop_mapping
 from .tensor import MetaTensor
 
@@ -232,12 +232,12 @@ def _profile_meta(target: Callable, *args, **kwargs) -> Tuple[Tuple[Any, ...], G
 
     def pack(x):
         global cache, do_not_cache
-        if isinstance(x, FlopTensor) and not x._tensor.uuid in cache:
+        if isinstance(x, FlopTensor) and not x._tensor.data_ptr() in cache:
             tensor = x._tensor.detach()
-            tensor.uuid = x._tensor.uuid
+            tensor.data_ptr = x._tensor.data_ptr
             x._node.meta['saved_tensor'] += [tensor]
             if not do_not_cache:
-                cache.add(x._tensor.uuid)
+                cache.add(x._tensor.data_ptr())
         return x
 
     def unpack(x):
@@ -270,7 +270,7 @@ def _profile_meta(target: Callable, *args, **kwargs) -> Tuple[Tuple[Any, ...], G
     def extract_tensor(x: Any):
         if isinstance(x, MetaTensor):
             tensor = x._tensor.detach()
-            tensor.uuid = x._tensor.uuid
+            tensor.data_ptr = x._tensor.data_ptr
             return tensor
         if not isinstance(x, torch.finfo):
             return x
@@ -286,13 +286,13 @@ def _profile_meta(target: Callable, *args, **kwargs) -> Tuple[Tuple[Any, ...], G
 @compatibility(is_backward_compatible=True)
 def profile_function(target: 'Target', device: str = 'meta') -> Callable:
     """
-    Wrap a `call_function` node or `torch.nn.functional` in order to 
+    Wrap a `call_function` node or `torch.nn.functional` in order to
     record the memory cost and FLOPs of the execution.
-    
+
     Warnings:
         You may only use tensors with `device=meta` for this wrapped function.
         Only original `torch.nn.functional` are available.
-    
+
     Examples:
         >>> input = torch.rand(100, 100, 100, 100, device='meta')
         >>> func = torch.nn.functional.relu
@@ -328,6 +328,8 @@ def profile_function(target: 'Target', device: str = 'meta') -> Callable:
             out, meta = _profile_concrete(func, *args, **kwargs)
         if inplace:
             kwargs['inplace'] = True
+            meta.bwd_mem_tmp = 0
+            meta.bwd_mem_out = 0
         do_not_cache = False
 
         meta.bwd_mem_out -= param_size
@@ -342,7 +344,7 @@ def profile_function(target: 'Target', device: str = 'meta') -> Callable:
 def profile_method(target: 'Target', device: str = 'meta') -> Callable:
     """
     Wrap a `call_method` node
-    record the memory cost and FLOPs of the execution. 
+    record the memory cost and FLOPs of the execution.
     """
 
     def f(*args: Tuple[Argument, ...], **kwargs: Dict[str, Any]) -> Any:
@@ -360,13 +362,13 @@ def profile_method(target: 'Target', device: str = 'meta') -> Callable:
 @compatibility(is_backward_compatible=True)
 def profile_module(module: torch.nn.Module, device: str = 'meta') -> Callable:
     """
-    Wrap a `call_module` node or `torch.nn` in order to 
+    Wrap a `call_module` node or `torch.nn` in order to
     record the memory cost and FLOPs of the execution.
-    
+
     Warnings:
         You may only use tensors with `device=meta` for this wrapped function.
         Only original `torch.nn` are available.
-    
+
     Example:
         >>> input = torch.rand(4, 3, 224, 224, device='meta')
         >>> mod = torch.nn.Conv2d(3, 128, 3)
@@ -394,6 +396,8 @@ def profile_module(module: torch.nn.Module, device: str = 'meta') -> Callable:
             out, meta = _profile_concrete(func, *args, **kwargs)
         if inplace:
             module.inplace = True
+            meta.bwd_mem_tmp = 0
+            meta.bwd_mem_out = 0
         do_not_cache = False
 
         # grad for param will not be counted

@@ -3,7 +3,7 @@
 # refer to https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/native_functions.yaml
 # for more meta_registrations
 
-from typing import List, Optional, Tuple, Union
+from typing import Callable, List, Optional, Tuple, Union
 
 import torch
 from torch.utils._pytree import tree_map
@@ -163,6 +163,23 @@ def meta_conv(
     return out
 
 
+@register_meta(aten._convolution.default)
+def meta_conv_1(
+    input_tensor: torch.Tensor,
+    weight: torch.Tensor,
+    bias: torch.Tensor,
+    stride: List[int],
+    padding: List[int],
+    dilation: List[int],
+    is_transposed: bool,
+    output_padding: List[int],
+    groups: int,
+    *extra_args
+):
+    out = meta_conv(input_tensor, weight, bias, stride, padding, dilation, is_transposed, output_padding, groups)
+    return out
+
+
 @register_meta(aten.convolution_backward.default)
 def meta_conv_backward(grad_output: torch.Tensor, input: torch.Tensor, weight: torch.Tensor, bias_sizes, stride,
                        padding, dilation, transposed, output_padding, groups, output_mask):
@@ -179,10 +196,88 @@ def meta_adaptive_avg_pool2d_backward(
     return grad_input
 
 
+# ================================ RNN =============================================
+# https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/cudnn/RNN.cpp
+@register_meta(aten._cudnn_rnn.default)
+def meta_cuda_rnn(
+    input,
+    weight,
+    weight_stride0,
+    weight_buf,
+    hx,
+    cx,
+    mode,
+    hidden_size,
+    proj_size,
+    num_layers,
+    batch_first,
+    dropout,
+    train,
+    bidirectional,
+    batch_sizes,
+    dropout_state,
+):
+
+    is_input_packed = len(batch_sizes) != 0
+    if is_input_packed:
+        seq_length = len(batch_sizes)
+        mini_batch = batch_sizes[0]
+        batch_sizes_sum = input.shape[0]
+    else:
+        seq_length = input.shape[1] if batch_first else input.shape[0]
+        mini_batch = input.shape[0] if batch_first else input.shape[1]
+        batch_sizes_sum = -1
+
+    num_directions = 2 if bidirectional else 1
+    out_size = proj_size if proj_size != 0 else hidden_size
+    if is_input_packed:
+        out_shape = [batch_sizes_sum, out_size * num_directions]
+    else:
+        out_shape = (
+            [mini_batch, seq_length, out_size * num_directions]
+            if batch_first
+            else [seq_length, mini_batch, out_size * num_directions]
+        )
+    output = input.new_empty(out_shape)
+
+    cell_shape = [num_layers * num_directions, mini_batch, hidden_size]
+    cy = torch.empty(0) if cx is None else cx.new_empty(cell_shape)
+
+    hy = hx.new_empty([num_layers * num_directions, mini_batch, out_size])
+
+    # TODO: Query cudnnGetRNNTrainingReserveSize (expose to python)
+    reserve_shape = 0 if train else 0
+    reserve = input.new_empty(reserve_shape, dtype=torch.uint8)
+
+    return output, hy, cy, reserve, weight_buf
+
+
+# https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/cudnn/RNN.cpp
+@register_meta(aten._cudnn_rnn_backward.default)
+def meta_cudnn_rnn_backward(input: torch.Tensor,
+                            weight: torch.Tensor,
+                            weight_stride0: int,
+                            hx: torch.Tensor,
+                            cx: Optional[torch.Tensor] = None,
+                            *args,
+                            **kwargs):
+    print(input, weight, hx, cx)
+    grad_input = torch.empty_like(input)
+    grad_weight = torch.empty_like(weight)
+    grad_hx = torch.empty_like(hx)
+    grad_cx = torch.empty_like(cx) if cx is not None else torch.empty((), device='meta')
+    return grad_input, grad_weight, grad_hx, grad_cx
+
+
 # https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/Activation.cpp
 # ============================== Activations =======================================
 @register_meta(aten.relu.default)
 def meta_relu(input: torch.Tensor):
+    return torch.empty_like(input)
+
+
+@register_meta(aten.prelu.default)
+def meta_prelu(input: torch.Tensor, weight: torch.Tensor):
     return torch.empty_like(input)
 
 
@@ -278,10 +373,16 @@ def meta_ln_backward(dY: torch.Tensor, input: torch.Tensor, normalized_shape, me
 
 
 # ================================== Misc ==========================================
-#https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/native_functions.yaml
+# https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/native_functions.yaml
 @register_meta(aten.roll.default)
 def meta_roll(input: torch.Tensor, shifts, dims):
     return input
+
+
+# https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/Scalar.cpp
+@register_meta(aten._local_scalar_dense.default)
+def meta_local_scalar_dense(self: torch.Tensor):
+    return 0
 
 
 # https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/TensorCompare.cpp
@@ -317,7 +418,7 @@ def meta_index_Tensor(self, indices):
     indices = result
     assert len(indices) <= self.ndim, f"too many indices for tensor of dimension {self.ndim} (got {len(indices)})"
     # expand_outplace
-    import torch._refs as refs    # avoid import cycle in mypy
+    import torch._refs as refs
 
     indices = list(refs._maybe_broadcast(*indices))
     # add missing null tensors

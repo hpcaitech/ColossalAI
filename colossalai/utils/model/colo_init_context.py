@@ -1,10 +1,13 @@
-from .utils import InsertPostInitMethodToModuleSubClasses
+from typing import Any, Dict, Iterator, Optional, Tuple, Union
+
 import torch
-from colossalai.tensor import ColoTensor, ColoParameter
-from colossalai.nn.parallel.layers import register_colo_module, \
-    ColoLinear, ColoEmbedding
 from torch import nn
-from typing import Iterator, Tuple, Union
+
+from colossalai.nn.parallel.layers import ColoEmbedding, ColoLinear, register_colo_module
+from colossalai.tensor import ColoParameter, ColoTensor, ProcessGroup
+
+from .utils import InsertPostInitMethodToModuleSubClasses
+
 # find named_params includes replica
 
 
@@ -23,6 +26,39 @@ def _named_params_with_replica(
             yield name, val
 
 
+def _convert_to_coloparam(param: torch.nn.Parameter,
+                          device: torch.device,
+                          dtype=torch.float,
+                          default_pg: Optional[ProcessGroup] = None,
+                          default_dist_spec: Optional[Any] = None) -> ColoParameter:
+
+    if isinstance(param, ColoParameter):
+        return param
+    # detaching tensor is necessary for optimizers.
+    requires_grad = param.requires_grad
+    # param is the global tensor.
+    
+    if param.device.type == "meta":
+        colo_param = ColoParameter(param, requires_grad=requires_grad)
+    else:    
+        colo_param = ColoParameter(param.to(device=device, dtype=dtype), requires_grad=requires_grad)
+      
+
+    # if default_shard_plan exists, shard the param during initialization.
+    # This can reduce the model size after initialization.
+    # NOTE() embedding usually can not be correctly sharded. So I use except to handle
+    # the param that can not be sharded by the default plan
+    if default_pg is not None:
+        colo_param.set_process_group(default_pg)
+
+    if default_dist_spec is not None:
+        try:
+            colo_param.set_dist_spec(default_dist_spec)
+        except:
+            pass
+    return colo_param
+
+
 def ColoModulize(module):
     """
     Replacing the parameters() and named_parameters() with our customized ones
@@ -34,20 +70,24 @@ def ColoModulize(module):
 class ColoInitContext(InsertPostInitMethodToModuleSubClasses):
 
     def __init__(self,
-                 lazy_memory_allocate: bool = False,
                  device: torch.device = torch.device('cpu'),
-                 dtype: torch.dtype = torch.float):
+                 dtype: torch.dtype = torch.float,
+                 default_pg: Optional[ProcessGroup] = None,
+                 default_dist_spec=None):
         """
         Args:
-            lazy_memory_allocate (bool, optional): whether to allocate memory for the parameter tensors. Defaults to False.
-            device (torch.device, optional): the device parameters initialized are resident on. Defaults to torch.device('cpu').
+            device (torch.device): the device where parameters initialized are resident. Defaults to torch.device('cpu').
+            dtype (torch.dtype): the dtype of parameters initialized. Defults to torch.float.
+            default_pg (ProcessGroup): the default process group for all initialized parameters.
+            default_dist_spec: the default distributed specifications.
         """
         super().__init__()
-        self._lazy_memory_allocate = lazy_memory_allocate
         self._device = device
         self._dtype = dtype
 
         self._register_colo_modules()
+        self._default_pg = default_pg
+        self._default_dist_spec = default_dist_spec
 
     def _register_colo_modules(self):
         register_colo_module(torch.nn.Linear, ColoLinear())
@@ -61,10 +101,6 @@ class ColoInitContext(InsertPostInitMethodToModuleSubClasses):
         The function to call at the end of the constructor of each module.
         FIXME(fjr) The module may be passed to this function multiple times?
         """
-
-        if hasattr(module, '_colo_visited'):
-            return
-
         name_list = []
         for name, param in _named_params_with_replica(module):
             if isinstance(param, ColoTensor):
@@ -87,17 +123,74 @@ class ColoInitContext(InsertPostInitMethodToModuleSubClasses):
             if param in replaced_tensors:
                 colo_param = replaced_tensors[param]
             else:
-                save_torch_payload = True if not self._lazy_memory_allocate else False
-                # detaching tensor is necessary for optimizers.
-                requires_grad = param.requires_grad
-                # TODO(jiaruifang) we initialize a Default PG memory
-                colo_param = ColoParameter(param.to(device=self._device, dtype=self._dtype),
-                                           requires_grad=requires_grad)
-                # add mapping record
+                colo_param = _convert_to_coloparam(param, self._device, self._dtype, self._default_pg,
+                                                   self._default_dist_spec)
                 replaced_tensors[param] = colo_param
             delattr(submodule, param_name)
             setattr(submodule, param_name, colo_param)
             colo_param.shared_param_modules.append(submodule)
+        
+        meta_param_flag = 0
+        meta_buffer_flag = 0
+        for param in module.parameters():
+            if param.device.type=="meta":
+                meta_param_flag = 1
+            if meta_param_flag == 1 and param.device.type!="meta":
+                raise ValueError("Meta parameters and valued parameters can not  be in the same model")
+            
+        for buffer in module.buffers():
+            if buffer.device.type=="meta":
+                meta_buffer_flag = 1
+            if meta_buffer_flag == 1 and buffer.device.type!="meta":
+                raise ValueError("Meta buffers and valued buffers can not be in the same model")
+        
+        if meta_param_flag==1 and meta_buffer_flag==1:
+            pass
+        elif meta_buffer_flag==0 and meta_param_flag==1:
+             for name, buf in module.named_buffers():
+                module._buffers[name] = module._buffers[name].to(device=self._device)
+        elif meta_param_flag==0 and meta_buffer_flag==1:
+            for name, param in module.named_parameters():
+                module._parameters[name] = module._parameters[name].to(device=self._device)
+        else:
+            module.to(self._device)
+ 
 
-        module.to(self._device)
-        ColoModulize(module)
+def post_process_colo_init_ctx(model: torch.nn.Module,
+                               device: torch.device = torch.device('cpu'),
+                               dtype: torch.dtype = torch.float,
+                               default_pg: Optional[ProcessGroup] = None,
+                               default_dist_spec=None):
+    """post_process_colo_init_ctx
+
+    This function is called after `ColoInitContext`.
+
+    Args:
+        model (torch.nn.module): the model
+        device (torch.device, optional): device type of the model params. Defaults to torch.device('cpu').
+        dtype (torch.dtype, optional): dtype of the model params. Defaults to torch.float.
+        default_pg (Optional[ProcessGroup], optional): default process group. Defaults to None. Inidicates a DP-only process group.
+        default_dist_spec (Any, optional): default dist spec of params. Defaults to None.
+
+    Raises:
+        RuntimeError: raise error if
+    """
+
+    torch_params = []
+    for n, p in model.named_parameters():
+        if not isinstance(p, ColoParameter):
+            # print(f"{n} is not a ColoParameter. We are going to converting it to ColoParameter")
+            torch_params.append((n, p))
+
+    for (n, param) in torch_params:
+        name_list = n.split('.')
+        module = model
+        for i in range(len(name_list) - 1):
+            module = module._modules[name_list[i]]
+        delattr(module, name_list[-1])
+        setattr(module, name_list[-1], _convert_to_coloparam(param, device, dtype, default_pg, default_dist_spec))
+
+    del torch_params
+    for n, p in model.named_parameters():
+        if not isinstance(p, ColoTensor):
+            raise RuntimeError

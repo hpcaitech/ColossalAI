@@ -1,14 +1,14 @@
 # Colossal-AI
 <div id="top" align="center">
 
-   [![logo](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/Colossal-AI_logo.png)](https://www.colossalai.org/)
+   [![logo](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/colossal-ai_logo_vertical.png)](https://www.colossalai.org/)
 
    Colossal-AI: A Unified Deep Learning System for Big Model Era
 
-   <h3> <a href="https://arxiv.org/abs/2110.14883"> Paper </a> | 
-   <a href="https://www.colossalai.org/"> Documentation </a> | 
-   <a href="https://github.com/hpcaitech/ColossalAI-Examples"> Examples </a> |   
-   <a href="https://github.com/hpcaitech/ColossalAI/discussions"> Forum </a> | 
+   <h3> <a href="https://arxiv.org/abs/2110.14883"> Paper </a> |
+   <a href="https://www.colossalai.org/"> Documentation </a> |
+   <a href="https://github.com/hpcaitech/ColossalAI-Examples"> Examples </a> |
+   <a href="https://github.com/hpcaitech/ColossalAI/discussions"> Forum </a> |
    <a href="https://medium.com/@hpcaitech"> Blog </a></h3>
 
    [![Build](https://github.com/hpcaitech/ColossalAI/actions/workflows/build.yml/badge.svg)](https://github.com/hpcaitech/ColossalAI/actions/workflows/build.yml)
@@ -17,46 +17,55 @@
    [![HuggingFace badge](https://img.shields.io/badge/%F0%9F%A4%97HuggingFace-Join-yellow)](https://huggingface.co/hpcai-tech)
    [![slack badge](https://img.shields.io/badge/Slack-join-blueviolet?logo=slack&amp)](https://join.slack.com/t/colossalaiworkspace/shared_invite/zt-z7b26eeb-CBp7jouvu~r0~lcFzX832w)
    [![WeChat badge](https://img.shields.io/badge/微信-加入-green?logo=wechat&amp)](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/WeChat.png)
-   
+
 
    | [English](README.md) | [中文](README-zh-Hans.md) |
 
 </div>
+
+## Latest News
+* [2023/01] [Hardware Savings Up to 46 Times for AIGC and  Automatic Parallelism](https://www.hpc-ai.tech/blog/colossal-ai-0-2-0)
+* [2022/11] [Diffusion Pretraining and Hardware Fine-Tuning Can Be Almost 7X Cheaper](https://www.hpc-ai.tech/blog/diffusion-pretraining-and-hardware-fine-tuning-can-be-almost-7x-cheaper)
+* [2022/10] [Use a Laptop to Analyze 90% of Proteins, With a Single-GPU Inference Sequence Exceeding 10,000](https://www.hpc-ai.tech/blog/use-a-laptop-to-analyze-90-of-proteins-with-a-single-gpu-inference-sequence-exceeding)
+* [2022/10] [Embedding Training With 1% GPU Memory and 100 Times Less Budget for Super-Large Recommendation Model](https://www.hpc-ai.tech/blog/embedding-training-with-1-gpu-memory-and-10-times-less-budget-an-open-source-solution-for)
+* [2022/09] [HPC-AI Tech Completes $6 Million Seed and Angel Round Fundraising](https://www.hpc-ai.tech/blog/hpc-ai-tech-completes-6-million-seed-and-angel-round-fundraising-led-by-bluerun-ventures-in-the)
 
 ## Table of Contents
 <ul>
  <li><a href="#Why-Colossal-AI">Why Colossal-AI</a> </li>
  <li><a href="#Features">Features</a> </li>
  <li>
-   <a href="#Parallel-Training-Demo">Parallel Training Demo</a> 
+   <a href="#Parallel-Training-Demo">Parallel Training Demo</a>
    <ul>
-     <li><a href="#ViT">ViT</a></li>
      <li><a href="#GPT-3">GPT-3</a></li>
      <li><a href="#GPT-2">GPT-2</a></li>
      <li><a href="#BERT">BERT</a></li>
      <li><a href="#PaLM">PaLM</a></li>
      <li><a href="#OPT">OPT</a></li>
+     <li><a href="#ViT">ViT</a></li>
      <li><a href="#Recommendation-System-Models">Recommendation System Models</a></li>
    </ul>
  </li>
  <li>
-   <a href="#Single-GPU-Training-Demo">Single GPU Training Demo</a> 
+   <a href="#Single-GPU-Training-Demo">Single GPU Training Demo</a>
    <ul>
      <li><a href="#GPT-2-Single">GPT-2</a></li>
      <li><a href="#PaLM-Single">PaLM</a></li>
    </ul>
  </li>
  <li>
-   <a href="#Inference-Energon-AI-Demo">Inference (Energon-AI) Demo</a> 
+   <a href="#Inference-Energon-AI-Demo">Inference (Energon-AI) Demo</a>
    <ul>
      <li><a href="#GPT-3-Inference">GPT-3</a></li>
      <li><a href="#OPT-Serving">OPT-175B Online Serving for Text Generation</a></li>
+     <li><a href="#BLOOM-Inference">175B BLOOM</a></li>
    </ul>
  </li>
    <li>
-   <a href="#Colossal-AI-in-the-Real-World">Colossal-AI for Real World Applications</a> 
+   <a href="#Colossal-AI-in-the-Real-World">Colossal-AI for Real World Applications</a>
    <ul>
-     <li><a href="#xTrimoMultimer">xTrimoMultimer: Accelerating Protein Monomer and Multimer Structure Prediction</a></li>
+     <li><a href="#AIGC">AIGC: Acceleration of Stable Diffusion</a></li>
+     <li><a href="#Biomedicine">Biomedicine: Acceleration of AlphaFold Protein Structure</a></li>
    </ul>
  </li>
  <li>
@@ -69,11 +78,6 @@
  <li><a href="#Use-Docker">Use Docker</a></li>
  <li><a href="#Community">Community</a></li>
  <li><a href="#contributing">Contributing</a></li>
- <li><a href="#Quick-View">Quick View</a></li>
-   <ul>
-     <li><a href="#Start-Distributed-Training-in-Lines">Start Distributed Training in Lines</a></li>
-     <li><a href="#Write-a-Simple-2D-Parallel-Model">Write a Simple 2D Parallel Model</a></li>
-   </ul>
  <li><a href="#Cite-Us">Cite Us</a></li>
 </ul>
 
@@ -100,8 +104,9 @@ distributed training and inference in a few lines.
   - 1D, [2D](https://arxiv.org/abs/2104.05343), [2.5D](https://arxiv.org/abs/2105.14500), [3D](https://arxiv.org/abs/2105.14450) Tensor Parallelism
   - [Sequence Parallelism](https://arxiv.org/abs/2105.13120)
   - [Zero Redundancy Optimizer (ZeRO)](https://arxiv.org/abs/1910.02054)
+  - [Auto-Parallelism](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/gpt/auto_parallel_with_gpt)
 
-- Heterogeneous Memory Management 
+- Heterogeneous Memory Management
   - [PatrickStar](https://arxiv.org/abs/2108.05818)
 
 - Friendly Usage
@@ -110,17 +115,11 @@ distributed training and inference in a few lines.
 - Inference
   - [Energon-AI](https://github.com/hpcaitech/EnergonAI)
 
-- Colossal-AI in the Real World 
-  - [xTrimoMultimer](https://github.com/biomap-research/xTrimoMultimer): Accelerating Protein Monomer and Multimer Structure Prediction
+- Colossal-AI in the Real World
+  - Biomedicine: [FastFold](https://github.com/hpcaitech/FastFold) accelerates training and inference of AlphaFold protein structure
 <p align="right">(<a href="#top">back to top</a>)</p>
 
 ## Parallel Training Demo
-### ViT
-<p align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/ViT.png" width="450" />
-</p>
-
-- 14x larger batch size, and 5x faster training for Tensor Parallelism = 64
 
 ### GPT-3
 <p align="center">
@@ -150,9 +149,16 @@ distributed training and inference in a few lines.
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/OPT_update.png" width=800/>
 
 - [Open Pretrained Transformer (OPT)](https://github.com/facebookresearch/metaseq), a 175-Billion parameter AI language model released by Meta, which stimulates AI programmers to perform various downstream tasks and application deployments because public pretrained model weights.
-- 45% speedup fine-tuning OPT at low cost in lines. [[Example]](https://github.com/hpcaitech/ColossalAI-Examples/tree/main/language/opt) [[Online Serving]](https://service.colossalai.org/opt) 
+- 45% speedup fine-tuning OPT at low cost in lines. [[Example]](https://github.com/hpcaitech/ColossalAI-Examples/tree/main/language/opt) [[Online Serving]](https://service.colossalai.org/opt)
 
 Please visit our [documentation](https://www.colossalai.org/) and [examples](https://github.com/hpcaitech/ColossalAI-Examples) for more details.
+
+### ViT
+<p align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/ViT.png" width="450" />
+</p>
+
+- 14x larger batch size, and 5x faster training for Tensor Parallelism = 64
 
 ### Recommendation System Models
 - [Cached Embedding](https://github.com/hpcaitech/CachedEmbedding), utilize software cache to train larger embedding tables with a smaller GPU memory budget.
@@ -198,26 +204,85 @@ Please visit our [documentation](https://www.colossalai.org/) and [examples](htt
 
 - [OPT Serving](https://service.colossalai.org/opt): Try 175-billion-parameter OPT online services for free, without any registration whatsoever.
 
+<p id="BLOOM-Inference" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/BLOOM%20Inference.PNG" width=800/>
+</p>
+
+- [BLOOM](https://github.com/hpcaitech/EnergonAI/tree/main/examples/bloom): Reduce hardware deployment costs of 175-billion-parameter BLOOM by more than 10 times.
+
 <p align="right">(<a href="#top">back to top</a>)</p>
 
 ## Colossal-AI in the Real World
 
-### xTrimoMultimer: Accelerating Protein Monomer and Multimer Structure Prediction
+### AIGC
+Acceleration of AIGC (AI-Generated Content) models such as [Stable Diffusion v1](https://github.com/CompVis/stable-diffusion) and [Stable Diffusion v2](https://github.com/Stability-AI/stablediffusion).
+<p id="diffusion_train" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/Stable%20Diffusion%20v2.png" width=800/>
+</p>
+
+- [Training](https://github.com/hpcaitech/ColossalAI/tree/main/examples/images/diffusion): Reduce Stable Diffusion memory consumption by up to 5.6x and hardware cost by up to 46x (from A100 to RTX3060).
+
+<p id="diffusion_demo" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/DreamBooth.png" width=800/>
+</p>
+
+- [DreamBooth Fine-tuning](https://github.com/hpcaitech/ColossalAI/tree/main/examples/images/dreambooth): Personalize your model using just 3-5 images of the desired subject.
+
+<p id="inference" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/Stable%20Diffusion%20Inference.jpg" width=800/>
+</p>
+
+- [Inference](https://github.com/hpcaitech/ColossalAI/tree/main/examples/images/diffusion): Reduce inference GPU memory consumption by 2.5x.
+
+
+<p align="right">(<a href="#top">back to top</a>)</p>
+
+### Biomedicine
+Acceleration of [AlphaFold Protein Structure](https://alphafold.ebi.ac.uk/)
+
+<p id="FastFold" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/FastFold.jpg" width=800/>
+</p>
+
+- [FastFold](https://github.com/hpcaitech/FastFold): accelerating training and inference on GPU Clusters, faster data processing, inference sequence containing more than 10000 residues.
+
 <p id="xTrimoMultimer" align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/xTM_Prediction.jpg" width=380/>
-<p></p>
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/xTrimoMultimer_Table.jpg" width=800/>
 </p>
 
-- [xTrimoMultimer](https://github.com/biomap-research/xTrimoMultimer): accelerating structure prediction of protein monomers and multimer by 11x
+- [xTrimoMultimer](https://github.com/biomap-research/xTrimoMultimer): accelerating structure prediction of protein monomers and multimer by 11x.
+
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
 ## Installation
 
+### Install from PyPI
+
+You can easily install Colossal-AI with the following command. **By defualt, we do not build PyTorch extensions during installation.**
+
+```bash
+pip install colossalai
+```
+
+However, if you want to build the PyTorch extensions during installation, you can set `CUDA_EXT=1`.
+
+```bash
+CUDA_EXT=1 pip install colossalai
+```
+
+**Otherwise, CUDA kernels will be built during runtime when you actually need it.**
+
+We also keep release the nightly version to PyPI on a weekly basis. This allows you to access the unreleased features and bug fixes in the main branch.
+Installation can be made via
+
+```bash
+pip install colossalai-nightly
+```
+
 ### Download From Official Releases
 
-You can visit the [Download](https://www.colossalai.org/download) page to download Colossal-AI with pre-built CUDA extensions.
+You can visit the [Download](https://www.colossalai.org/download) page to download Colossal-AI with pre-built PyTorch extensions.
 
 
 ### Download From Source
@@ -228,17 +293,15 @@ You can visit the [Download](https://www.colossalai.org/download) page to downlo
 git clone https://github.com/hpcaitech/ColossalAI.git
 cd ColossalAI
 
-# install dependency
-pip install -r requirements/requirements.txt
-
 # install colossalai
 pip install .
 ```
 
-If you don't want to install and enable CUDA kernel fusion (compulsory installation when using fused optimizer):
+By default, we do not compile CUDA/C++ kernels. ColossalAI will build them during runtime.
+If you want to install and enable CUDA kernel fusion (compulsory installation when using fused optimizer):
 
 ```shell
-NO_CUDA_EXT=1 pip install .
+CUDA_EXT=1 pip install .
 ```
 
 <p align="right">(<a href="#top">back to top</a>)</p>
@@ -289,32 +352,6 @@ Thanks so much to all of our amazing contributors!
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
-## Quick View
-
-### Start Distributed Training in Lines
-
-```python
-parallel = dict(
-    pipeline=2,
-    tensor=dict(mode='2.5d', depth = 1, size=4)
-)
-```
-
-### Start Heterogeneous Training in Lines
-
-```python
-zero = dict(
-    model_config=dict(
-        tensor_placement_policy='auto',
-        shard_strategy=TensorShardStrategy(),
-        reuse_fp16_shard=True
-    ),
-    optimizer_config=dict(initial_scale=2**5, gpu_margin_mem_ratio=0.2)
-)
-
-```
-
-<p align="right">(<a href="#top">back to top</a>)</p>
 
 ## Cite Us
 

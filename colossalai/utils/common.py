@@ -1,32 +1,31 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
+import functools
 import os
 import random
 import socket
+from collections import defaultdict
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Callable, List, Union, Dict, Optional
-import functools
+from typing import Callable, Dict, List, Optional, Union
 
 import torch
+import torch.distributed as dist
 from torch._six import inf
 from torch.nn.parameter import Parameter
 
-try:
-    import colossal_C
-except:
-    pass
-
-from contextlib import contextmanager
-
-import torch.distributed as dist
-from colossalai.constants import (IS_TENSOR_PARALLEL, NUM_PARTITIONS, TENSOR_PARALLEL_ATTRIBUTES)
+from colossalai.constants import IS_TENSOR_PARALLEL, NUM_PARTITIONS, TENSOR_PARALLEL_ATTRIBUTES
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.global_variables import tensor_parallel_env as env
+from colossalai.tensor import ColoParameter, ProcessGroup
+
 from .multi_tensor_apply import multi_tensor_applier
 
-from colossalai.tensor import ColoParameter, ProcessGroup
-from collections import defaultdict
+try:
+    from colossalai._C import fused_optim
+except:
+    fused_optim = None
 
 
 def print_rank_0(msg: str, logger=None):
@@ -128,11 +127,18 @@ def is_model_parallel_parameter(p):
 
 
 def _calc_l2_norm(grads):
+    # we should not 
+    global fused_optim
+
+    if fused_optim is None:
+        from colossalai.kernel.op_builder import FusedOptimBuilder
+        fused_optim = FusedOptimBuilder().load()
+        
     norm = 0.0
     if len(grads) > 0:
         dummy_overflow_buf = torch.cuda.IntTensor([0])
         norm, _ = multi_tensor_applier(
-            colossal_C.multi_tensor_l2norm,
+            fused_optim.multi_tensor_l2norm,
             dummy_overflow_buf,
             [grads],
             False    # no per-parameter norm
@@ -269,7 +275,8 @@ def _clip_grad_norm(parameters, max_norm: float, total_norm: float) -> None:
                 cpu_grads.append(p.grad.detach())
         if len(cuda_grads) > 0:
             dummy_overflow_buf = torch.cuda.IntTensor([0])
-            multi_tensor_applier(colossal_C.multi_tensor_scale, dummy_overflow_buf, [cuda_grads, cuda_grads], clip_coef)
+            multi_tensor_applier(fused_optim.multi_tensor_scale, dummy_overflow_buf, [cuda_grads, cuda_grads],
+                                 clip_coef)
         for g in cpu_grads:
             g.mul_(clip_coef)
 
@@ -395,7 +402,7 @@ def clip_grad_norm_fp32(parameters, max_norm, norm_type=2):
         if enable_cuda_kernels:
             grads = [p.grad.detach() for p in params]
             dummy_overflow_buf = torch.cuda.IntTensor([0])
-            multi_tensor_applier(colossal_C.multi_tensor_scale, dummy_overflow_buf, [grads, grads], clip_coeff)
+            multi_tensor_applier(fused_optim.multi_tensor_scale, dummy_overflow_buf, [grads, grads], clip_coeff)
         else:
             for p in params:
                 p.grad.detach().mul_(clip_coeff)

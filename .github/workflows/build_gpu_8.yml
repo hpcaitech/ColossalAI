@@ -2,7 +2,7 @@ name: Build on 8 GPUs
 
 on:
   schedule:
-    # run at 00:00 of every Sunday 
+    # run at 00:00 of every Sunday
     - cron:  '0 0 * * *'
   workflow_dispatch:
 
@@ -30,13 +30,11 @@ jobs:
       - uses: actions/checkout@v2
         with:
           ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
-      - name: Install Colossal-AI      
+      - name: Install Colossal-AI
         run: |
           [ ! -z "$(ls -A /github/home/cuda_ext_cache/)" ] && cp -r /github/home/cuda_ext_cache/* /__w/ColossalAI/ColossalAI/
-          pip install -r requirements/requirements.txt
-          pip install -v -e .
+          CUDA_EXT=1 pip install -v -e .
           cp -r /__w/ColossalAI/ColossalAI/build /github/home/cuda_ext_cache/
-          cp /__w/ColossalAI/ColossalAI/*.so /github/home/cuda_ext_cache/
           pip install -r requirements/requirements-test.txt
       - name: Unit Testing
         run: |
@@ -45,4 +43,3 @@ jobs:
         env:
           DATA: /data/scratch/cifar-10
           LD_LIBRARY_PATH: /github/home/.tensornvme/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
-          

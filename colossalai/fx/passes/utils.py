@@ -1,8 +1,7 @@
 import torch
-from typing import Dict, Set
+from typing import Dict
 from torch.fx.node import Node, map_arg
 from torch.fx.graph import Graph
-
 
 def get_comm_size(prev_partition, next_partition):
     """
@@ -32,7 +31,6 @@ def get_comm_size(prev_partition, next_partition):
 def get_leaf(graph: Graph):
     """
     Given a graph, return leaf nodes of this graph.
-
     Note: If we remove ``root`` nodes, ``placeholder`` nodes, and ``output`` nodes from fx graph,
     we will get a normal DAG. Leaf nodes in this context means leaf nodes in that DAG.
     """
@@ -57,7 +55,6 @@ def is_leaf(graph: Graph, node: Node):
 def get_top(graph: Graph):
     """
     Given a graph, return top nodes of this graph.
-
     Note: If we remove ``root`` nodes, ``placeholder`` nodes, and ``output`` nodes from fx graph,
     we will get a normal DAG. Top nodes in this context means nodes with BFS level 0 in that DAG.
     """
@@ -100,7 +97,6 @@ def get_all_consumers(graph: Graph, node: Node):
 def assign_bfs_level_to_nodes(graph: Graph):
     """
     Give a graph, assign bfs level to each node of this graph excluding ``placeholder`` and ``output`` nodes.
-
     Example:
         class MLP(torch.nn.Module):
             def __init__(self, dim: int):
@@ -110,8 +106,6 @@ def assign_bfs_level_to_nodes(graph: Graph):
                 self.linear3 = torch.nn.Linear(dim, dim)
                 self.linear4 = torch.nn.Linear(dim, dim)
                 self.linear5 = torch.nn.Linear(dim, dim)
-
-
             def forward(self, x):
                 l1 = self.linear1(x)
                 l2 = self.linear2(x)
@@ -165,10 +159,8 @@ def assign_bfs_level_to_nodes(graph: Graph):
 def get_node_module(node) -> torch.nn.Module:
     """
     Find the module associated with the given node.
-
     Args:
         node (torch.fx.Node): a torch.fx.Node object in the fx computation graph
-
     Returns:
         torch.nn.Module: the module associated with the given node
     """
@@ -177,3 +169,4 @@ def get_node_module(node) -> torch.nn.Module:
     assert node.op == 'call_module', f'Expected node.op to be call_module, but found {node.op}'
     module = node.graph.owning_module.get_submodule(node.target)
     return module
+
