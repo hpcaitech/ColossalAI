@@ -12,7 +12,7 @@ from colossalai.gemini.chunk import Chunk, ChunkManager
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import ColossalaiOptimizer, CPUAdam, FusedAdam, HybridAdam
 from colossalai.nn.parallel.data_parallel import ZeroDDP
-from colossalai.utils import disposable, get_current_device
+from colossalai.utils import disposable, get_current_device, is_ddp_ignored
 
 _AVAIL_OPTIM_LIST = {FusedAdam, CPUAdam, HybridAdam}
 
@@ -78,7 +78,7 @@ class ZeroOptimizer(ColossalaiOptimizer):
         if self.clipping_flag:
             assert norm_type == 2.0, "ZeroOptimizer only supports L2 norm now"
 
-        params_list = [p for p in module.parameters() if not getattr(p, '_ddp_to_ignore', False)]
+        params_list = [p for p in module.parameters() if not is_ddp_ignored(p)]
         for p, fp32_p in zip(params_list, module.fp32_params):
             chunk_16 = self.chunk_manager.get_chunk(p)
             if chunk_16 not in self.chunk16_set:
