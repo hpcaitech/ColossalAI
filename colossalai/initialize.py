@@ -301,9 +301,9 @@ def initialize(model: nn.Module,
             model = model().to(get_current_device())
 
         # optimizer maybe a optimizer_cls
-        logger.warning("Initializing an non ZeRO model with optimizer class")
         if isinstance(optimizer, Callable):
             optimizer = optimizer(model.parameters())
+            logger.warning("Initializing an non ZeRO model with optimizer class")
 
     if not use_zero:
         if is_using_sequence():
