@@ -4,23 +4,14 @@ from pathlib import Path
 
 import torch
 from titans.utils import barrier_context
-from torch.fx import GraphModule
 from torchvision import transforms
 from torchvision.datasets import CIFAR10
 from torchvision.models import resnet50
 from tqdm import tqdm
 
 import colossalai
-from colossalai.auto_parallel.passes.runtime_apply_pass import runtime_apply_pass
-from colossalai.auto_parallel.passes.runtime_preparation_pass import runtime_preparation_pass
-from colossalai.auto_parallel.tensor_shard.solver.cost_graph import CostGraph
-from colossalai.auto_parallel.tensor_shard.solver.graph_analysis import GraphAnalyser
-from colossalai.auto_parallel.tensor_shard.solver.options import DataloaderOption, SolverOptions
-from colossalai.auto_parallel.tensor_shard.solver.solver import Solver
-from colossalai.auto_parallel.tensor_shard.solver.strategies_constructor import StrategiesConstructor
+from colossalai.auto_parallel.tensor_shard.initialize import autoparallelize
 from colossalai.core import global_context as gpc
-from colossalai.device.device_mesh import DeviceMesh
-from colossalai.fx.tracer.tracer import ColoTracer
 from colossalai.logging import get_dist_logger
 from colossalai.nn.lr_scheduler import CosineAnnealingLR
 from colossalai.utils import get_dataloader
@@ -83,40 +74,11 @@ def main():
     else:
         train_dataloader, test_dataloader = None, None
 
-    # initialize device mesh
-    physical_mesh_id = torch.arange(0, 4)
-    mesh_shape = (2, 2)
-    device_mesh = DeviceMesh(physical_mesh_id, mesh_shape, init_process_group=True)
-
     # trace the model with meta data
-    tracer = ColoTracer()
     model = resnet50(num_classes=10).cuda()
     input_sample = {'x': torch.rand([gpc.config.BATCH_SIZE * torch.distributed.get_world_size(), 3, 32, 32]).to('meta')}
-    graph = tracer.trace(root=model, meta_args=input_sample)
-    gm = GraphModule(model, graph, model.__class__.__name__)
-    gm.recompile()
 
-    # prepare info for solver
-    solver_options = SolverOptions(dataloader_option=DataloaderOption.DISTRIBUTED)
-    strategies_constructor = StrategiesConstructor(graph, device_mesh, solver_options)
-    strategies_constructor.build_strategies_and_cost()
-    cost_graph = CostGraph(strategies_constructor.leaf_strategies)
-    cost_graph.simplify_graph()
-    graph_analyser = GraphAnalyser(gm)
-
-    # solve the solution
-    solver = Solver(gm.graph, strategies_constructor, cost_graph, graph_analyser)
-    ret = solver.call_solver_serialized_args()
-    solution = list(ret[0])
-    if gpc.get_global_rank() == 0:
-        for index, node in enumerate(graph.nodes):
-            print(node.name, node.strategies_vector[solution[index]].name)
-
-    # process the graph for distributed training ability
-    gm, sharding_spec_dict, origin_spec_dict, comm_actions_dict = runtime_preparation_pass(gm, solution, device_mesh)
-    gm = runtime_apply_pass(gm)
-    gm.recompile()
-
+    model = autoparallelize(model, input_sample)
     # build criterion
     criterion = torch.nn.CrossEntropyLoss()
 
@@ -127,7 +89,7 @@ def main():
     lr_scheduler = CosineAnnealingLR(optimizer, total_steps=gpc.config.NUM_EPOCHS)
 
     for epoch in range(gpc.config.NUM_EPOCHS):
-        gm.train()
+        model.train()
 
         if args.synthetic:
             # if we use synthetic data
@@ -151,14 +113,14 @@ def main():
             img = img.cuda()
             label = label.cuda()
             optimizer.zero_grad()
-            output = gm(img, sharding_spec_dict, origin_spec_dict, comm_actions_dict)
+            output = model(img)
             train_loss = criterion(output, label)
             train_loss.backward(train_loss)
             optimizer.step()
         lr_scheduler.step()
 
         # run evaluation
-        gm.eval()
+        model.eval()
         correct = 0
         total = 0
 
@@ -185,7 +147,7 @@ def main():
             label = label.cuda()
 
             with torch.no_grad():
-                output = gm(img, sharding_spec_dict, origin_spec_dict, comm_actions_dict)
+                output = model(img)
                 test_loss = criterion(output, label)
             pred = torch.argmax(output, dim=-1)
             correct += torch.sum(pred == label)
