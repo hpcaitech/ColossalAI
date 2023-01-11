@@ -47,6 +47,12 @@ jobs:
           output: both
           thresholds: '80 90'
 
+      - name: Make Coverage Report Collapsable
+        run: |
+          sed -i '2 i <details>' code-coverage-results.md
+          sed -i '3 i <summary>Click me to view the complete report</summary>' code-coverage-results.md
+          echo "</details>" >> code-coverage-results.md
+
       - name: 'Comment on PR'
         uses: actions/github-script@v6
         with:
