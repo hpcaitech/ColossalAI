@@ -35,6 +35,7 @@ class BinaryElementwiseHandler(MetaInfoNodeHandler):
             non_tensor = False
             if isinstance(self.node.args[idx], Node):
                 meta_data = self.node.args[idx]._meta_data
+                # The meta_data of node type argument could also possibly be a non-tensor object.
                 if not isinstance(meta_data, torch.Tensor):
                     assert isinstance(meta_data, (int, float))
                     meta_data = torch.Tensor([meta_data]).to('meta')
@@ -53,6 +54,8 @@ class BinaryElementwiseHandler(MetaInfoNodeHandler):
         input_meta_data, non_tensor_input = _get_arg_value(0)
         other_meta_data, non_tensor_other = _get_arg_value(1)
         output_meta_data = self.node._meta_data
+        # we need record op_data with non-tensor data in this list,
+        # and filter the non-tensor op_data in post_process.
         self.non_tensor_list = []
         # assert False
         input_op_data = OperationData(name=str(self.node.args[0]),
