@@ -6,8 +6,8 @@ import torch.distributed as dist
 import torch.nn as nn
 
 from colossalai.gemini.chunk import ChunkManager
-from colossalai.gemini.chunk.search_utils import in_ddp, search_chunk_configuration
-from colossalai.gemini.memory_tracer import MemStats
+from colossalai.gemini.chunk.search_utils import search_chunk_configuration
+from colossalai.utils import is_ddp_ignored
 
 
 def init_chunk_manager(model: nn.Module,
@@ -34,7 +34,7 @@ def init_chunk_manager(model: nn.Module,
     if filter_exlarge_params:
         kwargs_dict["filter_exlarge_params"] = filter_exlarge_params
 
-    params_sizes = [p.numel() for p in model.parameters() if in_ddp(p)]
+    params_sizes = [p.numel() for p in model.parameters() if not is_ddp_ignored(p)]
     total_size = sum(params_sizes) / 1024**2
 
     dist.barrier()
