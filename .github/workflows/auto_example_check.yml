@@ -41,7 +41,7 @@ jobs:
 
           if [ "$x" = "[]" ]; then
             echo "anyChanged=false" >> $GITHUB_OUTPUT
-            echo "matrix={\"directory\": ['null']}" >> $GITHUB_OUTPUT
+            echo "matrix={\"directory\": [\"null\"]}" >> $GITHUB_OUTPUT
           else
             dirs=$( IFS=',' ; echo "${res[*]}" )
             echo "anyChanged=true" >> $GITHUB_OUTPUT
