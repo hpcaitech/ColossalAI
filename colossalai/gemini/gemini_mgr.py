@@ -50,6 +50,17 @@ class GeminiManager:
         self._warmup = True
         self._comp_cuda_demand_time = 0
 
+    def reset_attributes(self):
+        self._compute_idx = -1
+        self._h2d_volume = 0
+        self._d2h_volume = 0
+        self._layout_time = 0
+        self._evict_time = 0
+        self._comp_cuda_demand_time = 0
+
+    def is_warmup(self):
+        return self._warmup
+
     def memstats(self):
         """memstats
 
@@ -73,12 +84,7 @@ class GeminiManager:
         if self._mem_stats_collector and self._warmup:
             self._mem_stats_collector.finish_collection()
         self._warmup = False
-        self._compute_idx = -1
-        self._h2d_volume = 0
-        self._d2h_volume = 0
-        self._layout_time = 0
-        self._evict_time = 0
-        self._comp_cuda_demand_time = 0
+        self.reset_attributes()
 
     def adjust_layout(self, chunks: Tuple[Chunk, ...]) -> None:
         """ Adjust the layout of stateful tensors according to the information provided

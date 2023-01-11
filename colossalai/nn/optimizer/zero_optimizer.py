@@ -12,7 +12,7 @@ from colossalai.gemini.chunk import Chunk, ChunkManager
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import ColossalaiOptimizer, CPUAdam, FusedAdam, HybridAdam
 from colossalai.nn.parallel.data_parallel import ZeroDDP
-from colossalai.utils import disposable, get_current_device
+from colossalai.utils import disposable, get_current_device, is_ddp_ignored
 
 _AVAIL_OPTIM_LIST = {FusedAdam, CPUAdam, HybridAdam}
 
@@ -78,7 +78,7 @@ class ZeroOptimizer(ColossalaiOptimizer):
         if self.clipping_flag:
             assert norm_type == 2.0, "ZeroOptimizer only supports L2 norm now"
 
-        params_list = [p for p in module.parameters() if not getattr(p, '_ddp_to_ignore', False)]
+        params_list = [p for p in module.parameters() if not is_ddp_ignored(p)]
         for p, fp32_p in zip(params_list, module.fp32_params):
             chunk_16 = self.chunk_manager.get_chunk(p)
             if chunk_16 not in self.chunk16_set:
@@ -139,6 +139,10 @@ class ZeroOptimizer(ColossalaiOptimizer):
         dist.all_reduce(self._found_overflow)
 
         return self._found_overflow.item() > 0
+
+    def _clear_global_norm(self) -> None:
+        for c16 in self.chunk16_set:
+            c16.l2_norm = None
 
     def _calc_global_norm(self) -> float:
         norm_sqr: float = 0.0
@@ -201,6 +205,7 @@ class ZeroOptimizer(ColossalaiOptimizer):
             self.optim_state = OptimState.UNSCALED    # no need to unscale grad
             self.grad_scaler.update(found_inf)    # update gradient scaler
             self._logger.info(f'Found overflow. Skip step')
+            self._clear_global_norm()    # clear recorded norm
             self.zero_grad()    # reset all gradients
             self._update_fp16_params()
             return

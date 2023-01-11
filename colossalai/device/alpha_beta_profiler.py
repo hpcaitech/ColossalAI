@@ -381,6 +381,8 @@ class AlphaBetaProfiler:
         first_latency, first_bandwidth = _extract_alpha_beta(first_axis, first_axis_process_group)
         second_latency, second_bandwidth = _extract_alpha_beta(second_axis, second_axis_process_group)
         mesh_alpha = [first_latency, second_latency]
-        mesh_beta = [1 / first_bandwidth, 1 / second_bandwidth]
+        # The beta values have been enlarged by 1e10 times temporarilly because the computation cost
+        # is still estimated in the unit of TFLOPs instead of time. We will remove this factor in future.
+        mesh_beta = [1e10 / first_bandwidth, 1e10 / second_bandwidth]
 
         return mesh_alpha, mesh_beta

@@ -5,6 +5,7 @@ import torch
 from torch.fx.node import Node
 
 from colossalai.auto_parallel.meta_profiler.metainfo import MetaInfo, meta_register
+from colossalai.auto_parallel.tensor_shard.node_handler.option import ShardOption
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
     OperationData,
     OperationDataType,
@@ -35,12 +36,14 @@ class NodeHandler(ABC):
         node: Node,
         device_mesh: DeviceMesh,
         strategies_vector: StrategiesVector,
+        shard_option: ShardOption = ShardOption.STANDARD,
     ) -> None:
         self.node = node
         self.predecessor_node = list(node._input_nodes.keys())
         self.successor_node = list(node.users.keys())
         self.device_mesh = device_mesh
         self.strategies_vector = strategies_vector
+        self.shard_option = shard_option
 
     def update_resharding_cost(self, strategy: ShardingStrategy) -> None:
         """
@@ -180,6 +183,21 @@ class NodeHandler(ABC):
             for op_data, sharding_spec in strategy.sharding_specs.items():
                 if op_data.data is not None and isinstance(op_data.data, torch.Tensor):
                     check_sharding_spec_validity(sharding_spec, op_data.data)
+
+        remove_strategy_list = []
+        for strategy in self.strategies_vector:
+            shard_level = 0
+            for op_data, sharding_spec in strategy.sharding_specs.items():
+                if op_data.data is not None and isinstance(op_data.data, torch.Tensor):
+                    for dim, shard_axis in sharding_spec.dim_partition_dict.items():
+                        shard_level += len(shard_axis)
+            if self.shard_option == ShardOption.SHARD and shard_level == 0:
+                remove_strategy_list.append(strategy)
+            if self.shard_option == ShardOption.FULL_SHARD and shard_level <= 1:
+                remove_strategy_list.append(strategy)
+
+        for strategy in remove_strategy_list:
+            self.strategies_vector.remove(strategy)
 
         return self.strategies_vector
 

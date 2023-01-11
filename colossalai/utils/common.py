@@ -126,14 +126,18 @@ def is_model_parallel_parameter(p):
     return hasattr(p, IS_TENSOR_PARALLEL) and getattr(p, IS_TENSOR_PARALLEL)
 
 
+def is_ddp_ignored(p):
+    return getattr(p, '_ddp_to_ignore', False)
+
+
 def _calc_l2_norm(grads):
-    # we should not 
+    # we should not
     global fused_optim
 
     if fused_optim is None:
         from colossalai.kernel.op_builder import FusedOptimBuilder
         fused_optim = FusedOptimBuilder().load()
-        
+
     norm = 0.0
     if len(grads) > 0:
         dummy_overflow_buf = torch.cuda.IntTensor([0])
