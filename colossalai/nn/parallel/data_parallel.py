@@ -457,7 +457,7 @@ class ZeroDDP(ColoDDP):
                 # deal with ddp ignored parameters
                 destination[prefix + name] = param if keep_vars else param.detach()
             else:
-                ddp_param_list.append(param)
+                ddp_param_list.append((name, param))
         for (name, p), fp32_p in zip(ddp_param_list, self.fp32_params):
             if p is not None:
                 assert fp32_p in param_to_save_data, "Parameter '{}' is neglected in the chunk list".format(name)
@@ -600,7 +600,7 @@ class ZeroDDP(ColoDDP):
                 # deal with ddp ignored parameters
                 load(name, param, param.copy_)
             else:
-                ddp_param_list.append(param)
+                ddp_param_list.append((name, param))
 
         fp32_to_name = dict()
         for (name, p), fp32_p in zip(ddp_param_list, self.fp32_params):
