@@ -16,14 +16,14 @@ from colossalai.device.device_mesh import DeviceMesh
 from colossalai.initialize import launch_from_torch
 from colossalai.logging import disable_existing_loggers, get_dist_logger
 
-BATCH_SIZE = 8
-SEQ_LENGTH = 128
-HIDDEN_DIM = 3072
+BATCH_SIZE = 16
+SEQ_LENGTH = 1024
+HIDDEN_DIM = 4096
 NUM_HEADS = 16
-NUM_LAYERS = 1
+NUM_LAYERS = 4
 VOCAB_SIZE = 50257
 NUM_STEPS = 10
-FP16 = False
+FP16 = True
 
 
 def get_cpu_mem():
@@ -40,7 +40,7 @@ def get_mem_info(prefix=''):
 
 def get_tflops(model_numel, batch_size, seq_len, step_time):
     # Tflops_per_GPU = global_batch * global_numel * seq_len * 8 / #gpu
-    return model_numel * batch_size * seq_len * 8 / 1e12 / (step_time + 1e-12) / 4
+    return model_numel * batch_size * seq_len * 8 / 1e12 / (step_time + 1e-12) / 8
 
 
 # Randomly Generated Data
@@ -66,13 +66,7 @@ def main():
         'attention_mask': torch.zeros((BATCH_SIZE, SEQ_LENGTH), dtype=torch.int64).to('meta'),
     }
 
-    # Both device mesh initialization and model initialization will be integrated into autoparallelize
-    physical_mesh_id = torch.arange(0, 4)
-    mesh_shape = (2, 2)
-    device_mesh = DeviceMesh(physical_mesh_id, mesh_shape, init_process_group=True)
-
-    # Enable auto-parallel
-    gm, solution = initialize_model(model, meta_input_sample, device_mesh, return_solution=True)
+    gm, solution = autoparallelize(model, meta_input_sample, return_solution=True)
 
     # print solution on rank 0
     if gpc.get_global_rank() == 0:
