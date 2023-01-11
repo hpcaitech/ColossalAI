@@ -39,7 +39,7 @@ jobs:
           res=`python .github/workflows/scripts/example_checks/detect_changed_example.py --fileNameList $changedFileName`
           echo "All changed examples are $res"
 
-          if [ "$x" = "[]" ]; then
+          if [ "$res" = "[]" ]; then
             echo "anyChanged=false" >> $GITHUB_OUTPUT
             echo "matrix=null" >> $GITHUB_OUTPUT
           else
@@ -54,7 +54,8 @@ jobs:
     if: |
         github.event.pull_request.draft == false &&
         github.base_ref == 'main' &&
-        github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' && github.event_name == 'pull_request'
+        github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' && github.event_name == 'pull_request' &&
+        needs.detect-changed-example.outputs.anyChanged == 'true'
     name: Test the changed example
     needs: detect-changed-example
     runs-on: [self-hosted, gpu]
