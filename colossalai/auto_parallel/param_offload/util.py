@@ -15,3 +15,6 @@ class NodeInfo:
     param_indices: List = None
     runtime_fwd_mem: float = 0
     runtime_bwd_mem: float = 0
+    # asyn offload
+    node_to_prefetch: Node = None
+    prefetch_end_timestamp: float = 0
