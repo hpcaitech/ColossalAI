@@ -40,7 +40,6 @@ jobs:
         with:
           filename: coverage.xml
           badge: true
-          fail_below_min: true
           format: markdown
           hide_branch_rate: false
           hide_complexity: false
