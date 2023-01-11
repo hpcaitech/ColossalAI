@@ -42,12 +42,10 @@ jobs:
           if [ "$res" = "[]" ]; then
             echo "anyChanged=false" >> $GITHUB_OUTPUT
             echo "matrix={\"directory\": [\"null\"]}" >> $GITHUB_OUTPUT
-            echo "false"
           else
             dirs=$( IFS=',' ; echo "${res[*]}" )
             echo "anyChanged=true" >> $GITHUB_OUTPUT
             echo "matrix={\"directory\":$(echo "$dirs")}" >> $GITHUB_OUTPUT
-            echo "true"
           fi
 
   # If no file is changed, it will prompt an error and shows the matrix do not have value.
