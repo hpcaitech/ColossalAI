@@ -45,7 +45,6 @@ class DummyDataloader():
 def main():
     # initialize distributed setting
     parser = colossalai.get_default_parser()
-    parser.add_argument('-s', '--synthetic', action="store_true", help="whether use synthetic data")
     args = parser.parse_args()
 
     # launch from torch
@@ -95,13 +94,9 @@ def main():
         pipeline_stage = gpc.get_local_rank(ParallelMode.PIPELINE)
     logger.info(f"number of parameters: {total_numel} on pipeline stage {pipeline_stage}")
 
-    # create dataloaders
-    root = os.environ.get('DATA', '../data/')
-    if args.synthetic:
-        train_dataloader = DummyDataloader(length=30, batch_size=gpc.config.BATCH_SIZE)
-        test_dataloader = DummyDataloader(length=10, batch_size=gpc.config.BATCH_SIZE)
-    else:
-        train_dataloader, test_dataloader = build_cifar(gpc.config.BATCH_SIZE, root, pad_if_needed=True)
+    # create synthetic dataloaders
+    train_dataloader = DummyDataloader(length=30, batch_size=gpc.config.BATCH_SIZE)
+    test_dataloader = DummyDataloader(length=10, batch_size=gpc.config.BATCH_SIZE)
 
     # create loss function
     criterion = CrossEntropyLoss(label_smoothing=0.1)
