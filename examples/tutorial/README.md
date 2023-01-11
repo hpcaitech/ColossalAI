@@ -39,9 +39,6 @@ quickly deploy large AI model training and inference, reducing large AI model tr
    - Try pre-trained OPT model weights with Colossal-AI
    - Fine-tuning OPT with limited hardware using ZeRO, Gemini and parallelism
    - Deploy the fine-tuned model to inference service
- - Acceleration of Stable Diffusion
-   - Stable Diffusion with Lightning
-   - Try Lightning Colossal-AI strategy to optimize memory and accelerate speed
 
 
 ## Discussion
@@ -167,27 +164,4 @@ docker run -it --rm --gpus all --ipc host -p 7070:7070 hpcaitech/tutorial:opt-in
 5. Start the http server inside the docker container with tensor parallel size 2
 ```bash
 python opt_fastapi.py opt-125m --tp 2 --checkpoint /data/opt-125m
-```
-
-## 🖼️ Accelerate Stable Diffusion with Colossal-AI
-1. Create a new environment for diffusion
-```bash
-conda env create -f environment.yaml
-conda activate ldm
-```
-2. Install Colossal-AI from our official page
-```bash
-pip install colossalai==0.1.10+torch1.11cu11.3 -f https://release.colossalai.org
-```
-3. Install PyTorch Lightning compatible commit
-```bash
-git clone https://github.com/Lightning-AI/lightning && cd lightning && git reset --hard b04a7aa
-pip install -r requirements.txt && pip install .
-cd ..
-```
-
-4. Comment out the `from_pretrained` field in the `train_colossalai_cifar10.yaml`.
-5. Run training with CIFAR10.
-```bash
-python main.py -logdir /tmp -t true -postfix test -b configs/train_colossalai_cifar10.yaml
 ```
