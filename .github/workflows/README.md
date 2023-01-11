@@ -14,6 +14,7 @@
       - [Dispatch Example Test](#dispatch-example-test)
       - [Compatibility Test](#compatibility-test)
     - [User Friendliness](#user-friendliness)
+  - [Configuration](#configuration)
   - [Progress Log](#progress-log)
 
 ## Overview
@@ -37,30 +38,32 @@ In the section below, we will dive into the details of different workflows avail
 
 ### Regular Checks
 
-| Workflow Name           | File name                | Description                                                                                                            |
-| ----------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
-| `Test example`          | `auto_example_check.yml` | This workflow will test all examples every Sunday                                                                      |
-| `Build on 8 GPUs`       | `build_gpu_8.yml`        | This workflow will run the unit tests everyday with 8 GPUs.                                                            |
-| `Synchronize submodule` | `submodule.yml`          | This workflow will check if any git submodule is updated. If so, it will create a PR to update the submodule pointers. |
-| `Close inactive issues` | `close_inactive.yml`     | This workflow will close issues which are stale for 14 days.                                                           |
+| Workflow Name           | File name                     | Description                                                                                                                                                      |
+| ----------------------- | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Test example`          | `auto_example_check.yml`      | This workflow will test all examples every Sunday                                                                                                                |
+| `Compatibility Test`    | `auto_compatibility_test.yml` | This workflow will check the compatiblity of Colossal-AI against PyTorch and CUDA every Sunday. The PyTorch and CUDA versions are specified in `.compatibility`. |
+| `Build on 8 GPUs`       | `build_gpu_8.yml`             | This workflow will run the unit tests everyday with 8 GPUs.                                                                                                      |
+| `Synchronize submodule` | `submodule.yml`               | This workflow will check if any git submodule is updated. If so, it will create a PR to update the submodule pointers.                                           |
+| `Close inactive issues` | `close_inactive.yml`          | This workflow will close issues which are stale for 14 days.                                                                                                     |
 
 ### Release
 
-| Workflow Name               | File name                       | Description                                                                                                       |
-| --------------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `Draft GitHub Release Post` | `draft_github_release_post.yml` | Compose a GitHub release post draft based on the commit history. Triggered when `version.txt` is updated.         |
-| `Release to PyPI`           | `release_pypi.yml`              | Build and release the wheel to PyPI. Triggered when `version.txt` is updated.                                     |
-| `Release Nightly to PyPI`   | `release_nightly.yml`           | Build and release the nightly wheel to PyPI as `colossalai-nightly`. Automatically executed every Sunday.         |
-| `Release Docker`            | `release_docker.yml`            | Build and release the Docker image to DockerHub. Triggered when `version.txt` is updated.                         |
-| `Release bdist wheel`       | `release_bdist.yml`             | Build binary wheels with pre-built PyTorch extensions. Manually dispatched. See more details in the next section. |
+| Workflow Name               | File name                       | Description                                                                                                                                           |
+| --------------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Draft GitHub Release Post` | `draft_github_release_post.yml` | Compose a GitHub release post draft based on the commit history.  Triggered when the change of `version.txt` is merged.                               |
+| `Release to PyPI`           | `release_pypi.yml`              | Build and release the wheel to PyPI.  Triggered when the change of `version.txt` is merged.                                                           |
+| `Release Nightly to PyPI`   | `release_nightly.yml`           | Build and release the nightly wheel to PyPI as `colossalai-nightly`. Automatically executed every Sunday.                                             |
+| `Release Docker`            | `release_docker.yml`            | Build and release the Docker image to DockerHub. Triggered when the change of `version.txt` is merged.                                                |
+| `Release bdist wheel`       | `release_bdist.yml`             | Build binary wheels with pre-built PyTorch extensions. Manually dispatched. See more details in the next section.                                     |
+| `Auto Compatibility Test`   | `auto_compatibility_test.yml`   | Check Colossal-AI's compatiblity against the PyTorch and CUDA version specified in `.compatibility`. Triggered when `version.txt` is changed in a PR. |
 
 ### Manual Dispatch
 
-| Workflow Name           | File name                    | Description                                            |
-| ----------------------- | ---------------------------- | ------------------------------------------------------ |
-| `Release bdist wheel`   | `release_bdist.yml`          | Build binary wheels with pre-built PyTorch extensions. |
-| `Dispatch Example Test` | `dispatch_example_check.yml` | Manually test a specified example.                     |
-| `Compatiblity Test`     | `compatiblity_test.yml`      | Test PyTorch and Python Compatibility.                 |
+| Workflow Name                | File name                        | Description                                            |
+| ---------------------------- | -------------------------------- | ------------------------------------------------------ |
+| `Release bdist wheel`        | `release_bdist.yml`              | Build binary wheels with pre-built PyTorch extensions. |
+| `Dispatch Example Test`      | `dispatch_example_check.yml`     | Manually test a specified example.                     |
+| `Dispatch Compatiblity Test` | `dispatch_compatiblity_test.yml` | Test PyTorch and Python Compatibility.                 |
 
 Refer to this [documentation](https://docs.github.com/en/actions/managing-workflow-runs/manually-running-a-workflow) on how to manually trigger a workflow.
 I will provide the details of each workflow below.
@@ -93,6 +96,15 @@ Parameters:
 | ----------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | `issue-translate` | `translate_comment.yml` | This workflow is triggered when a new issue comment is created. The comment will be translated into English if not written in English. |
 
+
+## Configuration
+
+This section lists the files used to configure the workflow.
+
+1. `.compatibility`
+
+This `.compatibility` file is to tell GitHub Actions which PyTorch and CUDA versions to test against. Each line in the file is in the format `${torch-version}-${cuda-version}`, which is a tag for Docker image. Thus, this tag must be present in the [docker registry](https://hub.docker.com/r/pytorch/conda-cuda) so as to perform the test.
+
 ## Progress Log
 
 - [x] unit testing
@@ -112,9 +124,9 @@ Parameters:
   - [x] check on PR
   - [x] regular check
   - [x] manual dispatch
-- [ ] compatiblity check
+- [x] compatiblity check
   - [x] manual dispatch
-  - [ ] auto test when release
+  - [x] auto test when release
 - [x] helpers
   - [x] comment translation
   - [x] submodule update
