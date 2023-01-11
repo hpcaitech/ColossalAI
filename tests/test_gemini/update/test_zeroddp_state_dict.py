@@ -4,6 +4,7 @@ import pytest
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
+from torch.testing import assert_close
 
 import colossalai
 from colossalai.gemini.chunk import ChunkManager, search_chunk_configuration
@@ -15,6 +16,13 @@ from colossalai.utils.cuda import get_current_device
 from colossalai.utils.model.colo_init_context import ColoInitContext
 from tests.components_to_test.registry import non_distributed_component_funcs
 from tests.test_tensor.common_utils import debug_print, set_seed
+
+
+def ignore_the_first_parameter(model: torch.nn.Module):
+    for name, param in model.named_parameters():
+        print(f"parameter `{name}` is set ignored")
+        ZeroDDP.set_params_to_ignore([param])
+        return
 
 
 @parameterize('placement_policy', ['cuda', 'cpu', 'auto'])
@@ -47,7 +55,7 @@ def exam_state_dict(placement_policy, keep_gathered, model_name: str):
     for key, value in torch_dict.items():
         assert key in zero_dict, "{} not in ZeRO dictionary.".format(key)
         temp_zero_value = zero_dict[key].to(device=value.device, dtype=value.dtype)
-        assert torch.equal(value, temp_zero_value), "parameter '{}' has problem.".format(key)
+        assert_close(value, temp_zero_value, rtol=1e-3, atol=1e-5)
 
 
 @parameterize('placement_policy', ['cuda', 'cpu', 'auto'])
@@ -84,7 +92,7 @@ def exam_load_state_dict(placement_policy, keep_gathered, model_name: str):
     for key, value in torch_dict.items():
         assert key in zero_dict, "{} not in ZeRO dictionary.".format(key)
         temp_zero_value = zero_dict[key].to(device=value.device, dtype=value.dtype)
-        assert torch.equal(value, temp_zero_value), "parameter '{}' has problem.".format(key)
+        assert_close(value, temp_zero_value, rtol=1e-3, atol=1e-5)
 
 
 def run_dist(rank, world_size, port):
