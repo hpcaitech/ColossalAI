@@ -2,4 +2,7 @@
 set -euxo pipefail
 
 pip install -r requirements.txt
-colossalai run --nproc_per_node 4 train.py --config config.py
+
+# run test
+colossalai run --nproc_per_node 4 train.py --config config.py --optimizer lars
+colossalai run --nproc_per_node 4 train.py --config config.py --optimizer lamb
