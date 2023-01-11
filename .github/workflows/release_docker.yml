@@ -2,13 +2,16 @@ name: Publish Docker Image to DockerHub
 
 on:
   workflow_dispatch:
-  release:
-    types: [published]
+  pull_request:
+    paths:
+      - 'version.txt'
+    types:
+      - closed
 
 jobs:
   release:
     name: Publish Docker Image to DockerHub
-    if: github.repository == 'hpcaitech/ColossalAI'
+    if: ( github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true ) && github.repository == 'hpcaitech/ColossalAI'
     runs-on: [self-hosted, gpu]
     container:
       image: "hpcaitech/docker-in-docker:latest"
