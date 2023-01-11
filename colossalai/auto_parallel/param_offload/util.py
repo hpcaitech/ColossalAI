@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import List
+from torch.fx import Node
 
 
 class ModelParameters:
