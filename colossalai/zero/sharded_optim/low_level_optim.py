@@ -1,13 +1,10 @@
 from functools import partial
-from itertools import groupby
 
 import torch
 import torch.distributed as dist
 from torch.optim import Optimizer
 
 from colossalai.amp.naive_amp.grad_scaler import DynamicGradScaler
-from colossalai.context import ParallelMode
-from colossalai.core import global_context as gpc
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import ColossalaiOptimizer
 from colossalai.tensor import ProcessGroup
