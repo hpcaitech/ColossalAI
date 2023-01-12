@@ -19,7 +19,7 @@ from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.testing.pytest_wrapper import run_on_environment_flag
 from colossalai.utils import free_port
 
-HIDDEN_SIZE = 768
+HIDDEN_SIZE = 16
 
 
 class GPT2MLPWithCkpt(nn.Module):
