@@ -38,9 +38,8 @@ def main():
         model.train()
 
         # if we use synthetic data
-        # we assume it only has 30 steps per epoch
-        num_steps = range(30)
-
+        # we assume it only has 10 steps per epoch
+        num_steps = range(10)
         progress = tqdm(num_steps)
 
         for _ in progress:
@@ -64,7 +63,6 @@ def main():
         # if we use synthetic data
         # we assume it only has 10 steps for evaluation
         num_steps = range(10)
-
         progress = tqdm(num_steps)
 
         for _ in progress:
