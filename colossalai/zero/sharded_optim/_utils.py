@@ -1,10 +1,13 @@
 import math
+from typing import Optional
 
 import torch
 import torch.distributed as dist
 from torch._six import inf
 from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 
+from colossalai.context import ParallelMode
+from colossalai.core import global_context as gpc
 from colossalai.tensor import ProcessGroup
 from colossalai.utils import is_model_parallel_parameter
 
@@ -100,7 +103,7 @@ def split_half_float_double(tensor_list):
     return buckets
 
 
-def reduce_tensor_dp_group(tensor, dtype=None, dst_rank=None, pg: ProcessGroup = ProcessGroup()):
+def reduce_tensor_dp_group(tensor, dtype=None, dst_rank=None, pg: Optional[ProcessGroup] = None):
     """
     Reduce the tensor in the data parallel process group
 
@@ -125,8 +128,13 @@ def reduce_tensor_dp_group(tensor, dtype=None, dst_rank=None, pg: ProcessGroup =
     else:
         tensor_to_reduce = tensor
 
-    group = pg.dp_process_group()
-    world_size = pg.dp_world_size()
+    if isinstance(pg, ProcessGroup):
+        group = pg.dp_process_group()
+        world_size = pg.dp_world_size()
+    else:
+        world_size = gpc.get_world_size(ParallelMode.DATA)
+        group = gpc.get_group(ParallelMode.DATA)
+
     tensor_to_reduce.div_(world_size)
 
     # if rank is None, all reduce will be used
@@ -136,13 +144,19 @@ def reduce_tensor_dp_group(tensor, dtype=None, dst_rank=None, pg: ProcessGroup =
     if use_all_reduce:
         dist.all_reduce(tensor_to_reduce, group=group)
     else:
-        ranks_in_group = pg.dp_rank_list()
+        if pg is not None:
+            ranks_in_group = pg.dp_rank_list()
+        else:
+            ranks_in_group = gpc.get_ranks_in_group(ParallelMode.DATA)
         global_rank = ranks_in_group[dst_rank]
         dist.reduce(tensor=tensor_to_reduce, dst=global_rank, group=group)
 
     # recover the original dtype
     if tensor.dtype != dtype and tensor is not tensor_to_reduce:
-        local_rank = pg.dp_local_rank()
+        if pg is not None:
+            local_rank = pg.dp_local_rank()
+        else:
+            local_rank = gpc.get_local_rank(ParallelMode.DATA)
         if use_all_reduce or dst_rank == local_rank:
             tensor.copy_(tensor_to_reduce)
 

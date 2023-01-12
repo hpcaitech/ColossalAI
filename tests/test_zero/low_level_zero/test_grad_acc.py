@@ -95,6 +95,7 @@ def exam_zero_1_grad_acc():
     zero_model = TestModel()
     torch_model = copy.deepcopy(zero_model)
 
+    seed_all(2008)
     zero_model = zero_model.cuda()
     torch_model = DDP(torch_model.cuda(), bucket_cap_mb=0)
 
@@ -104,7 +105,7 @@ def exam_zero_1_grad_acc():
     # we only test stage 1 here
     # in `check_sharded_param_consistency.py`, we will test whether
     # level 1 and 2 will produce exactly the same results
-    pg = ProcessGroup()
+    pg = None    #ProcessGroup()
     zero_optimizer = LowLevelZeroOptimizer(zero_optimizer,
                                            pg=pg,
                                            overlap_communication=False,
@@ -163,7 +164,7 @@ def run_dist(rank, world_size, port):
 
 @pytest.mark.dist
 def test_grad_accumulation():
-    world_size = 2
+    world_size = 4
     run_func = partial(run_dist, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
 

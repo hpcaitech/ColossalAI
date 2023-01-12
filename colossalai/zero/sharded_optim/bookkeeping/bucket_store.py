@@ -1,3 +1,5 @@
+from typing import Optional
+
 from colossalai.tensor import ProcessGroup
 
 from .base_store import BaseStore
@@ -5,7 +7,7 @@ from .base_store import BaseStore
 
 class BucketStore(BaseStore):
 
-    def __init__(self, pg: ProcessGroup):
+    def __init__(self, pg: Optional[ProcessGroup] = None):
         super().__init__(pg)
         self._grads = dict()
         self._params = dict()

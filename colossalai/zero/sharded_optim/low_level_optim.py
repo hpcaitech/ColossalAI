@@ -1,10 +1,13 @@
 from functools import partial
+from typing import Optional
 
 import torch
 import torch.distributed as dist
 from torch.optim import Optimizer
 
 from colossalai.amp.naive_amp.grad_scaler import DynamicGradScaler
+from colossalai.context import ParallelMode
+from colossalai.core import global_context as gpc
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import ColossalaiOptimizer
 from colossalai.tensor import ProcessGroup
@@ -31,7 +34,7 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
     def __init__(
             self,
             optimizer: Optimizer,
-            pg: ProcessGroup = ProcessGroup(),
+            pg: Optional[ProcessGroup] = None,
     # grad scaler config
             initial_scale=2**16,
             min_scale=1,
@@ -73,14 +76,33 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
 
         # stage 2
         self._partition_grads = partition_grad
-        self._pg = pg
-        # cpu_offload
+
         self._cpu_offload = cpu_offload
 
-        self._local_rank = pg.dp_local_rank()
-        self._world_size = pg.dp_world_size()
-        self._dp_group = pg.dp_process_group()
-        self._mp_group = pg.tp_process_group()
+        if isinstance(pg, ProcessGroup):
+            self._pg = pg
+            self._local_rank = pg.dp_local_rank()
+            self._world_size = pg.dp_world_size()
+            self._dp_group = pg.dp_process_group()
+            if pg.tp_world_size == 1:
+                self._mp_group = None
+            else:
+                self._mp_group = pg.tp_process_group()
+        elif pg is None:
+            self._pg = None
+            dp_parallel_mode = ParallelMode.DATA
+            mp_parallel_mode = ParallelMode.MODEL
+
+            self._dp_parallel_mode = dp_parallel_mode
+            self._mp_parallel_mode = mp_parallel_mode
+            self._local_rank = gpc.get_local_rank(dp_parallel_mode)
+            self._world_size = gpc.get_world_size(dp_parallel_mode)
+
+            self._dp_group = gpc.get_group(dp_parallel_mode)
+            if gpc.is_initialized(mp_parallel_mode) and gpc.get_world_size(mp_parallel_mode) > 1:
+                self._mp_group = gpc.get_group(mp_parallel_mode)
+            else:
+                self._mp_group = None
 
         # fp16 and fp32 params for mixed precision training
         self._fp16_param_groups = dict()

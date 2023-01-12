@@ -298,6 +298,7 @@ def main():
         optimizer = LowLevelZeroOptimizer(
             optimizer,
             pg=pg,
+            reduce_bucket_size=12 * 1024 * 1024,
             overlap_communication=True,
             partition_grad=partition_flag,
             verbose=True,
