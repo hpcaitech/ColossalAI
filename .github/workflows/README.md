@@ -106,6 +106,21 @@ This section lists the files used to configure the workflow.
 
 This `.compatibility` file is to tell GitHub Actions which PyTorch and CUDA versions to test against. Each line in the file is in the format `${torch-version}-${cuda-version}`, which is a tag for Docker image. Thus, this tag must be present in the [docker registry](https://hub.docker.com/r/pytorch/conda-cuda) so as to perform the test.
 
+2. `.bdist.json`
+
+This file controls what pytorch/cuda compatible pre-built releases will be built and published. You can add a new entry according to the json schema below if there is a new wheel that needs to be built with AOT compilation of PyTorch extensions.
+
+```json
+{
+  "build": [
+    {
+      "torch_version": "",
+      "cuda_image": ""
+    },
+  ]
+}
+```
+
 ## Progress Log
 
 - [x] unit testing
