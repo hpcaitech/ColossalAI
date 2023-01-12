@@ -1,0 +1,24 @@
+{
+  "build": [
+    {
+      "torch_version": "1.11.0",
+      "cuda_image": "hpcaitech/cuda-conda:10.2"
+    },
+    {
+      "torch_version": "1.11.0",
+      "cuda_image": "hpcaitech/cuda-conda:11.3"
+    },
+    {
+      "torch_version": "1.12.1",
+      "cuda_image": "hpcaitech/cuda-conda:10.2"
+    },
+    {
+      "torch_version": "1.12.1",
+      "cuda_image": "hpcaitech/cuda-conda:11.3"
+    },
+    {
+      "torch_version": "1.12.1",
+      "cuda_image": "hpcaitech/cuda-conda:11.6"
+    }
+  ]
+}
