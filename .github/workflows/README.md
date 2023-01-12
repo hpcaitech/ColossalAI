@@ -48,14 +48,15 @@ In the section below, we will dive into the details of different workflows avail
 
 ### Release
 
-| Workflow Name               | File name                       | Description                                                                                                                                           |
-| --------------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Draft GitHub Release Post` | `draft_github_release_post.yml` | Compose a GitHub release post draft based on the commit history.  Triggered when the change of `version.txt` is merged.                               |
-| `Release to PyPI`           | `release_pypi.yml`              | Build and release the wheel to PyPI.  Triggered when the change of `version.txt` is merged.                                                           |
-| `Release Nightly to PyPI`   | `release_nightly.yml`           | Build and release the nightly wheel to PyPI as `colossalai-nightly`. Automatically executed every Sunday.                                             |
-| `Release Docker`            | `release_docker.yml`            | Build and release the Docker image to DockerHub. Triggered when the change of `version.txt` is merged.                                                |
-| `Release bdist wheel`       | `release_bdist.yml`             | Build binary wheels with pre-built PyTorch extensions. Manually dispatched. See more details in the next section.                                     |
-| `Auto Compatibility Test`   | `auto_compatibility_test.yml`   | Check Colossal-AI's compatiblity against the PyTorch and CUDA version specified in `.compatibility`. Triggered when `version.txt` is changed in a PR. |
+| Workflow Name               | File name                       | Description                                                                                                                                                 |
+| --------------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Draft GitHub Release Post` | `draft_github_release_post.yml` | Compose a GitHub release post draft based on the commit history.  Triggered when the change of `version.txt` is merged.                                     |
+| `Release to PyPI`           | `release_pypi.yml`              | Build and release the wheel to PyPI.  Triggered when the change of `version.txt` is merged.                                                                 |
+| `Release Nightly to PyPI`   | `release_nightly.yml`           | Build and release the nightly wheel to PyPI as `colossalai-nightly`. Automatically executed every Sunday.                                                   |
+| `Release Docker`            | `release_docker.yml`            | Build and release the Docker image to DockerHub. Triggered when the change of `version.txt` is merged.                                                      |
+| `Release bdist wheel`       | `release_bdist.yml`             | Build binary wheels with pre-built PyTorch extensions. Manually dispatched. See more details in the next section.                                           |
+| `Auto Release bdist wheel`  | `auto_release_bdist.yml`        | Build binary wheels with pre-built PyTorch extensions.Triggered when the change of `version.txt` is merged. Build specificatons are stored in `.bdist.json` |
+| `Auto Compatibility Test`   | `auto_compatibility_test.yml`   | Check Colossal-AI's compatiblity against the PyTorch and CUDA version specified in `.compatibility`. Triggered when `version.txt` is changed in a PR.       |
 
 ### Manual Dispatch
 
@@ -104,6 +105,21 @@ This section lists the files used to configure the workflow.
 1. `.compatibility`
 
 This `.compatibility` file is to tell GitHub Actions which PyTorch and CUDA versions to test against. Each line in the file is in the format `${torch-version}-${cuda-version}`, which is a tag for Docker image. Thus, this tag must be present in the [docker registry](https://hub.docker.com/r/pytorch/conda-cuda) so as to perform the test.
+
+2. `.bdist.json`
+
+This file controls what pytorch/cuda compatible pre-built releases will be built and published. You can add a new entry according to the json schema below if there is a new wheel that needs to be built with AOT compilation of PyTorch extensions.
+
+```json
+{
+  "build": [
+    {
+      "torch_version": "",
+      "cuda_image": ""
+    },
+  ]
+}
+```
 
 ## Progress Log
 
