@@ -77,25 +77,10 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
         # cpu_offload
         self._cpu_offload = cpu_offload
 
-        # old
-        # get process groups
-        # self._dp_parallel_mode = dp_parallel_mode
-        # self._mp_parallel_mode = mp_parallel_mode
-        # self._local_rank = gpc.get_local_rank(dp_parallel_mode)
-        # self._world_size = gpc.get_world_size(dp_parallel_mode)
-
-        print(f'pg rank {pg._rank}')
         self._local_rank = pg.dp_local_rank()
         self._world_size = pg.dp_world_size()
         self._dp_group = pg.dp_process_group()
         self._mp_group = pg.tp_process_group()
-
-        # old
-        # self._dp_group = gpc.get_group(dp_parallel_mode)
-        # if gpc.is_initialized(mp_parallel_mode) and gpc.get_world_size(mp_parallel_mode) > 1:
-        #     self._mp_group = gpc.get_group(mp_parallel_mode)
-        # else:
-        #     self._mp_group = None
 
         # fp16 and fp32 params for mixed precision training
         self._fp16_param_groups = dict()

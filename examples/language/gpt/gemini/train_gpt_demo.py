@@ -292,7 +292,6 @@ def main():
     elif args.distplan.startswith("zero"):
         pg = ProcessGroup()
         partition_flag = (args.distplan == "zero2")
-        print(f'RANK {torch.distributed.get_rank()} {pg._rank}')
         optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 
         optimizer = LowLevelZeroOptimizer(
