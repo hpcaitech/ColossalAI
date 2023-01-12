@@ -291,6 +291,7 @@ def main():
             optimizer = ZeroRedundancyOptimizer(model.parameters(), optimizer_class=torch.optim.Adam, lr=0.01)
     elif args.distplan.startswith("zero"):
         pg = ProcessGroup()
+        model = model.half()
         partition_flag = (args.distplan == "zero2")
         optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 
