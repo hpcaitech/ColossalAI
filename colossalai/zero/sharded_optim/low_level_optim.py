@@ -16,7 +16,7 @@ from ._utils import (
     flatten,
     get_grad_accumulate_object,
     has_inf_or_nan,
-    reduce_tensor,
+    reduce_tensor_dp_group,
     release_param_grad,
     split_half_float_double,
     sync_param,
