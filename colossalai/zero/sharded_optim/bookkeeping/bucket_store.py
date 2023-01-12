@@ -1,13 +1,12 @@
-from colossalai.context import ParallelMode
-from colossalai.core import global_context as gpc
+from colossalai.tensor import ProcessGroup
 
 from .base_store import BaseStore
 
 
 class BucketStore(BaseStore):
 
-    def __init__(self, dp_parallel_mode):
-        super().__init__(dp_parallel_mode)
+    def __init__(self, pg: ProcessGroup):
+        super().__init__(pg)
         self._grads = dict()
         self._params = dict()
         self._num_elements_in_bucket = dict()

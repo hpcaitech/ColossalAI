@@ -288,12 +288,18 @@ def main():
             from torch.distributed.optim import ZeroRedundancyOptimizer
             optimizer = ZeroRedundancyOptimizer(model.parameters(), optimizer_class=torch.optim.Adam, lr=0.01)
     elif args.distplan.startswith("zero"):
+        pg = ProcessGroup()
         partition_flag = args.distplan == "zero2"
+        print(f'RANK {torch.distributed.get_rank()} {pg._rank}')
         optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-        optimizer = LowLevelZeroOptimizer(optimizer,
-                                          overlap_communication=True,
-                                          partition_grad=partition_flag,
-                                          verbose=True)
+
+        optimizer = LowLevelZeroOptimizer(
+            optimizer,
+            pg=pg,
+            overlap_communication=True,
+            partition_grad=partition_flag,
+            verbose=True,
+        )
 
     # model is shared after TP
     numel = get_model_size(model)

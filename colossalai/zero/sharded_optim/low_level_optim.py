@@ -10,6 +10,7 @@ from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import ColossalaiOptimizer
+from colossalai.tensor import ProcessGroup
 from colossalai.utils.cuda import get_current_device
 
 from ._utils import (
@@ -33,7 +34,7 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
     def __init__(
             self,
             optimizer: Optimizer,
-
+            pg: ProcessGroup = ProcessGroup(),
     # grad scaler config
             initial_scale=2**16,
             min_scale=1,
@@ -54,11 +55,11 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
 
     # stage 2
             partition_grad=False,
-            dp_parallel_mode=ParallelMode.DATA,
-            mp_parallel_mode=ParallelMode.MODEL,
+    # dp_parallel_mode=ParallelMode.DATA,
+    # mp_parallel_mode=ParallelMode.MODEL,
 
     # cpu offload
-            cpu_offload=False,
+        cpu_offload=False,
 
     # forced dtype
             forced_dtype=None):
@@ -75,21 +76,29 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
 
         # stage 2
         self._partition_grads = partition_grad
-
+        self._pg = pg
         # cpu_offload
         self._cpu_offload = cpu_offload
 
+        # old
         # get process groups
-        self._dp_parallel_mode = dp_parallel_mode
-        self._mp_parallel_mode = mp_parallel_mode
-        self._local_rank = gpc.get_local_rank(dp_parallel_mode)
-        self._world_size = gpc.get_world_size(dp_parallel_mode)
+        # self._dp_parallel_mode = dp_parallel_mode
+        # self._mp_parallel_mode = mp_parallel_mode
+        # self._local_rank = gpc.get_local_rank(dp_parallel_mode)
+        # self._world_size = gpc.get_world_size(dp_parallel_mode)
 
-        self._dp_group = gpc.get_group(dp_parallel_mode)
-        if gpc.is_initialized(mp_parallel_mode) and gpc.get_world_size(mp_parallel_mode) > 1:
-            self._mp_group = gpc.get_group(mp_parallel_mode)
-        else:
-            self._mp_group = None
+        print(f'pg rank {pg._rank}')
+        self._local_rank = pg.dp_local_rank()
+        self._world_size = pg.dp_world_size()
+        self._dp_group = pg.dp_process_group()
+        self._mp_group = pg.tp_process_group()
+
+        # old
+        # self._dp_group = gpc.get_group(dp_parallel_mode)
+        # if gpc.is_initialized(mp_parallel_mode) and gpc.get_world_size(mp_parallel_mode) > 1:
+        #     self._mp_group = gpc.get_group(mp_parallel_mode)
+        # else:
+        #     self._mp_group = None
 
         # fp16 and fp32 params for mixed precision training
         self._fp16_param_groups = dict()
@@ -126,9 +135,9 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
 
         # ParameterStore will manage the tensor buffers used for zero
         # it will not manage the tensors used by mixed precision training
-        self._param_store = ParameterStore(self._dp_parallel_mode)
-        self._grad_store = GradientStore(self._dp_parallel_mode)
-        self._bucket_store = BucketStore(self._dp_parallel_mode)
+        self._param_store = ParameterStore(pg)
+        self._grad_store = GradientStore(pg)
+        self._bucket_store = BucketStore(pg)
 
         # iterate over the param group in the optimizer
         # partition these param groups for data parallel training
@@ -223,9 +232,7 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
             numel_per_rank[rank_to_go] += param.numel()
 
         if self._verbose:
-            self._logger.info(f'Number of elements on ranks: {numel_per_rank}',
-                              ranks=[0],
-                              parallel_mode=self._dp_parallel_mode)
+            self._logger.info(f'Number of elements on ranks: {numel_per_rank}', ranks=[0])
         return params_per_rank
 
     def _sanity_checks(self):
@@ -374,7 +381,7 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
             reduced_flat = reduce_tensor(tensor=flat,
                                          dtype=self._communication_dtype,
                                          dst_rank=reduce_rank,
-                                         parallel_mode=self._dp_parallel_mode)
+                                         pg=self._pg)
 
             # update the reduced tensor
             if reduce_rank is None or reduce_rank == self._local_rank:
