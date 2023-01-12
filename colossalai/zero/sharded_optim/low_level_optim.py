@@ -55,11 +55,8 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
 
     # stage 2
             partition_grad=False,
-    # dp_parallel_mode=ParallelMode.DATA,
-    # mp_parallel_mode=ParallelMode.MODEL,
-
     # cpu offload
-        cpu_offload=False,
+            cpu_offload=False,
 
     # forced dtype
             forced_dtype=None):
@@ -79,17 +76,16 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
 
         self._cpu_offload = cpu_offload
 
+        self._pg = pg
         if isinstance(pg, ProcessGroup):
-            self._pg = pg
             self._local_rank = pg.dp_local_rank()
             self._world_size = pg.dp_world_size()
             self._dp_group = pg.dp_process_group()
-            if pg.tp_world_size == 1:
-                self._mp_group = None
-            else:
+            if pg.tp_world_size() > 1:
                 self._mp_group = pg.tp_process_group()
+            else:
+                self._mp_group = None
         elif pg is None:
-            self._pg = None
             dp_parallel_mode = ParallelMode.DATA
             mp_parallel_mode = ParallelMode.MODEL
 
@@ -103,7 +99,8 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
                 self._mp_group = gpc.get_group(mp_parallel_mode)
             else:
                 self._mp_group = None
-
+        else:
+            raise TypeError(f"pg should be None or a ProcesGroup")
         # fp16 and fp32 params for mixed precision training
         self._fp16_param_groups = dict()
         self._fp32_flat_param_groups_of_current_rank = dict()
@@ -139,9 +136,14 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
 
         # ParameterStore will manage the tensor buffers used for zero
         # it will not manage the tensors used by mixed precision training
-        self._param_store = ParameterStore(pg)
-        self._grad_store = GradientStore(pg)
-        self._bucket_store = BucketStore(pg)
+        if self._pg is not None:
+            self._param_store = ParameterStore(self._pg)
+            self._grad_store = GradientStore(self._pg)
+            self._bucket_store = BucketStore(self._pg)
+        else:
+            self._param_store = ParameterStore(self._dp_parallel_mode)
+            self._grad_store = GradientStore(self._dp_parallel_mode)
+            self._bucket_store = BucketStore(self._dp_parallel_mode)
 
         # iterate over the param group in the optimizer
         # partition these param groups for data parallel training

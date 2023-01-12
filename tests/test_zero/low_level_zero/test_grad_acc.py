@@ -86,7 +86,7 @@ def exam_zero_1_2_grad_acc():
         assert torch.equal(z1p.data, z2p.data)
 
 
-def exam_zero_1_grad_acc():
+def exam_zero_1_grad_acc(use_pg=True):
     local_rank = torch.distributed.get_rank()
     grad_scale = 32
     seed_all(2008)
@@ -105,7 +105,7 @@ def exam_zero_1_grad_acc():
     # we only test stage 1 here
     # in `check_sharded_param_consistency.py`, we will test whether
     # level 1 and 2 will produce exactly the same results
-    pg = None    #ProcessGroup()
+    pg = ProcessGroup() if use_pg else None    #ProcessGroup()
     zero_optimizer = LowLevelZeroOptimizer(zero_optimizer,
                                            pg=pg,
                                            overlap_communication=False,
@@ -158,13 +158,14 @@ def exam_zero_1_grad_acc():
 def run_dist(rank, world_size, port):
     colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host='localhost')
 
-    exam_zero_1_grad_acc()
+    exam_zero_1_grad_acc(True)
+    exam_zero_1_grad_acc(False)
     # exam_zero_1_2_grad_acc()
 
 
 @pytest.mark.dist
 def test_grad_accumulation():
-    world_size = 4
+    world_size = 2
     run_func = partial(run_dist, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
 
