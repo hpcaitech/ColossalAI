@@ -1,31 +1,35 @@
 # Comparison of Large Batch Training Optimization
 
-## 🚀Quick Start
-Run with synthetic data
-```bash
-colossalai run --nproc_per_node 4 train.py --config config.py -s
+## Table of contents
+
+- [Overview](#-overview)
+- [Quick Start](#-quick-start)
+
+## 📚 Overview
+
+This example lets you to quickly try out the large batch training optimization provided by Colossal-AI. We use synthetic dataset to go through the process, thus, you don't need to prepare any dataset. You can try out the `Lamb` and `Lars` optimizers from Colossal-AI with the following code.
+
+```python
+from colossalai.nn.optimizer import Lamb, Lars
 ```
 
+## 🚀 Quick Start
 
-## Prepare Dataset
+1. Install PyTorch
 
-We use CIFAR10 dataset in this example. You should invoke the `donwload_cifar10.py` in the tutorial root directory or directly run the `auto_parallel_with_resnet.py`.
-The dataset will be downloaded to `colossalai/examples/tutorials/data` by default.
-If you wish to use customized directory for the dataset. You can set the environment variable `DATA` via the following command.
+2. Install the dependencies.
 
 ```bash
-export DATA=/path/to/data
+pip install -r requirements.txt
 ```
 
-You can also use synthetic data for this tutorial if you don't wish to download the `CIFAR10` dataset by adding the `-s` or `--synthetic` flag to the command.
-
-
-## Run on 2*2 device mesh
+3. Run the training scripts with synthetic data.
 
 ```bash
-# run with cifar10
-colossalai run --nproc_per_node 4 train.py --config config.py
+# run on 4 GPUs
+# run with lars
+colossalai run --nproc_per_node 4 train.py --config config.py --optimizer lars
 
-# run with synthetic dataset
-colossalai run --nproc_per_node 4 train.py --config config.py -s
+# run with lamb
+colossalai run --nproc_per_node 4 train.py --config config.py --optimizer lamb
 ```

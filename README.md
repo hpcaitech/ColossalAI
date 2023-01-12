@@ -257,9 +257,32 @@ Acceleration of [AlphaFold Protein Structure](https://alphafold.ebi.ac.uk/)
 
 ## Installation
 
+### Install from PyPI
+
+You can easily install Colossal-AI with the following command. **By defualt, we do not build PyTorch extensions during installation.**
+
+```bash
+pip install colossalai
+```
+
+However, if you want to build the PyTorch extensions during installation, you can set `CUDA_EXT=1`.
+
+```bash
+CUDA_EXT=1 pip install colossalai
+```
+
+**Otherwise, CUDA kernels will be built during runtime when you actually need it.**
+
+We also keep release the nightly version to PyPI on a weekly basis. This allows you to access the unreleased features and bug fixes in the main branch.
+Installation can be made via
+
+```bash
+pip install colossalai-nightly
+```
+
 ### Download From Official Releases
 
-You can visit the [Download](https://www.colossalai.org/download) page to download Colossal-AI with pre-built CUDA extensions.
+You can visit the [Download](https://www.colossalai.org/download) page to download Colossal-AI with pre-built PyTorch extensions.
 
 
 ### Download From Source
@@ -269,9 +292,6 @@ You can visit the [Download](https://www.colossalai.org/download) page to downlo
 ```shell
 git clone https://github.com/hpcaitech/ColossalAI.git
 cd ColossalAI
-
-# install dependency
-pip install -r requirements/requirements.txt
 
 # install colossalai
 pip install .
@@ -331,6 +351,11 @@ Thanks so much to all of our amazing contributors!
 *The order of contributor avatars is randomly shuffled.*
 
 <p align="right">(<a href="#top">back to top</a>)</p>
+
+
+## CI/CD
+
+We leverage the power of [GitHub Actions](https://github.com/features/actions) to automate our development, release and deployment workflows. Please check out this [documentation](.github/workflows/README.md) on how the automated workflows are operated.
 
 
 ## Cite Us

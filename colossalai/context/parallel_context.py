@@ -375,7 +375,7 @@ class ParallelContext(metaclass=SingletonMeta):
 
         # None will give the default global process group for pytorch dist operations
         ranks = list(range(world_size))
-        cpu_group = dist.new_group(ranks, backend='gloo') if dist.get_backend() != 'gloo' else None
+        cpu_group = dist.new_group(ranks, backend='gloo') if dist.get_backend() == 'gloo' else None
         self._register_dist(rank, world_size, dist.GroupMember.WORLD, cpu_group, ranks, ParallelMode.GLOBAL)
         self.add_global_rank(ParallelMode.GLOBAL, rank)
 

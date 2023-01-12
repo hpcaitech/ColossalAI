@@ -36,8 +36,6 @@ def check_param(model: ZeroDDP, torch_model: torch.nn.Module):
     for key, value in torch_dict.items():
         # key is 'module.model.PARAMETER', so we truncate it
         key = key[7:]
-        if key == 'model.lm_head.weight':
-            continue
         assert key in zero_dict, "{} not in ZeRO dictionary.".format(key)
         temp_zero_value = zero_dict[key].to(device=value.device, dtype=value.dtype)
         # debug_print([0], "max range: ", key, torch.max(torch.abs(value - temp_zero_value)))

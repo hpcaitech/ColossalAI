@@ -1,19 +1,13 @@
-import os
-
 import torch
-from titans.dataloader.cifar10 import build_cifar
-from titans.model.vit.vit import _create_vit_model
+import torch.nn as nn
+from torchvision.models import resnet18
 from tqdm import tqdm
 
 import colossalai
-from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.logging import get_dist_logger
-from colossalai.nn import CrossEntropyLoss
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.nn.optimizer import Lamb, Lars
-from colossalai.pipeline.pipelinable import PipelinableContext
-from colossalai.utils import get_dataloader, is_using_pp
 
 
 class DummyDataloader():
@@ -45,7 +39,10 @@ class DummyDataloader():
 def main():
     # initialize distributed setting
     parser = colossalai.get_default_parser()
-    parser.add_argument('-s', '--synthetic', action="store_true", help="whether use synthetic data")
+    parser.add_argument('--optimizer',
+                        choices=['lars', 'lamb'],
+                        help="Choose your large-batch optimizer",
+                        required=True)
     args = parser.parse_args()
 
     # launch from torch
@@ -55,59 +52,22 @@ def main():
     logger = get_dist_logger()
     logger.info("initialized distributed environment", ranks=[0])
 
-    if hasattr(gpc.config, 'LOG_PATH'):
-        if gpc.get_global_rank() == 0:
-            log_path = gpc.config.LOG_PATH
-            if not os.path.exists(log_path):
-                os.mkdir(log_path)
-            logger.log_to_file(log_path)
+    # create synthetic dataloaders
+    train_dataloader = DummyDataloader(length=10, batch_size=gpc.config.BATCH_SIZE)
+    test_dataloader = DummyDataloader(length=5, batch_size=gpc.config.BATCH_SIZE)
 
-    use_pipeline = is_using_pp()
-
-    # create model
-    model_kwargs = dict(img_size=gpc.config.IMG_SIZE,
-                        patch_size=gpc.config.PATCH_SIZE,
-                        hidden_size=gpc.config.HIDDEN_SIZE,
-                        depth=gpc.config.DEPTH,
-                        num_heads=gpc.config.NUM_HEADS,
-                        mlp_ratio=gpc.config.MLP_RATIO,
-                        num_classes=10,
-                        init_method='jax',
-                        checkpoint=gpc.config.CHECKPOINT)
-
-    if use_pipeline:
-        pipelinable = PipelinableContext()
-        with pipelinable:
-            model = _create_vit_model(**model_kwargs)
-        pipelinable.to_layer_list()
-        pipelinable.policy = "uniform"
-        model = pipelinable.partition(1, gpc.pipeline_parallel_size, gpc.get_local_rank(ParallelMode.PIPELINE))
-    else:
-        model = _create_vit_model(**model_kwargs)
-
-    # count number of parameters
-    total_numel = 0
-    for p in model.parameters():
-        total_numel += p.numel()
-    if not gpc.is_initialized(ParallelMode.PIPELINE):
-        pipeline_stage = 0
-    else:
-        pipeline_stage = gpc.get_local_rank(ParallelMode.PIPELINE)
-    logger.info(f"number of parameters: {total_numel} on pipeline stage {pipeline_stage}")
-
-    # create dataloaders
-    root = os.environ.get('DATA', '../data/')
-    if args.synthetic:
-        train_dataloader = DummyDataloader(length=30, batch_size=gpc.config.BATCH_SIZE)
-        test_dataloader = DummyDataloader(length=10, batch_size=gpc.config.BATCH_SIZE)
-    else:
-        train_dataloader, test_dataloader = build_cifar(gpc.config.BATCH_SIZE, root, pad_if_needed=True)
+    # build model
+    model = resnet18(num_classes=gpc.config.NUM_CLASSES)
 
     # create loss function
-    criterion = CrossEntropyLoss(label_smoothing=0.1)
+    criterion = nn.CrossEntropyLoss()
 
     # create optimizer
-    optimizer = Lars(model.parameters(), lr=gpc.config.LEARNING_RATE, weight_decay=gpc.config.WEIGHT_DECAY)
+    if args.optimizer == "lars":
+        optim_cls = Lars
+    elif args.optimizer == "lamb":
+        optim_cls = Lamb
+    optimizer = optim_cls(model.parameters(), lr=gpc.config.LEARNING_RATE, weight_decay=gpc.config.WEIGHT_DECAY)
 
     # create lr scheduler
     lr_scheduler = CosineAnnealingWarmupLR(optimizer=optimizer,
