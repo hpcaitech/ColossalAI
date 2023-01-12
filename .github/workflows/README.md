@@ -55,6 +55,7 @@ In the section below, we will dive into the details of different workflows avail
 | `Release Nightly to PyPI`   | `release_nightly.yml`           | Build and release the nightly wheel to PyPI as `colossalai-nightly`. Automatically executed every Sunday.                                             |
 | `Release Docker`            | `release_docker.yml`            | Build and release the Docker image to DockerHub. Triggered when the change of `version.txt` is merged.                                                |
 | `Release bdist wheel`       | `release_bdist.yml`             | Build binary wheels with pre-built PyTorch extensions. Manually dispatched. See more details in the next section.                                     |
+| `Auto Release bdist wheel`  | `auto_release_bdist.yml`        | Build binary wheels with pre-built PyTorch extensions.Triggered when the change of `version.txt` is merged.                                           |
 | `Auto Compatibility Test`   | `auto_compatibility_test.yml`   | Check Colossal-AI's compatiblity against the PyTorch and CUDA version specified in `.compatibility`. Triggered when `version.txt` is changed in a PR. |
 
 ### Manual Dispatch

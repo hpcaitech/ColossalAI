@@ -1,16 +1,17 @@
 name: Auto Release bdist wheel
 
 on:
+  workflow_dispatch:
   pull_request:
-    # paths:
-    #   - 'version.txt'
-    # types:
-    #   - closed
+    paths:
+      - 'version.txt'
+    types:
+      - closed
 
 jobs:
   matrix_preparation:
     name: Prepare Container List
-    # if: ( github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true ) && github.repository == 'hpcaitech/ColossalAI'
+    if: ( github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true ) && github.repository == 'hpcaitech/ColossalAI'
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
