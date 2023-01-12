@@ -48,15 +48,15 @@ In the section below, we will dive into the details of different workflows avail
 
 ### Release
 
-| Workflow Name               | File name                       | Description                                                                                                                                           |
-| --------------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Draft GitHub Release Post` | `draft_github_release_post.yml` | Compose a GitHub release post draft based on the commit history.  Triggered when the change of `version.txt` is merged.                               |
-| `Release to PyPI`           | `release_pypi.yml`              | Build and release the wheel to PyPI.  Triggered when the change of `version.txt` is merged.                                                           |
-| `Release Nightly to PyPI`   | `release_nightly.yml`           | Build and release the nightly wheel to PyPI as `colossalai-nightly`. Automatically executed every Sunday.                                             |
-| `Release Docker`            | `release_docker.yml`            | Build and release the Docker image to DockerHub. Triggered when the change of `version.txt` is merged.                                                |
-| `Release bdist wheel`       | `release_bdist.yml`             | Build binary wheels with pre-built PyTorch extensions. Manually dispatched. See more details in the next section.                                     |
-| `Auto Release bdist wheel`  | `auto_release_bdist.yml`        | Build binary wheels with pre-built PyTorch extensions.Triggered when the change of `version.txt` is merged.                                           |
-| `Auto Compatibility Test`   | `auto_compatibility_test.yml`   | Check Colossal-AI's compatiblity against the PyTorch and CUDA version specified in `.compatibility`. Triggered when `version.txt` is changed in a PR. |
+| Workflow Name               | File name                       | Description                                                                                                                                                 |
+| --------------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Draft GitHub Release Post` | `draft_github_release_post.yml` | Compose a GitHub release post draft based on the commit history.  Triggered when the change of `version.txt` is merged.                                     |
+| `Release to PyPI`           | `release_pypi.yml`              | Build and release the wheel to PyPI.  Triggered when the change of `version.txt` is merged.                                                                 |
+| `Release Nightly to PyPI`   | `release_nightly.yml`           | Build and release the nightly wheel to PyPI as `colossalai-nightly`. Automatically executed every Sunday.                                                   |
+| `Release Docker`            | `release_docker.yml`            | Build and release the Docker image to DockerHub. Triggered when the change of `version.txt` is merged.                                                      |
+| `Release bdist wheel`       | `release_bdist.yml`             | Build binary wheels with pre-built PyTorch extensions. Manually dispatched. See more details in the next section.                                           |
+| `Auto Release bdist wheel`  | `auto_release_bdist.yml`        | Build binary wheels with pre-built PyTorch extensions.Triggered when the change of `version.txt` is merged. Build specificatons are stored in `.bdist.json` |
+| `Auto Compatibility Test`   | `auto_compatibility_test.yml`   | Check Colossal-AI's compatiblity against the PyTorch and CUDA version specified in `.compatibility`. Triggered when `version.txt` is changed in a PR.       |
 
 ### Manual Dispatch
 
