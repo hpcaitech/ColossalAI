@@ -100,7 +100,7 @@ def split_half_float_double(tensor_list):
     return buckets
 
 
-def reduce_tensor(tensor, dtype=None, dst_rank=None, pg: ProcessGroup = ProcessGroup()):
+def reduce_tensor_dp_group(tensor, dtype=None, dst_rank=None, pg: ProcessGroup = ProcessGroup()):
     """
     Reduce the tensor in the data parallel process group
 

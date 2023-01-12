@@ -360,10 +360,10 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
 
         with torch.cuda.stream(stream):
             flat = bucket.flatten()
-            reduced_flat = reduce_tensor(tensor=flat,
-                                         dtype=self._communication_dtype,
-                                         dst_rank=reduce_rank,
-                                         pg=self._pg)
+            reduced_flat = reduce_tensor_dp_group(tensor=flat,
+                                                  dtype=self._communication_dtype,
+                                                  dst_rank=reduce_rank,
+                                                  pg=self._pg)
 
             # update the reduced tensor
             if reduce_rank is None or reduce_rank == self._local_rank:
