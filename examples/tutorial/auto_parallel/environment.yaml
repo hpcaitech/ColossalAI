@@ -1,0 +1,32 @@
+name: auto
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - _libgcc_mutex=0.1=conda_forge
+  - _openmp_mutex=4.5=2_kmp_llvm
+  - blas=1.0=mkl
+  - brotlipy=0.7.0=py38h27cfd23_1003
+  - bzip2=1.0.8=h7b6447c_0
+  - ca-certificates=2022.12.7=ha878542_0
+  - certifi=2022.12.7=pyhd8ed1ab_0
+  - cffi=1.15.1=py38h74dc2b5_0
+  - charset-normalizer=2.0.4=pyhd3eb1b0_0
+  - coin-or-cbc=2.10.8=h3786ebc_0
+  - coin-or-cgl=0.60.6=h6f57e76_2
+  - coin-or-clp=1.17.7=hc56784d_2
+  - coin-or-osi=0.108.7=h2720bb7_2
+  - coin-or-utils=2.11.6=h202d8b1_2
+  - python=3.8.13
+  - pip=22.2.2
+  - cudatoolkit=11.3
+  - pytorch=1.12.1
+  - torchvision=0.13.1
+  - numpy=1.23.1
+  - pip:
+    - titans
+    - torch==1.12.1
+    - pulp==2.7.0
+    - datasets
+    - colossalai
