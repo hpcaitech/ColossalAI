@@ -19,3 +19,4 @@ class NodeInfo:
     # asyn offload
     node_to_prefetch: Node = None
     prefetch_end_timestamp: float = 0
+    syn_upload_flag: bool = False
