@@ -1,5 +1,5 @@
 import torch
-from torchvision.models import resnet50
+from torchvision.models import resnet18
 from tqdm import tqdm
 
 import colossalai
@@ -21,7 +21,7 @@ def main():
     logger = get_dist_logger()
 
     # trace the model with meta data
-    model = resnet50(num_classes=10).cuda()
+    model = resnet18(num_classes=10).cuda()
     input_sample = {'x': torch.rand([gpc.config.BATCH_SIZE * torch.distributed.get_world_size(), 3, 32, 32]).to('meta')}
 
     model = autoparallelize(model, input_sample)
