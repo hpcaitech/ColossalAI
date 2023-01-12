@@ -1,11 +1,4 @@
-import argparse
-import os
-from pathlib import Path
-
 import torch
-from titans.utils import barrier_context
-from torchvision import transforms
-from torchvision.datasets import CIFAR10
 from torchvision.models import resnet50
 from tqdm import tqdm
 
@@ -14,9 +7,6 @@ from colossalai.auto_parallel.tensor_shard.initialize import autoparallelize
 from colossalai.core import global_context as gpc
 from colossalai.logging import get_dist_logger
 from colossalai.nn.lr_scheduler import CosineAnnealingLR
-from colossalai.utils import get_dataloader
-
-DATA_ROOT = Path(os.environ.get('DATA', '../data')).absolute()
 
 
 def synthesize_data():

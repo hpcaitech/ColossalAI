@@ -1,13 +1,16 @@
-# Auto-Parallelism with ResNet
+# Auto-Parallelism
 
 ## 🚀Quick Start
+
 ### Auto-Parallel Tutorial
+
 1. Install `pulp` and `coin-or-cbc` for the solver.
+
 ```bash
 pip install pulp
 conda install -c conda-forge coin-or-cbc
 ```
-2. Run the auto parallel resnet example with 4 GPUs with synthetic dataset.
+1. Run the auto parallel resnet example with 4 GPUs with synthetic dataset.
 ```bash
 colossalai run --nproc_per_node 4 auto_parallel_with_resnet.py -s
 ```
