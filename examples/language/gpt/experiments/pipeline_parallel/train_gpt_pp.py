@@ -120,7 +120,7 @@ def run_master(args):
         logger.info(f'{rank=} numel in the partition:{numel}')
 
     # build optim
-    pp_engine.initialize_optimizer(HybridAdam, lr=1e-3)
+    pp_engine.initialize_optimizer(torch.optim.Adam, lr=1e-3)
 
     ranks_tflops = {}
     for n in range(NUM_STEPS):
