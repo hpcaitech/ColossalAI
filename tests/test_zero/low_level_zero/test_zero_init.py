@@ -27,7 +27,7 @@ class TestModel(nn.Module):
 
 
 def exam_zero_init():
-    dp_2_tp_2_pg = ProcessGroup(tp_degree=2)
+    dp_2_tp_2_pg = ProcessGroup(dp_degree=2, tp_degree=2)
     model1 = TestModel().cuda()
     with ColoInitContext(device=get_current_device(), default_pg=dp_2_tp_2_pg):
         model2 = TestModel()
@@ -45,7 +45,7 @@ def exam_zero_init():
 
 
 def run_dist(rank, world_size, port):
-    config_dict = dict(parallel=dict(tensor=dict(size=2, mode='1d')))
+    config_dict = dict(parallel=dict(data=2, tensor=dict(size=2, mode='1d')))
     colossalai.launch(config=config_dict, rank=rank, world_size=world_size, port=port, host='localhost')
     exam_zero_init()
 
