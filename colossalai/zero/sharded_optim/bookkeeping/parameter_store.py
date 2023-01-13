@@ -1,16 +1,15 @@
-from typing import List, Optional
+from typing import List
 
 from torch import Tensor
-
-from colossalai.tensor import ProcessGroup
+from torch.distributed import ProcessGroup
 
 from .base_store import BaseStore
 
 
 class ParameterStore(BaseStore):
 
-    def __init__(self, pg: Optional[ProcessGroup] = None):
-        super().__init__(pg)
+    def __init__(self, torch_pg: ProcessGroup):
+        super().__init__(torch_pg)
         # param partitioning data structures
         self._fp16_param_to_rank = dict()
         self._rank_groupid_to_fp16_param_list = dict()

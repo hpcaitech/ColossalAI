@@ -1,14 +1,12 @@
-from typing import Optional
-
-from colossalai.tensor import ProcessGroup
+from torch.distributed import ProcessGroup
 
 from .base_store import BaseStore
 
 
 class BucketStore(BaseStore):
 
-    def __init__(self, pg: Optional[ProcessGroup] = None):
-        super().__init__(pg)
+    def __init__(self, torch_pg: ProcessGroup):
+        super().__init__(torch_pg)
         self._grads = dict()
         self._params = dict()
         self._num_elements_in_bucket = dict()

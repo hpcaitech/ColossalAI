@@ -9,7 +9,6 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.testing import assert_close
 
 import colossalai
-from colossalai.tensor import ProcessGroup
 from colossalai.testing.random import seed_all
 from colossalai.utils import free_port
 from colossalai.zero import LowLevelZeroOptimizer
@@ -59,17 +58,14 @@ def exam_zero_1_2():
     zero1_model = TestModel().cuda()
     zero2_model = copy.deepcopy(zero1_model)
 
-    pg = ProcessGroup()
     # create optimizer
     zero1_optimizer = torch.optim.Adam(zero1_model.parameters(), lr=1)
     zero2_optimizer = torch.optim.Adam(zero2_model.parameters(), lr=1)
     zero1_optimizer = LowLevelZeroOptimizer(zero1_optimizer,
-                                            pg=pg,
                                             overlap_communication=True,
                                             initial_scale=128,
                                             verbose=True)
     zero2_optimizer = LowLevelZeroOptimizer(zero2_optimizer,
-                                            pg=pg,
                                             overlap_communication=True,
                                             partition_grad=True,
                                             initial_scale=128)
@@ -119,7 +115,7 @@ def exam_zero_1_torch_ddp():
     torch_model = copy.deepcopy(zero_model)
 
     zero_model = zero_model.cuda().half()
-    # torch_model = DDP(torch_model.cuda(), bucket_cap_mb=0)
+    torch_model = DDP(torch_model.cuda(), bucket_cap_mb=0)
     torch_model = torch_model.cuda()
 
     # for (n, p), z1p in zip(torch_model.named_parameters(), zero_model.parameters()):
@@ -131,9 +127,7 @@ def exam_zero_1_torch_ddp():
     # we only test stage 1 here
     # in `check_sharded_param_consistency.py`, we will test whether
     # level 1 and 2 will produce exactly the same results
-    pg = ProcessGroup()
     zero_optimizer = LowLevelZeroOptimizer(zero_optimizer,
-                                           pg=pg,
                                            overlap_communication=True,
                                            initial_scale=1,
                                            reduce_bucket_size=262144)
