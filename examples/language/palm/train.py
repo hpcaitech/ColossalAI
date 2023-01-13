@@ -179,8 +179,8 @@ colossalai.launch_from_torch(config={})
 logger = get_dist_logger()
 
 
-def generate_dataset(from_file: bool = True):
-    if from_file:
+def generate_dataset(dummy_data: bool = False):
+    if not dummy_data:
         with gzip.open("./data/enwik8.gz") as file:
             X = np.fromstring(file.read(int(95e6)), dtype=np.uint8)
             trX, vaX = np.split(X, [int(90e6)])
