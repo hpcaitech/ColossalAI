@@ -279,8 +279,12 @@ def main():
 
         logger.info(get_mem_info(prefix='After init optim, '), ranks=[0])
     else:
-        assert args.tp_degree == 1, "The degree of TP should be 1 for DDP examples."
-        model = model_builder(args.model_type)(checkpoint=True).cuda()
+        # assert args.tp_degree == 1, "The degree of TP should be 1 for DDP examples."
+        tp_pg = ProcessGroup(tp_degree=args.tp_degree)
+
+        with ColoInitContext(device=get_current_device(), dtype=torch.half):
+            model = model_builder(args.model_type)(checkpoint=True)    #.cuda()
+        tensor_parallelize(model, tp_pg)
 
     if args.distplan.startswith("torch"):
         model = DDP(model)
@@ -290,8 +294,8 @@ def main():
             from torch.distributed.optim import ZeroRedundancyOptimizer
             optimizer = ZeroRedundancyOptimizer(model.parameters(), optimizer_class=torch.optim.Adam, lr=0.01)
     elif args.distplan.startswith("zero"):
-        pg = ProcessGroup()
-        model = model.half()
+        pg = ProcessGroup(tp_degree=args.tp_degree)
+        # model = model.half()
         partition_flag = (args.distplan == "zero2")
         optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 
@@ -299,7 +303,7 @@ def main():
             optimizer,
             pg=pg,
             reduce_bucket_size=12 * 1024 * 1024,
-            overlap_communication=True,
+            overlap_communication=False,
             partition_grad=partition_flag,
             verbose=True,
         )

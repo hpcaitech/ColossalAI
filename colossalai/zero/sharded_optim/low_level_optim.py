@@ -85,6 +85,7 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
                 self._mp_group = pg.tp_process_group()
             else:
                 self._mp_group = None
+            self._dp_rank_list = self._pg.dp_rank_list()
         elif pg is None:
             dp_parallel_mode = ParallelMode.DATA
             mp_parallel_mode = ParallelMode.MODEL
@@ -99,6 +100,8 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
                 self._mp_group = gpc.get_group(mp_parallel_mode)
             else:
                 self._mp_group = None
+            assert gpc.get_world_size(mp_parallel_mode) == 1, "tensor parallel degree must be 1 if use gpc"
+            self._dp_rank_list = range(self._world_size)
         else:
             raise TypeError(f"pg should be None or a ProcesGroup")
         # fp16 and fp32 params for mixed precision training
@@ -171,7 +174,7 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
                 param.data = param.data.cpu()
 
             # flatten the reordered tensors
-            for rank in range(self._world_size):
+            for rank in self._dp_rank_list:
                 tensor_list = self._param_store.get_fp16_params_by_rank_group(rank, group_id)
                 with torch.no_grad():
                     flat_tensor = flatten(tensor_list)
@@ -179,7 +182,7 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
                 self._param_store.add_flat_fp16_param_by_rank_group(rank, group_id, flat_tensor)
 
             # sync parameters
-            for rank in range(self._world_size):
+            for rank in self._dp_rank_list:
                 flat_tensor = self._param_store.get_flat_fp16_param_by_rank_group(rank, group_id)
                 tensor_list = self._param_store.get_fp16_params_by_rank_group(rank, group_id)
                 sync_param(flat_tensor=flat_tensor, tensor_list=tensor_list)
@@ -225,8 +228,8 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
         return len(self._fp16_param_groups)
 
     def _partition_param_list(self, param_list):
-        params_per_rank = [[] for _ in range(self._world_size)]
-        numel_per_rank = [0 for _ in range(self._world_size)]
+        params_per_rank = [[] for _ in self._dp_rank_list]
+        numel_per_rank = [0 for _ in self._dp_rank_list]
 
         # partititon the parameters in a greedy fashion
         sorted_params = sorted(param_list, key=lambda x: x.numel(), reverse=True)
@@ -495,7 +498,9 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
         # broadcast the updated model weights
         handles = []
         for group_id in range(self.num_param_groups):
-            for rank in range(self._world_size):
+            # for rank in range(self._world_size):
+            # hybrid parallel
+            for rank in self._pg.dp_rank_list():
                 fp16_param = self._param_store.get_flat_fp16_param_by_rank_group(rank=rank, group_id=group_id)
                 handle = dist.broadcast(fp16_param, src=rank, group=self._dp_group, async_op=True)
                 handles.append(handle)
@@ -593,5 +598,5 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
         # are attached in the __init__ function, so we
         # only need to reduce the gradients
         # left in the communication bucket
-        for reduce_rank in range(self._world_size):
+        for reduce_rank in self._dp_rank_list:
             self._reduce_grads_in_bucket(reduce_rank)
