@@ -1,3 +1,4 @@
+$(cd `dirname $0`;pwd)
 export TRAIN_STEP=4
 
 for MODEL_TYPE in "gpt2_medium"; do
