@@ -1,1 +1,1 @@
-bash ./gemini/test_ci.shg
+bash ./gemini/test_ci.sh
