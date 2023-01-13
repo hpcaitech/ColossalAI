@@ -1,6 +1,6 @@
 set -x
 # distplan in ["colossalai", "zero1", "zero2", "torch_ddp", "torch_zero"]
-export DISTPLAN=${DISTPLAN:-"zero1"}
+export DISTPLAN=${DISTPLAN:-"colossalai"}
 
 # The following options only valid when DISTPLAN="colossalai"
 export GPUNUM=${GPUNUM:-1}
