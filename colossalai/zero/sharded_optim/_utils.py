@@ -103,7 +103,11 @@ def split_half_float_double(tensor_list):
     return buckets
 
 
-def reduce_tensor_dp_group(tensor, dtype=None, dst_rank=None, pg: Optional[ProcessGroup] = None):
+def reduce_tensor_dp_group(tensor: torch.Tensor,
+                           dtype: Optional[torch.dtype] = None,
+                           dst_local_rank: Optional[int] = None,
+                           dst_global_rank: Optional[int] = None,
+                           group: Optional[dist.ProcessGroup] = None):
     """
     Reduce the tensor in the data parallel process group
 
@@ -128,36 +132,22 @@ def reduce_tensor_dp_group(tensor, dtype=None, dst_rank=None, pg: Optional[Proce
     else:
         tensor_to_reduce = tensor
 
-    if isinstance(pg, ProcessGroup):
-        group = pg.dp_process_group()
-        world_size = pg.dp_world_size()
-    else:
-        world_size = gpc.get_world_size(ParallelMode.DATA)
-        group = gpc.get_group(ParallelMode.DATA)
-
+    world_size = dist.get_world_size(group=group)
     tensor_to_reduce.div_(world_size)
 
     # if rank is None, all reduce will be used
     # else, reduce is used
-    use_all_reduce = dst_rank is None
+    use_all_reduce = dst_local_rank is None
 
     if use_all_reduce:
         dist.all_reduce(tensor_to_reduce, group=group)
     else:
-        if pg is not None:
-            ranks_in_group = pg.dp_rank_list()
-        else:
-            ranks_in_group = gpc.get_ranks_in_group(ParallelMode.DATA)
-        global_rank = ranks_in_group[dst_rank]
-        dist.reduce(tensor=tensor_to_reduce, dst=global_rank, group=group)
+        dist.reduce(tensor=tensor_to_reduce, dst=dst_global_rank, group=group)
 
     # recover the original dtype
     if tensor.dtype != dtype and tensor is not tensor_to_reduce:
-        if pg is not None:
-            local_rank = pg.dp_local_rank()
-        else:
-            local_rank = gpc.get_local_rank(ParallelMode.DATA)
-        if use_all_reduce or dst_rank == local_rank:
+        local_rank = dist.get_rank(group=group)
+        if use_all_reduce or dst_local_rank == local_rank:
             tensor.copy_(tensor_to_reduce)
 
     return tensor
