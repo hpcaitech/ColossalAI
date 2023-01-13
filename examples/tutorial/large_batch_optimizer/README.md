@@ -1,9 +1,11 @@
-# Comparison of Large Batch Training Optimization
+# Large Batch Training Optimization
 
 ## Table of contents
 
-- [Overview](#-overview)
-- [Quick Start](#-quick-start)
+- [Large Batch Training Optimization](#large-batch-training-optimization)
+  - [Table of contents](#table-of-contents)
+  - [📚 Overview](#-overview)
+  - [🚀 Quick Start](#-quick-start)
 
 ## 📚 Overview
 
