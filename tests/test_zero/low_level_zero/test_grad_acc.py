@@ -9,6 +9,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.testing import assert_close
 
 import colossalai
+from colossalai.tensor import ProcessGroup
 from colossalai.testing.random import seed_all
 from colossalai.utils import free_port
 from colossalai.zero import LowLevelZeroOptimizer
@@ -34,16 +35,18 @@ def exam_zero_1_2_grad_acc():
     # create model
     zero1_model = TestModel().cuda()
     zero2_model = copy.deepcopy(zero1_model)
-
+    pg = ProcessGroup()
     # create optimizer
     zero1_optimizer = torch.optim.Adam(zero1_model.parameters(), lr=1)
     zero2_optimizer = torch.optim.Adam(zero2_model.parameters(), lr=1)
     zero1_optimizer = LowLevelZeroOptimizer(zero1_optimizer,
+                                            pg=pg,
                                             overlap_communication=True,
                                             initial_scale=32,
                                             clip_grad_norm=1.0,
                                             verbose=True)
     zero2_optimizer = LowLevelZeroOptimizer(zero2_optimizer,
+                                            pg=pg,
                                             overlap_communication=True,
                                             partition_grad=True,
                                             initial_scale=32,
@@ -83,7 +86,7 @@ def exam_zero_1_2_grad_acc():
         assert torch.equal(z1p.data, z2p.data)
 
 
-def exam_zero_1_grad_acc():
+def exam_zero_1_grad_acc(use_pg=True):
     local_rank = torch.distributed.get_rank()
     grad_scale = 32
     seed_all(2008)
@@ -92,6 +95,7 @@ def exam_zero_1_grad_acc():
     zero_model = TestModel()
     torch_model = copy.deepcopy(zero_model)
 
+    seed_all(2008)
     zero_model = zero_model.cuda()
     torch_model = DDP(torch_model.cuda(), bucket_cap_mb=0)
 
@@ -101,7 +105,9 @@ def exam_zero_1_grad_acc():
     # we only test stage 1 here
     # in `check_sharded_param_consistency.py`, we will test whether
     # level 1 and 2 will produce exactly the same results
+    pg = ProcessGroup() if use_pg else None    #ProcessGroup()
     zero_optimizer = LowLevelZeroOptimizer(zero_optimizer,
+                                           pg=pg,
                                            overlap_communication=False,
                                            initial_scale=grad_scale,
                                            reduce_bucket_size=262144,
@@ -152,7 +158,8 @@ def exam_zero_1_grad_acc():
 def run_dist(rank, world_size, port):
     colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host='localhost')
 
-    exam_zero_1_grad_acc()
+    exam_zero_1_grad_acc(True)
+    exam_zero_1_grad_acc(False)
     # exam_zero_1_2_grad_acc()
 
 
