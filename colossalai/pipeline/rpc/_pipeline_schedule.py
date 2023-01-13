@@ -29,9 +29,6 @@ class FillDrainWorker(WorkerBase):
 
         target_key = UniqueKey(target_microbatch_id, target_phase)
 
-        with self.work_list_condition_lock:
-            self.work_list_condition_lock.wait_for(lambda: target_key in self.work_list)
-
         return target_key
 
 
