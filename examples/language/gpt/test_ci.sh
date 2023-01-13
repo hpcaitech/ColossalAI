@@ -1,16 +1,15 @@
 pip install -r requirements.txt
 
-# distplan in ["colossalai", "zero1", "zero2", "torch_ddp", "torch_zero"]
-export DISTPAN="colossalai"
+# test colossalai
+for TP in 1 2; do
+    for PLACEMENT in "cpu" "cuda" "auto" "const"; do
+        for SHARD in "True" "False"; do
+            colossalai run --nproc_per_node=4 ./gemini/train_gpt_demo.py --steps 4 --distplan colossalai --tp_degree $TP --placement $PLACEMENT --shardinit $SHARD || exit 1
+        done
+    done
+done
 
-# The following options only valid when DISTPAN="colossalai"
-export TPDEGREE=2
-export GPUNUM=4
-export PLACEMENT='cpu'
-export USE_SHARD_INIT=False
-export BATCH_SIZE=8
-export MODEL_TYPE="gpt2_medium"
-
-
-mkdir -p logs
-torchrun --standalone --nproc_per_node=${GPUNUM} train_gpt_demo.py --tp_degree=${TPDEGREE} --model_type=${MODEL_TYPE} --batch_size=${BATCH_SIZE} --placement ${PLACEMENT} --shardinit ${USE_SHARD_INIT} --distplan ${DISTPAN} 2>&1 | tee ./logs/${MODEL_TYPE}_${DISTPAN}_gpu_${GPUNUM}_bs_${BATCH_SIZE}_tp_${TPDEGREE}.log
+# test zero1&2
+for DIST in "zero1" "zero2"; do
+    colossalai run --nproc_per_node=4 ./gemini/train_gpt_demo.py --steps 4 --distplan $DIST || exit 1
+done
