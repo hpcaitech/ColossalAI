@@ -1,3 +1,4 @@
+set -x
 $(cd `dirname $0`;pwd)
 export TRAIN_STEP=4
 
