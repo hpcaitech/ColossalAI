@@ -4,6 +4,7 @@ import pytest
 import torch
 import torch.fx
 import torch.multiprocessing as mp
+from fastfold.model.nn.evoformer import EvoformerBlock
 
 import colossalai
 from colossalai.core import global_context as gpc
@@ -13,7 +14,6 @@ from colossalai.fx.graph_module import ColoGraphModule
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
 from colossalai.fx.tracer.experimental import ColoTracer, symbolic_trace
 from colossalai.utils import free_port
-from tests.test_autochunk.origin_openfold.evoformer import EvoformerBlock
 
 if CODEGEN_AVAILABLE and is_compatible_with_meta():
     from colossalai.autochunk.autochunk_codegen import AutoChunkCodeGen
@@ -108,7 +108,7 @@ def _test_autochunk_codegen(rank, msa_len, pair_len, max_memory):
         MetaTensor(node_mask, fake_device="cuda:0"),
         MetaTensor(pair_mask, fake_device="cuda:0"),
     )
-    codegen = AutoChunkCodeGen(meta_graph, max_memory=max_memory)
+    # codegen = AutoChunkCodeGen(meta_graph, max_memory=max_memory)
 
     # trace and recompile
     # MetaInfoProp requires symbolic_trace but CodeGen requires ColoTracer

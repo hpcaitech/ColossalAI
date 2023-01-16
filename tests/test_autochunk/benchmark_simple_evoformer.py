@@ -69,8 +69,8 @@ def _build_autochunk(model, max_memory, node, pair):
 
 def benchmark_evoformer():
     # init data and model
-    msa_len = 32
-    pair_len = 64
+    msa_len = 128
+    pair_len = 256
     node = torch.randn(1, msa_len, pair_len, 256).cuda()
     pair = torch.randn(1, pair_len, pair_len, 128).cuda()
     model = base_evoformer().cuda()
