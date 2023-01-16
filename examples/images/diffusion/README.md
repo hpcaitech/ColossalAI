@@ -31,11 +31,10 @@ More details can be found in our [blog of Stable Diffusion v1](https://www.hpc-a
 This project is in rapid development.
 
 - [X] Train a stable diffusion model v1/v2 from scatch
-- [X] finetune a pretrained Stable diffusion v1 model
+- [X] Finetune a pretrained Stable diffusion v1 model
 - [X] Inference a pretrained model using PyTorch
-- [ ] finetune a pretrained Stable diffusion v2 model
+- [ ] Finetune a pretrained Stable diffusion v2 model
 - [ ] Inference a pretrained model using TensoRT
-
 
 ## Installation
 
