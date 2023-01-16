@@ -243,7 +243,6 @@ def main():
     SEQ_LEN = 1024
     VOCAB_SIZE = 50257
 
-
     NUM_STEPS = args.train_step
 
     WARMUP_STEPS = 1
