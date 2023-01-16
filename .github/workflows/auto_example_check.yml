@@ -81,9 +81,8 @@ jobs:
   # This is for all files' weekly check. Specifically, this job is to find all the directories.
   matrix_preparation:
     if: |
-        github.event.pull_request.draft == false &&
-        github.base_ref == 'main' &&
-        github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' && github.event_name == 'schedule'
+        github.repository == 'hpcaitech/ColossalAI' &&
+        github.event_name == 'schedule'
     name: Prepare matrix for weekly check
     runs-on: ubuntu-latest
     outputs:
@@ -101,9 +100,8 @@ jobs:
 
   weekly_check:
     if: |
-        github.event.pull_request.draft == false &&
-        github.base_ref == 'main' &&
-        github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' && github.event_name == 'schedule'
+        github.repository == 'hpcaitech/ColossalAI' &&
+        github.event_name == 'schedule'
     name: Weekly check all examples
     needs: matrix_preparation
     runs-on: [self-hosted, gpu]
