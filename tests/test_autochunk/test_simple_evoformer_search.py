@@ -5,13 +5,18 @@ import torch
 import torch.fx
 import torch.multiprocessing as mp
 
+try:
+    from simple_evoformer import base_evoformer
+    HAS_REPO = True
+except:
+    HAS_REPO = False
+
 import colossalai
 from colossalai.core import global_context as gpc
 from colossalai.fx._compatibility import is_compatible_with_meta
 from colossalai.fx.codegen.activation_checkpoint_codegen import CODEGEN_AVAILABLE
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
 from colossalai.utils import free_port
-from tests.test_autochunk.evoformer.evoformer import evoformer_base
 
 if CODEGEN_AVAILABLE and is_compatible_with_meta():
     from colossalai.autochunk.autochunk_codegen import AutoChunkCodeGen
@@ -57,7 +62,7 @@ def assert_chunk_infos(chunk_infos, max_memory, msa_len, pair_len):
         )
 
 
-def _test_autochunk_search(rank, msa_len, pair_len, max_memory):
+def _test_simple_evoformer_search(rank, msa_len, pair_len, max_memory):
     # launch colossalai
     colossalai.launch(
         config={},
@@ -69,7 +74,7 @@ def _test_autochunk_search(rank, msa_len, pair_len, max_memory):
     )
 
     # build model and input
-    model = evoformer_base().cuda()
+    model = base_evoformer().cuda()
     node = torch.randn(1, msa_len, pair_len, 256).cuda()
     pair = torch.randn(1, pair_len, pair_len, 128).cuda()
 
@@ -84,13 +89,14 @@ def _test_autochunk_search(rank, msa_len, pair_len, max_memory):
     gpc.destroy()
 
 
-@pytest.mark.skipif(not (CODEGEN_AVAILABLE and is_compatible_with_meta()), reason="torch version is lower than 1.12.0")
+@pytest.mark.skipif(not (CODEGEN_AVAILABLE and is_compatible_with_meta() and HAS_REPO),
+                    reason="torch version is lower than 1.12.0")
 @pytest.mark.parametrize("max_memory", [None, 20, 25, 30])
 @pytest.mark.parametrize("msa_len", [32])
 @pytest.mark.parametrize("pair_len", [64])
-def test_autochunk_search(msa_len, pair_len, max_memory):
+def test_simple_evoformer_search(msa_len, pair_len, max_memory):
     run_func = partial(
-        _test_autochunk_search,
+        _test_simple_evoformer_search,
         msa_len=msa_len,
         pair_len=pair_len,
         max_memory=max_memory,
@@ -99,4 +105,4 @@ def test_autochunk_search(msa_len, pair_len, max_memory):
 
 
 if __name__ == "__main__":
-    _test_autochunk_search(0, 32, 64, 20)
+    _test_simple_evoformer_search(0, 32, 64, 20)
