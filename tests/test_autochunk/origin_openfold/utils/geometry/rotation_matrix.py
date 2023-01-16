@@ -158,5 +158,5 @@ class Rot3Array:
     @classmethod
     def cat(cls, rots: List[Rot3Array], dim: int) -> Rot3Array:
         field_names = utils.get_field_names(Rot3Array)
-        cat_fn = lambda l: torch.cat(l, dim=dim)
+        cat_fn = lambda ll: torch.cat(ll, dim=dim)
         return cls(**{name: cat_fn([getattr(r, name) for r in rots]) for name in field_names})

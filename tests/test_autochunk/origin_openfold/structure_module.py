@@ -124,8 +124,8 @@ class AngleResnet(nn.Module):
         s = self.linear_in(s)
         s = s + s_initial
 
-        for l in self.layers:
-            s = l(s)
+        for ll in self.layers:
+            s = ll(s)
 
         s = self.relu(s)
 
@@ -526,15 +526,15 @@ class StructureModuleTransition(nn.Module):
 
         self.layers = nn.ModuleList()
         for _ in range(self.num_layers):
-            l = StructureModuleTransitionLayer(self.c)
-            self.layers.append(l)
+            ll = StructureModuleTransitionLayer(self.c)
+            self.layers.append(ll)
 
         self.dropout = nn.Dropout(self.dropout_rate)
         self.layer_norm = LayerNorm(self.c)
 
     def forward(self, s: torch.Tensor) -> torch.Tensor:
-        for l in self.layers:
-            s = l(s)
+        for ll in self.layers:
+            s = ll(s)
 
         s = self.dropout(s)
         s = self.layer_norm(s)
