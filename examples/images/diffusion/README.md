@@ -26,6 +26,17 @@ Acceleration of AIGC (AI-Generated Content) models such as [Stable Diffusion v1]
 
 More details can be found in our [blog of Stable Diffusion v1](https://www.hpc-ai.tech/blog/diffusion-pretraining-and-hardware-fine-tuning-can-be-almost-7x-cheaper) and [blog of Stable Diffusion v2](https://www.hpc-ai.tech/blog/colossal-ai-0-2-0).
 
+
+## Roadmap
+This project is in rapid development.
+
+- [X] Train a stable diffusion model v1/v2 from scatch
+- [X] finetune a pretrained Stable diffusion v1 model
+- [X] Inference a pretrained model using PyTorch
+- [ ] finetune a pretrained Stable diffusion v2 model
+- [ ] Inference a pretrained model using TensoRT
+
+
 ## Installation
 
 ### Option #1: install from source
@@ -123,7 +134,7 @@ git clone https://huggingface.co/CompVis/stable-diffusion-v1-4
 
 ### stable-diffusion-v1-5 from runway
 
-If you want to useed the Last [stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5) wiegh from runwayml
+If you want to useed the Last [stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5) weight from runwayml
 
 ```
 git lfs install
@@ -156,7 +167,7 @@ You can change the trainging config in the yaml file
 - precision: the precision type used in training, default 16 (fp16), you must use fp16 if you want to apply colossalai
 - more information about the configuration of ColossalAIStrategy can be found [here](https://pytorch-lightning.readthedocs.io/en/latest/advanced/model_parallel.html#colossal-ai)
 
-## Finetune Example
+## Finetune Example (Work In Progress)
 ### Training on Teyvat Datasets
 
 We provide the finetuning example on [Teyvat](https://huggingface.co/datasets/Fazzie/Teyvat) dataset, which is create by BLIP generated captions.
