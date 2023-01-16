@@ -23,7 +23,7 @@ from colossalai.utils.model.colo_init_context import ColoInitContext
 
 # constants
 
-NUM_BATCHES = int(100)
+NUM_BATCHES = int(10)
 WARMUP_BATCHES = 1
 GRADIENT_ACCUMULATE_EVERY = 1
 LEARNING_RATE = 2e-4
@@ -65,6 +65,12 @@ def parse_args():
         type=int,
         default=8,
         help="batch size per DP group of training.",
+    )
+    parser.add_argument(
+        "--dummy_data",
+        type=bool,
+        default=False,
+        help="use dummy dataset.",
     )
     args = parser.parse_args()
     return args
@@ -171,10 +177,23 @@ disable_existing_loggers()
 colossalai.launch_from_torch(config={})
 logger = get_dist_logger()
 
-with gzip.open("./data/enwik8.gz") as file:
-    X = np.fromstring(file.read(int(95e6)), dtype=np.uint8)
-    trX, vaX = np.split(X, [int(90e6)])
-    data_train, data_val = torch.from_numpy(trX), torch.from_numpy(vaX)
+
+def generate_dataset(dummy_data: bool = False):
+    if not dummy_data:
+        with gzip.open("./data/enwik8.gz") as file:
+            X = np.fromstring(file.read(int(95e6)), dtype=np.uint8)
+            trX, vaX = np.split(X, [int(90e6)])
+            data_train, data_val = torch.from_numpy(trX), torch.from_numpy(vaX)
+            # print(f"data_train {data_train.shape} {data_train.dtype} {max(data_train)} {min(data_train)}")
+            # print(f"data_val {data_val.shape} {data_val.dtype}  {max(data_val)} {min(data_val)}")
+            return data_train, data_val
+    else:
+        return torch.randint(0, 100, (90000000,)), torch.randint(0, 100, (5000000,))
+
+
+data_train, data_val = generate_dataset(args.dummy_data)
+
+print("generate dataset ready!")
 
 
 class TextSamplerDataset(Dataset):
