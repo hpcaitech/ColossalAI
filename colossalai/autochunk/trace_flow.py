@@ -6,6 +6,7 @@ from .utils import (
     get_node_shape,
     is_non_compute_node,
     is_non_compute_node_except_placeholder,
+    unflat_list,
 )
 
 
@@ -360,19 +361,28 @@ class TraceFlow(object):
         return chunk_info
 
     def _reassgin_reshape_size(self, chunk_info):
+        """
+        Some shape args in reshape may have changed due to chunk
+        reassgin those changed shape
+        """
         chunk_region = chunk_info["region"]
         reshape_size = {}
         chunk_shape = get_node_shape(chunk_info["outputs"][0])[chunk_info["outputs_dim"]]
         for node in self.trace_indice.node_list[chunk_region[0]:chunk_region[1] + 1]:
             if any(i in node.name for i in ["reshape", "view"]):
-                reshape_args = node.args[1:]
-                reshape_log = self.trace_indice.indice_view_list[node]
+                reshape_args = unflat_list(node.args[1:])
                 chunk_dim = chunk_info["node_chunk_dim"][node]["chunk_dim"]
-                reshape_size[node.name] = {}
+                new_shape = ""
                 for reshape_arg_dim, reshape_arg in enumerate(reshape_args):
-                    if reshape_arg_dim in reshape_log["dim_to"]:
-                        continue
                     if reshape_arg_dim == chunk_dim:
-                        reshape_size[node.name][reshape_arg.name] = ("min(chunk_size, %d - chunk_idx)" % chunk_shape)
+                        new_shape += "min(chunk_size, %d - chunk_idx), " % chunk_shape
+                    else:
+                        if isinstance(reshape_arg, int):
+                            new_shape += "%s, " % str(reshape_arg)
+                        else:
+                            new_shape += "%s, " % reshape_arg.name
+                new_shape = new_shape[:-2]
+                origin_shape = str(reshape_args)[1:-1]
+                reshape_size[node.name] = [origin_shape, new_shape]
         chunk_info["reshape_size"] = reshape_size
         return chunk_info
