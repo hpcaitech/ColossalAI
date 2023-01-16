@@ -24,7 +24,7 @@ Use the following commands to execute training.
 # export DATA=/path/to/small-gpt-dataset.json'
 
 # run on a single node
-colossalai run --nproc_per_node=<num_gpus> train_gpt.py --config configs/<config_file> --from_torch
+colossalai run --nproc_per_node=<num_gpus> train_gpt.py --config configs/<config_file> --from_torch --use_dummy_dataset
 
 # run on multiple nodes with slurm
 colossalai run --nproc_per_node=<num_gpus> \
