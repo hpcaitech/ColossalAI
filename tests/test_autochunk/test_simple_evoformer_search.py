@@ -4,7 +4,12 @@ import pytest
 import torch
 import torch.fx
 import torch.multiprocessing as mp
-from simple_evoformer import base_evoformer, openfold_evoformer
+
+try:
+    from simple_evoformer import base_evoformer
+    HAS_REPO = True
+except:
+    HAS_REPO = False
 
 import colossalai
 from colossalai.core import global_context as gpc
@@ -69,7 +74,7 @@ def _test_autochunk_search(rank, msa_len, pair_len, max_memory):
     )
 
     # build model and input
-    model = evoformer_base().cuda()
+    model = base_evoformer().cuda()
     node = torch.randn(1, msa_len, pair_len, 256).cuda()
     pair = torch.randn(1, pair_len, pair_len, 128).cuda()
 
@@ -84,7 +89,8 @@ def _test_autochunk_search(rank, msa_len, pair_len, max_memory):
     gpc.destroy()
 
 
-@pytest.mark.skipif(not (CODEGEN_AVAILABLE and is_compatible_with_meta()), reason="torch version is lower than 1.12.0")
+@pytest.mark.skipif(not (CODEGEN_AVAILABLE and is_compatible_with_meta() and HAS_REPO),
+                    reason="torch version is lower than 1.12.0")
 @pytest.mark.parametrize("max_memory", [None, 20, 25, 30])
 @pytest.mark.parametrize("msa_len", [32])
 @pytest.mark.parametrize("pair_len", [64])

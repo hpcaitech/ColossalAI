@@ -4,7 +4,12 @@ import pytest
 import torch
 import torch.fx
 import torch.multiprocessing as mp
-from simple_evoformer import base_evoformer
+
+try:
+    from simple_evoformer import base_evoformer
+    HAS_REPO = True
+except:
+    HAS_REPO = False
 
 import colossalai
 from colossalai.core import global_context as gpc
@@ -95,7 +100,8 @@ def _test_autochunk_codegen(rank, msa_len, pair_len, max_memory):
     gpc.destroy()
 
 
-@pytest.mark.skipif(not (CODEGEN_AVAILABLE and is_compatible_with_meta()), reason='torch version is lower than 1.12.0')
+@pytest.mark.skipif(not (CODEGEN_AVAILABLE and is_compatible_with_meta() and HAS_REPO),
+                    reason='torch version is lower than 1.12.0')
 @pytest.mark.parametrize("max_memory", [None, 20, 25, 30])
 @pytest.mark.parametrize("msa_len", [32])
 @pytest.mark.parametrize("pair_len", [64])
