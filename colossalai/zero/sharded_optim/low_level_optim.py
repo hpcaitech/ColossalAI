@@ -498,8 +498,9 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
         # broadcast the updated model weights
         handles = []
         for group_id in range(self.num_param_groups):
-            for rank in range(self._world_size):
-                fp16_param = self._param_store.get_flat_fp16_param_by_rank_group(rank=rank, group_id=group_id)
+            for index in range(self._world_size):
+                rank = self._dp_global_ranks[index]
+                fp16_param = self._param_store.get_flat_fp16_param_by_rank_group(rank=index, group_id=group_id)
                 handle = dist.broadcast(fp16_param, src=rank, group=self._dp_torch_group, async_op=True)
                 handles.append(handle)
 
