@@ -4,6 +4,7 @@ import pytest
 import torch
 import torch.fx
 import torch.multiprocessing as mp
+from simple_evoformer import base_evoformer, openfold_evoformer
 
 import colossalai
 from colossalai.core import global_context as gpc
@@ -11,7 +12,6 @@ from colossalai.fx._compatibility import is_compatible_with_meta
 from colossalai.fx.codegen.activation_checkpoint_codegen import CODEGEN_AVAILABLE
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
 from colossalai.utils import free_port
-from tests.test_autochunk.evoformer.evoformer import evoformer_base
 
 if CODEGEN_AVAILABLE and is_compatible_with_meta():
     from colossalai.autochunk.autochunk_codegen import AutoChunkCodeGen

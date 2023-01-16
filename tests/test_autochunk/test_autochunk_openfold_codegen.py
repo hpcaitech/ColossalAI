@@ -13,7 +13,6 @@ from colossalai.fx.graph_module import ColoGraphModule
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
 from colossalai.fx.tracer.experimental import ColoTracer, symbolic_trace
 from colossalai.utils import free_port
-from tests.test_autochunk.evoformer.evoformer import evoformer_base
 from tests.test_autochunk.origin_openfold.evoformer import EvoformerBlock
 
 if CODEGEN_AVAILABLE and is_compatible_with_meta():
