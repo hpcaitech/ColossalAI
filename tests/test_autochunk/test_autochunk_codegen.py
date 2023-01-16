@@ -4,6 +4,7 @@ import pytest
 import torch
 import torch.fx
 import torch.multiprocessing as mp
+from simple_evoformer import base_evoformer
 
 import colossalai
 from colossalai.core import global_context as gpc
@@ -13,7 +14,6 @@ from colossalai.fx.codegen.activation_checkpoint_codegen import CODEGEN_AVAILABL
 from colossalai.fx.graph_module import ColoGraphModule
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
 from colossalai.utils import free_port
-from tests.test_autochunk.evoformer.evoformer import evoformer_base
 
 if CODEGEN_AVAILABLE and is_compatible_with_meta():
     from colossalai.autochunk.autochunk_codegen import AutoChunkCodeGen
@@ -60,7 +60,7 @@ def _test_autochunk_codegen(rank, msa_len, pair_len, max_memory):
     )
 
     # build model and input
-    model = evoformer_base().cuda()
+    model = base_evoformer().cuda()
     node = torch.randn(1, msa_len, pair_len, 256).cuda()
     pair = torch.randn(1, pair_len, pair_len, 128).cuda()
 
