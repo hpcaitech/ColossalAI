@@ -17,12 +17,12 @@ from colossalai.fx._compatibility import is_compatible_with_meta
 from colossalai.fx.codegen.activation_checkpoint_codegen import CODEGEN_AVAILABLE
 from colossalai.fx.graph_module import ColoGraphModule
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
-from colossalai.fx.tracer.experimental import ColoTracer, symbolic_trace
 from colossalai.utils import free_port
 
 if CODEGEN_AVAILABLE and is_compatible_with_meta():
     from colossalai.autochunk.autochunk_codegen import AutoChunkCodeGen
     from colossalai.fx.profiler import MetaTensor
+    from colossalai.fx.tracer.experimental import ColoTracer, symbolic_trace
 
 
 def _test_fwd(model: torch.nn.Module, gm: ColoGraphModule, node, pair, node_mask, pair_mask):
