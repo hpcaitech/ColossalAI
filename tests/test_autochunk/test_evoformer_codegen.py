@@ -69,7 +69,7 @@ def _build_openfold():
     return model
 
 
-def _test_autochunk_codegen(rank, msa_len, pair_len, max_memory):
+def _test_evoformer_codegen(rank, msa_len, pair_len, max_memory):
     # launch colossalai
     colossalai.launch(
         config={},
@@ -145,9 +145,9 @@ def _test_autochunk_codegen(rank, msa_len, pair_len, max_memory):
 @pytest.mark.parametrize("max_memory", [None, 20, 25, 30])
 @pytest.mark.parametrize("msa_len", [32])
 @pytest.mark.parametrize("pair_len", [64])
-def test_autochunk_codegen(msa_len, pair_len, max_memory):
+def test_evoformer_codegen(msa_len, pair_len, max_memory):
     run_func = partial(
-        _test_autochunk_codegen,
+        _test_evoformer_codegen,
         msa_len=msa_len,
         pair_len=pair_len,
         max_memory=max_memory,
@@ -156,4 +156,4 @@ def test_autochunk_codegen(msa_len, pair_len, max_memory):
 
 
 if __name__ == "__main__":
-    _test_autochunk_codegen(0, 32, 64, 25)
+    _test_evoformer_codegen(0, 32, 64, 25)
