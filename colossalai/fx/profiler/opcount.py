@@ -249,6 +249,8 @@ if version.parse(torch.__version__) >= version.parse('1.12.0'):
         aten.sum.default,
         aten.sum.dim_IntList,
         aten.mean.dim,
+        aten.sub.Tensor,
+        aten.sub_.Tensor,
 
     # activation op
         aten.hardswish.default,
@@ -283,36 +285,13 @@ if version.parse(torch.__version__) >= version.parse('1.12.0'):
 
     # TODO: this will be removed in future
     zero_flop_aten = [
-        aten.as_strided.default,
-        aten.as_strided_.default,
-        aten.bernoulli_.float,
-        aten.cat.default,
-        aten.clone.default,
-        aten.copy_.default,
-        aten.detach.default,
-        aten.expand.default,
-        aten.empty_like.default,
-        aten.new_empty.default,
-        aten.new_empty_strided.default,
-        aten.ones_like.default,
-        aten._reshape_alias.default,
-        aten.select.int,
-        aten.select_backward.default,
-        aten.squeeze.dim,
-        aten.slice.Tensor,
-        aten.slice_backward.default,
-        aten.split.Tensor,
-        aten.permute.default,
-        aten.t.default,
-        aten.transpose.int,
-        aten._to_copy.default,
-        aten.unsqueeze.default,
-        aten.unbind.int,
-        aten._unsafe_view.default,
-        aten.view.default,
-        aten.where.self,
-        aten.zero_.default,
-        aten.zeros_like.default,
+        aten.as_strided.default, aten.as_strided_.default, aten.bernoulli_.float, aten.cat.default, aten.clone.default,
+        aten.copy_.default, aten.detach.default, aten.expand.default, aten.empty_like.default, aten.new_empty.default,
+        aten.new_empty_strided.default, aten.ones_like.default, aten._reshape_alias.default, aten.select.int,
+        aten.select_backward.default, aten.squeeze.dim, aten.slice.Tensor, aten.slice_backward.default,
+        aten.split.Tensor, aten.permute.default, aten.t.default, aten.transpose.int, aten._to_copy.default,
+        aten.unsqueeze.default, aten.unbind.int, aten._unsafe_view.default, aten.view.default, aten.where.self,
+        aten.zero_.default, aten.zeros_like.default, aten.fill_.Scalar
     ]
 
     for op in zero_flop_aten:
