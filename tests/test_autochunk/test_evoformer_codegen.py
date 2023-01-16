@@ -4,7 +4,12 @@ import pytest
 import torch
 import torch.fx
 import torch.multiprocessing as mp
-from fastfold.model.nn.evoformer import EvoformerBlock
+
+try:
+    from fastfold.model.nn.evoformer import EvoformerBlock
+    HAS_REPO = True
+except:
+    HAS_REPO = False
 
 import colossalai
 from colossalai.core import global_context as gpc
@@ -139,7 +144,7 @@ def _test_evoformer_codegen(rank, msa_len, pair_len, max_memory):
 
 
 @pytest.mark.skipif(
-    not (CODEGEN_AVAILABLE and is_compatible_with_meta()),
+    not (CODEGEN_AVAILABLE and is_compatible_with_meta() and HAS_REPO),
     reason="torch version is lower than 1.12.0",
 )
 @pytest.mark.parametrize("max_memory", [None, 20, 25, 30])
