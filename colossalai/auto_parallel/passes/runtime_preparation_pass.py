@@ -179,6 +179,8 @@ def _size_value_converting(gm: torch.fx.GraphModule, device_mesh: DeviceMesh):
                 # It will be used to replace the original node with processing node in slice object
                 node_pairs[node] = size_processing_node
                 size_processing_node._meta_data = node._meta_data
+                if 'activation_checkpoint' in node.meta:
+                    size_processing_node.meta['activation_checkpoint'] = node.meta['activation_checkpoint']
 
             user_list = list(node.users.keys())
             for user in user_list:

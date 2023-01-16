@@ -18,6 +18,7 @@ from colossalai.auto_parallel.tensor_shard.solver import (
 )
 from colossalai.device.alpha_beta_profiler import AlphaBetaProfiler
 from colossalai.device.device_mesh import DeviceMesh
+from colossalai.fx.graph_module import ColoGraphModule
 from colossalai.fx.tracer import ColoTracer
 from colossalai.tensor.sharding_spec import ShardingSpec
 
@@ -28,7 +29,7 @@ class ModuleWrapper(nn.Module):
     into the forward function.
     '''
 
-    def __init__(self, module: GraphModule, sharding_spec_dict: Dict[int, List[ShardingSpec]],
+    def __init__(self, module: ColoGraphModule, sharding_spec_dict: Dict[int, List[ShardingSpec]],
                  origin_spec_dict: Dict[int, ShardingSpec], comm_actions_dict: Dict[int, Dict[str, CommAction]]):
         '''
         Args:
@@ -81,7 +82,7 @@ def build_strategy_constructor(graph: Graph, device_mesh: DeviceMesh):
     return strategies_constructor
 
 
-def solve_solution(gm: GraphModule, strategy_constructor: StrategiesConstructor, memory_budget: float = -1.0):
+def solve_solution(gm: ColoGraphModule, strategy_constructor: StrategiesConstructor, memory_budget: float = -1.0):
     '''
     This method is used to solve the best solution for the given graph.
     The solution is a list of integers, each integer represents the best strategy index of the corresponding node.
@@ -97,7 +98,7 @@ def solve_solution(gm: GraphModule, strategy_constructor: StrategiesConstructor,
     return solution
 
 
-def transform_to_sharded_model(gm: GraphModule, solution: List[int], device_mesh: DeviceMesh,
+def transform_to_sharded_model(gm: ColoGraphModule, solution: List[int], device_mesh: DeviceMesh,
                                strategies_constructor: StrategiesConstructor):
     '''
     This method is used to transform the original graph to the sharded graph.
@@ -197,10 +198,10 @@ def initialize_model(model: nn.Module,
             solution will be used to debug or help to analyze the sharding result. Therefore, we will not just
             return a series of integers, but return the best strategies.
     '''
-    tracer = ColoTracer()
+    tracer = ColoTracer(trace_act_ckpt=True)
 
     graph = tracer.trace(root=model, meta_args=meta_args)
-    gm = GraphModule(model, graph, model.__class__.__name__)
+    gm = ColoGraphModule(model, graph, model.__class__.__name__)
     gm.recompile()
     strategies_constructor = build_strategy_constructor(graph, device_mesh)
     if load_solver_solution:
