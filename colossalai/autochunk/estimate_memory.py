@@ -37,10 +37,10 @@ class EstimateMemory(object):
 
     def _add_active_node(self, n, active_list):
         new_active = self._get_output_node(n)[1]
-        if n.op == "placeholder":
+        if n.op == "placeholder" and get_node_shape(n) is not None:
             new_active.append(n.name)
         for i in new_active:
-            if i not in active_list:
+            if i not in active_list and get_node_shape(n) is not None:
                 active_list.append(i)
 
     def _get_delete_node(self, user, user_to_last_uses, to_keep=None):
@@ -77,15 +77,11 @@ class EstimateMemory(object):
             if i in active_list:
                 active_list.remove(i)
 
-    def _get_chunk_inputs_size(
-        self, chunk_inputs, chunk_inputs_non_chunk, node_list, chunk_end_idx
-    ):
+    def _get_chunk_inputs_size(self, chunk_inputs, chunk_inputs_non_chunk, node_list, chunk_end_idx):
         nodes_to_delete = []
         for chunk_input in chunk_inputs + chunk_inputs_non_chunk:
             chunk_input_users = chunk_input.users.keys()
-            chunk_input_users_idx = [
-                find_idx_by_name(i.name, node_list) for i in chunk_input_users
-            ]
+            chunk_input_users_idx = [find_idx_by_name(i.name, node_list) for i in chunk_input_users]
             if all(i <= chunk_end_idx for i in chunk_input_users_idx):
                 if chunk_input not in nodes_to_delete:
                     nodes_to_delete.append(chunk_input)
@@ -112,9 +108,7 @@ class EstimateMemory(object):
         not_contiguous_ops = ["permute"]
         inherit_contiguous_ops = ["transpose", "view"]
 
-        if node.op == "call_function" and any(
-            n in node.name for n in ["matmul", "reshape"]
-        ):
+        if node.op == "call_function" and any(n in node.name for n in ["matmul", "reshape"]):
             for n in node.args:
                 if n in not_contiguous_list:
                     # matmul won't change origin tensor, but create a tmp copy
@@ -125,9 +119,7 @@ class EstimateMemory(object):
                     # module will just make origin tensor to contiguous
                     if delete:
                         not_contiguous_list.remove(n)
-        elif node.op == "call_method" and any(
-            i in node.name for i in not_contiguous_ops
-        ):
+        elif node.op == "call_method" and any(i in node.name for i in not_contiguous_ops):
             if node not in not_contiguous_list:
                 not_contiguous_list.append(node)
         return mem
@@ -142,9 +134,7 @@ class EstimateMemory(object):
         else:
             return float(chunk_size) / node_shape[chunk_dim]
 
-    def _get_chunk_delete_node_size(
-        self, user, user_to_last_uses, chunk_ratio, chunk_inputs_names
-    ):
+    def _get_chunk_delete_node_size(self, user, user_to_last_uses, chunk_ratio, chunk_inputs_names):
         # if any(j in user.name for j in ['transpose', 'permute', 'view']):
         #     return 0
         if user.op in ("placeholder", "output"):
@@ -196,7 +186,7 @@ class EstimateMemory(object):
         Returns:
             act_memory_peak_log (List): peak memory of every node
             act_memory_after_node_log (List): memory after excuting every node
-            active_node_list_log (List): active nodes of every node. active nodes refer to 
+            active_node_list_log (List): active nodes of every node. active nodes refer to
                 nodes generated but not deleted.
         """
         act_memory = 0.0
@@ -212,7 +202,7 @@ class EstimateMemory(object):
         use_chunk = True if chunk_infos is not None else False
         chunk_within = False
         chunk_region_idx = None
-        chunk_ratio = 1  # use it to estimate chunk mem
+        chunk_ratio = 1    # use it to estimate chunk mem
         chunk_inputs_names = []
 
         if use_chunk:
@@ -221,23 +211,18 @@ class EstimateMemory(object):
             chunk_ends = [i[1] for i in chunk_regions]
             chunk_inputs = [i["inputs"] for i in chunk_infos]
             chunk_inputs_non_chunk = [i["inputs_non_chunk"] for i in chunk_infos]
-            chunk_inputs_names = [j.name for i in chunk_inputs for j in i] + [
-                j.name for i in chunk_inputs_non_chunk for j in i
-            ]
+            chunk_inputs_names = [j.name for i in chunk_inputs for j in i
+                                 ] + [j.name for i in chunk_inputs_non_chunk for j in i]
             chunk_outputs = [i["outputs"][0] for i in chunk_infos]
             chunk_node_dim = [i["node_chunk_dim"] for i in chunk_infos]
-            chunk_sizes = [
-                i["chunk_size"] if "chunk_size" in i else 1 for i in chunk_infos
-            ]
+            chunk_sizes = [i["chunk_size"] if "chunk_size" in i else 1 for i in chunk_infos]
 
         for idx, node in enumerate(node_list):
             # if node in chunk start nodes, change chunk ratio and add chunk_tensor
             if use_chunk and idx in chunk_starts:
                 chunk_within = True
                 chunk_region_idx = chunk_starts.index(idx)
-                act_memory += self._get_output_node_size(
-                    chunk_outputs[chunk_region_idx]
-                ) / (1024**2)
+                act_memory += self._get_output_node_size(chunk_outputs[chunk_region_idx]) / (1024**2)
 
             # determine chunk ratio for current node
             if chunk_within:
@@ -262,22 +247,13 @@ class EstimateMemory(object):
             else:
                 # forward memory
                 # TODO: contiguous_memory still not accurate for matmul, view, reshape and transpose
-                act_memory += (
-                    self._get_contiguous_memory(node, not_contiguous_list)
-                    * chunk_ratio
-                    / (1024**2)
-                )
-                act_memory += (
-                    self._get_output_node_size(node) * chunk_ratio / (1024**2)
-                )
+                act_memory += (self._get_contiguous_memory(node, not_contiguous_list) * chunk_ratio / (1024**2))
+                act_memory += (self._get_output_node_size(node) * chunk_ratio / (1024**2))
                 # record max act memory
                 act_memory_peak_log.append(act_memory)
                 # delete useless memory
-                act_memory -= (
-                    self._get_contiguous_memory(node, not_contiguous_list, delete=True)
-                    * chunk_ratio
-                    / (1024**2)
-                )
+                act_memory -= (self._get_contiguous_memory(node, not_contiguous_list, delete=True) * chunk_ratio /
+                               (1024**2))
                 # delete unused vars not in chunk_input_list
                 # we can't delete input nodes until chunk ends
                 if chunk_within:
@@ -288,9 +264,8 @@ class EstimateMemory(object):
                         chunk_inputs_names,
                     ) / (1024**2)
                 else:
-                    act_memory -= self._get_delete_node_size(
-                        node, user_to_last_uses_no_free_var, chunk_inputs_names
-                    ) / (1024**2)
+                    act_memory -= self._get_delete_node_size(node, user_to_last_uses_no_free_var,
+                                                             chunk_inputs_names) / (1024**2)
 
             # log active node, only effective without chunk
             self._add_active_node(node, active_node_list)
@@ -298,9 +273,7 @@ class EstimateMemory(object):
 
             # if node in chunk end nodes, restore chunk settings
             if use_chunk and idx in chunk_ends:
-                act_memory -= (
-                    self._get_output_node_size(node) * chunk_ratio / (1024**2)
-                )
+                act_memory -= (self._get_output_node_size(node) * chunk_ratio / (1024**2))
                 act_memory -= self._get_chunk_inputs_size(
                     chunk_inputs[chunk_region_idx],
                     chunk_inputs_non_chunk[chunk_region_idx],

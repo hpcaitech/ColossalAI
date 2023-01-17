@@ -47,18 +47,18 @@ def assert_chunk_infos(chunk_infos, max_memory, msa_len, pair_len):
             str(target_regions),
         )
     for region in target_regions:
-        assert (region in found_regions), "region:%s not in found regions for msa:%d, pair:%d, maxmem:%d" % (
+        assert (region in found_regions), "region:%s not in found regions for msa:%d, pair:%d, maxmem:%s" % (
             str(region),
             msa_len,
             pair_len,
-            max_memory,
+            str(max_memory),
         )
     for region in found_regions:
         assert (region in target_regions), "region:%s should not be found for msa:%d, pair:%d, maxmem:%d" % (
             str(region),
             msa_len,
             pair_len,
-            max_memory,
+            str(max_memory),
         )
 
 

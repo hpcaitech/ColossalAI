@@ -3,10 +3,10 @@ from .utils import (
     find_chunk_all_input_nodes,
     find_chunk_compute_input_and_output_nodes,
     find_idx_by_name,
+    flat_list,
     get_node_shape,
     is_non_compute_node,
     is_non_compute_node_except_placeholder,
-    unflat_list,
 )
 
 
@@ -172,7 +172,7 @@ class TraceFlow(object):
                 # get cur node info
                 cur_node_chunk_dim = all_node_info[cur_node]["chunk_dim"]
                 cur_node_fix_dim = all_node_info[cur_node]["fix_dim"]
-                if cur_node_chunk_dim:
+                if cur_node_chunk_dim is not None:
                     cur_node_compute = self.trace_indice._find_compute_trace_from_node(cur_node)
                     cur_node_source = self.trace_indice._find_source_trace_from_node(cur_node)
                 else:
@@ -370,7 +370,7 @@ class TraceFlow(object):
         chunk_shape = get_node_shape(chunk_info["outputs"][0])[chunk_info["outputs_dim"]]
         for node in self.trace_indice.node_list[chunk_region[0]:chunk_region[1] + 1]:
             if any(i in node.name for i in ["reshape", "view"]):
-                reshape_args = unflat_list(node.args[1:])
+                reshape_args = flat_list(node.args[1:])
                 chunk_dim = chunk_info["node_chunk_dim"][node]["chunk_dim"]
                 new_shape = ""
                 for reshape_arg_dim, reshape_arg in enumerate(reshape_args):

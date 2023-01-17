@@ -3,7 +3,7 @@ from typing import Dict, List, Tuple
 
 from torch.fx.node import Node
 
-from .utils import find_first_tensor_arg, find_idx_by_name, get_node_shape, unflat_list
+from .utils import find_first_tensor_arg, find_idx_by_name, flat_list, get_node_shape
 
 
 class TraceIndice(object):
@@ -259,7 +259,7 @@ class TraceIndice(object):
             node (node)
             node_idx (int)
         """
-        permute_dim = unflat_list(node.args[1:])
+        permute_dim = flat_list(node.args[1:])
         input_node = node.args[0]
 
         self._assign_indice_as_input(node, node_idx, input_node)
@@ -447,7 +447,7 @@ class TraceIndice(object):
         origin_node = node.args[0]
         origin_shape = origin_node.meta["tensor_meta"].shape
         target_shape = []
-        unflated_args = unflat_list(node.args)
+        unflated_args = flat_list(node.args)
         for i in range(1, len(unflated_args)):
             if isinstance(unflated_args[i], int):
                 target_shape.append(unflated_args[i])
