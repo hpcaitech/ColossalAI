@@ -9,17 +9,11 @@ from torch.testing import assert_close
 
 import colossalai
 from colossalai.tensor import ProcessGroup
+from colossalai.testing import parameterize, rerun_if_address_is_in_use
 from colossalai.utils import free_port, get_current_device
 from colossalai.utils.model.colo_init_context import ColoInitContext
 from colossalai.zero import LowLevelZeroOptimizer
-from tests.test_tensor.common_utils import (
-    debug_print,
-    set_seed,
-    split_param_col_tp1d,
-    split_param_row_tp1d,
-    tensor_equal,
-    tensor_shard_equal,
-)
+from tests.test_tensor.common_utils import set_seed, split_param_col_tp1d, split_param_row_tp1d, tensor_shard_equal
 
 
 def strict_shard_equal(tensor, shard, tp_pg, rtol=1e-3, atol=1e-4):
@@ -41,7 +35,9 @@ class TestModel(nn.Module):
         return x + y
 
 
-def exam_zero_with_tp():
+@parameterize("overlap_flag", [False, True])
+@parameterize("partition_flag", [False, True])
+def exam_zero_with_tp(overlap_flag, partition_flag):
     set_seed(233010)
     tp_pg = ProcessGroup(tp_degree=2)
 
@@ -61,7 +57,10 @@ def exam_zero_with_tp():
     torch_model = DDP(torch_model, device_ids=[tp_pg.rank()], process_group=tp_pg.dp_process_group())
     torch_optim = torch.optim.Adam(torch_model.parameters(), lr=1)
     hybrid_optim = torch.optim.Adam(hybrid_model.parameters(), lr=1)
-    hybrid_optim = LowLevelZeroOptimizer(hybrid_optim, overlap_communication=False)
+    hybrid_optim = LowLevelZeroOptimizer(hybrid_optim,
+                                         initial_scale=1,
+                                         overlap_communication=overlap_flag,
+                                         partition_grad=partition_flag)
 
     dp_local_rank = tp_pg.dp_local_rank()
     set_seed(255 + dp_local_rank)
@@ -75,14 +74,10 @@ def exam_zero_with_tp():
     hybrid_optim.backward(hybrid_loss)
     hybrid_optim.sync_grad()
 
-    for (name, param) in hybrid_model.named_parameters():
-        print(name, param.grad)
-
     torch_optim.step()
     hybrid_optim.step()
 
     for (name, pt), ph in zip(torch_model.named_parameters(), hybrid_model.parameters()):
-        print(name, pt.shape, ph.shape)
         assert strict_shard_equal(pt.data, ph.data, tp_pg)
 
 
@@ -92,6 +87,7 @@ def run_dist(rank, world_size, port):
 
 
 @pytest.mark.dist
+@rerun_if_address_is_in_use()
 def test_zero_with_tp():
     world_size = 4
     run_func = partial(run_dist, world_size=world_size, port=free_port())
