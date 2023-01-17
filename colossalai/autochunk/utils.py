@@ -5,7 +5,7 @@ from torch.fx.node import Node
 
 def flat_list(inputs):
     """
-    unflat a list by recursion
+    flat a list by recursion
     """
     res = []
     for i in inputs:
