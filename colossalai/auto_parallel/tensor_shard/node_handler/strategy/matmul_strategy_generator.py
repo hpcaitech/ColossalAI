@@ -61,9 +61,9 @@ class DotProductStrategyGenerator(MatMulStrategyGenerator):
         sharded_input_shape = strategy.sharding_specs[self.op_data['input']].get_sharded_shape_per_device()
         fwd_compute_cost = sharded_input_shape[0]
         bwd_compute_cost = fwd_compute_cost * 2
-        compute_cost = TrainCycleItem(fwd=fwd_compute_cost,
-                                      bwd=bwd_compute_cost,
-                                      total=fwd_compute_cost + bwd_compute_cost)
+        compute_cost = TrainCycleItem(fwd=fwd_compute_cost / 1e5,
+                                      bwd=bwd_compute_cost / 1e5,
+                                      total=fwd_compute_cost / 1e5 + bwd_compute_cost / 1e5)
         return compute_cost
 
     @ignore_sharding_exception
@@ -247,12 +247,12 @@ class LinearProjectionStrategyGenerator(MatMulStrategyGenerator):
         strategies.append(self.split_rhs_space_both_contract(1, 0))
 
         # RR= RS x SR
-        strategies.append(self.recompute_split_both_contract(0))
-        strategies.append(self.recompute_split_both_contract(1))
+        # strategies.append(self.recompute_split_both_contract(0))
+        # strategies.append(self.recompute_split_both_contract(1))
 
-        # RS = RR x RS
-        strategies.append(self.split_rhs_space_only(0))
-        strategies.append(self.split_rhs_space_only(1))
+        # # RS = RR x RS
+        # strategies.append(self.split_rhs_space_only(0))
+        # strategies.append(self.split_rhs_space_only(1))
 
         # S01R = S01R x RR
         strategies.append(self.split_lhs_1st_dim_1d(0, 1))
@@ -263,8 +263,8 @@ class LinearProjectionStrategyGenerator(MatMulStrategyGenerator):
         # RS01 = RR x RS01
         strategies.append(self.split_rhs_2nd_dim_1d(0, 1))
 
-        # RR = RR x RR
-        strategies.append(self.non_split())
+        # # RR = RR x RR
+        # strategies.append(self.non_split())
 
         return strategies
 
