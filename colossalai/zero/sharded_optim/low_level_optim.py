@@ -46,7 +46,7 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
             reduce_bucket_size: int = 1024 * 1024,    # communication
             communication_dtype: Optional[torch.dtype] = None,
             overlap_communication: bool = False,
-            partition_grad: bool = False,    # stage 2
+            partition_grad: bool = False,    # stage 2 flag
             cpu_offload: bool = False,    # cpu offload
             forced_dtype: Optional[torch.dtype] = None):
 
@@ -248,9 +248,13 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
             self._logger.info(f'Number of elements on ranks: {numel_per_rank}', ranks=[0])
         return params_per_rank
 
-    ###########################################################
-    # Backward Reduction Hook
-    ###########################################################
+    ###########################
+    # Backward Reduction Hook #
+    ###########################
+
+    def _grad_handler(self, param, grad, reduce_rank):
+        self._add_to_reduction_bucket(param, reduce_rank)
+        return grad
 
     def _attach_reduction_hook(self):
         # we iterate over the fp16 params
@@ -268,53 +272,61 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
                     else:
                         reduce_rank = None
 
-                    def _define_and_attach(param, reduce_rank):
-                        # get the AccumulateGrad object of the param itself
-                        accum_grad_obj = get_grad_accumulate_object(param)
-                        self._grad_store.add_accumulate_grad_object(accum_grad_obj)
+                    param.register_hook(partial(self._grad_handler, param, reduce_rank=reduce_rank))
 
-                        reduction_func = partial(self._reduce_and_remove_grads_by_bucket,
-                                                 param=param,
-                                                 reduce_rank=reduce_rank)
+    def _reduce_tensor_bucket(self, bucket: TensorBucket, reduce_rank):
+        if self._overlap_communication:
+            torch.cuda.synchronize()
+            self._param_store.clear_grads_of_previous_reduced_params()
+            stream = self._comm_stream
+        else:
+            stream = torch.cuda.current_stream()
 
-                        # define hook
-                        # NOT IMPORTANT BUT GOOD TO KNOW:
-                        # args here is not grad, but allow_unreacable and accumulate_grad
-                        def reduce_grad_hook(*args):
-                            reduction_func()
+        with torch.cuda.stream(stream):
+            flat = bucket.flatten()
+            reduce_global_rank = None
+            if reduce_rank is not None:
+                reduce_global_rank = self._dp_global_ranks[reduce_rank]
+            reduced_flat = reduce_tensor_dp_group(tensor=flat,
+                                                  dtype=self._communication_dtype,
+                                                  dst_local_rank=reduce_rank,
+                                                  dst_global_rank=reduce_global_rank,
+                                                  group=self._dp_torch_group)
 
-                        accum_grad_obj.register_hook(reduce_grad_hook)
+            # update the reduced tensor
+            if reduce_rank is None or reduce_rank == self._local_rank:
+                bucket.unflatten_and_copy(reduced_flat)
 
-                    _define_and_attach(param, reduce_rank)
+    def _reduce_tensor_list_with_one_dtype(self, tensor_list, bucket_size, reduce_rank):
+        param_bucket = TensorBucket(size=bucket_size)
 
-    def _reduce_and_remove_grads_by_bucket(self, param, reduce_rank=None):
-        param_size = param.numel()
+        for tensor in tensor_list:
+            param_bucket.add_to_bucket(tensor, allow_oversize=True)
 
-        # check if the bucket is full
-        # if full, will reduce the grads already in the bucket
-        # after reduction, the bucket will be empty
-        if self._bucket_store.num_elements_in_bucket(reduce_rank) + param_size > self._reduce_bucket_size:
-            self._reduce_grads_in_bucket(reduce_rank)
+            if param_bucket.is_full_or_oversized():
+                self._reduce_tensor_bucket(bucket=param_bucket, reduce_rank=reduce_rank)
+                param_bucket.empty()
 
-        # the param must not be reduced to ensure correctness
-        is_param_reduced = self._param_store.is_param_reduced(param)
-        if is_param_reduced:
-            msg = f'Parameter of size ({param.size()}) has already been reduced, ' \
-                  + 'duplicate reduction will lead to arithmetic incorrectness'
-            raise RuntimeError(msg)
+        if not param_bucket.is_empty():
+            self._reduce_tensor_bucket(bucket=param_bucket, reduce_rank=reduce_rank)
 
-        # the param must have grad for reduction
-        assert param.grad is not None, f'Parameter of size ({param.size()}) has None grad, cannot be reduced'
+    def _reduce_grads(self, reduce_rank, grads, bucket_size):
+        grad_buckets_by_dtype = split_half_float_double(grads)
 
-        self._bucket_store.add_num_elements_in_bucket(param_size, reduce_rank)
-        self._bucket_store.add_grad(param.grad, reduce_rank)
-        self._bucket_store.add_param(param, reduce_rank)
+        for tensor_list in grad_buckets_by_dtype:
+            self._reduce_tensor_list_with_one_dtype(tensor_list=tensor_list,
+                                                    bucket_size=bucket_size,
+                                                    reduce_rank=reduce_rank)
 
-    def _reduce_grads_in_bucket(self, reduce_rank=None):
+    #######################
+    # Reduction Functions #
+    #######################
+
+    def _run_reduction(self, reduce_rank=None):
         # reduce grads
-        self._reduce_grads_by_rank(reduce_rank=reduce_rank,
-                                   grads=self._bucket_store.get_grad(reduce_rank=reduce_rank),
-                                   bucket_size=self._bucket_store.num_elements_in_bucket(reduce_rank))
+        self._reduce_grads(reduce_rank=reduce_rank,
+                           grads=self._bucket_store.get_grad(reduce_rank=reduce_rank),
+                           bucket_size=self._bucket_store.num_elements_in_bucket(reduce_rank))
 
         # use communication stream if overlapping
         # communication with computation
@@ -351,50 +363,24 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
 
         self._bucket_store.reset_by_rank(reduce_rank)
 
-    def _reduce_grads_by_rank(self, reduce_rank, grads, bucket_size):
-        grad_buckets_by_dtype = split_half_float_double(grads)
+    def _add_to_reduction_bucket(self, param, reduce_rank=None):
+        param_size = param.numel()
 
-        for tensor_list in grad_buckets_by_dtype:
-            self._reduce_no_retain(tensor_list=tensor_list, bucket_size=bucket_size, reduce_rank=reduce_rank)
+        # check if the bucket is full
+        # if full, will reduce the grads already in the bucket
+        # after reduction, the bucket will be empty
+        if self._bucket_store.num_elements_in_bucket(reduce_rank) + param_size > self._reduce_bucket_size:
+            self._run_reduction(reduce_rank)
 
-    ##############################
-    # Reduction Utility Function #
-    ##############################
-    def _reduce_no_retain(self, tensor_list, bucket_size, reduce_rank):
-        param_bucket = TensorBucket(size=bucket_size)
+        # the param must not be reduced to ensure correctness
+        is_param_reduced = self._param_store.is_param_reduced(param)
+        if is_param_reduced:
+            msg = f'Parameter of size ({param.size()}) has already been reduced, ' \
+                  + 'duplicate reduction will lead to arithmetic incorrectness'
+            raise RuntimeError(msg)
 
-        for tensor in tensor_list:
-            param_bucket.add_to_bucket(tensor, allow_oversize=True)
-
-            if param_bucket.is_full_or_oversized():
-                self._reduce_and_copy(bucket=param_bucket, reduce_rank=reduce_rank)
-                param_bucket.empty()
-
-        if not param_bucket.is_empty():
-            self._reduce_and_copy(bucket=param_bucket, reduce_rank=reduce_rank)
-
-    def _reduce_and_copy(self, bucket: TensorBucket, reduce_rank):
-        if self._overlap_communication:
-            torch.cuda.synchronize()
-            self._param_store.clear_grads_of_previous_reduced_params()
-            stream = self._comm_stream
-        else:
-            stream = torch.cuda.current_stream()
-
-        with torch.cuda.stream(stream):
-            flat = bucket.flatten()
-            reduce_global_rank = None
-            if reduce_rank is not None:
-                reduce_global_rank = self._dp_global_ranks[reduce_rank]
-            reduced_flat = reduce_tensor_dp_group(tensor=flat,
-                                                  dtype=self._communication_dtype,
-                                                  dst_local_rank=reduce_rank,
-                                                  dst_global_rank=reduce_global_rank,
-                                                  group=self._dp_torch_group)
-
-            # update the reduced tensor
-            if reduce_rank is None or reduce_rank == self._local_rank:
-                bucket.unflatten_and_copy(reduced_flat)
+        self._bucket_store.add_num_elements_in_bucket(param_size, reduce_rank)
+        self._bucket_store.add_param(param, reduce_rank)
 
     ################################
     # torch.optim.Optimizer methods
@@ -498,8 +484,9 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
         # broadcast the updated model weights
         handles = []
         for group_id in range(self.num_param_groups):
-            for rank in range(self._world_size):
-                fp16_param = self._param_store.get_flat_fp16_param_by_rank_group(rank=rank, group_id=group_id)
+            for index in range(self._world_size):
+                rank = self._dp_global_ranks[index]
+                fp16_param = self._param_store.get_flat_fp16_param_by_rank_group(rank=index, group_id=group_id)
                 handle = dist.broadcast(fp16_param, src=rank, group=self._dp_torch_group, async_op=True)
                 handles.append(handle)
 
@@ -585,11 +572,11 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
                 param_group = self._fp16_param_groups[group_id]
                 for param in param_group:
                     if param.grad is not None:
-                        self._reduce_and_remove_grads_by_bucket(param)
+                        self._add_to_reduction_bucket(param)
 
         # we need to reduce the gradients
         # left in the communication bucket
-        self._reduce_grads_in_bucket()
+        self._run_reduction()
 
     def _reduce_grad_stage2(self):
         # when partition_grads is True, reduction hooks
@@ -597,4 +584,4 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
         # only need to reduce the gradients
         # left in the communication bucket
         for reduce_rank in range(self._world_size):
-            self._reduce_grads_in_bucket(reduce_rank)
+            self._run_reduction(reduce_rank)
