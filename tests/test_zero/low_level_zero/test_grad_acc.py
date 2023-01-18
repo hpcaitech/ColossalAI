@@ -9,6 +9,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.testing import assert_close
 
 import colossalai
+from colossalai.tensor import ProcessGroup
 from colossalai.testing.random import seed_all
 from colossalai.utils import free_port
 from colossalai.zero import LowLevelZeroOptimizer
@@ -34,7 +35,6 @@ def exam_zero_1_2_grad_acc():
     # create model
     zero1_model = TestModel().cuda()
     zero2_model = copy.deepcopy(zero1_model)
-
     # create optimizer
     zero1_optimizer = torch.optim.Adam(zero1_model.parameters(), lr=1)
     zero2_optimizer = torch.optim.Adam(zero2_model.parameters(), lr=1)
@@ -92,6 +92,7 @@ def exam_zero_1_grad_acc():
     zero_model = TestModel()
     torch_model = copy.deepcopy(zero_model)
 
+    seed_all(2008)
     zero_model = zero_model.cuda()
     torch_model = DDP(torch_model.cuda(), bucket_cap_mb=0)
 
@@ -153,7 +154,7 @@ def run_dist(rank, world_size, port):
     colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host='localhost')
 
     exam_zero_1_grad_acc()
-    # exam_zero_1_2_grad_acc()
+    exam_zero_1_2_grad_acc()
 
 
 @pytest.mark.dist

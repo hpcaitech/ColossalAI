@@ -153,4 +153,5 @@ colossalai/version.py
 .pyi
 
 # ignore coverage test file
-converage.lcov
+coverage.lcov
+coverage.xml

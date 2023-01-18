@@ -6,17 +6,14 @@ import torch.nn as nn
 
 from colossalai.gemini.memory_tracer import MemStats, OrderedParamGenerator
 from colossalai.tensor import ColoParameter
-
-
-def in_ddp(param: nn.Parameter) -> bool:
-    return not getattr(param, '_ddp_to_ignore', False)
+from colossalai.utils import is_ddp_ignored
 
 
 def _filter_exlarge_params(model: nn.Module, size_dict: Dict[int, List[int]]) -> None:
     """
     Filter those parameters whose size is too large (more than 3x standard deviations) from others.
     """
-    params_size = [p.numel() for p in model.parameters() if in_ddp(p)]
+    params_size = [p.numel() for p in model.parameters() if not is_ddp_ignored(p)]
     params_size_arr = np.array(params_size)
 
     std = np.std(params_size_arr)
@@ -56,7 +53,7 @@ def classify_params_by_dp_degree(param_order: OrderedParamGenerator) -> Dict[int
     params_dict: Dict[int, List[ColoParameter]] = dict()
     for param in param_order.generate():
         assert isinstance(param, ColoParameter), "please init model in the ColoInitContext"
-        if not in_ddp(param):
+        if is_ddp_ignored(param):
             continue
 
         param_key = param.process_group.dp_world_size()

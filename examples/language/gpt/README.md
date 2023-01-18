@@ -39,9 +39,15 @@ If you want to test ZeRO1 and ZeRO2 in Colossal-AI, you need to ensure Colossal-
 For simplicity, the input data is randonly generated here.
 
 ## Training
-We provide two solutions. One utilizes the hybrid parallel strategies of Gemini, DDP/ZeRO, and Tensor Parallelism.
-The other one uses Pipeline Parallelism Only.
-In the future, we are going merge them together and they can be used orthogonally to each other.
+We provide two stable solutions.
+One utilizes the Gemini to implement hybrid parallel strategies of Gemini, DDP/ZeRO, and Tensor Parallelism for a huggingface GPT model.
+The other one use [Titans](https://github.com/hpcaitech/Titans), a distributed executed model zoo maintained by ColossalAI,to implement the hybrid parallel strategies of TP + ZeRO + PP.
+
+We recommend using Gemini to qucikly run your model in a distributed manner.
+It doesn't require significant changes to the model structures, therefore you can apply it on a new model easily.
+And use Titans as an advanced weapon to pursue a more extreme performance.
+Titans has included the some typical models, such as Vit and GPT.
+However, it requires some efforts to start if facing a new model structure.
 
 ### GeminiDPP/ZeRO + Tensor Parallelism
 ```bash
@@ -56,6 +62,11 @@ The `train_gpt_demo.py` provides three distributed plans, you can choose the pla
 - Pytorch DDP
 - Pytorch ZeRO
 
+### Titans (Tensor Parallelism) + ZeRO + Pipeline Parallelism
+
+Titans provides a customized GPT model, which uses distributed operators as building blocks.
+In [./titans/README.md], we provide a hybrid parallelism of ZeRO, TP and PP.
+You can switch parallel strategies using a config file.
 
 ## Performance
 

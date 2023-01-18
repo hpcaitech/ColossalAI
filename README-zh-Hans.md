@@ -349,6 +349,11 @@ docker run -ti --gpus all --rm --ipc=host colossalai bash
 <p align="right">(<a href="#top">返回顶端</a>)</p>
 
 
+## CI/CD
+
+我们使用[GitHub Actions](https://github.com/features/actions)来自动化大部分开发以及部署流程。如果想了解这些工作流是如何运行的，请查看这个[文档](.github/workflows/README.md).
+
+
 ## 引用我们
 
 ```

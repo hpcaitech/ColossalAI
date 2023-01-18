@@ -90,7 +90,8 @@ def numerical_test_for_node_strategy(model: torch.nn.Module,
         solver_options = SolverOptions()
         strategies_constructor = StrategiesConstructor(graph, device_mesh, solver_options)
         strategies_constructor.build_strategies_and_cost()
-        target_node = list(graph.nodes)[node_index]
+        target_node = [strategies_vector.node for strategies_vector in strategies_constructor.leaf_strategies
+                      ][node_index]
         if node_type == 'normal':
             solution_len = len(strategies_constructor.leaf_strategies)
             solution = [0] * solution_len
@@ -112,7 +113,7 @@ def numerical_test_for_node_strategy(model: torch.nn.Module,
             ret = solver.call_solver_serialized_args()
             solution = list(ret[0])
         gm, sharding_spec_dict, origin_spec_dict, comm_actions_dict = runtime_preparation_pass(
-            gm, solution, device_mesh)
+            gm, solution, device_mesh, strategies_constructor)
         gm = runtime_apply_pass(gm)
         gm.recompile()
 

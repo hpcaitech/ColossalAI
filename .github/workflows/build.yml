@@ -75,11 +75,25 @@ jobs:
 
       - name: Unit Testing
         run: |
-          PYTHONPATH=$PWD pytest --cov=. --cov-report lcov tests
+          PYTHONPATH=$PWD pytest --cov=. --cov-report xml tests
         env:
           DATA: /data/scratch/cifar-10
           NCCL_SHM_DISABLE: 1
           LD_LIBRARY_PATH: /github/home/.tensornvme/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
+
+      - name: Collate artifact
+        env:
+          PR_NUMBER: ${{ github.event.number }}
+        run: |
+          mkdir report
+          echo $PR_NUMBER > ./report/pr_number
+          mv coverage.xml ./report
+
+      - name: Upload test coverage artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: report
+          path: report/
 
       - name: Store Cache
         run: |
