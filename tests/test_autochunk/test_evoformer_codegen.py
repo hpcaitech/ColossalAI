@@ -136,8 +136,8 @@ def _test_evoformer_codegen(rank, msa_len, pair_len, max_memory):
 
     # assert we have inserted chunk
     code = graph.python_code("self").src
-    assert "chunk_size" in code
     # print(code)
+    assert "chunk_result = None;  chunk_size = None;" in code
 
     _test_fwd(model, gm, node, pair, node_mask, pair_mask)
     gpc.destroy()
