@@ -3,6 +3,7 @@ import os
 
 import torch
 import torch.nn as nn
+from dataset.webtext import WebtextDataset
 from titans.model.gpt import GPTLMLoss
 
 import colossalai
@@ -30,7 +31,7 @@ VOCAB_SIZE = 50257
 def main():
     parser = colossalai.get_default_parser()
     parser.add_argument('--from_torch', default=False, action='store_true')
-    parser.add_argument('--use_dummy_dataset', default=True, action='store_true')
+    parser.add_argument('--use_dummy_dataset', default=False, action='store_true')
     args = parser.parse_args()
     disable_existing_loggers()
     if args.from_torch:
@@ -39,52 +40,16 @@ def main():
         colossalai.launch_from_slurm(config=args.config, host=args.host, port=29500, seed=42)
     logger = get_dist_logger()
 
-    if not args.use_dummy_dataset:
-        data_path = os.environ['DATA']
-        logger.info(f'Build data loader from path {data_path}', ranks=[0])
-        from dataset.webtext import WebtextDataset
-        train_ds = WebtextDataset(os.environ['DATA'], seq_len=gpc.config.SEQ_LEN)
-        train_dataloader = utils.get_dataloader(train_ds,
-                                                seed=42,
-                                                batch_size=gpc.config.BATCH_SIZE,
-                                                pin_memory=True,
-                                                shuffle=True,
-                                                drop_last=True)
-    else:
-        # build a dummy train_dataloader
-        logger.info('Build data loader using dummy data', ranks=[0])
+    data_path = None if args.use_dummy_dataset else os.environ['DATA']
+    logger.info(f'Build data loader from path {data_path}', ranks=[0])
 
-        def get_data(batch_size, seq_len, vocab_size):
-            input_ids = torch.randint(0, vocab_size, (batch_size, seq_len), device=torch.cuda.current_device())
-            attention_mask = torch.ones_like(input_ids)
-            return input_ids, attention_mask
-
-        # 10 iterations
-        input_ids, attn_mask = get_data(gpc.config.BATCH_SIZE * 10, gpc.config.SEQ_LEN, VOCAB_SIZE)
-        from torch.utils.data import DataLoader, Dataset
-
-        class TextSamplerDataset(Dataset):
-
-            def __init__(self, data, seq_len):
-                super().__init__()
-                self.data = data
-                self.seq_len = seq_len
-
-            def __getitem__(self, index):
-                rand_start = torch.randint(0, self.data.size(0) - self.seq_len, (1,))
-                full_seq = self.data[rand_start:rand_start + self.seq_len + 1].long()
-                return full_seq.cuda()
-
-            def __len__(self):
-                return self.data.size(0) // self.seq_len
-
-        def cycle(loader):
-            while True:
-                for data in loader:
-                    yield data
-
-        train_dataset = TextSamplerDataset(input_ids, gpc.config.SEQ_LEN)
-        train_dataloader = DataLoader(train_dataset, batch_size=gpc.config.BATCH_SIZE)
+    train_ds = WebtextDataset(path=data_path, seq_len=gpc.config.SEQ_LEN)
+    train_dataloader = utils.get_dataloader(train_ds,
+                                            seed=42,
+                                            batch_size=gpc.config.BATCH_SIZE,
+                                            pin_memory=True,
+                                            shuffle=True,
+                                            drop_last=True)
 
     logger.info('Build model', ranks=[0])
     use_pipeline = is_using_pp()
