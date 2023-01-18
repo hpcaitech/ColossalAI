@@ -249,6 +249,8 @@ if version.parse(torch.__version__) >= version.parse('1.12.0'):
         aten.sum.default,
         aten.sum.dim_IntList,
         aten.mean.dim,
+        aten.sub.Tensor,
+        aten.sub_.Tensor,
 
     # activation op
         aten.hardswish.default,
@@ -313,7 +315,8 @@ if version.parse(torch.__version__) >= version.parse('1.12.0'):
         aten.where.self,
         aten.zero_.default,
         aten.zeros_like.default,
-    ]
+        aten.fill_.Scalar
+    ]  # yapf: disable
 
     for op in zero_flop_aten:
         flop_mapping[op] = zero_flop_jit
