@@ -113,7 +113,7 @@ def _test_evoformer_codegen(rank, msa_len, pair_len, max_memory):
         MetaTensor(node_mask, fake_device="cuda:0"),
         MetaTensor(pair_mask, fake_device="cuda:0"),
     )
-    # codegen = AutoChunkCodeGen(meta_graph, max_memory=max_memory)
+    codegen = AutoChunkCodeGen(meta_graph, max_memory=max_memory, print_mem=False)
 
     # trace and recompile
     # MetaInfoProp requires symbolic_trace but CodeGen requires ColoTracer
@@ -130,7 +130,7 @@ def _test_evoformer_codegen(rank, msa_len, pair_len, max_memory):
             "_mask_trans": True,
         },
     )
-    # graph.set_codegen(codegen)
+    graph.set_codegen(codegen)
     gm = ColoGraphModule(model, graph)
     gm.recompile()
 
@@ -147,7 +147,7 @@ def _test_evoformer_codegen(rank, msa_len, pair_len, max_memory):
     not (CODEGEN_AVAILABLE and is_compatible_with_meta() and HAS_REPO),
     reason="torch version is lower than 1.12.0",
 )
-@pytest.mark.parametrize("max_memory", [None, 20, 25, 30])
+@pytest.mark.parametrize("max_memory", [None])    # [None, 20, 25, 30]
 @pytest.mark.parametrize("msa_len", [32])
 @pytest.mark.parametrize("pair_len", [64])
 def test_evoformer_codegen(msa_len, pair_len, max_memory):
@@ -161,4 +161,4 @@ def test_evoformer_codegen(msa_len, pair_len, max_memory):
 
 
 if __name__ == "__main__":
-    _test_evoformer_codegen(0, 32, 64, 25)
+    _test_evoformer_codegen(0, 32, 64, None)

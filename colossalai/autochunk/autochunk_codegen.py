@@ -123,12 +123,13 @@ def _replace_name(context: str, name_from: str, name_to: str) -> str:
     """
     replace node name
     """
-    patterns = [(" ", " "), (" ", "."), (" ", ","), ("(", ")"), ("(", ","), (" ", ")")]
+    patterns = [(" ", " "), (" ", "."), (" ", ","), ("(", ")"), ("(", ","), (" ", ")"), (" ", ""), ("", " ")]
     for p in patterns:
         source = p[0] + name_from + p[1]
         target = p[0] + name_to + p[1]
         if source in context:
             context = context.replace(source, target)
+            break
     return context
 
 
