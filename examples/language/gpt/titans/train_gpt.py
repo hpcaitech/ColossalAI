@@ -30,7 +30,7 @@ VOCAB_SIZE = 50257
 def main():
     parser = colossalai.get_default_parser()
     parser.add_argument('--from_torch', default=False, action='store_true')
-    parser.add_argument('--use_dummy_dataset', default=True, action='store_true')
+    parser.add_argument('--use_dummy_dataset', default=False, action='store_true')
     args = parser.parse_args()
     disable_existing_loggers()
     if args.from_torch:
