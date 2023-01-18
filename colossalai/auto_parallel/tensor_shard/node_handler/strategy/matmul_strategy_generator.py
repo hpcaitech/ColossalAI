@@ -61,9 +61,9 @@ class DotProductStrategyGenerator(MatMulStrategyGenerator):
         sharded_input_shape = strategy.sharding_specs[self.op_data['input']].get_sharded_shape_per_device()
         fwd_compute_cost = sharded_input_shape[0]
         bwd_compute_cost = fwd_compute_cost * 2
-        compute_cost = TrainCycleItem(fwd=fwd_compute_cost / 1e5,
-                                      bwd=bwd_compute_cost / 1e5,
-                                      total=fwd_compute_cost / 1e5 + bwd_compute_cost / 1e5)
+        compute_cost = TrainCycleItem(fwd=fwd_compute_cost,
+                                      bwd=bwd_compute_cost,
+                                      total=fwd_compute_cost + bwd_compute_cost)
         return compute_cost
 
     @ignore_sharding_exception
