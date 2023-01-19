@@ -123,12 +123,13 @@ def _replace_name(context: str, name_from: str, name_to: str) -> str:
     """
     replace node name
     """
-    patterns = [(" ", " "), (" ", "."), (" ", ","), ("(", ")"), ("(", ","), (" ", ")")]
+    patterns = [(" ", " "), (" ", "."), (" ", ","), ("(", ")"), ("(", ","), (" ", ")"), (" ", ""), ("", " ")]
     for p in patterns:
         source = p[0] + name_from + p[1]
         target = p[0] + name_to + p[1]
         if source in context:
             context = context.replace(source, target)
+            break
     return context
 
 
@@ -138,8 +139,7 @@ def _replace_reshape_size(context: str, node_name: str, reshape_size_dict: Dict)
     """
     if node_name not in reshape_size_dict:
         return context
-    for size_name, size_value in reshape_size_dict[node_name].items():
-        context = context.replace(size_name, size_value)
+    context = context.replace(reshape_size_dict[node_name][0], reshape_size_dict[node_name][1])
     return context
 
 
