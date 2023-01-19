@@ -6,7 +6,7 @@ import torch.fx
 import torch.multiprocessing as mp
 
 try:
-    from fastfold.model.nn.evoformer import EvoformerBlock
+    from fastfold.model.nn.evoformer import ExtraMSABlock
     HAS_REPO = True
 except:
     HAS_REPO = False
@@ -54,7 +54,7 @@ def _test_fwd(model: torch.nn.Module, gm: ColoGraphModule, node, pair, node_mask
 
 
 def _build_openfold():
-    model = EvoformerBlock(
+    model = ExtraMSABlock(
         c_m=256,
         c_z=128,
         c_hidden_msa_att=32,
@@ -68,12 +68,13 @@ def _build_openfold():
         pair_dropout=0.15,
         inf=1e4,
         eps=1e-4,
+        ckpt=False,
         is_multimer=False,
     ).eval().cuda()
     return model
 
 
-def _test_evoformer_codegen(rank, msa_len, pair_len, max_memory):
+def _test_extramsa_codegen(rank, msa_len, pair_len, max_memory):
     # launch colossalai
     colossalai.launch(
         config={},
@@ -102,7 +103,7 @@ def _test_evoformer_codegen(rank, msa_len, pair_len, max_memory):
         },
         concrete_args={
             "chunk_size": None,
-            "_mask_trans": True,
+            "_chunk_logits": 1024,
         },
     )
     interp = MetaInfoProp(meta_graph)
@@ -126,7 +127,7 @@ def _test_evoformer_codegen(rank, msa_len, pair_len, max_memory):
         },
         concrete_args={
             "chunk_size": None,
-            "_mask_trans": True,
+            "_chunk_logits": 1024,
         },
     )
     graph.set_codegen(codegen)
@@ -149,9 +150,9 @@ def _test_evoformer_codegen(rank, msa_len, pair_len, max_memory):
 @pytest.mark.parametrize("max_memory", [None, 24, 28, 32])
 @pytest.mark.parametrize("msa_len", [32])
 @pytest.mark.parametrize("pair_len", [64])
-def test_evoformer_codegen(msa_len, pair_len, max_memory):
+def test_extramsa_codegen(msa_len, pair_len, max_memory):
     run_func = partial(
-        _test_evoformer_codegen,
+        _test_extramsa_codegen,
         msa_len=msa_len,
         pair_len=pair_len,
         max_memory=max_memory,
@@ -160,4 +161,4 @@ def test_evoformer_codegen(msa_len, pair_len, max_memory):
 
 
 if __name__ == "__main__":
-    _test_evoformer_codegen(0, 32, 64, 24)
+    _test_extramsa_codegen(0, 32, 64, None)

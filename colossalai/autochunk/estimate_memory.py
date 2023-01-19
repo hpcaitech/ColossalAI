@@ -6,12 +6,7 @@ from torch.fx.node import Node, map_arg
 
 from colossalai.fx.profiler import activation_size, parameter_size
 
-from .utils import (
-    delete_free_var_from_last_use,
-    find_idx_by_name,
-    get_node_shape,
-    is_non_compute_node_except_placeholder,
-)
+from .utils import delete_free_var_from_last_use, find_idx_by_name, get_node_shape, is_non_memory_node
 
 
 class EstimateMemory(object):
@@ -240,7 +235,7 @@ class EstimateMemory(object):
             elif node.op == "output":
                 continue
             # no change for non compute node
-            elif is_non_compute_node_except_placeholder(node):
+            elif is_non_memory_node(node):
                 act_memory_peak_log.append(act_memory)
             # node is a compute op
             # calculate tmp, output node and delete node memory

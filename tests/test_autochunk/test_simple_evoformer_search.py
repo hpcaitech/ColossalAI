@@ -13,6 +13,7 @@ except:
 
 import colossalai
 from colossalai.core import global_context as gpc
+from colossalai.fx import symbolic_trace
 from colossalai.fx._compatibility import is_compatible_with_meta
 from colossalai.fx.codegen.activation_checkpoint_codegen import CODEGEN_AVAILABLE
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
@@ -28,10 +29,10 @@ def assert_chunk_infos(chunk_infos, max_memory, msa_len, pair_len):
 
     if msa_len == 32 and pair_len == 64:
         if max_memory is None:
-            target_regions = [(142, 154), (366, 373), (233, 283), (301, 351), (127, 134), (204, 228), (167, 191),
-                              (161, 166), (198, 203), (6, 69)]
+            target_regions = [(142, 154), (366, 373), (234, 283), (302, 351), (127, 134), (211, 228), (174, 191),
+                              (161, 166), (198, 203), (7, 57)]
         elif max_memory == 20:
-            target_regions = [(142, 154), (369, 373), (233, 269), (301, 351)]
+            target_regions = [(142, 154), (369, 373), (235, 269), (303, 351), (130, 131)]
         elif max_memory == 25:
             target_regions = [(144, 154), (369, 370)]
         elif max_memory == 30:
@@ -41,25 +42,10 @@ def assert_chunk_infos(chunk_infos, max_memory, msa_len, pair_len):
     else:
         raise NotImplementedError()
 
-    assert len(found_regions) == len(
-        target_regions), "len of found regions %s doesn't equal len of target regions %s" % (
-            str(found_regions),
-            str(target_regions),
-        )
-    for region in target_regions:
-        assert (region in found_regions), "region:%s not in found regions for msa:%d, pair:%d, maxmem:%s" % (
-            str(region),
-            msa_len,
-            pair_len,
-            str(max_memory),
-        )
-    for region in found_regions:
-        assert (region in target_regions), "region:%s should not be found for msa:%d, pair:%d, maxmem:%d" % (
-            str(region),
-            msa_len,
-            pair_len,
-            str(max_memory),
-        )
+    assert found_regions == target_regions, "found regions %s doesn't equal target regions %s" % (
+        str(found_regions),
+        str(target_regions),
+    )
 
 
 def _test_simple_evoformer_search(rank, msa_len, pair_len, max_memory):
@@ -78,11 +64,14 @@ def _test_simple_evoformer_search(rank, msa_len, pair_len, max_memory):
     node = torch.randn(1, msa_len, pair_len, 256).cuda()
     pair = torch.randn(1, pair_len, pair_len, 128).cuda()
 
-    gm_prop = torch.fx.symbolic_trace(model)    # must use symbolic_trace
-    interp = MetaInfoProp(gm_prop)
+    meta_graph = symbolic_trace(model,
+                                meta_args={
+                                    "node": node.to(torch.device("meta")),
+                                    "pair": pair.to(torch.device("meta")),
+                                })    # must use symbolic_trace
+    interp = MetaInfoProp(meta_graph)
     interp.propagate(MetaTensor(node, fake_device="cuda:0"), MetaTensor(pair, fake_device="cuda:0"))
-
-    codegen = AutoChunkCodeGen(gm_prop, max_memory=max_memory)
+    codegen = AutoChunkCodeGen(meta_graph, max_memory=max_memory)
     chunk_infos = codegen.chunk_infos
     assert_chunk_infos(chunk_infos, max_memory, msa_len, pair_len)
 
