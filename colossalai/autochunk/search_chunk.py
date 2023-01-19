@@ -78,7 +78,7 @@ class SearchChunk(object):
         # set trace range and do the trace
         if self.print_progress:
             get_logger().info("AutoChunk start tracing indice")
-        self.trace_indice.set_trace_range(max_chunk_region_list)
+        self.trace_indice.set_trace_range(max_chunk_region_list, active_nodes)
         self.trace_indice.trace_indice()
 
     def _find_peak_node(self, mem_peak: List) -> int:
@@ -181,6 +181,9 @@ class SearchChunk(object):
                 for start_dim, _ in enumerate(start_trace["indice"]):
                     # dim size cannot be 1
                     if (get_node_shape(end_node)[end_dim] == 1 or get_node_shape(start_node)[start_dim] == 1):
+                        continue
+                    # must have users
+                    if len(end_node.users) == 0:
                         continue
                     # check index source align
                     if not self.trace_flow.check_index_source(start_dim, start_node, start_idx, end_dim, end_node):

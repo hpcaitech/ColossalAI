@@ -34,6 +34,7 @@ class TraceIndice(object):
         self.indice_view_list = {}
         self.indice_count = -1
         self.trace_range = []
+        self.active_node_list = []
 
     def _init_indice_trace_list(self):
         indice_trace_list = []
@@ -49,8 +50,9 @@ class TraceIndice(object):
             indice_trace_list.append(cur_trace)
         return indice_trace_list
 
-    def set_trace_range(self, trace_range: List) -> None:
+    def set_trace_range(self, trace_range: List, active_node_list: List) -> None:
         self.trace_range = trace_range
+        self.active_node_list = active_node_list
 
     def _add_indice(self):
         """
@@ -613,29 +615,28 @@ class TraceIndice(object):
         trace_range = None
         for i in range(len(self.trace_range)):
             if self.trace_range[i][1] == node_idx:
-                if i <= 4:
-                    break
-                # use previous range's start instead of this one's start
-                # 5 is the min safe range
-                trace_range = (self.trace_range[i - 5][0], self.trace_range[i][1])
+                trace_range = (self.trace_range[i][0], self.trace_range[i][1])
                 break
             if self.trace_range[i][1] > node_idx:
                 break
         if trace_range is None:
             return
 
+        active_nodes = self.active_node_list[trace_range[0]:trace_range[1] + 1]
+        active_nodes = set(flat_list(active_nodes))
+        active_nodes = [find_idx_by_name(i, self.node_list) for i in active_nodes]
         for i in range(trace_range[0], trace_range[1] + 1):
             trace = self.indice_trace_list[i]
             # clear compute
             for dim_compute in trace["compute"]:
                 for i in range(len(dim_compute) - 1, -1, -1):
-                    if dim_compute[i] < trace_range[0]:
+                    if dim_compute[i] < trace_range[0] and dim_compute[i] not in active_nodes:
                         dim_compute.pop(i)
                 continue
             # clear source
             for dim_source in trace["source"]:
                 for k in list(dim_source.keys()):
-                    if k < trace_range[0]:
+                    if k < trace_range[0] and k not in active_nodes:
                         dim_source.pop(k)
 
     def trace_indice(self):

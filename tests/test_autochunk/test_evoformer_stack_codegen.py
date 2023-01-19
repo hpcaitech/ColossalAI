@@ -160,4 +160,4 @@ def test_evoformer_stack_codegen(msa_len, pair_len, max_memory):
 
 
 if __name__ == "__main__":
-    _test_evoformer_stack_codegen(0, 32, 64, 28)
+    _test_evoformer_stack_codegen(0, 32, 64, None)
