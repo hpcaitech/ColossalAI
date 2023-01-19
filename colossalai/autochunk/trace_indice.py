@@ -600,6 +600,38 @@ class TraceIndice(object):
         }
         self.indice_view_list[node] = view_dict
 
+    def _clear_trace(self, node_idx: int) -> None:
+        """
+        clear too far trace to speed up computation
+        """
+        trace_range = None
+        for i in range(len(self.trace_range)):
+            if self.trace_range[i][1] == node_idx:
+                if i <= 4:
+                    break
+                # use previous range's start instead of this one's start
+                # 5 is the min safe range
+                trace_range = (self.trace_range[i - 5][0], self.trace_range[i][1])
+                break
+            if self.trace_range[i][1] > node_idx:
+                break
+        if trace_range is None:
+            return
+
+        for i in range(trace_range[0], trace_range[1] + 1):
+            trace = self.indice_trace_list[i]
+            # clear compute
+            for dim_compute in trace["compute"]:
+                for i in range(len(dim_compute) - 1, -1, -1):
+                    if dim_compute[i] < trace_range[0]:
+                        dim_compute.pop(i)
+                continue
+            # clear source
+            for dim_source in trace["source"]:
+                for k in list(dim_source.keys()):
+                    if k < trace_range[0]:
+                        dim_source.pop(k)
+
     def trace_indice(self):
         for idx, node in enumerate(self.node_list):
             if node.op == "placeholder":
@@ -659,3 +691,6 @@ class TraceIndice(object):
                 continue
             else:
                 raise NotImplementedError(node.op, "op not implemented yet!")
+
+            # limit trace range
+            self._clear_trace(idx)

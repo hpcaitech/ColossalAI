@@ -70,9 +70,9 @@ class SearchChunk(object):
                 break
             max_chunk_region_list.append(max_chunk_region)
 
-        # the first and second are always overlaped, merge them
-        max_chunk_region_list[0] = (0, max_chunk_region_list[1][1])
-        max_chunk_region_list.pop(1)
+        # nothing to limit for the first range
+        max_chunk_region_list = max_chunk_region_list[1:]
+        max_chunk_region_list[0] = (0, max_chunk_region_list[0][1])
 
         # set trace range and do the trace
         self.trace_indice.set_trace_range(max_chunk_region_list)
