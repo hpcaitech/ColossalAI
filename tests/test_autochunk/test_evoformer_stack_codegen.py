@@ -77,7 +77,7 @@ def _build_openfold():
     return model
 
 
-def _test_evoformer_codegen(rank, msa_len, pair_len, max_memory):
+def _test_evoformer_stack_codegen(rank, msa_len, pair_len, max_memory):
     # launch colossalai
     colossalai.launch(
         config={},
@@ -110,12 +110,8 @@ def _test_evoformer_codegen(rank, msa_len, pair_len, max_memory):
         },
     )
     interp = MetaInfoProp(meta_graph)
-    interp.propagate(
-        MetaTensor(node, fake_device="cuda:0"),
-        MetaTensor(pair, fake_device="cuda:0"),
-        MetaTensor(node_mask, fake_device="cuda:0"),
-        MetaTensor(pair_mask, fake_device="cuda:0"),
-    )
+    interp.propagate(MetaTensor(node, fake_device="cuda:0"), MetaTensor(pair, fake_device="cuda:0"),
+                     MetaTensor(node_mask, fake_device="cuda:0"), MetaTensor(pair_mask, fake_device="cuda:0"), None)
     codegen = AutoChunkCodeGen(meta_graph, max_memory=max_memory, print_mem=False)
 
     # trace and recompile
@@ -153,9 +149,9 @@ def _test_evoformer_codegen(rank, msa_len, pair_len, max_memory):
 @pytest.mark.parametrize("max_memory", [None, 24, 28, 32])
 @pytest.mark.parametrize("msa_len", [32])
 @pytest.mark.parametrize("pair_len", [64])
-def test_evoformer_codegen(msa_len, pair_len, max_memory):
+def test_evoformer_stack_codegen(msa_len, pair_len, max_memory):
     run_func = partial(
-        _test_evoformer_codegen,
+        _test_evoformer_stack_codegen,
         msa_len=msa_len,
         pair_len=pair_len,
         max_memory=max_memory,
@@ -164,4 +160,4 @@ def test_evoformer_codegen(msa_len, pair_len, max_memory):
 
 
 if __name__ == "__main__":
-    _test_evoformer_codegen(0, 32, 64, 24)
+    _test_evoformer_stack_codegen(0, 32, 64, 24)
