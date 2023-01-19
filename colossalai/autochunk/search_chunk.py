@@ -41,13 +41,12 @@ class SearchChunk(object):
     """
 
     def __init__(self, gm, max_memory=None, print_mem=False) -> None:
-        self.gm = gm
         self.print_mem = print_mem
         self.trace_indice = TraceIndice(list(gm.graph.nodes))
-        self.trace_indice.trace_indice()
+        self.estimate_memory = EstimateMemory()
+        self._init_trace()
         self.trace_flow = TraceFlow(self.trace_indice)
         self.reorder_graph = ReorderGraph(self.trace_indice)
-        self.estimate_memory = EstimateMemory()
         self.select_chunk = SelectChunk(
             self.trace_indice,
             self.estimate_memory,
@@ -55,7 +54,31 @@ class SearchChunk(object):
             max_memory=max_memory,
         )
 
-    def _find_peak_node(self, mem_peak):
+    def _init_trace(self) -> None:
+        """
+        find the max trace range for every node
+        reduce the computation complexity of trace_indice
+        """
+        # find all max ranges
+        active_nodes = self.estimate_memory.get_active_nodes(self.trace_indice.node_list)
+        cur_node_idx = len(self._get_free_var_idx())
+        max_chunk_region_list = []
+        while True:
+            max_chunk_region = self._search_max_chunk_region(active_nodes, cur_node_idx)
+            cur_node_idx = max_chunk_region[1]
+            if cur_node_idx == len(active_nodes) - 1:
+                break
+            max_chunk_region_list.append(max_chunk_region)
+
+        # the first and second are always overlaped, merge them
+        max_chunk_region_list[0] = (0, max_chunk_region_list[1][1])
+        max_chunk_region_list.pop(1)
+
+        # set trace range and do the trace
+        self.trace_indice.set_trace_range(max_chunk_region_list)
+        self.trace_indice.trace_indice()
+
+    def _find_peak_node(self, mem_peak: List) -> int:
         max_value = max(mem_peak)
         max_idx = mem_peak.index(max_value)
         return max_idx
@@ -73,7 +96,7 @@ class SearchChunk(object):
                 free_var_idx.append(idx)
         return free_var_idx
 
-    def _search_max_chunk_region(self, active_node: List, peak_node: Node, chunk_regions: List) -> Tuple:
+    def _search_max_chunk_region(self, active_node: List, peak_node_idx: int, chunk_regions: List = None) -> Tuple:
         """
         Search max chunk region according to peak memory node
 
@@ -81,7 +104,7 @@ class SearchChunk(object):
 
         Args:
             active_node (List): active node status for every node
-            peak_node (Node): peak memory node
+            peak_node_idx (int): peak memory node idx
             chunk_regions (List): chunk region infos
 
         Returns:
@@ -97,7 +120,7 @@ class SearchChunk(object):
         # from peak_node to free_var
         inside_flag = False
         chunk_region_start = free_var_num
-        for i in range(peak_node, -1, -1):
+        for i in range(peak_node_idx, -1, -1):
             if active_node_num[i] <= threshold:
                 inside_flag = True
             if inside_flag and active_node_num[i] > threshold:
@@ -107,21 +130,23 @@ class SearchChunk(object):
         # from peak_node to len-2
         inside_flag = False
         chunk_region_end = len(active_node) - 1
-        for i in range(peak_node, len(active_node)):
+        for i in range(peak_node_idx, len(active_node)):
             if active_node_num[i] <= threshold:
                 inside_flag = True
             if inside_flag and active_node_num[i] > threshold:
                 chunk_region_end = i
                 break
 
-        for i in chunk_regions:
-            region = i["region"]
-            if chunk_region_start >= region[0] and chunk_region_end <= region[1]:
-                return None
-            elif (region[0] <= chunk_region_start <= region[1] and chunk_region_end > region[1]):
-                chunk_region_start = region[1] + 1
-            elif (region[0] <= chunk_region_end <= region[1] and chunk_region_start < region[0]):
-                chunk_region_end = region[0] - 1
+        # avoid chunk regions overlap
+        if chunk_regions is not None:
+            for i in chunk_regions:
+                region = i["region"]
+                if chunk_region_start >= region[0] and chunk_region_end <= region[1]:
+                    return None
+                elif (region[0] <= chunk_region_start <= region[1] and chunk_region_end > region[1]):
+                    chunk_region_start = region[1] + 1
+                elif (region[0] <= chunk_region_end <= region[1] and chunk_region_start < region[0]):
+                    chunk_region_end = region[0] - 1
         return chunk_region_start, chunk_region_end
 
     def _find_chunk_info(self, input_trace, output_trace, start_idx, end_idx) -> List:

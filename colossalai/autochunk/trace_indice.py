@@ -33,6 +33,7 @@ class TraceIndice(object):
         self.indice_trace_list = self._init_indice_trace_list()
         self.indice_view_list = {}
         self.indice_count = -1
+        self.trace_range = []
 
     def _init_indice_trace_list(self):
         indice_trace_list = []
@@ -47,6 +48,9 @@ class TraceIndice(object):
                 cur_trace = {"indice": [], "compute": [], "source": []}
             indice_trace_list.append(cur_trace)
         return indice_trace_list
+
+    def set_trace_range(self, trace_range: List) -> None:
+        self.trace_range = trace_range
 
     def _add_indice(self):
         """
