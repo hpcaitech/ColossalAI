@@ -8,7 +8,11 @@ from torch import nn
 from tqdm import tqdm
 
 from colossalai.fx import ColoTracer
-from colossalai.fx.passes.adding_split_node_pass import avgnode_split_pass, split_with_split_nodes_pass
+from colossalai.fx.passes.adding_split_node_pass import (
+    avgnode_split_pass,
+    gpipe_dp_split_pass,
+    split_with_split_nodes_pass,
+)
 from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.pipeline.middleware.adaptor import get_fx_topology
@@ -55,12 +59,17 @@ def get_tflops(model_numel, batch_size, seq_len, step_time):
     return model_numel * batch_size * seq_len * 8 / 1e12 / (step_time + 1e-12)
 
 
-def create_partition_module(pp_rank: int, stage_num: int, model, data_kwargs):
+def create_partition_module(pp_rank: int, stage_num: int, model, data_kwargs, num_microbatches):
     tracer = ColoTracer()
     meta_args = {k: v.to('meta') for k, v in data_kwargs.items()}
     graph = tracer.trace(root=model, meta_args=meta_args)
     gm = torch.fx.GraphModule(model, graph, model.__class__.__name__)
-    annotated_model = avgnode_split_pass(gm, stage_num)
+    #annotated_model = avgnode_split_pass(gm, stage_num)
+    annotated_model = gpipe_dp_split_pass(gm, stage_num, num_microbatches)
+
+    if pp_rank == 0:
+        with open('pp_logs/partition', 'w') as f:
+            f.write(str(annotated_model.graph))
 
     top_module, split_submodules = split_with_split_nodes_pass(annotated_model, merge_output=True)
     topo = get_fx_topology(top_module)
@@ -70,8 +79,8 @@ def create_partition_module(pp_rank: int, stage_num: int, model, data_kwargs):
     return split_submodules[pp_rank + 1]
 
 
-def partition(model, data_kwargs, pp_rank: int, chunk: int, stage_num: int):
-    module = create_partition_module(pp_rank, stage_num, model, data_kwargs)
+def partition(model, data_kwargs, num_microbatches, pp_rank: int, chunk: int, stage_num: int):
+    module = create_partition_module(pp_rank, stage_num, model, data_kwargs, num_microbatches)
     return module
 
 
@@ -106,7 +115,7 @@ def run_master(args):
     model = model_builder(model_type)(checkpoint=False)
 
     # set 1f1b pipeline engine
-    pp_engine = OneFOneBPipelineEngine(partition_fn=partial(partition, model, warmup_data_kwargs),
+    pp_engine = OneFOneBPipelineEngine(partition_fn=partial(partition, model, warmup_data_kwargs, num_microbatches),
                                        stage_num=stage_num,
                                        num_microbatches=num_microbatches,
                                        device=device,

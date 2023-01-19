@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 from torch.fx import symbolic_trace
 from torch.fx.node import Node
@@ -7,6 +8,111 @@ from colossalai.fx.passes.split_module import split_module
 
 def pipe_split():
     pass
+
+
+def get_compute_costs(gm: torch.fx.GraphModule):
+    num_nodes = len(gm.graph.nodes)
+    all_compute_cost = np.full((num_nodes, num_nodes), np.inf, dtype=np.float64)
+
+    for start in range(num_nodes):
+        for end in range(start, num_nodes):
+            selected_fwd_flops = [gm.graph.nodes[i].fwd_flop for i in range(start, end + 1)]
+            all_compute_cost[start, end] = sum(selected_fwd_flops)
+
+    return all_compute_cost
+
+
+def do_dp_split_gpipe_impl(gm: torch.fx.GraphModule, num_stages, num_microbatches, compute_costs, max_compute_cost):
+    """The core implementation of the DP algorithm."""
+    # Adapted from Alpa DP Formulation.
+    # For f, node ID start from 0
+    # f[number of stages,
+    #   node id that is currently being considered]
+    num_nodes = len(gm.graph.nodes)
+    # record time cost(assess by fwd flop now)
+    f = np.full((num_stages + 1, num_nodes + 1), np.inf, dtype=np.float32)
+
+    # record max stage compute cost among all stages in this partition.
+    f_stage_max = np.full((num_stages + 1, num_nodes + 1), 0.0, dtype=np.float32)
+    # record start node index for next stage in this partition
+    f_argmin = np.full((num_stages + 1, num_nodes + 1), -1, dtype=np.int32)
+    f[0, num_nodes] = 0
+    for s in range(1, num_stages + 1):    # pylint: disable=too-many-nested-blocks
+        for i in range(num_nodes - 1, -1, -1):
+            for k in range(num_nodes, i, -1):
+                stage_cost = compute_costs[i, k - 1]
+                new_cost = f[s - 1, k] + stage_cost
+                if (stage_cost <= max_compute_cost and new_cost < f[s, i]):
+                    f[s, i] = new_cost
+                    f_stage_max[s, i] = max(f_stage_max[s - 1, k], stage_cost)
+                    f_argmin[s, i] = k
+
+    best_total_cost = f[num_stages, 0]
+    if np.isinf(best_total_cost):
+        return np.inf, None
+
+    total_cost = f[num_stages, 0] + (num_microbatches - 1) * f_stage_max[num_stages, 0]
+
+    current_s = num_stages
+    current_node = 0
+
+    res = []
+    while current_s > 0 and current_node < num_nodes:
+        next_start_node = f_argmin[current_s, current_node]
+        res.append((current_node, next_start_node))
+        current_s -= 1
+        current_node = next_start_node
+
+    return total_cost, res
+
+
+def do_dp_split_gpipe(gm: torch.fx.GraphModule, num_stages: int, num_microbatches: int):
+    # Ignore the memory cost profiling in Alpa's design for convenience.
+    compute_costs = get_compute_costs(gm)
+
+    max_compute_costs = np.sort(np.unique(compute_costs))
+    best_cost = np.inf
+    best_solution = None
+    last_max_compute_cost = 0.0
+    gap = 1e-6    # temporary magic number
+
+    for max_compute_cost in max_compute_costs:
+        # Pruning to reduce search space.
+        if max_compute_cost * num_microbatches >= best_cost:
+            break
+        if max_compute_cost - last_max_compute_cost < gap:
+            continue
+
+        cost, solution = do_dp_split_gpipe_impl(gm, num_stages, num_microbatches, compute_costs, max_compute_cost)
+
+        if cost < best_cost:
+            best_cost = cost
+            best_solution = solution
+    return best_cost, best_solution
+
+
+# Auto DP partition based on Alpa.
+# Adapted to Gpipe Scheduler
+def gpipe_dp_split_pass(gm: torch.fx.GraphModule, pp_size: int, num_microbatches: int):
+    mod_graph = gm.graph
+    # To use gpipe_dp_split_pass, we need run meta_info_prop interpreter first.
+    # If nodes don't have meta info, this pass will fall back to normal balanced split pass.
+    check_node = list(mod_graph.nodes)[0]
+    if 'tensor_meta' not in check_node.meta:
+        return balanced_split_pass(gm, pp_size)
+
+    best_cost, best_solution = do_dp_split_gpipe(gm, pp_size, num_microbatches)
+
+    for (_, next_start_node) in best_solution:
+        if pp_size <= 1:
+            break
+        node = mod_graph.nodes[next_start_node]
+        with mod_graph.inserting_after(node):
+            split_node = mod_graph.create_node('call_function', pipe_split)
+        pp_size -= 1
+
+    gm.recompile()
+    return gm
 
 
 def avgcompute_split_pass(gm: torch.fx.GraphModule, pp_size: int):
