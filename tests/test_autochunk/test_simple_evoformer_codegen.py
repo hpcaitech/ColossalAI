@@ -73,7 +73,7 @@ def _test_simple_evoformer_codegen(rank, msa_len, pair_len, max_memory):
         },
     )
     graph.set_codegen(codegen)
-    gm = ColoGraphModule(model, graph)
+    gm = ColoGraphModule(model, graph, ckpt_codegen=False)
     gm.recompile()
 
     # assert we have inserted chunk
