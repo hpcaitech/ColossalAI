@@ -35,7 +35,7 @@ def _test_fwd(model: torch.nn.Module, gm: ColoGraphModule, node, pair, node_mask
     #     pair1 = pair.clone()
     #     node_mask1 = node_mask.clone()
     #     pair_mask1 = pair_mask.clone()
-    #     gm(node1, pair1, node_mask1, pair_mask1)
+    #     gm(node1, pair1, node_mask1, pair_mask1, None)
     # new_max_mem = torch.cuda.max_memory_allocated() / 1024**2
     # print("autochunk max mem:%.2f"% (new_max_mem - now_mem))
 
@@ -64,7 +64,7 @@ def _build_openfold():
         c_s=384,
         no_heads_msa=8,
         no_heads_pair=4,
-        no_blocks=4,    # 48
+        no_blocks=2,    # 48
         transition_n=4,
         msa_dropout=0.15,
         pair_dropout=0.25,

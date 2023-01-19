@@ -281,7 +281,10 @@ class TraceFlow(object):
                     if chunk_dim is not None:
                         user_source = self.trace_indice._find_source_trace_from_node(user)[chunk_dim]
                         if input_node_idx in user_source:
-                            input_dict[user_idx] = user_source[input_node_idx]
+                            if get_node_shape(input_node)[user_source[input_node_idx][0]] == 1:
+                                input_dict[user_idx] = [None]
+                            else:
+                                input_dict[user_idx] = user_source[input_node_idx]
                         else:
                             return None, None
             if len(input_dict) == 0:
