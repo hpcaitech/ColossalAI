@@ -2,6 +2,14 @@ from typing import Any, Callable, Dict, Iterable, List, Tuple
 
 from torch.fx.node import Node
 
+from colossalai.logging import get_dist_logger
+
+logger = get_dist_logger()
+
+
+def get_logger():
+    return logger
+
 
 def flat_list(inputs: Any) -> List:
     """

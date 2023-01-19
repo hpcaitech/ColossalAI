@@ -497,6 +497,9 @@ class TraceIndice(object):
         new_dim_num = sum([1 if str(i) == "None" else 0 for i in node_args])
         for _ in range(new_dim_num):
             self._del_dim(node_idx, 0)
+        delete_dim_num = sum([1 if str(i) == "0" else 0 for i in node_args])
+        for _ in range(delete_dim_num):
+            self._add_dim(node_idx, 0)
         self._assign_indice_as_input(node, node_idx)
 
         for _, node_arg in enumerate(node_args):
@@ -517,6 +520,9 @@ class TraceIndice(object):
             elif "None" == node_arg_str:
                 self._add_dim(node_idx, new_idx_count)
                 new_idx_count += 1
+            elif "0" == node_arg_str:
+                self._del_dim(node_idx, new_idx_count)
+                origin_idx_count += 1
             else:
                 raise NotImplementedError()
 

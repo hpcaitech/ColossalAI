@@ -8,7 +8,7 @@ from .reorder_graph import ReorderGraph
 from .select_chunk import SelectChunk
 from .trace_flow import TraceFlow
 from .trace_indice import TraceIndice
-from .utils import get_node_shape, is_non_compute_node, is_non_compute_node_except_placeholder
+from .utils import get_logger, get_node_shape, is_non_compute_node, is_non_compute_node_except_placeholder
 
 
 class SearchChunk(object):
@@ -40,8 +40,9 @@ class SearchChunk(object):
         print_mem (bool): print estimated memory
     """
 
-    def __init__(self, gm, max_memory=None, print_mem=False) -> None:
+    def __init__(self, gm, max_memory=None, print_mem=False, print_progress=False) -> None:
         self.print_mem = print_mem
+        self.print_progress = print_progress
         self.trace_indice = TraceIndice(list(gm.graph.nodes))
         self.estimate_memory = EstimateMemory()
         self._init_trace()
@@ -75,6 +76,8 @@ class SearchChunk(object):
         max_chunk_region_list[0] = (0, max_chunk_region_list[0][1])
 
         # set trace range and do the trace
+        if self.print_progress:
+            get_logger().info("AutoChunk start tracing indice")
         self.trace_indice.set_trace_range(max_chunk_region_list)
         self.trace_indice.trace_indice()
 
@@ -278,6 +281,9 @@ class SearchChunk(object):
         Returns:
             chunk_infos (Dict)
         """
+        if self.print_progress:
+            get_logger().info("AutoChunk start searching chunk regions")
+
         chunk_infos = []
         (
             init_mem_peak,
@@ -297,6 +303,11 @@ class SearchChunk(object):
                 _,
                 active_node,
             ) = self.estimate_memory.estimate_chunk_inference_mem(self.trace_indice.node_list, chunk_infos)
+
+            if self.print_progress:
+                get_logger().info("AutoChunk find chunk region %d = (%d, %d)" %
+                                  (len(chunk_infos), chunk_info["region"][0], chunk_info["region"][1]))
+
             if self._stop_search(init_mem_peak, mem_peak):
                 break
         if self.print_mem:

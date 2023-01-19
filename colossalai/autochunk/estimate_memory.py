@@ -43,6 +43,8 @@ class EstimateMemory(object):
         delete_node = []
         if user.op not in ("output",):
             nodes_to_delete = user_to_last_uses.get(user, [])
+            if len(user.users) == 0:
+                nodes_to_delete.append(user)
             if to_keep is not None:
                 keep_list = []
                 for n in nodes_to_delete:
@@ -135,6 +137,8 @@ class EstimateMemory(object):
         if user.op in ("placeholder", "output"):
             return 0
         nodes_to_delete = user_to_last_uses.get(user, [])
+        if len(user.users) == 0:
+            nodes_to_delete.append(user)
         delete_size = 0
         for n in nodes_to_delete:
             if n.name in chunk_inputs_names:

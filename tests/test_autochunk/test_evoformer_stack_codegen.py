@@ -42,8 +42,8 @@ def _test_fwd(model: torch.nn.Module, gm: ColoGraphModule, node, pair, node_mask
     # test forward
     model = model.cuda()
     with torch.no_grad():
-        non_fx_out = model(node, pair, node_mask, pair_mask)
-        fx_out = gm(node, pair, node_mask, pair_mask)
+        non_fx_out = model(node, pair, node_mask, pair_mask, None)
+        fx_out = gm(node, pair, node_mask, pair_mask, None)
 
     assert torch.allclose(non_fx_out[0], fx_out[0],
                           atol=1e-4), "fx_out doesn't comply with original output, diff is %.2e" % torch.mean(
@@ -112,7 +112,7 @@ def _test_evoformer_stack_codegen(rank, msa_len, pair_len, max_memory):
     interp = MetaInfoProp(meta_graph)
     interp.propagate(MetaTensor(node, fake_device="cuda:0"), MetaTensor(pair, fake_device="cuda:0"),
                      MetaTensor(node_mask, fake_device="cuda:0"), MetaTensor(pair_mask, fake_device="cuda:0"), None)
-    codegen = AutoChunkCodeGen(meta_graph, max_memory=max_memory, print_mem=False)
+    codegen = AutoChunkCodeGen(meta_graph, max_memory=max_memory, print_mem=False, print_progress=True)
 
     # trace and recompile
     # MetaInfoProp requires symbolic_trace but CodeGen requires ColoTracer
@@ -160,4 +160,4 @@ def test_evoformer_stack_codegen(msa_len, pair_len, max_memory):
 
 
 if __name__ == "__main__":
-    _test_evoformer_stack_codegen(0, 32, 64, 24)
+    _test_evoformer_stack_codegen(0, 32, 64, 28)
