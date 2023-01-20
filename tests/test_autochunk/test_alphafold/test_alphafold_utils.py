@@ -85,6 +85,7 @@ def run_test(
     print_code: bool,
     print_mem: bool,
     print_progress: bool,
+    get_chunk_target: Any = None,
 ) -> None:
     # launch colossalai
     colossalai.launch(
@@ -99,7 +100,7 @@ def run_test(
     # build model and input
     model = get_model()
     meta_args, concrete_args = get_data(*data_args)
-    assert_codegen_run(
+    chunks = assert_codegen_run(
         model,
         meta_args=meta_args,
         concrete_args=concrete_args,
@@ -108,5 +109,13 @@ def run_test(
         print_mem=print_mem,
         print_progress=print_progress,
     )
+
+    if get_chunk_target is not None:
+        chunk_found = [i["region"] for i in chunks]
+        chunk_target = get_chunk_target()[max_memory]
+        assert chunk_found == chunk_target, "found regions %s doesn't equal target regions %s" % (
+            str(chunk_found),
+            str(chunk_target),
+        )
 
     gpc.destroy()
