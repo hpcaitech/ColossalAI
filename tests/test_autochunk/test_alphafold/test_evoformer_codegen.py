@@ -11,18 +11,13 @@ try:
 except:
     HAS_REPO = False
 
-import colossalai
-from colossalai.core import global_context as gpc
-from colossalai.fx._compatibility import is_compatible_with_meta
-from colossalai.fx.codegen.activation_checkpoint_codegen import CODEGEN_AVAILABLE
-from colossalai.fx.graph_module import ColoGraphModule
-from colossalai.fx.passes.meta_info_prop import MetaInfoProp
-from colossalai.utils import free_port
+from test_alphafold_utils import assert_codegen_run
 
-if CODEGEN_AVAILABLE and is_compatible_with_meta():
-    from colossalai.autochunk.autochunk_codegen import AutoChunkCodeGen
-    from colossalai.fx.profiler import MetaTensor
-    from colossalai.fx.tracer.experimental import ColoTracer, symbolic_trace
+import colossalai
+from colossalai.autochunk.autochunk_codegen import AUTOCHUNK_AVAILABLE
+from colossalai.core import global_context as gpc
+from colossalai.fx.graph_module import ColoGraphModule
+from colossalai.utils import free_port
 
 
 def _test_fwd(model: torch.nn.Module, gm: ColoGraphModule, node, pair, node_mask, pair_mask):
@@ -91,59 +86,16 @@ def _test_evoformer_codegen(rank, msa_len, pair_len, max_memory):
     pair = torch.randn(1, pair_len, pair_len, 128).cuda()
     pair_mask = torch.randn(1, pair_len, pair_len).cuda()
 
-    # trace the meta graph and setup codegen
-    meta_graph = symbolic_trace(
-        model,
-        meta_args={
-            "m": node.to(torch.device("meta")),
-            "z": pair.to(torch.device("meta")),
-            "msa_mask": node_mask.to(torch.device("meta")),
-            "pair_mask": pair_mask.to(torch.device("meta")),
-        },
-        concrete_args={
-            "chunk_size": None,
-            "_mask_trans": True,
-        },
-    )
-    interp = MetaInfoProp(meta_graph)
-    interp.propagate(
-        MetaTensor(node, fake_device="cuda:0"),
-        MetaTensor(pair, fake_device="cuda:0"),
-        MetaTensor(node_mask, fake_device="cuda:0"),
-        MetaTensor(pair_mask, fake_device="cuda:0"),
-    )
-    codegen = AutoChunkCodeGen(meta_graph, max_memory=max_memory, print_mem=False)
+    assert_codegen_run(model,
+                       meta_args=[("m", node), ("z", pair), ("msa_mask", node_mask), ("pair_mask", pair_mask)],
+                       concrete_args=[("chunk_size", None), ("_mask_trans", True)],
+                       max_memory=max_memory)
 
-    # trace and recompile
-    # MetaInfoProp requires symbolic_trace but CodeGen requires ColoTracer
-    graph = ColoTracer().trace(
-        model,
-        meta_args={
-            "m": node.to(torch.device("meta")),
-            "z": pair.to(torch.device("meta")),
-            "msa_mask": node_mask.to(torch.device("meta")),
-            "pair_mask": pair_mask.to(torch.device("meta")),
-        },
-        concrete_args={
-            "chunk_size": None,
-            "_mask_trans": True,
-        },
-    )
-    graph.set_codegen(codegen)
-    gm = ColoGraphModule(model, graph, ckpt_codegen=False)
-    gm.recompile()
-
-    # assert we have inserted chunk
-    code = graph.python_code("self").src
-    # print(code)
-    assert "chunk_result = None;  chunk_size = None;" in code
-
-    _test_fwd(model, gm, node, pair, node_mask, pair_mask)
     gpc.destroy()
 
 
 @pytest.mark.skipif(
-    not (CODEGEN_AVAILABLE and is_compatible_with_meta() and HAS_REPO),
+    not (AUTOCHUNK_AVAILABLE and HAS_REPO),
     reason="torch version is lower than 1.12.0",
 )
 @pytest.mark.parametrize("max_memory", [None, 24, 28, 32])
