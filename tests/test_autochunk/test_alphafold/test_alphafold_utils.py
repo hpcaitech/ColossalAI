@@ -16,13 +16,15 @@ if AUTOCHUNK_AVAILABLE:
     from colossalai.fx.tracer.experimental import ColoTracer, symbolic_trace
 
 
-def assert_codegen_run(model: Any,
-                       meta_args: List,
-                       concrete_args: List = None,
-                       max_memory: int = None,
-                       print_mem: bool = False,
-                       print_progress: bool = False,
-                       print_code: bool = False) -> List[Dict]:
+def assert_codegen_run(
+    model: Any,
+    meta_args: List,
+    concrete_args: List = None,
+    max_memory: int = None,
+    print_mem: bool = False,
+    print_progress: bool = False,
+    print_code: bool = False,
+) -> List[Dict]:
     if concrete_args is None:
         concrete_args = []
 
@@ -35,7 +37,12 @@ def assert_codegen_run(model: Any,
     interp = MetaInfoProp(meta_graph)
     meta_tensors = [MetaTensor(i[1], fake_device="cuda:0") for i in meta_args] + [i[1] for i in concrete_args]
     interp.propagate(*meta_tensors)
-    codegen = AutoChunkCodeGen(meta_graph, max_memory=max_memory, print_mem=print_mem, print_progress=print_progress)
+    codegen = AutoChunkCodeGen(
+        meta_graph,
+        max_memory=max_memory,
+        print_mem=print_mem,
+        print_progress=print_progress,
+    )
     chunks = codegen.chunk_infos
 
     # trace and recompile
@@ -69,7 +76,16 @@ def assert_codegen_run(model: Any,
     return chunks
 
 
-def run_test(rank, data_args, max_memory, get_model, get_data, print_code, print_mem, print_progress):
+def run_test(
+    rank: int,
+    data_args: tuple,
+    max_memory: int,
+    get_model: Any,
+    get_data: Any,
+    print_code: bool,
+    print_mem: bool,
+    print_progress: bool,
+) -> None:
     # launch colossalai
     colossalai.launch(
         config={},
@@ -83,12 +99,14 @@ def run_test(rank, data_args, max_memory, get_model, get_data, print_code, print
     # build model and input
     model = get_model()
     meta_args, concrete_args = get_data(*data_args)
-    assert_codegen_run(model,
-                       meta_args=meta_args,
-                       concrete_args=concrete_args,
-                       max_memory=max_memory,
-                       print_code=print_code,
-                       print_mem=print_mem,
-                       print_progress=print_progress)
+    assert_codegen_run(
+        model,
+        meta_args=meta_args,
+        concrete_args=concrete_args,
+        max_memory=max_memory,
+        print_code=print_code,
+        print_mem=print_mem,
+        print_progress=print_progress,
+    )
 
     gpc.destroy()
