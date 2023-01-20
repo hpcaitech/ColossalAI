@@ -93,7 +93,7 @@ def run_gpt(placement_policy, tp_init_spec_func=None):
     else:
         init_device = None
 
-    model = GeminiDDP(model, init_device, placement_policy, True, False, 32)
+    model = GeminiDDP(model, init_device, placement_policy, True, False)
     # The same as the following 3 lines
     # chunk_manager = ChunkManager(config_dict, init_device=init_device)
     # gemini_manager = GeminiManager(placement_policy, chunk_manager)
