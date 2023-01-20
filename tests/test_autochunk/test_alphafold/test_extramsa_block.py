@@ -1,5 +1,5 @@
 from functools import partial
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 
 import pytest
 import torch
@@ -53,11 +53,20 @@ def get_data(msa_len: int, pair_len: int) -> Tuple[List, List]:
     return meta_args, concrete_args
 
 
+def get_chunk_target() -> Dict:
+    return {
+        None: [(126, 131), (227, 245), (272, 297), (310, 317), (105, 112), (152, 160), (193, 201), (249, 250),
+               (33, 46)],
+        20: [(126, 131), (238, 245), (283, 290), (313, 314), (108, 109), (35, 46)],
+        24: [(126, 131)],
+    }
+
+
 @pytest.mark.skipif(
     not (AUTOCHUNK_AVAILABLE and HAS_REPO),
     reason="torch version is lower than 1.12.0",
 )
-@pytest.mark.parametrize("max_memory", [None, 24, 28, 32])
+@pytest.mark.parametrize("max_memory", [None, 20, 24])
 @pytest.mark.parametrize("data_args", [(32, 64)])    # (msa_len, pair_len)
 def test_extramsa_block(data_args, max_memory):
     run_func = partial(
@@ -77,9 +86,10 @@ if __name__ == "__main__":
     run_test(
         rank=0,
         data_args=(32, 64),
-        max_memory=24,
+        max_memory=20,
         get_model=get_model,
         get_data=get_data,
+        get_chunk_target=get_chunk_target,
         print_code=False,
         print_mem=False,
         print_progress=False,

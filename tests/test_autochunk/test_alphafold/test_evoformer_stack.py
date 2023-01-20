@@ -61,7 +61,7 @@ def get_data(msa_len: int, pair_len: int) -> Tuple[List, List]:
     not (AUTOCHUNK_AVAILABLE and HAS_REPO),
     reason="torch version is lower than 1.12.0",
 )
-@pytest.mark.parametrize("max_memory", [None, 24, 28, 32])
+@pytest.mark.parametrize("max_memory", [None, 20, 24])
 @pytest.mark.parametrize("data_args", [(32, 64)])    # (msa_len, pair_len)
 def test_evoformer_stack(data_args, max_memory):
     run_func = partial(
@@ -81,7 +81,7 @@ if __name__ == "__main__":
     run_test(
         rank=0,
         data_args=(32, 64),
-        max_memory=24,
+        max_memory=20,
         get_model=get_model,
         get_data=get_data,
         print_code=False,

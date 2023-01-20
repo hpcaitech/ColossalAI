@@ -58,7 +58,6 @@ def get_chunk_target() -> Dict:
         None: [(118, 123), (219, 237), (264, 289), (302, 309), (97, 104), (144, 152), (185, 193), (241, 242), (21, 46)],
         20: [(118, 123), (230, 237), (275, 282), (305, 306), (100, 101), (32, 39), (73, 79)],
         24: [(118, 123)],
-        28: [(120, 123)],
     }
 
 
@@ -66,7 +65,7 @@ def get_chunk_target() -> Dict:
     not (AUTOCHUNK_AVAILABLE and HAS_REPO),
     reason="torch version is lower than 1.12.0",
 )
-@pytest.mark.parametrize("max_memory", [None, 20, 24, 28])
+@pytest.mark.parametrize("max_memory", [None, 20, 24])
 @pytest.mark.parametrize("data_args", [(32, 64)])    # (msa_len, pair_len)
 def test_evoformer_block(data_args, max_memory):
     run_func = partial(
