@@ -201,7 +201,10 @@ class ZeroDDP(ColoDDP):
         gemini_manager (GeminiManager): Manages the chunk manager and heterogeneous momery space.
             For more details, see the API reference of ``GeminiManager``.
         pin_memory (bool): Chunks on CPU Memory use pin-memory.
-        force_outputs_fp32 (bool): If set to True, outputs will be fp32. Otherwise, outputs will be fp16.  Defaults to False.
+        force_outputs_fp32 (bool): If set to True, outputs will be fp32. Otherwise, outputs will be fp16.
+            Defaults to False.
+        strict_ddp_mode (bool): If set to True, there is no tensor sharding, each tensor is replicated.
+            Defaults to False. Users can set it to True, when they clearly know that they only need DDP.
     """
 
     def __init__(self,
