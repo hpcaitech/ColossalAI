@@ -7,7 +7,7 @@ import torch.fx
 import torch.multiprocessing as mp
 
 try:
-    from fastfold.model.nn.evoformer import EvoformerBlock
+    from fastfold.model.nn.evoformer import EvoformerStack
     HAS_REPO = True
 except:
     HAS_REPO = False
@@ -18,22 +18,26 @@ from colossalai.autochunk.autochunk_codegen import AUTOCHUNK_AVAILABLE
 
 
 def get_model():
-    model = (EvoformerBlock(
+    model = EvoformerStack(
         c_m=256,
         c_z=128,
         c_hidden_msa_att=32,
         c_hidden_opm=32,
         c_hidden_mul=128,
         c_hidden_pair_att=32,
+        c_s=384,
         no_heads_msa=8,
         no_heads_pair=4,
+        no_blocks=2,    # 48
         transition_n=4,
         msa_dropout=0.15,
-        pair_dropout=0.15,
-        inf=1e4,
-        eps=1e-4,
+        pair_dropout=0.25,
+        blocks_per_ckpt=None,
+        inf=1000000000.0,
+        eps=1e-08,
+        clear_cache_between_blocks=False,
         is_multimer=False,
-    ).eval().cuda())
+    ).eval().cuda()
     return model
 
 
@@ -59,7 +63,7 @@ def get_data(msa_len: int, pair_len: int) -> Tuple[List, List]:
 )
 @pytest.mark.parametrize("max_memory", [None, 24, 28, 32])
 @pytest.mark.parametrize("data_args", [(32, 64)])    # (msa_len, pair_len)
-def test_evoformer(data_args, max_memory):
+def test_evoformer_stack(data_args, max_memory):
     run_func = partial(
         run_test,
         data_args=data_args,
