@@ -112,7 +112,7 @@ def _test_evoformer_stack_codegen(rank, msa_len, pair_len, max_memory):
     interp = MetaInfoProp(meta_graph)
     interp.propagate(MetaTensor(node, fake_device="cuda:0"), MetaTensor(pair, fake_device="cuda:0"),
                      MetaTensor(node_mask, fake_device="cuda:0"), MetaTensor(pair_mask, fake_device="cuda:0"), None)
-    codegen = AutoChunkCodeGen(meta_graph, max_memory=max_memory, print_mem=False, print_progress=True)
+    codegen = AutoChunkCodeGen(meta_graph, max_memory=max_memory, print_mem=False, print_progress=False)
 
     # trace and recompile
     # MetaInfoProp requires symbolic_trace but CodeGen requires ColoTracer
