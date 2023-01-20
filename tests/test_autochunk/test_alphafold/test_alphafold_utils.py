@@ -3,9 +3,12 @@ from typing import Any, Dict, List
 import torch
 import torch.fx
 
+import colossalai
 from colossalai.autochunk.autochunk_codegen import AUTOCHUNK_AVAILABLE
+from colossalai.core import global_context as gpc
 from colossalai.fx.graph_module import ColoGraphModule
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
+from colossalai.utils import free_port
 
 if AUTOCHUNK_AVAILABLE:
     from colossalai.autochunk.autochunk_codegen import AutoChunkCodeGen
@@ -64,3 +67,28 @@ def assert_codegen_run(model: Any,
                                   torch.abs(out_gm_i - out_model_i))
 
     return chunks
+
+
+def run_test(rank, data_args, max_memory, get_model, get_data, print_code, print_mem, print_progress):
+    # launch colossalai
+    colossalai.launch(
+        config={},
+        rank=rank,
+        world_size=1,
+        host="localhost",
+        port=free_port(),
+        backend="nccl",
+    )
+
+    # build model and input
+    model = get_model()
+    meta_args, concrete_args = get_data(*data_args)
+    assert_codegen_run(model,
+                       meta_args=meta_args,
+                       concrete_args=concrete_args,
+                       max_memory=max_memory,
+                       print_code=print_code,
+                       print_mem=print_mem,
+                       print_progress=print_progress)
+
+    gpc.destroy()
