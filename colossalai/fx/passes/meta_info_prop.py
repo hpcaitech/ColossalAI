@@ -112,7 +112,8 @@ class MetaInfoProp(torch.fx.Interpreter):
         n.meta['tensor_meta'] = tensor_meta
         n.meta = {**n.meta, **asdict(meta_info)}    # extend MetaInfo to `n.meta`
         # TODO: the attribute node_size should be removed in the future
-        setattr(n, 'node_size', activation_size(n.meta.get('fwd_in', 0)) + activation_size(n.meta.get('fwd_tmp', 0)))
+        setattr(n, 'node_size', activation_size(n.meta.get('fwd_out', 0)) + activation_size(n.meta.get('fwd_tmp', 0)))
+        setattr(n, 'fwd_flop', n.meta.get('fwd_flop', 0))
         n.meta['type'] = type(result)
 
         # retain the autograd graph
