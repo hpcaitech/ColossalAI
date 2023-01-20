@@ -17,6 +17,7 @@ class GeminiDDP(ZeroDDP):
                  placement_policy: str = "cpu",
                  pin_memory: bool = False,
                  force_outputs_fp32: bool = False,
+                 strict_ddp_mode: bool = False,
                  search_range_mb: int = 32,
                  hidden_dim: Optional[int] = None,
                  min_chunk_size_mb: Optional[float] = None,
@@ -54,4 +55,4 @@ class GeminiDDP(ZeroDDP):
                                            search_range_mb=search_range_mb,
                                            min_chunk_size_mb=min_chunk_size_mb)
         gemini_manager = GeminiManager(placement_policy, chunk_manager, memstats)
-        super().__init__(module, gemini_manager, pin_memory, force_outputs_fp32)
+        super().__init__(module, gemini_manager, pin_memory, force_outputs_fp32, strict_ddp_mode)
