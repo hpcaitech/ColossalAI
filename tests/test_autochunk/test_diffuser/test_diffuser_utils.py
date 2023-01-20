@@ -5,7 +5,6 @@ import torch.fx
 
 import colossalai
 from colossalai.autochunk.autochunk_codegen import AUTOCHUNK_AVAILABLE
-from colossalai.autochunk.utils import flat_list
 from colossalai.core import global_context as gpc
 from colossalai.fx.graph_module import ColoGraphModule
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
@@ -28,6 +27,7 @@ def assert_codegen_run(
 ) -> List[Dict]:
     if concrete_args is None:
         concrete_args = []
+    model = model()
 
     # trace the meta graph and setup codegen
     meta_graph = symbolic_trace(
@@ -65,26 +65,23 @@ def assert_codegen_run(
 
     # assert result
     inputs = [i[1] for i in meta_args] + [i[1] for i in concrete_args]
-    model.cuda()
+    model.cuda().eval()
+    gm.eval()
     with torch.no_grad():
         out_gm = gm(*inputs)
         out_model = model(*inputs)
-    out_gm = flat_list(out_gm)
-    out_model = flat_list(out_model)
-    for out_gm_i, out_model_i in zip(out_gm, out_model):
-        assert torch.allclose(out_gm_i, out_model_i,
-                              atol=1e-4), "fx_out doesn't comply with original output, diff is %.2e" % torch.mean(
-                                  torch.abs(out_gm_i - out_model_i))
+    assert torch.allclose(out_gm["sample"], out_model["sample"],
+                          atol=1e-4), "fx_out doesn't comply with original output, diff is %.2e" % torch.mean(
+                              torch.abs(out_gm["sample"] - out_model["sample"]))
 
     return chunks
 
 
 def run_test(
     rank: int,
-    data_args: tuple,
+    model: Any,
+    data: tuple,
     max_memory: int,
-    get_model: Any,
-    get_data: Any,
     print_code: bool,
     print_mem: bool,
     print_progress: bool,
@@ -101,8 +98,7 @@ def run_test(
     )
 
     # build model and input
-    model = get_model()
-    meta_args, concrete_args = get_data(*data_args)
+    meta_args, concrete_args = data
     chunks = assert_codegen_run(
         model,
         meta_args=meta_args,
@@ -116,7 +112,7 @@ def run_test(
     if get_chunk_target is not None:
         chunk_found = [i["region"] for i in chunks]
         chunk_target = get_chunk_target()[max_memory]
-        assert chunk_found == chunk_target, "found regions %s doesn't equal target regions %s" % (
+        assert (chunk_found == chunk_target), "found regions %s doesn't equal target regions %s" % (
             str(chunk_found),
             str(chunk_target),
         )
