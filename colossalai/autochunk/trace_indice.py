@@ -432,6 +432,38 @@ class TraceIndice(object):
         """
         self._assign_all_indice(node, node_idx)
 
+    def _assign_cat_indice(self, node: Node, node_idx: int):
+        """
+        Assign indice for cat op.
+
+        Args:
+            node (node)
+            node_idx (int)
+        """
+        nodes_in = flat_list(node.args[0])
+        self._assign_indice_as_input(node, node_idx, input_node=nodes_in[0])
+        for n in nodes_in[1:]:
+            self._mark_computation_from_node(n, node)
+        cat_dim = node.kwargs["dim"]
+        self._del_dim(node_idx, cat_dim)
+        self._add_dim(node_idx, cat_dim)
+
+    def _assign_sum_indice(self, node: Node, node_idx: int):
+        """
+        Assign indice for sum op.
+
+        Args:
+            node (node)
+            node_idx (int)
+        """
+        nodes_in = flat_list(node.args[0])
+        self._add_dim(node_idx, 0)
+        self._assign_indice_as_input(node, node_idx, input_node=nodes_in[0])
+        for n in nodes_in[1:]:
+            self._mark_computation_from_node(n, node)
+        cat_dim = node.kwargs["dim"]
+        self._del_dim(node_idx, cat_dim)
+
     def _assign_getitem_indice(self, node: Node, node_idx: int):
         """
         Assign indice for getitem.
@@ -442,7 +474,16 @@ class TraceIndice(object):
             node_idx (int)
         """
         node_args = flat_list(node.args[1:])
-        if not any(i == str(node_arg) for i in ["None", "Ellipsis"] for node_arg in node_args):
+        flag = False
+        for node_arg in node_args:
+            node_arg_str = str(node_arg)
+            if any(i == node_arg_str for i in ["None", "Ellipsis"]):
+                flag = True
+                break
+            if "slice" in node_arg_str:
+                flag = True
+                break
+        if flag == False:
             return
 
         # node args should be like [Ellipsis, slice(start, step, end), None]
@@ -461,8 +502,11 @@ class TraceIndice(object):
                 shape_gap = len(node_shape) - len(node_args) + 1
                 origin_idx_count += shape_gap
                 new_idx_count += shape_gap
-            # slice(None, None, None) means all indexes, doesn't support other slice
-            elif "slice(None, None, None)" == node_arg_str:
+            # slice(None, None, None) means all indexes
+            elif "slice" in node_arg_str:
+                if "slice(None, None, None)" != node_arg_str:
+                    self._del_dim(node_idx, new_idx_count)
+                    self._add_dim(node_idx, new_idx_count)
                 origin_idx_count += 1
                 new_idx_count += 1
             # None means a new dim
@@ -565,7 +609,7 @@ class TraceIndice(object):
                     self._assign_view_reshape_indice(node, idx)
                 elif "unsqueeze" in node.name:
                     self._assign_unsqueeze_indice(node, idx)
-                elif any(i in node.name for i in ["to", "contiguous"]):
+                elif any(i in node.name for i in ["to", "contiguous", "clone"]):
                     self._assgin_no_change_indice(node, idx)
                 elif "new_ones" in node.name:
                     self._assign_ones_like_indice(node, idx)
@@ -574,6 +618,8 @@ class TraceIndice(object):
             elif node.op == "call_function":
                 if "linear" in node.name:
                     self._assign_linear_indice(node, idx)
+                elif "cat" in node.name:
+                    self._assign_cat_indice(node, idx)
                 elif "matmul" in node.name:
                     self._assign_matmul_indice(node, idx)
                 elif "softmax" in node.name:
@@ -586,6 +632,8 @@ class TraceIndice(object):
                     self._assign_dropout_indice(node, idx)
                 elif "einsum" in node.name:
                     self._assign_einsum_indice(node, idx)
+                elif "sum" in node.name:
+                    self._assign_sum_indice(node, idx)
                 elif "layer_norm" in node.name:
                     self._assign_layernorm_indice(node, idx)
                 elif "getitem" in node.name:
