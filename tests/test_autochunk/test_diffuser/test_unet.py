@@ -72,6 +72,7 @@ def _test_unet(rank, m, shape, timestep, max_memory):
     assert torch.allclose(
         fx_out['sample'],
         non_fx_out['sample']), f'{model.__class__.__name__} has inconsistent outputs, {fx_out} vs {non_fx_out}'
+    gpc.destroy()
 
 
 @pytest.mark.parametrize("m", [diffusers.UNet2DModel])
