@@ -12,6 +12,7 @@ from colossalai.gemini.memory_tracer import OrderedParamGenerator
 from colossalai.logging import get_dist_logger
 from colossalai.nn.parallel.utils import get_temp_total_chunk_on_cuda
 from colossalai.tensor import ProcessGroup as ColoProcessGroup
+from colossalai.tensor import ReplicaSpec
 from colossalai.tensor.colo_parameter import ColoParameter, ColoTensor, ColoTensorSpec
 from colossalai.tensor.param_op_hook import ColoParamOpHookManager
 from colossalai.utils import get_current_device, is_ddp_ignored
@@ -207,7 +208,8 @@ class ZeroDDP(ColoDDP):
                  module: torch.nn.Module,
                  gemini_manager: GeminiManager,
                  pin_memory: bool = False,
-                 force_outputs_fp32: bool = False) -> None:
+                 force_outputs_fp32: bool = False,
+                 strict_ddp_mode: bool = False) -> None:
         super().__init__(module, process_group=ColoProcessGroup())
         self.gemini_manager = gemini_manager
         self.chunk_manager: ChunkManager = gemini_manager.chunk_manager
@@ -231,6 +233,9 @@ class ZeroDDP(ColoDDP):
 
         for p in param_order.generate():
             assert isinstance(p, ColoParameter)
+
+            if strict_ddp_mode and not p.is_replicate():
+                p.set_dist_spec(ReplicaSpec())
 
             if is_ddp_ignored(p):
                 p.data = p.data.to(device=get_current_device(), dtype=torch.float16)
