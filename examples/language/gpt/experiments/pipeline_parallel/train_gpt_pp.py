@@ -17,7 +17,7 @@ from colossalai.fx.passes.meta_info_prop import MetaInfoProp
 from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.pipeline.middleware.adaptor import get_fx_topology
-from colossalai.pipeline.rpc._pipeline_schedule import OneFOneBPipelineEngine
+from colossalai.pipeline.rpc._pipeline_schedule import FillDrainPipelineEngine, OneFOneBPipelineEngine
 from colossalai.pipeline.rpc.utils import rpc_run
 
 
@@ -125,14 +125,14 @@ def run_master(args):
     logger.info(f'end model_builder')
 
     # set 1f1b pipeline engine
-    pp_engine = OneFOneBPipelineEngine(partition_fn=partial(partition, model, warmup_data_kwargs, num_microbatches),
-                                       stage_num=stage_num,
-                                       num_microbatches=num_microbatches,
-                                       device=device,
-                                       chunk=1,
-                                       criterion=criterion,
-                                       metric=None,
-                                       checkpoint=False)
+    pp_engine = FillDrainPipelineEngine(partition_fn=partial(partition, model, warmup_data_kwargs, num_microbatches),
+                                        stage_num=stage_num,
+                                        num_microbatches=num_microbatches,
+                                        device=device,
+                                        chunk=1,
+                                        criterion=criterion,
+                                        metric=None,
+                                        checkpoint=False)
 
     partition_numels = pp_engine.remote_numels()
     for rank, numel in partition_numels.items():

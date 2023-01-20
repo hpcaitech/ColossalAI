@@ -18,21 +18,28 @@ def block_split():
 # Construct blocks with the condition that (block_flops / total_flops) >= limit.
 def construct_blocks(gm: torch.fx.GraphModule, limit=0.01):
     total_fwd_flop = 0
+    total_bwd_flop = 0
     for node in gm.graph.nodes:
         total_fwd_flop += node.fwd_flop
+        total_bwd_flop += node.bwd_flop
 
-    per_block_flop = total_fwd_flop * limit
+    total_flop = total_fwd_flop + total_bwd_flop
+    per_block_flop = total_flop * limit
     accumulate_fwd_flop = 0
+    accumulate_bwd_flop = 0
     block_nodes = []
     for node in gm.graph.nodes:
         if 'block_split' in node.name:
             continue
         accumulate_fwd_flop += node.fwd_flop
-        if accumulate_fwd_flop >= per_block_flop:
+        accumulate_bwd_flop += node.bwd_flop
+        if accumulate_fwd_flop + accumulate_bwd_flop >= per_block_flop:
             with gm.graph.inserting_after(node):
                 block_node = gm.graph.create_node('call_function', block_split)
                 setattr(block_node, 'fwd_flop', accumulate_fwd_flop)
+                setattr(block_node, 'bwd_flop', accumulate_bwd_flop)
             accumulate_fwd_flop = 0
+            accumulate_bwd_flop = 0
             block_nodes.append(block_node)
 
     return block_nodes
@@ -50,8 +57,8 @@ def get_compute_costs(node_list):
 
     for start in tqdm.tqdm(range(num_nodes), desc='start pos', position=0):
         for end in tqdm.tqdm(range(start, num_nodes), desc='end pos', position=1, leave=False):
-            selected_fwd_flops = [node_list[i].fwd_flop for i in range(start, end + 1)]
-            all_compute_cost[start, end] = sum(selected_fwd_flops)
+            selected_flops = [(node_list[i].fwd_flop + node_list[i].bwd_flop) for i in range(start, end + 1)]
+            all_compute_cost[start, end] = sum(selected_flops)
 
     return all_compute_cost
 
@@ -63,7 +70,7 @@ def do_dp_split_gpipe_impl(num_nodes, num_stages, num_microbatches, compute_cost
     # f[number of stages,
     #   node id that is currently being considered]
 
-    # record time cost(assess by fwd flop now)
+    # record time cost(assess by fwd+bwd flop now)
     f = np.full((num_stages + 1, num_nodes + 1), np.inf, dtype=np.float32)
 
     # record max stage compute cost among all stages in this partition.
