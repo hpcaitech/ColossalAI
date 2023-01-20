@@ -43,6 +43,8 @@ class EstimateMemory(object):
         delete_node = []
         if user.op not in ("output",):
             nodes_to_delete = user_to_last_uses.get(user, [])
+            if len(user.users) == 0:
+                nodes_to_delete.append(user)
             if to_keep is not None:
                 keep_list = []
                 for n in nodes_to_delete:
@@ -135,6 +137,8 @@ class EstimateMemory(object):
         if user.op in ("placeholder", "output"):
             return 0
         nodes_to_delete = user_to_last_uses.get(user, [])
+        if len(user.users) == 0:
+            nodes_to_delete.append(user)
         delete_size = 0
         for n in nodes_to_delete:
             if n.name in chunk_inputs_names:
@@ -294,3 +298,26 @@ class EstimateMemory(object):
         # param_memory = parameter_size(gm)
         # all_memory = act_memory + param_memory
         return act_memory_peak_log, act_memory_after_node_log, active_node_list_log
+
+    def get_active_nodes(self, node_list: List) -> List:
+        """
+        Get active nodes for every node
+
+        Args:
+            node_list (List): _description_
+
+        Returns:
+            active_node_list_log (List): active nodes of every node. active nodes refer to
+                nodes generated but not deleted.
+        """
+        active_node_list = []
+        active_node_list_log = []
+        user_to_last_uses = self._get_last_usr(node_list)
+        user_to_last_uses_no_free_var = self._get_last_usr(node_list)
+        delete_free_var_from_last_use(user_to_last_uses_no_free_var)
+        for _, node in enumerate(node_list):
+            # log active node, only effective without chunk
+            self._add_active_node(node, active_node_list)
+            self._remove_deactive_node(node, user_to_last_uses, active_node_list)
+            active_node_list_log.append(copy.deepcopy(active_node_list))
+        return active_node_list_log

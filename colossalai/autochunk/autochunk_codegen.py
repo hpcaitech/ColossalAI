@@ -22,7 +22,7 @@ if CODEGEN_AVAILABLE:
 from torch.fx.node import Argument, Node, _get_qualified_name, _type_repr, map_arg
 
 from .search_chunk import SearchChunk
-from .utils import delete_free_var_from_last_use, find_idx_by_name, get_node_shape
+from .utils import delete_free_var_from_last_use, find_idx_by_name, get_logger, get_node_shape
 
 
 def _gen_chunk_slice_dim(chunk_dim: int, chunk_indice_name: str, shape: List) -> str:
@@ -276,11 +276,17 @@ if CODEGEN_AVAILABLE:
 
     class AutoChunkCodeGen(CodeGen):
 
-        def __init__(self, meta_graph, max_memory=None, print_mem=False):
+        def __init__(self,
+                     meta_graph,
+                     max_memory: int = None,
+                     print_mem: bool = False,
+                     print_progress: bool = False) -> None:
             super().__init__()
             # find the chunk regions
-            self.search_chunk = SearchChunk(meta_graph, max_memory, print_mem)
+            self.search_chunk = SearchChunk(meta_graph, max_memory, print_mem, print_progress)
             self.chunk_infos = self.search_chunk.search_region()
+            if print_progress:
+                get_logger().info("AutoChunk start codegen")
 
         def _gen_python_code(self, nodes, root_module: str, namespace: _Namespace) -> PythonCode:
             free_vars: List[str] = []
