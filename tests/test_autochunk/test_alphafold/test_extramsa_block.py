@@ -7,18 +7,17 @@ import torch.fx
 import torch.multiprocessing as mp
 
 try:
-    from fastfold.model.nn.evoformer import EvoformerBlock
+    from fastfold.model.nn.evoformer import ExtraMSABlock
     HAS_REPO = True
 except:
     HAS_REPO = False
-
 from test_alphafold_utils import run_test
 
 from colossalai.autochunk.autochunk_codegen import AUTOCHUNK_AVAILABLE
 
 
 def get_model():
-    model = (EvoformerBlock(
+    model = ExtraMSABlock(
         c_m=256,
         c_z=128,
         c_hidden_msa_att=32,
@@ -32,8 +31,9 @@ def get_model():
         pair_dropout=0.15,
         inf=1e4,
         eps=1e-4,
+        ckpt=False,
         is_multimer=False,
-    ).eval().cuda())
+    ).eval().cuda()
     return model
 
 
@@ -49,7 +49,7 @@ def get_data(msa_len: int, pair_len: int) -> Tuple[List, List]:
         ("msa_mask", node_mask),
         ("pair_mask", pair_mask),
     ]
-    concrete_args = [("chunk_size", None), ("_mask_trans", True)]
+    concrete_args = [("chunk_size", None), ("_chunk_logits", 1024)]
     return meta_args, concrete_args
 
 
@@ -59,7 +59,7 @@ def get_data(msa_len: int, pair_len: int) -> Tuple[List, List]:
 )
 @pytest.mark.parametrize("max_memory", [None, 24, 28, 32])
 @pytest.mark.parametrize("data_args", [(32, 64)])    # (msa_len, pair_len)
-def test_evoformer(data_args, max_memory):
+def test_extramsa_block(data_args, max_memory):
     run_func = partial(
         run_test,
         data_args=data_args,
