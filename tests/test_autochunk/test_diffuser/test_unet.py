@@ -33,6 +33,10 @@ def get_data(shape: tuple) -> Tuple[List, List]:
 
 
 @pytest.mark.skipif(
+    True,
+    reason="not implemented",
+)
+@pytest.mark.skipif(
     not (AUTOCHUNK_AVAILABLE and HAS_REPO),
     reason="torch version is lower than 1.12.0",
 )

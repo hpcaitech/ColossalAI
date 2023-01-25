@@ -49,7 +49,7 @@ def assert_codegen_run(
     # trace and recompile
     # MetaInfoProp requires symbolic_trace but CodeGen requires ColoTracer
     graph = ColoTracer().trace(
-        model,
+        model.cuda(),
         meta_args={k: v.to(torch.device("meta")) for k, v in meta_args},
         concrete_args={k: v for k, v in concrete_args},
     )
