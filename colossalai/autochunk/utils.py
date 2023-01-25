@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, Iterable, List, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Tuple, Union
 
 from torch.fx.node import Node
 
@@ -9,7 +9,7 @@ NON_COMPUTE_NAME = ["getattr", "eq", "_assert_is_none", "_assert", "finfo", "siz
 logger = get_dist_logger()
 
 
-def get_logger():
+def get_logger() -> Any:
     return logger
 
 
@@ -66,33 +66,33 @@ def is_non_memory_node(node: Node) -> bool:
     return is_non_compute_node(node)
 
 
-def is_non_compute_node_except_placeholder(node):
+def is_non_compute_node_except_placeholder(node: Node) -> bool:
     if "placeholder" in node.op:
         return False
     return is_non_compute_node(node)
 
 
-def is_non_compute_node_except_placeholder_output(node):
+def is_non_compute_node_except_placeholder_output(node: Node) -> bool:
     if "output" in node.op:
         return False
     return is_non_compute_node_except_placeholder(node)
 
 
-def find_idx_by_name(name, nodes_list):
+def find_idx_by_name(name: str, nodes_list: List) -> int:
     for idx, node in enumerate(nodes_list):
         if node.name == name:
             return idx
     raise RuntimeError("name %s not found in node list" % name)
 
 
-def delete_free_var_from_last_use(user_to_last_uses):
+def delete_free_var_from_last_use(user_to_last_uses: Dict) -> None:
     for key, value in user_to_last_uses.items():
         for n in value:
             if n.op == "placeholder":
                 user_to_last_uses[key].remove(n)
 
 
-def find_chunk_all_input_nodes(nodes: List[Node]):
+def find_chunk_all_input_nodes(nodes: List[Node]) -> List:
     """
     Find non-compute input and output node names.
     input nodes are nodes used in the list
@@ -106,7 +106,7 @@ def find_chunk_all_input_nodes(nodes: List[Node]):
     return input_nodes
 
 
-def find_chunk_compute_input_and_output_nodes(nodes: List[Node]):
+def find_chunk_compute_input_and_output_nodes(nodes: List[Node]) -> Union[List, List]:
     """
     Find non-compute input and output node names.
     input nodes are nodes used in the list

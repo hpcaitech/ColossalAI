@@ -43,7 +43,7 @@ class TraceIndice(object):
         self.trace_range = []
         self.active_node_list = []
 
-    def _init_indice_trace_list(self):
+    def _init_indice_trace_list(self) -> List:
         indice_trace_list = []
         for n in self.node_list:
             if get_node_shape(n) != None:
@@ -61,7 +61,7 @@ class TraceIndice(object):
         self.trace_range = trace_range
         self.active_node_list = active_node_list
 
-    def _add_indice(self):
+    def _add_indice(self) -> int:
         """
         Update the count and return it. To record the idx number.
 
@@ -71,22 +71,22 @@ class TraceIndice(object):
         self.indice_count += 1
         return self.indice_count
 
-    def _del_dim(self, idx, dim_idx):
+    def _del_dim(self, idx: int, dim_idx: int) -> None:
         self.indice_trace_list[idx]["indice"].pop(dim_idx)
         self.indice_trace_list[idx]["compute"].pop(dim_idx)
         self.indice_trace_list[idx]["source"].pop(dim_idx)
 
-    def _add_dim(self, node_idx, dim_idx):
+    def _add_dim(self, node_idx: int, dim_idx: int) -> None:
         self.indice_trace_list[node_idx]["indice"].insert(dim_idx, self._add_indice())
         self.indice_trace_list[node_idx]["compute"].insert(dim_idx, [])
         self.indice_trace_list[node_idx]["source"].insert(dim_idx, {})
 
-    def _transform_indice(self, node, node_dim):
+    def _transform_indice(self, node: Node, node_dim: int) -> int:
         node_idx = self._find_indice_trace_from_node(node)
         dims = list(range(len(node_idx)))
         return dims[node_dim]
 
-    def _inherit_indice(self, node_from, node_from_dim, node_to, node_to_dim):
+    def _inherit_indice(self, node_from: Node, node_from_dim: int, node_to: Node, node_to_dim: int) -> None:
         node_from_dim = self._transform_indice(node_from, node_from_dim)
         node_to_dim = self._transform_indice(node_to, node_to_dim)
         node_from_trace = self._find_trace_from_node(node_from)
@@ -95,7 +95,7 @@ class TraceIndice(object):
         node_to_trace["compute"][node_to_dim] = copy.deepcopy(node_from_trace["compute"][node_from_dim])
         self._add_source(node_from, node_from_dim, node_to, node_to_dim, init=True)
 
-    def _inherit_all_computation(self, node_from, node_to):
+    def _inherit_all_computation(self, node_from: Node, node_to: Node) -> None:
         node_from_compute = self._find_compute_trace_from_node(node_from)
         node_to_compute = self._find_compute_trace_from_node(node_to)
         assert len(node_from_compute) == len(node_to_compute)
@@ -103,7 +103,7 @@ class TraceIndice(object):
             self._add_source(node_from, i, node_to, i)
             node_to_compute[i] = copy.deepcopy(node_from_compute[i])
 
-    def _add_source(self, node_from, node_from_dim, node_to, node_to_dim, init=False):
+    def _add_source(self, node_from: Node, node_from_dim: int, node_to: Node, node_to_dim: int, init=False) -> None:
         node_from_dim = self._transform_indice(node_from, node_from_dim)
         node_from_trace_source = self._find_source_trace_from_node(node_from)
         node_to_dim = self._transform_indice(node_to, node_to_dim)
@@ -126,7 +126,7 @@ class TraceIndice(object):
                     if d not in node_to_trace_source[node_to_dim][node_idx]:
                         node_to_trace_source[node_to_dim][node_idx].append(d)
 
-    def _mark_computation_from_node(self, node_from, node_to, exclude=None):
+    def _mark_computation_from_node(self, node_from: Node, node_to: Node, exclude=None) -> None:
         if exclude == None:
             exclude = []
         else:
@@ -142,7 +142,7 @@ class TraceIndice(object):
                 if j not in node_to_compute[i]:
                     node_to_compute[i].append(j)
 
-    def _mark_computation(self, node, idx, dim):
+    def _mark_computation(self, node: Node, idx: int, dim: int) -> None:
         """
         Mark some dims of node as computed.
 
@@ -159,7 +159,7 @@ class TraceIndice(object):
             if idx not in self.indice_trace_list[idx]["compute"][cur_dim]:
                 self.indice_trace_list[idx]["compute"][cur_dim].append(idx)
 
-    def _find_trace_from_node(self, node):
+    def _find_trace_from_node(self, node: Node) -> Dict:
         """
         Find node idx and compute trace by the node.
 
@@ -173,7 +173,7 @@ class TraceIndice(object):
         node_dict = self.indice_trace_list[node_idx]
         return node_dict
 
-    def _find_source_trace_from_node(self, node):
+    def _find_source_trace_from_node(self, node: Node) -> List:
         """
         Find node source trace by the node.
 
@@ -187,7 +187,7 @@ class TraceIndice(object):
         node_dict = self.indice_trace_list[node_idx]
         return node_dict["source"]
 
-    def _find_indice_trace_from_node(self, node):
+    def _find_indice_trace_from_node(self, node) -> List:
         """
         Find node idx trace by the node.
 
@@ -199,7 +199,7 @@ class TraceIndice(object):
         node_idx = find_idx_by_name(node.name, self.node_list)
         return self.indice_trace_list[node_idx]["indice"]
 
-    def _find_compute_trace_from_node(self, node):
+    def _find_compute_trace_from_node(self, node: Node) -> List:
         """
         Find node compute trace by the node.
 
@@ -211,7 +211,7 @@ class TraceIndice(object):
         node_idx = find_idx_by_name(node.name, self.node_list)
         return self.indice_trace_list[node_idx]["compute"]
 
-    def _assign_indice_as_input(self, node: Node, node_idx: int, input_node=None):
+    def _assign_indice_as_input(self, node: Node, node_idx: int, input_node=None) -> None:
         """
         Assign node's trace as its input node.
 
@@ -229,7 +229,7 @@ class TraceIndice(object):
 
         self._inherit_all_computation(input_node, node)
 
-    def _assign_all_indice(self, node: Node, node_idx: int):
+    def _assign_all_indice(self, node: Node, node_idx: int) -> None:
         """
         Add new indice for all node's dims.
 
@@ -245,7 +245,7 @@ class TraceIndice(object):
             new_trace.append(self._add_indice())
         self.indice_trace_list[node_idx]["indice"] = new_trace
 
-    def _assign_transpose_indice(self, node: Node, node_idx: int):
+    def _assign_transpose_indice(self, node: Node, node_idx: int) -> None:
         """
         Assign indice for transpose op.
         1. swap input's dim according to transpose args
@@ -262,7 +262,7 @@ class TraceIndice(object):
         self._inherit_indice(input_node, tranpose_dim[1], node, tranpose_dim[0])
         self._inherit_indice(input_node, tranpose_dim[0], node, tranpose_dim[1])
 
-    def _assign_permute_indice(self, node: Node, node_idx: int):
+    def _assign_permute_indice(self, node: Node, node_idx: int) -> None:
         """
         Assign indice for permute op.
         1. swap input's dim according to permute args
@@ -279,7 +279,7 @@ class TraceIndice(object):
         for idx, d in enumerate(permute_dim):
             self._inherit_indice(input_node, d, node, idx)
 
-    def _assign_linear_indice(self, node: Node, node_idx: int):
+    def _assign_linear_indice(self, node: Node, node_idx: int) -> None:
         """
         Assign indice for linear op.
         1. copy trace from input node and change last indice accroding to weight
@@ -300,7 +300,7 @@ class TraceIndice(object):
 
         self._mark_computation(node, node_idx, [-1])
 
-    def _assign_addmm_indice(self, node: Node, node_idx: int):
+    def _assign_addmm_indice(self, node: Node, node_idx: int) -> None:
         """
         Assign indice for addmm op.
 
@@ -316,7 +316,7 @@ class TraceIndice(object):
 
         self._mark_computation(node, node_idx, [-1])
 
-    def _assign_matmul_indice(self, node: Node, node_idx: int):
+    def _assign_matmul_indice(self, node: Node, node_idx: int) -> None:
         """
         Assign indice for matmul op.
         1. copy trace from matmul_left and change last indice accroding to matmul_right. (assert they have same length)
@@ -421,7 +421,7 @@ class TraceIndice(object):
         self._assign_indice_as_input(node, idx)
         self._mark_computation(node, idx, [node.kwargs["dim"]])
 
-    def _assign_unsqueeze_indice(self, node: Node, node_idx: int):
+    def _assign_unsqueeze_indice(self, node: Node, node_idx: int) -> None:
         """
         Assign indice for unsqueeze op.
         1. assign new indice for unsqueeze dim
@@ -438,7 +438,7 @@ class TraceIndice(object):
             dim_idx = list(range(len(get_node_shape(node))))[dim_idx]
         self._add_dim(node_idx, dim_idx)
 
-    def _assign_ones_like_indice(self, node: Node, node_idx: int):
+    def _assign_ones_like_indice(self, node: Node, node_idx: int) -> None:
         """
         Assign indice for oneslike op.
         1. assign new indice for all dim
@@ -449,7 +449,7 @@ class TraceIndice(object):
         """
         self._assign_all_indice(node, node_idx)
 
-    def _assign_cat_indice(self, node: Node, node_idx: int):
+    def _assign_cat_indice(self, node: Node, node_idx: int) -> None:
         """
         Assign indice for cat op.
 
@@ -465,7 +465,7 @@ class TraceIndice(object):
         self._del_dim(node_idx, cat_dim)
         self._add_dim(node_idx, cat_dim)
 
-    def _assign_sum_indice(self, node: Node, node_idx: int):
+    def _assign_sum_indice(self, node: Node, node_idx: int) -> None:
         """
         Assign indice for sum op.
 
@@ -481,7 +481,7 @@ class TraceIndice(object):
         cat_dim = node.kwargs["dim"]
         self._del_dim(node_idx, cat_dim)
 
-    def _assign_arange_indice(self, node: Node, node_idx: int):
+    def _assign_arange_indice(self, node: Node, node_idx: int) -> None:
         """
         Assign indice for arange op.
 
@@ -491,7 +491,7 @@ class TraceIndice(object):
         """
         self._assign_all_indice(node, node_idx)
 
-    def _assign_tensor_indice(self, node: Node, node_idx: int):
+    def _assign_tensor_indice(self, node: Node, node_idx: int) -> None:
         """
         Assign indice for tensor op.
 
@@ -504,7 +504,7 @@ class TraceIndice(object):
         else:
             raise NotImplementedError()
 
-    def _assign_embedding_indice(self, node: Node, node_idx: int):
+    def _assign_embedding_indice(self, node: Node, node_idx: int) -> None:
         """
         Assign indice for embedding op.
 
@@ -516,7 +516,7 @@ class TraceIndice(object):
         self._assign_indice_as_input(node, node_idx)
         self._add_dim(node_idx, -1)
 
-    def _assign_getitem_indice(self, node: Node, node_idx: int):
+    def _assign_getitem_indice(self, node: Node, node_idx: int) -> None:
         """
         Assign indice for getitem.
         getitem can act like slice sometimes
@@ -576,7 +576,7 @@ class TraceIndice(object):
             else:
                 raise NotImplementedError()
 
-    def _assign_view_reshape_indice(self, node: Node, node_idx: int):
+    def _assign_view_reshape_indice(self, node: Node, node_idx: int) -> None:
         """
         Assign indice for view and reshape op.
         1. get origin shape and target shape by meta info.
@@ -692,7 +692,7 @@ class TraceIndice(object):
                     if k < trace_range[0] and k not in active_nodes:
                         dim_source.pop(k)
 
-    def trace_indice(self):
+    def trace_indice(self) -> None:
         for idx, node in enumerate(self.node_list):
             node_name = get_node_name(node)
             if node.op == "placeholder":
