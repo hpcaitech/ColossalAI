@@ -53,7 +53,7 @@ if __name__ == "__main__":
     run_test(
         rank=0,
         data=get_data((BATCH_SIZE, SEQ_LENGTH)),
-        max_memory=64,
+        max_memory=None,
         model=GPT2Model,
         config=GPT2Config(n_position=64, n_layer=2, n_head=4),
         print_code=False,

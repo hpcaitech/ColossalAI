@@ -53,7 +53,7 @@ def assert_codegen_run(
         meta_args={k: v.to(torch.device("meta")) for k, v in meta_args.items()},
         concrete_args={k: v for k, v in concrete_args.items()},
     )
-    # graph.set_codegen(codegen)
+    graph.set_codegen(codegen)
     gm = ColoGraphModule(model, graph, ckpt_codegen=False)
     gm.recompile()
 
