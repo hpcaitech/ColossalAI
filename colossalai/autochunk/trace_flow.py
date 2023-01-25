@@ -8,6 +8,7 @@ from .utils import (
     find_chunk_compute_input_and_output_nodes,
     find_idx_by_name,
     flat_list,
+    get_node_name,
     get_node_shape,
     is_non_compute_node,
     is_non_compute_node_except_placeholder,
@@ -426,7 +427,7 @@ class TraceFlow(object):
         reshape_size = {}
         chunk_shape = get_node_shape(chunk_info["outputs"][0])[chunk_info["outputs_dim"]]
         for node in self.trace_indice.node_list[chunk_region[0]:chunk_region[1] + 1]:
-            if any(i in node.name for i in ["reshape", "view"]):
+            if any(i == get_node_name(node) for i in ["reshape", "view"]):
                 reshape_args = flat_list(node.args[1:])
                 chunk_dim = chunk_info["node_chunk_dim"][node]["chunk_dim"]
                 new_shape = ""
