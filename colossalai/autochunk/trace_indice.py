@@ -300,6 +300,22 @@ class TraceIndice(object):
 
         self._mark_computation(node, node_idx, [-1])
 
+    def _assign_addmm_indice(self, node: Node, node_idx: int):
+        """
+        Assign indice for addmm op.
+
+        Args:
+            node (node)
+            node_idx (int)
+        """
+        bias, input_node, weight = node.args
+
+        self._assign_indice_as_input(node, node_idx, input_node)
+        self._inherit_indice(weight, 1, node, -1)
+        self._inherit_indice(bias, -1, node, -1)
+
+        self._mark_computation(node, node_idx, [-1])
+
     def _assign_matmul_indice(self, node: Node, node_idx: int):
         """
         Assign indice for matmul op.
@@ -422,17 +438,6 @@ class TraceIndice(object):
         if dim_idx < 0:
             dim_idx = list(range(len(get_node_shape(node))))[dim_idx]
         self._add_dim(node_idx, dim_idx)
-
-    def _assign_dropout_indice(self, node: Node, node_idx: int):
-        """
-        Assign indice for unsqueeze op.
-        1. assign new indice for unsqueeze dim
-
-        Args:
-            node (node)
-            node_idx (int)
-        """
-        self._assign_indice_as_input(node, node_idx)
 
     def _assign_ones_like_indice(self, node: Node, node_idx: int):
         """
@@ -583,7 +588,7 @@ class TraceIndice(object):
             if isinstance(unflated_args[i], int):
                 target_shape.append(unflated_args[i])
             else:
-                target_shape.append(unflated_args[i].meta["fwd_out"][0])
+                target_shape.extend(unflated_args[i].meta["fwd_out"])
 
         # compute the value of -1
         if -1 in target_shape:
@@ -693,7 +698,7 @@ class TraceIndice(object):
                     self._assgin_no_change_indice(node, idx)
                 elif "new_ones" == node_name:
                     self._assign_ones_like_indice(node, idx)
-                elif any(i == node_name for i in ["size"]):
+                elif any(i == node_name for i in ["size", "split"]):
                     continue
                 else:
                     raise NotImplementedError(node_name, "method not implemented yet!")
@@ -706,12 +711,10 @@ class TraceIndice(object):
                     self._assign_matmul_indice(node, idx)
                 elif "softmax" == node_name:
                     self._assign_softmax_indice(node, idx)
-                elif any(n == node_name for n in ["mul", "add", "sigmoid", "relu", "sub", "truediv"]):
+                elif any(n == node_name for n in ["mul", "add", "sigmoid", "relu", "sub", "truediv", "pow", "dropout"]):
                     self._assign_elementwise_indice(node, idx)
                 elif "ones_like" == node_name:
                     self._assign_ones_like_indice(node, idx)
-                elif "dropout" == node_name:
-                    self._assign_dropout_indice(node, idx)
                 elif "einsum" == node_name:
                     self._assign_einsum_indice(node, idx)
                 elif "sum" == node_name:
@@ -720,6 +723,8 @@ class TraceIndice(object):
                     self._assign_layernorm_indice(node, idx)
                 elif "getitem" == node_name:
                     self._assign_getitem_indice(node, idx)
+                elif "addmm" == node_name:
+                    self._assign_addmm_indice(node, idx)
                 elif "arange" == node_name:
                     self._assign_arange_indice(node, idx)
                 elif any(i == node_name for i in ["getattr", "getitem", "eq", "_assert_is_none", "_assert"]):
