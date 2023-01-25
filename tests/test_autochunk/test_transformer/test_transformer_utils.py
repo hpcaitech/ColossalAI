@@ -38,13 +38,13 @@ def assert_codegen_run(
     meta_tensors = [meta_args[i] if i in meta_args else concrete_args[i] for i in sequence]
     meta_tensors = [MetaTensor(i, fake_device="cuda:0") if isinstance(i, torch.Tensor) else i for i in meta_tensors]
     interp.propagate(*meta_tensors)
-    # codegen = AutoChunkCodeGen(
-    #     meta_graph,
-    #     max_memory=max_memory,
-    #     print_mem=print_mem,
-    #     print_progress=print_progress,
-    # )
-    # chunks = codegen.chunk_infos
+    codegen = AutoChunkCodeGen(
+        meta_graph,
+        max_memory=max_memory,
+        print_mem=print_mem,
+        print_progress=print_progress,
+    )
+    chunks = codegen.chunk_infos
 
     # trace and recompile
     # MetaInfoProp requires symbolic_trace but CodeGen requires ColoTracer
@@ -61,7 +61,7 @@ def assert_codegen_run(
     code = graph.python_code("self").src
     if print_code:
         print(code)
-    # assert "chunk_result = None;  chunk_size = None;" in code
+    assert "chunk_result = None;  chunk_size = None;" in code
 
     # assert result
     inputs = [meta_args[i] if i in meta_args else concrete_args[i] for i in sequence]

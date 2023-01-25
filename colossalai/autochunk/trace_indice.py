@@ -3,7 +3,14 @@ from typing import Dict, List, Tuple
 
 from torch.fx.node import Node
 
-from .utils import find_first_tensor_arg, find_idx_by_name, flat_list, get_node_shape
+from .utils import (
+    find_first_tensor_arg,
+    find_idx_by_name,
+    flat_list,
+    get_module_node_name,
+    get_node_name,
+    get_node_shape,
+)
 
 
 class TraceIndice(object):
@@ -470,6 +477,28 @@ class TraceIndice(object):
         cat_dim = node.kwargs["dim"]
         self._del_dim(node_idx, cat_dim)
 
+    def _assign_arange_indice(self, node: Node, node_idx: int):
+        """
+        Assign indice for arange op.
+
+        Args:
+            node (node)
+            node_idx (int)
+        """
+        self._assign_all_indice(node, node_idx)
+
+    def _assign_embedding_indice(self, node: Node, node_idx: int):
+        """
+        Assign indice for embedding op.
+
+        Args:
+            node (node)
+            node_idx (int)
+        """
+        self._del_dim(node_idx, -1)
+        self._assign_indice_as_input(node, node_idx)
+        self._add_dim(node_idx, -1)
+
     def _assign_getitem_indice(self, node: Node, node_idx: int):
         """
         Assign indice for getitem.
@@ -480,6 +509,8 @@ class TraceIndice(object):
             node_idx (int)
         """
         node_args = flat_list(node.args[1:])
+        if get_node_shape(node) is None:
+            return
         flag = False
         for node_arg in node_args:
             node_arg_str = str(node_arg)
@@ -579,6 +610,11 @@ class TraceIndice(object):
             dim_from = [dim_equal.index(False)]
             dim_to = [dim_equal.index(False), dim_equal.index(False) + 1]
             self._del_dim(node_idx, -1)
+        elif len_diff == 0:
+            # dim equal
+            dim_equal = [i == j for i, j in zip(origin_shape, target_shape[:-1])]
+            dim_from = []
+            dim_to = []
         else:
             raise NotImplementedError("shape" + str(origin_shape) + "and" + str(target_shape) + "view not implemented")
 
@@ -641,23 +677,26 @@ class TraceIndice(object):
 
     def trace_indice(self):
         for idx, node in enumerate(self.node_list):
+            node_name = get_node_name(node)
             if node.op == "placeholder":
                 self._assign_all_indice(node, idx)
             elif node.op == "call_method":
-                if "transpose" in node.name:
+                if "transpose" == node_name:
                     self._assign_transpose_indice(node, idx)
-                elif "permute" in node.name:
+                elif "permute" == node_name:
                     self._assign_permute_indice(node, idx)
-                elif "view" in node.name or "reshape" in node.name:
+                elif "view" == node_name or "reshape" == node_name:
                     self._assign_view_reshape_indice(node, idx)
-                elif "unsqueeze" in node.name:
+                elif "unsqueeze" == node_name:
                     self._assign_unsqueeze_indice(node, idx)
-                elif any(i in node.name for i in ["to", "contiguous", "clone"]):
+                elif any(i == node_name for i in ["to", "contiguous", "clone"]):
                     self._assgin_no_change_indice(node, idx)
-                elif "new_ones" in node.name:
+                elif "new_ones" == node_name:
                     self._assign_ones_like_indice(node, idx)
+                elif any(i == node_name for i in ["size"]):
+                    continue
                 else:
-                    raise NotImplementedError(node.name, "method not implemented yet!")
+                    raise NotImplementedError(node_name, "method not implemented yet!")
             elif node.op == "call_function":
                 if "linear" in node.name:
                     self._assign_linear_indice(node, idx)
@@ -681,17 +720,22 @@ class TraceIndice(object):
                     self._assign_layernorm_indice(node, idx)
                 elif "getitem" in node.name:
                     self._assign_getitem_indice(node, idx)
+                elif "arange" in node.name:
+                    self._assign_arange_indice(node, idx)
                 elif any(i in node.name for i in ["getattr", "getitem", "eq", "_assert"]):
                     continue
                 else:
                     raise NotImplementedError(node.name, "function not implemented yet!")
             elif node.op == "call_module":
-                if any(n in node.name for n in ["layernorm", "norm"]):
+                node_name = get_module_node_name(node)
+                if "layernorm" in node_name:
                     self._assign_layernorm_indice(node, idx)
-                elif any(n in node.name for n in ["sigmoid", "dropout", "relu"]):
+                elif "embedding" in node_name:
+                    self._assign_embedding_indice(node, idx)
+                elif any(n in node_name for n in ["sigmoid", "dropout", "relu"]):
                     self._assign_elementwise_indice(node, idx)
                 else:
-                    raise NotImplementedError(node.name, "module not implemented yet!")
+                    raise NotImplementedError(node_name, "module not implemented yet!")
             elif node.op == "get_attr":
                 self._assign_all_indice(node, idx)    # get param
             elif node.op == "output":

@@ -130,3 +130,33 @@ def find_chunk_compute_input_and_output_nodes(nodes: List[Node]):
                 output_nodes.append(node)
 
     return input_nodes, output_nodes
+
+
+def get_module_node_name(node: Node) -> str:
+    """
+    get module class name
+    """
+    node_targets = node.target.split(".")
+    module = node.graph.owning_module
+    for i in node_targets:
+        module = getattr(module, i)
+    module_name = str(module.__class__).split(".")[-1][:-2]
+    module_name = module_name.lower()
+    return module_name
+
+
+def get_node_name(node: Node) -> str:
+    """
+    get node name
+    """
+    node_name = node.name
+    if "_" in node_name:
+        for i in range(len(node_name) - 1, -1, -1):
+            if node_name[i] == "_":
+                node_name = node_name[:i]
+                break
+            elif node_name[i] in ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]:
+                continue
+            else:
+                break
+    return node_name
