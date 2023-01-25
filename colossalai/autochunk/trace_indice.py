@@ -698,41 +698,41 @@ class TraceIndice(object):
                 else:
                     raise NotImplementedError(node_name, "method not implemented yet!")
             elif node.op == "call_function":
-                if "linear" in node.name:
+                if "linear" == node_name:
                     self._assign_linear_indice(node, idx)
-                elif "cat" in node.name:
+                elif "cat" == node_name:
                     self._assign_cat_indice(node, idx)
-                elif "matmul" in node.name:
+                elif "matmul" == node_name:
                     self._assign_matmul_indice(node, idx)
-                elif "softmax" in node.name:
+                elif "softmax" == node_name:
                     self._assign_softmax_indice(node, idx)
-                elif any(n in node.name for n in ["mul", "add", "sigmoid", "relu", "sub", "truediv"]):
+                elif any(n == node_name for n in ["mul", "add", "sigmoid", "relu", "sub", "truediv"]):
                     self._assign_elementwise_indice(node, idx)
-                elif "ones_like" in node.name:
+                elif "ones_like" == node_name:
                     self._assign_ones_like_indice(node, idx)
-                elif "dropout" in node.name:
+                elif "dropout" == node_name:
                     self._assign_dropout_indice(node, idx)
-                elif "einsum" in node.name:
+                elif "einsum" == node_name:
                     self._assign_einsum_indice(node, idx)
-                elif "sum" in node.name:
+                elif "sum" == node_name:
                     self._assign_sum_indice(node, idx)
-                elif "layer_norm" in node.name:
+                elif "layer_norm" == node_name:
                     self._assign_layernorm_indice(node, idx)
-                elif "getitem" in node.name:
+                elif "getitem" == node_name:
                     self._assign_getitem_indice(node, idx)
-                elif "arange" in node.name:
+                elif "arange" == node_name:
                     self._assign_arange_indice(node, idx)
-                elif any(i in node.name for i in ["getattr", "getitem", "eq", "_assert"]):
+                elif any(i == node_name for i in ["getattr", "getitem", "eq", "_assert_is_none", "_assert"]):
                     continue
                 else:
-                    raise NotImplementedError(node.name, "function not implemented yet!")
+                    raise NotImplementedError(node_name, "function not implemented yet!")
             elif node.op == "call_module":
                 node_name = get_module_node_name(node)
-                if "layernorm" in node_name:
+                if "layernorm" == node_name:
                     self._assign_layernorm_indice(node, idx)
-                elif "embedding" in node_name:
+                elif "embedding" == node_name:
                     self._assign_embedding_indice(node, idx)
-                elif any(n in node_name for n in ["sigmoid", "dropout", "relu"]):
+                elif any(n == node_name for n in ["sigmoid", "dropout", "relu"]):
                     self._assign_elementwise_indice(node, idx)
                 else:
                     raise NotImplementedError(node_name, "module not implemented yet!")
