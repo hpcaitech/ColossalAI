@@ -365,7 +365,6 @@ class TraceIndice(object):
             if type(node_in) == type(node):
                 nodes_in.append(node_in)
                 self._mark_computation_from_node(node_in, node)
-        assert len(nodes_in) <= 2
 
     def _assgin_no_change_indice(self, node, idx):
         self._assign_indice_as_input(node, idx)
@@ -491,6 +490,19 @@ class TraceIndice(object):
             node_idx (int)
         """
         self._assign_all_indice(node, node_idx)
+
+    def _assign_tensor_indice(self, node: Node, node_idx: int):
+        """
+        Assign indice for tensor op.
+
+        Args:
+            node (node)
+            node_idx (int)
+        """
+        if len(get_node_shape(node)) == 0:
+            return
+        else:
+            raise NotImplementedError()
 
     def _assign_embedding_indice(self, node: Node, node_idx: int):
         """
@@ -698,7 +710,7 @@ class TraceIndice(object):
                     self._assgin_no_change_indice(node, idx)
                 elif "new_ones" == node_name:
                     self._assign_ones_like_indice(node, idx)
-                elif any(i == node_name for i in ["size", "split"]):
+                elif any(i == node_name for i in ["size", "split", "type"]):
                     continue
                 else:
                     raise NotImplementedError(node_name, "method not implemented yet!")
@@ -711,7 +723,8 @@ class TraceIndice(object):
                     self._assign_matmul_indice(node, idx)
                 elif "softmax" == node_name:
                     self._assign_softmax_indice(node, idx)
-                elif any(n == node_name for n in ["mul", "add", "sigmoid", "relu", "sub", "truediv", "pow", "dropout"]):
+                elif any(n == node_name for n in
+                         ["mul", "add", "sigmoid", "relu", "sub", "truediv", "pow", "dropout", "where", "tanh"]):
                     self._assign_elementwise_indice(node, idx)
                 elif "ones_like" == node_name:
                     self._assign_ones_like_indice(node, idx)
@@ -727,7 +740,9 @@ class TraceIndice(object):
                     self._assign_addmm_indice(node, idx)
                 elif "arange" == node_name:
                     self._assign_arange_indice(node, idx)
-                elif any(i == node_name for i in ["getattr", "getitem", "eq", "_assert_is_none", "_assert"]):
+                elif "tensor" == node_name:
+                    self._assign_arange_indice(node, idx)
+                elif any(i == node_name for i in ["getattr", "eq", "_assert_is_none", "_assert", "finfo"]):
                     continue
                 else:
                     raise NotImplementedError(node_name, "function not implemented yet!")
