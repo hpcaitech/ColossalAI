@@ -11,7 +11,6 @@ from .utils import (
     get_node_name,
     get_node_shape,
     is_non_compute_node,
-    is_non_compute_node_except_placeholder,
 )
 
 
