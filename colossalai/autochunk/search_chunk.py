@@ -195,9 +195,6 @@ class SearchChunk(object):
                     chunk_info = self.trace_flow.flow_search(start_idx, start_dim, end_idx, end_dim)
                     if chunk_info is None:
                         continue
-                    # check index copmute
-                    if not self.trace_flow.check_index_duplicate(chunk_info):
-                        continue
                     chunk_infos.append(chunk_info)
         return chunk_infos
 

@@ -80,43 +80,6 @@ class TraceFlow(object):
                 return node_dim
         return None
 
-    def check_index_duplicate(self, chunk_infos, return_dim=False):
-        input_dim_after_node = {}
-        for input_node_idx, input_node in enumerate(chunk_infos["inputs"]):
-            for k, v in chunk_infos["inputs_dim"][input_node_idx].items():
-                inherit_dim = self._find_inherit_dim(input_node, v, self.trace_indice.node_list[k])
-                if inherit_dim:
-                    input_dim_after_node[k] = inherit_dim
-
-        for node in self.trace_indice.node_list[chunk_infos["region"][0]:chunk_infos["region"][1] + 1]:
-            if is_non_compute_node_except_placeholder(node):
-                continue
-            count = 0
-            duplicate_dims = []
-            node_trace_source = self.trace_indice._find_source_trace_from_node(node)
-            for node_dim in range(len(get_node_shape(node))):
-                duplicate_dim = []
-                duplicate_flag = False
-                dim_source = node_trace_source[node_dim]
-                for k, v in dim_source.items():
-                    if chunk_infos["region"][0] <= k <= chunk_infos["region"][1]:
-                        if k in input_dim_after_node and input_dim_after_node[k] in v:
-                            duplicate_flag = True
-                            duplicate_dim.append((k, v))
-                duplicate_dims.append(duplicate_dim)
-                if duplicate_flag:
-                    count += 1
-
-            if count > 1:
-                if return_dim:
-                    return False, duplicate_dims
-                else:
-                    return False
-        if return_dim:
-            return True, None
-        else:
-            return True
-
     def _assgin_single_node_flow(
         self,
         arg_node: Node,
@@ -227,7 +190,7 @@ class TraceFlow(object):
                         return None
 
                 if len(arg_list) == 2:
-                    if any(i in cur_node.name for i in ["add", "mul", "truediv"]):
+                    if any(i == get_node_name(cur_node) for i in ["add", "mul", "truediv"]):
                         for arg in arg_list:
                             if not (start_idx <= find_idx_by_name(arg.name, self.trace_indice.node_list) < end_idx):
                                 continue
@@ -241,9 +204,7 @@ class TraceFlow(object):
                                         return None
                                     if i not in arg_fix_dim:
                                         arg_fix_dim.append(i)
-                    elif "einsum" in cur_node.name:
-                        pass
-                    elif "matmul" in cur_node.name:
+                    elif any(i == get_node_name(cur_node) for i in ["einsum", "matmul", "view"]):
                         pass
                     else:
                         raise NotImplementedError()
