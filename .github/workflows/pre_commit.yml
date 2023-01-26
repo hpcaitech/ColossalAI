@@ -12,9 +12,23 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
 
+    # the PR branch and the hpcaitech/colossal-ai main branch
+    # must share a common commit, we need to locate that commit,
+    # which is the commit checked-out or forked when the PR branch is created
+    # such that we can look for files changed since that commit
+    - name: Locate base commit
+      id: locate-base-sha
+      run: |
+          curBranch=$(git rev-parse --abbrev-ref HEAD)
+          commonCommit=$(git merge-base origin/main $curBranch)
+          echo $commonCommit
+          echo "baseSHA=$commonCommit" >> $GITHUB_OUTPUT
+
     - name: Find the changed files
       id: find-changed-files
       uses: tj-actions/changed-files@v35
+      with:
+        base_sha: ${{ steps.locate-base-sha.outputs.baseSHA }}
 
     - name: List all changed files
       run: |
