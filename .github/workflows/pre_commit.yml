@@ -30,7 +30,7 @@ jobs:
       id: find-changed-files
       uses: tj-actions/changed-files@v35
       with:
-        base_sha: steps.locate-base-sha.outputs.baseSHA
+        base_sha: ${{ steps.locate-base-sha.outputs.baseSHA }}
 
     - name: List all changed files
       run: |
