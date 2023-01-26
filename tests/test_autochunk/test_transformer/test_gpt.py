@@ -35,13 +35,14 @@ def get_data(shape: tuple) -> Tuple[List, List]:
 )
 @pytest.mark.parametrize("model", [GPT2Model])
 @pytest.mark.parametrize("shape", [(BATCH_SIZE, SEQ_LENGTH)])
-@pytest.mark.parametrize("max_memory", [64])
+@pytest.mark.parametrize("max_memory", [None, 5, 5.6])
 def test_evoformer_block(model, shape, max_memory):
     run_func = partial(
         run_test,
+        data=get_data(shape),
         max_memory=max_memory,
         model=model,
-        data=get_data(shape),
+        config=GPT2Config(n_embd=96, n_position=shape[1], n_layer=2, n_head=4),
         print_code=False,
         print_mem=False,
         print_progress=False,
