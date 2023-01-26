@@ -126,6 +126,7 @@ jobs:
               fi
             done
             coverage xml --data-file .coverage --include $allFiles
+            coverage report --data-file .coverage --include $allFiles > ./coverage.txt
             mv coverage.xml ./report
           else
             echo "No coverage report is generated"
@@ -141,3 +142,15 @@ jobs:
         run: |
           # -p flag is required to preserve the file timestamp to avoid ninja rebuild
           cp -p -r /__w/ColossalAI/ColossalAI/build /github/home/cuda_ext_cache/
+
+      - name: Check coverage stats
+        run: |
+          if [ -f "coverage.txt" ]; then
+              covPercentage=$(tail -n 1 coverage.txt  | grep -o '[1-9]*%$')
+              covNum=${covPercentage::-1}
+
+              if [ "$covNum" -lt "90" ]; then
+                  echo "The test coverage is below 90%"
+                  exit -1
+              fi
+          fi
