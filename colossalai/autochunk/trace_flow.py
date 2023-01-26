@@ -188,9 +188,12 @@ class TraceFlow(object):
                     if flow_flag == False:
                         return None
 
-                if len(arg_list) == 2:
-                    if any(i == get_node_name(cur_node) for i in ["add", "mul", "truediv"]):
+                if len(arg_list) >= 2:
+                    # need to mark fix dim
+                    if any(i == get_node_name(cur_node) for i in ["add", "mul", "truediv", "sub", "where"]):
                         for arg in arg_list:
+                            if get_node_shape(arg) is None:
+                                continue
                             if not (start_idx <= find_idx_by_name(arg.name, self.trace_indice.node_list) < end_idx):
                                 continue
                             arg_chunk_dim = all_node_info[arg]["chunk_dim"]
@@ -203,7 +206,8 @@ class TraceFlow(object):
                                         return None
                                     if i not in arg_fix_dim:
                                         arg_fix_dim.append(i)
-                    elif any(i == get_node_name(cur_node) for i in ["einsum", "matmul", "view"]):
+                    elif any(i == get_node_name(cur_node)
+                             for i in ["einsum", "matmul", "view", "to", "getitem", "tensor", "type"]):
                         pass
                     else:
                         raise NotImplementedError()

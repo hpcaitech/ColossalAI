@@ -179,6 +179,9 @@ class SearchChunk(object):
                 continue
             for start_node, start_trace in start_traces.items():
                 for start_dim, _ in enumerate(start_trace["indice"]):
+                    # dim cannot be None
+                    if (get_node_shape(end_node) is None or get_node_shape(start_node) is None):
+                        continue
                     # dim size cannot be 1
                     if (get_node_shape(end_node)[end_dim] == 1 or get_node_shape(start_node)[start_dim] == 1):
                         continue

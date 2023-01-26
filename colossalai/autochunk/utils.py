@@ -5,7 +5,7 @@ from torch.fx.node import Node
 from colossalai.logging import get_dist_logger
 
 NON_COMPUTE_OP = ["placeholder", "get_attr", "output"]
-NON_COMPUTE_NAME = ["getattr", "eq", "_assert_is_none", "_assert", "finfo", "size", "split", "type"]
+NON_COMPUTE_NAME = ["getattr", "eq", "_assert_is_none", "_assert", "finfo", "size"]
 logger = get_dist_logger()
 
 
@@ -39,7 +39,7 @@ def find_first_tensor_arg(node: Node) -> Node:
 
 
 def is_non_compute_node(node: Node) -> bool:
-    if any(i == node.op for i in NON_COMPUTE_OP) or any(i == node.name for i in NON_COMPUTE_NAME):
+    if any(i == node.op for i in NON_COMPUTE_OP) or any(i == get_node_name(node) for i in NON_COMPUTE_NAME):
         return True
     if "getitem" in node.name:
         node_args = flat_list(node.args[1:])

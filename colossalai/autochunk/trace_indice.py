@@ -95,7 +95,7 @@ class TraceIndice(object):
         node_to_trace["compute"][node_to_dim] = copy.deepcopy(node_from_trace["compute"][node_from_dim])
         self._add_source(node_from, node_from_dim, node_to, node_to_dim, init=True)
 
-    def _inherit_all_computation(self, node_from: Node, node_to: Node) -> None:
+    def _inherit_all_indice(self, node_from: Node, node_to: Node) -> None:
         node_from_compute = self._find_compute_trace_from_node(node_from)
         node_to_compute = self._find_compute_trace_from_node(node_to)
         assert len(node_from_compute) == len(node_to_compute)
@@ -126,7 +126,15 @@ class TraceIndice(object):
                     if d not in node_to_trace_source[node_to_dim][node_idx]:
                         node_to_trace_source[node_to_dim][node_idx].append(d)
 
-    def _mark_computation_from_node(self, node_from: Node, node_to: Node, exclude=None) -> None:
+    def _mark_one_indice(self, node_from: Node, dim_from: int, node_to: Node, dim_to: int) -> None:
+        node_from_compute = self._find_compute_trace_from_node(node_from)
+        node_to_compute = self._find_compute_trace_from_node(node_to)
+        self._add_source(node_from, dim_from, node_to, dim_to)
+        for j in node_from_compute[dim_from]:
+            if j not in node_to_compute[dim_to]:
+                node_to_compute[dim_to].append(j)
+
+    def _mark_computation_source_from_node(self, node_from: Node, node_to: Node, exclude=None) -> None:
         if exclude == None:
             exclude = []
         else:
@@ -227,7 +235,7 @@ class TraceIndice(object):
         new_idx_trace = copy.deepcopy(input_node_idx_trace)
         self.indice_trace_list[node_idx]["indice"] = new_idx_trace
 
-        self._inherit_all_computation(input_node, node)
+        self._inherit_all_indice(input_node, node)
 
     def _assign_all_indice(self, node: Node, node_idx: int) -> None:
         """
@@ -333,7 +341,7 @@ class TraceIndice(object):
         self._assign_indice_as_input(node, node_idx, matmul_left)
         self._inherit_indice(matmul_right, -1, node, -1)
 
-        self._mark_computation_from_node(matmul_right, node, [-1, -2])
+        self._mark_computation_source_from_node(matmul_right, node, [-1, -2])
         self._mark_computation(node, node_idx, [-1])
 
     def _assign_layernorm_indice(self, node, idx):
@@ -364,13 +372,13 @@ class TraceIndice(object):
         for node_in in node.args:
             if type(node_in) == type(node):
                 nodes_in.append(node_in)
-                self._mark_computation_from_node(node_in, node)
+                self._mark_computation_source_from_node(node_in, node)
 
     def _assgin_no_change_indice(self, node, idx):
         self._assign_indice_as_input(node, idx)
         for node_in in node.args:
             if type(node_in) == type(node):
-                self._mark_computation_from_node(node_in, node)
+                self._mark_computation_source_from_node(node_in, node)
 
     def _assign_einsum_indice(self, node, idx):
         """
@@ -421,6 +429,21 @@ class TraceIndice(object):
         self._assign_indice_as_input(node, idx)
         self._mark_computation(node, idx, [node.kwargs["dim"]])
 
+    def _assign_split_indice(self, node: Node, node_idx: int) -> None:
+        """
+        Assign indice for split op.
+
+        Args:
+            node (node)
+            node_idx (int)
+        """
+        for _ in range(len(get_node_shape(node.args[0]))):
+            self._add_dim(node_idx, 0)
+        self._assign_indice_as_input(node, node_idx)
+        dim_idx = node.kwargs['dim']
+        self._del_dim(node_idx, dim_idx)
+        self._add_dim(node_idx, dim_idx)
+
     def _assign_unsqueeze_indice(self, node: Node, node_idx: int) -> None:
         """
         Assign indice for unsqueeze op.
@@ -460,7 +483,7 @@ class TraceIndice(object):
         nodes_in = flat_list(node.args[0])
         self._assign_indice_as_input(node, node_idx, input_node=nodes_in[0])
         for n in nodes_in[1:]:
-            self._mark_computation_from_node(n, node)
+            self._mark_computation_source_from_node(n, node)
         cat_dim = node.kwargs["dim"]
         self._del_dim(node_idx, cat_dim)
         self._add_dim(node_idx, cat_dim)
@@ -477,7 +500,7 @@ class TraceIndice(object):
         self._add_dim(node_idx, 0)
         self._assign_indice_as_input(node, node_idx, input_node=nodes_in[0])
         for n in nodes_in[1:]:
-            self._mark_computation_from_node(n, node)
+            self._mark_computation_source_from_node(n, node)
         cat_dim = node.kwargs["dim"]
         self._del_dim(node_idx, cat_dim)
 
@@ -526,8 +549,19 @@ class TraceIndice(object):
             node_idx (int)
         """
         node_args = flat_list(node.args[1:])
+
+        # deal with split
+        if get_node_name(node.args[0]) == 'split':
+            self._assign_indice_as_input(node, node_idx)
+            self._del_dim(node_idx, node.args[0].kwargs['dim'])
+            self._add_dim(node_idx, node.args[0].kwargs['dim'])
+            return
+
+        # skip non tensor
         if get_node_shape(node) is None:
             return
+
+        # find if slice
         flag = False
         for node_arg in node_args:
             node_arg_str = str(node_arg)
@@ -584,7 +618,7 @@ class TraceIndice(object):
         3. determine changed dim, and assgin indice for generated dim.
         4. log changed dim and generated dim for restore
         5. inherit computation.
-        6. TODO: look into view list to see whether the view is associated with other,
+        6. look into view list to see whether the view is associated with other,
            if so assgin equal dim according to previous view.
 
         Args:
@@ -638,11 +672,24 @@ class TraceIndice(object):
         # get new indice
         origin_trace = self._find_indice_trace_from_node(origin_node)
         self._assign_indice_as_input(node, node_idx, origin_node)
+        idx_from = [origin_trace[i] for i in dim_from]
         dim_from.reverse()
         for i in dim_from:
             self._del_dim(node_idx, i)
         for i in dim_to:
             self._add_dim(node_idx, i)
+        dim_from.reverse()
+
+        # search view list
+        for view_node, view_dict in self.indice_view_list.items():
+            if view_dict["idx_to"] == idx_from and view_dict["dim_to"] == dim_from and view_dict["dim_from"] == dim_to:
+                # inheirt indice from current node
+                for dim_to_i in dim_to:
+                    for dim_from_i in dim_from:
+                        self._mark_one_indice(origin_node, dim_from_i, node, dim_to_i)
+                # inherid indice from input node of last view
+                for dim_to_i in dim_to:
+                    self._mark_one_indice(view_node.args[0], dim_to_i, node, dim_to_i)
 
         # inherit computation
         compute_log = self._find_compute_trace_from_node(origin_node)
@@ -706,11 +753,13 @@ class TraceIndice(object):
                     self._assign_view_reshape_indice(node, idx)
                 elif "unsqueeze" == node_name:
                     self._assign_unsqueeze_indice(node, idx)
-                elif any(i == node_name for i in ["to", "contiguous", "clone"]):
+                elif "split" == node_name:
+                    self._assign_split_indice(node, idx)
+                elif any(i == node_name for i in ["to", "contiguous", "clone", "type"]):
                     self._assgin_no_change_indice(node, idx)
                 elif "new_ones" == node_name:
                     self._assign_ones_like_indice(node, idx)
-                elif any(i == node_name for i in ["size", "split", "type"]):
+                elif any(i == node_name for i in ["size"]):
                     continue
                 else:
                     raise NotImplementedError(node_name, "method not implemented yet!")
