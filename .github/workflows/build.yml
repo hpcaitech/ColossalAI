@@ -13,8 +13,10 @@ jobs:
         github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' &&
         contains( github.event.pull_request.labels.*.name, 'Run Build and Test')
     outputs:
-      changedFiles: ${{ steps.find-changed-files.outputs.changedFiles }}
-      anyChanged: ${{ steps.find-changed-files.outputs.any_changed }}
+      changedExtenisonFiles: ${{ steps.find-extension-change.outputs.changedFiles }}
+      anyExtensionChanged: ${{ steps.find-extension-change.outputs.any_changed }}
+      changedLibraryFiles: ${{ steps.find-lib-change.outputs.changedFiles }}
+      anyLibraryChanged: ${{ steps.find-lib-change.outputs.any_changed }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -30,8 +32,8 @@ jobs:
             echo $commonCommit
             echo "baseSHA=$commonCommit" >> $GITHUB_OUTPUT
 
-      - name: Find the changed files
-        id: find-changed-files
+      - name: Find the changed extension-related files
+        id: find-extension-change
         uses: tj-actions/changed-files@v35
         with:
           base_sha: ${{ steps.locate-base-sha.outputs.baseSHA }}
@@ -40,9 +42,23 @@ jobs:
             colossalai/kernel/**
             setup.py
 
+      - name: Find the changed library-related files
+        id: find-lib-change
+        uses: tj-actions/changed-files@v35
+        with:
+          base_sha: ${{ steps.locate-base-sha.outputs.baseSHA }}
+          files: |
+            **/*.py
+            **/*.h
+            **/*.cpp
+            **/*.cu
+
       - name: List changed files
         run: |
-          for file in ${{ steps.find-changed-files.outputs.all_changed_files }}; do
+          for file in ${{ steps.find-extension-change.outputs.all_changed_files }}; do
+            echo "$file was changed"
+          done
+          for file in ${{ steps.find-lib-change.outputs.all_changed_files }}; do
             echo "$file was changed"
           done
 
@@ -74,17 +90,19 @@ jobs:
           ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
 
       - name: Restore cache
-        if: needs.detect.outputs.anyChanged != 'true'
+        if: needs.detect.outputs.anyExtensionChanged != 'true'
         run: |
           # -p flag is required to preserve the file timestamp to avoid ninja rebuild
           [ ! -z "$(ls -A /github/home/cuda_ext_cache/)" ] && cp -p -r /github/home/cuda_ext_cache/* /__w/ColossalAI/ColossalAI/
 
       - name: Install Colossal-AI
+        if: needs.detect.outputs.anyLibraryChanged != 'true'
         run: |
           CUDA_EXT=1 pip install -v -e .
           pip install -r requirements/requirements-test.txt
 
       - name: Unit Testing
+        if: needs.detect.outputs.anyLibraryChanged != 'true'
         run: |
           PYTHONPATH=$PWD pytest --cov=. --cov-report xml tests
         env:
@@ -95,10 +113,29 @@ jobs:
       - name: Collate artifact
         env:
           PR_NUMBER: ${{ github.event.number }}
+          changedLibraryFiles: ${{ needs.detect.outputs.changedLibraryFiles }}
+          anyLibraryChanged: ${{ needs.detect.outputs.anyLibraryChanged }}
+          changedExtenisonFiles: ${{ needs.detect.outputs.changedExtenisonFiles }}
         run: |
           mkdir report
           echo $PR_NUMBER > ./report/pr_number
-          mv coverage.xml ./report
+
+          # generate coverage.xml if any
+          if [ $anyLibraryChanged == "true" ]; then
+            allFiles=""
+            for file in $changedExtenisonFiles; do
+              if [ $allFiles == "" ]; then
+                allFiles=$file
+              else
+                allFiles=$allFiles,$file
+              fi
+            done
+            coverage xml --data-file .coverage --include $allFiles
+            coverage report --data-file .coverage --include $allFiles > ./coverage.txt
+            mv coverage.xml ./report
+          else
+            echo "No coverage report is generated"
+          fi
 
       - name: Upload test coverage artifact
         uses: actions/upload-artifact@v3
