@@ -21,6 +21,8 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
+      - run: |
+          git remote -v
       - name: Find the changed files
         id: find-changed-files
         uses: tj-actions/changed-files@v35
