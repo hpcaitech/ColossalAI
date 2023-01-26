@@ -14,7 +14,7 @@ jobs:
     - run: |
           git branch -a
           curBranch=$(git rev-parse --abbrev-ref HEAD)
-          commonCommit=$(git merge-base main $curBranch)
+          commonCommit=$(git merge-base origin/main $curBranch)
           echo $curBranch
           echo $commonCommit
 
