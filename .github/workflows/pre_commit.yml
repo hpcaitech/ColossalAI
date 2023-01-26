@@ -22,7 +22,7 @@ jobs:
           curBranch=$(git rev-parse --abbrev-ref HEAD)
           commonCommit=$(git merge-base origin/main $curBranch)
           echo $commonCommit
-          echo "baseSHA=$commit" >> $GITHUB_OUTPUT
+          echo "baseSHA=$commonCommit" >> $GITHUB_OUTPUT
 
     - run: |
         echo $baseSHA
