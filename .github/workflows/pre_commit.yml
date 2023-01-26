@@ -24,6 +24,8 @@ jobs:
           echo $commonCommit
           echo "baseSHA=$commit" >> $GITHUB_OUTPUT
 
+          git log
+
     - name: Find the changed files
       id: find-changed-files
       uses: tj-actions/changed-files@v35
