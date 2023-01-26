@@ -16,7 +16,7 @@ jobs:
     # must share a common commit, we need to locate that commit,
     # which is the commit checked-out or forked when the PR branch is created
     # such that we can look for files changed since that commit
-    - name: locate base sha
+    - name: Locate base commit
       id: locate-base-sha
       run: |
           curBranch=$(git rev-parse --abbrev-ref HEAD)
@@ -24,7 +24,10 @@ jobs:
           echo $commonCommit
           echo "baseSHA=$commit" >> $GITHUB_OUTPUT
 
-          git log
+    - run: |
+        echo $baseSHA
+      env:
+        baseSHA: ${{ steps.locate-base-sha.outputs.baseSHA }}
 
     - name: Find the changed files
       id: find-changed-files
