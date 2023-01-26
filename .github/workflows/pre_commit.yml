@@ -24,11 +24,6 @@ jobs:
           echo $commonCommit
           echo "baseSHA=$commonCommit" >> $GITHUB_OUTPUT
 
-    - run: |
-        echo $baseSHA
-      env:
-        baseSHA: ${{ steps.locate-base-sha.outputs.baseSHA }}
-
     - name: Find the changed files
       id: find-changed-files
       uses: tj-actions/changed-files@v35
