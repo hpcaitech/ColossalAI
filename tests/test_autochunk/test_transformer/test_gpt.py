@@ -15,8 +15,8 @@ from test_transformer_utils import run_test
 
 from colossalai.autochunk.autochunk_codegen import AUTOCHUNK_AVAILABLE
 
-BATCH_SIZE = 1
-SEQ_LENGTH = 16
+BATCH_SIZE = 2
+SEQ_LENGTH = 256
 
 
 def get_data(shape: tuple) -> Tuple[List, List]:
@@ -55,7 +55,7 @@ if __name__ == "__main__":
         data=get_data((BATCH_SIZE, SEQ_LENGTH)),
         max_memory=None,
         model=GPT2Model,
-        config=GPT2Config(n_position=64, n_layer=2, n_head=4),
+        config=GPT2Config(n_embd=96, n_position=SEQ_LENGTH, n_layer=2, n_head=4),
         print_code=False,
         print_mem=False,
         print_progress=False,
