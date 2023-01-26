@@ -35,7 +35,7 @@ def get_data(shape: tuple) -> Tuple[List, List]:
 )
 @pytest.mark.parametrize("model", [GPT2Model])
 @pytest.mark.parametrize("shape", [(BATCH_SIZE, SEQ_LENGTH)])
-@pytest.mark.parametrize("max_memory", [None, 5, 5.6])
+@pytest.mark.parametrize("max_memory", [None, 5, 5.4])
 def test_evoformer_block(model, shape, max_memory):
     run_func = partial(
         run_test,
