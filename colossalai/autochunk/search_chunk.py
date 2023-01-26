@@ -114,6 +114,12 @@ class SearchChunk(object):
             chunk_region_start (int)
             chunk_region_end (int)
         """
+        # check if peak node already in chunkinfo
+        if chunk_regions is not None:
+            for i in chunk_regions:
+                if i["region"][0] < peak_node_idx <= i["region"][1]:
+                    return None
+
         free_vars = self._get_free_var_idx()
         free_var_num = len(free_vars)
         active_node_num = [len(i) for i in active_node]
