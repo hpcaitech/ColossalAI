@@ -32,10 +32,18 @@ jobs:
             fs.writeFileSync(`${process.env.GITHUB_WORKSPACE}/report.zip`, Buffer.from(download.data));
 
       - name: 'Unzip artifact'
+        id: unzip
         run: |
           unzip report.zip
 
+          if [ -f "coverage.xml" ]; then
+            echo "hasReport=true" >> $GITHUB_OUTPUT
+          else
+            echo "hasReport=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Code Coverage Report
+        if: steps.unzip.outputs.hasReport == "true"
         uses: irongut/CodeCoverageSummary@v1.3.0
         with:
           filename: coverage.xml
@@ -48,12 +56,14 @@ jobs:
           thresholds: '80 90'
 
       - name: Make Coverage Report Collapsable
+        if: steps.unzip.outputs.hasReport == "true"
         run: |
           sed -i '2 i <details>' code-coverage-results.md
           sed -i '3 i <summary>Click me to view the complete report</summary>' code-coverage-results.md
           echo "</details>" >> code-coverage-results.md
 
       - name: 'Comment on PR'
+        if: steps.unzip.outputs.hasReport == "true"
         uses: actions/github-script@v6
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
