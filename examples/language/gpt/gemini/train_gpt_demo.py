@@ -65,6 +65,13 @@ def parse_args():
         default="gpt2_medium",
         help="model model scale",
     )
+    parser.add_argument(
+        "--train_step",
+        type=int,
+        default=10,
+        help="training iterations for test",
+    )
+
     args = parser.parse_args()
     return args
 
@@ -180,17 +187,18 @@ def tensor_parallelize(model: torch.nn.Module, pg: ProcessGroup):
 
 
 # Gemini + ZeRO DDP
-def build_gemini(model: torch.nn.Module, pg: ProcessGroup, placement_policy: str = "auto"):
+def build_gemini(model: torch.nn.Module, pg: ProcessGroup, placement_policy: str = "auto", ddp_flag: bool = True):
     fp16_init_scale = 2**5
     gpu_margin_mem_ratio_for_auto = 0
 
     if version.parse(CAI_VERSION) > version.parse("0.1.10"):
         model = GeminiDDP(model,
+                          strict_ddp_mode=ddp_flag,
                           device=get_current_device(),
                           placement_policy=placement_policy,
                           pin_memory=True,
                           hidden_dim=model.config.n_embd,
-                          search_range_mb=64)
+                          search_range_mb=128)
         # configure the const policy
         if placement_policy == 'const':
             model.gemini_manager._placement_policy.set_const_memory_boundary(2 * 1024)
@@ -236,7 +244,8 @@ def main():
     SEQ_LEN = 1024
     VOCAB_SIZE = 50257
 
-    NUM_STEPS = 10
+    NUM_STEPS = args.train_step
+
     WARMUP_STEPS = 1
     assert WARMUP_STEPS < NUM_STEPS, "warmup steps should smaller than the total steps"
     assert (NUM_STEPS - WARMUP_STEPS) % 2 == 1, "the number of valid steps should be odd to take the median "
@@ -270,14 +279,17 @@ def main():
 
         tp_pg = ProcessGroup(tp_degree=args.tp_degree)
         # Tensor Parallelism (TP)
-        tensor_parallelize(model, tp_pg)
+        # You should notice that v0.1.10 is not compatible with TP degree > 1
+        if args.tp_degree > 1:
+            tensor_parallelize(model, tp_pg)
 
         # build a Gemini model and a highly optimized cpu optimizer
         # Gemini + ZeRO DP, Note it must be used after TP
-        model, optimizer = build_gemini(model, tp_pg, args.placement)
+        model, optimizer = build_gemini(model, tp_pg, args.placement, args.tp_degree == 1)
 
         logger.info(get_mem_info(prefix='After init optim, '), ranks=[0])
     else:
+        assert args.tp_degree == 1, "The degree of TP should be 1 for DDP examples."
         model = model_builder(args.model_type)(checkpoint=True).cuda()
 
     if args.distplan.startswith("torch"):
@@ -288,12 +300,17 @@ def main():
             from torch.distributed.optim import ZeroRedundancyOptimizer
             optimizer = ZeroRedundancyOptimizer(model.parameters(), optimizer_class=torch.optim.Adam, lr=0.01)
     elif args.distplan.startswith("zero"):
-        partition_flag = args.distplan == "zero2"
+        model = model.half()
+        partition_flag = (args.distplan == "zero2")
         optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-        optimizer = LowLevelZeroOptimizer(optimizer,
-                                          overlap_communication=True,
-                                          partition_grad=partition_flag,
-                                          verbose=True)
+
+        optimizer = LowLevelZeroOptimizer(
+            optimizer,
+            reduce_bucket_size=12 * 1024 * 1024,
+            overlap_communication=True,
+            partition_grad=partition_flag,
+            verbose=True,
+        )
 
     # model is shared after TP
     numel = get_model_size(model)

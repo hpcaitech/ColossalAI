@@ -1,2 +1,7 @@
-colossalai >= 0.1.12
-torch >= 1.8.1
+torch
+colossalai
+titans
+pulp
+datasets
+matplotlib
+transformers

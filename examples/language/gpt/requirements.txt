@@ -1,1 +1,2 @@
 transformers >= 4.23
+colossalai

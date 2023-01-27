@@ -1,27 +1,30 @@
 import gzip
 import random
+from functools import partial
+from time import time
 
 import numpy as np
 import torch
+import torch.nn as nn
 import torch.optim as optim
 import tqdm
 from packaging import version
 from palm_pytorch import PaLM
 from palm_pytorch.autoregressive_wrapper import AutoregressiveWrapper
-from torch.nn import functional as F
 from torch.utils.data import DataLoader, Dataset
 
 import colossalai
 from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.nn.optimizer.gemini_optimizer import GeminiAdamOptimizer
-from colossalai.nn.parallel import GeminiDDP, ZeroDDP
+from colossalai.nn.parallel import ZeroDDP
 from colossalai.tensor import ColoParameter, ComputePattern, ComputeSpec, ProcessGroup, ReplicaSpec, ShardSpec
 from colossalai.utils import MultiTimer, get_current_device
 from colossalai.utils.model.colo_init_context import ColoInitContext
 
 # constants
 
-NUM_BATCHES = int(1000)
+NUM_BATCHES = int(10)
+WARMUP_BATCHES = 1
 GRADIENT_ACCUMULATE_EVERY = 1
 LEARNING_RATE = 2e-4
 VALIDATE_EVERY = 100
@@ -63,8 +66,15 @@ def parse_args():
         default=8,
         help="batch size per DP group of training.",
     )
+    parser.add_argument(
+        "--dummy_data",
+        type=bool,
+        default=False,
+        help="use dummy dataset.",
+    )
     args = parser.parse_args()
     return args
+
 
 # helpers
 def cycle(loader):
@@ -77,8 +87,20 @@ def decode_token(token):
     return str(chr(max(32, token)))
 
 
+def get_tflops(model_numel, batch_size, seq_len, step_time):
+    return model_numel * batch_size * seq_len * 8 / 1e12 / (step_time + 1e-12)
+
+
 def decode_tokens(tokens):
     return "".join(list(map(decode_token, tokens)))
+
+
+def get_model_size(model: nn.Module):
+    total_numel = 0
+    for module in model.modules():
+        for p in module.parameters(recurse=False):
+            total_numel += p.numel()
+    return total_numel
 
 
 # Gemini + ZeRO DDP
@@ -104,6 +126,7 @@ def gemini_zero_dpp(model: torch.nn.Module, pg: ProcessGroup, placememt_policy: 
         raise NotImplemented(f"CAI version {cai_version} is not supported")
     return model
 
+
 ## Parameter Sharding Strategies for Tensor Parallelism
 def split_param_single_dim_tp1d(dim: int, param: ColoParameter, pg: ProcessGroup):
     spec = (ShardSpec([dim], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
@@ -116,6 +139,7 @@ def split_param_row_tp1d(param: ColoParameter, pg: ProcessGroup):
 
 def split_param_col_tp1d(param: ColoParameter, pg: ProcessGroup):
     split_param_single_dim_tp1d(-1, param, pg)
+
 
 # Tensor Parallel
 def tensor_parallelize(model: torch.nn.Module, pg: ProcessGroup):
@@ -143,20 +167,33 @@ def tensor_parallelize(model: torch.nn.Module, pg: ProcessGroup):
                 split_param_row_tp1d(param, pg)    # row slice
             else:
                 param.set_dist_spec(ReplicaSpec())
-
             param.visited = True
 
 
 args = parse_args()
 if args.distplan not in ["colossalai", "pytorch"]:
-        raise TypeError(f"{args.distplan} is error")
+    raise TypeError(f"{args.distplan} is error")
 disable_existing_loggers()
 colossalai.launch_from_torch(config={})
+logger = get_dist_logger()
 
-with gzip.open("./data/enwik8.gz") as file:
-    X = np.fromstring(file.read(int(95e6)), dtype=np.uint8)
-    trX, vaX = np.split(X, [int(90e6)])
-    data_train, data_val = torch.from_numpy(trX), torch.from_numpy(vaX)
+
+def generate_dataset(dummy_data: bool = False):
+    if not dummy_data:
+        with gzip.open("./data/enwik8.gz") as file:
+            X = np.fromstring(file.read(int(95e6)), dtype=np.uint8)
+            trX, vaX = np.split(X, [int(90e6)])
+            data_train, data_val = torch.from_numpy(trX), torch.from_numpy(vaX)
+            # print(f"data_train {data_train.shape} {data_train.dtype} {max(data_train)} {min(data_train)}")
+            # print(f"data_val {data_val.shape} {data_val.dtype}  {max(data_val)} {min(data_val)}")
+            return data_train, data_val
+    else:
+        return torch.randint(0, 100, (90000000,)), torch.randint(0, 100, (5000000,))
+
+
+data_train, data_val = generate_dataset(args.dummy_data)
+
+print("generate dataset ready!")
 
 
 class TextSamplerDataset(Dataset):
@@ -188,7 +225,7 @@ if args.distplan == "colossalai":
     ctx = ColoInitContext(device='cpu', default_dist_spec=default_dist_spec, default_pg=default_pg)
 
     with ctx:
-        model = PaLM(num_tokens=256, dim=512, depth=8)
+        model = PaLM(num_tokens=50304, dim=4096, depth=64)
         model = AutoregressiveWrapper(model, max_seq_len=SEQ_LEN)
 
     pg = default_pg
@@ -205,25 +242,42 @@ else:
     model.cuda()
     optim = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
-
+# model is shared after TP
+numel = get_model_size(model)
+get_tflops_func = partial(get_tflops, numel, args.batch_size, SEQ_LEN)
 
 # training
 model.train()
-
+tflops_list = []
 for i in tqdm.tqdm(range(NUM_BATCHES), mininterval=10.0, desc="training"):
 
     if args.distplan == "colossalai":
         optimizer.zero_grad()
-
+        start = time()
         loss = model(next(train_loader))
+        fwd_end = time()
+        fwd_time = fwd_end - start
         # loss.backward()
         optimizer.backward(loss)
+        bwd_end = time()
+        bwd_time = bwd_end - fwd_end
 
-        print(f"training loss: {loss.item()}")
+        # print(f"training loss: {loss.item()}")
         torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
         # optim.step()
         # optim.zero_grad()
         optimizer.step()
+        optim_time = time() - bwd_end
+        step_time = time() - start
+
+        step_tflops = get_tflops_func(step_time)
+        logger.info(
+            f"[{i + 1}/{NUM_BATCHES}] Loss:{loss.item():.3f}, Step time: {step_time:.3f}s, TFLOPS: {get_tflops_func(step_time):.3f}, FWD time: {fwd_time:.3f}s, BWD time: {bwd_time:.3f}s, OPTIM time: {optim_time:.3f}s",
+            ranks=[0],
+        )
+        if i >= WARMUP_BATCHES:
+            tflops_list.append(step_tflops)
+
     else:
         for __ in range(GRADIENT_ACCUMULATE_EVERY):
             loss = model(next(train_loader))
@@ -234,12 +288,16 @@ for i in tqdm.tqdm(range(NUM_BATCHES), mininterval=10.0, desc="training"):
         optim.step()
         optim.zero_grad()
 
-    # TODO
-    # if i % VALIDATE_EVERY == 0:
-    #     model.eval()
-    #     with torch.no_grad():
-    #         loss = model(next(val_loader))
-    #         print(f"validation loss: {loss.item()}")
+tflops_list.sort()
+median_index = ((NUM_BATCHES - WARMUP_BATCHES) >> 1) + WARMUP_BATCHES
+logger.info(f"Median TFLOPS is {tflops_list[median_index]:.3f}")
+
+# TODO
+# if i % VALIDATE_EVERY == 0:
+#     model.eval()
+#     with torch.no_grad():
+#         loss = model(next(val_loader))
+#         print(f"validation loss: {loss.item()}")
 
     # if i % GENERATE_EVERY == 0:
     #     model.eval()

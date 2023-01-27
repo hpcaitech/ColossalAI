@@ -1,0 +1,70 @@
+name: Auto Release bdist wheel
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'version.txt'
+    types:
+      - closed
+
+jobs:
+  matrix_preparation:
+    name: Prepare Container List
+    if: ( github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true ) && github.repository == 'hpcaitech/ColossalAI'
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v3
+      - id: set-matrix
+        run: |
+          bdist=$(cat .bdist.json | tr '\n' ' ')
+          echo "matrix=${bdist}" >> $GITHUB_OUTPUT
+
+  build:
+    name: Release bdist wheels
+    needs: matrix_preparation
+    runs-on: [self-hosted, gpu]
+    strategy:
+      fail-fast: false
+      matrix: ${{fromJson(needs.matrix_preparation.outputs.matrix)}}
+    container:
+      image: ${{ matrix.build.cuda_image }}
+      options: --gpus all --rm
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      # cub is for cuda 10.2
+      - name: Copy scripts
+        run: |
+          cp -r ./.github/workflows/scripts/* ./
+
+          # link the cache diretories to current path
+          ln -s /github/home/conda_pkgs ./conda_pkgs
+          ln -s /github/home/pip_wheels ./pip_wheels
+
+          # set the conda package path
+          echo "pkgs_dirs:\n  - $PWD/conda_pkgs" > ~/.condarc
+
+          # set safe directory
+          git config --global --add safe.directory /__w/ColossalAI/ColossalAI
+
+          # get cub package for cuda 10.2
+          wget https://github.com/NVIDIA/cub/archive/refs/tags/1.8.0.zip
+          unzip 1.8.0.zip
+      - name: Build bdist wheel
+        run: |
+          pip install beautifulsoup4 requests packaging
+          python ./build_colossalai_wheel.py --torch_version $TORCH_VERSIONS
+        env:
+          TORCH_VERSIONS: ${{ matrix.build.torch_version }}
+      - name: 🚀 Deploy
+        uses: garygrossgarten/github-action-scp@release
+        with:
+          local: all_dist
+          remote: ${{ secrets.PRIVATE_PYPI_DIR }}
+          host: ${{ secrets.PRIVATE_PYPI_HOST }}
+          username: ${{ secrets.PRIVATE_PYPI_USER }}
+          password: ${{ secrets.PRIVATE_PYPI_PASSWD }}

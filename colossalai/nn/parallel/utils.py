@@ -47,30 +47,29 @@ def _get_shallow_copy_model(model: nn.Module):
     """Get a shallow copy of the given model. Each submodule is different from the original submodule.
     But the new submodule and the old submodule share all attributes.
     """
-    name_to_module = dict()
+    old_to_new = dict()
     for name, module in _get_dfs_module_list(model):
         new_module = copy(module)
         new_module._modules = OrderedDict()
         for subname, submodule in module._modules.items():
             if submodule is None:
                 continue
-            full_name = name + ('.' if name else '') + subname
-            setattr(new_module, subname, name_to_module[full_name])
-        name_to_module[name] = new_module
-    return name_to_module['']
+            setattr(new_module, subname, old_to_new[submodule])
+        old_to_new[module] = new_module
+    return old_to_new[model]
 
 
-def get_static_torch_model(gemini_ddp_model,
+def get_static_torch_model(zero_ddp_model,
                            device=torch.device("cpu"),
                            dtype=torch.float32,
                            only_rank_0=True) -> torch.nn.Module:
-    """Get a static torch.nn.Module model from the given GeminiDDP module.
-    You should notice that the original GeminiDDP model is not modified.
+    """Get a static torch.nn.Module model from the given ZeroDDP module.
+    You should notice that the original ZeroDDP model is not modified.
     Thus, you can use the original model in further training.
     But you should not use the returned torch model to train, this can cause unexpected errors.
 
     Args:
-        gemini_ddp_model (GeminiDDP): a gemini ddp model
+        zero_ddp_model (ZeroDDP): a zero ddp model
         device (torch.device): the device of the final torch model
         dtype (torch.dtype): the dtype of the final torch model
         only_rank_0 (bool): if True, only rank0 has the coverted torch model
@@ -78,11 +77,11 @@ def get_static_torch_model(gemini_ddp_model,
     Returns:
         torch.nn.Module: a static torch model used for saving checkpoints or numeric checks
     """
-    from colossalai.nn.parallel import GeminiDDP
-    assert isinstance(gemini_ddp_model, GeminiDDP)
+    from colossalai.nn.parallel import ZeroDDP
+    assert isinstance(zero_ddp_model, ZeroDDP)
 
-    state_dict = gemini_ddp_model.state_dict(only_rank_0=only_rank_0)
-    colo_model = gemini_ddp_model.module
+    state_dict = zero_ddp_model.state_dict(only_rank_0=only_rank_0, strict=False)
+    colo_model = zero_ddp_model.module
     torch_model = _get_shallow_copy_model(colo_model)
 
     if not only_rank_0 or dist.get_rank() == 0:

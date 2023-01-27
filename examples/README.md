@@ -1,28 +1,40 @@
-## Examples folder document
+# Colossal-AI Examples
 
 ## Table of Contents
-<ul>
- <li><a href="#Example-folder-description">Example folder description</a> </li>
- <li><a href="#Integrate-Your-Example-With-System-Testing">Integrate Your Example With System Testing</a> </li>
-</ul>
 
-## Example folder description
+- [Colossal-AI Examples](#colossal-ai-examples)
+  - [Table of Contents](#table-of-contents)
+  - [Overview](#overview)
+  - [Folder Structure](#folder-structure)
+  - [Integrate Your Example With Testing](#integrate-your-example-with-testing)
 
-This folder provides several examples using colossalai. The images folder includes model like diffusion, dreambooth and vit. The language folder includes gpt, opt, palm and roberta. The tutorial folder is for concept illustration, such as auto-parallel, hybrid-parallel and so on.
+## Overview
 
+This folder provides several examples accelerated by Colossal-AI. The `tutorial` folder is for everyone to quickly try out the different features in Colossal-AI. Other folders such as `images` and `language` include a wide range of deep learning tasks and applications.
 
-## Integrate Your Example With System Testing
+## Folder Structure
 
-For example code contributor, to meet the expectation and test your code automatically using github workflow function, here are several steps:
+```text
+└─ examples
+  └─ images
+      └─ vit
+        └─ test_ci.sh
+        └─ train.py
+        └─ README.md
+      └─ ...
+  └─ ...
+```
 
+## Integrate Your Example With Testing
 
-- (must) Have a test_ci.sh file in the folder like shown below in 'File Structure Chart'
-- The dataset should be located in the company's machine and can be announced using environment variable and thus no need for a separate terminal command.
-- The model parameters should be small to allow fast testing.
-- File Structure Chart
+Regular checks are important to ensure that all examples run without apparent bugs and stay compatible with the latest API.
+Colossal-AI runs workflows to check for examples on a on-pull-request and weekly basis.
+When a new example is added or changed, the workflow will run the example to test whether it can run.
+Moreover, Colossal-AI will run testing for examples every week.
 
-       └─examples
-          └─images
-              └─vit
-                └─requirements.txt
-                └─test_ci.sh
+Therefore, it is essential for the example contributors to know how to integrate your example with the testing workflow. Simply, you can follow the steps below.
+
+1. Create a script called `test_ci.sh` in your example folder
+2. Configure your testing parameters such as number steps, batch size in `test_ci.sh`, e.t.c. Keep these parameters small such that each example only takes several minutes.
+3. Export your dataset path with the prefix `/data` and make sure you have a copy of the dataset in the `/data/scratch/examples-data` directory on the CI machine. Community contributors can contact us via slack to request for downloading the dataset on the CI machine.
+4. Implement the logic such as dependency setup and example execution

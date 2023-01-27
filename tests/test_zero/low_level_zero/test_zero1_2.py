@@ -115,7 +115,7 @@ def exam_zero_1_torch_ddp():
     torch_model = copy.deepcopy(zero_model)
 
     zero_model = zero_model.cuda().half()
-    # torch_model = DDP(torch_model.cuda(), bucket_cap_mb=0)
+    torch_model = DDP(torch_model.cuda(), bucket_cap_mb=0)
     torch_model = torch_model.cuda()
 
     # for (n, p), z1p in zip(torch_model.named_parameters(), zero_model.parameters()):

@@ -1,0 +1,84 @@
+name: Dispatch Compatibility Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      torch_version:
+        type: string
+        description: torch version, separated by comma
+        required: true
+      cuda_version:
+        type: string
+        description: cuda version, separated by comma
+        required: true
+
+jobs:
+  matrix_preparation:
+    name: Prepare Container List
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+    - id: set-matrix
+      env:
+        TORCH_VERSIONS: ${{ inputs.torch_version }}
+        CUDA_VERSIONS: ${{ inputs.cuda_version }}
+      run: |
+        IFS=','
+        DOCKER_IMAGE=()
+
+        for tv in $TORCH_VERSIONS
+        do
+            for cv in $CUDA_VERSIONS
+            do
+                DOCKER_IMAGE+=("\"hpcaitech/pytorch-cuda:${tv}-${cv}\"")
+            done
+        done
+
+        container=$( IFS=',' ; echo "${DOCKER_IMAGE[*]}" )
+        container="[${container}]"
+        echo "$container"
+        echo "::set-output name=matrix::{\"container\":$(echo "$container")}"
+
+  build:
+    name: Test for PyTorch Compatibility
+    needs: matrix_preparation
+    if: github.repository == 'hpcaitech/ColossalAI'
+    runs-on: [self-hosted, gpu]
+    strategy:
+      fail-fast: false
+      matrix: ${{fromJson(needs.matrix_preparation.outputs.matrix)}}
+    container:
+      image: ${{ matrix.container }}
+      options: --gpus all --rm -v /data/scratch/cifar-10:/data/scratch/cifar-10
+    timeout-minutes: 120
+    steps:
+      - name: Install dependencies
+        run: |
+          pip install -U pip setuptools wheel --user
+      - uses: actions/checkout@v2
+        with:
+          repository: hpcaitech/TensorNVMe
+          ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
+          path: TensorNVMe
+      - name: Install tensornvme
+        run: |
+          cd TensorNVMe
+          conda install cmake
+          pip install -r requirements.txt
+          pip install -v .
+      - uses: actions/checkout@v2
+        with:
+          ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
+      - name: Install Colossal-AI
+        run: |
+          pip install -r requirements/requirements.txt
+          pip install -v --no-cache-dir .
+          pip install -r requirements/requirements-test.txt
+      - name: Unit Testing
+        run: |
+          PYTHONPATH=$PWD pytest tests
+        env:
+          DATA: /data/scratch/cifar-10
+          NCCL_SHM_DISABLE: 1
+          LD_LIBRARY_PATH: /github/home/.tensornvme/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64

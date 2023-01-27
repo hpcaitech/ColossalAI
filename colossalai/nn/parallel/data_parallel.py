@@ -12,12 +12,14 @@ from colossalai.gemini.memory_tracer import OrderedParamGenerator
 from colossalai.logging import get_dist_logger
 from colossalai.nn.parallel.utils import get_temp_total_chunk_on_cuda
 from colossalai.tensor import ProcessGroup as ColoProcessGroup
+from colossalai.tensor import ReplicaSpec
 from colossalai.tensor.colo_parameter import ColoParameter, ColoTensor, ColoTensorSpec
 from colossalai.tensor.param_op_hook import ColoParamOpHookManager
-from colossalai.utils import get_current_device
+from colossalai.utils import get_current_device, is_ddp_ignored
 from colossalai.zero.utils.gemini_hook import GeminiZeROHook
 
 from .reducer import Reducer
+from .utils import get_static_torch_model
 
 try:
     from torch.nn.modules.module import _EXTRA_STATE_KEY_SUFFIX, _IncompatibleKeys
@@ -80,7 +82,7 @@ class ColoDDP(torch.nn.Module):
         self.reducer = Reducer(bucket_cap_mb)
         self.rebuild_bucket = rebuild_bucket
         for p in module.parameters():
-            if getattr(p, '_ddp_to_ignore', False):
+            if is_ddp_ignored(p):
                 continue
             if p.requires_grad:
                 p.register_hook(partial(self.grad_handle, p))
@@ -115,7 +117,7 @@ class ColoDDP(torch.nn.Module):
         if self.rebuild_bucket:
             self.reducer.free()
         for p in self.module.parameters():
-            if getattr(p, '_ddp_to_ignore', False):
+            if is_ddp_ignored(p):
                 continue
             if p.grad.device.type != "cpu":
                 p.grad = p._saved_grad
@@ -199,14 +201,18 @@ class ZeroDDP(ColoDDP):
         gemini_manager (GeminiManager): Manages the chunk manager and heterogeneous momery space.
             For more details, see the API reference of ``GeminiManager``.
         pin_memory (bool): Chunks on CPU Memory use pin-memory.
-        force_outputs_fp32 (bool): If set to True, outputs will be fp32. Otherwise, outputs will be fp16.  Defaults to False.
+        force_outputs_fp32 (bool): If set to True, outputs will be fp32. Otherwise, outputs will be fp16.
+            Defaults to False.
+        strict_ddp_mode (bool): If set to True, there is no tensor sharding, each tensor is replicated.
+            Defaults to False. Users can set it to True, when they clearly know that they only need DDP.
     """
 
     def __init__(self,
                  module: torch.nn.Module,
                  gemini_manager: GeminiManager,
                  pin_memory: bool = False,
-                 force_outputs_fp32: bool = False) -> None:
+                 force_outputs_fp32: bool = False,
+                 strict_ddp_mode: bool = False) -> None:
         super().__init__(module, process_group=ColoProcessGroup())
         self.gemini_manager = gemini_manager
         self.chunk_manager: ChunkManager = gemini_manager.chunk_manager
@@ -231,8 +237,11 @@ class ZeroDDP(ColoDDP):
         for p in param_order.generate():
             assert isinstance(p, ColoParameter)
 
-            if getattr(p, '_ddp_to_ignore', False):
-                p.data = p.data.half()
+            if strict_ddp_mode and not p.is_replicate():
+                p.set_dist_spec(ReplicaSpec())
+
+            if is_ddp_ignored(p):
+                p.data = p.data.to(device=get_current_device(), dtype=torch.float16)
                 continue
 
             fp32_data = p.data.float()
@@ -251,10 +260,11 @@ class ZeroDDP(ColoDDP):
                                                pin_memory=pin_memory)
             self.fp32_params.append(fp32_p)
             self.grads_device[p] = self.gemini_manager.default_device
+
         self.chunk_manager.close_all_groups()
         self._cast_buffers()
 
-        params_list = [p for p in param_order.generate() if not getattr(p, '_ddp_to_ignore', False)]
+        params_list = [p for p in param_order.generate() if not is_ddp_ignored(p)]
         for p, fp32_p in zip(params_list, self.fp32_params):
             chunk_16 = self.chunk_manager.get_chunk(p)
             chunk_32 = self.chunk_manager.get_chunk(fp32_p)
@@ -266,19 +276,42 @@ class ZeroDDP(ColoDDP):
 
         self._logger = get_dist_logger()
 
+    def _post_forward(self):
+        """This function is only triggered for inference.
+        """
+        access_list = list(self.chunk_manager.accessed_chunks)
+        # we need to scatter all accessed chunks and move them to their original places
+        for chunk in access_list:
+            assert chunk.can_release
+            self.chunk_manager.release_chunk(chunk)
+            first_param = next(iter(chunk.tensors_info))
+            self.chunk_manager.move_chunk(chunk, self.grads_device[first_param])
+        assert self.chunk_manager.accessed_mem == 0
+        # reset all recorded attributes
+        self.gemini_manager.reset_attributes()
+
     def forward(self, *args, **kwargs):
+        # check whether we are in a inference mode
+        grad_flag = torch.is_grad_enabled()
+        if not grad_flag:
+            assert not self.gemini_manager.is_warmup(), "You should run a completed iteration as your warmup iter"
+
         args, kwargs = _cast_float(args, torch.half), _cast_float(kwargs, torch.half)
         self.module.zero_grad(set_to_none=True)
         self.gemini_manager.pre_iter(*args)
         with ColoParamOpHookManager.use_hooks(self.param_op_hook):
             outputs = self.module(*args, **kwargs)
+        # scatter chunks in the inference mode
+        if not grad_flag:
+            self._post_forward()
+
         if self.force_outputs_fp32:
             return _cast_float(outputs, torch.float)
         return outputs
 
     def _setup_grads_ptr(self):
         for p in self.module.parameters():
-            if getattr(p, '_ddp_to_ignore', False):
+            if is_ddp_ignored(p):
                 continue
             p.grad = None
 
@@ -331,12 +364,10 @@ class ZeroDDP(ColoDDP):
         for tensor in chunk.get_tensors():
             self.grads_device[tensor] = device
 
-    def state_dict(self, destination=None, prefix='', keep_vars=False, only_rank_0: bool = True):
-        r"""Returns a dictionary containing a whole state of the module.
-
-        Both parameters and persistent buffers (e.g. running averages) are
-        included. Keys are corresponding parameter and buffer names.
-        Parameters and buffers set to ``None`` are not included.
+    def state_dict(self, destination=None, prefix='', keep_vars=False, only_rank_0: bool = True, strict: bool = True):
+        """
+        Args:
+            strict (bool): whether to reture the whole model state as the pytorch `Module.state_dict()`
 
         Returns:
             dict:
@@ -346,7 +377,30 @@ class ZeroDDP(ColoDDP):
 
             >>> module.state_dict().keys()
             ['bias', 'weight']
+        """
+        if strict:
+            assert keep_vars is False, "`state_dict` with parameter, `keep_vars=True`, is not supported now."
+            torch_model = get_static_torch_model(zero_ddp_model=self, only_rank_0=only_rank_0)
+            return torch_model.state_dict(destination=destination, prefix=prefix, keep_vars=keep_vars)
+        return self._non_strict_state_dict(destination=destination,
+                                           prefix=prefix,
+                                           keep_vars=keep_vars,
+                                           only_rank_0=only_rank_0)
 
+    def _non_strict_state_dict(self, destination=None, prefix='', keep_vars=False, only_rank_0: bool = True):
+        """Returns a dictionary containing a whole state of the module.
+
+        Both parameters and persistent buffers (e.g. running averages) are included.
+        Keys are corresponding parameter and buffer names.
+        Parameters and buffers set to ``None`` are not included.
+
+        Warning: The non strict state dict would ignore the parameters if the tensors of the parameters
+            are shared with other parameters which have been included in the dictionary.
+            When you need to load the state dict, you should set the argument `strict` to False.
+
+        Returns:
+            dict:
+                a dictionary containing a whole state of the module
         """
         if destination is None:
             destination = OrderedDict()
@@ -405,8 +459,14 @@ class ZeroDDP(ColoDDP):
         assert keep_vars is False, "`state_dict` with parameter, `keep_vars=True`, is not supported now."
 
         param_to_save_data = self._get_param_to_save_data(self.fp32_params, only_rank_0)
-        # TODO: (HELSON) deal with ddp ignored parameters
-        for (name, p), fp32_p in zip(self.named_parameters(), self.fp32_params):
+        ddp_param_list = []
+        for name, param in self.named_parameters():
+            if is_ddp_ignored(param):
+                # deal with ddp ignored parameters
+                destination[prefix + name] = param if keep_vars else param.detach()
+            else:
+                ddp_param_list.append((name, param))
+        for (name, p), fp32_p in zip(ddp_param_list, self.fp32_params):
             if p is not None:
                 assert fp32_p in param_to_save_data, "Parameter '{}' is neglected in the chunk list".format(name)
                 record_parameter = param_to_save_data[fp32_p]
@@ -542,8 +602,16 @@ class ZeroDDP(ColoDDP):
         def load_fp32_parameter(chunk_slice, data):
             chunk_slice.copy_(data.flatten())
 
+        ddp_param_list = []
+        for name, param in self.named_parameters():
+            if is_ddp_ignored(param):
+                # deal with ddp ignored parameters
+                load(name, param, param.copy_)
+            else:
+                ddp_param_list.append((name, param))
+
         fp32_to_name = dict()
-        for (name, p), fp32_p in zip(self.named_parameters(), self.fp32_params):
+        for (name, p), fp32_p in zip(ddp_param_list, self.fp32_params):
             if p is not None:
                 fp32_to_name[fp32_p] = name
 

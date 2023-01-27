@@ -1,14 +1,15 @@
 from typing import List
 
 from torch import Tensor
+from torch.distributed import ProcessGroup
 
 from .base_store import BaseStore
 
 
 class ParameterStore(BaseStore):
 
-    def __init__(self, dp_paralle_mode):
-        super().__init__(dp_paralle_mode)
+    def __init__(self, torch_pg: ProcessGroup):
+        super().__init__(torch_pg)
         # param partitioning data structures
         self._fp16_param_to_rank = dict()
         self._rank_groupid_to_fp16_param_list = dict()
