@@ -437,20 +437,7 @@ class TraceFlow(object):
         for end_dim, _ in enumerate(end_trace["indice"]):
             for start_node, start_trace in start_traces.items():
                 for start_dim, _ in enumerate(start_trace["indice"]):
-                    # dim cannot be None
-                    if (get_node_shape(end_node) is None or get_node_shape(start_node) is None):
-                        continue
-                    # dim size cannot be 1
-                    if (get_node_shape(end_node)[end_dim] == 1 or get_node_shape(start_node)[start_dim] == 1):
-                        continue
-                    # must have users
-                    if len(end_node.users) == 0:
-                        continue
-                    # check index source align
-                    if not self.check_index_source(start_dim, start_node, start_idx, end_dim, end_node):
-                        continue
-                    # check index copmute
-                    if not self.check_index_compute(start_idx, end_dim, end_node, end_idx):
+                    if not self._check_region_start_end(start_node, start_dim, start_idx, end_node, end_dim, end_idx):
                         continue
                     # flow search
                     chunk_info = self.flow_search(start_idx, start_dim, end_idx, end_dim)
@@ -458,3 +445,25 @@ class TraceFlow(object):
                         continue
                     chunk_infos.append(chunk_info)
         return chunk_infos
+
+    def _check_region_start_end(self, start_node: Node, start_dim: int, start_idx: int, end_node: Node, end_dim: int,
+                                end_idx: int) -> bool:
+        """
+        check if region start and end is legal
+        """
+        # dim cannot be None
+        if (get_node_shape(end_node) is None or get_node_shape(start_node) is None):
+            return False
+        # dim size cannot be 1
+        if (get_node_shape(end_node)[end_dim] == 1 or get_node_shape(start_node)[start_dim] == 1):
+            return False
+        # must have users
+        if len(end_node.users) == 0:
+            return False
+        # check index source align
+        if not self.check_index_source(start_dim, start_node, start_idx, end_dim, end_node):
+            return False
+        # check index copmute
+        if not self.check_index_compute(start_idx, end_dim, end_node, end_idx):
+            return False
+        return True
