@@ -408,3 +408,53 @@ class TraceFlow(object):
                 reshape_size[node.name] = [origin_shape, new_shape]
         chunk_info["reshape_size"] = reshape_size
         return chunk_info
+
+    def find_chunk_info(self, input_trace, output_trace, start_idx, end_idx) -> List:
+        """
+        Find chunk info for a region.
+
+        We are given the region start and region end, and need to find out all chunk info for it.
+        We first loop every dim of start node and end node, to see if we can find dim pair,
+        which is linked in a flow and not computed.
+        If found, we then search flow in the whole region to find out all chunk infos.
+
+        Args:
+            input_trace (List): node's input trace in region
+            output_trace (List): node's output trace in region
+            start_idx (int): region start node index
+            end_idx (int): region end node index
+
+        Returns:
+            chunk_infos: possible regions found
+        """
+        start_traces = input_trace[start_idx]
+        if len(start_traces) > 1:    # TODO need to be removed
+            return []
+        end_trace = output_trace[end_idx]
+        end_node = self.trace_indice.node_list[end_idx]
+
+        chunk_infos = []
+        for end_dim, _ in enumerate(end_trace["indice"]):
+            for start_node, start_trace in start_traces.items():
+                for start_dim, _ in enumerate(start_trace["indice"]):
+                    # dim cannot be None
+                    if (get_node_shape(end_node) is None or get_node_shape(start_node) is None):
+                        continue
+                    # dim size cannot be 1
+                    if (get_node_shape(end_node)[end_dim] == 1 or get_node_shape(start_node)[start_dim] == 1):
+                        continue
+                    # must have users
+                    if len(end_node.users) == 0:
+                        continue
+                    # check index source align
+                    if not self.check_index_source(start_dim, start_node, start_idx, end_dim, end_node):
+                        continue
+                    # check index copmute
+                    if not self.check_index_compute(start_idx, end_dim, end_node, end_idx):
+                        continue
+                    # flow search
+                    chunk_info = self.flow_search(start_idx, start_dim, end_idx, end_dim)
+                    if chunk_info is None:
+                        continue
+                    chunk_infos.append(chunk_info)
+        return chunk_infos
