@@ -177,12 +177,12 @@ class SearchChunk(object):
             chunk_infos: possible regions found
         """
         start_traces = input_trace[start_idx]
+        if len(start_traces) > 1:    # TODO need to be removed
+            return []
         end_trace = output_trace[end_idx]
         end_node = self.trace_indice.node_list[end_idx]
         chunk_infos = []
         for end_dim, _ in enumerate(end_trace["indice"]):
-            if len(start_traces) > 1:
-                continue
             for start_node, start_trace in start_traces.items():
                 for start_dim, _ in enumerate(start_trace["indice"]):
                     # dim cannot be None
