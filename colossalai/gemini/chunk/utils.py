@@ -19,38 +19,24 @@ def safe_div(a, b):
 def init_chunk_manager(model: nn.Module,
                        init_device: Optional[torch.device] = None,
                        hidden_dim: Optional[int] = None,
-                       search_range_mb: Optional[float] = None,
-                       min_chunk_size_mb: Optional[float] = None,
-                       filter_exlarge_params: Optional[bool] = None) -> ChunkManager:
-    kwargs_dict = dict()
-
+                       **kwargs) -> ChunkManager:
     if hidden_dim:
         search_interval_byte = hidden_dim
     else:
-        search_interval_byte = 1024    # 1kb
-    kwargs_dict["search_interval_byte"] = search_interval_byte
-
-    if search_range_mb:
-        kwargs_dict["search_range_mb"] = search_range_mb
-
-    if min_chunk_size_mb:
-        kwargs_dict["min_chunk_size_mb"] = min_chunk_size_mb
-
-    if filter_exlarge_params:
-        kwargs_dict["filter_exlarge_params"] = filter_exlarge_params
-
-    params_sizes = [p.numel() for p in model.parameters() if not is_ddp_ignored(p)]
-    total_size = sum(params_sizes) / 1024**2
+        search_interval_byte = 1024    # defaults to 1kb
+    kwargs["search_interval_byte"] = search_interval_byte
 
     dist.barrier()
     begin = time()
 
-    config_dict, wasted_size = search_chunk_configuration(model, **kwargs_dict)
+    config_dict, total_size, wasted_size = search_chunk_configuration(model, **kwargs)
 
     dist.barrier()
     end = time()
     span_s = end - begin
-    wasted_size /= 1024**2
+    mb_size = 1024**2
+    total_size /= mb_size
+    wasted_size /= mb_size
 
     if dist.get_rank() == 0:
         print("searching chunk configuration is completed in {:.2f} s.\n".format(span_s),
