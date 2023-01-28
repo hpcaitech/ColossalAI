@@ -20,7 +20,7 @@ class GeminiDDP(ZeroDDP):
                  strict_ddp_mode: bool = False,
                  search_range_mb: int = 32,
                  hidden_dim: Optional[int] = None,
-                 min_chunk_size_mb: Optional[float] = None,
+                 min_chunk_size_mb: float = 32,
                  memstats: Optional[MemStats] = None) -> None:
         """
         A torch.Module warpper using ZeRO-DP and Genimi.
@@ -53,6 +53,7 @@ class GeminiDDP(ZeroDDP):
                                            init_device=device,
                                            hidden_dim=hidden_dim,
                                            search_range_mb=search_range_mb,
-                                           min_chunk_size_mb=min_chunk_size_mb)
+                                           min_chunk_size_mb=min_chunk_size_mb,
+                                           strict_ddp_flag=strict_ddp_mode)
         gemini_manager = GeminiManager(placement_policy, chunk_manager, memstats)
         super().__init__(module, gemini_manager, pin_memory, force_outputs_fp32, strict_ddp_mode)

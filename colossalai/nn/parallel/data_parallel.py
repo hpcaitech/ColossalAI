@@ -234,11 +234,14 @@ class ZeroDDP(ColoDDP):
             for p in module.parameters():
                 param_order.append(p)
 
+        ddp_pg = ColoProcessGroup()
         for p in param_order.generate():
             assert isinstance(p, ColoParameter)
 
-            if strict_ddp_mode and not p.is_replicate():
-                p.set_dist_spec(ReplicaSpec())
+            if strict_ddp_mode:
+                if not p.is_replicate():
+                    p.set_dist_spec(ReplicaSpec())
+                p.set_process_group(pg=ddp_pg)
 
             if is_ddp_ignored(p):
                 p.data = p.data.to(device=get_current_device(), dtype=torch.float16)

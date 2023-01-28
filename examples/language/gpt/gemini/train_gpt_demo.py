@@ -263,7 +263,7 @@ def main():
     if args.distplan == "colossalai":
         # all param must use the same process group.
         world_size = torch.distributed.get_world_size()
-        shard_pg = ProcessGroup(tp_degree=world_size)
+        shard_pg = ProcessGroup(tp_degree=world_size) if args.shardinit else None
         default_dist_spec = ShardSpec([-1], [world_size]) if args.shardinit else None
 
         # build GPT model
