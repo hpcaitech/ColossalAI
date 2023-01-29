@@ -7,7 +7,7 @@
 
    <h3> <a href="https://arxiv.org/abs/2110.14883"> Paper </a> |
    <a href="https://www.colossalai.org/"> Documentation </a> |
-   <a href="https://github.com/hpcaitech/ColossalAI-Examples"> Examples </a> |
+   <a href="https://github.com/hpcaitech/ColossalAI/tree/main/examples"> Examples </a> |
    <a href="https://github.com/hpcaitech/ColossalAI/discussions"> Forum </a> |
    <a href="https://medium.com/@hpcaitech"> Blog </a></h3>
 
