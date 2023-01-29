@@ -58,7 +58,8 @@ def exam_zero_with_tp(overlap_flag, partition_flag):
     torch_optim = torch.optim.Adam(torch_model.parameters(), lr=1)
     hybrid_optim = torch.optim.Adam(hybrid_model.parameters(), lr=1)
     hybrid_optim = LowLevelZeroOptimizer(hybrid_optim,
-                                         initial_scale=1,
+                                         initial_scale=2,
+                                         clip_grad_norm=1.0,
                                          overlap_communication=overlap_flag,
                                          partition_grad=partition_flag)
 
@@ -71,6 +72,7 @@ def exam_zero_with_tp(overlap_flag, partition_flag):
     assert_close(torch_loss, hybrid_loss)
 
     torch_loss.backward()
+    torch.nn.utils.clip_grad_norm_(torch_model.parameters(), 1.0)
     hybrid_optim.backward(hybrid_loss)
     hybrid_optim.sync_grad()
 
