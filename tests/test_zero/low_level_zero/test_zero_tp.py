@@ -74,7 +74,6 @@ def exam_zero_with_tp(overlap_flag, partition_flag):
     torch_loss.backward()
     torch.nn.utils.clip_grad_norm_(torch_model.parameters(), 1.0)
     hybrid_optim.backward(hybrid_loss)
-    hybrid_optim.sync_grad()
 
     torch_optim.step()
     hybrid_optim.step()
