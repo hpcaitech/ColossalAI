@@ -55,8 +55,8 @@ def exam_zero_with_tp(overlap_flag, partition_flag):
             split_param_col_tp1d(param, tp_pg)
 
     torch_model = DDP(torch_model, device_ids=[tp_pg.rank()], process_group=tp_pg.dp_process_group())
-    torch_optim = torch.optim.Adam(torch_model.parameters(), lr=1)
-    hybrid_optim = torch.optim.Adam(hybrid_model.parameters(), lr=1)
+    torch_optim = torch.optim.Adam(torch_model.parameters(), lr=1e-2)    # set to 1e-2 for torch-1.11
+    hybrid_optim = torch.optim.Adam(hybrid_model.parameters(), lr=1e-2)
     hybrid_optim = LowLevelZeroOptimizer(hybrid_optim,
                                          initial_scale=2,
                                          clip_grad_norm=1.0,
