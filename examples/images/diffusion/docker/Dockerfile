@@ -18,13 +18,6 @@ RUN git clone https://github.com/NVIDIA/apex && \
 RUN pip install colossalai==0.1.12+torch1.12cu11.3 -f https://release.colossalai.org
 
 
-# install our lightning, it will be merged to Lightning official repo.
-RUN git clone https://github.com/1SAA/lightning.git && \
-    cd lightning && \
-    git checkout strategy/colossalai && \
-    export PACKAGE_NAME=pytorch && \
-    pip install --no-cache-dir .
-
 # install titans
 RUN pip install --no-cache-dir titans
 
