@@ -13,10 +13,10 @@ from colossalai.utils.model.colo_init_context import ColoInitContext
 from colossalai.zero import LowLevelZeroOptimizer
 
 
-class TestModel(nn.Module):
+class MlpModel(nn.Module):
 
     def __init__(self):
-        super(TestModel, self).__init__()
+        super(MlpModel, self).__init__()
         self.linear1 = nn.Linear(128, 256)
         self.linear2 = nn.Linear(256, 512)
 
@@ -28,9 +28,9 @@ class TestModel(nn.Module):
 
 def exam_zero_init():
     dp_2_tp_2_pg = ProcessGroup(dp_degree=2, tp_degree=2)
-    model1 = TestModel().cuda()
+    model1 = MlpModel().cuda()
     with ColoInitContext(device=get_current_device(), default_pg=dp_2_tp_2_pg):
-        model2 = TestModel()
+        model2 = MlpModel()
     optimizer1 = LowLevelZeroOptimizer(torch.optim.Adam(model1.parameters(), lr=1))
     optimizer2 = LowLevelZeroOptimizer(torch.optim.Adam(model2.parameters(), lr=1))
 

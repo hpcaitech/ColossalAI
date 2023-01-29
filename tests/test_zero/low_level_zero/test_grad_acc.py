@@ -15,10 +15,10 @@ from colossalai.utils import free_port
 from colossalai.zero import LowLevelZeroOptimizer
 
 
-class TestModel(nn.Module):
+class MlpModel(nn.Module):
 
     def __init__(self):
-        super(TestModel, self).__init__()
+        super(MlpModel, self).__init__()
         self.linear1 = nn.Linear(128, 256)
         self.linear2 = nn.Linear(256, 512)
 
@@ -33,7 +33,7 @@ def exam_zero_1_2_grad_acc():
     seed_all(2009)
 
     # create model
-    zero1_model = TestModel().cuda()
+    zero1_model = MlpModel().cuda()
     zero2_model = copy.deepcopy(zero1_model)
     # create optimizer
     zero1_optimizer = torch.optim.Adam(zero1_model.parameters(), lr=1)
@@ -89,7 +89,7 @@ def exam_zero_1_grad_acc():
     seed_all(2008)
 
     # create models
-    zero_model = TestModel()
+    zero_model = MlpModel()
     torch_model = copy.deepcopy(zero_model)
 
     seed_all(2008)

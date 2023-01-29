@@ -20,10 +20,10 @@ def strict_shard_equal(tensor, shard, tp_pg, rtol=1e-3, atol=1e-4):
     return tensor_shard_equal(tensor, shard, tp_pg.tp_local_rank(), tp_pg.tp_world_size(), rtol, atol)
 
 
-class TestModel(nn.Module):
+class MlpModel(nn.Module):
 
     def __init__(self):
-        super(TestModel, self).__init__()
+        super(MlpModel, self).__init__()
         self.linear1 = nn.Linear(32, 128)
         self.act = nn.GELU()
         self.linear2 = nn.Linear(128, 32)
@@ -42,8 +42,8 @@ def exam_zero_with_tp(overlap_flag, partition_flag):
     tp_pg = ProcessGroup(tp_degree=2)
 
     with ColoInitContext(device=get_current_device(), default_pg=tp_pg):
-        hybrid_model = TestModel()
-    torch_model = TestModel().cuda()
+        hybrid_model = MlpModel()
+    torch_model = MlpModel().cuda()
     for pt, ph in zip(torch_model.parameters(), hybrid_model.parameters()):
         pt.data.copy_(ph.data)
 
