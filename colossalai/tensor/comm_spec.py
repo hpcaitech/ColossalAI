@@ -463,7 +463,7 @@ class CommSpec:
         if self.comm_pattern == CollectiveCommPattern.GATHER_FWD_SPLIT_BWD:
             forward_communication_cost = self.device_mesh.all_gather_cost(comm_size, self.logical_process_axis)
             # give a tiny cost to shard
-            backward_communication_cost = 10
+            backward_communication_cost = 100
 
         if self.comm_pattern == CollectiveCommPattern.ALL2ALL_FWD_ALL2ALL_BWD:
             forward_communication_cost = self.device_mesh.all_to_all_cost(comm_size, self.logical_process_axis)
@@ -481,13 +481,13 @@ class CommSpec:
 
         if self.comm_pattern == CollectiveCommPattern.SPLIT_FWD_GATHER_BWD:
             # give a tiny cost to shard
-            forward_communication_cost = 10
+            forward_communication_cost = 100
             backward_communication_cost = self.device_mesh.all_gather_cost(comm_size, self.logical_process_axis)
 
         if self.comm_pattern == CollectiveCommPattern.MIXGATHER_FWD_SPLIT_BWD:
             # no need for axis because all devices are used in mix_gather
             forward_communication_cost = self.device_mesh.mix_gather_cost(comm_size)
-            backward_communication_cost = 10
+            backward_communication_cost = 100
 
         if self.forward_only:
             cost_dict["forward"] = forward_communication_cost

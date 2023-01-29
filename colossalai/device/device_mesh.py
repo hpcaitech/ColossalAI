@@ -98,7 +98,7 @@ class DeviceMesh:
         return DeviceMesh(self.physical_mesh_id,
                           tuple(flatten_mesh_shape),
                           mesh_alpha=[max(self.mesh_alpha)] * (flatten_mesh_shape_size - 1),
-                          mesh_beta=[min(self.mesh_beta)] * (flatten_mesh_shape_size - 1),
+                          mesh_beta=[max(self.mesh_beta)] * (flatten_mesh_shape_size - 1),
                           init_process_group=self.init_process_group,
                           need_flatten=False)
 
