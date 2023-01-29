@@ -55,7 +55,7 @@ def zero_optim_wrapper(model: nn.Module,
                        max_scale: float = 2**32,
                        max_norm: float = 0.0,
                        norm_type: float = 2.0,
-                       zero_config: Optional[Dict] = None):
+                       optim_config: Optional[Dict] = None):
     """This wrapper function is used to wrap your training optimizer for ZeRO DDP.
 
     Args:
@@ -71,21 +71,21 @@ def zero_optim_wrapper(model: nn.Module,
         max_norm (float, optional): max_norm used for `clip_grad_norm`. You should notice that you shall not do
             clip_grad_norm by yourself when using ZeRO DDP. The ZeRO optimizer will take care of clip_grad_norm.
         norm_type (float, optional): norm_type used for `clip_grad_norm`.
-        zero_config (dict, optinoal): The configuration used for the ZeRO optimizer.
+        optim_config (dict, optinoal): The configuration used for the ZeRO optimizer.
             Example:
 
                 >>> zero2_config = dict(reduce_bucket_size=12 * 1024 * 1024, overlap_communication=True)
-                >>> optim = zero_optim_wrapper(model, optim, zero_config=zero2_config)
+                >>> optim = zero_optim_wrapper(model, optim, optim_config=zero2_config)
     """
     assert hasattr(model, "_colo_zero_stage"), "You should use `zero_ddp_wrapper` first"
     zero_stage = getattr(model, "_colo_zero_stage")
 
     assert norm_type == 2.0, "Current ZeRO optimizers only support 'norm_type=2'"
 
-    if zero_config is None:
+    if optim_config is None:
         config_dict = dict()
     else:
-        config_dict = copy(zero_config)
+        config_dict = copy(optim_config)
 
     config_dict['initial_scale'] = initial_scale
     config_dict['growth_factor'] = growth_factor
@@ -99,8 +99,8 @@ def zero_optim_wrapper(model: nn.Module,
         from colossalai.zero.sharded_optim.low_level_optim import LowLevelZeroOptimizer
         config_dict['partition_grad'] = zero_stage == 2
         config_dict['clip_grad_norm'] = max_norm
-        return LowLevelZeroOptimizer(optimizer, **zero_config)
+        return LowLevelZeroOptimizer(optimizer, **config_dict)
     else:
         from colossalai.nn.optimizer.zero_optimizer import ZeroOptimizer
         config_dict['clipping_norm'] = max_norm
-        return ZeroOptimizer(optimizer, model, **zero_config)
+        return ZeroOptimizer(optimizer, model, **config_dict)
