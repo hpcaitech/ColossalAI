@@ -7,7 +7,7 @@
 
    <h3> <a href="https://arxiv.org/abs/2110.14883"> 论文 </a> |
    <a href="https://www.colossalai.org/"> 文档 </a> |
-   <a href="https://github.com/hpcaitech/ColossalAI-Examples"> 例程 </a> |
+   <a href="https://github.com/hpcaitech/ColossalAI/tree/main/examples"> 例程 </a> |
    <a href="https://github.com/hpcaitech/ColossalAI/discussions"> 论坛 </a> |
    <a href="https://medium.com/@hpcaitech"> 博客 </a></h3>
 
