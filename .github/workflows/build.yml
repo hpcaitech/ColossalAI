@@ -13,9 +13,9 @@ jobs:
         github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' &&
         contains( github.event.pull_request.labels.*.name, 'Run Build and Test')
     outputs:
-      changedExtenisonFiles: ${{ steps.find-extension-change.outputs.changedFiles }}
+      changedExtenisonFiles: ${{ steps.find-extension-change.outputs.all_changed_files }}
       anyExtensionFileChanged: ${{ steps.find-extension-change.outputs.any_changed }}
-      changedLibraryFiles: ${{ steps.find-lib-change.outputs.changedFiles }}
+      changedLibraryFiles: ${{ steps.find-lib-change.outputs.all_changed_files }}
       anyLibraryFileChanged: ${{ steps.find-lib-change.outputs.any_changed }}
     runs-on: ubuntu-latest
     steps:
