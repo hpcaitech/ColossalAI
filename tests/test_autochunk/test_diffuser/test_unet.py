@@ -7,8 +7,10 @@ import torch.multiprocessing as mp
 
 try:
     from diffusers import UNet2DModel
+    MODELS = [UNet2DModel]
     HAS_REPO = True
 except:
+    MODELS = []
     HAS_REPO = False
 
 from test_diffuser_utils import run_test
@@ -40,7 +42,7 @@ def get_data(shape: tuple) -> Tuple[List, List]:
     not (AUTOCHUNK_AVAILABLE and HAS_REPO),
     reason="torch version is lower than 1.12.0",
 )
-@pytest.mark.parametrize("model", [UNet2DModel])
+@pytest.mark.parametrize("model", MODELS)
 @pytest.mark.parametrize("shape", [LATENTS_SHAPE])
 @pytest.mark.parametrize("max_memory", [64])
 def test_evoformer_block(model, shape, max_memory):

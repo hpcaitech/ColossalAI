@@ -7,8 +7,10 @@ import torch.multiprocessing as mp
 
 try:
     from transformers import GPT2Config, GPT2Model
+    MODELS = [GPT2Model]
     HAS_REPO = True
 except:
+    MODELS = []
     HAS_REPO = False
 
 from test_transformer_utils import run_test
@@ -33,10 +35,10 @@ def get_data(shape: tuple) -> Tuple[List, List]:
     not (AUTOCHUNK_AVAILABLE and HAS_REPO),
     reason="torch version is lower than 1.12.0",
 )
-@pytest.mark.parametrize("model", [GPT2Model])
+@pytest.mark.parametrize("model", MODELS)
 @pytest.mark.parametrize("shape", [(BATCH_SIZE, SEQ_LENGTH)])
 @pytest.mark.parametrize("max_memory", [None, 4.5, 5])
-def test_evoformer_block(model, shape, max_memory):
+def test_gpt(model, shape, max_memory):
     run_func = partial(
         run_test,
         data=get_data(shape),
@@ -57,7 +59,7 @@ if __name__ == "__main__":
         max_memory=None,
         model=GPT2Model,
         config=GPT2Config(n_embd=96, n_position=SEQ_LENGTH, n_layer=2, n_head=4),
-        print_code=False,
-        print_mem=False,
+        print_code=True,
+        print_mem=True,
         print_progress=False,
     )
