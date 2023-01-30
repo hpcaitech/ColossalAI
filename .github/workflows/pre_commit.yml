@@ -46,7 +46,6 @@ jobs:
 
     - name: Set up pre-commit
       run: |
-        rm -rf ~/.cache/pre-commit
         pip install pre-commit
         pre-commit install
 
