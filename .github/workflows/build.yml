@@ -96,13 +96,13 @@ jobs:
           [ ! -z "$(ls -A /github/home/cuda_ext_cache/)" ] && cp -p -r /github/home/cuda_ext_cache/* /__w/ColossalAI/ColossalAI/
 
       - name: Install Colossal-AI
-        if: needs.detect.outputs.anyLibraryChanged != 'true'
+        if: needs.detect.outputs.anyLibraryChanged == 'true'
         run: |
           CUDA_EXT=1 pip install -v -e .
           pip install -r requirements/requirements-test.txt
 
       - name: Unit Testing
-        if: needs.detect.outputs.anyLibraryChanged != 'true'
+        if: needs.detect.outputs.anyLibraryChanged == 'true'
         run: |
           PYTHONPATH=$PWD pytest --cov=. --cov-report xml tests
         env:
