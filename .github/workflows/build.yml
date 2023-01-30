@@ -85,7 +85,7 @@ jobs:
       - name: Restore TensorNVMe Cache
         run: |
           ls -la /github/home
-          ls -la
+          ls -la $PWD/TensorNVMe
           [ ! -z "$(ls -A /github/home/tensornvme_cache/)" ] && cp -p -r /github/home/tensornvme_cache/* /__w/ColossalAI/ColossalAI/TensorNVMe
 
       - name: Install TensorNVMe
