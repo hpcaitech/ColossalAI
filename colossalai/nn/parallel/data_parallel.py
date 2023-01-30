@@ -243,12 +243,12 @@ class ZeroDDP(ColoDDP):
                           cpu_offload=self.gemini_manager.policy_name != 'cuda',
                           pin_memory=pin_memory)
 
-        for name, param in self.named_parameters():
+        for name, param in module.named_parameters():
             self.param2name[param] = name
-        for module_name, module in self.named_modules():
-            for subname, param in module.parameters(recurse=False):
-                param_name = module_name + '.' + subname if module_name else subname
-                self.name2param[param_name] = param
+        for m_name, m_var in module.named_modules():
+            for p_name, p_var in m_var.parameters(recurse=False):
+                param_name = m_name + '.' + p_name if m_name else p_name
+                self.name2param[param_name] = p_var
 
     def _post_forward(self):
         """This function is only triggered for inference.
@@ -289,10 +289,23 @@ class ZeroDDP(ColoDDP):
                 continue
             p.grad = None
 
+    def _pre_bacward(self):
+        # set a visit label for all parameters
+        # the label is used to check whether the parameter is correctly reduced
+        for param in self.param2name:
+            if not is_ddp_ignored(param):
+                setattr(param, "_gemini_reduced", False)
+
     def _post_backward(self):
         if self.chunk_manager.accessed_mem != 0:
+            error_params = ["Reduction failed at followed parameters:"]
+            for param in self.param2name:
+                if not is_ddp_ignored(param) and not getattr(param, "_gemini_reduced"):
+                    error_params.append(self.param2name[param])
+            error_str = "\n\t".join(error_params)
             raise RuntimeError("ZERO DDP error: the synchronization of gradients doesn't exit properly.",
-                               "The most possible reason is that the model is not compatible with ZeroDDP.")
+                               "The most possible reason is that the model is not compatible with ZeroDDP.\n",
+                               f"{error_str}")
         self._setup_grads_ptr()
         self._logger.debug(
             f'comp cuda demand time: {self.gemini_manager._comp_cuda_demand_time}, layout time: {self.gemini_manager._layout_time}, evict time: {self.gemini_manager._evict_time}, CPU->CUDA vol: {self.gemini_manager._h2d_volume}B, CUDA->CPU vol: {self.gemini_manager._d2h_volume}'
@@ -300,6 +313,7 @@ class ZeroDDP(ColoDDP):
         self.gemini_manager.post_iter()
 
     def backward(self, loss: torch.Tensor):
+        self._pre_bacward()
         with self.param_op_hook.switch_to_backward(), ColoParamOpHookManager.use_hooks(self.param_op_hook):
             loss.backward()
         self._post_backward()
