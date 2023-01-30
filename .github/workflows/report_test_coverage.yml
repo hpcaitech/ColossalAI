@@ -32,28 +32,31 @@ jobs:
             fs.writeFileSync(`${process.env.GITHUB_WORKSPACE}/report.zip`, Buffer.from(download.data));
 
       - name: 'Unzip artifact'
+        id: unzip
         run: |
           unzip report.zip
-
-      - name: Code Coverage Report
-        uses: irongut/CodeCoverageSummary@v1.3.0
-        with:
-          filename: coverage.xml
-          badge: true
-          format: markdown
-          hide_branch_rate: false
-          hide_complexity: false
-          indicators: true
-          output: both
-          thresholds: '80 90'
+          if [ -f "coverage.txt" ]; then
+            echo "hasReport=true" >> $GITHUB_OUTPUT
+          else
+            echo "hasReport=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Make Coverage Report Collapsable
+        if: steps.unzip.outputs.hasReport == "true"
         run: |
-          sed -i '2 i <details>' code-coverage-results.md
-          sed -i '3 i <summary>Click me to view the complete report</summary>' code-coverage-results.md
-          echo "</details>" >> code-coverage-results.md
+          covNum=$(cat cov_number)
+          title="The code coverage for the changed files is ${covNum}%."
+          (echo $title; cat coverage.txt) > coverage_tmp.txt
+          mv coverage_tmp.txt coverage.txt
+          sed -i '2 i <details>' coverage.txt
+          sed -i '3 i <summary>Click me to view the complete report</summary>' coverage.txt
+          sed -i '4 i \n' coverage.txt
+          sed -i '5 i \`\`\`text' coverage.txt
+          echo "\`\`\`" >> coverage.txt
+          echo "</details>" >> coverage.txt
 
       - name: 'Comment on PR'
+        if: steps.unzip.outputs.hasReport == "true"
         uses: actions/github-script@v6
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -64,7 +67,7 @@ jobs:
             let repo = context.repo.repo;
             let run_id = context.payload.workflow_run.id;
             let run_url = `https://github.com/${owner}/${repo}/actions/runs/${run_id}`
-            let body = fs.readFileSync('./code-coverage-results.md', {encoding:'utf8', flag:'r'})
+            let body = fs.readFileSync('./coverage.txt', {encoding:'utf8', flag:'r'})
 
             await github.rest.issues.createComment({
               owner: owner,

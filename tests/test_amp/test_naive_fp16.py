@@ -24,7 +24,6 @@ def run_naive_amp():
     In this test, we compare the naive fp16 optimizer implemented in colossalai
     and fp32 torch optimizer
     """
-
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
 
