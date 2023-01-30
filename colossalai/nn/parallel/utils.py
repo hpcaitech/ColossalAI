@@ -80,13 +80,11 @@ def get_static_torch_model(zero_ddp_model,
     from colossalai.nn.parallel import ZeroDDP
     assert isinstance(zero_ddp_model, ZeroDDP)
 
-    state_dict = zero_ddp_model.state_dict(only_rank_0=only_rank_0, strict=False)
+    state_dict = zero_ddp_model.state_dict(only_rank_0=only_rank_0)
     colo_model = zero_ddp_model.module
     torch_model = _get_shallow_copy_model(colo_model)
 
     if not only_rank_0 or dist.get_rank() == 0:
-        # record the mapping relationship between colo parameters and torch parameters
-        colo_to_torch = dict()
         for (name, colo_module), (_, torch_module) in \
                 zip(_get_dfs_module_list(colo_model), _get_dfs_module_list(torch_model)):
             # clean the parameter list of the new torch module
@@ -94,17 +92,10 @@ def get_static_torch_model(zero_ddp_model,
             for sufix_param_name, param in colo_module.named_parameters(recurse=False):
                 # get the full name of the parameter
                 full_param_name = name + ('.' if name else '') + sufix_param_name
-
-                if full_param_name not in state_dict:
-                    # this means the parameter is shared by multiple modules
-                    # we should use colo_to_torch to get the torch parameter created before
-                    assert param in colo_to_torch, f"can not find parameter `{full_param_name}` in the GeminiDDP module"
-                    torch_param = colo_to_torch[param]
-                else:
-                    # we meet the parameter the first time, just use the state dict to get the data
-                    state_param = state_dict[full_param_name]
-                    torch_param = torch.nn.Parameter(state_param.data.to(device=device, dtype=dtype))
-                    colo_to_torch[param] = torch_param
+                assert full_param_name in state_dict, \
+                    f"Can not find parameter `{full_param_name}` in the GeminiDDP module"
+                state_param = state_dict[full_param_name]
+                torch_param = torch.nn.Parameter(state_param.data.to(device=device, dtype=dtype))
 
                 setattr(torch_module, sufix_param_name, torch_param)
     dist.barrier()

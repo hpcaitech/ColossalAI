@@ -220,6 +220,7 @@ class ZeroDDP(ColoDDP):
         self.force_outputs_fp32 = force_outputs_fp32
         self.param_op_hook = GeminiZeROHook(gemini_manager)
         self.fp32_params: List[ColoTensor] = list()
+        self.fp16_params: List[ColoParameter] = list()
         self.overflow_counter = 0
         self.grads_device: Dict[torch.Tensor, torch.device] = dict()
         self.param2name: Dict[nn.Parameter, str] = dict()
@@ -354,30 +355,7 @@ class ZeroDDP(ColoDDP):
         for tensor in chunk.get_tensors():
             self.grads_device[tensor] = device
 
-    def state_dict(self, destination=None, prefix='', keep_vars=False, only_rank_0: bool = True, strict: bool = True):
-        """
-        Args:
-            strict (bool): whether to reture the whole model state as the pytorch `Module.state_dict()`
-
-        Returns:
-            dict:
-                a dictionary containing a whole state of the module
-
-        Example:
-
-            >>> module.state_dict().keys()
-            ['bias', 'weight']
-        """
-        if strict:
-            assert keep_vars is False, "`state_dict` with parameter, `keep_vars=True`, is not supported now."
-            torch_model = get_static_torch_model(zero_ddp_model=self, only_rank_0=only_rank_0)
-            return torch_model.state_dict(destination=destination, prefix=prefix, keep_vars=keep_vars)
-        return self._non_strict_state_dict(destination=destination,
-                                           prefix=prefix,
-                                           keep_vars=keep_vars,
-                                           only_rank_0=only_rank_0)
-
-    def _non_strict_state_dict(self, destination=None, prefix='', keep_vars=False, only_rank_0: bool = True):
+    def state_dict(self, destination=None, prefix='', keep_vars=False, only_rank_0: bool = True):
         """Returns a dictionary containing a whole state of the module.
 
         Both parameters and persistent buffers (e.g. running averages) are included.
@@ -448,19 +426,24 @@ class ZeroDDP(ColoDDP):
         """
         assert keep_vars is False, "`state_dict` with parameter, `keep_vars=True`, is not supported now."
 
+        # get copies of fp32 parameters in CPU
         param_to_save_data = self._get_param_to_save_data(self.fp32_params, only_rank_0)
-        ddp_param_list = []
-        for name, param in self.named_parameters():
-            if is_ddp_ignored(param):
-                # deal with ddp ignored parameters
-                destination[prefix + name] = param if keep_vars else param.detach()
-            else:
-                ddp_param_list.append((name, param))
-        for (name, p), fp32_p in zip(ddp_param_list, self.fp32_params):
-            if p is not None:
-                assert fp32_p in param_to_save_data, "Parameter '{}' is neglected in the chunk list".format(name)
-                record_parameter = param_to_save_data[fp32_p]
-                destination[prefix + name] = record_parameter
+        # get the mapping between copies and fp16 parameters
+        p_mapping = dict()
+        for p, fp32_p in zip(self.fp16_params, self.fp32_params):
+            name = self.param2name[p]
+            assert fp32_p in param_to_save_data, "Parameter '{}' is neglected in the chunk list".format(name)
+            record_parameter = param_to_save_data[fp32_p]
+            p_mapping[p] = record_parameter
+        for name, param in self.name2param.items():
+            if param is not None:
+                if is_ddp_ignored(param):
+                    # deal with ddp ignored parameters
+                    destination[prefix + name] = param if keep_vars else param.detach()
+                else:
+                    destination[prefix + name] = p_mapping[param]
+        del p_mapping
+        del param_to_save_data
 
         # save all buffers
         for name, buf in self.named_buffers():
@@ -592,17 +575,15 @@ class ZeroDDP(ColoDDP):
         def load_fp32_parameter(chunk_slice, data):
             chunk_slice.copy_(data.flatten())
 
-        ddp_param_list = []
         for name, param in self.named_parameters():
             if is_ddp_ignored(param):
                 # deal with ddp ignored parameters
                 load(name, param, param.copy_)
-            else:
-                ddp_param_list.append((name, param))
 
         fp32_to_name = dict()
-        for (name, p), fp32_p in zip(ddp_param_list, self.fp32_params):
+        for p, fp32_p in zip(self.fp16_params, self.fp32_params):
             if p is not None:
+                name = self.param2name[p]
                 fp32_to_name[fp32_p] = name
 
         chunk_list = self.chunk_manager.get_chunks(self.fp32_params)
@@ -688,13 +669,13 @@ class ZeroDDP(ColoDDP):
                                                cpu_offload=cpu_offload,
                                                pin_memory=pin_memory)
 
+            self.fp16_params.append(p)
             self.fp32_params.append(fp32_p)
             self.grads_device[p] = self.gemini_manager.default_device
 
         self.chunk_manager.close_all_groups()
 
-        params_list = [p for p in param_order.generate() if not is_ddp_ignored(p)]
-        for p, fp32_p in zip(params_list, self.fp32_params):
+        for p, fp32_p in zip(self.fp16_params, self.fp32_params):
             chunk_16 = self.chunk_manager.get_chunk(p)
             chunk_32 = self.chunk_manager.get_chunk(fp32_p)
             chunk_32.init_pair(chunk_16)
