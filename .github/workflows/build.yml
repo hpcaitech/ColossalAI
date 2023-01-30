@@ -86,7 +86,7 @@ jobs:
         run: |
           ls -la /github/home
           echo $PWD
-          [ ! -z "$(ls -A /github/home/tensornvme_cache/)" ] && cp -p -r /github/home/tensornvme_cache/* /__w/TensorNVMe/TensorNVMe/
+          [ ! -z "$(ls -A /github/home/tensornvme_cache/)" ] && cp -p -r /github/home/tensornvme_cache/* /__w/ColossalAI/ColossalAI/TensorNVMe
 
       - name: Install TensorNVMe
         run: |
