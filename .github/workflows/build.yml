@@ -106,6 +106,8 @@ jobs:
         if: needs.detect.outputs.anyExtensionFileChanged != 'true'
         run: |
           # -p flag is required to preserve the file timestamp to avoid ninja rebuild
+          ls -la /github/home
+          echo $PWD
           [ ! -z "$(ls -A /github/home/cuda_ext_cache/)" ] && cp -p -r /github/home/cuda_ext_cache/* /__w/ColossalAI/ColossalAI/
 
       - name: Install Colossal-AI
