@@ -84,7 +84,7 @@ jobs:
 
       - name: Restore TensorNVMe Cache
         run: |
-          [ ! -z "$(ls -A /github/home/tensornvme_cache/)" ] && cp -p -r /github/home/tensornvme_cache/* ./
+          [ ! -z "$(ls -A /github/home/tensornvme_cache/)" ] && cp -p -r /github/home/tensornvme_cache/* /__w/TensorNVMe/TensorNVMe/
 
       - name: Install TensorNVMe
         run: |
@@ -106,7 +106,7 @@ jobs:
         if: needs.detect.outputs.anyExtensionFileChanged != 'true'
         run: |
           # -p flag is required to preserve the file timestamp to avoid ninja rebuild
-          [ ! -z "$(ls -A /github/home/cuda_ext_cache/)" ] && cp -p -r /github/home/cuda_ext_cache/* ./
+          [ ! -z "$(ls -A /github/home/cuda_ext_cache/)" ] && cp -p -r /github/home/cuda_ext_cache/* /__w/ColossalAI/ColossalAI/
 
       - name: Install Colossal-AI
         if: needs.detect.outputs.anyLibraryFileChanged == 'true'
