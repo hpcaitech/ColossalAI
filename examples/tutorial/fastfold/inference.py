@@ -19,11 +19,9 @@ import os
 import time
 
 import fastfold
-import fastfold.relax.relax as relax
 import numpy as np
 import torch
 import torch.multiprocessing as mp
-from fastfold.common import protein, residue_constants
 from fastfold.config import model_config
 from fastfold.data import data_transforms
 from fastfold.model.fastnn import set_chunk_size
@@ -145,7 +143,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--gpus", type=int, default=1, help="""Number of GPUs with which to run inference""")
-    parser.add_argument("--n_res", type=int, default=256, help="virtual residue number of random data")
+    parser.add_argument("--n_res", type=int, default=50, help="virtual residue number of random data")
     parser.add_argument("--model_name", type=str, default="model_1", help="model name of alphafold")
     parser.add_argument('--chunk_size', type=int, default=None)
     parser.add_argument('--inplace', default=False, action='store_true')

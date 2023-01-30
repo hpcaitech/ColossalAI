@@ -34,7 +34,7 @@ python inference.py --gpus=1 --n_res=256 --chunk_size=None --inplace
 ```
 + `gpus` means the DAP size
 + `n_res` means the length of residue sequence
-+ `chunk_size` introduces a memory-saving technology at the cost of speed, None means not using, 1 or 2 may be a good trade off.
++ `chunk_size` introduces a memory-saving technology at the cost of speed, None means not using, 16 may be a good trade off for long sequences.
 + `inplace` introduces another memory-saving technology with zero cost, drop `--inplace` if you do not want it.
 
 ## 🔍 Dive into FastFold
