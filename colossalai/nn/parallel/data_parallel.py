@@ -5,6 +5,7 @@ from typing import Dict, Iterable, List, Optional, Set
 
 import torch
 import torch.distributed as dist
+import torch.nn as nn
 
 from colossalai.gemini.chunk import Chunk, ChunkManager, TensorState
 from colossalai.gemini.gemini_mgr import GeminiManager
@@ -218,11 +219,14 @@ class ZeroDDP(ColoDDP):
         self.chunk_manager: ChunkManager = gemini_manager.chunk_manager
         self.force_outputs_fp32 = force_outputs_fp32
         self.param_op_hook = GeminiZeROHook(gemini_manager)
-        self.fp32_params: List[ColoTensor] = []
+        self.fp32_params: List[ColoTensor] = list()
         self.overflow_counter = 0
-        self.grads_device: Dict[torch.Tensor, torch.device] = {}
+        self.grads_device: Dict[torch.Tensor, torch.device] = dict()
+        self.param2name: Dict[nn.Parameter, str] = dict()
+        self.name2param: Dict[str, nn.Parameter] = dict()
 
-        cpu_offload = self.gemini_manager.policy_name != 'cuda'
+        self._cast_buffers()
+        self._logger = get_dist_logger()
 
         if self.gemini_manager._premade_memstats_:
             # build chunk in param runtime visited order.
@@ -234,50 +238,17 @@ class ZeroDDP(ColoDDP):
             for p in module.parameters():
                 param_order.append(p)
 
-        ddp_pg = ColoProcessGroup()
-        for p in param_order.generate():
-            assert isinstance(p, ColoParameter)
+        self._init_chunks(param_order=param_order,
+                          strict_ddp_mode=strict_ddp_mode,
+                          cpu_offload=self.gemini_manager.policy_name != 'cuda',
+                          pin_memory=pin_memory)
 
-            if strict_ddp_mode:
-                if not p.is_replicate():
-                    p.set_dist_spec(ReplicaSpec())
-                p.set_process_group(pg=ddp_pg)
-
-            if is_ddp_ignored(p):
-                p.data = p.data.to(device=get_current_device(), dtype=torch.float16)
-                continue
-
-            fp32_data = p.data.float()
-            fp32_p = ColoTensor(fp32_data, spec=ColoTensorSpec(p.process_group))
-            p.data = p.data.half()
-            dp_world_size = p.process_group.dp_world_size()
-            self.chunk_manager.register_tensor(tensor=p,
-                                               group_type='fp16_param',
-                                               config_key=dp_world_size,
-                                               cpu_offload=cpu_offload,
-                                               pin_memory=pin_memory)
-            self.chunk_manager.register_tensor(tensor=fp32_p,
-                                               group_type='fp32_param',
-                                               config_key=dp_world_size,
-                                               cpu_offload=cpu_offload,
-                                               pin_memory=pin_memory)
-            self.fp32_params.append(fp32_p)
-            self.grads_device[p] = self.gemini_manager.default_device
-
-        self.chunk_manager.close_all_groups()
-        self._cast_buffers()
-
-        params_list = [p for p in param_order.generate() if not is_ddp_ignored(p)]
-        for p, fp32_p in zip(params_list, self.fp32_params):
-            chunk_16 = self.chunk_manager.get_chunk(p)
-            chunk_32 = self.chunk_manager.get_chunk(fp32_p)
-            chunk_32.init_pair(chunk_16)
-
-            # keep gathered chunks are in CUDA
-            if chunk_16.keep_gathered:
-                self.grads_device[p] = get_current_device()
-
-        self._logger = get_dist_logger()
+        for name, param in self.named_parameters():
+            self.param2name[param] = name
+        for module_name, module in self.named_modules():
+            for subname, param in module.parameters(recurse=False):
+                param_name = module_name + '.' + subname if module_name else subname
+                self.name2param[param_name] = param
 
     def _post_forward(self):
         """This function is only triggered for inference.
@@ -661,6 +632,60 @@ class ZeroDDP(ColoDDP):
                     input_name = key[len(prefix):]
                     if input_name not in local_state:
                         unexpected_keys.append(key)
+
+    def _init_chunks(self, param_order, strict_ddp_mode: bool, cpu_offload: bool, pin_memory: bool):
+        ddp_pg = ColoProcessGroup()
+        for p in param_order.generate():
+            assert isinstance(p, ColoParameter)
+
+            # gather sharded parameters in the strict ddp mode
+            if strict_ddp_mode:
+                if not p.is_replicate():
+                    p.set_dist_spec(ReplicaSpec())
+                p.set_process_group(pg=ddp_pg)
+
+            # ignore the parameters with no gradient
+            if not p.requires_grad:
+                self.set_params_to_ignore([p])
+
+            # move ignored parameters to CUDA
+            if is_ddp_ignored(p):
+                p.data = p.data.to(device=get_current_device(), dtype=torch.float16)
+                continue
+
+            # create a fp32 parameter
+            fp32_data = p.data.float()
+            fp32_p = ColoTensor(fp32_data, spec=ColoTensorSpec(p.process_group))
+            # create a fp16 parameter
+            p.data = p.data.half()
+
+            # register the fp16 parameter and fp32 parameter in the chunk manager
+            dp_world_size = p.process_group.dp_world_size()
+            self.chunk_manager.register_tensor(tensor=p,
+                                               group_type='fp16_param',
+                                               config_key=dp_world_size,
+                                               cpu_offload=cpu_offload,
+                                               pin_memory=pin_memory)
+            self.chunk_manager.register_tensor(tensor=fp32_p,
+                                               group_type='fp32_param',
+                                               config_key=dp_world_size,
+                                               cpu_offload=cpu_offload,
+                                               pin_memory=pin_memory)
+
+            self.fp32_params.append(fp32_p)
+            self.grads_device[p] = self.gemini_manager.default_device
+
+        self.chunk_manager.close_all_groups()
+
+        params_list = [p for p in param_order.generate() if not is_ddp_ignored(p)]
+        for p, fp32_p in zip(params_list, self.fp32_params):
+            chunk_16 = self.chunk_manager.get_chunk(p)
+            chunk_32 = self.chunk_manager.get_chunk(fp32_p)
+            chunk_32.init_pair(chunk_16)
+
+            # keep gathered chunks are in CUDA
+            if chunk_16.keep_gathered:
+                self.grads_device[p] = get_current_device()
 
     def _cast_buffers(self):
         for buffer in self.module.buffers():
