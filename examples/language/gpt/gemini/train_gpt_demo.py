@@ -12,18 +12,13 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 
 import colossalai
 from colossalai.logging import disable_existing_loggers, get_dist_logger
-from colossalai.nn.parallel import ZeroDDP
+from colossalai.nn.optimizer import HybridAdam
+from colossalai.nn.parallel import zero_model_wrapper, zero_optim_wrapper
 from colossalai.tensor import ColoParameter, ComputePattern, ComputeSpec, ProcessGroup, ReplicaSpec, ShardSpec
 from colossalai.utils import get_current_device
 from colossalai.utils.model.colo_init_context import ColoInitContext
 
 CAI_VERSION = colossalai.__version__
-
-if version.parse(CAI_VERSION) > version.parse("0.1.10"):
-    # These are added after 0.1.10
-    from colossalai.nn.optimizer.gemini_optimizer import GeminiAdamOptimizer
-    from colossalai.nn.parallel import GeminiDDP
-    from colossalai.zero.sharded_optim import LowLevelZeroOptimizer
 
 
 def parse_args():
@@ -31,7 +26,7 @@ def parse_args():
     parser.add_argument(
         "--distplan",
         type=str,
-        default='colossalai',
+        default='CAI_Gemini',
         help="The distributed plan [colossalai, zero1, zero2, torch_ddp, torch_zero].",
     )
     parser.add_argument(
@@ -48,8 +43,7 @@ def parse_args():
     )
     parser.add_argument(
         "--shardinit",
-        type=bool,
-        default=False,
+        action='store_true',
         help=
         "Shard the tensors when init the model to shrink peak memory size on the assigned device. Valid when using colossalai as dist plan.",
     )
@@ -186,57 +180,16 @@ def tensor_parallelize(model: torch.nn.Module, pg: ProcessGroup):
             param.visited = True
 
 
-# Gemini + ZeRO DDP
-def build_gemini(model: torch.nn.Module, pg: ProcessGroup, placement_policy: str = "auto", ddp_flag: bool = True):
-    fp16_init_scale = 2**5
-    gpu_margin_mem_ratio_for_auto = 0
-
-    if version.parse(CAI_VERSION) > version.parse("0.1.10"):
-        model = GeminiDDP(model,
-                          strict_ddp_mode=ddp_flag,
-                          device=get_current_device(),
-                          placement_policy=placement_policy,
-                          pin_memory=True,
-                          hidden_dim=model.config.n_embd,
-                          search_range_mb=128)
-        # configure the const policy
-        if placement_policy == 'const':
-            model.gemini_manager._placement_policy.set_const_memory_boundary(2 * 1024)
-        # build a highly optimized cpu optimizer
-        optimizer = GeminiAdamOptimizer(model,
-                                        lr=1e-3,
-                                        initial_scale=fp16_init_scale,
-                                        gpu_margin_mem_ratio=gpu_margin_mem_ratio_for_auto)
-    elif version.parse("0.1.9") <= version.parse(CAI_VERSION) <= version.parse("0.1.10"):
-        from colossalai.gemini import ChunkManager, GeminiManager
-        from colossalai.nn.optimizer import HybridAdam
-        from colossalai.zero import ZeroOptimizer
-        chunk_size = ChunkManager.search_chunk_size(model, 64 * 1024**2, 1024, filter_exlarge_params=True)
-        chunk_manager = ChunkManager(chunk_size,
-                                     pg,
-                                     enable_distributed_storage=True,
-                                     init_device=GeminiManager.get_default_device(placement_policy))
-        gemini_manager = GeminiManager(placement_policy, chunk_manager)
-        model = ZeroDDP(model, gemini_manager)
-        optimizer = HybridAdam(model.parameters(), lr=1e-3)
-        optimizer = ZeroOptimizer(optimizer,
-                                  model,
-                                  initial_scale=fp16_init_scale,
-                                  gpu_margin_mem_ratio=gpu_margin_mem_ratio_for_auto)
-    else:
-        raise NotImplemented(f"CAI version {CAI_VERSION} is not supported")
-    return model, optimizer
-
-
 def main():
     # version check
-    # this example is supposed to work for versions greater than 0.1.9
-    assert version.parse(CAI_VERSION) >= version.parse("0.1.9")
+    # this example is supposed to work for versions greater than 0.2.0
+    assert version.parse(CAI_VERSION) >= version.parse("0.2.0")
 
     set_cpu_maximum_parallelism()
     args = parse_args()
 
-    if args.distplan not in ["colossalai", "torch_ddp", "torch_zero", "zero1", "zero2"]:
+    # if args.distplan not in ["colossalai", "torch_ddp", "torch_zero", "zero1", "zero2"]:
+    if args.distplan not in ["CAI_ZeRO1", "CAI_ZeRO2", "CAI_Gemini", "Pytorch_DDP", "Pytorch_ZeRO"]:
         raise TypeError(f"{args.distplan} is error")
 
     # batch size per DP degree
@@ -260,22 +213,21 @@ def main():
     criterion = GPTLMLoss()
 
     torch.manual_seed(123)
-    if args.distplan == "colossalai":
+    if args.distplan.startswith("CAI"):
         # all param must use the same process group.
         world_size = torch.distributed.get_world_size()
         shard_pg = ProcessGroup(tp_degree=world_size) if args.shardinit else None
         default_dist_spec = ShardSpec([-1], [world_size]) if args.shardinit else None
 
+        if args.shardinit and args.distplan != "CAI_Gemini":
+            raise RuntimeError("You can only use shardinit with CAI_Gemini")
+
         # build GPT model
-        if version.parse(CAI_VERSION) > version.parse("0.1.10"):
-            with ColoInitContext(device=get_current_device(),
-                                 dtype=torch.half,
-                                 default_dist_spec=default_dist_spec,
-                                 default_pg=shard_pg):
-                model = model_builder(args.model_type)(checkpoint=True)
-        else:
-            with ColoInitContext(device=get_current_device()):
-                model = model_builder(args.model_type)(checkpoint=True)
+        with ColoInitContext(device=get_current_device(),
+                             dtype=torch.half,
+                             default_dist_spec=default_dist_spec,
+                             default_pg=shard_pg):
+            model = model_builder(args.model_type)(checkpoint=True)
 
         tp_pg = ProcessGroup(tp_degree=args.tp_degree)
         # Tensor Parallelism (TP)
@@ -283,34 +235,49 @@ def main():
         if args.tp_degree > 1:
             tensor_parallelize(model, tp_pg)
 
-        # build a Gemini model and a highly optimized cpu optimizer
-        # Gemini + ZeRO DP, Note it must be used after TP
-        model, optimizer = build_gemini(model, tp_pg, args.placement, args.tp_degree == 1)
+        # asign running configurations
+        gemini_config = None
+        if args.distplan.startswith("CAI_ZeRO"):
+            optim_config = dict(reduce_bucket_size=12 * 1024 * 1024, overlap_communication=True, verbose=True)
+        elif args.distplan == "CAI_Gemini":
+            gemini_config = dict(strict_ddp_mode=args.tp_degree == 1,
+                                 device=get_current_device(),
+                                 placement_policy=args.placement,
+                                 pin_memory=True,
+                                 hidden_dim=model.config.n_embd,
+                                 search_range_mb=128)
+            optim_config = dict(gpu_margin_mem_ratio=0.)
+        else:
+            raise RuntimeError
+
+        # build a highly optimized gpu/cpu optimizer
+        optimizer = HybridAdam(model.parameters(), lr=1e-3)
+
+        if args.distplan == "CAI_ZeRO1":
+            zero_stage = 1
+        elif args.distplan == "CAI_ZeRO2":
+            zero_stage = 2
+        elif args.distplan == "CAI_Gemini":
+            zero_stage = 3
+        else:
+            raise RuntimeError
+
+        # wrap your model and optimizer
+        model = zero_model_wrapper(model, zero_stage, gemini_config)
+        optimizer = zero_optim_wrapper(model, optimizer, optim_config=optim_config)
 
         logger.info(get_mem_info(prefix='After init optim, '), ranks=[0])
-    else:
+    elif args.distplan.startswith("Pytorch"):
         assert args.tp_degree == 1, "The degree of TP should be 1 for DDP examples."
         model = model_builder(args.model_type)(checkpoint=True).cuda()
-
-    if args.distplan.startswith("torch"):
         model = DDP(model)
-        if args.distplan.endswith("ddp"):
-            optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-        elif args.distplan.endswith("zero"):
+        if args.distplan.endswith("DDP"):
+            optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+        elif args.distplan.endswith("ZeRO"):
             from torch.distributed.optim import ZeroRedundancyOptimizer
-            optimizer = ZeroRedundancyOptimizer(model.parameters(), optimizer_class=torch.optim.Adam, lr=0.01)
-    elif args.distplan.startswith("zero"):
-        model = model.half()
-        partition_flag = (args.distplan == "zero2")
-        optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-
-        optimizer = LowLevelZeroOptimizer(
-            optimizer,
-            reduce_bucket_size=12 * 1024 * 1024,
-            overlap_communication=True,
-            partition_grad=partition_flag,
-            verbose=True,
-        )
+            optimizer = ZeroRedundancyOptimizer(model.parameters(), optimizer_class=torch.optim.Adam, lr=1e-3)
+    else:
+        raise RuntimeError
 
     # model is shared after TP
     numel = get_model_size(model)
@@ -338,17 +305,18 @@ def main():
         fwd_time = fwd_end - start
         logger.info(get_mem_info(prefix=f'[{n + 1}/{NUM_STEPS}] Forward '), ranks=[0])
 
-        if args.distplan in ["colossalai", "zero1", "zero2"]:
+        if args.distplan.startswith("CAI"):
             optimizer.backward(loss)
-        elif args.distplan in ["torch_ddp", "torch_zero"]:
+        elif args.distplan.startswith("Pytorch"):
             loss.backward()
+        else:
+            raise RuntimeError
+
         torch.cuda.synchronize()
         bwd_end = time()
         bwd_time = bwd_end - fwd_end
         logger.info(get_mem_info(prefix=f'[{n + 1}/{NUM_STEPS}] Backward '), ranks=[0])
 
-        if args.distplan in ["zero1", "zero2"]:
-            optimizer.sync_grad()
         optimizer.step()
         torch.cuda.synchronize()
         optim_time = time() - bwd_end
