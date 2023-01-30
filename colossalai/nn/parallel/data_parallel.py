@@ -246,7 +246,7 @@ class ZeroDDP(ColoDDP):
         for name, param in module.named_parameters():
             self.param2name[param] = name
         for m_name, m_var in module.named_modules():
-            for p_name, p_var in m_var.parameters(recurse=False):
+            for p_name, p_var in m_var.named_parameters(recurse=False):
                 param_name = m_name + '.' + p_name if m_name else p_name
                 self.name2param[param_name] = p_var
 
@@ -328,7 +328,9 @@ class ZeroDDP(ColoDDP):
         free_storage(empty_grad)
         with torch._C.DisableTorchFunction():
             chunk = self.chunk_manager.get_chunk(p)
-            assert chunk.tensors_info[p].state == TensorState.HOLD_AFTER_BWD
+            if chunk.tensors_info[p].state != TensorState.HOLD_AFTER_BWD:
+                raise RuntimeError(f"Parameter `{self.param2name[p]}` failed at the gradient reduction. "
+                                   "Some unsupported torch function is operated upon this parameter.")
             self.chunk_manager.trans_tensor_state(p, TensorState.READY_FOR_REDUCE)
             chunk.copy_tensor_to_chunk_slice(p, grad)
             reduced = self.chunk_manager.reduce_chunk(chunk)
