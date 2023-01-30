@@ -126,13 +126,15 @@ jobs:
           # generate coverage.xml if any
           if [ "$anyLibraryFileChanged" == "true" ]; then
             allFiles=""
-            for file in $changedExtenisonFiles; do
+            for file in $changedLibraryFiles; do
               if [ "$allFiles" == "" ]; then
                 allFiles=$file
               else
                 allFiles=$allFiles,$file
               fi
             done
+
+            echo $allFiles
             coverage xml --data-file .coverage --include $allFiles
             coverage report --data-file .coverage --include $allFiles > ./coverage.txt
             mv coverage.xml ./report
