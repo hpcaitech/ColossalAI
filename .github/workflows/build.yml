@@ -120,6 +120,11 @@ jobs:
           anyLibraryFileChanged: ${{ needs.detect.outputs.anyLibraryFileChanged }}
           changedExtenisonFiles: ${{ needs.detect.outputs.changedExtenisonFiles }}
         run: |
+          echo $PR_NUMBER
+          echo $changedLibraryFiles
+          echo $anyLibraryFileChanged
+          echo $changedExtenisonFiles
+
           mkdir report
           echo $PR_NUMBER > ./report/pr_number
 
