@@ -10,7 +10,6 @@ import colossalai
 def to_click_output(val):
     # installation check output to understandable symbols for readability
     VAL_TO_SYMBOL = {True: u'\u2713', False: 'x', None: 'N/A'}
-    print(VAL_TO_SYMBOL)
 
     if val in VAL_TO_SYMBOL:
         return VAL_TO_SYMBOL[val]
