@@ -1,6 +1,6 @@
 fbgemm-gpu==0.2.0
 pytest
-coverage
+pytest-cov
 torchvision
 transformers
 timm
