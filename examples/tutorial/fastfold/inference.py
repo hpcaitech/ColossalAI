@@ -18,18 +18,16 @@ import argparse
 import os
 import time
 
+import fastfold
+import fastfold.relax.relax as relax
 import numpy as np
 import torch
 import torch.multiprocessing as mp
-from fastfold.model.hub import AlphaFold
-
-import fastfold
-import fastfold.relax.relax as relax
-from fastfold.data import data_transforms
 from fastfold.common import protein, residue_constants
 from fastfold.config import model_config
+from fastfold.data import data_transforms
 from fastfold.model.fastnn import set_chunk_size
-
+from fastfold.model.hub import AlphaFold
 from fastfold.utils.inject_fastnn import inject_fastnn
 from fastfold.utils.tensor_utils import tensor_tree_map
 
@@ -130,7 +128,7 @@ def inference_monomer_model(args):
     out = result_q.get()
 
     # get unrelexed pdb and save
-    # batch = tensor_tree_map(lambda x: np.array(x[..., -1].cpu()), batch)   
+    # batch = tensor_tree_map(lambda x: np.array(x[..., -1].cpu()), batch)
     # plddt = out["plddt"]
     # plddt_b_factors = np.repeat(plddt[..., None], residue_constants.atom_type_num, axis=-1)
     # unrelaxed_protein = protein.from_prediction(features=batch,
@@ -144,27 +142,13 @@ def main(args):
     inference_monomer_model(args)
 
 
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--gpus",
-                        type=int,
-                        default=1,
-                        help="""Number of GPUs with which to run inference""")
-    parser.add_argument("--n_res",
-                        type=int,
-                        default=256,
-                        help="virtual residue number of random data")
-    parser.add_argument("--model_name",
-                        type=str,
-                        default="model_1",
-                        help="model name of alphafold")
-    parser.add_argument('--chunk_size',
-                        type=int,
-                        default=None)
-    parser.add_argument('--inplace',
-                        default=False,
-                        action='store_true')
+    parser.add_argument("--gpus", type=int, default=1, help="""Number of GPUs with which to run inference""")
+    parser.add_argument("--n_res", type=int, default=256, help="virtual residue number of random data")
+    parser.add_argument("--model_name", type=str, default="model_1", help="model name of alphafold")
+    parser.add_argument('--chunk_size', type=int, default=None)
+    parser.add_argument('--inplace', default=False, action='store_true')
 
     args = parser.parse_args()
 
