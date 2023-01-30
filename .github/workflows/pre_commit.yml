@@ -38,14 +38,15 @@ jobs:
 
     - uses: actions/setup-python@v3
 
-    # - name: Cache pre-commit hooks
-    #   uses: actions/cache@v3
-    #   with:
-    #     path: ~/.cache/pre-commit
-    #     key: ${{ runner.os }}-pre-commit-hooks
+    - name: Cache pre-commit hooks
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pre-commit
+        key: ${{ runner.os }}-pre-commit-hooks
 
     - name: Set up pre-commit
       run: |
+        rm -rf ~/.cache/pre-commit
         pip install pre-commit
         pre-commit install
 
