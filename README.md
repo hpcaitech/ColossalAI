@@ -7,7 +7,7 @@
 
    <h3> <a href="https://arxiv.org/abs/2110.14883"> Paper </a> |
    <a href="https://www.colossalai.org/"> Documentation </a> |
-   <a href="https://github.com/hpcaitech/ColossalAI-Examples"> Examples </a> |
+   <a href="https://github.com/hpcaitech/ColossalAI/tree/main/examples"> Examples </a> |
    <a href="https://github.com/hpcaitech/ColossalAI/discussions"> Forum </a> |
    <a href="https://medium.com/@hpcaitech"> Blog </a></h3>
 
@@ -149,7 +149,7 @@ distributed training and inference in a few lines.
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/OPT_update.png" width=800/>
 
 - [Open Pretrained Transformer (OPT)](https://github.com/facebookresearch/metaseq), a 175-Billion parameter AI language model released by Meta, which stimulates AI programmers to perform various downstream tasks and application deployments because public pretrained model weights.
-- 45% speedup fine-tuning OPT at low cost in lines. [[Example]](https://github.com/hpcaitech/ColossalAI-Examples/tree/main/language/opt) [[Online Serving]](https://service.colossalai.org/opt)
+- 45% speedup fine-tuning OPT at low cost in lines. [[Example]](https://github.com/hpcaitech/ColossalAI-Examples/tree/main/language/opt) [[Online Serving]](https://github.com/hpcaitech/ColossalAI-Documentation/blob/main/i18n/en/docusaurus-plugin-content-docs/current/advanced_tutorials/opt_service.md)
 
 Please visit our [documentation](https://www.colossalai.org/) and [examples](https://github.com/hpcaitech/ColossalAI-Examples) for more details.
 
@@ -202,7 +202,7 @@ Please visit our [documentation](https://www.colossalai.org/) and [examples](htt
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/OPT_serving.png" width=800/>
 </p>
 
-- [OPT Serving](https://service.colossalai.org/opt): Try 175-billion-parameter OPT online services for free, without any registration whatsoever.
+- [OPT Serving](https://github.com/hpcaitech/ColossalAI-Documentation/blob/main/i18n/en/docusaurus-plugin-content-docs/current/advanced_tutorials/opt_service.md): Try 175-billion-parameter OPT online services for free, without any registration whatsoever.
 
 <p id="BLOOM-Inference" align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/BLOOM%20Inference.PNG" width=800/>
@@ -368,5 +368,7 @@ We leverage the power of [GitHub Actions](https://github.com/features/actions) t
   year={2021}
 }
 ```
+
+Colossal-AI has been accepted as official tutorials by top conference [SC](https://sc22.supercomputing.org/), [AAAI](https://aaai.org/Conferences/AAAI-23/), [PPoPP](https://ppopp23.sigplan.org/), etc.
 
 <p align="right">(<a href="#top">back to top</a>)</p>

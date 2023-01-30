@@ -57,7 +57,7 @@ def exam_inference(placement_policy, model_name: str):
         p.data.copy_(torch_p.data)
 
     world_size = torch.distributed.get_world_size()
-    config_dict, _ = search_chunk_configuration(model, search_range_mb=1, search_interval_byte=100)
+    config_dict, *_ = search_chunk_configuration(model, search_range_mb=1, search_interval_byte=100)
     config_dict[world_size]['chunk_size'] = 5000
     config_dict[world_size]['keep_gathered'] = False
     if placement_policy != 'cuda':

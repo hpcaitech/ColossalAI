@@ -483,4 +483,6 @@ class MatMulHandler(NodeHandler):
                         raise TypeError(
                             f"Found unexpected output type {type(output)} from the recover method of BmmTransform")
                 strategies = recovered_stragies
+            for index, strategies in enumerate(strategies):
+                strategies.name = f"{strategies.name}_{index}"
             return strategies

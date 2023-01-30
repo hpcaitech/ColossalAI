@@ -17,7 +17,6 @@ from ._utils import (
     calculate_global_norm_from_list,
     compute_norm,
     flatten,
-    get_grad_accumulate_object,
     has_inf_or_nan,
     reduce_tensor_dp_group,
     release_param_grad,
@@ -386,7 +385,7 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
     # torch.optim.Optimizer methods
     ################################
 
-    def backward(self, loss, retain_graph=False):
+    def backward(self, loss, retain_graph=False, sync_grad=True):
         loss = self.loss_scale * loss
         loss.backward(retain_graph=retain_graph)
 
@@ -401,6 +400,10 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
         if self._overlap_communication:
             torch.cuda.synchronize()
             self._param_store.clear_grads_of_previous_reduced_params()
+
+        # gradient synchronization
+        if sync_grad:
+            self._sync_grad()
 
     def zero_grad(self, set_to_none=True):
         """
@@ -537,7 +540,7 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
     # Gradient Synchronization #
     ############################
 
-    def sync_grad(self):
+    def _sync_grad(self):
         # update param already reduced flag
         reduction_states = self._param_store.get_param_reduction_states()
         for tensor, state in reduction_states.items():

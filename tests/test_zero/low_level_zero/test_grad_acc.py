@@ -9,16 +9,15 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.testing import assert_close
 
 import colossalai
-from colossalai.tensor import ProcessGroup
 from colossalai.testing.random import seed_all
 from colossalai.utils import free_port
 from colossalai.zero import LowLevelZeroOptimizer
 
 
-class TestModel(nn.Module):
+class MlpModel(nn.Module):
 
     def __init__(self):
-        super(TestModel, self).__init__()
+        super(MlpModel, self).__init__()
         self.linear1 = nn.Linear(128, 256)
         self.linear2 = nn.Linear(256, 512)
 
@@ -33,7 +32,7 @@ def exam_zero_1_2_grad_acc():
     seed_all(2009)
 
     # create model
-    zero1_model = TestModel().cuda()
+    zero1_model = MlpModel().cuda()
     zero2_model = copy.deepcopy(zero1_model)
     # create optimizer
     zero1_optimizer = torch.optim.Adam(zero1_model.parameters(), lr=1)
@@ -60,16 +59,16 @@ def exam_zero_1_2_grad_acc():
         assert torch.equal(zero1_output, zero2_output)
 
         # zero-dp backward
-        zero1_optimizer.backward(zero1_output.sum().float())
-        zero2_optimizer.backward(zero2_output.sum().float())
+        zero1_optimizer.backward(zero1_output.sum().float(), sync_grad=False)
+        zero2_optimizer.backward(zero2_output.sum().float(), sync_grad=False)
 
         for (n, z1p), z2p in zip(zero1_model.named_parameters(), zero2_model.parameters()):
             if z2p.grad is not None:
                 # print(local_rank, n, z1p.shape, torch.max(z2p.grad), torch.max(torch.abs(z1p.grad - z2p.grad)))
                 assert torch.equal(z1p.grad, z2p.grad)
 
-        zero1_optimizer.sync_grad()
-        zero2_optimizer.sync_grad()
+        zero1_optimizer._sync_grad()
+        zero2_optimizer._sync_grad()
 
     fwd_bwd_func(0, input_data1)
     fwd_bwd_func(1, input_data2)
@@ -89,7 +88,7 @@ def exam_zero_1_grad_acc():
     seed_all(2008)
 
     # create models
-    zero_model = TestModel()
+    zero_model = MlpModel()
     torch_model = copy.deepcopy(zero_model)
 
     seed_all(2008)
@@ -124,7 +123,7 @@ def exam_zero_1_grad_acc():
         assert torch.equal(zero_output, torch_output)
 
         # zero-dp backward
-        zero_optimizer.backward(zero_output.sum().float())
+        zero_optimizer.backward(zero_output.sum().float(), sync_grad=False)
         # torch-ddp backward
         torch_output.sum().backward()
 
@@ -135,7 +134,7 @@ def exam_zero_1_grad_acc():
                 # print(n, p.shape, torch.max(torch.abs(p.grad - unscale_grad)))
                 assert torch.equal(p.grad, unscale_grad)
 
-        zero_optimizer.sync_grad()
+        zero_optimizer._sync_grad()
 
     fwd_bwd_func(0, input_data1, True)
     fwd_bwd_func(1, input_data2, False)

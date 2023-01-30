@@ -85,7 +85,7 @@ def run_gpt(placement_policy, tp_init_spec_func=None):
         tp_init_spec_func(model, pg)
 
     dp_world_size = pg.dp_world_size()
-    config_dict, _ = search_chunk_configuration(model, search_range_mb=1, search_interval_byte=100)
+    config_dict, *_ = search_chunk_configuration(model, search_range_mb=1, search_interval_byte=100)
     config_dict[dp_world_size]['chunk_size'] = 5000
     config_dict[dp_world_size]['keep_gathered'] = False
     if placement_policy != 'cuda':
@@ -93,7 +93,7 @@ def run_gpt(placement_policy, tp_init_spec_func=None):
     else:
         init_device = None
 
-    model = GeminiDDP(model, init_device, placement_policy, True, False, 32)
+    model = GeminiDDP(model, init_device, placement_policy, True, False)
     # The same as the following 3 lines
     # chunk_manager = ChunkManager(config_dict, init_device=init_device)
     # gemini_manager = GeminiManager(placement_policy, chunk_manager)

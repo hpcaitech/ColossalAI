@@ -20,10 +20,10 @@ def strict_shard_equal(tensor, shard, tp_pg, rtol=1e-3, atol=1e-4):
     return tensor_shard_equal(tensor, shard, tp_pg.tp_local_rank(), tp_pg.tp_world_size(), rtol, atol)
 
 
-class TestModel(nn.Module):
+class MlpModel(nn.Module):
 
     def __init__(self):
-        super(TestModel, self).__init__()
+        super(MlpModel, self).__init__()
         self.linear1 = nn.Linear(32, 128)
         self.act = nn.GELU()
         self.linear2 = nn.Linear(128, 32)
@@ -42,8 +42,8 @@ def exam_zero_with_tp(overlap_flag, partition_flag):
     tp_pg = ProcessGroup(tp_degree=2)
 
     with ColoInitContext(device=get_current_device(), default_pg=tp_pg):
-        hybrid_model = TestModel()
-    torch_model = TestModel().cuda()
+        hybrid_model = MlpModel()
+    torch_model = MlpModel().cuda()
     for pt, ph in zip(torch_model.parameters(), hybrid_model.parameters()):
         pt.data.copy_(ph.data)
 
@@ -55,10 +55,11 @@ def exam_zero_with_tp(overlap_flag, partition_flag):
             split_param_col_tp1d(param, tp_pg)
 
     torch_model = DDP(torch_model, device_ids=[tp_pg.rank()], process_group=tp_pg.dp_process_group())
-    torch_optim = torch.optim.Adam(torch_model.parameters(), lr=1)
-    hybrid_optim = torch.optim.Adam(hybrid_model.parameters(), lr=1)
+    torch_optim = torch.optim.Adam(torch_model.parameters(), lr=1e-2)    # set to 1e-2 for torch-1.11
+    hybrid_optim = torch.optim.Adam(hybrid_model.parameters(), lr=1e-2)
     hybrid_optim = LowLevelZeroOptimizer(hybrid_optim,
-                                         initial_scale=1,
+                                         initial_scale=2,
+                                         clip_grad_norm=1.0,
                                          overlap_communication=overlap_flag,
                                          partition_grad=partition_flag)
 
@@ -71,8 +72,8 @@ def exam_zero_with_tp(overlap_flag, partition_flag):
     assert_close(torch_loss, hybrid_loss)
 
     torch_loss.backward()
+    torch.nn.utils.clip_grad_norm_(torch_model.parameters(), 1.0)
     hybrid_optim.backward(hybrid_loss)
-    hybrid_optim.sync_grad()
 
     torch_optim.step()
     hybrid_optim.step()
