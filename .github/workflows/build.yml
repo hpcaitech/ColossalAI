@@ -75,28 +75,38 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v2
+      - name: Checkout TensorNVMe
+        uses: actions/checkout@v2
         with:
           repository: hpcaitech/TensorNVMe
           ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
           path: TensorNVMe
 
-      - name: Install tensornvme
+      - name: Restore TensorNVMe Cache
+        run: |
+          [ ! -z "$(ls -A /github/home/tensornvme_cache/)" ] && cp -p -r /github/home/tensornvme_cache/* ./
+
+      - name: Install TensorNVMe
         run: |
           cd TensorNVMe
           conda install cmake
           pip install -r requirements.txt
           pip install -v .
 
-      - uses: actions/checkout@v2
+      - name: Store TensorNVMe Cache
+        run: |
+          cp -p -r ./build /github/home/tensornvme_cache/
+
+      - name: Checkout Colossal-AI
+        uses: actions/checkout@v2
         with:
           ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
 
-      - name: Restore cache
+      - name: Restore Colossal-AI Cache
         if: needs.detect.outputs.anyExtensionFileChanged != 'true'
         run: |
           # -p flag is required to preserve the file timestamp to avoid ninja rebuild
-          [ ! -z "$(ls -A /github/home/cuda_ext_cache/)" ] && cp -p -r /github/home/cuda_ext_cache/* /__w/ColossalAI/ColossalAI/
+          [ ! -z "$(ls -A /github/home/cuda_ext_cache/)" ] && cp -p -r /github/home/cuda_ext_cache/* ./
 
       - name: Install Colossal-AI
         if: needs.detect.outputs.anyLibraryFileChanged == 'true'
@@ -104,7 +114,12 @@ jobs:
           CUDA_EXT=1 pip install -v -e .
           pip install -r requirements/requirements-test.txt
 
-      - name: Unit Testing
+      - name: Store Colossal-AI Cache
+        run: |
+          # -p flag is required to preserve the file timestamp to avoid ninja rebuild
+          cp -p -r /__w/ColossalAI/ColossalAI/build /github/home/cuda_ext_cache/
+
+      - name: Execute Unit Testing
         if: needs.detect.outputs.anyLibraryFileChanged == 'true'
         run: |
           PYTHONPATH=$PWD pytest --cov=. --cov-report xml tests/test_amp
@@ -120,11 +135,6 @@ jobs:
           anyLibraryFileChanged: ${{ needs.detect.outputs.anyLibraryFileChanged }}
           changedExtenisonFiles: ${{ needs.detect.outputs.changedExtenisonFiles }}
         run: |
-          echo $PR_NUMBER
-          echo $changedLibraryFiles
-          echo $anyLibraryFileChanged
-          echo $changedExtenisonFiles
-
           mkdir report
           echo $PR_NUMBER > ./report/pr_number
 
@@ -139,10 +149,12 @@ jobs:
               fi
             done
 
-            echo $allFiles
-            coverage xml --data-file .coverage --include $allFiles
             coverage report --data-file .coverage --include $allFiles > ./coverage.txt
-            mv coverage.xml ./report
+
+            covPercentage=$(tail -n 1 coverage.txt  | grep -o '[1-9]*%$')
+            covNum=${covPercentage::-1}
+            mv coverage.txt ./report
+            echo $covNum > ./report/cov_number
           else
             echo "No coverage report is generated"
           fi
@@ -152,8 +164,3 @@ jobs:
         with:
           name: report
           path: report/
-
-      - name: Store Cache
-        run: |
-          # -p flag is required to preserve the file timestamp to avoid ninja rebuild
-          cp -p -r /__w/ColossalAI/ColossalAI/build /github/home/cuda_ext_cache/
