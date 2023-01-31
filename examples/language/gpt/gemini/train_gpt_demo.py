@@ -6,7 +6,7 @@ import psutil
 import torch
 import torch.nn as nn
 from commons.model_zoo import model_builder
-from commons.utils import get_data, get_tflops
+from commons.utils import get_data, get_profile_context, get_tflops, get_time_stamp
 from packaging import version
 from torch.nn.parallel import DistributedDataParallel as DDP
 
@@ -201,7 +201,8 @@ def main():
 
     WARMUP_STEPS = 1
     assert WARMUP_STEPS < NUM_STEPS, "warmup steps should smaller than the total steps"
-    assert (NUM_STEPS - WARMUP_STEPS) % 2 == 1, "the number of valid steps should be odd to take the median "
+    assert (NUM_STEPS - WARMUP_STEPS) % 2 == 1, "the number of valid steps should be odd to take the median"
+    PROF_FLAG = False    # The flag of profiling, False by default
 
     disable_existing_loggers()
     colossalai.launch_from_torch(config={})
@@ -292,7 +293,8 @@ def main():
     torch.cuda.synchronize()
     model.train()
     tflops_list = []
-    for n in range(NUM_STEPS):
+
+    def train_step():
         # we just use randomly generated data here
         input_ids, attn_mask = get_data(BATCH_SIZE, SEQ_LEN, VOCAB_SIZE)
         optimizer.zero_grad()
@@ -330,6 +332,16 @@ def main():
         )
         if n >= WARMUP_STEPS:
             tflops_list.append(step_tflops)
+
+    demo_profiler = get_profile_context(PROF_FLAG,
+                                        WARMUP_STEPS,
+                                        NUM_STEPS - WARMUP_STEPS,
+                                        save_dir=f"profile/{get_time_stamp()}-demo")
+
+    with demo_profiler as prof:
+        for n in range(NUM_STEPS):
+            train_step()
+            prof.step()
 
     tflops_list.sort()
     median_index = ((NUM_STEPS - WARMUP_STEPS) >> 1) + WARMUP_STEPS
