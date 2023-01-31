@@ -14,10 +14,10 @@ from colossalai.utils import free_port
 from colossalai.zero import LowLevelZeroOptimizer
 
 
-class TestModel(nn.Module):
+class MlpModel(nn.Module):
 
     def __init__(self):
-        super(TestModel, self).__init__()
+        super(MlpModel, self).__init__()
         self.linear1 = nn.Linear(128, 256)
         self.linear2 = nn.Linear(256, 512)
 
@@ -55,7 +55,7 @@ def exam_zero_1_2():
     seed_all(2001)
 
     # create model
-    zero1_model = TestModel().cuda()
+    zero1_model = MlpModel().cuda()
     zero2_model = copy.deepcopy(zero1_model)
 
     # create optimizer
@@ -78,16 +78,16 @@ def exam_zero_1_2():
     assert torch.equal(zero1_output, zero2_output)
 
     # zero-dp backward
-    zero1_optimizer.backward(zero1_output.mean().float())
-    zero2_optimizer.backward(zero2_output.mean().float())
+    zero1_optimizer.backward(zero1_output.mean().float(), sync_grad=False)
+    zero2_optimizer.backward(zero2_output.mean().float(), sync_grad=False)
 
     for (n, z1p), z2p in zip(zero1_model.named_parameters(), zero2_model.parameters()):
         if z2p.grad is not None:
             # print(local_rank, n, z1p.shape, torch.max(z2p.grad), torch.max(torch.abs(z1p.grad - z2p.grad)))
             assert torch.equal(z1p.grad, z2p.grad)
 
-    zero1_optimizer.sync_grad()
-    zero2_optimizer.sync_grad()
+    zero1_optimizer._sync_grad()
+    zero2_optimizer._sync_grad()
 
     # step
     zero1_optimizer.step()
@@ -111,7 +111,7 @@ def exam_zero_1_torch_ddp():
     seed_all(1453)
 
     # create models
-    zero_model = TestModel()
+    zero_model = MlpModel()
     torch_model = copy.deepcopy(zero_model)
 
     zero_model = zero_model.cuda().half()
@@ -146,7 +146,7 @@ def exam_zero_1_torch_ddp():
     half_close(zero_output, torch_output, loose=True)
 
     # zero-dp backward
-    zero_optimizer.backward(zero_output.mean().float())
+    zero_optimizer.backward(zero_output.mean().float(), sync_grad=False)
 
     # torch-ddp backward
     torch_output.mean().backward()
@@ -156,7 +156,7 @@ def exam_zero_1_torch_ddp():
         half_close(p.grad, z1p.grad, loose=True)
 
     # zero-dp step
-    zero_optimizer.sync_grad()
+    zero_optimizer._sync_grad()
     zero_optimizer.step()
 
     # torch ddp step

@@ -247,12 +247,12 @@ class LinearProjectionStrategyGenerator(MatMulStrategyGenerator):
         strategies.append(self.split_rhs_space_both_contract(1, 0))
 
         # RR= RS x SR
-        strategies.append(self.recompute_split_both_contract(0))
-        strategies.append(self.recompute_split_both_contract(1))
+        # strategies.append(self.recompute_split_both_contract(0))
+        # strategies.append(self.recompute_split_both_contract(1))
 
-        # RS = RR x RS
-        strategies.append(self.split_rhs_space_only(0))
-        strategies.append(self.split_rhs_space_only(1))
+        # # RS = RR x RS
+        # strategies.append(self.split_rhs_space_only(0))
+        # strategies.append(self.split_rhs_space_only(1))
 
         # S01R = S01R x RR
         strategies.append(self.split_lhs_1st_dim_1d(0, 1))
@@ -263,8 +263,8 @@ class LinearProjectionStrategyGenerator(MatMulStrategyGenerator):
         # RS01 = RR x RS01
         strategies.append(self.split_rhs_2nd_dim_1d(0, 1))
 
-        # RR = RR x RR
-        strategies.append(self.non_split())
+        # # RR = RR x RR
+        # strategies.append(self.non_split())
 
         return strategies
 

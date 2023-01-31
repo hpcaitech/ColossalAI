@@ -25,9 +25,21 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Locate base commit
+        id: locate-base-sha
+        run: |
+            curBranch=$(git rev-parse --abbrev-ref HEAD)
+            commonCommit=$(git merge-base origin/main $curBranch)
+            echo $commonCommit
+            echo "baseSHA=$commonCommit" >> $GITHUB_OUTPUT
+
       - name: Get all changed example files
         id: changed-files
         uses: tj-actions/changed-files@v35
+        with:
+          base_sha: ${{ steps.locate-base-sha.outputs.baseSHA }}
+
       - name: setup matrix
         id: setup-matrix
         run: |
@@ -67,9 +79,11 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v3
+
       - name: Install Colossal-AI
         run: |
           pip install -v .
+
       - name: Test the example
         run: |
           example_dir=${{ matrix.directory }}
@@ -90,6 +104,7 @@ jobs:
     steps:
     - name: 📚 Checkout
       uses: actions/checkout@v3
+
     - name: setup matrix
       id: setup-matrix
       run: |
@@ -113,9 +128,11 @@ jobs:
     steps:
       - name: 📚 Checkout
         uses: actions/checkout@v3
+
       - name: Install Colossal-AI
         run: |
           pip install -v .
+
       - name: Traverse all files
         run: |
           example_dir=${{ matrix.diretory }}

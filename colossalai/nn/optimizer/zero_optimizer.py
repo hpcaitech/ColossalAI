@@ -65,7 +65,8 @@ class ZeroOptimizer(ColossalaiOptimizer):
                  **defaults: Any):
         super().__init__(optim)
         assert isinstance(module, ZeroDDP)
-        assert type(optim) in _AVAIL_OPTIM_LIST, "you should use the optimizer in the available list"
+        assert type(optim) in _AVAIL_OPTIM_LIST, "You should use an optimizer in the available list:\n" \
+            f"{_AVAIL_OPTIM_LIST}"
         self.module = module
         self.gemini_manager = module.gemini_manager
         self.chunk_manager: ChunkManager = self.gemini_manager.chunk_manager

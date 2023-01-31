@@ -13,6 +13,7 @@ transformers==4.19.2
 webdataset==0.2.5
 open-clip-torch==2.7.0
 gradio==3.11
+lightning==1.9.0
 datasets
 colossalai
 -e .

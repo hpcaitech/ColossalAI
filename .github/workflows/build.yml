@@ -6,32 +6,59 @@ on:
 
 jobs:
   detect:
-    name: Detect kernel-related file change
+    name: Detect file change
     if: |
         github.event.pull_request.draft == false &&
         github.base_ref == 'main' &&
         github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' &&
         contains( github.event.pull_request.labels.*.name, 'Run Build and Test')
     outputs:
-      changedFiles: ${{ steps.find-changed-files.outputs.changedFiles }}
-      anyChanged: ${{ steps.find-changed-files.outputs.any_changed }}
+      changedExtenisonFiles: ${{ steps.find-extension-change.outputs.all_changed_files }}
+      anyExtensionFileChanged: ${{ steps.find-extension-change.outputs.any_changed }}
+      changedLibraryFiles: ${{ steps.find-lib-change.outputs.all_changed_files }}
+      anyLibraryFileChanged: ${{ steps.find-lib-change.outputs.any_changed }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
-      - name: Find the changed files
-        id: find-changed-files
+
+      - name: Locate base commit
+        id: locate-base-sha
+        run: |
+            curBranch=$(git rev-parse --abbrev-ref HEAD)
+            commonCommit=$(git merge-base origin/main $curBranch)
+            echo $commonCommit
+            echo "baseSHA=$commonCommit" >> $GITHUB_OUTPUT
+
+      - name: Find the changed extension-related files
+        id: find-extension-change
         uses: tj-actions/changed-files@v35
         with:
+          base_sha: ${{ steps.locate-base-sha.outputs.baseSHA }}
           files: |
             op_builder/**
             colossalai/kernel/**
             setup.py
+
+      - name: Find the changed library-related files
+        id: find-lib-change
+        uses: tj-actions/changed-files@v35
+        with:
+          base_sha: ${{ steps.locate-base-sha.outputs.baseSHA }}
+          files: |
+            **/*.py
+            **/*.h
+            **/*.cpp
+            **/*.cu
+
       - name: List changed files
         run: |
-          for file in ${{ steps.find-changed-files.outputs.all_changed_files }}; do
+          for file in ${{ steps.find-extension-change.outputs.all_changed_files }}; do
+            echo "$file was changed"
+          done
+          for file in ${{ steps.find-lib-change.outputs.all_changed_files }}; do
             echo "$file was changed"
           done
 
@@ -44,38 +71,58 @@ jobs:
       image: hpcaitech/pytorch-cuda:1.11.0-11.3.0
       options: --gpus all --rm -v /data/scratch/cifar-10:/data/scratch/cifar-10
     timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
     steps:
-      - uses: actions/checkout@v2
+      - name: Checkout TensorNVMe
+        uses: actions/checkout@v2
         with:
           repository: hpcaitech/TensorNVMe
           ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
           path: TensorNVMe
 
-      - name: Install tensornvme
+      - name: Restore TensorNVMe Cache
+        run: |
+          [ ! -z "$(ls -A /github/home/tensornvme_cache/)" ] && cp -p -r /github/home/tensornvme_cache/* /__w/ColossalAI/ColossalAI/TensorNVMe
+
+      - name: Install TensorNVMe
         run: |
           cd TensorNVMe
           conda install cmake
           pip install -r requirements.txt
           pip install -v .
 
-      - uses: actions/checkout@v2
+      - name: Store TensorNVMe Cache
+        run: |
+          cp -p -r ./build /github/home/tensornvme_cache/
+
+      - name: Checkout Colossal-AI
+        uses: actions/checkout@v2
         with:
           ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
 
-      - name: Restore cache
-        if: needs.detect.outputs.anyChanged != 'true'
+      - name: Restore Colossal-AI Cache
+        if: needs.detect.outputs.anyExtensionFileChanged != 'true'
         run: |
           # -p flag is required to preserve the file timestamp to avoid ninja rebuild
           [ ! -z "$(ls -A /github/home/cuda_ext_cache/)" ] && cp -p -r /github/home/cuda_ext_cache/* /__w/ColossalAI/ColossalAI/
 
       - name: Install Colossal-AI
+        if: needs.detect.outputs.anyLibraryFileChanged == 'true'
         run: |
           CUDA_EXT=1 pip install -v -e .
           pip install -r requirements/requirements-test.txt
 
-      - name: Unit Testing
+      - name: Store Colossal-AI Cache
         run: |
-          PYTHONPATH=$PWD pytest --cov=. --cov-report xml tests
+          # -p flag is required to preserve the file timestamp to avoid ninja rebuild
+          cp -p -r /__w/ColossalAI/ColossalAI/build /github/home/cuda_ext_cache/
+
+      - name: Execute Unit Testing
+        if: needs.detect.outputs.anyLibraryFileChanged == 'true'
+        run: |
+          PYTHONPATH=$PWD pytest --cov=. --cov-report xml tests/
         env:
           DATA: /data/scratch/cifar-10
           NCCL_SHM_DISABLE: 1
@@ -84,18 +131,36 @@ jobs:
       - name: Collate artifact
         env:
           PR_NUMBER: ${{ github.event.number }}
+          changedLibraryFiles: ${{ needs.detect.outputs.changedLibraryFiles }}
+          anyLibraryFileChanged: ${{ needs.detect.outputs.anyLibraryFileChanged }}
+          changedExtenisonFiles: ${{ needs.detect.outputs.changedExtenisonFiles }}
         run: |
           mkdir report
           echo $PR_NUMBER > ./report/pr_number
-          mv coverage.xml ./report
+
+          # generate coverage.xml if any
+          if [ "$anyLibraryFileChanged" == "true" ]; then
+            allFiles=""
+            for file in $changedLibraryFiles; do
+              if [ "$allFiles" == "" ]; then
+                allFiles=$file
+              else
+                allFiles=$allFiles,$file
+              fi
+            done
+
+            coverage report --data-file .coverage --include $allFiles > ./coverage.txt
+
+            covPercentage=$(tail -n 1 coverage.txt  | grep -o '[1-9]*%$')
+            covNum=${covPercentage::-1}
+            mv coverage.txt ./report
+            echo $covNum > ./report/cov_number
+          else
+            echo "No coverage report is generated"
+          fi
 
       - name: Upload test coverage artifact
         uses: actions/upload-artifact@v3
         with:
           name: report
           path: report/
-
-      - name: Store Cache
-        run: |
-          # -p flag is required to preserve the file timestamp to avoid ninja rebuild
-          cp -p -r /__w/ColossalAI/ColossalAI/build /github/home/cuda_ext_cache/
