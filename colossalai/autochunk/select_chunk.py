@@ -158,7 +158,7 @@ class SelectChunk(object):
                                      max([i["region"][1] for i in possible_chunk_regions]))
 
         # get mem for chunk region
-        regions_dict = []
+        regions_dict_list = []
         for region in possible_chunk_regions:
             cur_region = region.copy()
             cur_node_list, cur_region = self.reorder_graph.tmp_reorder(self.trace_indice.node_list, cur_region)
@@ -166,7 +166,7 @@ class SelectChunk(object):
             cur_mem_peak = self.estimate_memory.estimate_chunk_inference_mem(cur_node_list, cur_chunk_infos)[0]
             cur_chunk_region_peak = cur_mem_peak[max_possible_chunk_region[0]:max_possible_chunk_region[1] + 1]
             cur_chunk_region_max_peak = max(cur_chunk_region_peak)
-            regions_dict.append({
+            regions_dict_list.append({
                 "chunk_info": region,
                 "chunk_max_mem": cur_chunk_region_max_peak,
                 "chunk_len": self._get_compute_node_num(region["region"][0], region["region"][1]),
@@ -175,9 +175,9 @@ class SelectChunk(object):
             })
 
         # select the min mem
-        chunk_max_mem = [i["chunk_max_mem"] for i in regions_dict]
+        chunk_max_mem = [i["chunk_max_mem"] for i in regions_dict_list]
         best_region_idx = chunk_max_mem.index(min(chunk_max_mem))
-        best_region = regions_dict[best_region_idx]["chunk_info"]
+        best_region = regions_dict_list[best_region_idx]["chunk_info"]
         if best_region is not None:
             best_region["chunk_size"] = 1
         return best_region
