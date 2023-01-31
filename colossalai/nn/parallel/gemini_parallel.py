@@ -49,6 +49,10 @@ class GeminiDDP(ZeroDDP):
                 all parameters will be compacted into one small chunk.
             memstats (MemStats, optional) the memory statistics collector by a runtime memory tracer.
         """
+        # some ugly hotfix for the compatibility with Lightning
+        if search_range_mb is None:
+            search_range_mb = 32
+
         chunk_manager = init_chunk_manager(model=module,
                                            init_device=device,
                                            hidden_dim=hidden_dim,
