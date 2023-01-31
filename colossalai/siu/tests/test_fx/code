@@ -1,0 +1,898 @@
+
+
+
+def forward(self, sample : torch.FloatTensor, timestep_1, return_dict_1 = True) -> typing_Union[diffusers_models_unet_2d_UNet2DOutput,typing_Tuple]:
+    eq = timestep_1 == 50;  timestep_1 = None
+    _assert = torch._assert(eq, 'timestep has been specialized to have value 50 but got another value');  eq = None
+    eq_1 = return_dict_1 == True;  return_dict_1 = None
+    _assert_1 = torch._assert(eq_1, 'return_dict has been specialized to have value True but got another value');  eq_1 = None
+    getattr_1 = sample.device
+    tensor = torch.tensor([50], dtype = torch.int64, device = getattr_1);  getattr_1 = None
+    getattr_2 = tensor.dtype
+    getattr_3 = tensor.device
+    ones = torch.ones(2, dtype = getattr_2, device = getattr_3);  getattr_2 = getattr_3 = None
+    mul = tensor * ones;  tensor = ones = None
+    getattr_4 = mul.device
+    arange = torch.arange(start = 0, end = 112, dtype = torch.float32, device = getattr_4);  getattr_4 = None
+    mul_1 = -9.210340371976184 * arange;  arange = None
+    truediv = mul_1 / 112;  mul_1 = None
+    exp = torch.exp(truediv);  truediv = None
+    getitem = mul[(slice(None, None, None), None)];  mul = None
+    float_1 = getitem.float();  getitem = None
+    getitem_1 = exp[(None, slice(None, None, None))];  exp = None
+    mul_2 = float_1 * getitem_1;  float_1 = getitem_1 = None
+    mul_3 = 1 * mul_2;  mul_2 = None
+    sin = torch.sin(mul_3)
+    cos = torch.cos(mul_3);  mul_3 = None
+    cat = torch.cat([sin, cos], dim = -1);  sin = cos = None
+    getitem_2 = cat[(slice(None, None, None), slice(112, None, None))]
+    getitem_3 = cat[(slice(None, None, None), slice(None, 112, None))];  cat = None
+    cat_1 = torch.cat([getitem_2, getitem_3], dim = -1);  getitem_2 = getitem_3 = None
+    to = cat_1.to(dtype = torch.float32);  cat_1 = None
+    time_embedding_linear_1 = self.time_embedding.linear_1(to);  to = None
+    time_embedding_act = self.time_embedding.act(time_embedding_linear_1);  time_embedding_linear_1 = None
+    time_embedding_linear_2 = self.time_embedding.linear_2(time_embedding_act);  time_embedding_act = None
+    conv_in = self.conv_in(sample);  sample = None
+    down_blocks_0_resnets_0_norm1 = getattr(getattr(self.down_blocks, "0").resnets, "0").norm1(conv_in)
+    down_blocks_0_resnets_0_nonlinearity = getattr(getattr(self.down_blocks, "0").resnets, "0").nonlinearity(down_blocks_0_resnets_0_norm1);  down_blocks_0_resnets_0_norm1 = None
+    down_blocks_0_resnets_0_conv1 = getattr(getattr(self.down_blocks, "0").resnets, "0").conv1(down_blocks_0_resnets_0_nonlinearity);  down_blocks_0_resnets_0_nonlinearity = None
+    down_blocks_0_resnets_0_nonlinearity_1 = getattr(getattr(self.down_blocks, "0").resnets, "0").nonlinearity(time_embedding_linear_2)
+    down_blocks_0_resnets_0_time_emb_proj = getattr(getattr(self.down_blocks, "0").resnets, "0").time_emb_proj(down_blocks_0_resnets_0_nonlinearity_1);  down_blocks_0_resnets_0_nonlinearity_1 = None
+    getitem_4 = down_blocks_0_resnets_0_time_emb_proj[(slice(None, None, None), slice(None, None, None), None, None)];  down_blocks_0_resnets_0_time_emb_proj = None
+    add = down_blocks_0_resnets_0_conv1 + getitem_4;  down_blocks_0_resnets_0_conv1 = getitem_4 = None
+    down_blocks_0_resnets_0_norm2 = getattr(getattr(self.down_blocks, "0").resnets, "0").norm2(add);  add = None
+    down_blocks_0_resnets_0_nonlinearity_2 = getattr(getattr(self.down_blocks, "0").resnets, "0").nonlinearity(down_blocks_0_resnets_0_norm2);  down_blocks_0_resnets_0_norm2 = None
+    down_blocks_0_resnets_0_dropout = getattr(getattr(self.down_blocks, "0").resnets, "0").dropout(down_blocks_0_resnets_0_nonlinearity_2);  down_blocks_0_resnets_0_nonlinearity_2 = None
+    down_blocks_0_resnets_0_conv2 = getattr(getattr(self.down_blocks, "0").resnets, "0").conv2(down_blocks_0_resnets_0_dropout);  down_blocks_0_resnets_0_dropout = None
+    add_1 = conv_in + down_blocks_0_resnets_0_conv2;  down_blocks_0_resnets_0_conv2 = None
+    truediv_1 = add_1 / 1.0;  add_1 = None
+    down_blocks_0_resnets_1_norm1 = getattr(getattr(self.down_blocks, "0").resnets, "1").norm1(truediv_1)
+    down_blocks_0_resnets_1_nonlinearity = getattr(getattr(self.down_blocks, "0").resnets, "1").nonlinearity(down_blocks_0_resnets_1_norm1);  down_blocks_0_resnets_1_norm1 = None
+    down_blocks_0_resnets_1_conv1 = getattr(getattr(self.down_blocks, "0").resnets, "1").conv1(down_blocks_0_resnets_1_nonlinearity);  down_blocks_0_resnets_1_nonlinearity = None
+    down_blocks_0_resnets_1_nonlinearity_1 = getattr(getattr(self.down_blocks, "0").resnets, "1").nonlinearity(time_embedding_linear_2)
+    down_blocks_0_resnets_1_time_emb_proj = getattr(getattr(self.down_blocks, "0").resnets, "1").time_emb_proj(down_blocks_0_resnets_1_nonlinearity_1);  down_blocks_0_resnets_1_nonlinearity_1 = None
+    getitem_5 = down_blocks_0_resnets_1_time_emb_proj[(slice(None, None, None), slice(None, None, None), None, None)];  down_blocks_0_resnets_1_time_emb_proj = None
+    add_2 = down_blocks_0_resnets_1_conv1 + getitem_5;  down_blocks_0_resnets_1_conv1 = getitem_5 = None
+    down_blocks_0_resnets_1_norm2 = getattr(getattr(self.down_blocks, "0").resnets, "1").norm2(add_2);  add_2 = None
+    down_blocks_0_resnets_1_nonlinearity_2 = getattr(getattr(self.down_blocks, "0").resnets, "1").nonlinearity(down_blocks_0_resnets_1_norm2);  down_blocks_0_resnets_1_norm2 = None
+    down_blocks_0_resnets_1_dropout = getattr(getattr(self.down_blocks, "0").resnets, "1").dropout(down_blocks_0_resnets_1_nonlinearity_2);  down_blocks_0_resnets_1_nonlinearity_2 = None
+    down_blocks_0_resnets_1_conv2 = getattr(getattr(self.down_blocks, "0").resnets, "1").conv2(down_blocks_0_resnets_1_dropout);  down_blocks_0_resnets_1_dropout = None
+    add_3 = truediv_1 + down_blocks_0_resnets_1_conv2;  down_blocks_0_resnets_1_conv2 = None
+    truediv_2 = add_3 / 1.0;  add_3 = None
+    down_blocks_0_downsamplers_0_conv = getattr(getattr(self.down_blocks, "0").downsamplers, "0").conv(truediv_2)
+    down_blocks_1_resnets_0_norm1 = getattr(getattr(self.down_blocks, "1").resnets, "0").norm1(down_blocks_0_downsamplers_0_conv)
+    down_blocks_1_resnets_0_nonlinearity = getattr(getattr(self.down_blocks, "1").resnets, "0").nonlinearity(down_blocks_1_resnets_0_norm1);  down_blocks_1_resnets_0_norm1 = None
+    down_blocks_1_resnets_0_conv1 = getattr(getattr(self.down_blocks, "1").resnets, "0").conv1(down_blocks_1_resnets_0_nonlinearity);  down_blocks_1_resnets_0_nonlinearity = None
+    down_blocks_1_resnets_0_nonlinearity_1 = getattr(getattr(self.down_blocks, "1").resnets, "0").nonlinearity(time_embedding_linear_2)
+    down_blocks_1_resnets_0_time_emb_proj = getattr(getattr(self.down_blocks, "1").resnets, "0").time_emb_proj(down_blocks_1_resnets_0_nonlinearity_1);  down_blocks_1_resnets_0_nonlinearity_1 = None
+    getitem_6 = down_blocks_1_resnets_0_time_emb_proj[(slice(None, None, None), slice(None, None, None), None, None)];  down_blocks_1_resnets_0_time_emb_proj = None
+    add_4 = down_blocks_1_resnets_0_conv1 + getitem_6;  down_blocks_1_resnets_0_conv1 = getitem_6 = None
+    down_blocks_1_resnets_0_norm2 = getattr(getattr(self.down_blocks, "1").resnets, "0").norm2(add_4);  add_4 = None
+    down_blocks_1_resnets_0_nonlinearity_2 = getattr(getattr(self.down_blocks, "1").resnets, "0").nonlinearity(down_blocks_1_resnets_0_norm2);  down_blocks_1_resnets_0_norm2 = None
+    down_blocks_1_resnets_0_dropout = getattr(getattr(self.down_blocks, "1").resnets, "0").dropout(down_blocks_1_resnets_0_nonlinearity_2);  down_blocks_1_resnets_0_nonlinearity_2 = None
+    down_blocks_1_resnets_0_conv2 = getattr(getattr(self.down_blocks, "1").resnets, "0").conv2(down_blocks_1_resnets_0_dropout);  down_blocks_1_resnets_0_dropout = None
+    down_blocks_1_resnets_0_conv_shortcut = getattr(getattr(self.down_blocks, "1").resnets, "0").conv_shortcut(down_blocks_0_downsamplers_0_conv)
+    add_5 = down_blocks_1_resnets_0_conv_shortcut + down_blocks_1_resnets_0_conv2;  down_blocks_1_resnets_0_conv_shortcut = down_blocks_1_resnets_0_conv2 = None
+    truediv_3 = add_5 / 1.0;  add_5 = None
+    down_blocks_1_attentions_0_group_norm = getattr(getattr(self.down_blocks, "1").attentions, "0").group_norm(truediv_3)
+    view = down_blocks_1_attentions_0_group_norm.view(2, 448, 256);  down_blocks_1_attentions_0_group_norm = None
+    transpose = view.transpose(1, 2);  view = None
+    down_blocks_1_attentions_0_query = getattr(getattr(self.down_blocks, "1").attentions, "0").query(transpose)
+    down_blocks_1_attentions_0_key = getattr(getattr(self.down_blocks, "1").attentions, "0").key(transpose)
+    down_blocks_1_attentions_0_value = getattr(getattr(self.down_blocks, "1").attentions, "0").value(transpose);  transpose = None
+    reshape = down_blocks_1_attentions_0_query.reshape(2, 256, 56, 8);  down_blocks_1_attentions_0_query = None
+    permute = reshape.permute(0, 2, 1, 3);  reshape = None
+    reshape_1 = permute.reshape(112, 256, 8);  permute = None
+    reshape_2 = down_blocks_1_attentions_0_key.reshape(2, 256, 56, 8);  down_blocks_1_attentions_0_key = None
+    permute_1 = reshape_2.permute(0, 2, 1, 3);  reshape_2 = None
+    reshape_3 = permute_1.reshape(112, 256, 8);  permute_1 = None
+    reshape_4 = down_blocks_1_attentions_0_value.reshape(2, 256, 56, 8);  down_blocks_1_attentions_0_value = None
+    permute_2 = reshape_4.permute(0, 2, 1, 3);  reshape_4 = None
+    reshape_5 = permute_2.reshape(112, 256, 8);  permute_2 = None
+    getattr_5 = reshape_1.dtype
+    getattr_6 = reshape_1.device
+    empty = torch.empty(112, 256, 256, dtype = getattr_5, device = getattr_6);  getattr_5 = getattr_6 = None
+    transpose_1 = reshape_3.transpose(-1, -2);  reshape_3 = None
+    baddbmm = torch.baddbmm(empty, reshape_1, transpose_1, beta = 0, alpha = 0.35355339059327373);  empty = reshape_1 = transpose_1 = None
+    float_2 = baddbmm.float()
+    softmax = torch.softmax(float_2, dim = -1);  float_2 = None
+    getattr_7 = baddbmm.dtype;  baddbmm = None
+    type_1 = softmax.type(getattr_7);  softmax = getattr_7 = None
+    bmm = torch.bmm(type_1, reshape_5);  type_1 = reshape_5 = None
+    reshape_6 = bmm.reshape(2, 56, 256, 8);  bmm = None
+    permute_3 = reshape_6.permute(0, 2, 1, 3);  reshape_6 = None
+    reshape_7 = permute_3.reshape(2, 256, 448);  permute_3 = None
+    down_blocks_1_attentions_0_proj_attn = getattr(getattr(self.down_blocks, "1").attentions, "0").proj_attn(reshape_7);  reshape_7 = None
+    transpose_2 = down_blocks_1_attentions_0_proj_attn.transpose(-1, -2);  down_blocks_1_attentions_0_proj_attn = None
+    reshape_8 = transpose_2.reshape(2, 448, 16, 16);  transpose_2 = None
+    add_6 = reshape_8 + truediv_3;  reshape_8 = truediv_3 = None
+    truediv_4 = add_6 / 1.0;  add_6 = None
+    down_blocks_1_resnets_1_norm1 = getattr(getattr(self.down_blocks, "1").resnets, "1").norm1(truediv_4)
+    down_blocks_1_resnets_1_nonlinearity = getattr(getattr(self.down_blocks, "1").resnets, "1").nonlinearity(down_blocks_1_resnets_1_norm1);  down_blocks_1_resnets_1_norm1 = None
+    down_blocks_1_resnets_1_conv1 = getattr(getattr(self.down_blocks, "1").resnets, "1").conv1(down_blocks_1_resnets_1_nonlinearity);  down_blocks_1_resnets_1_nonlinearity = None
+    down_blocks_1_resnets_1_nonlinearity_1 = getattr(getattr(self.down_blocks, "1").resnets, "1").nonlinearity(time_embedding_linear_2)
+    down_blocks_1_resnets_1_time_emb_proj = getattr(getattr(self.down_blocks, "1").resnets, "1").time_emb_proj(down_blocks_1_resnets_1_nonlinearity_1);  down_blocks_1_resnets_1_nonlinearity_1 = None
+    getitem_7 = down_blocks_1_resnets_1_time_emb_proj[(slice(None, None, None), slice(None, None, None), None, None)];  down_blocks_1_resnets_1_time_emb_proj = None
+    add_7 = down_blocks_1_resnets_1_conv1 + getitem_7;  down_blocks_1_resnets_1_conv1 = getitem_7 = None
+    down_blocks_1_resnets_1_norm2 = getattr(getattr(self.down_blocks, "1").resnets, "1").norm2(add_7);  add_7 = None
+    down_blocks_1_resnets_1_nonlinearity_2 = getattr(getattr(self.down_blocks, "1").resnets, "1").nonlinearity(down_blocks_1_resnets_1_norm2);  down_blocks_1_resnets_1_norm2 = None
+    down_blocks_1_resnets_1_dropout = getattr(getattr(self.down_blocks, "1").resnets, "1").dropout(down_blocks_1_resnets_1_nonlinearity_2);  down_blocks_1_resnets_1_nonlinearity_2 = None
+    down_blocks_1_resnets_1_conv2 = getattr(getattr(self.down_blocks, "1").resnets, "1").conv2(down_blocks_1_resnets_1_dropout);  down_blocks_1_resnets_1_dropout = None
+    add_8 = truediv_4 + down_blocks_1_resnets_1_conv2;  down_blocks_1_resnets_1_conv2 = None
+    truediv_5 = add_8 / 1.0;  add_8 = None
+    down_blocks_1_attentions_1_group_norm = getattr(getattr(self.down_blocks, "1").attentions, "1").group_norm(truediv_5)
+    view_1 = down_blocks_1_attentions_1_group_norm.view(2, 448, 256);  down_blocks_1_attentions_1_group_norm = None
+    transpose_3 = view_1.transpose(1, 2);  view_1 = None
+    down_blocks_1_attentions_1_query = getattr(getattr(self.down_blocks, "1").attentions, "1").query(transpose_3)
+    down_blocks_1_attentions_1_key = getattr(getattr(self.down_blocks, "1").attentions, "1").key(transpose_3)
+    down_blocks_1_attentions_1_value = getattr(getattr(self.down_blocks, "1").attentions, "1").value(transpose_3);  transpose_3 = None
+    reshape_9 = down_blocks_1_attentions_1_query.reshape(2, 256, 56, 8);  down_blocks_1_attentions_1_query = None
+    permute_4 = reshape_9.permute(0, 2, 1, 3);  reshape_9 = None
+    reshape_10 = permute_4.reshape(112, 256, 8);  permute_4 = None
+    reshape_11 = down_blocks_1_attentions_1_key.reshape(2, 256, 56, 8);  down_blocks_1_attentions_1_key = None
+    permute_5 = reshape_11.permute(0, 2, 1, 3);  reshape_11 = None
+    reshape_12 = permute_5.reshape(112, 256, 8);  permute_5 = None
+    reshape_13 = down_blocks_1_attentions_1_value.reshape(2, 256, 56, 8);  down_blocks_1_attentions_1_value = None
+    permute_6 = reshape_13.permute(0, 2, 1, 3);  reshape_13 = None
+    reshape_14 = permute_6.reshape(112, 256, 8);  permute_6 = None
+    getattr_8 = reshape_10.dtype
+    getattr_9 = reshape_10.device
+    empty_1 = torch.empty(112, 256, 256, dtype = getattr_8, device = getattr_9);  getattr_8 = getattr_9 = None
+    transpose_4 = reshape_12.transpose(-1, -2);  reshape_12 = None
+    baddbmm_1 = torch.baddbmm(empty_1, reshape_10, transpose_4, beta = 0, alpha = 0.35355339059327373);  empty_1 = reshape_10 = transpose_4 = None
+    float_3 = baddbmm_1.float()
+    softmax_1 = torch.softmax(float_3, dim = -1);  float_3 = None
+    getattr_10 = baddbmm_1.dtype;  baddbmm_1 = None
+    type_2 = softmax_1.type(getattr_10);  softmax_1 = getattr_10 = None
+    bmm_1 = torch.bmm(type_2, reshape_14);  type_2 = reshape_14 = None
+    reshape_15 = bmm_1.reshape(2, 56, 256, 8);  bmm_1 = None
+    permute_7 = reshape_15.permute(0, 2, 1, 3);  reshape_15 = None
+    reshape_16 = permute_7.reshape(2, 256, 448);  permute_7 = None
+    down_blocks_1_attentions_1_proj_attn = getattr(getattr(self.down_blocks, "1").attentions, "1").proj_attn(reshape_16);  reshape_16 = None
+    transpose_5 = down_blocks_1_attentions_1_proj_attn.transpose(-1, -2);  down_blocks_1_attentions_1_proj_attn = None
+    reshape_17 = transpose_5.reshape(2, 448, 16, 16);  transpose_5 = None
+    add_9 = reshape_17 + truediv_5;  reshape_17 = truediv_5 = None
+    truediv_6 = add_9 / 1.0;  add_9 = None
+    down_blocks_1_downsamplers_0_conv = getattr(getattr(self.down_blocks, "1").downsamplers, "0").conv(truediv_6)
+    down_blocks_2_resnets_0_norm1 = getattr(getattr(self.down_blocks, "2").resnets, "0").norm1(down_blocks_1_downsamplers_0_conv)
+    down_blocks_2_resnets_0_nonlinearity = getattr(getattr(self.down_blocks, "2").resnets, "0").nonlinearity(down_blocks_2_resnets_0_norm1);  down_blocks_2_resnets_0_norm1 = None
+    down_blocks_2_resnets_0_conv1 = getattr(getattr(self.down_blocks, "2").resnets, "0").conv1(down_blocks_2_resnets_0_nonlinearity);  down_blocks_2_resnets_0_nonlinearity = None
+    down_blocks_2_resnets_0_nonlinearity_1 = getattr(getattr(self.down_blocks, "2").resnets, "0").nonlinearity(time_embedding_linear_2)
+    down_blocks_2_resnets_0_time_emb_proj = getattr(getattr(self.down_blocks, "2").resnets, "0").time_emb_proj(down_blocks_2_resnets_0_nonlinearity_1);  down_blocks_2_resnets_0_nonlinearity_1 = None
+    getitem_8 = down_blocks_2_resnets_0_time_emb_proj[(slice(None, None, None), slice(None, None, None), None, None)];  down_blocks_2_resnets_0_time_emb_proj = None
+    add_10 = down_blocks_2_resnets_0_conv1 + getitem_8;  down_blocks_2_resnets_0_conv1 = getitem_8 = None
+    down_blocks_2_resnets_0_norm2 = getattr(getattr(self.down_blocks, "2").resnets, "0").norm2(add_10);  add_10 = None
+    down_blocks_2_resnets_0_nonlinearity_2 = getattr(getattr(self.down_blocks, "2").resnets, "0").nonlinearity(down_blocks_2_resnets_0_norm2);  down_blocks_2_resnets_0_norm2 = None
+    down_blocks_2_resnets_0_dropout = getattr(getattr(self.down_blocks, "2").resnets, "0").dropout(down_blocks_2_resnets_0_nonlinearity_2);  down_blocks_2_resnets_0_nonlinearity_2 = None
+    down_blocks_2_resnets_0_conv2 = getattr(getattr(self.down_blocks, "2").resnets, "0").conv2(down_blocks_2_resnets_0_dropout);  down_blocks_2_resnets_0_dropout = None
+    down_blocks_2_resnets_0_conv_shortcut = getattr(getattr(self.down_blocks, "2").resnets, "0").conv_shortcut(down_blocks_1_downsamplers_0_conv)
+    add_11 = down_blocks_2_resnets_0_conv_shortcut + down_blocks_2_resnets_0_conv2;  down_blocks_2_resnets_0_conv_shortcut = down_blocks_2_resnets_0_conv2 = None
+    truediv_7 = add_11 / 1.0;  add_11 = None
+    down_blocks_2_attentions_0_group_norm = getattr(getattr(self.down_blocks, "2").attentions, "0").group_norm(truediv_7)
+    view_2 = down_blocks_2_attentions_0_group_norm.view(2, 672, 64);  down_blocks_2_attentions_0_group_norm = None
+    transpose_6 = view_2.transpose(1, 2);  view_2 = None
+    down_blocks_2_attentions_0_query = getattr(getattr(self.down_blocks, "2").attentions, "0").query(transpose_6)
+    down_blocks_2_attentions_0_key = getattr(getattr(self.down_blocks, "2").attentions, "0").key(transpose_6)
+    down_blocks_2_attentions_0_value = getattr(getattr(self.down_blocks, "2").attentions, "0").value(transpose_6);  transpose_6 = None
+    reshape_18 = down_blocks_2_attentions_0_query.reshape(2, 64, 84, 8);  down_blocks_2_attentions_0_query = None
+    permute_8 = reshape_18.permute(0, 2, 1, 3);  reshape_18 = None
+    reshape_19 = permute_8.reshape(168, 64, 8);  permute_8 = None
+    reshape_20 = down_blocks_2_attentions_0_key.reshape(2, 64, 84, 8);  down_blocks_2_attentions_0_key = None
+    permute_9 = reshape_20.permute(0, 2, 1, 3);  reshape_20 = None
+    reshape_21 = permute_9.reshape(168, 64, 8);  permute_9 = None
+    reshape_22 = down_blocks_2_attentions_0_value.reshape(2, 64, 84, 8);  down_blocks_2_attentions_0_value = None
+    permute_10 = reshape_22.permute(0, 2, 1, 3);  reshape_22 = None
+    reshape_23 = permute_10.reshape(168, 64, 8);  permute_10 = None
+    getattr_11 = reshape_19.dtype
+    getattr_12 = reshape_19.device
+    empty_2 = torch.empty(168, 64, 64, dtype = getattr_11, device = getattr_12);  getattr_11 = getattr_12 = None
+    transpose_7 = reshape_21.transpose(-1, -2);  reshape_21 = None
+    baddbmm_2 = torch.baddbmm(empty_2, reshape_19, transpose_7, beta = 0, alpha = 0.35355339059327373);  empty_2 = reshape_19 = transpose_7 = None
+    float_4 = baddbmm_2.float()
+    softmax_2 = torch.softmax(float_4, dim = -1);  float_4 = None
+    getattr_13 = baddbmm_2.dtype;  baddbmm_2 = None
+    type_3 = softmax_2.type(getattr_13);  softmax_2 = getattr_13 = None
+    bmm_2 = torch.bmm(type_3, reshape_23);  type_3 = reshape_23 = None
+    reshape_24 = bmm_2.reshape(2, 84, 64, 8);  bmm_2 = None
+    permute_11 = reshape_24.permute(0, 2, 1, 3);  reshape_24 = None
+    reshape_25 = permute_11.reshape(2, 64, 672);  permute_11 = None
+    down_blocks_2_attentions_0_proj_attn = getattr(getattr(self.down_blocks, "2").attentions, "0").proj_attn(reshape_25);  reshape_25 = None
+    transpose_8 = down_blocks_2_attentions_0_proj_attn.transpose(-1, -2);  down_blocks_2_attentions_0_proj_attn = None
+    reshape_26 = transpose_8.reshape(2, 672, 8, 8);  transpose_8 = None
+    add_12 = reshape_26 + truediv_7;  reshape_26 = truediv_7 = None
+    truediv_8 = add_12 / 1.0;  add_12 = None
+    down_blocks_2_resnets_1_norm1 = getattr(getattr(self.down_blocks, "2").resnets, "1").norm1(truediv_8)
+    down_blocks_2_resnets_1_nonlinearity = getattr(getattr(self.down_blocks, "2").resnets, "1").nonlinearity(down_blocks_2_resnets_1_norm1);  down_blocks_2_resnets_1_norm1 = None
+    down_blocks_2_resnets_1_conv1 = getattr(getattr(self.down_blocks, "2").resnets, "1").conv1(down_blocks_2_resnets_1_nonlinearity);  down_blocks_2_resnets_1_nonlinearity = None
+    down_blocks_2_resnets_1_nonlinearity_1 = getattr(getattr(self.down_blocks, "2").resnets, "1").nonlinearity(time_embedding_linear_2)
+    down_blocks_2_resnets_1_time_emb_proj = getattr(getattr(self.down_blocks, "2").resnets, "1").time_emb_proj(down_blocks_2_resnets_1_nonlinearity_1);  down_blocks_2_resnets_1_nonlinearity_1 = None
+    getitem_9 = down_blocks_2_resnets_1_time_emb_proj[(slice(None, None, None), slice(None, None, None), None, None)];  down_blocks_2_resnets_1_time_emb_proj = None
+    add_13 = down_blocks_2_resnets_1_conv1 + getitem_9;  down_blocks_2_resnets_1_conv1 = getitem_9 = None
+    down_blocks_2_resnets_1_norm2 = getattr(getattr(self.down_blocks, "2").resnets, "1").norm2(add_13);  add_13 = None
+    down_blocks_2_resnets_1_nonlinearity_2 = getattr(getattr(self.down_blocks, "2").resnets, "1").nonlinearity(down_blocks_2_resnets_1_norm2);  down_blocks_2_resnets_1_norm2 = None
+    down_blocks_2_resnets_1_dropout = getattr(getattr(self.down_blocks, "2").resnets, "1").dropout(down_blocks_2_resnets_1_nonlinearity_2);  down_blocks_2_resnets_1_nonlinearity_2 = None
+    down_blocks_2_resnets_1_conv2 = getattr(getattr(self.down_blocks, "2").resnets, "1").conv2(down_blocks_2_resnets_1_dropout);  down_blocks_2_resnets_1_dropout = None
+    add_14 = truediv_8 + down_blocks_2_resnets_1_conv2;  down_blocks_2_resnets_1_conv2 = None
+    truediv_9 = add_14 / 1.0;  add_14 = None
+    down_blocks_2_attentions_1_group_norm = getattr(getattr(self.down_blocks, "2").attentions, "1").group_norm(truediv_9)
+    view_3 = down_blocks_2_attentions_1_group_norm.view(2, 672, 64);  down_blocks_2_attentions_1_group_norm = None
+    transpose_9 = view_3.transpose(1, 2);  view_3 = None
+    down_blocks_2_attentions_1_query = getattr(getattr(self.down_blocks, "2").attentions, "1").query(transpose_9)
+    down_blocks_2_attentions_1_key = getattr(getattr(self.down_blocks, "2").attentions, "1").key(transpose_9)
+    down_blocks_2_attentions_1_value = getattr(getattr(self.down_blocks, "2").attentions, "1").value(transpose_9);  transpose_9 = None
+    reshape_27 = down_blocks_2_attentions_1_query.reshape(2, 64, 84, 8);  down_blocks_2_attentions_1_query = None
+    permute_12 = reshape_27.permute(0, 2, 1, 3);  reshape_27 = None
+    reshape_28 = permute_12.reshape(168, 64, 8);  permute_12 = None
+    reshape_29 = down_blocks_2_attentions_1_key.reshape(2, 64, 84, 8);  down_blocks_2_attentions_1_key = None
+    permute_13 = reshape_29.permute(0, 2, 1, 3);  reshape_29 = None
+    reshape_30 = permute_13.reshape(168, 64, 8);  permute_13 = None
+    reshape_31 = down_blocks_2_attentions_1_value.reshape(2, 64, 84, 8);  down_blocks_2_attentions_1_value = None
+    permute_14 = reshape_31.permute(0, 2, 1, 3);  reshape_31 = None
+    reshape_32 = permute_14.reshape(168, 64, 8);  permute_14 = None
+    getattr_14 = reshape_28.dtype
+    getattr_15 = reshape_28.device
+    empty_3 = torch.empty(168, 64, 64, dtype = getattr_14, device = getattr_15);  getattr_14 = getattr_15 = None
+    transpose_10 = reshape_30.transpose(-1, -2);  reshape_30 = None
+    baddbmm_3 = torch.baddbmm(empty_3, reshape_28, transpose_10, beta = 0, alpha = 0.35355339059327373);  empty_3 = reshape_28 = transpose_10 = None
+    float_5 = baddbmm_3.float()
+    softmax_3 = torch.softmax(float_5, dim = -1);  float_5 = None
+    getattr_16 = baddbmm_3.dtype;  baddbmm_3 = None
+    type_4 = softmax_3.type(getattr_16);  softmax_3 = getattr_16 = None
+    bmm_3 = torch.bmm(type_4, reshape_32);  type_4 = reshape_32 = None
+    reshape_33 = bmm_3.reshape(2, 84, 64, 8);  bmm_3 = None
+    permute_15 = reshape_33.permute(0, 2, 1, 3);  reshape_33 = None
+    reshape_34 = permute_15.reshape(2, 64, 672);  permute_15 = None
+    down_blocks_2_attentions_1_proj_attn = getattr(getattr(self.down_blocks, "2").attentions, "1").proj_attn(reshape_34);  reshape_34 = None
+    transpose_11 = down_blocks_2_attentions_1_proj_attn.transpose(-1, -2);  down_blocks_2_attentions_1_proj_attn = None
+    reshape_35 = transpose_11.reshape(2, 672, 8, 8);  transpose_11 = None
+    add_15 = reshape_35 + truediv_9;  reshape_35 = truediv_9 = None
+    truediv_10 = add_15 / 1.0;  add_15 = None
+    down_blocks_2_downsamplers_0_conv = getattr(getattr(self.down_blocks, "2").downsamplers, "0").conv(truediv_10)
+    down_blocks_3_resnets_0_norm1 = getattr(getattr(self.down_blocks, "3").resnets, "0").norm1(down_blocks_2_downsamplers_0_conv)
+    down_blocks_3_resnets_0_nonlinearity = getattr(getattr(self.down_blocks, "3").resnets, "0").nonlinearity(down_blocks_3_resnets_0_norm1);  down_blocks_3_resnets_0_norm1 = None
+    down_blocks_3_resnets_0_conv1 = getattr(getattr(self.down_blocks, "3").resnets, "0").conv1(down_blocks_3_resnets_0_nonlinearity);  down_blocks_3_resnets_0_nonlinearity = None
+    down_blocks_3_resnets_0_nonlinearity_1 = getattr(getattr(self.down_blocks, "3").resnets, "0").nonlinearity(time_embedding_linear_2)
+    down_blocks_3_resnets_0_time_emb_proj = getattr(getattr(self.down_blocks, "3").resnets, "0").time_emb_proj(down_blocks_3_resnets_0_nonlinearity_1);  down_blocks_3_resnets_0_nonlinearity_1 = None
+    getitem_10 = down_blocks_3_resnets_0_time_emb_proj[(slice(None, None, None), slice(None, None, None), None, None)];  down_blocks_3_resnets_0_time_emb_proj = None
+    add_16 = down_blocks_3_resnets_0_conv1 + getitem_10;  down_blocks_3_resnets_0_conv1 = getitem_10 = None
+    down_blocks_3_resnets_0_norm2 = getattr(getattr(self.down_blocks, "3").resnets, "0").norm2(add_16);  add_16 = None
+    down_blocks_3_resnets_0_nonlinearity_2 = getattr(getattr(self.down_blocks, "3").resnets, "0").nonlinearity(down_blocks_3_resnets_0_norm2);  down_blocks_3_resnets_0_norm2 = None
+    down_blocks_3_resnets_0_dropout = getattr(getattr(self.down_blocks, "3").resnets, "0").dropout(down_blocks_3_resnets_0_nonlinearity_2);  down_blocks_3_resnets_0_nonlinearity_2 = None
+    down_blocks_3_resnets_0_conv2 = getattr(getattr(self.down_blocks, "3").resnets, "0").conv2(down_blocks_3_resnets_0_dropout);  down_blocks_3_resnets_0_dropout = None
+    down_blocks_3_resnets_0_conv_shortcut = getattr(getattr(self.down_blocks, "3").resnets, "0").conv_shortcut(down_blocks_2_downsamplers_0_conv)
+    add_17 = down_blocks_3_resnets_0_conv_shortcut + down_blocks_3_resnets_0_conv2;  down_blocks_3_resnets_0_conv_shortcut = down_blocks_3_resnets_0_conv2 = None
+    truediv_11 = add_17 / 1.0;  add_17 = None
+    down_blocks_3_attentions_0_group_norm = getattr(getattr(self.down_blocks, "3").attentions, "0").group_norm(truediv_11)
+    view_4 = down_blocks_3_attentions_0_group_norm.view(2, 896, 16);  down_blocks_3_attentions_0_group_norm = None
+    transpose_12 = view_4.transpose(1, 2);  view_4 = None
+    down_blocks_3_attentions_0_query = getattr(getattr(self.down_blocks, "3").attentions, "0").query(transpose_12)
+    down_blocks_3_attentions_0_key = getattr(getattr(self.down_blocks, "3").attentions, "0").key(transpose_12)
+    down_blocks_3_attentions_0_value = getattr(getattr(self.down_blocks, "3").attentions, "0").value(transpose_12);  transpose_12 = None
+    reshape_36 = down_blocks_3_attentions_0_query.reshape(2, 16, 112, 8);  down_blocks_3_attentions_0_query = None
+    permute_16 = reshape_36.permute(0, 2, 1, 3);  reshape_36 = None
+    reshape_37 = permute_16.reshape(224, 16, 8);  permute_16 = None
+    reshape_38 = down_blocks_3_attentions_0_key.reshape(2, 16, 112, 8);  down_blocks_3_attentions_0_key = None
+    permute_17 = reshape_38.permute(0, 2, 1, 3);  reshape_38 = None
+    reshape_39 = permute_17.reshape(224, 16, 8);  permute_17 = None
+    reshape_40 = down_blocks_3_attentions_0_value.reshape(2, 16, 112, 8);  down_blocks_3_attentions_0_value = None
+    permute_18 = reshape_40.permute(0, 2, 1, 3);  reshape_40 = None
+    reshape_41 = permute_18.reshape(224, 16, 8);  permute_18 = None
+    getattr_17 = reshape_37.dtype
+    getattr_18 = reshape_37.device
+    empty_4 = torch.empty(224, 16, 16, dtype = getattr_17, device = getattr_18);  getattr_17 = getattr_18 = None
+    transpose_13 = reshape_39.transpose(-1, -2);  reshape_39 = None
+    baddbmm_4 = torch.baddbmm(empty_4, reshape_37, transpose_13, beta = 0, alpha = 0.35355339059327373);  empty_4 = reshape_37 = transpose_13 = None
+    float_6 = baddbmm_4.float()
+    softmax_4 = torch.softmax(float_6, dim = -1);  float_6 = None
+    getattr_19 = baddbmm_4.dtype;  baddbmm_4 = None
+    type_5 = softmax_4.type(getattr_19);  softmax_4 = getattr_19 = None
+    bmm_4 = torch.bmm(type_5, reshape_41);  type_5 = reshape_41 = None
+    reshape_42 = bmm_4.reshape(2, 112, 16, 8);  bmm_4 = None
+    permute_19 = reshape_42.permute(0, 2, 1, 3);  reshape_42 = None
+    reshape_43 = permute_19.reshape(2, 16, 896);  permute_19 = None
+    down_blocks_3_attentions_0_proj_attn = getattr(getattr(self.down_blocks, "3").attentions, "0").proj_attn(reshape_43);  reshape_43 = None
+    transpose_14 = down_blocks_3_attentions_0_proj_attn.transpose(-1, -2);  down_blocks_3_attentions_0_proj_attn = None
+    reshape_44 = transpose_14.reshape(2, 896, 4, 4);  transpose_14 = None
+    add_18 = reshape_44 + truediv_11;  reshape_44 = truediv_11 = None
+    truediv_12 = add_18 / 1.0;  add_18 = None
+    down_blocks_3_resnets_1_norm1 = getattr(getattr(self.down_blocks, "3").resnets, "1").norm1(truediv_12)
+    down_blocks_3_resnets_1_nonlinearity = getattr(getattr(self.down_blocks, "3").resnets, "1").nonlinearity(down_blocks_3_resnets_1_norm1);  down_blocks_3_resnets_1_norm1 = None
+    down_blocks_3_resnets_1_conv1 = getattr(getattr(self.down_blocks, "3").resnets, "1").conv1(down_blocks_3_resnets_1_nonlinearity);  down_blocks_3_resnets_1_nonlinearity = None
+    down_blocks_3_resnets_1_nonlinearity_1 = getattr(getattr(self.down_blocks, "3").resnets, "1").nonlinearity(time_embedding_linear_2)
+    down_blocks_3_resnets_1_time_emb_proj = getattr(getattr(self.down_blocks, "3").resnets, "1").time_emb_proj(down_blocks_3_resnets_1_nonlinearity_1);  down_blocks_3_resnets_1_nonlinearity_1 = None
+    getitem_11 = down_blocks_3_resnets_1_time_emb_proj[(slice(None, None, None), slice(None, None, None), None, None)];  down_blocks_3_resnets_1_time_emb_proj = None
+    add_19 = down_blocks_3_resnets_1_conv1 + getitem_11;  down_blocks_3_resnets_1_conv1 = getitem_11 = None
+    down_blocks_3_resnets_1_norm2 = getattr(getattr(self.down_blocks, "3").resnets, "1").norm2(add_19);  add_19 = None
+    down_blocks_3_resnets_1_nonlinearity_2 = getattr(getattr(self.down_blocks, "3").resnets, "1").nonlinearity(down_blocks_3_resnets_1_norm2);  down_blocks_3_resnets_1_norm2 = None
+    down_blocks_3_resnets_1_dropout = getattr(getattr(self.down_blocks, "3").resnets, "1").dropout(down_blocks_3_resnets_1_nonlinearity_2);  down_blocks_3_resnets_1_nonlinearity_2 = None
+    down_blocks_3_resnets_1_conv2 = getattr(getattr(self.down_blocks, "3").resnets, "1").conv2(down_blocks_3_resnets_1_dropout);  down_blocks_3_resnets_1_dropout = None
+    add_20 = truediv_12 + down_blocks_3_resnets_1_conv2;  down_blocks_3_resnets_1_conv2 = None
+    truediv_13 = add_20 / 1.0;  add_20 = None
+    down_blocks_3_attentions_1_group_norm = getattr(getattr(self.down_blocks, "3").attentions, "1").group_norm(truediv_13)
+    view_5 = down_blocks_3_attentions_1_group_norm.view(2, 896, 16);  down_blocks_3_attentions_1_group_norm = None
+    transpose_15 = view_5.transpose(1, 2);  view_5 = None
+    down_blocks_3_attentions_1_query = getattr(getattr(self.down_blocks, "3").attentions, "1").query(transpose_15)
+    down_blocks_3_attentions_1_key = getattr(getattr(self.down_blocks, "3").attentions, "1").key(transpose_15)
+    down_blocks_3_attentions_1_value = getattr(getattr(self.down_blocks, "3").attentions, "1").value(transpose_15);  transpose_15 = None
+    reshape_45 = down_blocks_3_attentions_1_query.reshape(2, 16, 112, 8);  down_blocks_3_attentions_1_query = None
+    permute_20 = reshape_45.permute(0, 2, 1, 3);  reshape_45 = None
+    reshape_46 = permute_20.reshape(224, 16, 8);  permute_20 = None
+    reshape_47 = down_blocks_3_attentions_1_key.reshape(2, 16, 112, 8);  down_blocks_3_attentions_1_key = None
+    permute_21 = reshape_47.permute(0, 2, 1, 3);  reshape_47 = None
+    reshape_48 = permute_21.reshape(224, 16, 8);  permute_21 = None
+    reshape_49 = down_blocks_3_attentions_1_value.reshape(2, 16, 112, 8);  down_blocks_3_attentions_1_value = None
+    permute_22 = reshape_49.permute(0, 2, 1, 3);  reshape_49 = None
+    reshape_50 = permute_22.reshape(224, 16, 8);  permute_22 = None
+    getattr_20 = reshape_46.dtype
+    getattr_21 = reshape_46.device
+    empty_5 = torch.empty(224, 16, 16, dtype = getattr_20, device = getattr_21);  getattr_20 = getattr_21 = None
+    transpose_16 = reshape_48.transpose(-1, -2);  reshape_48 = None
+    baddbmm_5 = torch.baddbmm(empty_5, reshape_46, transpose_16, beta = 0, alpha = 0.35355339059327373);  empty_5 = reshape_46 = transpose_16 = None
+    float_7 = baddbmm_5.float()
+    softmax_5 = torch.softmax(float_7, dim = -1);  float_7 = None
+    getattr_22 = baddbmm_5.dtype;  baddbmm_5 = None
+    type_6 = softmax_5.type(getattr_22);  softmax_5 = getattr_22 = None
+    bmm_5 = torch.bmm(type_6, reshape_50);  type_6 = reshape_50 = None
+    reshape_51 = bmm_5.reshape(2, 112, 16, 8);  bmm_5 = None
+    permute_23 = reshape_51.permute(0, 2, 1, 3);  reshape_51 = None
+    reshape_52 = permute_23.reshape(2, 16, 896);  permute_23 = None
+    down_blocks_3_attentions_1_proj_attn = getattr(getattr(self.down_blocks, "3").attentions, "1").proj_attn(reshape_52);  reshape_52 = None
+    transpose_17 = down_blocks_3_attentions_1_proj_attn.transpose(-1, -2);  down_blocks_3_attentions_1_proj_attn = None
+    reshape_53 = transpose_17.reshape(2, 896, 4, 4);  transpose_17 = None
+    add_21 = reshape_53 + truediv_13;  reshape_53 = truediv_13 = None
+    truediv_14 = add_21 / 1.0;  add_21 = None
+    mid_block_resnets_0_norm1 = getattr(self.mid_block.resnets, "0").norm1(truediv_14)
+    mid_block_resnets_0_nonlinearity = getattr(self.mid_block.resnets, "0").nonlinearity(mid_block_resnets_0_norm1);  mid_block_resnets_0_norm1 = None
+    mid_block_resnets_0_conv1 = getattr(self.mid_block.resnets, "0").conv1(mid_block_resnets_0_nonlinearity);  mid_block_resnets_0_nonlinearity = None
+    mid_block_resnets_0_nonlinearity_1 = getattr(self.mid_block.resnets, "0").nonlinearity(time_embedding_linear_2)
+    mid_block_resnets_0_time_emb_proj = getattr(self.mid_block.resnets, "0").time_emb_proj(mid_block_resnets_0_nonlinearity_1);  mid_block_resnets_0_nonlinearity_1 = None
+    getitem_12 = mid_block_resnets_0_time_emb_proj[(slice(None, None, None), slice(None, None, None), None, None)];  mid_block_resnets_0_time_emb_proj = None
+    add_22 = mid_block_resnets_0_conv1 + getitem_12;  mid_block_resnets_0_conv1 = getitem_12 = None
+    mid_block_resnets_0_norm2 = getattr(self.mid_block.resnets, "0").norm2(add_22);  add_22 = None
+    mid_block_resnets_0_nonlinearity_2 = getattr(self.mid_block.resnets, "0").nonlinearity(mid_block_resnets_0_norm2);  mid_block_resnets_0_norm2 = None
+    mid_block_resnets_0_dropout = getattr(self.mid_block.resnets, "0").dropout(mid_block_resnets_0_nonlinearity_2);  mid_block_resnets_0_nonlinearity_2 = None
+    mid_block_resnets_0_conv2 = getattr(self.mid_block.resnets, "0").conv2(mid_block_resnets_0_dropout);  mid_block_resnets_0_dropout = None
+    add_23 = truediv_14 + mid_block_resnets_0_conv2;  mid_block_resnets_0_conv2 = None
+    truediv_15 = add_23 / 1;  add_23 = None
+    mid_block_attentions_0_group_norm = getattr(self.mid_block.attentions, "0").group_norm(truediv_15)
+    view_6 = mid_block_attentions_0_group_norm.view(2, 896, 16);  mid_block_attentions_0_group_norm = None
+    transpose_18 = view_6.transpose(1, 2);  view_6 = None
+    mid_block_attentions_0_query = getattr(self.mid_block.attentions, "0").query(transpose_18)
+    mid_block_attentions_0_key = getattr(self.mid_block.attentions, "0").key(transpose_18)
+    mid_block_attentions_0_value = getattr(self.mid_block.attentions, "0").value(transpose_18);  transpose_18 = None
+    reshape_54 = mid_block_attentions_0_query.reshape(2, 16, 112, 8);  mid_block_attentions_0_query = None
+    permute_24 = reshape_54.permute(0, 2, 1, 3);  reshape_54 = None
+    reshape_55 = permute_24.reshape(224, 16, 8);  permute_24 = None
+    reshape_56 = mid_block_attentions_0_key.reshape(2, 16, 112, 8);  mid_block_attentions_0_key = None
+    permute_25 = reshape_56.permute(0, 2, 1, 3);  reshape_56 = None
+    reshape_57 = permute_25.reshape(224, 16, 8);  permute_25 = None
+    reshape_58 = mid_block_attentions_0_value.reshape(2, 16, 112, 8);  mid_block_attentions_0_value = None
+    permute_26 = reshape_58.permute(0, 2, 1, 3);  reshape_58 = None
+    reshape_59 = permute_26.reshape(224, 16, 8);  permute_26 = None
+    getattr_23 = reshape_55.dtype
+    getattr_24 = reshape_55.device
+    empty_6 = torch.empty(224, 16, 16, dtype = getattr_23, device = getattr_24);  getattr_23 = getattr_24 = None
+    transpose_19 = reshape_57.transpose(-1, -2);  reshape_57 = None
+    baddbmm_6 = torch.baddbmm(empty_6, reshape_55, transpose_19, beta = 0, alpha = 0.35355339059327373);  empty_6 = reshape_55 = transpose_19 = None
+    float_8 = baddbmm_6.float()
+    softmax_6 = torch.softmax(float_8, dim = -1);  float_8 = None
+    getattr_25 = baddbmm_6.dtype;  baddbmm_6 = None
+    type_7 = softmax_6.type(getattr_25);  softmax_6 = getattr_25 = None
+    bmm_6 = torch.bmm(type_7, reshape_59);  type_7 = reshape_59 = None
+    reshape_60 = bmm_6.reshape(2, 112, 16, 8);  bmm_6 = None
+    permute_27 = reshape_60.permute(0, 2, 1, 3);  reshape_60 = None
+    reshape_61 = permute_27.reshape(2, 16, 896);  permute_27 = None
+    mid_block_attentions_0_proj_attn = getattr(self.mid_block.attentions, "0").proj_attn(reshape_61);  reshape_61 = None
+    transpose_20 = mid_block_attentions_0_proj_attn.transpose(-1, -2);  mid_block_attentions_0_proj_attn = None
+    reshape_62 = transpose_20.reshape(2, 896, 4, 4);  transpose_20 = None
+    add_24 = reshape_62 + truediv_15;  reshape_62 = truediv_15 = None
+    truediv_16 = add_24 / 1;  add_24 = None
+    mid_block_resnets_1_norm1 = getattr(self.mid_block.resnets, "1").norm1(truediv_16)
+    mid_block_resnets_1_nonlinearity = getattr(self.mid_block.resnets, "1").nonlinearity(mid_block_resnets_1_norm1);  mid_block_resnets_1_norm1 = None
+    mid_block_resnets_1_conv1 = getattr(self.mid_block.resnets, "1").conv1(mid_block_resnets_1_nonlinearity);  mid_block_resnets_1_nonlinearity = None
+    mid_block_resnets_1_nonlinearity_1 = getattr(self.mid_block.resnets, "1").nonlinearity(time_embedding_linear_2)
+    mid_block_resnets_1_time_emb_proj = getattr(self.mid_block.resnets, "1").time_emb_proj(mid_block_resnets_1_nonlinearity_1);  mid_block_resnets_1_nonlinearity_1 = None
+    getitem_13 = mid_block_resnets_1_time_emb_proj[(slice(None, None, None), slice(None, None, None), None, None)];  mid_block_resnets_1_time_emb_proj = None
+    add_25 = mid_block_resnets_1_conv1 + getitem_13;  mid_block_resnets_1_conv1 = getitem_13 = None
+    mid_block_resnets_1_norm2 = getattr(self.mid_block.resnets, "1").norm2(add_25);  add_25 = None
+    mid_block_resnets_1_nonlinearity_2 = getattr(self.mid_block.resnets, "1").nonlinearity(mid_block_resnets_1_norm2);  mid_block_resnets_1_norm2 = None
+    mid_block_resnets_1_dropout = getattr(self.mid_block.resnets, "1").dropout(mid_block_resnets_1_nonlinearity_2);  mid_block_resnets_1_nonlinearity_2 = None
+    mid_block_resnets_1_conv2 = getattr(self.mid_block.resnets, "1").conv2(mid_block_resnets_1_dropout);  mid_block_resnets_1_dropout = None
+    add_26 = truediv_16 + mid_block_resnets_1_conv2;  truediv_16 = mid_block_resnets_1_conv2 = None
+    truediv_17 = add_26 / 1;  add_26 = None
+    cat_2 = torch.cat([truediv_17, truediv_14], dim = 1);  truediv_17 = truediv_14 = None
+    up_blocks_0_resnets_0_norm1 = getattr(getattr(self.up_blocks, "0").resnets, "0").norm1(cat_2)
+    up_blocks_0_resnets_0_nonlinearity = getattr(getattr(self.up_blocks, "0").resnets, "0").nonlinearity(up_blocks_0_resnets_0_norm1);  up_blocks_0_resnets_0_norm1 = None
+    up_blocks_0_resnets_0_conv1 = getattr(getattr(self.up_blocks, "0").resnets, "0").conv1(up_blocks_0_resnets_0_nonlinearity);  up_blocks_0_resnets_0_nonlinearity = None
+    up_blocks_0_resnets_0_nonlinearity_1 = getattr(getattr(self.up_blocks, "0").resnets, "0").nonlinearity(time_embedding_linear_2)
+    up_blocks_0_resnets_0_time_emb_proj = getattr(getattr(self.up_blocks, "0").resnets, "0").time_emb_proj(up_blocks_0_resnets_0_nonlinearity_1);  up_blocks_0_resnets_0_nonlinearity_1 = None
+    getitem_14 = up_blocks_0_resnets_0_time_emb_proj[(slice(None, None, None), slice(None, None, None), None, None)];  up_blocks_0_resnets_0_time_emb_proj = None
+    add_27 = up_blocks_0_resnets_0_conv1 + getitem_14;  up_blocks_0_resnets_0_conv1 = getitem_14 = None
+    up_blocks_0_resnets_0_norm2 = getattr(getattr(self.up_blocks, "0").resnets, "0").norm2(add_27);  add_27 = None
+    up_blocks_0_resnets_0_nonlinearity_2 = getattr(getattr(self.up_blocks, "0").resnets, "0").nonlinearity(up_blocks_0_resnets_0_norm2);  up_blocks_0_resnets_0_norm2 = None
+    up_blocks_0_resnets_0_dropout = getattr(getattr(self.up_blocks, "0").resnets, "0").dropout(up_blocks_0_resnets_0_nonlinearity_2);  up_blocks_0_resnets_0_nonlinearity_2 = None
+    up_blocks_0_resnets_0_conv2 = getattr(getattr(self.up_blocks, "0").resnets, "0").conv2(up_blocks_0_resnets_0_dropout);  up_blocks_0_resnets_0_dropout = None
+    up_blocks_0_resnets_0_conv_shortcut = getattr(getattr(self.up_blocks, "0").resnets, "0").conv_shortcut(cat_2);  cat_2 = None
+    add_28 = up_blocks_0_resnets_0_conv_shortcut + up_blocks_0_resnets_0_conv2;  up_blocks_0_resnets_0_conv_shortcut = up_blocks_0_resnets_0_conv2 = None
+    truediv_18 = add_28 / 1.0;  add_28 = None
+    up_blocks_0_attentions_0_group_norm = getattr(getattr(self.up_blocks, "0").attentions, "0").group_norm(truediv_18)
+    view_7 = up_blocks_0_attentions_0_group_norm.view(2, 896, 16);  up_blocks_0_attentions_0_group_norm = None
+    transpose_21 = view_7.transpose(1, 2);  view_7 = None
+    up_blocks_0_attentions_0_query = getattr(getattr(self.up_blocks, "0").attentions, "0").query(transpose_21)
+    up_blocks_0_attentions_0_key = getattr(getattr(self.up_blocks, "0").attentions, "0").key(transpose_21)
+    up_blocks_0_attentions_0_value = getattr(getattr(self.up_blocks, "0").attentions, "0").value(transpose_21);  transpose_21 = None
+    reshape_63 = up_blocks_0_attentions_0_query.reshape(2, 16, 112, 8);  up_blocks_0_attentions_0_query = None
+    permute_28 = reshape_63.permute(0, 2, 1, 3);  reshape_63 = None
+    reshape_64 = permute_28.reshape(224, 16, 8);  permute_28 = None
+    reshape_65 = up_blocks_0_attentions_0_key.reshape(2, 16, 112, 8);  up_blocks_0_attentions_0_key = None
+    permute_29 = reshape_65.permute(0, 2, 1, 3);  reshape_65 = None
+    reshape_66 = permute_29.reshape(224, 16, 8);  permute_29 = None
+    reshape_67 = up_blocks_0_attentions_0_value.reshape(2, 16, 112, 8);  up_blocks_0_attentions_0_value = None
+    permute_30 = reshape_67.permute(0, 2, 1, 3);  reshape_67 = None
+    reshape_68 = permute_30.reshape(224, 16, 8);  permute_30 = None
+    getattr_26 = reshape_64.dtype
+    getattr_27 = reshape_64.device
+    empty_7 = torch.empty(224, 16, 16, dtype = getattr_26, device = getattr_27);  getattr_26 = getattr_27 = None
+    transpose_22 = reshape_66.transpose(-1, -2);  reshape_66 = None
+    baddbmm_7 = torch.baddbmm(empty_7, reshape_64, transpose_22, beta = 0, alpha = 0.35355339059327373);  empty_7 = reshape_64 = transpose_22 = None
+    float_9 = baddbmm_7.float()
+    softmax_7 = torch.softmax(float_9, dim = -1);  float_9 = None
+    getattr_28 = baddbmm_7.dtype;  baddbmm_7 = None
+    type_8 = softmax_7.type(getattr_28);  softmax_7 = getattr_28 = None
+    bmm_7 = torch.bmm(type_8, reshape_68);  type_8 = reshape_68 = None
+    reshape_69 = bmm_7.reshape(2, 112, 16, 8);  bmm_7 = None
+    permute_31 = reshape_69.permute(0, 2, 1, 3);  reshape_69 = None
+    reshape_70 = permute_31.reshape(2, 16, 896);  permute_31 = None
+    up_blocks_0_attentions_0_proj_attn = getattr(getattr(self.up_blocks, "0").attentions, "0").proj_attn(reshape_70);  reshape_70 = None
+    transpose_23 = up_blocks_0_attentions_0_proj_attn.transpose(-1, -2);  up_blocks_0_attentions_0_proj_attn = None
+    reshape_71 = transpose_23.reshape(2, 896, 4, 4);  transpose_23 = None
+    add_29 = reshape_71 + truediv_18;  reshape_71 = truediv_18 = None
+    truediv_19 = add_29 / 1.0;  add_29 = None
+    cat_3 = torch.cat([truediv_19, truediv_12], dim = 1);  truediv_19 = truediv_12 = None
+    up_blocks_0_resnets_1_norm1 = getattr(getattr(self.up_blocks, "0").resnets, "1").norm1(cat_3)
+    up_blocks_0_resnets_1_nonlinearity = getattr(getattr(self.up_blocks, "0").resnets, "1").nonlinearity(up_blocks_0_resnets_1_norm1);  up_blocks_0_resnets_1_norm1 = None
+    up_blocks_0_resnets_1_conv1 = getattr(getattr(self.up_blocks, "0").resnets, "1").conv1(up_blocks_0_resnets_1_nonlinearity);  up_blocks_0_resnets_1_nonlinearity = None
+    up_blocks_0_resnets_1_nonlinearity_1 = getattr(getattr(self.up_blocks, "0").resnets, "1").nonlinearity(time_embedding_linear_2)
+    up_blocks_0_resnets_1_time_emb_proj = getattr(getattr(self.up_blocks, "0").resnets, "1").time_emb_proj(up_blocks_0_resnets_1_nonlinearity_1);  up_blocks_0_resnets_1_nonlinearity_1 = None
+    getitem_15 = up_blocks_0_resnets_1_time_emb_proj[(slice(None, None, None), slice(None, None, None), None, None)];  up_blocks_0_resnets_1_time_emb_proj = None
+    add_30 = up_blocks_0_resnets_1_conv1 + getitem_15;  up_blocks_0_resnets_1_conv1 = getitem_15 = None
+    up_blocks_0_resnets_1_norm2 = getattr(getattr(self.up_blocks, "0").resnets, "1").norm2(add_30);  add_30 = None
+    up_blocks_0_resnets_1_nonlinearity_2 = getattr(getattr(self.up_blocks, "0").resnets, "1").nonlinearity(up_blocks_0_resnets_1_norm2);  up_blocks_0_resnets_1_norm2 = None
+    up_blocks_0_resnets_1_dropout = getattr(getattr(self.up_blocks, "0").resnets, "1").dropout(up_blocks_0_resnets_1_nonlinearity_2);  up_blocks_0_resnets_1_nonlinearity_2 = None
+    up_blocks_0_resnets_1_conv2 = getattr(getattr(self.up_blocks, "0").resnets, "1").conv2(up_blocks_0_resnets_1_dropout);  up_blocks_0_resnets_1_dropout = None
+    up_blocks_0_resnets_1_conv_shortcut = getattr(getattr(self.up_blocks, "0").resnets, "1").conv_shortcut(cat_3);  cat_3 = None
+    add_31 = up_blocks_0_resnets_1_conv_shortcut + up_blocks_0_resnets_1_conv2;  up_blocks_0_resnets_1_conv_shortcut = up_blocks_0_resnets_1_conv2 = None
+    truediv_20 = add_31 / 1.0;  add_31 = None
+    up_blocks_0_attentions_1_group_norm = getattr(getattr(self.up_blocks, "0").attentions, "1").group_norm(truediv_20)
+    view_8 = up_blocks_0_attentions_1_group_norm.view(2, 896, 16);  up_blocks_0_attentions_1_group_norm = None
+    transpose_24 = view_8.transpose(1, 2);  view_8 = None
+    up_blocks_0_attentions_1_query = getattr(getattr(self.up_blocks, "0").attentions, "1").query(transpose_24)
+    up_blocks_0_attentions_1_key = getattr(getattr(self.up_blocks, "0").attentions, "1").key(transpose_24)
+    up_blocks_0_attentions_1_value = getattr(getattr(self.up_blocks, "0").attentions, "1").value(transpose_24);  transpose_24 = None
+    reshape_72 = up_blocks_0_attentions_1_query.reshape(2, 16, 112, 8);  up_blocks_0_attentions_1_query = None
+    permute_32 = reshape_72.permute(0, 2, 1, 3);  reshape_72 = None
+    reshape_73 = permute_32.reshape(224, 16, 8);  permute_32 = None
+    reshape_74 = up_blocks_0_attentions_1_key.reshape(2, 16, 112, 8);  up_blocks_0_attentions_1_key = None
+    permute_33 = reshape_74.permute(0, 2, 1, 3);  reshape_74 = None
+    reshape_75 = permute_33.reshape(224, 16, 8);  permute_33 = None
+    reshape_76 = up_blocks_0_attentions_1_value.reshape(2, 16, 112, 8);  up_blocks_0_attentions_1_value = None
+    permute_34 = reshape_76.permute(0, 2, 1, 3);  reshape_76 = None
+    reshape_77 = permute_34.reshape(224, 16, 8);  permute_34 = None
+    getattr_29 = reshape_73.dtype
+    getattr_30 = reshape_73.device
+    empty_8 = torch.empty(224, 16, 16, dtype = getattr_29, device = getattr_30);  getattr_29 = getattr_30 = None
+    transpose_25 = reshape_75.transpose(-1, -2);  reshape_75 = None
+    baddbmm_8 = torch.baddbmm(empty_8, reshape_73, transpose_25, beta = 0, alpha = 0.35355339059327373);  empty_8 = reshape_73 = transpose_25 = None
+    float_10 = baddbmm_8.float()
+    softmax_8 = torch.softmax(float_10, dim = -1);  float_10 = None
+    getattr_31 = baddbmm_8.dtype;  baddbmm_8 = None
+    type_9 = softmax_8.type(getattr_31);  softmax_8 = getattr_31 = None
+    bmm_8 = torch.bmm(type_9, reshape_77);  type_9 = reshape_77 = None
+    reshape_78 = bmm_8.reshape(2, 112, 16, 8);  bmm_8 = None
+    permute_35 = reshape_78.permute(0, 2, 1, 3);  reshape_78 = None
+    reshape_79 = permute_35.reshape(2, 16, 896);  permute_35 = None
+    up_blocks_0_attentions_1_proj_attn = getattr(getattr(self.up_blocks, "0").attentions, "1").proj_attn(reshape_79);  reshape_79 = None
+    transpose_26 = up_blocks_0_attentions_1_proj_attn.transpose(-1, -2);  up_blocks_0_attentions_1_proj_attn = None
+    reshape_80 = transpose_26.reshape(2, 896, 4, 4);  transpose_26 = None
+    add_32 = reshape_80 + truediv_20;  reshape_80 = truediv_20 = None
+    truediv_21 = add_32 / 1.0;  add_32 = None
+    cat_4 = torch.cat([truediv_21, down_blocks_2_downsamplers_0_conv], dim = 1);  truediv_21 = down_blocks_2_downsamplers_0_conv = None
+    up_blocks_0_resnets_2_norm1 = getattr(getattr(self.up_blocks, "0").resnets, "2").norm1(cat_4)
+    up_blocks_0_resnets_2_nonlinearity = getattr(getattr(self.up_blocks, "0").resnets, "2").nonlinearity(up_blocks_0_resnets_2_norm1);  up_blocks_0_resnets_2_norm1 = None
+    up_blocks_0_resnets_2_conv1 = getattr(getattr(self.up_blocks, "0").resnets, "2").conv1(up_blocks_0_resnets_2_nonlinearity);  up_blocks_0_resnets_2_nonlinearity = None
+    up_blocks_0_resnets_2_nonlinearity_1 = getattr(getattr(self.up_blocks, "0").resnets, "2").nonlinearity(time_embedding_linear_2)
+    up_blocks_0_resnets_2_time_emb_proj = getattr(getattr(self.up_blocks, "0").resnets, "2").time_emb_proj(up_blocks_0_resnets_2_nonlinearity_1);  up_blocks_0_resnets_2_nonlinearity_1 = None
+    getitem_16 = up_blocks_0_resnets_2_time_emb_proj[(slice(None, None, None), slice(None, None, None), None, None)];  up_blocks_0_resnets_2_time_emb_proj = None
+    add_33 = up_blocks_0_resnets_2_conv1 + getitem_16;  up_blocks_0_resnets_2_conv1 = getitem_16 = None
+    up_blocks_0_resnets_2_norm2 = getattr(getattr(self.up_blocks, "0").resnets, "2").norm2(add_33);  add_33 = None
+    up_blocks_0_resnets_2_nonlinearity_2 = getattr(getattr(self.up_blocks, "0").resnets, "2").nonlinearity(up_blocks_0_resnets_2_norm2);  up_blocks_0_resnets_2_norm2 = None
+    up_blocks_0_resnets_2_dropout = getattr(getattr(self.up_blocks, "0").resnets, "2").dropout(up_blocks_0_resnets_2_nonlinearity_2);  up_blocks_0_resnets_2_nonlinearity_2 = None
+    up_blocks_0_resnets_2_conv2 = getattr(getattr(self.up_blocks, "0").resnets, "2").conv2(up_blocks_0_resnets_2_dropout);  up_blocks_0_resnets_2_dropout = None
+    up_blocks_0_resnets_2_conv_shortcut = getattr(getattr(self.up_blocks, "0").resnets, "2").conv_shortcut(cat_4);  cat_4 = None
+    add_34 = up_blocks_0_resnets_2_conv_shortcut + up_blocks_0_resnets_2_conv2;  up_blocks_0_resnets_2_conv_shortcut = up_blocks_0_resnets_2_conv2 = None
+    truediv_22 = add_34 / 1.0;  add_34 = None
+    up_blocks_0_attentions_2_group_norm = getattr(getattr(self.up_blocks, "0").attentions, "2").group_norm(truediv_22)
+    view_9 = up_blocks_0_attentions_2_group_norm.view(2, 896, 16);  up_blocks_0_attentions_2_group_norm = None
+    transpose_27 = view_9.transpose(1, 2);  view_9 = None
+    up_blocks_0_attentions_2_query = getattr(getattr(self.up_blocks, "0").attentions, "2").query(transpose_27)
+    up_blocks_0_attentions_2_key = getattr(getattr(self.up_blocks, "0").attentions, "2").key(transpose_27)
+    up_blocks_0_attentions_2_value = getattr(getattr(self.up_blocks, "0").attentions, "2").value(transpose_27);  transpose_27 = None
+    reshape_81 = up_blocks_0_attentions_2_query.reshape(2, 16, 112, 8);  up_blocks_0_attentions_2_query = None
+    permute_36 = reshape_81.permute(0, 2, 1, 3);  reshape_81 = None
+    reshape_82 = permute_36.reshape(224, 16, 8);  permute_36 = None
+    reshape_83 = up_blocks_0_attentions_2_key.reshape(2, 16, 112, 8);  up_blocks_0_attentions_2_key = None
+    permute_37 = reshape_83.permute(0, 2, 1, 3);  reshape_83 = None
+    reshape_84 = permute_37.reshape(224, 16, 8);  permute_37 = None
+    reshape_85 = up_blocks_0_attentions_2_value.reshape(2, 16, 112, 8);  up_blocks_0_attentions_2_value = None
+    permute_38 = reshape_85.permute(0, 2, 1, 3);  reshape_85 = None
+    reshape_86 = permute_38.reshape(224, 16, 8);  permute_38 = None
+    getattr_32 = reshape_82.dtype
+    getattr_33 = reshape_82.device
+    empty_9 = torch.empty(224, 16, 16, dtype = getattr_32, device = getattr_33);  getattr_32 = getattr_33 = None
+    transpose_28 = reshape_84.transpose(-1, -2);  reshape_84 = None
+    baddbmm_9 = torch.baddbmm(empty_9, reshape_82, transpose_28, beta = 0, alpha = 0.35355339059327373);  empty_9 = reshape_82 = transpose_28 = None
+    float_11 = baddbmm_9.float()
+    softmax_9 = torch.softmax(float_11, dim = -1);  float_11 = None
+    getattr_34 = baddbmm_9.dtype;  baddbmm_9 = None
+    type_10 = softmax_9.type(getattr_34);  softmax_9 = getattr_34 = None
+    bmm_9 = torch.bmm(type_10, reshape_86);  type_10 = reshape_86 = None
+    reshape_87 = bmm_9.reshape(2, 112, 16, 8);  bmm_9 = None
+    permute_39 = reshape_87.permute(0, 2, 1, 3);  reshape_87 = None
+    reshape_88 = permute_39.reshape(2, 16, 896);  permute_39 = None
+    up_blocks_0_attentions_2_proj_attn = getattr(getattr(self.up_blocks, "0").attentions, "2").proj_attn(reshape_88);  reshape_88 = None
+    transpose_29 = up_blocks_0_attentions_2_proj_attn.transpose(-1, -2);  up_blocks_0_attentions_2_proj_attn = None
+    reshape_89 = transpose_29.reshape(2, 896, 4, 4);  transpose_29 = None
+    add_35 = reshape_89 + truediv_22;  reshape_89 = truediv_22 = None
+    truediv_23 = add_35 / 1.0;  add_35 = None
+    getattr_35 = truediv_23.dtype
+    eq_2 = getattr_35 == torch.bfloat16
+    interpolate = torch.nn.functional.interpolate(truediv_23, size = None, scale_factor = 2.0, mode = 'nearest', align_corners = None, recompute_scale_factor = None, antialias = False);  truediv_23 = None
+    eq_3 = getattr_35 == torch.bfloat16;  getattr_35 = None
+    up_blocks_0_upsamplers_0_conv = getattr(getattr(self.up_blocks, "0").upsamplers, "0").conv(interpolate);  interpolate = None
+    cat_5 = torch.cat([up_blocks_0_upsamplers_0_conv, truediv_10], dim = 1);  up_blocks_0_upsamplers_0_conv = truediv_10 = None
+    up_blocks_1_resnets_0_norm1 = getattr(getattr(self.up_blocks, "1").resnets, "0").norm1(cat_5)
+    up_blocks_1_resnets_0_nonlinearity = getattr(getattr(self.up_blocks, "1").resnets, "0").nonlinearity(up_blocks_1_resnets_0_norm1);  up_blocks_1_resnets_0_norm1 = None
+    up_blocks_1_resnets_0_conv1 = getattr(getattr(self.up_blocks, "1").resnets, "0").conv1(up_blocks_1_resnets_0_nonlinearity);  up_blocks_1_resnets_0_nonlinearity = None
+    up_blocks_1_resnets_0_nonlinearity_1 = getattr(getattr(self.up_blocks, "1").resnets, "0").nonlinearity(time_embedding_linear_2)
+    up_blocks_1_resnets_0_time_emb_proj = getattr(getattr(self.up_blocks, "1").resnets, "0").time_emb_proj(up_blocks_1_resnets_0_nonlinearity_1);  up_blocks_1_resnets_0_nonlinearity_1 = None
+    getitem_17 = up_blocks_1_resnets_0_time_emb_proj[(slice(None, None, None), slice(None, None, None), None, None)];  up_blocks_1_resnets_0_time_emb_proj = None
+    add_36 = up_blocks_1_resnets_0_conv1 + getitem_17;  up_blocks_1_resnets_0_conv1 = getitem_17 = None
+    up_blocks_1_resnets_0_norm2 = getattr(getattr(self.up_blocks, "1").resnets, "0").norm2(add_36);  add_36 = None
+    up_blocks_1_resnets_0_nonlinearity_2 = getattr(getattr(self.up_blocks, "1").resnets, "0").nonlinearity(up_blocks_1_resnets_0_norm2);  up_blocks_1_resnets_0_norm2 = None
+    up_blocks_1_resnets_0_dropout = getattr(getattr(self.up_blocks, "1").resnets, "0").dropout(up_blocks_1_resnets_0_nonlinearity_2);  up_blocks_1_resnets_0_nonlinearity_2 = None
+    up_blocks_1_resnets_0_conv2 = getattr(getattr(self.up_blocks, "1").resnets, "0").conv2(up_blocks_1_resnets_0_dropout);  up_blocks_1_resnets_0_dropout = None
+    up_blocks_1_resnets_0_conv_shortcut = getattr(getattr(self.up_blocks, "1").resnets, "0").conv_shortcut(cat_5);  cat_5 = None
+    add_37 = up_blocks_1_resnets_0_conv_shortcut + up_blocks_1_resnets_0_conv2;  up_blocks_1_resnets_0_conv_shortcut = up_blocks_1_resnets_0_conv2 = None
+    truediv_24 = add_37 / 1.0;  add_37 = None
+    up_blocks_1_attentions_0_group_norm = getattr(getattr(self.up_blocks, "1").attentions, "0").group_norm(truediv_24)
+    view_10 = up_blocks_1_attentions_0_group_norm.view(2, 672, 64);  up_blocks_1_attentions_0_group_norm = None
+    transpose_30 = view_10.transpose(1, 2);  view_10 = None
+    up_blocks_1_attentions_0_query = getattr(getattr(self.up_blocks, "1").attentions, "0").query(transpose_30)
+    up_blocks_1_attentions_0_key = getattr(getattr(self.up_blocks, "1").attentions, "0").key(transpose_30)
+    up_blocks_1_attentions_0_value = getattr(getattr(self.up_blocks, "1").attentions, "0").value(transpose_30);  transpose_30 = None
+    reshape_90 = up_blocks_1_attentions_0_query.reshape(2, 64, 84, 8);  up_blocks_1_attentions_0_query = None
+    permute_40 = reshape_90.permute(0, 2, 1, 3);  reshape_90 = None
+    reshape_91 = permute_40.reshape(168, 64, 8);  permute_40 = None
+    reshape_92 = up_blocks_1_attentions_0_key.reshape(2, 64, 84, 8);  up_blocks_1_attentions_0_key = None
+    permute_41 = reshape_92.permute(0, 2, 1, 3);  reshape_92 = None
+    reshape_93 = permute_41.reshape(168, 64, 8);  permute_41 = None
+    reshape_94 = up_blocks_1_attentions_0_value.reshape(2, 64, 84, 8);  up_blocks_1_attentions_0_value = None
+    permute_42 = reshape_94.permute(0, 2, 1, 3);  reshape_94 = None
+    reshape_95 = permute_42.reshape(168, 64, 8);  permute_42 = None
+    getattr_36 = reshape_91.dtype
+    getattr_37 = reshape_91.device
+    empty_10 = torch.empty(168, 64, 64, dtype = getattr_36, device = getattr_37);  getattr_36 = getattr_37 = None
+    transpose_31 = reshape_93.transpose(-1, -2);  reshape_93 = None
+    baddbmm_10 = torch.baddbmm(empty_10, reshape_91, transpose_31, beta = 0, alpha = 0.35355339059327373);  empty_10 = reshape_91 = transpose_31 = None
+    float_12 = baddbmm_10.float()
+    softmax_10 = torch.softmax(float_12, dim = -1);  float_12 = None
+    getattr_38 = baddbmm_10.dtype;  baddbmm_10 = None
+    type_11 = softmax_10.type(getattr_38);  softmax_10 = getattr_38 = None
+    bmm_10 = torch.bmm(type_11, reshape_95);  type_11 = reshape_95 = None
+    reshape_96 = bmm_10.reshape(2, 84, 64, 8);  bmm_10 = None
+    permute_43 = reshape_96.permute(0, 2, 1, 3);  reshape_96 = None
+    reshape_97 = permute_43.reshape(2, 64, 672);  permute_43 = None
+    up_blocks_1_attentions_0_proj_attn = getattr(getattr(self.up_blocks, "1").attentions, "0").proj_attn(reshape_97);  reshape_97 = None
+    transpose_32 = up_blocks_1_attentions_0_proj_attn.transpose(-1, -2);  up_blocks_1_attentions_0_proj_attn = None
+    reshape_98 = transpose_32.reshape(2, 672, 8, 8);  transpose_32 = None
+    add_38 = reshape_98 + truediv_24;  reshape_98 = truediv_24 = None
+    truediv_25 = add_38 / 1.0;  add_38 = None
+    cat_6 = torch.cat([truediv_25, truediv_8], dim = 1);  truediv_25 = truediv_8 = None
+    up_blocks_1_resnets_1_norm1 = getattr(getattr(self.up_blocks, "1").resnets, "1").norm1(cat_6)
+    up_blocks_1_resnets_1_nonlinearity = getattr(getattr(self.up_blocks, "1").resnets, "1").nonlinearity(up_blocks_1_resnets_1_norm1);  up_blocks_1_resnets_1_norm1 = None
+    up_blocks_1_resnets_1_conv1 = getattr(getattr(self.up_blocks, "1").resnets, "1").conv1(up_blocks_1_resnets_1_nonlinearity);  up_blocks_1_resnets_1_nonlinearity = None
+    up_blocks_1_resnets_1_nonlinearity_1 = getattr(getattr(self.up_blocks, "1").resnets, "1").nonlinearity(time_embedding_linear_2)
+    up_blocks_1_resnets_1_time_emb_proj = getattr(getattr(self.up_blocks, "1").resnets, "1").time_emb_proj(up_blocks_1_resnets_1_nonlinearity_1);  up_blocks_1_resnets_1_nonlinearity_1 = None
+    getitem_18 = up_blocks_1_resnets_1_time_emb_proj[(slice(None, None, None), slice(None, None, None), None, None)];  up_blocks_1_resnets_1_time_emb_proj = None
+    add_39 = up_blocks_1_resnets_1_conv1 + getitem_18;  up_blocks_1_resnets_1_conv1 = getitem_18 = None
+    up_blocks_1_resnets_1_norm2 = getattr(getattr(self.up_blocks, "1").resnets, "1").norm2(add_39);  add_39 = None
+    up_blocks_1_resnets_1_nonlinearity_2 = getattr(getattr(self.up_blocks, "1").resnets, "1").nonlinearity(up_blocks_1_resnets_1_norm2);  up_blocks_1_resnets_1_norm2 = None
+    up_blocks_1_resnets_1_dropout = getattr(getattr(self.up_blocks, "1").resnets, "1").dropout(up_blocks_1_resnets_1_nonlinearity_2);  up_blocks_1_resnets_1_nonlinearity_2 = None
+    up_blocks_1_resnets_1_conv2 = getattr(getattr(self.up_blocks, "1").resnets, "1").conv2(up_blocks_1_resnets_1_dropout);  up_blocks_1_resnets_1_dropout = None
+    up_blocks_1_resnets_1_conv_shortcut = getattr(getattr(self.up_blocks, "1").resnets, "1").conv_shortcut(cat_6);  cat_6 = None
+    add_40 = up_blocks_1_resnets_1_conv_shortcut + up_blocks_1_resnets_1_conv2;  up_blocks_1_resnets_1_conv_shortcut = up_blocks_1_resnets_1_conv2 = None
+    truediv_26 = add_40 / 1.0;  add_40 = None
+    up_blocks_1_attentions_1_group_norm = getattr(getattr(self.up_blocks, "1").attentions, "1").group_norm(truediv_26)
+    view_11 = up_blocks_1_attentions_1_group_norm.view(2, 672, 64);  up_blocks_1_attentions_1_group_norm = None
+    transpose_33 = view_11.transpose(1, 2);  view_11 = None
+    up_blocks_1_attentions_1_query = getattr(getattr(self.up_blocks, "1").attentions, "1").query(transpose_33)
+    up_blocks_1_attentions_1_key = getattr(getattr(self.up_blocks, "1").attentions, "1").key(transpose_33)
+    up_blocks_1_attentions_1_value = getattr(getattr(self.up_blocks, "1").attentions, "1").value(transpose_33);  transpose_33 = None
+    reshape_99 = up_blocks_1_attentions_1_query.reshape(2, 64, 84, 8);  up_blocks_1_attentions_1_query = None
+    permute_44 = reshape_99.permute(0, 2, 1, 3);  reshape_99 = None
+    reshape_100 = permute_44.reshape(168, 64, 8);  permute_44 = None
+    reshape_101 = up_blocks_1_attentions_1_key.reshape(2, 64, 84, 8);  up_blocks_1_attentions_1_key = None
+    permute_45 = reshape_101.permute(0, 2, 1, 3);  reshape_101 = None
+    reshape_102 = permute_45.reshape(168, 64, 8);  permute_45 = None
+    reshape_103 = up_blocks_1_attentions_1_value.reshape(2, 64, 84, 8);  up_blocks_1_attentions_1_value = None
+    permute_46 = reshape_103.permute(0, 2, 1, 3);  reshape_103 = None
+    reshape_104 = permute_46.reshape(168, 64, 8);  permute_46 = None
+    getattr_39 = reshape_100.dtype
+    getattr_40 = reshape_100.device
+    empty_11 = torch.empty(168, 64, 64, dtype = getattr_39, device = getattr_40);  getattr_39 = getattr_40 = None
+    transpose_34 = reshape_102.transpose(-1, -2);  reshape_102 = None
+    baddbmm_11 = torch.baddbmm(empty_11, reshape_100, transpose_34, beta = 0, alpha = 0.35355339059327373);  empty_11 = reshape_100 = transpose_34 = None
+    float_13 = baddbmm_11.float()
+    softmax_11 = torch.softmax(float_13, dim = -1);  float_13 = None
+    getattr_41 = baddbmm_11.dtype;  baddbmm_11 = None
+    type_12 = softmax_11.type(getattr_41);  softmax_11 = getattr_41 = None
+    bmm_11 = torch.bmm(type_12, reshape_104);  type_12 = reshape_104 = None
+    reshape_105 = bmm_11.reshape(2, 84, 64, 8);  bmm_11 = None
+    permute_47 = reshape_105.permute(0, 2, 1, 3);  reshape_105 = None
+    reshape_106 = permute_47.reshape(2, 64, 672);  permute_47 = None
+    up_blocks_1_attentions_1_proj_attn = getattr(getattr(self.up_blocks, "1").attentions, "1").proj_attn(reshape_106);  reshape_106 = None
+    transpose_35 = up_blocks_1_attentions_1_proj_attn.transpose(-1, -2);  up_blocks_1_attentions_1_proj_attn = None
+    reshape_107 = transpose_35.reshape(2, 672, 8, 8);  transpose_35 = None
+    add_41 = reshape_107 + truediv_26;  reshape_107 = truediv_26 = None
+    truediv_27 = add_41 / 1.0;  add_41 = None
+    cat_7 = torch.cat([truediv_27, down_blocks_1_downsamplers_0_conv], dim = 1);  truediv_27 = down_blocks_1_downsamplers_0_conv = None
+    up_blocks_1_resnets_2_norm1 = getattr(getattr(self.up_blocks, "1").resnets, "2").norm1(cat_7)
+    up_blocks_1_resnets_2_nonlinearity = getattr(getattr(self.up_blocks, "1").resnets, "2").nonlinearity(up_blocks_1_resnets_2_norm1);  up_blocks_1_resnets_2_norm1 = None
+    up_blocks_1_resnets_2_conv1 = getattr(getattr(self.up_blocks, "1").resnets, "2").conv1(up_blocks_1_resnets_2_nonlinearity);  up_blocks_1_resnets_2_nonlinearity = None
+    up_blocks_1_resnets_2_nonlinearity_1 = getattr(getattr(self.up_blocks, "1").resnets, "2").nonlinearity(time_embedding_linear_2)
+    up_blocks_1_resnets_2_time_emb_proj = getattr(getattr(self.up_blocks, "1").resnets, "2").time_emb_proj(up_blocks_1_resnets_2_nonlinearity_1);  up_blocks_1_resnets_2_nonlinearity_1 = None
+    getitem_19 = up_blocks_1_resnets_2_time_emb_proj[(slice(None, None, None), slice(None, None, None), None, None)];  up_blocks_1_resnets_2_time_emb_proj = None
+    add_42 = up_blocks_1_resnets_2_conv1 + getitem_19;  up_blocks_1_resnets_2_conv1 = getitem_19 = None
+    up_blocks_1_resnets_2_norm2 = getattr(getattr(self.up_blocks, "1").resnets, "2").norm2(add_42);  add_42 = None
+    up_blocks_1_resnets_2_nonlinearity_2 = getattr(getattr(self.up_blocks, "1").resnets, "2").nonlinearity(up_blocks_1_resnets_2_norm2);  up_blocks_1_resnets_2_norm2 = None
+    up_blocks_1_resnets_2_dropout = getattr(getattr(self.up_blocks, "1").resnets, "2").dropout(up_blocks_1_resnets_2_nonlinearity_2);  up_blocks_1_resnets_2_nonlinearity_2 = None
+    up_blocks_1_resnets_2_conv2 = getattr(getattr(self.up_blocks, "1").resnets, "2").conv2(up_blocks_1_resnets_2_dropout);  up_blocks_1_resnets_2_dropout = None
+    up_blocks_1_resnets_2_conv_shortcut = getattr(getattr(self.up_blocks, "1").resnets, "2").conv_shortcut(cat_7);  cat_7 = None
+    add_43 = up_blocks_1_resnets_2_conv_shortcut + up_blocks_1_resnets_2_conv2;  up_blocks_1_resnets_2_conv_shortcut = up_blocks_1_resnets_2_conv2 = None
+    truediv_28 = add_43 / 1.0;  add_43 = None
+    up_blocks_1_attentions_2_group_norm = getattr(getattr(self.up_blocks, "1").attentions, "2").group_norm(truediv_28)
+    view_12 = up_blocks_1_attentions_2_group_norm.view(2, 672, 64);  up_blocks_1_attentions_2_group_norm = None
+    transpose_36 = view_12.transpose(1, 2);  view_12 = None
+    up_blocks_1_attentions_2_query = getattr(getattr(self.up_blocks, "1").attentions, "2").query(transpose_36)
+    up_blocks_1_attentions_2_key = getattr(getattr(self.up_blocks, "1").attentions, "2").key(transpose_36)
+    up_blocks_1_attentions_2_value = getattr(getattr(self.up_blocks, "1").attentions, "2").value(transpose_36);  transpose_36 = None
+    reshape_108 = up_blocks_1_attentions_2_query.reshape(2, 64, 84, 8);  up_blocks_1_attentions_2_query = None
+    permute_48 = reshape_108.permute(0, 2, 1, 3);  reshape_108 = None
+    reshape_109 = permute_48.reshape(168, 64, 8);  permute_48 = None
+    reshape_110 = up_blocks_1_attentions_2_key.reshape(2, 64, 84, 8);  up_blocks_1_attentions_2_key = None
+    permute_49 = reshape_110.permute(0, 2, 1, 3);  reshape_110 = None
+    reshape_111 = permute_49.reshape(168, 64, 8);  permute_49 = None
+    reshape_112 = up_blocks_1_attentions_2_value.reshape(2, 64, 84, 8);  up_blocks_1_attentions_2_value = None
+    permute_50 = reshape_112.permute(0, 2, 1, 3);  reshape_112 = None
+    reshape_113 = permute_50.reshape(168, 64, 8);  permute_50 = None
+    getattr_42 = reshape_109.dtype
+    getattr_43 = reshape_109.device
+    empty_12 = torch.empty(168, 64, 64, dtype = getattr_42, device = getattr_43);  getattr_42 = getattr_43 = None
+    transpose_37 = reshape_111.transpose(-1, -2);  reshape_111 = None
+    baddbmm_12 = torch.baddbmm(empty_12, reshape_109, transpose_37, beta = 0, alpha = 0.35355339059327373);  empty_12 = reshape_109 = transpose_37 = None
+    float_14 = baddbmm_12.float()
+    softmax_12 = torch.softmax(float_14, dim = -1);  float_14 = None
+    getattr_44 = baddbmm_12.dtype;  baddbmm_12 = None
+    type_13 = softmax_12.type(getattr_44);  softmax_12 = getattr_44 = None
+    bmm_12 = torch.bmm(type_13, reshape_113);  type_13 = reshape_113 = None
+    reshape_114 = bmm_12.reshape(2, 84, 64, 8);  bmm_12 = None
+    permute_51 = reshape_114.permute(0, 2, 1, 3);  reshape_114 = None
+    reshape_115 = permute_51.reshape(2, 64, 672);  permute_51 = None
+    up_blocks_1_attentions_2_proj_attn = getattr(getattr(self.up_blocks, "1").attentions, "2").proj_attn(reshape_115);  reshape_115 = None
+    transpose_38 = up_blocks_1_attentions_2_proj_attn.transpose(-1, -2);  up_blocks_1_attentions_2_proj_attn = None
+    reshape_116 = transpose_38.reshape(2, 672, 8, 8);  transpose_38 = None
+    add_44 = reshape_116 + truediv_28;  reshape_116 = truediv_28 = None
+    truediv_29 = add_44 / 1.0;  add_44 = None
+    getattr_45 = truediv_29.dtype
+    eq_4 = getattr_45 == torch.bfloat16
+    interpolate_1 = torch.nn.functional.interpolate(truediv_29, size = None, scale_factor = 2.0, mode = 'nearest', align_corners = None, recompute_scale_factor = None, antialias = False);  truediv_29 = None
+    eq_5 = getattr_45 == torch.bfloat16;  getattr_45 = None
+    up_blocks_1_upsamplers_0_conv = getattr(getattr(self.up_blocks, "1").upsamplers, "0").conv(interpolate_1);  interpolate_1 = None
+    cat_8 = torch.cat([up_blocks_1_upsamplers_0_conv, truediv_6], dim = 1);  up_blocks_1_upsamplers_0_conv = truediv_6 = None
+    up_blocks_2_resnets_0_norm1 = getattr(getattr(self.up_blocks, "2").resnets, "0").norm1(cat_8)
+    up_blocks_2_resnets_0_nonlinearity = getattr(getattr(self.up_blocks, "2").resnets, "0").nonlinearity(up_blocks_2_resnets_0_norm1);  up_blocks_2_resnets_0_norm1 = None
+    up_blocks_2_resnets_0_conv1 = getattr(getattr(self.up_blocks, "2").resnets, "0").conv1(up_blocks_2_resnets_0_nonlinearity);  up_blocks_2_resnets_0_nonlinearity = None
+    up_blocks_2_resnets_0_nonlinearity_1 = getattr(getattr(self.up_blocks, "2").resnets, "0").nonlinearity(time_embedding_linear_2)
+    up_blocks_2_resnets_0_time_emb_proj = getattr(getattr(self.up_blocks, "2").resnets, "0").time_emb_proj(up_blocks_2_resnets_0_nonlinearity_1);  up_blocks_2_resnets_0_nonlinearity_1 = None
+    getitem_20 = up_blocks_2_resnets_0_time_emb_proj[(slice(None, None, None), slice(None, None, None), None, None)];  up_blocks_2_resnets_0_time_emb_proj = None
+    add_45 = up_blocks_2_resnets_0_conv1 + getitem_20;  up_blocks_2_resnets_0_conv1 = getitem_20 = None
+    up_blocks_2_resnets_0_norm2 = getattr(getattr(self.up_blocks, "2").resnets, "0").norm2(add_45);  add_45 = None
+    up_blocks_2_resnets_0_nonlinearity_2 = getattr(getattr(self.up_blocks, "2").resnets, "0").nonlinearity(up_blocks_2_resnets_0_norm2);  up_blocks_2_resnets_0_norm2 = None
+    up_blocks_2_resnets_0_dropout = getattr(getattr(self.up_blocks, "2").resnets, "0").dropout(up_blocks_2_resnets_0_nonlinearity_2);  up_blocks_2_resnets_0_nonlinearity_2 = None
+    up_blocks_2_resnets_0_conv2 = getattr(getattr(self.up_blocks, "2").resnets, "0").conv2(up_blocks_2_resnets_0_dropout);  up_blocks_2_resnets_0_dropout = None
+    up_blocks_2_resnets_0_conv_shortcut = getattr(getattr(self.up_blocks, "2").resnets, "0").conv_shortcut(cat_8);  cat_8 = None
+    add_46 = up_blocks_2_resnets_0_conv_shortcut + up_blocks_2_resnets_0_conv2;  up_blocks_2_resnets_0_conv_shortcut = up_blocks_2_resnets_0_conv2 = None
+    truediv_30 = add_46 / 1.0;  add_46 = None
+    up_blocks_2_attentions_0_group_norm = getattr(getattr(self.up_blocks, "2").attentions, "0").group_norm(truediv_30)
+    view_13 = up_blocks_2_attentions_0_group_norm.view(2, 448, 256);  up_blocks_2_attentions_0_group_norm = None
+    transpose_39 = view_13.transpose(1, 2);  view_13 = None
+    up_blocks_2_attentions_0_query = getattr(getattr(self.up_blocks, "2").attentions, "0").query(transpose_39)
+    up_blocks_2_attentions_0_key = getattr(getattr(self.up_blocks, "2").attentions, "0").key(transpose_39)
+    up_blocks_2_attentions_0_value = getattr(getattr(self.up_blocks, "2").attentions, "0").value(transpose_39);  transpose_39 = None
+    reshape_117 = up_blocks_2_attentions_0_query.reshape(2, 256, 56, 8);  up_blocks_2_attentions_0_query = None
+    permute_52 = reshape_117.permute(0, 2, 1, 3);  reshape_117 = None
+    reshape_118 = permute_52.reshape(112, 256, 8);  permute_52 = None
+    reshape_119 = up_blocks_2_attentions_0_key.reshape(2, 256, 56, 8);  up_blocks_2_attentions_0_key = None
+    permute_53 = reshape_119.permute(0, 2, 1, 3);  reshape_119 = None
+    reshape_120 = permute_53.reshape(112, 256, 8);  permute_53 = None
+    reshape_121 = up_blocks_2_attentions_0_value.reshape(2, 256, 56, 8);  up_blocks_2_attentions_0_value = None
+    permute_54 = reshape_121.permute(0, 2, 1, 3);  reshape_121 = None
+    reshape_122 = permute_54.reshape(112, 256, 8);  permute_54 = None
+    getattr_46 = reshape_118.dtype
+    getattr_47 = reshape_118.device
+    empty_13 = torch.empty(112, 256, 256, dtype = getattr_46, device = getattr_47);  getattr_46 = getattr_47 = None
+    transpose_40 = reshape_120.transpose(-1, -2);  reshape_120 = None
+    baddbmm_13 = torch.baddbmm(empty_13, reshape_118, transpose_40, beta = 0, alpha = 0.35355339059327373);  empty_13 = reshape_118 = transpose_40 = None
+    float_15 = baddbmm_13.float()
+    softmax_13 = torch.softmax(float_15, dim = -1);  float_15 = None
+    getattr_48 = baddbmm_13.dtype;  baddbmm_13 = None
+    type_14 = softmax_13.type(getattr_48);  softmax_13 = getattr_48 = None
+    bmm_13 = torch.bmm(type_14, reshape_122);  type_14 = reshape_122 = None
+    reshape_123 = bmm_13.reshape(2, 56, 256, 8);  bmm_13 = None
+    permute_55 = reshape_123.permute(0, 2, 1, 3);  reshape_123 = None
+    reshape_124 = permute_55.reshape(2, 256, 448);  permute_55 = None
+    up_blocks_2_attentions_0_proj_attn = getattr(getattr(self.up_blocks, "2").attentions, "0").proj_attn(reshape_124);  reshape_124 = None
+    transpose_41 = up_blocks_2_attentions_0_proj_attn.transpose(-1, -2);  up_blocks_2_attentions_0_proj_attn = None
+    reshape_125 = transpose_41.reshape(2, 448, 16, 16);  transpose_41 = None
+    add_47 = reshape_125 + truediv_30;  reshape_125 = truediv_30 = None
+    truediv_31 = add_47 / 1.0;  add_47 = None
+    cat_9 = torch.cat([truediv_31, truediv_4], dim = 1);  truediv_31 = truediv_4 = None
+    up_blocks_2_resnets_1_norm1 = getattr(getattr(self.up_blocks, "2").resnets, "1").norm1(cat_9)
+    up_blocks_2_resnets_1_nonlinearity = getattr(getattr(self.up_blocks, "2").resnets, "1").nonlinearity(up_blocks_2_resnets_1_norm1);  up_blocks_2_resnets_1_norm1 = None
+    up_blocks_2_resnets_1_conv1 = getattr(getattr(self.up_blocks, "2").resnets, "1").conv1(up_blocks_2_resnets_1_nonlinearity);  up_blocks_2_resnets_1_nonlinearity = None
+    up_blocks_2_resnets_1_nonlinearity_1 = getattr(getattr(self.up_blocks, "2").resnets, "1").nonlinearity(time_embedding_linear_2)
+    up_blocks_2_resnets_1_time_emb_proj = getattr(getattr(self.up_blocks, "2").resnets, "1").time_emb_proj(up_blocks_2_resnets_1_nonlinearity_1);  up_blocks_2_resnets_1_nonlinearity_1 = None
+    getitem_21 = up_blocks_2_resnets_1_time_emb_proj[(slice(None, None, None), slice(None, None, None), None, None)];  up_blocks_2_resnets_1_time_emb_proj = None
+    add_48 = up_blocks_2_resnets_1_conv1 + getitem_21;  up_blocks_2_resnets_1_conv1 = getitem_21 = None
+    up_blocks_2_resnets_1_norm2 = getattr(getattr(self.up_blocks, "2").resnets, "1").norm2(add_48);  add_48 = None
+    up_blocks_2_resnets_1_nonlinearity_2 = getattr(getattr(self.up_blocks, "2").resnets, "1").nonlinearity(up_blocks_2_resnets_1_norm2);  up_blocks_2_resnets_1_norm2 = None
+    up_blocks_2_resnets_1_dropout = getattr(getattr(self.up_blocks, "2").resnets, "1").dropout(up_blocks_2_resnets_1_nonlinearity_2);  up_blocks_2_resnets_1_nonlinearity_2 = None
+    up_blocks_2_resnets_1_conv2 = getattr(getattr(self.up_blocks, "2").resnets, "1").conv2(up_blocks_2_resnets_1_dropout);  up_blocks_2_resnets_1_dropout = None
+    up_blocks_2_resnets_1_conv_shortcut = getattr(getattr(self.up_blocks, "2").resnets, "1").conv_shortcut(cat_9);  cat_9 = None
+    add_49 = up_blocks_2_resnets_1_conv_shortcut + up_blocks_2_resnets_1_conv2;  up_blocks_2_resnets_1_conv_shortcut = up_blocks_2_resnets_1_conv2 = None
+    truediv_32 = add_49 / 1.0;  add_49 = None
+    up_blocks_2_attentions_1_group_norm = getattr(getattr(self.up_blocks, "2").attentions, "1").group_norm(truediv_32)
+    view_14 = up_blocks_2_attentions_1_group_norm.view(2, 448, 256);  up_blocks_2_attentions_1_group_norm = None
+    transpose_42 = view_14.transpose(1, 2);  view_14 = None
+    up_blocks_2_attentions_1_query = getattr(getattr(self.up_blocks, "2").attentions, "1").query(transpose_42)
+    up_blocks_2_attentions_1_key = getattr(getattr(self.up_blocks, "2").attentions, "1").key(transpose_42)
+    up_blocks_2_attentions_1_value = getattr(getattr(self.up_blocks, "2").attentions, "1").value(transpose_42);  transpose_42 = None
+    reshape_126 = up_blocks_2_attentions_1_query.reshape(2, 256, 56, 8);  up_blocks_2_attentions_1_query = None
+    permute_56 = reshape_126.permute(0, 2, 1, 3);  reshape_126 = None
+    reshape_127 = permute_56.reshape(112, 256, 8);  permute_56 = None
+    reshape_128 = up_blocks_2_attentions_1_key.reshape(2, 256, 56, 8);  up_blocks_2_attentions_1_key = None
+    permute_57 = reshape_128.permute(0, 2, 1, 3);  reshape_128 = None
+    reshape_129 = permute_57.reshape(112, 256, 8);  permute_57 = None
+    reshape_130 = up_blocks_2_attentions_1_value.reshape(2, 256, 56, 8);  up_blocks_2_attentions_1_value = None
+    permute_58 = reshape_130.permute(0, 2, 1, 3);  reshape_130 = None
+    reshape_131 = permute_58.reshape(112, 256, 8);  permute_58 = None
+    getattr_49 = reshape_127.dtype
+    getattr_50 = reshape_127.device
+    empty_14 = torch.empty(112, 256, 256, dtype = getattr_49, device = getattr_50);  getattr_49 = getattr_50 = None
+    transpose_43 = reshape_129.transpose(-1, -2);  reshape_129 = None
+    baddbmm_14 = torch.baddbmm(empty_14, reshape_127, transpose_43, beta = 0, alpha = 0.35355339059327373);  empty_14 = reshape_127 = transpose_43 = None
+    float_16 = baddbmm_14.float()
+    softmax_14 = torch.softmax(float_16, dim = -1);  float_16 = None
+    getattr_51 = baddbmm_14.dtype;  baddbmm_14 = None
+    type_15 = softmax_14.type(getattr_51);  softmax_14 = getattr_51 = None
+    bmm_14 = torch.bmm(type_15, reshape_131);  type_15 = reshape_131 = None
+    reshape_132 = bmm_14.reshape(2, 56, 256, 8);  bmm_14 = None
+    permute_59 = reshape_132.permute(0, 2, 1, 3);  reshape_132 = None
+    reshape_133 = permute_59.reshape(2, 256, 448);  permute_59 = None
+    up_blocks_2_attentions_1_proj_attn = getattr(getattr(self.up_blocks, "2").attentions, "1").proj_attn(reshape_133);  reshape_133 = None
+    transpose_44 = up_blocks_2_attentions_1_proj_attn.transpose(-1, -2);  up_blocks_2_attentions_1_proj_attn = None
+    reshape_134 = transpose_44.reshape(2, 448, 16, 16);  transpose_44 = None
+    add_50 = reshape_134 + truediv_32;  reshape_134 = truediv_32 = None
+    truediv_33 = add_50 / 1.0;  add_50 = None
+    cat_10 = torch.cat([truediv_33, down_blocks_0_downsamplers_0_conv], dim = 1);  truediv_33 = down_blocks_0_downsamplers_0_conv = None
+    up_blocks_2_resnets_2_norm1 = getattr(getattr(self.up_blocks, "2").resnets, "2").norm1(cat_10)
+    up_blocks_2_resnets_2_nonlinearity = getattr(getattr(self.up_blocks, "2").resnets, "2").nonlinearity(up_blocks_2_resnets_2_norm1);  up_blocks_2_resnets_2_norm1 = None
+    up_blocks_2_resnets_2_conv1 = getattr(getattr(self.up_blocks, "2").resnets, "2").conv1(up_blocks_2_resnets_2_nonlinearity);  up_blocks_2_resnets_2_nonlinearity = None
+    up_blocks_2_resnets_2_nonlinearity_1 = getattr(getattr(self.up_blocks, "2").resnets, "2").nonlinearity(time_embedding_linear_2)
+    up_blocks_2_resnets_2_time_emb_proj = getattr(getattr(self.up_blocks, "2").resnets, "2").time_emb_proj(up_blocks_2_resnets_2_nonlinearity_1);  up_blocks_2_resnets_2_nonlinearity_1 = None
+    getitem_22 = up_blocks_2_resnets_2_time_emb_proj[(slice(None, None, None), slice(None, None, None), None, None)];  up_blocks_2_resnets_2_time_emb_proj = None
+    add_51 = up_blocks_2_resnets_2_conv1 + getitem_22;  up_blocks_2_resnets_2_conv1 = getitem_22 = None
+    up_blocks_2_resnets_2_norm2 = getattr(getattr(self.up_blocks, "2").resnets, "2").norm2(add_51);  add_51 = None
+    up_blocks_2_resnets_2_nonlinearity_2 = getattr(getattr(self.up_blocks, "2").resnets, "2").nonlinearity(up_blocks_2_resnets_2_norm2);  up_blocks_2_resnets_2_norm2 = None
+    up_blocks_2_resnets_2_dropout = getattr(getattr(self.up_blocks, "2").resnets, "2").dropout(up_blocks_2_resnets_2_nonlinearity_2);  up_blocks_2_resnets_2_nonlinearity_2 = None
+    up_blocks_2_resnets_2_conv2 = getattr(getattr(self.up_blocks, "2").resnets, "2").conv2(up_blocks_2_resnets_2_dropout);  up_blocks_2_resnets_2_dropout = None
+    up_blocks_2_resnets_2_conv_shortcut = getattr(getattr(self.up_blocks, "2").resnets, "2").conv_shortcut(cat_10);  cat_10 = None
+    add_52 = up_blocks_2_resnets_2_conv_shortcut + up_blocks_2_resnets_2_conv2;  up_blocks_2_resnets_2_conv_shortcut = up_blocks_2_resnets_2_conv2 = None
+    truediv_34 = add_52 / 1.0;  add_52 = None
+    up_blocks_2_attentions_2_group_norm = getattr(getattr(self.up_blocks, "2").attentions, "2").group_norm(truediv_34)
+    view_15 = up_blocks_2_attentions_2_group_norm.view(2, 448, 256);  up_blocks_2_attentions_2_group_norm = None
+    transpose_45 = view_15.transpose(1, 2);  view_15 = None
+    up_blocks_2_attentions_2_query = getattr(getattr(self.up_blocks, "2").attentions, "2").query(transpose_45)
+    up_blocks_2_attentions_2_key = getattr(getattr(self.up_blocks, "2").attentions, "2").key(transpose_45)
+    up_blocks_2_attentions_2_value = getattr(getattr(self.up_blocks, "2").attentions, "2").value(transpose_45);  transpose_45 = None
+    reshape_135 = up_blocks_2_attentions_2_query.reshape(2, 256, 56, 8);  up_blocks_2_attentions_2_query = None
+    permute_60 = reshape_135.permute(0, 2, 1, 3);  reshape_135 = None
+    reshape_136 = permute_60.reshape(112, 256, 8);  permute_60 = None
+    reshape_137 = up_blocks_2_attentions_2_key.reshape(2, 256, 56, 8);  up_blocks_2_attentions_2_key = None
+    permute_61 = reshape_137.permute(0, 2, 1, 3);  reshape_137 = None
+    reshape_138 = permute_61.reshape(112, 256, 8);  permute_61 = None
+    reshape_139 = up_blocks_2_attentions_2_value.reshape(2, 256, 56, 8);  up_blocks_2_attentions_2_value = None
+    permute_62 = reshape_139.permute(0, 2, 1, 3);  reshape_139 = None
+    reshape_140 = permute_62.reshape(112, 256, 8);  permute_62 = None
+    getattr_52 = reshape_136.dtype
+    getattr_53 = reshape_136.device
+    empty_15 = torch.empty(112, 256, 256, dtype = getattr_52, device = getattr_53);  getattr_52 = getattr_53 = None
+    transpose_46 = reshape_138.transpose(-1, -2);  reshape_138 = None
+    baddbmm_15 = torch.baddbmm(empty_15, reshape_136, transpose_46, beta = 0, alpha = 0.35355339059327373);  empty_15 = reshape_136 = transpose_46 = None
+    float_17 = baddbmm_15.float()
+    softmax_15 = torch.softmax(float_17, dim = -1);  float_17 = None
+    getattr_54 = baddbmm_15.dtype;  baddbmm_15 = None
+    type_16 = softmax_15.type(getattr_54);  softmax_15 = getattr_54 = None
+    bmm_15 = torch.bmm(type_16, reshape_140);  type_16 = reshape_140 = None
+    reshape_141 = bmm_15.reshape(2, 56, 256, 8);  bmm_15 = None
+    permute_63 = reshape_141.permute(0, 2, 1, 3);  reshape_141 = None
+    reshape_142 = permute_63.reshape(2, 256, 448);  permute_63 = None
+    up_blocks_2_attentions_2_proj_attn = getattr(getattr(self.up_blocks, "2").attentions, "2").proj_attn(reshape_142);  reshape_142 = None
+    transpose_47 = up_blocks_2_attentions_2_proj_attn.transpose(-1, -2);  up_blocks_2_attentions_2_proj_attn = None
+    reshape_143 = transpose_47.reshape(2, 448, 16, 16);  transpose_47 = None
+    add_53 = reshape_143 + truediv_34;  reshape_143 = truediv_34 = None
+    truediv_35 = add_53 / 1.0;  add_53 = None
+    getattr_55 = truediv_35.dtype
+    eq_6 = getattr_55 == torch.bfloat16
+    interpolate_2 = torch.nn.functional.interpolate(truediv_35, size = None, scale_factor = 2.0, mode = 'nearest', align_corners = None, recompute_scale_factor = None, antialias = False);  truediv_35 = None
+    eq_7 = getattr_55 == torch.bfloat16;  getattr_55 = None
+    up_blocks_2_upsamplers_0_conv = getattr(getattr(self.up_blocks, "2").upsamplers, "0").conv(interpolate_2);  interpolate_2 = None
+    cat_11 = torch.cat([up_blocks_2_upsamplers_0_conv, truediv_2], dim = 1);  up_blocks_2_upsamplers_0_conv = truediv_2 = None
+    up_blocks_3_resnets_0_norm1 = getattr(getattr(self.up_blocks, "3").resnets, "0").norm1(cat_11)
+    up_blocks_3_resnets_0_nonlinearity = getattr(getattr(self.up_blocks, "3").resnets, "0").nonlinearity(up_blocks_3_resnets_0_norm1);  up_blocks_3_resnets_0_norm1 = None
+    up_blocks_3_resnets_0_conv1 = getattr(getattr(self.up_blocks, "3").resnets, "0").conv1(up_blocks_3_resnets_0_nonlinearity);  up_blocks_3_resnets_0_nonlinearity = None
+    up_blocks_3_resnets_0_nonlinearity_1 = getattr(getattr(self.up_blocks, "3").resnets, "0").nonlinearity(time_embedding_linear_2)
+    up_blocks_3_resnets_0_time_emb_proj = getattr(getattr(self.up_blocks, "3").resnets, "0").time_emb_proj(up_blocks_3_resnets_0_nonlinearity_1);  up_blocks_3_resnets_0_nonlinearity_1 = None
+    getitem_23 = up_blocks_3_resnets_0_time_emb_proj[(slice(None, None, None), slice(None, None, None), None, None)];  up_blocks_3_resnets_0_time_emb_proj = None
+    add_54 = up_blocks_3_resnets_0_conv1 + getitem_23;  up_blocks_3_resnets_0_conv1 = getitem_23 = None
+    up_blocks_3_resnets_0_norm2 = getattr(getattr(self.up_blocks, "3").resnets, "0").norm2(add_54);  add_54 = None
+    up_blocks_3_resnets_0_nonlinearity_2 = getattr(getattr(self.up_blocks, "3").resnets, "0").nonlinearity(up_blocks_3_resnets_0_norm2);  up_blocks_3_resnets_0_norm2 = None
+    up_blocks_3_resnets_0_dropout = getattr(getattr(self.up_blocks, "3").resnets, "0").dropout(up_blocks_3_resnets_0_nonlinearity_2);  up_blocks_3_resnets_0_nonlinearity_2 = None
+    up_blocks_3_resnets_0_conv2 = getattr(getattr(self.up_blocks, "3").resnets, "0").conv2(up_blocks_3_resnets_0_dropout);  up_blocks_3_resnets_0_dropout = None
+    up_blocks_3_resnets_0_conv_shortcut = getattr(getattr(self.up_blocks, "3").resnets, "0").conv_shortcut(cat_11);  cat_11 = None
+    add_55 = up_blocks_3_resnets_0_conv_shortcut + up_blocks_3_resnets_0_conv2;  up_blocks_3_resnets_0_conv_shortcut = up_blocks_3_resnets_0_conv2 = None
+    truediv_36 = add_55 / 1.0;  add_55 = None
+    cat_12 = torch.cat([truediv_36, truediv_1], dim = 1);  truediv_36 = truediv_1 = None
+    up_blocks_3_resnets_1_norm1 = getattr(getattr(self.up_blocks, "3").resnets, "1").norm1(cat_12)
+    up_blocks_3_resnets_1_nonlinearity = getattr(getattr(self.up_blocks, "3").resnets, "1").nonlinearity(up_blocks_3_resnets_1_norm1);  up_blocks_3_resnets_1_norm1 = None
+    up_blocks_3_resnets_1_conv1 = getattr(getattr(self.up_blocks, "3").resnets, "1").conv1(up_blocks_3_resnets_1_nonlinearity);  up_blocks_3_resnets_1_nonlinearity = None
+    up_blocks_3_resnets_1_nonlinearity_1 = getattr(getattr(self.up_blocks, "3").resnets, "1").nonlinearity(time_embedding_linear_2)
+    up_blocks_3_resnets_1_time_emb_proj = getattr(getattr(self.up_blocks, "3").resnets, "1").time_emb_proj(up_blocks_3_resnets_1_nonlinearity_1);  up_blocks_3_resnets_1_nonlinearity_1 = None
+    getitem_24 = up_blocks_3_resnets_1_time_emb_proj[(slice(None, None, None), slice(None, None, None), None, None)];  up_blocks_3_resnets_1_time_emb_proj = None
+    add_56 = up_blocks_3_resnets_1_conv1 + getitem_24;  up_blocks_3_resnets_1_conv1 = getitem_24 = None
+    up_blocks_3_resnets_1_norm2 = getattr(getattr(self.up_blocks, "3").resnets, "1").norm2(add_56);  add_56 = None
+    up_blocks_3_resnets_1_nonlinearity_2 = getattr(getattr(self.up_blocks, "3").resnets, "1").nonlinearity(up_blocks_3_resnets_1_norm2);  up_blocks_3_resnets_1_norm2 = None
+    up_blocks_3_resnets_1_dropout = getattr(getattr(self.up_blocks, "3").resnets, "1").dropout(up_blocks_3_resnets_1_nonlinearity_2);  up_blocks_3_resnets_1_nonlinearity_2 = None
+    up_blocks_3_resnets_1_conv2 = getattr(getattr(self.up_blocks, "3").resnets, "1").conv2(up_blocks_3_resnets_1_dropout);  up_blocks_3_resnets_1_dropout = None
+    up_blocks_3_resnets_1_conv_shortcut = getattr(getattr(self.up_blocks, "3").resnets, "1").conv_shortcut(cat_12);  cat_12 = None
+    add_57 = up_blocks_3_resnets_1_conv_shortcut + up_blocks_3_resnets_1_conv2;  up_blocks_3_resnets_1_conv_shortcut = up_blocks_3_resnets_1_conv2 = None
+    truediv_37 = add_57 / 1.0;  add_57 = None
+    cat_13 = torch.cat([truediv_37, conv_in], dim = 1);  truediv_37 = conv_in = None
+    up_blocks_3_resnets_2_norm1 = getattr(getattr(self.up_blocks, "3").resnets, "2").norm1(cat_13)
+    up_blocks_3_resnets_2_nonlinearity = getattr(getattr(self.up_blocks, "3").resnets, "2").nonlinearity(up_blocks_3_resnets_2_norm1);  up_blocks_3_resnets_2_norm1 = None
+    up_blocks_3_resnets_2_conv1 = getattr(getattr(self.up_blocks, "3").resnets, "2").conv1(up_blocks_3_resnets_2_nonlinearity);  up_blocks_3_resnets_2_nonlinearity = None
+    up_blocks_3_resnets_2_nonlinearity_1 = getattr(getattr(self.up_blocks, "3").resnets, "2").nonlinearity(time_embedding_linear_2);  time_embedding_linear_2 = None
+    up_blocks_3_resnets_2_time_emb_proj = getattr(getattr(self.up_blocks, "3").resnets, "2").time_emb_proj(up_blocks_3_resnets_2_nonlinearity_1);  up_blocks_3_resnets_2_nonlinearity_1 = None
+    getitem_25 = up_blocks_3_resnets_2_time_emb_proj[(slice(None, None, None), slice(None, None, None), None, None)];  up_blocks_3_resnets_2_time_emb_proj = None
+    add_58 = up_blocks_3_resnets_2_conv1 + getitem_25;  up_blocks_3_resnets_2_conv1 = getitem_25 = None
+    up_blocks_3_resnets_2_norm2 = getattr(getattr(self.up_blocks, "3").resnets, "2").norm2(add_58);  add_58 = None
+    up_blocks_3_resnets_2_nonlinearity_2 = getattr(getattr(self.up_blocks, "3").resnets, "2").nonlinearity(up_blocks_3_resnets_2_norm2);  up_blocks_3_resnets_2_norm2 = None
+    up_blocks_3_resnets_2_dropout = getattr(getattr(self.up_blocks, "3").resnets, "2").dropout(up_blocks_3_resnets_2_nonlinearity_2);  up_blocks_3_resnets_2_nonlinearity_2 = None
+    up_blocks_3_resnets_2_conv2 = getattr(getattr(self.up_blocks, "3").resnets, "2").conv2(up_blocks_3_resnets_2_dropout);  up_blocks_3_resnets_2_dropout = None
+    up_blocks_3_resnets_2_conv_shortcut = getattr(getattr(self.up_blocks, "3").resnets, "2").conv_shortcut(cat_13);  cat_13 = None
+    add_59 = up_blocks_3_resnets_2_conv_shortcut + up_blocks_3_resnets_2_conv2;  up_blocks_3_resnets_2_conv_shortcut = up_blocks_3_resnets_2_conv2 = None
+    truediv_38 = add_59 / 1.0;  add_59 = None
+    conv_norm_out = self.conv_norm_out(truediv_38);  truediv_38 = None
+    conv_act = self.conv_act(conv_norm_out);  conv_norm_out = None
+    conv_out = self.conv_out(conv_act);  conv_act = None
+    return {'sample': conv_out}
