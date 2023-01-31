@@ -2,9 +2,10 @@
 from typing import Callable
 
 import torch
-from siu.fx.node_util import compute_size_in_bytes
 from torch.autograd.profiler_util import _format_memory, _format_time
 from zoo import tm_models, tmm_models
+
+from siu.fx.node_util import compute_size_in_bytes
 
 
 def run_forward(gm: torch.fx.GraphModule, data_gen: Callable, num_steps: int):

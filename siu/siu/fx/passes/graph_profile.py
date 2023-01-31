@@ -2,13 +2,14 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 
 import torch
 import torch.fx
-from siu._subclasses import MetaTensor, flop_count
-from siu.fx.node_util import MetaInfo
 from torch.autograd.graph import saved_tensors_hooks
 from torch.autograd.profiler_util import _format_memory, _format_time
 from torch.fx import GraphModule
 from torch.fx.node import Argument, Node, Target
 from torch.utils._pytree import tree_map
+
+from siu._subclasses import MetaTensor, flop_count
+from siu.fx.node_util import MetaInfo
 
 
 def _format_flops(flops: float) -> str:

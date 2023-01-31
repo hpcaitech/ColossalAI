@@ -1,7 +1,8 @@
 import torch
 import torch.fx
-from siu.fx.passes import GraphProfile, ShapeProp, graph_profile_pass, shape_prop_pass
 from torch.fx import GraphModule
+
+from siu.fx.passes import GraphProfile, ShapeProp, graph_profile_pass, shape_prop_pass
 
 
 def register_profile_impl(func):

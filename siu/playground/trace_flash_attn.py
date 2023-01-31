@@ -1,10 +1,10 @@
 import torch
 import torch.nn as nn
-from siu.fx import symbolic_trace
-from siu.fx.symbolic_trace import register_leaf_module, register_leaf_module_impl
 
 from colossalai.kernel.cuda_native.flash_attention import FlashAttention
 from colossalai.kernel.cuda_native.layer_norm import MixedFusedLayerNorm
+from siu.fx import symbolic_trace
+from siu.fx.symbolic_trace import register_leaf_module, register_leaf_module_impl
 
 register_leaf_module(FlashAttention)
 register_leaf_module(MixedFusedLayerNorm)

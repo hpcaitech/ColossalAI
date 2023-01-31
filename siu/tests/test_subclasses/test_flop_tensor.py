@@ -3,8 +3,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as tm
-from siu._subclasses import MetaTensorMode, flop_count
 from zoo import tm_models, tmm_models
+
+from siu._subclasses import MetaTensorMode, flop_count
 
 
 @pytest.mark.parametrize('m', tm_models + tmm_models)

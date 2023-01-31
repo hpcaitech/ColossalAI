@@ -1,7 +1,8 @@
 import pytest
 import torch
-from siu.fx import symbolic_trace
 from torch.utils.checkpoint import checkpoint
+
+from siu.fx import symbolic_trace
 
 
 class LinearModel(torch.nn.Module):

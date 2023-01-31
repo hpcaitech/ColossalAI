@@ -1,6 +1,7 @@
 import diffusers
 import pytest
 import torch
+
 from siu.fx import symbolic_trace
 
 BATCH_SIZE = 2

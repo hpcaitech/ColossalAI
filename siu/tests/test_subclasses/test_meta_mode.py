@@ -2,8 +2,9 @@ import pytest
 import torch
 import torch.distributed as dist
 import torchvision.models as tm
-from siu._subclasses import MetaTensor, MetaTensorMode
 from zoo import tm_models, tmm_models
+
+from siu._subclasses import MetaTensor, MetaTensorMode
 
 
 def compare_all(tensor: torch.Tensor, meta_tensor: torch.Tensor):

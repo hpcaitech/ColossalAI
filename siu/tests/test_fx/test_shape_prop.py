@@ -2,11 +2,12 @@ import pytest
 import timm.models as tmm
 import torch
 import torchvision.models as tm
+from zoo import tm_models, tmm_models
+
 from siu._subclasses import MetaTensorMode
 from siu.fx import symbolic_trace
 from siu.fx.passes.shape_prop import shape_prop_pass
 from siu.fx.symbolic_profile import register_shape_impl
-from zoo import tm_models, tmm_models
 
 
 def _check_gm_validity(gm: torch.fx.GraphModule):

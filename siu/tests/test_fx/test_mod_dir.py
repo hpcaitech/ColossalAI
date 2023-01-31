@@ -1,5 +1,6 @@
 import pytest
 import torch
+
 from siu.fx import symbolic_trace
 
 
