@@ -17,8 +17,8 @@ from test_transformer_utils import run_test
 
 from colossalai.autochunk.autochunk_codegen import AUTOCHUNK_AVAILABLE
 
-BATCH_SIZE = 2
-SEQ_LENGTH = 256
+BATCH_SIZE = 1
+SEQ_LENGTH = 512
 
 
 def get_data(shape: tuple) -> Tuple[List, List]:
@@ -37,17 +37,14 @@ def get_data(shape: tuple) -> Tuple[List, List]:
 )
 @pytest.mark.parametrize("model", MODELS)
 @pytest.mark.parametrize("shape", [(BATCH_SIZE, SEQ_LENGTH)])
-@pytest.mark.parametrize("max_memory", [None, 4.5, 5])
-def test_gpt(model, shape, max_memory):
+@pytest.mark.parametrize("max_memory", [None, 6, 8])
+def test_autochunk_gpt(model, shape, max_memory):
     run_func = partial(
         run_test,
         data=get_data(shape),
         max_memory=max_memory,
         model=model,
         config=GPT2Config(n_embd=96, n_position=shape[1], n_layer=2, n_head=4),
-        print_code=False,
-        print_mem=False,
-        print_progress=False,
     )
     mp.spawn(run_func, nprocs=1)
 
@@ -59,7 +56,8 @@ if __name__ == "__main__":
         max_memory=None,
         model=GPT2Model,
         config=GPT2Config(n_embd=96, n_position=SEQ_LENGTH, n_layer=2, n_head=4),
-        print_code=True,
-        print_mem=True,
+        print_code=False,
+        print_est_mem=False,
+        print_mem=False,
         print_progress=False,
     )

@@ -55,9 +55,10 @@ def get_data(msa_len: int, pair_len: int) -> Tuple[List, List]:
 
 def get_chunk_target() -> Dict:
     return {
-        None: [(118, 123), (219, 237), (264, 289), (302, 309), (97, 104), (144, 152), (185, 193), (241, 242), (21, 46)],
-        20: [(118, 123), (230, 237), (275, 282), (305, 306), (100, 101), (32, 39), (73, 79)],
-        24: [(118, 123)],
+        None: [(120, 123), (222, 237), (269, 289), (305, 311), (100, 105), (146, 152), (187, 193), (241, 242),
+               (25, 50)],
+        20: [(120, 123), (232, 237), (277, 282), (305, 306), (100, 101), (34, 39)],
+        24: [(120, 123)],
     }
 
 
@@ -75,9 +76,6 @@ def test_evoformer_block(data_args, max_memory):
         get_model=get_model,
         get_data=get_data,
         get_chunk_target=get_chunk_target,
-        print_code=False,
-        print_mem=False,
-        print_progress=False,
     )
     mp.spawn(run_func, nprocs=1)
 
@@ -86,10 +84,12 @@ if __name__ == "__main__":
     run_test(
         rank=0,
         data_args=(32, 64),
-        max_memory=20,
+        max_memory=24,
         get_model=get_model,
         get_data=get_data,
+        get_chunk_target=get_chunk_target,
         print_code=False,
         print_mem=False,
+        print_est_mem=False,
         print_progress=False,
     )

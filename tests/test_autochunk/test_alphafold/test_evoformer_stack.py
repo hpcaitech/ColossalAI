@@ -70,9 +70,6 @@ def test_evoformer_stack(data_args, max_memory):
         max_memory=max_memory,
         get_model=get_model,
         get_data=get_data,
-        print_code=False,
-        print_mem=False,
-        print_progress=False,
     )
     mp.spawn(run_func, nprocs=1)
 
@@ -81,7 +78,7 @@ if __name__ == "__main__":
     run_test(
         rank=0,
         data_args=(32, 64),
-        max_memory=20,
+        max_memory=None,
         get_model=get_model,
         get_data=get_data,
         print_code=False,
