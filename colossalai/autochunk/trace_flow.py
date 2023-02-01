@@ -64,24 +64,6 @@ class TraceFlow(object):
             return False
         return True
 
-    def get_node_chunk_dim(self, node_from, node_from_dim, node_to):
-        node_from_source = self.trace_indice._find_source_trace_from_node(node_from)
-        dim_source = node_from_source[node_from_dim]
-        node_to_idx = self.node_mgr.find_node_idx(node_to)
-        for k, v in dim_source.items():
-            if k == node_to_idx:
-                return v
-        return None
-
-    def _find_inherit_dim(self, input_node, input_dim, node):
-        input_node_idx = self.node_mgr.find_node_idx(input_node)
-        node_trace_source = self.trace_indice._find_source_trace_from_node(node)
-        for node_dim in range(len(get_node_shape(node))):
-            if (input_node_idx in node_trace_source[node_dim]
-                    and input_dim[0] in node_trace_source[node_dim][input_node_idx]):
-                return node_dim
-        return None
-
     def _assgin_single_node_flow(
         self,
         arg_node: Node,
@@ -358,9 +340,6 @@ class TraceFlow(object):
     def flow_search(self, start_idx, start_dim, end_idx, end_dim):
         inputs, outputs = find_chunk_compute_input_and_output_nodes(
             self.node_mgr.get_node_slice_by_idx(start_idx, end_idx + 1))
-        # limit output num
-        # if len(find_tensor_node(outputs)) > 3:
-        #     return None
 
         # get every node's chunk dim and fix dim
         all_node_info = self._get_all_node_info(end_dim, start_idx, end_idx)

@@ -104,10 +104,10 @@ def run_test(
     config: Any,
     data: tuple,
     max_memory: int,
-    print_code: bool,
-    print_est_mem: bool,
-    print_mem: bool,
-    print_progress: bool,
+    print_code: bool = False,
+    print_est_mem: bool = False,
+    print_mem: bool = False,
+    print_progress: bool = False,
     get_chunk_target: Any = None,
 ) -> None:
     model = model(config=config)
