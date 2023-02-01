@@ -82,7 +82,7 @@ def _benchmark_autochunk_gpt_origin(
     # bench
     mem = _benchmark_memory(model, inputs)
     speed = _benchmark_speed(model, inputs)
-    print("gpt origin   , mem: %.2fMB, time: %.4fs" % (mem, speed))
+    print("gpt origin, mem: %.2fMB, time: %.4fs" % (mem, speed))
 
 
 def _benchmark_memory(model, inputs):
