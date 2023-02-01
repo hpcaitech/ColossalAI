@@ -23,6 +23,7 @@ def assert_codegen_run(
     concrete_args: List = None,
     max_memory: int = None,
     print_mem: bool = False,
+    print_est_mem: bool = False,
     print_progress: bool = False,
     print_code: bool = False,
 ) -> List[Dict]:
@@ -41,7 +42,7 @@ def assert_codegen_run(
     codegen = AutoChunkCodeGen(
         meta_graph,
         max_memory=max_memory,
-        print_mem=print_mem,
+        print_mem=print_est_mem,
         print_progress=print_progress,
     )
     chunks = codegen.chunk_infos
@@ -61,13 +62,20 @@ def assert_codegen_run(
     code = graph.python_code("self").src
     if print_code:
         print(code)
-    assert "chunk_result = None;  chunk_size = None;" in code
+    assert "chunk_size = None;  " in code
 
     # assert result
     inputs = [i[1] for i in meta_args] + [i[1] for i in concrete_args]
+    inputs = [i.cuda() if isinstance(i, torch.Tensor) else i for i in inputs]
     model.cuda()
     with torch.no_grad():
-        out_gm = gm(*inputs)
+        if print_mem:
+            torch.cuda.reset_peak_memory_stats()
+            now_mem = torch.cuda.memory_allocated() / 1024**2
+        out_gm = gm(*[i.clone() if isinstance(i, torch.Tensor) else i for i in inputs])
+        if print_mem:
+            new_max_mem = torch.cuda.max_memory_allocated() / 1024**2
+            print("mem: %.2fMB" % (new_max_mem - now_mem))
         out_model = model(*inputs)
     out_gm = flat_list(out_gm)
     out_model = flat_list(out_model)
@@ -85,9 +93,10 @@ def run_test(
     max_memory: int,
     get_model: Any,
     get_data: Any,
-    print_code: bool,
-    print_mem: bool,
-    print_progress: bool,
+    print_code: bool = False,
+    print_mem: bool = False,
+    print_est_mem: bool = False,
+    print_progress: bool = False,
     get_chunk_target: Any = None,
 ) -> None:
     # launch colossalai
@@ -110,6 +119,7 @@ def run_test(
         max_memory=max_memory,
         print_code=print_code,
         print_mem=print_mem,
+        print_est_mem=print_est_mem,
         print_progress=print_progress,
     )
 

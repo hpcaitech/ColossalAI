@@ -55,10 +55,10 @@ def get_data(msa_len: int, pair_len: int) -> Tuple[List, List]:
 
 def get_chunk_target() -> Dict:
     return {
-        None: [(126, 131), (227, 245), (272, 297), (310, 317), (105, 112), (152, 160), (193, 201), (249, 250),
-               (33, 46)],
-        20: [(126, 131), (238, 245), (283, 290), (313, 314), (108, 109), (35, 46)],
-        24: [(126, 131)],
+        None: [(128, 131), (230, 245), (277, 297), (313, 319), (108, 113), (154, 160), (195, 201), (249, 250),
+               (36, 46)],
+        20: [(128, 131), (240, 245), (285, 290), (313, 314), (108, 109), (41, 46)],
+        24: [(128, 131)],
     }
 
 
@@ -75,9 +75,7 @@ def test_extramsa_block(data_args, max_memory):
         max_memory=max_memory,
         get_model=get_model,
         get_data=get_data,
-        print_code=False,
-        print_mem=False,
-        print_progress=False,
+        get_chunk_target=get_chunk_target,
     )
     mp.spawn(run_func, nprocs=1)
 
@@ -86,7 +84,7 @@ if __name__ == "__main__":
     run_test(
         rank=0,
         data_args=(32, 64),
-        max_memory=20,
+        max_memory=None,
         get_model=get_model,
         get_data=get_data,
         get_chunk_target=get_chunk_target,

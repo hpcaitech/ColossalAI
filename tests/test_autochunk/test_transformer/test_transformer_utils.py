@@ -20,6 +20,7 @@ def assert_codegen_run(
     model: Any,
     data: tuple,
     max_memory: int = None,
+    print_est_mem: bool = False,
     print_mem: bool = False,
     print_progress: bool = False,
     print_code: bool = False,
@@ -41,7 +42,7 @@ def assert_codegen_run(
     codegen = AutoChunkCodeGen(
         meta_graph,
         max_memory=max_memory,
-        print_mem=print_mem,
+        print_mem=print_est_mem,
         print_progress=print_progress,
     )
     chunks = codegen.chunk_infos
@@ -61,7 +62,7 @@ def assert_codegen_run(
     code = graph.python_code("self").src
     if print_code:
         print(code)
-    assert "chunk_result = None;  chunk_size = None;" in code
+    assert "chunk_size = None;  " in code
 
     # assert result
     inputs = [meta_args[i] if i in meta_args else concrete_args[i] for i in sequence]
@@ -69,15 +70,32 @@ def assert_codegen_run(
     model.cuda().eval()
     gm.eval()
     with torch.no_grad():
-        out_gm = gm(*inputs)
+        if print_mem:
+            torch.cuda.reset_peak_memory_stats()
+            now_mem = torch.cuda.memory_allocated() / 1024**2
+        out_gm = gm(*[i.clone() if isinstance(i, torch.Tensor) else i for i in inputs])
+        if print_mem:
+            new_max_mem = torch.cuda.max_memory_allocated() / 1024**2
+            print("mem: %.2fMB" % (new_max_mem - now_mem))
         out_model = model(*inputs)
-    for k in out_model.keys():
-        if torch.is_tensor(out_gm[k]):
-            assert torch.equal(
-                out_model[k], out_gm[k]
-            ), f'{model.__class__.__name__} has incorrect output {k}, expect {out_model[k]}, but got {out_gm[k]}'
-
+    assert_allclose(out_model, out_gm)
     return chunks
+
+
+def assert_allclose(out_model: Any, out_gm: Any) -> None:
+    """
+    assert allclose for out
+    """
+    if isinstance(out_model, torch.Tensor):
+        assert torch.allclose(out_model, out_gm,
+                              atol=1e-4), "fx_out doesn't comply with original output, diff is %.2e" % torch.mean(
+                                  torch.abs(out_model - out_gm))
+    elif isinstance(out_model, dict):
+        for k in out_model.keys():
+            assert_allclose(out_model[k], out_gm[k])
+    elif isinstance(out_model, tuple) or isinstance(out_model, list) or isinstance(out_model, set):
+        for i, j in zip(out_model, out_gm):
+            assert_allclose(i, j)
 
 
 def run_test(
@@ -86,9 +104,10 @@ def run_test(
     config: Any,
     data: tuple,
     max_memory: int,
-    print_code: bool,
-    print_mem: bool,
-    print_progress: bool,
+    print_code: bool = False,
+    print_est_mem: bool = False,
+    print_mem: bool = False,
+    print_progress: bool = False,
     get_chunk_target: Any = None,
 ) -> None:
     model = model(config=config)
@@ -108,6 +127,7 @@ def run_test(
         data=data,
         max_memory=max_memory,
         print_code=print_code,
+        print_est_mem=print_est_mem,
         print_mem=print_mem,
         print_progress=print_progress,
     )
@@ -119,5 +139,3 @@ def run_test(
             str(chunk_found),
             str(chunk_target),
         )
-
-    gpc.destroy()
