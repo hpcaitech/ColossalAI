@@ -400,7 +400,7 @@ class TraceFlow(object):
                 continue
             # loop every dim of outputs, try to find a legal one
             for output_dim in range(len(get_node_shape(output))):
-                if not self._check_region_start_end(start_node, start_dim, start_idx, output, output_dim, output_idx):
+                if not self.check_region_start_end(start_node, start_dim, start_idx, output, output_dim, output_idx):
                     continue
                 new_all_node_info = self._get_all_node_info(output_dim, start_idx, output_idx)
                 if new_all_node_info is None:
@@ -473,45 +473,8 @@ class TraceFlow(object):
         chunk_info["reshape_size"] = reshape_size
         return chunk_info
 
-    def find_chunk_info(self, input_trace, output_trace, start_idx, end_idx) -> List:
-        """
-        Find chunk info for a region.
-
-        We are given the region start and region end, and need to find out all chunk info for it.
-        We first loop every dim of start node and end node, to see if we can find dim pair,
-        which is linked in a flow and not computed.
-        If found, we then search flow in the whole region to find out all chunk infos.
-
-        Args:
-            input_trace (List): node's input trace in region
-            output_trace (List): node's output trace in region
-            start_idx (int): region start node index
-            end_idx (int): region end node index
-
-        Returns:
-            chunk_infos: possible regions found
-        """
-        start_traces = input_trace[start_idx]
-        if len(start_traces) > 1:    # TODO need to be removed
-            return []
-        end_trace = output_trace[end_idx]
-        end_node = self.node_mgr.get_node_by_idx(end_idx)
-
-        chunk_infos = []
-        for end_dim, _ in enumerate(end_trace["indice"]):
-            for start_node, start_trace in start_traces.items():
-                for start_dim, _ in enumerate(start_trace["indice"]):
-                    if not self._check_region_start_end(start_node, start_dim, start_idx, end_node, end_dim, end_idx):
-                        continue
-                    # flow search
-                    chunk_info = self.flow_search(start_idx, start_dim, end_idx, end_dim)
-                    if chunk_info is None:
-                        continue
-                    chunk_infos.append(chunk_info)
-        return chunk_infos
-
-    def _check_region_start_end(self, start_node: Node, start_dim: int, start_idx: int, end_node: Node, end_dim: int,
-                                end_idx: int) -> bool:
+    def check_region_start_end(self, start_node: Node, start_dim: int, start_idx: int, end_node: Node, end_dim: int,
+                               end_idx: int) -> bool:
         """
         check if region start and end is legal
         """
