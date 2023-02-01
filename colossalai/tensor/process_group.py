@@ -140,8 +140,9 @@ class ProcessGroup:
 
     def __repr__(self):
         if self.is_init:
-            return "ProcessGroup:\n\tRank: {}, World size: {}, DP degree: {}, TP degree: {}\n\tRanks in group: {}".\
-                format(self._rank, self._world_size, self._dp_degree, self._tp_degree, self._rank_list)
+            ranks_str = f"ProcessGroup(ranks={self._rank_list},\n"
+            personal_str = f"             rank={self._rank}, dp={self._dp_degree}, tp={self._tp_degree})"
+            return ranks_str + personal_str
         else:
             return "ProcessGroup not initialized"
 
