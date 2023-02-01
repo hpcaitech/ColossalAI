@@ -62,7 +62,7 @@ def _benchmark_autochunk_gpt_gm(
     # bench
     mem = _benchmark_memory(gm, inputs)
     speed = _benchmark_speed(gm, inputs)
-    print("gpt gm, mem: %.2fMB, time: %.4fs" % (mem, speed))
+    print("gpt autochunk, mem: %.2fMB, time: %.4fs" % (mem, speed))
 
 
 def _benchmark_autochunk_gpt_origin(
@@ -82,7 +82,7 @@ def _benchmark_autochunk_gpt_origin(
     # bench
     mem = _benchmark_memory(model, inputs)
     speed = _benchmark_speed(model, inputs)
-    print("gpt origin, mem: %.2fMB, time: %.4fs" % (mem, speed))
+    print("gpt origin   , mem: %.2fMB, time: %.4fs" % (mem, speed))
 
 
 def _benchmark_memory(model, inputs):
@@ -107,18 +107,13 @@ def _benchmark_speed(model, inputs, loop=5):
     return (time2 - time1) / loop
 
 
-def benchmark_autochunk_gpt():
+def benchmark_autochunk_gpt(batch=1, seq=512, n_embd=768, n_head=12):
     from test_autochunk_gpt import GPT2Config, GPT2Model, get_data
-
-    batch = 1
-    seq = 512
-    n_embd = 96
-
     model = GPT2Model
-    config = GPT2Config(n_embd=n_embd, n_position=seq, n_layer=2, n_head=4)
+    config = GPT2Config(n_embd=n_embd, n_position=seq, n_layer=2, n_head=n_head)
     model = model(config=config)
     shape = [batch, seq]
-    print("")
+    print("\nbatch: %d, seq: %d, n_embd: %d, n_head: %d" % (batch, seq, n_embd, n_head))
     _benchmark_autochunk_gpt_origin(model, get_data(shape))
     _benchmark_autochunk_gpt_gm(model, get_data(shape), None)
 
@@ -133,4 +128,4 @@ if __name__ == "__main__":
         port=free_port(),
         backend="nccl",
     )
-    benchmark_autochunk_gpt()
+    benchmark_autochunk_gpt(batch=1, seq=512, n_embd=768, n_head=12)
