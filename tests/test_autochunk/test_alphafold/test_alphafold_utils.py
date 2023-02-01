@@ -130,5 +130,3 @@ def run_test(
             str(chunk_found),
             str(chunk_target),
         )
-
-    gpc.destroy()
