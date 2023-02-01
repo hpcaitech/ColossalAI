@@ -90,7 +90,7 @@ def _benchmark_memory(model, inputs):
     with torch.no_grad():
         torch.cuda.reset_peak_memory_stats()
         now_mem = torch.cuda.memory_allocated() / 1024**2
-        model(*inputs)
+        model(*[i.clone() if isinstance(i, torch.Tensor) else i for i in inputs])
         new_max_mem = torch.cuda.max_memory_allocated() / 1024**2
     return new_max_mem - now_mem
 
