@@ -109,7 +109,7 @@ def _benchmark_speed(model, inputs, loop=5):
 
 
 def benchmark_evoformer_stack():
-    from test_evoformer_stack import get_data, get_model
+    from test_autochunk_evoformer_stack import get_data, get_model
     data_args = [128, 256]
     print("")
     _benchmark_evoformer_stack_origin(data_args, get_model, get_data)

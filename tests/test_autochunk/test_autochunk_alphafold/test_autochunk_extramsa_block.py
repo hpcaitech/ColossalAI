@@ -7,18 +7,17 @@ import torch.fx
 import torch.multiprocessing as mp
 
 try:
-    from fastfold.model.nn.evoformer import EvoformerBlock
+    from fastfold.model.nn.evoformer import ExtraMSABlock
     HAS_REPO = True
 except:
     HAS_REPO = False
-
-from test_alphafold_utils import run_test
+from test_autochunk_alphafold_utils import run_test
 
 from colossalai.autochunk.autochunk_codegen import AUTOCHUNK_AVAILABLE
 
 
 def get_model():
-    model = EvoformerBlock(
+    model = ExtraMSABlock(
         c_m=256,
         c_z=128,
         c_hidden_msa_att=32,
@@ -32,6 +31,7 @@ def get_model():
         pair_dropout=0.15,
         inf=1e4,
         eps=1e-4,
+        ckpt=False,
         is_multimer=False,
     ).eval().cuda()
     return model
@@ -49,16 +49,16 @@ def get_data(msa_len: int, pair_len: int) -> Tuple[List, List]:
         ("msa_mask", node_mask),
         ("pair_mask", pair_mask),
     ]
-    concrete_args = [("chunk_size", None), ("_mask_trans", True)]
+    concrete_args = [("chunk_size", None), ("_chunk_logits", 1024)]
     return meta_args, concrete_args
 
 
 def get_chunk_target() -> Dict:
     return {
-        None: [(120, 123), (222, 237), (269, 289), (305, 311), (100, 105), (146, 152), (187, 193), (241, 242),
-               (25, 50)],
-        20: [(120, 123), (232, 237), (277, 282), (305, 306), (100, 101), (34, 39)],
-        24: [(120, 123)],
+        None: [(128, 131), (230, 245), (277, 297), (313, 319), (108, 113), (154, 160), (195, 201), (249, 250),
+               (36, 46)],
+        20: [(128, 131), (240, 245), (285, 290), (313, 314), (108, 109), (41, 46)],
+        24: [(128, 131)],
     }
 
 
@@ -68,7 +68,7 @@ def get_chunk_target() -> Dict:
 )
 @pytest.mark.parametrize("max_memory", [None, 20, 24])
 @pytest.mark.parametrize("data_args", [(32, 64)])    # (msa_len, pair_len)
-def test_evoformer_block(data_args, max_memory):
+def test_extramsa_block(data_args, max_memory):
     run_func = partial(
         run_test,
         data_args=data_args,
@@ -84,12 +84,11 @@ if __name__ == "__main__":
     run_test(
         rank=0,
         data_args=(32, 64),
-        max_memory=24,
+        max_memory=None,
         get_model=get_model,
         get_data=get_data,
         get_chunk_target=get_chunk_target,
         print_code=False,
         print_mem=False,
-        print_est_mem=False,
         print_progress=False,
     )
