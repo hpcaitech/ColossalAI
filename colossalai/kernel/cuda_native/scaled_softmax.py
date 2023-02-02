@@ -121,7 +121,6 @@ class FusedScaleMaskSoftmax(nn.Module):
         if self.is_kernel_available(mask, *input.size()):
             return self.forward_fused_softmax(input, mask)
         else:
-            return self.forward_fused_softmax(input, mask)
             return self.forward_torch_softmax(input, mask)
 
     def is_kernel_available(self, mask, b, np, sq, sk):
