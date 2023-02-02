@@ -469,17 +469,6 @@ class TraceIndice(object):
             dim_idx = list(range(len(get_node_shape(node))))[dim_idx]
         self._add_dim(node_idx, dim_idx)
 
-    def _assign_ones_like_indice(self, node: Node, node_idx: int) -> None:
-        """
-        Assign indice for oneslike op.
-        1. assign new indice for all dim
-
-        Args:
-            node (node)
-            node_idx (int)
-        """
-        self._assign_all_indice(node, node_idx)
-
     def _assign_cat_indice(self, node: Node, node_idx: int) -> None:
         """
         Assign indice for cat op.
@@ -766,7 +755,7 @@ class TraceIndice(object):
                 elif any(i == node_name for i in ["to", "contiguous", "clone", "type"]):
                     self._assgin_no_change_indice(node, idx)
                 elif "new_ones" == node_name:
-                    self._assign_ones_like_indice(node, idx)
+                    self._assign_all_indice(node, idx)
                 elif any(i == node_name for i in ["size"]):
                     continue
                 else:
@@ -793,8 +782,6 @@ class TraceIndice(object):
                         "tanh",
                 ]):
                     self._assign_elementwise_indice(node, idx)
-                elif "ones_like" == node_name:
-                    self._assign_ones_like_indice(node, idx)
                 elif "einsum" == node_name:
                     self._assign_einsum_indice(node, idx)
                 elif "sum" == node_name:
@@ -805,10 +792,8 @@ class TraceIndice(object):
                     self._assign_getitem_indice(node, idx)
                 elif "addmm" == node_name:
                     self._assign_addmm_indice(node, idx)
-                elif "arange" == node_name:
-                    self._assign_arange_indice(node, idx)
-                elif "tensor" == node_name:
-                    self._assign_arange_indice(node, idx)
+                elif any(i == node_name for i in ["arange", "one", "ones_like", "tensor"]):
+                    self._assign_all_indice(node, idx)
                 elif any(i == node_name for i in ["getattr", "eq", "_assert_is_none", "_assert", "finfo"]):
                     continue
                 else:
