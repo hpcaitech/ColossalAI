@@ -1,6 +1,5 @@
 # ColoDiffusion: Stable Diffusion with Colossal-AI
 
-
 Acceleration of AIGC (AI-Generated Content) models such as [Stable Diffusion v1](https://github.com/CompVis/stable-diffusion) and [Stable Diffusion v2](https://github.com/Stability-AI/stablediffusion).
 
 <p id="diffusion_train" align="center">
@@ -26,6 +25,16 @@ Acceleration of AIGC (AI-Generated Content) models such as [Stable Diffusion v1]
 
 More details can be found in our [blog of Stable Diffusion v1](https://www.hpc-ai.tech/blog/diffusion-pretraining-and-hardware-fine-tuning-can-be-almost-7x-cheaper) and [blog of Stable Diffusion v2](https://www.hpc-ai.tech/blog/colossal-ai-0-2-0).
 
+
+## Roadmap
+This project is in rapid development.
+
+- [X] Train a stable diffusion model v1/v2 from scatch
+- [X] Finetune a pretrained Stable diffusion v1 model
+- [X] Inference a pretrained model using PyTorch
+- [ ] Finetune a pretrained Stable diffusion v2 model
+- [ ] Inference a pretrained model using TensoRT
+
 ## Installation
 
 ### Option #1: install from source
@@ -47,19 +56,34 @@ pip install transformers==4.19.2 diffusers invisible-watermark
 pip install -e .
 ```
 
-##### Step 2: install lightning
+#### Step 2: install lightning
 
 Install Lightning version later than 2022.01.04. We suggest you install lightning from source.
 
-https://github.com/Lightning-AI/lightning.git
+```
+git clone https://github.com/Lightning-AI/lightning.git
+pip install -r requirements.txt
+python setup.py install
+```
 
+#### Step 3:Install [Colossal-AI](https://colossalai.org/download/) From Our Official Website
 
-##### Step 3:Install [Colossal-AI](https://colossalai.org/download/) From Our Official Website
+##### From pip
 
 For example, you can install  v0.1.12 from our official website.
 
 ```
 pip install colossalai==0.1.12+torch1.12cu11.3 -f https://release.colossalai.org
+```
+
+##### From source
+
+```
+git clone https://github.com/hpcaitech/ColossalAI.git
+cd ColossalAI
+
+# install colossalai
+CUDA_EXT=1 pip install .
 ```
 
 ### Option #2: Use Docker
@@ -112,6 +136,12 @@ It is important for you to configure your volume mapping in order to get the bes
 
 ## Download the model checkpoint from pretrained
 
+### stable-diffusion-v2-base
+
+```
+wget https://huggingface.co/stabilityai/stable-diffusion-2-base/resolve/main/512-base-ema.ckpt
+```
+
 ### stable-diffusion-v1-4
 
 Our default model config use the weight from [CompVis/stable-diffusion-v1-4](https://huggingface.co/CompVis/stable-diffusion-v1-4?text=A+mecha+robot+in+a+favela+in+expressionist+style)
@@ -123,7 +153,7 @@ git clone https://huggingface.co/CompVis/stable-diffusion-v1-4
 
 ### stable-diffusion-v1-5 from runway
 
-If you want to useed the Last [stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5) wiegh from runwayml
+If you want to useed the Last [stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5) weight from runwayml
 
 ```
 git lfs install
@@ -156,7 +186,7 @@ You can change the trainging config in the yaml file
 - precision: the precision type used in training, default 16 (fp16), you must use fp16 if you want to apply colossalai
 - more information about the configuration of ColossalAIStrategy can be found [here](https://pytorch-lightning.readthedocs.io/en/latest/advanced/model_parallel.html#colossal-ai)
 
-## Finetune Example
+## Finetune Example (Work In Progress)
 ### Training on Teyvat Datasets
 
 We provide the finetuning example on [Teyvat](https://huggingface.co/datasets/Fazzie/Teyvat) dataset, which is create by BLIP generated captions.

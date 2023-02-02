@@ -35,7 +35,7 @@ def init_ddp(module: torch.nn.Module) -> ColoDDP:
 
 
 def init_ddpv2(module: torch.nn.Module) -> ZeroDDP:
-    chunk_config, _ = search_chunk_configuration(module, 4, 1024)
+    chunk_config, *_ = search_chunk_configuration(module, 4, 1024)
     chunk_manager = ChunkManager(chunk_config)
     gemini_manager = GeminiManager('cuda', chunk_manager)
     return ZeroDDP(module, gemini_manager)

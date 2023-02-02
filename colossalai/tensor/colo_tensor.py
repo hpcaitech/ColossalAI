@@ -1,3 +1,4 @@
+import math
 from copy import copy
 from functools import lru_cache
 from typing import Callable, Optional, Set
@@ -302,6 +303,11 @@ class ColoTensor(torch.Tensor):
             return torch.Size(size_list)
         else:
             return size_list[args[0]]
+
+    def numel_global(self):
+        """Returns the number of elements in the tensor when it's replicated.
+        """
+        return math.prod(self.size_global())
 
     # Some API for dist spec check
 

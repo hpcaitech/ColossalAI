@@ -53,6 +53,14 @@ def gpt2_24b(checkpoint=True):
     return GPTLMModel(hidden_size=8192, num_layers=30, num_attention_heads=16, checkpoint=checkpoint)
 
 
+def gpt2_30b(checkpoint=True):
+    return GPTLMModel(hidden_size=8192, num_layers=37, num_attention_heads=16, checkpoint=checkpoint)
+
+
+def gpt2_40b(checkpoint=True):
+    return GPTLMModel(hidden_size=8192, num_layers=50, num_attention_heads=16, checkpoint=checkpoint)
+
+
 def model_builder(model_size: str) -> callable:
     if model_size == "gpt2_medium":
         return gpt2_medium
@@ -66,6 +74,10 @@ def model_builder(model_size: str) -> callable:
         return gpt2_20b
     elif model_size == "gpt2_24b":
         return gpt2_24b
+    elif model_size == "gpt2_30b":
+        return gpt2_30b
+    elif model_size == "gpt2_40b":
+        return gpt2_40b
     else:
         raise TypeError(f"model_builder {model_size}")
 
