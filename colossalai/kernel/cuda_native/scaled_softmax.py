@@ -31,7 +31,6 @@ class ScaledUpperTriangMaskedSoftmax(torch.autograd.Function):
     def forward(ctx, inputs, scale):
         global scaled_upper_triang_masked_softmax
         if scaled_upper_triang_masked_softmax:
-
             scaled_upper_triang_masked_softmax = ScaledUpperTrainglemaskedSoftmaxBuilder().load()
 
         scale_t = torch.tensor([scale])
