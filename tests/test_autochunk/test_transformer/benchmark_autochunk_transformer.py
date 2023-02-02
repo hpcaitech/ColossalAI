@@ -8,6 +8,7 @@ import colossalai
 from colossalai.autochunk.autochunk_codegen import AUTOCHUNK_AVAILABLE
 from colossalai.fx.graph_module import ColoGraphModule
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
+from colossalai.fx.profiler import parameter_size
 from colossalai.utils import free_port
 
 if AUTOCHUNK_AVAILABLE:
@@ -60,9 +61,11 @@ def _benchmark_autochunk_gpt_gm(
     model.cuda().eval()
 
     # bench
-    mem = _benchmark_memory(gm, inputs)
+    para_mem = float(parameter_size(model)) / 1024**2 * 6
+    act_mem = _benchmark_memory(gm, inputs)
     speed = _benchmark_speed(gm, inputs)
-    print("gpt autochunk, mem: %.2fMB, time: %.4fs" % (mem, speed))
+    print("gpt autochunk, time: %.4fs, act mem: %.2fMB, para mem: %.2fMB, all mem: %.2fMB" %
+          (speed, act_mem, para_mem, act_mem + para_mem))
 
 
 def _benchmark_autochunk_gpt_origin(
@@ -80,9 +83,12 @@ def _benchmark_autochunk_gpt_origin(
     model.cuda().eval()
 
     # bench
-    mem = _benchmark_memory(model, inputs)
+    para_mem = float(parameter_size(model)) / 1024**2 * 6
+    act_mem = _benchmark_memory(model, inputs)
     speed = _benchmark_speed(model, inputs)
-    print("gpt origin, mem: %.2fMB, time: %.4fs" % (mem, speed))
+    print("gpt origin, time: %.4fs, act mem: %.2fMB, para mem: %.2fMB, all mem: %.2fMB" %
+          (speed, act_mem, para_mem, act_mem + para_mem))
+    return act_mem
 
 
 def _benchmark_memory(model, inputs):
@@ -111,10 +117,19 @@ def benchmark_autochunk_gpt(batch=1, seq=512, n_embd=768, n_head=12):
     from test_autochunk_gpt import GPT2Config, GPT2Model, get_data
     model = GPT2Model
     config = GPT2Config(n_embd=n_embd, n_position=seq, n_layer=2, n_head=n_head)
+    config.max_position_embeddings = seq
     model = model(config=config)
     shape = [batch, seq]
     print("\nbatch: %d, seq: %d, n_embd: %d, n_head: %d" % (batch, seq, n_embd, n_head))
-    _benchmark_autochunk_gpt_origin(model, get_data(shape))
+    max_mem = _benchmark_autochunk_gpt_origin(model, get_data(shape))
+    for ratio in [0.5, 0.4, 0.3, 0.2]:
+        try:
+            _benchmark_autochunk_gpt_gm(model, get_data(shape), max_mem * ratio)
+        except RuntimeError as e:
+            if e.args[0] == 'Search failed. Try a larger memory threshold.':
+                break
+        except Exception as e:
+            raise e
     _benchmark_autochunk_gpt_gm(model, get_data(shape), None)
 
 
@@ -128,4 +143,8 @@ if __name__ == "__main__":
         port=free_port(),
         backend="nccl",
     )
-    benchmark_autochunk_gpt(batch=1, seq=512, n_embd=768, n_head=12)
+    benchmark_autochunk_gpt(batch=1, seq=1024, n_embd=768, n_head=12)
+    benchmark_autochunk_gpt(batch=1, seq=2048, n_embd=768, n_head=12)
+    benchmark_autochunk_gpt(batch=1, seq=4096, n_embd=768, n_head=12)
+    benchmark_autochunk_gpt(batch=1, seq=6144, n_embd=768, n_head=12)
+    benchmark_autochunk_gpt(batch=1, seq=8192, n_embd=768, n_head=12)
