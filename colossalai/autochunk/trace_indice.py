@@ -308,14 +308,14 @@ class TraceIndice(object):
             node (node)
             node_idx (int)
         """
-        if len(node.args) == 2:
-            _, weight = node.args
-        else:
-            _, weight, _ = node.args
-
         self._assign_indice_as_input(node, node_idx)
-        self._inherit_indice(weight, 1, node, -1)
 
+        if len(node.args) >= 2:
+            weight = node.args[1]
+            self._inherit_indice(weight, 1, node, -1)
+        else:
+            self._del_dim(node_idx, -1)
+            self._add_dim(node_idx, -1)
         self._mark_computation(node, node_idx, [-1])
 
     def _assign_addmm_indice(self, node: Node, node_idx: int) -> None:
@@ -752,7 +752,7 @@ class TraceIndice(object):
                     self._assign_unsqueeze_indice(node, idx)
                 elif "split" == node_name:
                     self._assign_split_indice(node, idx)
-                elif any(i == node_name for i in ["to", "contiguous", "clone", "type"]):
+                elif any(i == node_name for i in ["to", "contiguous", "clone", "type", "float"]):
                     self._assgin_no_change_indice(node, idx)
                 elif "new_ones" == node_name:
                     self._assign_all_indice(node, idx)
@@ -770,16 +770,8 @@ class TraceIndice(object):
                 elif "softmax" == node_name:
                     self._assign_softmax_indice(node, idx)
                 elif any(n == node_name for n in [
-                        "mul",
-                        "add",
-                        "sigmoid",
-                        "relu",
-                        "sub",
-                        "truediv",
-                        "pow",
-                        "dropout",
-                        "where",
-                        "tanh",
+                        "mul", "add", "sigmoid", "relu", "sub", "truediv", "pow", "dropout", "where", "tanh", "exp",
+                        "sin", "cos"
                 ]):
                     self._assign_elementwise_indice(node, idx)
                 elif "einsum" == node_name:
@@ -792,7 +784,7 @@ class TraceIndice(object):
                     self._assign_getitem_indice(node, idx)
                 elif "addmm" == node_name:
                     self._assign_addmm_indice(node, idx)
-                elif any(i == node_name for i in ["arange", "one", "ones_like", "tensor"]):
+                elif any(i == node_name for i in ["arange", "ones", "ones_like", "tensor"]):
                     self._assign_all_indice(node, idx)
                 elif any(i == node_name for i in ["getattr", "eq", "_assert_is_none", "_assert", "finfo"]):
                     continue
@@ -804,6 +796,8 @@ class TraceIndice(object):
                     self._assign_layernorm_indice(node, idx)
                 elif "embedding" == node_name:
                     self._assign_embedding_indice(node, idx)
+                elif "linear" == node_name:
+                    self._assign_linear_indice(node, idx)
                 elif any(n == node_name for n in ["sigmoid", "dropout", "relu"]):
                     self._assign_elementwise_indice(node, idx)
                 else:
