@@ -71,7 +71,6 @@ class ProcessGroup:
         else:
             self._rank_list = ranks
             self._rank_list.sort()    # ensure that the list is in order
-        assert self._rank in self._rank_list    # make sure that the current process is in the rank
 
         self._world_size = len(self._rank_list)
 
