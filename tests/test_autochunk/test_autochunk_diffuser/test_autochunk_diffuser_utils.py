@@ -35,6 +35,7 @@ def assert_codegen_run(
         meta_args={k: v.to(torch.device("meta")) for k, v in meta_args},
         concrete_args={k: v for k, v in concrete_args},
     )
+    model = model.cuda().eval()
     interp = MetaInfoProp(meta_graph)
     meta_tensors = [MetaTensor(i[1], fake_device="cuda:0") for i in meta_args] + [i[1] for i in concrete_args]
     interp.propagate(*meta_tensors)
@@ -65,6 +66,7 @@ def assert_codegen_run(
 
     # assert result
     inputs = [i[1] for i in meta_args] + [i[1] for i in concrete_args]
+    inputs = [i.cuda() if isinstance(i, torch.Tensor) else i for i in inputs]
     model.cuda().eval()
     gm.eval()
     with torch.no_grad():
