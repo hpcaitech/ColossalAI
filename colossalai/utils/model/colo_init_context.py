@@ -149,7 +149,7 @@ class ColoInitContext(InsertPostInitMethodToModuleSubClasses):
 
         if meta_buffer_number == 0:
             for buffer in module.buffers():
-                buffer.data = buffer.data.to(dtype=self._dtype, device=self._device)
+                buffer.data = buffer.data.to(device=self._device)
 
 
 def post_process_colo_init_ctx(model: torch.nn.Module,
