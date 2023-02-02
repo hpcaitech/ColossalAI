@@ -27,9 +27,9 @@
 - [ ] I have added thorough tests.
 - [ ] I have added docstrings for all the functions/methods I implemented
 
-## ⭐️ Do you enjoy contribution to Colossal-AI?
+## ⭐️ Do you enjoy contributing to Colossal-AI?
 
 - [ ] 🌝 Yes, I do.
 - [ ] 🌚 No, I don't.
 
-Tell us more if you don't enjoy contribution to Colossal-AI.
+Tell us more if you don't enjoy contributing to Colossal-AI.
