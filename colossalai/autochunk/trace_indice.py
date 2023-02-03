@@ -354,6 +354,32 @@ class TraceIndice(object):
         self._inherit_more_indice_from_node(matmul_right, node, [-1, -2])
         self._mark_computation(node, node_idx, [-1])
 
+    def _assign_conv2d_indice(self, node: Node, node_idx: int) -> None:
+        """
+        Assign indice for conv2d op.
+
+        Args:
+            node (node)
+            node_idx (int)
+        """
+        # get conv module
+        node_targets = node.target.split(".")
+        conv_module = node.graph.owning_module
+        for i in node_targets:
+            conv_module = getattr(conv_module, i)
+        assert conv_module.dilation == (1, 1), "dilation for conv2d not implemented"
+
+        # get conv input
+        assert len(node.args) == 1
+        input_node = node.args[0]
+        assert len(get_node_shape(input_node)) == 4
+
+        # assgin index
+        self._assign_indice_as_input(node, node_idx, input_node)
+        self._del_dim(node_idx, 1)
+        self._add_dim(node_idx, 1)
+        self._mark_computation(node, node_idx, [1])
+
     def _assign_layernorm_indice(self, node, idx):
         """
         Assign indice for layernorm op.
@@ -798,7 +824,9 @@ class TraceIndice(object):
                     self._assign_embedding_indice(node, idx)
                 elif "linear" == node_name:
                     self._assign_linear_indice(node, idx)
-                elif any(n == node_name for n in ["sigmoid", "dropout", "relu"]):
+                elif "conv2d" == node_name:
+                    self._assign_conv2d_indice(node, idx)
+                elif any(n == node_name for n in ["sigmoid", "dropout", "relu", "silu"]):
                     self._assign_elementwise_indice(node, idx)
                 else:
                     raise NotImplementedError(node_name, "module not implemented yet!")
