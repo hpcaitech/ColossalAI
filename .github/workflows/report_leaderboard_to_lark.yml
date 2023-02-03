@@ -1,4 +1,4 @@
-name: Publish Nightly Version to PyPI
+name: Generate Community Report and Send to Lark
 
 on:
   workflow_dispatch:
@@ -24,6 +24,6 @@ jobs:
     - run: python .github/workflows/scripts/generate_leaderboard_and_send_to_lark.py
       env:
         LARK_APP_ID: ${{ secrets.LARK_LEADERBOARD_APP_ID }}
-        APP_SECRET: ${{ secrets.LARK_LEADERBOARD_APP_SECRET }}
+        LARK_APP_SECRET: ${{ secrets.LARK_LEADERBOARD_APP_SECRET }}
         LARK_WEBHOOK_URL: ${{ secrets.LARK_LEADERBOARD_WEBHOOK_URL }}
         GITHUB_TOKEN: ${{ github.token }}
