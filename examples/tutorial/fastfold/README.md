@@ -2,23 +2,21 @@
 
 ## Table of contents
 
-- [Overview](#📚-overview)
-- [Quick Start](#🚀-quick-start)
-- [Dive into FastFold](#🔍-dive-into-fastfold)
+- [FastFold Inference](#fastfold-inference)
+  - [Table of contents](#table-of-contents)
+  - [📚 Overview](#-overview)
+  - [🚀 Quick Start](#-quick-start)
+  - [🔍 Dive into FastFold](#-dive-into-fastfold)
 
 ## 📚 Overview
 
-This example lets you to quickly try out the inference of FastFold.
-
-**NOTE: We use random data and random parameters in this example.**
-
+This example lets you to try out the inference of FastFold.
 
 ## 🚀 Quick Start
 
 1. Install FastFold
 
-We highly recommend installing an Anaconda or Miniconda environment and install PyTorch with conda.
-
+We highly recommend you to install FastFold with conda.
 ```
 git clone https://github.com/hpcaitech/FastFold
 cd FastFold
@@ -27,15 +25,19 @@ conda activate fastfold
 python setup.py install
 ```
 
-2. Run the inference scripts.
+2. Download datasets.
 
-```bash
-python inference.py --gpus=1 --n_res=256 --chunk_size=None --inplace
+It may take ~900GB space to keep datasets.
 ```
-+ `gpus` means the DAP size
-+ `n_res` means the length of residue sequence
-+ `chunk_size` introduces a memory-saving technology at the cost of speed, None means not using, 16 may be a good trade off for long sequences.
-+ `inplace` introduces another memory-saving technology with zero cost, drop `--inplace` if you do not want it.
+./scripts/download_all_data.sh data/
+```
+
+3. Run the inference scripts.
+
+```
+bash inference.sh
+```
+You can find predictions under the `outputs` dir.
 
 ## 🔍 Dive into FastFold
 
