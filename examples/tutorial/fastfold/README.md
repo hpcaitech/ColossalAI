@@ -26,6 +26,7 @@ python setup.py install
 ```
 
 2. Download datasets.
+
 It may take ~900GB space to keep datasets.
 ```
 ./scripts/download_all_data.sh data/
