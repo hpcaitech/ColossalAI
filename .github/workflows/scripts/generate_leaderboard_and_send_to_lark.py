@@ -171,6 +171,6 @@ if __name__ == '__main__':
     send_message_to_lark("本周的开发者贡献榜单出炉啦！", LARK_WEBHOOK_URL)
     send_image_to_lark(contributor_image_key, LARK_WEBHOOK_URL)
 
-    # send contributor image to lark
+    # send user engagement image to lark
     send_message_to_lark("本周的开源社区互动榜单出炉啦！", LARK_WEBHOOK_URL)
     send_image_to_lark(user_engagement_image_key, LARK_WEBHOOK_URL)
