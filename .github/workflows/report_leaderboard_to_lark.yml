@@ -8,7 +8,7 @@ on:
 
 jobs:
   generate-and-publish:
-    if: github.event_name == 'workflow_dispatch' || github.repository == 'hpcaitech/ColossalAI'
+    if: github.repository == 'hpcaitech/ColossalAI'
     name: Generate leaderboard report and publish to Lark
     runs-on: ubuntu-latest
     timeout-minutes: 20
