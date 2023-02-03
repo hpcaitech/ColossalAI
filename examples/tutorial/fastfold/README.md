@@ -24,14 +24,14 @@ conda env create --name=fastfold -f environment.yml
 conda activate fastfold
 python setup.py install
 ```
-Other installiation methods can be found in FastFold.
 
-1. Download datasets.
+2. Download datasets.
+It may take ~900GB space to keep datasets.
 ```
 ./scripts/download_all_data.sh data/
 ```
 
-1. Run the inference scripts.
+3. Run the inference scripts.
 
 ```
 bash inference.sh
