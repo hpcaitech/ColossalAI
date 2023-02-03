@@ -1,4 +1,4 @@
-name: Build on 8 GPUs
+name: Build on Schedule
 
 on:
   schedule:
