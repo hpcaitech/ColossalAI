@@ -10,7 +10,7 @@
 
 ## 📚 Overview
 
-This example lets you to try out the inference of FastFold.
+This example lets you to try out the inference of [FastFold](https://github.com/hpcaitech/FastFold).
 
 ## 🚀 Quick Start
 
@@ -41,7 +41,7 @@ You can find predictions under the `outputs` dir.
 
 ## 🔍 Dive into FastFold
 
-There are another features of FastFold, such as:
+There are another features of [FastFold](https://github.com/hpcaitech/FastFold), such as:
 + more excellent kernel based on triton
 + much faster data processing based on ray
 + training supported
