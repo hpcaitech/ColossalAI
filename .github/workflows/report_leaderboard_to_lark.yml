@@ -25,5 +25,5 @@ jobs:
       env:
         LARK_APP_ID: ${{ secrets.LARK_LEADERBOARD_APP_ID }}
         LARK_APP_SECRET: ${{ secrets.LARK_LEADERBOARD_APP_SECRET }}
-        LARK_WEBHOOK_URL: ${{ secrets.LARK_LEADERBOARD_WEBHOOK_URL }}
+        LARK_WEBHOOK_URL: ${{ secrets.LARK_NOTIFICATION_WEBHOOK_URL }}
         GITHUB_TOKEN: ${{ github.token }}
