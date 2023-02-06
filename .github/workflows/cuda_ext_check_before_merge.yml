@@ -1,4 +1,4 @@
-name: Release bdist wheel
+name: Check CUDA Extension Build Before Merge
 
 on:
   workflow_dispatch:
@@ -15,6 +15,7 @@ jobs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
       - uses: actions/checkout@v3
+
       - id: set-matrix
         run: |
           cuda_ext=$(cat .cuda_ext.json | tr '\n' ' ')
