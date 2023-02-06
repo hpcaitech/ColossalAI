@@ -143,7 +143,7 @@ def _replace_reshape_size(context: str, node_name: str, reshape_size_dict: Dict)
     return context
 
 
-def _replace_ones_like(
+def _replace_new_tensor_like_shape(
     search_chunk: SearchChunk,
     chunk_infos: List[Dict],
     region_idx: int,
@@ -265,8 +265,8 @@ def emit_code_with_chunk(
             body = _add_node_slice(chunk_inputs, region_idx, chunk_inputs_dim, node_idx, body, node)
             # replace output var with chunk var
             body = _add_node_slice(chunk_outputs, region_idx, chunk_outputs_dim, node_idx, body, node)
-            # ones like
-            body = _replace_ones_like(search_chunk, chunk_infos, region_idx, node_idx, node, body)
+            # tensor like
+            body = _replace_new_tensor_like_shape(search_chunk, chunk_infos, region_idx, node_idx, node, body)
             # reassgin reshape size
             body[-1] = _replace_reshape_size(body[-1], node.name, chunk_infos[region_idx]["reshape_size"])
             body[-1] = "    " + body[-1]
