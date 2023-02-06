@@ -47,7 +47,7 @@ jobs:
           echo "avai=$avai" >> $GITHUB_OUTPUT
 
       - name: Install Colossal-AI
-        if: steps.check-avai.outputs.avai == "true"
+        if: steps.check-avai.outputs.avai == 'true'
         run: |
           [ ! -z "$(ls -A /github/home/cuda_ext_cache/)" ] && cp -r /github/home/cuda_ext_cache/* /__w/ColossalAI/ColossalAI/
           CUDA_EXT=1 pip install -v -e .
@@ -55,7 +55,7 @@ jobs:
           pip install -r requirements/requirements-test.txt
 
       - name: Unit Testing
-        if: steps.check-avai.outputs.avai == "true"
+        if: steps.check-avai.outputs.avai == 'true'
         run: |
           PYTHONPATH=$PWD pytest tests
         env:
