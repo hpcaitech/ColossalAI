@@ -34,7 +34,7 @@ jobs:
 
   notify:
     name: Notify Lark via webhook
-    needs: release
+    needs: build-n-publish
     runs-on: ubuntu-latest
     if: ${{ always() }}
     steps:
@@ -52,7 +52,7 @@ jobs:
         run: |
           url=$SERVER_URL/$REPO/actions/runs/$RUN_ID
 
-          if [ $STATUS == 'success' ]
+          if [ "$STATUS" == 'success' ]
           then
             msg="The Colossal-AI latest version has been successfully released to PyPI."
           else
@@ -65,4 +65,4 @@ jobs:
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
           WEBHOOK_URL: ${{ secrets.LARK_NOTIFICATION_WEBHOOK_URL }}
-          STATUS: ${{ steps.publish.outcome }}
+          STATUS: ${{ needs.build-n-publish.result }}

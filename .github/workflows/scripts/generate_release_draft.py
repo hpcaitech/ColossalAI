@@ -57,7 +57,12 @@ def collate_release_info(commit_info_list):
 
     for commit_info in commit_info_list:
         author = commit_info['commit']['author']['name']
-        author_url = commit_info['author']['url']
+
+        try:
+            author_url = commit_info['author']['url']
+        except:
+            # author can be None
+            author_url = None
         msg = commit_info['commit']['message']
         match = re.search(pattern, msg)
 
@@ -86,7 +91,10 @@ def generate_release_post_markdown(current_version, last_version, release_info):
             # only keep the first line
             msg = msg.split('\n')[0]
 
-            item = f'{msg} by [{author}]({author_url})\n'
+            if author_url:
+                item = f'{msg} by [{author}]({author_url})\n'
+            else:
+                item = f'{msg} by {author}\n'
             text.append(f'- {item}')
 
         text.append('\n')
