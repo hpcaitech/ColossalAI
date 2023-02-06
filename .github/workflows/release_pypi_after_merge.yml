@@ -10,7 +10,7 @@ on:
 
 jobs:
   build-n-publish:
-    if: github.event_name == 'workflow_dispatch' || github.repository == 'hpcaitech/ColossalAI' && github.event.pull_request.merged == true && github.base_ref == 'main' 
+    if: github.event_name == 'workflow_dispatch' || github.repository == 'hpcaitech/ColossalAI' && github.event.pull_request.merged == true && github.base_ref == 'main'
     name: Build and publish Python 🐍 distributions 📦 to PyPI
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -22,7 +22,7 @@ jobs:
         python-version: '3.8.14'
 
     - run: python setup.py sdist build
-    
+
     # publish to PyPI if executed on the main branch
     - name: Publish package to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
