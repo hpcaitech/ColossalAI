@@ -50,9 +50,6 @@ def test_evoformer_block(model, shape, max_memory):
         max_memory=max_memory,
         model=model,
         data=get_data(shape),
-        print_code=False,
-        print_mem=False,
-        print_progress=False,
     )
     mp.spawn(run_func, nprocs=1)
 
@@ -65,5 +62,6 @@ if __name__ == "__main__":
         model=UNet2DModel,
         print_code=False,
         print_mem=False,
+        print_est_mem=False,
         print_progress=False,
     )

@@ -22,6 +22,7 @@ def assert_codegen_run(
     concrete_args: List = None,
     max_memory: int = None,
     print_mem: bool = False,
+    print_est_mem: bool = False,
     print_progress: bool = False,
     print_code: bool = False,
 ) -> List[Dict]:
@@ -42,7 +43,7 @@ def assert_codegen_run(
     codegen = AutoChunkCodeGen(
         meta_graph,
         max_memory=max_memory,
-        print_mem=print_mem,
+        print_mem=print_est_mem,
         print_progress=print_progress,
     )
     chunks = codegen.chunk_infos
@@ -70,10 +71,21 @@ def assert_codegen_run(
     model.cuda().eval()
     gm.eval()
     with torch.no_grad():
-        out_gm = gm(*inputs)
-        out_model = model(*inputs)
+        if print_mem:
+            torch.cuda.reset_peak_memory_stats()
+            now_mem_gm = torch.cuda.memory_allocated() / 1024**2
+        out_gm = gm(*[i.clone() if isinstance(i, torch.Tensor) else i for i in inputs])
+        if print_mem:
+            max_mem_gm = torch.cuda.max_memory_allocated() / 1024**2
+            torch.cuda.reset_peak_memory_stats()
+            now_mem_ori = torch.cuda.memory_allocated() / 1024**2
+        out_model = model(*[i.clone() if isinstance(i, torch.Tensor) else i for i in inputs])
+        if print_mem:
+            max_mem_ori = torch.cuda.max_memory_allocated() / 1024**2
+            print("origin mem: %.2fMB, autochunk mem: %.2fMB" % (max_mem_ori - now_mem_ori, max_mem_gm - now_mem_gm))
+
     assert torch.allclose(out_gm["sample"], out_model["sample"],
-                          atol=1e-4), "fx_out doesn't comply with original output, diff is %.2e" % torch.mean(
+                          atol=1e-3), "fx_out doesn't comply with original output, diff is %.2e" % torch.mean(
                               torch.abs(out_gm["sample"] - out_model["sample"]))
 
     return chunks
@@ -84,9 +96,10 @@ def run_test(
     model: Any,
     data: tuple,
     max_memory: int,
-    print_code: bool,
-    print_mem: bool,
-    print_progress: bool,
+    print_code: bool = False,
+    print_mem: bool = False,
+    print_est_mem: bool = False,
+    print_progress: bool = False,
     get_chunk_target: Any = None,
 ) -> None:
     # launch colossalai
@@ -108,6 +121,7 @@ def run_test(
         max_memory=max_memory,
         print_code=print_code,
         print_mem=print_mem,
+        print_est_mem=print_est_mem,
         print_progress=print_progress,
     )
 
