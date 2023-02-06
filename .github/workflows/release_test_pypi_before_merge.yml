@@ -39,7 +39,7 @@ jobs:
         verbose: true
 
     - name: Wait for Test-PyPI refresh
-      run: sleep 60s
+      run: sleep 300s
       shell: bash
 
     - name: Try installation
