@@ -8,14 +8,7 @@ from .reorder_graph import ReorderGraph
 from .select_chunk import SelectChunk
 from .trace_flow import TraceFlow
 from .trace_indice import TraceIndice
-from .utils import (
-    NodeMgr,
-    find_chunk_compute_input_and_output_nodes,
-    get_logger,
-    get_node_shape,
-    is_non_compute_node,
-    is_non_compute_node_except_placeholder,
-)
+from .utils import NodeMgr, get_logger, get_node_shape, is_non_compute_node, is_non_compute_node_except_placeholder
 
 
 class SearchChunk(object):
