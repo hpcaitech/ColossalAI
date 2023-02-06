@@ -154,7 +154,7 @@ def _replace_new_tensor_like_shape(
     """
     add chunk slice for new tensor op such as ones like
     """
-    if "ones_like" in node.name:
+    if get_node_name(node) in ["ones_like", "zeros_like", "empty_like"]:
         meta_node = search_chunk.node_mgr.get_node_by_idx(node_idx)
         chunk_dim = chunk_infos[region_idx]["node_chunk_dim"][meta_node]["chunk_dim"]
         if get_node_shape(meta_node)[chunk_dim] != 1:
@@ -163,6 +163,33 @@ def _replace_new_tensor_like_shape(
                     or chunk_infos[region_idx]["node_chunk_dim"][source_node]["chunk_dim"] is None):
                 chunk_slice = _gen_chunk_slice_dim(chunk_dim, "chunk_idx", get_node_shape(node))
                 body[-1] = _replace_name(body[-1], node.args[0].name, node.args[0].name + chunk_slice)
+    return body
+
+
+def _replace_new_tensor_shape(
+    search_chunk: SearchChunk,
+    chunk_infos: List[Dict],
+    region_idx: int,
+    node_idx: int,
+    node: Node,
+    body: List[str],
+) -> List[str]:
+    """
+    add chunk slice for new tensor op such as ones
+    """
+    if get_node_name(node) in ["ones", "zeros", "empty"]:
+        meta_node = search_chunk.node_mgr.get_node_by_idx(node_idx)
+        chunk_dim = chunk_infos[region_idx]["node_chunk_dim"][meta_node]["chunk_dim"]
+        if chunk_dim is None:
+            return
+        if get_node_shape(meta_node)[chunk_dim] == 1:
+            return
+        origin_shape = str(node.args)
+        new_shape = list(node.args)
+        new_shape[chunk_dim] = "min(chunk_size, %d - chunk_idx)" % get_node_shape(meta_node)[chunk_dim]
+        new_shape = str(new_shape)
+        new_shape = new_shape.replace("'", "")
+        body[-1] = _replace_name(body[-1], origin_shape[1:-1], new_shape[1:-1])
     return body
 
 
@@ -265,8 +292,10 @@ def emit_code_with_chunk(
             body = _add_node_slice(chunk_inputs, region_idx, chunk_inputs_dim, node_idx, body, node)
             # replace output var with chunk var
             body = _add_node_slice(chunk_outputs, region_idx, chunk_outputs_dim, node_idx, body, node)
-            # tensor like
+            # new tensor like
             body = _replace_new_tensor_like_shape(search_chunk, chunk_infos, region_idx, node_idx, node, body)
+            # new tensor
+            body = _replace_new_tensor_shape(search_chunk, chunk_infos, region_idx, node_idx, node, body)
             # reassgin reshape size
             body[-1] = _replace_reshape_size(body[-1], node.name, chunk_infos[region_idx]["reshape_size"])
             body[-1] = "    " + body[-1]
