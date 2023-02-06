@@ -133,6 +133,11 @@ class TraceFlow(object):
         else:
             arg_dim = None
 
+        # add arg rest dim as fix dim
+        arg_fix_dim = list(range(len(get_node_shape(arg_node))))
+        if arg_dim is not None:
+            arg_fix_dim.remove(arg_dim)
+
         # if already in node_info, arg dim must be same
         if arg_node in all_node_info:
             if all_node_info[arg_node]["chunk_dim"] != arg_dim:
@@ -187,29 +192,6 @@ class TraceFlow(object):
                     if flow_flag == False:
                         return None
 
-                if len(arg_list) >= 2:
-                    # need to mark fix dim
-                    if any(i == get_node_name(cur_node) for i in ["add", "mul", "truediv", "sub", "where"]):
-                        for arg in arg_list:
-                            if get_node_shape(arg) is None:
-                                continue
-                            if not (start_idx <= self.node_mgr.find_node_idx(arg) < end_idx):
-                                continue
-                            arg_chunk_dim = all_node_info[arg]["chunk_dim"]
-                            arg_fix_dim = all_node_info[arg]["fix_dim"]
-                            arg_shape = get_node_shape(arg)
-                            # add all dim as fix dim except chunk dim
-                            for i, shape in enumerate(arg_shape):
-                                if shape != 1 and i != cur_node_chunk_dim:
-                                    if i == arg_chunk_dim:
-                                        return None
-                                    if i not in arg_fix_dim:
-                                        arg_fix_dim.append(i)
-                    elif any(i == get_node_name(cur_node)
-                             for i in ["einsum", "matmul", "view", "to", "getitem", "tensor", "type"]):
-                        pass
-                    else:
-                        raise NotImplementedError()
             cur_node_list = next_node_list
         return all_node_info
 
