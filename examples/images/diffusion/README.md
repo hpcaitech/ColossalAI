@@ -52,7 +52,7 @@ You can also update an existing [latent diffusion](https://github.com/CompVis/la
 
 ```
 conda install pytorch==1.12.1 torchvision==0.13.1 torchaudio==0.12.1 cudatoolkit=11.3 -c pytorch
-pip install transformers==4.19.2 diffusers invisible-watermark
+pip install transformers diffusers invisible-watermark
 ```
 
 #### Step 2: install lightning
