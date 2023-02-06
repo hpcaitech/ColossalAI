@@ -2,6 +2,8 @@
 
 All notable changes to this project will be documented in this file.
 
+🚩 **We have moved the change log to the GitHub [release page](https://github.com/hpcaitech/ColossalAI/releases)**
+
 ## v0.0.2 | 2022-02
 
 ### Added

@@ -12,7 +12,7 @@ try:
 except:
     HAS_REPO = False
 
-from test_alphafold_utils import run_test
+from test_autochunk_alphafold_utils import run_test
 
 from colossalai.autochunk.autochunk_codegen import AUTOCHUNK_AVAILABLE
 

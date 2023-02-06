@@ -53,27 +53,33 @@ You can also update an existing [latent diffusion](https://github.com/CompVis/la
 ```
 conda install pytorch==1.12.1 torchvision==0.13.1 torchaudio==0.12.1 cudatoolkit=11.3 -c pytorch
 pip install transformers==4.19.2 diffusers invisible-watermark
-pip install -e .
 ```
 
 #### Step 2: install lightning
 
 Install Lightning version later than 2022.01.04. We suggest you install lightning from source.
 
+##### From Source
 ```
 git clone https://github.com/Lightning-AI/lightning.git
 pip install -r requirements.txt
 python setup.py install
 ```
 
+##### From pip
+
+```
+pip install pytorch-lightning
+```
+
 #### Step 3:Install [Colossal-AI](https://colossalai.org/download/) From Our Official Website
 
 ##### From pip
 
-For example, you can install  v0.1.12 from our official website.
+For example, you can install  v0.2.0 from our official website.
 
 ```
-pip install colossalai==0.1.12+torch1.12cu11.3 -f https://release.colossalai.org
+pip install colossalai==0.2.0+torch1.12cu11.3 -f https://release.colossalai.org
 ```
 
 ##### From source
@@ -133,10 +139,9 @@ It is important for you to configure your volume mapping in order to get the bes
 3. **Optional**, if you encounter any problem stating that shared memory is insufficient inside container, please add `-v /dev/shm:/dev/shm` to your `docker run` command.
 
 
-
 ## Download the model checkpoint from pretrained
 
-### stable-diffusion-v2-base
+### stable-diffusion-v2-base(Recommand)
 
 ```
 wget https://huggingface.co/stabilityai/stable-diffusion-2-base/resolve/main/512-base-ema.ckpt
@@ -144,16 +149,12 @@ wget https://huggingface.co/stabilityai/stable-diffusion-2-base/resolve/main/512
 
 ### stable-diffusion-v1-4
 
-Our default model config use the weight from [CompVis/stable-diffusion-v1-4](https://huggingface.co/CompVis/stable-diffusion-v1-4?text=A+mecha+robot+in+a+favela+in+expressionist+style)
-
 ```
 git lfs install
 git clone https://huggingface.co/CompVis/stable-diffusion-v1-4
 ```
 
 ### stable-diffusion-v1-5 from runway
-
-If you want to useed the Last [stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5) weight from runwayml
 
 ```
 git lfs install
@@ -171,11 +172,16 @@ We provide the script `train_colossalai.sh` to run the training task with coloss
 and can also use `train_ddp.sh` to run the training task with ddp to compare.
 
 In `train_colossalai.sh` the main command is:
+
 ```
-python main.py --logdir /tmp/ -t -b configs/train_colossalai.yaml
+python main.py --logdir /tmp/ --train --base configs/train_colossalai.yaml --ckpt 512-base-ema.ckpt
 ```
 
-- you can change the `--logdir` to decide where to save the log information and the last checkpoint.
+- You can change the `--logdir` to decide where to save the log information and the last checkpoint.
+  - You will find your ckpt in `logdir/checkpoints` or `logdir/diff_tb/version_0/checkpoints`
+  - You will find your train config yaml in `logdir/configs`
+- You can add the `--ckpt` if you want to load the pretrained model, for example `512-base-ema.ckpt`
+- You can change the `--base` to specify the path of config yaml
 
 ### Training config
 
@@ -186,7 +192,8 @@ You can change the trainging config in the yaml file
 - precision: the precision type used in training, default 16 (fp16), you must use fp16 if you want to apply colossalai
 - more information about the configuration of ColossalAIStrategy can be found [here](https://pytorch-lightning.readthedocs.io/en/latest/advanced/model_parallel.html#colossal-ai)
 
-## Finetune Example (Work In Progress)
+
+## Finetune Example
 ### Training on Teyvat Datasets
 
 We provide the finetuning example on [Teyvat](https://huggingface.co/datasets/Fazzie/Teyvat) dataset, which is create by BLIP generated captions.
@@ -201,8 +208,8 @@ you can get yout training last.ckpt and train config.yaml in your `--logdir`, an
 ```
 python scripts/txt2img.py --prompt "a photograph of an astronaut riding a horse" --plms
     --outdir ./output \
-    --config path/to/logdir/checkpoints/last.ckpt \
-    --ckpt /path/to/logdir/configs/project.yaml  \
+    --ckpt path/to/logdir/checkpoints/last.ckpt \
+    --config /path/to/logdir/configs/project.yaml  \
 ```
 
 ```commandline

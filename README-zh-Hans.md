@@ -109,8 +109,7 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
   - 基于参数文件的并行化
 - 推理
   - [Energon-AI](https://github.com/hpcaitech/EnergonAI)
-- Colossal-AI 成功案例
-  - 生物医药: [FastFold](https://github.com/hpcaitech/FastFold) 加速蛋白质结构预测 AlphaFold 训练与推理
+
 <p align="right">(<a href="#top">返回顶端</a>)</p>
 
 ## 并行训练样例展示

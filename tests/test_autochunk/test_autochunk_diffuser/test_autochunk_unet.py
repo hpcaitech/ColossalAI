@@ -13,7 +13,7 @@ except:
     MODELS = []
     HAS_REPO = False
 
-from test_diffuser_utils import run_test
+from test_autochunk_diffuser_utils import run_test
 
 from colossalai.autochunk.autochunk_codegen import AUTOCHUNK_AVAILABLE
 
