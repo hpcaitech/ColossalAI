@@ -46,7 +46,7 @@ jobs:
 
       - name: Traverse all files
         run: |
-          example_dir=${{ matrix.diretory }}
+          example_dir=${{ matrix.directory }}
           echo "Testing ${example_dir} now"
           cd "${PWD}/examples/${example_dir}"
           bash test_ci.sh
@@ -66,4 +66,4 @@ jobs:
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
           WEBHOOK_URL: ${{ secrets.LARK_NOTIFICATION_WEBHOOK_URL }}
-          EXAMPLE_DIR: ${{ matrix.diretory }}
+          EXAMPLE_DIR: ${{ matrix.directory }}
