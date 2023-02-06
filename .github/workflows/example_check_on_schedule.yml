@@ -3,13 +3,12 @@ on:
   # run at 00:00 of every Sunday(singapore time) so here is UTC time Saturday 16:00
   schedule:
     - cron:  '0 16 * * 6'
+  workflow_dispatch:
 
 jobs:
   # This is for all files' weekly check. Specifically, this job is to find all the directories.
   matrix_preparation:
-    if: |
-        github.repository == 'hpcaitech/ColossalAI' &&
-        github.event_name == 'schedule'
+    if: github.repository == 'hpcaitech/ColossalAI'
     name: Prepare matrix for weekly check
     runs-on: ubuntu-latest
     outputs:
@@ -27,9 +26,7 @@ jobs:
         echo "matrix={\"directory\":$(echo "$all_loc")}" >> $GITHUB_OUTPUT
 
   weekly_check:
-    if: |
-        github.repository == 'hpcaitech/ColossalAI' &&
-        github.event_name == 'schedule'
+    if: github.repository == 'hpcaitech/ColossalAI'
     name: Weekly check all examples
     needs: matrix_preparation
     runs-on: [self-hosted, gpu]
@@ -55,3 +52,18 @@ jobs:
           bash test_ci.sh
         env:
           NCCL_SHM_DISABLE: 1
+
+      - name: Notify Lark
+        id: message-preparation
+        if: ${{ failure() }}
+        run: |
+          url=$SERVER_URL/$REPO/actions/runs/$RUN_ID
+          msg="Example tests failed for $EXAMPLE_DIR, please visit $url for details"
+          echo $msg
+          python .github/workflows/scripts/send_message_to_lark.py -m "$msg" -u $WEBHOOK_URL
+        env:
+          SERVER_URL: ${{github.server_url }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          WEBHOOK_URL: ${{ secrets.LARK_NOTIFICATION_WEBHOOK_URL }}
+          EXAMPLE_DIR: ${{ matrix.diretory }}
