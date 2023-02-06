@@ -402,6 +402,22 @@ class TraceIndice(object):
         self._add_dim(node_idx, 1)
         self._mark_computation(node, node_idx, [1, 2, 3])
 
+    def _assign_interpolate_indice(self, node: Node, node_idx: int) -> None:
+        """
+        Assign indice for interpolate op.
+
+        Args:
+            node (node)
+            node_idx (int)
+        """
+        # get conv input
+        assert node.kwargs['size'] is None
+        assert len(get_node_shape(node)) == 4
+
+        # assgin index
+        self._assign_indice_as_input(node, node_idx)
+        self._mark_computation(node, node_idx, [-1, -2])
+
     def _assign_layernorm_indice(self, node, idx):
         """
         Assign indice for layernorm op.
@@ -414,6 +430,18 @@ class TraceIndice(object):
         """
         self._assign_indice_as_input(node, idx)
         self._mark_computation(node, idx, [-1])
+
+    def _assign_groupnorm_indice(self, node, idx):
+        """
+        Assign indice for groupnorm op.
+
+        Args:
+            node (node)
+            node_idx (int)
+        """
+        assert len(get_node_shape(node)) == 4
+        self._assign_indice_as_input(node, idx)
+        self._mark_computation(node, idx, [-1, -2, -3])
 
     def _assign_elementwise_indice(self, node, idx):
         """
@@ -548,29 +576,6 @@ class TraceIndice(object):
             self._inherit_more_indice_from_node_with_exclude(n, node)
         cat_dim = node.kwargs["dim"]
         self._del_dim(node_idx, cat_dim)
-
-    def _assign_arange_indice(self, node: Node, node_idx: int) -> None:
-        """
-        Assign indice for arange op.
-
-        Args:
-            node (node)
-            node_idx (int)
-        """
-        self._assign_all_indice(node, node_idx)
-
-    def _assign_tensor_indice(self, node: Node, node_idx: int) -> None:
-        """
-        Assign indice for tensor op.
-
-        Args:
-            node (node)
-            node_idx (int)
-        """
-        if len(get_node_shape(node)) == 0:
-            return
-        else:
-            raise NotImplementedError()
 
     def _assign_embedding_indice(self, node: Node, node_idx: int) -> None:
         """
@@ -835,7 +840,7 @@ class TraceIndice(object):
                 elif "baddbmm" == node_name:
                     self._assign_baddbmm_indice(node, idx)
                 elif "interpolate" == node_name:
-                    continue    # TODO
+                    self._assign_interpolate_indice(node, idx)
                 elif any(i == node_name for i in ["arange", "ones", "ones_like", "tensor", "empty"]):
                     self._assign_all_indice(node, idx)
                 elif any(i == node_name for i in ["getattr", "eq", "_assert_is_none", "_assert", "finfo"]):
@@ -847,7 +852,7 @@ class TraceIndice(object):
                 if "layernorm" == node_name:
                     self._assign_layernorm_indice(node, idx)
                 elif "groupnorm" == node_name:
-                    self._assign_layernorm_indice(node, idx)    # TODO to change
+                    self._assign_groupnorm_indice(node, idx)
                 elif "embedding" == node_name:
                     self._assign_embedding_indice(node, idx)
                 elif "linear" == node_name:
