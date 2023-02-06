@@ -48,7 +48,7 @@ jobs:
           res=`python .github/workflows/scripts/example_checks/detect_changed_example.py --fileNameList $changedFileName`
           echo "All changed examples are $res"
 
-          if [ "$res" = "[]" ]; then
+          if [ "$res" == "[]" ]; then
             echo "anyChanged=false" >> $GITHUB_OUTPUT
             echo "matrix=null" >> $GITHUB_OUTPUT
           else

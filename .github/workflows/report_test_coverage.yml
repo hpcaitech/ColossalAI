@@ -42,7 +42,7 @@ jobs:
           fi
 
       - name: Make Coverage Report Collapsable
-        if: steps.unzip.outputs.hasReport == "true"
+        if: steps.unzip.outputs.hasReport == 'true'
         run: |
           covNum=$(cat cov_number)
           title="The code coverage for the changed files is ${covNum}%."
