@@ -150,7 +150,7 @@ class TraceIndice(object):
         for i in range(len(node_from_indice)):
             self._inherit_indice(node_from, i, node_to, i, init=True)
 
-    def _inherit_more_indice_from_node(self, node_from: Node, node_to: Node, exclude: List = None) -> None:
+    def _inherit_more_indice_from_node_with_exclude(self, node_from: Node, node_to: Node, exclude: List = None) -> None:
         """
         inheirt indice from node without init
         """
@@ -327,12 +327,34 @@ class TraceIndice(object):
             node_idx (int)
         """
         bias, input_node, weight = node.args
-
+        assert len(get_node_shape(bias)) == 1 and len(get_node_shape(weight)) == 2
         self._assign_indice_as_input(node, node_idx, input_node)
         self._inherit_indice(weight, 1, node, -1)
-        self._inherit_indice(bias, -1, node, -1)
+        self._inherit_more_indice_from_node_with_exclude(bias, node)
 
         self._mark_computation(node, node_idx, [-1])
+
+    def _assign_baddbmm_indice(self, node: Node, node_idx: int) -> None:
+        """
+        Assign indice for baddbmm(batch add and batch matmul) op.
+        add, matmul_left, matmul_right = args
+        out = add + (matmul_left x matmul_right)
+
+        Args:
+            node (node)
+            node_idx (int)
+        """
+        add, matmul_left, matmul_right = node.args
+
+        assert get_node_shape(add) == get_node_shape(node)
+        assert len(get_node_shape(matmul_left)) == len(get_node_shape(matmul_right))
+        self._assign_indice_as_input(node, node_idx, matmul_left)
+        # matmul
+        self._inherit_indice(matmul_right, -1, node, -1)
+        self._inherit_more_indice_from_node_with_exclude(matmul_right, node, [-2, -1])
+        self._mark_computation(node, node_idx, [-1])
+        # add
+        self._inherit_more_indice_from_node_with_exclude(add, node)
 
     def _assign_matmul_indice(self, node: Node, node_idx: int) -> None:
         """
@@ -349,9 +371,9 @@ class TraceIndice(object):
 
         assert len(get_node_shape(matmul_left)) == len(get_node_shape(matmul_right))
         self._assign_indice_as_input(node, node_idx, matmul_left)
-        self._inherit_indice(matmul_right, -1, node, -1)
 
-        self._inherit_more_indice_from_node(matmul_right, node, [-1, -2])
+        self._inherit_indice(matmul_right, -1, node, -1)
+        self._inherit_more_indice_from_node_with_exclude(matmul_right, node, [-1, -2])
         self._mark_computation(node, node_idx, [-1])
 
     def _assign_conv2d_indice(self, node: Node, node_idx: int) -> None:
@@ -378,7 +400,7 @@ class TraceIndice(object):
         self._assign_indice_as_input(node, node_idx, input_node)
         self._del_dim(node_idx, 1)
         self._add_dim(node_idx, 1)
-        self._mark_computation(node, node_idx, [1])
+        self._mark_computation(node, node_idx, [1, 2, 3])
 
     def _assign_layernorm_indice(self, node, idx):
         """
@@ -408,13 +430,13 @@ class TraceIndice(object):
         for node_in in node.args:
             if type(node_in) == type(node):
                 nodes_in.append(node_in)
-                self._inherit_more_indice_from_node(node_in, node)
+                self._inherit_more_indice_from_node_with_exclude(node_in, node)
 
     def _assgin_no_change_indice(self, node, idx):
         self._assign_indice_as_input(node, idx)
         for node_in in node.args:
             if type(node_in) == type(node):
-                self._inherit_more_indice_from_node(node_in, node)
+                self._inherit_more_indice_from_node_with_exclude(node_in, node)
 
     def _assign_einsum_indice(self, node, idx):
         """
@@ -506,7 +528,7 @@ class TraceIndice(object):
         nodes_in = flat_list(node.args[0])
         self._assign_indice_as_input(node, node_idx, input_node=nodes_in[0])
         for n in nodes_in[1:]:
-            self._inherit_more_indice_from_node(n, node)
+            self._inherit_more_indice_from_node_with_exclude(n, node)
         cat_dim = node.kwargs["dim"]
         self._del_dim(node_idx, cat_dim)
         self._add_dim(node_idx, cat_dim)
@@ -523,7 +545,7 @@ class TraceIndice(object):
         self._add_dim(node_idx, 0)
         self._assign_indice_as_input(node, node_idx, input_node=nodes_in[0])
         for n in nodes_in[1:]:
-            self._inherit_more_indice_from_node(n, node)
+            self._inherit_more_indice_from_node_with_exclude(n, node)
         cat_dim = node.kwargs["dim"]
         self._del_dim(node_idx, cat_dim)
 
@@ -791,7 +813,7 @@ class TraceIndice(object):
                     self._assign_linear_indice(node, idx)
                 elif "cat" == node_name:
                     self._assign_cat_indice(node, idx)
-                elif "matmul" == node_name:
+                elif any(n == node_name for n in ["matmul", "bmm"]):
                     self._assign_matmul_indice(node, idx)
                 elif "softmax" == node_name:
                     self._assign_softmax_indice(node, idx)
@@ -810,7 +832,11 @@ class TraceIndice(object):
                     self._assign_getitem_indice(node, idx)
                 elif "addmm" == node_name:
                     self._assign_addmm_indice(node, idx)
-                elif any(i == node_name for i in ["arange", "ones", "ones_like", "tensor"]):
+                elif "baddbmm" == node_name:
+                    self._assign_baddbmm_indice(node, idx)
+                elif "interpolate" == node_name:
+                    continue    # TODO
+                elif any(i == node_name for i in ["arange", "ones", "ones_like", "tensor", "empty"]):
                     self._assign_all_indice(node, idx)
                 elif any(i == node_name for i in ["getattr", "eq", "_assert_is_none", "_assert", "finfo"]):
                     continue
@@ -820,6 +846,8 @@ class TraceIndice(object):
                 node_name = get_module_node_name(node)
                 if "layernorm" == node_name:
                     self._assign_layernorm_indice(node, idx)
+                elif "groupnorm" == node_name:
+                    self._assign_layernorm_indice(node, idx)    # TODO to change
                 elif "embedding" == node_name:
                     self._assign_embedding_indice(node, idx)
                 elif "linear" == node_name:
