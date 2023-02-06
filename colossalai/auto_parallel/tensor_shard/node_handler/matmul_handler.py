@@ -16,7 +16,7 @@ from colossalai.tensor.sharding_spec import ShardingSpecException
 
 from ..sharding_strategy import OperationData, OperationDataType, ShardingStrategy
 from ..utils import recover_sharding_spec_for_broadcast_shape
-from .node_handler import NodeHandler
+from .node_handler import MetaInfoNodeHandler, NodeHandler
 from .registry import operator_registry
 from .strategy import (
     BatchedMatMulStrategyGenerator,
@@ -326,7 +326,7 @@ def _get_bmm_logical_shape(input_shape, other_shape, transforms):
 
 @operator_registry.register(torch.matmul)
 @operator_registry.register(torch.Tensor.matmul)
-class MatMulHandler(NodeHandler):
+class MatMulHandler(MetaInfoNodeHandler):
     """
     The MatMulHandler is a node handler which handles the sharding strategy generation for the matmul operation.
     According to https://pytorch.org/docs/stable/generated/torch.matmul.html, the operations will vary depending on
