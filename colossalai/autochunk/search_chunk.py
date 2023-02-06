@@ -287,12 +287,6 @@ class SearchChunk(object):
         best_chunk_region = self.reorder_graph.reorder_all(best_chunk_region)
         return best_chunk_region
 
-    def _stop_search(self, init_mem_peak, mem_peak):
-        sorted_init_mem_peak = sorted(init_mem_peak)
-        if max(mem_peak) < sorted_init_mem_peak[int(len(sorted_init_mem_peak) * 0.5)]:
-            return True
-        return False
-
     def search_region(self) -> Dict:
         """
         Search all chunk regions:
@@ -307,11 +301,7 @@ class SearchChunk(object):
             get_logger().info("AutoChunk start searching chunk regions")
 
         chunk_infos = []
-        (
-            init_mem_peak,
-            _,
-            active_node,
-        ) = self.estimate_memory.estimate_chunk_inference_mem(self.node_mgr.get_node_list())
+        init_mem_peak, _, active_node = self.estimate_memory.estimate_chunk_inference_mem(self.node_mgr.get_node_list())
         mem_peak = init_mem_peak
 
         while True:
@@ -320,18 +310,13 @@ class SearchChunk(object):
                 break
             chunk_infos.append(chunk_info)
 
-            (
-                mem_peak,
-                _,
-                active_node,
-            ) = self.estimate_memory.estimate_chunk_inference_mem(self.node_mgr.get_node_list(), chunk_infos)
+            mem_peak, _, active_node = self.estimate_memory.estimate_chunk_inference_mem(
+                self.node_mgr.get_node_list(), chunk_infos)
 
             if self.print_progress:
                 get_logger().info("AutoChunk find chunk region %d = (%d, %d)" %
                                   (len(chunk_infos), chunk_info["region"][0], chunk_info["region"][1]))
 
-            if self._stop_search(init_mem_peak, mem_peak):
-                break
         if self.print_mem:
             self.print_mem = False
             self.estimate_memory.estimate_chunk_inference_mem(self.node_mgr.get_node_list(),
