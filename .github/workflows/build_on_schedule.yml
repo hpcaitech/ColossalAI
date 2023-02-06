@@ -1,4 +1,4 @@
-name: Build on 8 GPUs
+name: Build on Schedule
 
 on:
   schedule:
@@ -39,7 +39,7 @@ jobs:
       - name: Unit Testing
         run: |
           gpu_used=$(nvidia-smi -i 0 --query-gpu=memory.used --format=csv,noheader,nounits)
-          [ "$gpu_used" -le "100" ] && PYTHONPATH=$PWD pytest tests
+          [ "$gpu_used" -le "10000" ] && PYTHONPATH=$PWD pytest tests
         env:
           DATA: /data/scratch/cifar-10
           LD_LIBRARY_PATH: /github/home/.tensornvme/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
