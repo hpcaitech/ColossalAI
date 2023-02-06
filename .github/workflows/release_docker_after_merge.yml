@@ -59,8 +59,7 @@ jobs:
         id: message-preparation
         run: |
           url=$SERVER_URL/$REPO/actions/runs/$RUN_ID
-
-          if [ $STATUS == 'success' ]
+          if [ "$STATUS" == 'success' ]
           then
             msg="The Docker image for the latest release has been successfully built and pushed to DockerHub."
           else
@@ -73,4 +72,4 @@ jobs:
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
           WEBHOOK_URL: ${{ secrets.LARK_NOTIFICATION_WEBHOOK_URL }}
-          STATUS: ${{ steps.docker-push.outcome }}
+          STATUS: ${{ needs.release.result }}
