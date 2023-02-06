@@ -1,4 +1,4 @@
-name: Publish to Test-PyPI
+name: Publish to Test-PyPI Before Merge
 
 on:
   pull_request:
