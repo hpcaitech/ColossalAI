@@ -9,18 +9,7 @@ from colossalai.fx.codegen.activation_checkpoint_codegen import CODEGEN_AVAILABL
 AUTOCHUNK_AVAILABLE = CODEGEN_AVAILABLE and is_compatible_with_meta()
 
 if AUTOCHUNK_AVAILABLE:
-    from torch.fx.graph import (
-        CodeGen,
-        PythonCode,
-        _custom_builtins,
-        _CustomBuiltin,
-        _format_target,
-        _is_from_torch,
-        _Namespace,
-        _origin_type_map,
-        inplace_methods,
-        magic_methods,
-    )
+    from torch.fx.graph import CodeGen, PythonCode, _custom_builtins, _CustomBuiltin, _format_target, _is_from_torch, _Namespace, _origin_type_map, inplace_methods, magic_methods
 
 from torch.fx.node import Argument, Node, _get_qualified_name, _type_repr, map_arg
 
