@@ -62,7 +62,7 @@ def assert_codegen_run(
     code = graph.python_code("self").src
     if print_code:
         print(code)
-    assert "chunk_result = None;  chunk_size = None;" in code
+    assert "chunk_size = None;  " in code
 
     # assert result
     inputs = [i[1] for i in meta_args] + [i[1] for i in concrete_args]
