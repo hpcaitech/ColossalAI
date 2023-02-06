@@ -4,6 +4,7 @@ on:
   # run at 03:00 of every Sunday(singapore time) so here is UTC time Saturday 16:00
   schedule:
     - cron:  '0 19 * * 6'
+  workflow_dispatch:
 
 jobs:
   matrix_preparation:
@@ -43,11 +44,13 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -U pip setuptools wheel --user
+
       - uses: actions/checkout@v2
         with:
           repository: hpcaitech/TensorNVMe
           ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
           path: TensorNVMe
+
       - name: Install tensornvme
         run: |
           cd TensorNVMe
@@ -57,10 +60,12 @@ jobs:
       - uses: actions/checkout@v2
         with:
           ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
+
       - name: Install Colossal-AI
         run: |
           pip install -v --no-cache-dir .
           pip install -r requirements/requirements-test.txt
+
       - name: Unit Testing
         run: |
           PYTHONPATH=$PWD pytest tests
@@ -68,3 +73,18 @@ jobs:
           DATA: /data/scratch/cifar-10
           NCCL_SHM_DISABLE: 1
           LD_LIBRARY_PATH: /github/home/.tensornvme/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
+
+      - name: Notify Lark
+        id: message-preparation
+        if: ${{ failure() }}
+        run: |
+          url=$SERVER_URL/$REPO/actions/runs/$RUN_ID
+          msg="Compatibility test failed with $container, please visit $url for details"
+          echo $msg
+          python .github/workflows/scripts/send_message_to_lark.py -m "$msg" -u $WEBHOOK_URL
+        env:
+          SERVER_URL: ${{github.server_url }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          WEBHOOK_URL: ${{ secrets.LARK_NOTIFICATION_WEBHOOK_URL }}
+          container: ${{ matrix.container }}
