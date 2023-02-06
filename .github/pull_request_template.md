@@ -9,7 +9,7 @@
 
 > Link this PR to your issue with words like fixed to automatically close the linked issue upon merge
 >
-> e.g. fixed #1234, closed #1234, resolved #1234
+> e.g. `fixed #1234`, `closed #1234`, `resolved #1234`
 
 
 
