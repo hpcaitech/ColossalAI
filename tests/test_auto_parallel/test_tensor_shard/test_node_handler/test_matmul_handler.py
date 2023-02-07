@@ -1,3 +1,4 @@
+import pytest
 import torch
 import torch.nn as nn
 
@@ -24,6 +25,7 @@ class MatMulModule(nn.Module):
         return torch.matmul(x1, x2)
 
 
+@pytest.mark.skipif(torch.__version__ < '1.12.0', reason="need pytorch 1.12.0 or higher for aten level operations")
 @parameterize(
     'tensor_shapes',
     [
