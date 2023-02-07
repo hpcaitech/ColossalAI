@@ -5,8 +5,8 @@ import torch
 import torch.multiprocessing as mp
 import torch.nn as nn
 
+from colossalai.auto_parallel.tensor_shard.node_handler import PermuteHandler, TransposeHandler
 from colossalai.auto_parallel.tensor_shard.node_handler.conv_handler import ConvFunctionHandler
-from colossalai.auto_parallel.tensor_shard.node_handler.experimental import PermuteHandler, TransposeHandler
 from colossalai.auto_parallel.tensor_shard.node_handler.linear_handler import LinearFunctionHandler
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationData, OperationDataType, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh

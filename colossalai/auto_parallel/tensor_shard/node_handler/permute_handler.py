@@ -2,11 +2,10 @@ from typing import Dict, List
 
 import torch
 
-from ...sharding_strategy import OperationData, OperationDataType
-from ..node_handler import NodeHandler
-from ..registry import operator_registry
-from ..strategy import StrategyGenerator
-from .reshape_generator import PermuteGenerator
+from ..sharding_strategy import OperationData, OperationDataType
+from .node_handler import NodeHandler
+from .registry import operator_registry
+from .strategy import PermuteGenerator, StrategyGenerator
 
 __all__ = ['PermuteHandler']
 
