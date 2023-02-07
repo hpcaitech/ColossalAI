@@ -17,7 +17,7 @@ from test_autochunk_diffuser_utils import run_test
 
 from colossalai.autochunk.autochunk_codegen import AUTOCHUNK_AVAILABLE
 
-BATCH_SIZE = 2
+BATCH_SIZE = 1
 HEIGHT = 448
 WIDTH = 448
 IN_CHANNELS = 3
@@ -33,10 +33,6 @@ def get_data(shape: tuple) -> Tuple[List, List]:
     return meta_args, concrete_args
 
 
-@pytest.mark.skipif(
-    True,
-    reason="not implemented",
-)
 @pytest.mark.skipif(
     not (AUTOCHUNK_AVAILABLE and HAS_REPO),
     reason="torch version is lower than 1.12.0",
