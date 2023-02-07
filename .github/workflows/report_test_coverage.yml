@@ -46,14 +46,17 @@ jobs:
         run: |
           covNum=$(cat cov_number)
           title="The code coverage for the changed files is ${covNum}%."
-          (echo $title; cat coverage.txt) > coverage_tmp.txt
-          mv coverage_tmp.txt coverage.txt
-          sed -i '2 i <details>' coverage.txt
-          sed -i '3 i <summary>Click me to view the complete report</summary>' coverage.txt
-          sed -i '4 i \n' coverage.txt
-          sed -i '5 i \`\`\`text' coverage.txt
-          echo "\`\`\`" >> coverage.txt
-          echo "</details>" >> coverage.txt
+          touch coverage_report.txt
+          echo $title >> coverage_report.txt
+          echo " " >> coverage_report.txt
+          echo "<details>" >> coverage_report.txt
+          echo "<summary>Click me to view the complete report</summary>" >> coverage_report.txt
+          echo " " >> coverage_report.txt
+          echo "\`\`\`" >> coverage_report.txt
+          cat coverage.txt >> coverage_report.txt
+          echo "\`\`\`" >> coverage_report.txt
+          echo "</details>" >> coverage_report.txt
+          mv coverage_report.txt coverage.txt
 
       - name: 'Comment on PR'
         if: steps.unzip.outputs.hasReport == 'true'
