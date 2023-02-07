@@ -2,7 +2,7 @@ name: Report Test Coverage
 
 on:
   workflow_run:
-    workflows: [Build]
+    workflows: [Build on PR]
     types:
       - completed
 
@@ -56,7 +56,7 @@ jobs:
           echo "</details>" >> coverage.txt
 
       - name: 'Comment on PR'
-        if: steps.unzip.outputs.hasReport == "true"
+        if: steps.unzip.outputs.hasReport == 'true'
         uses: actions/github-script@v6
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
