@@ -17,10 +17,9 @@ from test_autochunk_diffuser_utils import run_test
 
 from colossalai.autochunk.autochunk_codegen import AUTOCHUNK_AVAILABLE
 
-BATCH_SIZE = 2
-SEQ_LENGTH = 5
-HEIGHT = 224
-WIDTH = 224
+BATCH_SIZE = 1
+HEIGHT = 448
+WIDTH = 448
 IN_CHANNELS = 3
 LATENTS_SHAPE = (BATCH_SIZE, IN_CHANNELS, HEIGHT // 7, WIDTH // 7)
 
@@ -35,25 +34,18 @@ def get_data(shape: tuple) -> Tuple[List, List]:
 
 
 @pytest.mark.skipif(
-    True,
-    reason="not implemented",
-)
-@pytest.mark.skipif(
     not (AUTOCHUNK_AVAILABLE and HAS_REPO),
     reason="torch version is lower than 1.12.0",
 )
 @pytest.mark.parametrize("model", MODELS)
 @pytest.mark.parametrize("shape", [LATENTS_SHAPE])
-@pytest.mark.parametrize("max_memory", [64])
+@pytest.mark.parametrize("max_memory", [None])
 def test_evoformer_block(model, shape, max_memory):
     run_func = partial(
         run_test,
         max_memory=max_memory,
         model=model,
         data=get_data(shape),
-        print_code=False,
-        print_mem=False,
-        print_progress=False,
     )
     mp.spawn(run_func, nprocs=1)
 
@@ -62,9 +54,10 @@ if __name__ == "__main__":
     run_test(
         rank=0,
         data=get_data(LATENTS_SHAPE),
-        max_memory=64,
+        max_memory=None,
         model=UNet2DModel,
         print_code=False,
         print_mem=False,
+        print_est_mem=False,
         print_progress=False,
     )
