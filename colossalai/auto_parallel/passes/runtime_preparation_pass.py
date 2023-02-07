@@ -59,15 +59,9 @@ def _solution_annotatation(gm: torch.fx.GraphModule,
     required in runtime into graph as placeholder nodes.
     """
     mod_graph = gm.graph
-    # TODO: In future PR, strategies_constructor should be a required argument,
-    # instead of optional argument. This is because we don't need to consider nodes with
-    # no strategy in runtime preparation pass.
-    if strategies_constructor is not None:
-        nodes = [strategies_vector.node for strategies_vector in strategies_constructor.leaf_strategies]
-        no_strategy_nodes = strategies_constructor.no_strategy_nodes
-    else:
-        nodes = tuple(mod_graph.nodes)
-        no_strategy_nodes = []
+
+    nodes = [strategies_vector.node for strategies_vector in strategies_constructor.leaf_strategies]
+    no_strategy_nodes = strategies_constructor.no_strategy_nodes
 
     # the dict to get origin sharding spec of node
     origin_node_sharding_spec_dict = {}
@@ -463,7 +457,8 @@ def implicit_comm_action_apply(gm: torch.fx.GraphModule):
 def runtime_preparation_pass(gm: torch.fx.GraphModule,
                              solution: List[int],
                              device_mesh: DeviceMesh,
-                             strategies_constructor: StrategiesConstructor = None):
+                             strategies_constructor: StrategiesConstructor,
+                             overlap=False):
     gm, sharding_spec_convert_dict, origin_node_sharding_spec_dict, comm_actions_dict = _solution_annotatation(
         gm, solution, strategies_constructor)
     gm = _size_value_converting(gm, device_mesh)
