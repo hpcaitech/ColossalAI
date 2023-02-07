@@ -11,7 +11,7 @@
    <a href="https://github.com/hpcaitech/ColossalAI/discussions"> Forum </a> |
    <a href="https://medium.com/@hpcaitech"> Blog </a></h3>
 
-   [![Build](https://github.com/hpcaitech/ColossalAI/actions/workflows/build.yml/badge.svg)](https://github.com/hpcaitech/ColossalAI/actions/workflows/build.yml)
+   [![Build](https://github.com/hpcaitech/ColossalAI/actions/workflows/build_on_schedule.yml/badge.svg)](https://github.com/hpcaitech/ColossalAI/actions/workflows/build_on_schedule.yml)
    [![Documentation](https://readthedocs.org/projects/colossalai/badge/?version=latest)](https://colossalai.readthedocs.io/en/latest/?badge=latest)
    [![CodeFactor](https://www.codefactor.io/repository/github/hpcaitech/colossalai/badge)](https://www.codefactor.io/repository/github/hpcaitech/colossalai)
    [![HuggingFace badge](https://img.shields.io/badge/%F0%9F%A4%97HuggingFace-Join-yellow)](https://huggingface.co/hpcai-tech)
@@ -114,7 +114,7 @@ distributed training and inference in a few lines.
 
 - Inference
   - [Energon-AI](https://github.com/hpcaitech/EnergonAI)
-  
+
 <p align="right">(<a href="#top">back to top</a>)</p>
 
 ## Parallel Training Demo
