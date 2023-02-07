@@ -57,7 +57,7 @@ def mem_test_for_node_strategy(rank: int,
             output_key]
 
         gm, sharding_spec_dict, origin_spec_dict, comm_actions_dict = runtime_preparation_pass(
-            gm, solution, device_mesh)
+            gm, solution, device_mesh, strategies_constructor)
         gm = runtime_apply_pass(gm)
         gm.recompile()
         gm: GraphModule

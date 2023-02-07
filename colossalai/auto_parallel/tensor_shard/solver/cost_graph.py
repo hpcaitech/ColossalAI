@@ -62,9 +62,6 @@ class CostGraph:
                         else:
                             edge_cost[(j, i)] = resharding_cost_item.total
                 self.edge_costs[node_pair] = edge_cost
-            # add parents and children attribute to node
-            # parent_nodes = [node for node in strategies_vector.predecessor_nodes]
-            # children_nodes = [node for node in strategies_vector.successor_nodes]
             parent_nodes = []
             children_nodes = []
 
