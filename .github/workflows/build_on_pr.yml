@@ -1,4 +1,4 @@
-name: Build
+name: Build on PR
 
 on:
   pull_request:
@@ -52,6 +52,7 @@ jobs:
             **/*.h
             **/*.cpp
             **/*.cu
+            **/*.txt
 
       - name: List changed files
         run: |

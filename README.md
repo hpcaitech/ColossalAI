@@ -114,9 +114,7 @@ distributed training and inference in a few lines.
 
 - Inference
   - [Energon-AI](https://github.com/hpcaitech/EnergonAI)
-
-- Colossal-AI in the Real World
-  - Biomedicine: [FastFold](https://github.com/hpcaitech/FastFold) accelerates training and inference of AlphaFold protein structure
+  
 <p align="right">(<a href="#top">back to top</a>)</p>
 
 ## Parallel Training Demo

@@ -58,6 +58,10 @@ class GeminiManager:
         self._evict_time = 0
         self._comp_cuda_demand_time = 0
 
+    @property
+    def need_warmup(self) -> bool:
+        return self.policy_name in ('auto', 'const')
+
     def is_warmup(self):
         return self._warmup
 
