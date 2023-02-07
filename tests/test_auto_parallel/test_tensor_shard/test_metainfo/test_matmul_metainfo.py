@@ -27,6 +27,7 @@ if torch.__version__ >= '1.12.0':
     from colossalai.auto_parallel.meta_profiler import MetaInfo, meta_register
 
 
+@pytest.mark.skipif(torch.__version__ < '1.12.0', reason="need pytorch 1.12.0 or higher for aten level operations")
 @parameterize(
     'tensor_shapes',
     [
@@ -41,7 +42,6 @@ if torch.__version__ >= '1.12.0':
         [[64, 64, 128], [64, 128, 192]],    # batched mat-batched mat (matched batch dims)
         [[64, 1, 64, 128], [64, 128, 192]],    # batched mat-batched mat (unmatched batch dims)
     ])
-@pytest.mark.skipif(torch.__version__ < '1.12.0', reason="need pytorch 1.12.0 or higher for aten level operations")
 def test_matmul_function_meta_info(tensor_shapes):
     meta_func = meta_register.get(torch.matmul)
 

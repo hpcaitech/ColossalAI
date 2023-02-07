@@ -206,9 +206,6 @@ def matmul_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleItem, L
     # Get input and output tensors
     input_tensors = [args[0].data, args[1].data]
     output_tensors = [args[-1].data]
-    print(input_tensors)
-    print(output_tensors)
-    print([len(tensor.shape) for tensor in input_tensors])
 
     # Check dimension
     if all(len(tensor.shape) == 1 for tensor in input_tensors):
