@@ -278,11 +278,6 @@ Installation can be made via
 pip install colossalai-nightly
 ```
 
-### Download From Official Releases
-
-You can visit the [Download](https://www.colossalai.org/download) page to download Colossal-AI with pre-built PyTorch extensions.
-
-
 ### Download From Source
 
 > The version of Colossal-AI will be in line with the main branch of the repository. Feel free to raise an issue if you encounter any problem. :)
