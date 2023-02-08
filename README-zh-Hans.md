@@ -58,7 +58,7 @@
    <ul>
      <li><a href="#GPT-3-Inference">GPT-3</a></li>
      <li><a href="#OPT-Serving">1750亿参数OPT在线推理服务</a></li>
-     <li><a href="#BLOOM-Inference">1750亿参数 BLOOM</a></li>
+     <li><a href="#BLOOM-Inference">1760亿参数 BLOOM</a></li>
    </ul>
  </li>
 <li>
