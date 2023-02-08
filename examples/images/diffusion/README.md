@@ -92,6 +92,12 @@ cd ColossalAI
 CUDA_EXT=1 pip install .
 ```
 
+#### Step 3:Accelerate with flash attention by xformers(Optional)
+
+```
+pip install xformers
+```
+
 ### Option #2: Use Docker
 
 To use the stable diffusion Docker image, you can either build using the provided the [Dockerfile](./docker/Dockerfile) or pull a Docker image from our Docker hub.
