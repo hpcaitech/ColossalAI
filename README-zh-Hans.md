@@ -204,7 +204,7 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/BLOOM%20Inference.PNG" width=800/>
 </p>
 
-- [BLOOM](https://github.com/hpcaitech/EnergonAI/tree/main/examples/bloom): 降低1750亿参数BLOOM模型部署推理成本超10倍
+- [BLOOM](https://github.com/hpcaitech/EnergonAI/tree/main/examples/bloom): 降低1760亿参数BLOOM模型部署推理成本超10倍
 
 <p align="right">(<a href="#top">返回顶端</a>)</p>
 
