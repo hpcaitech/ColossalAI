@@ -58,7 +58,7 @@
    <ul>
      <li><a href="#GPT-3-Inference">GPT-3</a></li>
      <li><a href="#OPT-Serving">OPT-175B Online Serving for Text Generation</a></li>
-     <li><a href="#BLOOM-Inference">175B BLOOM</a></li>
+     <li><a href="#BLOOM-Inference">176B BLOOM</a></li>
    </ul>
  </li>
    <li>
