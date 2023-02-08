@@ -276,11 +276,7 @@ CUDA_EXT=1 pip install colossalai
 pip install colossalai-nightly
 ```
 
-### 从官方安装
-
-您可以访问我们[下载](https://www.colossalai.org/download)页面来安装Colossal-AI，在这个页面上发布的版本都预编译了CUDA扩展。
-
-### 从源安装
+### 从源码安装
 
 > 此文档将与版本库的主分支保持一致。如果您遇到任何问题，欢迎给我们提 issue :)
 
