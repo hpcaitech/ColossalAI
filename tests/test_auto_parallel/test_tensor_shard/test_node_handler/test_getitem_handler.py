@@ -5,10 +5,10 @@ import torch
 import torch.multiprocessing as mp
 import torch.nn as nn
 
+from colossalai.auto_parallel.tensor_shard.node_handler.default_reshape_handler import DefaultReshapeHandler
 from colossalai.auto_parallel.tensor_shard.node_handler.getitem_handler import GetItemHandler
 from colossalai.auto_parallel.tensor_shard.node_handler.linear_handler import LinearFunctionHandler
 from colossalai.auto_parallel.tensor_shard.node_handler.placeholder_handler import PlaceholderHandler
-from colossalai.auto_parallel.tensor_shard.node_handler.reshape_handler import ReshapeHandler
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationData, OperationDataType, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.fx import ColoGraphModule, ColoTracer
@@ -153,7 +153,9 @@ def test_getitem_from_tuple_handler():
     )
     input_handler.register_strategy(compute_resharding_cost=False)
     setattr(input_node, 'strategies_vector', input_strategies_vector)
-    split_handler = ReshapeHandler(node=split_node, device_mesh=device_mesh, strategies_vector=split_strategies_vector)
+    split_handler = DefaultReshapeHandler(node=split_node,
+                                          device_mesh=device_mesh,
+                                          strategies_vector=split_strategies_vector)
     split_handler.register_strategy(compute_resharding_cost=False)
     setattr(split_node, 'strategies_vector', split_strategies_vector)
     getitem_handler = GetItemHandler(node=getitem_node,

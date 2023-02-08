@@ -5,23 +5,23 @@ import torch
 from ..sharding_strategy import OperationData, OperationDataType
 from .node_handler import MetaInfoNodeHandler, NodeHandler
 from .registry import operator_registry
-from .strategy import ReshapeGenerator, StrategyGenerator
+from .strategy import DefaultReshapeGenerator, StrategyGenerator
 
-__all__ = ['ReshapeHandler']
+__all__ = ['DefaultReshapeHandler']
 
 
 @operator_registry.register(torch.flatten)
 @operator_registry.register(torch.Tensor.unsqueeze)
 @operator_registry.register(torch.nn.AdaptiveAvgPool2d)
-class ReshapeHandler(MetaInfoNodeHandler):
+class DefaultReshapeHandler(MetaInfoNodeHandler):
     """
-    A ReshapeHandler which deals with the sharding strategies for Reshape Op, such as torch.reshape.
+    A DefaultReshapeHandler which deals with the sharding strategies for Reshape Op, such as torch.reshape.
     """
 
     def get_strategy_generator(self) -> List[StrategyGenerator]:
         op_data_mapping = self.get_operation_data_mapping()
         generators = []
-        generators.append(ReshapeGenerator(op_data_mapping, self.device_mesh, self.node.args[0]))
+        generators.append(DefaultReshapeGenerator(op_data_mapping, self.device_mesh, self.node.args[0]))
         return generators
 
     def infer_logical_shape(self, data):
