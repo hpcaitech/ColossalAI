@@ -11,7 +11,7 @@
    <a href="https://github.com/hpcaitech/ColossalAI/discussions"> 论坛 </a> |
    <a href="https://medium.com/@hpcaitech"> 博客 </a></h3>
 
-   [![Build](https://github.com/hpcaitech/ColossalAI/actions/workflows/build.yml/badge.svg)](https://github.com/hpcaitech/ColossalAI/actions/workflows/build.yml)
+   [![Build](https://github.com/hpcaitech/ColossalAI/actions/workflows/build_on_schedule.yml/badge.svg)](https://github.com/hpcaitech/ColossalAI/actions/workflows/build_on_schedule.yml)
    [![Documentation](https://readthedocs.org/projects/colossalai/badge/?version=latest)](https://colossalai.readthedocs.io/en/latest/?badge=latest)
    [![CodeFactor](https://www.codefactor.io/repository/github/hpcaitech/colossalai/badge)](https://www.codefactor.io/repository/github/hpcaitech/colossalai)
    [![HuggingFace badge](https://img.shields.io/badge/%F0%9F%A4%97HuggingFace-Join-yellow)](https://huggingface.co/hpcai-tech)
@@ -109,8 +109,7 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
   - 基于参数文件的并行化
 - 推理
   - [Energon-AI](https://github.com/hpcaitech/EnergonAI)
-- Colossal-AI 成功案例
-  - 生物医药: [FastFold](https://github.com/hpcaitech/FastFold) 加速蛋白质结构预测 AlphaFold 训练与推理
+
 <p align="right">(<a href="#top">返回顶端</a>)</p>
 
 ## 并行训练样例展示

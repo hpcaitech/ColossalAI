@@ -1,4 +1,4 @@
-name: Dispatch Compatibility Test
+name: Compatibility Test on Dispatch
 
 on:
   workflow_dispatch:

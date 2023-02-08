@@ -2,3 +2,6 @@
 	path = inference
 	url = https://github.com/hpcaitech/EnergonAI.git
 	branch = main
+[submodule "examples/tutorial/fastfold/FastFold"]
+	path = examples/tutorial/fastfold/FastFold
+	url = https://github.com/hpcaitech/FastFold
