@@ -130,6 +130,18 @@ def mem_test_for_node_strategy(rank: int,
 
 def print_results(input: List[torch.Tensor], output: List[torch.Tensor], compute_cost: TrainCycleItem,
                   memory_cost: TrainCycleItem, fwd_allocated, fwd_peak, bwd_allocated, bwd_peak):
+    """Print the results of the meta information test.
+
+    Args:
+        input (List[torch.Tensor]): input tensors
+        output (List[torch.Tensor]): output tensors
+        compute_cost (TrainCycleItem): compute cost estimated by meta_func
+        memory_cost (TrainCycleItem): memory cost estimated by meta_func
+        fwd_allocated: real forward memory allocated
+        fwd_peak: real forward peak memory stats
+        bwd_allocated: real backward memory allocated
+        bwd_peak: real backward peak memory stats
+    """
     print("=====================")
     print(f"input shapes: {[tensor.shape for tensor in input]}")
     print(f"output shapes: {[tensor.shape for tensor in output]}")
