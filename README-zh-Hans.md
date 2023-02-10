@@ -360,6 +360,6 @@ docker run -ti --gpus all --rm --ipc=host colossalai bash
 }
 ```
 
-Colossal-AI 已被 [SC](https://sc22.supercomputing.org/), [AAAI](https://aaai.org/Conferences/AAAI-23/), [PPoPP](https://ppopp23.sigplan.org/) 等顶级会议录取为官方教程。
+Colossal-AI 已被 [SC](https://sc22.supercomputing.org/), [AAAI](https://aaai.org/Conferences/AAAI-23/), [PPoPP](https://ppopp23.sigplan.org/), [CVPR](https://cvpr2023.thecvf.com/)等顶级会议录取为官方教程。
 
 <p align="right">(<a href="#top">返回顶端</a>)</p>
