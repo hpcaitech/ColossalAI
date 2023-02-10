@@ -26,7 +26,7 @@ def insert_narrow(gm, x_node):
     return gm
 
 
-def test_size_value_converting_pass():
+def test_node_args_converting_pass():
     model = TestModule()
     physical_mesh_id = torch.arange(0, 4)
     mesh_shape = (2, 2)
@@ -51,4 +51,4 @@ def test_size_value_converting_pass():
 
 
 if __name__ == '__main__':
-    test_size_value_converting_pass()
+    test_node_args_converting_pass()
