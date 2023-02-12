@@ -22,7 +22,6 @@ setup(
     packages=find_packages(exclude=(
         'tests',
         'benchmarks',
-        'requirements',
         '*.egg-info',
     )),
     description='A RLFH implementation (ChatGPT) powered by ColossalAI',
@@ -30,7 +29,7 @@ setup(
     long_description_content_type='text/markdown',
     license='Apache Software License 2.0',
     url='https://github.com/hpcaitech/ChatGPT',
-    install_requires=fetch_requirements('requirements/requirements.txt'),
+    install_requires=fetch_requirements('requirements.txt'),
     python_requires='>=3.6',
     classifiers=[
         'Programming Language :: Python :: 3',
