@@ -60,5 +60,6 @@ jobs:
           cache_dir=ColossalAI-Documentation/doc-build/.cache
           mkdir $cache_dir
           mv ColossalAI $cache_dir
+          cd ColossalAI-Documentation
           pip install -v ./doc-build
           bash ./scripts/build.sh
