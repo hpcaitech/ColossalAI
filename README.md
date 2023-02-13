@@ -58,7 +58,7 @@
    <ul>
      <li><a href="#GPT-3-Inference">GPT-3</a></li>
      <li><a href="#OPT-Serving">OPT-175B Online Serving for Text Generation</a></li>
-     <li><a href="#BLOOM-Inference">175B BLOOM</a></li>
+     <li><a href="#BLOOM-Inference">176B BLOOM</a></li>
    </ul>
  </li>
    <li>
@@ -206,7 +206,7 @@ Please visit our [documentation](https://www.colossalai.org/) and [examples](htt
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/BLOOM%20Inference.PNG" width=800/>
 </p>
 
-- [BLOOM](https://github.com/hpcaitech/EnergonAI/tree/main/examples/bloom): Reduce hardware deployment costs of 175-billion-parameter BLOOM by more than 10 times.
+- [BLOOM](https://github.com/hpcaitech/EnergonAI/tree/main/examples/bloom): Reduce hardware deployment costs of 176-billion-parameter BLOOM by more than 10 times.
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
@@ -277,11 +277,6 @@ Installation can be made via
 ```bash
 pip install colossalai-nightly
 ```
-
-### Download From Official Releases
-
-You can visit the [Download](https://www.colossalai.org/download) page to download Colossal-AI with pre-built PyTorch extensions.
-
 
 ### Download From Source
 
@@ -367,6 +362,6 @@ We leverage the power of [GitHub Actions](https://github.com/features/actions) t
 }
 ```
 
-Colossal-AI has been accepted as official tutorials by top conference [SC](https://sc22.supercomputing.org/), [AAAI](https://aaai.org/Conferences/AAAI-23/), [PPoPP](https://ppopp23.sigplan.org/), etc.
+Colossal-AI has been accepted as official tutorials by top conference [SC](https://sc22.supercomputing.org/), [AAAI](https://aaai.org/Conferences/AAAI-23/), [PPoPP](https://ppopp23.sigplan.org/), [CVPR](https://cvpr2023.thecvf.com/), etc.
 
 <p align="right">(<a href="#top">back to top</a>)</p>

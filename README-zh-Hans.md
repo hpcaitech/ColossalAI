@@ -58,7 +58,7 @@
    <ul>
      <li><a href="#GPT-3-Inference">GPT-3</a></li>
      <li><a href="#OPT-Serving">1750亿参数OPT在线推理服务</a></li>
-     <li><a href="#BLOOM-Inference">1750亿参数 BLOOM</a></li>
+     <li><a href="#BLOOM-Inference">1760亿参数 BLOOM</a></li>
    </ul>
  </li>
 <li>
@@ -204,7 +204,7 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/BLOOM%20Inference.PNG" width=800/>
 </p>
 
-- [BLOOM](https://github.com/hpcaitech/EnergonAI/tree/main/examples/bloom): 降低1750亿参数BLOOM模型部署推理成本超10倍
+- [BLOOM](https://github.com/hpcaitech/EnergonAI/tree/main/examples/bloom): 降低1760亿参数BLOOM模型部署推理成本超10倍
 
 <p align="right">(<a href="#top">返回顶端</a>)</p>
 
@@ -276,11 +276,7 @@ CUDA_EXT=1 pip install colossalai
 pip install colossalai-nightly
 ```
 
-### 从官方安装
-
-您可以访问我们[下载](https://www.colossalai.org/download)页面来安装Colossal-AI，在这个页面上发布的版本都预编译了CUDA扩展。
-
-### 从源安装
+### 从源码安装
 
 > 此文档将与版本库的主分支保持一致。如果您遇到任何问题，欢迎给我们提 issue :)
 
@@ -364,6 +360,6 @@ docker run -ti --gpus all --rm --ipc=host colossalai bash
 }
 ```
 
-Colossal-AI 已被 [SC](https://sc22.supercomputing.org/), [AAAI](https://aaai.org/Conferences/AAAI-23/), [PPoPP](https://ppopp23.sigplan.org/) 等顶级会议录取为官方教程。
+Colossal-AI 已被 [SC](https://sc22.supercomputing.org/), [AAAI](https://aaai.org/Conferences/AAAI-23/), [PPoPP](https://ppopp23.sigplan.org/), [CVPR](https://cvpr2023.thecvf.com/)等顶级会议录取为官方教程。
 
 <p align="right">(<a href="#top">返回顶端</a>)</p>
