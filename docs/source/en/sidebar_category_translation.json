@@ -1,26 +1,26 @@
 {
-  "sidebar.docs.category.Get started": {
+  "sidebar.tutorialSidebar.category.Get started": {
     "message": "Get started",
-    "description": "The label for category Get started in sidebar docs"
+    "description": "The label for category Get started in sidebar tutorialSidebar"
   },
-  "sidebar.docs.category.Concepts": {
+  "sidebar.tutorialSidebar.category.Concepts": {
     "message": "Concepts",
-    "description": "The label for category Concepts in sidebar docs"
+    "description": "The label for category Concepts in sidebar tutorialSidebar"
   },
-  "sidebar.docs.category.Basics": {
+  "sidebar.tutorialSidebar.category.Basics": {
     "message": "Basics",
-    "description": "The label for category Basics in sidebar docs"
+    "description": "The label for category Basics in sidebar tutorialSidebar"
   },
-  "sidebar.docs.category.Features": {
+  "sidebar.tutorialSidebar.category.Features": {
     "message": "Features",
-    "description": "The label for category Features in sidebar docs"
+    "description": "The label for category Features in sidebar tutorialSidebar"
   },
-  "sidebar.docs.category.Tensor Parallel": {
+  "sidebar.tutorialSidebar.category.Tensor Parallel": {
     "message": "Tensor Parallel",
-    "description": "The label for category Tensor Parallel in sidebar docs"
+    "description": "The label for category Tensor Parallel in sidebar tutorialSidebar"
   },
-  "sidebar.docs.category.Advanced Tutorials": {
+  "sidebar.tutorialSidebar.category.Advanced Tutorials": {
     "message": "Advanced Tutorials",
-    "description": "The label for category Advanced Tutorials in sidebar docs"
+    "description": "The label for category Advanced Tutorials in sidebar tutorialSidebar"
   }
 }
