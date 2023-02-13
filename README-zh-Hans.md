@@ -102,7 +102,7 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
   - 1维, [2维](https://arxiv.org/abs/2104.05343), [2.5维](https://arxiv.org/abs/2105.14500), [3维](https://arxiv.org/abs/2105.14450) 张量并行
   - [序列并行](https://arxiv.org/abs/2105.13120)
   - [零冗余优化器 (ZeRO)](https://arxiv.org/abs/1910.02054)
-  - [自动并行](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/gpt/auto_parallel_with_gpt)
+  - [自动并行](https://arxiv.org/abs/2302.02599)
 - 异构内存管理
   - [PatrickStar](https://arxiv.org/abs/2108.05818)
 - 使用友好
