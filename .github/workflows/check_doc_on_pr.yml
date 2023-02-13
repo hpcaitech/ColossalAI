@@ -38,6 +38,7 @@ jobs:
 
       - run: |
           ls -la
+          ls -la ..
 
       - uses: actions/setup-python@v2
         with:
