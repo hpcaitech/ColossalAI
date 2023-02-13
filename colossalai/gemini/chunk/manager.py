@@ -140,6 +140,14 @@ class ChunkManager:
         self.__add_memory_usage(chunk.memory_usage)
         return True
 
+    def fake_release_chunk(self, chunk: Chunk) -> None:
+        """Release gathered chunk in a fake mode.
+        This function is used for keep-gathered chunk in the inference mode.
+        """
+        assert chunk.keep_gathered
+        assert chunk.tensor_state_cnter[TensorState.HOLD] == chunk.num_tensors
+        self.__sub_accessed_chunk(chunk)
+
     def copy_tensor_to_chunk_slice(self, tensor: torch.Tensor, data: torch.Tensor) -> None:
         """
         Copy data to the chunk.
