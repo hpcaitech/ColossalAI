@@ -21,3 +21,23 @@ jobs:
           python-version: '3.8.14'
 
       - run: python .github/workflows/scripts/check_doc_i18n.py -d docs/source
+
+  check-doc-build:
+    name: Test if the docs can be built
+    if: |
+        github.event.pull_request.draft == false &&
+        github.base_ref == 'main' &&
+        github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions/checkout@v2
+        repository: 'hpcaitech/ColossalAI-Documentation'
+
+      - run: |
+          ls -la
+
+      - uses: actions/setup-python@v2
+        with:
+          python-version: '3.8.14'
