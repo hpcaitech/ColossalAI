@@ -104,7 +104,7 @@ distributed training and inference in a few lines.
   - 1D, [2D](https://arxiv.org/abs/2104.05343), [2.5D](https://arxiv.org/abs/2105.14500), [3D](https://arxiv.org/abs/2105.14450) Tensor Parallelism
   - [Sequence Parallelism](https://arxiv.org/abs/2105.13120)
   - [Zero Redundancy Optimizer (ZeRO)](https://arxiv.org/abs/1910.02054)
-  - [Auto-Parallelism](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/gpt/auto_parallel_with_gpt)
+  - [Auto-Parallelism](https://arxiv.org/abs/2302.02599)
 
 - Heterogeneous Memory Management
   - [PatrickStar](https://arxiv.org/abs/2108.05818)
