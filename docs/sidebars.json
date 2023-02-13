@@ -3,7 +3,7 @@
     {
       "type": "category",
       "label": "Get started",
-      "collapsed": false,
+      "collapsed": true,
       "items": [
         "get_started/installation",
         "get_started/run_demo",
@@ -13,7 +13,7 @@
     {
       "type": "category",
       "label": "Concepts",
-      "collapsed": false,
+      "collapsed": true,
       "items": [
         "concepts/distributed_training",
         "concepts/paradigms_of_parallelism",
@@ -23,7 +23,7 @@
     {
       "type": "category",
       "label": "Basics",
-      "collapsed": false,
+      "collapsed": true,
       "items": [
         "basics/command_line_tool",
         "basics/define_your_config",
@@ -38,7 +38,7 @@
     {
       "type": "category",
       "label": "Features",
-      "collapsed": false,
+      "collapsed": true,
       "items": [
         "features/mixed_precision_training",
         "features/gradient_accumulation",
@@ -63,7 +63,7 @@
     {
       "type": "category",
       "label": "Advanced Tutorials",
-      "collapsed": false,
+      "collapsed": true,
       "items": [
         "advanced_tutorials/train_vit_using_pipeline_parallelism",
         "advanced_tutorials/train_vit_with_hybrid_parallelism",
