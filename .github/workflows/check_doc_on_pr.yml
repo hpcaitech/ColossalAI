@@ -31,15 +31,32 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+        with:
+          path: './ColossalAI'
 
       - uses: actions/checkout@v2
         with:
+          path: './ColossalAI-Documentation'
           repository: 'hpcaitech/ColossalAI-Documentation'
+
+      - uses: actions/setup-python@v2
+        with:
+          python-version: '3.8.14'
 
       - run: |
           ls -la
           ls -la ..
 
-      - uses: actions/setup-python@v2
-        with:
-          python-version: '3.8.14'
+      - name: Make the merged branch main
+        run: |
+          cd ColossalAI
+          curBranch=$(git rev-parse --abbrev-ref HEAD)
+          git merge --strategy=ours main    # keep the content of this branch, but record a merge
+          git checkout main
+          git merge $curBranch             # fast-forward master up to the merge
+
+      - name: Build docs
+        run: |
+          cache_dir=ColossalAI-Documentation/doc-build/.cache
+          mkdir $cache_dir
+          mv ColossalAI $cache_dir
