@@ -1,6 +1,6 @@
-# RLHF - ColossalAI
+# RLHF - Colossal-AI
 
-Implementation of RLHF (Reinforcement Learning with Human Feedback) powered by ColossalAI. It supports distributed training and offloading, which can fit extremly large models.
+Implementation of RLHF (Reinforcement Learning with Human Feedback) powered by Colossal-AI. It supports distributed training and offloading, which can fit extremly large models. More details can be found in the [blog](https://www.hpc-ai.tech/blog/colossal-ai-chatgpt).
 
 <p align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chatgpt/chatgpt.png" width=700/>
@@ -59,6 +59,27 @@ We also support training reward model with true-world data. See `examples/train_
 - [ ] implement PPO-ptx fine-tuning
 - [ ] integrate with Ray
 - [ ] support more RL paradigms, like Implicit Language Q-Learning (ILQL)
+
+## Quick Preview
+<p id="ChatGPT_scaling" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chatgpt/ChatGPT%20scaling.png" width=800/>
+</p>
+
+- Up to 7.73 times faster for single server training and 1.42 times faster for single-GPU inference
+
+<p id="ChatGPT-1GPU" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chatgpt/ChatGPT-1GPU.jpg" width=450/>
+</p>
+
+- Up to 10.3x growth in model capacity on one GPU
+- A mini demo training process requires only 1.62GB of GPU memory (any consumer-grade GPU)
+
+<p id="inference" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chatgpt/LoRA%20data.jpg" width=600/>
+</p>
+
+- Increase the capacity of the fine-tuning model by up to 3.7 times on a single GPU
+- Keep in a sufficiently high running speed
 
 ## Citations
 
