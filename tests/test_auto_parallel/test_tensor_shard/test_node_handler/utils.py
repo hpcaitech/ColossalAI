@@ -6,7 +6,8 @@ from torch.fx import GraphModule
 
 from colossalai.auto_parallel.passes.runtime_apply_pass import runtime_apply_pass
 from colossalai.auto_parallel.passes.runtime_preparation_pass import runtime_preparation_pass
-from colossalai.auto_parallel.tensor_shard.solver import SolverOptions, StrategiesConstructor
+from colossalai.auto_parallel.tensor_shard.options import SolverOptions
+from colossalai.auto_parallel.tensor_shard.solver import StrategiesConstructor
 from colossalai.auto_parallel.tensor_shard.solver.cost_graph import CostGraph
 from colossalai.auto_parallel.tensor_shard.solver.graph_analysis import GraphAnalyser
 from colossalai.auto_parallel.tensor_shard.solver.solver import Solver

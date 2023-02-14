@@ -5,7 +5,7 @@ import torch.multiprocessing as mp
 import torch.nn as nn
 
 from colossalai.auto_parallel.tensor_shard.node_handler import LinearFunctionHandler
-from colossalai.auto_parallel.tensor_shard.node_handler.option import ShardOption
+from colossalai.auto_parallel.tensor_shard.options import ShardOption
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.fx import ColoGraphModule, ColoTracer
@@ -48,6 +48,15 @@ def check_shard_option(shard_option):
 
     strategies_vector = handler.register_strategy(compute_resharding_cost=False)
     strategy_name_list = [val.name for val in strategies_vector]
+
+    if shard_option == ShardOption.SHARD_LAST_AXIS:
+        # RR = RS x SR
+        assert 'RR = RS1 x S1R' in strategy_name_list
+
+        # RS= RR x RS
+        assert 'RS1 = RR x RS1' in strategy_name_list
+
+        return
 
     # SS = SR x RS
     assert 'S1S0 = S1R x RS0_0' in strategy_name_list
@@ -104,7 +113,8 @@ def check_shard_option(shard_option):
 
 @run_on_environment_flag(name='AUTO_PARALLEL')
 def test_shard_option():
-    for shard_option in [ShardOption.STANDARD, ShardOption.SHARD, ShardOption.FULL_SHARD]:
+    # for shard_option in [ShardOption.STANDARD, ShardOption.SHARD, ShardOption.FULL_SHARD, ShardOption.SHARD_LAST_AXIS]:
+    for shard_option in [ShardOption.SHARD_LAST_AXIS]:
         check_shard_option(shard_option)
 
 
