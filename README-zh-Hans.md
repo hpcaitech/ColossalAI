@@ -219,14 +219,14 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 - 最高可提升单机训练速度7.73倍，单卡推理速度1.42倍
 
 <p id="ChatGPT-1GPU" align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chatgpt/ChatGPT-1GPU.jpg" width=800/>
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chatgpt/ChatGPT-1GPU.jpg" width=450/>
 </p>
 
 - 单卡模型容量最多提升10.3倍
 - 最小demo训练流程最低仅需1.62GB显存 (任意消费级GPU)
 
 <p id="inference" align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chatgpt/LoRA%20data.jpg" width=800/>
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chatgpt/LoRA%20data.jpg" width=600/>
 </p>
 
 - 提升单卡的微调模型容量3.7倍
