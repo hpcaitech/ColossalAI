@@ -34,6 +34,7 @@ jobs:
 
       - name: Execute Examples
         run: |
+          cd applications/ChatGPT
           ./examples/test_ci.sh
         env:
           NCCL_SHM_DISABLE: 1
