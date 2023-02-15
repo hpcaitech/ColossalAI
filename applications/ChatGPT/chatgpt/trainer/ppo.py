@@ -3,6 +3,7 @@ from typing import Any, Callable, Dict, List, Optional
 import torch.nn as nn
 from chatgpt.experience_maker import Experience, NaiveExperienceMaker
 from chatgpt.nn import Actor, Critic, PolicyLoss, ValueLoss
+from chatgpt.nn.generation_utils import update_model_kwargs_fn
 from chatgpt.replay_buffer import NaiveReplayBuffer
 from torch.optim import Optimizer
 
@@ -59,6 +60,7 @@ class PPOTrainer(Trainer):
                  dataloader_pin_memory: bool = True,
                  callbacks: List[Callback] = [],
                  **generate_kwargs) -> None:
+        self._set_default_generate_kwargs(generate_kwargs, actor)
         actor = Actor(strategy.setup_model(actor.model))
         critic = strategy.setup_model(critic)
         reward_model = strategy.setup_model(reward_model)
@@ -102,3 +104,11 @@ class PPOTrainer(Trainer):
         self.critic_optim.zero_grad()
 
         return {'actor_loss': actor_loss.item(), 'critic_loss': critic_loss.item()}
+
+    def _set_default_generate_kwargs(self, generate_kwargs: dict, actor: Actor) -> None:
+        # use huggingface models method directly
+        if 'prepare_inputs_fn' not in generate_kwargs and hasattr(actor.model, 'prepare_inputs_for_generation'):
+            generate_kwargs['prepare_inputs_fn'] = actor.model.prepare_inputs_for_generation
+
+        if 'update_model_kwargs_fn' not in generate_kwargs:
+            generate_kwargs['update_model_kwargs_fn'] = update_model_kwargs_fn

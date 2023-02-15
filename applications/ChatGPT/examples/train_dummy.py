@@ -3,12 +3,6 @@ from copy import deepcopy
 
 import torch
 from chatgpt.nn import BLOOMActor, BLOOMCritic, GPTActor, GPTCritic, OPTActor, OPTCritic, RewardModel
-from chatgpt.nn.generation_utils import (
-    bloom_prepare_inputs_fn,
-    gpt_prepare_inputs_fn,
-    opt_prepare_inputs_fn,
-    update_model_kwargs_fn,
-)
 from chatgpt.trainer import PPOTrainer
 from chatgpt.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
 from torch.optim import Adam
@@ -66,36 +60,33 @@ def main(args):
     if args.model == 'gpt2':
         tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
         tokenizer.pad_token = tokenizer.eos_token
-        prepare_inputs_fn = gpt_prepare_inputs_fn
     elif args.model == 'bloom':
         tokenizer = BloomTokenizerFast.from_pretrained(args.pretrain)
         tokenizer.pad_token = tokenizer.eos_token
-        prepare_inputs_fn = bloom_prepare_inputs_fn
     elif args.model == 'opt':
         tokenizer = AutoTokenizer.from_pretrained("facebook/opt-350m")
-        prepare_inputs_fn = opt_prepare_inputs_fn
     else:
         raise ValueError(f'Unsupported model "{args.model}"')
 
     # configure trainer
-    trainer = PPOTrainer(strategy,
-                         actor,
-                         critic,
-                         reward_model,
-                         initial_model,
-                         actor_optim,
-                         critic_optim,
-                         max_epochs=args.max_epochs,
-                         train_batch_size=args.train_batch_size,
-                         tokenizer=preprocess_batch,
-                         max_length=128,
-                         do_sample=True,
-                         temperature=1.0,
-                         top_k=50,
-                         pad_token_id=tokenizer.pad_token_id,
-                         eos_token_id=tokenizer.eos_token_id,
-                         prepare_inputs_fn=prepare_inputs_fn,
-                         update_model_kwargs_fn=update_model_kwargs_fn)
+    trainer = PPOTrainer(
+        strategy,
+        actor,
+        critic,
+        reward_model,
+        initial_model,
+        actor_optim,
+        critic_optim,
+        max_epochs=args.max_epochs,
+        train_batch_size=args.train_batch_size,
+        tokenizer=preprocess_batch,
+        max_length=128,
+        do_sample=True,
+        temperature=1.0,
+        top_k=50,
+        pad_token_id=tokenizer.pad_token_id,
+        eos_token_id=tokenizer.eos_token_id,
+    )
 
     random_prompts = torch.randint(tokenizer.vocab_size, (1000, 64), device=torch.cuda.current_device())
     trainer.fit(random_prompts,
