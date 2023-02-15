@@ -36,7 +36,7 @@ If you want to test ZeRO1 and ZeRO2 in Colossal-AI, you need to ensure Colossal-
 
 ## Dataset
 
-For simplicity, the input data is randonly generated here.
+For simplicity, the input data is randomly generated here.
 
 ## Training
 We provide two stable solutions.
