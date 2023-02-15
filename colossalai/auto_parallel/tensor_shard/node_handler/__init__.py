@@ -11,7 +11,6 @@ from .layer_norm_handler import LayerNormModuleHandler
 from .linear_handler import LinearFunctionHandler, LinearModuleHandler
 from .matmul_handler import MatMulHandler
 from .normal_pooling_handler import NormPoolingHandler
-from .option import ShardOption
 from .output_handler import OutputHandler
 from .permute_handler import PermuteHandler
 from .placeholder_handler import PlaceholderHandler
@@ -31,6 +30,6 @@ __all__ = [
     'UnaryElementwiseHandler', 'DefaultReshapeHandler', 'PlaceholderHandler', 'OutputHandler', 'WhereHandler',
     'NormPoolingHandler', 'BinaryElementwiseHandler', 'MatMulHandler', 'operator_registry', 'ADDMMFunctionHandler',
     'GetItemHandler', 'GetattrHandler', 'ViewHandler', 'PermuteHandler', 'TensorConstructorHandler',
-    'EmbeddingModuleHandler', 'EmbeddingFunctionHandler', 'SumHandler', 'SoftmaxHandler', 'ShardOption',
-    'TransposeHandler', 'SplitHandler'
+    'EmbeddingModuleHandler', 'EmbeddingFunctionHandler', 'SumHandler', 'SoftmaxHandler', 'TransposeHandler',
+    'SplitHandler'
 ]
