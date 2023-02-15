@@ -1,12 +1,9 @@
-from faulthandler import disable
 from functools import partial
-from xml.dom import WrongDocumentErr
 
 import pytest
 import torch
 import torch.multiprocessing as mp
 import torch.nn as nn
-from typing_extensions import Self
 
 from colossalai.auto_parallel.tensor_shard.node_handler import LinearFunctionHandler, LinearModuleHandler
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
