@@ -7,7 +7,7 @@ from torch.fx import GraphModule
 
 from colossalai.auto_parallel.passes.runtime_apply_pass import runtime_apply_pass
 from colossalai.auto_parallel.passes.runtime_preparation_pass import runtime_preparation_pass
-from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationDataType
+from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationDataType, TrainCycleItem
 from colossalai.auto_parallel.tensor_shard.solver import SolverOptions, StrategiesConstructor
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.fx.tracer.tracer import ColoTracer
@@ -126,3 +126,56 @@ def mem_test_for_node_strategy(rank: int,
                 f"backward temp: {metainfo.memory_cost.bwd.temp / 1024} kb, backward buffer: {metainfo.memory_cost.bwd.buffer / 1024} kb"
             )
             print("=======================")
+
+
+def print_results(input: List[torch.Tensor], output: List[torch.Tensor], compute_cost: TrainCycleItem,
+                  memory_cost: TrainCycleItem, fwd_allocated, fwd_peak, bwd_allocated, bwd_peak):
+    """Print the results of the meta information test.
+
+    Args:
+        input (List[torch.Tensor]): input tensors
+        output (List[torch.Tensor]): output tensors
+        compute_cost (TrainCycleItem): compute cost estimated by meta_func
+        memory_cost (TrainCycleItem): memory cost estimated by meta_func
+        fwd_allocated: real forward memory allocated
+        fwd_peak: real forward peak memory stats
+        bwd_allocated: real backward memory allocated
+        bwd_peak: real backward peak memory stats
+    """
+    print("=====================")
+    print(f"input shapes: {[tensor.shape for tensor in input]}")
+    print(f"output shapes: {[tensor.shape for tensor in output]}")
+
+    # estimated results
+    print("Estimated Results")
+
+    # compute cost
+    print("compute_cost:")
+    print(f"    fwd: {compute_cost.fwd}")
+    print(f"    bwd: {compute_cost.bwd}")
+
+    # memory cost
+    print("memory_cost:")
+    # fwd
+    print(f"    fwd activation: {memory_cost.fwd.activation / 1024} KB")
+    print(f"    fwd buffer: {memory_cost.fwd.buffer / 1024} KB")
+    print(f"    fwd temp: {memory_cost.fwd.temp / 1024} KB")
+    print(f"    fwd parameter: {memory_cost.fwd.parameter / 1024} KB")
+
+    # bwd
+    print(f"    bwd activation: {memory_cost.bwd.activation / 1024} KB")
+    print(f"    bwd buffer: {memory_cost.bwd.buffer / 1024} KB")
+    print(f"    bwd temp: {memory_cost.bwd.temp / 1024} KB")
+    print(f"    bwd parameter: {memory_cost.bwd.parameter / 1024} KB")
+
+    # actual results
+    print("Actual Results")
+
+    print("memory_cost:")
+    # fwd
+    print(f"    fwd allocated: {fwd_allocated / 1024} KB")
+    print(f"    fwd peak: {fwd_peak / 1024} KB")
+
+    # bwd
+    print(f"    bwd allocated: {bwd_allocated / 1024} KB")
+    print(f"    bwd peak: {bwd_peak / 1024} KB")

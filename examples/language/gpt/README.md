@@ -54,13 +54,13 @@ However, it requires some efforts to start if facing a new model structure.
 bash run_gemini.sh
 ```
 
-The `train_gpt_demo.py` provides three distributed plans, you can choose the plan you want in `run_gemini.sh`. The Colossal-AI leverages Tensor Parallel and Gemini + ZeRO DDP.
+The `train_gpt_demo.py` provides three distributed plans (except ones already provided by PyTorch), you can choose the plan you want in `run_gemini.sh`. The CAI_Gemini leverages Tensor Parallel and Gemini + ZeRO DDP. For their differences, you may check out the answer to issue [here](https://github.com/hpcaitech/ColossalAI/issues/2590#issuecomment-1418766581).
 
-- Colossal-AI
-- ZeRO1 (Colossal-AI)
-- ZeRO2 (Colossal-AI)
-- Pytorch DDP
-- Pytorch ZeRO
+- ZeRO1 (CAI_ZeRO1)
+- ZeRO2 (CAI_ZeRO2)
+- Gemini + ZeRO DDP (CAI_Gemini)
+- Pytorch DDP (Pytorch_DDP)
+- Pytorch ZeRO (Pytorch_ZeRO)
 
 ### Titans (Tensor Parallelism) + ZeRO + Pipeline Parallelism
 

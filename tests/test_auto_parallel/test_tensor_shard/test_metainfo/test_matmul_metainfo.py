@@ -21,7 +21,7 @@ from colossalai.logging import disable_existing_loggers
 from colossalai.testing.pytest_wrapper import run_on_environment_flag
 from colossalai.testing.utils import parameterize, rerun_if_address_is_in_use
 from colossalai.utils import free_port
-from tests.test_auto_parallel.test_tensor_shard.test_metainfo.utils import mem_test_for_node_strategy
+from tests.test_auto_parallel.test_tensor_shard.test_metainfo.utils import print_results
 
 if torch.__version__ >= '1.12.0':
     from colossalai.auto_parallel.meta_profiler import MetaInfo, meta_register
@@ -102,43 +102,8 @@ def test_matmul_function_meta_info(tensor_shapes):
     compute_cost: TrainCycleItem
     memory_cost: TrainCycleItem
 
-    print("=====================")
-    print(f"input shapes: {tensor_shapes[0]}, {tensor_shapes[1]}")
-    print(f"output shapes: {output_tensor.shape}")
-
-    # estimated results
-    print("Estimated Results")
-
-    # compute cost
-    print("compute_cost:")
-    print(f"    fwd: {compute_cost.fwd}")
-    print(f"    bwd: {compute_cost.bwd}")
-
-    # memory cost
-    print("memory_cost:")
-    # fwd
-    print(f"    fwd activation: {memory_cost.fwd.activation / 1024} KB")
-    print(f"    fwd buffer: {memory_cost.fwd.buffer / 1024} KB")
-    print(f"    fwd temp: {memory_cost.fwd.temp / 1024} KB")
-    print(f"    fwd parameter: {memory_cost.fwd.parameter / 1024} KB")
-
-    # bwd
-    print(f"    bwd activation: {memory_cost.bwd.activation / 1024} KB")
-    print(f"    bwd buffer: {memory_cost.bwd.buffer / 1024} KB")
-    print(f"    bwd temp: {memory_cost.bwd.temp / 1024} KB")
-    print(f"    bwd parameter: {memory_cost.bwd.parameter / 1024} KB")
-
-    # actual results
-    print("Actual Results")
-
-    print("memory_cost:")
-    # fwd
-    print(f"    fwd allocated: {fwd_allocated / 1024} KB")
-    print(f"    fwd peak: {fwd_peak / 1024} KB")
-
-    # bwd
-    print(f"    bwd allocated: {bwd_allocated / 1024} KB")
-    print(f"    bwd peak: {bwd_peak / 1024} KB")
+    print_results([input_real_tensor, other_real_tensor], [output_real_tensor], compute_cost, memory_cost,
+                  fwd_allocated, fwd_peak, bwd_allocated, bwd_peak)
 
 
 if __name__ == '__main__':
