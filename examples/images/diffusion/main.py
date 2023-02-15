@@ -539,6 +539,8 @@ if __name__ == "__main__":
         raise ValueError("-n/--name and -r/--resume cannot be specified both."
                          "If you want to resume training in a new log folder, "
                          "use -n/--name in combination with --resume_from_checkpoint")
+
+    ckpt = None
     if opt.resume:
         rank_zero_info("Resuming from {}".format(opt.resume))
         if not os.path.exists(opt.resume):
