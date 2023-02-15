@@ -257,8 +257,11 @@ class ZeroDDP(ColoDDP):
         access_list = list(self.chunk_manager.accessed_chunks)
         # we need to scatter all accessed chunks and move them to their original places
         for chunk in access_list:
-            assert chunk.can_release
-            self.chunk_manager.release_chunk(chunk)
+            if chunk.keep_gathered:
+                self.chunk_manager.fake_release_chunk(chunk)
+            else:
+                assert chunk.can_release
+                self.chunk_manager.release_chunk(chunk)
             first_param = next(iter(chunk.tensors_info))
             self.chunk_manager.move_chunk(chunk, self.grads_device[first_param])
         assert self.chunk_manager.accessed_mem == 0

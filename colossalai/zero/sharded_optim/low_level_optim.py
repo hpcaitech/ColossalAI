@@ -131,7 +131,10 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
         # partition these param groups for data parallel training
         # and add buffers to parameter store for future access
         for group_id, param_group in enumerate(self.optim.param_groups):
-            group_params = param_group['params']
+            group_params = list()
+            for param in param_group['params']:
+                if param.requires_grad:
+                    group_params.append(param)
 
             # add the fp16 params to fp16_param_groups for bookkeeping
             self._fp16_param_groups[group_id] = group_params

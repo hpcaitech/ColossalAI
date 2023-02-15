@@ -4,13 +4,8 @@ import transformers
 from torch.fx import GraphModule
 
 from colossalai.auto_parallel.tensor_shard.constants import BATCHNORM_MODULE_OP
-from colossalai.auto_parallel.tensor_shard.solver import (
-    CostGraph,
-    GraphAnalyser,
-    Solver,
-    SolverOptions,
-    StrategiesConstructor,
-)
+from colossalai.auto_parallel.tensor_shard.options import SolverOptions
+from colossalai.auto_parallel.tensor_shard.solver import CostGraph, GraphAnalyser, Solver, StrategiesConstructor
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.fx.tracer.tracer import ColoTracer
 from colossalai.tensor.shape_consistency import ShapeConsistencyManager

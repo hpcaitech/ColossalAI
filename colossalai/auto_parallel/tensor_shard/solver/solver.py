@@ -33,7 +33,7 @@ class Solver:
                  solution_numbers: int = 1,
                  forward_only: bool = False,
                  memory_increasing_coefficient: float = 1.3,
-                 verbose=True):
+                 verbose=False):
         '''
         Solver class will integrate information provided by the components and use ILP solver to find a possible optimal strategies combination for target computing graph.
         Argument:

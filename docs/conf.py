@@ -23,8 +23,7 @@ copyright = f'{datetime.datetime.now().year}, HPC-AI Tech'
 author = 'HPC-AI Technology Inc.'
 
 # The full version, including alpha/beta/rc tags
-release = '0.0.1'
-
+# release = '0.0.1'
 
 # -- General configuration ---------------------------------------------------
 
@@ -64,14 +63,14 @@ exclude_patterns = ['.build', 'Thumbs.db', '.DS_Store']
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 #
-html_theme = 'sphinx_rtd_theme'
+html_theme = 'sphinx_book_theme'
 html_show_sourcelink = False
 html_theme_options = {
     'navigation_depth': 3,
 }
 
 html_context = {
-    'display_github': False,
+    'display_github': True,
     'github_user': 'hpcaitech',
     'github_repo': 'ColossalAI',
     #   'github_version': 'master/docs/',
@@ -90,7 +89,10 @@ html_css_files = [
 source_suffix = ['.rst', '.md', '.MD']
 
 import inspect
+
 import colossalai
+
+
 def linkcode_resolve(domain, info):
     """
     Determine the URL corresponding to Python object

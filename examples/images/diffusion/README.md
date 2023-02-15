@@ -52,7 +52,7 @@ You can also update an existing [latent diffusion](https://github.com/CompVis/la
 
 ```
 conda install pytorch==1.12.1 torchvision==0.13.1 torchaudio==0.12.1 cudatoolkit=11.3 -c pytorch
-pip install transformers==4.19.2 diffusers invisible-watermark
+pip install transformers diffusers invisible-watermark
 ```
 
 #### Step 2: install lightning
@@ -90,6 +90,12 @@ cd ColossalAI
 
 # install colossalai
 CUDA_EXT=1 pip install .
+```
+
+#### Step 3:Accelerate with flash attention by xformers(Optional)
+
+```
+pip install xformers
 ```
 
 ### Option #2: Use Docker

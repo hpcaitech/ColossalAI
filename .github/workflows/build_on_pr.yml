@@ -96,6 +96,7 @@ jobs:
 
       - name: Store TensorNVMe Cache
         run: |
+          cd TensorNVMe
           cp -p -r ./build /github/home/tensornvme_cache/
 
       - name: Checkout Colossal-AI

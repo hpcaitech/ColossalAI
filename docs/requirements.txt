@@ -1,5 +1,5 @@
-tensorboard 
-apex 
-sphinx 
-sphinx-rtd-theme 
+tensorboard
+apex
+sphinx
 myst-parser
+sphinx-book-theme

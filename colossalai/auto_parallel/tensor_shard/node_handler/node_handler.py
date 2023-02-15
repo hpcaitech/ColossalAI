@@ -5,7 +5,7 @@ import torch
 from torch.fx.node import Node
 
 from colossalai.auto_parallel.meta_profiler.metainfo import MetaInfo, meta_register
-from colossalai.auto_parallel.tensor_shard.node_handler.option import ShardOption
+from colossalai.auto_parallel.tensor_shard.options import ShardOption, SolverPerference
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
     OperationData,
     OperationDataType,
@@ -32,19 +32,19 @@ class NodeHandler(ABC):
         strategies_vector (StrategiesVector): all the strategies generated in this handler will be recorded into the strategies_vector.
     '''
 
-    def __init__(
-        self,
-        node: Node,
-        device_mesh: DeviceMesh,
-        strategies_vector: StrategiesVector,
-        shard_option: ShardOption = ShardOption.STANDARD,
-    ) -> None:
+    def __init__(self,
+                 node: Node,
+                 device_mesh: DeviceMesh,
+                 strategies_vector: StrategiesVector,
+                 shard_option: ShardOption = ShardOption.STANDARD,
+                 solver_perference: SolverPerference = SolverPerference.STANDARD) -> None:
         self.node = node
         self.predecessor_node = list(node._input_nodes.keys())
         self.successor_node = list(node.users.keys())
         self.device_mesh = device_mesh
         self.strategies_vector = strategies_vector
         self.shard_option = shard_option
+        self.solver_perference = solver_perference
 
     def update_resharding_cost(self, strategy: ShardingStrategy) -> None:
         """
@@ -187,15 +187,24 @@ class NodeHandler(ABC):
 
         remove_strategy_list = []
         for strategy in self.strategies_vector:
-            shard_level = 0
+            shard_axis_list = []
+            last_axis = len(self.device_mesh.mesh_shape) - 1
             for op_data, sharding_spec in strategy.sharding_specs.items():
                 if op_data.data is not None and isinstance(op_data.data, torch.Tensor):
-                    for dim, shard_axis in sharding_spec.dim_partition_dict.items():
-                        shard_level += len(shard_axis)
+                    for dim, shard_axes in sharding_spec.dim_partition_dict.items():
+                        for shard_axis in shard_axes:
+                            if shard_axis not in shard_axis_list:
+                                shard_axis_list.append(shard_axis)
+
+            shard_level = len(shard_axis_list)
+            using_last_axis = last_axis in shard_axis_list or -1 in shard_axis_list
             if self.shard_option == ShardOption.SHARD and shard_level == 0:
                 remove_strategy_list.append(strategy)
             if self.shard_option == ShardOption.FULL_SHARD and shard_level <= 1:
                 remove_strategy_list.append(strategy)
+            if self.shard_option == ShardOption.SHARD_LAST_AXIS:
+                if shard_level != 1 or using_last_axis == False:
+                    remove_strategy_list.append(strategy)
 
         for strategy in remove_strategy_list:
             self.strategies_vector.remove(strategy)
