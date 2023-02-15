@@ -5,6 +5,7 @@ on:
   pull_request:
     paths:
       - 'version.txt'
+      - 'docs/'
     types:
       - closed
 
@@ -16,7 +17,6 @@ jobs:
     steps:
       - name: trigger workflow in ColossalAI-Documentation
         run: |
-          gh
           curl \
             -X POST \
             -H "Accept: application/vnd.github+json" \
