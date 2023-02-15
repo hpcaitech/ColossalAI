@@ -1,13 +1,8 @@
 import torch
 
+from colossalai.auto_parallel.tensor_shard.options import SolverOptions
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationDataType
-from colossalai.auto_parallel.tensor_shard.solver import (
-    CostGraph,
-    GraphAnalyser,
-    Solver,
-    SolverOptions,
-    StrategiesConstructor,
-)
+from colossalai.auto_parallel.tensor_shard.solver import CostGraph, GraphAnalyser, Solver, StrategiesConstructor
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.fx import ColoGraphModule, ColoTracer
 from colossalai.testing.pytest_wrapper import run_on_environment_flag

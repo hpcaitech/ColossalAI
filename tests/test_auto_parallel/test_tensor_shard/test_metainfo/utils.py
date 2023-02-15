@@ -7,8 +7,9 @@ from torch.fx import GraphModule
 
 from colossalai.auto_parallel.passes.runtime_apply_pass import runtime_apply_pass
 from colossalai.auto_parallel.passes.runtime_preparation_pass import runtime_preparation_pass
+from colossalai.auto_parallel.tensor_shard.options import SolverOptions
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationDataType, TrainCycleItem
-from colossalai.auto_parallel.tensor_shard.solver import SolverOptions, StrategiesConstructor
+from colossalai.auto_parallel.tensor_shard.solver import StrategiesConstructor
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.fx.tracer.tracer import ColoTracer
 
