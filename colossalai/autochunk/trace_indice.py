@@ -774,7 +774,7 @@ class TraceIndice(object):
 
         active_nodes = self.active_node_list[trace_range[0]:trace_range[1] + 1]
         active_nodes = set(flat_list(active_nodes))
-        active_nodes = [self.node_mgr.find_node_idx_by_name(i) for i in active_nodes]
+        active_nodes = [self.node_mgr.find_node_idx(i) for i in active_nodes]
         for i in range(trace_range[0], trace_range[1] + 1):
             trace = self.indice_trace_list[i]
             # clear compute

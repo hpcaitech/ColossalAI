@@ -43,9 +43,9 @@ class SearchChunk(object):
     def __init__(self, gm, max_memory=None, print_mem=False, print_progress=False) -> None:
         self.print_mem = print_mem
         self.print_progress = print_progress
-        self.node_mgr = NodeMgr(gm)
+        self.node_mgr = NodeMgr(list(gm.graph.nodes))
         self.trace_indice = TraceIndice(self.node_mgr)
-        self.estimate_memory = EstimateMemory(self.node_mgr)
+        self.estimate_memory = EstimateMemory()
         self._init_trace()
         self.trace_flow = TraceFlow(self.trace_indice, self.node_mgr)
         self.reorder_graph = ReorderGraph(self.trace_indice, self.node_mgr)
@@ -63,7 +63,7 @@ class SearchChunk(object):
         reduce the computation complexity of trace_indice
         """
         # find all max ranges
-        active_nodes = self.estimate_memory.get_active_nodes(self.node_mgr.get_node_list())
+        active_nodes = self.estimate_memory.estimate_chunk_inference_mem(self.node_mgr.get_node_list())[2]
         cur_node_idx = len(self._get_free_var_idx())
         max_chunk_region_list = []
         while True:
@@ -122,47 +122,20 @@ class SearchChunk(object):
                 if i["region"][0] < peak_node_idx <= i["region"][1]:
                     return None
 
-        free_vars = self._get_free_var_idx()
-        free_var_num = len(free_vars)
         active_node_num = [len(i) for i in active_node]
-        min_active_node_num = min(active_node_num[free_var_num:])
-        threshold = max(free_var_num, min_active_node_num)
-
-        # normal search
-        # from peak_node to free_var
-        inside_flag = False
-        chunk_region_start = free_var_num
-        for i in range(peak_node_idx, -1, -1):
-            if active_node_num[i] <= threshold:
-                inside_flag = True
-            if inside_flag and active_node_num[i] > threshold:
-                chunk_region_start = i + 1
-                break
-        # from peak_node to len-2
-        inside_flag = False
-        chunk_region_end = len(active_node) - 1
-        for i in range(peak_node_idx, len(active_node)):
-            if active_node_num[i] <= threshold:
-                inside_flag = True
-            if inside_flag and active_node_num[i] > threshold:
+        window_size = 100
+        # search min for start
+        min_num = 1e3
+        for i in range(max(peak_node_idx - window_size, 0), peak_node_idx + 1):
+            if active_node_num[i] < min_num:
+                min_num = active_node_num[i]
+                chunk_region_start = i
+        # search min for end
+        min_num = 1e3
+        for i in range(min(peak_node_idx + window_size, len(active_node_num) - 1), peak_node_idx - 1, -1):
+            if active_node_num[i] < min_num:
+                min_num = active_node_num[i]
                 chunk_region_end = i
-                break
-
-        # if normal search fails, use approximate search
-        if (chunk_region_end - chunk_region_start) > 250:
-            window_size = 100
-            # search min for start
-            min_num = 1e3
-            for i in range(max(peak_node_idx - window_size, 0), peak_node_idx + 1):
-                if active_node_num[i] < min_num:
-                    min_num = active_node_num[i]
-                    chunk_region_start = i
-            # search min for end
-            min_num = 1e3
-            for i in range(min(peak_node_idx + window_size, len(active_node_num) - 1), peak_node_idx - 1, -1):
-                if active_node_num[i] < min_num:
-                    min_num = active_node_num[i]
-                    chunk_region_end = i
 
         # avoid chunk regions overlap
         if chunk_regions is not None:
