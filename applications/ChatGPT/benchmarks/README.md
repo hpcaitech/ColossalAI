@@ -37,7 +37,7 @@ We only support `torchrun` to launch now. E.g.
 
 ```shell
 # run GPT2-S on single-node single-GPU with min batch size
-torchrun --standalone --nproc_pero_node 1 benchmark_gpt_dummy.py --model s --strategy ddp --experience_batch_size 1 --train_batch_size 1
+torchrun --standalone --nproc_per_node 1 benchmark_gpt_dummy.py --model s --strategy ddp --experience_batch_size 1 --train_batch_size 1
 # run GPT2-XL on single-node 4-GPU
 torchrun --standalone --nproc_per_node 4 benchmark_gpt_dummy.py --model xl --strategy colossalai_zero2
 # run GPT3 on 8-node 8-GPU
@@ -84,7 +84,7 @@ We only support `torchrun` to launch now. E.g.
 
 ```shell
 # run OPT-125M with no lora (lora_rank=0) on single-node single-GPU with min batch size
-torchrun --standalone --nproc_pero_node 1 benchmark_opt_lora_dummy.py --model 125m --strategy ddp --experience_batch_size 1 --train_batch_size 1 --lora_rank 0
+torchrun --standalone --nproc_per_node 1 benchmark_opt_lora_dummy.py --model 125m --strategy ddp --experience_batch_size 1 --train_batch_size 1 --lora_rank 0
 # run OPT-350M with lora_rank=4 on single-node 4-GPU
 torchrun --standalone --nproc_per_node 4 benchmark_opt_lora_dummy.py --model 350m --strategy colossalai_zero2 --lora_rank 4
 ```
