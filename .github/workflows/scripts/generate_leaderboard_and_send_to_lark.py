@@ -292,7 +292,13 @@ def generate_user_engagement_leaderboard_image(github_token: str, output_path: s
     y = []
 
     if len(total_engagement_count) > 0:
+        ranking = []
         for name, count in total_engagement_count.items():
+            ranking.append((name, count))
+
+        ranking.sort(key=lambda x: x[1], reverse=True)
+
+        for name, count in ranking:
             x.append(count)
             y.append(name)
 
