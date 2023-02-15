@@ -35,6 +35,8 @@ class EstimateMemory(object):
         """
         if get_node_shape(n) is None:
             return
+        if n.op == "placeholder":
+            return
         if n not in active_nodes:
             node_size = self._get_node_size(n) * chunk_ratio
             active_nodes[n] = node_size
