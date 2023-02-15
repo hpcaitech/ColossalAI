@@ -5,8 +5,8 @@ import torch
 import torch.multiprocessing as mp
 import torch.nn as nn
 
+from colossalai.auto_parallel.tensor_shard.node_handler import SplitHandler
 from colossalai.auto_parallel.tensor_shard.node_handler.conv_handler import ConvFunctionHandler
-from colossalai.auto_parallel.tensor_shard.node_handler.experimental import SplitHandler
 from colossalai.auto_parallel.tensor_shard.node_handler.linear_handler import LinearFunctionHandler
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationData, OperationDataType, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
@@ -156,8 +156,7 @@ def check_split_handler(rank, split_size, split_dim, model_cls, world_size, port
     # reshape handler is a following strategy handler, so the number of strategies is equal to the predecessor node.
     assert len(split_strategies_vector) == len(previous_strategies_vector)
     strategy_name_list = [strategy.name for strategy in split_strategies_vector]
-    for name in strategy_name_list:
-        print(name)
+
     if model_cls.__name__ == 'ConvSplitModel':
 
         if split_dim == 0:

@@ -16,6 +16,7 @@ from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
 )
 from colossalai.auto_parallel.tensor_shard.utils import check_sharding_spec_validity
 from colossalai.device.device_mesh import DeviceMesh
+from colossalai.logging import get_dist_logger
 from colossalai.tensor.shape_consistency import ShapeConsistencyManager
 
 from .strategy import StrategyGenerator
@@ -266,6 +267,10 @@ class MetaInfoNodeHandler(NodeHandler):
             # attach metainfos to the handler
             setattr(self, "metainfo_vector", metainfo_vector)
 
+        else:
+            logger = get_dist_logger()
+            logger.warning(f'The target function {target} is not patched yet, ')
+
         return self.strategies_vector
 
 
@@ -316,5 +321,9 @@ class MetaInfoModuleHandler(ModuleHandler):
 
             # attach metainfos to the handler
             setattr(self, "metainfo_vector", metainfo_vector)
+
+        else:
+            logger = get_dist_logger()
+            logger.warning(f'The target function {target} is not patched yet')
 
         return self.strategies_vector
