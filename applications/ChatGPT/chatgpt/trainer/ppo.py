@@ -109,7 +109,6 @@ class PPOTrainer(Trainer):
         # use huggingface models method directly
         if 'prepare_inputs_fn' not in generate_kwargs and hasattr(actor.model, 'prepare_inputs_for_generation'):
             generate_kwargs['prepare_inputs_fn'] = actor.model.prepare_inputs_for_generation
-            print('overwrite inputs fn')
 
         if 'update_model_kwargs_fn' not in generate_kwargs:
             generate_kwargs['update_model_kwargs_fn'] = update_model_kwargs_fn
