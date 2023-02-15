@@ -1,0 +1,41 @@
+name: Run ChatGPT examples
+
+on:
+  pull_request:
+    types: [synchronize, opened, reopened]
+    paths:
+      - 'applications/ChatGPT/chatgpt/**'
+      - 'applications/ChatGPT/requirements.txt'
+      - 'applications/ChatGPT/setup.py'
+      - 'applications/ChatGPT/examples/**'
+
+
+jobs:
+  tests:
+    name: Run ChatGPT examples
+    runs-on: [self-hosted, gpu]
+    container:
+      image: hpcaitech/pytorch-cuda:1.12.0-11.3.0
+      options: --gpus all --rm -v /data/scratch/chatgpt:/data/scratch/chatgpt
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout ColossalAI
+        uses: actions/checkout@v2
+
+      - name: Install ColossalAI and ChatGPT
+        run: |
+          pip install -v .
+          cd applications/ChatGPT
+          pip install -v .
+          pip install -r examples/requirements.txt
+
+      - name: Execute Examples
+        run: |
+          ./examples/test_ci.sh
+        env:
+          NCCL_SHM_DISABLE: 1
+          MAX_JOBS: 8
+          PROMPT_PATH: /data/scratch/chatgpt/prompts.csv
