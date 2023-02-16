@@ -16,7 +16,7 @@ pip install -r requirements_colossalai.txt
 ### Install [colossalai](https://github.com/hpcaitech/ColossalAI.git)
 
 ```bash
-pip install colossalai==0.2.0+torch1.12cu11.3 -f https://release.colossalai.org
+pip install colossalai
 ```
 
 **From source**
