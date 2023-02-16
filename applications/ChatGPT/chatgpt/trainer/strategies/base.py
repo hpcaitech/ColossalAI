@@ -35,6 +35,10 @@ class Strategy(ABC):
         pass
 
     @abstractmethod
+    def setup_model_and_optimizer(self, model: nn.Module, optimizer: Optimizer) -> Tuple[Any, Optimizer]:
+        pass
+
+    @abstractmethod
     def setup_model(self, model: nn.Module) -> nn.Module:
         pass
 

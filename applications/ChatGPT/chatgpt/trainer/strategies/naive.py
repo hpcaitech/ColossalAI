@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Tuple
 
 import torch
 import torch.nn as nn
@@ -23,6 +23,10 @@ class NaiveStrategy(Strategy):
 
     def setup_distributed(self) -> None:
         pass
+
+    def setup_model_and_optimizer(self, model: nn.Module,
+                                  optimizer: optim.Optimizer) -> Tuple[nn.Module, optim.Optimizer]:
+        return model, optimizer
 
     def setup_model(self, model: nn.Module) -> nn.Module:
         return model
