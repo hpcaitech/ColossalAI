@@ -68,6 +68,9 @@ def main(args):
         batch = tokenizer(texts, return_tensors='pt', max_length=96, padding=True, truncation=True)
         return {k: v.cuda() for k, v in batch.items()}
 
+    actor, critic, reward_model, initial_model, actor_optim, critic_optim = strategy.prepare(
+        actor, critic, reward_model, initial_model, actor_optim, critic_optim)
+
     # configure trainer
     trainer = PPOTrainer(
         strategy,
