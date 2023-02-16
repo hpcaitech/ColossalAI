@@ -60,11 +60,6 @@ class PPOTrainer(Trainer):
                  dataloader_pin_memory: bool = True,
                  callbacks: List[Callback] = [],
                  **generate_kwargs) -> None:
-        self._set_default_generate_kwargs(generate_kwargs, actor)
-        actor = Actor(strategy.setup_model(actor.model))
-        critic = strategy.setup_model(critic)
-        reward_model = strategy.setup_model(reward_model)
-        initial_model = Actor(strategy.setup_model(initial_model.model))
         experience_maker = NaiveExperienceMaker(actor, critic, reward_model, initial_model, kl_coef)
         replay_buffer = NaiveReplayBuffer(train_batch_size, buffer_limit, buffer_cpu_offload)
         super().__init__(strategy, experience_maker, replay_buffer, experience_batch_size, max_epochs, tokenizer,
@@ -75,8 +70,9 @@ class PPOTrainer(Trainer):
         self.actor_loss_fn = PolicyLoss(eps_clip)
         self.critic_loss_fn = ValueLoss(value_clip)
 
-        self.actor_optim = strategy.setup_optimizer(actor_optim, self.actor.model)
-        self.critic_optim = strategy.setup_optimizer(critic_optim, self.critic)
+        self.actor_optim = actor_optim
+        self.critic_optim = critic_optim
+        self._set_default_generate_kwargs(generate_kwargs, actor)
 
     def training_step(self, experience: Experience) -> Dict[str, float]:
         self.actor.train()
@@ -106,9 +102,10 @@ class PPOTrainer(Trainer):
         return {'actor_loss': actor_loss.item(), 'critic_loss': critic_loss.item()}
 
     def _set_default_generate_kwargs(self, generate_kwargs: dict, actor: Actor) -> None:
+        origin_model = self.strategy._unwrap_actor(actor)
         # use huggingface models method directly
-        if 'prepare_inputs_fn' not in generate_kwargs and hasattr(actor.model, 'prepare_inputs_for_generation'):
-            generate_kwargs['prepare_inputs_fn'] = actor.model.prepare_inputs_for_generation
+        if 'prepare_inputs_fn' not in generate_kwargs and hasattr(origin_model, 'prepare_inputs_for_generation'):
+            generate_kwargs['prepare_inputs_fn'] = origin_model.prepare_inputs_for_generation
 
         if 'update_model_kwargs_fn' not in generate_kwargs:
             generate_kwargs['update_model_kwargs_fn'] = update_model_kwargs_fn

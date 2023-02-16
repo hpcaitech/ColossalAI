@@ -4,10 +4,11 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 import torch.optim as optim
+from chatgpt.nn import Actor
 
 import colossalai
 from colossalai.nn.optimizer import CPUAdam, HybridAdam
-from colossalai.nn.parallel import zero_model_wrapper, zero_optim_wrapper
+from colossalai.nn.parallel import ZeroDDP, zero_model_wrapper, zero_optim_wrapper
 from colossalai.tensor import ProcessGroup, ShardSpec
 from colossalai.utils import get_current_device
 from colossalai.utils.model.colo_init_context import ColoInitContext
@@ -123,3 +124,8 @@ class ColossalAIStrategy(DDPStrategy):
 
     def optimizer_step(self, optimizer: optim.Optimizer, **kwargs) -> None:
         optimizer.step()
+
+    @staticmethod
+    def _unwrap_actor(actor: Actor) -> nn.Module:
+        model: ZeroDDP = super()._unwrap_actor(actor)
+        return model.module
