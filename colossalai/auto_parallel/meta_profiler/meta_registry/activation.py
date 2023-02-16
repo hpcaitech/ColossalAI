@@ -8,7 +8,7 @@ from colossalai.fx.profiler.opcount import flop_mapping
 
 from ..registry import meta_register
 
-__all__ = ["relu_meta_info"]
+__all__ = ["relu_meta_info", "softmax_meta_info"]
 
 
 @meta_register.register(torch.nn.ReLU)

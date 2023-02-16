@@ -104,5 +104,5 @@ def test_sofmax_meta_info():
 
 
 if __name__ == '__main__':
-    # test_ReLU_meta_concrete_info_match()
+    test_ReLU_meta_concrete_info_match()
     test_sofmax_meta_info()
