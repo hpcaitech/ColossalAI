@@ -11,11 +11,12 @@ from ..registry import meta_register
 __all__ = ["elementwise_meta_info"]
 
 
-def elementwise_meta_info(temp_mem_scale: float = 0) -> Callable:
+def elementwise_meta_info(temp_mem_scale: float = 0, buffer_mem_scale: float = 0) -> Callable:
     """This is a function to create the meta information generator for elementwise operations
 
     Args:
-        temp_mem_scale (float, optional): temp memory scaling factor. Defaults to 0.
+        temp_mem_scale (float, optional): temp memory scaling factor for backward. Defaults to 0.
+        buffer_mem_scale (float, optional): buffer memory scaling factor for forward. Defaults to 0.
 
     Returns:
         Callable: meta information generator
@@ -45,13 +46,15 @@ def elementwise_meta_info(temp_mem_scale: float = 0) -> Callable:
         fwd_memory_cost = MemoryCost(activation=activation_size(input_tensor) * (2 - is_inplace),
                                      parameter=0,
                                      temp=0,
-                                     buffer=0)
+                                     buffer=activation_size(input_tensor) * buffer_mem_scale)
 
         # temp_mem_scale is for situation like softmax backward
-        bwd_memory_cost = MemoryCost(activation=activation_size(input_tensor),
-                                     parameter=0,
-                                     temp=activation_size(input_tensor) * temp_mem_scale,
-                                     buffer=0)
+        # the buffer will be removed during backward phase
+        bwd_memory_cost = MemoryCost(
+            activation=activation_size(input_tensor) - activation_size(input_tensor) * buffer_mem_scale,
+            parameter=0,
+            temp=activation_size(input_tensor) * temp_mem_scale + activation_size(input_tensor) * buffer_mem_scale,
+            buffer=0)
 
         # total cost is the sum of forward and backward cost
         total_cost = MemoryCost(activation=fwd_memory_cost.activation + bwd_memory_cost.activation,
@@ -71,12 +74,12 @@ def elementwise_meta_info(temp_mem_scale: float = 0) -> Callable:
     return meta_func
 
 
-# the following elementwise ops doesn't have temp memory during backward
-zero_temp_mem_ops = [torch.nn.ReLU, torch.nn.functional.relu, torch.tanh]
-
-# the following elementwise ops have temp memory the same size as input during backward
-one_temp_mem_ops = [torch.nn.Softmax, torch.nn.functional.softmax]
-
 # register meta information
-meta_register.register(zero_temp_mem_ops)(elementwise_meta_info())
-meta_register.register(one_temp_mem_ops)(elementwise_meta_info(1))
+# (0, 0)
+meta_register.register([torch.nn.ReLU, torch.nn.functional.relu, torch.tanh])(elementwise_meta_info(0, 0))
+
+# (1, 0)
+meta_register.register([torch.nn.Softmax, torch.nn.functional.softmax])(elementwise_meta_info(1, 0))
+
+# (0, 0.25) for dropout, the buffer is in bool type so that the buffer memory cost is 0.25 times of input tensor
+meta_register.register([torch.nn.Dropout, torch.nn.functional.dropout])(elementwise_meta_info(0, 0.25))

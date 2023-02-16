@@ -22,6 +22,7 @@ from tests.test_auto_parallel.test_tensor_shard.test_metainfo.utils import mem_t
     torch.nn.functional.softmax,
     torch.nn.functional.relu,
     torch.tanh,
+    torch.nn.functional.dropout,
 ])
 def test_activation_meta_info(func):
     meta_func = meta_register.get(func)
