@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from contextlib import nullcontext
-from typing import Any, Tuple
+from typing import Any, List, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -8,6 +8,9 @@ from chatgpt.nn import Actor, Critic, RewardModel
 from chatgpt.replay_buffer import ReplayBuffer
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
+
+ModelOptimPair = Tuple[nn.Module, Optimizer]
+ModelOrModelOptimPair = Union[nn.Module, ModelOptimPair]
 
 
 class Strategy(ABC):
@@ -46,31 +49,44 @@ class Strategy(ABC):
     def model_init_context(self):
         return nullcontext()
 
-    def prepare(self, actor: Actor, critic: Critic, reward_model: RewardModel, initial_model: Actor,
-                actor_optim: Optimizer,
-                critic_optim: Optimizer) -> Tuple[Actor, nn.Module, nn.Module, nn.Module, Optimizer, Optimizer]:
-        """Prepare (actor, critic, reward_model, initial_model, actor_optim, critic_optim) based on each strategy.
+    def prepare(
+        self, *models_or_model_optim_pairs: ModelOrModelOptimPair
+    ) -> Union[List[ModelOrModelOptimPair], ModelOrModelOptimPair]:
+        """Prepare models or model-optimizer-pairs based on each strategy.
 
-        Args:
-            actor (Actor): actor
-            critic (Critic): critc
-            reward_model (RewardModel): reward model
-            initial_model (Actor): initial model
-            actor_optim (Optimizer): actor's optimizer
-            critic_optim (Optimizer): critic's optimizer
+        Example::
+            >>> # when fine-tuning actor and critic
+            >>> (actor, actor_optim), (critic, critic_optim), reward_model, initial_model = strategy.prepare((actor, actor_optim), (critic, critic_optim), reward_model, initial_model)
+            >>> # or when training reward model
+            >>> (reward_model, reward_model_optim) = strategy.prepare((reward_model, reward_model_optim))
+            >>> # or just inference
+            >>> actor, critic = strategy.prepare(actor, critic)
 
         Returns:
-            Tuple[Actor, nn.Module, nn.Module, nn.Module, Optimizer, Optimizer]: (actor, critic, reward_model, initial_model, actor_optim, critic_optim)
+            Union[List[ModelOrModelOptimPair], ModelOrModelOptimPair]: Models or model-optimizer-pairs in the original order.
         """
-        actor = Actor(self.setup_model(actor.model))
-        critic = self.setup_model(critic)
-        reward_model = self.setup_model(reward_model)
-        initial_model = Actor(self.setup_model(initial_model.model))
 
-        actor_optim = self.setup_optimizer(actor_optim, actor.model)
-        critic_optim = self.setup_optimizer(critic_optim, critic)
+        def prepare_model(model: nn.Module):
+            if isinstance(model, Actor):
+                return Actor(self.setup_model(self._unwrap_model(model)))
+            return self.setup_model(self._unwrap_model(model))
 
-        return actor, critic, reward_model, initial_model, actor_optim, critic_optim
+        rets = []
+        for arg in models_or_model_optim_pairs:
+            if isinstance(arg, tuple):
+                assert len(arg) == 2, f'Expect (model, optimizer) pair, got a tuple with size "{len(arg)}"'
+                model, optimizer = arg
+                model = prepare_model(model)
+                optimizer = self.setup_optimizer(optimizer, self._unwrap_model(model))
+                rets.append((model, optimizer))
+            elif isinstance(arg, nn.Module):
+                rets.append(prepare_model(arg))
+            else:
+                raise RuntimeError(f'Expect model or (model, optimizer) pair, got {type(arg)}')
+
+        if len(rets) == 1:
+            return rets[0]
+        return rets
 
     @staticmethod
     def _unwrap_model(model: nn.Module) -> nn.Module:
