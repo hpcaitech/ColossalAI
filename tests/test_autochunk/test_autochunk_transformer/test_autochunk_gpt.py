@@ -44,7 +44,7 @@ def test_autochunk_gpt(model, shape, max_memory):
         data=get_data(shape),
         max_memory=max_memory,
         model=model,
-        config=GPT2Config(n_embd=96, n_position=shape[1], n_layer=2, n_head=4),
+        config=GPT2Config(n_embd=96, n_positions=shape[1], n_layer=2, n_head=4),
     )
     mp.spawn(run_func, nprocs=1)
 
