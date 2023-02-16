@@ -729,23 +729,35 @@ class TraceIndice(object):
         dim_from.reverse()
 
         # search view list
-        for view_node, view_dict in self.indice_view_list.items():
-            if (view_dict["idx_to"] == idx_from and view_dict["dim_to"] == dim_from
-                    and view_dict["dim_from"] == dim_to):
-                # inheirt indice from current node
-                if len_diff == 1:
-                    if origin_shape[dim_from[0]] == 1:
-                        self._inherit_indice(origin_node, dim_from[1], node, dim_to[0], init=False)
-                    elif origin_shape[dim_from[1]] == 1:
-                        self._inherit_indice(origin_node, dim_from[0], node, dim_to[0], init=False)
-                elif len_diff == -1:
-                    if target_shape[dim_to[0]] == 1:
-                        self._inherit_indice(origin_node, dim_from[0], node, dim_to[1], init=False)
-                    elif target_shape[dim_to[1]] == 1:
-                        self._inherit_indice(origin_node, dim_from[0], node, dim_to[0], init=False)
-                # inherid indice from input node of last view
-                for dim_to_i in dim_to:
-                    self._inherit_indice(view_node.args[0], dim_to_i, node, dim_to_i, init=False)
+        # for view_node, view_dict in self.indice_view_list.items():
+        #     if (view_dict["idx_to"] == idx_from and view_dict["dim_to"] == dim_from
+        #             and view_dict["dim_from"] == dim_to):
+        #         # inheirt indice from current node
+        #         if len_diff == 1:
+        #             if origin_shape[dim_from[0]] == 1:
+        #                 self._inherit_indice(origin_node, dim_from[1], node, dim_to[0], init=False)
+        #             elif origin_shape[dim_from[1]] == 1:
+        #                 self._inherit_indice(origin_node, dim_from[0], node, dim_to[0], init=False)
+        #         elif len_diff == -1:
+        #             if target_shape[dim_to[0]] == 1:
+        #                 self._inherit_indice(origin_node, dim_from[0], node, dim_to[1], init=False)
+        #             elif target_shape[dim_to[1]] == 1:
+        #                 self._inherit_indice(origin_node, dim_from[0], node, dim_to[0], init=False)
+        #         # inherid indice from input node of last view
+        #         for dim_to_i in dim_to:
+        #             self._inherit_indice(view_node.args[0], dim_to_i, node, dim_to_i, init=False)
+
+        # inheirt indice from current node
+        if len_diff == 1:
+            if origin_shape[dim_from[0]] == 1:
+                self._inherit_indice(origin_node, dim_from[1], node, dim_to[0], init=False)
+            elif origin_shape[dim_from[1]] == 1:
+                self._inherit_indice(origin_node, dim_from[0], node, dim_to[0], init=False)
+        elif len_diff == -1:
+            if target_shape[dim_to[0]] == 1:
+                self._inherit_indice(origin_node, dim_from[0], node, dim_to[1], init=False)
+            elif target_shape[dim_to[1]] == 1:
+                self._inherit_indice(origin_node, dim_from[0], node, dim_to[0], init=False)
 
         # log view, not used now
         view_dict = {
