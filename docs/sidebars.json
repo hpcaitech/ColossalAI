@@ -72,7 +72,8 @@
         "advanced_tutorials/add_your_parallel",
         "advanced_tutorials/meet_gemini",
         "advanced_tutorials/parallelize_your_training_like_Megatron",
-        "advanced_tutorials/integrate_mixture_of_experts_into_your_model"
+        "advanced_tutorials/integrate_mixture_of_experts_into_your_model",
+        "advanced_tutorials/opt_service"
       ]
     }
   ]
