@@ -13,6 +13,6 @@ set_n_least_used_CUDA_VISIBLE_DEVICES() {
     echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 }
 
-set_n_least_used_CUDA_VISIBLE_DEVICES 1
+set_n_least_used_CUDA_VISIBLE_DEVICES 2
 
-python train_dummy.py --model bloom --pretrain '/data2/users/lczht/bloom-560m' --lora_rank 16
+torchrun --standalone --nproc_per_node=2 train_dummy.py --strategy colossalai_zero2
