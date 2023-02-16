@@ -1,12 +1,13 @@
 from abc import ABC
+
 import loralib as lora
 from chatgpt.dataset import RewardDataset
 from chatgpt.nn import PairWiseLoss
-from torch.optim import Adam
+from torch.optim import Adam, Optimizer
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+
 from .strategies import Strategy
-from torch.optim import Optimizer
 from .utils import is_rank_0
 
 
@@ -25,29 +26,32 @@ class RewardModelTrainer(ABC):
         optim_kwargs (dict, defaults to {'lr':1e-4}): the kwargs to use while initializing optimizer
     """
 
-    def __init__(self,
-                 model,
-                 strategy: Strategy,
-                 optim : Optimizer,
-                 train_dataset: RewardDataset,
-                 eval_dataset: RewardDataset,
-                 batch_size: int = 1,
-                 max_epochs: int = 2,) -> None:
+    def __init__(
+        self,
+        model,
+        strategy: Strategy,
+        optim: Optimizer,
+        train_dataset: RewardDataset,
+        eval_dataset: RewardDataset,
+        batch_size: int = 1,
+        max_epochs: int = 2,
+    ) -> None:
         super().__init__()
         self.strategy = strategy
         self.epochs = max_epochs
         self.train_dataloader = DataLoader(train_dataset, batch_size=batch_size)
         self.eval_dataloader = DataLoader(eval_dataset, batch_size=batch_size)
-        
+
         self.model = strategy.setup_model(model)
         self.loss_fn = PairWiseLoss()
         self.optimizer = strategy.setup_optimizer(optim, self.model)
-        
 
     def fit(self, use_lora):
         epoch_bar = tqdm(range(self.epochs), desc='Train epoch', disable=not is_rank_0())
         for epoch in range(self.epochs):
-            step_bar = tqdm(range(self.train_dataloader.__len__()), desc='Train step of epoch %d' % epoch, disable=not is_rank_0())
+            step_bar = tqdm(range(self.train_dataloader.__len__()),
+                            desc='Train step of epoch %d' % epoch,
+                            disable=not is_rank_0())
             # train
             if use_lora > 0:
                 print("Using Lora")
