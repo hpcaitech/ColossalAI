@@ -42,6 +42,7 @@ class SearchChunk(object):
 
     def __init__(self, gm, max_memory=None, print_mem=False, print_progress=False) -> None:
         self.print_mem = print_mem
+        self.max_memory = max_memory
         self.print_progress = print_progress
         self.node_mgr = NodeMgr(list(gm.graph.nodes))
         self.trace_indice = TraceIndice(self.node_mgr)
@@ -67,7 +68,7 @@ class SearchChunk(object):
         cur_node_idx = len(self._get_free_var_idx())
         max_chunk_region_list = []
         while True:
-            max_chunk_region = self._search_max_chunk_region(active_nodes, cur_node_idx)
+            max_chunk_region = self._search_max_chunk_region(active_nodes, [cur_node_idx, cur_node_idx])
             cur_node_idx = max_chunk_region[1] + 1
             if cur_node_idx >= len(active_nodes) - 1:
                 break
@@ -83,10 +84,37 @@ class SearchChunk(object):
         self.trace_indice.set_trace_range(max_chunk_region_list, active_nodes)
         self.trace_indice.trace_indice()
 
-    def _find_peak_node(self, mem_peak: List) -> int:
+    def _find_peak_region(self, mem_peak: List) -> int:
+        """
+        find peak node, along with its neighbour nodes exceeds max mem
+        """
         max_value = max(mem_peak)
         max_idx = mem_peak.index(max_value)
-        return max_idx
+        peak_region = [max_idx, max_idx]
+        if self.max_memory is None:
+            return peak_region
+
+        # to left
+        count = 0
+        for i in range(max_idx - 1, -1, -1):
+            if mem_peak[i] > self.max_memory:
+                peak_region[0] = i
+            else:
+                count += 1
+            if count >= 3:
+                break
+        # to right
+        count = 0
+        for i in range(max_idx + 1, len(mem_peak) - 1):
+            if mem_peak[i] > self.max_memory:
+                peak_region[1] = i
+                count = 0
+            else:
+                count += 1
+            if count >= 3:
+                break
+
+        return peak_region
 
     def _get_free_var_idx(self) -> List:
         """
@@ -101,7 +129,7 @@ class SearchChunk(object):
                 free_var_idx.append(idx)
         return free_var_idx
 
-    def _search_max_chunk_region(self, active_node: List, peak_node_idx: int, chunk_regions: List = None) -> Tuple:
+    def _search_max_chunk_region(self, active_node: List, peak_region: int, chunk_regions: List = None) -> Tuple:
         """
         Search max chunk region according to peak memory node
 
@@ -119,20 +147,21 @@ class SearchChunk(object):
         # check if peak node already in chunkinfo
         if chunk_regions is not None:
             for i in chunk_regions:
-                if i["region"][0] < peak_node_idx <= i["region"][1]:
+                if i["region"][0] < peak_region[0] <= i["region"][1] or \
+                    i["region"][0] < peak_region[1] <= i["region"][1]:
                     return None
 
         active_node_num = [len(i) for i in active_node]
         window_size = 100
         # search min for start
-        min_num = 1e3
-        for i in range(max(peak_node_idx - window_size, 0), peak_node_idx + 1):
+        min_num = 1e4
+        for i in range(peak_region[0], max(peak_region[0] - window_size, -1), -1):
             if active_node_num[i] < min_num:
                 min_num = active_node_num[i]
                 chunk_region_start = i
         # search min for end
-        min_num = 1e3
-        for i in range(min(peak_node_idx + window_size, len(active_node_num) - 1), peak_node_idx - 1, -1):
+        min_num = 1e4
+        for i in range(peak_region[1], min(peak_region[1] + window_size, len(active_node_num))):
             if active_node_num[i] < min_num:
                 min_num = active_node_num[i]
                 chunk_region_end = i
@@ -187,7 +216,7 @@ class SearchChunk(object):
                     chunk_infos.append(chunk_info)
         return chunk_infos
 
-    def _search_possible_chunk_regions(self, max_chunk_region: Tuple, peak_node: Node) -> List:
+    def _search_possible_chunk_regions(self, max_chunk_region: Tuple, peak_region: Node) -> List:
         """
         Search every possible region within the max chunk region.
 
@@ -208,8 +237,8 @@ class SearchChunk(object):
                     cur_trace[arg] = self.trace_indice._find_trace_from_node(arg)
             input_trace.append(cur_trace)
 
-        for start_idx in range(max_chunk_region[0], peak_node + 1):
-            for end_idx in range(peak_node, max_chunk_region[1] + 1):
+        for start_idx in range(max_chunk_region[0], peak_region[0] + 1):
+            for end_idx in range(peak_region[1], max_chunk_region[1] + 1):
                 # skip non compute nodes
                 if is_non_compute_node(self.node_mgr.get_node_by_idx(start_idx)) or is_non_compute_node(
                         self.node_mgr.get_node_by_idx(end_idx)):
@@ -243,13 +272,12 @@ class SearchChunk(object):
         Returns:
             best_chunk_region (Dict)
         """
-        peak_node = self._find_peak_node(mem_peak)
-        max_chunk_region = self._search_max_chunk_region(active_node, peak_node, chunk_infos)
+        peak_region = self._find_peak_region(mem_peak)
+        max_chunk_region = self._search_max_chunk_region(active_node, peak_region, chunk_infos)
         if max_chunk_region == None:
             return None
-        possible_chunk_regions = self._search_possible_chunk_regions(max_chunk_region, peak_node)
-        best_chunk_region = self.select_chunk._select_best_chunk_region(possible_chunk_regions, chunk_infos, peak_node,
-                                                                        max_chunk_region, mem_peak)
+        possible_chunk_regions = self._search_possible_chunk_regions(max_chunk_region, peak_region)
+        best_chunk_region = self.select_chunk._select_best_chunk_region(possible_chunk_regions, chunk_infos, mem_peak)
         best_chunk_region = self.reorder_graph.reorder_all(best_chunk_region)
         return best_chunk_region
 

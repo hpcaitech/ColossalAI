@@ -112,7 +112,7 @@ class EstimateMemory(object):
         if chunk_dim is None:
             return 1.0
         else:
-            return float(chunk_size) / node_shape[chunk_dim]
+            return chunk_size / float(node_shape[chunk_dim])
 
     def _print_compute_op_mem_log(self, log, nodes, title=None):
         if title:
