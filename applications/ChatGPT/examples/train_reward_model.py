@@ -2,15 +2,15 @@ import argparse
 
 import loralib as lora
 import torch
-from torch.optim import Adam
 from chatgpt.dataset import RewardDataset
 from chatgpt.nn import BLOOMRM
 from chatgpt.trainer import RewardModelTrainer
+from chatgpt.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
 from datasets import load_dataset
+from torch.optim import Adam
 from transformers import BloomTokenizerFast
 
 from colossalai.nn.optimizer import HybridAdam
-from chatgpt.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
 
 
 def train(args):
@@ -25,19 +25,19 @@ def train(args):
         strategy = ColossalAIStrategy(stage=2, placement_policy='cuda')
     else:
         raise ValueError(f'Unsupported strategy "{args.strategy}"')
-    
+
     # configure model
     tokenizer = BloomTokenizerFast.from_pretrained(args.pretrain)
     tokenizer.pad_token = tokenizer.eos_token
     model = BLOOMRM(pretrained=args.pretrain).cuda()
     max_len = 1024
-    
+
     # configure optimizer
     if args.strategy.startswith('colossalai'):
         optim = HybridAdam(model.parameters(), lr=5e-5)
     else:
         optim = Adam(model.parameters(), lr=5e-5)
-    
+
     # prepare for data and dataset
     data = load_dataset(args.dataset)
     train_data = data["train"].select(range(100))
