@@ -65,23 +65,10 @@ class SearchChunk(object):
         """
         # find all max ranges
         active_nodes = self.estimate_memory.estimate_chunk_inference_mem(self.node_mgr.get_node_list())[2]
-        cur_node_idx = len(self._get_free_var_idx())
-        max_chunk_region_list = []
-        while True:
-            max_chunk_region = self._search_max_chunk_region(active_nodes, [cur_node_idx, cur_node_idx])
-            cur_node_idx = max_chunk_region[1] + 1
-            if cur_node_idx >= len(active_nodes) - 1:
-                break
-            max_chunk_region_list.append(max_chunk_region)
-
-        # nothing to limit for the first range
-        max_chunk_region_list = max_chunk_region_list[1:]
-        max_chunk_region_list[0] = (0, max_chunk_region_list[0][1])
-
         # set trace range and do the trace
         if self.print_progress:
             get_logger().info("AutoChunk start tracing indice")
-        self.trace_indice.set_trace_range(max_chunk_region_list, active_nodes)
+        self.trace_indice.set_active_nodes(active_nodes)
         self.trace_indice.trace_indice()
 
     def _find_peak_region(self, mem_peak: List) -> int:
@@ -115,19 +102,6 @@ class SearchChunk(object):
                 break
 
         return peak_region
-
-    def _get_free_var_idx(self) -> List:
-        """
-        Get free var index
-
-        Returns:
-            free_var_idx (List): all indexs of free vars
-        """
-        free_var_idx = []
-        for idx, n in enumerate(self.node_mgr.get_node_list()):
-            if n.op == "placeholder" and get_node_shape(n) is not None:
-                free_var_idx.append(idx)
-        return free_var_idx
 
     def _search_max_chunk_region(self, active_node: List, peak_region: int, chunk_regions: List = None) -> Tuple:
         """

@@ -137,4 +137,4 @@ if __name__ == "__main__":
     benchmark_evoformer_stack((256, 256))
     benchmark_evoformer_stack((256, 512))
     benchmark_evoformer_stack((256, 1024))
-    benchmark_evoformer_stack((256, 1536))
+    benchmark_evoformer_stack((256, 1280))

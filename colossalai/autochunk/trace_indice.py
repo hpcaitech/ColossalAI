@@ -33,7 +33,6 @@ class TraceIndice(object):
         self.indice_trace_list = self._init_indice_trace_list()
         self.indice_view_list = {}
         self.indice_count = -1
-        self.trace_range = []
         self.active_node_list = []
 
     def _init_indice_trace_list(self) -> List:
@@ -50,8 +49,7 @@ class TraceIndice(object):
             indice_trace_list.append(cur_trace)
         return indice_trace_list
 
-    def set_trace_range(self, trace_range: List, active_node_list: List) -> None:
-        self.trace_range = trace_range
+    def set_active_nodes(self, active_node_list: List) -> None:
         self.active_node_list = active_node_list
 
     def _add_indice(self) -> int:
@@ -762,32 +760,22 @@ class TraceIndice(object):
         """
         clear too far trace to speed up computation
         """
-        trace_range = None
-        for i in range(len(self.trace_range)):
-            if self.trace_range[i][1] == node_idx:
-                trace_range = (self.trace_range[i][0], self.trace_range[i][1])
-                break
-            if self.trace_range[i][1] > node_idx:
-                break
-        if trace_range is None:
-            return
+        trace_barrier = max(node_idx - 100, 0)
+        active_nodes = self.active_node_list[trace_barrier]
+        active_nodes = [self.node_mgr.find_node_idx(i) for i in active_nodes.keys()]
 
-        active_nodes = self.active_node_list[trace_range[0]:trace_range[1] + 1]
-        active_nodes = set(flat_list(active_nodes))
-        active_nodes = [self.node_mgr.find_node_idx(i) for i in active_nodes]
-        for i in range(trace_range[0], trace_range[1] + 1):
-            trace = self.indice_trace_list[i]
-            # clear compute
-            for dim_compute in trace["compute"]:
-                for i in range(len(dim_compute) - 1, -1, -1):
-                    if (dim_compute[i] < trace_range[0] and dim_compute[i] not in active_nodes):
-                        dim_compute.pop(i)
-                continue
-            # clear source
-            for dim_source in trace["source"]:
-                for k in list(dim_source.keys()):
-                    if k < trace_range[0] and k not in active_nodes:
-                        dim_source.pop(k)
+        trace = self.indice_trace_list[node_idx]
+        # clear compute
+        for dim_compute in trace["compute"]:
+            for i in range(len(dim_compute) - 1, -1, -1):
+                if (dim_compute[i] < trace_barrier and dim_compute[i] not in active_nodes):
+                    dim_compute.pop(i)
+            continue
+        # clear source
+        for dim_source in trace["source"]:
+            for k in list(dim_source.keys()):
+                if k < trace_barrier and k not in active_nodes:
+                    dim_source.pop(k)
 
     def trace_indice(self) -> None:
         for idx, node in enumerate(self.node_mgr.get_node_list()):
