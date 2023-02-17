@@ -34,17 +34,47 @@ Simplest usage:
 ```python
 from chatgpt.trainer import PPOTrainer
 from chatgpt.trainer.strategies import ColossalAIStrategy
+from chatgpt.nn import GPTActor, GPTCritic, RewardModel
+from copy import deepcopy
+from colossalai.nn.optimizer import HybridAdam
 
 strategy = ColossalAIStrategy()
 
 with strategy.model_init_context():
   # init your model here
-  actor = Actor()
-  critic = Critic()
+  # load pretrained gpt2
+  actor = GPTActor(pretrained='gpt2')
+  critic = GPTCritic()
+  initial_model = deepcopy(actor).cuda()
+  reward_model = RewardModel(deepcopy(critic.model), deepcopy(critic.value_head)).cuda()
 
-trainer = PPOTrainer(actor = actor, critic= critic, strategy, ...)
+actor_optim = HybridAdam(actor.parameters(), lr=5e-6)
+critic_optim = HybridAdam(critic.parameters(), lr=5e-6)
+
+# prepare models and optimizers
+(actor, actor_optim), (critic, critic_optim), reward_model, initial_model = strategy.prepare(
+        (actor, actor_optim), (critic, critic_optim), reward_model, initial_model)
+
+# load saved model checkpoint after preparing
+strategy.load_model(actor, 'actor_checkpoint.pt', strict=False)
+# load saved optimizer checkpoint after preparing
+strategy.load_optimizer(actor_optim, 'actor_optim_checkpoint.pt')
+
+trainer = PPOTrainer(strategy,
+                     actor,
+                     critic,
+                     reward_model,
+                     initial_model,
+                     actor_optim,
+                     critic_optim,
+                     ...)
 
 trainer.fit(dataset, ...)
+
+# save model checkpoint after fitting on only rank0
+strategy.save_model(actor, 'actor_checkpoint.pt', only_rank0=True)
+# save optimizer checkpoint on all ranks
+strategy.save_optimizer(actor_optim, 'actor_optim_checkpoint.pt', only_rank0=False)
 ```
 
 For more details, see `examples/`.
@@ -53,7 +83,7 @@ We also support training reward model with true-world data. See `examples/train_
 
 ## Todo
 
-- [x] implement PPO training
+- [x] implement PPO fine-tuning
 - [x] implement training reward model
 - [x] support LoRA
 - [ ] implement PPO-ptx fine-tuning
@@ -65,7 +95,7 @@ Referring to the successful attempts of [BLOOM](https://bigscience.huggingface.c
 
 You may contact us or participate in the following ways:
 1. Posting an [issue](https://github.com/hpcaitech/ColossalAI/issues/new/choose) or submitting a [PR](https://github.com/hpcaitech/ColossalAI/pulls) on GitHub
-2. Join the Colossal-AI community on 
+2. Join the Colossal-AI community on
 [Slack](https://join.slack.com/t/colossalaiworkspace/shared_invite/zt-z7b26eeb-CBp7jouvu~r0~lcFzX832w),
 and [WeChat](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/WeChat.png "qrcode") to share your ideas.
 3. Check out and fill in the [cooperation proposal](https://www.hpc-ai.tech/partners)
