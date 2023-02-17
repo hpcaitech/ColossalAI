@@ -110,7 +110,7 @@ To save optimizer checkpoint:
 strategy.save_optimizer(actor_optim, 'actor_optim_checkpoint.pt', only_rank0=False)
 ```
 
-For DDP strategy, optimizer states are replicated on all ranks. You can set `only_rank0=True`. But for ColossalAI strategy, optimizer states are sharded over all ranks, and no all-gather will be applied. So for ColossalAI strategy, you can only set `only_rank0=False`. The checkpoint is float32.
+For DDP strategy, optimizer states are replicated on all ranks. You can set `only_rank0=True`. But for ColossalAI strategy, optimizer states are sharded over all ranks, and no all-gather will be applied. So for ColossalAI strategy, you can only set `only_rank0=False`. That is to say, each rank will save a cehckpoint. When loading, each rank should load the corresponding part.
 
 Note that different stategy may have different shapes of optimizer checkpoint.
 
