@@ -79,7 +79,7 @@ pip install pytorch-lightning
 For example, you can install  v0.2.0 from our official website.
 
 ```
-pip install colossalai==0.2.0+torch1.12cu11.3 -f https://release.colossalai.org
+pip install colossalai
 ```
 
 ##### From source
