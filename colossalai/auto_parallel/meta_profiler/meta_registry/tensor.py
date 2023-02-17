@@ -28,18 +28,25 @@ def tensor_related_metainfo(bwd_mem_out_factor: float = 1, bwd_mem_tmp_factor: f
         Returns:
             Tuple[TrainCycleItem, TrainCycleItem, List[torch.Tensor]]: compute cost, memory cost and forward inputs
         """
-        engaged_tensors = next(filter(lambda x: x.type == OperationDataType.OUTPUT, args)).data
+        inputs = next(
+            filter(
+                lambda x: x.type == OperationDataType.ARG or x.type == OperationDataType.PARAM and isinstance(
+                    x.data, torch.Tensor), args)).data
+        outputs = next(filter(lambda x: x.type == OperationDataType.OUTPUT, args)).data
 
         # compute costs are all zero
         compute_cost = TrainCycleItem(fwd=0, bwd=0, total=0)
 
         # memory costs
         # NOTE: currently in SPMD solver we always believe that there will be a new tensor created in forward
-        fwd_mem_cost = MemoryCost(activation=activation_size(engaged_tensors) * 2, parameter=0, temp=0, buffer=0)
-
-        bwd_mem_cost = MemoryCost(activation=activation_size(engaged_tensors) * bwd_mem_out_factor,
+        fwd_mem_cost = MemoryCost(activation=activation_size(inputs) + activation_size(outputs),
                                   parameter=0,
-                                  temp=activation_size(engaged_tensors) * bwd_mem_tmp_factor,
+                                  temp=0,
+                                  buffer=0)
+
+        bwd_mem_cost = MemoryCost(activation=activation_size(outputs) * bwd_mem_out_factor,
+                                  parameter=0,
+                                  temp=activation_size(outputs) * bwd_mem_tmp_factor,
                                   buffer=0)
 
         total_mem_cost = MemoryCost(activation=fwd_mem_cost.activation + bwd_mem_cost.activation,
@@ -52,11 +59,14 @@ def tensor_related_metainfo(bwd_mem_out_factor: float = 1, bwd_mem_tmp_factor: f
         # store fwd_in, fwd_buffer, fwd_out
         fwd_in = []
         fwd_buffer = []
-        if isinstance(engaged_tensors, tuple) or isinstance(engaged_tensors, list) or isinstance(engaged_tensors, dict):
-            fwd_out = [torch.zeros_like(tensor) for tensor in engaged_tensors]
+        if isinstance(outputs, tuple) or isinstance(outputs, list) or isinstance(outputs, dict):
+            if isinstance(outputs[0], torch.Tensor):
+                fwd_out = [torch.zeros_like(tensor) for tensor in outputs]
+            else:
+                fwd_out = outputs
         else:
             # enaged_tensors is a single tensor
-            fwd_out = [torch.zeros_like(engaged_tensors)]
+            fwd_out = [torch.zeros_like(outputs)]
 
         return compute_cost, memory_cost, fwd_in, fwd_buffer, fwd_out
 
