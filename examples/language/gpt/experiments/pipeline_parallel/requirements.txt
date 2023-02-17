@@ -1,2 +1,4 @@
 colossalai >= 0.1.12
 torch >= 1.8.1
+numpy>=1.22.2 # not directly required, pinned by Snyk to avoid a vulnerability
+setuptools>=65.5.1 # not directly required, pinned by Snyk to avoid a vulnerability
