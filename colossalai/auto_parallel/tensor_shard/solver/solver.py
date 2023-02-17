@@ -185,6 +185,7 @@ class Solver:
 
         return node_nums, memory_budget, strategies_len, following_nodes, edge_pairs, alias_set, liveness_set, compute_costs, communication_costs, memory_costs, resharding_costs, alias_convert_costs, s_init_np, self.verbose
 
+    # modified from alpa(https://github.com/alpa-projects/alpa/blob/main/alpa/shard_parallel/auto_sharding.py)
     def _call_solver_serialized_args(self,
                                      node_nums,
                                      memory_budget,
