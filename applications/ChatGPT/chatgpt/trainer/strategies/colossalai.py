@@ -5,6 +5,7 @@ import torch.distributed as dist
 import torch.nn as nn
 import torch.optim as optim
 from chatgpt.nn import Actor
+from torch.optim import Optimizer
 
 import colossalai
 from colossalai.nn.optimizer import CPUAdam, HybridAdam
@@ -129,3 +130,16 @@ class ColossalAIStrategy(DDPStrategy):
     def _unwrap_actor(actor: Actor) -> nn.Module:
         model: ZeroDDP = super()._unwrap_actor(actor)
         return model.module
+
+    def save_model(self, model: nn.Module, path: str, only_rank0: bool = False) -> None:
+        unwrapped_model = self._unwrap_model(model)
+        state_dict = unwrapped_model.state_dict()
+        if only_rank0 and dist.get_rank() != 0:
+            return
+        torch.save(state_dict, path)
+
+    def save_optimizer(self, optimizer: Optimizer, path: str, only_rank0: bool = False) -> None:
+        if only_rank0:
+            raise RuntimeError(
+                f'Optimizer states are sharded when using ColossalAIStrategy. Only rank0 is not supported.')
+        torch.save(optimizer.state_dict(), path)

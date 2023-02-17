@@ -109,15 +109,15 @@ class Strategy(ABC):
         return Strategy._unwrap_model(actor)
 
     @abstractmethod
-    def save_model(self, model: nn.Module, path: str, only_rank0: bool = True) -> None:
+    def save_model(self, model: nn.Module, path: str, only_rank0: bool = False) -> None:
         pass
 
     @abstractmethod
-    def load_model(self, model: nn.Module, path: str, map_location: Any = None) -> None:
+    def load_model(self, model: nn.Module, path: str, map_location: Any = None, strict: bool = True) -> None:
         pass
 
     @abstractmethod
-    def save_optimizer(self, optimizer: Optimizer, path: str, only_rank0: bool = True) -> None:
+    def save_optimizer(self, optimizer: Optimizer, path: str, only_rank0: bool = False) -> None:
         pass
 
     @abstractmethod
