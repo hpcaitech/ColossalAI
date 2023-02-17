@@ -117,7 +117,7 @@ def check_attention_layer(rank, model_cls, world_size, port):
     gm = GraphModule(model, graph, model.__class__.__name__)
     gm.recompile()
 
-    strategies_constructor = build_strategy_constructor(graph, device_mesh)
+    strategies_constructor = build_strategy_constructor(graph, device_mesh, 'standard', 'replicated', 'standard')
     solution = solve_solution(gm, strategies_constructor, memory_budget=-1)
     gm, sharding_spec_dicts = transform_to_sharded_model(gm, solution, device_mesh, strategies_constructor)
     gm = ModuleWrapper(gm, *sharding_spec_dicts)

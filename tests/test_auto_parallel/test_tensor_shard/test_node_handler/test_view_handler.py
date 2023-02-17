@@ -196,54 +196,57 @@ def check_view_handler(rank, tgt_shape, model_cls, world_size, port):
     if model_cls.__name__ == 'LinearViewModel':
 
         if tgt_shape == (32, 4, 64, 16, 4):
-            assert '[S0, R, R, S1] -> [S0, R, R, S1, R]_0' in strategy_name_list
-            assert '[R, S0, R, S1] -> FULLY REPLICATED_1' in strategy_name_list
-            assert '[R, R, S0, S1] -> [R, R, S0, S1, R]_2' in strategy_name_list
-            assert '[S1, R, R, S0] -> [S1, R, R, S0, R]_3' in strategy_name_list
-            assert '[R, S1, R, S0] -> FULLY REPLICATED_4' in strategy_name_list
-            assert '[R, R, S1, S0] -> [R, R, S1, S0, R]_5' in strategy_name_list
-            assert '[S0, R, R, R] -> [S0, R, R, R, R]_6' in strategy_name_list
-            assert '[R, S0, R, R] -> FULLY REPLICATED_7' in strategy_name_list
-            assert '[R, R, S0, R] -> [R, R, S0, R, R]_8' in strategy_name_list
-            assert '[S1, R, R, R] -> [S1, R, R, R, R]_9' in strategy_name_list
-            assert '[R, S1, R, R] -> FULLY REPLICATED_10' in strategy_name_list
-            assert '[R, R, S1, R] -> [R, R, S1, R, R]_11' in strategy_name_list
-            assert '[R, R, R, S1] -> [R, R, R, S1, R]_12' in strategy_name_list
-            assert '[R, R, R, S0] -> [R, R, R, S0, R]_13' in strategy_name_list
-            assert '[R, R, R, R] -> [R, R, R, R, R]_14' in strategy_name_list
-            assert '[R, R, R, R] -> [R, R, R, R, R]_15' in strategy_name_list
-            assert '[R, R, R, S0] -> [R, R, R, S0, R]_16' in strategy_name_list
-            assert '[R, R, R, S1] -> [R, R, R, S1, R]_17' in strategy_name_list
-            assert '[S01, R, R, R] -> [S01, R, R, R, R]_18' in strategy_name_list
-            assert '[R, S01, R, R] -> FULLY REPLICATED_19' in strategy_name_list
-            assert '[R, R, S01, R] -> [R, R, S01, R, R]_20' in strategy_name_list
-            assert '[R, R, R, R] -> [R, R, R, R, R]_21' in strategy_name_list
-            assert '[R, R, R, S01] -> [R, R, R, S01, R]_22' in strategy_name_list
+            for strategy in strategy_name_list:
+                print(strategy)
+            # print(strategy_name_list)
+            assert '[S0, R, R, S1] -> [S0, R, R, S1, R]_11' in strategy_name_list
+            assert '[R, S0, R, S1] -> FULLY REPLICATED_12' in strategy_name_list
+            assert '[R, R, S0, S1] -> [R, R, S0, S1, R]_13' in strategy_name_list
+            assert '[S1, R, R, S0] -> [S1, R, R, S0, R]_14' in strategy_name_list
+            assert '[R, S1, R, S0] -> FULLY REPLICATED_15' in strategy_name_list
+            assert '[R, R, S1, S0] -> [R, R, S1, S0, R]_16' in strategy_name_list
+            assert '[S0, R, R, R] -> [S0, R, R, R, R]_17' in strategy_name_list
+            assert '[R, S0, R, R] -> FULLY REPLICATED_18' in strategy_name_list
+            assert '[R, R, S0, R] -> [R, R, S0, R, R]_19' in strategy_name_list
+            assert '[S1, R, R, R] -> [S1, R, R, R, R]_20' in strategy_name_list
+            assert '[R, S1, R, R] -> FULLY REPLICATED_21' in strategy_name_list
+            assert '[R, R, S1, R] -> [R, R, S1, R, R]_22' in strategy_name_list
+            assert '[R, R, R, S1] -> [R, R, R, S1, R]_10' in strategy_name_list
+            assert '[R, R, R, S0] -> [R, R, R, S0, R]_9' in strategy_name_list
+            assert '[R, R, R, R] -> [R, R, R, R, R]_8' in strategy_name_list
+            assert '[R, R, R, R] -> [R, R, R, R, R]_7' in strategy_name_list
+            assert '[R, R, R, S0] -> [R, R, R, S0, R]_6' in strategy_name_list
+            assert '[R, R, R, S1] -> [R, R, R, S1, R]_5' in strategy_name_list
+            assert '[S01, R, R, R] -> [S01, R, R, R, R]_0' in strategy_name_list
+            assert '[R, S01, R, R] -> FULLY REPLICATED_1' in strategy_name_list
+            assert '[R, R, S01, R] -> [R, R, S01, R, R]_2' in strategy_name_list
+            assert '[R, R, R, R] -> [R, R, R, R, R]_3' in strategy_name_list
+            assert '[R, R, R, S01] -> [R, R, R, S01, R]_4' in strategy_name_list
 
         if tgt_shape == (8, 4, 4, 64, 16, 4):
-            assert '[S0, R, R, S1] -> [S0, R, R, R, S1, R]_0' in strategy_name_list
-            assert '[R, S0, R, S1] -> [R, S0, R, R, S1, R]_1' in strategy_name_list
-            assert '[R, R, S0, S1] -> [R, R, R, S0, S1, R]_2' in strategy_name_list
-            assert '[S1, R, R, S0] -> [S1, R, R, R, S0, R]_3' in strategy_name_list
-            assert '[R, S1, R, S0] -> [R, S1, R, R, S0, R]_4' in strategy_name_list
-            assert '[R, R, S1, S0] -> [R, R, R, S1, S0, R]_5' in strategy_name_list
-            assert '[S0, R, R, R] -> [S0, R, R, R, R, R]_6' in strategy_name_list
-            assert '[R, S0, R, R] -> [R, S0, R, R, R, R]_7' in strategy_name_list
-            assert '[R, R, S0, R] -> [R, R, R, S0, R, R]_8' in strategy_name_list
-            assert '[S1, R, R, R] -> [S1, R, R, R, R, R]_9' in strategy_name_list
-            assert '[R, S1, R, R] -> [R, S1, R, R, R, R]_10' in strategy_name_list
-            assert '[R, R, S1, R] -> [R, R, R, S1, R, R]_11' in strategy_name_list
-            assert '[R, R, R, S1] -> [R, R, R, R, S1, R]_12' in strategy_name_list
-            assert '[R, R, R, S0] -> [R, R, R, R, S0, R]_13' in strategy_name_list
-            assert '[R, R, R, R] -> [R, R, R, R, R, R]_14' in strategy_name_list
-            assert '[R, R, R, R] -> [R, R, R, R, R, R]_15' in strategy_name_list
-            assert '[R, R, R, S0] -> [R, R, R, R, S0, R]_16' in strategy_name_list
-            assert '[R, R, R, S1] -> [R, R, R, R, S1, R]_17' in strategy_name_list
-            assert '[S01, R, R, R] -> [S01, R, R, R, R, R]_18' in strategy_name_list
-            assert '[R, S01, R, R] -> [R, S01, R, R, R, R]_19' in strategy_name_list
-            assert '[R, R, S01, R] -> [R, R, R, S01, R, R]_20' in strategy_name_list
-            assert '[R, R, R, R] -> [R, R, R, R, R, R]_21' in strategy_name_list
-            assert '[R, R, R, S01] -> [R, R, R, R, S01, R]_22' in strategy_name_list
+            assert '[S0, R, R, S1] -> [S0, R, R, R, S1, R]_11' in strategy_name_list
+            assert '[R, S0, R, S1] -> [R, S0, R, R, S1, R]_12' in strategy_name_list
+            assert '[R, R, S0, S1] -> [R, R, R, S0, S1, R]_13' in strategy_name_list
+            assert '[S1, R, R, S0] -> [S1, R, R, R, S0, R]_14' in strategy_name_list
+            assert '[R, S1, R, S0] -> [R, S1, R, R, S0, R]_15' in strategy_name_list
+            assert '[R, R, S1, S0] -> [R, R, R, S1, S0, R]_16' in strategy_name_list
+            assert '[S0, R, R, R] -> [S0, R, R, R, R, R]_17' in strategy_name_list
+            assert '[R, S0, R, R] -> [R, S0, R, R, R, R]_18' in strategy_name_list
+            assert '[R, R, S0, R] -> [R, R, R, S0, R, R]_19' in strategy_name_list
+            assert '[S1, R, R, R] -> [S1, R, R, R, R, R]_20' in strategy_name_list
+            assert '[R, S1, R, R] -> [R, S1, R, R, R, R]_21' in strategy_name_list
+            assert '[R, R, S1, R] -> [R, R, R, S1, R, R]_22' in strategy_name_list
+            assert '[R, R, R, S1] -> [R, R, R, R, S1, R]_10' in strategy_name_list
+            assert '[R, R, R, S0] -> [R, R, R, R, S0, R]_9' in strategy_name_list
+            assert '[R, R, R, R] -> [R, R, R, R, R, R]_8' in strategy_name_list
+            assert '[R, R, R, R] -> [R, R, R, R, R, R]_7' in strategy_name_list
+            assert '[R, R, R, S0] -> [R, R, R, R, S0, R]_6' in strategy_name_list
+            assert '[R, R, R, S1] -> [R, R, R, R, S1, R]_5' in strategy_name_list
+            assert '[S01, R, R, R] -> [S01, R, R, R, R, R]_0' in strategy_name_list
+            assert '[R, S01, R, R] -> [R, S01, R, R, R, R]_1' in strategy_name_list
+            assert '[R, R, S01, R] -> [R, R, R, S01, R, R]_2' in strategy_name_list
+            assert '[R, R, R, R] -> [R, R, R, R, R, R]_3' in strategy_name_list
+            assert '[R, R, R, S01] -> [R, R, R, R, S01, R]_4' in strategy_name_list
 
 
 @run_on_environment_flag(name='AUTO_PARALLEL')
