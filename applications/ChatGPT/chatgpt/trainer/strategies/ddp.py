@@ -11,6 +11,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader, DistributedSampler
 
+from .base import Strategy
 from .naive import NaiveStrategy
 
 
@@ -62,7 +63,7 @@ class DDPStrategy(NaiveStrategy):
 
     @staticmethod
     def _unwrap_actor(actor: Actor) -> nn.Module:
-        model: DDP = super()._unwrap_actor(actor)
+        model: DDP = Strategy._unwrap_actor(actor)
         return model.module
 
     def save_model(self, model: nn.Module, path: str, only_rank0: bool = False) -> None:

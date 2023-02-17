@@ -14,6 +14,7 @@ from colossalai.tensor import ProcessGroup, ShardSpec
 from colossalai.utils import get_current_device
 from colossalai.utils.model.colo_init_context import ColoInitContext
 
+from .base import Strategy
 from .ddp import DDPStrategy
 
 
@@ -128,7 +129,7 @@ class ColossalAIStrategy(DDPStrategy):
 
     @staticmethod
     def _unwrap_actor(actor: Actor) -> nn.Module:
-        model: ZeroDDP = super()._unwrap_actor(actor)
+        model: ZeroDDP = Strategy._unwrap_actor(actor)
         return model.module
 
     def save_model(self, model: nn.Module, path: str, only_rank0: bool = False) -> None:
