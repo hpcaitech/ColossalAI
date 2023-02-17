@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Union
 
 import torch
 import torch.distributed as dist
@@ -129,8 +129,10 @@ class ColossalAIStrategy(DDPStrategy):
 
     @staticmethod
     def _unwrap_actor(actor: Actor) -> nn.Module:
-        model: ZeroDDP = Strategy._unwrap_actor(actor)
-        return model.module
+        model: Union[nn.Module, ZeroDDP] = Strategy._unwrap_actor(actor)
+        if isinstance(model, ZeroDDP):
+            return model.module
+        return model
 
     def save_model(self, model: nn.Module, path: str, only_rank0: bool = False) -> None:
         unwrapped_model = self._unwrap_model(model)
