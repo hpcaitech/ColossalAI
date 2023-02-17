@@ -197,10 +197,6 @@ Please visit our [documentation](https://www.colossalai.org/) and [examples](htt
 
 - [Energon-AI](https://github.com/hpcaitech/EnergonAI): 50% inference acceleration on the same hardware
 
-<p id="OPT-Serving" align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/OPT_serving.png" width=800/>
-</p>
-
 - [OPT Serving](https://colossalai.org/docs/advanced_tutorials/opt_service): Try 175-billion-parameter OPT online services
 
 <p id="BLOOM-Inference" align="center">
