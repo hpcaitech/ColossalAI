@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import Callable, List, Tuple
 
 import torch
 
@@ -8,23 +8,71 @@ from colossalai.fx.profiler.opcount import flop_mapping
 
 from ..registry import meta_register
 
-__all__ = []
+__all__ = ["tensor_related_metainfo"]
 
 
-def tensor_related_metainfo(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleItem, List[torch.Tensor]]:
-    """torch.Tensor related operations metainfo generator
-    torch.tensor: all zero, fwd_out
-    torch.Tensor.size: all zero, fwd_out
-    torch.Tensor.to: all zero, fwd_out
-    torch.Tensor.type: bwd_mem_out, bwd_mem_tmp, fwd_out
-    torch.Tensor.contiguous: bwd_mem_out, bwd_mem_tmp, fwd_out
-    torch.Tensor.transpose: bwd_mem_out, fwd_out
-    torch.Tensor.permute: bwd_mem_out, fwd_out
-    torch.Tensor.split: bwd_mem_out, fwd_out
-    torch.Tensor.view: bwd_mem_out, fwd_out
+def tensor_related_metainfo(bwd_mem_out_factor: float = 1, bwd_mem_tmp_factor: float = 0) -> Callable:
+    """torch.Tensor related metainfo generator template
 
+    Args:
+        bwd_mem_out_factor (float, optional): backward activation memory cost factor. Defaults to 1.
+        bwd_mem_tmp_factor (float, optional): backward temp memory cost factor. Defaults to 0.
 
     Returns:
-        Tuple[TrainCycleItem, TrainCycleItem, List[torch.Tensor]]: compute cost, memory cost and forward inputs
+        Callable: torch.Tensor related metainfo generator
     """
-    pass
+
+    def meta_func(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleItem, List[torch.Tensor]]:
+        """torch.Tensor related metainfo generator
+
+        Returns:
+            Tuple[TrainCycleItem, TrainCycleItem, List[torch.Tensor]]: compute cost, memory cost and forward inputs
+        """
+        engaged_tensors = next(filter(lambda x: x.type == OperationDataType.OUTPUT, args)).data
+
+        # compute costs are all zero
+        compute_cost = TrainCycleItem(fwd=0, bwd=0, total=0)
+
+        # memory costs
+        # NOTE: currently in SPMD solver we always believe that there will be a new tensor created in forward
+        fwd_mem_cost = MemoryCost(activation=activation_size(engaged_tensors) * 2, parameter=0, temp=0, buffer=0)
+
+        bwd_mem_cost = MemoryCost(activation=activation_size(engaged_tensors) * bwd_mem_out_factor,
+                                  parameter=0,
+                                  temp=activation_size(engaged_tensors) * bwd_mem_tmp_factor,
+                                  buffer=0)
+
+        total_mem_cost = MemoryCost(activation=fwd_mem_cost.activation + bwd_mem_cost.activation,
+                                    parameter=fwd_mem_cost.parameter + bwd_mem_cost.parameter,
+                                    temp=fwd_mem_cost.temp + bwd_mem_cost.temp,
+                                    buffer=fwd_mem_cost.buffer + bwd_mem_cost.buffer)
+
+        memory_cost = TrainCycleItem(fwd=fwd_mem_cost, bwd=bwd_mem_cost, total=total_mem_cost)
+
+        # store fwd_in, fwd_buffer, fwd_out
+        fwd_in = []
+        fwd_buffer = []
+        if isinstance(engaged_tensors, tuple) or isinstance(engaged_tensors, list) or isinstance(engaged_tensors, dict):
+            fwd_out = [torch.zeros_like(tensor) for tensor in engaged_tensors]
+        else:
+            # enaged_tensors is a single tensor
+            fwd_out = [torch.zeros_like(engaged_tensors)]
+
+        return compute_cost, memory_cost, fwd_in, fwd_buffer, fwd_out
+
+    return meta_func
+
+
+# register torch.Tensor related metainfo
+# (0, 0)
+meta_register.register([torch.tensor, torch.Tensor.size, torch.Tensor.to, torch.Tensor.unsqueeze,
+                        torch.unsqueeze])(tensor_related_metainfo(0, 0))
+
+# (1, 0)
+meta_register.register([
+    torch.Tensor.flatten, torch.flatten, torch.Tensor.transpose, torch.transpose, torch.Tensor.permute, torch.permute,
+    torch.Tensor.split, torch.split, torch.Tensor.view
+])(tensor_related_metainfo(1, 0))
+
+# (1, 1)
+meta_register.register([torch.Tensor.type, torch.Tensor.contiguous])(tensor_related_metainfo(1, 1))
