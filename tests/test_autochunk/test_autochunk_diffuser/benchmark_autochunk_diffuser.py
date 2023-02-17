@@ -145,5 +145,5 @@ if __name__ == "__main__":
     benchmark_autochunk_unet(batch=1, height=224 * 2, width=224 * 2)
     benchmark_autochunk_unet(batch=1, height=224 * 3, width=224 * 3)
     benchmark_autochunk_unet(batch=1, height=224 * 4, width=224 * 4)
-    benchmark_autochunk_unet(batch=1, height=224 * 5, width=224 * 4)
-    benchmark_autochunk_unet(batch=1, height=224 * 6, width=224 * 4)
+    benchmark_autochunk_unet(batch=1, height=224 * 5, width=224 * 5)
+    benchmark_autochunk_unet(batch=1, height=224 * 6, width=224 * 6)
