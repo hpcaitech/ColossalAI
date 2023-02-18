@@ -224,18 +224,17 @@ class CheckpointSolverRotor(CheckpointSolverBase):
         # Build table
         cost_table = [[{} for _ in range(len(chain) + 1)] for _ in range(mmax + 1)]
         back_ptr = [[{} for _ in range(len(chain) + 1)] for _ in range(mmax + 1)]
-        # Last one is a dict because its indices go from i to l. Renumbering will wait for C implementation
 
-        # Initialize borders of the tables for lmax-lmin = 0
+        # Initialize corner cases where length of sequence equals to 1, i.e. lhs == rhs
         for m in range(mmax + 1):
             for i in range(len(chain) + 1):
                 limit = max(x[i + 1] + xbar[i + 1] + ftmp[i], x[i + 1] + xbar[i + 1] + btmp[i])
-                if m >= limit:    # Equation (1)
+                if m >= limit:
                     cost_table[m][i][i] = ftime[i] + btime[i]
                 else:
                     cost_table[m][i][i] = float("inf")
 
-        # Compute everything
+        # Compute tables
         for m in range(mmax + 1):
             for d in range(1, len(chain) + 1):
                 for i in range(len(chain) + 1 - d):
