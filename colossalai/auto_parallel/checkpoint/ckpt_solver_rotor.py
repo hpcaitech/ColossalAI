@@ -207,11 +207,10 @@ class CheckpointSolverRotor(CheckpointSolverBase):
             mmax (int): Maximum number of memory slots.
 
         Returns:
-            cost_table (List): cost_table[m][lhs][rhs] with lhs = 0...chain.length
-                                     and rhs = lhs...chain.length (lhs is not included) and m = 0...mmax
-            back_ptr (List): back_ptr[m][lhs][rhs] is (True,) if the optimal choice
-                                     is a chain checkpoint (False, j) if the optimal choice is a leaf checkpoint
-                                     of length j
+            cost_table (List): cost_table[m][lhs][rhs] indicates the optimal cost of the subproblem from lhs to rhs
+            with m memory slots.
+            back_ptr (List): back_ptr[m][lhs][rhs] indicates the best operation at this point. It is (True,) if the optimal choice
+            is a chain checkpoint, it is (False, j) if the optimal choice is a leaf checkpoint of length j
         """
 
         ftime = chain.ftime + [0.0]
