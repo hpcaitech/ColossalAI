@@ -53,10 +53,8 @@ def tensor_related_metainfo(bwd_mem_out_factor: float = 1, bwd_mem_tmp_factor: f
         fwd_in = []
         fwd_buffer = []
         if isinstance(outputs, tuple) or isinstance(outputs, list) or isinstance(outputs, dict):
-            if isinstance(outputs[0], torch.Tensor):
-                fwd_out = [torch.zeros_like(tensor) for tensor in outputs]
-            else:
-                fwd_out = outputs
+            # tuple of tensors
+            fwd_out = [torch.zeros_like(tensor) for tensor in outputs]
         else:
             # enaged_tensors is a single tensor
             fwd_out = [torch.zeros_like(outputs)]
@@ -68,7 +66,7 @@ def tensor_related_metainfo(bwd_mem_out_factor: float = 1, bwd_mem_tmp_factor: f
 
 # register torch.Tensor related metainfo
 # (0, 0)
-meta_register.register([torch.Tensor.to, torch.Tensor.unsqueeze, torch.unsqueeze,
+meta_register.register([torch.tensor, torch.Tensor.to, torch.Tensor.unsqueeze, torch.unsqueeze,
                         torch.arange])(tensor_related_metainfo(0, 0))
 
 # (1, 0)
