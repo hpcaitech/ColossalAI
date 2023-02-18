@@ -17,3 +17,4 @@ lightning==1.9.0
 datasets
 colossalai
 -e .
+numpy>=1.22.0 # not directly required, pinned by Snyk to avoid a vulnerability
