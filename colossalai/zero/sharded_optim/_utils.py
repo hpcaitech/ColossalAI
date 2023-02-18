@@ -3,7 +3,7 @@ from typing import Optional
 
 import torch
 import torch.distributed as dist
-from torch.six import inf
+from torch import inf
 from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 
 from colossalai.tensor import ColoParameter

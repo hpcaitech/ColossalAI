@@ -126,6 +126,9 @@ def main(args):
     tokenizer = AutoTokenizer.from_pretrained('facebook/opt-350m')
     tokenizer.pad_token = tokenizer.eos_token
 
+    (actor, actor_optim), (critic, critic_optim), reward_model, initial_model = strategy.prepare(
+        (actor, actor_optim), (critic, critic_optim), reward_model, initial_model)
+
     trainer = PPOTrainer(strategy,
                          actor,
                          critic,
