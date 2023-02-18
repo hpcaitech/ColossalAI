@@ -7,7 +7,7 @@ on:
 
 jobs:
   build-n-publish:
-    if: github.event_name == 'workflow_dispatch' || github.repository == 'hpcaitech/ColossalAI'
+    if: github.repository == 'hpcaitech/ColossalAI'
     name: Build and publish Python 🐍 distributions 📦 to PyPI
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -33,7 +33,7 @@ jobs:
     name: Notify Lark via webhook
     needs: build-n-publish
     runs-on: ubuntu-latest
-    if: github.repository == 'hpcaitech/ColossalAI'
+    if: ${{ always() }} && github.repository == 'hpcaitech/ColossalAI'
     steps:
       - uses: actions/checkout@v2
 
