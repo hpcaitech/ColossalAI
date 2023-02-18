@@ -1,6 +1,12 @@
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 
+/*
+Rotor solver for checkpointing problem in C. We follow the modeling mentioned in
+paper `Optimal checkpointing for heterogeneous chains: how to train deep neural
+networks with limited memory` https://hal.inria.fr/hal-02352969. Some lines of
+the code are adapted from https://gitlab.inria.fr/hiepacs/rotor.
+*/
 long* PySequenceToLongArray(PyObject* pylist) {
   if (!(pylist && PySequence_Check(pylist))) return NULL;
   Py_ssize_t len = PySequence_Size(pylist);
@@ -81,14 +87,16 @@ static PyObject* computeTable(PyObject* self, PyObject* args) {
       (mmax + 1) * (chainLength + 1) * (chainLength + 1), sizeof(long));
 
   for (long m = 0; m <= mmax; ++m)
-    for (long i = 0; i <= chainLength; ++i)
+    for (long i = 0; i <= chainLength; ++i) {
       if ((m >= x[i + 1] + xbar[i + 1] + btmp[i]) &&
-          (m >= x[i + 1] + xbar[i + 1] + ftmp[i]))
+          (m >= x[i + 1] + xbar[i + 1] + ftmp[i])) {
         COST_TABLE(m, i, i) = ftime[i] + btime[i];
-      else
+      } else {
         COST_TABLE(m, i, i) = INFINITY;
+      }
+    }
 
-  for (long m = 0; m <= mmax; ++m)
+  for (long m = 0; m <= mmax; ++m) {
     for (long d = 1; d <= chainLength; ++d) {
       for (long i = 0; i <= chainLength - d; ++i) {
         long idx = i + d;
@@ -116,9 +124,10 @@ static PyObject* computeTable(PyObject* self, PyObject* args) {
             }
           }
           double chainCost = INFINITY;
-          if (m >= xbar[i + 1])
+          if (m >= xbar[i + 1]) {
             chainCost =
                 COST_TABLE(m, i, i) + COST_TABLE(m - xbar[i + 1], i + 1, idx);
+          }
           if (bestLeafCost <= chainCost) {
             COST_TABLE(m, i, idx) = bestLeafCost;
             BACK_PTR(m, i, idx) = bestLeaf;
@@ -126,10 +135,12 @@ static PyObject* computeTable(PyObject* self, PyObject* args) {
             COST_TABLE(m, i, idx) = chainCost;
             BACK_PTR(m, i, idx) = -1;
           }
-        } else
+        } else {
           COST_TABLE(m, i, idx) = INFINITY;
+        }
       }
     }
+  }
 
   free(ftime);
   free(btime);
@@ -158,10 +169,11 @@ static PyObject* computeTable(PyObject* self, PyObject* args) {
         PyDict_SetItem(pyCostTable_m_i, pyVar_l, pyCostTable_m_i_l);
         Py_DECREF(pyCostTable_m_i_l);
         PyObject* pyBackPtr_m_i_l;
-        if (BACK_PTR(m, i, l) < 0)
+        if (BACK_PTR(m, i, l) < 0) {
           pyBackPtr_m_i_l = Py_BuildValue("(O)", Py_True);
-        else
+        } else {
           pyBackPtr_m_i_l = Py_BuildValue("(Ol)", Py_False, BACK_PTR(m, i, l));
+        }
         PyDict_SetItem(pyBackPtr_m_i, pyVar_l, pyBackPtr_m_i_l);
         Py_DECREF(pyBackPtr_m_i_l);
         Py_DECREF(pyVar_l);

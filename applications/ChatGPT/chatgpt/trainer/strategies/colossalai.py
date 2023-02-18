@@ -1,18 +1,21 @@
 import warnings
-from typing import Optional
+from typing import Optional, Union
 
 import torch
 import torch.distributed as dist
 import torch.nn as nn
 import torch.optim as optim
+from chatgpt.nn import Actor
+from torch.optim import Optimizer
 
 import colossalai
 from colossalai.nn.optimizer import CPUAdam, HybridAdam
-from colossalai.nn.parallel import zero_model_wrapper, zero_optim_wrapper
+from colossalai.nn.parallel import ZeroDDP, zero_model_wrapper, zero_optim_wrapper
 from colossalai.tensor import ProcessGroup, ShardSpec
 from colossalai.utils import get_current_device
 from colossalai.utils.model.colo_init_context import ColoInitContext
 
+from .base import Strategy
 from .ddp import DDPStrategy
 
 
@@ -129,3 +132,23 @@ class ColossalAIStrategy(DDPStrategy):
 
     def optimizer_step(self, optimizer: optim.Optimizer, **kwargs) -> None:
         optimizer.step()
+
+    @staticmethod
+    def _unwrap_actor(actor: Actor) -> nn.Module:
+        model: Union[nn.Module, ZeroDDP] = Strategy._unwrap_actor(actor)
+        if isinstance(model, ZeroDDP):
+            return model.module
+        return model
+
+    def save_model(self, model: nn.Module, path: str, only_rank0: bool = False) -> None:
+        unwrapped_model = self._unwrap_model(model)
+        state_dict = unwrapped_model.state_dict()
+        if only_rank0 and dist.get_rank() != 0:
+            return
+        torch.save(state_dict, path)
+
+    def save_optimizer(self, optimizer: Optimizer, path: str, only_rank0: bool = False) -> None:
+        if only_rank0:
+            raise RuntimeError(
+                f'Optimizer states are sharded when using ColossalAIStrategy. Only rank0 is not supported.')
+        torch.save(optimizer.state_dict(), path)
