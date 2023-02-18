@@ -28,10 +28,6 @@ def tensor_related_metainfo(bwd_mem_out_factor: float = 1, bwd_mem_tmp_factor: f
         Returns:
             Tuple[TrainCycleItem, TrainCycleItem, List[torch.Tensor]]: compute cost, memory cost and forward inputs
         """
-        inputs = next(
-            filter(
-                lambda x: x.type == OperationDataType.ARG or x.type == OperationDataType.PARAM and isinstance(
-                    x.data, torch.Tensor), args)).data
         outputs = next(filter(lambda x: x.type == OperationDataType.OUTPUT, args)).data
 
         # compute costs are all zero
@@ -39,10 +35,7 @@ def tensor_related_metainfo(bwd_mem_out_factor: float = 1, bwd_mem_tmp_factor: f
 
         # memory costs
         # NOTE: currently in SPMD solver we always believe that there will be a new tensor created in forward
-        fwd_mem_cost = MemoryCost(activation=activation_size(inputs) + activation_size(outputs),
-                                  parameter=0,
-                                  temp=0,
-                                  buffer=0)
+        fwd_mem_cost = MemoryCost(activation=activation_size(outputs) * 2, parameter=0, temp=0, buffer=0)
 
         bwd_mem_cost = MemoryCost(activation=activation_size(outputs) * bwd_mem_out_factor,
                                   parameter=0,
@@ -75,8 +68,8 @@ def tensor_related_metainfo(bwd_mem_out_factor: float = 1, bwd_mem_tmp_factor: f
 
 # register torch.Tensor related metainfo
 # (0, 0)
-meta_register.register([torch.tensor, torch.Tensor.size, torch.Tensor.to, torch.Tensor.unsqueeze,
-                        torch.unsqueeze])(tensor_related_metainfo(0, 0))
+meta_register.register([torch.Tensor.to, torch.Tensor.unsqueeze, torch.unsqueeze,
+                        torch.arange])(tensor_related_metainfo(0, 0))
 
 # (1, 0)
 meta_register.register([
