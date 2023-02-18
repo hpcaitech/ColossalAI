@@ -1,3 +1,7 @@
+"""This code is adapted from Alpa
+    https://github.com/alpa-projects/alpa/
+   with some changes. """
+
 import operator
 from functools import reduce
 from typing import List, Tuple
@@ -6,13 +10,10 @@ import torch
 import torch.distributed as dist
 
 
+# modified from alpa LogicalDeviceMesh(https://github.com/alpa-projects/alpa/blob/main/alpa/shard_parallel/auto_sharding.py)
 class DeviceMesh:
-    """A logical view of a physical mesh. The logical view is used in the
-    search process.
-    A physical mesh can have multiple logical views. (e.g., a 2x8 physical mesh
-    can be viewed as a 1x16 or a 4x4 logical mesh). Each mesh dimension has its
-    own latency and bandwidth. We use alpha-beta model to model the
-    communication cost.
+    """A logical view of a physical cluster. For example, we could view a physical cluster
+    with 16 devices as a device mesh with shape (2, 2, 4) or (4, 4).
 
     Arguments:
         physical_mesh_id (torch.Tensor): physical view of the devices in global rank.
