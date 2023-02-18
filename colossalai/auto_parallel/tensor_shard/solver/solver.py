@@ -1,4 +1,4 @@
-"""This code is from Alpa
+"""This code is adapted from Alpa
     https://github.com/alpa-projects/alpa/
    with some changes. """
 
