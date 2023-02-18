@@ -11,7 +11,3 @@ Detailed instructions can be found in its `README.md`.
 
 Colossal-Auto's automatic search function for activation checkpointing finds the most efficient checkpoint within a given memory budget, rather than just aiming for maximum memory compression. To avoid a lengthy search process for an optimal activation checkpoint, Colossal-Auto has implemented a two-stage search process. This allows the system to find a feasible distributed training solution in a reasonable amount of time while still benefiting from activation checkpointing for memory management. The integration of activation checkpointing in Colossal-AI improves the efficiency and effectiveness of large model training. You can follow the [Resnet example](https://github.com/hpcaitech/ColossalAI/tree/main/examples/tutorial/auto_parallel).
 Detailed instructions can be found in its `README.md`.
-
-<figure style={{textAlign: "center"}}>
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/auto_parallel/auto_ckpt.jpg"/>
-</figure>

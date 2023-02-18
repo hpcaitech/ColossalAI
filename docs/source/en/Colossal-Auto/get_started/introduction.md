@@ -37,9 +37,6 @@ Colossal-AI’s auto-parallelism searches for strategies in regard to each opera
 ## Distributed Tensor and Shape-Consistency System
 
 The Colossal-AI system uses a device-mesh, similar to PyTorch's latest DTensor release, to manage its cluster. Colossal-AI uses a sharding-spec to annotate the storage status of each tensor and facilitate their distribution across the cluster. The system also employs a shape-consistency manager to automatically transform tensors between different sharding-specs, allowing for seamless slicing and dicing of tensors, while the shape-consistency manager ensures that the output of upstream operands is consistently stored in the cluster, regardless of how the input of downstream operands is stored. This makes Colossal-AI highly versatile and easy to use without users worrying about the storage status of tensors when performing operations on them.
-<figure style={{textAlign: "center"}}>
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/auto_parallel/shape_consistency.png"/>
-</figure>
 
 Here are some key advantages of Colossal-AI compared to PyTorch DTensor:
 Colossal-AI's device-mesh uses cluster performance metrics and profiling results to estimate the time consumption of different communication operators. This helps Colossal-AI optimize communication between nodes and improve overall system efficiency.

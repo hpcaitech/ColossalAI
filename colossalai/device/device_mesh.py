@@ -1,3 +1,7 @@
+"""This code is from Alpa
+    https://github.com/alpa-projects/alpa/
+   with some changes. """
+
 import operator
 from functools import reduce
 from typing import List, Tuple
