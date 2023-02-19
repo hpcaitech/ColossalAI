@@ -25,7 +25,8 @@ Colossal-Auto 是**首个基于 PyTorch 框架使用静态图分析的自动并�
 
 
 ## 细粒度分布式训练策略搜索
-Colossal-AI 的自动并行策略会在满足内存预算的限制下，以最快运行时间为目标，为每个 op 进行策略搜索，最终得到真实训练时的策略，包括每个 tensor 的切分策略，不同计算节点间需要插入的通信算子类型，是否要进行算子替换等。现有系统中的张量并行，数据并行，NVIDIA 在 Megatron-LM 等并行系统中使用的 column 切分和 row 切分并行等混合并行，都是自动并行可以搜索到的策略的子集。除了这些可以手动指定的并行方式外，Colossal-AI 有能力为每个 op 指定独特的并行方式，因此有可能找到比依赖专家经验和试错配置的手动切分更好的并行策略。
+
+我们调研了很多现有的自动并行系统（<a href="https://arxiv.org/abs/1807.08887"> Tofu </a>, <a href="https://arxiv.org/abs/1807.05358"> Flexflow </a>, <a href="https://arxiv.org/abs/2201.12023"> Alpa </a>），以及自动激活值检查点算法（<a href="https://hal.inria.fr/hal-02352969"> Rotor </a>, <a href="https://arxiv.org/abs/1604.06174"> Sublinear </a>），在他们的启发下，我们开发一个基于PyTorch框架的自动并行系统Colossal-Auto。Colossal-Auto会在满足内存预算的限制下，以最快运行时间为目标，为每个 op 进行策略搜索，最终得到真实训练时的策略，包括每个 tensor 的切分策略，不同计算节点间需要插入的通信算子类型，是否要进行算子替换等。现有系统中的张量并行，数据并行，NVIDIA 在 Megatron-LM 等并行系统中使用的 column 切分和 row 切分并行等混合并行，都是自动并行可以搜索到的策略的子集。除了这些可以手动指定的并行方式外，Colossal-AI 有能力为每个 op 指定独特的并行方式，因此有可能找到比依赖专家经验和试错配置的手动切分更好的并行策略。
 
 
 
