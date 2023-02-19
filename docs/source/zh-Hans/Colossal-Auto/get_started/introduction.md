@@ -33,9 +33,6 @@ Colossal-AI 的自动并行策略会在满足内存预算的限制下，以最�
 
 与 PyTorch 最新发布的 DTensor 类似，Colossal-AI 也使用了 device mesh 对集群进行了抽象管理。具体来说，Colossal-AI 使用 sharding spec 对 tensor 的分布式存储状态进行标注，使用 shape consistency manager 自动地对同一 tensor 在不同 sharding spec 间进行转换。这让 Colossal-AI 的通用性和易用性极大地提升，借助 shape consistency manager 可以没有负担地切分 tensor，而不用担心上游 op 的 output 与下游的 input 在集群中的存储方式不同。
 
-<figure style={{textAlign: "center"}}>
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/auto_parallel/shape_consistency.png"/>
-</figure>
 
 相较于 PyTorch DTensor，Colossal-AI 有以下优势：
 + Colossal-AI 的 device mesh 可以 profiling 到集群性能指标，对不同的通信算子进行耗时估算。
