@@ -29,7 +29,6 @@ def train(args):
     # configure model
     tokenizer = BloomTokenizerFast.from_pretrained(args.pretrain)
     tokenizer.pad_token = tokenizer.eos_token
-    
     with strategy.model_init_context():
         model = BLOOMRM(pretrained=args.pretrain).cuda()
     max_len = 1024
