@@ -1,6 +1,6 @@
-import math
 from copy import copy
-from functools import lru_cache
+from functools import lru_cache, reduce
+import operator
 from typing import Callable, Optional, Set
 
 import torch
@@ -312,7 +312,7 @@ class ColoTensor(torch.Tensor):
     def numel_global(self):
         """Returns the number of elements in the tensor when it's replicated.
         """
-        return math.prod(self.size_global())
+        return reduce(operator.mul, self.size_global(), 1)
 
     # Some API for dist spec check
 

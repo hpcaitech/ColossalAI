@@ -1,5 +1,8 @@
-import math
+from functools import reduce
+import operator
+
 import torch
+
 from colossalai.tensor.op_wrapper import colo_op_impl
 from colossalai.tensor import ColoTensor, ColoTensorSpec, ReplicaSpec
 from typing import Optional, Union
@@ -37,8 +40,8 @@ def _shape_infer(org_sp, tgt_sp):
     if cnt > 1:
         raise RuntimeError("only one dimension can be inferred")
 
-    org_prod = math.prod(org_sp)
-    tgt_prod = math.prod(tgt_sp)
+    org_prod = reduce(operator.mul, org_sp, 1)
+    tgt_prod = reduce(operator.mul, tgt_sp, 1)
 
     if cnt == 0:
         if org_prod != tgt_prod:
