@@ -278,7 +278,7 @@ Acceleration of [AlphaFold Protein Structure](https://alphafold.ebi.ac.uk/)
 
 ### Install from PyPI
 
-You can easily install Colossal-AI with the following command. **By defualt, we do not build PyTorch extensions during installation.**
+You can easily install Colossal-AI with the following command. **By default, we do not build PyTorch extensions during installation.**
 
 ```bash
 pip install colossalai
