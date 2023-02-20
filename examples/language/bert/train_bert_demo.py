@@ -245,8 +245,7 @@ def main():
 
         logger.info(get_mem_info(prefix='After init optim, '), ranks=[0])
     elif args.distplan.startswith("Pytorch"):
-        assert args.tp_degree == 1, "The degree of TP should be 1 for DDP examples."
-        model = BertForSequenceClassification(checkpoint=True).cuda()
+        model = model_builder(args).cuda()
         model = DDP(model)
         if args.distplan.endswith("DDP"):
             optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
