@@ -1,6 +1,7 @@
 from abc import ABC
 
 import loralib as lora
+import torch
 from chatgpt.dataset import RewardDataset
 from chatgpt.nn import PairWiseLoss
 from torch.optim import Adam, Optimizer
@@ -74,16 +75,21 @@ class RewardModelTrainer(ABC):
 
             # eval
             self.model.eval()
-            dist = 0
-            for chosen_ids, c_mask, reject_ids, r_mask in self.eval_dataloader:
-                chosen_ids = chosen_ids.squeeze(1).cuda()
-                c_mask = c_mask.squeeze(1).cuda()
-                reject_ids = reject_ids.squeeze(1).cuda()
-                r_mask = r_mask.squeeze(1).cuda()
-                chosen_reward = self.model(chosen_ids, attention_mask=c_mask)
-                reject_reward = self.model(reject_ids, attention_mask=r_mask)
-                dist += (chosen_reward - reject_reward)
-            dist_mean = dist / self.eval_dataloader.__len__()
+            with torch.no_grad():
+                dist = 0
+                loss_sum = 0
+                for chosen_ids, c_mask, reject_ids, r_mask in self.eval_dataloader:
+                    chosen_ids = chosen_ids.squeeze(1).cuda()
+                    c_mask = c_mask.squeeze(1).cuda()
+                    reject_ids = reject_ids.squeeze(1).cuda()
+                    r_mask = r_mask.squeeze(1).cuda()
+                    chosen_reward = self.model(chosen_ids, attention_mask=c_mask)
+                    reject_reward = self.model(reject_ids, attention_mask=r_mask)
+                    dist += (chosen_reward - reject_reward).mean().item()
+                    loss = self.loss_fn(chosen_reward, reject_reward)
+                    loss_sum += loss.item()
+                dist_mean = dist / self.eval_dataloader.__len__()
+                loss_mean = loss_sum / self.eval_dataloader.__len__()
             epoch_bar.update()
-            step_bar.set_postfix({'loss': loss.item(), 'dist_mean': dist_mean.item()})
+            step_bar.set_postfix({'loss': loss_mean, 'dist_mean': dist_mean})
             step_bar.close()
