@@ -10,9 +10,12 @@ from chatgpt.experience_maker import NaiveExperienceMaker
 from chatgpt.nn import GPTActor, GPTCritic, RewardModel
 from chatgpt.replay_buffer import NaiveReplayBuffer
 from chatgpt.trainer.strategies import ColossalAIStrategy, DDPStrategy
+from transformers.models.gpt2.configuration_gpt2 import GPT2Config
 
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port
+
+GPT_CONFIG = GPT2Config(n_embd=128, n_layer=4, n_head=4)
 
 
 def get_data(batch_size: int, seq_len: int = 10) -> dict:
@@ -42,8 +45,8 @@ def run_test_data(strategy):
     else:
         raise ValueError(f'Unsupported strategy "{strategy}"')
 
-    actor = GPTActor().cuda()
-    critic = GPTCritic().cuda()
+    actor = GPTActor(config=GPT_CONFIG).cuda()
+    critic = GPTCritic(config=GPT_CONFIG).cuda()
 
     initial_model = deepcopy(actor)
     reward_model = RewardModel(deepcopy(critic.model)).cuda()
