@@ -5,10 +5,13 @@ import numpy as np
 import torch
 import torch.distributed as dist
 import torch.nn as nn
+from chatgpt.nn import Actor
 from chatgpt.replay_buffer import ReplayBuffer
 from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.optim import Optimizer
 from torch.utils.data import DataLoader, DistributedSampler
 
+from .base import Strategy
 from .naive import NaiveStrategy
 
 
@@ -57,3 +60,18 @@ class DDPStrategy(NaiveStrategy):
                           sampler=sampler,
                           pin_memory=pin_memory,
                           collate_fn=replay_buffer.collate_fn)
+
+    @staticmethod
+    def _unwrap_actor(actor: Actor) -> nn.Module:
+        model: DDP = Strategy._unwrap_actor(actor)
+        return model.module
+
+    def save_model(self, model: nn.Module, path: str, only_rank0: bool = False) -> None:
+        if only_rank0 and dist.get_rank() != 0:
+            return
+        super().save_model(model, path, only_rank0)
+
+    def save_optimizer(self, optimizer: Optimizer, path: str, only_rank0: bool = False) -> None:
+        if only_rank0 and dist.get_rank() != 0:
+            return
+        super().save_optimizer(optimizer, path, only_rank0)

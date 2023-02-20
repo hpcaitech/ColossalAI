@@ -29,6 +29,7 @@ def train(args):
     # configure model
     tokenizer = BloomTokenizerFast.from_pretrained(args.pretrain)
     tokenizer.pad_token = tokenizer.eos_token
+    
     with strategy.model_init_context():
         model = BLOOMRM(pretrained=args.pretrain).cuda()
     max_len = 1024
@@ -41,8 +42,8 @@ def train(args):
 
     # prepare for data and dataset
     data = load_dataset(args.dataset)
-    train_data = data["train"]
-    eval_data = data['test']
+    train_data = data["train"].select(range(100))
+    eval_data = data['test'].select(range(5))
     train_dataset = RewardDataset(train_data, tokenizer, max_len)
     eval_dataset = RewardDataset(eval_data, tokenizer, max_len)
 

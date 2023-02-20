@@ -1,17 +1,21 @@
-from typing import Optional
+import warnings
+from typing import Optional, Union
 
 import torch
 import torch.distributed as dist
 import torch.nn as nn
 import torch.optim as optim
+from chatgpt.nn import Actor
+from torch.optim import Optimizer
 
 import colossalai
 from colossalai.nn.optimizer import CPUAdam, HybridAdam
-from colossalai.nn.parallel import zero_model_wrapper, zero_optim_wrapper
+from colossalai.nn.parallel import ZeroDDP, zero_model_wrapper, zero_optim_wrapper
 from colossalai.tensor import ProcessGroup, ShardSpec
 from colossalai.utils import get_current_device
 from colossalai.utils.model.colo_init_context import ColoInitContext
 
+from .base import Strategy
 from .ddp import DDPStrategy
 
 
@@ -23,6 +27,7 @@ class ColossalAIStrategy(DDPStrategy):
         stage(int): The stage to use in ZeRO. Choose in (1, 2, 3)
         seed(int): The seed for the random number generator.
         shard_init(bool): Whether to shard the model parameters during initialization. Only for ZeRO-3.
+            This is not compativle with `from_pretrained()`. We temporarily disable this and will support it in the future.
         placement_policy(str): The placement policy for gemini. Choose in ('cpu', 'cuda')
                           If it is “cpu”, parameters, gradients and optimizer states will be offloaded to CPU,
                           If it is “cuda”, they will not be offloaded, which means max CUDA memory will be used. It is the fastest.
@@ -50,7 +55,7 @@ class ColossalAIStrategy(DDPStrategy):
             self,
             stage: int = 3,
             seed: int = 42,
-            shard_init: bool = True,    # only for stage 3
+            shard_init: bool = False,    # only for stage 3
             placement_policy: str = 'cuda',
             pin_memory: bool = True,    # only for stage 3
             force_outputs_fp32: bool = False,    # only for stage 3
@@ -72,6 +77,10 @@ class ColossalAIStrategy(DDPStrategy):
         super().__init__(seed)
         assert placement_policy in ('cpu', 'cuda'), f'Unsupported placement policy "{placement_policy}"'
         self.stage = stage
+        # TODO(ver217): support shard_init when using from_pretrained()
+        if shard_init:
+            warnings.warn(f'Shard init is not supported yet. Ignore.')
+            shard_init = False
         self.shard_init = shard_init
         self.gemini_config = dict(device=get_current_device(),
                                   placement_policy=placement_policy,
@@ -123,3 +132,23 @@ class ColossalAIStrategy(DDPStrategy):
 
     def optimizer_step(self, optimizer: optim.Optimizer, **kwargs) -> None:
         optimizer.step()
+
+    @staticmethod
+    def _unwrap_actor(actor: Actor) -> nn.Module:
+        model: Union[nn.Module, ZeroDDP] = Strategy._unwrap_actor(actor)
+        if isinstance(model, ZeroDDP):
+            return model.module
+        return model
+
+    def save_model(self, model: nn.Module, path: str, only_rank0: bool = False) -> None:
+        unwrapped_model = self._unwrap_model(model)
+        state_dict = unwrapped_model.state_dict()
+        if only_rank0 and dist.get_rank() != 0:
+            return
+        torch.save(state_dict, path)
+
+    def save_optimizer(self, optimizer: Optimizer, path: str, only_rank0: bool = False) -> None:
+        if only_rank0:
+            raise RuntimeError(
+                f'Optimizer states are sharded when using ColossalAIStrategy. Only rank0 is not supported.')
+        torch.save(optimizer.state_dict(), path)

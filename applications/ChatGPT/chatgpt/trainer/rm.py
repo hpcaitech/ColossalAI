@@ -57,6 +57,7 @@ class RewardModelTrainer(ABC):
             if use_lora > 0:
                 print("Using Lora")
                 lora.mark_only_lora_as_trainable(self.model.body)
+
             else:
                 self.model.train()
             for chosen_ids, c_mask, reject_ids, r_mask in self.train_dataloader:

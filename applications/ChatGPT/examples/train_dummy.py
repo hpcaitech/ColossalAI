@@ -68,6 +68,9 @@ def main(args):
     else:
         raise ValueError(f'Unsupported model "{args.model}"')
 
+    (actor, actor_optim), (critic, critic_optim), reward_model, initial_model = strategy.prepare(
+        (actor, actor_optim), (critic, critic_optim), reward_model, initial_model)
+
     # configure trainer
     trainer = PPOTrainer(
         strategy,
