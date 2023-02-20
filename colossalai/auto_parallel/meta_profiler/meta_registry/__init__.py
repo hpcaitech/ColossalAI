@@ -5,5 +5,5 @@ from .embedding import *
 from .linear import *
 from .norm import *
 from .pooling import *
-from .where import *
 from .tensor import *
+from .where import *
