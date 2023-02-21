@@ -249,7 +249,7 @@ class FlopProfiler(GraphProfiler):
                 ) = getattr(self, n.op)(n.target, args, kwargs)
             except Exception as e:
                 raise RuntimeError(
-                    f'Error {str(e)} occurred when profiling node {n}, node.target = {n.target}. '\
+                    f'Error {str(e)} occurred when profiling node {n}, node.target = {n.target}. '
                     f'Please refer to function\'s docstring to register the relevant profile_impl for this node!'
                 ) from e
 
