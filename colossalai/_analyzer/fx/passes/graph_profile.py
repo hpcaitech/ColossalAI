@@ -37,7 +37,7 @@ def _current_device(module):
     return next(module.parameters()).device
 
 
-class BaseProfiler(torch.fx.Interpreter):
+class GraphProfiler(torch.fx.Interpreter):
     """
     Fetch shape argument from ``ShapeProp`` without re-executing
     the ``GraphModule`` from scratch.
@@ -177,7 +177,7 @@ class BaseProfiler(torch.fx.Interpreter):
         return tabulate(node_summaries, headers=headers, stralign='right')
 
 
-class CommunicationProfiler(BaseProfiler):
+class CommunicationProfiler(GraphProfiler):
     """
     TODO(lyl): Add this for all comm nodes
     """
@@ -186,7 +186,7 @@ class CommunicationProfiler(BaseProfiler):
         raise NotImplementedError()
 
 
-class FlopProfiler(BaseProfiler):
+class FlopProfiler(GraphProfiler):
     """
     Execute an FX graph Node-by-Node and record the meta data of the result
     into the corresponding node.
