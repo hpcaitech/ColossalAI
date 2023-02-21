@@ -23,7 +23,7 @@ class RewardModel(LoRAModule):
                  lora_rank: int = 0,
                  lora_train_bias: str = 'none') -> None:
         super().__init__(lora_rank=lora_rank, lora_train_bias=lora_train_bias)
-        self.model = model
+        self.body = model
         if value_head is not None:
             if value_head.out_features != 1:
                 raise ValueError("The value head of reward model's output dim should be 1!")
@@ -34,7 +34,7 @@ class RewardModel(LoRAModule):
         self.convert_to_lora()
 
     def forward(self, sequences: torch.LongTensor, attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
-        outputs = self.model(sequences, attention_mask=attention_mask)
+        outputs = self.body(sequences, attention_mask=attention_mask)
         last_hidden_states = outputs['last_hidden_state']
         values = self.value_head(last_hidden_states)[:, :-1]
         value = values.mean(dim=1).squeeze(1)    # ensure shape is (B)

@@ -3,6 +3,8 @@ from typing import Callable
 from torch.utils.data import Dataset
 from tqdm import tqdm
 
+from .utils import is_rank_0
+
 
 class RewardDataset(Dataset):
     """
@@ -18,7 +20,7 @@ class RewardDataset(Dataset):
         super().__init__()
         self.chosen = []
         self.reject = []
-        for data in tqdm(dataset):
+        for data in tqdm(dataset, disable=not is_rank_0()):
             prompt = data['prompt']
 
             chosen = prompt + data['chosen'] + "<|endoftext|>"

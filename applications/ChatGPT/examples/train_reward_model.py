@@ -29,7 +29,8 @@ def train(args):
     # configure model
     tokenizer = BloomTokenizerFast.from_pretrained(args.pretrain)
     tokenizer.pad_token = tokenizer.eos_token
-    model = BLOOMRM(pretrained=args.pretrain).cuda()
+    with strategy.model_init_context():
+        model = BLOOMRM(pretrained=args.pretrain).cuda()
     max_len = 1024
 
     # configure optimizer
@@ -71,8 +72,8 @@ if __name__ == '__main__':
     parser.add_argument('--pretrain', type=str, default=None)
     parser.add_argument('--dataset', type=str, default='Dahoas/rm-static')
     parser.add_argument('--save_path', type=str, default='rm_ckpt.pth')
-    parser.add_argument('--max_epochs', type=int, default=2)
-    parser.add_argument('--batch_size', type=int, default=1)
+    parser.add_argument('--max_epochs', type=int, default=10)
+    parser.add_argument('--batch_size', type=int, default=4)
     parser.add_argument('--lora_rank', type=int, default=0, help="low-rank adaptation matrices rank")
     args = parser.parse_args()
     train(args)
