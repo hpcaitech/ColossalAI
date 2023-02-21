@@ -2,7 +2,7 @@ import argparse
 from copy import deepcopy
 
 import pandas as pd
-import torch.distributed as dist
+import torch
 from chatgpt.nn import BLOOMActor, BLOOMCritic, GPTActor, GPTCritic, OPTActor, OPTCritic, RewardModel
 from chatgpt.trainer import PPOTrainer
 from chatgpt.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
@@ -99,7 +99,9 @@ def main(args):
     # save model checkpoint after fitting on only rank0
     strategy.save_model(actor, 'actor_checkpoint_prompts.pt', only_rank0=True)
     # save optimizer checkpoint on all ranks
-    strategy.save_optimizer(actor_optim, 'actor_optim_checkpoint_prompts_%d.pt' % (dist.get_rank()), only_rank0=False)
+    strategy.save_optimizer(actor_optim,
+                            'actor_optim_checkpoint_prompts_%d.pt' % (torch.cuda.current_device()),
+                            only_rank0=False)
 
 
 if __name__ == '__main__':
