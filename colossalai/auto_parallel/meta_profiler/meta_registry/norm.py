@@ -16,7 +16,7 @@ from colossalai.tensor.sharding_spec import ShardingSpec
 
 from ..registry import meta_register
 
-__all__ = ['batchnormnd_meta_info']
+__all__ = ['batchnormnd_meta_info', 'layernorm_meta_info']
 
 
 @meta_register.register(torch.nn.BatchNorm1d)
@@ -98,6 +98,59 @@ def batchnormnd_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleIt
     # store fwd_in, fwd_buffer, fwd_out
     fwd_in = [torch.zeros_like(input_tensor, device='meta')]
     fwd_buffer = [torch.zeros_like(mean_tensor, device='meta'), torch.zeros_like(var_tensor, device='meta')]
+    fwd_out = [torch.zeros_like(output_tensor, device='meta')]
+
+    return compute_cost, memory_cost, fwd_in, fwd_buffer, fwd_out
+
+
+@meta_register.register(torch.nn.LayerNorm)
+def layernorm_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleItem, List[torch.Tensor]]:
+    """LayerNorm meta information
+
+    Returns:
+        Tuple[TrainCycleItem, TrainCycleItem, List[torch.Tensor]]: compute cost, memory cost and forward inputs
+    """
+    # construct needed tensors
+    input_tensor = next(filter(lambda x: x.type == OperationDataType.ARG, args)).data
+    output_tensor = next(filter(lambda x: x.type == OperationDataType.OUTPUT, args)).data
+    weight_tensor = next(filter(lambda x: x.name == "weight", args)).data
+    bias_tensor = next(filter(lambda x: x.name == "bias", args)).data
+    running_mean = torch.rand(input_tensor.shape[0], 1, device='meta')
+    running_var = torch.rand(input_tensor.shape[0], 1, device='meta')
+
+    # construct args
+    fwd_in_args = [input_tensor, [input_tensor.shape[0]], weight_tensor]
+    fwd_out_args = [output_tensor]
+    bwd_in_args = [input_tensor, output_tensor, [input_tensor.shape[0]]]
+    bwd_out_args = [weight_tensor, bias_tensor]
+
+    # compute cost
+    fwd_compute_cost = flop_mapping[torch.ops.aten.native_layer_norm.default](fwd_in_args, fwd_out_args)
+    bwd_compute_cost = flop_mapping[torch.ops.aten.native_layer_norm_backward.default](bwd_in_args, bwd_out_args)
+    compute_cost = TrainCycleItem(fwd=fwd_compute_cost, bwd=bwd_compute_cost, total=fwd_compute_cost + bwd_compute_cost)
+
+    # memory cost
+    # NOTE: currently in SPMD solver we always believe that there will be a new tensor created in forward
+    fwd_memory_cost = MemoryCost(activation=activation_size([input_tensor, output_tensor, weight_tensor, bias_tensor]),
+                                 parameter=activation_size([weight_tensor, bias_tensor]),
+                                 temp=0,
+                                 buffer=activation_size([running_mean, running_var]))
+
+    bwd_memory_cost = MemoryCost(activation=activation_size([input_tensor, weight_tensor, bias_tensor]),
+                                 parameter=activation_size([weight_tensor, bias_tensor]),
+                                 temp=activation_size([running_mean, running_var]),
+                                 buffer=activation_size([running_mean, running_var]))
+
+    total_cost = MemoryCost(activation=fwd_memory_cost.activation + bwd_memory_cost.activation,
+                            parameter=fwd_memory_cost.parameter + bwd_memory_cost.parameter,
+                            temp=fwd_memory_cost.temp + bwd_memory_cost.temp,
+                            buffer=fwd_memory_cost.buffer + bwd_memory_cost.buffer)
+
+    memory_cost = TrainCycleItem(fwd=fwd_memory_cost, bwd=bwd_memory_cost, total=total_cost)
+
+    # store fwd_in, fwd_buffer, fwd_out
+    fwd_in = [torch.zeros_like(input_tensor, device='meta')]
+    fwd_buffer = [torch.zeros_like(running_mean, device='meta'), torch.zeros_like(running_var, device='meta')]
     fwd_out = [torch.zeros_like(output_tensor, device='meta')]
 
     return compute_cost, memory_cost, fwd_in, fwd_buffer, fwd_out

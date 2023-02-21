@@ -8,3 +8,4 @@ click
 fabric
 contexttimer
 ninja
+torch

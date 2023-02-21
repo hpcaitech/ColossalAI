@@ -70,8 +70,6 @@ def exam_zero_optim_state_dict(placement_policy, keep_gathered):
         for n, m in v.items():
             if isinstance(m, torch.Tensor):
                 o = w[n]
-                if m.device != o.device:
-                    o = o.to(m.device)
                 assert torch.equal(m, o)
             else:
                 assert m == w[n]

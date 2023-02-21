@@ -72,3 +72,53 @@ def relu_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleItem, Lis
     fwd_out = [torch.zeros_like(output_tensor, device='meta')]
 
     return compute_cost, memory_cost, fwd_in, fwd_buffer, fwd_out
+
+
+@meta_register.register(torch.nn.Softmax)
+@meta_register.register(torch.nn.functional.softmax)
+def softmax_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleItem, List[torch.Tensor]]:
+    """torch.nn.Softmax metainfo generator
+    Returns:
+        Tuple[TrainCycleItem, TrainCycleItem, List[torch.Tensor]]: compute cost, memory cost and forward inputs
+    """
+    input_tensor = next(
+        filter(
+            lambda x:
+            (x.type == OperationDataType.ARG or x.type == OperationDataType.PARAM) and x.name != 'softmax_dim',
+            args)).data
+    output_tensor = next(filter(lambda x: x.type == OperationDataType.OUTPUT, args)).data
+    softmax_dim = next(filter(lambda x: x.name == 'softmax_dim', args)).data
+
+    # calculate cost
+
+    # calculate compute cost
+    fwd_compute_cost = flop_mapping[torch.ops.aten._softmax.default]([input_tensor], [output_tensor])
+    bwd_compute_cost = flop_mapping[torch.ops.aten._softmax_backward_data.default]([output_tensor], [input_tensor])
+
+    compute_cost = TrainCycleItem(fwd=fwd_compute_cost, bwd=bwd_compute_cost, total=fwd_compute_cost + bwd_compute_cost)
+
+    # calculate memory cost
+    # NOTE: currently in SPMD solver we always believe that there will be a new tensor created in forward
+    fwd_memory_cost = MemoryCost(activation=activation_size([input_tensor, output_tensor]),
+                                 parameter=0,
+                                 temp=0,
+                                 buffer=0)
+    bwd_memory_cost = MemoryCost(activation=activation_size(input_tensor),
+                                 parameter=0,
+                                 temp=activation_size(input_tensor),
+                                 buffer=0)
+
+    # total cost is the sum of forward and backward cost
+    total_cost = MemoryCost(activation=fwd_memory_cost.activation + bwd_memory_cost.activation,
+                            parameter=fwd_memory_cost.parameter + bwd_memory_cost.parameter,
+                            temp=fwd_memory_cost.temp + bwd_memory_cost.temp,
+                            buffer=fwd_memory_cost.buffer + bwd_memory_cost.buffer)
+
+    memory_cost = TrainCycleItem(fwd=fwd_memory_cost, bwd=bwd_memory_cost, total=total_cost)
+
+    # store fwd_in, fwd_buffer, fwd_out
+    fwd_in = []
+    fwd_buffer = [torch.zeros_like(output_tensor, device='meta')]
+    fwd_out = [torch.zeros_like(output_tensor, device='meta')]
+
+    return compute_cost, memory_cost, fwd_in, fwd_buffer, fwd_out

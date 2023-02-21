@@ -257,8 +257,11 @@ class ZeroDDP(ColoDDP):
         access_list = list(self.chunk_manager.accessed_chunks)
         # we need to scatter all accessed chunks and move them to their original places
         for chunk in access_list:
-            assert chunk.can_release
-            self.chunk_manager.release_chunk(chunk)
+            if chunk.keep_gathered:
+                self.chunk_manager.fake_release_chunk(chunk)
+            else:
+                assert chunk.can_release
+                self.chunk_manager.release_chunk(chunk)
             first_param = next(iter(chunk.tensors_info))
             self.chunk_manager.move_chunk(chunk, self.grads_device[first_param])
         assert self.chunk_manager.accessed_mem == 0
@@ -269,7 +272,8 @@ class ZeroDDP(ColoDDP):
         # check whether we are in a inference mode
         grad_flag = torch.is_grad_enabled()
         if not grad_flag:
-            assert not self.gemini_manager.is_warmup(), "You should run a completed iteration as your warmup iter"
+            assert not self.gemini_manager.need_warmup or not self.gemini_manager.is_warmup(
+            ), "You should run a completed iteration as your warmup iter"
 
         args, kwargs = _cast_float(args, torch.half), _cast_float(kwargs, torch.half)
         self.module.zero_grad(set_to_none=True)

@@ -20,7 +20,28 @@ def matmul_flop_jit(inputs: List[Any], outputs: List[Any]) -> Number:
     # Inputs contains the shapes of two matrices.
     input_shapes = [v.shape for v in inputs]
     assert len(input_shapes) == 2, input_shapes
-    assert input_shapes[0][-1] == input_shapes[1][-2], input_shapes
+
+    # There are three cases: 1) gemm, 2) gemv, 3) dot
+    if all(len(shape) == 2 for shape in input_shapes):
+        # gemm
+        assert input_shapes[0][-1] == input_shapes[1][-2], input_shapes
+    elif all(len(shape) == 1 for shape in input_shapes):
+        # dot
+        assert input_shapes[0][0] == input_shapes[1][0], input_shapes
+
+        # expand shape
+        input_shapes[0] = torch.Size([1, input_shapes[0][0]])
+        input_shapes[1] = torch.Size([input_shapes[1][0], 1])
+    else:
+        # gemv
+        if len(input_shapes[0]) == 1:
+            assert input_shapes[0][0] == input_shapes[1][-2], input_shapes
+            input_shapes.reverse()
+        else:
+            assert input_shapes[1][0] == input_shapes[0][-1], input_shapes
+
+        # expand the shape of the vector to [batch size, 1]
+        input_shapes[-1] = torch.Size([input_shapes[-1][-1], 1])
     flops = reduce(operator.mul, input_shapes[0]) * input_shapes[-1][-1]
     return flops
 
@@ -66,6 +87,19 @@ def bmm_flop_jit(inputs: List[Any], outputs: List[Any]) -> Number:
     input_shapes = [v.shape for v in inputs]
     n, c, t = input_shapes[0]
     d = input_shapes[-1][-1]
+    flops = n * c * t * d
+    return flops
+
+
+def baddbmm_flop_jit(inputs: List[Any], outputs: List[Any]) -> Number:
+    """
+    Count flops for the baddbmm(batch add and batch matmul) operation.
+    """
+    # Inputs = [input, batch1, batch2]
+    # out = input + batch1 x batch2
+    assert len(inputs) == 3, len(inputs)
+    n, c, t = inputs[1].shape
+    d = inputs[2].shape[-1]
     flops = n * c * t * d
     return flops
 
@@ -191,11 +225,14 @@ def zero_flop_jit(*args):
 
 if version.parse(torch.__version__) >= version.parse('1.12.0'):
     flop_mapping = {
-    # gemm
+    # gemm, gemv and dot
         aten.mm.default: matmul_flop_jit,
+        aten.mv.default: matmul_flop_jit,
+        aten.dot.default: matmul_flop_jit,
         aten.matmul.default: matmul_flop_jit,
         aten.addmm.default: addmm_flop_jit,
         aten.bmm.default: bmm_flop_jit,
+        aten.baddbmm.default: baddbmm_flop_jit,
 
     # convolution
         aten.convolution.default: conv_flop_jit,
@@ -209,6 +246,8 @@ if version.parse(torch.__version__) >= version.parse('1.12.0'):
         aten.cudnn_batch_norm_backward.default: partial(batchnorm_flop_jit, training=True),
         aten.native_layer_norm.default: norm_flop_counter(2, 0),
         aten.native_layer_norm_backward.default: norm_flop_counter(2, 0),
+        aten.native_group_norm.default: norm_flop_counter(2, 0),
+        aten.native_group_norm_backward.default: norm_flop_counter(2, 0),
 
     # pooling
         aten.avg_pool1d.default: elementwise_flop_counter(1, 0),
@@ -230,6 +269,8 @@ if version.parse(torch.__version__) >= version.parse('1.12.0'):
         aten._adaptive_avg_pool3d_backward.default: elementwise_flop_counter(0, 1),
         aten.embedding_dense_backward.default: elementwise_flop_counter(0, 1),
         aten.embedding.default: elementwise_flop_counter(1, 0),
+        aten.upsample_nearest2d.vec: elementwise_flop_counter(0, 1),
+        aten.upsample_nearest2d_backward.vec: elementwise_flop_counter(0, 1),
     }
 
     elementwise_flop_aten = [
@@ -251,6 +292,9 @@ if version.parse(torch.__version__) >= version.parse('1.12.0'):
         aten.mean.dim,
         aten.sub.Tensor,
         aten.sub_.Tensor,
+        aten.exp.default,
+        aten.sin.default,
+        aten.cos.default,
 
     # activation op
         aten.hardswish.default,

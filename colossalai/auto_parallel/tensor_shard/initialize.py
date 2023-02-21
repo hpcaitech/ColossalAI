@@ -8,14 +8,9 @@ from torch.fx.graph import Graph
 
 from colossalai.auto_parallel.passes.runtime_apply_pass import runtime_apply_pass
 from colossalai.auto_parallel.passes.runtime_preparation_pass import runtime_preparation_pass
+from colossalai.auto_parallel.tensor_shard.options import DataloaderOption, ShardOption, SolverOptions, SolverPerference
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import CommAction
-from colossalai.auto_parallel.tensor_shard.solver import (
-    CostGraph,
-    GraphAnalyser,
-    Solver,
-    SolverOptions,
-    StrategiesConstructor,
-)
+from colossalai.auto_parallel.tensor_shard.solver import CostGraph, GraphAnalyser, Solver, StrategiesConstructor
 from colossalai.device.alpha_beta_profiler import AlphaBetaProfiler
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.fx.graph_module import ColoGraphModule
@@ -69,13 +64,43 @@ def extract_alpha_beta_for_device_mesh(alpha_beta_dict: Dict[Tuple[int], Tuple[f
     pass
 
 
-def build_strategy_constructor(graph: Graph, device_mesh: DeviceMesh):
+def build_strategy_constructor(graph: Graph, device_mesh: DeviceMesh, solver_preference: str, dataloader_option: str,
+                               shard_option: str):
     '''
     This method is used to build the strategy_constructor for the given graph.
     After this method, each node in the graph will have a strategies_vector which
     is constructed by the related node handler.
     '''
-    solver_options = SolverOptions()
+    if solver_preference == 'standard':
+        solver_preference = SolverPerference.STANDARD
+    elif solver_preference == 'tp':
+        solver_preference = SolverPerference.TP
+    elif solver_preference == 'dp':
+        solver_preference = SolverPerference.DP
+    else:
+        raise ValueError(f'Invalid solver_preference: {solver_preference}')
+
+    if dataloader_option == 'replicated':
+        dataloader_option = DataloaderOption.REPLICATED
+    elif dataloader_option == 'distributed':
+        dataloader_option = DataloaderOption.DISTRIBUTED
+    else:
+        raise ValueError(f'Invalid dataloader_option: {dataloader_option}')
+
+    if shard_option == 'standard':
+        shard_option = ShardOption.STANDARD
+    elif shard_option == 'shard':
+        shard_option = ShardOption.SHARD
+    elif shard_option == 'shard_last_axis':
+        shard_option = ShardOption.SHARD_LAST_AXIS
+    elif shard_option == 'full_shard':
+        shard_option = ShardOption.FULL_SHARD
+    else:
+        raise ValueError(f'Invalid shard_option: {shard_option}')
+
+    solver_options = SolverOptions(solver_perference=solver_preference,
+                                   dataloader_option=dataloader_option,
+                                   shard_option=shard_option)
     strategies_constructor = StrategiesConstructor(graph, device_mesh, solver_options)
     strategies_constructor.build_strategies_and_cost()
 
@@ -98,16 +123,22 @@ def solve_solution(gm: ColoGraphModule, strategy_constructor: StrategiesConstruc
     return solution
 
 
-def transform_to_sharded_model(gm: ColoGraphModule, solution: List[int], device_mesh: DeviceMesh,
-                               strategies_constructor: StrategiesConstructor):
+def transform_to_sharded_model(gm: ColoGraphModule,
+                               solution: List[int],
+                               device_mesh: DeviceMesh,
+                               strategies_constructor: StrategiesConstructor,
+                               overlap: bool = False):
     '''
     This method is used to transform the original graph to the sharded graph.
     The model parameters will be sharded according to the solution and the grad hooks
     will be added to the sharded graph using the runtime_preparation_pass.
     The communication node will be added into the graph using the runtime_apply_pass.
     '''
-    gm, sharding_spec_dict, origin_spec_dict, comm_actions_dict = runtime_preparation_pass(
-        gm, solution, device_mesh, strategies_constructor)
+    gm, sharding_spec_dict, origin_spec_dict, comm_actions_dict = runtime_preparation_pass(gm,
+                                                                                           solution,
+                                                                                           device_mesh,
+                                                                                           strategies_constructor,
+                                                                                           overlap=overlap)
     gm = runtime_apply_pass(gm)
     gm.recompile()
     sharding_spec_dicts = (sharding_spec_dict, origin_spec_dict, comm_actions_dict)
@@ -176,6 +207,10 @@ def initialize_model(model: nn.Module,
                      meta_args: Dict[str, torch.Tensor],
                      device_mesh: DeviceMesh,
                      memory_budget: float = -1.0,
+                     overlap: bool = False,
+                     solver_preference: str = 'standard',
+                     dataloader_option: str = 'replicated',
+                     shard_option: str = 'standard',
                      save_solver_solution: bool = False,
                      load_solver_solution: bool = False,
                      solution_path: str = None,
@@ -189,6 +224,14 @@ def initialize_model(model: nn.Module,
         device_mesh: the device mesh to execute the model.
         memory_budget(optional): the max cuda memory could be used. If the memory budget is -1.0,
             the memory budget will be infinity.
+        overlap(optional): the overlap is used to specify whether to overlap gradient communication and
+            backward computing.
+        solver_preference(optional): the solver_preference is used to specify which parallelism algorithm
+            has higher priority. The valid solver_preference could be 'standard', 'tp', or 'dp'.
+        dataloader_option(optional): the dataloader_option is used to specify which kind of data_loader will
+            be used. The valid dataloader_option could be 'replicated' or 'distributed'.
+        shard_option(optional): the shard_option is used to specify how many axes will be used to shard the
+            model. The valid shard_option could be 'standard', 'shard', 'shard_last_axis', or 'full_shard'.
         save_solver_solution(optional): if the save_solver_solution is True, the solution will be saved
             to the solution_path.
         load_solver_solution(optional): if the load_solver_solution is True, the solution will be loaded
@@ -203,7 +246,12 @@ def initialize_model(model: nn.Module,
     graph = tracer.trace(root=model, meta_args=meta_args)
     gm = ColoGraphModule(model, graph, model.__class__.__name__)
     gm.recompile()
-    strategies_constructor = build_strategy_constructor(graph, device_mesh)
+
+    strategies_constructor = build_strategy_constructor(graph,
+                                                        device_mesh,
+                                                        solver_preference=solver_preference,
+                                                        dataloader_option=dataloader_option,
+                                                        shard_option=shard_option)
     if load_solver_solution:
         solution = torch.load(solution_path)
     else:
@@ -211,7 +259,7 @@ def initialize_model(model: nn.Module,
         if save_solver_solution:
             torch.save(solution, solution_path)
 
-    gm, sharding_spec_dicts = transform_to_sharded_model(gm, solution, device_mesh, strategies_constructor)
+    gm, sharding_spec_dicts = transform_to_sharded_model(gm, solution, device_mesh, strategies_constructor, overlap)
     model_to_return = ModuleWrapper(gm, *sharding_spec_dicts)
 
     if return_solution:
@@ -231,6 +279,9 @@ def autoparallelize(model: nn.Module,
                     alpha_beta_dict: Dict[Tuple[int], Tuple[float]] = None,
                     logical_mesh_shape: Tuple[int] = None,
                     logical_mesh_id: torch.Tensor = None,
+                    solver_preference: str = 'standard',
+                    dataloader_option: str = 'replicated',
+                    shard_option: str = 'standard',
                     save_solver_solution: bool = False,
                     load_solver_solution: bool = False,
                     solver_solution_path: str = None,
@@ -253,6 +304,12 @@ def autoparallelize(model: nn.Module,
             mesh shape. If the logical_mesh_shape is None, the logical_mesh_shape will be
             generated by search_best_logical_mesh_shape function.
         logical_mesh_id(optional): the logical_mesh_id is used to specify the logical mesh id.
+        solver_preference(optional): the solver_preference is used to specify which parallelism algorithm
+            has higher priority. The valid solver_preference could be 'standard', 'tp', or 'dp'.
+        dataloader_option(optional): the dataloader_option is used to specify which kind of data_loader will
+            be used. The valid dataloader_option could be 'replicated' or 'distributed'.
+        shard_option(optional): the shard_option is used to specify how many axes will be used to shard the
+            model. The valid shard_option could be 'standard', 'shard', 'shard_last_axis', or 'full_shard'.
         save_solver_solution(optional): if the save_solver_solution is True, the solution will be saved
             to the solution_path.
         load_solver_solution(optional): if the load_solver_solution is True, the solution will be loaded
@@ -271,6 +328,8 @@ def autoparallelize(model: nn.Module,
     rst_to_unpack = initialize_model(model,
                                      meta_args,
                                      device_mesh,
+                                     solver_preference=solver_preference,
+                                     dataloader_option=dataloader_option,
                                      save_solver_solution=save_solver_solution,
                                      load_solver_solution=load_solver_solution,
                                      solution_path=solver_solution_path,
