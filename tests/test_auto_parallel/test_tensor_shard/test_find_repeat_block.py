@@ -79,7 +79,6 @@ class NonRepeatModel(nn.Module):
 
 @run_on_environment_flag(name='AUTO_PARALLEL')
 @parameterize('model_cls', [RepeatModel, NonRepeatModel])
-# @parameterize('model_cls', [NonRepeatModel])
 def test_repeat_blocks(model_cls):
 
     model = model_cls(4 * HIDDEN_DIM, HIDDEN_DIM, NUM_REPEAT_BLOCKS)
