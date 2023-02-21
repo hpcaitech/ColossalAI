@@ -10,8 +10,6 @@ from torch.fx.graph import PythonCode, _PyTreeCodeGen
 from torch.fx.graph_module import _exec_with_source, _forward_from_src, _WrappedCall
 from torch.nn.modules.module import _addindent
 
-from .codegen import ActivationCheckpointCodeGen
-
 
 class ColoGraphModule(torch.fx.GraphModule):
     """

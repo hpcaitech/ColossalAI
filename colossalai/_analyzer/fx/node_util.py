@@ -2,10 +2,9 @@ from dataclasses import dataclass, field
 from typing import Callable, ClassVar, Dict, List, Optional, Tuple, Union
 
 import torch
+from siu.envs import MeshConfig
 from torch.autograd.profiler_util import _format_memory, _format_time
 from torch.fx import Graph, GraphModule, Node
-
-from siu.envs import MeshConfig
 
 
 def intersect(a, b):
@@ -18,6 +17,30 @@ def subtract(a, b):
 
 def union(a, b):
     return {**a, **b}
+
+
+def compute_size_in_bytes(elem: torch.Tensor | Dict | List | Tuple | int) -> int:
+    """Compute the size of a tensor or a collection of tensors in bytes.
+
+    Args:
+        elem (torch.Tensor | Dict | List | Tuple | int): Arbitrary nested ``torch.Tensor`` data structure.
+
+    Returns:
+        int: The size of the tensor or the collection of tensors in bytes.
+    """
+    nbytes = 0
+    if isinstance(elem, torch.Tensor):
+        if elem.is_quantized:
+            nbytes += elem.numel() * torch._empty_affine_quantized([], dtype=elem.dtype).element_size()
+        else:
+            nbytes += elem.numel() * torch.tensor([], dtype=elem.dtype).element_size()
+    elif isinstance(elem, dict):
+        value_list = [v for _, v in elem.items()]
+        nbytes += compute_size_in_bytes(value_list)
+    elif isinstance(elem, tuple) or isinstance(elem, list) or isinstance(elem, set):
+        for e in elem:
+            nbytes += compute_size_in_bytes(e)
+    return nbytes
 
 
 @dataclass
@@ -42,7 +65,7 @@ class MetaInfo:
                             -------------------------------    [input] for the next node.
     ============================================================================
 
-    Total Size = ([interm] in local_ctx)  + Output Size
+    Accumulate Size = ALL_PREVIOUS_CTX U {Interm Size + Output Size}
     Output Size = ([output] in global_ctx and not is_alias)
     Temp Size = ([output] not in global_ctx and not is_alias)
     Backward Size = ([grad_inp])
@@ -51,7 +74,7 @@ class MetaInfo:
         >>> for node in graph.nodes:
         >>>     n_info = MetaInfo(node)     # will create a new MetaInfo instance and store in node.meta['info']
         >>>                                 # if not exist, otherwise return the existing one
-        >>>     n_info.data = ...   # set the data field
+        >>>     n_info.to_recompute = ...   # set the to_recompute attribute
 
     Remarks:
         This feature is experimental and all the entries are subject to change.
@@ -61,12 +84,12 @@ class MetaInfo:
     node: Node
 
     # directory
-    mod_dir: Tuple[str] = ()
+    mod_dir: str = ''
 
     # ctx[data_ptr] = Tensor
     # mark the storage for ctx.save_for_backward
     global_ctx: Dict[str, torch.Tensor] = field(default_factory=lambda: {})    # globally shared
-    local_ctx: Dict[str, torch.Tensor] = field(default_factory=lambda: {})    # within node
+    curr_ctx: Dict[str, torch.Tensor] = field(default_factory=lambda: {})    # global_ctx till this node
 
     # should be updated after each graph manipulation
     # ============================== Update ====================================
@@ -139,11 +162,14 @@ class MetaInfo:
         return compute_size_in_bytes(intersect(self.global_ctx, output_ctx))
 
     @property
-    def total_size(self):
+    def accumulate_size(self):
         """Used in CheckpointSolver"""
-        input_ctx = {i.data_ptr(): i for i in self.inputs}
-        local_ctx = subtract(self.local_ctx, input_ctx)
-        return compute_size_in_bytes(local_ctx) + self.output_size
+        output_ctx = {
+            o.data_ptr(): o
+            for o, is_alias in zip(self.outputs, self.is_alias)
+            if not is_alias and isinstance(o, torch.Tensor) and not isinstance(o, torch.nn.Parameter)
+        }
+        return compute_size_in_bytes(union(self.curr_ctx, intersect(self.global_ctx, output_ctx)))
 
     @property
     def temp_size(self):
@@ -182,27 +208,3 @@ class MetaInfo:
             f'\n\tto_offload = {self.to_offload}'\
             f'\n\tsharding_spec = {self.sharding_spec}'
         return s
-
-
-def compute_size_in_bytes(elem: Union[torch.Tensor, Dict, List, Tuple, int]) -> int:
-    """Compute the size of a tensor or a collection of tensors in bytes.
-
-    Args:
-        elem (Union[torch.Tensor, Dict, List, Tuple, int]): Arbitrary nested ``torch.Tensor`` data structure.
-
-    Returns:
-        int: The size of the tensor or the collection of tensors in bytes.
-    """
-    nbytes = 0
-    if isinstance(elem, torch.Tensor):
-        if elem.is_quantized:
-            nbytes += elem.numel() * torch._empty_affine_quantized([], dtype=elem.dtype).element_size()
-        else:
-            nbytes += elem.numel() * torch.tensor([], dtype=elem.dtype).element_size()
-    elif isinstance(elem, dict):
-        value_list = [v for _, v in elem.items()]
-        nbytes += compute_size_in_bytes(value_list)
-    elif isinstance(elem, tuple) or isinstance(elem, list) or isinstance(elem, set):
-        for e in elem:
-            nbytes += compute_size_in_bytes(e)
-    return nbytes

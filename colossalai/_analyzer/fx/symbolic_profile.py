@@ -2,13 +2,14 @@ import torch
 import torch.fx
 from torch.fx import GraphModule
 
-from siu.fx.passes import GraphProfile, ShapeProp, graph_profile_pass, shape_prop_pass
+from .passes import ShapeProp, graph_profile_pass, shape_prop_pass
+from .passes.graph_profile import FlopProfiler
 
 
-def register_profile_impl(func):
+def register_flop_count_impl(func):
 
     def wrapper(impl):
-        GraphProfile._custom_profile_impl[func] = impl
+        FlopProfiler._custom_flop_count_impl[func] = impl
         return impl
 
     return wrapper

@@ -1,16 +1,47 @@
 """``torch.fx.ShapeProp``, but with ``MetaTensor``"""
 
-from typing import Any, Callable, Dict, Tuple, Union
+from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 import torch
 import torch.fx
+from siu._subclasses import MetaTensor, MetaTensorMode
+from siu.fx.node_util import MetaInfo
+from torch.autograd.graph import saved_tensors_hooks
 from torch.utils._pytree import tree_map
 
 from colossalai.fx._compatibility import compatibility
-from siu._subclasses import MetaTensor, MetaTensorMode
-from siu.fx.node_util import MetaInfo
 
 Target = Union[Callable[..., Any], str]
+
+
+class sim_env(saved_tensors_hooks):
+    """
+    A simulation of memory allocation and deallocation in the forward pass
+    using ``saved_tensor_hooks``.
+
+    Attributes:
+        ctx (Dict[int, torch.Tensor]): A dictionary that maps the
+            data pointer of a tensor to the tensor itself. This is used
+            to track the memory allocation and deallocation.
+
+        param_ctx (Dict[int, torch.Tensor]): A dictionary that maps the
+            data pointer of all model parameters to the parameter itself.
+            This avoids overestimating the memory usage of the intermediate activations.
+    """
+
+    def __init__(self, module: Optional[torch.nn.Module] = None):
+        super().__init__(self.pack_hook, self.unpack_hook)
+        self.ctx = {}
+        self.param_ctx = {param.data_ptr(): param for param in module.parameters()}
+        self.buffer_ctx = {buffer.data_ptr(): buffer for buffer in module.buffers()} if module else {}
+
+    def pack_hook(self, tensor: torch.Tensor):
+        if tensor.data_ptr() not in self.param_ctx and tensor.data_ptr() not in self.buffer_ctx:
+            self.ctx[tensor.data_ptr()] = tensor
+        return tensor
+
+    def unpack_hook(self, tensor):
+        return tensor
 
 
 def _normalize_tuple(x):
@@ -59,6 +90,10 @@ class ShapeProp(torch.fx.Interpreter):
     _custom_dispatch_func = {}
     _mode = MetaTensorMode()
 
+    def __init__(self, module: torch.fx.GraphModule, garbage_collect_values: bool = True):
+        super().__init__(module, garbage_collect_values)
+        self.global_hook = sim_env(module=self.module)
+
     def run_node(self, n: torch.fx.Node) -> Any:
         """
         Run a specific node ``n`` and return the result. Attach
@@ -73,7 +108,8 @@ class ShapeProp(torch.fx.Interpreter):
             Any: The result of executing ``n``
         """
         args, kwargs = self.fetch_args_kwargs_from_env(n)
-        r = getattr(self, n.op)(n.target, args, kwargs)
+        with self.global_hook:
+            r = getattr(self, n.op)(n.target, args, kwargs)
 
         unwrap_fn = lambda elem: elem._tensor if isinstance(elem, MetaTensor) else elem
         is_pure_tensor = lambda elem: isinstance(elem, MetaTensor) and not isinstance(elem, torch.nn.Parameter)
@@ -82,22 +118,33 @@ class ShapeProp(torch.fx.Interpreter):
 
         if n.op == 'call_module':
             submod = self.fetch_attr(n.target)
-            n_info.parameters.update({k: v.to(torch.device('meta')) for k, v in submod.named_parameters()})
-            n_info.buffers.update({k: v.to(torch.device('meta')) for k, v in submod.named_buffers()})
+            n_info.parameters.update({k: MetaTensor(v) for k, v in submod.named_parameters()})
+            n_info.buffers.update({k: MetaTensor(v) for k, v in submod.named_buffers()})
 
         else:
-            # fix-me: ``nn.Parameter`` cannot be ``kwargs``?
             n_info.parameters.update(
-                {k.name: v.to(torch.device('meta')) \
+                {k.name: MetaTensor(v) \
                     for k, v in zip(n.args, args) \
                         if isinstance(k, torch.fx.Node) and isinstance(v, torch.nn.Parameter)
+                }
+            )
+            n_info.parameters.update(
+                {k: MetaTensor(v) \
+                    for k, v in kwargs.items() \
+                        if isinstance(v, torch.nn.Parameter)
                 }
             )
 
         n_info.inputs = tuple(v for v in args if is_pure_tensor(v)) + \
                         tuple(v for v in kwargs.values() if is_pure_tensor(v))
 
-        n._meta_data = tree_map(unwrap_fn, _normalize_tuple(r))
+        n._meta_data = tree_map(unwrap_fn, _normalize_tuple(r))    # align with SPMD
+
+        n_info.global_ctx = self.global_hook.ctx
+        n_info.curr_ctx = self.global_hook.ctx.copy()
+
+        crit = lambda x: x.data_ptr() in self.global_hook.ctx if isinstance(x, torch.Tensor) else False
+        n_info.is_alias = _normalize_tuple(tree_map(crit, n_info.outputs))
         return r
 
     def call_function(self, target: 'Target', args: Tuple[Any, ...], kwargs: Dict[str, Any]) -> Any:

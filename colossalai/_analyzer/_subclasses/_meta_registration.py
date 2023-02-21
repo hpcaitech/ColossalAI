@@ -31,11 +31,6 @@ def new_like(*args, **kwargs):
     return orig_empty_like(*args, **kwargs, device=torch.device('meta'))
 
 
-def _as_param(r):
-    r._is_param = True    # see what makes a `torch.Tensor` an `nn.Parameter`
-    return r
-
-
 def register_meta(op, register_dispatcher=True):
 
     def wrapper(f):
@@ -368,7 +363,7 @@ def meta_local_scalar_dense(self: torch.Tensor):
 @register_meta(aten.where.self)
 def meta_where_self(condition: torch.Tensor, self: torch.Tensor, other: torch.Tensor):
     result_type = torch.result_type(self, other)
-    return new_like(self, dtype=result_type)
+    return new_like(condition + self + other, dtype=result_type)
 
 
 @register_meta(aten.index.Tensor)

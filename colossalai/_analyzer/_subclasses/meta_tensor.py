@@ -6,21 +6,30 @@ import torch.distributed as dist
 from torch.types import _bool, _device, _dtype
 from torch.utils._pytree import tree_flatten, tree_map
 
-from ._monkey_patch import _AliasATen, _DistCommMethod, _InplaceATen, _TorchOverrideableFactoryMethod
+from ._monkey_patch import _AliasATen, _DistCommMethod, _InplaceATen, _MaybeInplaceATen, _TorchOverrideableFactoryMethod
 
 __all__ = ['MetaTensor', 'MetaTensorMode']
 
 
-def register_storage(r):
+def register_storage(r, data_ptr_fn=None):
     if isinstance(r, torch.Tensor):
-        if not r.data_ptr():
+        if data_ptr_fn is not None:
+            r.data_ptr = data_ptr_fn
+        elif not r.data_ptr():
             data_ptr = uuid.uuid1()
             r.data_ptr = lambda: data_ptr
 
 
+def _normalize_tuple(x):
+    if not isinstance(x, tuple):
+        return (x,)
+    return x
+
+
 # a hack of inplace execution in PyTorch
 def _assert_alias(func):
-    return func in _AliasATen + _InplaceATen
+    return func in (_AliasATen + _InplaceATen + _MaybeInplaceATen    # TODO: check if should be this aggressive
+                   )
 
 
 class MetaTensor(torch.Tensor):
@@ -39,7 +48,8 @@ class MetaTensor(torch.Tensor):
     _tensor: torch.Tensor
 
     @staticmethod
-    def __new__(cls, elem, device=None):
+    def __new__(cls, elem, device=None, data_ptr_fn=None):
+        requires_grad = elem.requires_grad
         # Avoid multiple wrapping
         while isinstance(elem, MetaTensor):
             device = elem.device if device is None else device
@@ -56,13 +66,16 @@ class MetaTensor(torch.Tensor):
             dtype=elem.dtype,
             layout=elem.layout,
             device=device or (elem.device if elem.device.type != 'meta' else torch.device('cpu')),
-            requires_grad=elem.requires_grad)    # deceive the frontend for aten selections
+            requires_grad=requires_grad)    # deceive the frontend for aten selections
         r._tensor = elem
         # ...the real tensor is held as an element on the tensor.
         if not r._tensor.is_meta:
+            val = elem.data_ptr()
+            data_ptr_fn = lambda: val
             r._tensor = r._tensor.to(torch.device('meta'))
+
         # only tensor not on `meta` should be copied to `meta`
-        register_storage(r._tensor)
+        register_storage(r._tensor, data_ptr_fn)
         if isinstance(elem, torch.nn.Parameter):
             r = torch.nn.Parameter(r)
         return r
@@ -98,8 +111,10 @@ class MetaTensor(torch.Tensor):
         # here we detect whether or not the execution generates a physical copy
         # of the input tensor
         ret = func(*args, **kwargs)
+
         if _assert_alias(func):
-            ret.data_ptr = args[0].data_ptr
+            val = args[0].data_ptr()
+            tree_map(partial(register_storage, data_ptr_fn=lambda: val), _normalize_tuple(ret))
 
         # Now, we want to continue propagating this tensor, so we rewrap Tensors in
         # our custom tensor subclass

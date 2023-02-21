@@ -6,11 +6,10 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple, Ty
 
 import torch
 import torch.nn as nn
+from siu._subclasses import MetaTensor, _TensorPropertyMethod, _TorchFactoryMethod
 from torch.fx import Graph, Node, Proxy, Tracer
 from torch.fx.graph import _Namespace
 from torch.utils._pytree import tree_map
-
-from siu._subclasses import MetaTensor, _TensorPropertyMethod, _TorchFactoryMethod
 
 from .codegen import ActivationCheckpointCodeGen
 from .graph_module import ColoGraphModule
@@ -145,25 +144,39 @@ class ColoProxy(Proxy):
     def __isinstancecheck__(self, type):
         return isinstance(self.meta_data, type)
 
+    def size(self, dim=None):
+        if self._meta_data is None:
+            return self._meta_data.size(*[dim] if dim else [])
+        return self.tracer.create_proxy('call_method', 'size', (self, dim) if dim else (self,), {})
+
+    def dim(self):
+        if self._meta_data is not None:
+            return self._meta_data.dim()
+        return self.tracer.create_proxy('call_method', 'dim', (self,), {})
+
     @property
     def shape(self):
-        return self.meta_data.shape
+        if self._meta_data is not None:
+            return self._meta_data.shape
+        return self.tracer.create_proxy('call_function', getattr, (self, 'shape'), {})
 
     @property
     def ndim(self):
-        return self.meta_data.ndim
+        if self._meta_data is not None:
+            return self._meta_data.ndim
+        return self.tracer.create_proxy('call_function', getattr, (self, 'ndim'), {})
 
     @property
     def device(self):
-        proxy = self.tracer.create_proxy('call_function', getattr, (self, 'device'), {})
-        proxy.meta_data = self.meta_data.device
-        return proxy
+        if self._meta_data is not None:
+            return self._meta_data.device
+        return self.tracer.create_proxy('call_function', getattr, (self, 'device'), {})
 
     @property
     def dtype(self):
-        proxy = self.tracer.create_proxy('call_function', getattr, (self, 'dtype'), {})
-        proxy.meta_data = self.meta_data.dtype
-        return proxy
+        if self._meta_data is not None:
+            return self._meta_data.dtype
+        return self.tracer.create_proxy('call_function', getattr, (self, 'dtype'), {})
 
     def to(self, *args, **kwargs):
         return self.tracer.create_proxy('call_method', 'to', (self, *args), {**kwargs})
@@ -225,9 +238,7 @@ class ColoTracer(Tracer):
         self.ckpt_regions = []
         self.ckpt_idx = 0
 
-        # the tracer will record the directory of submodules
-        self.mod_dir = []
-        self.mod_namespace = _Namespace()
+        self.mod_dir = ''
 
         # whether the tracer should split the bias_add ops into two ops
         self.bias_addition_split = bias_addition_split
@@ -244,9 +255,10 @@ class ColoTracer(Tracer):
 
     def call_module(self, m: torch.nn.Module, forward: Callable[..., Any], args: Tuple[Any, ...],
                     kwargs: Dict[str, Any]) -> Any:
-        self.mod_dir.append(self.mod_namespace.create_name(type(m).__name__, None))
+        curr_dir = self.mod_dir
+        self.mod_dir = 'self.' + self.path_of_module(m)
         rst = super().call_module(m, forward, args, kwargs)
-        self.mod_dir.pop()
+        self.mod_dir = curr_dir
         return rst
 
     def proxy(self, node: Node) -> 'ColoProxy':
@@ -302,7 +314,7 @@ class ColoTracer(Tracer):
 
     def create_node(self, *args, **kwargs) -> Node:
         node = super().create_node(*args, **kwargs)
-        n_info = MetaInfo(node, mod_dir=tuple(self.mod_dir), to_recompute=tuple(self.ckpt_regions))
+        n_info = MetaInfo(node, mod_dir=self.mod_dir, to_recompute=tuple(self.ckpt_regions))
         return node
 
     def trace(self,
@@ -334,15 +346,16 @@ class ColoTracer(Tracer):
         self.concrete_args = concrete_args
         self.meta_args = meta_args
 
-        with _TorchTensorOverride(self), self._tracer_override():
-            self.mod_dir.append(root.__class__.__name__)
+        with self._torch_factory_override(), self._tracer_override(), torch.no_grad():
+            self.mod_dir = 'self'
             self.graph = super().trace(root, concrete_args=concrete_args)
-            self.mod_dir.pop()
+            self.mod_dir = ''
         self.graph.lint()
         return self.graph
 
     @contextmanager
     def _tracer_override(self):
+        # override the tracer to support custom modules and checkpointing
         if self.trace_act_ckpt:
             orig_ckpt_func_apply = torch.utils.checkpoint.CheckpointFunction.apply
             orig_ckpt_func_without_reentrant = torch.utils.checkpoint._checkpoint_without_reentrant
@@ -372,6 +385,44 @@ class ColoTracer(Tracer):
             torch.utils.checkpoint._checkpoint_reentrant = orig_ckpt_func_without_reentrant
 
         ColoProxy._func_dispatch = {}
+
+    @contextmanager
+    def _torch_factory_override(self):
+        # override the torch factory functions to create a proxy when the method
+        # is called during ``symbolic_trace()``.
+        def wrap_factory_method(target):
+
+            @functools.wraps(target)
+            def wrapper(*args, **kwargs):
+                is_proxy = any(isinstance(p, ColoProxy) for p in args) | any(
+                    isinstance(p, ColoProxy) for p in kwargs.values())
+                if is_proxy:
+                    # if the arg is a proxy, then need to record this function called on this proxy
+                    # e.g. torch.ones(size) where size is an input proxy
+                    self.disable_module_getattr = True
+                    try:
+                        proxy = self.create_proxy('call_function', target, args, kwargs)
+                    finally:
+                        self.disable_module_getattr = False
+                    return proxy
+                else:
+                    return target(*args, **kwargs)
+
+            return wrapper, target
+
+        overrides = {
+            target: wrap_factory_method(getattr(torch, target))
+            for target in _TorchFactoryMethod
+            if callable(getattr(torch, target))
+        }
+        for name, (wrapper, orig) in overrides.items():
+            setattr(torch, name, wrapper)
+
+        yield
+
+        # recover the torch factory functions upon exit
+        for name, (wrapper, orig) in overrides.items():
+            setattr(torch, name, orig)
 
     def _post_check(self, non_concrete_arg_names: Set[str]):
         # This is necessary because concrete args are added as input to the traced module since
@@ -441,62 +492,125 @@ def symbolic_trace(
     trace_act_ckpt: bool = False,
     bias_addition_split: bool = False,
 ) -> ColoGraphModule:
+    """
+    Traces a ``torch.nn.Module`` or a function and returns a ``GraphModule`` with ``Node``s and ``MetaInfo``
+    attached to the ``Node``s.
+
+    Can be used to trace the usage of ``torch.utils.checkpoint`` and the path of module
+    (https://github.com/pytorch/examples/blob/main/fx/module_tracer.py).
+
+    This tracer is able to trace basic control flow and for loops.
+
+    It will split the bias addition into two parts if ``bias_addition_split`` is set to be ``True``.
+    (See ./bias_addition.py for more details).
+
+    Examples:
+    1. Tracing a ``torch.nn.Module`` with control flow.
+
+    .. code-block:: python
+
+        class MyModule(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.linear = torch.nn.Linear(2, 2)
+
+            def forward(self, x):
+                if x.size(0) > 1:
+                    x = x.sum(dim=0)
+                return self.linear(x)
+
+        traced = symbolic_trace(MyModule(), meta_args={'x': torch.randn(1, 2, 2)})
+
+        # traced code like:
+        # def forward(self, x):
+        #     linear_1 = self.linear(x)
+        #     return linear_1
+
+        traced = symbolic_trace(MyModule(), meta_args={'x': torch.randn(2, 2, 2)})
+
+        # traced code like:
+        # def forward(self, x):
+        #     sum = x.sum(dim=0); x = None
+        #     linear = self.linear(sum); sum = None
+        #     return linear
+
+    2. Tracing a ``torch.nn.Module`` with ``torch.utils.checkpoint``.
+
+    .. code-block:: python
+
+        class MyModule(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.linear = torch.nn.Linear(2, 2)
+
+            def forward(self, x):
+                def custom_forward(x):
+                    return self.linear(x)
+                return torch.utils.checkpoint.checkpoint(custom_forward, x)
+
+        traced = symbolic_trace(MyModule(), meta_args={'x': torch.randn(1, 2, 2)}, trace_act_ckpt=True)
+
+        # traced code like:
+        # def checkpoint_0(self, x):
+        #     linear = self.linear(x); x = None
+        #     return linear
+        #
+        # def forward(self, x):
+        #     linear = torch.utils.checkpoint.checkpoint(checkpoint_0, x); x = None
+        #     return linear
+
+    3. Tracing a ``torch.nn.Module`` with ``bias_addition_split``.
+
+    .. code-block:: python
+
+        class MyModule(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.linear = torch.nn.Linear(2, 2, bias=True)
+
+            def forward(self, x):
+                return self.linear(x)
+
+        traced = symbolic_trace(MyModule(), meta_args={'x': torch.randn(1, 2, 2)}, bias_addition_split=True)
+
+        # traced code like:
+        # def forward(self, x):
+        #     linear_bias = self.linear.bias
+        #     linear_weight = self.linear.weight
+        #     linear = torch._C._nn.linear(x, linear_weight);  x = linear_weight = None
+        #     add = linear + linear_bias;  linear = linear_bias = None
+        #     return add
+
+    Args:
+        root (Union[torch.nn.Module, Callable[..., Any]]): The ``torch.nn.Module`` or function to be traced.
+        concrete_args (Optional[Dict[str, Any]], optional): Concrete arguments to be passed to the ``root``.
+            Defaults to {}.
+        meta_args (Optional[Dict[str, Any]], optional): Meta arguments to be passed to the ``root``. Mostly used
+            for tracing control flow. Defaults to {}.
+        trace_act_ckpt (bool, optional): Whether to trace the usage of ``torch.utils.checkpoint``.
+            Defaults to False.
+        bias_addition_split (bool, optional): Whether to split the bias addition into two parts. Defaults to False.
+
+    Returns:
+        ColoGraphModule: A traced ``GraphModule`` that is ready for activation checkpoint ``CodeGen``.
+
+    Remarks:
+        This part of ``symbolic_trace()`` is maintained by Colossal-AI team. If you encountered
+        any unexpected error during tracing, feel free to raise an issue on Colossal-AI GitHub
+        repo. We welcome any feedback and contributions to enhance the extensibility of
+        Colossal-AI.
+    """
     if meta_args:
         device, orig_device = _default_device(), _current_device(root)
         wrap_fn = lambda elem: MetaTensor(elem, device=device) if isinstance(elem, torch.Tensor) else elem
         graph = ColoTracer(trace_act_ckpt=trace_act_ckpt,
-                           bias_addition_split=bias_addition_split).trace(root.to(device, non_blocking=True),
+                           bias_addition_split=bias_addition_split).trace(root.to(device),
                                                                           concrete_args=concrete_args,
                                                                           meta_args=tree_map(wrap_fn, meta_args))
         if trace_act_ckpt:
             graph.set_codegen(ActivationCheckpointCodeGen())
-        root.to(orig_device, non_blocking=True)
+        root.to(orig_device)
     else:
         graph = Tracer().trace(root, concrete_args=concrete_args)
     name = root.__class__.__name__ if isinstance(root, torch.nn.Module) else root.__name__
     return ColoGraphModule(root, graph, name)
-
-
-class _TorchTensorOverride(object):
-    """
-    Override ``torch.Tensor`` methods to create a proxy when the method
-    is called during ``symbolic_trace()``.
-    """
-
-    def __init__(self, tracer: Tracer):
-        self.overrides = {}
-        self.tracer = tracer
-
-    def __enter__(self):
-
-        def wrap_tensor_method(target):
-
-            @functools.wraps(target)
-            def wrapper(*args, **kwargs):
-                is_proxy = any(isinstance(p, ColoProxy) for p in args) | any(
-                    isinstance(p, ColoProxy) for p in kwargs.values())
-                if is_proxy:
-                    # if the arg is a proxy, then need to record this function called on this proxy
-                    # e.g. torch.ones(size) where size is an input proxy
-                    self.tracer.disable_module_getattr = True
-                    try:
-                        proxy = self.tracer.create_proxy('call_function', target, args, kwargs)
-                    finally:
-                        self.tracer.disable_module_getattr = False
-                    return proxy
-                else:
-                    return target(*args, **kwargs)
-
-            return wrapper, target
-
-        self.overrides = {
-            target: wrap_tensor_method(getattr(torch, target))
-            for target in _TorchFactoryMethod
-            if callable(getattr(torch, target))
-        }
-        for name, (wrapper, orig) in self.overrides.items():
-            setattr(torch, name, wrapper)
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        for name, (wrapper, orig) in self.overrides.items():
-            setattr(torch, name, orig)

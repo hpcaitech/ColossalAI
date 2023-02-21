@@ -55,33 +55,20 @@ def flop_count(module: Union[torch.nn.Module, Callable] = None, *args, verbose: 
         *args: Input arguments to the model.
         verbose (bool): If True, print the number of flops for each module.
         **kwargs: Input keyword arguments to the model.
-
     Returns:
         Number: The total number of floating point operations (FWD + BWD).
     """
-    inplace = False
+    maybe_inplace = (getattr(module, 'inplace', False) or kwargs.get('inplace', False)
+                     or getattr(module, '__name__', None) in ('add_', 'mul_', 'div_', 'sub_'))
 
     class DummyModule(torch.nn.Module):
 
         def __init__(self, func):
             super().__init__()
             self.func = func
+            self.__name__ = func.__name__
 
         def forward(self, *args, **kwargs):
-
-            def detach_variables(x):
-                if isinstance(x, torch.Tensor):
-                    requires_grad = x.requires_grad
-                    x = x.detach()
-                    x.requires_grad = requires_grad
-                return x
-
-            args = tree_map(detach_variables, args)
-            kwargs = tree_map(detach_variables, kwargs)
-            if 'inplace' in kwargs:
-                nonlocal inplace
-                inplace = kwargs['inplace']
-                kwargs['inplace'] = False
             return self.func(*args, **kwargs)
 
     total_flop_count = {Phase.FWD: 0, Phase.BWD: 0}
@@ -106,8 +93,6 @@ def flop_count(module: Union[torch.nn.Module, Callable] = None, *args, verbose: 
             rs = super().__torch_dispatch__(func, types, args, kwargs)
 
             outs = normalize_tuple(rs)
-            if inplace:
-                outs[0]._tensor.data_ptr = args[0]._tensor.data_ptr
 
             if func in flop_mapping:
                 nonlocal flop_counts, total_flop_count
@@ -199,16 +184,6 @@ def flop_count(module: Union[torch.nn.Module, Callable] = None, *args, verbose: 
         for handle in registered:
             handle.remove()
 
-    @contextmanager
-    def avoid_module_inplace(mod):
-        if hasattr(mod, 'inplace'):
-            nonlocal inplace
-            inplace = mod.inplace
-            mod.inplace = False
-        yield
-        if hasattr(mod, 'inplace'):
-            mod.inplace = inplace
-
     def display_flops():
         for mod in flop_counts.keys():
             print(f"Module: ", mod)
@@ -216,12 +191,23 @@ def flop_count(module: Union[torch.nn.Module, Callable] = None, *args, verbose: 
                 print('\t', k, _format_flops(v))
             print()
 
-    def wrap(r):
+    def detach_variables(r):
         if isinstance(r, torch.Tensor):
-            return FlopTensor(r)
+            requires_grad = r.requires_grad
+            r = r.detach()
+            r.requires_grad = requires_grad
         return r
 
-    with instrument_module(module) and avoid_module_inplace(module):
+    def wrap(r):
+        if isinstance(r, torch.Tensor):
+            data_ptr_fn = getattr(r, '_tensor', r).data_ptr
+            r = FlopTensor(detach_variables(r))
+            if maybe_inplace:
+                r = r + 0
+            r._tensor.data_ptr = data_ptr_fn
+        return r
+
+    with instrument_module(module):
         cur_phase = Phase.FWD
         rst = module(*tree_map(wrap, args), **tree_map(wrap, kwargs))
         rst = tuple(r for r in normalize_tuple(rst) if is_autogradable(r) and r.requires_grad)
