@@ -303,3 +303,4 @@ call_function                                          add_24            1.04 Gb
 call_function                                      getitem_24            1.04 Gb                 0 b       24.00 Kb          0 b           0 b          4.62 Mb        0 FLOPs        0 FLOPs
   call_module                                      heads_head            1.04 Gb                 0 b            0 b     31.25 Kb       2.93 Mb         24.00 Kb    6.14 MFLOPs   12.30 MFLOPs
        output                                          output            1.04 Gb                 0 b            0 b     31.25 Kb           0 b         31.25 Kb        0 FLOPs        0 FLOPs
+```
