@@ -212,4 +212,3 @@ def _check_cuda_version():
         except:
             cuda_version = None
     return cuda_version
-    return cuda_version
