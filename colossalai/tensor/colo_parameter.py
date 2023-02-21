@@ -71,7 +71,7 @@ class ColoParameter(ColoTensor, torch.nn.Parameter):
         return tensor
 
     def __repr__(self):
-        return f'ColoParameter: {ColoTensor.__repr__(self)}'
+        return super(ColoParameter, self).__repr__()
 
     @classmethod
     def __torch_function__(cls, func, types, args=..., kwargs=None):

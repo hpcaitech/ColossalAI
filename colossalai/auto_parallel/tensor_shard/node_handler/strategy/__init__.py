@@ -14,7 +14,13 @@ from .matmul_strategy_generator import (
 from .normal_pooling_generator import NormalPoolStrategyGenerator
 from .output_generator import OutputGenerator
 from .placeholder_generator import PlaceholderGenerator
-from .reshape_generator import ReshapeGenerator
+from .reshape_generator import (
+    DefaultReshapeGenerator,
+    PermuteGenerator,
+    SplitGenerator,
+    TransposeGenerator,
+    ViewGenerator,
+)
 from .softmax_generator import SoftmaxGenerator
 from .strategy_generator import StrategyGenerator
 from .sum_generator import SumGenerator
@@ -26,7 +32,8 @@ __all__ = [
     'StrategyGenerator', 'DotProductStrategyGenerator', 'MatVecStrategyGenerator', 'LinearProjectionStrategyGenerator',
     'BatchedMatMulStrategyGenerator', 'ConvStrategyGenerator', 'UnaryElementwiseGenerator',
     'BatchNormStrategyGenerator', 'GetItemStrategyGenerator', 'TensorStrategyGenerator', 'TensorTupleStrategyGenerator',
-    'LayerNormGenerator', 'ReshapeGenerator', 'PlaceholderGenerator', 'OutputGenerator', 'WhereGenerator',
-    'ReshapeGenerator', 'NormalPoolStrategyGenerator', 'BinaryElementwiseStrategyGenerator', 'GetattrGenerator',
-    'TensorConstructorGenerator', 'EmbeddingStrategyGenerator', 'SumGenerator', 'SoftmaxGenerator'
+    'LayerNormGenerator', 'PlaceholderGenerator', 'OutputGenerator', 'WhereGenerator', 'NormalPoolStrategyGenerator',
+    'BinaryElementwiseStrategyGenerator', 'GetattrGenerator', 'TensorConstructorGenerator',
+    'EmbeddingStrategyGenerator', 'SumGenerator', 'SoftmaxGenerator', 'ViewGenerator', 'PermuteGenerator',
+    'TransposeGenerator', 'SplitGenerator', 'DefaultReshapeGenerator'
 ]

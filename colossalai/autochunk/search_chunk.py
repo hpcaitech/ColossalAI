@@ -8,7 +8,7 @@ from .reorder_graph import ReorderGraph
 from .select_chunk import SelectChunk
 from .trace_flow import TraceFlow
 from .trace_indice import TraceIndice
-from .utils import get_logger, get_node_shape, is_non_compute_node, is_non_compute_node_except_placeholder
+from .utils import NodeMgr, get_logger, get_node_shape, is_non_compute_node, is_non_compute_node_except_placeholder
 
 
 class SearchChunk(object):
@@ -43,15 +43,17 @@ class SearchChunk(object):
     def __init__(self, gm, max_memory=None, print_mem=False, print_progress=False) -> None:
         self.print_mem = print_mem
         self.print_progress = print_progress
-        self.trace_indice = TraceIndice(list(gm.graph.nodes))
-        self.estimate_memory = EstimateMemory()
+        self.node_mgr = NodeMgr(gm)
+        self.trace_indice = TraceIndice(self.node_mgr)
+        self.estimate_memory = EstimateMemory(self.node_mgr)
         self._init_trace()
-        self.trace_flow = TraceFlow(self.trace_indice)
-        self.reorder_graph = ReorderGraph(self.trace_indice)
+        self.trace_flow = TraceFlow(self.trace_indice, self.node_mgr)
+        self.reorder_graph = ReorderGraph(self.trace_indice, self.node_mgr)
         self.select_chunk = SelectChunk(
             self.trace_indice,
             self.estimate_memory,
             self.reorder_graph,
+            self.node_mgr,
             max_memory=max_memory,
         )
 
@@ -61,13 +63,13 @@ class SearchChunk(object):
         reduce the computation complexity of trace_indice
         """
         # find all max ranges
-        active_nodes = self.estimate_memory.get_active_nodes(self.trace_indice.node_list)
+        active_nodes = self.estimate_memory.get_active_nodes(self.node_mgr.get_node_list())
         cur_node_idx = len(self._get_free_var_idx())
         max_chunk_region_list = []
         while True:
             max_chunk_region = self._search_max_chunk_region(active_nodes, cur_node_idx)
-            cur_node_idx = max_chunk_region[1]
-            if cur_node_idx == len(active_nodes) - 1:
+            cur_node_idx = max_chunk_region[1] + 1
+            if cur_node_idx >= len(active_nodes) - 1:
                 break
             max_chunk_region_list.append(max_chunk_region)
 
@@ -94,7 +96,7 @@ class SearchChunk(object):
             free_var_idx (List): all indexs of free vars
         """
         free_var_idx = []
-        for idx, n in enumerate(self.trace_indice.node_list):
+        for idx, n in enumerate(self.node_mgr.get_node_list()):
             if n.op == "placeholder" and get_node_shape(n) is not None:
                 free_var_idx.append(idx)
         return free_var_idx
@@ -114,12 +116,19 @@ class SearchChunk(object):
             chunk_region_start (int)
             chunk_region_end (int)
         """
+        # check if peak node already in chunkinfo
+        if chunk_regions is not None:
+            for i in chunk_regions:
+                if i["region"][0] < peak_node_idx <= i["region"][1]:
+                    return None
+
         free_vars = self._get_free_var_idx()
         free_var_num = len(free_vars)
         active_node_num = [len(i) for i in active_node]
         min_active_node_num = min(active_node_num[free_var_num:])
         threshold = max(free_var_num, min_active_node_num)
 
+        # normal search
         # from peak_node to free_var
         inside_flag = False
         chunk_region_start = free_var_num
@@ -129,7 +138,6 @@ class SearchChunk(object):
             if inside_flag and active_node_num[i] > threshold:
                 chunk_region_start = i + 1
                 break
-
         # from peak_node to len-2
         inside_flag = False
         chunk_region_end = len(active_node) - 1
@@ -139,6 +147,22 @@ class SearchChunk(object):
             if inside_flag and active_node_num[i] > threshold:
                 chunk_region_end = i
                 break
+
+        # if normal search fails, use approximate search
+        if (chunk_region_end - chunk_region_start) > 250:
+            window_size = 100
+            # search min for start
+            min_num = 1e3
+            for i in range(max(peak_node_idx - window_size, 0), peak_node_idx + 1):
+                if active_node_num[i] < min_num:
+                    min_num = active_node_num[i]
+                    chunk_region_start = i
+            # search min for end
+            min_num = 1e3
+            for i in range(min(peak_node_idx + window_size, len(active_node_num) - 1), peak_node_idx - 1, -1):
+                if active_node_num[i] < min_num:
+                    min_num = active_node_num[i]
+                    chunk_region_end = i
 
         # avoid chunk regions overlap
         if chunk_regions is not None:
@@ -171,32 +195,21 @@ class SearchChunk(object):
             chunk_infos: possible regions found
         """
         start_traces = input_trace[start_idx]
+        if len(start_traces) > 1:    # TODO need to be removed
+            return []
         end_trace = output_trace[end_idx]
-        end_node = self.trace_indice.node_list[end_idx]
+        end_node = self.node_mgr.get_node_by_idx(end_idx)
+
         chunk_infos = []
         for end_dim, _ in enumerate(end_trace["indice"]):
-            if len(start_traces) > 1:
-                continue
             for start_node, start_trace in start_traces.items():
                 for start_dim, _ in enumerate(start_trace["indice"]):
-                    # dim size cannot be 1
-                    if (get_node_shape(end_node)[end_dim] == 1 or get_node_shape(start_node)[start_dim] == 1):
-                        continue
-                    # must have users
-                    if len(end_node.users) == 0:
-                        continue
-                    # check index source align
-                    if not self.trace_flow.check_index_source(start_dim, start_node, start_idx, end_dim, end_node):
-                        continue
-                    # check index copmute
-                    if not self.trace_flow.check_index_compute(start_idx, end_dim, end_node, end_idx):
+                    if not self.trace_flow.check_region_start_end(start_node, start_dim, start_idx, end_node, end_dim,
+                                                                  end_idx):
                         continue
                     # flow search
                     chunk_info = self.trace_flow.flow_search(start_idx, start_dim, end_idx, end_dim)
                     if chunk_info is None:
-                        continue
-                    # check index copmute
-                    if not self.trace_flow.check_index_duplicate(chunk_info):
                         continue
                     chunk_infos.append(chunk_info)
         return chunk_infos
@@ -215,7 +228,7 @@ class SearchChunk(object):
         possible_chunk_region = []
         output_trace = copy.deepcopy(self.trace_indice.indice_trace_list)
         input_trace = []    # trace of a node's input nodes
-        for _, n in enumerate(self.trace_indice.node_list):
+        for _, n in enumerate(self.node_mgr.get_node_list()):
             cur_trace = {}
             for arg in n.args:
                 if type(arg) == type(n) and not is_non_compute_node_except_placeholder(arg):
@@ -225,10 +238,9 @@ class SearchChunk(object):
         for start_idx in range(max_chunk_region[0], peak_node + 1):
             for end_idx in range(peak_node, max_chunk_region[1] + 1):
                 # skip non compute nodes
-                if is_non_compute_node(self.trace_indice.node_list[start_idx]) or is_non_compute_node(
-                        self.trace_indice.node_list[end_idx]):
+                if is_non_compute_node(self.node_mgr.get_node_by_idx(start_idx)) or is_non_compute_node(
+                        self.node_mgr.get_node_by_idx(end_idx)):
                     continue
-
                 # select free dim
                 chunk_info = self._find_chunk_info(input_trace, output_trace, start_idx, end_idx)
                 if len(chunk_info) > 0:
@@ -268,12 +280,6 @@ class SearchChunk(object):
         best_chunk_region = self.reorder_graph.reorder_all(best_chunk_region)
         return best_chunk_region
 
-    def _stop_search(self, init_mem_peak, mem_peak):
-        sorted_init_mem_peak = sorted(init_mem_peak)
-        if max(mem_peak) < sorted_init_mem_peak[int(len(sorted_init_mem_peak) * 0.5)]:
-            return True
-        return False
-
     def search_region(self) -> Dict:
         """
         Search all chunk regions:
@@ -288,11 +294,7 @@ class SearchChunk(object):
             get_logger().info("AutoChunk start searching chunk regions")
 
         chunk_infos = []
-        (
-            init_mem_peak,
-            _,
-            active_node,
-        ) = self.estimate_memory.estimate_chunk_inference_mem(self.trace_indice.node_list)
+        init_mem_peak, _, active_node = self.estimate_memory.estimate_chunk_inference_mem(self.node_mgr.get_node_list())
         mem_peak = init_mem_peak
 
         while True:
@@ -301,19 +303,16 @@ class SearchChunk(object):
                 break
             chunk_infos.append(chunk_info)
 
-            (
-                mem_peak,
-                _,
-                active_node,
-            ) = self.estimate_memory.estimate_chunk_inference_mem(self.trace_indice.node_list, chunk_infos)
+            mem_peak, _, active_node = self.estimate_memory.estimate_chunk_inference_mem(
+                self.node_mgr.get_node_list(), chunk_infos)
 
             if self.print_progress:
                 get_logger().info("AutoChunk find chunk region %d = (%d, %d)" %
                                   (len(chunk_infos), chunk_info["region"][0], chunk_info["region"][1]))
 
-            if self._stop_search(init_mem_peak, mem_peak):
-                break
         if self.print_mem:
             self.print_mem = False
-            self.estimate_memory.estimate_chunk_inference_mem(self.trace_indice.node_list, chunk_infos, print_mem=True)
+            self.estimate_memory.estimate_chunk_inference_mem(self.node_mgr.get_node_list(),
+                                                              chunk_infos,
+                                                              print_mem=True)
         return chunk_infos

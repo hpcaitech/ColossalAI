@@ -6,6 +6,7 @@ model:
     linear_start: 0.00085
     linear_end: 0.0120
     num_timesteps_cond: 1
+    ckpt: None # use ckpt path
     log_every_t: 200
     timesteps: 1000
     first_stage_key: image
@@ -16,7 +17,7 @@ model:
     conditioning_key: crossattn
     monitor: val/loss_simple_ema
     scale_factor: 0.18215
-    use_ema: False # we set this to false because this is an inference only config
+    use_ema: False
 
     scheduler_config: # 10000 warmup steps
       target: ldm.lr_scheduler.LambdaLinearScheduler

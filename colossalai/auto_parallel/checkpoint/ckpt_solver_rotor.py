@@ -207,11 +207,10 @@ class CheckpointSolverRotor(CheckpointSolverBase):
             mmax (int): Maximum number of memory slots.
 
         Returns:
-            cost_table (List): cost_table[m][lhs][rhs] with lhs = 0...chain.length
-                                     and rhs = lhs...chain.length (lhs is not included) and m = 0...mmax
-            back_ptr (List): back_ptr[m][lhs][rhs] is (True,) if the optimal choice
-                                     is a chain checkpoint (False, j) if the optimal choice is a leaf checkpoint
-                                     of length j
+            cost_table (List): cost_table[m][lhs][rhs] indicates the optimal cost of the subproblem from lhs to rhs
+            with m memory slots.
+            back_ptr (List): back_ptr[m][lhs][rhs] indicates the best operation at this point. It is (True,) if the optimal choice
+            is a chain checkpoint, it is (False, j) if the optimal choice is a leaf checkpoint of length j
         """
 
         ftime = chain.ftime + [0.0]
@@ -224,18 +223,17 @@ class CheckpointSolverRotor(CheckpointSolverBase):
         # Build table
         cost_table = [[{} for _ in range(len(chain) + 1)] for _ in range(mmax + 1)]
         back_ptr = [[{} for _ in range(len(chain) + 1)] for _ in range(mmax + 1)]
-        # Last one is a dict because its indices go from i to l. Renumbering will wait for C implementation
 
-        # Initialize borders of the tables for lmax-lmin = 0
+        # Initialize corner cases where length of sequence equals to 1, i.e. lhs == rhs
         for m in range(mmax + 1):
             for i in range(len(chain) + 1):
                 limit = max(x[i + 1] + xbar[i + 1] + ftmp[i], x[i + 1] + xbar[i + 1] + btmp[i])
-                if m >= limit:    # Equation (1)
+                if m >= limit:
                     cost_table[m][i][i] = ftime[i] + btime[i]
                 else:
                     cost_table[m][i][i] = float("inf")
 
-        # Compute everything
+        # Compute tables
         for m in range(mmax + 1):
             for d in range(1, len(chain) + 1):
                 for i in range(len(chain) + 1 - d):

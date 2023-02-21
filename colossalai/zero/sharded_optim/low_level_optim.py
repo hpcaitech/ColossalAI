@@ -131,7 +131,10 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
         # partition these param groups for data parallel training
         # and add buffers to parameter store for future access
         for group_id, param_group in enumerate(self.optim.param_groups):
-            group_params = param_group['params']
+            group_params = list()
+            for param in param_group['params']:
+                if param.requires_grad:
+                    group_params.append(param)
 
             # add the fp16 params to fp16_param_groups for bookkeeping
             self._fp16_param_groups[group_id] = group_params
@@ -547,20 +550,24 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
             reduction_states[tensor] = False
 
         # accumulate gradient
-        avg_gradients = self._grad_store._averaged_gradients
         for group_id in range(self.num_param_groups):
             param_group = self._param_store.get_fp16_params_by_rank_group(self._local_rank, group_id)
 
-            if group_id not in avg_gradients:
-                avg_gradients[group_id] = []
+            avg_gradients_group = self._grad_store.get_averaged_gradients_by_group(
+                group_id
+            )
 
             param_idx = 0
             for param in param_group:
                 if param.grad is not None:
-                    if len(avg_gradients[group_id]) == param_idx:
-                        avg_gradients[group_id].append(param.grad)
+                    if len(avg_gradients_group) == param_idx:
+                        self._grad_store.append_average_gradient_by_group(
+                            group_id, param.grad
+                        )
                     else:
-                        avg_gradients[group_id][param_idx].add_(param.grad)
+                        self._grad_store.add_average_gradient_by_group(
+                            group_id, param_idx, param.grad
+                        )
                     param_idx += 1
 
         # the gradients needed are stored in the avg_gradients buffer
