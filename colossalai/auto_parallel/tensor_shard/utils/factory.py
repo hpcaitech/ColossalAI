@@ -123,9 +123,9 @@ def find_repeat_blocks(gm: torch.fx.GraphModule, common_length_threshold: int = 
 
         return new_args
 
-    def _all_equal(l, check_fn):
-        base_value = l[-1]
-        for e in l:
+    def _all_equal(check_list, check_fn):
+        base_value = check_list[-1]
+        for e in check_list:
             if not check_fn(e, base_value):
                 return False
         return True
