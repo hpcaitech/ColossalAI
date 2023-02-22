@@ -61,7 +61,7 @@ class SaveCheckpoint(Callback):
 
             # save model
             if self.model_dict[model][0] is None:
-                # saving only optimizer states is meaningless
+                # saving only optimizer states is meaningless, so it would be skipped
                 continue
             model_path = os.path.join(base_path, f'{model}.pt')
             self.strategy.save_model(model=self.model_dict[model][0], path=model_path, only_rank0=True)
