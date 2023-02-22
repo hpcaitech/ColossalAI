@@ -72,6 +72,9 @@ class ChunkManager:
 
             if tensor.numel() > chunk_size:
                 chunk_size = tensor.numel()
+                dp_size = tensor.process_group.dp_world_size()
+                chunk_size = chunk_size + (-chunk_size % dp_size)
+
             chunk = Chunk(
                 chunk_size=chunk_size,
                 process_group=tensor.process_group,
