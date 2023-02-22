@@ -90,7 +90,9 @@ def test_repeat_blocks(model_cls):
     gm = GraphModule(model, graph, model.__class__.__name__)
     gm.recompile()
 
-    common_blocks = find_repeat_blocks(gm, common_length_threshold=10)
+    node_list = list(graph.nodes)
+    root_module = graph.owning_module
+    common_blocks = find_repeat_blocks(node_list, root_module, common_length_threshold=10)
 
     total_num_nodes = len(list(graph.nodes))
     # remove the input placeholder node and the output node

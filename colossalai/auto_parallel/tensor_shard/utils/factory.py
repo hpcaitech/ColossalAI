@@ -93,7 +93,7 @@ def generate_resharding_costs(nodes: List[Node],
     return resharding_costs
 
 
-def find_repeat_blocks(gm: torch.fx.GraphModule, common_length_threshold: int = 20):
+def find_repeat_blocks(node_list: List[torch.fx.Node], root_module, common_length_threshold: int = 20):
     '''
     Find the largest repeat blocks in the graph, whose length is larger than the threshold.
 
@@ -101,7 +101,8 @@ def find_repeat_blocks(gm: torch.fx.GraphModule, common_length_threshold: int = 
         gm (GraphModule): the graph module to be analyzed.
         common_length_threshold (int): the threshold of the repeat block length.
     '''
-    graph = gm.graph
+
+    # graph = gm.graph
 
     def _process_args(args):
         new_args = []
@@ -134,19 +135,19 @@ def find_repeat_blocks(gm: torch.fx.GraphModule, common_length_threshold: int = 
         if len(l1) != len(l2):
             return False
         for node1, node2 in zip(l1, l2):
-            if hash(node1.hash_value) != hash(node2.hash_value):
+            if hash(node1.hash_key) != hash(node2.hash_key):
                 return False
         return True
 
     def _check_node_equal(node1, node2):
-        if hash(node1.hash_value) == hash(node2.hash_value):
+        if hash(node1.hash_key) == hash(node2.hash_key):
             return True
         return False
 
-    for index, node in enumerate(graph.nodes):
+    for index, node in enumerate(node_list):
         if node.op == 'call_module':
             target = node.target
-            submod = gm.get_submodule(target)
+            submod = root_module.get_submodule(target)
             submod_type = type(submod)
             target = submod_type
         else:
@@ -155,29 +156,29 @@ def find_repeat_blocks(gm: torch.fx.GraphModule, common_length_threshold: int = 
         new_args = _process_args(node.args)
 
         if node.op != 'get_attr':
-            hash_value = (node.op, target, *new_args)
+            hash_key = (node.op, target, *new_args)
         else:
-            hash_value = (node.op,)
+            hash_key = (node.op,)
 
-        setattr(node, 'hash_value', hash_value)
+        setattr(node, 'hash_key', hash_key)
 
     hash_value_to_node_dict = {}
 
-    for index, node in enumerate(graph.nodes):
-        hash_value = hash(node.hash_value)
+    for index, node in enumerate(node_list):
+        hash_value = hash(node.hash_key)
         if hash_value not in hash_value_to_node_dict:
             hash_value_to_node_dict[hash_value] = []
         hash_value_to_node_dict[hash_value].append(index)
 
-    node_list = list(graph.nodes)
+    # node_list = list(graph.nodes)
 
     node_list_start = 0
     max_common_length = common_length_threshold
     common_blocks_index = []
-    for index, node in enumerate(graph.nodes):
+    for index, node in enumerate(node_list):
         # the comparison will be triggered if a common node appears
-        if len(hash_value_to_node_dict[hash(node.hash_value)]) >= 2:
-            start_index_list = hash_value_to_node_dict[hash(node.hash_value)]
+        if len(hash_value_to_node_dict[hash(node.hash_key)]) >= 2:
+            start_index_list = hash_value_to_node_dict[hash(node.hash_key)]
             check_block_list = [node_list[start:start + max_common_length] for start in start_index_list]
 
             common_label = True
