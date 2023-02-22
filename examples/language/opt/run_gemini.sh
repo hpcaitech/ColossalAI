@@ -1,7 +1,7 @@
 set -x
 export BS=${BS:-16}
 export MEMCAP=${MEMCAP:-0}
-# Acceptable values include `125m`, `350m`, `1.3b`, `2.7b`, `6.7`, `13b`, `30b`, `66b`. For `175b`
+# Acceptable values include `125m`, `350m`, `1.3b`, `2.7b`, `6.7b`, `13b`, `30b`, `66b`. For `175b`
 export MODEL=${MODEL:-"125m"}
 export GPUNUM=${GPUNUM:-1}
 
