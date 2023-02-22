@@ -81,3 +81,9 @@ class GradientStore(BaseStore):
         """
 
         self._averaged_gradients[group_id] = []
+
+    def reset_all_average_gradients(self) -> None:
+        """
+        Reset the bookkeeping data structure for averaged gradients to an empty list
+        """
+        self._averaged_gradients = dict()
