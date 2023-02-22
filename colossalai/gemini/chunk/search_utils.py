@@ -119,7 +119,7 @@ def search_chunk_configuration(
     assert search_range_byte >= 0
 
     params_dict = classify_params_by_dp_degree(param_order, strict_ddp_flag)
-    size_lcm = math.lcm(*params_dict.keys())
+    size_lcm = np.lcm.reduce(list(params_dict.keys()))
     config_dict: Dict[int, Dict] = dict()
     total_param_size = 0
 
