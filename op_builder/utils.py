@@ -35,7 +35,8 @@ def get_cuda_version_in_pytorch() -> List[int]:
         torch_cuda_major = torch.version.cuda.split(".")[0]
         torch_cuda_minor = torch.version.cuda.split(".")[1]
     except:
-        raise ValueError("Cannot retrive the CUDA version in the PyTorch binary")
+        raise ValueError(
+            "[extension] Cannot retrive the CUDA version in the PyTorch binary given by torch.version.cuda")
     return torch_cuda_major, torch_cuda_minor
 
 
@@ -53,13 +54,13 @@ def get_cuda_bare_metal_version(cuda_dir) -> List[int]:
 
     if cuda_dir is None:
         raise ValueError(
-            f"The argument cuda_dir is None, but expected to be a string. Please make sure your have exported the environment variable CUDA_HOME correctly."
+            f"[extension] The argument cuda_dir is None, but expected to be a string. Please make sure your have exported the environment variable CUDA_HOME correctly."
         )
 
     # check for nvcc path
     if not os.path.exists(nvcc_path):
         raise FileNotFoundError(
-            f"The nvcc compiler is not found in {nvcc_path}, please make sure you have set the correct value for CUDA_HOME."
+            f"[extension] The nvcc compiler is not found in {nvcc_path}, please make sure you have set the correct value for CUDA_HOME."
         )
 
     # parse the nvcc -v output to obtain the system cuda version
@@ -72,7 +73,7 @@ def get_cuda_bare_metal_version(cuda_dir) -> List[int]:
         bare_metal_minor = release[1][0]
     except:
         raise ValueError(
-            f"Failed to parse the nvcc output to obtain the system CUDA bare metal version. The output for 'nvcc -v' is \n{raw_output}"
+            f"[extension] Failed to parse the nvcc output to obtain the system CUDA bare metal version. The output for 'nvcc -v' is \n{raw_output}"
         )
 
     return bare_metal_major, bare_metal_minor
@@ -84,9 +85,16 @@ def check_system_pytorch_cuda_match(cuda_dir):
 
     if bare_metal_major != torch_cuda_major:
         raise Exception(
-            f'Failed to build PyTorch extension because the detected CUDA version ({bare_metal_major}.{bare_metal_minor}) '
+            f'[extension] Failed to build PyTorch extension because the detected CUDA version ({bare_metal_major}.{bare_metal_minor}) '
             f'mismatches the version that was used to compile PyTorch ({torch_cuda_major}.{torch_cuda_minor}).'
             'Please make sure you have set the CUDA_HOME correctly and installed the correct PyTorch in https://pytorch.org/get-started/locally/ .'
+        )
+
+    if bare_metal_minor != torch_cuda_minor:
+        warnings.warn(
+            f"[extension] The CUDA version on the system ({bare_metal_major}.{bare_metal_minor}) does not match with the version ({torch_cuda_major}.{torch_cuda_minor}) torch was compiled with. "
+            "The mismatch is found in the minor version. As the APIs are compatible, we will allow compilation to proceed. "
+            "If you encounter any issue when using the built kernel, please ensure that you build it again with fully matched CUDA versions"
         )
     return True
 
@@ -122,8 +130,9 @@ def check_pytorch_version(min_major_version, min_minor_version) -> bool:
 
     # if the
     if torch_major < min_major_version or (torch_major == min_major_version and torch_minor < min_minor_version):
-        raise RuntimeError(f"Colossal-AI requires Pytorch {min_major_version}.{min_minor_version} or newer.\n"
-                           "The latest stable release can be obtained from https://pytorch.org/get-started/locally/")
+        raise RuntimeError(
+            f"[extension] Colossal-AI requires Pytorch {min_major_version}.{min_minor_version} or newer.\n"
+            "The latest stable release can be obtained from https://pytorch.org/get-started/locally/")
 
 
 def check_cuda_availability():
@@ -147,7 +156,7 @@ def set_cuda_arch_list(cuda_dir):
     # we only need to set this when CUDA is not available for cross-compilation
     if not cuda_available:
         warnings.warn(
-            '\nPyTorch did not find available GPUs on this system.\n',
+            '\n[extension]  PyTorch did not find available GPUs on this system.\n',
             'If your intention is to cross-compile, this is not an error.\n'
             'By default, Colossal-AI will cross-compile for \n'
             '1. Pascal (compute capabilities 6.0, 6.1, 6.2),\n'

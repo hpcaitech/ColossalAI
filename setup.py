@@ -36,12 +36,12 @@ ext_modules = []
 def environment_check_for_cuda_extension_build():
     if not TORCH_AVAILABLE:
         raise ModuleNotFoundError(
-            "PyTorch is not found while CUDA_EXT=1. You need to install PyTorch first in order to build CUDA extensions"
+            "[extension] PyTorch is not found while CUDA_EXT=1. You need to install PyTorch first in order to build CUDA extensions"
         )
 
     if not CUDA_HOME:
         raise RuntimeError(
-            "CUDA_HOME is not found while CUDA_EXT=1. You need to export CUDA_HOME environment vairable or install CUDA Toolkit first in order to build CUDA extensions"
+            "[extension] CUDA_HOME is not found while CUDA_EXT=1. You need to export CUDA_HOME environment vairable or install CUDA Toolkit first in order to build CUDA extensions"
         )
 
     check_system_pytorch_cuda_match(CUDA_HOME)
