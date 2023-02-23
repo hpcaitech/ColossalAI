@@ -90,11 +90,12 @@ def check_system_pytorch_cuda_match(cuda_dir):
             'Please make sure you have set the CUDA_HOME correctly and installed the correct PyTorch in https://pytorch.org/get-started/locally/ .'
         )
 
+    print(bare_metal_minor != torch_cuda_minor)
     if bare_metal_minor != torch_cuda_minor:
         warnings.warn(
             f"[extension] The CUDA version on the system ({bare_metal_major}.{bare_metal_minor}) does not match with the version ({torch_cuda_major}.{torch_cuda_minor}) torch was compiled with. "
             "The mismatch is found in the minor version. As the APIs are compatible, we will allow compilation to proceed. "
-            "If you encounter any issue when using the built kernel, please ensure that you build it again with fully matched CUDA versions"
+            "If you encounter any issue when using the built kernel, please try to build it again with fully matched CUDA versions"
         )
     return True
 
