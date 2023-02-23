@@ -1,6 +1,6 @@
+import operator
 from copy import copy
 from functools import lru_cache, reduce
-import operator
 from typing import Callable, Optional, Set
 
 import torch
