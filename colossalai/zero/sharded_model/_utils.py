@@ -30,6 +30,12 @@ def alloc_storage(data: torch.Tensor, size: torch.Size) -> None:
     assert data.storage().size() == 0
     data.storage().resize_(size.numel())
 
+def cast_tensor_to_bf16(tensor: torch.Tensor) -> torch.Tensor:
+    if isinstance(tensor, StatefulTensor):
+        tensor = tensor.payload
+    if torch.is_floating_point(tensor) and tensor.dtype is torch.float32:
+        return tensor.bfloat16()
+    return tensor
 
 def cast_tensor_to_fp16(tensor: torch.Tensor) -> torch.Tensor:
     if isinstance(tensor, StatefulTensor):
@@ -42,8 +48,8 @@ def cast_tensor_to_fp16(tensor: torch.Tensor) -> torch.Tensor:
 def cast_tensor_to_fp32(tensor: Union[torch.Tensor, StatefulTensor]) -> torch.Tensor:
     if isinstance(tensor, StatefulTensor):
         tensor = tensor.payload
-
-    if torch.is_floating_point(tensor) and tensor.dtype is torch.float16:
+    # if torch.is_floating_point(tensor) and tensor.dtype is torch.float16:
+    if torch.is_floating_point(tensor) and (tensor.dtype is torch.float16 or tensor.dtype is torch.bfloat16):
         return tensor.float()
     return tensor
 

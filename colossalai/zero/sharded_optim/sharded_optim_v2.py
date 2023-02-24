@@ -83,6 +83,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                  growth_interval: int = 1000,
                  hysteresis: int = 2,
                  max_scale: float = 2**32,
+                 use_bf16: bool = False,
                  dp_process_group: Optional[ProcessGroup] = None,
                  mp_process_group: Optional[ProcessGroup] = None,
                  verbose: bool = False) -> None:
@@ -92,6 +93,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         super().__init__(optimizer)
         self.shard_strategy = sharded_model.shard_strategy
         self.model: ShardedModelV2 = sharded_model
+        self.use_bf16 = use_bf16
 
         self.gpu_margin_mem_ratio: float = float(gpu_margin_mem_ratio)
         assert 0.0 <= self.gpu_margin_mem_ratio <= 1.0, f'gpu_margin_mem_ratio must >=0.0 and <=1.0'
@@ -355,7 +357,11 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                 torch.empty(p.data.shape, dtype=p.colo_attr.data_payload.dtype, device=p.colo_attr.data_payload.device))
 
         # TODO() optimize this line CPU (fp32) -> GPU (fp16)
-        p.colo_attr.sharded_data_tensor.payload_copy(p.half().detach())
+        if self.use_bf16:
+            p.colo_attr.sharded_data_tensor.payload_copy(p.bfloat16().detach())
+        else:
+            p.colo_attr.sharded_data_tensor.payload_copy(p.half().detach())
+        # p.colo_attr.sharded_data_tensor.payload_copy(p.half().detach())
         p.colo_attr.set_data_none()
 
         if p.colo_attr.keep_not_shard and p.colo_attr.is_replicated:

@@ -29,6 +29,7 @@ from colossalai.zero.utils import ZeroHook
 from ._utils import (
     cast_float_arguments,
     cast_tensor_to_fp16,
+    cast_tensor_to_bf16,
     cast_tensor_to_fp32,
     chunk_and_pad,
     free_storage,
@@ -85,12 +86,15 @@ class ShardedModelV2(nn.Module):
                  tensor_placement_policy: str = 'cuda',
                  gradient_predivide_factor: Optional[float] = 1.0,
                  reuse_fp16_shard: bool = False,
+                 use_bf16: bool = False,
                  *args,
                  **kwargs):
         assert not isinstance(module, ShardedModelV2), 'Nested ShardedModelV2 is not supported.'
         super().__init__()
         self.logger = get_dist_logger()
-
+        if use_bf16:
+            module = module.cuda().bfloat16()
+        
         # We force users to use ZeroInitContext
         for submodule in module.modules():
             sharded_cnt = 0
@@ -231,7 +235,11 @@ class ShardedModelV2(nn.Module):
 
     def forward(self, *args: Any, **kwargs: Any) -> torch.Tensor:
         self._pre_forward_operations(*args)
-        args, kwargs = cast_float_arguments(cast_tensor_to_fp16, *args, **kwargs)
+        if self.use_bf16:
+            args, kwargs = cast_float_arguments(cast_tensor_to_bf16, *args, **kwargs)
+        else:
+            args, kwargs = cast_float_arguments(cast_tensor_to_fp16, *args, **kwargs)
+        # args, kwargs = cast_float_arguments(cast_tensor_to_fp16, *args, **kwargs)
         outputs = self.module(*args, **kwargs)
         self._post_forward_operations()
         return outputs

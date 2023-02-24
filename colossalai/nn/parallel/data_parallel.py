@@ -226,6 +226,13 @@ class ZeroDDP(ColoDDP):
         self.param2name: Dict[nn.Parameter, str] = dict()
         self.name2param: Dict[str, nn.Parameter] = dict()
 
+        self.use_bf16 = False
+        for p in module.parameters():
+            if p.dtype == torch.bfloat16:
+                self.use_bf16 = True
+                print(f"ZeroDDP use torch.bfloat16 instead of fp16", flush=True)
+                break
+
         self._cast_buffers()
         self._logger = get_dist_logger()
 
@@ -275,7 +282,11 @@ class ZeroDDP(ColoDDP):
             assert not self.gemini_manager.need_warmup or not self.gemini_manager.is_warmup(
             ), "You should run a completed iteration as your warmup iter"
 
-        args, kwargs = _cast_float(args, torch.half), _cast_float(kwargs, torch.half)
+        if self.use_bf16:
+            args, kwargs = _cast_float(args, torch.bfloat16), _cast_float(kwargs, torch.bfloat16)
+        else:
+            args, kwargs = _cast_float(args, torch.half), _cast_float(kwargs, torch.half)
+
         self.module.zero_grad(set_to_none=True)
         self.gemini_manager.pre_iter(*args)
         with ColoParamOpHookManager.use_hooks(self.param_op_hook):
@@ -658,7 +669,8 @@ class ZeroDDP(ColoDDP):
             fp32_data = p.data.float()
             fp32_p = ColoTensor(fp32_data, spec=ColoTensorSpec(p.process_group))
             # create a fp16 parameter
-            p.data = p.data.half()
+            p.data = p.data.bfloat16() if self.use_bf16 else p.data.half()
+
 
             # register the fp16 parameter and fp32 parameter in the chunk manager
             dp_world_size = p.process_group.dp_world_size()
@@ -692,4 +704,4 @@ class ZeroDDP(ColoDDP):
         for buffer in self.module.buffers():
             buffer.data = buffer.cuda()
             if torch.is_floating_point(buffer):
-                buffer.data = buffer.half()
+                buffer.data = buffer.bfloat16() if self.use_bf16 else buffer.half()
