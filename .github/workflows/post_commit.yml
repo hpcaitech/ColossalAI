@@ -1,11 +1,17 @@
-name: pre-commit
+name: post-commit
 
 on:
   pull_request:
+    types:
+        - closed
 
 jobs:
+  # this job will run after a PR is merged to run pre-commit on any changed file
+  # so that the user does not need to learn pre-commit and pre-commit can still
+  # be auto-executed by the workflow
   pre-commit:
     runs-on: ubuntu-latest
+    if: github.event.pull_request.merged == true && github.repository == 'hpcaitech/ColossalAI'
     steps:
     - uses: actions/checkout@v2
       with:
@@ -36,6 +42,11 @@ jobs:
           echo "$file was changed"
         done
 
+    # check out the main branch
+    - uses: actions/checkout@v2
+      with:
+        ref: 'main'
+
     - uses: actions/setup-python@v3
 
     - name: Cache pre-commit hooks
@@ -49,23 +60,32 @@ jobs:
         pip install pre-commit
         pre-commit install
 
-    - name: Run pre-commit on Changed Files
-      id: precommit
+    # run pre-commit on changed files
+    - name: Run Pre-commit
       run: |
         for file in ${{ steps.find-changed-files.outputs.all_changed_files }}; do
-          echo "======= running pre-commit on ${file} ======="
-          pre-commit run --files $file
+          pre-commit run --files $file || true
         done
 
-    - name: Save PR number
-      if: always()
-      env:
-        PR_NUMBER: ${{ github.event.number }}
+    # create commit for pre-commit
+    - name: Create commits
       run: |
-        mkdir -p ./pr
-        echo $PR_NUMBER > ./pr/pr_number
-    - uses: actions/upload-artifact@v3
-      if: always()
+        git config --global user.name 'github-actions'
+        git config --global user.email 'github-actions@github.com'
+        git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
+        git add -A
+        git commit -am "[format] applied code formatting on changed files in pull request ${{ github.event.pull_request.number }}"
+
+    # create pull request
+    - name: Create Pull Request
+      id: cpr
+      uses: peter-evans/create-pull-request@v4
       with:
-        name: pr_number
-        path: pr/
+        branch: pre-commit-${{ github.event.pull_request.number }}
+        title: "[format] applied code formatting on changed files in PR ${{ github.event.pull_request.number }}"
+
+    - name: Enable Auto-merge for the New PR
+      uses: peter-evans/enable-pull-request-automerge@v2
+      with:
+        pull-request-number: ${{ steps.cpr.outputs.pull-request-number }}
+        merge-method: squash
