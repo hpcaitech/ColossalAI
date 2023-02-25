@@ -3,7 +3,7 @@
 
    [![logo](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/colossal-ai_logo_vertical.png)](https://www.colossalai.org/)
 
-   Colossal-AI: Making big AI models cheaper, easier, and more scalable
+   Colossal-AI: Making large AI models cheaper, faster and more accessible
 
    <h3> <a href="https://arxiv.org/abs/2110.14883"> Paper </a> |
    <a href="https://www.colossalai.org/"> Documentation </a> |
