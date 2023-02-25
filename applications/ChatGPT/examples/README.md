@@ -73,14 +73,20 @@ We support naive inference demo after training.
 python inference_actor.py --pretrain <your actor model path> --model <your model type>
 ```
 
+#### data
+- [x] [rm-static](https://huggingface.co/datasets/Dahoas/rm-static)
+- [ ] [static-hh](https://huggingface.co/datasets/Dahoas/static-hh)
+- [ ] [openai/summarize_from_feedback](https://huggingface.co/datasets/openai/summarize_from_feedback)
+- [ ] [Dahoas/instruct-synthetic-prompt-responses](https://huggingface.co/datasets/Dahoas/instruct-synthetic-prompt-responses)
+
 ## Support Model
 
 ### GPT
-- [ ]  GPT2-S (s)
-- [ ]  GPT2-M (m)
-- [ ]  GPT2-L (l)
+- [x]  GPT2-S (s)
+- [x]  GPT2-M (m)
+- [x]  GPT2-L (l)
 - [ ]  GPT2-XL (xl)
-- [ ]  GPT2-4B (4b)
+- [x]  GPT2-4B (4b)
 - [ ]  GPT2-6B (6b)
 - [ ]  GPT2-8B (8b)
 - [ ]  GPT2-10B (10b)

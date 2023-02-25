@@ -136,6 +136,7 @@ strategy.load_optimizer(actor_optim, 'actor_optim_checkpoint.pt')
 - [ ] implement PPO-ptx fine-tuning
 - [ ] integrate with Ray
 - [ ] support more RL paradigms, like Implicit Language Q-Learning (ILQL)
+- [ ] support BoN(best of N sample)
 
 ## Invitation to open-source contribution
 Referring to the successful attempts of [BLOOM](https://bigscience.huggingface.co/) and [Stable Diffusion](https://en.wikipedia.org/wiki/Stable_Diffusion), any and all developers and partners with computing powers, datasets, models are welcome to join and build an ecosystem with Colossal-AI, making efforts towards the era of big AI models from the starting point of replicating ChatGPT!
