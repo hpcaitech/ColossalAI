@@ -51,15 +51,14 @@ def test_cost_graph():
     #     return fc
     gm = GraphModule(model, graph, model.__class__.__name__)
     gm.recompile()
-    graph_analyser = GraphAnalyser(gm)
-    liveness_list = graph_analyser.liveness_analysis()
+
     solver_options = SolverOptions()
     strategies_constructor = StrategiesConstructor(graph, device_mesh, solver_options)
     strategies_constructor.build_strategies_and_cost()
 
     cost_graph = CostGraph(strategies_constructor.leaf_strategies)
     cost_graph.simplify_graph()
-    solver = Solver(gm.graph, strategies_constructor, cost_graph, graph_analyser)
+    solver = Solver(gm.graph, strategies_constructor, cost_graph)
 
     ret = solver.call_solver_serialized_args()
     print(ret[0])
