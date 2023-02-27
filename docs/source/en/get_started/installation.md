@@ -1,4 +1,5 @@
 # Setup
+> Colossal-AI currently only supports the Linux operating system and has not been tested on other OS such as Windows and macOS.
 
 ## Download From PyPI
 

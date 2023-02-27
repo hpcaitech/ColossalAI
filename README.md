@@ -275,6 +275,7 @@ Acceleration of [AlphaFold Protein Structure](https://alphafold.ebi.ac.uk/)
 <p align="right">(<a href="#top">back to top</a>)</p>
 
 ## Installation
+> Colossal-AI currently only supports the Linux operating system and has not been tested on other OS such as Windows and macOS.
 
 ### Install from PyPI
 

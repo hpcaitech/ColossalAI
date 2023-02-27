@@ -1,4 +1,5 @@
 # 安装
+> Colossal-AI 目前仅支持Linux操作系统，没有在其他操作系统如Windows和macOS进行测试
 
 ## 从PyPI上安装
 
