@@ -9,7 +9,6 @@ from colossalai.auto_parallel.passes.runtime_preparation_pass import runtime_pre
 from colossalai.auto_parallel.tensor_shard.options import SolverOptions
 from colossalai.auto_parallel.tensor_shard.solver import StrategiesConstructor
 from colossalai.auto_parallel.tensor_shard.solver.cost_graph import CostGraph
-from colossalai.auto_parallel.tensor_shard.solver.graph_analysis import GraphAnalyser
 from colossalai.auto_parallel.tensor_shard.solver.solver import Solver
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.fx.tracer.tracer import ColoTracer
@@ -109,8 +108,7 @@ def numerical_test_for_node_strategy(model: torch.nn.Module,
             # solution construction
             cost_graph = CostGraph(strategies_constructor.leaf_strategies)
             cost_graph.simplify_graph()
-            graph_analyser = GraphAnalyser(gm)
-            solver = Solver(gm.graph, strategies_constructor, cost_graph, graph_analyser, verbose=False)
+            solver = Solver(gm.graph, strategies_constructor, cost_graph, verbose=False)
             ret = solver.call_solver_serialized_args()
             solution = list(ret[0])
         gm, sharding_spec_dict, origin_spec_dict, comm_actions_dict = runtime_preparation_pass(
