@@ -6,7 +6,21 @@
 pip install -r requirements.txt
 ```
 
-## Train with dummy prompt data
+## Train the reward model (Stage 2)
+We use [rm-static](https://huggingface.co/datasets/Dahoas/rm-static) as dataset to train our reward model. It is a dataset of chosen & rejected response of the same prompt.
+
+You can download the dataset from huggingface automatically.
+
+Use these code to train your reward model.
+
+```shell
+# Naive reward model training
+python train_reward_model.py --pretrain <your model path>
+# if to use LoRA
+python train_reward_model.py --pretrain <your model path> --lora_rank 16
+```
+
+## Train with dummy prompt data (Stage 3)
 
 This script supports 3 strategies:
 
@@ -33,7 +47,7 @@ torchrun --standalone --nproc_per_node=2 train_dummy.py --strategy ddp
 torchrun --standalone --nproc_per_node=2 train_dummy.py --strategy colossalai
 ```
 
-## Train with real prompt data
+## Train with real prompt data (Stage 3)
 
 We use [awesome-chatgpt-prompts](https://huggingface.co/datasets/fka/awesome-chatgpt-prompts) as example dataset. It is a small dataset with hundreds of prompts.
 
@@ -52,18 +66,11 @@ torchrun --standalone --nproc_per_node=2 train_prompts.py prompts.csv --strategy
 torchrun --standalone --nproc_per_node=2 train_prompts.py prompts.csv --strategy colossalai
 ```
 
-## Train the reward model
-We use [rm-static](https://huggingface.co/datasets/Dahoas/rm-static) as dataset to train our reward model. It is a dataset of chosen & rejected response of the same prompt.
-
-You can download the dataset from huggingface automatically.
-
-Use these code to train your reward model.
-
+## Inference example(After Stage3)
+We support naive inference demo after training.
 ```shell
-# Naive reward model training
-python train_reward_model.py --pretrain <your model path>
-# if to use LoRA
-python train_reward_model.py --pretrain <your model path> --lora_rank 16
+# inference
+python inference_actor.py --pretrain <your actor model path> --model <your model type>
 ```
 
 ## Support Model
@@ -91,8 +98,8 @@ python train_reward_model.py --pretrain <your model path> --lora_rank 16
 ### BLOOM
 - [x] [BLOOM-560m](https://huggingface.co/bigscience/bloom-560m)
 - [x] [BLOOM-1b1](https://huggingface.co/bigscience/bloom-1b1)
-- [ ] [BLOOM-3b](https://huggingface.co/bigscience/bloom-3b)
-- [ ] [BLOOM-7b](https://huggingface.co/bigscience/bloomz-7b1)
+- [x] [BLOOM-3b](https://huggingface.co/bigscience/bloom-3b)
+- [x] [BLOOM-7b](https://huggingface.co/bigscience/bloomz-7b1)
 - [ ] BLOOM-175b
 
 ### OPT
