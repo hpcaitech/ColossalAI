@@ -1,4 +1,5 @@
 import argparse
+import torch
 
 from chatgpt.nn import BLOOMActor, GPTActor, OPTActor
 from transformers import AutoTokenizer
@@ -8,11 +9,11 @@ from transformers.models.gpt2.tokenization_gpt2 import GPT2Tokenizer
 def eval(args):
     # configure model
     if args.model == 'gpt2':
-        model = GPTActor(pretrained=args.pretrain).to(0)
+        model = GPTActor(pretrained=args.pretrain).to(torch.cuda.current_device())
     elif args.model == 'bloom':
-        model = BLOOMActor(pretrained=args.pretrain).to(0)
+        model = BLOOMActor(pretrained=args.pretrain).to(torch.cuda.current_device())
     elif args.model == 'opt':
-        model = OPTActor(pretrained=args.pretrain).to(0)
+        model = OPTActor(pretrained=args.pretrain).to(torch.cuda.current_device())
     else:
         raise ValueError(f'Unsupported model "{args.model}"')
 
@@ -30,7 +31,7 @@ def eval(args):
 
     model.eval()
     input = args.input
-    input_ids = tokenizer.encode(input, return_tensors='pt').to(0)
+    input_ids = tokenizer.encode(input, return_tensors='pt').to(torch.cuda.current_device())
     outputs = model.generate(input_ids,
                              max_length=args.max_length,
                              do_sample=True,
