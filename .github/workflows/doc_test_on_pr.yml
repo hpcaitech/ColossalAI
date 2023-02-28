@@ -48,7 +48,7 @@ jobs:
         github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' && github.event_name == 'pull_request' &&
         needs.detect-changed-doc.outputs.any_changed == 'true'
     name: Test the changed Doc
-    needs: detect-changed-example
+    needs: detect-changed-doc
     runs-on: [self-hosted, gpu]
     container:
       image: hpcaitech/pytorch-cuda:1.12.0-11.3.0
