@@ -276,6 +276,8 @@ Acceleration of [AlphaFold Protein Structure](https://alphafold.ebi.ac.uk/)
 
 ## Installation
 > Colossal-AI currently only supports the Linux operating system and has not been tested on other OS such as Windows and macOS.
+> 
+> Environment Requirement: PyTorch 1.10 ~ 1.12 (WIP higher version), Python >= 3.7, CUDA >= 11.0. If you encounter any problem about installation, you may want to raise an [issue](https://github.com/hpcaitech/ColossalAI/issues/new/choose) in this repository.
 
 ### Install from PyPI
 
@@ -353,7 +355,7 @@ docker run -ti --gpus all --rm --ipc=host colossalai bash
 
 Join the Colossal-AI community on [Forum](https://github.com/hpcaitech/ColossalAI/discussions),
 [Slack](https://join.slack.com/t/colossalaiworkspace/shared_invite/zt-z7b26eeb-CBp7jouvu~r0~lcFzX832w),
-and [WeChat](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/WeChat.png "qrcode") to share your suggestions, feedback, and questions with our engineering team.
+and [WeChat(微信)](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/WeChat.png "qrcode") to share your suggestions, feedback, and questions with our engineering team.
 
 ## Contributing
 
