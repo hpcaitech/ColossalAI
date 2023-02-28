@@ -64,5 +64,6 @@ jobs:
           mkdir $cache_dir
           mv ColossalAI $cache_dir
           cd ColossalAI-Documentation
+          pip install -v ./doc-build/third_party/hf-doc-builder
           pip install -v ./doc-build
           bash ./scripts/build.sh
