@@ -63,9 +63,8 @@ jobs:
 
       - name: Install Docer
         run: |
-          ls
-          pip install -v ./doc-build/third_party/hf-doc-builder
-          pip install -v ./doc-build
+          pip install -v ./ColossalAI-Documentation/doc-build/third_party/hf-doc-builder
+          pip install -v ./ColossalAI-Documentation/doc-build
 
       - name: Checkout ColossalAI
         uses: actions/checkout@v3
