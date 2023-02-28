@@ -37,7 +37,7 @@ jobs:
         with:
           base_sha: ${{ steps.locate-base-sha.outputs.baseSHA }}
           files: |
-            ./docs/source/**.md
+            ./docs/source/**/*.md
 
   # If no file is changed, it will prompt an error and shows the matrix do not have value.
   check-changed-doc:
