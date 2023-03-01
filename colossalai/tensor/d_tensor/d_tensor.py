@@ -37,7 +37,9 @@ class DTensor(torch.Tensor):
         '''
         source_spec = convert_layout_to_sharding_spec(self.dist_layout)
         target_spec = convert_layout_to_sharding_spec(target_layout)
-        return shape_consistency_manager.apply_for_autoparallel_runtime(self.local_tensor, source_spec, target_spec)
+        self.local_tensor = shape_consistency_manager.apply_for_autoparallel_runtime(
+            self.local_tensor, source_spec, target_spec)
+        self.dist_layout = target_layout
 
     def _apply_layout(self):
         '''

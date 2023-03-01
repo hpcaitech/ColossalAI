@@ -6,7 +6,7 @@ import torch.multiprocessing as mp
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
-from colossalai.tensor.d_tensor.d_tensor import DTensor
+from colossalai.tensor.d_tensor.d_tensor import DTensor, distribute_tensor
 from colossalai.tensor.d_tensor.layout import Layout
 from colossalai.tensor.sharding_spec import ShardingSpec
 from colossalai.utils import free_port
@@ -52,6 +52,24 @@ def check_dtensor(rank, world_size, port):
         assert output.equal(compare_output.narrow(0, 0, 2))
     elif rank in (2, 3):
         assert output.equal(compare_output.narrow(0, 2, 2))
+    else:
+        raise ValueError(f'rank {rank} is not in the device mesh')
+
+    new_sharding_spec = ShardingSpec(device_mesh=device_mesh,
+                                     entire_shape=original_tensor.shape,
+                                     dim_partition_dict={0: [0, 1]})
+    new_layout = Layout(device_mesh=device_mesh, device_type=torch.device('cuda'), sharding_spec=new_sharding_spec)
+
+    d_tensor.layout_convert(new_layout)
+
+    if rank == 0:
+        assert d_tensor.local_tensor.equal(original_tensor.narrow(0, 0, 1))
+    elif rank == 1:
+        assert d_tensor.local_tensor.equal(original_tensor.narrow(0, 1, 1))
+    elif rank == 2:
+        assert d_tensor.local_tensor.equal(original_tensor.narrow(0, 2, 1))
+    elif rank == 3:
+        assert d_tensor.local_tensor.equal(original_tensor.narrow(0, 3, 1))
     else:
         raise ValueError(f'rank {rank} is not in the device mesh')
 
