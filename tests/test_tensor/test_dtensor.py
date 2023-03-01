@@ -4,6 +4,7 @@ import torch
 import torch.multiprocessing as mp
 
 from colossalai.device.device_mesh import DeviceMesh
+from colossalai.fx.tracer import ColoTracer
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
 from colossalai.tensor.d_tensor.d_tensor import DTensor, distribute_tensor
@@ -16,10 +17,13 @@ class TestModel(torch.nn.Module):
 
     def __init__(self, in_features, out_features):
         super().__init__()
-        self.linear = torch.nn.Linear(in_features, out_features)
+        self.linear_1 = torch.nn.Linear(in_features, out_features)
+        self.linear_2 = torch.nn.Linear(out_features, in_features)
 
     def forward(self, x):
-        return self.linear(x)
+        x = self.linear_1(x)
+        x = self.linear_2(x)
+        return x
 
 
 def check_dtensor(rank, world_size, port):
@@ -58,7 +62,10 @@ def check_dtensor(rank, world_size, port):
     new_sharding_spec = ShardingSpec(device_mesh=device_mesh,
                                      entire_shape=original_tensor.shape,
                                      dim_partition_dict={0: [0, 1]})
-    new_layout = Layout(device_mesh=device_mesh, device_type=torch.device('cuda'), sharding_spec=new_sharding_spec)
+    new_layout = Layout(device_mesh=device_mesh,
+                        device_type=torch.device('cuda'),
+                        sharding_spec=new_sharding_spec,
+                        entire_shape=original_tensor.shape)
 
     d_tensor.layout_convert(new_layout)
 
@@ -70,6 +77,19 @@ def check_dtensor(rank, world_size, port):
         assert d_tensor.local_tensor.equal(original_tensor.narrow(0, 2, 1))
     elif rank == 3:
         assert d_tensor.local_tensor.equal(original_tensor.narrow(0, 3, 1))
+    else:
+        raise ValueError(f'rank {rank} is not in the device mesh')
+
+    dtensor_from_local = distribute_tensor(original_tensor, new_layout)
+
+    if rank == 0:
+        assert dtensor_from_local.local_tensor.equal(original_tensor.narrow(0, 0, 1))
+    elif rank == 1:
+        assert dtensor_from_local.local_tensor.equal(original_tensor.narrow(0, 1, 1))
+    elif rank == 2:
+        assert dtensor_from_local.local_tensor.equal(original_tensor.narrow(0, 2, 1))
+    elif rank == 3:
+        assert dtensor_from_local.local_tensor.equal(original_tensor.narrow(0, 3, 1))
     else:
         raise ValueError(f'rank {rank} is not in the device mesh')
 

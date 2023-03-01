@@ -1,6 +1,7 @@
 from typing import Optional
 
 import torch
+from torch.utils._pytree import tree_map
 
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.tensor.d_tensor.layout import Layout
@@ -54,7 +55,15 @@ class DTensor(torch.Tensor):
     def __torch_function__(cls, func, types, args=(), kwargs=None):
         if kwargs is None:
             kwargs = {}
-        args = [arg.local_tensor if hasattr(arg, 'local_tensor') else arg for arg in args]
+
+        def filter_arg(arg):
+            if isinstance(arg, DTensor):
+                return arg.local_tensor
+            else:
+                return arg
+
+        args = tree_map(filter_arg, args)
+        kwargs = tree_map(filter_arg, kwargs)
         # if we want to convert the result into DTensor, we need to infer the layout of result from the layout of input tensors
         # and op type.
 
@@ -119,15 +128,14 @@ def distribute_tensor(local_tensor: torch.Tensor, dist_layout: Layout) -> DTenso
 def distribute_module(module: torch.nn.Module, partition_fn: Optional[callable] = None) -> torch.nn.Module:
     '''
     This function converts all the parameters in the module to DTensor(DParam).
+
+    Note: This function is subject to future change as the DParam has not been implemented yet.
     '''
-    for key, param in module._parameters.items():
+    for name, param in module.named_parameters():
         if param is not None and not isinstance(param, DTensor):
-            module.register_parameter(
-                key,
             # TODO: we could convert the parameter to DParam here,
             # the type of the parameter could be an optional argument.
-                torch.nn.Parameter(partition_fn(key, param.data)),
-            )
+            setattr(module, name, torch.nn.Parameter(partition_fn(name, param.data)))
     return module
 
 
