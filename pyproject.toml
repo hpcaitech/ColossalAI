@@ -4,6 +4,12 @@ multi_line_output = 3
 include_trailing_comma = true
 ignore_comments = true
 
+[tool.yapf]
+based_on_style = "google"
+spaces_before_comment = 4
+split_before_logical_operator = true
+column_limit = 120
+
 [tool.pytest.ini_options]
 markers = [
     "cpu: tests which can run on CPU",
