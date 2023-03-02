@@ -70,7 +70,7 @@ torchrun --standalone --nproc_per_node=2 train_prompts.py prompts.csv --strategy
 We support naive inference demo after training.
 ```shell
 # inference
-python inference_actor.py --pretrain <your actor model path> --model <your model type>
+python inference.py --pretrain <your actor model path> --model <your model type>
 ```
 
 ## Support Model
