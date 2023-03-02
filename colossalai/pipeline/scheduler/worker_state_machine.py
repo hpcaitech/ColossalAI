@@ -1,18 +1,69 @@
+from abc import ABC, abstractmethod
 from collections import deque
 
 from colossalai.pipeline.scheduler.stage_info import StageInput, StageOutput
-from colossalai.pipeline.scheduler.state_machine import StateMachine, WorkerState
 from colossalai.pipeline.scheduler.task import Task
+
+
+class WorkerState:
+
+    def __init__(self, name, transitions, entry_action=None, exit_action=None):
+        self.name = name
+        self.transitions = transitions
+        self.entry_action = entry_action or (lambda: None)
+        self.exit_action = exit_action or (lambda: None)
+
+    def get_next_state(self, event):
+        return self.transitions.get(event)
+
+    def __eq__(self, __o: object) -> bool:
+        if isinstance(__o, WorkerState):
+            return __o.name == self.name
+
+        return False
+
+
+class StateMachine(ABC):
+
+    def __init__(self):
+        self.current_state: WorkerState = None
+        self.states = {}
+
+    def add_state(self, state: WorkerState):
+        self.states[state.name] = state
+
+    def get_state(self, state_name):
+        return self.states.get(state_name)
+
+    def set_initial_state(self, state_name):
+        self.current_state = self.states[state_name]
+
+    def get_next_state(self, event):
+        return self.current_state.get_next_state(event)
+
+    def get_current_state(self):
+        return self.current_state.name
+
+    def set_current_state(self, state_name):
+        self.current_state = self.get_state(state_name)
+
+    @abstractmethod
+    def run(self):
+        pass
 
 
 class WorkerStateMachine(StateMachine):
 
-    def __init__(self, rank, fwd_only=False, is_first_step=False, is_last_step=False):
+    def __init__(
+        self,
+        rank,
+        num_minibatches=1,
+        fwd_only=False,
+    ):
         super().__init__()
         self.rank = rank
+        self.num_minibatches = num_minibatches
         self.fwd_only = fwd_only
-        self.is_first_step = is_first_step
-        self.is_last_step = is_last_step
 
         self.init_state()
         self.init_control_flow()
@@ -43,23 +94,26 @@ class WorkerStateMachine(StateMachine):
         self.output_queue_fwd = deque()
         self.output_queue_bwd = deque()
 
+    @abstractmethod
     def fwd2bwd(self):
-        return True
+        pass
 
+    @abstractmethod
     def bwd2fwd(self):
-        return True
+        pass
 
+    @abstractmethod
     def flush(self):
-        return True
+        pass
 
     def fwd_done(self):
-        return False
+        return self.cur_fwd_id == self.num_minibatches
 
     def bwd_done(self):
-        return False
+        return self.cur_bwd_id == self.num_minibatches
 
     def step_done(self):
-        return False
+        return True
 
     def start_next_batch(self):
         return True
@@ -92,7 +146,7 @@ class WorkerStateMachine(StateMachine):
             else:
                 next_state = None
         elif cur_state == 'bwd':
-            if self.bwd_done():
+            if self.bwd_done() and self.flush():
                 next_state = self.get_next_state('flush')
             elif self.bwd2fwd():
                 next_state = self.get_next_state('bwd2fwd')
@@ -135,7 +189,7 @@ class WorkerStateMachine(StateMachine):
             task = None
         return task
 
-    def _get_input(self, state, micro_batch_id):
+    def _get_input(self, state, micro_batch_id) -> StageInput:
         # TODO need to add communication framework like p2p
         stage_input = None
         if state == 'fwd':
