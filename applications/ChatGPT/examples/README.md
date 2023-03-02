@@ -75,8 +75,9 @@ python inference_actor.py --pretrain <your actor model path> --model <your model
 
 #### data
 - [x] [rm-static](https://huggingface.co/datasets/Dahoas/rm-static)
-- [ ] [static-hh](https://huggingface.co/datasets/Dahoas/static-hh)
+- [x] [hh-rlhf](https://huggingface.co/datasets/Anthropic/hh-rlhf)
 - [ ] [openai/summarize_from_feedback](https://huggingface.co/datasets/openai/summarize_from_feedback)
+- [ ] [openai/webgpt_comparisons](https://huggingface.co/datasets/openai/webgpt_comparisons)
 - [ ] [Dahoas/instruct-synthetic-prompt-responses](https://huggingface.co/datasets/Dahoas/instruct-synthetic-prompt-responses)
 
 ## Support Model
@@ -105,7 +106,7 @@ python inference_actor.py --pretrain <your actor model path> --model <your model
 - [x] [BLOOM-560m](https://huggingface.co/bigscience/bloom-560m)
 - [x] [BLOOM-1b1](https://huggingface.co/bigscience/bloom-1b1)
 - [x] [BLOOM-3b](https://huggingface.co/bigscience/bloom-3b)
-- [x] [BLOOM-7b](https://huggingface.co/bigscience/bloomz-7b1)
+- [x] [BLOOM-7b](https://huggingface.co/bigscience/bloom-7b1)
 - [ ] BLOOM-175b
 
 ### OPT
