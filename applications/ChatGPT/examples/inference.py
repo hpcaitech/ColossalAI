@@ -41,8 +41,7 @@ def eval(args):
                              do_sample=True,
                              top_k=50,
                              top_p=0.95,
-                             num_return_sequences=1
-                             )
+                             num_return_sequences=1)
     output = tokenizer.batch_decode(outputs[0], skip_special_tokens=True)
     print(output)
 
