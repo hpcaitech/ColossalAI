@@ -73,14 +73,21 @@ We support naive inference demo after training.
 python inference.py --pretrain <your actor model path> --model <your model type>
 ```
 
+#### data
+- [x] [rm-static](https://huggingface.co/datasets/Dahoas/rm-static)
+- [x] [hh-rlhf](https://huggingface.co/datasets/Anthropic/hh-rlhf)
+- [ ] [openai/summarize_from_feedback](https://huggingface.co/datasets/openai/summarize_from_feedback)
+- [ ] [openai/webgpt_comparisons](https://huggingface.co/datasets/openai/webgpt_comparisons)
+- [ ] [Dahoas/instruct-synthetic-prompt-responses](https://huggingface.co/datasets/Dahoas/instruct-synthetic-prompt-responses)
+
 ## Support Model
 
 ### GPT
-- [ ]  GPT2-S (s)
-- [ ]  GPT2-M (m)
-- [ ]  GPT2-L (l)
+- [x]  GPT2-S (s)
+- [x]  GPT2-M (m)
+- [x]  GPT2-L (l)
 - [ ]  GPT2-XL (xl)
-- [ ]  GPT2-4B (4b)
+- [x]  GPT2-4B (4b)
 - [ ]  GPT2-6B (6b)
 - [ ]  GPT2-8B (8b)
 - [ ]  GPT2-10B (10b)
@@ -99,7 +106,7 @@ python inference.py --pretrain <your actor model path> --model <your model type>
 - [x] [BLOOM-560m](https://huggingface.co/bigscience/bloom-560m)
 - [x] [BLOOM-1b1](https://huggingface.co/bigscience/bloom-1b1)
 - [x] [BLOOM-3b](https://huggingface.co/bigscience/bloom-3b)
-- [x] [BLOOM-7b](https://huggingface.co/bigscience/bloomz-7b1)
+- [x] [BLOOM-7b](https://huggingface.co/bigscience/bloom-7b1)
 - [ ] BLOOM-175b
 
 ### OPT

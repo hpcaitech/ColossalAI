@@ -1,5 +1,13 @@
 # RLHF - Colossal-AI
 
+## Table of Contents
+
+- [What is RLHF - Colossal-AI?](#intro)
+- [How to Install?](#install)
+- [The Plan](#the-plan)
+- [How can you partcipate in open source?](#invitation-to-open-source-contribution)
+---
+## Intro
 Implementation of RLHF (Reinforcement Learning with Human Feedback) powered by Colossal-AI. It supports distributed training and offloading, which can fit extremly large models. More details can be found in the [blog](https://www.hpc-ai.tech/blog/colossal-ai-chatgpt).
 
 <p align="center">
@@ -19,7 +27,6 @@ Implementation of RLHF (Reinforcement Learning with Human Feedback) powered by C
 ```shell
 pip install .
 ```
-
 
 ## Usage
 
@@ -128,14 +135,24 @@ To load optimizer checkpoint:
 strategy.load_optimizer(actor_optim, 'actor_optim_checkpoint.pt')
 ```
 
-## Todo
+## The Plan
 
 - [x] implement PPO fine-tuning
 - [x] implement training reward model
 - [x] support LoRA
+- [x] support inference
+- [ ] open source the reward model weight
+- [ ] support llama from [facebook](https://github.com/facebookresearch/llama)
+- [ ] support BoN(best of N sample)
 - [ ] implement PPO-ptx fine-tuning
 - [ ] integrate with Ray
-- [ ] support more RL paradigms, like Implicit Language Q-Learning (ILQL)
+- [ ] support more RL paradigms, like Implicit Language Q-Learning (ILQL),
+- [ ] support chain of throught by [langchain](https://github.com/hwchase17/langchain)
+
+### Real-time progress
+You will find our progress in github project broad
+
+[Open ChatGPT](https://github.com/orgs/hpcaitech/projects/17/views/1)
 
 ## Invitation to open-source contribution
 Referring to the successful attempts of [BLOOM](https://bigscience.huggingface.co/) and [Stable Diffusion](https://en.wikipedia.org/wiki/Stable_Diffusion), any and all developers and partners with computing powers, datasets, models are welcome to join and build an ecosystem with Colossal-AI, making efforts towards the era of big AI models from the starting point of replicating ChatGPT!
