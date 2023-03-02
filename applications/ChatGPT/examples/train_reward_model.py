@@ -93,7 +93,7 @@ if __name__ == '__main__':
     parser.add_argument('--pretrain', type=str, default=None)
     parser.add_argument('--dataset', type=str, default='Dahoas/rm-static')
     parser.add_argument('--save_path', type=str, default='rm_ckpt.pth')
-    parser.add_argument('--max_epochs', type=int, default=10)
+    parser.add_argument('--max_epochs', type=int, default=1)
     parser.add_argument('--batch_size', type=int, default=4)
     parser.add_argument('--lora_rank', type=int, default=0, help="low-rank adaptation matrices rank")
     args = parser.parse_args()

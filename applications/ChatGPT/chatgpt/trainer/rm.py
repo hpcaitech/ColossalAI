@@ -44,6 +44,8 @@ class RewardModelTrainer(ABC):
         self.eval_dataloader = DataLoader(eval_dataset, batch_size=batch_size)
 
         self.model = strategy.setup_model(model)
+        if "DDP" in str(self.strategy):
+            self.model = self.model.module
         self.loss_fn = PairWiseLoss()
         self.optimizer = strategy.setup_optimizer(optim, self.model)
 
@@ -56,7 +58,7 @@ class RewardModelTrainer(ABC):
             # train
             if use_lora > 0:
                 print("Using Lora")
-                lora.mark_only_lora_as_trainable(self.model.body)
+                lora.mark_only_lora_as_trainable(self.model.model)
 
             else:
                 self.model.train()
