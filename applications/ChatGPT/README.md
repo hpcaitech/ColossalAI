@@ -140,13 +140,13 @@ strategy.load_optimizer(actor_optim, 'actor_optim_checkpoint.pt')
 - [x] implement PPO fine-tuning
 - [x] implement training reward model
 - [x] support LoRA
-- [ ] support llama from [facebook](https://github.com/facebookresearch/llama)
 - [x] support inference
 - [ ] open source the reward model weight
+- [ ] support llama from [facebook](https://github.com/facebookresearch/llama)
+- [ ] support BoN(best of N sample)
 - [ ] implement PPO-ptx fine-tuning
 - [ ] integrate with Ray
-- [ ] support more RL paradigms, like Implicit Language Q-Learning (ILQL)
-- [ ] support BoN(best of N sample)
+- [ ] support more RL paradigms, like Implicit Language Q-Learning (ILQL),
 - [ ] support chain of throught by [langchain](https://github.com/hwchase17/langchain)
 
 ### Real-time progress
