@@ -1,4 +1,3 @@
-import random
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, List, Optional, Union
 
@@ -68,7 +67,7 @@ class Trainer(ABC):
 
     def _sample_prompts(self, prompts) -> list:
         indices = list(range(len(prompts)))
-        sampled_indices = random.sample(indices, self.experience_batch_size)
+        sampled_indices = self.strategy.experience_sampler.sample(indices, self.experience_batch_size)
         return [prompts[i] for i in sampled_indices]
 
     def _learn(self):

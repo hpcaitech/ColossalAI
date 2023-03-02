@@ -49,17 +49,20 @@ class DDPStrategy(NaiveStrategy):
         return DDP(model, device_ids=[device])
 
     def setup_dataloader(self, replay_buffer: ReplayBuffer, pin_memory: bool = False) -> DataLoader:
-        sampler = DistributedSampler(replay_buffer,
-                                     num_replicas=dist.get_world_size(),
-                                     rank=dist.get_rank(),
-                                     shuffle=True,
-                                     seed=self.seed,
-                                     drop_last=True)
-        return DataLoader(replay_buffer,
-                          batch_size=replay_buffer.sample_batch_size,
-                          sampler=sampler,
-                          pin_memory=pin_memory,
-                          collate_fn=replay_buffer.collate_fn)
+        # DDP only mode, replay buffers on each rank are different.
+        # sampler = DistributedSampler(replay_buffer,
+        #                              num_replicas=dist.get_world_size(),
+        #                              rank=dist.get_rank(),
+        #                              shuffle=True,
+        #                              seed=self.seed,
+        #                              drop_last=True)
+        return DataLoader(
+            replay_buffer,
+            batch_size=replay_buffer.sample_batch_size,
+        #   sampler=sampler,
+            shuffle=True,
+            pin_memory=pin_memory,
+            collate_fn=replay_buffer.collate_fn)
 
     @staticmethod
     def _unwrap_actor(actor: Actor) -> nn.Module:
@@ -75,3 +78,9 @@ class DDPStrategy(NaiveStrategy):
         if only_rank0 and dist.get_rank() != 0:
             return
         super().save_optimizer(optimizer, path, only_rank0)
+
+    @property
+    def experience_sampler(self):
+        if self._experience_sampler is None:
+            self._experience_sampler = random.Random(self.seed + dist.get_rank())
+        return self._experience_sampler

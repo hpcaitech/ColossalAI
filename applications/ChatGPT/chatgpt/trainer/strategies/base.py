@@ -1,10 +1,11 @@
+import random
 from abc import ABC, abstractmethod
 from contextlib import nullcontext
 from typing import Any, List, Tuple, Union
 
 import torch
 import torch.nn as nn
-from chatgpt.nn import Actor, Critic, RewardModel
+from chatgpt.nn import Actor
 from chatgpt.replay_buffer import ReplayBuffer
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
@@ -21,6 +22,7 @@ class Strategy(ABC):
     def __init__(self) -> None:
         super().__init__()
         self.setup_distributed()
+        self._experience_sampler = None
 
     @abstractmethod
     def backward(self, loss: torch.Tensor, model: nn.Module, optimizer: Optimizer, **kwargs) -> None:
@@ -123,3 +125,9 @@ class Strategy(ABC):
     @abstractmethod
     def load_optimizer(self, optimizer: Optimizer, path: str, map_location: Any = None) -> None:
         pass
+
+    @property
+    def experience_sampler(self):
+        if self._experience_sampler is None:
+            self._experience_sampler = random.Random()
+        return self._experience_sampler
