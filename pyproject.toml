@@ -3,3 +3,11 @@ line_length = 120
 multi_line_output = 3
 include_trailing_comma = true
 ignore_comments = true
+
+[tool.pytest.ini_options]
+markers = [
+    "cpu: tests which can run on CPU",
+    "gpu: tests which requires a single GPU",
+    "dist: tests which are run in a multi-GPU or multi-machine environment",
+    "experiment: tests for experimental features",
+]
