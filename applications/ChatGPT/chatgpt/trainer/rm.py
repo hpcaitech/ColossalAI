@@ -44,6 +44,8 @@ class RewardModelTrainer(ABC):
         self.eval_dataloader = DataLoader(eval_dataset, batch_size=batch_size)
 
         self.model = strategy.setup_model(model)
+        if "DDP" in str(self.strategy):
+            self.model = self.model.module
         self.loss_fn = PairWiseLoss()
         self.optimizer = strategy.setup_optimizer(optim, self.model)
 
