@@ -67,7 +67,7 @@ class Trainer(ABC):
 
     def _sample_prompts(self, prompts) -> list:
         indices = list(range(len(prompts)))
-        sampled_indices = self.strategy.experience_sampler.sample(indices, self.experience_batch_size)
+        sampled_indices = self.strategy.experience_sampler.choice(indices, self.experience_batch_size, replace=False)
         return [prompts[i] for i in sampled_indices]
 
     def _learn(self):

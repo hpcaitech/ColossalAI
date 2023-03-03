@@ -9,7 +9,7 @@ from chatgpt.nn import Actor
 from chatgpt.replay_buffer import ReplayBuffer
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim import Optimizer
-from torch.utils.data import DataLoader, DistributedSampler
+from torch.utils.data import DataLoader
 
 from .base import Strategy
 from .naive import NaiveStrategy
@@ -61,6 +61,7 @@ class DDPStrategy(NaiveStrategy):
             batch_size=replay_buffer.sample_batch_size,
         #   sampler=sampler,
             shuffle=True,
+            drop_last=True,
             pin_memory=pin_memory,
             collate_fn=replay_buffer.collate_fn)
 
@@ -79,8 +80,5 @@ class DDPStrategy(NaiveStrategy):
             return
         super().save_optimizer(optimizer, path, only_rank0)
 
-    @property
-    def experience_sampler(self):
-        if self._experience_sampler is None:
-            self._experience_sampler = random.Random(self.seed + dist.get_rank())
-        return self._experience_sampler
+    def setup_sampler(self) -> None:
+        self.experience_sampler = np.random.RandomState(self.seed + dist.get_rank())
