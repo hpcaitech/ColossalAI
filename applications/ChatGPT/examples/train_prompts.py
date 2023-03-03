@@ -20,7 +20,7 @@ def main(args):
     elif args.strategy == 'ddp':
         strategy = DDPStrategy()
     elif args.strategy == 'colossalai_gemini':
-        strategy = ColossalAIStrategy(stage=3, placement_policy='cuda')
+        strategy = ColossalAIStrategy(stage=3, placement_policy='cuda', initial_scale=2**5)
     elif args.strategy == 'colossalai_zero2':
         strategy = ColossalAIStrategy(stage=2, placement_policy='cuda')
     else:
