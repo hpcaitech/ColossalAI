@@ -25,6 +25,7 @@ class RewardModel(LoRAModule):
         super().__init__(lora_rank=lora_rank, lora_train_bias=lora_train_bias)
         self.model = model
         self.convert_to_lora()
+
         if value_head is not None:
             if value_head.out_features != 1:
                 raise ValueError("The value head of reward model's output dim should be 1!")
