@@ -56,12 +56,7 @@ class RewardModelTrainer(ABC):
                             desc='Train step of epoch %d' % epoch,
                             disable=not is_rank_0())
             # train
-            if use_lora > 0:
-                print("Using Lora")
-                lora.mark_only_lora_as_trainable(self.model.model)
-
-            else:
-                self.model.train()
+            self.model.train()
             for chosen_ids, c_mask, reject_ids, r_mask in self.train_dataloader:
                 chosen_ids = chosen_ids.squeeze(1).cuda()
                 c_mask = c_mask.squeeze(1).cuda()

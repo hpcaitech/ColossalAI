@@ -66,8 +66,6 @@ def train(args):
     train_dataset = RewardDataset(train_data, tokenizer, max_len)
     eval_dataset = RewardDataset(eval_data, tokenizer, max_len)
 
-    # batch_size here is expected to be C(k,2), k means # response of each prompt
-    # be limited with the format of dataset 'Dahoas/rm-static', we'd better use batch_size as 1
     trainer = RewardModelTrainer(model=model,
                                  strategy=strategy,
                                  optim=optim,

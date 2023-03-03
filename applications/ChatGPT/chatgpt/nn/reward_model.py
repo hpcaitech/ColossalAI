@@ -24,14 +24,14 @@ class RewardModel(LoRAModule):
                  lora_train_bias: str = 'none') -> None:
         super().__init__(lora_rank=lora_rank, lora_train_bias=lora_train_bias)
         self.model = model
+        self.convert_to_lora()
+
         if value_head is not None:
             if value_head.out_features != 1:
                 raise ValueError("The value head of reward model's output dim should be 1!")
             self.value_head = value_head
-
         else:
             self.value_head = nn.Linear(model.config.n_embd, 1)
-        self.convert_to_lora()
 
     def forward(self, sequences: torch.LongTensor, attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         outputs = self.model(sequences, attention_mask=attention_mask)
