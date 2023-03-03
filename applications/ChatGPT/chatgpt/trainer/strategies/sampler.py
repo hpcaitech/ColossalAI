@@ -1,5 +1,6 @@
 import math
-import random
+
+import numpy as np
 
 
 class DistributedSampler:
@@ -27,5 +28,5 @@ class DistributedSampler:
         self.indices = indices
 
     def sample(self, batch_size: int) -> list:
-        sampled_indices = random.sample(self.indices, batch_size)
+        sampled_indices = np.random.choice(self.indices, batch_size, replace=False)
         return [self.dataset[idx] for idx in sampled_indices]
