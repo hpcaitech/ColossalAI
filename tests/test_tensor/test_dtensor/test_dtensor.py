@@ -37,7 +37,10 @@ def check_dtensor(rank, world_size, port):
     target_sharding_spec = ShardingSpec(device_mesh=device_mesh,
                                         entire_shape=original_tensor.shape,
                                         dim_partition_dict={0: [0]})
-    layout = Layout(device_mesh=device_mesh, device_type=torch.device('cuda'), sharding_spec=target_sharding_spec)
+    layout = Layout(device_mesh=device_mesh,
+                    device_type=torch.device('cuda'),
+                    sharding_spec=target_sharding_spec,
+                    entire_shape=original_tensor.shape)
     d_tensor = DTensor(original_tensor, layout)
 
     assert d_tensor.entire_shape == original_tensor.shape
