@@ -13,6 +13,7 @@ from torch.utils.data import DataLoader
 
 from .base import Strategy
 from .naive import NaiveStrategy
+from .sampler import DistributedSampler
 
 
 class DDPStrategy(NaiveStrategy):
@@ -80,5 +81,5 @@ class DDPStrategy(NaiveStrategy):
             return
         super().save_optimizer(optimizer, path, only_rank0)
 
-    def setup_sampler(self) -> None:
-        self.experience_sampler = np.random.RandomState(self.seed + dist.get_rank())
+    def setup_sampler(self, dataset) -> DistributedSampler:
+        return DistributedSampler(dataset, dist.get_world_size(), dist.get_rank())

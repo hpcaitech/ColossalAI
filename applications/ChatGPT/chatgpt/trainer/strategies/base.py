@@ -10,6 +10,8 @@ from chatgpt.replay_buffer import ReplayBuffer
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 
+from .sampler import DistributedSampler
+
 ModelOptimPair = Tuple[nn.Module, Optimizer]
 ModelOrModelOptimPair = Union[nn.Module, ModelOptimPair]
 
@@ -21,9 +23,7 @@ class Strategy(ABC):
 
     def __init__(self) -> None:
         super().__init__()
-        self.experience_sampler = None
         self.setup_distributed()
-        self.setup_sampler()
 
     @abstractmethod
     def backward(self, loss: torch.Tensor, model: nn.Module, optimizer: Optimizer, **kwargs) -> None:
@@ -127,5 +127,5 @@ class Strategy(ABC):
     def load_optimizer(self, optimizer: Optimizer, path: str, map_location: Any = None) -> None:
         pass
 
-    def setup_sampler(self) -> None:
-        self.experience_sampler = np.random.RandomState()
+    def setup_sampler(self, dataset) -> DistributedSampler:
+        return DistributedSampler(dataset, 1, 0)
