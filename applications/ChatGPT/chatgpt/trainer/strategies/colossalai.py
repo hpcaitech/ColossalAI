@@ -79,8 +79,9 @@ class ColossalAIStrategy(DDPStrategy):
         self.stage = stage
         # TODO(ver217): support shard_init when using from_pretrained()
         if shard_init:
-            warnings.warn(f'Shard init is not supported yet. Ignore.')
-            shard_init = False
+            warnings.warn(
+                f'Shard init is not supported model.from_pretrained() yet. Please load weights after strategy.prepare()'
+            )
         self.shard_init = shard_init
         self.gemini_config = dict(device=get_current_device(),
                                   placement_policy=placement_policy,
