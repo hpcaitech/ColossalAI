@@ -25,7 +25,7 @@ def main(args):
     elif args.strategy == 'ddp':
         strategy = DDPStrategy()
     elif args.strategy == 'colossalai_gemini':
-        strategy = ColossalAIStrategy(stage=3, placement_policy='cuda')
+        strategy = ColossalAIStrategy(stage=3, placement_policy='cuda', initial_scale=2**5)
     elif args.strategy == 'colossalai_zero2':
         strategy = ColossalAIStrategy(stage=2, placement_policy='cuda')
     else:
@@ -82,6 +82,7 @@ def main(args):
         critic_optim,
         max_epochs=args.max_epochs,
         train_batch_size=args.train_batch_size,
+        experience_batch_size=args.experience_batch_size,
         tokenizer=preprocess_batch,
         max_length=128,
         do_sample=True,
@@ -117,6 +118,7 @@ if __name__ == '__main__':
     parser.add_argument('--update_timesteps', type=int, default=10)
     parser.add_argument('--max_epochs', type=int, default=5)
     parser.add_argument('--train_batch_size', type=int, default=8)
+    parser.add_argument('--experience_batch_size', type=int, default=8)
     parser.add_argument('--lora_rank', type=int, default=0, help="low-rank adaptation matrices rank")
     args = parser.parse_args()
     main(args)
