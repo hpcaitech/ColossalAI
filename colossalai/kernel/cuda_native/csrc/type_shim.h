@@ -2,6 +2,7 @@
 /* Copyright 2020 The Microsoft DeepSpeed Team
    Copyright NVIDIA/apex
    This file is adapted from fused adam in NVIDIA/apex, commit a109f85
+   Licensed under the MIT License.
 */
 #include <ATen/ATen.h>
 
