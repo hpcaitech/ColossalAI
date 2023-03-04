@@ -5,6 +5,11 @@ Author: Hongxin Liu
 **Prerequisite:**
 - [Zero Redundancy Optimizer with chunk-based memory management](../features/zero_with_chunk.md)
 
+**Related Paper**
+
+- [ZeRO-Offload: Democratizing Billion-Scale Model Training](https://arxiv.org/abs/2101.06840)
+- [ZeRO-Infinity: Breaking the GPU Memory Wall for Extreme Scale Deep Learning](https://arxiv.org/abs/2104.07857)
+
 ## Introduction
 
 If a model has `N` parameters, when using Adam, it has `8N` optimizer states. For billion-scale models, optimizer states take at least 32 GB memory. GPU memory limits the model scale we can train, which is called GPU memory wall. If we offload optimizer states to the disk, we can break through GPU memory wall.

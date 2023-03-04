@@ -376,6 +376,10 @@ docker run -ti --gpus all --rm --ipc=host colossalai bash
 
 ## 引用我们
 
+Colossal-AI项目受一些相关的项目启发而成立，一些项目是我们的开发者的科研项目，另一些来自于其他组织的科研工作。我们希望. 我们希望在[参考文献列表](./REFERENCE.md)中列出这些令人称赞的项目，以向开源社区和研究项目致谢。
+
+你可以通过以下格式引用这个项目。
+
 ```
 @article{bian2021colossal,
   title={Colossal-AI: A Unified Deep Learning System For Large-Scale Parallel Training},
