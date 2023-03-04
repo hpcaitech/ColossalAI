@@ -27,6 +27,8 @@ The Colossal-AI project aims to provide a wide array of parallelism techniques f
 
 - S. Rajbhandari, J. Rasley, O. Ruwase, and Y. He, ‘ZeRO: Memory Optimizations toward Training Trillion Parameter Models’, in Proceedings of the International Conference for High Performance Computing, Networking, Storage and Analysis, 2020.
 
+- J. Rasley, S. Rajbhandari, O. Ruwase, and Y. He, ‘DeepSpeed: System Optimizations Enable Training Deep Learning Models with Over 100 Billion Parameters’, in Proceedings of the 26th ACM SIGKDD International Conference on Knowledge Discovery & Data Mining, Virtual Event, CA, USA, 2020, pp. 3505–3506.
+
 - D. Narayanan et al., ‘Efficient Large-Scale Language Model Training on GPU Clusters Using Megatron-LM’, in Proceedings of the International Conference for High Performance Computing, Networking, Storage and Analysis, St. Louis, Missouri, 2021.
 
 - Jie Ren, Samyam Rajbhandari, Reza Yazdani Aminabadi, Olatunji Ruwase, Shuangyan Yang, Minjia Zhang, Dong Li, Yuxiong He. 2021. ZeRO-Offload: Democratizing Billion-Scale Model Training. arXiv:2101.06840 and USENIX ATC 2021.
