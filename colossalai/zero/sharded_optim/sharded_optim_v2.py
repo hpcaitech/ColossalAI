@@ -1,3 +1,4 @@
+# this code is inspired by the DeepSpeed library and implemented with our own design from scratch
 from enum import Enum
 from os import stat
 from typing import Dict, Optional, Tuple
@@ -5,20 +6,21 @@ from typing import Dict, Optional, Tuple
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-from colossalai.amp.naive_amp.grad_scaler import DynamicGradScaler
-from colossalai.context.parallel_mode import ParallelMode
-from colossalai.core import global_context as gpc
-from colossalai.logging import get_dist_logger
-from colossalai.nn.optimizer import ColossalaiOptimizer
-from colossalai.gemini.tensor_utils import (colo_model_data_tensor_move_inline, colo_tensor_mem_usage)
-from colossalai.zero.sharded_model import ShardedModelV2
-from colossalai.zero.sharded_model._utils import cast_tensor_to_fp32
 from torch import Tensor
 from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
 from torch.optim import Optimizer
-from colossalai.gemini.stateful_tensor import (StatefulTensor, TensorState)
+
+from colossalai.amp.naive_amp.grad_scaler import DynamicGradScaler
+from colossalai.context.parallel_mode import ParallelMode
+from colossalai.core import global_context as gpc
+from colossalai.gemini.stateful_tensor import StatefulTensor, TensorState
 from colossalai.gemini.tensor_placement_policy import AutoTensorPlacementPolicy
+from colossalai.gemini.tensor_utils import colo_model_data_tensor_move_inline, colo_tensor_mem_usage
+from colossalai.logging import get_dist_logger
+from colossalai.nn.optimizer import ColossalaiOptimizer
+from colossalai.zero.sharded_model import ShardedModelV2
+from colossalai.zero.sharded_model._utils import cast_tensor_to_fp32
 
 
 class OptimState(Enum):
@@ -36,9 +38,9 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
     `PatrickStar: Parallel Training of Pre-trained Models via Chunk-based Memory Management`_
 
     GPU margin space is the remaining space after removing peak non-model data from the overall GPU memory,
-    which is detected by a runtime memory tracer. 
+    which is detected by a runtime memory tracer.
 
-    We place as many OS chunks in the margin space as possible. 
+    We place as many OS chunks in the margin space as possible.
 
     The size of margin space can be controlled by ``gpu_margin_mem_ratio``.
     If it is set as ``0.0``, it is the same as classical ZeRO optimizer.
@@ -54,8 +56,8 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         sharded_model (ShardedModelV2): A sharded model initialized by class ShardedModelV2. The optimizer will use the
             shard strategy provided by sharded model to shard param fp32 tensors.
         optimizer (Optimizer): An Optimizer instance.
-        gpu_margin_mem_ratio (float, optional): The ratio of GPU remaining memory (after the first forward-backward) 
-            which will be used when using hybrid CPU optimizer. 
+        gpu_margin_mem_ratio (float, optional): The ratio of GPU remaining memory (after the first forward-backward)
+            which will be used when using hybrid CPU optimizer.
             This argument is meaningless when `tensor_placement_policy` of `ShardedModelV2` is not "auto".
             Defaults to 0.0.
         initial_scale (float, optional): Initial scale used by DynamicGradScaler. Defaults to 2**32.

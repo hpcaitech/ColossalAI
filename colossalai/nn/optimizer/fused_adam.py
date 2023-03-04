@@ -1,4 +1,10 @@
 # modified from https://github.com/NVIDIA/apex/blob/master/apex/optimizers/fused_adam.py
+'''
+Copyright 2020 The Microsoft DeepSpeed Team
+
+Copyright NVIDIA/apex
+This file is adapted from fused adam in NVIDIA/apex, commit a109f85
+'''
 import torch
 
 from colossalai.registry import OPTIMIZERS
