@@ -157,7 +157,7 @@ def set_cuda_arch_list(cuda_dir):
     # we only need to set this when CUDA is not available for cross-compilation
     if not cuda_available:
         warnings.warn(
-            '\n[extension]  PyTorch did not find available GPUs on this system.\n',
+            '\n[extension]  PyTorch did not find available GPUs on this system.\n'
             'If your intention is to cross-compile, this is not an error.\n'
             'By default, Colossal-AI will cross-compile for \n'
             '1. Pascal (compute capabilities 6.0, 6.1, 6.2),\n'
