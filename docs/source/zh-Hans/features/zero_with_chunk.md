@@ -3,9 +3,11 @@
 作者: [Hongxiu Liu](https://github.com/ver217), [Jiarui Fang](https://github.com/feifeibear), [Zijian Ye](https://github.com/ZijianYY)
 
 **前置教程:**
+
 - [定义配置文件](../basics/define_your_config.md)
 
 **示例代码**
+
 - [Train GPT with Colossal-AI](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/gpt)
 
 **相关论文**

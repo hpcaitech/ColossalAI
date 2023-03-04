@@ -1,6 +1,7 @@
 # Zero Redundancy Optimizer with chunk-based memory management
 
 Author: [Hongxiu Liu](https://github.com/ver217), [Jiarui Fang](https://github.com/feifeibear), [Zijian Ye](https://github.com/ZijianYY)
+
 **Prerequisite:**
 - [Define Your Configuration](../basics/define_your_config.md)
 
@@ -9,6 +10,7 @@ Author: [Hongxiu Liu](https://github.com/ver217), [Jiarui Fang](https://github.c
 - [Train GPT with Colossal-AI](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/gpt)
 
 **Related Paper**
+
 - [ZeRO: Memory Optimizations Toward Training Trillion Parameter Models](https://arxiv.org/abs/1910.02054)
 - [ZeRO-Offload: Democratizing Billion-Scale Model Training](https://arxiv.org/abs/2101.06840)
 - [ZeRO-Infinity: Breaking the GPU Memory Wall for Extreme Scale Deep Learning](https://arxiv.org/abs/2104.07857)

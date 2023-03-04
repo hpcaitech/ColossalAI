@@ -378,6 +378,10 @@ We leverage the power of [GitHub Actions](https://github.com/features/actions) t
 
 ## Cite Us
 
+This project is inspired by some related projects (some by our team and some by other organizations). We would like to credit these amazing projects as listed in the [Reference List](./REFERENCE.md).
+
+To cite this project, you can use the following BibTeX citation.
+
 ```
 @article{bian2021colossal,
   title={Colossal-AI: A Unified Deep Learning System For Large-Scale Parallel Training},
