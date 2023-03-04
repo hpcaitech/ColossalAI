@@ -1,4 +1,9 @@
 /* Taken from NVIDIA/apex commit 855808f3fc268e9715d613f3c2e56469d8c986d8 */
+/* Copyright 2020 The Microsoft DeepSpeed Team
+   Copyright NVIDIA/apex
+   This file is adapted from fused adam in NVIDIA/apex, commit a109f85
+   Licensed under the MIT License.
+*/
 #include <ATen/ATen.h>
 
 #include "compat.h"
