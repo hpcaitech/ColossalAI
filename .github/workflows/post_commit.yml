@@ -68,11 +68,12 @@ jobs:
         done
 
     # create commit for pre-commit
+    # when all files are well formatted, there is no need to create a commit
+    # therefore, this step will produce an error, which should be allowed
     - name: Create commits
       id: commit
       continue-on-error: true
       run: |
-        exit -1
         git config --global user.name 'github-actions'
         git config --global user.email 'github-actions@github.com'
         git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
