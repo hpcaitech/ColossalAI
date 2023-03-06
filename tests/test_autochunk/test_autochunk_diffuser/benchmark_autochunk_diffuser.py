@@ -62,7 +62,7 @@ def _benchmark_autochunk_unet_gm(
     model.cuda().eval()
 
     # bench
-    para_mem = float(parameter_size(model)) / 1024**2 * 6
+    para_mem = float(parameter_size(model)) / 1024**2
     act_mem = _benchmark_memory(gm, inputs)
     speed = _benchmark_speed(gm, inputs)
     print("unet autochunk, time: %.4fs, act mem: %.2fMB, para mem: %.2fMB, all mem: %.2fMB" %
@@ -84,7 +84,7 @@ def _benchmark_autochunk_unet_origin(
     model.cuda().eval()
 
     # bench
-    para_mem = float(parameter_size(model)) / 1024**2 * 6
+    para_mem = float(parameter_size(model)) / 1024**2
     act_mem = _benchmark_memory(model, inputs)
     speed = _benchmark_speed(model, inputs)
     print("unet origin, time: %.4fs, act mem: %.2fMB, para mem: %.2fMB, all mem: %.2fMB" %
@@ -145,5 +145,3 @@ if __name__ == "__main__":
     benchmark_autochunk_unet(batch=1, height=224 * 2, width=224 * 2)
     benchmark_autochunk_unet(batch=1, height=224 * 3, width=224 * 3)
     benchmark_autochunk_unet(batch=1, height=224 * 4, width=224 * 4)
-    benchmark_autochunk_unet(batch=1, height=224 * 5, width=224 * 5)
-    benchmark_autochunk_unet(batch=1, height=224 * 6, width=224 * 6)
