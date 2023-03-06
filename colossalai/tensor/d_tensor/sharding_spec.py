@@ -114,7 +114,7 @@ class DimSpec:
 
         self.difference_dict = difference_dict
 
-    def difference(self, other):
+    def dim_diff(self, other):
         '''
         The difference between two _DimSpec.
 
@@ -202,7 +202,7 @@ class ShardingSpec:
                 new_dim_partition_dict[index].extend(dim_spec.shard_list)
         return new_dim_partition_dict
 
-    def sharding_sequence_difference(self, other):
+    def spec_diff(self, other):
         '''
         This function is a naive version of difference computation. It just simply accumulates difference every dimension between the
         pair of sharding sequence.
@@ -233,5 +233,5 @@ class ShardingSpec:
             other.sharding_sequence), f'Cannot compare difference for two sharding specs with different length.'
         difference = 0
         for orig_dim_spec, other_dim_spec in zip(self.sharding_sequence, other.sharding_sequence):
-            difference += orig_dim_spec.difference(other_dim_spec)
+            difference += orig_dim_spec.dim_diff(other_dim_spec)
         return difference
