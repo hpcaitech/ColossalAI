@@ -11,6 +11,8 @@
 pip install colossalai
 ```
 
+**注：现在只支持Linux。**
+
 如果你想同时安装PyTorch扩展的话，可以添加`CUDA_EXT=1`。如果不添加的话，PyTorch扩展会在运行时自动安装。
 
 ```shell

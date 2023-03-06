@@ -281,11 +281,13 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 
 ### 从PyPI安装
 
-您可以用下面的命令直接从PyPI上下载并安装Colossal-AI。我们默认不会安装PyTorch扩展包
+您可以用下面的命令直接从PyPI上下载并安装Colossal-AI。我们默认不会安装PyTorch扩展包。
 
 ```bash
 pip install colossalai
 ```
+
+**注：目前只支持Linux。**
 
 但是，如果你想在安装时就直接构建PyTorch扩展，您可以设置环境变量`CUDA_EXT=1`.
 

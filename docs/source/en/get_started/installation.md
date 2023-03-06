@@ -14,6 +14,8 @@ You can install Colossal-AI with
 pip install colossalai
 ```
 
+**Note: only Linux is supported for now**
+
 If you want to build PyTorch extensions during installation, you can use the command below. Otherwise, the PyTorch extensions will be built during runtime.
 
 ```shell

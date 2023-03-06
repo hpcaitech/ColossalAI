@@ -288,6 +288,8 @@ You can easily install Colossal-AI with the following command. **By default, we 
 pip install colossalai
 ```
 
+**Note: only Linux is supported for now.**
+
 However, if you want to build the PyTorch extensions during installation, you can set `CUDA_EXT=1`.
 
 ```bash

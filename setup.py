@@ -1,4 +1,5 @@
 import os
+import sys
 from datetime import datetime
 from typing import List
 
@@ -30,6 +31,10 @@ IS_NIGHTLY = int(os.environ.get('NIGHTLY', '0')) == 1
 
 # a variable to store the op builder
 ext_modules = []
+
+# we do not support windows currently
+if sys.platform == 'win32':
+    raise RuntimeError("Windows is not supported yet. Please try again within the Windows Subsystem for Linux (WSL).")
 
 
 # check for CUDA extension dependencies
