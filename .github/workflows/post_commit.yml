@@ -11,7 +11,7 @@ jobs:
   # be auto-executed by the workflow
   pre-commit:
     runs-on: ubuntu-latest
-    if: github.event.pull_request.merged == true && github.repository == 'hpcaitech/ColossalAI'
+    # if: github.event.pull_request.merged == true && github.repository == 'hpcaitech/ColossalAI'
     steps:
     - uses: actions/checkout@v2
       with:
