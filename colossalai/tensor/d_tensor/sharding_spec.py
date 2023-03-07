@@ -171,7 +171,7 @@ class ShardingSpec:
             raise ShardingOutOfIndexError(
                 f'sharding_sequence should have {self.dims} elements, but got index {len(self.sharding_sequence)}.')
 
-        if max(list(self.dim_partition_dict.keys())) >= self.dims:
+        if list(self.dim_partition_dict.keys()) and max(list(self.dim_partition_dict.keys())) >= self.dims:
             raise ShardingOutOfIndexError(
                 f'the key of dim_partition_dict should be less than {self.dims}, but got {max(list(self.dim_partition_dict.keys()))}.'
             )
