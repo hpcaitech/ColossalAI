@@ -13,7 +13,7 @@ from colossalai.core import global_context as gpc
 from colossalai.fx import ColoTracer
 from colossalai.fx._compatibility import is_compatible_with_meta
 from colossalai.fx.graph_module import ColoGraphModule
-from colossalai.fx.passes.algorithms import chen_greedy, solver_rotor
+# from colossalai.fx.passes.algorithms import chen_greedy, solver_rotor
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
 from colossalai.utils import free_port
 
@@ -28,7 +28,8 @@ except:
     from colossalai.fx.codegen import python_code_with_activation_checkpoint
     with_codegen = False
 
-SOLVERS = [chen_greedy, solver_rotor]
+# SOLVERS = [chen_greedy, solver_rotor]
+SOLVERS = []
 
 
 def _is_activation_checkpoint_available(gm: GraphModule):

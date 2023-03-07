@@ -4,7 +4,7 @@ from functools import reduce
 from colossalai.tensor.d_tensor.sharding_spec import ALLGATHER_COST, SHARD_COST, STEP_PENALTY, ShardingSpec
 
 
-def test_sharding_spec():
+def test_dtensor_sharding_spec():
     dims = 4
     dim_partition_dict_0 = {0: [0, 1]}
     # DistSpec:
@@ -31,4 +31,4 @@ def test_sharding_spec():
 
 
 if __name__ == '__main__':
-    test_sharding_spec()
+    test_dtensor_sharding_spec()
