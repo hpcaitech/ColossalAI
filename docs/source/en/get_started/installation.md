@@ -5,6 +5,7 @@
 >
 > Environment Requirement: PyTorch 1.10 ~ 1.12 (WIP higher version), Python >= 3.7, CUDA >= 11.0. If you encounter any problem about installation, you may want to raise an [issue](https://github.com/hpcaitech/ColossalAI/issues/new/choose) in this repository.
 
+dummy test
 
 ## Download From PyPI
 
