@@ -44,10 +44,6 @@ jobs:
         with:
           python-version: '3.8.14'
 
-      - run: |
-          ls -la
-          ls -la ..
-
       # we use the versions in the main branch as the guide for versions to display
       # checkout will give your merged branch
       # therefore, we need to make the merged branch as the main branch
