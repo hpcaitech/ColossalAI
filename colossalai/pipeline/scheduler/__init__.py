@@ -1,4 +1,5 @@
 from .impl import GpipeScheduler
-from .state_machine import StateMachine, WorkerState
+from .worker_state_machine import StateMachine, WorkerState, WorkerStateMachine
 
-__all__ = ['StateMachine', 'WorkerState', 'GpipeScheduler']
+__all__ = ['WorkerState', 'StateMachine', 'WorkerStateMachine' \
+        'GpipeScheduler']
