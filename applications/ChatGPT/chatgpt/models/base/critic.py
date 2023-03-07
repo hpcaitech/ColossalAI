@@ -40,8 +40,8 @@ class Critic(LoRAModule):
 
         if action_mask is not None:
             num_actions = action_mask.size(1)
-            prompt_mask = attention_mask[:, :-(num_actions + 1)]
-            values = values[:, :-(num_actions + 1)]
+            prompt_mask = attention_mask[:, :-num_actions]
+            values = values[:, :num_actions]
             value = masked_mean(values, prompt_mask, dim=1)
             return value
         values = values[:, :-1]
