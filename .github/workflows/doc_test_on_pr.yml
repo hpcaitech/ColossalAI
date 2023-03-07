@@ -54,6 +54,7 @@ jobs:
       image: hpcaitech/pytorch-cuda:1.12.0-11.3.0
       options: --gpus all --rm
     timeout-minutes: 20
+    shell: bash
     steps:
       - name: Checkout ColossalAI-Documentation
         uses: actions/checkout@v2
