@@ -59,6 +59,12 @@ optimizer = HybridAdam(model.parameters(), lr=1e-3, nvme_offload_fraction=1.0, n
 Let's start from two simple examples -- training GPT with different methods. These examples relies on `transformers`.
 首先让我们从两个简单的例子开始 -- 用不同的方法训练 GPT。这些例子依赖`transformers`。
 
+我们首先应该安装依赖：
+
+```shell
+pip install psutil transformers
+```
+
 首先，我们导入必要的包和模块：
 
 ```python

@@ -58,6 +58,12 @@ It's compatible with all parallel methods in ColossalAI.
 
 Let's start from two simple examples -- training GPT with different methods. These examples relies on `transformers`.
 
+We should install denpendencies first:
+
+```shell
+pip install psutil transformers
+```
+
 First, we import essential packages and modules:
 
 ```python
