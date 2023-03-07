@@ -15,9 +15,9 @@ Use these code to train your reward model.
 
 ```shell
 # Naive reward model training
-python train_reward_model.py --pretrain <your model path>
-# if to use LoRA
-python train_reward_model.py --pretrain <your model path> --lora_rank 16
+python train_reward_model.py --pretrain <your model path> --model <your model type> --strategy naive 
+# use colossalai_zero2
+torchrun --standalone --nproc_per_node=2 train_reward_model.py --pretrain <your model path> --model <your model type> --strategy colossalai_zero2 
 ```
 
 ## Train with dummy prompt data (Stage 3)
@@ -44,7 +44,7 @@ DDP strategy and ColossalAI strategy support multi GPUs training:
 # run DDP on 2 GPUs
 torchrun --standalone --nproc_per_node=2 train_dummy.py --strategy ddp
 # run ColossalAI on 2 GPUs
-torchrun --standalone --nproc_per_node=2 train_dummy.py --strategy colossalai
+torchrun --standalone --nproc_per_node=2 train_dummy.py --strategy colossalai_zero2
 ```
 
 ## Train with real prompt data (Stage 3)
@@ -63,7 +63,7 @@ python train_prompts.py prompts.csv --strategy naive
 # run DDP on 2 GPUs
 torchrun --standalone --nproc_per_node=2 train_prompts.py prompts.csv --strategy ddp
 # run ColossalAI on 2 GPUs
-torchrun --standalone --nproc_per_node=2 train_prompts.py prompts.csv --strategy colossalai
+torchrun --standalone --nproc_per_node=2 train_prompts.py prompts.csv --strategy colossalai_zero2
 ```
 
 ## Inference example(After Stage3)
