@@ -69,9 +69,12 @@ torchrun --standalone --nproc_per_node=2 train_prompts.py prompts.csv --strategy
 ## Inference example(After Stage3)
 We support naive inference demo after training.
 ```shell
-# inference
-python inference.py --pretrain <your actor model path> --model <your model type>
+# inference, using pretrain path to configure model
+python inference.py --model_path <your actor model path> --model <your model type> --pretrain <your pretrain model name/path>
+# example
+python inference.py --model_path ./actor_checkpoint_prompts.pt --pretrain bigscience/bloom-560m --model bloom
 ```
+
 
 #### data
 - [x] [rm-static](https://huggingface.co/datasets/Dahoas/rm-static)
