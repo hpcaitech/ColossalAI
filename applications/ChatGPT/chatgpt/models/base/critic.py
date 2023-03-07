@@ -36,13 +36,14 @@ class Critic(LoRAModule):
         outputs = self.model(sequences, attention_mask=attention_mask)
         last_hidden_states = outputs['last_hidden_state']
 
-        values = self.value_head(last_hidden_states).squeeze(-1)[:, :-1]
+        values = self.value_head(last_hidden_states).squeeze(-1)
 
         if action_mask is not None:
-            prompt_mask = torch.ones_like(attention_mask)
+            prompt_mask = torch.ones_like(values)
             num_actions = action_mask.size(1)
-            prompt_mask[:, -num_actions:] = 0
+            prompt_mask[:, -(num_actions+1):] = 0
             value = masked_mean(values, prompt_mask, dim=1)
             return value
+        values = values[:, :-1]
         value = values.mean(dim=1).squeeze(1)
         return value
