@@ -54,6 +54,9 @@ jobs:
       image: hpcaitech/pytorch-cuda:1.12.0-11.3.0
       options: --gpus all --rm
     timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout ColossalAI-Documentation
         uses: actions/checkout@v2
@@ -68,17 +71,21 @@ jobs:
 
       - name: Checkout ColossalAI
         uses: actions/checkout@v3
+      
+      - name: Install Doc Test Requirements
+        run: |
+          source activate pytorch
+          conda env update --file docs/conda-doc-test-deps.yml --prune
+          pip install -r docs/requirements-doc-test.txt
 
       - name: Install ColossalAI
         run: |
+          source activate pytorch
           pip install -v .
-
-      - name: Install Doc Test Requirements
-        run: |
-          pip install -r docs/requirements-doc-test.txt
 
       - name: Test the Doc
         run: |
+          source activate pytorch
           for file in ${{ steps.changed-files.outputs.all_changed_files }}; do
             echo "Testing $file now..."
             docer test -p $file
