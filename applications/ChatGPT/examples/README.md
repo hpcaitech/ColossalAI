@@ -15,9 +15,9 @@ Use these code to train your reward model.
 
 ```shell
 # Naive reward model training
-python train_reward_model.py --pretrain <your model path> --model <your model type> --strategy naive 
+python train_reward_model.py --pretrain <your model path> --model <your model type> --strategy naive
 # use colossalai_zero2
-torchrun --standalone --nproc_per_node=2 train_reward_model.py --pretrain <your model path> --model <your model type> --strategy colossalai_zero2 
+torchrun --standalone --nproc_per_node=2 train_reward_model.py --pretrain <your model path> --model <your model type> --strategy colossalai_zero2
 ```
 
 ## Train with dummy prompt data (Stage 3)
