@@ -1115,7 +1115,8 @@ class PipelineEngineBase(ABC, nn.Module):
         # let each worker know global worker rref (include itself)
         sync_futs = []
         for pp_rank in self.pp_rank_to_worker_rref:
-            fut = self.pp_rank_to_worker_rref[pp_rank].rpc_async().sync_global_worker_rrefs(self.pp_rank_to_worker_rref)
+            fut = self.pp_rank_to_worker_rref[pp_rank].rpc_async(timeout=0).sync_global_worker_rrefs(
+                self.pp_rank_to_worker_rref)
             sync_futs.append(fut)
 
         for fut in sync_futs:
