@@ -1,11 +1,12 @@
 import pytest
 import torch
 import torchvision.models as tm
+
 from colossalai.fx import ColoTracer
 from colossalai.fx._compatibility import is_compatible_with_meta
 from colossalai.fx.graph_module import ColoGraphModule
-from colossalai.fx.passes.algorithms import linearize, solver_rotor
-from colossalai.fx.passes.algorithms.operation import (ForwardCheck, ForwardEnable, ForwardNograd, Loss)
+# from colossalai.fx.passes.algorithms import linearize, solver_rotor
+# from colossalai.fx.passes.algorithms.operation import (ForwardCheck, ForwardEnable, ForwardNograd, Loss)
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
 
 if is_compatible_with_meta():
@@ -21,6 +22,7 @@ except:
 
 
 @pytest.mark.skip(reason='TODO: modify the logger')
+@pytest.mark.skip("TODO(lyl): refactor all tests.")
 @pytest.mark.skipif(not with_codegen, reason="torch version is lower than 1.12.0")
 def test_linearize():
     MODEL_DICT = {tm.resnet18: [2100, 3000], tm.densenet121: [8100, 17000]}
@@ -79,6 +81,7 @@ def test_linearize():
             del node_list
 
 
+@pytest.mark.skip("TODO(lyl): refactor all tests.")
 @pytest.mark.skip(reason="torch11 meta tensor not implemented")
 @pytest.mark.skipif(with_codegen, reason="torch version is equal to or higher than 1.12.0")
 def test_linearize_torch11():
