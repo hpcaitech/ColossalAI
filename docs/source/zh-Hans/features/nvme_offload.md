@@ -235,3 +235,9 @@ Mem usage: 5298.344 MB
 ```
 
 NVME 卸载节省了大约 294 MB 内存。注意使用 Gemini 的 `pin_memory` 功能可以加速训练，但是会增加内存占用。所以这个结果也是符合我们预期的。如果我们关闭 `pin_memory`，我们仍然可以观察到大约 900 MB 的内存占用下降。
+
+## API 参考
+
+{{ autodoc:colossalai.nn.optimizer.HybridAdam }}
+
+{{ autodoc:colossalai.nn.optimizer.CPUAdam }}

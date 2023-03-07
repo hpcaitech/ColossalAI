@@ -247,3 +247,9 @@ Mem usage: 5298.344 MB
 ```
 
 NVME offload saves about 294 MB memory. Note that enabling `pin_memory` of Gemini can accelerate training but increase memory usage. So this result also meets our expectation. If we disable `pin_memory`, we can aslo observe a memory usage drop about 900 MB.
+
+## API Reference
+
+{{ autodoc:colossalai.nn.optimizer.HybridAdam }}
+
+{{ autodoc:colossalai.nn.optimizer.CPUAdam }}
