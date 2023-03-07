@@ -4,6 +4,7 @@ from copy import deepcopy
 import torch
 from chatgpt.nn import BLOOMActor, BLOOMCritic, GPTActor, GPTCritic, OPTActor, OPTCritic, RewardModel
 from chatgpt.trainer import PPOTrainer
+from chatgpt.trainer.callbacks import SaveCheckpoint
 from chatgpt.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
 from torch.optim import Adam
 from transformers import AutoTokenizer, BloomTokenizerFast
@@ -71,26 +72,38 @@ def main(args):
     (actor, actor_optim), (critic, critic_optim), reward_model, initial_model = strategy.prepare(
         (actor, actor_optim), (critic, critic_optim), reward_model, initial_model)
 
+    callbacks = []
+    if args.save_ckpt_path:
+        ckpt_callback = SaveCheckpoint(
+            args.save_ckpt_path,
+            args.save_ckpt_interval,
+            strategy,
+            actor,
+            critic,
+            actor_optim,
+            critic_optim,
+        )
+        callbacks.append(ckpt_callback)
+
     # configure trainer
-    trainer = PPOTrainer(
-        strategy,
-        actor,
-        critic,
-        reward_model,
-        initial_model,
-        actor_optim,
-        critic_optim,
-        max_epochs=args.max_epochs,
-        train_batch_size=args.train_batch_size,
-        experience_batch_size=args.experience_batch_size,
-        tokenizer=preprocess_batch,
-        max_length=128,
-        do_sample=True,
-        temperature=1.0,
-        top_k=50,
-        pad_token_id=tokenizer.pad_token_id,
-        eos_token_id=tokenizer.eos_token_id,
-    )
+
+    trainer = PPOTrainer(strategy,
+                         actor,
+                         critic,
+                         reward_model,
+                         initial_model,
+                         actor_optim,
+                         critic_optim,
+                         max_epochs=args.max_epochs,
+                         train_batch_size=args.train_batch_size,
+                         tokenizer=preprocess_batch,
+                         max_length=128,
+                         do_sample=True,
+                         temperature=1.0,
+                         top_k=50,
+                         pad_token_id=tokenizer.pad_token_id,
+                         eos_token_id=tokenizer.eos_token_id,
+                         callbacks=callbacks)
 
     random_prompts = torch.randint(tokenizer.vocab_size, (1000, 64), device=torch.cuda.current_device())
     trainer.fit(random_prompts,
@@ -120,5 +133,10 @@ if __name__ == '__main__':
     parser.add_argument('--train_batch_size', type=int, default=8)
     parser.add_argument('--experience_batch_size', type=int, default=8)
     parser.add_argument('--lora_rank', type=int, default=0, help="low-rank adaptation matrices rank")
+    parser.add_argument('--save_ckpt_path',
+                        type=str,
+                        default=None,
+                        help="path to save checkpoint, None means not to save")
+    parser.add_argument('--save_ckpt_interval', type=int, default=1, help="the interval of episode to save checkpoint")
     args = parser.parse_args()
     main(args)
