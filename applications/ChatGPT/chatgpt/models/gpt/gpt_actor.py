@@ -1,15 +1,14 @@
 from typing import Optional
 
-import torch.nn as nn
 from transformers.models.gpt2.configuration_gpt2 import GPT2Config
-from transformers.models.gpt2.modeling_gpt2 import GPT2Model
+from transformers.models.gpt2.modeling_gpt2 import GPT2LMHeadModel
 
-from .critic import Critic
+from ..base import Actor
 
 
-class GPTCritic(Critic):
+class GPTActor(Actor):
     """
-    GPT Critic model.
+    GPT Actor model.
 
     Args:
         pretrained (str): Pretrained model name or path.
@@ -22,12 +21,11 @@ class GPTCritic(Critic):
                  config: Optional[GPT2Config] = None,
                  checkpoint: bool = False) -> None:
         if pretrained is not None:
-            model = GPT2Model.from_pretrained(pretrained)
+            model = GPT2LMHeadModel.from_pretrained(pretrained)
         elif config is not None:
-            model = GPT2Model(config)
+            model = GPT2LMHeadModel(config)
         else:
-            model = GPT2Model(GPT2Config())
+            model = GPT2LMHeadModel(GPT2Config())
         if checkpoint:
             model.gradient_checkpointing_enable()
-        value_head = nn.Linear(model.config.n_embd, 1)
-        super().__init__(model, value_head)
+        super().__init__(model)

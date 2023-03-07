@@ -3,8 +3,8 @@ from typing import Optional
 import torch
 import torch.nn as nn
 
-from .lora import LoRAModule
-from .utils import masked_mean
+from ..lora import LoRAModule
+from ..utils import masked_mean
 
 
 class Critic(LoRAModule):

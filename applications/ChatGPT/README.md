@@ -41,7 +41,8 @@ Simplest usage:
 ```python
 from chatgpt.trainer import PPOTrainer
 from chatgpt.trainer.strategies import ColossalAIStrategy
-from chatgpt.nn import GPTActor, GPTCritic, RewardModel
+from chatgpt.models.gpt import GPTActor, GPTCritic
+from chatgpt.models.base import RewardModel
 from copy import deepcopy
 from colossalai.nn.optimizer import HybridAdam
 

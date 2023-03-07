@@ -4,9 +4,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .generation import generate
-from .lora import LoRAModule
-from .utils import log_probs_from_logits
+from ..generation import generate
+from ..lora import LoRAModule
+from ..utils import log_probs_from_logits
 
 
 class Actor(LoRAModule):

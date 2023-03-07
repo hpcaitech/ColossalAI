@@ -3,7 +3,10 @@ import argparse
 import loralib as lora
 import torch
 from chatgpt.dataset import RewardDataset
-from chatgpt.nn import BLOOMRM, GPTRM, OPTRM
+from chatgpt.models.base import RewardModel
+from chatgpt.models.bloom import BLOOMRM
+from chatgpt.models.gpt import GPTRM
+from chatgpt.models.opt import OPTRM
 from chatgpt.trainer import RewardModelTrainer
 from chatgpt.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
 from datasets import load_dataset

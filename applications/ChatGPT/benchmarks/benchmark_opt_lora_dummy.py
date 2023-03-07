@@ -4,7 +4,8 @@ from copy import deepcopy
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-from chatgpt.nn import OPTActor, OPTCritic, RewardModel
+from chatgpt.models.base import RewardModel
+from chatgpt.models.opt import OPTActor, OPTCritic
 from chatgpt.trainer import PPOTrainer
 from chatgpt.trainer.callbacks import PerformanceEvaluator
 from chatgpt.trainer.strategies import ColossalAIStrategy, DDPStrategy, Strategy

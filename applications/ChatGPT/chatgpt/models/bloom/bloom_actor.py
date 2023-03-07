@@ -1,35 +1,35 @@
 from typing import Optional
 
-from transformers.models.opt.configuration_opt import OPTConfig
-from transformers.models.opt.modeling_opt import OPTForCausalLM
+import torch
+from transformers import BloomConfig, BloomForCausalLM, BloomModel
 
-from .actor import Actor
+from ..base import Actor
 
 
-class OPTActor(Actor):
+class BLOOMActor(Actor):
     """
-    OPT Actor model.
+    BLOOM Actor model.
 
     Args:
         pretrained (str): Pretrained model name or path.
-        config (OPTConfig): Model config.
+        config (BloomConfig): Model config.
         checkpoint (bool): Enable gradient checkpointing.
-        lora_rank (int): Rank of the low-rank approximation.
+        lora_rank (int): LoRA rank.
         lora_train_bias (str): LoRA bias training mode.
     """
 
     def __init__(self,
-                 pretrained: Optional[str] = None,
-                 config: Optional[OPTConfig] = None,
+                 pretrained: str = None,
+                 config: Optional[BloomConfig] = None,
                  checkpoint: bool = False,
                  lora_rank: int = 0,
                  lora_train_bias: str = 'none') -> None:
         if pretrained is not None:
-            model = OPTForCausalLM.from_pretrained(pretrained)
+            model = BloomForCausalLM.from_pretrained(pretrained)
         elif config is not None:
-            model = OPTForCausalLM(config)
+            model = BloomForCausalLM(config)
         else:
-            model = OPTForCausalLM(OPTConfig())
+            model = BloomForCausalLM(BloomConfig())
         if checkpoint:
             model.gradient_checkpointing_enable()
         super().__init__(model, lora_rank, lora_train_bias)

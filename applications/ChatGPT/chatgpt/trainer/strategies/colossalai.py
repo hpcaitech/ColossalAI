@@ -5,7 +5,7 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 import torch.optim as optim
-from chatgpt.nn import Actor
+from chatgpt.models.base import Actor
 from torch.optim import Optimizer
 
 import colossalai
