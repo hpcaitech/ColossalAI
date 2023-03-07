@@ -5,6 +5,10 @@
 **前置教程:**
 - [基于Chunk内存管理的零冗余优化器 (ZeRO)](../features/zero_with_chunk.md)
 
+**相关论文**
+
+- [ZeRO-Offload: Democratizing Billion-Scale Model Training](https://arxiv.org/abs/2101.06840)
+- [ZeRO-Infinity: Breaking the GPU Memory Wall for Extreme Scale Deep Learning](https://arxiv.org/abs/2104.07857)
 ## 引言
 
 如果模型具有`N`个参数，在使用 Adam 时，优化器状态具有`8N`个参数。对于十亿规模的模型，优化器状态至少需要 32 GB 内存。 GPU显存限制了我们可以训练的模型规模，这称为GPU显存墙。如果我们将优化器状态 offload 到磁盘，我们可以突破 GPU 内存墙。

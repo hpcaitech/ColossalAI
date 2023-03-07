@@ -61,13 +61,11 @@ def train(args):
 
     # prepare for data and dataset
     data = load_dataset(args.dataset)
-    train_data = data["train"].select(range(100))
-    eval_data = data['test'].select(range(5))
+    train_data = data["train"]
+    eval_data = data['test']
     train_dataset = RewardDataset(train_data, tokenizer, max_len)
     eval_dataset = RewardDataset(eval_data, tokenizer, max_len)
 
-    # batch_size here is expected to be C(k,2), k means # response of each prompt
-    # be limited with the format of dataset 'Dahoas/rm-static', we'd better use batch_size as 1
     trainer = RewardModelTrainer(model=model,
                                  strategy=strategy,
                                  optim=optim,
@@ -93,7 +91,7 @@ if __name__ == '__main__':
     parser.add_argument('--pretrain', type=str, default=None)
     parser.add_argument('--dataset', type=str, default='Dahoas/rm-static')
     parser.add_argument('--save_path', type=str, default='rm_ckpt.pth')
-    parser.add_argument('--max_epochs', type=int, default=10)
+    parser.add_argument('--max_epochs', type=int, default=1)
     parser.add_argument('--batch_size', type=int, default=4)
     parser.add_argument('--lora_rank', type=int, default=0, help="low-rank adaptation matrices rank")
     args = parser.parse_args()

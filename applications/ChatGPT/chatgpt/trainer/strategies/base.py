@@ -2,12 +2,15 @@ from abc import ABC, abstractmethod
 from contextlib import nullcontext
 from typing import Any, List, Tuple, Union
 
+import numpy as np
 import torch
 import torch.nn as nn
-from chatgpt.nn import Actor, Critic, RewardModel
+from chatgpt.nn import Actor
 from chatgpt.replay_buffer import ReplayBuffer
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
+
+from .sampler import DistributedSampler
 
 ModelOptimPair = Tuple[nn.Module, Optimizer]
 ModelOrModelOptimPair = Union[nn.Module, ModelOptimPair]
@@ -123,3 +126,6 @@ class Strategy(ABC):
     @abstractmethod
     def load_optimizer(self, optimizer: Optimizer, path: str, map_location: Any = None) -> None:
         pass
+
+    def setup_sampler(self, dataset) -> DistributedSampler:
+        return DistributedSampler(dataset, 1, 0)

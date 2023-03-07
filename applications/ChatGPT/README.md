@@ -1,5 +1,13 @@
 # RLHF - Colossal-AI
 
+## Table of Contents
+
+- [What is RLHF - Colossal-AI?](#intro)
+- [How to Install?](#install)
+- [The Plan](#the-plan)
+- [How can you partcipate in open source?](#invitation-to-open-source-contribution)
+---
+## Intro
 Implementation of RLHF (Reinforcement Learning with Human Feedback) powered by Colossal-AI. It supports distributed training and offloading, which can fit extremly large models. More details can be found in the [blog](https://www.hpc-ai.tech/blog/colossal-ai-chatgpt).
 
 <p align="center">
@@ -19,7 +27,6 @@ Implementation of RLHF (Reinforcement Learning with Human Feedback) powered by C
 ```shell
 pip install .
 ```
-
 
 ## Usage
 
@@ -128,14 +135,24 @@ To load optimizer checkpoint:
 strategy.load_optimizer(actor_optim, 'actor_optim_checkpoint.pt')
 ```
 
-## Todo
+## The Plan
 
 - [x] implement PPO fine-tuning
 - [x] implement training reward model
 - [x] support LoRA
+- [x] support inference
+- [ ] open source the reward model weight
+- [ ] support llama from [facebook](https://github.com/facebookresearch/llama)
+- [ ] support BoN(best of N sample)
 - [ ] implement PPO-ptx fine-tuning
 - [ ] integrate with Ray
-- [ ] support more RL paradigms, like Implicit Language Q-Learning (ILQL)
+- [ ] support more RL paradigms, like Implicit Language Q-Learning (ILQL),
+- [ ] support chain of throught by [langchain](https://github.com/hwchase17/langchain)
+
+### Real-time progress
+You will find our progress in github project broad
+
+[Open ChatGPT](https://github.com/orgs/hpcaitech/projects/17/views/1)
 
 ## Invitation to open-source contribution
 Referring to the successful attempts of [BLOOM](https://bigscience.huggingface.co/) and [Stable Diffusion](https://en.wikipedia.org/wiki/Stable_Diffusion), any and all developers and partners with computing powers, datasets, models are welcome to join and build an ecosystem with Colossal-AI, making efforts towards the era of big AI models from the starting point of replicating ChatGPT!
@@ -144,7 +161,7 @@ You may contact us or participate in the following ways:
 1. Posting an [issue](https://github.com/hpcaitech/ColossalAI/issues/new/choose) or submitting a [PR](https://github.com/hpcaitech/ColossalAI/pulls) on GitHub
 2. Join the Colossal-AI community on
 [Slack](https://join.slack.com/t/colossalaiworkspace/shared_invite/zt-z7b26eeb-CBp7jouvu~r0~lcFzX832w),
-and [WeChat](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/WeChat.png "qrcode") to share your ideas.
+and [WeChat(微信)](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/WeChat.png "qrcode") to share your ideas.
 3. Check out and fill in the [cooperation proposal](https://www.hpc-ai.tech/partners)
 4. Send your proposal to email contact@hpcaitech.com
 

@@ -3,6 +3,7 @@
 /* Copyright 2021 The LightSeq Team
    Copyright Microsoft DeepSpeed
    This file is adapted from Microsoft DeepSpeed
+   Licensed under the MIT License.
 */
 #include <cuda.h>
 #include <cuda_fp16.h>

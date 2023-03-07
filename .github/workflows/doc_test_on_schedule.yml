@@ -1,0 +1,47 @@
+name: Test Documentation on Schedule
+on:
+  # run at 07:00 of every Sunday(singapore time) so here is UTC time Saturday 23:00
+  schedule:
+    - cron:  '0 23 * * 6'
+  workflow_dispatch:
+
+jobs:
+  check-changed-doc:
+    # Add this condition to avoid executing this job if the trigger event is workflow_dispatch.
+    if: github.repository == 'hpcaitech/ColossalAI'
+    name: Test the changed Doc
+    runs-on: [self-hosted, gpu]
+    container:
+      image: hpcaitech/pytorch-cuda:1.12.0-11.3.0
+      options: --gpus all --rm
+    timeout-minutes: 60
+    steps:
+      - name: Checkout ColossalAI-Documentation
+        uses: actions/checkout@v2
+        with:
+          path: './ColossalAI-Documentation'
+          repository: 'hpcaitech/ColossalAI-Documentation'
+
+      - name: Install Docer
+        run: |
+          pip install -v ./ColossalAI-Documentation/doc-build/third_party/hf-doc-builder
+          pip install -v ./ColossalAI-Documentation/doc-build
+
+      - name: Checkout ColossalAI
+        uses: actions/checkout@v3
+
+      - name: Install ColossalAI
+        run: |
+          pip install -v .
+
+      - name: Install Doc Test Requirements
+        run: |
+          pip install -r docs/requirements-doc-test.txt
+
+      - name: Test the Doc
+        run: |
+          for file in $(find ./docs/source -name "*.md"); do
+            docer test -p $file
+          done
+        env:
+          NCCL_SHM_DISABLE: 1

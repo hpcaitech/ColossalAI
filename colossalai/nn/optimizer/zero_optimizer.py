@@ -1,3 +1,4 @@
+# this code is inspired by the DeepSpeed library and implemented with our own design from scratch
 import math
 import warnings
 from enum import Enum

@@ -26,7 +26,7 @@ def main(args):
     elif args.strategy == 'ddp':
         strategy = DDPStrategy()
     elif args.strategy == 'colossalai_gemini':
-        strategy = ColossalAIStrategy(stage=3, placement_policy='cuda')
+        strategy = ColossalAIStrategy(stage=3, placement_policy='cuda', initial_scale=2**5)
     elif args.strategy == 'colossalai_zero2':
         strategy = ColossalAIStrategy(stage=2, placement_policy='cuda')
     else:
@@ -86,6 +86,7 @@ def main(args):
         callbacks.append(ckpt_callback)
 
     # configure trainer
+
     trainer = PPOTrainer(strategy,
                          actor,
                          critic,
@@ -130,6 +131,7 @@ if __name__ == '__main__':
     parser.add_argument('--update_timesteps', type=int, default=10)
     parser.add_argument('--max_epochs', type=int, default=5)
     parser.add_argument('--train_batch_size', type=int, default=8)
+    parser.add_argument('--experience_batch_size', type=int, default=8)
     parser.add_argument('--lora_rank', type=int, default=0, help="low-rank adaptation matrices rank")
     parser.add_argument('--save_ckpt_path',
                         type=str,

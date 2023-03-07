@@ -9,10 +9,11 @@ from chatgpt.nn import Actor
 from chatgpt.replay_buffer import ReplayBuffer
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim import Optimizer
-from torch.utils.data import DataLoader, DistributedSampler
+from torch.utils.data import DataLoader
 
 from .base import Strategy
 from .naive import NaiveStrategy
+from .sampler import DistributedSampler
 
 
 class DDPStrategy(NaiveStrategy):
@@ -49,17 +50,21 @@ class DDPStrategy(NaiveStrategy):
         return DDP(model, device_ids=[device])
 
     def setup_dataloader(self, replay_buffer: ReplayBuffer, pin_memory: bool = False) -> DataLoader:
-        sampler = DistributedSampler(replay_buffer,
-                                     num_replicas=dist.get_world_size(),
-                                     rank=dist.get_rank(),
-                                     shuffle=True,
-                                     seed=self.seed,
-                                     drop_last=True)
-        return DataLoader(replay_buffer,
-                          batch_size=replay_buffer.sample_batch_size,
-                          sampler=sampler,
-                          pin_memory=pin_memory,
-                          collate_fn=replay_buffer.collate_fn)
+        # DDP only mode, replay buffers on each rank are different.
+        # sampler = DistributedSampler(replay_buffer,
+        #                              num_replicas=dist.get_world_size(),
+        #                              rank=dist.get_rank(),
+        #                              shuffle=True,
+        #                              seed=self.seed,
+        #                              drop_last=True)
+        return DataLoader(
+            replay_buffer,
+            batch_size=replay_buffer.sample_batch_size,
+        #   sampler=sampler,
+            shuffle=True,
+            drop_last=True,
+            pin_memory=pin_memory,
+            collate_fn=replay_buffer.collate_fn)
 
     @staticmethod
     def _unwrap_actor(actor: Actor) -> nn.Module:
@@ -75,3 +80,6 @@ class DDPStrategy(NaiveStrategy):
         if only_rank0 and dist.get_rank() != 0:
             return
         super().save_optimizer(optimizer, path, only_rank0)
+
+    def setup_sampler(self, dataset) -> DistributedSampler:
+        return DistributedSampler(dataset, dist.get_world_size(), dist.get_rank())

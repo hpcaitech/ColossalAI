@@ -44,6 +44,8 @@ class RewardModelTrainer(ABC):
         self.eval_dataloader = DataLoader(eval_dataset, batch_size=batch_size)
 
         self.model = strategy.setup_model(model)
+        if "DDP" in str(self.strategy):
+            self.model = self.model.module
         self.loss_fn = PairWiseLoss()
         self.optimizer = strategy.setup_optimizer(optim, self.model)
 
@@ -54,12 +56,7 @@ class RewardModelTrainer(ABC):
                             desc='Train step of epoch %d' % epoch,
                             disable=not is_rank_0())
             # train
-            if use_lora > 0:
-                print("Using Lora")
-                lora.mark_only_lora_as_trainable(self.model.body)
-
-            else:
-                self.model.train()
+            self.model.train()
             for chosen_ids, c_mask, reject_ids, r_mask in self.train_dataloader:
                 chosen_ids = chosen_ids.squeeze(1).cuda()
                 c_mask = c_mask.squeeze(1).cuda()
