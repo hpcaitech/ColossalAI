@@ -2,9 +2,10 @@ from dataclasses import dataclass, field
 from typing import Callable, ClassVar, Dict, List, Optional, Tuple, Union
 
 import torch
-from siu.envs import MeshConfig
 from torch.autograd.profiler_util import _format_memory, _format_time
 from torch.fx import Graph, GraphModule, Node
+
+from colossalai._analyzer.envs import MeshConfig
 
 
 def intersect(a, b):

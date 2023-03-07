@@ -4,11 +4,11 @@ from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 import torch
 import torch.fx
-from siu._subclasses import MetaTensor, MetaTensorMode
-from siu.fx.node_util import MetaInfo
 from torch.autograd.graph import saved_tensors_hooks
 from torch.utils._pytree import tree_map
 
+from colossalai._analyzer._subclasses import MetaTensor, MetaTensorMode
+from colossalai._analyzer.fx.node_util import MetaInfo
 from colossalai.fx._compatibility import compatibility
 
 Target = Union[Callable[..., Any], str]

@@ -6,10 +6,11 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple, Ty
 
 import torch
 import torch.nn as nn
-from siu._subclasses import MetaTensor, _TensorPropertyMethod, _TorchFactoryMethod
 from torch.fx import Graph, Node, Proxy, Tracer
 from torch.fx.graph import _Namespace
 from torch.utils._pytree import tree_map
+
+from colossalai._analyzer._subclasses import MetaTensor, _TensorPropertyMethod, _TorchFactoryMethod
 
 from .codegen import ActivationCheckpointCodeGen
 from .graph_module import ColoGraphModule
