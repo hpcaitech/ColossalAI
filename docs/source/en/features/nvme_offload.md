@@ -1,3 +1,4 @@
+<!-- doc-test-command: torchrun --standalone --nproc_per_node=1 nvme_offload.py  -->
 # NVMe offload
 
 Author: Hongxin Liu
