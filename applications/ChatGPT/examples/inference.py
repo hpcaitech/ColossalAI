@@ -1,7 +1,9 @@
 import argparse
 
 import torch
-from chatgpt.nn import BLOOMActor, GPTActor, OPTActor
+from chatgpt.models.bloom import BLOOMActor
+from chatgpt.models.gpt import GPTActor
+from chatgpt.models.opt import OPTActor
 from transformers import AutoTokenizer
 from transformers.models.gpt2.tokenization_gpt2 import GPT2Tokenizer
 

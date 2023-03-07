@@ -3,7 +3,7 @@ from typing import Optional
 import torch
 import torch.nn as nn
 
-from .lora import LoRAModule
+from ..lora import LoRAModule
 
 
 class RewardModel(LoRAModule):

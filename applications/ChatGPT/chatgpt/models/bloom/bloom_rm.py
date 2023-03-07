@@ -1,14 +1,14 @@
 from typing import Optional
 
-import torch
+import torch.nn as nn
 from transformers import BloomConfig, BloomForCausalLM, BloomModel
 
-from .actor import Actor
+from ..base import RewardModel
 
 
-class BLOOMActor(Actor):
+class BLOOMRM(RewardModel):
     """
-    BLOOM Actor model.
+    BLOOM Reward model.
 
     Args:
         pretrained (str): Pretrained model name or path.
@@ -25,11 +25,12 @@ class BLOOMActor(Actor):
                  lora_rank: int = 0,
                  lora_train_bias: str = 'none') -> None:
         if pretrained is not None:
-            model = BloomForCausalLM.from_pretrained(pretrained)
+            model = BloomModel.from_pretrained(pretrained)
         elif config is not None:
-            model = BloomForCausalLM(config)
+            model = BloomModel(config)
         else:
-            model = BloomForCausalLM(BloomConfig())
+            model = BloomModel(BloomConfig())
         if checkpoint:
             model.gradient_checkpointing_enable()
-        super().__init__(model, lora_rank, lora_train_bias)
+        value_head = nn.Linear(model.config.hidden_size, 1)
+        super().__init__(model, value_head, lora_rank, lora_train_bias)

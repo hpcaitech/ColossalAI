@@ -5,7 +5,7 @@ import numpy as np
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-from chatgpt.nn import Actor
+from chatgpt.models.base import Actor
 from chatgpt.replay_buffer import ReplayBuffer
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim import Optimizer

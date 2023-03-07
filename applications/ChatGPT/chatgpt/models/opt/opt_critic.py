@@ -1,14 +1,15 @@
 from typing import Optional
 
 import torch.nn as nn
-from transformers import OPTConfig, OPTModel
+from transformers.models.opt.configuration_opt import OPTConfig
+from transformers.models.opt.modeling_opt import OPTModel
 
-from .reward_model import RewardModel
+from ..base import Critic
 
 
-class OPTRM(RewardModel):
+class OPTCritic(Critic):
     """
-    OPT Reward model.
+    OPT Critic model.
 
     Args:
         pretrained (str): Pretrained model name or path.
@@ -32,6 +33,5 @@ class OPTRM(RewardModel):
             model = OPTModel(OPTConfig())
         if checkpoint:
             model.gradient_checkpointing_enable()
-
-        value_head = nn.Linear(model.config.word_embed_proj_dim, 1)
+        value_head = nn.Linear(model.config.hidden_size, 1)
         super().__init__(model, value_head, lora_rank, lora_train_bias)

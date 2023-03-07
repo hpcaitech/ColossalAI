@@ -3,7 +3,7 @@ from abc import ABC
 import loralib as lora
 import torch
 from chatgpt.dataset import RewardDataset
-from chatgpt.nn import PairWiseLoss
+from chatgpt.models.loss import PairWiseLoss
 from torch.optim import Adam, Optimizer
 from torch.utils.data import DataLoader
 from tqdm import tqdm

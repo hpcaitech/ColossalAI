@@ -2,8 +2,9 @@ from typing import Any, Callable, Dict, List, Optional
 
 import torch.nn as nn
 from chatgpt.experience_maker import Experience, NaiveExperienceMaker
-from chatgpt.nn import Actor, Critic, PolicyLoss, ValueLoss
-from chatgpt.nn.generation_utils import update_model_kwargs_fn
+from chatgpt.models.base import Actor, Critic
+from chatgpt.models.generation_utils import update_model_kwargs_fn
+from chatgpt.models.loss import PolicyLoss, ValueLoss
 from chatgpt.replay_buffer import NaiveReplayBuffer
 from torch.optim import Optimizer
 

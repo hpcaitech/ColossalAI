@@ -3,7 +3,10 @@ from copy import deepcopy
 
 import pandas as pd
 import torch
-from chatgpt.nn import BLOOMActor, BLOOMCritic, GPTActor, GPTCritic, OPTActor, OPTCritic, RewardModel
+from chatgpt.models.base import RewardModel
+from chatgpt.models.bloom import BLOOMActor, BLOOMCritic
+from chatgpt.models.gpt import GPTActor, GPTCritic
+from chatgpt.models.opt import OPTActor, OPTCritic
 from chatgpt.trainer import PPOTrainer
 from chatgpt.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
 from torch.optim import Adam
