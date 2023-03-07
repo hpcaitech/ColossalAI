@@ -1,7 +1,12 @@
 # 安装
-> Colossal-AI 目前仅支持Linux操作系统，没有在其他操作系统如Windows和macOS进行测试
->
-> 环境要求: PyTorch 1.10 ~ 1.12 (更新版本正在兼容中), Python >= 3.7, CUDA >= 11.0。如果你遇到安装问题，可以向本项目 [反馈](https://github.com/hpcaitech/ColossalAI/issues/new/choose)。
+
+环境要求:
+
+- PyTorch >= 1.11 (PyTorch 2.x 正在适配中)
+- Python >= 3.7
+- CUDA >= 11.0
+  
+如果你遇到安装问题，可以向本项目 [反馈](https://github.com/hpcaitech/ColossalAI/issues/new/choose)。
 
 ## 从PyPI上安装
 
@@ -10,6 +15,8 @@
 ```shell
 pip install colossalai
 ```
+
+**注：现在只支持Linux。**
 
 如果你想同时安装PyTorch扩展的话，可以添加`CUDA_EXT=1`。如果不添加的话，PyTorch扩展会在运行时自动安装。
 

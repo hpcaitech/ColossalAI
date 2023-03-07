@@ -274,18 +274,25 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 <p align="right">(<a href="#top">返回顶端</a>)</p>
 
 ## 安装
-> Colossal-AI 目前仅支持Linux操作系统，没有在其他操作系统如Windows和macOS进行测试。
->
-> 环境要求: PyTorch 1.10 ~ 1.12 (更新版本正在兼容中), Python >= 3.7, CUDA >= 11.0。如果你遇到安装问题，可以向本项目 [反馈](https://github.com/hpcaitech/ColossalAI/issues/new/choose)。
+
+环境要求:
+
+- PyTorch >= 1.11 (PyTorch 2.x 正在适配中)
+- Python >= 3.7
+- CUDA >= 11.0
+  
+如果你遇到安装问题，可以向本项目 [反馈](https://github.com/hpcaitech/ColossalAI/issues/new/choose)。
 
 
 ### 从PyPI安装
 
-您可以用下面的命令直接从PyPI上下载并安装Colossal-AI。我们默认不会安装PyTorch扩展包
+您可以用下面的命令直接从PyPI上下载并安装Colossal-AI。我们默认不会安装PyTorch扩展包。
 
 ```bash
 pip install colossalai
 ```
+
+**注：目前只支持Linux。**
 
 但是，如果你想在安装时就直接构建PyTorch扩展，您可以设置环境变量`CUDA_EXT=1`.
 
