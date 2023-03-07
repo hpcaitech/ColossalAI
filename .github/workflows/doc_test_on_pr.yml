@@ -75,6 +75,7 @@ jobs:
 
       - name: Install Doc Test Requirements
         run: |
+          conda env update --file docs/conda-doc-test-deps.yml --prune
           pip install -r docs/requirements-doc-test.txt
 
       - name: Test the Doc
