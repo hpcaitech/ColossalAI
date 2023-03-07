@@ -68,15 +68,15 @@ jobs:
 
       - name: Checkout ColossalAI
         uses: actions/checkout@v3
-
-      - name: Install ColossalAI
-        run: |
-          pip install -v .
-
+      
       - name: Install Doc Test Requirements
         run: |
           conda env update --file docs/conda-doc-test-deps.yml --prune
           pip install -r docs/requirements-doc-test.txt
+
+      - name: Install ColossalAI
+        run: |
+          pip install -v .
 
       - name: Test the Doc
         run: |
