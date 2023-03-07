@@ -39,11 +39,10 @@ class Critic(LoRAModule):
         values = self.value_head(last_hidden_states).squeeze(-1)
 
         if action_mask is not None:
-            prompt_mask = torch.ones_like(values)
+            prompt_mask = torch.ones_like(values, dtype=torch.bool)
             num_actions = action_mask.size(1)
-            prompt_mask[:, -(num_actions+1):] = 0
+            prompt_mask[:, -(num_actions+1):] = False
             value = masked_mean(values, prompt_mask, dim=1)
             return value
         values = values[:, :-1]
         value = values.mean(dim=1).squeeze(1)
-        return value
