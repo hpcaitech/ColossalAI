@@ -18,27 +18,21 @@ if AUTOCHUNK_AVAILABLE:
 
 def assert_codegen_run(
     model: Any,
-    meta_args: List,
-    concrete_args: List = None,
+    meta_args: Dict,
+    data: Any,
     max_memory: int = None,
     print_mem: bool = False,
     print_est_mem: bool = False,
     print_progress: bool = False,
     print_code: bool = False,
 ) -> List[Dict]:
-    if concrete_args is None:
-        concrete_args = []
     model = model()
 
     # trace the meta graph and setup codegen
-    meta_graph = symbolic_trace(
-        model,
-        meta_args={k: v.to(torch.device("meta")) for k, v in meta_args},
-        concrete_args={k: v for k, v in concrete_args},
-    )
+    meta_graph = symbolic_trace(model, meta_args={k: v.to(torch.device("meta")) for k, v in meta_args.items()})
     model = model.cuda().eval()
     interp = MetaInfoProp(meta_graph)
-    meta_tensors = [MetaTensor(i[1], fake_device="cuda:0") for i in meta_args] + [i[1] for i in concrete_args]
+    meta_tensors = [MetaTensor(i[1], fake_device="cuda:0") for i in meta_args.items()]
     interp.propagate(*meta_tensors)
     codegen = AutoChunkCodeGen(
         meta_graph,
@@ -52,8 +46,7 @@ def assert_codegen_run(
     # MetaInfoProp requires symbolic_trace but CodeGen requires ColoTracer
     graph = ColoTracer().trace(
         model.cuda(),
-        meta_args={k: v.to(torch.device("meta")) for k, v in meta_args},
-        concrete_args={k: v for k, v in concrete_args},
+        meta_args={k: v.to(torch.device("meta")) for k, v in meta_args.items()},
     )
     graph.set_codegen(codegen)
     gm = ColoGraphModule(model, graph, ckpt_codegen=False)
@@ -66,8 +59,7 @@ def assert_codegen_run(
     assert "chunk_size = None;  " in code
 
     # assert result
-    inputs = [i[1] for i in meta_args] + [i[1] for i in concrete_args]
-    inputs = [i.cuda() if isinstance(i, torch.Tensor) else i for i in inputs]
+    inputs = [data.cuda()]
     model.cuda().eval()
     gm.eval()
     with torch.no_grad():
@@ -84,9 +76,9 @@ def assert_codegen_run(
             max_mem_ori = torch.cuda.max_memory_allocated() / 1024**2
             print("origin mem: %.2fMB, autochunk mem: %.2fMB" % (max_mem_ori - now_mem_ori, max_mem_gm - now_mem_gm))
 
-    assert torch.allclose(out_gm["sample"], out_model["sample"],
+    assert torch.allclose(out_gm, out_model,
                           atol=1e-3), "fx_out doesn't comply with original output, diff is %.2e" % torch.mean(
-                              torch.abs(out_gm["sample"] - out_model["sample"]))
+                              torch.abs(out_gm - out_model))
 
     return chunks
 
@@ -113,11 +105,11 @@ def run_test(
     )
 
     # build model and input
-    meta_args, concrete_args = data
+    data, meta_args = data
     chunks = assert_codegen_run(
         model,
         meta_args=meta_args,
-        concrete_args=concrete_args,
+        data=data,
         max_memory=max_memory,
         print_code=print_code,
         print_mem=print_mem,
