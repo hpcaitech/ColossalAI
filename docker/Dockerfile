@@ -1,10 +1,10 @@
 FROM hpcaitech/cuda-conda:11.3
 
 # metainformation
-LABEL org.opencontainers.image.version = "0.2.5"
+LABEL org.opencontainers.image.version = $(python -c "f = open("version.txt", "r"); print(f.read().strip())")
 LABEL org.opencontainers.image.source = "https://github.com/hpcaitech/ColossalAI"
 LABEL org.opencontainers.image.licenses = "Apache License 2.0"
-LABEL org.opencontainers.image.base.name="docker.io/library/hpcaitech/cuda-conda:11.3"
+LABEL org.opencontainers.image.base.name = "docker.io/library/hpcaitech/cuda-conda:11.3"
 
 # install torch
 RUN conda install pytorch==1.12.1 torchvision==0.13.1 torchaudio==0.12.1 cudatoolkit=11.3 -c pytorch
