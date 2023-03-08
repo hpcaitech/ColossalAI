@@ -61,7 +61,7 @@ def _benchmark_evoformer_stack_gm(
     # bench
     mem = _benchmark_memory(gm, inputs)
     speed = _benchmark_speed(gm, inputs)
-    print("evoformer stack gm, mem: %.2fMB, time: %.4fs, data_args: %s" % (mem, speed, str(data_args)))
+    print("evoformer stack gm, mem: %.2fMB, time: %.4fs" % (mem, speed))
 
 
 def _benchmark_evoformer_stack_origin(
@@ -83,14 +83,15 @@ def _benchmark_evoformer_stack_origin(
     # bench
     mem = _benchmark_memory(model, inputs)
     speed = _benchmark_speed(model, inputs)
-    print("evoformer stack origin, mem: %.2fMB, time: %.4fs, data_args: %s" % (mem, speed, str(data_args)))
+    print("evoformer stack origin, mem: %.2fMB, time: %.4fs" % (mem, speed))
+    return mem
 
 
 def _benchmark_memory(model, inputs):
     with torch.no_grad():
         torch.cuda.reset_peak_memory_stats()
         now_mem = torch.cuda.memory_allocated() / 1024**2
-        model(*[i.clone() if isinstance(i, torch.Tensor) else i for i in inputs])
+        model(*inputs)
         new_max_mem = torch.cuda.max_memory_allocated() / 1024**2
     return new_max_mem - now_mem
 
@@ -108,13 +109,18 @@ def _benchmark_speed(model, inputs, loop=5):
     return (time2 - time1) / loop
 
 
-def benchmark_evoformer_stack():
+def benchmark_evoformer_stack(data_args):
     from test_autochunk_evoformer_stack import get_data, get_model
-    data_args = [128, 256]
-    print("")
-    _benchmark_evoformer_stack_origin(data_args, get_model, get_data)
-    _benchmark_evoformer_stack_gm(data_args, 600, get_model, get_data)
-    _benchmark_evoformer_stack_gm(data_args, 400, get_model, get_data)
+    print("\nmsa len: %d, pair len: %d" % (data_args[0], data_args[1]))
+    max_mem = _benchmark_evoformer_stack_origin(data_args, get_model, get_data)
+    for ratio in [0.5, 0.4, 0.3, 0.2, 0.1]:
+        try:
+            _benchmark_evoformer_stack_gm(data_args, max_mem * ratio, get_model, get_data)
+        except RuntimeError as e:
+            if e.args[0] == 'Search failed. Try a larger memory threshold.':
+                break
+        except Exception as e:
+            raise e
     _benchmark_evoformer_stack_gm(data_args, None, get_model, get_data)
 
 
@@ -128,4 +134,7 @@ if __name__ == "__main__":
         port=free_port(),
         backend="nccl",
     )
-    benchmark_evoformer_stack()
+    benchmark_evoformer_stack((256, 256))
+    benchmark_evoformer_stack((256, 512))
+    benchmark_evoformer_stack((256, 1024))
+    benchmark_evoformer_stack((256, 1280))
