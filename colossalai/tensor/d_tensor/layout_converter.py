@@ -11,7 +11,7 @@ from colossalai.context.singleton_meta import SingletonMeta
 from colossalai.tensor.d_tensor.comm_spec import *
 from colossalai.tensor.d_tensor.layout import Layout
 from colossalai.tensor.sharding_spec import ShardingSpecException
-from colossalai.tensor.utils import all_gather_simulator, all_to_all_simulator, mix_gather_simulator, shard_simulator
+from colossalai.tensor.utils import all_gather_simulator, all_to_all_simulator, shard_simulator
 
 from .sharding_spec import ShardingSpec
 from .utils import get_comm_cost
@@ -53,9 +53,7 @@ class LayoutConverter(metaclass=SingletonMeta):
     def __init__(self):
         self._options = None
         self._forward_only = False
-        self.total_communication_cost = 0
-        self.total_transform_steps = 0
-        self.cached_spec_pairs_transform_path = {}
+        self.cached_solution = {}
 
     @property
     def options(self):
@@ -77,33 +75,33 @@ class LayoutConverter(metaclass=SingletonMeta):
 
     def all_gather_transform_layouts(self, source_layout: Layout) -> Dict[Layout, CommSpec]:
         '''
-        Get all valid sharding specs from source_spec with single all-gather operation, and
-        accumulate commucation cost on origin cost which will finally be used in auto sharding solver.
+        Get all valid layouts from source_layout with single all-gather operation.
         For the all-gather operation, we just care about the S dimension.
 
         Argument:
-            source_spec(ShardingSpec): the ShardingSpec of the source_spec.
-            orig_cost(Dict[str, float]): the original communication cost before this operation.
+            source_layout: the layout to be transformed.
 
         Return:
-            valid_spec_dict(Dict[ShardingSpec, float]): all valid sharding specs from source_spec with single all-gather operation.
+            valid_spec_dict(Dict[Layout, CommSpec]): all valid layouts from source_layout with single all-gather operation.
 
         Example:
+            layout_converter = LayoutConverter()
             dim_partition_dict = {0: [0], 1: [1]}
-            # DistSpec:
-            #     shard_sequence: S0,S1,R
-            #     device_mesh_shape: (4, 4)
-            sharding_spec = ShardingSpec(device_mesh, entire_shape, dim_partition_dict)
-            shape_consistency_manager = ShapeConsistencyManager()
-            rst_dict = shape_consistency_manager.get_all_all_gather_spec(sharding_spec, {'forward': 0, 'backward': 0, 'total': 0})
-            print(rst_dict)
+
+            # [S0,S1,R]
+            sharding_spec = ShardingSpec(dim_size=3, dim_partition_dict=dim_partition_dict)
+            layout = Layout(device_mesh=device_mesh,
+                            device_type=torch.device('cuda'),
+                            sharding_spec=sharding_spec,
+                            entire_shape=entire_shape)
+
+            rst_dict = layout_converter.all_gather_transform_layouts(layout)
+            for layout, comm_spec in rst_dict.items():
+                print(f'{layout.sharding_spec.sharding_sequence}: {comm_spec}')
 
         Output:
-            {DistSpec:
-            shard_sequence: R,S1,R
-            device_mesh_shape: (4, 4): 0, DistSpec:
-            shard_sequence: S0,R,R
-            device_mesh_shape: (4, 4): 0}
+            [R, S1, R]: CommSpec:(comm_pattern:GATHER_FWD_SPLIT_BWD, gather_dim:0, shard_dim:0, logical_process_axis:0)
+            [S0, R, R]: CommSpec:(comm_pattern:GATHER_FWD_SPLIT_BWD, gather_dim:1, shard_dim:1, logical_process_axis:1)
         '''
         valid_spec_dict = {}
         comm_pattern = CollectiveCommPattern.GATHER_FWD_SPLIT_BWD
@@ -147,35 +145,34 @@ class LayoutConverter(metaclass=SingletonMeta):
 
     def all_to_all_transform_layout(self, source_layout: Layout) -> Dict[Layout, CommSpec]:
         '''
-        Get all valid sharding specs from source_spec with single all-to-all operation, and
-        accumulate commucation cost on origin cost which will finally be used in auto sharding solver.
+        Get all valid layouts from source_layout with single all-to-all operation.
         For the all-to-all operation, we just care about the pairs containing S dimension.
 
         Argument:
-            source_spec(ShardingSpec): the ShardingSpec of the source_spec.
-            orig_cost(Dict[str, float]): the original communication cost before this operation.
+            source_layout(Layout): the layout to be transformed.
 
         Return:
-            valid_spec_dict(Dict[ShardingSpec, float]): all valid sharding specs from source_spec with single all-to-all operation.
+            valid_spec_dict(Dict[Layout, CommSpec]): all valid layouts from source_layout with single all-to-all operation.
 
         Example:
+            layout_converter = LayoutConverter()
             dim_partition_dict = {0: [0], 1: [1]}
-            # DistSpec:
-            #     shard_sequence: S0,S1,R
-            #     device_mesh_shape: (4, 4)
-            sharding_spec = ShardingSpec(device_mesh, entire_shape, dim_partition_dict)
-            shape_consistency_manager = ShapeConsistencyManager()
-            rst_dict = shape_consistency_manager.get_all_all_to_all_spec(sharding_spec, {'forward': 0, 'backward': 0, 'total': 0})
-            print(rst_dict)
+
+            # [S0,S1,R]
+            sharding_spec = ShardingSpec(dim_size=3, dim_partition_dict=dim_partition_dict)
+            layout = Layout(device_mesh=device_mesh,
+                                    device_type=torch.device('cuda'),
+                                    sharding_spec=sharding_spec,
+                                    entire_shape=entire_shape)
+            rst_dict = layout_converter.all_to_all_transform_layout(layout)
+
+            for layout, comm_spec in rst_dict.items():
+                print(f'{layout.sharding_spec.sharding_sequence}: {comm_spec}')
 
         Output:
-            {DistSpec:
-            shard_sequence: S01,R,R
-            device_mesh_shape: (4, 4): 0, DistSpec:
-            shard_sequence: R,S1,S0
-            device_mesh_shape: (4, 4): 0, DistSpec:
-            shard_sequence: S0,R,S1
-            device_mesh_shape: (4, 4): 0}
+            [S01, R, R]: CommSpec:(comm_pattern:ALL2ALL_FWD_ALL2ALL_BWD, gather_dim:1, shard_dim:0, logical_process_axis: 1)
+            [R, S1, S0]: CommSpec:(comm_pattern:ALL2ALL_FWD_ALL2ALL_BWD, gather_dim:0, shard_dim:2, logical_process_axis: 0)
+            [S0, R, S1]: CommSpec:(comm_pattern:ALL2ALL_FWD_ALL2ALL_BWD, gather_dim:1, shard_dim:2, logical_process_axis: 1)
         '''
         valid_spec_dict = {}
         comm_pattern = CollectiveCommPattern.ALL2ALL_FWD_ALL2ALL_BWD
@@ -253,35 +250,34 @@ class LayoutConverter(metaclass=SingletonMeta):
 
     def shard_transform_layout(self, source_layout: Layout) -> Dict[Layout, CommSpec]:
         '''
-        Get all valid sharding specs from source_spec with single shard operation, and
-        accumulate commucation cost on origin cost which will finally be used in auto sharding solver.
+        Get all valid layouts from source_layout with single shard operation.
         For the sharding operation, we just care about legal sharding dimensions.
 
         Argument:
-            source_spec(ShardingSpec): the ShardingSpec of the source_spec.
-            orig_cost(float): the original communication cost before this operation.
+            source_layout(Layout): the layout to be transformed.
 
         Return:
-            valid_spec_dict(Dict[ShardingSpec, float]): all valid sharding specs from source_spec with single all-to-all operation.
+            valid_spec_dict(Dict[Layout, CommSpec]): all valid layouts from source_layout with single shard operation.
 
         Example:
+            layout_converter = LayoutConverter()
             dim_partition_dict = {0: [0]}
-            # DistSpec:
-            #     shard_sequence: S0,R,R
-            #     device_mesh_shape: (4, 4)
-            sharding_spec = ShardingSpec(device_mesh, entire_shape, dim_partition_dict)
-            shape_consistency_manager = ShapeConsistencyManager()
-            rst_dict = shape_consistency_manager.get_all_shard_spec(sharding_spec, {'forward': 0, 'backward': 0, 'total': 0})
-            print(rst_dict)
+
+            # [S0,R,R]
+            sharding_spec = ShardingSpec(dim_size=3, dim_partition_dict=dim_partition_dict)
+            layout = Layout(device_mesh=device_mesh,
+                          device_type=torch.device('cuda'),
+                          sharding_spec=sharding_spec,
+                          entire_shape=entire_shape)
+            rst_dict = layout_converter.shard_transform_layout(layout)
+
+            for layout, comm_spec in rst_dict.items():
+                print(f'{layout.sharding_spec.sharding_sequence}: {comm_spec}')
 
         Output:
-            {DistSpec:
-            shard_sequence: S01,R,R
-            device_mesh_shape: (4, 4): 0, DistSpec:
-            shard_sequence: S0,S1,R
-            device_mesh_shape: (4, 4): 0, DistSpec:
-            shard_sequence: S0,R,S1
-            device_mesh_shape: (4, 4): 0}
+            [S01, R, R]: CommSpec:(comm_pattern:SPLIT_FWD_GATHER_BWD, gather_dim:0, shard_dim:0, logical_process_axis:1)
+            [S0, S1, R]: CommSpec:(comm_pattern:SPLIT_FWD_GATHER_BWD, gather_dim:1, shard_dim:1, logical_process_axis:1)
+            [S0, R, S1]: CommSpec:(comm_pattern:SPLIT_FWD_GATHER_BWD, gather_dim:2, shard_dim:2, logical_process_axis:1)
         '''
         valid_spec_dict = {}
         comm_pattern = CollectiveCommPattern.SPLIT_FWD_GATHER_BWD
@@ -293,6 +289,7 @@ class LayoutConverter(metaclass=SingletonMeta):
         for dim, shard_list in source_spec.dim_partition_dict.items():
             for element in shard_list:
                 legal_sharding_dims.remove(element)
+
         if len(legal_sharding_dims) == 0:
             return valid_spec_dict
 
@@ -333,19 +330,18 @@ class LayoutConverter(metaclass=SingletonMeta):
 
     def get_all_one_step_transform_spec(self, source_layout: Layout) -> Dict[Layout, CommSpec]:
         '''
-        Get all valid sharding specs from source_spec with one step transform, and
-        accumulate commucation cost on origin cost which will finally be used in auto sharding solver.
+        Get all valid layouts from source_layout with one step transform.
+
         Note:
             all-gather will eliminate a sharding dimension, all-to-all will keep sharding dimension same as before,
             and shard will add a sharding dimension. Therefore, the result of above operations are mutual exclusive,
             we could safely put them together.
 
         Argument:
-            source_spec(ShardingSpec): the ShardingSpec of the source_spec.
-            orig_cost(float): the original communication cost before this operation.
+            source_layout(Layout): the layout to be transformer.
 
         Return:
-            valid_spec_dict(Dict[ShardingSpec, float]): all valid sharding specs from source_spec with single all-to-all operation.
+            valid_spec_dict(Dict[Layout, CommSpec]): all valid layouts from source_layout with one step transform.
         '''
         valid_spec_dict = {}
         valid_spec_dict.update(self.all_gather_transform_layouts(source_layout))
@@ -356,62 +352,52 @@ class LayoutConverter(metaclass=SingletonMeta):
     def layout_converting(self, source_layout: Layout,
                           target_layout: Layout) -> Tuple[List[Layout], List[CommSpec], float]:
         '''
-        This method will find a path to transform source_spec to target_spec with
+        This method will find a path to transform source_layout to target_layout with
         a greedy algorithm.
         The basic idea is:
         Step1:
-            Generate all one-step transform sequences from source_spec.
+            Generate all one-step transform sequences from source_layout.
         Step2:
-            Pick the 'best' sharding spec following the heuristic function.
+            Pick the 'best' layout following the heuristic function.
         Step3:
-            Repeat above steps until the source spec transform to target spec.
-
-        During finding the transform path, commucation cost will be accumulated, and it
-        will be finally used in auto parallel solver.
+            Repeat above steps until the source layout transform to target layout.
 
         Additionally, to avoid repeating the path search in runtime, we cached all solved path
         in auto parallel strategy building time, which could handle most of cases in runtime.
 
-        Argument:
-            source_spec(ShardingSpec): ShardingSpec of the source activation.
-            target_spec(ShardingSpec): ShardingSpec of the target activation.
+        Args:
+            source_layout(Layout): the layout to be transformed.
+            target_layout(Layout): the layout to be achieved after a serious of transforms.
 
         Return:
-            transform_path(List[ShardingSpec]): The transform path from source_spec to target_spec,
-                                                it contains the source_spec and target_spec.
-            comm_action_sequence(List[CommSpec]): Keep the communication operations to complete the shape consistency in order.
-            total_cost(float): total cost to complete shape consistency transform.
+            transform_path(List[Layout]): The transform path from source_layout to target_layout,
+                                                it contains the source_layout and target_layout.
+            comm_action_sequence(List[CommSpec]): Keep the communication operations to complete the layout converting in order.
 
         Example:
             dim_partition_source = {1: [0, 1]}
             dim_partition_target = {0: [0, 1]}
-            # DistSpec:
-            #     shard_sequence: R,S01,R
-            #     device_mesh_shape: (4, 4)
-            sharding_spec_source = ShardingSpec(device_mesh, entire_shape, dim_partition_source)
-            # DistSpec:
-            #     shard_sequence: S01,R,R
-            #     device_mesh_shape: (4, 4)
-            sharding_spec_target = ShardingSpec(device_mesh, entire_shape, dim_partition_target)
-            transform_path, comm_action_sequence, total_cost = shape_consistency_manager.shape_consistency(sharding_spec_source, sharding_spec_target)
-            print(f'transform_path: {transform_path}')
-            print(f'comm_action_sequence: {comm_action_sequence}')
-            print(f'total_cost: {total_cost}')
+
+            # [R,S01,R]
+            sharding_spec_source = ShardingSpec(dim_size=3, dim_partition_dict=dim_partition_source)
+            source_layout = Layout(device_mesh=device_mesh,
+                                device_type=torch.device('cuda'),
+                                sharding_spec=sharding_spec_source,
+                                entire_shape=entire_shape)
+
+            # [S01,R,R]
+            sharding_spec_target = ShardingSpec(dim_size=3, dim_partition_dict=dim_partition_target)
+            target_layout = Layout(device_mesh=device_mesh,
+                                device_type=torch.device('cuda'),
+                                sharding_spec=sharding_spec_target,
+                                entire_shape=entire_shape)
+
+            transform_path, comm_action_sequence = layout_converter.layout_converting(source_layout, target_layout)
+            transform_path_str = '->'.join([str(layout.sharding_spec.sharding_sequence) for layout in transform_path])
+            print(transform_path_str)
 
         output:
-            transform_path: [DistSpec:
-                    shard_sequence: R,S01,R
-                    device_mesh_shape: (4, 4), DistSpec:
-                    shard_sequence: R,S0,R
-                    device_mesh_shape: (4, 4), DistSpec:
-                    shard_sequence: S0,R,R
-                    device_mesh_shape: (4, 4), DistSpec:
-                    shard_sequence: S01,R,R
-                    device_mesh_shape: (4, 4)]
-            comm_action_sequence: [CommSpec:(comm_pattern:allgather, gather_dim:1, logical_process_axis:1),
-                                   CommSpec:(comm_pattern:all2all, gather_dim:1, shard_dim:0, logical_process_axis: 0),
-                                   CommSpec:(comm_pattern:shard, shard_dim:0, logical_process_axis:1)]
-            total_cost: 12294.402000000002
+            [R, S01, R]->[R, S0, R]->[S0, R, R]->[S01, R, R]
         '''
         source_spec = source_layout.sharding_spec
         target_spec = target_layout.sharding_spec
@@ -420,11 +406,13 @@ class LayoutConverter(metaclass=SingletonMeta):
         transform_path = []
         comm_action_sequence = []
         spec_pairs = (str(source_spec.sharding_sequence), str(target_spec.sharding_sequence))
-        self.cached_spec_pairs_transform_path[spec_pairs] = (None, None)
+
+        if spec_pairs in self.cached_solution:
+            return self.cached_solution[spec_pairs]
 
         # We do nothing if the sharding spec is all the same.
         if source_spec.spec_diff(target_spec) == 0:
-            self.cached_spec_pairs_transform_path[spec_pairs] = (transform_path, comm_action_sequence)
+            self.cached_solution[spec_pairs] = (transform_path, comm_action_sequence)
             return (
                 transform_path,
                 comm_action_sequence,
@@ -445,7 +433,7 @@ class LayoutConverter(metaclass=SingletonMeta):
                 if spec_difference == 0:
                     transform_path.append(layout)
                     comm_action_sequence.append(comm_spec)
-                    self.cached_spec_pairs_transform_path[spec_pairs] = (transform_path, comm_action_sequence)
+                    self.cached_solution[spec_pairs] = (transform_path, comm_action_sequence)
                     return (transform_path, comm_action_sequence)
 
                 if spec_difference < best_difference_score:
@@ -474,7 +462,7 @@ class LayoutConverter(metaclass=SingletonMeta):
 
     def apply(self, tensor: torch.Tensor, source_layout: Layout, target_layout: Layout) -> torch.Tensor:
         '''
-        Apply target_spec to tensor with source sharding spec, the transform path is generated by the
+        Apply target_layout to tensor with source sharding spec, the transform path is generated by the
         shape_consistency method.
 
         Argument:

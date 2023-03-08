@@ -140,6 +140,10 @@ def check_layout_converting(rank, world_size, port):
     assert comm_action_sequence[2].shard_dim == 0
     assert comm_action_sequence[2].logical_process_axis == 1
 
+    # checkout chached_spec_pairs_transform_path
+    assert layout_converter.cached_solution[('[R, S01, R]', '[S01, R, R]')][0] == transform_path
+    assert layout_converter.cached_solution[('[R, S01, R]', '[S01, R, R]')][1] == comm_action_sequence
+
     comm_cost = layout_converter.get_total_comm_cost(source_layout, target_layout)
 
     assert comm_cost['forward'] == comm_cost['backward']
@@ -200,4 +204,3 @@ def test_layout_converter():
 
 if __name__ == '__main__':
     test_layout_converter()
-    # test_layout_converting()
