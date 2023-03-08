@@ -44,5 +44,7 @@ class Critic(LoRAModule):
             values = values[:, :-num_actions]
             value = masked_mean(values, prompt_mask, dim=1)
             return value
+
         values = values[:, :-1]
         value = values.mean(dim=1).squeeze(1)
+        return value
