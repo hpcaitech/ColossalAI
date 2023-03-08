@@ -4,9 +4,16 @@ export MEMCAP=${MEMCAP:-0}
 # Acceptable values include `125m`, `350m`, `1.3b`, `2.7b`, `6.7b`, `13b`, `30b`, `66b`. For `175b`
 export MODEL=${MODEL:-"125m"}
 export GPUNUM=${GPUNUM:-1}
+export USE_SHARD_INIT=${USE_SHARD_INIT:-"false"}
 
 # make directory for logs
 mkdir -p ./logs
+
+if [ ${USE_SHARD_INIT} = "true" ]; then
+  USE_SHARD_INIT="--shardinit"
+else
+  USE_SHARD_INIT=""
+fi
 
 export MODLE_PATH="facebook/opt-${MODEL}"
 
@@ -17,4 +24,5 @@ torchrun \
   train_gemini_opt.py \
   --mem_cap ${MEMCAP} \
   --model_name_or_path ${MODLE_PATH} \
+  ${USE_SHARD_INIT} \
   --batch_size ${BS} 2>&1 | tee ./logs/colo_${MODEL}_bs_${BS}_cap_${MEMCAP}_gpu_${GPUNUM}.log
