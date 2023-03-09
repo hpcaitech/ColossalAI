@@ -72,7 +72,7 @@ Meanwhile, you need to ensure the `sidebars.json` is updated such that it contai
 
 ### 🧹 Doc Testing
 
-Every documentation is tested to ensure it works well. You need to add the following line to the top of your file and replace `$command` with the actual command. Do note that the markdown will be converted into a Python file. Assuming you have a `demo.md` file, the test file generated will be `demo.py`. Therefore, you should use `demo.py` in your command, e.g. `python demo.py`.
+Every documentation is tested to ensure it works well. You need to add the following line to the **bottom of your file** and replace `$command` with the actual command. Do note that the markdown will be converted into a Python file. Assuming you have a `demo.md` file, the test file generated will be `demo.py`. Therefore, you should use `demo.py` in your command, e.g. `python demo.py`.
 
 ```markdown
 <!-- doc-test-command: $command  -->
