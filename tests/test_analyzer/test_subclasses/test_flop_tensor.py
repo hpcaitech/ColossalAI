@@ -11,6 +11,7 @@ except:
     pass
 
 
+@pytest.mark.skipif(torch.__version__ < '1.12.0', reason='torch version < 12')
 @pytest.mark.parametrize('m', tm_models + tmm_models)
 def test_flop_count_module(m):
     x = torch.rand(2, 3, 224, 224)
