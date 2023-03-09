@@ -4,8 +4,11 @@ import torch
 import torchvision.models as tm
 from zoo import tm_models, tmm_models
 
-from colossalai._analyzer._subclasses import MetaTensorMode
-from colossalai._analyzer.fx import symbolic_profile, symbolic_trace
+try:
+    from colossalai._analyzer._subclasses import MetaTensorMode
+    from colossalai._analyzer.fx import symbolic_profile, symbolic_trace
+except:
+    pass
 
 
 def _check_gm_validity(gm: torch.fx.GraphModule):
@@ -13,6 +16,7 @@ def _check_gm_validity(gm: torch.fx.GraphModule):
         assert len(node.meta['info'].global_ctx), f'In {gm.__class__.__name__}, {node} has empty global context.'
 
 
+@pytest.mark.skipif(torch.__version__ < '1.12.0', reason='torch version < 12')
 @pytest.mark.parametrize('m', tm_models)
 def test_torchvision_profile(m, verbose=False, bias_addition_split=False):
     with MetaTensorMode():
@@ -26,6 +30,7 @@ def test_torchvision_profile(m, verbose=False, bias_addition_split=False):
     _check_gm_validity(gm)
 
 
+@pytest.mark.skipif(torch.__version__ < '1.12.0', reason='torch version < 12')
 @pytest.mark.parametrize('m', tmm_models)
 def test_timm_profile(m, verbose=False, bias_addition_split=False):
     with MetaTensorMode():

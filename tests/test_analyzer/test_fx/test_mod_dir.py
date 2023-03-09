@@ -1,7 +1,10 @@
 import pytest
 import torch
 
-from colossalai._analyzer.fx import symbolic_trace
+try:
+    from colossalai._analyzer.fx import symbolic_trace
+except:
+    pass
 
 
 class LinearModel(torch.nn.Module):

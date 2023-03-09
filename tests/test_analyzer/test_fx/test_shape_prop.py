@@ -4,10 +4,13 @@ import torch
 import torchvision.models as tm
 from zoo import tm_models, tmm_models
 
-from colossalai._analyzer._subclasses import MetaTensorMode
-from colossalai._analyzer.fx import symbolic_trace
-from colossalai._analyzer.fx.passes.shape_prop import shape_prop_pass
-from colossalai._analyzer.fx.symbolic_profile import register_shape_impl
+try:
+    from colossalai._analyzer._subclasses import MetaTensorMode
+    from colossalai._analyzer.fx import symbolic_trace
+    from colossalai._analyzer.fx.passes.shape_prop import shape_prop_pass
+    from colossalai._analyzer.fx.symbolic_profile import register_shape_impl
+except:
+    pass
 
 
 def _check_gm_validity(gm: torch.fx.GraphModule):
@@ -27,6 +30,7 @@ def linear_impl(*args, **kwargs):
     return torch.nn.functional.linear(*args, **kwargs)
 
 
+@pytest.mark.skipif(torch.__version__ < '1.12.0', reason='torch version < 12')
 @pytest.mark.parametrize('m', tm_models)
 def test_torchvision_shape_prop(m):
     with MetaTensorMode():

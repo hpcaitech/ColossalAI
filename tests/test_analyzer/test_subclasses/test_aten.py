@@ -2,7 +2,7 @@ from typing import Any, Callable, Union
 
 import torch
 import torch.nn as nn
-from siu._subclasses import MetaTensor
+from colossalai._analyzer._subclasses import MetaTensor
 
 aten = torch.ops.aten
 

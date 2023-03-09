@@ -2,7 +2,10 @@ import torch
 import torch.nn as nn
 from torch.utils.checkpoint import checkpoint
 
-from colossalai._analyzer.fx import symbolic_trace
+try:
+    from colossalai._analyzer.fx import symbolic_trace
+except:
+    pass
 
 
 class MyModule(nn.Module):
@@ -37,6 +40,7 @@ class MyModule(nn.Module):
         return checkpoint(self.checkpoint_0, x)
 
 
+@pytest.mark.skipif(torch.__version__ < '1.12.0', reason='torch version < 12')
 def test_nested_ckpt():
     model = MyModule()
     x = torch.rand(10, 10)

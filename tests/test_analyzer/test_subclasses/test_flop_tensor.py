@@ -5,7 +5,10 @@ import torch.nn.functional as F
 import torchvision.models as tm
 from zoo import tm_models, tmm_models
 
-from colossalai._analyzer._subclasses import MetaTensorMode, flop_count
+try:
+    from colossalai._analyzer._subclasses import MetaTensorMode, flop_count
+except:
+    pass
 
 
 @pytest.mark.parametrize('m', tm_models + tmm_models)

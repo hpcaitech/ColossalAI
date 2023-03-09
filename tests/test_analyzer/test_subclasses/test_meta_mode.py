@@ -2,7 +2,10 @@ import pytest
 import torch
 import torch.distributed as dist
 import torchvision.models as tm
-from siu._subclasses import MetaTensor, MetaTensorMode
+try:
+    from colossalai._analyzer._subclasses import MetaTensor, MetaTensorMode
+except:
+    pass
 from zoo import tm_models, tmm_models
 
 
