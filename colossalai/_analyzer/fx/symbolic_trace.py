@@ -454,6 +454,9 @@ class ColoTracer(Tracer):
             if node.op == "output":
                 node.type = None
             self.graph.lint()
+     
+    def getattr(self, attr, attr_val, parameter_proxy_cache):
+        return self._module_getattr(attr, attr_val, parameter_proxy_cache)
 
     def _module_getattr(self, attr, attr_val, parameter_proxy_cache):
         if getattr(self, "disable_module_getattr", False):
