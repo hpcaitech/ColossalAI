@@ -57,13 +57,9 @@ class ValueLoss(nn.Module):
 
     def forward(self,
                 values: torch.Tensor,
-                old_values: torch.Tensor,
                 reward: torch.Tensor,
                 action_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
-        values_clipped = old_values + (values - old_values).clamp(-self.clip_eps, self.clip_eps)
-        surr1 = (values_clipped - reward)**2
-        surr2 = (values - reward)**2
-        loss = torch.max(surr1, surr2)
+        loss = (values - reward)**2
         loss = loss.mean()
         return loss
 

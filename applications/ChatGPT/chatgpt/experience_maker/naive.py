@@ -26,11 +26,9 @@ class NaiveExperienceMaker(ExperienceMaker):
         value = self.critic(sequences, action_mask, attention_mask)
         r = self.reward_model(sequences, attention_mask)
 
-        reward = compute_reward(r, self.kl_coef, action_log_probs, base_action_log_probs, action_mask=action_mask)
-
         advantage = reward - value
         # TODO(ver217): maybe normalize adv
         if advantage.ndim == 1:
             advantage = advantage.unsqueeze(-1)
 
-        return Experience(sequences, action_log_probs, value, reward, advantage, attention_mask, action_mask)
+        return Experience(sequences, action_log_probs, value, r, advantage, attention_mask, action_mask, base_action_log_probs)

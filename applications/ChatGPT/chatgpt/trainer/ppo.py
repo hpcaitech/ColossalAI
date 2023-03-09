@@ -5,6 +5,7 @@ from chatgpt.experience_maker import Experience, NaiveExperienceMaker
 from chatgpt.models.base import Actor, Critic
 from chatgpt.models.generation_utils import update_model_kwargs_fn
 from chatgpt.models.loss import PolicyLoss, ValueLoss
+from chatgpt.models.utils import compute_reward
 from chatgpt.replay_buffer import NaiveReplayBuffer
 from torch.optim import Optimizer
 
@@ -75,25 +76,30 @@ class PPOTrainer(Trainer):
         self.critic_optim = critic_optim
         self._set_default_generate_kwargs(generate_kwargs, actor)
 
+        self.kl_coef = kl_coef
+
     def training_step(self, experience: Experience) -> Dict[str, float]:
         self.actor.train()
         self.critic.train()
 
         num_actions = experience.action_mask.size(1)
         action_log_probs = self.actor(experience.sequences, num_actions, attention_mask=experience.attention_mask)
+        values = self.critic(experience.sequences,
+                             action_mask=experience.action_mask,
+                             attention_mask=experience.attention_mask)
+
+        reward_with_penalty = compute_reward(experience.reward, self.kl_coef, action_log_probs, experience.base_action_log_probs, action_mask=action_mask)
+        advantage_with_penalty = reward_with_penalty - values
         actor_loss = self.actor_loss_fn(action_log_probs,
                                         experience.action_log_probs,
-                                        experience.advantages,
+                                        advantage_with_penalty,
                                         action_mask=experience.action_mask)
         self.strategy.backward(actor_loss, self.actor, self.actor_optim)
         self.strategy.optimizer_step(self.actor_optim)
         self.actor_optim.zero_grad()
 
-        values = self.critic(experience.sequences,
-                             action_mask=experience.action_mask,
-                             attention_mask=experience.attention_mask)
+
         critic_loss = self.critic_loss_fn(values,
-                                          experience.values,
                                           experience.reward,
                                           action_mask=experience.action_mask)
         self.strategy.backward(critic_loss, self.critic, self.critic_optim)

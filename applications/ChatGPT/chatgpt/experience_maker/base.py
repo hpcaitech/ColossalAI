@@ -21,6 +21,7 @@ class Experience:
     advatanges: (B)
     attention_mask: (B, S)
     action_mask: (B, A)
+    base_action_log_probs: (B, A)
 
     "A" is the number of actions.
     """
@@ -31,6 +32,7 @@ class Experience:
     advantages: torch.Tensor
     attention_mask: Optional[torch.LongTensor]
     action_mask: Optional[torch.BoolTensor]
+    base_action_log_probs: Optional[torch.Tensor]
 
     @torch.no_grad()
     def to_device(self, device: torch.device) -> None:
@@ -43,6 +45,8 @@ class Experience:
             self.attention_mask = self.attention_mask.to(device)
         if self.action_mask is not None:
             self.action_mask = self.action_mask.to(device)
+        if self.base_action_log_probs is not None:
+            self.base_action_log_probs = self.base_action_log_probs.to(device)
 
     def pin_memory(self):
         self.sequences = self.sequences.pin_memory()
@@ -54,6 +58,8 @@ class Experience:
             self.attention_mask = self.attention_mask.pin_memory()
         if self.action_mask is not None:
             self.action_mask = self.action_mask.pin_memory()
+        if self.base_action_log_probs is not None:
+            self.base_action_log_probs = self.base_action_log_probs.pin_memory()
         return self
 
 
