@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as tm
-from zoo import tm_models, tmm_models
+from .zoo import tm_models, tmm_models
 
 try:
     from colossalai._analyzer._subclasses import MetaTensorMode, flop_count

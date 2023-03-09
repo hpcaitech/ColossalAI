@@ -2,7 +2,7 @@ import pytest
 import timm.models as tmm
 import torch
 import torchvision.models as tm
-from zoo import tm_models, tmm_models
+from .zoo import tm_models, tmm_models
 
 try:
     from colossalai._analyzer._subclasses import MetaTensorMode
