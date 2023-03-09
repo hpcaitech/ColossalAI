@@ -6,7 +6,7 @@ try:
     from colossalai._analyzer._subclasses import MetaTensor, MetaTensorMode
 except:
     pass
-from zoo import tm_models, tmm_models
+from .zoo import tm_models, tmm_models
 
 
 def compare_all(tensor: torch.Tensor, meta_tensor: torch.Tensor):
