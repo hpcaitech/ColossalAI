@@ -69,7 +69,7 @@ python setup.py install
 ##### From pip
 
 ```
-pip install pytorch-lightning
+pip install pytorch-lightning==2.0.0rc0
 ```
 
 #### Step 3:Install [Colossal-AI](https://colossalai.org/download/) From Our Official Website
