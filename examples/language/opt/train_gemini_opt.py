@@ -178,8 +178,6 @@ def main():
 
     # build model
     if args.model_name_or_path is None:
-        # currently, there has a bug in pretrained opt-13b
-        # we can not import it until huggingface fix it
         logger.info("Train a new model from scratch", ranks=[0])
         with ColoInitContext(device=init_dev, dtype=torch.half,
                              default_dist_spec=default_dist_spec,
