@@ -44,6 +44,7 @@ def test_torchvision_shape_prop(m):
     _check_gm_validity(gm)
 
 
+@pytest.mark.skipif(torch.__version__ < '1.12.0', reason='torch version < 12')
 @pytest.mark.parametrize('m', tmm_models)
 def test_timm_shape_prop(m):
     with MetaTensorMode():
