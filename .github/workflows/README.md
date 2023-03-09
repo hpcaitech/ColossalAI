@@ -35,10 +35,9 @@ I will provide the details of each workflow below.
 
 ### Code Style Check
 
-| Workflow Name               | File name                      | Description                                                                                                |
-| --------------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------- |
-| `Pre-commit`                | `pre_commit.yml`               | This workflow runs pre-commit checks for code style consistency for PRs.                                   |
-| `Report pre-commit failure` | `report_precommit_failure.yml` | This PR will put up a comment in the PR to explain the precommit failure and remedy if `Pre-commit` fails. |
+| Workflow Name | File name         | Description                                                                                                    |
+| ------------- | ----------------- | -------------------------------------------------------------------------------------------------------------- |
+| `post-commit` | `post_commit.yml` | This workflow runs pre-commit checks for changed files to achieve code style consistency after a PR is merged. |
 
 ### Unit Test
 
@@ -130,8 +129,7 @@ This file controls which CUDA versions will be checked against CUDA extenson bui
 ## Progress Log
 
 - [x] Code style check
-  - [x] pre-commit check
-  - [x] pre-commit failure report
+  - [x] post-commit check
 - [x] unit testing
   - [x] test on PR
   - [x] report test coverage

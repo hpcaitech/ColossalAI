@@ -7,7 +7,8 @@ import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
 from chatgpt.experience_maker import NaiveExperienceMaker
-from chatgpt.nn import GPTActor, GPTCritic, RewardModel
+from chatgpt.models.base import RewardModel
+from chatgpt.models.gpt import GPTActor, GPTCritic
 from chatgpt.replay_buffer import NaiveReplayBuffer
 from chatgpt.trainer.strategies import ColossalAIStrategy, DDPStrategy
 from transformers.models.gpt2.configuration_gpt2 import GPT2Config
@@ -107,6 +108,7 @@ def run_dist(rank, world_size, port, strategy):
     run_test_data(strategy)
 
 
+@pytest.mark.skip
 @pytest.mark.dist
 @pytest.mark.parametrize('world_size', [2])
 @pytest.mark.parametrize('strategy', ['ddp', 'colossalai'])

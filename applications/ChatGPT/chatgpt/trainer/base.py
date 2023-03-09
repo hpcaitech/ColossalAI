@@ -1,4 +1,3 @@
-import random
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, List, Optional, Union
 
@@ -68,7 +67,7 @@ class Trainer(ABC):
 
     def _sample_prompts(self, prompts) -> list:
         indices = list(range(len(prompts)))
-        sampled_indices = random.sample(indices, self.experience_batch_size)
+        sampled_indices = self.strategy.experience_sampler.choice(indices, self.experience_batch_size, replace=False)
         return [prompts[i] for i in sampled_indices]
 
     def _learn(self):
@@ -98,6 +97,7 @@ class Trainer(ABC):
 
     def fit(self, prompts, num_episodes: int = 50000, max_timesteps: int = 500, update_timesteps: int = 5000) -> None:
         time = 0
+        sampler = self.strategy.setup_sampler(prompts)
         self._on_fit_start()
         for episode in range(num_episodes):
             self._on_episode_start(episode)
@@ -105,7 +105,7 @@ class Trainer(ABC):
                                  desc=f'Episode [{episode+1}/{num_episodes}]',
                                  disable=not is_rank_0()):
                 time += 1
-                rand_prompts = self._sample_prompts(prompts)
+                rand_prompts = sampler.sample(self.experience_batch_size)
                 if self.tokenizer is not None:
                     inputs = self.tokenizer(rand_prompts)
                 else:

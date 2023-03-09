@@ -119,6 +119,7 @@ def search_chunk_configuration(
     assert search_range_byte >= 0
 
     params_dict = classify_params_by_dp_degree(param_order, strict_ddp_flag)
+    size_lcm = np.lcm.reduce(list(params_dict.keys()))
     config_dict: Dict[int, Dict] = dict()
     total_param_size = 0
 
@@ -154,6 +155,8 @@ def search_chunk_configuration(
             min_chunk_waste = temp_waste
             best_chunk_size = chunk_size
 
+    # the chunk size needs to be divided by each groups sizes
+    best_chunk_size = best_chunk_size + (-best_chunk_size % size_lcm)
     for dp_degree in params_dict:
         if dp_degree in config_dict:
             continue

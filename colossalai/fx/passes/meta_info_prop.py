@@ -114,6 +114,7 @@ class MetaInfoProp(torch.fx.Interpreter):
         # TODO: the attribute node_size should be removed in the future
         setattr(n, 'node_size', activation_size(n.meta.get('fwd_out', 0)) + activation_size(n.meta.get('fwd_tmp', 0)))
         setattr(n, 'fwd_flop', n.meta.get('fwd_flop', 0))
+        setattr(n, 'bwd_flop', n.meta.get('bwd_flop', 0))
         n.meta['type'] = type(result)
 
         # retain the autograd graph

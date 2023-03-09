@@ -23,8 +23,9 @@
 </div>
 
 ## 新闻
+* [2023/03] [AWS and Google Fund Colossal-AI with Startup Cloud Programs](https://www.hpc-ai.tech/blog/aws-and-google-fund-colossal-ai-with-startup-cloud-programs)
 * [2023/02] [Open source solution replicates ChatGPT training process! Ready to go with only 1.6GB GPU memory](https://www.hpc-ai.tech/blog/colossal-ai-chatgpt)
-* [2023/01] [Hardware Savings Up to 46 Times for AIGC and  Automatic Parallelism](https://www.hpc-ai.tech/blog/colossal-ai-0-2-0)
+* [2023/01] [Hardware Savings Up to 46 Times for AIGC and  Automatic Parallelism](https://medium.com/pytorch/latest-colossal-ai-boasts-novel-automatic-parallelism-and-offers-savings-up-to-46x-for-stable-1453b48f3f02)
 * [2022/11] [Diffusion Pretraining and Hardware Fine-Tuning Can Be Almost 7X Cheaper](https://www.hpc-ai.tech/blog/diffusion-pretraining-and-hardware-fine-tuning-can-be-almost-7x-cheaper)
 * [2022/10] [Use a Laptop to Analyze 90% of Proteins, With a Single-GPU Inference Sequence Exceeding 10,000](https://www.hpc-ai.tech/blog/use-a-laptop-to-analyze-90-of-proteins-with-a-single-gpu-inference-sequence-exceeding)
 * [2022/09] [HPC-AI Tech Completes $6 Million Seed and Angel Round Fundraising](https://www.hpc-ai.tech/blog/hpc-ai-tech-completes-6-million-seed-and-angel-round-fundraising-led-by-bluerun-ventures-in-the)
@@ -274,13 +275,24 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 
 ## 安装
 
+环境要求:
+
+- PyTorch >= 1.11 (PyTorch 2.x 正在适配中)
+- Python >= 3.7
+- CUDA >= 11.0
+  
+如果你遇到安装问题，可以向本项目 [反馈](https://github.com/hpcaitech/ColossalAI/issues/new/choose)。
+
+
 ### 从PyPI安装
 
-您可以用下面的命令直接从PyPI上下载并安装Colossal-AI。我们默认不会安装PyTorch扩展包
+您可以用下面的命令直接从PyPI上下载并安装Colossal-AI。我们默认不会安装PyTorch扩展包。
 
 ```bash
 pip install colossalai
 ```
+
+**注：目前只支持Linux。**
 
 但是，如果你想在安装时就直接构建PyTorch扩展，您可以设置环境变量`CUDA_EXT=1`.
 
@@ -371,6 +383,10 @@ docker run -ti --gpus all --rm --ipc=host colossalai bash
 
 ## 引用我们
 
+Colossal-AI项目受一些相关的项目启发而成立，一些项目是我们的开发者的科研项目，另一些来自于其他组织的科研工作。我们希望. 我们希望在[参考文献列表](./REFERENCE.md)中列出这些令人称赞的项目，以向开源社区和研究项目致谢。
+
+你可以通过以下格式引用这个项目。
+
 ```
 @article{bian2021colossal,
   title={Colossal-AI: A Unified Deep Learning System For Large-Scale Parallel Training},
@@ -380,6 +396,6 @@ docker run -ti --gpus all --rm --ipc=host colossalai bash
 }
 ```
 
-Colossal-AI 已被 [SC](https://sc22.supercomputing.org/), [AAAI](https://aaai.org/Conferences/AAAI-23/), [PPoPP](https://ppopp23.sigplan.org/), [CVPR](https://cvpr2023.thecvf.com/)等顶级会议录取为官方教程。
+Colossal-AI 已被 [SC](https://sc22.supercomputing.org/), [AAAI](https://aaai.org/Conferences/AAAI-23/), [PPoPP](https://ppopp23.sigplan.org/), [CVPR](https://cvpr2023.thecvf.com/), [ISC](https://www.isc-hpc.com/)等顶级会议录取为官方教程。
 
 <p align="right">(<a href="#top">返回顶端</a>)</p>

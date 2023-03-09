@@ -44,20 +44,19 @@ def test_autochunk_gpt(model, shape, max_memory):
         data=get_data(shape),
         max_memory=max_memory,
         model=model,
-        config=GPT2Config(n_embd=96, n_position=shape[1], n_layer=2, n_head=4),
+        config=GPT2Config(n_embd=96, n_positions=shape[1], n_layer=2, n_head=4),
     )
     mp.spawn(run_func, nprocs=1)
 
 
 if __name__ == "__main__":
-    run_test(
-        rank=0,
-        data=get_data((BATCH_SIZE, SEQ_LENGTH)),
-        max_memory=None,
-        model=GPT2Model,
-        config=GPT2Config(n_embd=96, n_position=SEQ_LENGTH, n_layer=2, n_head=4),
-        print_code=False,
-        print_est_mem=False,
-        print_mem=False,
-        print_progress=False,
-    )
+    run_test(rank=0,
+             data=get_data((BATCH_SIZE, SEQ_LENGTH)),
+             max_memory=None,
+             model=GPT2Model,
+             config=GPT2Config(n_embd=96, n_position=SEQ_LENGTH, n_layer=2, n_head=4),
+             print_code=False,
+             print_est_mem=False,
+             print_mem=False,
+             print_progress=False,
+             eval_mem=False)

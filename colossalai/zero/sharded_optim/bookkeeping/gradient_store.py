@@ -6,6 +6,7 @@ from .base_store import BaseStore
 
 
 class GradientStore(BaseStore):
+
     def __init__(self, *args):
         super().__init__(*args)
         # bookkeeping data structures
@@ -56,9 +57,7 @@ class GradientStore(BaseStore):
         else:
             self._averaged_gradients[group_id] = [tensor]
 
-    def add_average_gradient_by_group(
-        self, group_id: int, tensor_idx: int, tensor: Tensor
-    ) -> None:
+    def add_average_gradient_by_group(self, group_id: int, tensor_idx: int, tensor: Tensor) -> None:
         """
         Add an average gradient to the list of averaged gradients of a parameter group
 
@@ -81,3 +80,9 @@ class GradientStore(BaseStore):
         """
 
         self._averaged_gradients[group_id] = []
+
+    def reset_all_average_gradients(self) -> None:
+        """
+        Reset the bookkeeping data structure for averaged gradients to an empty list
+        """
+        self._averaged_gradients = dict()

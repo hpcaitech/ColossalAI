@@ -15,4 +15,6 @@ set_n_least_used_CUDA_VISIBLE_DEVICES() {
 
 set_n_least_used_CUDA_VISIBLE_DEVICES 2
 
-torchrun --standalone --nproc_per_node=2 train_reward_model.py --pretrain '/data2/users/lczht/bloom-560m' --strategy colossalai_zero2
+# torchrun --standalone --nproc_per_node=2 train_reward_model.py --pretrain 'bigscience/bloomz-560m' --model 'bloom' --strategy colossalai_zero2
+torchrun --standalone --nproc_per_node=2 train_reward_model.py  --model 'gpt2' --strategy colossalai_zero2
+# torchrun --standalone --nproc_per_node=2 train_reward_model.py --pretrain "facebook/opt-350m" --model 'opt' --strategy colossalai_zero2

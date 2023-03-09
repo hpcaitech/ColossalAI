@@ -1,3 +1,6 @@
+# This code from NVIDIA Megatron:
+#     with minor changes.
+
 import enum
 
 import torch

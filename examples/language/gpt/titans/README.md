@@ -26,7 +26,7 @@ Use the following commands to execute training.
 # run on a single node
 colossalai run --nproc_per_node=<num_gpus> train_gpt.py --config configs/<config_file> --from_torch --use_dummy_dataset
 
-# run on multiple nodes with slurm
+# run on multiple nodes
 colossalai run --nproc_per_node=<num_gpus> \
    --master_addr <hostname> \
    --master_port <port-number> \

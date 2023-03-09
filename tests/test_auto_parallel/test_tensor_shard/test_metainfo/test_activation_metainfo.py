@@ -17,51 +17,15 @@ from colossalai.utils import free_port
 from tests.test_auto_parallel.test_tensor_shard.test_metainfo.utils import mem_test_for_node_strategy, print_results
 
 
-def _ReLU_module_mem_test(rank, world_size, port):
-    """This function is for ReLU memory test
-    Test and print real memory cost and estimated, this test will not be executed except with the tag AUTO_PARALLEL
-
-    Args:
-    Args:
-        rank: device rank
-        bias: indicate whether conv module need bias
-        world_size: number of devices
-        port: port for initializing process group
-    """
-    disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    model = nn.Sequential(nn.ReLU()).cuda()
-    input = torch.rand(4, 128, 64, 64).cuda()
-    input.requires_grad = True
-    physical_mesh_id = torch.arange(0, 4)
-    mesh_shape = (2, 2)
-    device_mesh = DeviceMesh(physical_mesh_id, mesh_shape, init_process_group=True)
-
-    # index of target node in computation graph
-    node_index = 1
-    # total number of target node strategies
-    strategy_number = 1
-    mem_test_for_node_strategy(rank=rank,
-                               model=model,
-                               device_mesh=device_mesh,
-                               node_index=node_index,
-                               strategy_number=strategy_number,
-                               input_args=[input],
-                               meta_arg_names=['input'])
-
-
-@run_on_environment_flag(name='AUTO_PARALLEL')
-@pytest.mark.dist
-@rerun_if_address_is_in_use()
-def test_ReLU_meta_concrete_info_match():
-    world_size = 4
-    run_func_module = partial(_ReLU_module_mem_test, world_size=world_size, port=free_port())
-    mp.spawn(run_func_module, nprocs=world_size)
-
-
 @pytest.mark.skipif(torch.__version__ < '1.12.0', reason="need pytorch 1.12.0 or higher for aten level operations")
-def test_sofmax_meta_info():
-    meta_func = meta_register.get(torch.nn.functional.softmax)
+@parameterize('func', [
+    torch.nn.functional.softmax,
+    torch.nn.functional.relu,
+    torch.tanh,
+    torch.nn.functional.dropout,
+])
+def test_activation_meta_info(func):
+    meta_func = meta_register.get(func)
     # construct meta tensors
     input_tensor = torch.rand(256, 1024, device="meta")
     output_tensor = torch.rand(256, 1024, device="meta")
@@ -87,7 +51,7 @@ def test_sofmax_meta_info():
     # fwd
     torch.cuda.reset_peak_memory_stats()
     mem_stamp0 = torch.cuda.memory_allocated()
-    output_real_tensor = torch.nn.functional.softmax(input_real_tensor, dim=softmax_dim)
+    output_real_tensor = func(input_real_tensor)
     fwd_allocated = torch.cuda.memory_allocated() - mem_stamp0
     fwd_peak = torch.cuda.max_memory_allocated() - mem_stamp0
 
@@ -104,5 +68,4 @@ def test_sofmax_meta_info():
 
 
 if __name__ == '__main__':
-    # test_ReLU_meta_concrete_info_match()
-    test_sofmax_meta_info()
+    test_activation_meta_info()

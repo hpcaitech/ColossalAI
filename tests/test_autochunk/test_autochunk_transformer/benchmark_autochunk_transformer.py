@@ -95,7 +95,7 @@ def _benchmark_memory(model, inputs):
     with torch.no_grad():
         torch.cuda.reset_peak_memory_stats()
         now_mem = float(torch.cuda.memory_allocated()) / 1024**2
-        model(*[i.clone() if isinstance(i, torch.Tensor) else i for i in inputs])
+        model(*inputs)
         new_max_mem = float(torch.cuda.max_memory_allocated()) / 1024**2
     return new_max_mem - now_mem
 
@@ -116,8 +116,7 @@ def _benchmark_speed(model, inputs, loop=5):
 def benchmark_autochunk_gpt(batch=1, seq=512, n_embd=768, n_head=12):
     from test_autochunk_gpt import GPT2Config, GPT2Model, get_data
     model = GPT2Model
-    config = GPT2Config(n_embd=n_embd, n_position=seq, n_layer=2, n_head=n_head)
-    config.max_position_embeddings = seq
+    config = GPT2Config(n_embd=n_embd, n_positions=seq, n_layer=2, n_head=n_head)
     model = model(config=config)
     shape = [batch, seq]
     print("\nbatch: %d, seq: %d, n_embd: %d, n_head: %d" % (batch, seq, n_embd, n_head))
