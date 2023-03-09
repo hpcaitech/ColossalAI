@@ -9,6 +9,12 @@ try:
     from colossalai._analyzer.fx import symbolic_trace
     from colossalai._analyzer.fx.passes.shape_prop import shape_prop_pass
     from colossalai._analyzer.fx.symbolic_profile import register_shape_impl
+    
+    
+    @register_shape_impl(torch.nn.functional.linear)
+    def linear_impl(*args, **kwargs):
+        assert True
+        return torch.nn.functional.linear(*args, **kwargs)
 except:
     pass
 
@@ -22,12 +28,6 @@ def _check_gm_validity(gm: torch.fx.GraphModule):
         # 'call_method',    # can apply to params
         ]:
             assert node.meta['info'].inputs, f'In {gm.__class__.__name__}, {node} has no input shape.'
-
-
-@register_shape_impl(torch.nn.functional.linear)
-def linear_impl(*args, **kwargs):
-    assert True
-    return torch.nn.functional.linear(*args, **kwargs)
 
 
 @pytest.mark.skipif(torch.__version__ < '1.12.0', reason='torch version < 12')
