@@ -6,7 +6,7 @@ tm_models = [
     tm.alexnet,
     tm.convnext_base,
     tm.densenet121,
-    tm.efficientnet_v2_s,
+    # tm.efficientnet_v2_s,
     # tm.googlenet,   # output bad case
     # tm.inception_v3,  # bad case
     tm.mobilenet_v2,

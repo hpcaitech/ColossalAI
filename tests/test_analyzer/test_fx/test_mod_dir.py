@@ -58,6 +58,7 @@ class AModel(torch.nn.Module):
         return x
 
 
+@pytest.mark.skipif(torch.__version__ < '1.12.0', reason='torch version < 12')
 @pytest.mark.parametrize("bias", [True, False])
 @pytest.mark.parametrize("bias_addition_split", [True, False])
 @pytest.mark.parametrize("shape", [(3, 3, 3), (3, 3, 3, 3)])

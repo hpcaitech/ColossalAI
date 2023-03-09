@@ -33,6 +33,7 @@ odd_cases = [
 ]
 
 
+@pytest.mark.skipif(torch.__version__ < '1.12.0', reason='torch version < 12')
 @pytest.mark.parametrize('func, args, kwargs', odd_cases)
 def test_flop_count_function(func, args, kwargs):
     rs_fwd, rs_bwd = flop_count(func, *args, **kwargs, verbose=True)

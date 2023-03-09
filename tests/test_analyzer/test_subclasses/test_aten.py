@@ -66,6 +66,7 @@ def run_and_compare(f: Union[nn.Module, Callable], x: torch.Tensor, requires_bac
         compare_all(x.grad, meta_x.grad)
 
 
+@pytest.mark.skipif(torch.__version__ < '1.12.0', reason='torch version < 12')
 def test_meta_aten():
     for (aten_op, requires_backward), v in registered_meta.items():
         for f, x in v:

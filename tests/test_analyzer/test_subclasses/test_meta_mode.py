@@ -25,6 +25,7 @@ def run_and_compare(model):
     compare_all(x.grad, meta_x.grad)
 
 
+@pytest.mark.skipif(torch.__version__ < '1.12.0', reason='torch version < 12')
 @pytest.mark.parametrize('m', tm_models + tmm_models)
 def test_meta_mode_shape(m):
     run_and_compare(m())
