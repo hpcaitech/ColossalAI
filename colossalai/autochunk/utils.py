@@ -109,8 +109,11 @@ def is_non_compute_node(node: Node) -> bool:
     return False
 
 
-def get_node_shape(node: Node) -> List:
-    if get_node_name(node) == "split":
+def get_node_shape(node: Node) -> Any:
+    """
+    return node data shape
+    """
+    if get_node_name(node) in ["split", "unbind"]:
         return node.meta["tensor_meta"][0].shape
     if hasattr(node.meta["tensor_meta"], "shape"):
         return node.meta["tensor_meta"].shape

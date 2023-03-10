@@ -359,7 +359,8 @@ if version.parse(torch.__version__) >= version.parse('1.12.0'):
         aten.where.self,
         aten.zero_.default,
         aten.zeros_like.default,
-        aten.fill_.Scalar
+        aten.fill_.Scalar,
+        aten.stack.default
     ]  # yapf: disable
 
     for op in zero_flop_aten:
