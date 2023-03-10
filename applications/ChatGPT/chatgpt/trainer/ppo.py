@@ -98,9 +98,6 @@ class PPOTrainer(Trainer):
         values = self.critic(experience.sequences,
                              action_mask=experience.action_mask,
                              attention_mask=experience.attention_mask)
-        values = self.critic(experience.sequences,
-                             action_mask=experience.action_mask,
-                             attention_mask=experience.attention_mask)
         critic_loss = self.critic_loss_fn(values,
                                           experience.reward,
                                           action_mask=experience.action_mask)
