@@ -1,7 +1,8 @@
+from typing import Iterable
+
 import torch.distributed as dist
 import torch.nn as nn
 from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
-from typing import Iterable
 
 
 def bucket_allreduce(param_list: Iterable[nn.Parameter], group=None):

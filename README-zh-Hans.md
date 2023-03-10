@@ -3,7 +3,7 @@
 
    [![logo](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/colossal-ai_logo_vertical.png)](https://www.colossalai.org/)
 
-   Colossal-AI: 一个面向大模型时代的通用深度学习系统
+   Colossal-AI: 让AI大模型更低成本、方便易用、高效扩展
 
    <h3> <a href="https://arxiv.org/abs/2110.14883"> 论文 </a> |
    <a href="https://www.colossalai.org/"> 文档 </a> |
@@ -23,10 +23,11 @@
 </div>
 
 ## 新闻
-* [2023/01] [Hardware Savings Up to 46 Times for AIGC and  Automatic Parallelism](https://www.hpc-ai.tech/blog/colossal-ai-0-2-0)
+* [2023/03] [AWS and Google Fund Colossal-AI with Startup Cloud Programs](https://www.hpc-ai.tech/blog/aws-and-google-fund-colossal-ai-with-startup-cloud-programs)
+* [2023/02] [Open source solution replicates ChatGPT training process! Ready to go with only 1.6GB GPU memory](https://www.hpc-ai.tech/blog/colossal-ai-chatgpt)
+* [2023/01] [Hardware Savings Up to 46 Times for AIGC and  Automatic Parallelism](https://medium.com/pytorch/latest-colossal-ai-boasts-novel-automatic-parallelism-and-offers-savings-up-to-46x-for-stable-1453b48f3f02)
 * [2022/11] [Diffusion Pretraining and Hardware Fine-Tuning Can Be Almost 7X Cheaper](https://www.hpc-ai.tech/blog/diffusion-pretraining-and-hardware-fine-tuning-can-be-almost-7x-cheaper)
 * [2022/10] [Use a Laptop to Analyze 90% of Proteins, With a Single-GPU Inference Sequence Exceeding 10,000](https://www.hpc-ai.tech/blog/use-a-laptop-to-analyze-90-of-proteins-with-a-single-gpu-inference-sequence-exceeding)
-* [2022/10] [Embedding Training With 1% GPU Memory and 100 Times Less Budget for Super-Large Recommendation Model](https://www.hpc-ai.tech/blog/embedding-training-with-1-gpu-memory-and-10-times-less-budget-an-open-source-solution-for)
 * [2022/09] [HPC-AI Tech Completes $6 Million Seed and Angel Round Fundraising](https://www.hpc-ai.tech/blog/hpc-ai-tech-completes-6-million-seed-and-angel-round-fundraising-led-by-bluerun-ventures-in-the)
 
 
@@ -64,6 +65,7 @@
 <li>
    <a href="#Colossal-AI-in-the-Real-World">Colossal-AI 成功案例</a>
    <ul>
+     <li><a href="#ChatGPT">ChatGPT: 低成本复现ChatGPT完整流程</a></li>
      <li><a href="#AIGC">AIGC: 加速 Stable Diffusion</a></li>
      <li><a href="#生物医药">生物医药: 加速AlphaFold蛋白质结构预测</a></li>
    </ul>
@@ -102,7 +104,7 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
   - 1维, [2维](https://arxiv.org/abs/2104.05343), [2.5维](https://arxiv.org/abs/2105.14500), [3维](https://arxiv.org/abs/2105.14450) 张量并行
   - [序列并行](https://arxiv.org/abs/2105.13120)
   - [零冗余优化器 (ZeRO)](https://arxiv.org/abs/1910.02054)
-  - [自动并行](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/gpt/auto_parallel_with_gpt)
+  - [自动并行](https://arxiv.org/abs/2302.02599)
 - 异构内存管理
   - [PatrickStar](https://arxiv.org/abs/2108.05818)
 - 使用友好
@@ -144,9 +146,9 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/OPT_update.png" width=800/>
 
 - [Open Pretrained Transformer (OPT)](https://github.com/facebookresearch/metaseq), 由Meta发布的1750亿语言模型，由于完全公开了预训练参数权重，因此促进了下游任务和应用部署的发展。
-- 加速45%，仅用几行代码以低成本微调OPT。[[样例]](https://github.com/hpcaitech/ColossalAI-Examples/tree/main/language/opt) [[在线推理]](https://github.com/hpcaitech/ColossalAI-Documentation/blob/main/i18n/zh-Hans/docusaurus-plugin-content-docs/current/advanced_tutorials/opt_service.md)
+- 加速45%，仅用几行代码以低成本微调OPT。[[样例]](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/opt) [[在线推理]](https://colossalai.org/docs/advanced_tutorials/opt_service)
 
-请访问我们的 [文档](https://www.colossalai.org/) 和 [例程](https://github.com/hpcaitech/ColossalAI-Examples) 以了解详情。
+请访问我们的 [文档](https://www.colossalai.org/) 和 [例程](https://github.com/hpcaitech/ColossalAI/tree/main/examples) 以了解详情。
 
 ### ViT
 <p align="center">
@@ -194,11 +196,7 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 
 - [Energon-AI](https://github.com/hpcaitech/EnergonAI) ：用相同的硬件推理加速50%
 
-<p id="OPT-Serving" align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/OPT_serving.png" width=800/>
-</p>
-
-- [OPT推理服务](https://github.com/hpcaitech/ColossalAI-Documentation/blob/main/i18n/zh-Hans/docusaurus-plugin-content-docs/current/advanced_tutorials/opt_service.md): 无需注册，免费体验1750亿参数OPT在线推理服务
+- [OPT推理服务](https://colossalai.org/docs/advanced_tutorials/opt_service): 体验1750亿参数OPT在线推理服务
 
 <p id="BLOOM-Inference" align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/BLOOM%20Inference.PNG" width=800/>
@@ -209,6 +207,29 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 <p align="right">(<a href="#top">返回顶端</a>)</p>
 
 ## Colossal-AI 成功案例
+### ChatGPT
+低成本复现[ChatGPT](https://openai.com/blog/chatgpt/)完整流程 [[代码]](https://github.com/hpcaitech/ColossalAI/tree/main/applications/ChatGPT) [[博客]](https://www.hpc-ai.tech/blog/colossal-ai-chatgpt)
+<p id="ChatGPT_scaling" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chatgpt/ChatGPT%20scaling.png" width=800/>
+</p>
+
+- 最高可提升单机训练速度7.73倍，单卡推理速度1.42倍
+
+<p id="ChatGPT-1GPU" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chatgpt/ChatGPT-1GPU.jpg" width=450/>
+</p>
+
+- 单卡模型容量最多提升10.3倍
+- 最小demo训练流程最低仅需1.62GB显存 (任意消费级GPU)
+
+<p id="inference" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chatgpt/LoRA%20data.jpg" width=600/>
+</p>
+
+- 提升单卡的微调模型容量3.7倍
+- 同时保持高速运行
+
+<p align="right">(<a href="#top">back to top</a>)</p>
 
 ### AIGC
 加速AIGC(AI内容生成)模型，如[Stable Diffusion v1](https://github.com/CompVis/stable-diffusion) 和 [Stable Diffusion v2](https://github.com/Stability-AI/stablediffusion)
@@ -254,13 +275,24 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 
 ## 安装
 
+环境要求:
+
+- PyTorch >= 1.11 (PyTorch 2.x 正在适配中)
+- Python >= 3.7
+- CUDA >= 11.0
+  
+如果你遇到安装问题，可以向本项目 [反馈](https://github.com/hpcaitech/ColossalAI/issues/new/choose)。
+
+
 ### 从PyPI安装
 
-您可以用下面的命令直接从PyPI上下载并安装Colossal-AI。我们默认不会安装PyTorch扩展包
+您可以用下面的命令直接从PyPI上下载并安装Colossal-AI。我们默认不会安装PyTorch扩展包。
 
 ```bash
 pip install colossalai
 ```
+
+**注：目前只支持Linux。**
 
 但是，如果你想在安装时就直接构建PyTorch扩展，您可以设置环境变量`CUDA_EXT=1`.
 
@@ -351,6 +383,10 @@ docker run -ti --gpus all --rm --ipc=host colossalai bash
 
 ## 引用我们
 
+Colossal-AI项目受一些相关的项目启发而成立，一些项目是我们的开发者的科研项目，另一些来自于其他组织的科研工作。我们希望. 我们希望在[参考文献列表](./REFERENCE.md)中列出这些令人称赞的项目，以向开源社区和研究项目致谢。
+
+你可以通过以下格式引用这个项目。
+
 ```
 @article{bian2021colossal,
   title={Colossal-AI: A Unified Deep Learning System For Large-Scale Parallel Training},
@@ -360,6 +396,6 @@ docker run -ti --gpus all --rm --ipc=host colossalai bash
 }
 ```
 
-Colossal-AI 已被 [SC](https://sc22.supercomputing.org/), [AAAI](https://aaai.org/Conferences/AAAI-23/), [PPoPP](https://ppopp23.sigplan.org/) 等顶级会议录取为官方教程。
+Colossal-AI 已被 [SC](https://sc22.supercomputing.org/), [AAAI](https://aaai.org/Conferences/AAAI-23/), [PPoPP](https://ppopp23.sigplan.org/), [CVPR](https://cvpr2023.thecvf.com/), [ISC](https://www.isc-hpc.com/)等顶级会议录取为官方教程。
 
 <p align="right">(<a href="#top">返回顶端</a>)</p>

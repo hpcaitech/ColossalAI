@@ -11,7 +11,7 @@ from typing import Callable, Dict, List, Optional, Union
 
 import torch
 import torch.distributed as dist
-from torch._six import inf
+from torch import inf
 from torch.nn.parameter import Parameter
 
 from colossalai.constants import IS_TENSOR_PARALLEL, NUM_PARTITIONS, TENSOR_PARALLEL_ATTRIBUTES
@@ -50,16 +50,20 @@ def ensure_path_exists(filename: str):
         Path(dirpath).mkdir(parents=True, exist_ok=True)
 
 
-def free_port():
+def free_port() -> int:
+    """Get a free port on localhost.
+
+    Returns:
+        int: A free port on localhost.
+    """
     while True:
+        port = random.randint(20000, 65000)
         try:
-            sock = socket.socket()
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            port = random.randint(20000, 65000)
-            sock.bind(('localhost', port))
-            sock.close()
-            return port
-        except Exception:
+            with socket.socket() as sock:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                sock.bind(("localhost", port))
+                return port
+        except OSError:
             continue
 
 

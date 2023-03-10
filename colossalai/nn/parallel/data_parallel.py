@@ -257,8 +257,11 @@ class ZeroDDP(ColoDDP):
         access_list = list(self.chunk_manager.accessed_chunks)
         # we need to scatter all accessed chunks and move them to their original places
         for chunk in access_list:
-            assert chunk.can_release
-            self.chunk_manager.release_chunk(chunk)
+            if chunk.keep_gathered:
+                self.chunk_manager.fake_release_chunk(chunk)
+            else:
+                assert chunk.can_release
+                self.chunk_manager.release_chunk(chunk)
             first_param = next(iter(chunk.tensors_info))
             self.chunk_manager.move_chunk(chunk, self.grads_device[first_param])
         assert self.chunk_manager.accessed_mem == 0
@@ -291,7 +294,7 @@ class ZeroDDP(ColoDDP):
                 continue
             p.grad = None
 
-    def _pre_bacward(self):
+    def _pre_backward(self):
         # set a visit label for all parameters
         # the label is used to check whether the parameter is correctly reduced
         for param in self.param2name:
@@ -315,7 +318,7 @@ class ZeroDDP(ColoDDP):
         self.gemini_manager.post_iter()
 
     def backward(self, loss: torch.Tensor):
-        self._pre_bacward()
+        self._pre_backward()
         with self.param_op_hook.switch_to_backward(), ColoParamOpHookManager.use_hooks(self.param_op_hook):
             loss.backward()
         self._post_backward()

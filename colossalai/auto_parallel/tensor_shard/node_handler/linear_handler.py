@@ -152,7 +152,10 @@ class LinearModuleHandler(MetaInfoModuleHandler):
         op_data_mapping = self.get_operation_data_mapping()
         generators = []
         generators.append(
-            LinearProjectionStrategyGenerator(op_data_mapping, self.device_mesh, linear_projection_type='linear'))
+            LinearProjectionStrategyGenerator(op_data_mapping,
+                                              self.device_mesh,
+                                              linear_projection_type='linear',
+                                              solver_perference=self.solver_perference))
         return generators
 
     def get_operation_data_mapping(self) -> Dict[str, OperationData]:
