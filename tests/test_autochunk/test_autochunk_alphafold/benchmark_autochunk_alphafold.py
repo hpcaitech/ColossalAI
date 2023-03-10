@@ -23,7 +23,7 @@ def _benchmark_evoformer_stack_gm(
     get_data: Any,
 ) -> None:
     # build model and input
-    model = get_model()
+    model = get_model().cpu().eval()
     meta_args, concrete_args = get_data(*data_args)
     if concrete_args is None:
         concrete_args = []
@@ -35,7 +35,7 @@ def _benchmark_evoformer_stack_gm(
         concrete_args={k: v for k, v in concrete_args},
     )
     interp = MetaInfoProp(meta_graph)
-    meta_tensors = [MetaTensor(i[1], fake_device="cuda:0") for i in meta_args] + [i[1] for i in concrete_args]
+    meta_tensors = [MetaTensor(i[1], fake_device="cpu") for i in meta_args] + [i[1] for i in concrete_args]
     interp.propagate(*meta_tensors)
     codegen = AutoChunkCodeGen(
         meta_graph,
