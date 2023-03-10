@@ -1,3 +1,3 @@
-from .gpipe_scheduler import GpipeScheduler
+from .gpipe_scheduler import GpipeWorker
 
-__all__ = ['GpipeScheduler']
+__all__ = ['GpipeWorker']

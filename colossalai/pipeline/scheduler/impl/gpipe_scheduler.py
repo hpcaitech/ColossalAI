@@ -1,7 +1,7 @@
 from colossalai.pipeline.scheduler.worker_state_machine import WorkerStateMachine
 
 
-class GpipeScheduler(WorkerStateMachine):
+class GpipeWorker(WorkerStateMachine):
 
     def __init__(self, rank, num_minibatches=1, fwd_only=False):
         super().__init__(rank, num_minibatches, fwd_only)
