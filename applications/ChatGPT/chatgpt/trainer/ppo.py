@@ -84,12 +84,9 @@ class PPOTrainer(Trainer):
 
         num_actions = experience.action_mask.size(1)
         action_log_probs = self.actor(experience.sequences, num_actions, attention_mask=experience.attention_mask)
-        values = self.critic(experience.sequences,
-                             action_mask=experience.action_mask,
-                             attention_mask=experience.attention_mask)
 
         reward_with_penalty = compute_reward(experience.reward, self.kl_coef, action_log_probs, experience.base_action_log_probs, action_mask=action_mask)
-        advantage_with_penalty = reward_with_penalty - values
+        advantage_with_penalty = reward_with_penalty - experience.values
         actor_loss = self.actor_loss_fn(action_log_probs,
                                         experience.action_log_probs,
                                         advantage_with_penalty,
@@ -98,7 +95,12 @@ class PPOTrainer(Trainer):
         self.strategy.optimizer_step(self.actor_optim)
         self.actor_optim.zero_grad()
 
-
+        values = self.critic(experience.sequences,
+                             action_mask=experience.action_mask,
+                             attention_mask=experience.attention_mask)
+        values = self.critic(experience.sequences,
+                             action_mask=experience.action_mask,
+                             attention_mask=experience.attention_mask)
         critic_loss = self.critic_loss_fn(values,
                                           experience.reward,
                                           action_mask=experience.action_mask)
