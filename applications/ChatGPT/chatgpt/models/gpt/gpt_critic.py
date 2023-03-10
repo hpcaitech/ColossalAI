@@ -20,7 +20,8 @@ class GPTCritic(Critic):
     def __init__(self,
                  pretrained: Optional[str] = None,
                  config: Optional[GPT2Config] = None,
-                 checkpoint: bool = False) -> None:
+                 checkpoint: bool = False,
+                 **kwargs) -> None:
         if pretrained is not None:
             model = GPT2Model.from_pretrained(pretrained)
         elif config is not None:
@@ -30,4 +31,4 @@ class GPTCritic(Critic):
         if checkpoint:
             model.gradient_checkpointing_enable()
         value_head = nn.Linear(model.config.n_embd, 1)
-        super().__init__(model, value_head)
+        super().__init__(model, value_head, **kwargs)
