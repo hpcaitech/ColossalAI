@@ -35,10 +35,9 @@ def _benchmark_autochunk_unet_gm(
         meta_args={k: v.to(torch.device("meta")) for k, v in meta_args},
         concrete_args={k: v for k, v in concrete_args},
     )
-    model = model.cuda().eval()
     interp = MetaInfoProp(meta_graph)
     meta_tensors = [i[1] for i in meta_args] + [i[1] for i in concrete_args]
-    meta_tensors = [MetaTensor(i, fake_device="cuda:0") if isinstance(i, torch.Tensor) else i for i in meta_tensors]
+    meta_tensors = [MetaTensor(i, fake_device="cpu") if isinstance(i, torch.Tensor) else i for i in meta_tensors]
     interp.propagate(*meta_tensors)
     codegen = AutoChunkCodeGen(
         meta_graph,
@@ -142,6 +141,7 @@ if __name__ == "__main__":
         port=free_port(),
         backend="nccl",
     )
-    benchmark_autochunk_unet(batch=1, height=224 * 2, width=224 * 2)
     benchmark_autochunk_unet(batch=1, height=224 * 3, width=224 * 3)
     benchmark_autochunk_unet(batch=1, height=224 * 4, width=224 * 4)
+    benchmark_autochunk_unet(batch=1, height=224 * 5, width=224 * 5)
+    benchmark_autochunk_unet(batch=1, height=224 * 6, width=224 * 6)
