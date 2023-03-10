@@ -5,8 +5,8 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 import torch.optim as optim
-from chatgpt.nn import Actor
-from chatgpt.nn.lora import LoraLinear
+from chatgpt.models.base import Actor
+from chatgpt.models.lora import LoraLinear
 from torch.optim import Optimizer
 
 import colossalai
