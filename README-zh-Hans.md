@@ -199,6 +199,7 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 <p id="OPT-Serving" align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/BLOOM%20serving.png" width=800/>
 </p>
+
 - [OPT推理服务](https://colossalai.org/docs/advanced_tutorials/opt_service): 体验1750亿参数OPT在线推理服务
 
 <p id="BLOOM-Inference" align="center">

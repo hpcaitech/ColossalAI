@@ -201,6 +201,7 @@ Please visit our [documentation](https://www.colossalai.org/) and [examples](htt
 <p id="OPT-Serving" align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/BLOOM%20serving.png" width=800/>
 </p>
+
 - [OPT Serving](https://colossalai.org/docs/advanced_tutorials/opt_service): Try 175-billion-parameter OPT online services
 
 <p id="BLOOM-Inference" align="center">
