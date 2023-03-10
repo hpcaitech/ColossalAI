@@ -180,4 +180,9 @@ class FusedScaleMaskSoftmax(nn.Module):
         return probs
 
     def get_batch_per_block(self, sq, sk, b, np):
+        # build and load kernel if not pre-built
+        global scaled_masked_softmax
+        if scaled_masked_softmax is None:
+            scaled_masked_softmax = ScaledMaskedSoftmaxBuilder().load()
+
         return scaled_masked_softmax.get_batch_per_block(sq, sk, b, np)
