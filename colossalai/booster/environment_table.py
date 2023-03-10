@@ -116,5 +116,21 @@ class EnvironmentTable:
 
             self.process_group_pool[strategy] = process_groups
 
+    def get_device_mesh(self, mesh_id: int) -> DeviceMesh:
+        return self.device_mesh_pool[mesh_id]
+
+    def get_process_group(self, strategy: ParallelMode, rank: int) -> ProcessGroup:
+        if self.strategy_axis_mapping is None:
+            return None
+
+        if strategy not in self.process_group_pool:
+            raise ValueError(f'process group for {strategy} is not initialized.')
+
+        return self.process_group_pool[strategy][rank]
+
+    def destroy(self):
+        # TODO: this method will be implement after destroy method of DeviceMesh is ready.
+        pass
+
     # TODO: implement more utility methods as given in
     # https://github.com/hpcaitech/ColossalAI/issues/3051
