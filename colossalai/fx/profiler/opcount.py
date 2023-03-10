@@ -347,6 +347,7 @@ if version.parse(torch.__version__) >= version.parse('1.12.0'):
         aten.squeeze.dim,
         aten.slice.Tensor,
         aten.slice_backward.default,
+        aten.stack.default,
         aten.split.Tensor,
         aten.permute.default,
         aten.t.default,
