@@ -55,24 +55,7 @@ conda install pytorch==1.12.1 torchvision==0.13.1 torchaudio==0.12.1 cudatoolkit
 pip install transformers diffusers invisible-watermark
 ```
 
-#### Step 2: install lightning
-
-Install Lightning version later than 2022.01.04. We suggest you install lightning from source.
-
-##### From Source
-```
-git clone https://github.com/Lightning-AI/lightning.git
-pip install -r requirements.txt
-python setup.py install
-```
-
-##### From pip
-
-```
-pip install pytorch-lightning==2.0.0rc0
-```
-
-#### Step 3:Install [Colossal-AI](https://colossalai.org/download/) From Our Official Website
+#### Step 2:Install [Colossal-AI](https://colossalai.org/download/) From Our Official Website
 
 ##### From pip
 
