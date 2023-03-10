@@ -74,6 +74,8 @@ class LoraLinear(lora.LoRALayer, nn.Module):
             # Merge the weights and mark it
             if self.r > 0:
                 self.weight.data += T(self.lora_B @ self.lora_A) * self.scaling
+                delattr(self, 'lora_A')
+                delattr(self, 'lora_B')
             self.merged = True
 
     def forward(self, x: torch.Tensor):
@@ -125,3 +127,4 @@ class LoRAModule(nn.Module):
             return
         convert_to_lora_recursively(self, self.lora_rank)
         lora.mark_only_lora_as_trainable(self, self.lora_train_bias)
+                
