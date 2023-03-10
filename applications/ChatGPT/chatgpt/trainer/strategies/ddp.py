@@ -6,6 +6,7 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 from chatgpt.models.base import Actor
+from chatgpt.models.lora import LoraLinear
 from chatgpt.replay_buffer import ReplayBuffer
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim import Optimizer
@@ -72,10 +73,17 @@ class DDPStrategy(NaiveStrategy):
         return model.module
 
     def save_model(self, model: nn.Module, path: str, only_rank0: bool = False) -> None:
+        for module in model.modules():
+            if isinstance(module, LoraLinear):
+                module.merge_weights=True
+                module.eval()
+                
         if only_rank0 and dist.get_rank() != 0:
             return
-        super().save_model(model, path, only_rank0)
-
+        model = model.model.module
+        state_dict = model.state_dict()
+        torch.save(state_dict, path)
+        
     def save_optimizer(self, optimizer: Optimizer, path: str, only_rank0: bool = False) -> None:
         if only_rank0 and dist.get_rank() != 0:
             return
