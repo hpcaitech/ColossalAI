@@ -25,7 +25,7 @@ class OPTCritic(Critic):
                  checkpoint: bool = False,
                  lora_rank: int = 0,
                  lora_train_bias: str = 'none',
-                 **kargs) -> None:
+                 **kwargs) -> None:
         if pretrained is not None:
             model = OPTModel.from_pretrained(pretrained)
         elif config is not None:
