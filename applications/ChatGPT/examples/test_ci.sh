@@ -13,7 +13,7 @@ export OMP_NUM_THREADS=8
 
 # install requirements
 pip install -r ${BASE}/requirements.txt
-which python
+source activate pytorch
 python ${BASE}/test_op.py
 
 # # train dummy
