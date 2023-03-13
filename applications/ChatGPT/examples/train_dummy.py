@@ -2,8 +2,12 @@ import argparse
 from copy import deepcopy
 
 import torch
-from chatgpt.nn import BLOOMActor, BLOOMCritic, GPTActor, GPTCritic, OPTActor, OPTCritic, RewardModel
+from chatgpt.models.base import RewardModel
+from chatgpt.models.bloom import BLOOMActor, BLOOMCritic
+from chatgpt.models.gpt import GPTActor, GPTCritic
+from chatgpt.models.opt import OPTActor, OPTCritic
 from chatgpt.trainer import PPOTrainer
+from chatgpt.trainer.callbacks import SaveCheckpoint
 from chatgpt.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
 from torch.optim import Adam
 from transformers import AutoTokenizer, BloomTokenizerFast
@@ -25,7 +29,7 @@ def main(args):
     elif args.strategy == 'ddp':
         strategy = DDPStrategy()
     elif args.strategy == 'colossalai_gemini':
-        strategy = ColossalAIStrategy(stage=3, placement_policy='cuda')
+        strategy = ColossalAIStrategy(stage=3, placement_policy='cuda', initial_scale=2**5)
     elif args.strategy == 'colossalai_zero2':
         strategy = ColossalAIStrategy(stage=2, placement_policy='cuda')
     else:
@@ -71,32 +75,45 @@ def main(args):
     (actor, actor_optim), (critic, critic_optim), reward_model, initial_model = strategy.prepare(
         (actor, actor_optim), (critic, critic_optim), reward_model, initial_model)
 
+    callbacks = []
+    if args.save_ckpt_path:
+        ckpt_callback = SaveCheckpoint(
+            args.save_ckpt_path,
+            args.save_ckpt_interval,
+            strategy,
+            actor,
+            critic,
+            actor_optim,
+            critic_optim,
+        )
+        callbacks.append(ckpt_callback)
+
     # configure trainer
-    trainer = PPOTrainer(
-        strategy,
-        actor,
-        critic,
-        reward_model,
-        initial_model,
-        actor_optim,
-        critic_optim,
-        max_epochs=args.max_epochs,
-        train_batch_size=args.train_batch_size,
-        tokenizer=preprocess_batch,
-        max_length=128,
-        do_sample=True,
-        temperature=1.0,
-        top_k=50,
-        pad_token_id=tokenizer.pad_token_id,
-        eos_token_id=tokenizer.eos_token_id,
-    )
+
+    trainer = PPOTrainer(strategy,
+                         actor,
+                         critic,
+                         reward_model,
+                         initial_model,
+                         actor_optim,
+                         critic_optim,
+                         max_epochs=args.max_epochs,
+                         train_batch_size=args.train_batch_size,
+                         tokenizer=preprocess_batch,
+                         max_length=128,
+                         do_sample=True,
+                         temperature=1.0,
+                         top_k=50,
+                         pad_token_id=tokenizer.pad_token_id,
+                         eos_token_id=tokenizer.eos_token_id,
+                         callbacks=callbacks)
 
     random_prompts = torch.randint(tokenizer.vocab_size, (1000, 64), device=torch.cuda.current_device())
     trainer.fit(random_prompts,
                 num_episodes=args.num_episodes,
                 max_timesteps=args.max_timesteps,
                 update_timesteps=args.update_timesteps)
-    
+
     # save model checkpoint after fitting
     strategy.save_model(actor, args.save_path, only_rank0=True)
     # save optimizer checkpoint on all ranks
