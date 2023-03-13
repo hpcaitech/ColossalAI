@@ -34,5 +34,5 @@ class OPTCritic(Critic):
             model = OPTModel(OPTConfig())
         if checkpoint:
             model.gradient_checkpointing_enable()
-        value_head = nn.Linear(model.config.hidden_size, 1)
+        value_head = nn.Linear(model.config.word_embed_proj_dim, 1)
         super().__init__(model, value_head, lora_rank, lora_train_bias, **kwargs)
