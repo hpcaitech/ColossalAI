@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 
-set -xue
+# set -xue
 
-if [ -z "$PROMPT_PATH" ]; then
-    echo "Please set \$PROMPT_PATH to the path to prompts csv."
-    exit 1
-fi
+# if [ -z "$PROMPT_PATH" ]; then
+#     echo "Please set \$PROMPT_PATH to the path to prompts csv."
+#     exit 1
+# fi
 
 BASE=$(realpath $(dirname $0))
 
@@ -13,7 +13,7 @@ export OMP_NUM_THREADS=8
 
 # install requirements
 pip install -r ${BASE}/requirements.txt
-
+which python
 python ${BASE}/test_op.py
 
 # # train dummy
