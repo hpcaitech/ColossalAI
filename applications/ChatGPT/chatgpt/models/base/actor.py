@@ -37,7 +37,7 @@ class Actor(LoRAModule):
         if pad_token_id is not None:
             attention_mask = sequences.not_equal(pad_token_id).to(dtype=torch.long, device=sequences.device)
         if not return_action_mask:
-            return sequences, attention_mask
+            return sequences, attention_mask, None
         input_len = input_ids.size(1)
         eos_token_id = kwargs.get('eos_token_id', None)
         if eos_token_id is None:
