@@ -1,10 +1,10 @@
 print("before building")
 
-# from colossalai.kernel.op_builder.cpu_adam import CPUAdamBuilder
+from colossalai.kernel.op_builder.cpu_adam import CPUAdamBuilder
 
-# builder = CPUAdamBuilder()
+builder = CPUAdamBuilder()
 print("builder is created")
 
-# op = builder.load()
+op = builder.load()
 
 print("building completed")
