@@ -2,12 +2,8 @@ import argparse
 from copy import deepcopy
 
 import torch
-from chatgpt.models.base import RewardModel
-from chatgpt.models.bloom import BLOOMActor, BLOOMCritic
-from chatgpt.models.gpt import GPTActor, GPTCritic
-from chatgpt.models.opt import OPTActor, OPTCritic
+from chatgpt.nn import BLOOMActor, BLOOMCritic, GPTActor, GPTCritic, OPTActor, OPTCritic, RewardModel
 from chatgpt.trainer import PPOTrainer
-from chatgpt.trainer.callbacks import SaveCheckpoint
 from chatgpt.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
 from torch.optim import Adam
 from transformers import AutoTokenizer, BloomTokenizerFast
@@ -29,7 +25,7 @@ def main(args):
     elif args.strategy == 'ddp':
         strategy = DDPStrategy()
     elif args.strategy == 'colossalai_gemini':
-        strategy = ColossalAIStrategy(stage=3, placement_policy='cuda', initial_scale=2**5)
+        strategy = ColossalAIStrategy(stage=3, placement_policy='cuda')
     elif args.strategy == 'colossalai_zero2':
         strategy = ColossalAIStrategy(stage=2, placement_policy='cuda')
     else:
@@ -75,47 +71,34 @@ def main(args):
     (actor, actor_optim), (critic, critic_optim), reward_model, initial_model = strategy.prepare(
         (actor, actor_optim), (critic, critic_optim), reward_model, initial_model)
 
-    callbacks = []
-    if args.save_ckpt_path:
-        ckpt_callback = SaveCheckpoint(
-            args.save_ckpt_path,
-            args.save_ckpt_interval,
-            strategy,
-            actor,
-            critic,
-            actor_optim,
-            critic_optim,
-        )
-        callbacks.append(ckpt_callback)
-
     # configure trainer
-
-    trainer = PPOTrainer(strategy,
-                         actor,
-                         critic,
-                         reward_model,
-                         initial_model,
-                         actor_optim,
-                         critic_optim,
-                         max_epochs=args.max_epochs,
-                         train_batch_size=args.train_batch_size,
-                         tokenizer=preprocess_batch,
-                         max_length=128,
-                         do_sample=True,
-                         temperature=1.0,
-                         top_k=50,
-                         pad_token_id=tokenizer.pad_token_id,
-                         eos_token_id=tokenizer.eos_token_id,
-                         callbacks=callbacks)
+    trainer = PPOTrainer(
+        strategy,
+        actor,
+        critic,
+        reward_model,
+        initial_model,
+        actor_optim,
+        critic_optim,
+        max_epochs=args.max_epochs,
+        train_batch_size=args.train_batch_size,
+        tokenizer=preprocess_batch,
+        max_length=128,
+        do_sample=True,
+        temperature=1.0,
+        top_k=50,
+        pad_token_id=tokenizer.pad_token_id,
+        eos_token_id=tokenizer.eos_token_id,
+    )
 
     random_prompts = torch.randint(tokenizer.vocab_size, (1000, 64), device=torch.cuda.current_device())
     trainer.fit(random_prompts,
                 num_episodes=args.num_episodes,
                 max_timesteps=args.max_timesteps,
                 update_timesteps=args.update_timesteps)
-
+    
     # save model checkpoint after fitting
-    strategy.save_model(actor, 'actor_checkpoint_dummy.pt', only_rank0=True)
+    strategy.save_model(actor, args.save_path, only_rank0=True)
     # save optimizer checkpoint on all ranks
     if args.need_optim_ckpt:
         strategy.save_optimizer(actor_optim,
@@ -130,18 +113,13 @@ if __name__ == '__main__':
                         default='naive')
     parser.add_argument('--model', type=str, default='gpt2', choices=['gpt2', 'bloom', 'opt'])
     parser.add_argument('--pretrain', type=str, default=None)
+    parser.add_argument('--save_path', type=str, default='actor_checkpoint_prompts.pt')
     parser.add_argument('--need_optim_ckpt', type=bool, default=False)
-    parser.add_argument('--num_episodes', type=int, default=50)
-    parser.add_argument('--max_timesteps', type=int, default=10)
-    parser.add_argument('--update_timesteps', type=int, default=10)
-    parser.add_argument('--max_epochs', type=int, default=5)
+    parser.add_argument('--num_episodes', type=int, default=2)
+    parser.add_argument('--max_timesteps', type=int, default=5)
+    parser.add_argument('--update_timesteps', type=int, default=5)
+    parser.add_argument('--max_epochs', type=int, default=2)
     parser.add_argument('--train_batch_size', type=int, default=8)
-    parser.add_argument('--experience_batch_size', type=int, default=8)
     parser.add_argument('--lora_rank', type=int, default=0, help="low-rank adaptation matrices rank")
-    parser.add_argument('--save_ckpt_path',
-                        type=str,
-                        default=None,
-                        help="path to save checkpoint, None means not to save")
-    parser.add_argument('--save_ckpt_interval', type=int, default=1, help="the interval of episode to save checkpoint")
     args = parser.parse_args()
     main(args)
