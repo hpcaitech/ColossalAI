@@ -18,15 +18,19 @@ class Critic(LoRAModule):
         lora_train_bias (str): LoRA bias training mode.
     """
 
-    def __init__(self,
-                 model: nn.Module,
-                 value_head: nn.Module,
-                 lora_rank: int = 0,
-                 lora_train_bias: str = 'none') -> None:
+    def __init__(
+        self,
+        model: nn.Module,
+        value_head: nn.Module,
+        lora_rank: int = 0,
+        lora_train_bias: str = 'none',
+        use_action_mask: bool = False,
+    ) -> None:
 
         super().__init__(lora_rank=lora_rank, lora_train_bias=lora_train_bias)
         self.model = model
         self.value_head = value_head
+        self.use_action_mask = use_action_mask
         self.convert_to_lora()
 
     def forward(self,
@@ -38,7 +42,7 @@ class Critic(LoRAModule):
 
         values = self.value_head(last_hidden_states).squeeze(-1)
 
-        if action_mask is not None:
+        if action_mask is not None and self.use_action_mask:
             num_actions = action_mask.size(1)
             prompt_mask = attention_mask[:, :-num_actions]
             values = values[:, :-num_actions]
@@ -46,5 +50,5 @@ class Critic(LoRAModule):
             return value
 
         values = values[:, :-1]
-        value = values.mean(dim=1).squeeze(1)
+        value = values.mean(dim=1)
         return value

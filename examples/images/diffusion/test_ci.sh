@@ -10,8 +10,6 @@ pip install transformers diffusers invisible-watermark
 
 CUDA_EXT=1  pip install colossalai
 
-pip install pytorch-lightning
-
 wget https://huggingface.co/stabilityai/stable-diffusion-2-base/resolve/main/512-base-ema.ckpt
 
 python main.py --logdir /tmp --train --base configs/Teyvat/train_colossalai_teyvat.yaml --ckpt 512-base-ema.ckpt

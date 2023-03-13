@@ -6,11 +6,13 @@ import torch.distributed as dist
 import torch.nn as nn
 import torch.optim as optim
 from chatgpt.models.base import Actor
+from chatgpt.models.lora import LoraLinear
 from torch.optim import Optimizer
 
 import colossalai
 from colossalai.nn.optimizer import CPUAdam, HybridAdam
 from colossalai.nn.parallel import ZeroDDP, zero_model_wrapper, zero_optim_wrapper
+from colossalai.nn.parallel.utils import get_static_torch_model
 from colossalai.tensor import ProcessGroup, ShardSpec
 from colossalai.utils import get_current_device
 from colossalai.utils.model.colo_init_context import ColoInitContext
@@ -143,6 +145,20 @@ class ColossalAIStrategy(DDPStrategy):
 
     def save_model(self, model: nn.Module, path: str, only_rank0: bool = False) -> None:
         unwrapped_model = self._unwrap_model(model)
+        # TODO : better way to get torch model from gemini model
+        # to get torch model from gemini model
+        if isinstance(unwrapped_model, ZeroDDP):
+            state_dict = unwrapped_model.state_dict()
+            unwrapped_model = get_static_torch_model(unwrapped_model)
+            if only_rank0 and dist.get_rank() != 0:
+                return
+            unwrapped_model.load_state_dict(state_dict)
+        # merge lora_weights into weights
+        for module in unwrapped_model.modules():
+            if isinstance(module, LoraLinear):
+                module.merge_weights=True
+                module.eval()
+        # get state_dict and save
         state_dict = unwrapped_model.state_dict()
         if only_rank0 and dist.get_rank() != 0:
             return
