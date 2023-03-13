@@ -132,11 +132,17 @@ if __name__ == '__main__':
     parser.add_argument('--pretrain', type=str, default=None)
     parser.add_argument('--save_path', type=str, default='actor_checkpoint_prompts.pt')
     parser.add_argument('--need_optim_ckpt', type=bool, default=False)
-    parser.add_argument('--num_episodes', type=int, default=2)
-    parser.add_argument('--max_timesteps', type=int, default=5)
-    parser.add_argument('--update_timesteps', type=int, default=5)
-    parser.add_argument('--max_epochs', type=int, default=2)
+    parser.add_argument('--num_episodes', type=int, default=50)
+    parser.add_argument('--max_timesteps', type=int, default=10)
+    parser.add_argument('--update_timesteps', type=int, default=10)
+    parser.add_argument('--max_epochs', type=int, default=5)
     parser.add_argument('--train_batch_size', type=int, default=8)
+    parser.add_argument('--experience_batch_size', type=int, default=8)
     parser.add_argument('--lora_rank', type=int, default=0, help="low-rank adaptation matrices rank")
+    parser.add_argument('--save_ckpt_path',
+                        type=str,
+                        default=None,
+                        help="path to save checkpoint, None means not to save")
+    parser.add_argument('--save_ckpt_interval', type=int, default=1, help="the interval of episode to save checkpoint")
     args = parser.parse_args()
     main(args)
