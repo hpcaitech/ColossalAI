@@ -14,7 +14,7 @@ export OMP_NUM_THREADS=8
 # install requirements
 pip install -r ${BASE}/requirements.txt
 
-python test_op.py
+python ${BASE}/test_op.py
 
 # # train dummy
 # for strategy in ddp colossalai_gemini colossalai_zero2; do
