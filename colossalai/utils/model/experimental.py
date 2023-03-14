@@ -146,8 +146,11 @@ class LazyTensor(torch.Tensor):
         return self._materialized_data
 
     def _rerun_ops(self, target=None) -> torch.Tensor:
-        # dump all cached sequence
-        # super-dainiu: support methods for single Tensor only
+        """Do lazy execution by rerunning all (stored) related operations.
+
+        Args:
+            target (torc.Tensor, optional): Intial value of the target tensor (self). Defaults to None.
+        """
 
         def replace(x):
             if x is self:
