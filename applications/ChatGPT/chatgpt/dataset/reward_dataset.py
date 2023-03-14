@@ -22,7 +22,7 @@ class RmStaticDataset(Dataset):
         self.chosen = []
         self.reject = []
         if special_token is None:
-            self.end_token  = tokenizer.eos_token
+            self.end_token = tokenizer.eos_token
         else:
             self.end_token = special_token
         for data in tqdm(dataset, disable=not is_rank_0()):
@@ -74,7 +74,7 @@ class HhRlhfDataset(Dataset):
         self.chosen = []
         self.reject = []
         if special_token is None:
-            self.end_token  = tokenizer.eos_token
+            self.end_token = tokenizer.eos_token
         else:
             self.end_token = special_token
         for data in tqdm(dataset, disable=not is_rank_0()):
