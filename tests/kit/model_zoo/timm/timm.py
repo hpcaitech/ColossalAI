@@ -6,7 +6,6 @@ from ..registry import ModelAttribute, model_zoo
 ## ==============
 # Register models without control flow
 ## ==============
-
 data_gen_fn = lambda: dict(x=torch.rand(2, 3, 224, 224))
 output_transform_fn = lambda x: dict(output=x)
 
@@ -47,6 +46,106 @@ model_zoo.register(name='timm_vision_transformer',
                    model_attribute=ModelAttribute(has_control_flow=False))
 model_zoo.register(name='timm_deit',
                    model_fn=tm.deit_base_distilled_patch16_224,
+                   data_gen_fn=data_gen_fn,
+                   output_transform_fn=output_transform_fn,
+                   model_attribute=ModelAttribute(has_control_flow=False))
+model_zoo.register(name='timm_beitv2',
+                   model_fn=tm.beitv2.beitv2_base_patch16_224,
+                   data_gen_fn=data_gen_fn,
+                   output_transform_fn=output_transform_fn,
+                   model_attribute=ModelAttribute(has_control_flow=False))
+model_zoo.register(name='timm_coat',
+                   model_fn=tm.coat.coat_lite_mini,
+                   data_gen_fn=data_gen_fn,
+                   output_transform_fn=output_transform_fn,
+                   model_attribute=ModelAttribute(has_control_flow=False))
+model_zoo.register(name='timm_convit',
+                   model_fn=tm.convit.convit_base,
+                   data_gen_fn=data_gen_fn,
+                   output_transform_fn=output_transform_fn,
+                   model_attribute=ModelAttribute(has_control_flow=False))
+model_zoo.register(name='timm_deit3',
+                   model_fn=tm.deit3_base_patch16_224,
+                   data_gen_fn=data_gen_fn,
+                   output_transform_fn=output_transform_fn,
+                   model_attribute=ModelAttribute(has_control_flow=False))
+model_zoo.register(name='timm_dm_nfnet',
+                   model_fn=tm.dm_nfnet.dm_nfnet_f0,
+                   data_gen_fn=data_gen_fn,
+                   output_transform_fn=output_transform_fn,
+                   model_attribute=ModelAttribute(has_control_flow=False))
+model_zoo.register(name='timm_eca_nfnet',
+                   model_fn=tm.eca_nfnet.eca_nfnet_l0,
+                   data_gen_fn=data_gen_fn,
+                   output_transform_fn=output_transform_fn,
+                   model_attribute=ModelAttribute(has_control_flow=False))
+model_zoo.register(name='timm_efficientformer',
+                   model_fn=tm.efficientformer.efficientformer_l1,
+                   data_gen_fn=data_gen_fn,
+                   output_transform_fn=output_transform_fn,
+                   model_attribute=ModelAttribute(has_control_flow=False))
+model_zoo.register(name='timm_ese_vovnet19b_dw',
+                   model_fn=tm.ese_vovnet19b_dw,
+                   data_gen_fn=data_gen_fn,
+                   output_transform_fn=output_transform_fn,
+                   model_attribute=ModelAttribute(has_control_flow=False))
+model_zoo.register(name='timm_gmixer_12_224',
+                   model_fn=tm.gmixer_12_224,
+                   data_gen_fn=data_gen_fn,
+                   output_transform_fn=output_transform_fn,
+                   model_attribute=ModelAttribute(has_control_flow=False))
+model_zoo.register(name='timm_gmlp_b16_224',
+                   model_fn=tm.gmlp_b16_224,
+                   data_gen_fn=data_gen_fn,
+                   output_transform_fn=output_transform_fn,
+                   model_attribute=ModelAttribute(has_control_flow=False))
+model_zoo.register(name='timm_hardcorenas_a',
+                   model_fn=tm.hardcorenas_a,
+                   data_gen_fn=data_gen_fn,
+                   output_transform_fn=output_transform_fn,
+                   model_attribute=ModelAttribute(has_control_flow=False))
+model_zoo.register(name='timm_hrnet_w18_small',
+                   model_fn=tm.hrnet_w18_small,
+                   data_gen_fn=data_gen_fn,
+                   output_transform_fn=output_transform_fn,
+                   model_attribute=ModelAttribute(has_control_flow=False))
+model_zoo.register(name='timm_inception_v3',
+                   model_fn=tm.inception_v3,
+                   data_gen_fn=data_gen_fn,
+                   output_transform_fn=output_transform_fn,
+                   model_attribute=ModelAttribute(has_control_flow=False))
+model_zoo.register(name='timm_mixer_b16_224',
+                   model_fn=tm.mixer_b16_224,
+                   data_gen_fn=data_gen_fn,
+                   output_transform_fn=output_transform_fn,
+                   model_attribute=ModelAttribute(has_control_flow=False))
+model_zoo.register(name='timm_nf_ecaresnet101',
+                   model_fn=tm.nf_ecaresnet101,
+                   data_gen_fn=data_gen_fn,
+                   output_transform_fn=output_transform_fn,
+                   model_attribute=ModelAttribute(has_control_flow=False))
+model_zoo.register(name='timm_nf_regnet_b0',
+                   model_fn=tm.nf_regnet_b0,
+                   data_gen_fn=data_gen_fn,
+                   output_transform_fn=output_transform_fn,
+                   model_attribute=ModelAttribute(has_control_flow=False))
+model_zoo.register(name='timm_regnetv_040',
+                   model_fn=tm.regnetv_040,
+                   data_gen_fn=data_gen_fn,
+                   output_transform_fn=output_transform_fn,
+                   model_attribute=ModelAttribute(has_control_flow=False))
+model_zoo.register(name='timm_skresnet18',
+                   model_fn=tm.skresnet18,
+                   data_gen_fn=data_gen_fn,
+                   output_transform_fn=output_transform_fn,
+                   model_attribute=ModelAttribute(has_control_flow=False))
+model_zoo.register(name='timm_tnt_b_patch16_224',
+                   model_fn=tm.tnt_b_patch16_224,
+                   data_gen_fn=data_gen_fn,
+                   output_transform_fn=output_transform_fn,
+                   model_attribute=ModelAttribute(has_control_flow=False))
+model_zoo.register(name='timm_wide_resnet50_2',
+                   model_fn=tm.wide_resnet50_2,
                    data_gen_fn=data_gen_fn,
                    output_transform_fn=output_transform_fn,
                    model_attribute=ModelAttribute(has_control_flow=False))
