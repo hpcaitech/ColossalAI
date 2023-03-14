@@ -37,6 +37,7 @@ jobs:
         run: |
           source activate pytorch
           cd applications/ChatGPT
+          rm -rf ~/.cache/colossalai
           bash ./examples/test_ci.sh
         env:
           NCCL_SHM_DISABLE: 1
