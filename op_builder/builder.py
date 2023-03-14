@@ -181,8 +181,8 @@ class Builder(ABC):
             if verbose:
                 print_rank_0(f"[extension] Compiling or loading the JIT-built {self.name} kernel during runtime now")
 
-            print('Everything is ok before build')
-            exit()
+            print(Path(build_directory).absolute())
+            print('before loading')
 
             # load the kernel
             op_module = load(name=self.name,
@@ -193,6 +193,8 @@ class Builder(ABC):
                              extra_ldflags=[],
                              build_directory=build_directory,
                              verbose=verbose)
+            print('after loading')
+            exit()
 
             build_duration = time.time() - start_build
 
