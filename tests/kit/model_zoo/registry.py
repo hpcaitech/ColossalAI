@@ -18,7 +18,8 @@ class ModelZooRegistry(dict):
     A registry to map model names to model and data generation functions.
     """
 
-    def register(self, name: str, model_fn: Callable, data_gen_fn: Callable, model_attribute: ModelAttribute):
+    def register(self, name: str, model_fn: Callable, data_gen_fn: Callable, output_transform_fn: Callable,
+                 model_attribute: ModelAttribute):
         """
         Register a model and data generation function.
 
@@ -34,9 +35,10 @@ class ModelZooRegistry(dict):
         Args:
             name (str): Name of the model.
             model_fn (callable): A function that returns a model. **It must not contain any arguments.**
-            data_gen_fn (callable): A function that returns a data generator. **It must not contain any arguments.**
+            output_transform_fn (callable): A function that transforms the output of the model into Dict.
+            data_gen_fn (callable): A function that returns a data sample in the form of Dict. **It must not contain any arguments.**
         """
-        self[name] = (model_fn, data_gen_fn, model_attribute)
+        self[name] = (model_fn, data_gen_fn, output_transform_fn, model_attribute)
 
     def get_sub_registry(self, keyword: str):
         """

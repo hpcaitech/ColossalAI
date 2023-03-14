@@ -6,7 +6,7 @@ from colossalai.fx import symbolic_trace
 from tests.kit.model_zoo import model_zoo
 
 
-def trace_and_compare(model_cls, data, meta_args=None):
+def trace_and_compare(model_cls, data, output_transform_fn, meta_args=None):
     # trace
     model = model_cls()
 
@@ -23,14 +23,16 @@ def trace_and_compare(model_cls, data, meta_args=None):
         non_fx_out = model(**data)
 
     # compare output
-    if isinstance(fx_out, tuple):
-        # some models produce tuple as output
-        for v1, v2 in zip(fx_out, non_fx_out):
-            assert torch.allclose(v1, v2), f'{model.__class__.__name__} has inconsistent outputs, {v1} vs {v2}'
-    else:
-        assert torch.allclose(
-            fx_out, non_fx_out,
-            atol=1e-5), f'{model.__class__.__name__} has inconsistent outputs, {fx_out} vs {non_fx_out}'
+    transformed_fx_out = output_transform_fn(fx_out)
+    transformed_non_fx_out = output_transform_fn(non_fx_out)
+
+    assert len(transformed_fx_out) == len(transformed_non_fx_out)
+
+    for key in transformed_fx_out.keys():
+        fx_output_val = transformed_fx_out[key]
+        non_fx_output_val = transformed_non_fx_out[key]
+        assert torch.allclose(fx_output_val, non_fx_output_val, atol=1e-5), \
+            f'{model.__class__.__name__} has inconsistent outputs, {fx_output_val} vs {non_fx_output_val}'
 
 
 def test_timm_models():
@@ -38,14 +40,14 @@ def test_timm_models():
 
     sub_model_zoo = model_zoo.get_sub_registry('timm')
 
-    for name, (model_fn, data_gen_fn, attribute) in sub_model_zoo.items():
+    for name, (model_fn, data_gen_fn, output_transform_fn, attribute) in sub_model_zoo.items():
         data = data_gen_fn()
         if attribute.has_control_flow:
             meta_args = {k: v.to('meta') for k, v in data.items()}
         else:
             meta_args = None
 
-        trace_and_compare(model_fn, data, meta_args)
+        trace_and_compare(model_fn, data, output_transform_fn, meta_args)
 
 
 if __name__ == '__main__':
