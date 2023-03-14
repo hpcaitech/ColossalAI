@@ -116,14 +116,14 @@ if version.parse(torchvision.__version__) >= version.parse('0.12.0'):
                        data_gen_fn=data_gen_fn,
                        output_transform_fn=output_transform_fn,
                        model_attribute=ModelAttribute(has_stochastic_depth_prob=True))
+
+if version.parse(torchvision.__version__) >= version.parse('0.13.0'):
     model_zoo.register(
         name='torchvision_swin_s',
         model_fn=swin_s,
         data_gen_fn=data_gen_fn,
         output_transform_fn=swin_s_output_output_transform_fn,
     )
-
-if version.parse(torchvision.__version__) >= version.parse('0.13.0'):
     model_zoo.register(name='torchvision_efficientnet_v2_s',
                        model_fn=tm.efficientnet_v2_s,
                        data_gen_fn=data_gen_fn,
