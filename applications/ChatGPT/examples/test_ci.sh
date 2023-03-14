@@ -13,7 +13,9 @@ export OMP_NUM_THREADS=8
 
 # install requirements
 # pip install -r ${BASE}/requirements.txt
-source activate pytorch
+# source activate pytorch
+which python
+echo $PATH
 python ${BASE}/test_op.py
 
 # # train dummy
