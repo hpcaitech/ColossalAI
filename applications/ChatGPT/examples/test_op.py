@@ -1,10 +1,12 @@
-print("before building")
+import torch
 
-from colossalai.kernel.op_builder.cpu_adam import CPUAdamBuilder
+# print("before building")
 
-builder = CPUAdamBuilder()
-print("builder is created")
+    # from colossalai.kernel.op_builder.cpu_adam import CPUAdamBuilder
 
-op = builder.load()
+    # builder = CPUAdamBuilder()
+    # print("builder is created")
 
-print("building completed")
+    # op = builder.load()
+
+    # print("building completed")
