@@ -102,7 +102,7 @@ def main(args):
                 max_timesteps=args.max_timesteps,
                 update_timesteps=args.update_timesteps)
     # save model checkpoint after fitting 
-    strategy.save_model(actor, 'actor_checkpoint_prompts.pt', only_rank0=True)
+    strategy.save_model(actor, args.save_path, only_rank0=True)
     # save optimizer checkpoint on all ranks
     if args.need_optim_ckpt:
         strategy.save_optimizer(actor_optim,
@@ -118,6 +118,7 @@ if __name__ == '__main__':
                         default='naive')
     parser.add_argument('--model', default='gpt2', choices=['gpt2', 'bloom', 'opt'])
     parser.add_argument('--pretrain', type=str, default=None)
+    parser.add_argument('--save_path', type=str, default='actor_checkpoint_prompts.pt')
     parser.add_argument('--need_optim_ckpt', type=bool, default=False)
     parser.add_argument('--num_episodes', type=int, default=10)
     parser.add_argument('--max_timesteps', type=int, default=10)
