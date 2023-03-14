@@ -50,7 +50,7 @@ model_zoo.register(name='timm_deit',
                    output_transform_fn=output_transform_fn,
                    model_attribute=ModelAttribute(has_control_flow=False))
 model_zoo.register(name='timm_beitv2',
-                   model_fn=tm.beitv2.beitv2_base_patch16_224,
+                   model_fn=tm.beitv2_base_patch16_224,
                    data_gen_fn=data_gen_fn,
                    output_transform_fn=output_transform_fn,
                    model_attribute=ModelAttribute(has_control_flow=False))
@@ -59,28 +59,20 @@ model_zoo.register(name='timm_coat',
                    data_gen_fn=data_gen_fn,
                    output_transform_fn=output_transform_fn,
                    model_attribute=ModelAttribute(has_control_flow=False))
-model_zoo.register(name='timm_convit',
-                   model_fn=tm.convit.convit_base,
-                   data_gen_fn=data_gen_fn,
-                   output_transform_fn=output_transform_fn,
-                   model_attribute=ModelAttribute(has_control_flow=False))
+
 model_zoo.register(name='timm_deit3',
                    model_fn=tm.deit3_base_patch16_224,
                    data_gen_fn=data_gen_fn,
                    output_transform_fn=output_transform_fn,
                    model_attribute=ModelAttribute(has_control_flow=False))
-model_zoo.register(name='timm_dm_nfnet',
-                   model_fn=tm.dm_nfnet.dm_nfnet_f0,
-                   data_gen_fn=data_gen_fn,
-                   output_transform_fn=output_transform_fn,
-                   model_attribute=ModelAttribute(has_control_flow=False))
+
 model_zoo.register(name='timm_eca_nfnet',
-                   model_fn=tm.eca_nfnet.eca_nfnet_l0,
+                   model_fn=tm.eca_nfnet_l0,
                    data_gen_fn=data_gen_fn,
                    output_transform_fn=output_transform_fn,
                    model_attribute=ModelAttribute(has_control_flow=False))
 model_zoo.register(name='timm_efficientformer',
-                   model_fn=tm.efficientformer.efficientformer_l1,
+                   model_fn=tm.efficientformer_l1,
                    data_gen_fn=data_gen_fn,
                    output_transform_fn=output_transform_fn,
                    model_attribute=ModelAttribute(has_control_flow=False))
@@ -180,6 +172,16 @@ model_zoo.register(name='timm_rexnet',
                    model_attribute=ModelAttribute(has_control_flow=True))
 model_zoo.register(name='timm_swin_transformer',
                    model_fn=tm.swin_transformer.swin_base_patch4_window7_224,
+                   data_gen_fn=data_gen_fn,
+                   output_transform_fn=output_transform_fn,
+                   model_attribute=ModelAttribute(has_control_flow=True))
+model_zoo.register(name='timm_convit',
+                   model_fn=tm.convit_base,
+                   data_gen_fn=data_gen_fn,
+                   output_transform_fn=output_transform_fn,
+                   model_attribute=ModelAttribute(has_control_flow=True))
+model_zoo.register(name='timm_dm_nfnet',
+                   model_fn=tm.dm_nfnet_f0,
                    data_gen_fn=data_gen_fn,
                    output_transform_fn=output_transform_fn,
                    model_attribute=ModelAttribute(has_control_flow=True))

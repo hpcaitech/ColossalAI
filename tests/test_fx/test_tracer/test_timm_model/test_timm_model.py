@@ -15,6 +15,13 @@ def trace_and_compare(model_cls, data, output_transform_fn, meta_args=None):
     # without this statement, the torch.nn.functional.batch_norm will always be in training mode
     model.eval()
 
+    # TODO: support the following models
+    # 1. ConViT
+    # 2. NormFreeNet
+    # as they are not supported, let's skip them
+    if model.__class__.__name__ in ['ConViT', 'NormFreeNet']:
+        return
+
     gm = symbolic_trace(model, meta_args=meta_args)
 
     # run forward
