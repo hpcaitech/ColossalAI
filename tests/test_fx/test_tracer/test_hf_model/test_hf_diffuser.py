@@ -1,24 +1,9 @@
 import pytest
 import torch
-import transformers
 
 from colossalai.fx import symbolic_trace
 from colossalai.testing.random import seed_all
 from tests.kit.model_zoo import model_zoo
-
-try:
-    import diffusers
-    HAS_DIFFUSERS = True
-except ImportError:
-    HAS_DIFFUSERS = False
-
-BATCH_SIZE = 2
-SEQ_LENGTH = 5
-HEIGHT = 224
-WIDTH = 224
-IN_CHANNELS = 3
-LATENTS_SHAPE = (BATCH_SIZE, IN_CHANNELS, HEIGHT // 8, WIDTH // 8)
-TIME_STEP = 2
 
 
 def assert_dict(da, db, assert_fn):
