@@ -56,11 +56,6 @@ model_zoo.register(name='torchvision_efficientnet_b0',
                    data_gen_fn=data_gen_fn,
                    output_transform_fn=output_transform_fn,
                    model_attribute=ModelAttribute(has_stochastic_depth_prob=True))
-model_zoo.register(name='torchvision_efficientnet_v2_s',
-                   model_fn=tm.efficientnet_v2_s,
-                   data_gen_fn=data_gen_fn,
-                   output_transform_fn=output_transform_fn,
-                   model_attribute=ModelAttribute(has_stochastic_depth_prob=True))
 model_zoo.register(name='torchvision_googlenet',
                    model_fn=tm.googlenet,
                    data_gen_fn=data_gen_fn,
@@ -112,6 +107,11 @@ model_zoo.register(name='torchvision_wide_resnet50_2',
                    output_transform_fn=output_transform_fn)
 
 if version.parse(torchvision.__version__) >= version.parse('0.12.0'):
+    model_zoo.register(name='torchvision_efficientnet_v2_s',
+                       model_fn=tm.efficientnet_v2_s,
+                       data_gen_fn=data_gen_fn,
+                       output_transform_fn=output_transform_fn,
+                       model_attribute=ModelAttribute(has_stochastic_depth_prob=True))
     model_zoo.register(name='torchvision_vit_b_16',
                        model_fn=tm.vit_b_16,
                        data_gen_fn=data_gen_fn,
