@@ -49,7 +49,7 @@ def test_timm_models():
 
     for name, (model_fn, data_gen_fn, output_transform_fn, attribute) in sub_model_zoo.items():
         data = data_gen_fn()
-        if attribute.has_control_flow:
+        if attribute is not None and attribute.has_control_flow:
             meta_args = {k: v.to('meta') for k, v in data.items()}
         else:
             meta_args = None
