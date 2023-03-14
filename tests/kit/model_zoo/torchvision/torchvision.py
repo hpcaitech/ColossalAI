@@ -4,7 +4,6 @@ import torch
 import torchvision
 import torchvision.models as tm
 from packaging import version
-from torchvision.models.swin_transformer import Swin_T_Weights, _swin_transformer
 
 from ..registry import ModelAttribute, model_zoo
 
@@ -17,6 +16,8 @@ inception_v3_data_gen_fn = lambda: dict(x=torch.rand(4, 3, 299, 299))
 
 # special model fn
 def swin_s():
+    from torchvision.models.swin_transformer import Swin_T_Weights, _swin_transformer
+
     # adapted from torchvision.models.swin_transformer.swin_small
     weights = None
     weights = Swin_T_Weights.verify(weights)
@@ -100,12 +101,7 @@ model_zoo.register(name='torchvision_squeezenet1_0',
                    model_fn=tm.squeezenet1_0,
                    data_gen_fn=data_gen_fn,
                    output_transform_fn=output_transform_fn)
-model_zoo.register(
-    name='torchvision_swin_s',
-    model_fn=swin_s,
-    data_gen_fn=data_gen_fn,
-    output_transform_fn=swin_s_output_output_transform_fn,
-)
+
 model_zoo.register(name='torchvision_vgg11',
                    model_fn=tm.vgg11,
                    data_gen_fn=data_gen_fn,
@@ -125,3 +121,9 @@ if version.parse(torchvision.__version__) >= version.parse('0.12.0'):
                        data_gen_fn=data_gen_fn,
                        output_transform_fn=output_transform_fn,
                        model_attribute=ModelAttribute(has_stochastic_depth_prob=True))
+    model_zoo.register(
+        name='torchvision_swin_s',
+        model_fn=swin_s,
+        data_gen_fn=data_gen_fn,
+        output_transform_fn=swin_s_output_output_transform_fn,
+    )
