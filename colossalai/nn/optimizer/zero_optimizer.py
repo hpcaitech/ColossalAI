@@ -76,6 +76,7 @@ class ZeroOptimizer(ColossalaiOptimizer):
         self.chunk16_set: Set[Chunk] = set()
         self.clipping_flag = clipping_norm > 0.0
         self.max_norm = clipping_norm
+        self.p_index = []
 
         if self.clipping_flag:
             assert norm_type == 2.0, "ZeroOptimizer only supports L2 norm now"
@@ -296,15 +297,18 @@ class ZeroOptimizer(ColossalaiOptimizer):
             end = min(local_chunk.shard_size, param_info.end - local_chunk.shard_begin)
             return begin, end
 
+        p_id = 0
         for group in self.optim.param_groups:
             fake_params_list = list()
 
             for param in group['params']:
                 if is_ddp_ignored(param):
+                    self.p_index.append(None)
                     continue
                 chunk16 = self.chunk_manager.get_chunk(param)
                 range_pair = get_range_pair(chunk16, param)
                 if range_pair[0] >= range_pair[1]:
+                    self.p_index.append(None)
                     continue
 
                 grad_device = self.module.grads_device[param]
@@ -313,5 +317,12 @@ class ZeroOptimizer(ColossalaiOptimizer):
                 self.param_to_range[fake_param] = range_pair
 
                 fake_params_list.append(fake_param)
+                self.p_index.append((p_id, range_pair, chunk16.tensors_info[param]))
+                p_id = p_id + 1
 
             group['params'] = fake_params_list
+
+    def state_dict(self):
+        state_dict = self.optim.state_dict()
+        state_dict['p_index'] = self.p_index
+        return state_dict
