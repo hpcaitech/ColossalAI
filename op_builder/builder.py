@@ -163,8 +163,6 @@ class Builder(ABC):
         except ImportError:
             # check environment
             self.check_runtime_build_environment()
-            print('environment is ok')
-            exit()
 
             # time the kernel compilation
             start_build = time.time()
@@ -182,6 +180,9 @@ class Builder(ABC):
 
             if verbose:
                 print_rank_0(f"[extension] Compiling or loading the JIT-built {self.name} kernel during runtime now")
+
+            print('Everything is ok before build')
+            exit()
 
             # load the kernel
             op_module = load(name=self.name,
