@@ -353,6 +353,7 @@ class LazyInitContext:
 
         Args:
             module (torch.nn.Module): Target ``nn.Module``
+            verbose (bool): Whether to print lazy initialization rate. Defaults to False.
         """
         if verbose:
             param_cnt = 0
