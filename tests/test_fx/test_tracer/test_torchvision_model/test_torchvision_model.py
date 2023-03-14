@@ -1,33 +1,20 @@
 import torch
-import torchvision
-import torchvision.models as tm
-from packaging import version
 
 from colossalai.fx import symbolic_trace
+from tests.kit.model_zoo import model_zoo
 
 
 def test_torchvision_models():
-    MODEL_LIST = [
-        tm.vgg11, tm.resnet18, tm.densenet121, tm.mobilenet_v3_small, tm.resnext50_32x4d, tm.wide_resnet50_2,
-        tm.regnet_x_16gf, tm.mnasnet0_5, tm.efficientnet_b0
-    ]
-
-    RANDOMIZED_MODELS = [tm.efficientnet_b0]
-
-    if version.parse(torchvision.__version__) >= version.parse('0.12.0'):
-        MODEL_LIST.extend([tm.vit_b_16, tm.convnext_small])
-        RANDOMIZED_MODELS.append(tm.convnext_small)
-
     torch.backends.cudnn.deterministic = True
+    tv_sub_registry = model_zoo.get_sub_registry('torchvision')
 
-    data = torch.rand(2, 3, 224, 224)
+    for name, (model_fn, data_gen_fn, model_attribute) in tv_sub_registry.items():
+        data = data_gen_fn()
 
-    for model_cls in MODEL_LIST:
-        if model_cls in RANDOMIZED_MODELS:
-            # remove the impact of randomicity
-            model = model_cls(stochastic_depth_prob=0)
+        if model_attribute is not None and model_attribute.has_stochastic_depth_prob:
+            model = model_fn(stochastic_depth_prob=0)
         else:
-            model = model_cls()
+            model = model_fn()
 
         gm = symbolic_trace(model)
 
