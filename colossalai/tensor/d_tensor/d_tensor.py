@@ -3,12 +3,11 @@ from typing import Optional
 import torch
 from torch.utils._pytree import tree_map
 
-from colossalai.device.device_mesh import DeviceMesh
-from colossalai.tensor.d_tensor.layout import Layout
-from colossalai.tensor.shape_consistency import ShapeConsistencyManager, to_global
-from colossalai.tensor.sharding_spec import ShardingSpec
+from .layout import Layout
+from .layout_converter import LayoutConverter, to_global
+from .sharding_spec import ShardingSpec
 
-shape_consistency_manager = ShapeConsistencyManager()
+layout_converter = LayoutConverter()
 
 
 class DTensor(torch.Tensor):
@@ -17,8 +16,6 @@ class DTensor(torch.Tensor):
         self.local_tensor = local_tensor
         self.data_type = local_tensor.dtype
         self.entire_shape = local_tensor.shape
-        if dist_layout.entire_shape is None:
-            dist_layout.entire_shape = self.entire_shape
         self.dist_layout = dist_layout
         self._apply_layout()
 
@@ -36,20 +33,19 @@ class DTensor(torch.Tensor):
         '''
         Convert the layout of the tensor from source_spec to target_spec.
         '''
-        source_spec = convert_layout_to_sharding_spec(self.dist_layout)
-        target_spec = convert_layout_to_sharding_spec(target_layout)
-        self.local_tensor = shape_consistency_manager.apply_for_autoparallel_runtime(
-            self.local_tensor, source_spec, target_spec)
+        self.local_tensor = layout_converter.apply(self.local_tensor, self.dist_layout, target_layout)
         self.dist_layout = target_layout
 
     def _apply_layout(self):
         '''
         Apply the layout to the local tensor during initializing process.
         '''
-        source_spec = construct_default_sharding_spec(self.local_tensor, self.device_mesh)
-        target_spec = convert_layout_to_sharding_spec(self.dist_layout)
-        self.local_tensor = shape_consistency_manager.apply_for_autoparallel_runtime(
-            self.local_tensor, source_spec, target_spec)
+        source_spec = construct_default_sharding_spec(self.local_tensor)
+        source_layout = Layout(device_mesh=self.dist_layout.device_mesh,
+                               device_type=self.dist_layout.device_type,
+                               sharding_spec=source_spec,
+                               entire_shape=self.entire_shape)
+        self.local_tensor = layout_converter.apply(self.local_tensor, source_layout, self.dist_layout)
 
     @classmethod
     def __torch_function__(cls, func, types, args=(), kwargs=None):
@@ -108,7 +104,7 @@ class DTensor(torch.Tensor):
         will not change the layout of the DTensor. This function is mainly used for debugging or
         check the correctness of the distributed tensor.
         '''
-        return to_global(self.local_tensor, convert_layout_to_sharding_spec(self.dist_layout))
+        return to_global(self.local_tensor, self.dist_layout)
 
 
 def distribute_tensor(local_tensor: torch.Tensor, dist_layout: Layout) -> DTensor:
@@ -139,20 +135,8 @@ def distribute_module(module: torch.nn.Module, partition_fn: Optional[callable] 
     return module
 
 
-def convert_layout_to_sharding_spec(layout: Layout) -> ShardingSpec:
-    '''
-    Convert the layout from Layout class to ShardingSpec class.
-    '''
-    return ShardingSpec(device_mesh=layout.device_mesh,
-                        entire_shape=layout.entire_shape,
-                        dim_partition_dict=layout.sharding_spec.dim_partition_dict)
-
-
-def construct_default_sharding_spec(
-    tensor: torch.Tensor,
-    device_mesh: DeviceMesh,
-) -> ShardingSpec:
+def construct_default_sharding_spec(tensor: torch.Tensor,) -> ShardingSpec:
     '''
     Construct the default sharding specification for the tensor.
     '''
-    return ShardingSpec(device_mesh=device_mesh, entire_shape=tensor.shape, dim_partition_dict={})
+    return ShardingSpec(dim_size=tensor.dim(), dim_partition_dict={})
