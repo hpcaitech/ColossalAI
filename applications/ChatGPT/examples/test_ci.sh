@@ -12,7 +12,7 @@ BASE=$(realpath $(dirname $0))
 export OMP_NUM_THREADS=8
 
 # install requirements
-pip install -r ${BASE}/requirements.txt
+# pip install -r ${BASE}/requirements.txt
 source activate pytorch
 python ${BASE}/test_op.py
 
