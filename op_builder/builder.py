@@ -163,6 +163,8 @@ class Builder(ABC):
         except ImportError:
             # check environment
             self.check_runtime_build_environment()
+            print('environment is ok')
+            exit()
 
             # time the kernel compilation
             start_build = time.time()
