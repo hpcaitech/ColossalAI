@@ -1,5 +1,7 @@
 import torch
 
+import colossalai
+
 # print("before building")
 
     # from colossalai.kernel.op_builder.cpu_adam import CPUAdamBuilder
