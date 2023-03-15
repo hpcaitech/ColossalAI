@@ -1,4 +1,4 @@
-from typing import Callable, Optional, Union
+from typing import Callable, List, Optional, Union
 
 import torch
 import torch.nn as nn
@@ -364,12 +364,19 @@ class LazyInitContext:
             buf_cnt = 0
             buf_lazy_cnt = 0
 
+        # do post cleaning to handle shared parameter
+        visited_lazy_tensors: List[LazyTensor] = []
+        # handle shared module
+        visited_modules = set()
+
         @torch.no_grad()
         def init_recursively(module: nn.Module):
             nonlocal param_cnt, param_lazy_cnt, buf_cnt, buf_lazy_cnt
             # recursively initialize the module
             for mod in module.children():
-                init_recursively(mod)
+                if id(mod) not in visited_modules:
+                    visited_modules.add(id(mod))
+                    init_recursively(mod)
 
             # initialize tensors directly attached to the current module
             for name, param in module.named_parameters(recurse=False):
@@ -377,18 +384,21 @@ class LazyInitContext:
                     param_cnt += 1
                     if param._materialized_data is None:
                         param_lazy_cnt += 1
+                visited_lazy_tensors.append(param)
                 setattr(module, name, param.materialize())
-                param.clean()
 
             for name, buf in module.named_buffers(recurse=False):
                 if verbose:
                     buf_cnt += 1
                     if buf._materialized_data is None:
                         buf_lazy_cnt += 1
+                visited_lazy_tensors.append(buf)
                 setattr(module, name, buf.materialize())
-                buf.clean()
 
         init_recursively(module)
+
+        for t in visited_lazy_tensors:
+            t.clean()
 
         if verbose:
             print(f'Param lazy rate: {param_lazy_cnt}/{param_cnt}')
