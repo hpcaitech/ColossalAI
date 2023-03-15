@@ -7,9 +7,9 @@ INPUT_DIM = 80
 IN_FEATURES = 16
 N_TIME = 20
 KERNEL_SIZE = 5
-HOP_LENGTH = 200
-N_CLASSES = 100
-N_FREQ = 128
+HOP_LENGTH = 20
+N_CLASSES = 10
+N_FREQ = 16
 N_MELS = 80
 
 
@@ -71,12 +71,20 @@ def wavernn_data_gen_fn():
     return dict(waveform=waveform, specgram=specgram)
 
 
-model_zoo.register(
-    name='torchaudio_wavernn',
-    model_fn=lambda: tm.WaveRNN(
-        upsample_scales=[5, 5, 8], n_classes=N_CLASSES, hop_length=HOP_LENGTH, kernel_size=KERNEL_SIZE, n_freq=N_FREQ),
-    data_gen_fn=wavernn_data_gen_fn,
-    output_transform_fn=single_output_transform_fn)
+model_zoo.register(name='torchaudio_wavernn',
+                   model_fn=lambda: tm.WaveRNN(upsample_scales=[2, 2, 5],
+                                               n_classes=N_CLASSES,
+                                               hop_length=HOP_LENGTH,
+                                               kernel_size=KERNEL_SIZE,
+                                               n_freq=N_FREQ,
+                                               n_res_block=2,
+                                               n_rnn=64,
+                                               n_fc=64,
+                                               n_hidden=16,
+                                               n_output=16),
+                   data_gen_fn=wavernn_data_gen_fn,
+                   output_transform_fn=single_output_transform_fn,
+                   model_attribute=ModelAttribute(has_control_flow=True))
 
 
 def tacotron_data_gen_fn():
