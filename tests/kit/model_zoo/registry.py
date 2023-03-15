@@ -9,8 +9,13 @@ __all__ = ['ModelZooRegistry', 'ModelAttributem', 'model_zoo']
 class ModelAttribute:
     """
     Attributes of a model.
+
+    Args:
+        has_control_flow (bool): Whether the model contains branching in its forward method.
+        has_stochastic_depth_prob (bool): Whether the model contains stochastic depth probability. Often seen in the torchvision models.
     """
     has_control_flow: bool = False
+    has_stochastic_depth_prob: bool = False
 
 
 class ModelZooRegistry(dict):
