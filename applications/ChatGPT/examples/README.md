@@ -9,16 +9,24 @@ pip install -r requirements.txt
 ## Train the reward model (Stage 2)
 We use [rm-static](https://huggingface.co/datasets/Dahoas/rm-static) as dataset to train our reward model. It is a dataset of chosen & rejected response of the same prompt.
 
-You can download the dataset from huggingface automatically.
+You can download the datasets from huggingface automatically. 
 
 Use these code to train your reward model.
-
 ```shell
-# Naive reward model training
-python train_reward_model.py --pretrain <your model path> --model <your model type> --strategy naive
+# Take naive reward model training with opt-350m as example
+python train_reward_model.py --pretrain "facebook/opt-350m" --model 'opt' --strategy naive
 # use colossalai_zero2
-torchrun --standalone --nproc_per_node=2 train_reward_model.py --pretrain <your model path> --model <your model type> --strategy colossalai_zero2
+torchrun --standalone --nproc_per_node=2 train_reward_model.py --pretrain "facebook/opt-350m" --model 'opt' --strategy naive
 ```
+### About the update in 03/15
+
+- [x] We support hh-rlhf dataset from [Anthropic](https://huggingface.co/datasets/Anthropic/hh-rlhf).
+- [x] We support 2 kinds of loss_function named 'log_sig'(used by OpenAI) and 'log_exp'(used by Anthropic).
+- [x] We change the loss to valid_acc and pair_dist to monitor progress during training.
+- [x] We add special token to the end of the sequence to get better result.
+- [x] We train a Bloom-560m reward model and find the test acc of the model achieve the performance mentions in [Anthropics paper](https://arxiv.org/abs/2112.00861).
+### Experiment result
+TODO
 
 ## Train with dummy prompt data (Stage 3)
 
