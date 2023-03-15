@@ -1,35 +1,17 @@
 import pytest
-import torch
-import transformers
 from hf_tracer_utils import trace_model_and_compare_output
 
-BATCH_SIZE = 1
-SEQ_LENGTH = 16
+from tests.kit.model_zoo import model_zoo
 
 
 # TODO: remove this skip once we handle the latest gpt model
 @pytest.mark.skip
 def test_gpt():
-    MODEL_LIST = [
-        transformers.GPT2Model,
-        transformers.GPT2LMHeadModel,
-        transformers.GPT2DoubleHeadsModel,
-        transformers.GPT2ForTokenClassification,
-    # transformers.GPT2ForSequenceClassification, # not supported yet
-    ]
+    sub_registry = model_zoo.get_sub_registry('transformers_gpt')
 
-    config = transformers.GPT2Config(n_position=64, n_layer=2, n_head=4)
-
-    def data_gen():
-        input_ids = torch.zeros((BATCH_SIZE, SEQ_LENGTH), dtype=torch.int64)
-        token_type_ids = torch.zeros((BATCH_SIZE, SEQ_LENGTH), dtype=torch.int64)
-        attention_mask = torch.zeros((BATCH_SIZE, SEQ_LENGTH), dtype=torch.int64)
-        kwargs = dict(input_ids=input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask)
-        return kwargs
-
-    for model_cls in MODEL_LIST:
-        model = model_cls(config=config)
-        trace_model_and_compare_output(model, data_gen)
+    for name, (model_fn, data_gen_fn, _, _) in sub_registry.items():
+        model = model_fn()
+        trace_model_and_compare_output(model, data_gen_fn)
 
 
 if __name__ == '__main__':
