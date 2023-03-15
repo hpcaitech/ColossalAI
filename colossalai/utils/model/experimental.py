@@ -239,6 +239,7 @@ class LazyTensor(torch.Tensor):
                     return lazy_y
                 return y
 
+            cls._pre_op_fn()
             o = func(*tree_map(unwrap, args), **tree_map(unwrap, kwargs))
             if isinstance(o, (tuple, list)):
                 return type(o)(wrap(y, i=i) for i, y in enumerate(o))
