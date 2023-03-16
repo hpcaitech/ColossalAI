@@ -22,7 +22,7 @@ class Booster:
     Examples:
         >>> colossalai.launch(...)
         >>> plugin = GeminiPlugin(stage=3, ...)
-        >>> engine = Booster(precision='fp16', plugin=plugin)
+        >>> booster = Booster(precision='fp16', plugin=plugin)
         >>>
         >>> model = GPT2()
         >>> optimizer = Adam(model.parameters())
@@ -36,7 +36,7 @@ class Booster:
         >>>     for input_ids, attention_mask in dataloader:
         >>>         outputs = model(input_ids, attention_mask)
         >>>         loss = criterion(outputs.logits, input_ids)
-        >>>         engine.backward(loss, optimizer)
+        >>>         booster.backward(loss, optimizer)
         >>>         optimizer.step()
         >>>         lr_scheduler.step()
         >>>         optimizer.zero_grad()
@@ -77,6 +77,7 @@ class Booster:
             lr_scheduler (LRScheduler): The lr_scheduler to be boosted.
             dataloader (DataLoader): The dataloader to be boosted.
         """
+        # TODO(FrankLeeeee): consider multi-model and multi-optimizer case
         # TODO(lsg): Add plugin control logic
         # e.g.
         # if self.plugin is not None and self.plugin.control_boost:
