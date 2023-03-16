@@ -5,7 +5,7 @@ import torch.nn as nn
 from torch import Tensor
 from torch.utils._pytree import tree_map
 
-from colossalai.fx.profiler import MetaTensor
+from colossalai.fx.profiler.tensor import MetaTensor
 
 # reference: https://pytorch.org/cppdocs/notes/tensor_creation.html
 _NORMAL_FACTORY = [
