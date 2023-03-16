@@ -288,7 +288,10 @@ class LazyTensor(torch.Tensor):
 
     @data.setter
     def data(self, other: 'LazyTensor'):
-        raise NotImplementedError
+        if other is self:
+            return
+        # TODO(ver217): to avoid infinity recursion, do early materialization
+        self._materialized_data = other._materialize_data()
 
     def tolist(self) -> list:
         t = self.materialize()
