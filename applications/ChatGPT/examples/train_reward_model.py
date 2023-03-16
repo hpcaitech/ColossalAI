@@ -18,7 +18,6 @@ from transformers.models.gpt2.tokenization_gpt2 import GPT2Tokenizer
 
 from colossalai.nn.optimizer import HybridAdam
 
-
 def train(args):
     # configure strategy
     if args.strategy == 'naive':
@@ -50,15 +49,13 @@ def train(args):
     # configure tokenizer
     if args.model == 'gpt2':
         tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
+        tokenizer.pad_token = tokenizer.eos_token
     elif args.model == 'bloom':
-        tokenizer = BloomTokenizerFast.from_pretrained(args.pretrain)
+        tokenizer = BloomTokenizerFast.from_pretrained('bigscience/bloom-560m')
     elif args.model == 'opt':
         tokenizer = AutoTokenizer.from_pretrained("facebook/opt-350m")
-    elif args.model == 'deberta':
-        tokenizer = AutoTokenizer.from_pretrained("microsoft/deberta-v3-large")
     else:
         raise ValueError(f'Unsupported model "{args.model}"')
-    
     max_len = args.max_len
 
     # configure optimizer
@@ -122,7 +119,7 @@ if __name__ == '__main__':
     parser.add_argument('--strategy',
                         choices=['naive', 'ddp', 'colossalai_gemini', 'colossalai_zero2'],
                         default='naive')
-    parser.add_argument('--model', choices=['gpt2', 'bloom', 'opt', 'deberta'], default='bloom')
+    parser.add_argument('--model', choices=['gpt2', 'bloom', 'opt'], default='bloom')
     parser.add_argument('--pretrain', type=str, default=None)
     parser.add_argument('--model_path', type=str, default=None)
     parser.add_argument('--need_optim_ckpt', type=bool, default=False)
