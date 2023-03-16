@@ -463,7 +463,8 @@ class LazyInitContext:
                     if getattr(buf, "_materialized_data", None) is None:
                         buf_lazy_cnt += 1
                 visited_lazy_tensors.append(buf)
-                if hasattr(param, 'materialize'):
+                if hasattr(buf, 'materialize'):
+                    # TODO(ver217): apex layers cannot be captured
                     setattr(module, name, buf.materialize())
 
         init_recursively(module)
