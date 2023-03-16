@@ -3,7 +3,7 @@ import argparse
 import loralib as lora
 import torch
 from chatgpt.dataset import HhRlhfDataset, RmStaticDataset
-from chatgpt.model import LogSigLoss, LogExpLoss
+from chatgpt.models import LogSigLoss, LogExpLoss
 from chatgpt.models.base import RewardModel
 from chatgpt.models.bloom import BLOOMRM
 from chatgpt.models.gpt import GPTRM
