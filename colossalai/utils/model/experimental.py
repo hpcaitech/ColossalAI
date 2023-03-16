@@ -8,10 +8,9 @@ from torch.utils._pytree import tree_map
 from colossalai.fx.profiler import MetaTensor
 
 # reference: https://pytorch.org/cppdocs/notes/tensor_creation.html
-_TorchFactoryMethod = [
+_NORMAL_FACTORY = [
     "arange",
     "empty",
-    "eye",
     "full",
     "linspace",
     "logspace",
@@ -22,6 +21,11 @@ _TorchFactoryMethod = [
     "randperm",
     "zeros",
     "tensor",
+]
+
+# factory function that does not support meta tensor backend
+_NO_META_FACTORY = [
+    "eye",
 ]
 
 _EARLY_MATERIALIZED_OPS = ['__getitem__', 'split']
@@ -45,9 +49,13 @@ class _MyTensor(Tensor):
     """
     _pre_op_fn: Callable[['LazyTensor'], None] = lambda *args: None
 
-    def __new__(cls, func, *args, **kwargs) -> '_MyTensor':
+    def __new__(cls, func, *args, concrete_data=None, **kwargs) -> '_MyTensor':
         cls._pre_op_fn()
-        data = func(*args, **kwargs)
+        if concrete_data is not None:
+            # uniform api as LazyTensor
+            data = concrete_data
+        else:
+            data = func(*args, **kwargs)
         return Tensor._make_subclass(cls, data, require_grad=data.requires_grad)
 
     @classmethod
@@ -92,12 +100,16 @@ class LazyTensor(torch.Tensor):
     _pre_op_fn: Callable[['LazyTensor'], None] = lambda *args: None
 
     @staticmethod
-    def __new__(cls, func, *args, meta_data=None, **kwargs):
-        if meta_data is None:
-            device = kwargs.get('device', 'cpu')
-            elem = func(*args, **{**kwargs, 'device': 'meta'})
-            meta_data = MetaTensor(elem, fake_device=device)
-        elem = meta_data._tensor
+    def __new__(cls, func, *args, meta_data=None, concrete_data=None, **kwargs):
+        if concrete_data is not None:
+            # some ops don't support meta backend and should have concrete data
+            elem = concrete_data
+        else:
+            if meta_data is None:
+                device = kwargs.get('device', 'cpu')
+                elem = func(*args, **{**kwargs, 'device': 'meta'})
+                meta_data = MetaTensor(elem, fake_device=device)
+            elem = meta_data._tensor
         r = torch.Tensor._make_wrapper_subclass(cls,
                                                 elem.size(),
                                                 strides=elem.stride(),
@@ -109,10 +121,10 @@ class LazyTensor(torch.Tensor):
         r._meta_data = meta_data
         return r
 
-    def __init__(self, func, *args, meta_data=None, **kwargs):
+    def __init__(self, func, *args, meta_data=None, concrete_data=None, **kwargs):
         self._factory_method = (func, args, kwargs)    # (func, args, kwargs)
         self._op_buffer = []    # (func, args, kwargs, replace)
-        self._materialized_data: Optional[torch.Tensor] = None    # materialized data
+        self._materialized_data: Optional[torch.Tensor] = concrete_data    # materialized data
 
     def materialize(self) -> torch.Tensor:
         """Materialize the ``LazyTensor`` to ``torch.Tensor``.
@@ -245,11 +257,7 @@ class LazyTensor(torch.Tensor):
                         return lazy_y
                 elif type(y) is Tensor:
                     # for early materialized tensor
-                    with torch._C.DisableTorchFunction():
-                        meta = MetaTensor(y.new_empty(y.shape, dtype=y.dtype, device='meta'), fake_device=y.device)
-                    lazy_y = LazyTensor(lambda: None, meta_data=meta)
-                    lazy_y._materialized_data = y
-                    return lazy_y
+                    return LazyTensor(lambda: None, concrete_data=y)
                 return y
 
             cls._pre_op_fn()
@@ -367,21 +375,35 @@ class LazyInitContext:
 
             return wrapper, target
 
+        def wrap_no_meta_factory(target):
+            # factory functions which don't support meta tensor backend
+            def wrapper(*args, **kwargs):
+                tensor = target(*args, **kwargs)
+                return self.tensor_cls(lambda: None, concrete_data=tensor)
+
+            return wrapper, target
+
         self.overrides = {
             target: wrap_factory_method(getattr(torch, target))
-            for target in _TorchFactoryMethod
+            for target in _NORMAL_FACTORY
             if callable(getattr(torch, target, None))
         }
 
         self.overrides.update({
             target + '_like': wrap_factory_like_method(getattr(torch, target), getattr(torch, target + '_like'))
-            for target in _TorchFactoryMethod
+            for target in _NORMAL_FACTORY
             if callable(getattr(torch, target + '_like', None))
         })
 
         self.overrides.update({
             target: wrap_legacy_constructor(getattr(torch, target), dtype)
             for target, dtype in _LEGACY_TENSOR_CONSTRUCTOR.items()
+            if callable(getattr(torch, target, None))
+        })
+
+        self.overrides.update({
+            target: wrap_no_meta_factory(getattr(torch, target))
+            for target in _NO_META_FACTORY
             if callable(getattr(torch, target, None))
         })
 
