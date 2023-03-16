@@ -87,11 +87,13 @@ class LazyTensor(torch.Tensor):
         >>> x.add_(1) # modifying origin tensor after cloning leads to wrong materialization
         >>> z = x.tolist()
         >>> x.zeros_() # modifying origin tensor after cloning tolist is not allowed
-        >>> x.data = torch.rand(2, 3) # directly set data of a lazy tensor is not allowed
+        >>> nn.utils.weight_norm(self.conv, name="weight", dim=2) # applying weight norm on a lazy tensor is not allowed
+
 
         2. Cases that ``LazyTensor`` becomes eager (early materialization).
         >>> b = a[:, 2:]  # get a slice of a lazy tensor triggers early materialization
         >>> chunks = a.split(3)  # this also triggers early materialization
+        >>> x.data = torch.rand(2, 3) # directly setting data of a lazy tensor triggers early materialization
 
     """
 
@@ -431,6 +433,7 @@ class LazyInitContext:
             param_lazy_cnt = 0
             buf_cnt = 0
             buf_lazy_cnt = 0
+            non_lazy_numel = 0
 
         # do post cleaning to handle shared parameter
         visited_lazy_tensors: List[LazyTensor] = []
@@ -439,7 +442,7 @@ class LazyInitContext:
 
         @torch.no_grad()
         def init_recursively(module: nn.Module):
-            nonlocal param_cnt, param_lazy_cnt, buf_cnt, buf_lazy_cnt
+            nonlocal param_cnt, param_lazy_cnt, buf_cnt, buf_lazy_cnt, non_lazy_numel
             # recursively initialize the module
             for mod in module.children():
                 if id(mod) not in visited_modules:
@@ -452,6 +455,8 @@ class LazyInitContext:
                     param_cnt += 1
                     if getattr(param, '_materialized_data', None) is None:
                         param_lazy_cnt += 1
+                    else:
+                        non_lazy_numel += param.numel()
                 visited_lazy_tensors.append(param)
                 if hasattr(param, 'materialize'):
                     # TODO(ver217): apex layers cannot be captured
@@ -462,6 +467,8 @@ class LazyInitContext:
                     buf_cnt += 1
                     if getattr(buf, "_materialized_data", None) is None:
                         buf_lazy_cnt += 1
+                    else:
+                        non_lazy_numel += buf.numel()
                 visited_lazy_tensors.append(buf)
                 if hasattr(buf, 'materialize'):
                     # TODO(ver217): apex layers cannot be captured
@@ -475,6 +482,7 @@ class LazyInitContext:
         if verbose:
             print(f'Param lazy rate: {param_lazy_cnt}/{param_cnt}')
             print(f'Buffer lazy rate: {buf_lazy_cnt}/{buf_cnt}')
+            print(f'Non-lazy numel: {non_lazy_numel} ({non_lazy_numel/1024**2:.3f} M)')
         return module
 
 
