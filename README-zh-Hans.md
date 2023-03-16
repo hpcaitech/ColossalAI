@@ -381,7 +381,7 @@ docker run -ti --gpus all --rm --ipc=host colossalai bash
 
 您可通过以下方式联系或参与：
 1. [留下Star ⭐](https://github.com/hpcaitech/ColossalAI/stargazers) 展现你的喜爱和支持，非常感谢! 
-2. 发布 [issue](https://github.com/hpcaitech/ColossalAI/issues/new/choose), 或者在GitHub根据[贡献指南](https://github.com/hpcaitech/ColossalAI/blob/main/CONTRIBUTING.md) 提交一个 [PR](https://github.com/hpcaitech/ColossalAI/blob/main/CONTRIBUTING.md) 。 
+2. 发布 [issue](https://github.com/hpcaitech/ColossalAI/issues/new/choose), 或者在GitHub根据[贡献指南](https://github.com/hpcaitech/ColossalAI/blob/main/CONTRIBUTING.md) 提交一个 PR。 
 3. 发送你的正式合作提案到 contact@hpcaitech.com
 
 真诚感谢所有贡献者！
