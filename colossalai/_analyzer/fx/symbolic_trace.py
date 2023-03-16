@@ -86,20 +86,20 @@ class ColoProxy(Proxy):
         wrap_fn = lambda x: MetaTensor(x) if isinstance(x, torch.Tensor) else x
         self._meta_data = tree_map(wrap_fn, args)
 
-    @classmethod
-    def __torch_function__(cls, orig_method, types, args=(), kwargs=None):
-        kwargs = {} if kwargs is None else kwargs
-        if orig_method in cls._func_dispatch:
-            impl = cls._func_dispatch.pop(orig_method)    # avoid recursion
-            proxy = impl(*args, **kwargs)
-            cls._func_dispatch[orig_method] = impl
-            return proxy
-        else:
-            proxy = cls.from_torch_proxy(super().__torch_function__(orig_method, types, args, kwargs))
-            unwrap_fn = lambda p: p.meta_data if isinstance(p, ColoProxy) else p
-            if proxy.meta_data is None:
-                proxy.meta_data = orig_method(*tree_map(unwrap_fn, args), **tree_map(unwrap_fn, kwargs))
-            return proxy
+    # @classmethod
+    # def __torch_function__(cls, orig_method, types, args=(), kwargs=None):
+    #     kwargs = {} if kwargs is None else kwargs
+    #     if orig_method in cls._func_dispatch:
+    #         impl = cls._func_dispatch.pop(orig_method)    # avoid recursion
+    #         proxy = impl(*args, **kwargs)
+    #         cls._func_dispatch[orig_method] = impl
+    #         return proxy
+    #     else:
+    #         proxy = cls.from_torch_proxy(super().__torch_function__(orig_method, types, args, kwargs))
+    #         unwrap_fn = lambda p: p.meta_data if isinstance(p, ColoProxy) else p
+    #         if proxy.meta_data is None:
+    #             proxy.meta_data = orig_method(*tree_map(unwrap_fn, args), **tree_map(unwrap_fn, kwargs))
+    #         return proxy
 
     @classmethod
     def from_torch_proxy(cls, proxy: Proxy):
@@ -145,48 +145,48 @@ class ColoProxy(Proxy):
     def __isinstancecheck__(self, type):
         return isinstance(self.meta_data, type)
 
-    def size(self, dim=None):
-        if self._meta_data is None:
-            return self._meta_data.size(*[dim] if dim else [])
-        return self.tracer.create_proxy('call_method', 'size', (self, dim) if dim else (self,), {})
+    # def size(self, dim=None):
+    #     if self._meta_data is None:
+    #         return self._meta_data.size(*[dim] if dim else [])
+    #     return self.tracer.create_proxy('call_method', 'size', (self, dim) if dim else (self,), {})
 
-    def dim(self):
-        if self._meta_data is not None:
-            return self._meta_data.dim()
-        return self.tracer.create_proxy('call_method', 'dim', (self,), {})
+    # def dim(self):
+    #     if self._meta_data is not None:
+    #         return self._meta_data.dim()
+    #     return self.tracer.create_proxy('call_method', 'dim', (self,), {})
 
-    @property
-    def shape(self):
-        if self._meta_data is not None:
-            return self._meta_data.shape
-        return self.tracer.create_proxy('call_function', getattr, (self, 'shape'), {})
+    # @property
+    # def shape(self):
+    #     if self._meta_data is not None:
+    #         return self._meta_data.shape
+    #     return self.tracer.create_proxy('call_function', getattr, (self, 'shape'), {})
 
-    @property
-    def ndim(self):
-        if self._meta_data is not None:
-            return self._meta_data.ndim
-        return self.tracer.create_proxy('call_function', getattr, (self, 'ndim'), {})
+    # @property
+    # def ndim(self):
+    #     if self._meta_data is not None:
+    #         return self._meta_data.ndim
+    #     return self.tracer.create_proxy('call_function', getattr, (self, 'ndim'), {})
 
-    @property
-    def device(self):
-        if self._meta_data is not None:
-            return self._meta_data.device
-        return self.tracer.create_proxy('call_function', getattr, (self, 'device'), {})
+    # @property
+    # def device(self):
+    #     if self._meta_data is not None:
+    #         return self._meta_data.device
+    #     return self.tracer.create_proxy('call_function', getattr, (self, 'device'), {})
 
-    @property
-    def dtype(self):
-        if self._meta_data is not None:
-            return self._meta_data.dtype
-        return self.tracer.create_proxy('call_function', getattr, (self, 'dtype'), {})
+    # @property
+    # def dtype(self):
+    #     if self._meta_data is not None:
+    #         return self._meta_data.dtype
+    #     return self.tracer.create_proxy('call_function', getattr, (self, 'dtype'), {})
 
-    def to(self, *args, **kwargs):
-        return self.tracer.create_proxy('call_method', 'to', (self, *args), {**kwargs})
+    # def to(self, *args, **kwargs):
+    #     return self.tracer.create_proxy('call_method', 'to', (self, *args), {**kwargs})
 
-    def cpu(self, *args, **kwargs):
-        return self.tracer.create_proxy('call_method', 'cpu', (self, *args), {**kwargs})
+    # def cpu(self, *args, **kwargs):
+    #     return self.tracer.create_proxy('call_method', 'cpu', (self, *args), {**kwargs})
 
-    def cuda(self, *args, **kwargs):
-        return self.tracer.create_proxy('call_method', 'cuda', (self, *args), {**kwargs})
+    # def cuda(self, *args, **kwargs):
+    #     return self.tracer.create_proxy('call_method', 'cuda', (self, *args), {**kwargs})
 
 
 class ColoAttribute(ColoProxy):
@@ -328,7 +328,7 @@ class ColoTracer(Tracer):
         sig_names = set(sig.parameters.keys())
         meta_arg_names = set(meta_args.keys())
         concrete_arg_names = set(concrete_args.keys())
-
+        non_concrete_arg_names = sig_names - concrete_arg_names
         # update concrete args with default values
         for k, v in sig.parameters.items():
             if k in sig_names - meta_arg_names and \
@@ -352,6 +352,34 @@ class ColoTracer(Tracer):
             self.graph = super().trace(root, concrete_args=concrete_args)
             self.mod_dir = ''
         self.graph.lint()
+
+        for node in self.graph.nodes:
+            if node.op == "placeholder":
+                # Removing default values for inputs as the forward pass will fail with them.
+                if node.target in non_concrete_arg_names:
+                    node.args = ()
+                    # Without this, torch.jit.script fails because the inputs type is Optional[torch.Tensor].
+                    # It cannot infer on the attributes and methods the input should have, and fails.
+                    node.type = torch.Tensor
+                # It is a concrete arg so it is not used and should be removed.
+                else:
+                    if hasattr(torch.fx._symbolic_trace, "_assert_is_none"):
+                        # Newer versions of torch.fx emit an assert statement
+                        # for concrete arguments; delete those before we delete
+                        # the concrete arg.
+                        to_delete = []
+                        for user in node.users:
+                            if user.target == torch.fx._symbolic_trace._assert_is_none:
+                                to_delete.append(user)
+                        for user in to_delete:
+                            self.graph.erase_node(user)
+
+                    self.graph.erase_node(node)
+
+            # TODO: solves GraphModule creation.
+            # Without this, return type annotation "Tuple" is causing code execution failure.
+            if node.op == "output":
+                node.type = None
         return self.graph
 
     @contextmanager
@@ -454,7 +482,7 @@ class ColoTracer(Tracer):
             if node.op == "output":
                 node.type = None
             self.graph.lint()
-     
+
     def getattr(self, attr, attr_val, parameter_proxy_cache):
         return self._module_getattr(attr, attr_val, parameter_proxy_cache)
 
