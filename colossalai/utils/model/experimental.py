@@ -26,15 +26,28 @@ _TorchFactoryMethod = [
 
 _EARLY_MATERIALIZED_OPS = ['__getitem__', 'split']
 
+_LEGACY_TENSOR_CONSTRUCTOR = {
+    'FloatTensor': torch.float,
+    'DoubleTensor': torch.double,
+    'HalfTensor': torch.half,
+    'BFloat16Tensor': torch.bfloat16,
+    'ByteTensor': torch.uint8,
+    'CharTensor': torch.int8,
+    'ShortTensor': torch.short,
+    'IntTensor': torch.int,
+    'LongTensor': torch.long,
+    'BoolTensor': torch.bool,
+}
+
 
 class _MyTensor(Tensor):
     """This class is only for correctness verification.
     """
     _pre_op_fn: Callable[['LazyTensor'], None] = lambda *args: None
 
-    def __new__(cls, func, *args, dtype=None, device=None, **kwargs) -> '_MyTensor':
+    def __new__(cls, func, *args, **kwargs) -> '_MyTensor':
         cls._pre_op_fn()
-        data = func(*args, dtype=dtype, device=device, **kwargs)
+        data = func(*args, **kwargs)
         return Tensor._make_subclass(cls, data, require_grad=data.requires_grad)
 
     @classmethod
@@ -212,7 +225,7 @@ class LazyTensor(torch.Tensor):
                 if isinstance(x, LazyTensor):
                     if x._materialized_data is not None:
                         # for early materialized tensor, use its materialized data directly
-                        return x._materialized_data
+                        return x._materialized_data.data
                     t = x if is_inplace else x.clone()
                     t._op_buffer.append((func, args, kwargs))
                     meta = x._meta_data.data
@@ -331,6 +344,29 @@ class LazyInitContext:
 
             return wrapper, target
 
+        def wrap_legacy_constructor(target, dtype):
+            # legacy constructor (e.g. torch.LongTensor())
+            def wrapper(*args, **kwargs):
+                if len(args) == 1 and isinstance(args[0], torch.Tensor):
+                    # (Tensor other)
+                    return args[0]
+                elif len(args) == 1:
+                    # (object data, *, torch.device device)
+                    kwargs = {**kwargs, 'dtype': dtype}
+                    replaced, orig = self.overrides['tensor']
+                    return replaced(*args, **kwargs)
+                elif _is_int_tuple(args):
+                    # (tuple of ints size, *, torch.device device)
+                    kwargs = {**kwargs, 'dtype': dtype}
+                    replaced, orig = self.overrides['empty']
+                    return replaced(*args, **kwargs)
+                else:
+                    raise TypeError(
+                        f'new() received an invalid combination of arguments - got {tuple(type(x) for x in args)}, but expected one of:\n * (Tensor other)\n * (tuple of ints size, *, torch.device device)\n * (object data, *, torch.device device)'
+                    )
+
+            return wrapper, target
+
         self.overrides = {
             target: wrap_factory_method(getattr(torch, target))
             for target in _TorchFactoryMethod
@@ -341,6 +377,12 @@ class LazyInitContext:
             target + '_like': wrap_factory_like_method(getattr(torch, target), getattr(torch, target + '_like'))
             for target in _TorchFactoryMethod
             if callable(getattr(torch, target + '_like', None))
+        })
+
+        self.overrides.update({
+            target: wrap_legacy_constructor(getattr(torch, target), dtype)
+            for target, dtype in _LEGACY_TENSOR_CONSTRUCTOR.items()
+            if callable(getattr(torch, target, None))
         })
 
         for name, (wrapper, orig) in self.overrides.items():
@@ -405,3 +447,12 @@ class LazyInitContext:
             print(f'Param lazy rate: {param_lazy_cnt}/{param_cnt}')
             print(f'Buffer lazy rate: {buf_lazy_cnt}/{buf_cnt}')
         return module
+
+
+def _is_int_tuple(args) -> bool:
+    if not isinstance(args, tuple):
+        return False
+    for x in args:
+        if not isinstance(x, int):
+            return False
+    return True
