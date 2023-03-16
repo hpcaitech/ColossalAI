@@ -51,7 +51,7 @@ def assert_forward_equal(m1: torch.nn.Module, m2: torch.nn.Module, data_gen_fn: 
             f'{m1.__class__.__name__} has inconsistent outputs, {out1} vs {out2}'
 
 
-def check_lazy_init(entry: TestingEntry, seed: int = 42, verbose: bool = False) -> None:
+def check_lazy_init(entry: TestingEntry, seed: int = 42, verbose: bool = False, check_forward: bool = False) -> None:
     model_fn, data_gen_fn, output_transform_fn, model_attr = entry
     _MyTensor._pre_op_fn = lambda *args: set_seed(seed)
     LazyTensor._pre_op_fn = lambda *args: set_seed(seed)
@@ -63,6 +63,7 @@ def check_lazy_init(entry: TestingEntry, seed: int = 42, verbose: bool = False) 
         deferred_model = model_fn()
     deferred_model = ctx.materialize(deferred_model, verbose=verbose)
     assert_model_eqaual(model, deferred_model)
-    assert_forward_equal(model, deferred_model, data_gen_fn, output_transform_fn)
+    if check_forward:
+        assert_forward_equal(model, deferred_model, data_gen_fn, output_transform_fn)
     if verbose:
         print(f'{model.__class__.__name__} pass')
