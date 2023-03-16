@@ -3,8 +3,8 @@ from colossalai.pipeline.scheduler.worker_state_machine import WorkerStateMachin
 
 class GpipeWorker(WorkerStateMachine):
 
-    def __init__(self, rank, num_minibatches=1, fwd_only=False):
-        super().__init__(rank, num_minibatches, fwd_only)
+    def __init__(self, rank, num_minibatches=1):
+        super().__init__(rank, num_minibatches)
 
     def fwd2bwd(self):
         if self.fwd_done():

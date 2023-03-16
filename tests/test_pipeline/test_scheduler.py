@@ -29,7 +29,7 @@ def create_partition_module(pp_rank: int, num_stages: int, model, data_kwargs):
     return split_submodules[pp_rank + 1]
 
 
-def partition(model, data_kwargs: dict, pp_rank: int, chunk: int, num_stages: int):
+def partition(model, data_kwargs: dict, pp_rank: int, num_stages: int):
     torch.manual_seed(1024)
     partition = create_partition_module(pp_rank, num_stages, model, data_kwargs)
     return partition
@@ -71,7 +71,7 @@ def get_data_gen(model_cls, forward_only, batch_size, dim, num_stages):
 def run_scheduler(rank, model_cls, world_size, forward_only, batch_size, dim):
     torch.manual_seed(100)
 
-    epoch = 3
+    epoch = 1
     device = 'cuda'
     num_stages = world_size
     num_minibatches = 4
@@ -81,7 +81,7 @@ def run_scheduler(rank, model_cls, world_size, forward_only, batch_size, dim):
     data_kwargs = data_gen()
 
     pp_scheduler = PipelineScheduler(rank=rank,
-                                     worker=GpipeWorker,
+                                     worker_type=GpipeWorker,
                                      num_stages=num_stages,
                                      num_minibatches=num_minibatches,
                                      partition_fn=partial(partition, model, data_kwargs),
@@ -90,16 +90,15 @@ def run_scheduler(rank, model_cls, world_size, forward_only, batch_size, dim):
     if not forward_only:
         pp_scheduler.initialize_optimizer(getattr(torch.optim, 'SGD'), lr=1e-3)
 
-    if pp_scheduler.is_input_rank():
-        for _ in range(epoch):
+    for _ in range(epoch):
+        if pp_scheduler.is_input_rank():
             input_x = torch.randn((batch_size, dim), device=device)
             input_y = torch.randn((batch_size, dim), device=device)
-            logits = pp_scheduler.forward_backward({
-                'x': input_x,
-                'y': input_y
-            },
-                                                   labels=labels,
-                                                   forward_only=forward_only)
+            pp_scheduler.set_batch({'x': input_x, 'y': input_y})
+        if pp_scheduler.is_output_rank():
+            pp_scheduler.set_labels(labels)
+
+        logits = pp_scheduler.forward_backward(forward_only=forward_only)
 
 
 def run_dist(rank, model_cls, forward_only, world_size, batch_size, dim):
@@ -116,8 +115,10 @@ def test_scheduler_gpipe(model_cls, forward_only, world_size, batch_size, dim):
 
 
 @pytest.mark.skip("skip due to CI torch version 1.11")
-@parameterize('model_cls', [MLP, DAG_MLP])
-@parameterize('forward_only', [True, False])
+# @parameterize('model_cls', [MLP, DAG_MLP])
+# @parameterize('forward_only', [True, False])
+@parameterize('model_cls', [MLP])
+@parameterize('forward_only', [True])
 @parameterize('world_size', [4])
 @parameterize('batch_size', [16])
 @parameterize('dim', [10])

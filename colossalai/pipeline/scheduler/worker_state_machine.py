@@ -1,5 +1,8 @@
+import threading
 from abc import ABC, abstractmethod
 from collections import deque
+
+from torch import nn, optim
 
 from colossalai.pipeline.scheduler.stage_info import StageInput, StageOutput
 from colossalai.pipeline.scheduler.task import Task
@@ -58,16 +61,16 @@ class WorkerStateMachine(StateMachine):
         self,
         rank,
         num_minibatches=1,
-        fwd_only=False,
     ):
         super().__init__()
         self.rank = rank
         self.num_minibatches = num_minibatches
-        self.fwd_only = fwd_only
+        self.fwd_only = False
 
         self.init_state()
         self.init_control_flow()
         self.init_data_queue()
+        self.init_lock()
 
         self.set_initial_state("start")
 
@@ -94,6 +97,17 @@ class WorkerStateMachine(StateMachine):
         self.output_queue_fwd = deque()
         self.output_queue_bwd = deque()
 
+    def init_lock(self):
+        self.partition_condition_lock = threading.Condition(threading.Lock())
+        self.input_queue_fwd_lock = threading.Condition(threading.Lock())
+        self.label_lock = threading.Condition(threading.Lock())
+
+    def set_fwd_only(self, fwd_only=True):
+        self.fwd_only = fwd_only
+
+    def set_device(self, device):
+        self.device = device
+
     @abstractmethod
     def fwd2bwd(self):
         pass
@@ -115,13 +129,10 @@ class WorkerStateMachine(StateMachine):
     def step_done(self):
         return True
 
-    def start_next_batch(self):
-        return True
-
-    def run(self):
+    def loop(self):
         while True:
             # change state
-            self._change_state()
+            next_state = self._change_state()
 
             # choose action according to state
             res = None
@@ -131,6 +142,34 @@ class WorkerStateMachine(StateMachine):
 
             if res:
                 self._set_output(res)
+
+    def run(self):
+        main_loop_thread = threading.Thread(target=self.loop)
+        main_loop_thread.start()
+        main_loop_thread.join()
+
+    def add_minibatch(self, minibatch):
+        with self.input_queue_fwd_lock:
+            self.input_queue_fwd.append(minibatch)
+
+    def add_labels(self, minibatch_id, minilabels):
+        with self.label_lock:
+            self.microbatch_id_to_labels[minibatch_id] = minilabels
+            self.label_lock.notify_all()
+
+    def wait_for_done(self, forward_only):
+        return False
+
+    def initialize_optimizer(self, optimizer_class: type, **kwargs):
+        self.optimizer: optim.Optimizer = optimizer_class(self.module_partition.parameters(), **kwargs)
+
+    def initialize_partition(self, partition_fn, partition_args):
+        self.partition_fn = partition_fn
+        self.partition_args = partition_args
+        device = self.device
+        with self.partition_condition_lock:
+            self.module_partition: nn.Module = partition_fn(*partition_args).to(device)
+            self.partition_condition_lock.notify_all()
 
     def _change_state(self):
         next_state = None
@@ -158,15 +197,13 @@ class WorkerStateMachine(StateMachine):
             else:
                 next_state = None
         elif cur_state == 'end':
-            if self.start_next_batch():
-                next_state = self.get_next_state('next_batch')
-            else:
-                next_state = None
+            next_state = self.get_next_state('next_batch')
         else:    # wrong state
             next_state = None
 
         if next_state:
             self.set_current_state(next_state)
+        return next_state
 
     def _get_next_task(self):
         task = None
