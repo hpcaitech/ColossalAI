@@ -46,7 +46,6 @@ def main(args):
         initial_model = deepcopy(actor)
         reward_model = RewardModel(deepcopy(critic.model), deepcopy(critic.value_head)).to(torch.cuda.current_device())
 
-
     # configure optimizer
     if args.strategy.startswith('colossalai'):
         actor_optim = HybridAdam(actor.parameters(), lr=5e-6)
@@ -70,7 +69,9 @@ def main(args):
     dataset = pd.read_csv(args.prompt_path)['prompt']
 
     def tokenize_fn(texts):
-        batch = tokenizer(texts, return_tensors='pt', max_length=96, padding=True, truncation=True)
+        # MUST padding to max length to ensure inputs of all ranks have the same length
+        # Different length may lead to hang when using gemini, as different generation steps
+        batch = tokenizer(texts, return_tensors='pt', max_length=96, padding='max_length', truncation=True)
         return {k: v.cuda() for k, v in batch.items()}
 
     (actor, actor_optim), (critic, critic_optim), reward_model, initial_model = strategy.prepare(
@@ -101,7 +102,7 @@ def main(args):
                 num_episodes=args.num_episodes,
                 max_timesteps=args.max_timesteps,
                 update_timesteps=args.update_timesteps)
-    # save model checkpoint after fitting 
+    # save model checkpoint after fitting
     strategy.save_model(actor, args.save_path, only_rank0=True)
     # save optimizer checkpoint on all ranks
     if args.need_optim_ckpt:
