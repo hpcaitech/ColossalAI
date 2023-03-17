@@ -450,7 +450,7 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
             # compute norm
             norm_group = compute_norm(gradients=self._grad_store.get_averaged_gradients_by_group(group_id),
                                       params=self._param_store.get_params_by_rank_group(group_id=group_id,
-                                                                                             rank=self._local_rank),
+                                                                                        rank=self._local_rank),
                                       dp_group=self._dp_torch_group,
                                       mp_group=self._mp_torch_group)
             norm_groups.append(norm_group)
