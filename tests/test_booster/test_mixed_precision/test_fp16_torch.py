@@ -1,7 +1,7 @@
 import torch
 from torch.optim import Adam
 
-from colossalai.booster.mixed_precision import FP16_Torch_MixedPrecision
+from colossalai.booster.mixed_precision import FP16TorchMixedPrecision
 from tests.kit.model_zoo import model_zoo
 
 
@@ -12,7 +12,7 @@ def test_torch_amp():
         criterion = lambda x: x.mean()
         data = data_gen_fn()
         data = {k: v.cuda() if torch.is_tensor(v) else v for k, v in data.items()}
-        mixed_precision = FP16_Torch_MixedPrecision()
+        mixed_precision = FP16TorchMixedPrecision()
         model, optimizer, criterion = mixed_precision.configure(model, optimizer, criterion)
         output = model(**data)
         output = output_transform_fn(output)
