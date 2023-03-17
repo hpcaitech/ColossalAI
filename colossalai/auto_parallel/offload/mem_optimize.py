@@ -1,4 +1,4 @@
-from typing import  Dict
+from typing import Dict
 import torch
 import torch.fx
 from torch.fx import GraphModule
