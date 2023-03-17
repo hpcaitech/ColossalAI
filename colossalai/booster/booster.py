@@ -46,6 +46,7 @@ class Booster:
         device (str or torch.device): The device to run the training. Default: 'cuda'.
         mixed_precision (str or MixedPrecision): The mixed precision to run the training. Default: None.
                                 If the argument is a string, it can be 'fp16', 'fp16_apex', 'bf16', or 'fp8'.
+                                'fp16' would use PyTorch AMP while `fp16_apex` would use Nvidia Apex.
         plugin (Plugin): The plugin to run the training. Default: None.
     """
 

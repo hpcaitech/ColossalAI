@@ -84,7 +84,7 @@ class TorchAMPModule(nn.Module):
             return self.module(*args, **kwargs)
 
 
-class FP16_Torch_MixedPrecision(MixedPrecision):
+class FP16TorchMixedPrecision(MixedPrecision):
     """
     Precision for mixed precision training in FP16 using PyTorch AMP.
 
