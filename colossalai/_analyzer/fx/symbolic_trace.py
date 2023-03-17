@@ -249,7 +249,6 @@ class ColoTracer(Tracer):
         # we will enter the module and split the bias-addition ops
         if self.bias_addition_split and type(m) in self._bias_addition_module and m.bias is not None:
             return False
-
         # user can specify which modules are leaf modules and which are not
         return (type(m) not in self._custom_non_leaf_module
                 and (type(m) in self._custom_leaf_module or super().is_leaf_module(m, module_qualified_name)))
@@ -306,9 +305,13 @@ class ColoTracer(Tracer):
             mod = self.root.get_submodule(target)
             self.disable_module_getattr = True
             try:
-                proxy.meta_data = self._custom_leaf_module_impl.get(type(mod),
-                                                                    mod.forward)(*tree_map(unwrap_fn, args),
-                                                                                 **tree_map(unwrap_fn, kwargs))
+                args = tree_map(unwrap_fn, args)
+                kwargs = tree_map(unwrap_fn, kwargs)
+                if type(mod) in self._custom_leaf_module:
+                    target = self._custom_leaf_module_impl[type(mod)]
+                    proxy.meta_data = target(mod, *args, **kwargs)
+                else:
+                    proxy.meta_data = mod.forward(*args, **kwargs)
             finally:
                 self.disable_module_getattr = False
         return proxy
@@ -320,8 +323,14 @@ class ColoTracer(Tracer):
 
     def trace(self,
               root: torch.nn.Module,
-              concrete_args: Optional[Dict[str, torch.Tensor]] = {},
-              meta_args: Optional[Dict[str, torch.Tensor]] = {}) -> Graph:
+              concrete_args: Optional[Dict[str, torch.Tensor]] = None,
+              meta_args: Optional[Dict[str, torch.Tensor]] = None) -> Graph:
+
+        if meta_args is None:
+            meta_args = {}
+
+        if concrete_args is None:
+            concrete_args = {}
 
         # check concrete and meta args have valid names
         sig = inspect.signature(root.forward)
@@ -519,8 +528,8 @@ class ColoTracer(Tracer):
 
 def symbolic_trace(
     root: Union[torch.nn.Module, Callable[..., Any]],
-    concrete_args: Optional[Dict[str, Any]] = {},
-    meta_args: Optional[Dict[str, Any]] = {},
+    concrete_args: Optional[Dict[str, Any]] = None,
+    meta_args: Optional[Dict[str, Any]] = None,
     trace_act_ckpt: bool = False,
     bias_addition_split: bool = False,
 ) -> ColoGraphModule:

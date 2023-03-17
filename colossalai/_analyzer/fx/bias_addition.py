@@ -4,7 +4,6 @@ graph construction to deal with the compatibility between bias-addition and all-
 """
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.modules.utils import _pair, _single, _triple
 
