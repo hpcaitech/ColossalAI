@@ -3,7 +3,7 @@ import torch
 from colossalai.fx import symbolic_trace
 
 
-def trace_and_compare(model, data_gen, need_meta=False, need_concrete=False, kwargs_transform=False):
+def trace_and_compare(model, data_gen, output_transform_fn, need_meta=False, need_concrete=False):
     data = data_gen()
     concrete_args = data if need_concrete else {}
     meta_args = {k: v.to('meta') for k, v in data.items()} if need_meta else {}
@@ -14,16 +14,15 @@ def trace_and_compare(model, data_gen, need_meta=False, need_concrete=False, kwa
 
     with torch.no_grad():
         non_fx_out = model(**data)
-
-        if kwargs_transform:
-            data = kwargs_transform(data)
-
         fx_out = gm(**data)
-    if isinstance(fx_out, tuple):
-        for non_fx, fx in zip(non_fx_out, fx_out):
-            assert torch.allclose(
-                non_fx, fx, atol=1e-5), f'{model.__class__.__name__} has inconsistent outputs, {fx_out} vs {non_fx_out}'
-    else:
-        assert torch.allclose(
-            fx_out, non_fx_out,
-            atol=1e-5), f'{model.__class__.__name__} has inconsistent outputs, {fx_out} vs {non_fx_out}'
+
+    # compare output
+    transformed_fx_out = output_transform_fn(fx_out)
+    transformed_non_fx_out = output_transform_fn(non_fx_out)
+
+    assert len(transformed_fx_out) == len(transformed_non_fx_out)
+
+    for key, fx_output_val in transformed_fx_out.items():
+        non_fx_output_val = transformed_non_fx_out[key]
+        assert torch.allclose(fx_output_val, non_fx_output_val, atol=1e-5), \
+            f'{model.__class__.__name__} has inconsistent outputs, {fx_output_val} vs {non_fx_output_val}'

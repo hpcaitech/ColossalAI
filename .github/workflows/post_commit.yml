@@ -68,7 +68,11 @@ jobs:
         done
 
     # create commit for pre-commit
+    # when all files are well formatted, there is no need to create a commit
+    # therefore, this step will produce an error, which should be allowed
     - name: Create commits
+      id: commit
+      continue-on-error: true
       run: |
         git config --global user.name 'github-actions'
         git config --global user.email 'github-actions@github.com'
@@ -78,6 +82,7 @@ jobs:
 
     # create pull request
     - name: Create Pull Request
+      if: steps.commit.outputs.status == 'success'
       id: cpr
       uses: peter-evans/create-pull-request@v4
       with:
@@ -85,6 +90,7 @@ jobs:
         title: "[format] applied code formatting on changed files in PR ${{ github.event.pull_request.number }}"
 
     - name: Enable Auto-merge for the New PR
+      if: steps.commit.outputs.status == 'success'
       uses: peter-evans/enable-pull-request-automerge@v2
       with:
         pull-request-number: ${{ steps.cpr.outputs.pull-request-number }}

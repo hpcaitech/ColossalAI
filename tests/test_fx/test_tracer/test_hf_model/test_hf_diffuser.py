@@ -1,114 +1,69 @@
 import pytest
 import torch
-import transformers
-from hf_tracer_utils import trace_model_and_compare_output
 
 from colossalai.fx import symbolic_trace
-
-try:
-    import diffusers
-    HAS_DIFFUSERS = True
-except ImportError:
-    HAS_DIFFUSERS = False
-
-BATCH_SIZE = 2
-SEQ_LENGTH = 5
-HEIGHT = 224
-WIDTH = 224
-IN_CHANNELS = 3
-LATENTS_SHAPE = (BATCH_SIZE, IN_CHANNELS, HEIGHT // 8, WIDTH // 8)
-TIME_STEP = 2
+from colossalai.testing.random import seed_all
+from tests.kit.model_zoo import model_zoo
 
 
-@pytest.mark.skipif(not HAS_DIFFUSERS, reason="diffusers has not been installed")
-def test_vae():
-    MODEL_LIST = [
-        diffusers.AutoencoderKL,
-        diffusers.VQModel,
-    ]
-
-    for model_cls in MODEL_LIST:
-        model = model_cls()
-        sample = torch.zeros(LATENTS_SHAPE)
-
-        gm = symbolic_trace(model)
-
-        model.eval()
-        gm.eval()
-
-        with torch.no_grad():
-            fx_out = gm(sample)
-            non_fx_out = model(sample)
-        assert torch.allclose(
-            fx_out['sample'],
-            non_fx_out['sample']), f'{model.__class__.__name__} has inconsistent outputs, {fx_out} vs {non_fx_out}'
+def assert_dict(da, db, assert_fn):
+    assert len(da) == len(db)
+    for k, v in da.items():
+        assert k in db
+        if not torch.is_tensor(v):
+            continue
+        u = db.get(k)
+        assert_fn(u, v)
 
 
-def test_clip():
-    MODEL_LIST = [
-        transformers.CLIPModel,
-        transformers.CLIPTextModel,
-        transformers.CLIPVisionModel,
-    ]
+def trace_and_compare(model_cls, data, output_fn):
+    model = model_cls()
+    model.eval()
 
-    CONFIG_LIST = [
-        transformers.CLIPConfig,
-        transformers.CLIPTextConfig,
-        transformers.CLIPVisionConfig,
-    ]
+    concrete_args = {k: v for k, v in data.items() if not torch.is_tensor(v)}
+    meta_args = {k: v.to('meta') for k, v in data.items() if torch.is_tensor(v)}
+    gm = symbolic_trace(model, concrete_args=concrete_args, meta_args=meta_args)
 
-    def data_gen():
-        if isinstance(model, transformers.CLIPModel):
-            input_ids = torch.zeros((BATCH_SIZE, SEQ_LENGTH), dtype=torch.int64)
-            attention_mask = torch.zeros((BATCH_SIZE, SEQ_LENGTH), dtype=torch.int64)
-            position_ids = torch.zeros((BATCH_SIZE, SEQ_LENGTH), dtype=torch.int64)
-            pixel_values = torch.zeros((BATCH_SIZE, IN_CHANNELS, HEIGHT, WIDTH), dtype=torch.float32)
-            kwargs = dict(input_ids=input_ids,
-                          attention_mask=attention_mask,
-                          position_ids=position_ids,
-                          pixel_values=pixel_values)
-        elif isinstance(model, transformers.CLIPTextModel):
-            input_ids = torch.zeros((BATCH_SIZE, SEQ_LENGTH), dtype=torch.int64)
-            attention_mask = torch.zeros((BATCH_SIZE, SEQ_LENGTH), dtype=torch.int64)
-            kwargs = dict(input_ids=input_ids, attention_mask=attention_mask)
-        elif isinstance(model, transformers.CLIPVisionModel):
-            pixel_values = torch.zeros((BATCH_SIZE, IN_CHANNELS, HEIGHT, WIDTH), dtype=torch.float32)
-            kwargs = dict(pixel_values=pixel_values)
-        return kwargs
+    # run forward
+    with torch.no_grad():
+        fx_out = gm(**data)
+        non_fx_out = model(**data)
 
-    for model_cls, config in zip(MODEL_LIST, CONFIG_LIST):
-        model = model_cls(config=config())
-        trace_model_and_compare_output(model, data_gen)
+    # compare output
+    transformed_fx_out = output_fn(fx_out)
+    transformed_non_fx_out = output_fn(non_fx_out)
+
+    def assert_fn(ta, tb):
+        assert torch.equal(ta, tb)
+
+    assert_dict(transformed_fx_out, transformed_non_fx_out, assert_fn)
 
 
-@pytest.mark.skipif(not HAS_DIFFUSERS, reason="diffusers has not been installed")
-@pytest.mark.skip(reason='cannot pass the test yet')
-def test_unet():
-    MODEL_LIST = [
-        diffusers.UNet2DModel,
-        diffusers.UNet2DConditionModel,
-    ]
+@pytest.mark.skip(reason='cannot pass this test yet')
+def test_diffusers():
+    seed_all(9091, cuda_deterministic=True)
 
-    for model_cls in MODEL_LIST:
-        model = model_cls()
-        sample = torch.zeros(LATENTS_SHAPE)
+    sub_model_zoo = model_zoo.get_sub_registry('diffusers')
 
-        gm = symbolic_trace(model)
+    for name, (model_fn, data_gen_fn, output_transform_fn, attribute) in sub_model_zoo.items():
+        data = data_gen_fn()
+        trace_and_compare(model_fn, data, output_transform_fn)
+        torch.cuda.synchronize()
+        print(f"{name:40s} √")
 
-        model.eval()
-        gm.eval()
 
-        with torch.no_grad():
-            fx_out = gm(sample, TIME_STEP)
-            non_fx_out = model(sample, TIME_STEP)
-        assert torch.allclose(
-            fx_out['sample'],
-            non_fx_out['sample']), f'{model.__class__.__name__} has inconsistent outputs, {fx_out} vs {non_fx_out}'
+def test_torch_diffusers():
+    seed_all(65535, cuda_deterministic=True)
+
+    sub_model_zoo = model_zoo.get_sub_registry('diffusers')
+
+    for name, (model_fn, data_gen_fn, output_transform_fn, attribute) in sub_model_zoo.items():
+        data = data_gen_fn()
+        model = model_fn()
+        output = model(**data)
+        torch.cuda.synchronize()
+        print(f"{name:40s} √")
 
 
 if __name__ == "__main__":
-    test_vae()
-    test_clip()
-
-    # skip because of failure
-    # test_unet()
+    test_torch_diffusers()

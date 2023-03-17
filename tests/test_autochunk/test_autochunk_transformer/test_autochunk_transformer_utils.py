@@ -24,6 +24,7 @@ def assert_codegen_run(
     print_mem: bool = False,
     print_progress: bool = False,
     print_code: bool = False,
+    eval_mem: bool = False,
 ) -> List[Dict]:
     meta_args, concrete_args, sequence = data
     if concrete_args is None:
@@ -39,12 +40,11 @@ def assert_codegen_run(
     meta_tensors = [meta_args[i] if i in meta_args else concrete_args[i] for i in sequence]
     meta_tensors = [MetaTensor(i, fake_device="cuda:0") if isinstance(i, torch.Tensor) else i for i in meta_tensors]
     interp.propagate(*meta_tensors)
-    codegen = AutoChunkCodeGen(
-        meta_graph,
-        max_memory=max_memory,
-        print_mem=print_est_mem,
-        print_progress=print_progress,
-    )
+    codegen = AutoChunkCodeGen(meta_graph,
+                               max_memory=max_memory,
+                               print_mem=print_est_mem,
+                               print_progress=print_progress,
+                               eval_mem=eval_mem)
     chunks = codegen.chunk_infos
 
     # trace and recompile
@@ -108,6 +108,7 @@ def run_test(
     print_est_mem: bool = False,
     print_mem: bool = False,
     print_progress: bool = False,
+    eval_mem: bool = False,
     get_chunk_target: Any = None,
 ) -> None:
     model = model(config=config)
@@ -122,15 +123,14 @@ def run_test(
     )
 
     # build model and input
-    chunks = assert_codegen_run(
-        model,
-        data=data,
-        max_memory=max_memory,
-        print_code=print_code,
-        print_est_mem=print_est_mem,
-        print_mem=print_mem,
-        print_progress=print_progress,
-    )
+    chunks = assert_codegen_run(model,
+                                data=data,
+                                max_memory=max_memory,
+                                print_code=print_code,
+                                print_est_mem=print_est_mem,
+                                print_mem=print_mem,
+                                print_progress=print_progress,
+                                eval_mem=eval_mem)
 
     if get_chunk_target is not None:
         chunk_found = [i["region"] for i in chunks]

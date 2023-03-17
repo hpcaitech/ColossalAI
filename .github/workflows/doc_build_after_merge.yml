@@ -1,11 +1,11 @@
-name: Build Documentation upon Release
+name: Build Documentation After Merge
 
 on:
   workflow_dispatch:
   pull_request:
     paths:
       - 'version.txt'
-      - 'docs/'
+      - 'docs/**'
     types:
       - closed
 

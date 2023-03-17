@@ -1,4 +1,4 @@
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Tuple
 
 import torch
 
@@ -63,7 +63,7 @@ def _gen_loop_start(chunk_input: List[Node], chunk_output: List[Node], chunk_oup
     context = ""
     for i in range(len(chunk_output)):
         shape_str = str(list(get_node_shape(chunk_output[i])))
-        if get_node_name(chunk_output[i]) == "split":
+        if get_node_name(chunk_output[i]) in ["split", "unbind"]:
             tensor_str = "torch.empty(%s, dtype=%s.dtype, device=%s.device), " % (shape_str, input_node.name,
                                                                                   input_node.name)
             tensor_str = tensor_str * len(chunk_output[i].meta['tensor_meta'])
@@ -205,7 +205,7 @@ def _add_node_slice(
             if chunk_node.name == node.name or (chunk_node.name in [i.name for i in node.all_input_nodes]):
                 chunk_slice = _gen_chunk_slice_dim(chunk_nodes_dim[region_idx][chunk_node_idx], "chunk_idx",
                                                    get_node_shape(chunk_node))
-                if get_node_name(chunk_node) == "split":
+                if get_node_name(chunk_node) in ["split", "unbind"]:
                     split_chunk_slice = ""
                     for i in range(len(chunk_node.meta['tensor_meta'])):
                         split_chunk_slice += "%s[%d]%s, " % (chunk_node.name, i, chunk_slice)
@@ -216,14 +216,13 @@ def _add_node_slice(
     return body
 
 
-def emit_code_with_chunk(
-    body: List[str],
-    nodes: Iterable[Node],
-    emit_node_func,
-    delete_unused_value_func,
-    search_chunk: SearchChunk,
-    chunk_infos: List,
-):
+def emit_code_with_chunk(body: List[str],
+                         nodes: Iterable[Node],
+                         emit_node_func: Callable,
+                         delete_unused_value_func: Callable,
+                         search_chunk: SearchChunk,
+                         chunk_infos: List,
+                         eval_mem: bool = False):
     """
     Emit code with chunk according to chunk_infos.
 
@@ -260,6 +259,9 @@ def emit_code_with_chunk(
     region_idx = 0
     within_chunk_region = False
 
+    if eval_mem:
+        body.append("init_memory = torch.cuda.memory_allocated() / 1024**2\n")
+
     while node_idx < len(node_list):
         node = node_list[node_idx]
 
@@ -289,10 +291,18 @@ def emit_code_with_chunk(
             body[-1] = _replace_reshape_size(body[-1], node.name, chunk_infos[region_idx]["reshape_size"])
             body[-1] = "    " + body[-1]
             delete_unused_value_func(node, body, chunk_inputs_names)
+            if eval_mem:
+                body.append(
+                    "    if chunk_idx == 0:\n        print('%s', torch.cuda.max_memory_allocated() / 1024**2 - init_memory);  torch.cuda.reset_peak_memory_stats()\n"
+                    % (node.name))
         else:
             emit_node_func(node, body)
             if node_idx not in chunk_inputs:
                 delete_unused_value_func(node, body, chunk_inputs_names)
+            if eval_mem:
+                body.append(
+                    "print('%s', torch.cuda.max_memory_allocated() / 1024**2 - init_memory);  torch.cuda.reset_peak_memory_stats()\n"
+                    % (node.name))
 
         # generate chunk region end
         if node_idx in chunk_ends:
@@ -312,8 +322,10 @@ if AUTOCHUNK_AVAILABLE:
                      meta_graph,
                      max_memory: int = None,
                      print_mem: bool = False,
-                     print_progress: bool = False) -> None:
+                     print_progress: bool = False,
+                     eval_mem: bool = False) -> None:
             super().__init__()
+            self.eval_mem = eval_mem
             # find the chunk regions
             self.search_chunk = SearchChunk(meta_graph, max_memory, print_mem, print_progress)
             self.chunk_infos = self.search_chunk.search_region()
@@ -511,14 +523,8 @@ if AUTOCHUNK_AVAILABLE:
 
             # if any node has a list of labels for activation_checkpoint, we
             # will use nested type of activation checkpoint codegen
-            emit_code_with_chunk(
-                body,
-                nodes,
-                emit_node,
-                delete_unused_values,
-                self.search_chunk,
-                self.chunk_infos,
-            )
+            emit_code_with_chunk(body, nodes, emit_node, delete_unused_values, self.search_chunk, self.chunk_infos,
+                                 self.eval_mem)
 
             if len(body) == 0:
                 # If the Graph has no non-placeholder nodes, no lines for the body

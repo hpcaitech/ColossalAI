@@ -2,85 +2,69 @@ import pytest
 import torch
 
 from colossalai.fx import symbolic_trace
-
-try:
-    from torchrec.models import deepfm
-    from torchrec.modules.embedding_configs import EmbeddingBagConfig
-    from torchrec.modules.embedding_modules import EmbeddingBagCollection
-    from torchrec.sparse.jagged_tensor import KeyedJaggedTensor, KeyedTensor
-    NOT_TORCHREC = False
-except ImportError:
-    NOT_TORCHREC = True
+from tests.kit.model_zoo import model_zoo
 
 BATCH = 2
 SHAPE = 10
 
+deepfm_models = model_zoo.get_sub_registry('deepfm')
+NOT_DFM = False
+if not deepfm_models:
+    NOT_DFM = True
 
-@pytest.mark.skipif(NOT_TORCHREC, reason='torchrec is not installed')
-def test_torchrec_deepfm_models():
-    MODEL_LIST = [deepfm.DenseArch, deepfm.FMInteractionArch, deepfm.OverArch, deepfm.SimpleDeepFMNN, deepfm.SparseArch]
 
-    # Data Preparation
-    # EmbeddingBagCollection
-    eb1_config = EmbeddingBagConfig(name="t1", embedding_dim=SHAPE, num_embeddings=SHAPE, feature_names=["f1"])
-    eb2_config = EmbeddingBagConfig(name="t2", embedding_dim=SHAPE, num_embeddings=SHAPE, feature_names=["f2"])
+def trace_and_compare(model_cls, data, output_transform_fn, meta_args=None):
+    # trace
+    model = model_cls()
 
-    ebc = EmbeddingBagCollection(tables=[eb1_config, eb2_config])
-    keys = ["f1", "f2"]
+    # convert to eval for inference
+    # it is important to set it to eval mode before tracing
+    # without this statement, the torch.nn.functional.batch_norm will always be in training mode
+    model.eval()
 
-    # KeyedTensor
-    KT = KeyedTensor(keys=keys, length_per_key=[SHAPE, SHAPE], values=torch.rand((BATCH, 2 * SHAPE)))
+    gm = symbolic_trace(model, meta_args=meta_args)
+    gm.eval()
+    # run forward
+    with torch.no_grad():
+        fx_out = gm(**data)
+        non_fx_out = model(**data)
 
-    # KeyedJaggedTensor
-    KJT = KeyedJaggedTensor.from_offsets_sync(keys=keys,
-                                              values=torch.tensor([1, 2, 3, 4, 5, 6, 7, 8]),
-                                              offsets=torch.tensor([0, 2, 4, 6, 8]))
+    # compare output
+    transformed_fx_out = output_transform_fn(fx_out)
+    transformed_non_fx_out = output_transform_fn(non_fx_out)
 
-    # Dense Features
-    features = torch.rand((BATCH, SHAPE))
-
-    for model_cls in MODEL_LIST:
-        # Initializing model
-        if model_cls == deepfm.DenseArch:
-            model = model_cls(SHAPE, SHAPE, SHAPE)
-        elif model_cls == deepfm.FMInteractionArch:
-            model = model_cls(SHAPE * 3, keys, SHAPE)
-        elif model_cls == deepfm.OverArch:
-            model = model_cls(SHAPE)
-        elif model_cls == deepfm.SimpleDeepFMNN:
-            model = model_cls(SHAPE, ebc, SHAPE, SHAPE)
-        elif model_cls == deepfm.SparseArch:
-            model = model_cls(ebc)
-
-        # Setup GraphModule
-        gm = symbolic_trace(model)
-
-        model.eval()
-        gm.eval()
-
-        # Aligned Test
-        with torch.no_grad():
-            if model_cls == deepfm.DenseArch or model_cls == deepfm.OverArch:
-                fx_out = gm(features)
-                non_fx_out = model(features)
-            elif model_cls == deepfm.FMInteractionArch:
-                fx_out = gm(features, KT)
-                non_fx_out = model(features, KT)
-            elif model_cls == deepfm.SimpleDeepFMNN:
-                fx_out = gm(features, KJT)
-                non_fx_out = model(features, KJT)
-            elif model_cls == deepfm.SparseArch:
-                fx_out = gm(KJT)
-                non_fx_out = model(KJT)
-
-        if torch.is_tensor(fx_out):
-            assert torch.allclose(
-                fx_out, non_fx_out), f'{model.__class__.__name__} has inconsistent outputs, {fx_out} vs {non_fx_out}'
+    assert len(transformed_fx_out) == len(transformed_non_fx_out)
+    if torch.is_tensor(fx_out):
+        assert torch.allclose(
+            fx_out, non_fx_out), f'{model.__class__.__name__} has inconsistent outputs, {fx_out} vs {non_fx_out}'
+    else:
+        assert torch.allclose(
+            fx_out.values(),
+            non_fx_out.values()), f'{model.__class__.__name__} has inconsistent outputs, {fx_out} vs {non_fx_out}'
+    for key in transformed_fx_out.keys():
+        fx_output_val = transformed_fx_out[key]
+        non_fx_output_val = transformed_non_fx_out[key]
+        if torch.is_tensor(fx_output_val):
+            assert torch.allclose(fx_output_val, non_fx_output_val, atol=1e-5), \
+                f'{model.__class__.__name__} has inconsistent outputs, {fx_output_val} vs {non_fx_output_val}'
         else:
-            assert torch.allclose(
-                fx_out.values(),
-                non_fx_out.values()), f'{model.__class__.__name__} has inconsistent outputs, {fx_out} vs {non_fx_out}'
+            assert torch.allclose(fx_output_val.values(), non_fx_output_val.values()
+                                 ), f'{model.__class__.__name__} has inconsistent outputs, {fx_out} vs {non_fx_out}'
+
+
+@pytest.mark.skipif(NOT_DFM, reason='torchrec is not installed')
+def test_torchrec_deepfm_models(deepfm_models):
+    torch.backends.cudnn.deterministic = True
+
+    for name, (model_fn, data_gen_fn, output_transform_fn, attribute) in deepfm_models.items():
+        data = data_gen_fn()
+        if attribute is not None and attribute.has_control_flow:
+            meta_args = {k: v.to('meta') for k, v in data.items()}
+        else:
+            meta_args = None
+
+        trace_and_compare(model_fn, data, output_transform_fn, meta_args)
 
 
 if __name__ == "__main__":
-    test_torchrec_deepfm_models()
+    test_torchrec_deepfm_models(deepfm_models)
