@@ -453,25 +453,27 @@ class LazyInitContext:
             for name, param in module.named_parameters(recurse=False):
                 if verbose:
                     param_cnt += 1
-                    if getattr(param, '_materialized_data', None) is None:
+                    if getattr(param, '_materialized_data', False) is None:
+                        # if no _materialized_data attr, the tensor is not lazy
                         param_lazy_cnt += 1
                     else:
                         non_lazy_numel += param.numel()
-                visited_lazy_tensors.append(param)
                 if hasattr(param, 'materialize'):
                     # TODO(ver217): apex layers cannot be captured
+                    visited_lazy_tensors.append(param)
                     setattr(module, name, param.materialize())
 
             for name, buf in module.named_buffers(recurse=False):
                 if verbose:
                     buf_cnt += 1
-                    if getattr(buf, "_materialized_data", None) is None:
+                    if getattr(buf, "_materialized_data", False) is None:
+                        # if no _materialized_data attr, the tensor is not lazy
                         buf_lazy_cnt += 1
                     else:
                         non_lazy_numel += buf.numel()
-                visited_lazy_tensors.append(buf)
                 if hasattr(buf, 'materialize'):
                     # TODO(ver217): apex layers cannot be captured
+                    visited_lazy_tensors.append(buf)
                     setattr(module, name, buf.materialize())
 
         init_recursively(module)
