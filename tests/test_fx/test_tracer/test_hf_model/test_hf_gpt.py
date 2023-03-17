@@ -4,8 +4,6 @@ from hf_tracer_utils import trace_model_and_compare_output
 from tests.kit.model_zoo import model_zoo
 
 
-# TODO: remove this skip once we handle the latest gpt model
-@pytest.mark.skip
 def test_gpt():
     sub_registry = model_zoo.get_sub_registry('transformers_gpt')
 

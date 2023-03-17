@@ -1,4 +1,9 @@
-from . import diffusers, timm, torchaudio, torchrec, torchvision, transformers
+from . import timm, torchrec, torchvision, transformers
+
+try:
+    from . import diffusers, torchaudio
+except:
+    pass
 
 from .registry import model_zoo
 

@@ -1,6 +1,6 @@
 import torch
 
-from .symbolic_trace import register_leaf_module, register_leaf_module_impl
+from .tracer import register_leaf_module, register_leaf_module_impl
 
 try:
     import apex
