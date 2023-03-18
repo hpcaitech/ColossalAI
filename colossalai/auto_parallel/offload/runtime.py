@@ -184,7 +184,7 @@ def runtime_syn_offload_apply_pass(gm: torch.fx.GraphModule, region_list: List[R
 
         bwd_info = {}
         # backward upload
-        if r_idx > 0 and region_list[r_idx - 1].param_size:
+        if r_idx > 0 and region_list[r_idx - 1].need_offload:
             bwd_info['h2d_rid'] = region_list[r_idx - 1].r_id
 
         if fwd_info or bwd_info:
