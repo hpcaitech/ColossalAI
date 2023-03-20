@@ -88,3 +88,7 @@ if version.parse(torch.__version__) >= version.parse('1.12.0'):
         aten.unsqueeze.default,
         aten.as_strided.default,
     ]
+else:
+    _AliasATen = []
+    _InplaceATen = []
+    _MaybeInplaceATen = []
