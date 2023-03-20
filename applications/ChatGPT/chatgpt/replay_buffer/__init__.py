@@ -1,5 +1,5 @@
 from .base import ReplayBuffer
 from .naive import NaiveReplayBuffer
-from .distributed import DistReplayBuffer
+from .detached import DetachedReplayBuffer
 
-__all__ = ['ReplayBuffer', 'NaiveReplayBuffer', 'DistReplayBuffer']
+__all__ = ['ReplayBuffer', 'NaiveReplayBuffer', 'DetachedReplayBuffer']

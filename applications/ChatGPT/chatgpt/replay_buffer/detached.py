@@ -1,6 +1,6 @@
 import torch
 import random
-from typing import List
+from typing import List, Any
 from .base import ReplayBuffer
 # from torch.multiprocessing import Queue
 from ray.util.queue import Queue
@@ -10,17 +10,11 @@ from .utils import BufferItem, make_experience_batch, split_experience_batch
 from threading import Lock
 import copy
 
-@ray.remote
-class DistReplayBuffer(ReplayBuffer):
+class DetachedReplayBuffer(ReplayBuffer):
     '''
-        Distributed replay buffer. Share Experience across workers on the same node. 
-            Therefore a trainer node is expected to have only one instance. 
-            Please set name attribute when initializing:
-
-                DistReplayBuffer.options(..., name="xxx", ...).remote()
-
-            So an ExperienceMakerSender can get the actor handle by name.
-        It is ExperienceMakerSender's obligation to call append(exp) method, remotely.
+        Detached replay buffer. Share Experience across workers on the same node. 
+        Therefore a trainer node is expected to have only one instance. 
+        It is ExperienceMakerHolder's duty to call append(exp) method, remotely.
     
     Args:
         sample_batch_size: Batch size when sampling. Exp won't enqueue until they formed a batch.
@@ -29,18 +23,16 @@ class DistReplayBuffer(ReplayBuffer):
         cpu_offload: Whether to offload experience to cpu when sampling. Defaults to True.
     '''
 
-
-    def __init__(self, sample_batch_size: int, tp_world_size: int, limit : int = 0, cpu_offload: bool = True) -> None:
+    def __init__(self, sample_batch_size: int, tp_world_size: int = 1, limit : int = 0, cpu_offload: bool = True) -> None:
         super().__init__(sample_batch_size, limit)
         self.cpu_offload = cpu_offload
         self.sample_batch_size = sample_batch_size
         self.limit = limit
         self.items = Queue(self.limit)
         self.batch_collector : List[BufferItem] = None
-        
-        
+
         '''
-        Workers in the same tp group share this buffer. They need same sample for one step.
+        Workers in the same tp group share this buffer and need same sample for one step.
             Therefore a held_sample should be returned tp_world_size times before it could be dropped.
             worker_state records wheter a worker got the held_sample
         '''
@@ -71,7 +63,7 @@ class DistReplayBuffer(ReplayBuffer):
         self.worker_state = [False] * self.tp_world_size
     
     @torch.no_grad()
-    def sample(self, worker_rank, to_device = "cpu") -> Experience:
+    def sample(self, worker_rank = 0, to_device = "cpu") -> Experience:
         self.worker_state_lock.acquire()
         if not any(self.worker_state):
             self.held_sample = self._sample_and_erase()
@@ -89,7 +81,7 @@ class DistReplayBuffer(ReplayBuffer):
         
     @torch.no_grad()
     def _sample_and_erase(self) -> Experience:
-        return self.items.get()
+        return self.items.get(block=True)
 
     def get_length(self) -> int:
         return self.items.qsize()
