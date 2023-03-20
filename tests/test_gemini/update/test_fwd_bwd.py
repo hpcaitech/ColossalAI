@@ -34,17 +34,17 @@ def check_grad(model: ZeroDDP, torch_model: torch.nn.Module):
         assert_close(p0, p1.grad, rtol=1e-3, atol=5e-5)
 
 
-@parameterize('init_device', [get_current_device()])
 @parameterize('placement_policy', ['cuda', 'cpu', 'auto', 'const'])
 @parameterize('keep_gather', [False, True])
 @parameterize('model_name', ['gpt2', 'bert', 'albert'])
 @parameterize('use_grad_checkpoint', [False, True])
-def exam_gpt_fwd_bwd(placement_policy,
-                     keep_gather,
-                     model_name: str,
-                     use_grad_checkpoint: bool = False,
-                     init_device=get_current_device()):
-
+def exam_gpt_fwd_bwd(
+    placement_policy,
+    keep_gather,
+    model_name: str,
+    use_grad_checkpoint: bool = False,
+):
+    init_device = get_current_device()
     get_components_func = non_distributed_component_funcs.get_callable(model_name)
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
 
