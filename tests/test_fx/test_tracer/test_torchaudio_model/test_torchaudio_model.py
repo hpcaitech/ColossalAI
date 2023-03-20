@@ -1,11 +1,13 @@
 import re
 
+import pytest
 import torch
 from torchaudio_utils import trace_and_compare
 
 from tests.kit.model_zoo import model_zoo
 
 
+@pytest.mark.skipif(torch.__version__ < '1.12.0', reason='torch version < 12')
 def test_torchaudio_models():
     torch.backends.cudnn.deterministic = True
 

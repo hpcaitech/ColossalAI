@@ -43,6 +43,7 @@ def trace_and_compare(model_cls, data, output_transform_fn, meta_args=None):
             f'{model.__class__.__name__} has inconsistent outputs, {fx_output_val} vs {non_fx_output_val}'
 
 
+@pytest.mark.skipif(torch.__version__ < '1.12.0', reason='torch version < 12')
 def test_timm_models():
     torch.backends.cudnn.deterministic = True
 
