@@ -24,7 +24,8 @@ class OPTCritic(Critic):
                  config: Optional[OPTConfig] = None,
                  checkpoint: bool = False,
                  lora_rank: int = 0,
-                 lora_train_bias: str = 'none') -> None:
+                 lora_train_bias: str = 'none',
+                 **kwargs) -> None:
         if pretrained is not None:
             model = OPTModel.from_pretrained(pretrained)
         elif config is not None:
@@ -33,5 +34,5 @@ class OPTCritic(Critic):
             model = OPTModel(OPTConfig())
         if checkpoint:
             model.gradient_checkpointing_enable()
-        value_head = nn.Linear(model.config.hidden_size, 1)
-        super().__init__(model, value_head, lora_rank, lora_train_bias)
+        value_head = nn.Linear(model.config.word_embed_proj_dim, 1)
+        super().__init__(model, value_head, lora_rank, lora_train_bias, **kwargs)

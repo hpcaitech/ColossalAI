@@ -27,5 +27,6 @@ dependencies:
     - torchmetrics==0.7.0
     - prefetch_generator
     - datasets
-    - colossalai
+    - colossalai==0.2.5
+    - lightning==1.9.0
     - -e .

@@ -152,6 +152,7 @@ else:
 setup(name=package_name,
       version=version,
       packages=find_packages(exclude=(
+          'op_builder',
           'benchmark',
           'docker',
           'tests',

@@ -288,13 +288,16 @@ class MetaInfoProp(torch.fx.Interpreter):
         def flops_repr(flop: int) -> str:
             return f"{flop:,} FLOPs"
 
+        accumulate_size = 0
         for node in self.module.graph.nodes:
             node: Node
+            accumulate_size += calculate_fwd_out(node) + calculate_fwd_tmp(node)
             node_summaries.append([
                 node.op,
                 str(node),
                 flops_repr(node.meta['fwd_flop']),
                 flops_repr(node.meta['bwd_flop']),
+                mem_repr(accumulate_size),
                 mem_repr(calculate_fwd_in(node)),
                 mem_repr(calculate_fwd_out(node)),
                 mem_repr(calculate_fwd_tmp(node)),
@@ -309,6 +312,7 @@ class MetaInfoProp(torch.fx.Interpreter):
             'Op',
             'Forward FLOPs',
             'Backward FLOPs',
+            'Accumulated Memory',
             'FWD_IN',
             'FWD_OUT',
             'FWD_TMP',

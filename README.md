@@ -11,6 +11,7 @@
    <a href="https://github.com/hpcaitech/ColossalAI/discussions"> Forum </a> |
    <a href="https://medium.com/@hpcaitech"> Blog </a></h3>
 
+   [![GitHub Repo stars](https://img.shields.io/github/stars/hpcaitech/ColossalAI?style=social)](https://github.com/hpcaitech/ColossalAI/stargazers)
    [![Build](https://github.com/hpcaitech/ColossalAI/actions/workflows/build_on_schedule.yml/badge.svg)](https://github.com/hpcaitech/ColossalAI/actions/workflows/build_on_schedule.yml)
    [![Documentation](https://readthedocs.org/projects/colossalai/badge/?version=latest)](https://colossalai.readthedocs.io/en/latest/?badge=latest)
    [![CodeFactor](https://www.codefactor.io/repository/github/hpcaitech/colossalai/badge)](https://www.codefactor.io/repository/github/hpcaitech/colossalai)
@@ -19,7 +20,7 @@
    [![WeChat badge](https://img.shields.io/badge/微信-加入-green?logo=wechat&amp)](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/WeChat.png)
 
 
-   | [English](README.md) | [中文](README-zh-Hans.md) |
+   | [English](README.md) | [中文](docs/README-zh-Hans.md) |
 
 </div>
 
@@ -198,6 +199,10 @@ Please visit our [documentation](https://www.colossalai.org/) and [examples](htt
 
 - [Energon-AI](https://github.com/hpcaitech/EnergonAI): 50% inference acceleration on the same hardware
 
+<p id="OPT-Serving" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/BLOOM%20serving.png" width=600/>
+</p>
+
 - [OPT Serving](https://colossalai.org/docs/advanced_tutorials/opt_service): Try 175-billion-parameter OPT online services
 
 <p id="BLOOM-Inference" align="center">
@@ -264,7 +269,13 @@ Acceleration of [AlphaFold Protein Structure](https://alphafold.ebi.ac.uk/)
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/FastFold.jpg" width=800/>
 </p>
 
-- [FastFold](https://github.com/hpcaitech/FastFold): accelerating training and inference on GPU Clusters, faster data processing, inference sequence containing more than 10000 residues.
+- [FastFold](https://github.com/hpcaitech/FastFold): Accelerating training and inference on GPU Clusters, faster data processing, inference sequence containing more than 10000 residues.
+
+<p id="FastFold-Intel" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/data%20preprocessing%20with%20Intel.jpg" width=600/>
+</p>
+
+- [FastFold with Intel](https://github.com/hpcaitech/FastFold): 3x inference acceleration and 39% cost reduce.
 
 <p id="xTrimoMultimer" align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/xTrimoMultimer_Table.jpg" width=800/>
@@ -281,7 +292,7 @@ Requirements:
 - PyTorch >= 1.11 (PyTorch 2.x in progress)
 - Python >= 3.7
 - CUDA >= 11.0
-  
+
 If you encounter any problem about installation, you may want to raise an [issue](https://github.com/hpcaitech/ColossalAI/issues/new/choose) in this repository.
 
 ### Install from PyPI
@@ -364,9 +375,13 @@ Join the Colossal-AI community on [Forum](https://github.com/hpcaitech/ColossalA
 [Slack](https://join.slack.com/t/colossalaiworkspace/shared_invite/zt-z7b26eeb-CBp7jouvu~r0~lcFzX832w),
 and [WeChat(微信)](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/WeChat.png "qrcode") to share your suggestions, feedback, and questions with our engineering team.
 
-## Contributing
+## Invitation to open-source contribution
+Referring to the successful attempts of [BLOOM](https://bigscience.huggingface.co/) and [Stable Diffusion](https://en.wikipedia.org/wiki/Stable_Diffusion), any and all developers and partners with computing powers, datasets, models are welcome to join and build the Colossal-AI community, making efforts towards the era of big AI models!
 
-If you wish to contribute to this project, please follow the guideline in [Contributing](./CONTRIBUTING.md).
+You may contact us or participate in the following ways:
+1. [Leaving a Star ⭐](https://github.com/hpcaitech/ColossalAI/stargazers) to show your like and support. Thanks!
+2. Posting an [issue](https://github.com/hpcaitech/ColossalAI/issues/new/choose), or submitting a PR on GitHub follow the guideline in [Contributing](https://github.com/hpcaitech/ColossalAI/blob/main/CONTRIBUTING.md)
+3. Send your official proposal to email contact@hpcaitech.com
 
 Thanks so much to all of our amazing contributors!
 
@@ -384,7 +399,7 @@ We leverage the power of [GitHub Actions](https://github.com/features/actions) t
 
 ## Cite Us
 
-This project is inspired by some related projects (some by our team and some by other organizations). We would like to credit these amazing projects as listed in the [Reference List](./REFERENCE.md).
+This project is inspired by some related projects (some by our team and some by other organizations). We would like to credit these amazing projects as listed in the [Reference List](./docs/REFERENCE.md).
 
 To cite this project, you can use the following BibTeX citation.
 

@@ -1,4 +1,3 @@
-<!-- doc-test-command: torchrun --standalone --nproc_per_node=1 nvme_offload.py  -->
 # NVMe offload
 
 Author: Hongxin Liu
@@ -259,3 +258,6 @@ NVME offload saves about 294 MB memory. Note that enabling `pin_memory` of Gemin
 {{ autodoc:colossalai.nn.optimizer.HybridAdam }}
 
 {{ autodoc:colossalai.nn.optimizer.CPUAdam }}
+
+
+<!-- doc-test-command: torchrun --standalone --nproc_per_node=1 nvme_offload.py  -->

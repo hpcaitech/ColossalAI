@@ -34,4 +34,5 @@ class OPTRM(RewardModel):
             model.gradient_checkpointing_enable()
 
         value_head = nn.Linear(model.config.word_embed_proj_dim, 1)
+        value_head.weight.data.normal_(mean=0.0, std=1/(model.config.word_embed_proj_dim + 1))
         super().__init__(model, value_head, lora_rank, lora_train_bias)

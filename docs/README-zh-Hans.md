@@ -11,6 +11,7 @@
    <a href="https://github.com/hpcaitech/ColossalAI/discussions"> 论坛 </a> |
    <a href="https://medium.com/@hpcaitech"> 博客 </a></h3>
 
+   [![GitHub Repo stars](https://img.shields.io/github/stars/hpcaitech/ColossalAI?style=social)](https://github.com/hpcaitech/ColossalAI/stargazers)
    [![Build](https://github.com/hpcaitech/ColossalAI/actions/workflows/build_on_schedule.yml/badge.svg)](https://github.com/hpcaitech/ColossalAI/actions/workflows/build_on_schedule.yml)
    [![Documentation](https://readthedocs.org/projects/colossalai/badge/?version=latest)](https://colossalai.readthedocs.io/en/latest/?badge=latest)
    [![CodeFactor](https://www.codefactor.io/repository/github/hpcaitech/colossalai/badge)](https://www.codefactor.io/repository/github/hpcaitech/colossalai)
@@ -196,6 +197,10 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 
 - [Energon-AI](https://github.com/hpcaitech/EnergonAI) ：用相同的硬件推理加速50%
 
+<p id="OPT-Serving" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/BLOOM%20serving.png" width=600/>
+</p>
+
 - [OPT推理服务](https://colossalai.org/docs/advanced_tutorials/opt_service): 体验1750亿参数OPT在线推理服务
 
 <p id="BLOOM-Inference" align="center">
@@ -265,6 +270,12 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 
 - [FastFold](https://github.com/hpcaitech/FastFold): 加速AlphaFold训练与推理、数据前处理、推理序列长度超过10000残基
 
+<p id="FastFold-Intel" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/data%20preprocessing%20with%20Intel.jpg" width=600/>
+</p>
+
+- [FastFold with Intel](https://github.com/hpcaitech/FastFold): 3倍推理加速和39%成本节省
+
 <p id="xTrimoMultimer" align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/xTrimoMultimer_Table.jpg" width=800/>
 </p>
@@ -280,7 +291,7 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 - PyTorch >= 1.11 (PyTorch 2.x 正在适配中)
 - Python >= 3.7
 - CUDA >= 11.0
-  
+
 如果你遇到安装问题，可以向本项目 [反馈](https://github.com/hpcaitech/ColossalAI/issues/new/choose)。
 
 
@@ -365,7 +376,13 @@ docker run -ti --gpus all --rm --ipc=host colossalai bash
 
 ## 做出贡献
 
-欢迎为该项目做出贡献，请参阅[贡献指南](./CONTRIBUTING.md)。
+参考社区的成功案例，如 [BLOOM](https://bigscience.huggingface.co/) and [Stable Diffusion](https://en.wikipedia.org/wiki/Stable_Diffusion) 等,
+无论是个人开发者，还是算力、数据、模型等可能合作方，都欢迎参与参与共建 Colossal-AI 社区，拥抱大模型时代！
+
+您可通过以下方式联系或参与：
+1. [留下Star ⭐](https://github.com/hpcaitech/ColossalAI/stargazers) 展现你的喜爱和支持，非常感谢!
+2. 发布 [issue](https://github.com/hpcaitech/ColossalAI/issues/new/choose), 或者在GitHub根据[贡献指南](https://github.com/hpcaitech/ColossalAI/blob/main/CONTRIBUTING.md) 提交一个 PR。
+3. 发送你的正式合作提案到 contact@hpcaitech.com
 
 真诚感谢所有贡献者！
 

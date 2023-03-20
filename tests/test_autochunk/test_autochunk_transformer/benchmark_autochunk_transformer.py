@@ -22,7 +22,7 @@ def _benchmark_autochunk_gpt_gm(
     data: tuple,
     max_memory: int = None,
 ) -> None:
-    model = model.cuda().eval()
+    model = model.eval().cpu()
 
     # build model and input
     meta_args, concrete_args, sequence = data
@@ -37,7 +37,7 @@ def _benchmark_autochunk_gpt_gm(
     )
     interp = MetaInfoProp(meta_graph)
     meta_tensors = [meta_args[i] if i in meta_args else concrete_args[i] for i in sequence]
-    meta_tensors = [MetaTensor(i, fake_device="cuda:0") if isinstance(i, torch.Tensor) else i for i in meta_tensors]
+    meta_tensors = [MetaTensor(i, fake_device="cpu") if isinstance(i, torch.Tensor) else i for i in meta_tensors]
     interp.propagate(*meta_tensors)
     codegen = AutoChunkCodeGen(
         meta_graph,
@@ -58,7 +58,7 @@ def _benchmark_autochunk_gpt_gm(
     # init inputs
     inputs = [meta_args[i] if i in meta_args else concrete_args[i] for i in sequence]
     inputs = [i.cuda() if isinstance(i, torch.Tensor) else i for i in inputs]
-    model.cuda().eval()
+    model.cuda()
 
     # bench
     para_mem = float(parameter_size(model)) / 1024**2 * 6

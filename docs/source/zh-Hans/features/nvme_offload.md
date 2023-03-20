@@ -1,4 +1,3 @@
-<!-- doc-test-command: torchrun --standalone --nproc_per_node=1 nvme_offload.py  -->
 # NVMe offload
 
 作者: Hongxin Liu
@@ -247,3 +246,6 @@ NVME 卸载节省了大约 294 MB 内存。注意使用 Gemini 的 `pin_memory` 
 {{ autodoc:colossalai.nn.optimizer.HybridAdam }}
 
 {{ autodoc:colossalai.nn.optimizer.CPUAdam }}
+
+
+<!-- doc-test-command: torchrun --standalone --nproc_per_node=1 nvme_offload.py  -->

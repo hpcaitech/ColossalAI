@@ -1,12 +1,10 @@
-<!-- doc-test-command: echo "installation.md does not need test" -->
-
 # Setup
 
 Requirements:
 - PyTorch >= 1.11 (PyTorch 2.x in progress)
 - Python >= 3.7
 - CUDA >= 11.0
-  
+
 If you encounter any problem about installation, you may want to raise an [issue](https://github.com/hpcaitech/ColossalAI/issues/new/choose) in this repository.
 
 
@@ -47,3 +45,6 @@ If you don't want to install and enable CUDA kernel fusion (compulsory installat
 ```shell
 CUDA_EXT=1 pip install .
 ```
+
+
+<!-- doc-test-command: echo "installation.md does not need test" -->

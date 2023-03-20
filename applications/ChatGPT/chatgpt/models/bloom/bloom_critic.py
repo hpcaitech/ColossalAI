@@ -24,7 +24,8 @@ class BLOOMCritic(Critic):
                  config: Optional[BloomConfig] = None,
                  checkpoint: bool = False,
                  lora_rank: int = 0,
-                 lora_train_bias: str = 'none') -> None:
+                 lora_train_bias: str = 'none',
+                 **kwargs) -> None:
         if pretrained is not None:
             model = BloomModel.from_pretrained(pretrained)
         elif config is not None:
@@ -34,4 +35,4 @@ class BLOOMCritic(Critic):
         if checkpoint:
             model.gradient_checkpointing_enable()
         value_head = nn.Linear(model.config.hidden_size, 1)
-        super().__init__(model, value_head, lora_rank, lora_train_bias)
+        super().__init__(model, value_head, lora_rank, lora_train_bias, **kwargs)

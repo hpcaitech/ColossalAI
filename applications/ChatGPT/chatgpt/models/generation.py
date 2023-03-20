@@ -1,6 +1,7 @@
 from typing import Any, Callable, Optional
 
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 
 try:
@@ -25,6 +26,14 @@ def prepare_logits_processor(top_k: Optional[int] = None,
     if top_p is not None and top_p < 1.0:
         processor_list.append(TopPLogitsWarper(top_p))
     return processor_list
+
+
+def _is_sequence_finished(unfinished_sequences: torch.Tensor) -> bool:
+    if dist.is_initialized() and dist.get_world_size() > 1:
+        # consider DP
+        unfinished_sequences = unfinished_sequences.clone()
+        dist.all_reduce(unfinished_sequences)
+    return unfinished_sequences.max() == 0
 
 
 def sample(model: nn.Module,
@@ -74,7 +83,7 @@ def sample(model: nn.Module,
             unfinished_sequences = unfinished_sequences.mul((next_tokens != eos_token_id).long())
 
         # stop when each sentence is finished if early_stopping=True
-        if early_stopping and unfinished_sequences.max() == 0:
+        if early_stopping and _is_sequence_finished(unfinished_sequences):
             break
 
     return input_ids
