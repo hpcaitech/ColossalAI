@@ -42,7 +42,22 @@ def get_ebc():
     # EmbeddingBagCollection
     eb1_config = EmbeddingBagConfig(name="t1", embedding_dim=SHAPE, num_embeddings=SHAPE, feature_names=["f1"])
     eb2_config = EmbeddingBagConfig(name="t2", embedding_dim=SHAPE, num_embeddings=SHAPE, feature_names=["f2"])
-    return EmbeddingBagCollection(tables=[eb1_config, eb2_config])
+    return EmbeddingBagCollection(tables=[eb1_config, eb2_config], device=torch.device('cpu'))
+
+
+def sparse_arch_model_fn():
+    ebc = get_ebc()
+    return deepfm.SparseArch(ebc)
+
+
+def simple_deep_fmnn_model_fn():
+    ebc = get_ebc()
+    return deepfm.SimpleDeepFMNN(SHAPE, ebc, SHAPE, SHAPE)
+
+
+def dlrm_model_fn():
+    ebc = get_ebc()
+    return dlrm.DLRM(ebc, SHAPE, [SHAPE, SHAPE], [5, 1])
 
 
 model_zoo.register(name='deepfm_densearch',
@@ -61,17 +76,17 @@ model_zoo.register(name='deepfm_overarch',
                    output_transform_fn=output_transform_fn)
 
 model_zoo.register(name='deepfm_simpledeepfmnn',
-                   model_fn=partial(deepfm.SimpleDeepFMNN, SHAPE, get_ebc(), SHAPE, SHAPE),
+                   model_fn=simple_deep_fmnn_model_fn,
                    data_gen_fn=simple_dfm_data_gen_fn,
                    output_transform_fn=output_transform_fn)
 
 model_zoo.register(name='deepfm_sparsearch',
-                   model_fn=partial(deepfm.SparseArch, get_ebc()),
+                   model_fn=sparse_arch_model_fn,
                    data_gen_fn=sparse_arch_data_gen_fn,
                    output_transform_fn=output_transform_fn)
 
 model_zoo.register(name='dlrm',
-                   model_fn=partial(dlrm.DLRM, get_ebc(), SHAPE, [SHAPE, SHAPE], [5, 1]),
+                   model_fn=dlrm_model_fn,
                    data_gen_fn=simple_dfm_data_gen_fn,
                    output_transform_fn=output_transform_fn)
 
