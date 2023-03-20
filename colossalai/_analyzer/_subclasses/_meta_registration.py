@@ -10,7 +10,10 @@ from torch.utils._pytree import tree_map
 
 aten = torch.ops.aten
 
-meta_lib = torch.library.Library("aten", "IMPL", "Meta")
+try:
+    meta_lib = torch.library.Library("aten", "IMPL", "Meta")
+except AttributeError:
+    meta_lib = None
 
 meta_table = {}
 
