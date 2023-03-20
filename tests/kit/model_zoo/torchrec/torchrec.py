@@ -11,21 +11,47 @@ from ..registry import ModelAttribute, model_zoo
 
 BATCH = 2
 SHAPE = 10
-# KeyedTensor
-KT = KeyedTensor(keys=["f1", "f2"], length_per_key=[SHAPE, SHAPE], values=torch.rand((BATCH, 2 * SHAPE)))
+
+
+def gen_kt():
+    KT = KeyedTensor(keys=["f1", "f2"], length_per_key=[SHAPE, SHAPE], values=torch.rand((BATCH, 2 * SHAPE)))
+    return KT
+
 
 # KeyedJaggedTensor
-KJT = KeyedJaggedTensor.from_offsets_sync(keys=["f1", "f2"],
-                                          values=torch.tensor([1, 2, 3, 4, 5, 6, 7, 8]),
-                                          offsets=torch.tensor([0, 2, 4, 6, 8]))
+def gen_kjt():
+    KJT = KeyedJaggedTensor.from_offsets_sync(keys=["f1", "f2"],
+                                              values=torch.tensor([1, 2, 3, 4, 5, 6, 7, 8]),
+                                              offsets=torch.tensor([0, 2, 4, 6, 8]))
+    return KJT
+
 
 data_gen_fn = lambda: dict(features=torch.rand((BATCH, SHAPE)))
 
-interaction_arch_data_gen_fn = lambda: dict(dense_features=torch.rand((BATCH, SHAPE)), sparse_features=KT)
 
-simple_dfm_data_gen_fn = lambda: dict(dense_features=torch.rand((BATCH, SHAPE)), sparse_features=KJT)
+def interaction_arch_data_gen_fn():
+    KT = gen_kt()
+    return dict(dense_features=torch.rand((BATCH, SHAPE)), sparse_features=KT)
 
-sparse_arch_data_gen_fn = lambda: dict(features=KJT)
+
+def simple_dfm_data_gen_fn():
+    KJT = gen_kjt()
+    return dict(dense_features=torch.rand((BATCH, SHAPE)), sparse_features=KJT)
+
+
+def sparse_arch_data_gen_fn():
+    KJT = gen_kjt()
+    return dict(features=KJT)
+
+
+def output_transform_fn(x):
+    if isinstance(x, KeyedTensor):
+        output = dict()
+        for key in x.keys():
+            output[key] = x[key]
+        return output
+    else:
+        return dict(output=x)
 
 
 def output_transform_fn(x):
@@ -58,6 +84,11 @@ def simple_deep_fmnn_model_fn():
 def dlrm_model_fn():
     ebc = get_ebc()
     return dlrm.DLRM(ebc, SHAPE, [SHAPE, SHAPE], [5, 1])
+
+
+def dlrm_sparsearch_model_fn():
+    ebc = get_ebc()
+    return dlrm.SparseArch(ebc)
 
 
 model_zoo.register(name='deepfm_densearch',
@@ -106,6 +137,6 @@ model_zoo.register(name='dlrm_overarch',
                    output_transform_fn=output_transform_fn)
 
 model_zoo.register(name='dlrm_sparsearch',
-                   model_fn=partial(dlrm.SparseArch, get_ebc()),
+                   model_fn=dlrm_sparsearch_model_fn,
                    data_gen_fn=sparse_arch_data_gen_fn,
                    output_transform_fn=output_transform_fn)
