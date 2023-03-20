@@ -47,7 +47,6 @@ def trace_and_compare(model_cls, data, output_transform_fn, meta_args=None):
                                  ), f'{model.__class__.__name__} has inconsistent outputs, {fx_out} vs {non_fx_out}'
 
 
-@pytest.mark.skip('unknown error')
 def test_torchrec_deepfm_models():
     deepfm_models = model_zoo.get_sub_registry('deepfm')
     torch.backends.cudnn.deterministic = True
