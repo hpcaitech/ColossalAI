@@ -25,7 +25,9 @@ def trace_and_compare(model_cls, data, output_transform_fn, meta_args=None):
             fx_out = gm(**data)
             non_fx_out = model(**data)
     except:
-        raise RuntimeError(f'Failed to run {model.__class__.__name__}')
+        raise RuntimeError(
+            f'Failed to run {model.__class__.__name__}, {next(gm.parameters()).device} vs {next(model.parameters()).device}'
+        )
 
     # compare output
     transformed_fx_out = output_transform_fn(fx_out)
