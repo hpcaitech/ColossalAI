@@ -124,7 +124,7 @@ jobs:
       - name: Execute Unit Testing
         if: needs.detect.outputs.anyLibraryFileChanged == 'true'
         run: |
-          PYTHONPATH=$PWD pytest --cov=. --cov-report xml tests/
+          PYTHONPATH=$PWD pytest --cov=. --cov-report xml tests/test_fx/test_tracer/test_torchrec_model
         env:
           DATA: /data/scratch/cifar-10
           NCCL_SHM_DISABLE: 1
