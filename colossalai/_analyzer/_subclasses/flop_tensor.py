@@ -11,6 +11,7 @@ from numbers import Number
 from typing import Any, Callable, List, Optional, Union
 
 import torch
+from packaging import version
 from torch.utils._pytree import tree_map
 
 from .meta_tensor import MetaTensor
