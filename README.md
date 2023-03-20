@@ -20,7 +20,7 @@
    [![WeChat badge](https://img.shields.io/badge/微信-加入-green?logo=wechat&amp)](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/WeChat.png)
 
 
-   | [English](README.md) | [中文](README-zh-Hans.md) |
+   | [English](README.md) | [中文](docs/README-zh-Hans.md) |
 
 </div>
 
@@ -399,7 +399,7 @@ We leverage the power of [GitHub Actions](https://github.com/features/actions) t
 
 ## Cite Us
 
-This project is inspired by some related projects (some by our team and some by other organizations). We would like to credit these amazing projects as listed in the [Reference List](./REFERENCE.md).
+This project is inspired by some related projects (some by our team and some by other organizations). We would like to credit these amazing projects as listed in the [Reference List](./docs/REFERENCE.md).
 
 To cite this project, you can use the following BibTeX citation.
 
