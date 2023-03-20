@@ -129,7 +129,7 @@ if __name__ == '__main__':
     parser.add_argument('--subset', type=str, default=None)
     parser.add_argument('--save_path', type=str, default='rm_ckpt.pt')
     parser.add_argument('--max_epochs', type=int, default=1)
-    parser.add_argument('--batch_size', type=int, default=8)
+    parser.add_argument('--batch_size', type=int, default=1)
     parser.add_argument('--max_len', type=int, default=512)
     parser.add_argument('--lora_rank', type=int, default=0, help="low-rank adaptation matrices rank")
     parser.add_argument('--loss_fn', type=str, default='log_sig', choices=['log_sig', 'log_exp'])
