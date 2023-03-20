@@ -5,7 +5,7 @@ from ..replay_buffer.distributed import DistReplayBuffer
 import ray
 from torch import Tensor
 
-class ExperienceMakerSender:
+class ExperienceMakerHolder:
     '''
     Args:
         dist_replay_buffer_name_list: str list to get ray actor handles
@@ -46,3 +46,11 @@ class ExperienceMakerSender:
                         min_length = temp_length
                         chosen_buffer = target_buffer
         target_buffer.append.remote(experience)
+
+    def update_experience_maker(self):
+        # TODO: parameter update
+        '''
+        self.experience_maker.actor.update()
+        self.experience_maker.critic.update()
+        '''
+        pass

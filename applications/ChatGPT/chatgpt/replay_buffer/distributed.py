@@ -2,7 +2,8 @@ import torch
 import random
 from typing import List
 from .base import ReplayBuffer
-from torch.multiprocessing import Queue
+# from torch.multiprocessing import Queue
+from ray.util.queue import Queue
 import ray
 from chatgpt.experience_maker.base import Experience
 from .utils import BufferItem, make_experience_batch, split_experience_batch
@@ -27,8 +28,8 @@ class DistReplayBuffer(ReplayBuffer):
         limit: Limit of number of experience sample BATCHs. A number <= 0 means unlimited. Defaults to 0.
         cpu_offload: Whether to offload experience to cpu when sampling. Defaults to True.
     '''
-    
-    
+
+
     def __init__(self, sample_batch_size: int, tp_world_size: int, limit : int = 0, cpu_offload: bool = True) -> None:
         super().__init__(sample_batch_size, limit)
         self.cpu_offload = cpu_offload
@@ -64,7 +65,8 @@ class DistReplayBuffer(ReplayBuffer):
             self.batch_collector = self.batch_collector[self.sample_batch_size:]
 
     def clear(self) -> None:
-        self.items.close()
+        # self.items.close()
+        self.items.shutdown()
         self.items = Queue(self.limit)
         self.worker_state = [False] * self.tp_world_size
     
