@@ -6,7 +6,14 @@ from typing import Any, Dict, Optional, Union
 import torch
 import torch.fx
 import torch.nn as nn
-from torch.fx.graph import PythonCode, _PyTreeCodeGen
+from torch.fx.graph import PythonCode
+
+try:
+    from torch.fx.graph import _PyTreeCodeGen
+    SUPPORT_PT_CODEGEN = True
+except ImportError:
+    SUPPORT_PT_CODEGEN = False
+
 from torch.fx.graph_module import _exec_with_source, _forward_from_src, _WrappedCall
 from torch.nn.modules.module import _addindent
 
@@ -65,7 +72,7 @@ class ColoGraphModule(torch.fx.GraphModule):
         called after editing the contained ``graph``, otherwise the generated
         code of this ``GraphModule`` will be out of date.
         """
-        if isinstance(self._graph._codegen, _PyTreeCodeGen):
+        if SUPPORT_PT_CODEGEN and isinstance(self._graph._codegen, _PyTreeCodeGen):
             self._in_spec = self._graph._codegen.pytree_info.in_spec
             self._out_spec = self._graph._codegen.pytree_info.out_spec
         python_code = self._graph.python_code(root_module='self')
