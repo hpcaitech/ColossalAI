@@ -20,9 +20,12 @@ def trace_and_compare(model_cls, data, output_transform_fn, meta_args=None):
     gm = symbolic_trace(model, meta_args=meta_args)
     gm.eval()
     # run forward
-    with torch.no_grad():
-        fx_out = gm(**data)
-        non_fx_out = model(**data)
+    try:
+        with torch.no_grad():
+            fx_out = gm(**data)
+            non_fx_out = model(**data)
+    except:
+        raise RuntimeError(f'Failed to run {model.__class__.__name__}')
 
     # compare output
     transformed_fx_out = output_transform_fn(fx_out)
