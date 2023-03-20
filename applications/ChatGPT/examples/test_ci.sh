@@ -81,5 +81,11 @@ torchrun --standalone --nproc_per_node=2 ${BASE}/train_reward_model.py \
                              --pretrain 'gpt2' --model 'gpt2' \
                              --strategy colossalai_gemini --loss_fn 'log_exp'\
                              --dataset 'Dahoas/rm-static' --test True --lora_rank 4
+                             
+torchrun --standalone --nproc_per_node=2 ${BASE}/train_reward_model.py \
+                             --pretrain 'bigscience/bloom-560m' --model 'bloom' \
+                             --strategy colossalai_zero2 --loss_fn 'log_sig'\
+                             --dataset 'Anthropic/hh-rlhf' --subset 'harmless-base'\
+                             --test True --lora_rank 4
 
 rm -rf ${BASE}/rm_ckpt.pt
