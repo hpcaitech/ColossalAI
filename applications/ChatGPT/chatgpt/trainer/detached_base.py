@@ -34,6 +34,7 @@ class DetachedTrainer(ABC):
     '''
 
     def __init__(self,
+                 experience_maker_holder_name_list: List[str],
                  strategy: Strategy,# TODO: DetachedStrategy
                  detached_replay_buffer: DetachedReplayBuffer,
                  experience_batch_size: int = 8,
@@ -53,6 +54,19 @@ class DetachedTrainer(ABC):
         self.dataloader_pin_memory = dataloader_pin_memory
         self.callbacks = callbacks
 
+        self.target_holder_name_list = experience_maker_holder_name_list
+        self.target_holder_list = []
+
+    def update_target_holder_list(self, experience_maker_holder_name_list):
+        self.target_holder_name_list = experience_maker_holder_name_list
+        self.target_holder_list = []
+        for name in self.target_holder_name_list:
+            self.target_holder_list.append(ray.get_actor(name))
+
+    @abstractmethod
+    def update_remote_makers(self):
+        pass
+
     @abstractmethod
     def training_step(self, experience: Experience) -> Dict[str, Any]:
         pass
@@ -64,14 +78,18 @@ class DetachedTrainer(ABC):
             metrics = self.training_step(experience)
             pbar.set_postfix(metrics)
 
-    def fit(self, pronpts, num_episodes: int = 50000, max_timesteps: int = 500 * 5000) -> None:
+    def fit(self, num_episodes: int = 50000, max_timesteps: int = 500, update_timesteps: int = 5000) -> None:
         self._on_fit_start()
         for episode in range(num_episodes):
             self._on_episode_start(episode)
             for timestep in tqdm(range(max_timesteps),
                                  desc=f'Episode [{episode+1}/{num_episodes}]',
                                  disable=not is_rank_0()):
-                self._learn()
+                for _ in update_timesteps:
+                    self._learn()
+                # assume those remote holders are working
+                # self.update_remote_makers()
+
             self._on_episode_end(episode)
         self._on_fit_end()
 

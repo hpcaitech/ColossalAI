@@ -1,5 +1,6 @@
 from typing import Any, Callable, Dict, List, Optional
 
+import torch
 import torch.nn as nn
 from chatgpt.experience_maker import Experience, NaiveExperienceMaker
 from chatgpt.models.base import Actor, Critic
@@ -11,6 +12,8 @@ from torch.optim import Optimizer
 from .detached_base import DetachedTrainer
 from .callbacks import Callback
 from .strategies import Strategy
+
+from .utils import is_rank_0
 
 import ray
 
@@ -37,7 +40,8 @@ class DetachedPPOTrainer(DetachedTrainer):
         generate_kwargs (dict, optional): the kwargs to use while model generating
     '''
     
-    def __int__(self,
+    def __int__(self, 
+                experience_maker_holder_name_list: List[str],
                 strategy: Strategy,
                 actor: Actor,
                 critic: Critic,
@@ -56,7 +60,7 @@ class DetachedPPOTrainer(DetachedTrainer):
                 **generate_kwargs) -> None:
         detached_replay_buffer = DetachedReplayBuffer(train_batch_size, limit=buffer_limit, cpu_offload=buffer_cpu_offload)
         generate_kwargs = _set_default_generate_kwargs(strategy, generate_kwargs, actor)
-        super().__init__(strategy, detached_replay_buffer, experience_batch_size, max_epochs, tokenizer,
+        super().__init__(experience_maker_holder_name_list, strategy, detached_replay_buffer, experience_batch_size, max_epochs, tokenizer,
                          dataloader_pin_memory, callbacks, **generate_kwargs)
         self.actor = actor
         self.critic = critic
@@ -67,6 +71,16 @@ class DetachedPPOTrainer(DetachedTrainer):
         self.actor_optim = actor_optim
         self.critic_optim = critic_optim
         
+    def update_remote_makers(self):
+        # TODO: balance duties
+        if is_rank_0():
+            self.update_target_holder_list(self.target_holder_name_list)
+        for target_holder in self.target_holder_list:
+            # TODO: reduce malloc
+            with torch.no_grad():
+                target_holder.update_experience_maker.remote(self.actor, self.critic)
+
+
     def training_step(self, experience: Experience) -> Dict[str, float]:
         self.actor.train()
         self.critic.train()

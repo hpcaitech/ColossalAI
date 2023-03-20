@@ -5,6 +5,7 @@ from ..replay_buffer.detached import DetachedReplayBuffer
 import ray
 from torch import Tensor
 
+@ray.remote
 class ExperienceMakerHolder:
     '''
     Args:
@@ -49,10 +50,16 @@ class ExperienceMakerHolder:
                         chosen_trainer = target_trainer
         chosen_trainer.buffer_append.remote(experience)
 
-    def update_experience_maker(self):
+    def update_experience_maker(self, new_actor, new_critic):
         # TODO: parameter update
         '''
-        self.experience_maker.actor.update()
-        self.experience_maker.critic.update()
+        pseudo:
+            self.experience_maker.actor.update()
+            self.experience_maker.critic.update()
         '''
+        # TODO: reduce malloc
+        with torch.no_grad():
+            self.experience_maker.actor = new_actor
+            self.experience_maker.critic = new_critic
         pass
+        
