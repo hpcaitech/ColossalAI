@@ -6,7 +6,11 @@ from torch.utils._pytree import tree_map
 
 from colossalai._analyzer._subclasses import MetaTensor
 
-from ..codegen import ActivationCheckpointCodeGen
+try:
+    from ..codegen import ActivationCheckpointCodeGen
+    SUPPORT_ACTIVATION = True
+except:
+    SUPPORT_ACTIVATION = False
 from ..graph_module import ColoGraphModule
 from .tracer import ColoTracer
 
@@ -144,7 +148,7 @@ def symbolic_trace(
                            bias_addition_split=bias_addition_split).trace(root.to(device),
                                                                           concrete_args=concrete_args,
                                                                           meta_args=tree_map(wrap_fn, meta_args))
-        if trace_act_ckpt:
+        if trace_act_ckpt and SUPPORT_ACTIVATION:
             graph.set_codegen(ActivationCheckpointCodeGen())
         root.to(orig_device)
     else:
