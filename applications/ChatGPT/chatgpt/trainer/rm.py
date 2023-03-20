@@ -1,13 +1,12 @@
 from abc import ABC
-
+import pandas as pd
 import loralib as lora
 import torch
-from chatgpt.dataset import RewardDataset
-from chatgpt.models.loss import PairWiseLoss
-from torch.optim import Adam, Optimizer
-from torch.utils.data import DataLoader
+from datetime import datetime
+from torch.optim import Optimizer, lr_scheduler
+from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
-
+ 
 from .strategies import Strategy
 from .utils import is_rank_0
 
@@ -20,11 +19,12 @@ class RewardModelTrainer(ABC):
         model (torch.nn.Module): the model to train
         strategy (Strategy): the strategy to use for training
         optim(Optimizer): the optimizer to use for training
-        train_dataset (RewardDataset): the dataset to use for training
-        eval_dataset (RewardDataset): the dataset to use for evaluation
+        loss_fn (callable): the loss function to use for training
+        train_dataset (Dataset): the dataset to use for training
+        valid_dataset (Dataset): the dataset to use for validation
+        eval_dataset (Dataset): the dataset to use for evaluation
         batch_size (int, defaults to 1): the batch size while training
         max_epochs (int, defaults to 2): the number of epochs to train
-        optim_kwargs (dict, defaults to {'lr':1e-4}): the kwargs to use while initializing optimizer
     """
 
     def __init__(
@@ -32,24 +32,52 @@ class RewardModelTrainer(ABC):
         model,
         strategy: Strategy,
         optim: Optimizer,
-        train_dataset: RewardDataset,
-        eval_dataset: RewardDataset,
+        loss_fn,
+        train_dataset: Dataset,
+        valid_dataset: Dataset,
+        eval_dataset: Dataset,
         batch_size: int = 1,
-        max_epochs: int = 2,
+        max_epochs: int = 1,
     ) -> None:
         super().__init__()
         self.strategy = strategy
         self.epochs = max_epochs
-        self.train_dataloader = DataLoader(train_dataset, batch_size=batch_size)
-        self.eval_dataloader = DataLoader(eval_dataset, batch_size=batch_size)
-
+        self.train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+        self.valid_dataloader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=True)
+        self.eval_dataloader = DataLoader(eval_dataset, batch_size=batch_size, shuffle=True)
+        
         self.model = strategy.setup_model(model)
-        if "DDP" in str(self.strategy):
-            self.model = self.model.module
-        self.loss_fn = PairWiseLoss()
+        self.loss_fn = loss_fn
         self.optimizer = strategy.setup_optimizer(optim, self.model)
+        self.scheduler = lr_scheduler.CosineAnnealingLR(self.optimizer, self.train_dataloader.__len__()//100)
 
-    def fit(self, use_lora):
+
+    def eval_acc(self, dataloader):
+        dist = 0
+        on = 0
+        cnt = 0
+        self.model.eval()
+        with torch.no_grad():
+            for chosen_ids, c_mask, reject_ids, r_mask in dataloader:
+                chosen_ids = chosen_ids.squeeze(1).to(torch.cuda.current_device())
+                c_mask = c_mask.squeeze(1).to(torch.cuda.current_device())
+                reject_ids = reject_ids.squeeze(1).to(torch.cuda.current_device())
+                r_mask = r_mask.squeeze(1).to(torch.cuda.current_device())
+                chosen_reward = self.model(chosen_ids, attention_mask=c_mask)
+                reject_reward = self.model(reject_ids, attention_mask=r_mask)
+                for i in range(len(chosen_reward)):
+                    cnt += 1
+                    if chosen_reward[i] > reject_reward[i]:
+                        on += 1
+                dist += (chosen_reward - reject_reward).mean().item()
+            dist_mean = dist / len(dataloader)
+            acc = on / cnt
+        self.model.train()
+        return dist_mean, acc
+    
+
+    def fit(self):
+        time = datetime.now()
         epoch_bar = tqdm(range(self.epochs), desc='Train epoch', disable=not is_rank_0())
         for epoch in range(self.epochs):
             step_bar = tqdm(range(self.train_dataloader.__len__()),
@@ -57,37 +85,36 @@ class RewardModelTrainer(ABC):
                             disable=not is_rank_0())
             # train
             self.model.train()
+            cnt = 0
+            acc = 0
+            dist = 0
             for chosen_ids, c_mask, reject_ids, r_mask in self.train_dataloader:
-                chosen_ids = chosen_ids.squeeze(1).cuda()
-                c_mask = c_mask.squeeze(1).cuda()
-                reject_ids = reject_ids.squeeze(1).cuda()
-                r_mask = r_mask.squeeze(1).cuda()
+                chosen_ids = chosen_ids.squeeze(1).to(torch.cuda.current_device())
+                c_mask = c_mask.squeeze(1).to(torch.cuda.current_device())
+                reject_ids = reject_ids.squeeze(1).to(torch.cuda.current_device())
+                r_mask = r_mask.squeeze(1).to(torch.cuda.current_device())
                 chosen_reward = self.model(chosen_ids, attention_mask=c_mask)
                 reject_reward = self.model(reject_ids, attention_mask=r_mask)
                 loss = self.loss_fn(chosen_reward, reject_reward)
                 self.strategy.backward(loss, self.model, self.optimizer)
                 self.strategy.optimizer_step(self.optimizer)
                 self.optimizer.zero_grad()
+                cnt += 1
+                if cnt == 100:
+                    self.scheduler.step()
+                    dist, acc = self.eval_acc(self.valid_dataloader)
+                    cnt = 0
+                    if is_rank_0():
+                        log = pd.DataFrame([[step_bar.n, loss.item(), dist, acc]], columns=['step', 'loss', 'dist', 'acc'])
+                        log.to_csv('log_%s.csv' % time, mode='a', header=False, index=False)
                 step_bar.update()
-                step_bar.set_postfix({'loss': loss.item()})
-
+                step_bar.set_postfix({'dist': dist, 'acc': acc})
+                
             # eval
-            self.model.eval()
-            with torch.no_grad():
-                dist = 0
-                loss_sum = 0
-                for chosen_ids, c_mask, reject_ids, r_mask in self.eval_dataloader:
-                    chosen_ids = chosen_ids.squeeze(1).cuda()
-                    c_mask = c_mask.squeeze(1).cuda()
-                    reject_ids = reject_ids.squeeze(1).cuda()
-                    r_mask = r_mask.squeeze(1).cuda()
-                    chosen_reward = self.model(chosen_ids, attention_mask=c_mask)
-                    reject_reward = self.model(reject_ids, attention_mask=r_mask)
-                    dist += (chosen_reward - reject_reward).mean().item()
-                    loss = self.loss_fn(chosen_reward, reject_reward)
-                    loss_sum += loss.item()
-                dist_mean = dist / self.eval_dataloader.__len__()
-                loss_mean = loss_sum / self.eval_dataloader.__len__()
+            dist, acc = self.eval_acc(self.eval_dataloader)
+            if is_rank_0():
+                    log = pd.DataFrame([[step_bar.n, loss.item(), dist, acc]], columns=['step', 'loss', 'dist', 'acc'])
+                    log.to_csv('log.csv', mode='a', header=False, index=False)
             epoch_bar.update()
-            step_bar.set_postfix({'loss': loss_mean, 'dist_mean': dist_mean})
+            step_bar.set_postfix({'dist': dist, 'acc': acc})
             step_bar.close()

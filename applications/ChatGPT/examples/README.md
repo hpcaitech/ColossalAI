@@ -7,26 +7,42 @@ pip install -r requirements.txt
 ```
 
 ## Train the reward model (Stage 2)
-We use [rm-static](https://huggingface.co/datasets/Dahoas/rm-static) as dataset to train our reward model. It is a dataset of chosen & rejected response of the same prompt.
-
-You can download the dataset from huggingface automatically.
-
 Use these code to train your reward model.
-
 ```shell
-# Naive reward model training
-python train_reward_model.py --pretrain <your model path> --model <your model type> --strategy naive
+# Take naive reward model training with opt-350m as example
+python train_reward_model.py --pretrain "facebook/opt-350m" --model 'opt' --strategy naive
 # use colossalai_zero2
-torchrun --standalone --nproc_per_node=2 train_reward_model.py --pretrain <your model path> --model <your model type> --strategy colossalai_zero2
+torchrun --standalone --nproc_per_node=2 train_reward_model.py --pretrain "facebook/opt-350m" --model 'opt' --strategy colossalai_zero2
 ```
+
+### Features and tricks in RM training
+- We support [Anthropic/hh-rlhf](https://huggingface.co/datasets/Anthropic/hh-rlhf)and[rm-static](https://huggingface.co/datasets/Dahoas/rm-static) datasets.
+- We support 2 kinds of loss_function named 'log_sig'(used by OpenAI) and 'log_exp'(used by Anthropic).
+- We change the loss to valid_acc and pair_dist to monitor progress during training.
+- We add special token to the end of the sequence to get better result.
+- We use cosine-reducing lr-scheduler for RM training.
+- We set value_head as 1 liner layer and initialize the weight of value_head using N(0，1/(d_model + 1)) distribution.
+- We train a Bloom-560m reward model for 1 epoch and find the test acc of the model achieve the performance mentions in [Anthropics paper](https://arxiv.org/abs/2112.00861).
+
+### Experiment result
+Model performance in [Anthropics paper](https://arxiv.org/abs/2112.00861):
+
+<div align=center> <img width="512" alt="image" src="https://user-images.githubusercontent.com/70618399/225263321-8d64c3a8-6877-4cc8-9b61-0e1c52d3d94f.png">
+
+<div align=left>Our training & test result of bloom-560m for 1 epoch:
+
+<div align=center> <img width="512" alt="image" src="https://user-images.githubusercontent.com/70618399/225262950-a7f0a686-25de-44ec-98f2-11b83ea86674.png">
+
+<div align=left>
 
 ## Train with dummy prompt data (Stage 3)
 
-This script supports 3 strategies:
+This script supports 4 kinds of strategies:
 
 - naive
 - ddp
-- colossalai
+- colossalai_zero2
+- colossalai_gemini
 
 It uses random generated prompt data.
 
@@ -53,7 +69,7 @@ We use [awesome-chatgpt-prompts](https://huggingface.co/datasets/fka/awesome-cha
 
 You should download `prompts.csv` first.
 
-This script also supports 3 strategies.
+This script also supports 4 strategies.
 
 ```shell
 # display cli help
@@ -74,6 +90,9 @@ python inference.py --model_path <your actor model path> --model <your model typ
 # example
 python inference.py --model_path ./actor_checkpoint_prompts.pt --pretrain bigscience/bloom-560m --model bloom
 ```
+
+## Attention
+The examples is just a demo for testing our progress of RM and PPO training.
 
 
 #### data
