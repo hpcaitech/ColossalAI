@@ -21,7 +21,7 @@ from ._utils import (
     has_inf_or_nan,
     reduce_tensor_dp_group,
     release_param_grad,
-    split_half_float_double,
+    split_by_dtype,
     sync_param,
 )
 from .bookkeeping import BucketStore, GradientStore, ParameterStore, TensorBucket
@@ -314,7 +314,7 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
             self._reduce_tensor_bucket(bucket=param_bucket, reduce_rank=reduce_rank)
 
     def _reduce_grads(self, reduce_rank, grads, bucket_size):
-        grad_buckets_by_dtype = split_half_float_double(grads)
+        grad_buckets_by_dtype = split_by_dtype(grads)
 
         for tensor_list in grad_buckets_by_dtype:
             self._reduce_tensor_list_with_one_dtype(tensor_list=tensor_list,
