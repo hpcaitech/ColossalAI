@@ -8,6 +8,7 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch.utils.data import DataLoader
 
+from .accelerator import Accelerator
 from .mixed_precision import MixedPrecision, mixed_precision_factory
 from .plugin import Plugin
 
@@ -51,9 +52,16 @@ class Booster:
     """
 
     def __init__(self,
-                 device: Union[str, torch.device] = 'cuda',
+                 device: str = 'cuda',
                  mixed_precision: Union[MixedPrecision, str] = None,
                  plugin: Optional[Plugin] = None) -> None:
+        # TODO(FrankLeeeee): add plugin control logic
+        # if self.plugin is not None and self.plugin.control_accelerator:
+        #     ...
+        # create acclerator
+        self.acceleartor = Accelerator(device)
+        self.acceleartor.set_default_device()
+
         # validate and set precision
         if isinstance(MixedPrecision, str):
             # the user will take the default arguments for amp training
@@ -78,6 +86,11 @@ class Booster:
             lr_scheduler (LRScheduler): The lr_scheduler to be boosted.
             dataloader (DataLoader): The dataloader to be boosted.
         """
+        # TODO(FrankLeeeee): add plugin control logic
+        # if self.plugin is not None and self.plugin.control_accelerator:
+        #     ...
+        model = self.acceleartor.configure_model(model)
+
         # TODO(FrankLeeeee): consider multi-model and multi-optimizer case
         # TODO(lsg): Add plugin control logic
         # e.g.
