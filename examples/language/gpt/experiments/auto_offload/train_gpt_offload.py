@@ -1,4 +1,5 @@
 import time
+import pytest
 import argparse
 from functools import partial
 
@@ -12,6 +13,7 @@ from colossalai.fx.profiler import parameter_size
 from colossalai.utils import free_port, get_current_device
 from colossalai.auto_parallel.offload.amp_optimizer import AMPOptimizer
 from colossalai.auto_parallel.offload.mem_optimize import memory_optimize
+from colossalai.auto_parallel.offload.solver import NOT_NVML
 from model_zoo import get_gpt2_components, GPTLMLoss
 
 def parse_args():
@@ -22,6 +24,7 @@ def parse_args():
     parser.add_argument('--memory_budget', type=float, default=16)
     return parser.parse_args()
 
+@pytest.mark.skipif(NOT_NVML, reason='pynvml is not installed')
 def train_gpt(args):
     memory_budget = args.memory_budget * 1024 * 1024 * 1024
     solver_type = args.solver_type
