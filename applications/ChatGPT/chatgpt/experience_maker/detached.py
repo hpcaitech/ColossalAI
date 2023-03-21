@@ -4,17 +4,27 @@ from .naive import NaiveExperienceMaker, Experience, ExperienceMaker
 from ..replay_buffer.detached import DetachedReplayBuffer
 import ray
 from torch import Tensor
+import torch.nn as nn
+from chatgpt.models.base import Actor
+from chatgpt.trainer.strategies.sampler import DistributedSampler
 
 @ray.remote
 class ExperienceMakerHolder:
     '''
     Args:
         detached_trainer_name_list: str list to get ray actor handles
-        experience_maker: experience maker
+        [others]: ExperienceMaker init
     '''
 
-    def __init__(self, detached_trainer_name_list: List[str], experience_maker : ExperienceMaker):
-        self.experience_maker = experience_maker
+    def __init__(self, 
+                 detached_trainer_name_list: List[str], 
+                 actor: Actor,
+                 critic: nn.Module,
+                 reward_model: nn.Module,
+                 initial_model: Actor,
+                 kl_coef: float = 0.1,):
+        
+        self.experience_maker = ExperienceMaker(actor, critic, reward_model, initial_model,kl_coef)
         self.target_trainer_list = []
         for name in detached_trainer_name_list:
             self.target_trainer_list.append(ray.get_actor(name))
@@ -40,7 +50,7 @@ class ExperienceMakerHolder:
         min_length = None
         while chosen_trainer is None:
             for target_trainer in self.target_trainer_list:
-                temp_length = ray.get(target_trainer.get_buffer_length.remote())
+                temp_length = ray.get(target_trainer.buffer_get_length.remote())
                 if min_length is None:
                     min_length = temp_length
                     chosen_trainer = target_trainer
@@ -50,6 +60,15 @@ class ExperienceMakerHolder:
                         chosen_trainer = target_trainer
         chosen_trainer.buffer_append.remote(experience)
 
+    def workingloop(self, sampler: DistributedSampler, tokenizer: Optional[Callable[[Any], dict]] = None, times=5000 * 50000):
+        for _ in range(times):
+            rand_prompts = sampler
+            if tokenizer is not None:
+                    inputs = tokenizer(rand_prompts)
+            else:
+                inputs = rand_prompts
+            self.make_and_send(inputs)
+        
     def update_experience_maker(self, new_actor, new_critic):
         # TODO: parameter update
         '''

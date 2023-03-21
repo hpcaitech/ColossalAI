@@ -54,14 +54,19 @@ class DetachedPPOTrainer(DetachedTrainer):
                 value_clip: float = 0.4,
                 experience_batch_size: int = 8,
                 max_epochs: int = 1,
-                tokenizer: Optional[Callable[[Any], dict]] = None,
                 dataloader_pin_memory: bool = True,
                 callbacks: List[Callback] = [],
                 **generate_kwargs) -> None:
         detached_replay_buffer = DetachedReplayBuffer(train_batch_size, limit=buffer_limit, cpu_offload=buffer_cpu_offload)
         generate_kwargs = _set_default_generate_kwargs(strategy, generate_kwargs, actor)
-        super().__init__(experience_maker_holder_name_list, strategy, detached_replay_buffer, experience_batch_size, max_epochs, tokenizer,
-                         dataloader_pin_memory, callbacks, **generate_kwargs)
+        super().__init__(experience_maker_holder_name_list = experience_maker_holder_name_list, 
+                         strategy = strategy, 
+                         detached_replay_buffer = detached_replay_buffer, 
+                         experience_batch_size = experience_batch_size,
+                         max_epochs = max_epochs,
+                         dataloader_pin_memory = dataloader_pin_memory,
+                         callbacks = callbacks,
+                         **generate_kwargs)
         self.actor = actor
         self.critic = critic
         
@@ -108,6 +113,9 @@ class DetachedPPOTrainer(DetachedTrainer):
         self.critic_optim.zero_grad()
         
         return {'actor_loss': actor_loss.item(), 'critic_loss': critic_loss.item()}
+    
+    def get_models(self):
+        return self.actor, self.critic, self.actor_optim, self.critic_optim
 
 def _set_default_generate_kwargs(strategy: Strategy, generate_kwargs: dict, actor: Actor) -> None:
     origin_model = strategy._unwrap_actor(actor)
