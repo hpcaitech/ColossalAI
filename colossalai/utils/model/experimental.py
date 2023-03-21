@@ -32,6 +32,11 @@ _NO_META_FACTORY = [
 
 _EARLY_MATERIALIZED_OPS = ['__getitem__', 'split']
 
+# If your intent is to change the metadata of a Tensor (such as sizes / strides / storage / storage_offset)
+# without autograd tracking the change, remove the .data / .detach() call and wrap the change in a `with torch.no_grad():` block.
+# These ops cannot be unwrapped using .data
+_CHANGE_META_OPS = ['_cudnn_rnn_flatten_weight']
+
 _LEGACY_TENSOR_CONSTRUCTOR = {
     'FloatTensor': torch.float,
     'DoubleTensor': torch.double,
@@ -226,6 +231,8 @@ class LazyTensor(torch.Tensor):
         is_inplace: bool = (func.__name__.endswith('_') and not (func.__name__.endswith('__'))
                             or func.__name__ == "__setitem__")
 
+        is_change_meta_op: bool = func.__name__ in _CHANGE_META_OPS
+
         if isinstance(func, torch._C.ScriptMethod):
             # FIXME(ver217): torch script functions are not verified
 
@@ -249,10 +256,10 @@ class LazyTensor(torch.Tensor):
                 if isinstance(x, LazyTensor):
                     if x._materialized_data is not None:
                         # for early materialized tensor, use its materialized data directly
-                        return x._materialized_data.data
+                        return x._materialized_data if is_change_meta_op else x._materialized_data.data
                     t = x if is_inplace else x.clone()
                     t._op_buffer.append((func, args, kwargs))
-                    meta = x._meta_data.data
+                    meta = x._meta_data if is_change_meta_op else x._meta_data.data
                     meta_to_lazy[meta] = t
                     return meta
                 return x
