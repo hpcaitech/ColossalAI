@@ -141,13 +141,13 @@ class LazyTensor(torch.Tensor):
             target = nn.Parameter(target, requires_grad=self.requires_grad)
         return target
 
-    def distribute(self, layout: Layout) -> DTensor:
+    def distribute(self, layout: Layout) -> torch.Tensor:
         target = self._materialize_data()
-        distributed_target = DTensor(target, layout)
-        self._materialized_data = distributed_target.local_tensor
+        local_tensor = DTensor(target, layout).local_tensor
+        self._materialized_data = local_tensor
         if isinstance(self, nn.Parameter):
-            distributed_target = nn.Parameter(distributed_target, requires_grad=self.requires_grad)
-        return distributed_target
+            local_tensor = nn.Parameter(local_tensor, requires_grad=self.requires_grad)
+        return local_tensor
 
     def clean(self) -> None:
         """Clean all stored operations, meta data and materialized data, which prevents memory leaking. This should be called after all tensors are materialized.
