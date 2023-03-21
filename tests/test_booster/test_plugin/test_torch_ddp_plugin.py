@@ -1,6 +1,5 @@
 from functools import partial
 
-import pytest
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
@@ -79,7 +78,6 @@ def run_dist(rank, world_size, port):
     check_torch_ddp_plugin()
 
 
-@pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_torch_ddp_plugin():
     world_size = 2
