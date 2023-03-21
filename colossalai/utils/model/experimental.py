@@ -6,6 +6,8 @@ from torch import Tensor
 from torch.utils._pytree import tree_map
 
 from colossalai.fx.profiler.tensor import MetaTensor
+from colossalai.tensor.d_tensor.d_tensor import DTensor
+from colossalai.tensor.d_tensor.layout import Layout
 
 # reference: https://pytorch.org/cppdocs/notes/tensor_creation.html
 _NORMAL_FACTORY = [
@@ -138,6 +140,14 @@ class LazyTensor(torch.Tensor):
         if isinstance(self, nn.Parameter):
             target = nn.Parameter(target, requires_grad=self.requires_grad)
         return target
+
+    def distribute(self, layout: Layout) -> DTensor:
+        target = self._materialize_data()
+        distributed_target = DTensor(target, layout)
+        self._materialized_data = distributed_target.local_tensor
+        if isinstance(self, nn.Parameter):
+            distributed_target = nn.Parameter(distributed_target, requires_grad=self.requires_grad)
+        return distributed_target
 
     def clean(self) -> None:
         """Clean all stored operations, meta data and materialized data, which prevents memory leaking. This should be called after all tensors are materialized.
