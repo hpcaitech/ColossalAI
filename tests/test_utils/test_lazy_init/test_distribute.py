@@ -1,5 +1,5 @@
 from functools import partial
-from typing import Optional
+from typing import List, Optional
 
 import pytest
 import torch
@@ -24,6 +24,12 @@ def find_shard_dim(shape: torch.Size) -> Optional[int]:
             return dim
 
 
+def get_percent(numerator: int, denominator: int) -> float:
+    if numerator == 0:
+        return 0.0
+    return numerator / denominator * 100
+
+
 def make_layout(device_mesh: DeviceMesh, original_tensor: torch.Tensor) -> Layout:
     shard_dim = find_shard_dim(original_tensor.shape)
     # dim_partition_dict = {shard_dim: [0]} if shard_dim is not None else {}
@@ -44,6 +50,9 @@ def statically_distribute_model(model: nn.Module, device_mesh: DeviceMesh) -> di
     # handle shared module
     visited_modules = set()
     layout_dict = {}
+
+    # do post cleaning to handle shared parameter
+    visited_lazy_tensors: List[LazyTensor] = []
 
     # verbose info
     param_cnt = 0
@@ -71,6 +80,7 @@ def statically_distribute_model(model: nn.Module, device_mesh: DeviceMesh) -> di
                 param_lazy_cnt += 1
                 total_lazy_numel += param.numel()
 
+                visited_lazy_tensors.append(param)
                 layout = make_layout(device_mesh, param)
                 layout_dict[_get_current_name(prefix, name)] = layout
                 # TODO(ver217): apex layers cannot be captured
@@ -83,23 +93,26 @@ def statically_distribute_model(model: nn.Module, device_mesh: DeviceMesh) -> di
                 buf_lazy_cnt += 1
                 total_lazy_numel += buf.numel()
 
+                visited_lazy_tensors.append(buf)
                 layout = make_layout(device_mesh, buf)
                 layout_dict[_get_current_name(prefix, name)] = layout
                 setattr(module, name, buf.distribute(layout))
 
     init_recursively(model)
 
+    for t in visited_lazy_tensors:
+        t.clean()
+
     print_rank_0(f'Param lazy rate: {param_lazy_cnt}/{param_cnt}')
     print_rank_0(f'Buffer lazy rate: {buf_lazy_cnt}/{buf_cnt}')
     print_rank_0(
-        f'Total lazy numel: {total_lazy_numel} ({total_lazy_numel/1024**2:.3f} M), ratio: {total_lazy_numel/total_lazy_numel*100}%'
+        f'Total lazy numel: {total_lazy_numel} ({total_lazy_numel/1024**2:.3f} M), ratio: {get_percent(total_lazy_numel, total_numel)}%'
     )
 
     return layout_dict
 
 
-# @parameterize('subset', ['torchvision', 'diffusers', 'timm', 'transformers', 'torchaudio', 'deepfm', 'dlrm'])
-@parameterize('subset', ['torchaudio'])
+@parameterize('subset', ['torchvision', 'diffusers', 'timm', 'transformers', 'torchaudio', 'deepfm', 'dlrm'])
 def run_dist_lazy_init(subset, seed: int = 42):
     sub_model_zoo = model_zoo.get_sub_registry(subset)
     device_mesh = DeviceMesh(torch.Tensor([0, 1, 2, 3]), (2, 2), init_process_group=True)
