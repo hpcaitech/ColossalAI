@@ -8,7 +8,7 @@ from ..base import LM
 
 class BLOOMLM(LM):
     """
-    BLOOM Actor model.
+    BLOOM language model.
 
     Args:
         pretrained (str): Pretrained model name or path.

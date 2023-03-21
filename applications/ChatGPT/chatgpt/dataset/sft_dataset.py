@@ -14,8 +14,8 @@ class SFTDataset(Dataset):
     Dataset for sft model
 
     Args:
-        dataset: dataset for reward model
-        tokenizer: tokenizer for reward model
+        dataset: dataset for supervised model
+        tokenizer: tokenizer for supervised model
         max_length: max length of input
     """
 
@@ -44,6 +44,8 @@ class SFTDataset(Dataset):
 
 
 class DistributedSampler:
+    # This code is borrowd from:
+    # https://github.com/wenet-e2e/wenet/blob/dbf8037f97faa913aff696aabc5d2769947bdd51/wenet/dataset/dataset.py#L49
     def __init__(self, shuffle=True, partition=True):
         self.epoch = -1
         self.update()
@@ -86,7 +88,11 @@ class DistributedSampler:
 
 
 class SFTDistributedDataset(IterableDataset):
-    def __init__(self, dataset, tokenizer: Callable,max_length=512, batch_size=16, shuffle=True, partition=True):
+    def __init__(self,
+                 dataset,
+                 tokenizer: Callable,
+                 max_length=512, batch_size=16,
+                 shuffle=True, partition=True):
         self.prompts = dataset
         self.max_length = max_length
         self.tokenizer = tokenizer

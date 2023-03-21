@@ -8,7 +8,7 @@ from ..base import LM
 
 class OPTLM(LM):
     """
-    OPT Actor model.
+    OPT language model.
 
     Args:
         pretrained (str): Pretrained model name or path.

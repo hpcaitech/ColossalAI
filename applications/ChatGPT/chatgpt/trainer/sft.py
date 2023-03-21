@@ -1,5 +1,5 @@
 from abc import ABC
-
+from typing import Union
 import loralib as lora
 import torch
 from chatgpt.dataset import SFTDataset, SFTDistributedDataset
@@ -21,8 +21,8 @@ class SFTTrainer(ABC):
         model (torch.nn.Module): the model to train
         strategy (Strategy): the strategy to use for training
         optim(Optimizer): the optimizer to use for training
-        train_dataset (RewardDataset): the dataset to use for training
-        eval_dataset (RewardDataset): the dataset to use for evaluation
+        train_dataset (SFTDataset or SFTDistributedDataset): the dataset to use for training
+        eval_dataset (SFTDataset or SFTDistributedDataset): the dataset to use for evaluation
         batch_size (int, defaults to 1): the batch size while training
         max_epochs (int, defaults to 2): the number of epochs to train
         optim_kwargs (dict, defaults to {'lr':1e-4}): the kwargs to use while initializing optimizer
@@ -33,8 +33,8 @@ class SFTTrainer(ABC):
         model,
         strategy: Strategy,
         optim: Optimizer,
-        train_dataset: SFTDataset,
-        eval_dataset: SFTDataset,
+        train_dataset: Union[SFTDataset, SFTDistributedDataset],
+        eval_dataset: Union[SFTDataset, SFTDistributedDataset],
         batch_size: int = 1,
         max_epochs: int = 2,
     ) -> None:
@@ -47,7 +47,7 @@ class SFTTrainer(ABC):
             self.train_dataloader = DataLoader(self.train_dataset, batch_size=None, num_workers=16)
             self.eval_dataloader = DataLoader(self.eval_dataset, batch_size=None, num_workers=16)
         else:
-            self.train_dataloader = DataLoader(self.train_dataset, batch_size=batch_size, num_workers=16)
+            self.train_dataloader = DataLoader(self.train_dataset, batch_size=batch_size, shuffle=True, num_workers=16)
             self.eval_dataloader = DataLoader(self.eval_dataset, batch_size=batch_size, num_workers=16)
 
         self.model = strategy.setup_model(model)

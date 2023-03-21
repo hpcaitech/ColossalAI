@@ -10,10 +10,10 @@ from .actor import Actor
 
 class LM(Actor):
     """
-    Actor model base class.
+    Language model base class.
 
     Args:
-        model (nn.Module): Actor Model.
+        model (nn.Module): Language Model.
         lora_rank (int): LoRA rank.
         lora_train_bias (str): LoRA bias training mode.
     """
@@ -24,7 +24,7 @@ class LM(Actor):
     def forward(self,
                 sequences: torch.LongTensor,
                 attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
-        """Returns action log probs
+        """Returns output log probs
         """
         output = self.model(sequences, attention_mask=attention_mask)
         logits = output['logits']

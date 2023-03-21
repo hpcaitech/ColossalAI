@@ -8,7 +8,7 @@ from ..base import LM
 
 class GPTLM(LM):
     """
-    GPT Actor model.
+    GPT language model.
 
     Args:
         pretrained (str): Pretrained model name or path.

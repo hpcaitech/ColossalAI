@@ -65,11 +65,10 @@ def train(args):
         optim = Adam(model.parameters(), lr=5e-5)
 
     logger = get_dist_logger()
-    #data = load_dataset(args.dataset, 'super_natural_instructions')
-    train_data = load_dataset(args.dataset,'super_natural_instructions', split='train')
+
+    train_data = load_dataset(args.dataset, 'super_natural_instructions', split='train')
     eval_data = load_dataset(args.dataset, 'super_natural_instructions', split='test')
-#    train_data = load_dataset(args.dataset, split='train[:1000]')
-#    eval_data = load_dataset(args.dataset, split='train[-100:]')
+
     if dist.is_initialized() and dist.get_world_size() > 1:
         train_dataset = SFTDistributedDataset(train_data, tokenizer, max_len, args.batch_size)
         eval_dataset = SFTDistributedDataset(eval_data, tokenizer, max_len, args.batch_size, partition=False)
