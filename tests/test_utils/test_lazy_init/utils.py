@@ -76,8 +76,11 @@ def assert_dist_model_equal(model: torch.nn.Module, distributed_model: torch.nn.
 
     assert len(state) == len(distributed_state), f'len {len(state)} vs {len(distributed_state)}'
 
+    device = torch.cuda.current_device()
     for (n1, t1), (n2, t2) in zip(state.items(), distributed_state.items()):
         assert n1 == n2
+        t1 = t1.to(device)
+        t2 = t2.to(device)
         if n2 in layout_dict:
             t2 = to_global(t2, layout_dict[n2])
         assert torch.equal(t1, t2), f'{n1} {t1} vs {t2}'

@@ -60,11 +60,11 @@ def statically_distribute_model(model: nn.Module, device_mesh: DeviceMesh) -> di
     buf_cnt = 0
     buf_lazy_cnt = 0
     total_numel = 0
-    total_lazy_numel = 0
+    non_lazy_numel = 0
 
     @torch.no_grad()
     def init_recursively(module: nn.Module, prefix: str = ''):
-        nonlocal param_cnt, param_lazy_cnt, buf_cnt, buf_lazy_cnt, total_numel, total_lazy_numel
+        nonlocal param_cnt, param_lazy_cnt, buf_cnt, buf_lazy_cnt, total_numel, non_lazy_numel
 
         # recursively initialize the module
         for name, mod in module.named_children():
@@ -76,9 +76,13 @@ def statically_distribute_model(model: nn.Module, device_mesh: DeviceMesh) -> di
         for name, param in module.named_parameters(recurse=False):
             param_cnt += 1
             total_numel += param.numel()
-            if isinstance(param, LazyTensor):
+            if getattr(param, '_materialized_data', False) is None:
+                # if no _materialized_data attr, the tensor is not lazy
                 param_lazy_cnt += 1
-                total_lazy_numel += param.numel()
+            else:
+                non_lazy_numel += param.numel()
+
+            if isinstance(param, LazyTensor):
 
                 visited_lazy_tensors.append(param)
                 layout = make_layout(device_mesh, param)
@@ -89,10 +93,13 @@ def statically_distribute_model(model: nn.Module, device_mesh: DeviceMesh) -> di
         for name, buf in module.named_buffers(recurse=False):
             buf_cnt += 1
             total_numel += buf.numel()
-            if isinstance(buf, LazyTensor):
+            if getattr(buf, "_materialized_data", False) is None:
+                # if no _materialized_data attr, the tensor is not lazy
                 buf_lazy_cnt += 1
-                total_lazy_numel += buf.numel()
+            else:
+                non_lazy_numel += buf.numel()
 
+            if isinstance(buf, LazyTensor):
                 visited_lazy_tensors.append(buf)
                 layout = make_layout(device_mesh, buf)
                 layout_dict[_get_current_name(prefix, name)] = layout
@@ -106,7 +113,7 @@ def statically_distribute_model(model: nn.Module, device_mesh: DeviceMesh) -> di
     print_rank_0(f'Param lazy rate: {param_lazy_cnt}/{param_cnt}')
     print_rank_0(f'Buffer lazy rate: {buf_lazy_cnt}/{buf_cnt}')
     print_rank_0(
-        f'Total lazy numel: {total_lazy_numel} ({total_lazy_numel/1024**2:.3f} M), ratio: {get_percent(total_lazy_numel, total_numel)}%'
+        f'Non lazy numel: {non_lazy_numel} ({non_lazy_numel/1024**2:.3f} M), ratio: {get_percent(non_lazy_numel, total_numel)}%'
     )
 
     return layout_dict
@@ -125,17 +132,13 @@ def run_dist_lazy_init(subset, seed: int = 42):
             continue
         print_rank_0(name)
         model_fn, data_gen_fn, output_transform_fn, model_attr = entry
-        torch.cuda.reset_peak_memory_stats()
         ctx = LazyInitContext(tensor_cls=_MyTensor)
         with ctx:
-            model = model_fn().cuda()
-        print_rank_0(f'Naive init peak cuda mem: {torch.cuda.max_memory_allocated()/1024**2:.3f} MB')
-        torch.cuda.reset_peak_memory_stats()
+            model = model_fn()
         ctx = LazyInitContext()
         with ctx:
-            deferred_model = model_fn().cuda()
+            deferred_model = model_fn()
         layout_dict = statically_distribute_model(deferred_model, device_mesh)
-        print_rank_0(f'Dist lazy init peak cuda mem: {torch.cuda.max_memory_allocated()/1024**2:.3f} MB')
         assert_dist_model_equal(model, deferred_model, layout_dict)
 
 
