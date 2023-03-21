@@ -1,7 +1,12 @@
 import time
 from typing import List, Dict, Type
 from abc import ABC, abstractmethod
-from pynvml import *
+
+NOT_NVML = False
+try:
+    from pynvml import *
+except:
+    NOT_NVML = True
 
 import torch
 from torch.fx.node import Node

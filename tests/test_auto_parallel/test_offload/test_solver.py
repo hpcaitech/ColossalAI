@@ -1,3 +1,4 @@
+import pytest
 import torch.fx
 from torch.fx import GraphModule
 from torch.utils._pytree import tree_map
@@ -5,10 +6,11 @@ from torch.utils._pytree import tree_map
 from colossalai.fx import ColoTracer, is_compatible_with_meta
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
 from colossalai.auto_parallel.offload.region_manager import RegionManager
-from colossalai.auto_parallel.offload.solver import SolverFactory
+from colossalai.auto_parallel.offload.solver import SolverFactory, NOT_NVML
 from colossalai.testing import parameterize
 from tests.test_auto_parallel.test_offload.model_utils import *
 
+@pytest.mark.skipif(NOT_NVML, reason='pynvml is not installed')
 @parameterize('model_name', ['gpt2_', 'bert_'])
 @parameterize('memory_budget', [4000])
 @parameterize('solver_name', ['syn', 'asyn'])

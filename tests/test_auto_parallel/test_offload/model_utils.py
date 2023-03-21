@@ -70,7 +70,7 @@ def get_bert_components():
 @non_distributed_component_funcs.register(name='gpt2_')
 def get_gpt2_components():
     vocab_size = 1024
-    seq_len = 64
+    seq_len = 8
     batchSize = 64
 
     def gpt2_model_builder():

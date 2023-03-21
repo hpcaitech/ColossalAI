@@ -1,7 +1,10 @@
 import time
+import pytest
+from functools import partial
 
 import torch
 from torch.utils._pytree import tree_map
+import torch.multiprocessing as mp
 
 import colossalai
 from colossalai.nn.optimizer import HybridAdam
@@ -11,6 +14,7 @@ from colossalai.utils import free_port, get_current_device
 from colossalai.nn.parallel import zero_model_wrapper, zero_optim_wrapper
 from colossalai.auto_parallel.offload.amp_optimizer import AMPOptimizer
 from colossalai.auto_parallel.offload.mem_optimize import memory_optimize
+from colossalai.auto_parallel.offload.solver import NOT_NVML
 from colossalai.testing import parameterize
 
 from tests.test_tensor.common_utils import set_seed
@@ -134,11 +138,13 @@ def exam_fwd_bwd(
     )
     print(time_list)
 
-def test_perf():
+@pytest.mark.skipif(NOT_NVML, reason='pynvml is not installed')
+def test_perf(rank, world_size, port):
     config = {}
-    colossalai.launch(config=config, rank=0, world_size=1, host='localhost', port=free_port(), backend='nccl')
+    colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     exam_fwd_bwd()
 
 
 if __name__ == '__main__':
-    test_perf()
+    run_func = partial(test_perf, world_size=1, port=free_port())
+    mp.spawn(run_func, nprocs=1)
