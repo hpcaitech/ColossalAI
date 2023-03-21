@@ -5,7 +5,7 @@ import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.optim import Adam
+from torch.optim import SGD
 
 import colossalai
 from colossalai.booster import Booster
@@ -25,7 +25,7 @@ def check_torch_ddp_plugin():
             continue
 
         model = model_fn()
-        optimizer = Adam(model.parameters(), lr=1e-3)
+        optimizer = SGD(model.parameters(), lr=1e-3)
         criterion = lambda x: x.mean()
         data = data_gen_fn()
 
