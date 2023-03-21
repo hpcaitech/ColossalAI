@@ -57,7 +57,7 @@ torchrun --nproc_per_node 2 train_dreambooth_colossalai.py \
   --max_train_steps=400 \
   --placement="cuda"
 ```
-- `Model_NAME` refers to the model you are training.
+- `MODEL_NAME` refers to the model you are training.
 - `INSTANCE_DIR` refers to personalized path to instance images, you might need to insert information here.
 - `OUTPUT_DIR` refers to local path to save the trained model, you might need to find a path with enough space.
 - `resolution` refers to the corresponding resolution number of your target model. Note: Change the `resolution` to 768 if you are using the [stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) 768x768 model.
