@@ -7,7 +7,7 @@ from torch.distributed import ProcessGroup
 from colossalai.context.singleton_meta import SingletonMeta
 
 
-class DistCoordinator(SingletonMeta):
+class DistCoordinator(metaclass=SingletonMeta):
     """
     This class is used to coordinate distributed training. It is a singleton class, which means that there is only one instance of this
     class in the whole program.
