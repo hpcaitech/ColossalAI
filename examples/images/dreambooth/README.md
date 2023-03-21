@@ -5,12 +5,12 @@ The `train_dreambooth_colossalai.py` script shows how to implement the training 
 
 By accommodating model data in CPU and GPU and moving the data to the computing device when necessary, [Gemini](https://www.colossalai.org/docs/advanced_tutorials/meet_gemini), the Heterogeneous Memory Manager of [Colossal-AI](https://github.com/hpcaitech/ColossalAI) can breakthrough the GPU memory wall by using GPU and CPU memory (composed of CPU DRAM or nvme SSD memory) together at the same time. Moreover, the model scale can be further improved by combining heterogeneous training with the other parallel approaches, such as data parallel, tensor parallel and pipeline parallel.
 
-## Installing the dependencies
+## Installation
 
-Before running the scripts, make sure to install the library's training dependencies:
+To begin with, make sure your operating system has the cuda version suitable for this exciting training session, which is cuda11.6-11.8. Notice that you may want to make sure the module versions suitable for the whole environment. Before running the scripts, make sure to install the library's training dependencies:
 
 ```bash
-pip install -r requirements_colossalai.txt
+pip install -r requirements.txt
 ```
 
 ### Install [colossalai](https://github.com/hpcaitech/ColossalAI.git)
@@ -37,9 +37,7 @@ The `text` include the tag `Teyvat`, `Name`,`Element`, `Weapon`, `Region`, `Mode
 
 ## Training
 
-The arguement `placement` can be `cpu`, `auto`, `cuda`, with `cpu` the GPU RAM required can be minimized to 4GB but will deceleration, with `cuda` you can also reduce GPU memory by half but accelerated training， with `auto` a more balanced solution for speed and memory can be obtained。
-
-**___Note: Change the `resolution` to 768 if you are using the [stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) 768x768 model.___**
+We provide the script `colossalai.sh` to run the training task with colossalai. Meanwhile, we also provided traditional training process of dreambooth, `dreambooth.sh`, for possible comparation. For instance, the script of training process for [stable-diffusion-v1-4] model can be modified into:
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
@@ -59,12 +57,17 @@ torchrun --nproc_per_node 2 train_dreambooth_colossalai.py \
   --max_train_steps=400 \
   --placement="cuda"
 ```
-
+- `MODEL_NAME` refers to the model you are training.
+- `INSTANCE_DIR` refers to personalized path to instance images, you might need to insert information here.
+- `OUTPUT_DIR` refers to local path to save the trained model, you might need to find a path with enough space.
+- `resolution` refers to the corresponding resolution number of your target model. Note: Change the `resolution` to 768 if you are using the [stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) 768x768 model.
+- `placement`  refers to the training strategy supported by Colossal AI, defult = 'cuda', which refers to loading all the parameters into cuda memory. On the other hand, 'cpu' refers to 'cpu offload' strategy while 'auto' enables 'Gemini', both featured by Colossal AI.
 
 ### Training with prior-preservation loss
 
 Prior-preservation is used to avoid overfitting and language-drift. Refer to the paper to learn more about it. For prior-preservation we first generate images using the model with a class prompt and then use those during training along with our data.
-According to the paper, it's recommended to generate `num_epochs * num_samples` images for prior-preservation. 200-300 works well for most cases. The `num_class_images` flag sets the number of images to generate with the class prompt. You can place existing images in `class_data_dir`, and the training script will generate any additional images so that `num_class_images` are present in `class_data_dir` during training time.
+
+According to the paper, it's recommended to generate `num_epochs * num_samples` images for prior-preservation. 200-300 works well for most cases. The `num_class_images` flag sets the number of images to generate with the class prompt. You can place existing images in `class_data_dir`, and the training script will generate any additional images so that `num_class_images` are present in `class_data_dir` during training time. The general script can be then modified as the following.
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
@@ -91,7 +94,7 @@ torchrun --nproc_per_node 2 train_dreambooth_colossalai.py \
 
 ## Inference
 
-Once you have trained a model using above command, the inference can be done simply using the `StableDiffusionPipeline`. Make sure to include the `identifier`(e.g. sks in above example) in your prompt.
+Once you have trained a model using above command, the inference can be done simply using the `StableDiffusionPipeline`. Make sure to include the `identifier`(e.g. `--instance_prompt="a photo of sks dog" ` in the above example) in your prompt.
 
 ```python
 from diffusers import StableDiffusionPipeline

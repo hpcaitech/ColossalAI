@@ -78,7 +78,9 @@ You can install the latest version (0.2.7) from our official website or from sou
 ##### Download suggested verision for this training
 
 ```
-pip install colossalai=0.2.5
+
+pip install colossalai==0.2.5
+
 ```
 
 ##### Download the latest version from pip for latest torch version
