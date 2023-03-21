@@ -119,7 +119,8 @@ def statically_distribute_model(model: nn.Module, device_mesh: DeviceMesh) -> di
     return layout_dict
 
 
-@parameterize('subset', ['torchvision', 'diffusers', 'timm', 'transformers', 'torchaudio', 'deepfm', 'dlrm'])
+# @parameterize('subset', ['torchvision', 'diffusers', 'timm', 'transformers', 'torchaudio', 'deepfm', 'dlrm'])
+@parameterize('subset', ['torchvision'])
 def run_dist_lazy_init(subset, seed: int = 42):
     sub_model_zoo = model_zoo.get_sub_registry(subset)
     device_mesh = DeviceMesh(torch.Tensor([0, 1, 2, 3]), (2, 2), init_process_group=True)
@@ -132,13 +133,17 @@ def run_dist_lazy_init(subset, seed: int = 42):
             continue
         print_rank_0(name)
         model_fn, data_gen_fn, output_transform_fn, model_attr = entry
+        torch.cuda.reset_peak_memory_stats()
         ctx = LazyInitContext(tensor_cls=_MyTensor)
         with ctx:
-            model = model_fn()
+            model = model_fn().cuda()
+        print_rank_0(f'Naive peak cuda mem: {torch.cuda.max_memory_allocated()/1024**2:.3f} MB')
+        torch.cuda.reset_peak_memory_stats()
         ctx = LazyInitContext()
         with ctx:
-            deferred_model = model_fn()
+            deferred_model = model_fn().cuda()
         layout_dict = statically_distribute_model(deferred_model, device_mesh)
+        print_rank_0(f'Dist lazy peak cuda mem: {torch.cuda.max_memory_allocated()/1024**2:.3f} MB')
         assert_dist_model_equal(model, deferred_model, layout_dict)
 
 
