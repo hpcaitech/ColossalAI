@@ -55,6 +55,9 @@ class Booster:
                  device: str = 'cuda',
                  mixed_precision: Union[MixedPrecision, str] = None,
                  plugin: Optional[Plugin] = None) -> None:
+        if plugin is not None:
+            assert isinstance(
+                plugin, Plugin), f'Expected the argument plugin to be an instance of Plugin, but got {type(plugin)}.'
         self.plugin = plugin
 
         # set accelerator
@@ -99,11 +102,6 @@ class Booster:
             dataloader (DataLoader): The dataloader to be boosted.
             lr_scheduler (LRScheduler): The lr_scheduler to be boosted.
         """
-        # TODO(FrankLeeeee): add plugin control logic
-        # if self.plugin is not None and self.plugin.control_accelerator:
-        #     ...
-        model = self.acceleartor.configure_model(model)
-
         # TODO(FrankLeeeee): consider multi-model and multi-optimizer case
         # TODO(FrankLeeeee): consider multi-dataloader case
         # transform model for mixed precision
