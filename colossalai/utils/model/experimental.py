@@ -307,10 +307,31 @@ class LazyTensor(torch.Tensor):
 
     @data.setter
     def data(self, other: 'LazyTensor'):
+        """This is sightly different from oringinal `data` setter.
+
+        E.g.:
+            >>> a = torch.randn(3, 3) # a is a Tensor
+            >>> b = torch.rand(2, 2)
+            >>> a.data = b
+            >>> b.add_(1)   # this will affect a
+            >>> x = torch.randn(3, 3) # x is a LazyTensor
+            >>> y = torch.rand(2, 2) # y is a LazyTensor
+            >>> x.data = y
+            >>> y.add_(1)   # this will not affect x
+
+        """
         if other is self:
             return
-        # TODO(ver217): to avoid infinity recursion, do early materialization
-        self._materialized_data = other._materialize_data()
+
+        self._op_buffer.append(other._factory_method)
+
+        def replace(x):
+            if x is other:
+                return self
+            return x
+
+        for func, args, kwargs in other._op_buffer:
+            self._op_buffer.append((func, tree_map(replace, args), tree_map(replace, kwargs)))
 
     def tolist(self) -> list:
         t = self.materialize()
