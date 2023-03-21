@@ -13,7 +13,12 @@ class ExperienceMakerHolder:
     '''
     Args:
         detached_trainer_name_list: str list to get ray actor handles
-        [others]: ExperienceMaker init
+        actor: \
+        critic: \
+        reward_model: \
+        initial_model: \
+        kl_coef:                 NaiveExperienceMaker init
+        experience_batch_size: batch size of generated experience
     '''
 
     def __init__(self, 
@@ -22,10 +27,14 @@ class ExperienceMakerHolder:
                  critic: nn.Module,
                  reward_model: nn.Module,
                  initial_model: Actor,
-                 kl_coef: float = 0.1,):
+                 kl_coef: float = 0.1,
+                 experience_batch_size:int = 8,
+                 **generate_kwargs):
         
-        self.experience_maker = ExperienceMaker(actor, critic, reward_model, initial_model,kl_coef)
+        self.experience_maker = NaiveExperienceMaker(actor, critic, reward_model, initial_model,kl_coef)
         self.target_trainer_list = []
+        self.experience_batch_size = experience_batch_size
+        self.generate_kwargs = generate_kwargs
         for name in detached_trainer_name_list:
             self.target_trainer_list.append(ray.get_actor(name))
     
@@ -48,6 +57,8 @@ class ExperienceMakerHolder:
         # choose a trainer that has the least experience batch in its detached_replay_buffer
         chosen_trainer = None
         min_length = None
+        if 'debug' in self.generate_kwargs and self.generate_kwargs['debug'] == True:
+            print("[maker] choosing tartget")
         while chosen_trainer is None:
             for target_trainer in self.target_trainer_list:
                 temp_length = ray.get(target_trainer.buffer_get_length.remote())
@@ -58,11 +69,13 @@ class ExperienceMakerHolder:
                     if temp_length < min_length:
                         min_length = temp_length
                         chosen_trainer = target_trainer
+        if 'debug' in self.generate_kwargs and self.generate_kwargs['debug'] == True:
+            print("[maker] sending")
         chosen_trainer.buffer_append.remote(experience)
 
     def workingloop(self, sampler: DistributedSampler, tokenizer: Optional[Callable[[Any], dict]] = None, times=5000 * 50000):
         for _ in range(times):
-            rand_prompts = sampler
+            rand_prompts = sampler.sample(self.experience_batch_size)
             if tokenizer is not None:
                     inputs = tokenizer(rand_prompts)
             else:

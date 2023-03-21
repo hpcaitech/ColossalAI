@@ -1,4 +1,5 @@
 from typing import Any, Callable, Dict, List, Optional
+import time
 
 import torch
 import torch.nn as nn
@@ -16,6 +17,7 @@ from .strategies import Strategy
 from .utils import is_rank_0
 
 import ray
+
 
 @ray.remote
 class DetachedPPOTrainer(DetachedTrainer):
@@ -40,7 +42,7 @@ class DetachedPPOTrainer(DetachedTrainer):
         generate_kwargs (dict, optional): the kwargs to use while model generating
     '''
     
-    def __int__(self, 
+    def __init__(self, 
                 experience_maker_holder_name_list: List[str],
                 strategy: Strategy,
                 actor: Actor,
@@ -57,25 +59,27 @@ class DetachedPPOTrainer(DetachedTrainer):
                 dataloader_pin_memory: bool = True,
                 callbacks: List[Callback] = [],
                 **generate_kwargs) -> None:
-        detached_replay_buffer = DetachedReplayBuffer(train_batch_size, limit=buffer_limit, cpu_offload=buffer_cpu_offload)
+        self.fully_initialized = False
         generate_kwargs = _set_default_generate_kwargs(strategy, generate_kwargs, actor)
-        super().__init__(experience_maker_holder_name_list = experience_maker_holder_name_list, 
-                         strategy = strategy, 
-                         detached_replay_buffer = detached_replay_buffer, 
+        self.actor = actor
+        self.critic = critic
+        self.actor_loss_fn = PolicyLoss(eps_clip)
+        self.critic_loss_fn = ValueLoss(value_clip)
+        self.actor_optim = actor_optim
+        self.critic_optim = critic_optim
+        super().__init__(experience_maker_holder_name_list, 
+                         strategy = strategy,
+                         train_batch_size=train_batch_size,
+                         buffer_limit=buffer_limit,
+                         buffer_cpu_offload=buffer_cpu_offload,
                          experience_batch_size = experience_batch_size,
                          max_epochs = max_epochs,
                          dataloader_pin_memory = dataloader_pin_memory,
                          callbacks = callbacks,
-                         **generate_kwargs)
-        self.actor = actor
-        self.critic = critic
-        
-        self.actor_loss_fn = PolicyLoss(eps_clip)
-        self.critic_loss_fn = ValueLoss(value_clip)
-        
-        self.actor_optim = actor_optim
-        self.critic_optim = critic_optim
-        
+                         generate_kwargs=generate_kwargs)
+
+        self.fully_initialized = True
+
     def update_remote_makers(self):
         # TODO: balance duties
         if is_rank_0():
@@ -85,10 +89,17 @@ class DetachedPPOTrainer(DetachedTrainer):
             with torch.no_grad():
                 target_holder.update_experience_maker.remote(self.actor, self.critic)
 
+    def ready(self):
+        # indicate that self is fully initialized
+        while not hasattr(self, "fully_initialized") or self.fully_initialized == False:
+            time.sleep(1.0)
+        return True
 
     def training_step(self, experience: Experience) -> Dict[str, float]:
         self.actor.train()
         self.critic.train()
+        
+        experience.to_device(torch.cuda.current_device())
         
         num_actions = experience.action_mask.size(1)
         action_log_probs = self.actor(experience.sequences, num_actions, attention_mask=experience.attention_mask)
@@ -113,7 +124,7 @@ class DetachedPPOTrainer(DetachedTrainer):
         self.critic_optim.zero_grad()
         
         return {'actor_loss': actor_loss.item(), 'critic_loss': critic_loss.item()}
-    
+
     def get_models(self):
         return self.actor, self.critic, self.actor_optim, self.critic_optim
 

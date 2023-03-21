@@ -10,7 +10,7 @@ from .utils import BufferItem, make_experience_batch, split_experience_batch
 from threading import Lock
 import copy
 
-class DetachedReplayBuffer(ReplayBuffer):
+class DetachedReplayBuffer:
     '''
         Detached replay buffer. Share Experience across workers on the same node. 
         Therefore a trainer node is expected to have only one instance. 
@@ -24,12 +24,11 @@ class DetachedReplayBuffer(ReplayBuffer):
     '''
 
     def __init__(self, sample_batch_size: int, tp_world_size: int = 1, limit : int = 0, cpu_offload: bool = True) -> None:
-        super().__init__(sample_batch_size, limit)
         self.cpu_offload = cpu_offload
         self.sample_batch_size = sample_batch_size
         self.limit = limit
         self.items = Queue(self.limit)
-        self.batch_collector : List[BufferItem] = None
+        self.batch_collector : List[BufferItem] = []
 
         '''
         Workers in the same tp group share this buffer and need same sample for one step.
@@ -61,6 +60,7 @@ class DetachedReplayBuffer(ReplayBuffer):
         self.items.shutdown()
         self.items = Queue(self.limit)
         self.worker_state = [False] * self.tp_world_size
+        self.batch_collector = []
     
     @torch.no_grad()
     def sample(self, worker_rank = 0, to_device = "cpu") -> Experience:

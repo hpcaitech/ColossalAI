@@ -36,23 +36,23 @@ class DetachedTrainer(ABC):
 
     def __init__(self,
                  experience_maker_holder_name_list: List[str],
-                 strategy: Strategy,# TODO: DetachedStrategy
-                 detached_replay_buffer: DetachedReplayBuffer = None,
+                 strategy: Strategy,  # TODO: DetachedStrategy
+                 train_batch_size: int = 8,
+                 buffer_limit: int = 0,
+                 buffer_cpu_offload: bool = True,
                  experience_batch_size: int = 8,
                  max_epochs: int = 1,
                  dataloader_pin_memory: bool = True,
                  callbacks: List[Callback] = [],
-                 **generate_kwargs
-                 )->None:
+                 **generate_kwargs)->None:
         super().__init__()
         self.strategy = strategy
-        self.detached_replay_buffer = detached_replay_buffer
+        self.detached_replay_buffer = DetachedReplayBuffer(train_batch_size, limit=buffer_limit, cpu_offload=buffer_cpu_offload)
         self.experience_batch_size = experience_batch_size
         self.max_epochs = max_epochs
-        self.generate_kwargs = generate_kwargs
         self.dataloader_pin_memory = dataloader_pin_memory
         self.callbacks = callbacks
-
+        self.generate_kwargs = generate_kwargs
         self.target_holder_name_list = experience_maker_holder_name_list
         self.target_holder_list = []
 
@@ -73,7 +73,11 @@ class DetachedTrainer(ABC):
     def _learn(self):
         pbar = tqdm(range(self.max_epochs), desc='Train epoch', disable=not is_rank_0())
         for _ in pbar:
+            if 'debug' in self.generate_kwargs and self.generate_kwargs['debug'] == True:
+                print("[trainer] sampling exp")
             experience = self.detached_replay_buffer.sample()
+            if 'debug' in self.generate_kwargs and self.generate_kwargs['debug'] == True:
+                print("[trainer] training step")
             metrics = self.training_step(experience)
             pbar.set_postfix(metrics)
 
@@ -84,7 +88,7 @@ class DetachedTrainer(ABC):
             for timestep in tqdm(range(max_timesteps),
                                  desc=f'Episode [{episode+1}/{num_episodes}]',
                                  disable=not is_rank_0()):
-                for _ in update_timesteps:
+                for _ in range(update_timesteps):
                     self._learn()
                 # assume those remote holders are working
                 # self.update_remote_makers()
@@ -94,10 +98,14 @@ class DetachedTrainer(ABC):
 
     def buffer_get_length(self):
         # called by ExperienceMakerHolder
+        if 'debug' in self.generate_kwargs and self.generate_kwargs['debug'] == True:
+            print("[trainer] telling length")
         return self.detached_replay_buffer.get_length()
 
     def buffer_append(self, experience: Experience):
         # called by ExperienceMakerHolder
+        if 'debug' in self.generate_kwargs and self.generate_kwargs['debug'] == True:
+            print("[trainer] receiving exp")
         self.detached_replay_buffer.append(experience)
 
     def strategy_save_model(self, model: nn.Module, path: str, only_rank0: bool = False) -> None:

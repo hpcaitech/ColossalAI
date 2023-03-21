@@ -86,41 +86,60 @@ def main(args):
     sampler = strategy.setup_sampler(dataset)
 
     # configure Ray Actor
-    # 应当在trainer那边初始化模型的, 直接传, 传不过去
-    # maker和trainer这两头, 尽量完全隔离
-    trainer = DetachedPPOTrainer.options(name="trainer1", num_gpus=1).remote(
+    trainer_ref = DetachedPPOTrainer.options(name="trainer1", num_gpus=1, max_concurrency=3).remote(
         experience_maker_holder_name_list= ["maker1"],
         strategy = strategy,
         actor = actor,
         critic = critic,
         actor_optim = actor_optim,
         critic_optim = critic_optim,
+        train_batch_size=args.train_batch_size,
+        buffer_limit = 16,
         experience_batch_size = args.experience_batch_size,
         max_epoch = args.max_epochs,
-        train_batch_size = args.train_batch_size,
+        #kwargs:
+        max_length=128,
+        do_sample=True,
+        temperature=1.0,
+        top_k=50,
+        pad_token_id=tokenizer.pad_token_id,
+        eos_token_id=tokenizer.eos_token_id,
+        debug=args.debug,
         )
     
-
-    experience_holder = ExperienceMakerHolder.options(name="maker1", num_gpus=1).remote(
+    experience_holder_ref = ExperienceMakerHolder.options(name="maker1", num_gpus=1, max_concurrency=2).remote(
         ["trainer1"],
         actor_maker,
         critic_maker,
         reward_model,
-        initial_model)
+        initial_model,
+        experience_batch_size=args.experience_batch_size,
+        #kwargs:
+        max_length=128,
+        do_sample=True,
+        temperature=1.0,
+        top_k=50,
+        pad_token_id=tokenizer.pad_token_id,
+        eos_token_id=tokenizer.eos_token_id,
+        debug=args.debug,
+        )
     
-    
-    
-    trainer.fit.remote(num_episodes=args.num_episodes, max_timesteps=args.max_timesteps,update_timesteps=args.update_timesteps)
+    print("waiting for trainer...")
+    ray.get(trainer_ref.ready.remote())
+    print("...ready")
 
-    experience_holder.workingloop.remote(sampler, tokenize_fn, times=args.num_episodes * args.max_timesteps * args.update_timesteps+3)
+    trainer_done_ref = trainer_ref.fit.remote(num_episodes=args.num_episodes, max_timesteps=args.max_timesteps, update_timesteps=args.update_timesteps)
 
-    trainer_actor, trainer_critic, trainer_actor_optim, trainer_critic_optim = trainer.get_models.remote()
+    maker_done_ref = experience_holder_ref.workingloop.remote(sampler, tokenize_fn, times=args.num_episodes * args.max_timesteps * args.update_timesteps + 3)
+
+    ray.get([trainer_done_ref, maker_done_ref])
+    trainer_actor, trainer_critic, trainer_actor_optim, trainer_critic_optim = trainer_ref.get_models.remote()
     
     # save model checkpoint after fitting
-    trainer.strategy_save_model.remote(trainer_actor, args.save_path, only_rank0=True)
+    trainer_ref.strategy_save_model.remote(trainer_actor, args.save_path, only_rank0=True)
     # save optimizer checkpoint on all ranks
     if args.need_optim_ckpt:
-        trainer.strategy_save_optimizer.remote(trainer_actor_optim, 
+        trainer_ref.strategy_save_optimizer.remote(trainer_actor_optim, 
                                                'actor_optim_checkpoint_prompts_%d.pt' % (torch.cuda.current_device()),
                                                only_rank0=False)
 
@@ -142,6 +161,8 @@ if __name__ == '__main__':
     parser.add_argument('--train_batch_size', type=int, default=8)
     parser.add_argument('--experience_batch_size', type=int, default=8)
     parser.add_argument('--lora_rank', type=int, default=0, help="low-rank adaptation matrices rank")
+    
+    parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
     ray.init()
     main(args)

@@ -16,4 +16,4 @@ set_n_least_used_CUDA_VISIBLE_DEVICES() {
 set_n_least_used_CUDA_VISIBLE_DEVICES 2
 
 torchrun --standalone 1m1t.py "/home/lccsr/HPC-AI/ColossalAI/applications/ChatGPT/examples/awesome-chatgpt-prompts/prompts.csv" \
-    --strategy colossalai_zero2 --lora_rank 2
+    --strategy naive --lora_rank 2 
