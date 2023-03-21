@@ -1,11 +1,12 @@
 from abc import ABC
-from typing import Union
+from typing import Optional
 import loralib as lora
 import torch
-from chatgpt.dataset import SFTDataset, SFTDistributedDataset
+from chatgpt.dataset import SFTDataset
 from chatgpt.models.loss import GPTLMLoss
 from torch.optim import Adam, Optimizer
 from torch.utils.data import DataLoader
+from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm
 import torch.distributed as dist
 from .strategies import Strategy
@@ -33,8 +34,9 @@ class SFTTrainer(ABC):
         model,
         strategy: Strategy,
         optim: Optimizer,
-        train_dataset: Union[SFTDataset, SFTDistributedDataset],
-        eval_dataset: Union[SFTDataset, SFTDistributedDataset],
+        train_dataset: SFTDataset,
+        eval_dataset: SFTDataset,
+        sampler: Optional[DistributedSampler] = None,
         batch_size: int = 1,
         max_epochs: int = 2,
     ) -> None:
@@ -43,12 +45,11 @@ class SFTTrainer(ABC):
         self.epochs = max_epochs
         self.train_dataset = train_dataset
         self.eval_dataset = eval_dataset
-        if isinstance(self.train_dataset, SFTDistributedDataset):
-            self.train_dataloader = DataLoader(self.train_dataset, batch_size=None, num_workers=16)
-            self.eval_dataloader = DataLoader(self.eval_dataset, batch_size=None, num_workers=16)
-        else:
-            self.train_dataloader = DataLoader(self.train_dataset, batch_size=batch_size, shuffle=True, num_workers=16)
-            self.eval_dataloader = DataLoader(self.eval_dataset, batch_size=batch_size, num_workers=16)
+        self.sampler = sampler
+
+        self.train_dataloader = DataLoader(self.train_dataset, shuffle=(sampler is None),
+                                           sampler=sampler, batch_size=batch_size)
+        self.eval_dataloader = DataLoader(self.eval_dataset, batch_size=batch_size)
 
         self.model = strategy.setup_model(model)
         if "DDP" in str(self.strategy):
@@ -59,12 +60,13 @@ class SFTTrainer(ABC):
     def fit(self, logger, use_lora, log_interval=10):
         epoch_bar = tqdm(range(self.epochs), desc='Train epoch', disable=not is_rank_0())
         for epoch in range(self.epochs):
-            if isinstance(self.train_dataset, SFTDistributedDataset):
-                self.train_dataset.set_epoch(epoch)
+            if isinstance(self.sampler, DistributedSampler):
+                self.sampler.set_epoch(epoch)
             # train
             self.model.train()
             for batch_id, batch in enumerate(self.train_dataloader):
-                prompt_ids, p_mask = batch
+                prompt_ids = batch["input_ids"]
+                p_mask = batch["attention_mask"]
                 prompt_ids = prompt_ids.squeeze(1).cuda()
                 p_mask = p_mask.squeeze(1).cuda()
                 prompt_logits = self.model(prompt_ids, attention_mask=p_mask)
@@ -81,7 +83,9 @@ class SFTTrainer(ABC):
             with torch.no_grad():
                 loss_sum = 0
                 num_seen = 0
-                for prompt_ids, p_mask in self.eval_dataloader:
+                for batch in self.eval_dataloader:
+                    prompt_ids = batch["input_ids"]
+                    p_mask = batch["attention_mask"]
                     prompt_ids = prompt_ids.squeeze(1).cuda()
                     p_mask = p_mask.squeeze(1).cuda()
 

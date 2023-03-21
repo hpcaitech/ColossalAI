@@ -3,7 +3,8 @@ import argparse
 import loralib as lora
 import torch
 import torch.distributed as dist
-from chatgpt.dataset import SFTDataset, SFTDistributedDataset
+from torch.utils.data.distributed import DistributedSampler
+from chatgpt.dataset import SFTDataset
 from chatgpt.models.base import RewardModel
 from chatgpt.models.bloom import BLOOMLM
 from chatgpt.models.gpt import GPTLM
@@ -69,20 +70,21 @@ def train(args):
     train_data = load_dataset(args.dataset, 'super_natural_instructions', split='train')
     eval_data = load_dataset(args.dataset, 'super_natural_instructions', split='test')
 
+    train_dataset = SFTDataset(train_data, tokenizer, max_len)
+    eval_dataset = SFTDataset(eval_data, tokenizer, max_len)
+
     if dist.is_initialized() and dist.get_world_size() > 1:
-        train_dataset = SFTDistributedDataset(train_data, tokenizer, max_len, args.batch_size)
-        eval_dataset = SFTDistributedDataset(eval_data, tokenizer, max_len, args.batch_size, partition=False)
-        logger.info("Using SFT Distributed Dataset")
+        sampler = DistributedSampler(train_dataset, shuffle=True, seed=42, drop_last=True)
+        logger.info("Using Distributed Sampler")
     else:
-        train_dataset = SFTDataset(train_data, tokenizer)
-        eval_dataset = SFTDataset(eval_data, tokenizer)
-        logger.info("Using SFT Dataset")
+        sampler = None
 
     trainer = SFTTrainer(model=model,
                          strategy=strategy,
                          optim=optim,
                          train_dataset=train_dataset,
                          eval_dataset=eval_dataset,
+                         sampler=sampler,
                          batch_size=args.batch_size,
                          max_epochs=args.max_epochs)
 
