@@ -50,6 +50,8 @@ _LEGACY_TENSOR_CONSTRUCTOR = {
     'BoolTensor': torch.bool,
 }
 
+_EMPTY_DATA = torch.empty(0)
+
 
 class _MyTensor(Tensor):
     """This class is only for correctness verification.
@@ -119,14 +121,8 @@ class LazyTensor(torch.Tensor):
                 elem = func(*args, **{**kwargs, 'device': 'meta'})
                 meta_data = MetaTensor(elem, fake_device=device)
             elem = meta_data._tensor
-        r = torch.Tensor._make_wrapper_subclass(cls,
-                                                elem.size(),
-                                                strides=elem.stride(),
-                                                storage_offset=elem.storage_offset(),
-                                                dtype=elem.dtype,
-                                                layout=elem.layout,
-                                                device=elem.device,
-                                                requires_grad=elem.requires_grad)
+        # As a meta tensor cannot be modified __class__ to torch.Tensor, we should use an empty real tensor here
+        r = torch.Tensor._make_subclass(cls, _EMPTY_DATA, require_grad=elem.requires_grad)
         r._meta_data = meta_data
         return r
 
@@ -136,25 +132,34 @@ class LazyTensor(torch.Tensor):
         self._materialized_data: Optional[torch.Tensor] = concrete_data    # materialized data
 
     def materialize(self) -> torch.Tensor:
-        """Materialize the ``LazyTensor`` to ``torch.Tensor``.
+        """Materialize the ``LazyTensor`` to ``torch.Tensor`` by modifying __class__ (inplace).
 
         Returns:
-            torch.Tensor: The materialized tensor.
+            torch.Tensor: The materialized tensor (self).
         """
         target = self._materialize_data()
-        if isinstance(self, nn.Parameter):
-            target = nn.Parameter(target, requires_grad=self.requires_grad)
         self.clean()
-        return target
+        cls_to_become = nn.Parameter if isinstance(self, nn.Parameter) else torch.Tensor
+        self.__class__ = cls_to_become
+        self.data = target
+        return self
 
     def distribute(self, layout: Layout) -> torch.Tensor:
+        """Distribute the ``LazyTensor`` to ``torch.Tensor`` by modifying __class__ (inplace), according to the layout.
+
+        Args:
+            layout (Layout): Distribution layout.
+
+        Returns:
+            torch.Tensor: The distributed tensor (self).
+        """
         target = self._materialize_data()
-        local_tensor = DTensor(target, layout).local_tensor
-        self._materialized_data = local_tensor
-        if isinstance(self, nn.Parameter):
-            local_tensor = nn.Parameter(local_tensor, requires_grad=self.requires_grad)
         self.clean()
-        return local_tensor
+        local_tensor = DTensor(target, layout).local_tensor
+        cls_to_become = nn.Parameter if isinstance(self, nn.Parameter) else torch.Tensor
+        self.__class__ = cls_to_become
+        self.data = local_tensor
+        return self
 
     def clean(self) -> None:
         """Clean all stored operations and meta data, which prevents memory leaking. This should be called after all tensors are materialized.
@@ -162,6 +167,7 @@ class LazyTensor(torch.Tensor):
         self._factory_method = None
         self._op_buffer = None
         self._meta_data = None
+        self._materialized_data = None
 
     @staticmethod
     def _replace_with_materialized(x):
@@ -335,7 +341,9 @@ class LazyTensor(torch.Tensor):
             self._op_buffer.append((func, tree_map(replace, args), tree_map(replace, kwargs)))
 
     def tolist(self) -> list:
-        t = self.materialize()
+        # Though self.__class__ is modified to torch.Tensor, in C++ side, it is still a subclass of torch.Tensor
+        # And subclass of torch.Tensor does not have tolist() method
+        t = self._materialize_data()
         return t.tolist()
 
     def __hash__(self):
@@ -497,7 +505,7 @@ class LazyInitContext:
                         non_lazy_numel += param.numel()
                 if isinstance(param, LazyTensor):
                     # TODO(ver217): apex layers cannot be captured
-                    setattr(module, name, param.materialize())
+                    param.materialize()
 
             for name, buf in module.named_buffers(recurse=False):
                 if verbose:
@@ -509,7 +517,7 @@ class LazyInitContext:
                         non_lazy_numel += buf.numel()
                 if isinstance(buf, LazyTensor):
                     # TODO(ver217): apex layers cannot be captured
-                    setattr(module, name, buf.materialize())
+                    buf.materialize()
 
         init_recursively(module)
 
