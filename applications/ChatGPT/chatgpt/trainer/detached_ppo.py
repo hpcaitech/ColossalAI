@@ -57,7 +57,7 @@ class DetachedPPOTrainer(DetachedTrainer):
                  eps_clip: float = 0.2,
                  value_clip: float = 0.4,
                  experience_batch_size: int = 8,
-                 max_epochs: int = 1,
+                 max_epochs: int = 10,
                  dataloader_pin_memory: bool = True,
                  callbacks: List[Callback] = [],
                  **generate_kwargs) -> None:
@@ -98,6 +98,7 @@ class DetachedPPOTrainer(DetachedTrainer):
             self.update_target_holder_list(self.target_holder_name_list)
         for target_holder in self.target_holder_list:
             # TODO: reduce malloc
+            
             with torch.no_grad():
                 target_holder.update_experience_maker.remote(self.actor, self.critic)
 

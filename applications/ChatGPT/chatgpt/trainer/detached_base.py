@@ -41,7 +41,7 @@ class DetachedTrainer(ABC):
                  buffer_limit: int = 0,
                  buffer_cpu_offload: bool = True,
                  experience_batch_size: int = 8,
-                 max_epochs: int = 1,
+                 max_epochs: int = 10,
                  dataloader_pin_memory: bool = True,
                  callbacks: List[Callback] = [],
                  **generate_kwargs)->None:
@@ -88,10 +88,9 @@ class DetachedTrainer(ABC):
             for timestep in tqdm(range(max_timesteps),
                                  desc=f'Episode [{episode+1}/{num_episodes}]',
                                  disable=not is_rank_0()):
-                for _ in range(update_timesteps):
-                    self._learn()
+                self._learn()
                 # assume those remote holders are working
-                # self.update_remote_makers()
+                self.update_remote_makers()
 
             self._on_episode_end(episode)
         self._on_fit_end()

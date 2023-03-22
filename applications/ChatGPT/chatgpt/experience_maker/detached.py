@@ -10,6 +10,7 @@ from chatgpt.trainer.strategies.sampler import DistributedSampler
 from chatgpt.trainer.strategies import Strategy
 from chatgpt.trainer.utils import is_rank_0, get_cuda_actor_critic_from_args
 from copy import deepcopy
+from threading import Lock
 
 @ray.remote
 class ExperienceMakerHolder:
@@ -46,7 +47,10 @@ class ExperienceMakerHolder:
         self.generate_kwargs = generate_kwargs
         for name in detached_trainer_name_list:
             self.target_trainer_list.append(ray.get_actor(name))
-    
+            
+        self.model_visit_lock = Lock()
+
+        
     # copy from ../trainer/base.py
     def _make_experience(self, inputs: Union[Tensor, Dict[str, Tensor]]) -> Experience:
         if isinstance(inputs, Tensor):
@@ -89,9 +93,11 @@ class ExperienceMakerHolder:
                     inputs = tokenizer(rand_prompts)
             else:
                 inputs = rand_prompts
+            self.model_visit_lock.acquire()
             self.make_and_send(inputs)
-        
-    def update_experience_maker(self, new_actor, new_critic):
+            self.model_visit_lock.release()
+
+    def update_experience_maker(self, new_actor: Actor, new_critic: Critic):
         # TODO: parameter update
         '''
         pseudo:
@@ -99,8 +105,13 @@ class ExperienceMakerHolder:
             self.experience_maker.critic.update()
         '''
         # TODO: reduce malloc
+        self.model_visit_lock.acquire()
         with torch.no_grad():
+            print("*******UPDATE*******")
+            # backup = deepcopy(self.experience_maker.critic)
             self.experience_maker.actor = new_actor
             self.experience_maker.critic = new_critic
+            # print(sum((x - y).abs().sum() for x,y in zip(backup.state_dict().values(), self.experience_maker.critic.state_dict().values())))
+        self.model_visit_lock.release()
         pass
         

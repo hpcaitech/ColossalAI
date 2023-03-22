@@ -13,11 +13,7 @@ set_n_least_used_CUDA_VISIBLE_DEVICES() {
     echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 }
 
-set_n_least_used_CUDA_VISIBLE_DEVICES 2
+set_n_least_used_CUDA_VISIBLE_DEVICES 3
 
 torchrun --standalone 1m1t.py "./awesome-chatgpt-prompts/prompts.csv" \
     --strategy naive --lora_rank 2 
-
-# ray job submit --working-dir /home/lccsr/HPC-AI/ColossalAI/applications/ChatGPT/examples -- python 1m1t.py \
-#     "/home/lccsr/HPC-AI/ColossalAI/applications/ChatGPT/examples/awesome-chatgpt-prompts/prompts.csv" \
-#     --strategy naive --lora_rank 2 

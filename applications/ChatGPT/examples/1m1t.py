@@ -56,7 +56,7 @@ def main(args):
         train_batch_size=args.train_batch_size,
         buffer_limit=16,
         experience_batch_size=args.experience_batch_size,
-        max_epoch=args.max_epochs,
+        max_epochs=args.max_epochs,
         #kwargs:
         max_length=128,
         do_sample=True,
@@ -123,9 +123,9 @@ if __name__ == '__main__':
     parser.add_argument('--pretrain', type=str, default=None)
     parser.add_argument('--save_path', type=str, default='actor_checkpoint_prompts.pt')
     parser.add_argument('--need_optim_ckpt', type=bool, default=False)
-    parser.add_argument('--num_episodes', type=int, default=1)
-    parser.add_argument('--max_timesteps', type=int, default=1)
-    parser.add_argument('--update_timesteps', type=int, default=1)
+    parser.add_argument('--num_episodes', type=int, default=10)
+    parser.add_argument('--max_timesteps', type=int, default=10)
+    parser.add_argument('--update_timesteps', type=int, default=10)
     parser.add_argument('--max_epochs', type=int, default=5)
     parser.add_argument('--train_batch_size', type=int, default=8)
     parser.add_argument('--experience_batch_size', type=int, default=8)
