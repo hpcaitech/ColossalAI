@@ -5,7 +5,7 @@ from ..replay_buffer.detached import DetachedReplayBuffer
 import ray
 from torch import Tensor
 import torch.nn as nn
-from chatgpt.models.base import Actor
+from chatgpt.models.base import Actor, Critic
 from chatgpt.trainer.strategies.sampler import DistributedSampler
 
 @ray.remote
@@ -24,7 +24,7 @@ class ExperienceMakerHolder:
     def __init__(self, 
                  detached_trainer_name_list: List[str], 
                  actor: Actor,
-                 critic: nn.Module,
+                 critic: Critic,
                  reward_model: nn.Module,
                  initial_model: Actor,
                  kl_coef: float = 0.1,

@@ -133,7 +133,7 @@ def main(args):
     maker_done_ref = experience_holder_ref.workingloop.remote(sampler, tokenize_fn, times=args.num_episodes * args.max_timesteps * args.update_timesteps + 3)
 
     ray.get([trainer_done_ref, maker_done_ref])
-    trainer_actor, trainer_critic, trainer_actor_optim, trainer_critic_optim = trainer_ref.get_models.remote()
+    (trainer_actor, trainer_critic, trainer_actor_optim, trainer_critic_optim) = trainer_ref.get_models.remote()
     
     # save model checkpoint after fitting
     trainer_ref.strategy_save_model.remote(trainer_actor, args.save_path, only_rank0=True)
@@ -154,15 +154,15 @@ if __name__ == '__main__':
     parser.add_argument('--pretrain', type=str, default=None)
     parser.add_argument('--save_path', type=str, default='actor_checkpoint_prompts.pt')
     parser.add_argument('--need_optim_ckpt', type=bool, default=False)
-    parser.add_argument('--num_episodes', type=int, default=10)
-    parser.add_argument('--max_timesteps', type=int, default=10)
-    parser.add_argument('--update_timesteps', type=int, default=10)
+    parser.add_argument('--num_episodes', type=int, default=1)
+    parser.add_argument('--max_timesteps', type=int, default=1)
+    parser.add_argument('--update_timesteps', type=int, default=1)
     parser.add_argument('--max_epochs', type=int, default=5)
     parser.add_argument('--train_batch_size', type=int, default=8)
     parser.add_argument('--experience_batch_size', type=int, default=8)
     parser.add_argument('--lora_rank', type=int, default=0, help="low-rank adaptation matrices rank")
     
     parser.add_argument('--debug', action='store_true')
-    args = parser.parse_args()
+    args = parser.parse_args() 
     ray.init()
     main(args)

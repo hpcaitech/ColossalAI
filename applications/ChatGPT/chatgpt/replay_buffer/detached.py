@@ -61,7 +61,7 @@ class DetachedReplayBuffer:
         self.items = Queue(self.limit)
         self.worker_state = [False] * self.tp_world_size
         self.batch_collector = []
-    
+     
     @torch.no_grad()
     def sample(self, worker_rank = 0, to_device = "cpu") -> Experience:
         self.worker_state_lock.acquire()

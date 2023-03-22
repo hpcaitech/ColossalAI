@@ -126,7 +126,7 @@ class DetachedPPOTrainer(DetachedTrainer):
         return {'actor_loss': actor_loss.item(), 'critic_loss': critic_loss.item()}
 
     def get_models(self):
-        return self.actor, self.critic, self.actor_optim, self.critic_optim
+        return (self.actor, self.critic, self.actor_optim, self.critic_optim)
 
 def _set_default_generate_kwargs(strategy: Strategy, generate_kwargs: dict, actor: Actor) -> None:
     origin_model = strategy._unwrap_actor(actor)
