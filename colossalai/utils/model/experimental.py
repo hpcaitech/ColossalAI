@@ -76,14 +76,14 @@ class _MyTensor(Tensor):
 
 
 def _convert_cls(tensor: 'LazyTensor', target: torch.Tensor) -> torch.Tensor:
-    """Convert a subclass of torch.Tensor to target class.
+    """Convert a lazy tensor's class to target's class, with target's data.
 
     Args:
-        tensor (LazyTensor): _description_
-        target (torch.Tensor): _description_
+        tensor (LazyTensor): the LazyTensor to be converted
+        target (torch.Tensor): target tensor
 
     Returns:
-        torch.Tensor: _description_
+        torch.Tensor: the converted tensor
     """
     cls_to_become = nn.Parameter if isinstance(tensor, nn.Parameter) else torch.Tensor
     tensor.__class__ = cls_to_become
@@ -178,12 +178,12 @@ class LazyTensor(torch.Tensor):
         return _convert_cls(self, local_tensor)
 
     def clean(self) -> None:
-        """Clean all stored operations and meta data, which prevents memory leaking. This should be called after all tensors are materialized.
+        """Clean all stored operations, meta data and materialized data, which prevents memory leaking. This should be called after all tensors are materialized.
         """
         self._factory_method = None
         self._op_buffer = None
-        self._meta_data = None
         self._materialized_data = None
+        self._meta_data = None
 
     @staticmethod
     def _replace_with_materialized(x):
