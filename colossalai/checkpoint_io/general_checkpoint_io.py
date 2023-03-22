@@ -10,7 +10,8 @@ __all__ = ['GeneralCheckpointIO']
 
 class GeneralCheckpointIO(CheckpointIO):
 
-    def load_model(self, model: nn.Model, checkpoint: str, strict: bool = True):
+    def load_model(self, model: nn.Module, checkpoint: str, strict: bool = True):
+        checkpoint = Path(checkpoint)
         is_sharded = self.is_sharded_checkpoint(checkpoint)
 
         if not is_sharded:
@@ -36,6 +37,7 @@ class GeneralCheckpointIO(CheckpointIO):
                    prefix: str = None,
                    shard: bool = False,
                    size_per_shard: int = 1024):
+        checkpoint = Path(checkpoint)
         if shard:
             # TODO(FrankLeeeee): implement checkpoint saving to sharded checkpoint
             raise NotImplementedError("Not implemented yet")
@@ -43,6 +45,7 @@ class GeneralCheckpointIO(CheckpointIO):
             self.save_checkpoint(model.state_dict(), checkpoint)
 
     def load_optimizer(self, optimizer: Optimizer, checkpoint: str):
+        checkpoint = Path(checkpoint)
         is_sharded = self.is_sharded_checkpoint(checkpoint)
 
         if not is_sharded:

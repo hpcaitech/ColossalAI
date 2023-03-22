@@ -45,7 +45,7 @@ class CheckpointIO(ABC):
     # ======================================
 
     @abstractmethod
-    def load_model(self, model: nn.Model, checkpoint: str, strict: bool = True):
+    def load_model(self, model: nn.Module, checkpoint: str, strict: bool = True):
         """
         Load model from checkpoint.
 
