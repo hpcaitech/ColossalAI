@@ -144,6 +144,7 @@ class LazyTensor(torch.Tensor):
         target = self._materialize_data()
         if isinstance(self, nn.Parameter):
             target = nn.Parameter(target, requires_grad=self.requires_grad)
+        self.clean()
         return target
 
     def distribute(self, layout: Layout) -> torch.Tensor:
@@ -152,14 +153,14 @@ class LazyTensor(torch.Tensor):
         self._materialized_data = local_tensor
         if isinstance(self, nn.Parameter):
             local_tensor = nn.Parameter(local_tensor, requires_grad=self.requires_grad)
+        self.clean()
         return local_tensor
 
     def clean(self) -> None:
-        """Clean all stored operations, meta data and materialized data, which prevents memory leaking. This should be called after all tensors are materialized.
+        """Clean all stored operations and meta data, which prevents memory leaking. This should be called after all tensors are materialized.
         """
         self._factory_method = None
         self._op_buffer = None
-        self._materialized_data = None
         self._meta_data = None
 
     @staticmethod
@@ -473,8 +474,6 @@ class LazyInitContext:
             buf_lazy_cnt = 0
             non_lazy_numel = 0
 
-        # do post cleaning to handle shared parameter
-        visited_lazy_tensors: List[LazyTensor] = []
         # handle shared module
         visited_modules = set()
 
@@ -496,9 +495,8 @@ class LazyInitContext:
                         param_lazy_cnt += 1
                     else:
                         non_lazy_numel += param.numel()
-                if hasattr(param, 'materialize'):
+                if isinstance(param, LazyTensor):
                     # TODO(ver217): apex layers cannot be captured
-                    visited_lazy_tensors.append(param)
                     setattr(module, name, param.materialize())
 
             for name, buf in module.named_buffers(recurse=False):
@@ -509,15 +507,11 @@ class LazyInitContext:
                         buf_lazy_cnt += 1
                     else:
                         non_lazy_numel += buf.numel()
-                if hasattr(buf, 'materialize'):
+                if isinstance(buf, LazyTensor):
                     # TODO(ver217): apex layers cannot be captured
-                    visited_lazy_tensors.append(buf)
                     setattr(module, name, buf.materialize())
 
         init_recursively(module)
-
-        for t in visited_lazy_tensors:
-            t.clean()
 
         if verbose:
             print(f'Param lazy rate: {param_lazy_cnt}/{param_cnt}')
