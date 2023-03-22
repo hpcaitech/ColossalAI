@@ -20,6 +20,7 @@ import ray
 
 # TODO: update maker actor/critic
 
+
 def main(args):
     # configure strategy
     if args.strategy == 'naive':
@@ -33,36 +34,6 @@ def main(args):
     else:
         raise ValueError(f'Unsupported strategy "{args.strategy}"')
 
-    # configure model / optimizer
-    with strategy.model_init_context():
-        if args.model == 'gpt2':
-            actor = GPTActor(pretrained=args.pretrain, lora_rank=args.lora_rank).to(torch.cuda.current_device())
-            critic = GPTCritic(pretrained=args.pretrain, lora_rank=args.lora_rank).to(torch.cuda.current_device())
-        elif args.model == 'bloom':
-            actor = BLOOMActor(pretrained=args.pretrain, lora_rank=args.lora_rank).to(torch.cuda.current_device())
-            critic = BLOOMCritic(pretrained=args.pretrain, lora_rank=args.lora_rank).to(torch.cuda.current_device())
-        elif args.model == 'opt':
-            actor = OPTActor(pretrained=args.pretrain, lora_rank=args.lora_rank).to(torch.cuda.current_device())
-            critic = OPTCritic(pretrained=args.pretrain, lora_rank=args.lora_rank).to(torch.cuda.current_device())
-        else:
-            raise ValueError(f'Unsupported model "{args.model}"')
-
-    initial_model = deepcopy(actor)
-    reward_model = RewardModel(deepcopy(critic.model), deepcopy(critic.value_head)).to(torch.cuda.current_device())
-
-    if args.strategy.startswith('colossalai'):
-        actor_optim = HybridAdam(actor.parameters(), lr=5e-6)
-        critic_optim = HybridAdam(critic.parameters(), lr=5e-6)
-    else:
-        actor_optim = Adam(actor.parameters(), lr=5e-6)
-        critic_optim = Adam(critic.parameters(), lr=5e-6)
-
-    (actor, actor_optim), (critic, critic_optim), reward_model, initial_model = strategy.prepare(
-        (actor, actor_optim), (critic, critic_optim), reward_model, initial_model)
-
-    actor_maker = deepcopy(actor)
-    critic_maker = deepcopy(critic)
-
     # configure tokenizer
     if args.model == 'gpt2':
         tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
@@ -75,28 +46,17 @@ def main(args):
     else:
         raise ValueError(f'Unsupported model "{args.model}"')
 
-    def tokenize_fn(texts):
-        # MUST padding to max length to ensure inputs of all ranks have the same length
-        # Different length may lead to hang when using gemini, as different generation steps
-        batch = tokenizer(texts, return_tensors='pt', max_length=96, padding='max_length', truncation=True)
-        return {k: v.cuda() for k, v in batch.items()}
-    
-    # configure sampler
-    dataset = pd.read_csv(args.prompt_path)['prompt']
-    sampler = strategy.setup_sampler(dataset)
-
-    # configure Ray Actor
+    # configure Trainer
     trainer_ref = DetachedPPOTrainer.options(name="trainer1", num_gpus=1, max_concurrency=3).remote(
-        experience_maker_holder_name_list= ["maker1"],
-        strategy = strategy,
-        actor = actor,
-        critic = critic,
-        actor_optim = actor_optim,
-        critic_optim = critic_optim,
+        experience_maker_holder_name_list=["maker1"],
+        strategy=strategy,
+        model=args.model,
+        pretrained=args.pretrain,
+        lora_rank=args.lora_rank,
         train_batch_size=args.train_batch_size,
-        buffer_limit = 16,
-        experience_batch_size = args.experience_batch_size,
-        max_epoch = args.max_epochs,
+        buffer_limit=16,
+        experience_batch_size=args.experience_batch_size,
+        max_epoch=args.max_epochs,
         #kwargs:
         max_length=128,
         do_sample=True,
@@ -105,14 +65,22 @@ def main(args):
         pad_token_id=tokenizer.pad_token_id,
         eos_token_id=tokenizer.eos_token_id,
         debug=args.debug,
-        )
-    
+    )
+
+    def tokenize_fn(texts):
+        # MUST padding to max length to ensure inputs of all ranks have the same length
+        # Different length may lead to hang when using gemini, as different generation steps
+        batch = tokenizer(texts, return_tensors='pt', max_length=96, padding='max_length', truncation=True)
+        return {k: v.cuda() for k, v in batch.items()}
+
+    # configure Experience Maker
     experience_holder_ref = ExperienceMakerHolder.options(name="maker1", num_gpus=1, max_concurrency=2).remote(
-        ["trainer1"],
-        actor_maker,
-        critic_maker,
-        reward_model,
-        initial_model,
+        detached_trainer_name_list=["trainer1"],
+        strategy=strategy,
+        model=args.model,
+        pretrained=args.pretrain,
+        lora_rank=args.lora_rank,
+        kl_coef=0.1,
         experience_batch_size=args.experience_batch_size,
         #kwargs:
         max_length=128,
@@ -122,26 +90,27 @@ def main(args):
         pad_token_id=tokenizer.pad_token_id,
         eos_token_id=tokenizer.eos_token_id,
         debug=args.debug,
-        )
-    
+    )
+
+    # configure sampler
+    dataset = pd.read_csv(args.prompt_path)['prompt']
+    sampler = strategy.setup_sampler(dataset)
+
     print("waiting for trainer...")
     ray.get(trainer_ref.ready.remote())
     print("...ready")
 
     trainer_done_ref = trainer_ref.fit.remote(num_episodes=args.num_episodes, max_timesteps=args.max_timesteps, update_timesteps=args.update_timesteps)
-
     maker_done_ref = experience_holder_ref.workingloop.remote(sampler, tokenize_fn, times=args.num_episodes * args.max_timesteps * args.update_timesteps + 3)
 
     ray.get([trainer_done_ref, maker_done_ref])
-    (trainer_actor, trainer_critic, trainer_actor_optim, trainer_critic_optim) = trainer_ref.get_models.remote()
-    
+
     # save model checkpoint after fitting
-    trainer_ref.strategy_save_model.remote(trainer_actor, args.save_path, only_rank0=True)
+    trainer_ref.strategy_save_actor.remote(args.save_path, only_rank0=True)
     # save optimizer checkpoint on all ranks
     if args.need_optim_ckpt:
-        trainer_ref.strategy_save_optimizer.remote(trainer_actor_optim, 
-                                               'actor_optim_checkpoint_prompts_%d.pt' % (torch.cuda.current_device()),
-                                               only_rank0=False)
+        trainer_ref.strategy_save_actor_optim.remote('actor_optim_checkpoint_prompts_%d.pt' % (torch.cuda.current_device()),
+                                                     only_rank0=False)
 
 
 if __name__ == '__main__':
@@ -161,8 +130,8 @@ if __name__ == '__main__':
     parser.add_argument('--train_batch_size', type=int, default=8)
     parser.add_argument('--experience_batch_size', type=int, default=8)
     parser.add_argument('--lora_rank', type=int, default=0, help="low-rank adaptation matrices rank")
-    
+
     parser.add_argument('--debug', action='store_true')
-    args = parser.parse_args() 
+    args = parser.parse_args()
     ray.init()
     main(args)

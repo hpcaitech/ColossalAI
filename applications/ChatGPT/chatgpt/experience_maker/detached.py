@@ -5,32 +5,41 @@ from ..replay_buffer.detached import DetachedReplayBuffer
 import ray
 from torch import Tensor
 import torch.nn as nn
-from chatgpt.models.base import Actor, Critic
+from chatgpt.models.base import Actor, Critic, RewardModel
 from chatgpt.trainer.strategies.sampler import DistributedSampler
+from chatgpt.trainer.strategies import Strategy
+from chatgpt.trainer.utils import is_rank_0, get_cuda_actor_critic_from_args
+from copy import deepcopy
 
 @ray.remote
 class ExperienceMakerHolder:
     '''
     Args:
         detached_trainer_name_list: str list to get ray actor handles
-        actor: \
-        critic: \
-        reward_model: \
-        initial_model: \
+        model:       for actor / critic / initial / reward init
+        pretrained:  for actor / critic / initial / reward init
+        lora_rank:   for actor / critic / initial / reward init
         kl_coef:                 NaiveExperienceMaker init
         experience_batch_size: batch size of generated experience
     '''
 
-    def __init__(self, 
+    def __init__(self,
                  detached_trainer_name_list: List[str], 
-                 actor: Actor,
-                 critic: Critic,
-                 reward_model: nn.Module,
-                 initial_model: Actor,
+                 strategy: Strategy,
+                 model: str,
+                 pretrained: str = None,
+                 lora_rank: int = 0,
                  kl_coef: float = 0.1,
                  experience_batch_size:int = 8,
                  **generate_kwargs):
-        
+
+        with strategy.model_init_context():
+            actor, critic = get_cuda_actor_critic_from_args(model, pretrained, lora_rank)
+            initial_model = deepcopy(actor)
+            reward_model = RewardModel(deepcopy(critic.model), deepcopy(critic.value_head)).to(torch.cuda.current_device())
+
+        actor, critic, reward_model, initial_model= \
+            strategy.prepare(actor, critic, reward_model, initial_model)
         self.experience_maker = NaiveExperienceMaker(actor, critic, reward_model, initial_model,kl_coef)
         self.target_trainer_list = []
         self.experience_batch_size = experience_batch_size

@@ -3,18 +3,22 @@ import time
 
 import torch
 import torch.nn as nn
+from torch.optim import Optimizer
+from torch.optim import Adam
+
 from chatgpt.experience_maker import Experience, NaiveExperienceMaker
 from chatgpt.models.base import Actor, Critic
 from chatgpt.models.generation_utils import update_model_kwargs_fn
 from chatgpt.models.loss import PolicyLoss, ValueLoss
 from chatgpt.replay_buffer import DetachedReplayBuffer
-from torch.optim import Optimizer
+from chatgpt.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
+
+from colossalai.nn.optimizer import HybridAdam
 
 from .detached_base import DetachedTrainer
 from .callbacks import Callback
 from .strategies import Strategy
-
-from .utils import is_rank_0
+from .utils import is_rank_0, get_cuda_actor_critic_from_args
 
 import ray
 
@@ -25,10 +29,9 @@ class DetachedPPOTrainer(DetachedTrainer):
         Detached Trainer for PPO algorithm
     Args:
         strategy (Strategy): the strategy to use for training
-        actor (Actor): the actor model in ppo algorithm
-        critic (Critic): the critic model in ppo algorithm
-        actor_optim (Optimizer): the optimizer to use for actor model
-        critic_optim (Optimizer): the optimizer to use for critic model
+        model (str) : for actor / critic init
+        pretrained (str) : for actor / critic init
+        lora_rank (int) : for actor / critic init
         train_batch_size (int, defaults to 8): the batch size to use for training
         train_batch_size (int, defaults to 8): the batch size to use for training
         buffer_limit (int, defaults to 0): the max_size limitaiton of replay buffer
@@ -41,43 +44,52 @@ class DetachedPPOTrainer(DetachedTrainer):
         callbacks (List[Callback], defaults to []): the callbacks to call during training process
         generate_kwargs (dict, optional): the kwargs to use while model generating
     '''
-    
-    def __init__(self, 
-                experience_maker_holder_name_list: List[str],
-                strategy: Strategy,
-                actor: Actor,
-                critic: Critic,
-                actor_optim: Optimizer,
-                critic_optim: Optimizer,
-                train_batch_size: int = 8,
-                buffer_limit: int = 0,
-                buffer_cpu_offload: bool = True,
-                eps_clip: float = 0.2,
-                value_clip: float = 0.4,
-                experience_batch_size: int = 8,
-                max_epochs: int = 1,
-                dataloader_pin_memory: bool = True,
-                callbacks: List[Callback] = [],
-                **generate_kwargs) -> None:
+
+    def __init__(self,
+                 experience_maker_holder_name_list: List[str],
+                 strategy: Strategy,
+                 model: str,
+                 pretrained: str = None,
+                 lora_rank: int = 0,
+                 train_batch_size: int = 8,
+                 buffer_limit: int = 0,
+                 buffer_cpu_offload: bool = True,
+                 eps_clip: float = 0.2,
+                 value_clip: float = 0.4,
+                 experience_batch_size: int = 8,
+                 max_epochs: int = 1,
+                 dataloader_pin_memory: bool = True,
+                 callbacks: List[Callback] = [],
+                 **generate_kwargs) -> None:
         self.fully_initialized = False
-        generate_kwargs = _set_default_generate_kwargs(strategy, generate_kwargs, actor)
-        self.actor = actor
-        self.critic = critic
+        
+        self.strategy = strategy
+        # configure models, loss and optimizers
+        with self.strategy.model_init_context():
+            self.actor, self.critic = get_cuda_actor_critic_from_args(model, pretrained, lora_rank)
         self.actor_loss_fn = PolicyLoss(eps_clip)
         self.critic_loss_fn = ValueLoss(value_clip)
-        self.actor_optim = actor_optim
-        self.critic_optim = critic_optim
-        super().__init__(experience_maker_holder_name_list, 
-                         strategy = strategy,
+        if isinstance(self.strategy, ColossalAIStrategy):
+            self.actor_optim = HybridAdam(self.actor.parameters(), lr=5e-6)
+            self.critic_optim = HybridAdam(self.critic.parameters(), lr=5e-6)
+        else:
+            self.actor_optim = Adam(self.actor.parameters(), lr=5e-6)
+            self.critic_optim = Adam(self.critic.parameters(), lr=5e-6)
+        (self.actor, self.actor_optim), (self.critic, self.critic_optim) = \
+            self.strategy.prepare((self.actor, self.actor_optim), (self.critic, self.critic_optim))
+
+        generate_kwargs = _set_default_generate_kwargs(strategy, generate_kwargs, self.actor)
+        
+        super().__init__(experience_maker_holder_name_list,
+                         strategy=strategy,
                          train_batch_size=train_batch_size,
                          buffer_limit=buffer_limit,
                          buffer_cpu_offload=buffer_cpu_offload,
-                         experience_batch_size = experience_batch_size,
-                         max_epochs = max_epochs,
-                         dataloader_pin_memory = dataloader_pin_memory,
-                         callbacks = callbacks,
+                         experience_batch_size=experience_batch_size,
+                         max_epochs=max_epochs,
+                         dataloader_pin_memory=dataloader_pin_memory,
+                         callbacks=callbacks,
                          generate_kwargs=generate_kwargs)
-
         self.fully_initialized = True
 
     def update_remote_makers(self):
@@ -98,9 +110,9 @@ class DetachedPPOTrainer(DetachedTrainer):
     def training_step(self, experience: Experience) -> Dict[str, float]:
         self.actor.train()
         self.critic.train()
-        
+
         experience.to_device(torch.cuda.current_device())
-        
+
         num_actions = experience.action_mask.size(1)
         action_log_probs = self.actor(experience.sequences, num_actions, attention_mask=experience.attention_mask)
         actor_loss = self.actor_loss_fn(action_log_probs,
@@ -110,7 +122,7 @@ class DetachedPPOTrainer(DetachedTrainer):
         self.strategy.backward(actor_loss, self.actor, self.actor_optim)
         self.strategy.optimizer_step(self.actor_optim)
         self.actor_optim.zero_grad()
-        
+
         values = self.critic(experience.sequences,
                              action_mask=experience.action_mask,
                              attention_mask=experience.attention_mask)
@@ -118,15 +130,30 @@ class DetachedPPOTrainer(DetachedTrainer):
                                           experience.values,
                                           experience.reward,
                                           action_mask=experience.action_mask)
-        
+
         self.strategy.backward(critic_loss, self.critic, self.critic_optim)
         self.strategy.optimizer_step(self.critic_optim)
         self.critic_optim.zero_grad()
-        
+
         return {'actor_loss': actor_loss.item(), 'critic_loss': critic_loss.item()}
 
-    def get_models(self):
-        return (self.actor, self.critic, self.actor_optim, self.critic_optim)
+    def strategy_save_actor(self, path: str, only_rank0: bool = False) -> None:
+        self.strategy.save_model(self.actor, path, only_rank0)
+
+    def strategy_save_critic(self, path: str, only_rank0: bool = False) -> None:
+        self.strategy.save_model(self.critic, path, only_rank0)
+
+    def strategy_save_actor_optim(self, path: str, only_rank0: bool = False) -> None:
+        self.strategy.save_optimizer(self.actor_optim, path, only_rank0)
+
+    def strategy_save_critic_optim(self, path: str, only_rank0: bool = False) -> None:
+        self.strategy.save_optimizer(self.critic_optim, path, only_rank0)
+
+    def get_actor(self):
+        return self.actor
+    
+    def get_critic(self):
+        return self.critic
 
 def _set_default_generate_kwargs(strategy: Strategy, generate_kwargs: dict, actor: Actor) -> None:
     origin_model = strategy._unwrap_actor(actor)

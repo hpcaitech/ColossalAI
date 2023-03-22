@@ -108,12 +108,6 @@ class DetachedTrainer(ABC):
             print("[trainer] receiving exp")
         self.detached_replay_buffer.append(experience)
 
-    def strategy_save_model(self, model: nn.Module, path: str, only_rank0: bool = False) -> None:
-        self.strategy.save_model(model, path, only_rank0)
-
-    def strategy_save_potimizer(self, optimizer: Optimizer, path: str, only_rank0: bool = False) -> None:
-        self.strategy.save_optimizer(optimizer, path, only_rank0)
-
     def _on_fit_start(self) -> None:
         for callback in self.callbacks:
             callback.on_fit_start()
