@@ -9,6 +9,7 @@ from torch.utils._pytree import tree_map
 from colossalai.fx.profiler.tensor import MetaTensor
 from colossalai.tensor.d_tensor.d_tensor import DTensor
 from colossalai.tensor.d_tensor.layout import Layout
+from colossalai.utils.common import print_rank_0
 
 # reference: https://pytorch.org/cppdocs/notes/tensor_creation.html
 _NORMAL_FACTORY = [
@@ -483,11 +484,11 @@ class LazyInitContext:
             setattr(torch, name, orig)
 
     @staticmethod
-    def materialize(module: torch.nn.Module, verbose: bool = False) -> nn.Module:
+    def materialize(module: nn.Module, verbose: bool = False) -> nn.Module:
         """Initialize all ``nn.Parameter`` from ``LazyTensor``. This function will modify the module in-place.
 
         Args:
-            module (torch.nn.Module): Target ``nn.Module``
+            module (nn.Module): Target ``nn.Module``
             verbose (bool): Whether to print lazy initialization rate. Defaults to False.
         """
         if verbose:
@@ -526,6 +527,57 @@ class LazyInitContext:
             print(f'Param lazy rate: {param_lazy_cnt}/{param_cnt}')
             print(f'Buffer lazy rate: {buf_lazy_cnt}/{buf_cnt}')
             print(f'Non lazy numel: {non_lazy_numel} ({non_lazy_numel/1024**2:.3f} M), ratio: {non_lazy_numel_ratio}%')
+
+        return module
+
+    @staticmethod
+    def distribute(module: nn.Module, layout_dict: dict, verbose: bool = False) -> nn.Module:
+        """Distribute all ``nn.Parameter`` from ``LazyTensor``. This function will modify the module in-place.
+
+        Args:
+            module (nn.Module): Target ``nn.Module``
+            layout_dict (dict): Dict of layout for each parameter/buffer. The key is the parameter/buffer name, and the value is the layout.
+            verbose (bool, optional): Whether to print lazy initialization rate. Defaults to False.
+        """
+        if verbose:
+            # verbose info
+            param_cnt = 0
+            param_lazy_cnt = 0
+            buf_cnt = 0
+            buf_lazy_cnt = 0
+            total_numel = 0
+            non_lazy_numel = 0
+
+        for name, p in module.named_parameters():
+            if verbose:
+                param_cnt += 1
+                total_numel += p.numel()
+                if getattr(p, '_materialized_data', False) is None:
+                    # if no _materialized_data attr, the tensor is not lazy
+                    param_lazy_cnt += 1
+                else:
+                    non_lazy_numel += p.numel()
+            if isinstance(p, LazyTensor):
+                p.distribute(layout_dict[name])
+
+        for name, buf in module.named_buffers():
+            if verbose:
+                buf_cnt += 1
+                total_numel += buf.numel()
+                if getattr(buf, "_materialized_data", False) is None:
+                    # if no _materialized_data attr, the tensor is not lazy
+                    buf_lazy_cnt += 1
+                else:
+                    non_lazy_numel += buf.numel()
+            if isinstance(buf, LazyTensor):
+                buf.distribute(layout_dict[name])
+
+        if verbose:
+            non_lazy_numel_ratio = non_lazy_numel / total_numel * 100 if non_lazy_numel != 0 else 0
+            print_rank_0(f'Param lazy rate: {param_lazy_cnt}/{param_cnt}')
+            print_rank_0(f'Buffer lazy rate: {buf_lazy_cnt}/{buf_cnt}')
+            print_rank_0(
+                f'Non lazy numel: {non_lazy_numel} ({non_lazy_numel/1024**2:.3f} M), ratio: {non_lazy_numel_ratio}%')
 
         return module
 
