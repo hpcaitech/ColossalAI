@@ -1,7 +1,8 @@
 from types import MethodType
-from typing import Callable, List, Optional, Union
+from typing import Callable, Optional, Union
 
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 from torch import Tensor
 from torch.utils._pytree import tree_map
@@ -9,7 +10,6 @@ from torch.utils._pytree import tree_map
 from colossalai.fx.profiler.tensor import MetaTensor
 from colossalai.tensor.d_tensor.d_tensor import DTensor
 from colossalai.tensor.d_tensor.layout import Layout
-from colossalai.utils.common import print_rank_0
 
 # reference: https://pytorch.org/cppdocs/notes/tensor_creation.html
 _NORMAL_FACTORY = [
@@ -491,44 +491,11 @@ class LazyInitContext:
             module (nn.Module): Target ``nn.Module``
             verbose (bool): Whether to print lazy initialization rate. Defaults to False.
         """
-        if verbose:
-            # verbose info
-            param_cnt = 0
-            param_lazy_cnt = 0
-            buf_cnt = 0
-            buf_lazy_cnt = 0
-            total_numel = 0
-            non_lazy_numel = 0
 
-        for name, p in module.named_parameters():
-            param_cnt += 1
-            total_numel += p.numel()
-            if getattr(p, '_materialized_data', False) is None:
-                # if no _materialized_data attr, the tensor is not lazy
-                param_lazy_cnt += 1
-            else:
-                non_lazy_numel += p.numel()
-            if isinstance(p, LazyTensor):
-                p.materialize()
+        def apply_fn(name: str, p: LazyTensor):
+            p.materialize()
 
-        for name, buf in module.named_buffers():
-            buf_cnt += 1
-            total_numel += buf.numel()
-            if getattr(buf, "_materialized_data", False) is None:
-                # if no _materialized_data attr, the tensor is not lazy
-                buf_lazy_cnt += 1
-            else:
-                non_lazy_numel += buf.numel()
-            if isinstance(buf, LazyTensor):
-                buf.materialize()
-
-        if verbose:
-            non_lazy_numel_ratio = non_lazy_numel / total_numel * 100 if non_lazy_numel != 0 else 0
-            print(f'Param lazy rate: {param_lazy_cnt}/{param_cnt}')
-            print(f'Buffer lazy rate: {buf_lazy_cnt}/{buf_cnt}')
-            print(f'Non lazy numel: {non_lazy_numel} ({non_lazy_numel/1024**2:.3f} M), ratio: {non_lazy_numel_ratio}%')
-
-        return module
+        return _apply_to_lazy_module(module, apply_fn, verbose)
 
     @staticmethod
     def distribute(module: nn.Module, layout_dict: dict, verbose: bool = False) -> nn.Module:
@@ -539,47 +506,62 @@ class LazyInitContext:
             layout_dict (dict): Dict of layout for each parameter/buffer. The key is the parameter/buffer name, and the value is the layout.
             verbose (bool, optional): Whether to print lazy initialization rate. Defaults to False.
         """
+
+        def apply_fn(name: str, p: LazyTensor):
+            p.distribute(layout_dict[name])
+
+        return _apply_to_lazy_module(module, apply_fn, verbose)
+
+
+def _apply_to_lazy_module(module: nn.Module,
+                          apply_fn: Callable[[str, torch.Tensor], None],
+                          verbose: bool = False) -> nn.Module:
+    if verbose:
+        # verbose info
+        param_cnt = 0
+        param_lazy_cnt = 0
+        buf_cnt = 0
+        buf_lazy_cnt = 0
+        total_numel = 0
+        non_lazy_numel = 0
+
+    for name, p in module.named_parameters():
         if verbose:
-            # verbose info
-            param_cnt = 0
-            param_lazy_cnt = 0
-            buf_cnt = 0
-            buf_lazy_cnt = 0
-            total_numel = 0
-            non_lazy_numel = 0
+            param_cnt += 1
+            total_numel += p.numel()
+            if getattr(p, '_materialized_data', False) is None:
+                # if no _materialized_data attr, the tensor is not lazy
+                param_lazy_cnt += 1
+            else:
+                non_lazy_numel += p.numel()
+        if isinstance(p, LazyTensor):
+            apply_fn(name, p)
 
-        for name, p in module.named_parameters():
-            if verbose:
-                param_cnt += 1
-                total_numel += p.numel()
-                if getattr(p, '_materialized_data', False) is None:
-                    # if no _materialized_data attr, the tensor is not lazy
-                    param_lazy_cnt += 1
-                else:
-                    non_lazy_numel += p.numel()
-            if isinstance(p, LazyTensor):
-                p.distribute(layout_dict[name])
-
-        for name, buf in module.named_buffers():
-            if verbose:
-                buf_cnt += 1
-                total_numel += buf.numel()
-                if getattr(buf, "_materialized_data", False) is None:
-                    # if no _materialized_data attr, the tensor is not lazy
-                    buf_lazy_cnt += 1
-                else:
-                    non_lazy_numel += buf.numel()
-            if isinstance(buf, LazyTensor):
-                buf.distribute(layout_dict[name])
-
+    for name, buf in module.named_buffers():
         if verbose:
-            non_lazy_numel_ratio = non_lazy_numel / total_numel * 100 if non_lazy_numel != 0 else 0
-            print_rank_0(f'Param lazy rate: {param_lazy_cnt}/{param_cnt}')
-            print_rank_0(f'Buffer lazy rate: {buf_lazy_cnt}/{buf_cnt}')
-            print_rank_0(
-                f'Non lazy numel: {non_lazy_numel} ({non_lazy_numel/1024**2:.3f} M), ratio: {non_lazy_numel_ratio}%')
+            buf_cnt += 1
+            total_numel += buf.numel()
+            if getattr(buf, "_materialized_data", False) is None:
+                # if no _materialized_data attr, the tensor is not lazy
+                buf_lazy_cnt += 1
+            else:
+                non_lazy_numel += buf.numel()
+        if isinstance(buf, LazyTensor):
+            apply_fn(name, buf)
 
-        return module
+    if verbose:
+        non_lazy_numel_ratio = non_lazy_numel / total_numel * 100 if non_lazy_numel != 0 else 0
+        _print_rank_0(f'Param lazy rate: {param_lazy_cnt}/{param_cnt}')
+        _print_rank_0(f'Buffer lazy rate: {buf_lazy_cnt}/{buf_cnt}')
+        _print_rank_0(
+            f'Non lazy numel: {non_lazy_numel} ({non_lazy_numel/1024**2:.3f} M), ratio: {non_lazy_numel_ratio}%')
+
+    return module
+
+
+def _print_rank_0(*args, **kwargs):
+    if not dist.is_initialized() or dist.get_rank() == 0:
+        print(*args, **kwargs)
 
 
 def _is_int_tuple(args) -> bool:
