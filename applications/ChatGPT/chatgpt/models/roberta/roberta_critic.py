@@ -27,7 +27,7 @@ class RoBERTaCritic(Critic):
                  lora_train_bias: str = 'none',
                  **kwargs) -> None:
         if pretrained is not None:
-            model = RobertaModel.from_pretrained(pretrained, add_pooling_layer = False)
+            model = RobertaModel.from_pretrained(pretrained)
         elif config is not None:
             model = RobertaModel(config)
         else:

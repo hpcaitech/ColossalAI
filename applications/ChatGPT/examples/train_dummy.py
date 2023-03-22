@@ -75,6 +75,7 @@ def main(args):
         tokenizer = AutoTokenizer.from_pretrained("facebook/opt-350m")
     elif args.model == 'roberta':
         tokenizer = RobertaTokenizer.from_pretrained("roberta-base")
+        tokenizer.pad_token = tokenizer.eos_token
     else:
         raise ValueError(f'Unsupported model "{args.model}"')
 
