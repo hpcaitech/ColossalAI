@@ -78,6 +78,8 @@ def assert_dist_model_equal(model: torch.nn.Module, distributed_model: torch.nn.
 
     for (n1, t1), (n2, t2) in zip(state.items(), distributed_state.items()):
         assert n1 == n2
+        t1 = t1.cuda()
+        t2 = t2.cuda()
         if n2 in layout_dict:
             t2 = to_global(t2, layout_dict[n2])
         assert torch.equal(t1, t2), f'{n1} {t1} vs {t2}'
