@@ -1,6 +1,6 @@
 import torch
 
-from colossalai.fx import symbolic_trace
+from colossalai._analyzer.fx import symbolic_trace
 
 
 def trace_and_compare(model, data_gen, output_transform_fn, need_meta=False, need_concrete=False):

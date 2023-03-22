@@ -20,7 +20,7 @@ def union(a, b):
     return {**a, **b}
 
 
-def compute_size_in_bytes(elem: torch.Tensor | Dict | List | Tuple | int) -> int:
+def compute_size_in_bytes(elem: Union[torch.Tensor, Dict, List, Tuple, int]) -> int:
     """Compute the size of a tensor or a collection of tensors in bytes.
 
     Args:
@@ -195,8 +195,8 @@ class MetaInfo:
             s += f'\n\thas buffer of size {_format_memory(self.buffer_size)}'
         if self.output_size:
             s += f'\n\thas output activation of size {_format_memory(self.output_size)}'
-        if self.total_size:
-            s += f'\n\thas total activation of size {_format_memory(self.total_size)}'
+        # if self.total_size:
+        #     s += f'\n\thas total activation of size {_format_memory(self.total_size)}'
         if self.temp_size:
             s += f'\n\thas temp activation of size {_format_memory(self.temp_size)}'
         if self.backward_size:
