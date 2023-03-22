@@ -468,63 +468,50 @@ class LazyInitContext:
             setattr(torch, name, orig)
 
     @staticmethod
-    def materialize(module: torch.nn.Module, verbose: bool = False):
-        """Initialize all ``nn.Parameter`` from ``LazyTensor``.
+    def materialize(module: torch.nn.Module, verbose: bool = False) -> nn.Module:
+        """Initialize all ``nn.Parameter`` from ``LazyTensor``. This function will modify the module in-place.
 
         Args:
             module (torch.nn.Module): Target ``nn.Module``
             verbose (bool): Whether to print lazy initialization rate. Defaults to False.
         """
         if verbose:
+            # verbose info
             param_cnt = 0
             param_lazy_cnt = 0
             buf_cnt = 0
             buf_lazy_cnt = 0
+            total_numel = 0
             non_lazy_numel = 0
 
-        # handle shared module
-        visited_modules = set()
+        for name, p in module.named_parameters():
+            param_cnt += 1
+            total_numel += p.numel()
+            if getattr(p, '_materialized_data', False) is None:
+                # if no _materialized_data attr, the tensor is not lazy
+                param_lazy_cnt += 1
+            else:
+                non_lazy_numel += p.numel()
+            if isinstance(p, LazyTensor):
+                p.materialize()
 
-        @torch.no_grad()
-        def init_recursively(module: nn.Module):
-            nonlocal param_cnt, param_lazy_cnt, buf_cnt, buf_lazy_cnt, non_lazy_numel
-            # recursively initialize the module
-            for mod in module.children():
-                if id(mod) not in visited_modules:
-                    visited_modules.add(id(mod))
-                    init_recursively(mod)
-
-            # initialize tensors directly attached to the current module
-            for name, param in module.named_parameters(recurse=False):
-                if verbose:
-                    param_cnt += 1
-                    if getattr(param, '_materialized_data', False) is None:
-                        # if no _materialized_data attr, the tensor is not lazy
-                        param_lazy_cnt += 1
-                    else:
-                        non_lazy_numel += param.numel()
-                if isinstance(param, LazyTensor):
-                    # TODO(ver217): apex layers cannot be captured
-                    param.materialize()
-
-            for name, buf in module.named_buffers(recurse=False):
-                if verbose:
-                    buf_cnt += 1
-                    if getattr(buf, "_materialized_data", False) is None:
-                        # if no _materialized_data attr, the tensor is not lazy
-                        buf_lazy_cnt += 1
-                    else:
-                        non_lazy_numel += buf.numel()
-                if isinstance(buf, LazyTensor):
-                    # TODO(ver217): apex layers cannot be captured
-                    buf.materialize()
-
-        init_recursively(module)
+        for name, buf in module.named_buffers():
+            buf_cnt += 1
+            total_numel += buf.numel()
+            if getattr(buf, "_materialized_data", False) is None:
+                # if no _materialized_data attr, the tensor is not lazy
+                buf_lazy_cnt += 1
+            else:
+                non_lazy_numel += buf.numel()
+            if isinstance(buf, LazyTensor):
+                buf.materialize()
 
         if verbose:
+            non_lazy_numel_ratio = non_lazy_numel / total_numel * 100 if non_lazy_numel != 0 else 0
             print(f'Param lazy rate: {param_lazy_cnt}/{param_cnt}')
             print(f'Buffer lazy rate: {buf_lazy_cnt}/{buf_cnt}')
-            print(f'Non-lazy numel: {non_lazy_numel} ({non_lazy_numel/1024**2:.3f} M)')
+            print(f'Non lazy numel: {non_lazy_numel} ({non_lazy_numel/1024**2:.3f} M), ratio: {non_lazy_numel_ratio}%')
+
         return module
 
 
