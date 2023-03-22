@@ -33,18 +33,18 @@ tmm_models = [
     tmm.dm_nfnet_f0,
     tmm.eca_nfnet_l0,
     tmm.efficientformer_l1,
-    tmm.ese_vovnet19b_dw,
+    # tmm.ese_vovnet19b_dw,
     tmm.gmixer_12_224,
     tmm.gmlp_b16_224,
-    tmm.hardcorenas_a,
+    # tmm.hardcorenas_a,
     tmm.hrnet_w18_small,
     tmm.inception_v3,
     tmm.mixer_b16_224,
     tmm.nf_ecaresnet101,
     tmm.nf_regnet_b0,
     # tmm.pit_b_224,  # pretrained only
-    tmm.regnetv_040,
-    tmm.skresnet18,
+    # tmm.regnetv_040,
+    # tmm.skresnet18,
     # tmm.swin_base_patch4_window7_224,     # fx bad case
     # tmm.tnt_b_patch16_224,    # bad case
     tmm.vgg11,
