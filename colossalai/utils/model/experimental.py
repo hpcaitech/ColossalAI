@@ -78,6 +78,9 @@ class _MyTensor(Tensor):
 def _convert_cls(tensor: 'LazyTensor', target: torch.Tensor) -> torch.Tensor:
     """Convert a lazy tensor's class to target's class, with target's data.
 
+    The reason why we change the class of a lazy tensor in-place is that this can easily handle shared modules/parameters, which is common in huggingface models.
+    If we create a new tensor and update the module by ``setattr(module, name, param)``, the shared parameters will not be updated. And we have to track all shared parameters and update them manually.
+
     Args:
         tensor (LazyTensor): the LazyTensor to be converted
         target (torch.Tensor): target tensor
