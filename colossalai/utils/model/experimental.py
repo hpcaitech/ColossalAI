@@ -1,3 +1,4 @@
+from types import MethodType
 from typing import Callable, List, Optional, Union
 
 import torch
@@ -73,6 +74,26 @@ class _MyTensor(Tensor):
         return super().__torch_function__(func, types, args, kwargs)
 
 
+def _convert_cls(tensor: 'LazyTensor', target: torch.Tensor) -> torch.Tensor:
+    """Convert a subclass of torch.Tensor to target class.
+
+    Args:
+        tensor (LazyTensor): _description_
+        target (torch.Tensor): _description_
+
+    Returns:
+        torch.Tensor: _description_
+    """
+    cls_to_become = nn.Parameter if isinstance(tensor, nn.Parameter) else torch.Tensor
+    tensor.__class__ = cls_to_become
+    tensor.data = target
+    tensor.requires_grad = target.requires_grad
+    # subclass of torch.Tensor does not have tolist() method
+    # overwrite this method after materialization or distribution
+    tensor.tolist = MethodType(torch.Tensor.tolist, target)
+    return tensor
+
+
 class LazyTensor(torch.Tensor):
     """A naive implementation of LazyTensor (https://arxiv.org/pdf/2102.13267.pdf).
 
@@ -139,11 +160,7 @@ class LazyTensor(torch.Tensor):
         """
         target = self._materialize_data()
         self.clean()
-        cls_to_become = nn.Parameter if isinstance(self, nn.Parameter) else torch.Tensor
-        self.__class__ = cls_to_become
-        self.data = target
-        self.requires_grad = target.requires_grad
-        return self
+        return _convert_cls(self, target)
 
     def distribute(self, layout: Layout) -> torch.Tensor:
         """Distribute the ``LazyTensor`` to ``torch.Tensor`` by modifying __class__ (inplace), according to the layout.
@@ -157,11 +174,7 @@ class LazyTensor(torch.Tensor):
         target = self._materialize_data()
         self.clean()
         local_tensor = DTensor(target, layout).local_tensor
-        cls_to_become = nn.Parameter if isinstance(self, nn.Parameter) else torch.Tensor
-        self.__class__ = cls_to_become
-        self.data = local_tensor
-        self.requires_grad = local_tensor.requires_grad
-        return self
+        return _convert_cls(self, local_tensor)
 
     def clean(self) -> None:
         """Clean all stored operations and meta data, which prevents memory leaking. This should be called after all tensors are materialized.
