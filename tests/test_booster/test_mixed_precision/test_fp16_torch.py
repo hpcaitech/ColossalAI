@@ -1,12 +1,21 @@
+from functools import partial
+
 import torch
+import torch.multiprocessing as mp
 from torch.optim import Adam
 
+import colossalai
 from colossalai.booster.mixed_precision import FP16TorchMixedPrecision
+from colossalai.testing import rerun_if_address_is_in_use
+from colossalai.utils import free_port
 from tests.kit.model_zoo import model_zoo
 
 
-def test_torch_amp():
-    for name, (model_fn, data_gen_fn, output_transform_fn, _) in model_zoo.items():
+def run_torch_amp(rank, world_size, port):
+    # init dist env
+    colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host='localhost')
+    sub_model_zoo = model_zoo.get_sub_registry('timm')
+    for name, (model_fn, data_gen_fn, output_transform_fn, _) in sub_model_zoo.items():
         # dlrm_interactionarch has not parameters, so skip
         if name == 'dlrm_interactionarch':
             continue
@@ -27,3 +36,11 @@ def test_torch_amp():
         optimizer.backward(loss)
         optimizer.clip_grad_by_norm(1.0)
         optimizer.step()
+        del model, optimizer, criterion, data, output, mixed_precision
+
+
+@rerun_if_address_is_in_use()
+def test_torch_ddp_plugin():
+    world_size = 1
+    run_func = partial(run_torch_amp, world_size=world_size, port=free_port())
+    mp.spawn(run_func, nprocs=world_size)

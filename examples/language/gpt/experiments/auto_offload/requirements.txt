@@ -1,0 +1,2 @@
+colossalai >= 0.1.12
+torch >= 1.8.1
