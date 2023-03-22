@@ -26,7 +26,7 @@ class RoBERTaRM(RewardModel):
                  lora_rank: int = 0,
                  lora_train_bias: str = 'none') -> None:
         if pretrained is not None:
-            model = RobertaModel.from_pretrained(pretrained, add_pooling_layer = False)
+            model = RobertaModel.from_pretrained(pretrained)
         elif config is not None:
             model = RobertaModel(config)
         else:
