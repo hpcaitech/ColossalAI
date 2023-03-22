@@ -25,12 +25,6 @@ def find_shard_dim(shape: torch.Size) -> Optional[int]:
             return dim
 
 
-def get_percent(numerator: int, denominator: int) -> float:
-    if numerator == 0:
-        return 0.0
-    return numerator / denominator * 100
-
-
 def make_layout(device_mesh: DeviceMesh, original_tensor: torch.Tensor) -> Layout:
     shard_dim = find_shard_dim(original_tensor.shape)
     dim_partition_dict = {shard_dim: [0]} if shard_dim is not None else {}
