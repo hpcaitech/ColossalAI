@@ -4,6 +4,7 @@ import torch
 from chatgpt.models.bloom import BLOOMActor
 from chatgpt.models.gpt import GPTActor
 from chatgpt.models.opt import OPTActor
+from chatgpt.models.roberta import RoBERTaActor
 from transformers import AutoTokenizer, RobertaTokenizer
 from transformers.models.gpt2.tokenization_gpt2 import GPT2Tokenizer
 
