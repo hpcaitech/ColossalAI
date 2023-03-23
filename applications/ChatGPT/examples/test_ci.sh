@@ -88,4 +88,10 @@ torchrun --standalone --nproc_per_node=2 ${BASE}/train_reward_model.py \
                              --dataset 'Anthropic/hh-rlhf' --subset 'harmless-base'\
                              --test True --lora_rank 4
 
+torchrun --standalone --nproc_per_node=2 ${BASE}/train_reward_model.py \
+                             --pretrain 'microsoft/deberta-v3-large' --model 'deberta' \
+                             --strategy colossalai_zero2 --loss_fn 'log_sig'\
+                             --dataset 'Anthropic/hh-rlhf' --subset 'harmless-base'\
+                             --test True --lora_rank 4
+
 rm -rf ${BASE}/rm_ckpt.pt

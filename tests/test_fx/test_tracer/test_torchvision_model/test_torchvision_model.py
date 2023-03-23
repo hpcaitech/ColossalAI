@@ -1,6 +1,6 @@
 import torch
 
-from colossalai.fx import symbolic_trace
+from colossalai._analyzer.fx import symbolic_trace
 from tests.kit.model_zoo import model_zoo
 
 

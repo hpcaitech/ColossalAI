@@ -4,6 +4,7 @@ from typing import Any, Callable, Optional, Tuple
 import numpy as np
 import torch
 
+from colossalai.tensor.d_tensor.layout_converter import to_global
 from colossalai.utils.model.experimental import LazyInitContext, LazyTensor, _MyTensor
 from tests.kit.model_zoo.registry import ModelAttribute
 
@@ -67,3 +68,18 @@ def check_lazy_init(entry: TestingEntry, seed: int = 42, verbose: bool = False, 
         assert_forward_equal(model, deferred_model, data_gen_fn, output_transform_fn)
     if verbose:
         print(f'{model.__class__.__name__} pass')
+
+
+def assert_dist_model_equal(model: torch.nn.Module, distributed_model: torch.nn.Module, layout_dict: dict) -> None:
+    state = model.state_dict()
+    distributed_state = distributed_model.state_dict()
+
+    assert len(state) == len(distributed_state), f'len {len(state)} vs {len(distributed_state)}'
+
+    for (n1, t1), (n2, t2) in zip(state.items(), distributed_state.items()):
+        assert n1 == n2
+        t1 = t1.cuda()
+        t2 = t2.cuda()
+        if n2 in layout_dict:
+            t2 = to_global(t2, layout_dict[n2])
+        assert torch.equal(t1, t2), f'{n1} {t1} vs {t2}'

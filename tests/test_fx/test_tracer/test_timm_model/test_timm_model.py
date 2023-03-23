@@ -1,8 +1,8 @@
 import pytest
-import timm.models as tm
 import torch
+from packaging import version
 
-from colossalai.fx import symbolic_trace
+from colossalai._analyzer.fx import symbolic_trace
 from tests.kit.model_zoo import model_zoo
 
 
@@ -42,6 +42,7 @@ def trace_and_compare(model_cls, data, output_transform_fn, meta_args=None):
             f'{model.__class__.__name__} has inconsistent outputs, {fx_output_val} vs {non_fx_output_val}'
 
 
+@pytest.mark.skipif(version.parse(torch.__version__) < version.parse('1.12.0'), reason='torch version < 12')
 def test_timm_models():
     torch.backends.cudnn.deterministic = True
 
