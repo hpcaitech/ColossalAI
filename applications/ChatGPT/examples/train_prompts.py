@@ -7,10 +7,11 @@ from chatgpt.models.base import RewardModel
 from chatgpt.models.bloom import BLOOMActor, BLOOMCritic
 from chatgpt.models.gpt import GPTActor, GPTCritic
 from chatgpt.models.opt import OPTActor, OPTCritic
+from chatgpt.models.roberta import RoBERTaActor, RoBERTaCritic
 from chatgpt.trainer import PPOTrainer
 from chatgpt.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
 from torch.optim import Adam
-from transformers import AutoTokenizer, BloomTokenizerFast
+from transformers import AutoTokenizer, BloomTokenizerFast, RobertaTokenizer
 from transformers.models.gpt2.tokenization_gpt2 import GPT2Tokenizer
 
 from colossalai.nn.optimizer import HybridAdam
@@ -40,6 +41,9 @@ def main(args):
         elif args.model == 'opt':
             actor = OPTActor(pretrained=args.pretrain, lora_rank=args.lora_rank).to(torch.cuda.current_device())
             critic = OPTCritic(pretrained=args.pretrain, lora_rank=args.lora_rank).to(torch.cuda.current_device())
+        elif args.model == 'roberta':
+            actor = RoBERTaActor(pretrained=args.pretrain, lora_rank=args.lora_rank).to(torch.cuda.current_device())
+            critic = RoBERTaCritic(pretrained=args.pretrain, lora_rank=args.lora_rank).to(torch.cuda.current_device())
         else:
             raise ValueError(f'Unsupported model "{args.model}"')
 
@@ -63,6 +67,8 @@ def main(args):
         tokenizer.pad_token = tokenizer.eos_token
     elif args.model == 'opt':
         tokenizer = AutoTokenizer.from_pretrained("facebook/opt-350m")
+    elif args.model == 'roberta':
+        tokenizer = RobertaTokenizer.from_pretrained("roberta-base")
     else:
         raise ValueError(f'Unsupported model "{args.model}"')
 
@@ -117,7 +123,7 @@ if __name__ == '__main__':
     parser.add_argument('--strategy',
                         choices=['naive', 'ddp', 'colossalai_gemini', 'colossalai_zero2'],
                         default='naive')
-    parser.add_argument('--model', default='gpt2', choices=['gpt2', 'bloom', 'opt'])
+    parser.add_argument('--model', default='gpt2', choices=['gpt2', 'bloom', 'opt', 'roberta'])
     parser.add_argument('--pretrain', type=str, default=None)
     parser.add_argument('--save_path', type=str, default='actor_checkpoint_prompts.pt')
     parser.add_argument('--need_optim_ckpt', type=bool, default=False)

@@ -9,12 +9,13 @@ from chatgpt.models.bloom import BLOOMRM
 from chatgpt.models.gpt import GPTRM
 from chatgpt.models.opt import OPTRM
 from chatgpt.models.deberta import DebertaRM
+from chatgpt.models.roberta import RoBERTaRM
 from chatgpt.trainer import RewardModelTrainer
 from chatgpt.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
 from datasets import load_dataset
 from random import randint
 from torch.optim import Adam
-from transformers import AutoTokenizer, BloomTokenizerFast, DebertaV2Tokenizer
+from transformers import AutoTokenizer, BloomTokenizerFast, DebertaV2Tokenizer, RobertaTokenizer
 from transformers.models.gpt2.tokenization_gpt2 import GPT2Tokenizer
 
 from colossalai.nn.optimizer import HybridAdam
@@ -42,6 +43,8 @@ def train(args):
             model = GPTRM(pretrained=args.pretrain, lora_rank=args.lora_rank).to(torch.cuda.current_device())
         elif args.model == 'deberta':
             model = DebertaRM(pretrained=args.pretrain, lora_rank=args.lora_rank).to(torch.cuda.current_device())
+        elif args.model == 'roberta':
+            model = RoBERTaRM(pretrained=args.pretrain, lora_rank=args.lora_rank).to(torch.cuda.current_device())
         else:
             raise ValueError(f'Unsupported model "{args.model}"')
         
@@ -59,6 +62,8 @@ def train(args):
         tokenizer = AutoTokenizer.from_pretrained("facebook/opt-350m")
     elif args.model == 'deberta':
         tokenizer = DebertaV2Tokenizer.from_pretrained('microsoft/deberta-v3-large')
+    elif args.model == 'roberta':
+        tokenizer = RobertaTokenizer.from_pretrained("roberta-base")
     else:
         raise ValueError(f'Unsupported model "{args.model}"')
     max_len = args.max_len
@@ -124,7 +129,7 @@ if __name__ == '__main__':
     parser.add_argument('--strategy',
                         choices=['naive', 'ddp', 'colossalai_gemini', 'colossalai_zero2'],
                         default='naive')
-    parser.add_argument('--model', choices=['gpt2', 'bloom', 'opt', 'deberta'], default='bloom')
+    parser.add_argument('--model', choices=['gpt2', 'bloom', 'opt', 'deberta', 'roberta'], default='bloom')
     parser.add_argument('--pretrain', type=str, default=None)
     parser.add_argument('--model_path', type=str, default=None)
     parser.add_argument('--need_optim_ckpt', type=bool, default=False)
