@@ -72,6 +72,9 @@ class ChunkManager:
 
             if tensor.numel() > chunk_size:
                 chunk_size = tensor.numel()
+                dp_size = tensor.process_group.dp_world_size()
+                chunk_size = chunk_size + (-chunk_size % dp_size)
+
             chunk = Chunk(
                 chunk_size=chunk_size,
                 process_group=tensor.process_group,
@@ -139,6 +142,14 @@ class ChunkManager:
         self.__sub_accessed_chunk(chunk)
         self.__add_memory_usage(chunk.memory_usage)
         return True
+
+    def fake_release_chunk(self, chunk: Chunk) -> None:
+        """Release gathered chunk in a fake mode.
+        This function is used for keep-gathered chunk in the inference mode.
+        """
+        assert chunk.keep_gathered
+        assert chunk.tensor_state_cnter[TensorState.HOLD] == chunk.num_tensors
+        self.__sub_accessed_chunk(chunk)
 
     def copy_tensor_to_chunk_slice(self, tensor: torch.Tensor, data: torch.Tensor) -> None:
         """

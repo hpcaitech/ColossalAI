@@ -15,17 +15,18 @@ Method 2 is good because it allows the user to only build the kernel they actual
 
 ## PyTorch Extensions in Colossal-AI
 
-As mentioned in the section above, our aim is to make these two methods coherently supported in Colossal-AI, meaning that for a kernel should be either built in `setup.py` or during runtime.
-There are mainly two functions used to build extensions.
+The project DeepSpeed (https://github.com/microsoft/DeepSpeed) has proposed a [solution](https://github.com/microsoft/DeepSpeed/tree/master/op_builder)) to support kernel-build during either installation or runtime.
+We have adapted from DeepSpeed's solution to build extensions. The extension build requries two main functions from PyTorch:
 
 1. `torch.utils.cpp_extension.CUDAExtension`: used to build extensions in `setup.py` during `pip install`.
 2. `torch.utils.cpp_extension.load`: used to build and load extension during runtime
 
 Please note that the extension build by `CUDAExtension` cannot be loaded by the `load` function and `load` will run its own build again (correct me if I am wrong).
 
-We have implemented the following conventions:
+Based on the DeepSpeed's work, we have make several modifications and improvements:
 
 1. All pre-built kernels (those installed with `setup.py`) will be found in `colossalai._C`
 2. All runtime-built kernels will be found in the default torch extension path, i.e. ~/.cache/colossalai/torch_extensions. (If we put the built kernels in the installed site-package directory, this will make pip uninstall incomplete)
+3. Once a kernel is loaded, we will cache it in the builder to avoid repeated kernel loading.
 
 When loading the built kernel, we will first check if the pre-built one exists. If not, the runtime build will be triggered.

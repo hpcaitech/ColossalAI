@@ -4,6 +4,7 @@ import random
 import numpy as np
 import torch
 import torch.distributed as dist
+from torch.testing import assert_close
 
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
@@ -41,14 +42,20 @@ def broadcast_tensor_chunk(tensor, chunk_size=1, local_rank=0):
     return tensor_chunk.clone()
 
 
-def tensor_equal(A, B):
-    return torch.allclose(A, B, rtol=1e-3, atol=1e-1)
+def tensor_equal(t_a: torch.Tensor, t_b: torch.Tensor, rtol: float = 1e-3, atol: float = 1e-1):
+    assert_close(t_a, t_b, rtol=rtol, atol=atol)
+    return True
 
 
-def tensor_shard_equal(tensor: torch.Tensor, shard: torch.Tensor, rank, world_size):
+def tensor_shard_equal(tensor: torch.Tensor,
+                       shard: torch.Tensor,
+                       rank: int,
+                       world_size: int,
+                       rtol: float = 1e-3,
+                       atol: float = 1e-1):
     assert tensor.ndim == shard.ndim
     if tensor.shape == shard.shape:
-        return tensor_equal(tensor, shard)
+        return tensor_equal(tensor, shard, rtol, atol)
     else:
         dims_not_eq = torch.nonzero(torch.tensor(tensor.shape) != torch.tensor(shard.shape))
         if dims_not_eq.numel() == 1:
@@ -58,7 +65,7 @@ def tensor_shard_equal(tensor: torch.Tensor, shard: torch.Tensor, rank, world_si
                 world_size = gpc.get_world_size(ParallelMode.PARALLEL_1D)
             if rank is None:
                 rank = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
-            return tensor_equal(tensor.chunk(world_size, dim)[rank], shard)
+            return tensor_equal(tensor.chunk(world_size, dim)[rank], shard, rtol, atol)
         else:
             raise NotImplementedError
 

@@ -1,4 +1,5 @@
 import torch.nn as nn
+
 from colossalai.context import ParallelMode, seed
 
 from ..parallel_1d import *
@@ -24,7 +25,7 @@ class Dropout(ColossalaiModule):
 
     def forward(self, *args):
         if self.tensor_parallel in [None, '1d']:
-            return self._forward_func(*args)
+            return super().forward(*args)
         else:
             with seed(ParallelMode.TENSOR):
-                return self._forward_func(*args)
+                return super().forward(*args)

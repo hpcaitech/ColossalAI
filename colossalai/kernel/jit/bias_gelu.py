@@ -1,3 +1,4 @@
+# Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 import torch
 
 ###### BIAS GELU FUSION/ NO AUTOGRAD ################

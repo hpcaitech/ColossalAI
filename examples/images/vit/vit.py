@@ -32,21 +32,24 @@ class DummyDataGenerator(ABC):
 
 
 class DummyDataLoader(DummyDataGenerator):
-    batch_size = 4
-    channel = 3
-    category = 8
-    image_size = 224
+
+    def __init__(self, length=10, batch_size=4, channel=3, category=8, image_size=224, return_dict=True):
+        super().__init__(length)
+        self.batch_size = batch_size
+        self.channel = channel
+        self.category = category
+        self.image_size = image_size
+        self.return_dict = return_dict
 
     def generate(self):
         image_dict = {}
-        image_dict['pixel_values'] = torch.rand(DummyDataLoader.batch_size,
-                                                DummyDataLoader.channel,
-                                                DummyDataLoader.image_size,
-                                                DummyDataLoader.image_size,
-                                                device=get_current_device()) * 2 - 1
-        image_dict['label'] = torch.randint(DummyDataLoader.category, (DummyDataLoader.batch_size,),
+        image_dict['pixel_values'] = torch.rand(
+            self.batch_size, self.channel, self.image_size, self.image_size, device=get_current_device()) * 2 - 1
+        image_dict['label'] = torch.randint(self.category, (self.batch_size,),
                                             dtype=torch.int64,
                                             device=get_current_device())
+        if not self.return_dict:
+            return image_dict['pixel_values'], image_dict['label']
         return image_dict
 
 

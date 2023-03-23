@@ -11,7 +11,7 @@ class DistPlacementPattern(Enum):
 
 class _DistSpec:
     """_DistSpec
-    
+
     A class indicates Distributed Specification.
     The DistSpec is only works for the tensor parallel process groups.
     Because the dist spec of data parallel process group can be automatically deduced.
@@ -39,11 +39,12 @@ class _DistSpec:
         return True
 
     def __repr__(self) -> str:
-        res_list = ["DistSpec:"]
+        attr_list = []
         for attr in dir(self):
             if not attr.startswith('__'):
-                res_list.append(f'\n\t{attr}: {str(getattr(self, attr))}')
-        return ''.join(res_list)
+                attr_list.append(f'{attr}={str(getattr(self, attr))}')
+        attr_str = ", ".join(attr_list)
+        return "DistSpec(" + attr_str + ")"
 
 
 def ReplicaSpec() -> _DistSpec:

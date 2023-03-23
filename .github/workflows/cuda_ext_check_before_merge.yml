@@ -1,0 +1,42 @@
+name: Check CUDA Extension Build Before Merge
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'version.txt'
+
+jobs:
+  matrix_preparation:
+    name: Prepare Container List
+    if: github.repository == 'hpcaitech/ColossalAI'
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - id: set-matrix
+        run: |
+          cuda_ext=$(cat .cuda_ext.json | tr '\n' ' ')
+          echo "matrix=${cuda_ext}" >> $GITHUB_OUTPUT
+
+  build:
+    name: Release bdist wheels
+    needs: matrix_preparation
+    runs-on: [self-hosted, gpu]
+    strategy:
+      fail-fast: false
+      matrix: ${{fromJson(needs.matrix_preparation.outputs.matrix)}}
+    container:
+      image: ${{ matrix.build.cuda_image }}
+      options: --gpus all --rm
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install PyTorch
+        run: eval ${{ matrix.build.torch_command }}
+
+      - name: Build
+        run: |
+          CUDA_EXT=1 pip install -v .

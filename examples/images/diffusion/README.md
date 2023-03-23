@@ -1,6 +1,5 @@
 # ColoDiffusion: Stable Diffusion with Colossal-AI
 
-
 Acceleration of AIGC (AI-Generated Content) models such as [Stable Diffusion v1](https://github.com/CompVis/stable-diffusion) and [Stable Diffusion v2](https://github.com/Stability-AI/stablediffusion).
 
 <p id="diffusion_train" align="center">
@@ -26,13 +25,22 @@ Acceleration of AIGC (AI-Generated Content) models such as [Stable Diffusion v1]
 
 More details can be found in our [blog of Stable Diffusion v1](https://www.hpc-ai.tech/blog/diffusion-pretraining-and-hardware-fine-tuning-can-be-almost-7x-cheaper) and [blog of Stable Diffusion v2](https://www.hpc-ai.tech/blog/colossal-ai-0-2-0).
 
+
+## Roadmap
+This project is in rapid development.
+
+- [X] Train a stable diffusion model v1/v2 from scatch
+- [X] Finetune a pretrained Stable diffusion v1 model
+- [X] Inference a pretrained model using PyTorch
+- [ ] Finetune a pretrained Stable diffusion v2 model
+- [ ] Inference a pretrained model using TensoRT
+
 ## Installation
 
 ### Option #1: install from source
 #### Step 1: Requirements
 
-A suitable [conda](https://conda.io/) environment named `ldm` can be created
-and activated with:
+To begin with, make sure your operating system has the cuda version suitable for this exciting training session, which is cuda11.6/11.8. For your convience, we have set up the rest of packages here. You can create and activate a suitable [conda](https://conda.io/) environment named `ldm` :
 
 ```
 conda env create -f environment.yaml
@@ -43,23 +51,60 @@ You can also update an existing [latent diffusion](https://github.com/CompVis/la
 
 ```
 conda install pytorch==1.12.1 torchvision==0.13.1 torchaudio==0.12.1 cudatoolkit=11.3 -c pytorch
-pip install transformers==4.19.2 diffusers invisible-watermark
-pip install -e .
+pip install transformers diffusers invisible-watermark
 ```
 
-##### Step 2: install lightning
+#### Step 2: install lightning
 
-Install Lightning version later than 2022.01.04. We suggest you install lightning from source.
+Install Lightning version later than 2022.01.04. We suggest you install lightning from source. Notice that the default download path of pip should be within the conda environment, or you may need to specify using 'which pip' and redirect the path into conda environment. 
 
-https://github.com/Lightning-AI/lightning.git
+##### From Source
+```
+git clone https://github.com/Lightning-AI/lightning.git
+pip install -r requirements.txt
+python setup.py install
+```
 
-
-##### Step 3:Install [Colossal-AI](https://colossalai.org/download/) From Our Official Website
-
-For example, you can install  v0.1.12 from our official website.
+##### From pip
 
 ```
-pip install colossalai==0.1.12+torch1.12cu11.3 -f https://release.colossalai.org
+pip install pytorch-lightning
+```
+
+#### Step 3:Install [Colossal-AI](https://colossalai.org/download/) From Our Official Website
+
+You can install the latest version (0.2.7) from our official website or from source. Notice that the suitable version for this training is colossalai(0.2.5), which stands for torch(1.12.1).
+
+##### Download suggested verision for this training
+
+```
+
+pip install colossalai==0.2.5
+
+```
+
+##### Download the latest version from pip for latest torch version
+
+```
+pip install colossalai
+```
+
+##### From source
+
+```
+git clone https://github.com/hpcaitech/ColossalAI.git
+cd ColossalAI
+
+# install colossalai
+CUDA_EXT=1 pip install .
+```
+
+#### Step 4:Accelerate with flash attention by xformers(Optional)
+
+Notice that xformers will accelerate the training process in cost of extra disk space. The suitable version of xformers for this training process is 0.12.0. You can download xformers directly via pip. For more release versions, feel free to check its official website: [XFormers](./https://pypi.org/project/xformers/)
+
+```
+pip install xformers==0.0.12
 ```
 
 ### Option #2: Use Docker
@@ -75,7 +120,7 @@ docker build -t hpcaitech/diffusion:0.2.0  .
 docker pull hpcaitech/diffusion:0.2.0
 ```
 
-Once you have the image ready, you can launch the image with the following command:
+Once you have the image ready, you can launch the image with the following command
 
 ```bash
 ########################
@@ -109,12 +154,15 @@ It is important for you to configure your volume mapping in order to get the bes
 3. **Optional**, if you encounter any problem stating that shared memory is insufficient inside container, please add `-v /dev/shm:/dev/shm` to your `docker run` command.
 
 
-
 ## Download the model checkpoint from pretrained
 
-### stable-diffusion-v1-4
+### stable-diffusion-v2-base(Recommand)
 
-Our default model config use the weight from [CompVis/stable-diffusion-v1-4](https://huggingface.co/CompVis/stable-diffusion-v1-4?text=A+mecha+robot+in+a+favela+in+expressionist+style)
+```
+wget https://huggingface.co/stabilityai/stable-diffusion-2-base/resolve/main/512-base-ema.ckpt
+```
+
+### stable-diffusion-v1-4
 
 ```
 git lfs install
@@ -122,8 +170,6 @@ git clone https://huggingface.co/CompVis/stable-diffusion-v1-4
 ```
 
 ### stable-diffusion-v1-5 from runway
-
-If you want to useed the Last [stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5) wiegh from runwayml
 
 ```
 git lfs install
@@ -137,24 +183,30 @@ you should the change the `data.file_path` in the `config/train_colossalai.yaml`
 
 ## Training
 
-We provide the script `train_colossalai.sh` to run the training task with colossalai,
-and can also use `train_ddp.sh` to run the training task with ddp to compare.
+We provide the script `train_colossalai.sh` to run the training task with colossalai. Meanwhile, we have enlightened other training process such as DDP model in PyTorch. You can also use `train_ddp.sh` to run the training task with ddp to compare the corresponding performance.
 
-In `train_colossalai.sh` the main command is:
+In `train_colossalai.sh` the main command is
+
 ```
-python main.py --logdir /tmp/ -t -b configs/train_colossalai.yaml
+python main.py --logdir /tmp/ --train --base configs/train_colossalai.yaml --ckpt 512-base-ema.ckpt
 ```
 
-- you can change the `--logdir` to decide where to save the log information and the last checkpoint.
+- You can change the `--logdir` to decide where to save the log information and the last checkpoint.
+  - You will find your ckpt in `logdir/checkpoints` or `logdir/diff_tb/version_0/checkpoints`
+  - You will find your train config yaml in `logdir/configs`
+- You can add the `--ckpt` if you want to load the pretrained model, for example `512-base-ema.ckpt`
+- You can change the `--base` to specify the path of config yaml
 
 ### Training config
 
 You can change the trainging config in the yaml file
 
-- devices: device number used for training, default 8
-- max_epochs: max training epochs, default 2
-- precision: the precision type used in training, default 16 (fp16), you must use fp16 if you want to apply colossalai
+- devices: device number used for training, default = 8
+- max_epochs: max training epochs, default = 2
+- precision: the precision type used in training, default = 16 (fp16), you must use fp16 if you want to apply colossalai
+- placement_policy: the training strategy supported by Colossal AI, defult = 'cuda', which refers to loading all the parameters into cuda memory. On the other hand, 'cpu' refers to 'cpu offload' strategy while 'auto' enables 'Gemini', both featured by Colossal AI.
 - more information about the configuration of ColossalAIStrategy can be found [here](https://pytorch-lightning.readthedocs.io/en/latest/advanced/model_parallel.html#colossal-ai)
+
 
 ## Finetune Example
 ### Training on Teyvat Datasets
@@ -171,8 +223,8 @@ you can get yout training last.ckpt and train config.yaml in your `--logdir`, an
 ```
 python scripts/txt2img.py --prompt "a photograph of an astronaut riding a horse" --plms
     --outdir ./output \
-    --config path/to/logdir/checkpoints/last.ckpt \
-    --ckpt /path/to/logdir/configs/project.yaml  \
+    --ckpt path/to/logdir/checkpoints/last.ckpt \
+    --config /path/to/logdir/configs/project.yaml  \
 ```
 
 ```commandline
@@ -210,6 +262,19 @@ optional arguments:
   --precision {full,autocast}
                         evaluate at this precision
 ```
+
+## Invitation to open-source contribution
+Referring to the successful attempts of [BLOOM](https://bigscience.huggingface.co/) and [Stable Diffusion](https://en.wikipedia.org/wiki/Stable_Diffusion), any and all developers and partners with computing powers, datasets, models are welcome to join and build the Colossal-AI community, making efforts towards the era of big AI models!
+
+You may contact us or participate in the following ways:
+1. [Leaving a Star ⭐](https://github.com/hpcaitech/ColossalAI/stargazers) to show your like and support. Thanks!
+2. Posting an [issue](https://github.com/hpcaitech/ColossalAI/issues/new/choose), or submitting a PR on GitHub follow the guideline in [Contributing](https://github.com/hpcaitech/ColossalAI/blob/main/CONTRIBUTING.md).
+3. Join the Colossal-AI community on
+[Slack](https://join.slack.com/t/colossalaiworkspace/shared_invite/zt-z7b26eeb-CBp7jouvu~r0~lcFzX832w),
+and [WeChat(微信)](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/WeChat.png "qrcode") to share your ideas.
+4. Send your official proposal to email contact@hpcaitech.com
+
+Thanks so much to all of our amazing contributors!
 
 ## Comments
 

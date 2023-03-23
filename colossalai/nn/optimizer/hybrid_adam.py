@@ -19,7 +19,7 @@ class HybridAdam(NVMeOptimizer):
       * Parameters on GPU and gradients on GPU is allowed.
       * Parameters on GPU and gradients on CPU is **not** allowed.
 
-    Requires ColossalAI to be installed via ``pip install .``
+    `HybriadAdam` requires CUDA extensions which can be built during installation or runtime.
 
     This version of Hybrid Adam is an hybrid of CPUAdam and FusedAdam.
 

@@ -10,7 +10,7 @@ import torch.nn.functional as F
 import torch.utils.checkpoint
 from diffusers import AutoencoderKL, DDPMScheduler, DiffusionPipeline, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
-from huggingface_hub import HfFolder, Repository, whoami
+from huggingface_hub import HfFolder, Repository, create_repo, whoami
 from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
@@ -133,9 +133,13 @@ def parse_args(input_args=None):
         default="cpu",
         help="Placement Policy for Gemini. Valid when using colossalai as dist plan.",
     )
-    parser.add_argument("--center_crop",
-                        action="store_true",
-                        help="Whether to center crop images before resizing to resolution")
+    parser.add_argument(
+        "--center_crop",
+        default=False,
+        action="store_true",
+        help=("Whether to center crop the input images to the resolution. If not set, the images will be randomly"
+              " cropped. The images will be resized to the resolution first before cropping."),
+    )
     parser.add_argument("--train_batch_size",
                         type=int,
                         default=4,
@@ -149,12 +153,6 @@ def parse_args(input_args=None):
         help="Total number of training steps to perform.  If provided, overrides num_train_epochs.",
     )
     parser.add_argument("--save_steps", type=int, default=500, help="Save checkpoint every X updates steps.")
-    parser.add_argument(
-        "--gradient_accumulation_steps",
-        type=int,
-        default=1,
-        help="Number of updates steps to accumulate before performing a backward/update pass.",
-    )
     parser.add_argument(
         "--gradient_checkpointing",
         action="store_true",
@@ -355,10 +353,13 @@ def gemini_zero_dpp(model: torch.nn.Module, placememt_policy: str = "auto"):
 
 
 def main(args):
-    colossalai.launch_from_torch(config={})
+    if args.seed is None:
+        colossalai.launch_from_torch(config={})
+    else:
+        colossalai.launch_from_torch(config={}, seed=args.seed)
 
-    if args.seed is not None:
-        gpc.set_seed(args.seed)
+    local_rank = gpc.get_local_rank(ParallelMode.DATA)
+    world_size = gpc.get_world_size(ParallelMode.DATA)
 
     if args.with_prior_preservation:
         class_images_dir = Path(args.class_data_dir)
@@ -387,7 +388,7 @@ def main(args):
             for example in tqdm(
                     sample_dataloader,
                     desc="Generating class images",
-                    disable=not gpc.get_local_rank(ParallelMode.DATA) == 0,
+                    disable=not local_rank == 0,
             ):
                 images = pipeline(example["prompt"]).images
 
@@ -399,13 +400,14 @@ def main(args):
             del pipeline
 
     # Handle the repository creation
-    if gpc.get_local_rank(ParallelMode.DATA) == 0:
+    if local_rank == 0:
         if args.push_to_hub:
             if args.hub_model_id is None:
                 repo_name = get_full_repo_name(Path(args.output_dir).name, token=args.hub_token)
             else:
                 repo_name = args.hub_model_id
-            repo = Repository(args.output_dir, clone_from=repo_name)
+            create_repo(repo_name, exist_ok=True, token=args.hub_token)
+            repo = Repository(args.output_dir, clone_from=repo_name, token=args.hub_token)
 
             with open(os.path.join(args.output_dir, ".gitignore"), "w+") as gitignore:
                 if "step_*" not in gitignore:
@@ -465,7 +467,7 @@ def main(args):
         unet.enable_gradient_checkpointing()
 
     if args.scale_lr:
-        args.learning_rate = args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * gpc.get_world_size(ParallelMode.DATA)
+        args.learning_rate = args.learning_rate * args.train_batch_size * world_size
 
     unet = gemini_zero_dpp(unet, args.placement)
 
@@ -523,7 +525,7 @@ def main(args):
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
-    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
+    num_update_steps_per_epoch = math.ceil(len(train_dataloader))
     if args.max_train_steps is None:
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
         overrode_max_train_steps = True
@@ -531,8 +533,8 @@ def main(args):
     lr_scheduler = get_scheduler(
         args.lr_scheduler,
         optimizer=optimizer,
-        num_warmup_steps=args.lr_warmup_steps * args.gradient_accumulation_steps,
-        num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
+        num_warmup_steps=args.lr_warmup_steps,
+        num_training_steps=args.max_train_steps,
     )
     weight_dtype = torch.float32
     if args.mixed_precision == "fp16":
@@ -547,14 +549,14 @@ def main(args):
     text_encoder.to(get_current_device(), dtype=weight_dtype)
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
-    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
+    num_update_steps_per_epoch = math.ceil(len(train_dataloader))
     if overrode_max_train_steps:
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
     # Afterwards we recalculate our number of training epochs
     args.num_train_epochs = math.ceil(args.max_train_steps / num_update_steps_per_epoch)
 
     # Train!
-    total_batch_size = args.train_batch_size * gpc.get_world_size(ParallelMode.DATA) * args.gradient_accumulation_steps
+    total_batch_size = args.train_batch_size * world_size
 
     logger.info("***** Running training *****", ranks=[0])
     logger.info(f"  Num examples = {len(train_dataset)}", ranks=[0])
@@ -562,11 +564,10 @@ def main(args):
     logger.info(f"  Num Epochs = {args.num_train_epochs}", ranks=[0])
     logger.info(f"  Instantaneous batch size per device = {args.train_batch_size}", ranks=[0])
     logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}", ranks=[0])
-    logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}", ranks=[0])
     logger.info(f"  Total optimization steps = {args.max_train_steps}", ranks=[0])
 
     # Only show the progress bar once on each machine.
-    progress_bar = tqdm(range(args.max_train_steps), disable=not gpc.get_local_rank(ParallelMode.DATA) == 0)
+    progress_bar = tqdm(range(args.max_train_steps), disable=not local_rank == 0)
     progress_bar.set_description("Steps")
     global_step = 0
 
@@ -643,7 +644,7 @@ def main(args):
             if global_step % args.save_steps == 0:
                 torch.cuda.synchronize()
                 torch_unet = get_static_torch_model(unet)
-                if gpc.get_local_rank(ParallelMode.DATA) == 0:
+                if local_rank == 0:
                     pipeline = DiffusionPipeline.from_pretrained(
                         args.pretrained_model_name_or_path,
                         unet=torch_unet,
@@ -658,7 +659,7 @@ def main(args):
     torch.cuda.synchronize()
     unet = get_static_torch_model(unet)
 
-    if gpc.get_local_rank(ParallelMode.DATA) == 0:
+    if local_rank == 0:
         pipeline = DiffusionPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
             unet=unet,

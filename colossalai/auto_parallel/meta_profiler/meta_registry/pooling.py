@@ -14,7 +14,6 @@ __all__ = ["avgpool_meta_info", "maxpool_meta_info"]
 @meta_register.register(torch.nn.AdaptiveAvgPool1d)
 @meta_register.register(torch.nn.AdaptiveAvgPool2d)
 @meta_register.register(torch.nn.AdaptiveAvgPool3d)
-@meta_register.register(torch.flatten)
 def avgpool_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleItem, List[torch.Tensor]]:
     """Meta info for AdaptiveAvgPool
     The aten graph of AdaptiveAvgPool is
