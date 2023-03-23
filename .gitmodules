@@ -1,13 +1,7 @@
-[submodule "benchmark"]
-	path = benchmark
-	url = https://github.com/hpcaitech/ColossalAI-Benchmark.git
-	branch = main
-[submodule "examples"]
-	path = examples
-	url = https://github.com/hpcaitech/ColossalAI-Examples.git
-	branch = main
-
 [submodule "inference"]
 	path = inference
 	url = https://github.com/hpcaitech/EnergonAI.git
 	branch = main
+[submodule "examples/tutorial/fastfold/FastFold"]
+	path = examples/tutorial/fastfold/FastFold
+	url = https://github.com/hpcaitech/FastFold

@@ -1,21 +1,24 @@
+"""This code is adapted from Alpa
+    https://github.com/alpa-projects/alpa/
+   with some changes. """
+
 import operator
 from functools import reduce
+from typing import List, Tuple
 
 import torch
 import torch.distributed as dist
 
 
+# modified from alpa LogicalDeviceMesh(https://github.com/alpa-projects/alpa/blob/main/alpa/shard_parallel/auto_sharding.py)
 class DeviceMesh:
-    """A logical view of a physical mesh. The logical view is used in the
-    search process.
-    A physical mesh can have multiple logical views. (e.g., a 2x8 physical mesh
-    can be viewed as a 1x16 or a 4x4 logical mesh). Each mesh dimension has its
-    own latency and bandwidth. We use alpha-beta model to model the
-    communication cost.
+    """A logical view of a physical cluster. For example, we could view a physical cluster
+    with 16 devices as a device mesh with shape (2, 2, 4) or (4, 4).
 
     Arguments:
         physical_mesh_id (torch.Tensor): physical view of the devices in global rank.
-        mesh_shape (torch.Size): shape of logical view.
+        logical_mesh_id (torch.Tensor): logical view of the devices in global rank.
+        mesh_shape (torch.Size, optional): shape of logical view.
         mesh_alpha (List[float], optional): coefficients used for computing
             communication cost (default: None)
         mesh_beta (List[float], optional): coefficients used for computing
@@ -28,15 +31,21 @@ class DeviceMesh:
     """
 
     def __init__(self,
-                 physical_mesh_id,
-                 mesh_shape,
-                 mesh_alpha=None,
-                 mesh_beta=None,
-                 init_process_group=False,
-                 need_flatten=True):
+                 physical_mesh_id: torch.Tensor,
+                 mesh_shape: torch.Size = None,
+                 logical_mesh_id: torch.Tensor = None,
+                 mesh_alpha: List[float] = None,
+                 mesh_beta: List[float] = None,
+                 init_process_group: bool = False,
+                 need_flatten: bool = True):
         self.physical_mesh_id = physical_mesh_id
-        self.mesh_shape = mesh_shape
-        self._logical_mesh_id = self.physical_mesh_id.reshape(self.mesh_shape)
+        if logical_mesh_id is None:
+            self.mesh_shape = mesh_shape
+            self._logical_mesh_id = self.physical_mesh_id.reshape(self.mesh_shape)
+        else:
+            self._logical_mesh_id = logical_mesh_id
+            self.mesh_shape = self._logical_mesh_id.shape
+
         # map global rank into logical rank
         self.convert_map = {}
         self._global_rank_to_logical_rank_map(self._logical_mesh_id, [])
@@ -54,8 +63,8 @@ class DeviceMesh:
         if self.need_flatten and self._logical_mesh_id.dim() > 1:
             self.flatten_device_mesh = self.flatten()
             # Create a new member `flatten_device_meshes` to distinguish from original flatten methods (Because I'm not sure if there are functions that rely on the self.flatten())
-            self.flatten_device_meshes = FlattenDeviceMesh(self.physical_mesh_id, self.mesh_shape, self.mesh_alpha,
-                                                           self.mesh_beta)
+            # self.flatten_device_meshes = FlattenDeviceMesh(self.physical_mesh_id, self.mesh_shape, self.mesh_alpha,
+            #                                                self.mesh_beta)
 
     @property
     def shape(self):
@@ -90,7 +99,7 @@ class DeviceMesh:
         return DeviceMesh(self.physical_mesh_id,
                           tuple(flatten_mesh_shape),
                           mesh_alpha=[max(self.mesh_alpha)] * (flatten_mesh_shape_size - 1),
-                          mesh_beta=[min(self.mesh_beta)] * (flatten_mesh_shape_size - 1),
+                          mesh_beta=[max(self.mesh_beta)] * (flatten_mesh_shape_size - 1),
                           init_process_group=self.init_process_group,
                           need_flatten=False)
 

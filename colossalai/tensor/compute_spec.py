@@ -9,9 +9,9 @@ class ComputePattern(Enum):
 
 
 class ComputeSpec(object):
-    """ComputeSpec 
+    """ComputeSpec
     The Specification for compuattion pattern
-    
+
     Args:
         compute_pattern (ComputePattern): an Enum instance for compute pattern.
     """
@@ -23,7 +23,7 @@ class ComputeSpec(object):
         self.output_replicate = True
 
     def __repr__(self):
-        return f'Compute pattern: {self.compute_pattern}'
+        return f'ComputeSpec(pattern={self.compute_pattern}, replicate_output={self.output_replicate})'
 
     def set_output_replicate(self, flag: bool = True):
         self.output_replicate = flag

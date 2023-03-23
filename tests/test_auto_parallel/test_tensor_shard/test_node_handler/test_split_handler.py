@@ -5,8 +5,8 @@ import torch
 import torch.multiprocessing as mp
 import torch.nn as nn
 
+from colossalai.auto_parallel.tensor_shard.node_handler import SplitHandler
 from colossalai.auto_parallel.tensor_shard.node_handler.conv_handler import ConvFunctionHandler
-from colossalai.auto_parallel.tensor_shard.node_handler.experimental import SplitHandler
 from colossalai.auto_parallel.tensor_shard.node_handler.linear_handler import LinearFunctionHandler
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationData, OperationDataType, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
@@ -156,8 +156,7 @@ def check_split_handler(rank, split_size, split_dim, model_cls, world_size, port
     # reshape handler is a following strategy handler, so the number of strategies is equal to the predecessor node.
     assert len(split_strategies_vector) == len(previous_strategies_vector)
     strategy_name_list = [strategy.name for strategy in split_strategies_vector]
-    for name in strategy_name_list:
-        print(name)
+
     if model_cls.__name__ == 'ConvSplitModel':
 
         if split_dim == 0:
@@ -199,54 +198,54 @@ def check_split_handler(rank, split_size, split_dim, model_cls, world_size, port
     if model_cls.__name__ == 'LinearSplitModel':
 
         if split_dim == 0:
-            assert '[R, R, R, S1]_0' in strategy_name_list
-            assert '[R, S0, R, S1]_1' in strategy_name_list
-            assert '[R, R, S0, S1]_2' in strategy_name_list
-            assert '[R, R, R, S0]_3' in strategy_name_list
-            assert '[R, S1, R, S0]_4' in strategy_name_list
-            assert '[R, R, S1, S0]_5' in strategy_name_list
-            assert '[R, R, R, R]_6' in strategy_name_list
-            assert '[R, S0, R, R]_7' in strategy_name_list
-            assert '[R, R, S0, R]_8' in strategy_name_list
-            assert '[R, R, R, R]_9' in strategy_name_list
-            assert '[R, S1, R, R]_10' in strategy_name_list
-            assert '[R, R, S1, R]_11' in strategy_name_list
-            assert '[R, R, R, S1]_12' in strategy_name_list
-            assert '[R, R, R, S0]_13' in strategy_name_list
-            assert '[R, R, R, R]_14' in strategy_name_list
-            assert '[R, R, R, R]_15' in strategy_name_list
-            assert '[R, R, R, S0]_16' in strategy_name_list
-            assert '[R, R, R, S1]_17' in strategy_name_list
-            assert '[R, R, R, R]_18' in strategy_name_list
-            assert '[R, S01, R, R]_19' in strategy_name_list
-            assert '[R, R, S01, R]_20' in strategy_name_list
-            assert '[R, R, R, R]_21' in strategy_name_list
-            assert '[R, R, R, S01]_22' in strategy_name_list
+            assert '[R, R, R, S1]_11' in strategy_name_list
+            assert '[R, S0, R, S1]_12' in strategy_name_list
+            assert '[R, R, S0, S1]_13' in strategy_name_list
+            assert '[R, R, R, S0]_14' in strategy_name_list
+            assert '[R, S1, R, S0]_15' in strategy_name_list
+            assert '[R, R, S1, S0]_16' in strategy_name_list
+            assert '[R, R, R, R]_17' in strategy_name_list
+            assert '[R, S0, R, R]_18' in strategy_name_list
+            assert '[R, R, S0, R]_19' in strategy_name_list
+            assert '[R, R, R, R]_20' in strategy_name_list
+            assert '[R, S1, R, R]_21' in strategy_name_list
+            assert '[R, R, S1, R]_22' in strategy_name_list
+            assert '[R, R, R, S1]_10' in strategy_name_list
+            assert '[R, R, R, S0]_9' in strategy_name_list
+            assert '[R, R, R, R]_8' in strategy_name_list
+            assert '[R, R, R, R]_7' in strategy_name_list
+            assert '[R, R, R, S0]_6' in strategy_name_list
+            assert '[R, R, R, S1]_5' in strategy_name_list
+            assert '[R, R, R, R]_0' in strategy_name_list
+            assert '[R, S01, R, R]_1' in strategy_name_list
+            assert '[R, R, S01, R]_2' in strategy_name_list
+            assert '[R, R, R, R]_3' in strategy_name_list
+            assert '[R, R, R, S01]_4' in strategy_name_list
 
         if split_dim == 1:
-            assert '[S0, R, R, S1]_0' in strategy_name_list
-            assert '[R, R, R, S1]_1' in strategy_name_list
-            assert '[R, R, S0, S1]_2' in strategy_name_list
-            assert '[S1, R, R, S0]_3' in strategy_name_list
-            assert '[R, R, R, S0]_4' in strategy_name_list
-            assert '[R, R, S1, S0]_5' in strategy_name_list
-            assert '[S0, R, R, R]_6' in strategy_name_list
-            assert '[R, R, R, R]_7' in strategy_name_list
-            assert '[R, R, S0, R]_8' in strategy_name_list
-            assert '[S1, R, R, R]_9' in strategy_name_list
-            assert '[R, R, R, R]_10' in strategy_name_list
-            assert '[R, R, S1, R]_11' in strategy_name_list
+            assert '[S0, R, R, S1]_11' in strategy_name_list
             assert '[R, R, R, S1]_12' in strategy_name_list
-            assert '[R, R, R, S0]_13' in strategy_name_list
-            assert '[R, R, R, R]_14' in strategy_name_list
-            assert '[R, R, R, R]_15' in strategy_name_list
-            assert '[R, R, R, S0]_16' in strategy_name_list
-            assert '[R, R, R, S1]_17' in strategy_name_list
-            assert '[S01, R, R, R]_18' in strategy_name_list
-            assert '[R, R, R, R]_19' in strategy_name_list
-            assert '[R, R, S01, R]_20' in strategy_name_list
+            assert '[R, R, S0, S1]_13' in strategy_name_list
+            assert '[S1, R, R, S0]_14' in strategy_name_list
+            assert '[R, R, R, S0]_15' in strategy_name_list
+            assert '[R, R, S1, S0]_16' in strategy_name_list
+            assert '[S0, R, R, R]_17' in strategy_name_list
+            assert '[R, R, R, R]_18' in strategy_name_list
+            assert '[R, R, S0, R]_19' in strategy_name_list
+            assert '[S1, R, R, R]_20' in strategy_name_list
             assert '[R, R, R, R]_21' in strategy_name_list
-            assert '[R, R, R, S01]_22' in strategy_name_list
+            assert '[R, R, S1, R]_22' in strategy_name_list
+            assert '[R, R, R, S1]_10' in strategy_name_list
+            assert '[R, R, R, S0]_9' in strategy_name_list
+            assert '[R, R, R, R]_8' in strategy_name_list
+            assert '[R, R, R, R]_7' in strategy_name_list
+            assert '[R, R, R, S0]_6' in strategy_name_list
+            assert '[R, R, R, S1]_5' in strategy_name_list
+            assert '[S01, R, R, R]_0' in strategy_name_list
+            assert '[R, R, R, R]_1' in strategy_name_list
+            assert '[R, R, S01, R]_2' in strategy_name_list
+            assert '[R, R, R, R]_3' in strategy_name_list
+            assert '[R, R, R, S01]_4' in strategy_name_list
 
 
 @run_on_environment_flag(name='AUTO_PARALLEL')

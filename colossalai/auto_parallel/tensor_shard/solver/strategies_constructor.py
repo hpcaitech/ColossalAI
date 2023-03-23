@@ -15,9 +15,10 @@ from colossalai.auto_parallel.tensor_shard.node_handler import (
 )
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import StrategiesVector
 from colossalai.auto_parallel.tensor_shard.utils import generate_resharding_costs, generate_sharding_spec
+from colossalai.auto_parallel.tensor_shard.utils.factory import find_repeat_blocks
 from colossalai.device.device_mesh import DeviceMesh
 
-from .options import DataloaderOption, SolverOptions
+from ..options import DataloaderOption, SolverOptions
 
 __all__ = ['StrategiesConstructor']
 
@@ -42,6 +43,7 @@ class StrategiesConstructor:
         self.strategy_map = {}
         self.solver_options = solver_options
         self.no_strategy_nodes = []
+        self.alias_set = None
 
     def remove_duplicated_strategy(self, strategies_vector):
         '''
@@ -58,6 +60,22 @@ class StrategiesConstructor:
                 remove_list.append(strategy)
         for strategy in remove_list:
             strategies_vector.remove(strategy)
+
+    def generate_alias_set(self):
+
+        node_list = [strategy_vector.node for strategy_vector in self.leaf_strategies]
+        common_blocks = find_repeat_blocks(node_list, self.root_module, common_length_threshold=10)
+
+        repeat_block_nums = len(common_blocks)
+        alias_set = {}
+
+        if repeat_block_nums == 0:
+            return alias_set
+
+        for index, common_node in enumerate(common_blocks[0]):
+            for i in range(1, repeat_block_nums):
+                alias_set[node_list.index(common_blocks[i][index])] = node_list.index(common_node)
+        return alias_set
 
     def build_strategies_and_cost(self):
         """
@@ -101,7 +119,11 @@ class StrategiesConstructor:
 
             # get_attr node
             elif node.op == 'get_attr':
-                getattr_handler = GetattrHandler(node, self.device_mesh, strategies_vector)
+                getattr_handler = GetattrHandler(node,
+                                                 self.device_mesh,
+                                                 strategies_vector,
+                                                 shard_option=self.solver_options.shard_option,
+                                                 solver_perference=self.solver_options.solver_perference)
                 getattr_handler.register_strategy()
 
             # call_module node
@@ -109,7 +131,11 @@ class StrategiesConstructor:
                 target = node.target
                 submod = self.root_module.get_submodule(target)
                 submod_type = type(submod)
-                handler = operator_registry.get(submod_type)(node, self.device_mesh, strategies_vector)
+                handler = operator_registry.get(submod_type)(node,
+                                                             self.device_mesh,
+                                                             strategies_vector,
+                                                             shard_option=self.solver_options.shard_option,
+                                                             solver_perference=self.solver_options.solver_perference)
                 handler.register_strategy()
                 # attach metainfo_vector to node
                 if hasattr(handler, 'metainfo_vector'):
@@ -118,7 +144,11 @@ class StrategiesConstructor:
             # call_function node
             elif node.op == 'call_function':
                 target = node.target
-                handler = operator_registry.get(target)(node, self.device_mesh, strategies_vector)
+                handler = operator_registry.get(target)(node,
+                                                        self.device_mesh,
+                                                        strategies_vector,
+                                                        shard_option=self.solver_options.shard_option,
+                                                        solver_perference=self.solver_options.solver_perference)
                 handler.register_strategy()
                 # attach metainfo_vector to node
                 if hasattr(handler, 'metainfo_vector'):
@@ -127,7 +157,11 @@ class StrategiesConstructor:
             # call_method node
             elif node.op == 'call_method':
                 method = getattr(node.args[0]._meta_data.__class__, node.target)
-                handler = operator_registry.get(method)(node, self.device_mesh, strategies_vector)
+                handler = operator_registry.get(method)(node,
+                                                        self.device_mesh,
+                                                        strategies_vector,
+                                                        shard_option=self.solver_options.shard_option,
+                                                        solver_perference=self.solver_options.solver_perference)
                 handler.register_strategy()
                 # attach metainfo_vector to node
                 if hasattr(handler, 'metainfo_vector'):
@@ -159,3 +193,6 @@ class StrategiesConstructor:
                 self.leaf_strategies.remove(node.strategies_vector)
             if node in self.strategy_map:
                 self.strategy_map.pop(node)
+
+        alias_set = self.generate_alias_set()
+        self.alias_set = alias_set

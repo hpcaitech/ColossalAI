@@ -3,13 +3,8 @@ from torch.fx import GraphModule
 from torchvision.models import resnet50
 
 from colossalai.auto_parallel.tensor_shard.constants import BATCHNORM_MODULE_OP
-from colossalai.auto_parallel.tensor_shard.solver import (
-    CostGraph,
-    GraphAnalyser,
-    Solver,
-    SolverOptions,
-    StrategiesConstructor,
-)
+from colossalai.auto_parallel.tensor_shard.options import SolverOptions
+from colossalai.auto_parallel.tensor_shard.solver import CostGraph, GraphAnalyser, Solver, StrategiesConstructor
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.fx.tracer.tracer import ColoTracer
 from colossalai.tensor.shape_consistency import ShapeConsistencyManager
@@ -56,15 +51,14 @@ def test_cost_graph():
     #     return fc
     gm = GraphModule(model, graph, model.__class__.__name__)
     gm.recompile()
-    graph_analyser = GraphAnalyser(gm)
-    liveness_list = graph_analyser.liveness_analysis()
+
     solver_options = SolverOptions()
     strategies_constructor = StrategiesConstructor(graph, device_mesh, solver_options)
     strategies_constructor.build_strategies_and_cost()
 
     cost_graph = CostGraph(strategies_constructor.leaf_strategies)
     cost_graph.simplify_graph()
-    solver = Solver(gm.graph, strategies_constructor, cost_graph, graph_analyser)
+    solver = Solver(gm.graph, strategies_constructor, cost_graph)
 
     ret = solver.call_solver_serialized_args()
     print(ret[0])

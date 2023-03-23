@@ -211,7 +211,7 @@ class WorkerBase(ABC):
                 refcount = 0
 
             with self.output_list_condition_lock:
-                if refcount < lifecycle:
+                if refcount <= lifecycle:
                     self.output_list[key] = output_work_item
                     self.output_list_condition_lock.notify_all()
 
@@ -390,7 +390,7 @@ class WorkerBase(ABC):
                         subscribe_forward_futures[target_index] = []
                     else:
                         subscribe_forward_futures[target_index] = producer_worker_rref.rpc_async().get_output_by_key(
-                            producer_output_key, rank=self.pp_rank)
+                            producer_output_key, rank=self.pp_rank, offsets=offsets)
 
             else:
                 for i in range(producer_num):
@@ -1115,7 +1115,8 @@ class PipelineEngineBase(ABC, nn.Module):
         # let each worker know global worker rref (include itself)
         sync_futs = []
         for pp_rank in self.pp_rank_to_worker_rref:
-            fut = self.pp_rank_to_worker_rref[pp_rank].rpc_async().sync_global_worker_rrefs(self.pp_rank_to_worker_rref)
+            fut = self.pp_rank_to_worker_rref[pp_rank].rpc_async(timeout=0).sync_global_worker_rrefs(
+                self.pp_rank_to_worker_rref)
             sync_futs.append(fut)
 
         for fut in sync_futs:
