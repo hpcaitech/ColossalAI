@@ -110,7 +110,7 @@ torchrun --standalone --nproc_per_node=2 ${BASE}/train_reward_model.py \
 
 torchrun --standalone --nproc_per_node=2 ${BASE}/train_reward_model.py \
                              --pretrain 'roberta-base' --model 'roberta' \
-                             --strategy colossalai_zero2 --loss_fn 'log_exp'\
+                             --strategy colossalai_zero2 --loss_fn 'log_sig'\
                              --dataset 'Anthropic/hh-rlhf' --subset 'harmless-base'\
                              --test True --lora_rank 4
 
