@@ -1,11 +1,30 @@
 import threading
 from abc import ABC, abstractmethod
 from collections import deque
+from typing import Any, Dict, Tuple
 
-from torch import nn, optim
+import torch
+from torch import autograd, nn, optim
 
+from colossalai.communication.dag_comm import DAGCommunication
 from colossalai.pipeline.scheduler.stage_info import StageInput, StageOutput
 from colossalai.pipeline.scheduler.task import Task
+
+
+class BackwardCache:
+    __slots__ = ('checkpoint', 'stage_input_args', 'stage_input_kwargs', 'stage_outputs')
+    checkpoint: bool
+    stage_input_args: Tuple[Any]
+    stage_input_kwargs: Dict[Any, Any]
+    stage_outputs: Tuple[Any]
+
+    def __init__(self,
+                 stage_input_args: Tuple[Any],
+                 stage_input_kwargs: Dict[Any, Any] = None,
+                 stage_outputs: Tuple[Any] = None,
+                 checkpoint: bool = False) -> None:
+        for arg_name in self.__slots__:
+            setattr(self, arg_name, locals()[arg_name])
 
 
 class WorkerState:
@@ -96,11 +115,19 @@ class WorkerStateMachine(StateMachine):
         self.input_queue_bwd = deque()
         self.output_queue_fwd = deque()
         self.output_queue_bwd = deque()
+        self.minibatch_id_to_labels = dict()
+        self.minibatch_id_to_backward_cache = dict()
 
     def init_lock(self):
         self.partition_condition_lock = threading.Condition(threading.Lock())
         self.input_queue_fwd_lock = threading.Condition(threading.Lock())
+        self.input_queue_bwd_lock = threading.Condition(threading.Lock())
+        self.output_queue_fwd_lock = threading.Condition(threading.Lock())
+        self.output_queue_bwd_lock = threading.Condition(threading.Lock())
         self.label_lock = threading.Condition(threading.Lock())
+
+    def init_comm(self, rank):
+        self.comm = DAGCommunication(rank)
 
     def set_fwd_only(self, fwd_only=True):
         self.fwd_only = fwd_only
@@ -149,12 +176,11 @@ class WorkerStateMachine(StateMachine):
         main_loop_thread.join()
 
     def add_minibatch(self, minibatch):
-        with self.input_queue_fwd_lock:
-            self.input_queue_fwd.append(minibatch)
+        self._push_queue_with_lock(self.input_queue_fwd, self.input_queue_fwd_lock, minibatch)
 
     def add_labels(self, minibatch_id, minilabels):
         with self.label_lock:
-            self.microbatch_id_to_labels[minibatch_id] = minilabels
+            self.minibatch_id_to_labels[minibatch_id] = minilabels
             self.label_lock.notify_all()
 
     def wait_for_done(self, forward_only):
@@ -211,12 +237,15 @@ class WorkerStateMachine(StateMachine):
         if cur_state == 'start':
             task = None
         elif cur_state == 'fwd':
+            self._wait_for_last_fwds()
             stage_input = self._get_input('fwd', self.cur_fwd_id)
-            task = Task(self._forward, *stage_input.args, **stage_input.kwargs)
+            # TODO use minibatch_id calculated seperately
+            task = Task(self._forward, self.cur_fwd_id, *stage_input.args, **stage_input.kwargs)
             self.cur_fwd_id += 1
         elif cur_state == 'bwd':
+            self._wait_for_last_bwds()
             stage_input = self._get_input('bwd', self.cur_bwd_id)
-            task = Task(self._backward, *stage_input.args, **stage_input.kwargs)
+            task = Task(self._backward, self.cur_bwd_id, *stage_input.args, **stage_input.kwargs)
             self.cur_bwd_id += 1
         elif cur_state == 'step':
             task = Task(self._step)
@@ -226,13 +255,13 @@ class WorkerStateMachine(StateMachine):
             task = None
         return task
 
-    def _get_input(self, state, micro_batch_id) -> StageInput:
+    def _get_input(self, state, minibatch_id) -> StageInput:
         # TODO need to add communication framework like p2p
         stage_input = None
         if state == 'fwd':
-            stage_input = self.input_queue_fwd.popleft()
+            stage_input = self._pop_queue_with_lock(self.input_queue_fwd, self.input_queue_fwd_lock)
         elif state == 'bwd':
-            stage_input = self.input_queue_bwd.popleft()
+            stage_input = self._pop_queue_with_lock(self.input_queue_bwd, self.input_queue_bwd_lock)
         else:
             stage_input = None
         return stage_input
@@ -243,10 +272,10 @@ class WorkerStateMachine(StateMachine):
             pass
         elif cur_state == 'fwd':
             stage_output = StageOutput(res)
-            self.output_queue_fwd.append(stage_output)
+            self._push_queue_with_lock(self.output_queue_fwd, self.output_queue_fwd_lock, stage_output)
         elif cur_state == 'bwd':
             stage_output = StageOutput(res)
-            self.output_queue_bwd.append(stage_output)
+            self._push_queue_with_lock(self.output_queue_bwd, self.output_queue_bwd_lock, stage_output)
         elif cur_state == 'step':
             pass
         elif cur_state == 'end':
@@ -254,11 +283,60 @@ class WorkerStateMachine(StateMachine):
         else:    # wrong state
             pass
 
-    def _forward(self):
+    def _push_queue_with_lock(self, queue, lock, event):
+        with lock:
+            queue.append(event)
+
+    def _pop_queue_with_lock(self, queue, lock):
+        with lock:
+            return queue.popleft()
+
+    # TODO use aync thread to do the consumer-producer queue.
+    def _wait_for_last_fwds(self):
         pass
 
-    def _backward(self):
+    # TODO use aync thread to do the consumer-producer queue.
+    def _wait_for_last_bwds(self):
         pass
+        #stage_input: StageInput = StageInput(self.cur_bwd_id)
+        #self._push_queue_with_lock(self.input_queue_bwd, self.input_queue_bwd_lock, stage_input)
+
+    # TODO use aync thread to do the consumer-producer queue.
+    def _send_to_next_fwds(self, outputs):
+        pass
+
+    # TODO use aync thread to do the consumer-producer queue.
+    def _send_to_next_bwds(self, grads):
+        pass
+
+    def _gather_grad(self, **args):
+        return None
+
+    def _forward(self, minibatch_id, *args, **kwargs):
+        # exec fwd
+        if self.fwd_only:
+            with torch.no_grad():
+                stage_outputs = self.module_partition(*args, **kwargs)
+        else:
+            stage_outputs = self.module_partition(*args, **kwargs)
+
+        # send output
+        self._send_to_next_fwds(stage_outputs)
+
+        # save for bwd
+        if not self.fwd_only:
+            self.minibatch_id_to_backward_cache[minibatch_id] = BackwardCache(args,
+                                                                              kwargs,
+                                                                              stage_outputs,
+                                                                              checkpoint=False)
+
+    def _backward(self, minibatch_id, *args, **kwargs):
+        # prepare data
+        backward_cache: BackwardCache = self.minibatch_id_to_backward_cache[minibatch_id]
+        stage_outputs = backward_cache.stage_outputs
+        grad_tensors = kwargs['grad']
+        # exec bwd
+        autograd.backward(stage_outputs, grad_tensors=grad_tensors)
 
     def _step(self):
         pass

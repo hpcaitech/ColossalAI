@@ -2,7 +2,6 @@ import math
 
 import torch
 
-from colossalai.communication.dag_comm import DAGCommunication
 from colossalai.pipeline.rpc.utils import get_batch_lengths, split_batch
 from colossalai.pipeline.scheduler import GpipeWorker
 
@@ -33,7 +32,6 @@ class PipelineScheduler():
         self.labels = None
 
         self._initialize_worker()
-        self._initialize_communication()
 
     def is_input_rank(self):
         return self.rank in self.input_ranks
@@ -91,9 +89,10 @@ class PipelineScheduler():
         self.worker.set_device(self.device)
         self.worker.initialize_partition(self.partition_fn, partition_args=(self.rank, self.num_stages))
         self.worker.run()
+        self._initialize_communication()
 
     def _initialize_communication(self):
-        self.comm = DAGCommunication(self.rank)
+        self.worker.init_comm(self.rank)
 
     def _get_batch_offsets(self, minibatch_size, minibatch_id, batch_length):
         batch_start = minibatch_size * minibatch_id
