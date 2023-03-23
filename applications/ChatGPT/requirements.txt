@@ -3,5 +3,5 @@ tqdm
 datasets
 loralib
 colossalai>=0.2.4
-torch
+torch==1.12.1
 langchain
