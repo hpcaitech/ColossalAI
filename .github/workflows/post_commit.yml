@@ -10,8 +10,8 @@ jobs:
   # so that the user does not need to learn pre-commit and pre-commit can still
   # be auto-executed by the workflow
   pre-commit:
-    runs-on: ubuntu-latest
-    if: github.event.pull_request.merged == true && github.repository == 'hpcaitech/ColossalAI'
+    runs-on: ubuntu-latet
+    if: github.event.pull_request.merged == true && github.repository == 'nijkah/ColossalAI'
     steps:
     - uses: actions/checkout@v2
       with:
