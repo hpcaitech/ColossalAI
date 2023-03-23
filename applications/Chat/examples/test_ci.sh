@@ -40,6 +40,13 @@ torchrun --standalone --nproc_per_node=2 ${BASE}/train_dummy.py \
          --save_path ${BASE}/actor_checkpoint_dummy.pt
 python ${BASE}/inference.py --model_path ${BASE}/actor_checkpoint_dummy.pt --pretrain 'gpt2' --model gpt2
 
+torchrun --standalone --nproc_per_node=2 ${BASE}/train_dummy.py \
+         --strategy colossalai_zero2 --num_episodes 1 --max_timesteps 2 \
+         --update_timesteps 2 --max_epochs 1 --train_batch_size 2\
+         --pretrain 'roberta-base' --model roberta --lora_rank 4\
+         --save_path ${BASE}/actor_checkpoint_dummy.pt
+python ${BASE}/inference.py --model_path ${BASE}/actor_checkpoint_dummy.pt --pretrain 'roberta-base' --model roberta
+
 rm -rf ${BASE}/actor_checkpoint_dummy.pt
 
 # train prompts
@@ -67,6 +74,13 @@ torchrun --standalone --nproc_per_node=2 ${BASE}/train_prompts.py $PROMPT_PATH \
          --pretrain 'gpt2' --model gpt2 --lora_rank 4\
          --save_path ${BASE}/actor_checkpoint_prompts.pt
 python ${BASE}/inference.py --model_path ${BASE}/actor_checkpoint_prompts.pt --pretrain 'gpt2' --model gpt2
+
+torchrun --standalone --nproc_per_node=2 ${BASE}/train_prompts.py $PROMPT_PATH \
+         --strategy colossalai_zero2 --num_episodes 1 --max_timesteps 2 \
+         --update_timesteps 2 --max_epochs 1 --train_batch_size 2\
+         --pretrain 'roberta-base' --model roberta --lora_rank 4\
+         --save_path ${BASE}/actor_checkpoint_prompts.pt
+python ${BASE}/inference.py --model_path ${BASE}/actor_checkpoint_prompts.pt --pretrain 'roberta-base' --model roberta
 
 rm -rf ${BASE}/actor_checkpoint_prompts.pt
 
