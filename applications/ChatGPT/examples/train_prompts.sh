@@ -17,5 +17,8 @@ set_n_least_used_CUDA_VISIBLE_DEVICES 2
 
 # torchrun --standalone --nproc_per_node=2 train_prompts.py prompts.csv --strategy colossalai_zero2
 
-torchrun --standalone --nproc_per_node=2 train_prompts.py "/home/lccsr/HPC-AI/ColossalAI/applications/ChatGPT/examples/awesome-chatgpt-prompts/prompts.csv" \
-    --strategy colossalai_zero2 --lora_rank 2
+torchrun --standalone --nproc_per_node=2 train_prompts.py "./awesome-chatgpt-prompts/prompts.csv" \
+    --strategy colossalai_zero2 --lora_rank 2 --pretrain "bigscience/bloom-560m" --model 'bloom'
+
+# torchrun --standalone --nproc_per_node=2 train_prompts.py "./awesome-chatgpt-prompts/prompts.csv" \
+#     --strategy colossalai_zero2 --lora_rank 2
