@@ -4,7 +4,7 @@ from typing import Callable, Tuple
 import torch.nn as nn
 from torch.optim import Optimizer
 
-from ..interface import OptimizerWrapper
+from colossalai.interface import OptimizerWrapper
 
 
 class MixedPrecision(ABC):
