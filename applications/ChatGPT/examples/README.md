@@ -16,7 +16,7 @@ torchrun --standalone --nproc_per_node=2 train_reward_model.py --pretrain "faceb
 ```
 
 ### Features and tricks in RM training
-- We support [Anthropic/hh-rlhf](https://huggingface.co/datasets/Anthropic/hh-rlhf)and[rm-static](https://huggingface.co/datasets/Dahoas/rm-static) datasets.
+- We support [Anthropic/hh-rlhf](https://huggingface.co/datasets/Anthropic/hh-rlhf) and [rm-static](https://huggingface.co/datasets/Dahoas/rm-static) datasets.
 - We support 2 kinds of loss_function named 'log_sig'(used by OpenAI) and 'log_exp'(used by Anthropic).
 - We change the loss to valid_acc and pair_dist to monitor progress during training.
 - We add special token to the end of the sequence to get better result.
