@@ -63,11 +63,13 @@ class SFTTrainer(ABC):
             for batch_id, batch in enumerate(self.train_dataloader):
                 prompt_ids = batch["input_ids"]
                 p_mask = batch["attention_mask"]
+                labels = batch["labels"]
                 prompt_ids = prompt_ids.squeeze(1).cuda()
                 p_mask = p_mask.squeeze(1).cuda()
-                prompt_logits = self.model(prompt_ids, attention_mask=p_mask)
+                # prompt_logits = self.model(prompt_ids, attention_mask=p_mask, labels=labels)
+                loss, prompt_logits = self.model(prompt_ids, attention_mask=p_mask, labels=labels)
 
-                loss = self.loss_fn(prompt_logits, prompt_ids)
+                # loss = self.loss_fn(prompt_logits, labels)
                 self.strategy.backward(loss, self.model, self.optimizer)
                 self.strategy.optimizer_step(self.optimizer)
                 self.optimizer.zero_grad()
