@@ -80,7 +80,7 @@
  </li>
  <li><a href="#Use-Docker">Use Docker</a></li>
  <li><a href="#Community">Community</a></li>
- <li><a href="#contributing">Contributing</a></li>
+ <li><a href="#Contributing">Contributing</a></li>
  <li><a href="#Cite-Us">Cite Us</a></li>
 </ul>
 
@@ -375,7 +375,7 @@ Join the Colossal-AI community on [Forum](https://github.com/hpcaitech/ColossalA
 [Slack](https://join.slack.com/t/colossalaiworkspace/shared_invite/zt-z7b26eeb-CBp7jouvu~r0~lcFzX832w),
 and [WeChat(微信)](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/WeChat.png "qrcode") to share your suggestions, feedback, and questions with our engineering team.
 
-## Invitation to open-source contribution
+## Contributing
 Referring to the successful attempts of [BLOOM](https://bigscience.huggingface.co/) and [Stable Diffusion](https://en.wikipedia.org/wiki/Stable_Diffusion), any and all developers and partners with computing powers, datasets, models are welcome to join and build the Colossal-AI community, making efforts towards the era of big AI models!
 
 You may contact us or participate in the following ways:
