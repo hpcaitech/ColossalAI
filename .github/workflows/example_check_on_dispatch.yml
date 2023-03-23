@@ -1,0 +1,64 @@
+name: Test Example on Dispatch
+on:
+  workflow_dispatch:
+    inputs:
+      example_directory:
+        type: string
+        description: example directory, separated by space. For example, language/gpt, images/vit. Simply input language or simply gpt does not work.
+        required: true
+
+jobs:
+  matrix_preparation:
+    if: |
+        github.event.pull_request.draft == false &&
+        github.base_ref == 'main' &&
+        github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
+    name: Check the examples user want
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+    - name: 📚 Checkout
+      uses: actions/checkout@v3
+    - name: Set up matrix
+      id: set-matrix
+      env:
+        check_dir: ${{ inputs.example_directory }}
+      run: |
+        res=`python .github/workflows/scripts/example_checks/check_dispatch_inputs.py --fileNameList $check_dir`
+        if [ res == "failure" ];then
+          exit -1
+        fi
+        dirs="[${check_dir}]"
+        echo "Testing examples in $dirs"
+        echo "matrix={\"directory\":$(echo "$dirs")}" >> $GITHUB_OUTPUT
+
+  test_example:
+    if: |
+        github.event.pull_request.draft == false &&
+        github.base_ref == 'main' &&
+        github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
+    name: Manually check example files
+    needs: manual_check_matrix_preparation
+    runs-on: [self-hosted, gpu]
+    strategy:
+      fail-fast: false
+      matrix: ${{fromJson(needs.manual_check_matrix_preparation.outputs.matrix)}}
+    container:
+      image: hpcaitech/pytorch-cuda:1.12.0-11.3.0
+      options: --gpus all --rm -v /data/scratch/examples-data:/data/
+    timeout-minutes: 10
+    steps:
+      - name: 📚 Checkout
+        uses: actions/checkout@v3
+      - name: Install Colossal-AI
+        run: |
+          pip install -v .
+      - name: Test the example
+        run: |
+          dir=${{ matrix.directory }}
+          echo "Testing ${dir} now"
+          cd "${PWD}/examples/${dir}"
+          bash test_ci.sh
+        env:
+          NCCL_SHM_DISABLE: 1

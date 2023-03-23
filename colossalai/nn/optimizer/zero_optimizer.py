@@ -1,4 +1,6 @@
+# this code is inspired by the DeepSpeed library and implemented with our own design from scratch
 import math
+import warnings
 from enum import Enum
 from typing import Any, Dict, Set, Tuple
 
@@ -12,7 +14,7 @@ from colossalai.gemini.chunk import Chunk, ChunkManager
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import ColossalaiOptimizer, CPUAdam, FusedAdam, HybridAdam
 from colossalai.nn.parallel.data_parallel import ZeroDDP
-from colossalai.utils import disposable, get_current_device
+from colossalai.utils import disposable, get_current_device, is_ddp_ignored
 
 _AVAIL_OPTIM_LIST = {FusedAdam, CPUAdam, HybridAdam}
 
@@ -64,7 +66,8 @@ class ZeroOptimizer(ColossalaiOptimizer):
                  **defaults: Any):
         super().__init__(optim)
         assert isinstance(module, ZeroDDP)
-        assert type(optim) in _AVAIL_OPTIM_LIST, "you should use the optimizer in the available list"
+        assert type(optim) in _AVAIL_OPTIM_LIST, "You should use an optimizer in the available list:\n" \
+            f"{_AVAIL_OPTIM_LIST}"
         self.module = module
         self.gemini_manager = module.gemini_manager
         self.chunk_manager: ChunkManager = self.gemini_manager.chunk_manager
@@ -78,8 +81,16 @@ class ZeroOptimizer(ColossalaiOptimizer):
         if self.clipping_flag:
             assert norm_type == 2.0, "ZeroOptimizer only supports L2 norm now"
 
-        params_list = [p for p in module.parameters() if not getattr(p, '_ddp_to_ignore', False)]
-        for p, fp32_p in zip(params_list, module.fp32_params):
+        ddp_param_list = []
+        for name, param in module.named_parameters():
+            if is_ddp_ignored(param):
+                if param.requires_grad:
+                    warnings.warn(f"Parameter `{name}` is ignored by DDP but requires gradient! "
+                                  "You should handle its optimizer update by yourself!")
+            else:
+                ddp_param_list.append(param)
+
+        for p, fp32_p in zip(ddp_param_list, module.fp32_params):
             chunk_16 = self.chunk_manager.get_chunk(p)
             if chunk_16 not in self.chunk16_set:
                 chunk_16.l2_norm_flag = self.clipping_flag
@@ -126,7 +137,7 @@ class ZeroOptimizer(ColossalaiOptimizer):
         for group in self.param_groups:
             for fake_param in group['params']:
                 assert fake_param.grad is None
-                fake_param.data = none_tensor
+                fake_param.data = none_tensor.to(fake_param.device)
 
         for chunk16 in self.chunk16_set:
             chunk16.optim_update()
@@ -139,6 +150,10 @@ class ZeroOptimizer(ColossalaiOptimizer):
         dist.all_reduce(self._found_overflow)
 
         return self._found_overflow.item() > 0
+
+    def _clear_global_norm(self) -> None:
+        for c16 in self.chunk16_set:
+            c16.l2_norm = None
 
     def _calc_global_norm(self) -> float:
         norm_sqr: float = 0.0
@@ -201,6 +216,7 @@ class ZeroOptimizer(ColossalaiOptimizer):
             self.optim_state = OptimState.UNSCALED    # no need to unscale grad
             self.grad_scaler.update(found_inf)    # update gradient scaler
             self._logger.info(f'Found overflow. Skip step')
+            self._clear_global_norm()    # clear recorded norm
             self.zero_grad()    # reset all gradients
             self._update_fp16_params()
             return
@@ -285,12 +301,15 @@ class ZeroOptimizer(ColossalaiOptimizer):
             fake_params_list = list()
 
             for param in group['params']:
+                if is_ddp_ignored(param):
+                    continue
                 chunk16 = self.chunk_manager.get_chunk(param)
                 range_pair = get_range_pair(chunk16, param)
                 if range_pair[0] >= range_pair[1]:
                     continue
 
-                fake_param = torch.nn.Parameter(torch.empty([0]))
+                grad_device = self.module.grads_device[param]
+                fake_param = torch.nn.Parameter(torch.empty([0], device=grad_device))
                 self.param_to_chunk32[fake_param] = chunk16.paired_chunk
                 self.param_to_range[fake_param] = range_pair
 

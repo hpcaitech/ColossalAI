@@ -50,7 +50,7 @@ python opt_fastapi.py <model> --queue_size <QueueSize>
 ```
 The `<QueueSize>` can be an integer in `[0, MAXINT]`. If it's `0`, the request queue size is infinite. If it's a positive integer, when the request queue is full, incoming requests will be dropped (the HTTP status code of response will be 406).
 
-### Configure bathcing
+### Configure batching
 ```shell
 python opt_fastapi.py <model> --max_batch_size <MaxBatchSize>
 ```

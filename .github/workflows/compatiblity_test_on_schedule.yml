@@ -1,0 +1,90 @@
+name: Compatibility Test on Schedule
+
+on:
+  # run at 03:00 of every Sunday(singapore time) so here is UTC time Saturday 16:00
+  schedule:
+    - cron:  '0 19 * * 6'
+  workflow_dispatch:
+
+jobs:
+  matrix_preparation:
+    name: Prepare Container List
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v3
+      - id: set-matrix
+        run: |
+          IFS=','
+          DOCKER_IMAGE=()
+
+          while read tag; do
+            DOCKER_IMAGE+=("\"hpcaitech/pytorch-cuda:${tag}\"")
+          done <.compatibility
+
+          container=$( IFS=',' ; echo "${DOCKER_IMAGE[*]}" )
+          container="[${container}]"
+          echo "$container"
+          echo "::set-output name=matrix::{\"container\":$(echo "$container")}"
+
+  build:
+    name: Test for PyTorch Compatibility
+    needs: matrix_preparation
+    if: github.repository == 'hpcaitech/ColossalAI'
+    runs-on: [self-hosted, gpu]
+    strategy:
+      fail-fast: false
+      matrix: ${{fromJson(needs.matrix_preparation.outputs.matrix)}}
+    container:
+      image: ${{ matrix.container }}
+      options: --gpus all --rm -v /data/scratch/cifar-10:/data/scratch/cifar-10
+    timeout-minutes: 120
+    steps:
+      - name: Install dependencies
+        run: |
+          pip install -U pip setuptools wheel --user
+
+      - uses: actions/checkout@v2
+        with:
+          repository: hpcaitech/TensorNVMe
+          ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
+          path: TensorNVMe
+
+      - name: Install tensornvme
+        run: |
+          cd TensorNVMe
+          conda install cmake
+          pip install -r requirements.txt
+          pip install -v .
+      - uses: actions/checkout@v2
+        with:
+          ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
+
+      - name: Install Colossal-AI
+        run: |
+          pip install -v --no-cache-dir .
+          pip install -r requirements/requirements-test.txt
+
+      - name: Unit Testing
+        run: |
+          PYTHONPATH=$PWD pytest tests
+        env:
+          DATA: /data/scratch/cifar-10
+          NCCL_SHM_DISABLE: 1
+          LD_LIBRARY_PATH: /github/home/.tensornvme/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
+
+      - name: Notify Lark
+        id: message-preparation
+        if: ${{ failure() }}
+        run: |
+          url=$SERVER_URL/$REPO/actions/runs/$RUN_ID
+          msg="Compatibility test failed with $container, please visit $url for details"
+          echo $msg
+          python .github/workflows/scripts/send_message_to_lark.py -m "$msg" -u $WEBHOOK_URL
+        env:
+          SERVER_URL: ${{github.server_url }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          WEBHOOK_URL: ${{ secrets.LARK_NOTIFICATION_WEBHOOK_URL }}
+          container: ${{ matrix.container }}

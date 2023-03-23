@@ -1,11 +1,11 @@
+from typing import Tuple
+
 import torch
 import torch.distributed as dist
 
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.context.singleton_meta import SingletonMeta
 from colossalai.tensor import ProcessGroup
-
-from typing import Tuple
 
 
 def _check_sanity():

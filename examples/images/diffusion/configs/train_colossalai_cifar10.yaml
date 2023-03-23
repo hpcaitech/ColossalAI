@@ -111,6 +111,7 @@ lightning:
         enable_distributed_storage: True
         placement_policy: cuda
         force_outputs_fp32: true
+        min_chunk_size: 64
 
     log_every_n_steps: 2
     logger: True

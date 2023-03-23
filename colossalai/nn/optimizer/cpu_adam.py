@@ -19,7 +19,7 @@ class CPUAdam(NVMeOptimizer):
       * Parameters on GPU and gradients on GPU is allowed.
       * Parameters on GPU and gradients on CPU is **not** allowed.
 
-    Requires ColossalAI to be installed via ``pip install .``.
+    `CPUAdam` requires CUDA extensions which can be built during installation or runtime.
 
     This version of CPU Adam accelates parameters updating on CPU with SIMD.
     Support of AVX2 or AVX512 is required.

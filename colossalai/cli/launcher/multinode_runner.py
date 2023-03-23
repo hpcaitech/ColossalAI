@@ -1,8 +1,10 @@
-import fabric
-from .hostinfo import HostInfo, HostInfoList
 from multiprocessing import Pipe, Process
 from multiprocessing import connection as mp_connection
+
 import click
+import fabric
+
+from .hostinfo import HostInfo, HostInfoList
 
 
 def run_on_host(hostinfo: HostInfo, workdir: str, recv_conn: mp_connection.Connection,
@@ -45,8 +47,10 @@ def run_on_host(hostinfo: HostInfo, workdir: str, recv_conn: mp_connection.Conne
                             # execute on the remote machine
                             fab_conn.run(cmds, hide=False)
                     send_conn.send('success')
-            except:
-                click.echo(f"Error: failed to run {cmds} on {hostinfo.hostname}")
+            except Exception as e:
+                click.echo(
+                    f"Error: failed to run {cmds} on {hostinfo.hostname}, is localhost: {hostinfo.is_local_host}, exception: {e}"
+                )
                 send_conn.send('failure')
 
     # shutdown

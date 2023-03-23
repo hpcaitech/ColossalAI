@@ -164,18 +164,9 @@ def meta_conv(
 
 
 @register_meta(aten._convolution.default)
-def meta_conv_1(
-    input_tensor: torch.Tensor,
-    weight: torch.Tensor,
-    bias: torch.Tensor,
-    stride: List[int],
-    padding: List[int],
-    dilation: List[int],
-    is_transposed: bool,
-    output_padding: List[int],
-    groups: int,
-    *extra_args
-):
+def meta_conv_1(input_tensor: torch.Tensor, weight: torch.Tensor, bias: torch.Tensor, stride: List[int],
+                padding: List[int], dilation: List[int], is_transposed: bool, output_padding: List[int], groups: int,
+                *extra_args):
     out = meta_conv(input_tensor, weight, bias, stride, padding, dilation, is_transposed, output_padding, groups)
     return out
 
@@ -233,11 +224,8 @@ def meta_cuda_rnn(
     if is_input_packed:
         out_shape = [batch_sizes_sum, out_size * num_directions]
     else:
-        out_shape = (
-            [mini_batch, seq_length, out_size * num_directions]
-            if batch_first
-            else [seq_length, mini_batch, out_size * num_directions]
-        )
+        out_shape = ([mini_batch, seq_length, out_size *
+                      num_directions] if batch_first else [seq_length, mini_batch, out_size * num_directions])
     output = input.new_empty(out_shape)
 
     cell_shape = [num_layers * num_directions, mini_batch, hidden_size]
@@ -369,6 +357,15 @@ def meta_ln_backward(dY: torch.Tensor, input: torch.Tensor, normalized_shape, me
     dX = torch.empty_like(input)
     dgamma = torch.empty_like(weight)
     dbeta = torch.empty_like(bias)
+    return dX, dgamma, dbeta
+
+
+# https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/group_norm.cpp
+@register_meta(aten.native_group_norm_backward.default)
+def meta_gn_backward(dY: torch.Tensor, input: torch.Tensor, mean, rstd, gamma, N, C, HxW, group, grad_input_mask):
+    dX = torch.empty_like(input)
+    dgamma = torch.empty_like(gamma)
+    dbeta = torch.empty_like(gamma)
     return dX, dgamma, dbeta
 
 

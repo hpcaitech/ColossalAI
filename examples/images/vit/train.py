@@ -7,6 +7,7 @@ import torch.nn.functional as F
 from timm.models.vision_transformer import _create_vision_transformer
 from titans.dataloader.imagenet import build_dali_imagenet
 from tqdm import tqdm
+from vit import DummyDataLoader
 
 import colossalai
 from colossalai.core import global_context as gpc
@@ -56,8 +57,8 @@ def init_spec_func(model, tp_type):
 def train_imagenet():
 
     parser = colossalai.get_default_parser()
-    parser.add_argument('--from_torch', default=True, action='store_true')
-    parser.add_argument('--resume_from', default=False)
+    parser.add_argument('--resume_from', default=False, action='store_true')
+    parser.add_argument('--dummy_data', default=False, action='store_true')
 
     args = parser.parse_args()
     colossalai.launch_from_torch(config=args.config)
@@ -74,10 +75,22 @@ def train_imagenet():
             logger.log_to_file(log_path)
 
     logger.info('Build data loader', ranks=[0])
-    root = os.environ['DATA']
-    train_dataloader, test_dataloader = build_dali_imagenet(root,
-                                                            train_batch_size=gpc.config.BATCH_SIZE,
-                                                            test_batch_size=gpc.config.BATCH_SIZE)
+    if not args.dummy_data:
+        root = os.environ['DATA']
+        train_dataloader, test_dataloader = build_dali_imagenet(root,
+                                                                train_batch_size=gpc.config.BATCH_SIZE,
+                                                                test_batch_size=gpc.config.BATCH_SIZE)
+    else:
+        train_dataloader = DummyDataLoader(length=10,
+                                           batch_size=gpc.config.BATCH_SIZE,
+                                           category=gpc.config.NUM_CLASSES,
+                                           image_size=gpc.config.IMG_SIZE,
+                                           return_dict=False)
+        test_dataloader = DummyDataLoader(length=5,
+                                          batch_size=gpc.config.BATCH_SIZE,
+                                          category=gpc.config.NUM_CLASSES,
+                                          image_size=gpc.config.IMG_SIZE,
+                                          return_dict=False)
 
     logger.info('Build model', ranks=[0])
 

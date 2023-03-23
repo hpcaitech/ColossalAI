@@ -1,16 +1,16 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
+# this code is inspired by the DeepSpeed library and implemented with our own design from scratch
 
-from typing import List, Iterable
+from typing import Iterable, List, Optional, Type
+
+from torch import Tensor
 from torch.nn import Module
 from torch.nn.modules.loss import _Loss
 
-from colossalai.logging import get_dist_logger
-from torch import Tensor
-from colossalai.gemini.ophooks import register_ophooks_recursively, BaseOpHook
-from colossalai.engine.schedule import BaseSchedule, NonPipelineSchedule, PipelineSchedule, InterleavedPipelineSchedule
-from typing import Optional, Type
 from colossalai.engine.gradient_handler import BaseGradientHandler
+from colossalai.engine.schedule import BaseSchedule, InterleavedPipelineSchedule, NonPipelineSchedule, PipelineSchedule
+from colossalai.gemini.ophooks import BaseOpHook, register_ophooks_recursively
 from colossalai.logging import get_dist_logger
 
 
@@ -93,7 +93,7 @@ class Engine:
         if self.uses_pipeline:
             self._schedule.pre_processing(self)
 
-        #register hook if any
+        # register hook if any
         if len(self._ophook_list) > 0:
             register_ophooks_recursively(self._model, self._ophook_list)
 
