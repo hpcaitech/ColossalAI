@@ -173,13 +173,13 @@ class ColossalAIStrategy(DDPStrategy):
                 module.eval()
         # get state_dict and save
 
-        if not isinstance(self.model, PreTrainedModel):
+        if not isinstance(model, PreTrainedModel):
             state_dict = unwrapped_model.state_dict()
             if only_rank0 and dist.get_rank() != 0:
                 return
             torch.save(state_dict, path)
         else:
-            self.model.save_pretrained(path)
+            model.save_pretrained(path)
             if tokenizer is not None:
                 tokenizer.save_pretrained(path)
 
