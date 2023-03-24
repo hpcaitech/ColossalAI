@@ -35,3 +35,5 @@ if __name__ == "__main__":
         out_2 = dif_model_2(random_input_2, time_stamp2, context_2)
         print(out_1.shape)
         print(out_2['sample'].shape)
+
+
