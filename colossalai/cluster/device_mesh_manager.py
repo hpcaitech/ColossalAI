@@ -103,7 +103,7 @@ class DeviceMeshManager:
                     dist.destroy_process_group(pg)
             del self.device_mesh_store[name]
         else:
-            raise ValueError(f'Process group {name} does not exist.')
+            raise ValueError(f'Device mesh {name} does not exist.')
 
     def destroy_all(self):
         """
