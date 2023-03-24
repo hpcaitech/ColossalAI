@@ -128,6 +128,4 @@ class ExperienceMakerHolder:
                 print("[maker] UPDATE ")
             self.experience_maker.actor = new_actor
             self.experience_maker.critic = new_critic
-            # print(sum((x - y).abs().sum() for x,y in zip(self.experience_maker.reward_model.state_dict().values(), self.experience_maker.critic.state_dict().values())))
-            # print(sum((x - y).abs().sum() for x,y in zip(self.experience_maker.initial_model.state_dict().values(), self.experience_maker.actor.state_dict().values())))
         self.model_visit_lock.release()

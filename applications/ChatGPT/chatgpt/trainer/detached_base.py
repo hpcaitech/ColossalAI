@@ -17,6 +17,8 @@ import ray
 import sys
 
 # @ray.remote
+
+
 class DetachedTrainer(ABC):
     '''
         Base class for detached rlhf trainers. 
@@ -44,7 +46,7 @@ class DetachedTrainer(ABC):
                  max_epochs: int = 10,
                  dataloader_pin_memory: bool = True,
                  callbacks: List[Callback] = [],
-                 **generate_kwargs)->None:
+                 **generate_kwargs) -> None:
         super().__init__()
         self.strategy = strategy
         self.detached_replay_buffer = DetachedReplayBuffer(train_batch_size, limit=buffer_limit, cpu_offload=buffer_cpu_offload)
@@ -85,7 +87,7 @@ class DetachedTrainer(ABC):
         self._on_fit_start()
         for episode in range(num_episodes):
             self._on_episode_start(episode)
-            for timestep in tqdm(range(max_timesteps//update_timesteps),
+            for timestep in tqdm(range(max_timesteps // update_timesteps),
                                  desc=f'Episode [{episode+1}/{num_episodes}]',
                                  disable=not is_rank_0()):
                 self._learn()

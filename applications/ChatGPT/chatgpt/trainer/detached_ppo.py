@@ -75,8 +75,6 @@ class DetachedPPOTrainer(DetachedTrainer):
             self.critic_optim = Adam(self.critic.parameters(), lr=5e-6)
         (self.actor, self.actor_optim), (self.critic, self.critic_optim) = \
             self.strategy.prepare((self.actor, self.actor_optim), (self.critic, self.critic_optim))
-        # self.initial_model = copy.deepcopy(self.actor)
-        # self.reward_model = copy.deepcopy(self.critic)
         generate_kwargs = _set_default_generate_kwargs(strategy, generate_kwargs, self.actor)
 
         super().__init__(experience_maker_holder_name_list,
@@ -134,10 +132,6 @@ class DetachedPPOTrainer(DetachedTrainer):
         self.strategy.backward(critic_loss, self.critic, self.critic_optim)
         self.strategy.optimizer_step(self.critic_optim)
         self.critic_optim.zero_grad()
-
-        # print(sum(((x - y).abs().sum() for x, y in zip(self.initial_model.state_dict().values(),self.actor.state_dict().values()))))
-        # print(sum(((x - y).abs().sum() for x, y in zip(self.reward_model.state_dict().values(), self.critic.state_dict().values()))))
-
         return {'actor_loss': actor_loss.item(), 'critic_loss': critic_loss.item()}
 
     def strategy_save_actor(self, path: str, only_rank0: bool = False) -> None:
