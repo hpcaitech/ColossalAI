@@ -100,6 +100,8 @@ class PPOTrainer(Trainer):
         self.strategy.optimizer_step(self.critic_optim)
         self.critic_optim.zero_grad()
 
+        # print(sum(((x-y).abs().sum() for x, y in zip(self.experience_maker.initial_model.state_dict().values(),self.actor.state_dict().values()))))
+        # print(sum(((x - y).abs().sum() for x, y in zip(self.experience_maker.reward_model.state_dict().values(), self.critic.state_dict().values()))))
         return {'actor_loss': actor_loss.item(), 'critic_loss': critic_loss.item()}
 
 

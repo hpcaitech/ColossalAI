@@ -89,6 +89,7 @@ def main(args):
         max_epochs=args.max_epochs,
         train_batch_size=args.train_batch_size,
         experience_batch_size=args.experience_batch_size,
+        sample_replay_buffer = True,
         tokenizer=tokenize_fn,
         max_length=128,
         do_sample=True,

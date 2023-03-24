@@ -21,7 +21,7 @@ from .strategies import Strategy
 from .utils import is_rank_0, get_cuda_actor_critic_from_args
 
 import ray
-
+import copy
 
 @ray.remote
 class DetachedPPOTrainer(DetachedTrainer):
@@ -77,9 +77,11 @@ class DetachedPPOTrainer(DetachedTrainer):
             self.critic_optim = Adam(self.critic.parameters(), lr=5e-6)
         (self.actor, self.actor_optim), (self.critic, self.critic_optim) = \
             self.strategy.prepare((self.actor, self.actor_optim), (self.critic, self.critic_optim))
-
+        self.strategy.save_model(self.actor, "trainer_actor_test.pt")
+        # self.initial_model = copy.deepcopy(self.actor)
+        # self.reward_model = copy.deepcopy(self.critic)
         generate_kwargs = _set_default_generate_kwargs(strategy, generate_kwargs, self.actor)
-        
+
         super().__init__(experience_maker_holder_name_list,
                          strategy=strategy,
                          train_batch_size=train_batch_size,
@@ -89,18 +91,17 @@ class DetachedPPOTrainer(DetachedTrainer):
                          max_epochs=max_epochs,
                          dataloader_pin_memory=dataloader_pin_memory,
                          callbacks=callbacks,
-                         generate_kwargs=generate_kwargs)
+                         **generate_kwargs)
         self.fully_initialized = True
 
-    def update_remote_makers(self):
+    def _update_remote_makers(self):
         # TODO: balance duties
         if is_rank_0():
             self.update_target_holder_list(self.target_holder_name_list)
-        for target_holder in self.target_holder_list:
-            # TODO: reduce malloc
-            
-            with torch.no_grad():
-                target_holder.update_experience_maker.remote(self.actor, self.critic)
+            for target_holder in self.target_holder_list:
+                # TODO: reduce malloc
+                with torch.no_grad():
+                    ray.get(target_holder.update_experience_maker.remote(self.actor, self.critic))
 
     def ready(self):
         # indicate that self is fully initialized
@@ -113,7 +114,6 @@ class DetachedPPOTrainer(DetachedTrainer):
         self.critic.train()
 
         experience.to_device(torch.cuda.current_device())
-
         num_actions = experience.action_mask.size(1)
         action_log_probs = self.actor(experience.sequences, num_actions, attention_mask=experience.attention_mask)
         actor_loss = self.actor_loss_fn(action_log_probs,
@@ -135,6 +135,9 @@ class DetachedPPOTrainer(DetachedTrainer):
         self.strategy.backward(critic_loss, self.critic, self.critic_optim)
         self.strategy.optimizer_step(self.critic_optim)
         self.critic_optim.zero_grad()
+
+        # print(sum(((x - y).abs().sum() for x, y in zip(self.initial_model.state_dict().values(),self.actor.state_dict().values()))))
+        # print(sum(((x - y).abs().sum() for x, y in zip(self.reward_model.state_dict().values(), self.critic.state_dict().values()))))
 
         return {'actor_loss': actor_loss.item(), 'critic_loss': critic_loss.item()}
 
@@ -167,3 +170,4 @@ def _set_default_generate_kwargs(strategy: Strategy, generate_kwargs: dict, acto
         new_kwargs['update_model_kwargs_fn'] = update_model_kwargs_fn
 
     return new_kwargs
+   

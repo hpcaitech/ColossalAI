@@ -14,7 +14,7 @@ from .strategies import Strategy
 from .utils import is_rank_0
 
 import ray
-
+import sys
 
 # @ray.remote
 class DetachedTrainer(ABC):
@@ -63,7 +63,7 @@ class DetachedTrainer(ABC):
             self.target_holder_list.append(ray.get_actor(name))
 
     @abstractmethod
-    def update_remote_makers(self):
+    def _update_remote_makers(self):
         pass
 
     @abstractmethod
@@ -85,13 +85,11 @@ class DetachedTrainer(ABC):
         self._on_fit_start()
         for episode in range(num_episodes):
             self._on_episode_start(episode)
-            for timestep in tqdm(range(max_timesteps),
+            for timestep in tqdm(range(max_timesteps//update_timesteps),
                                  desc=f'Episode [{episode+1}/{num_episodes}]',
                                  disable=not is_rank_0()):
                 self._learn()
-                # assume those remote holders are working
-                self.update_remote_makers()
-
+                self._update_remote_makers()
             self._on_episode_end(episode)
         self._on_fit_end()
 

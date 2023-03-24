@@ -97,8 +97,8 @@ def main(args):
     print("...ready")
 
     trainer_done_ref = trainer_ref.fit.remote(num_episodes=args.num_episodes, max_timesteps=args.max_timesteps, update_timesteps=args.update_timesteps)
-    maker_done_ref = experience_holder_ref.workingloop.remote(sampler, tokenize_fn, times=args.num_episodes * args.max_timesteps * args.update_timesteps + 3)
-
+    # maker_done_ref = experience_holder_ref.workingloop.remote(sampler, tokenize_fn, times=args.num_episodes * args.max_timesteps * args.update_timesteps + 3)
+    maker_done_ref = experience_holder_ref.workingloop.remote(sampler, tokenize_fn, times=1)
     ray.get([trainer_done_ref, maker_done_ref])
 
     # save model checkpoint after fitting

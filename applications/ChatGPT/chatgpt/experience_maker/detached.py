@@ -38,18 +38,20 @@ class ExperienceMakerHolder:
             actor, critic = get_cuda_actor_critic_from_args(model, pretrained, lora_rank)
             initial_model = deepcopy(actor)
             reward_model = RewardModel(deepcopy(critic.model), deepcopy(critic.value_head)).to(torch.cuda.current_device())
-
+        
         actor, critic, reward_model, initial_model= \
             strategy.prepare(actor, critic, reward_model, initial_model)
+
         self.experience_maker = NaiveExperienceMaker(actor, critic, reward_model, initial_model,kl_coef)
         self.target_trainer_list = []
         self.experience_batch_size = experience_batch_size
         self.generate_kwargs = generate_kwargs
         for name in detached_trainer_name_list:
             self.target_trainer_list.append(ray.get_actor(name))
-            
+        
         self.model_visit_lock = Lock()
-
+        self.strategy = strategy
+        self.strategy.save_model(self.experience_maker.actor, 'maker_actor_test.pt')
         
     # copy from ../trainer/base.py
     def _make_experience(self, inputs: Union[Tensor, Dict[str, Tensor]]) -> Experience:
@@ -71,7 +73,7 @@ class ExperienceMakerHolder:
         chosen_trainer = None
         min_length = None
         if 'debug' in self.generate_kwargs and self.generate_kwargs['debug'] == True:
-            print("[maker] choosing tartget")
+            print("[maker] choosing tartget trainer")
         while chosen_trainer is None:
             for target_trainer in self.target_trainer_list:
                 temp_length = ray.get(target_trainer.buffer_get_length.remote())
@@ -83,7 +85,7 @@ class ExperienceMakerHolder:
                         min_length = temp_length
                         chosen_trainer = target_trainer
         if 'debug' in self.generate_kwargs and self.generate_kwargs['debug'] == True:
-            print("[maker] sending")
+            print("[maker] sending exp")
         chosen_trainer.buffer_append.remote(experience)
 
     def workingloop(self, sampler: DistributedSampler, tokenizer: Optional[Callable[[Any], dict]] = None, times=5000 * 50000):
@@ -93,25 +95,23 @@ class ExperienceMakerHolder:
                     inputs = tokenizer(rand_prompts)
             else:
                 inputs = rand_prompts
+
             self.model_visit_lock.acquire()
             self.make_and_send(inputs)
             self.model_visit_lock.release()
 
     def update_experience_maker(self, new_actor: Actor, new_critic: Critic):
-        # TODO: parameter update
         '''
-        pseudo:
-            self.experience_maker.actor.update()
-            self.experience_maker.critic.update()
+            called by trainer
         '''
         # TODO: reduce malloc
         self.model_visit_lock.acquire()
         with torch.no_grad():
-            print("*******UPDATE*******")
-            # backup = deepcopy(self.experience_maker.critic)
+            if 'debug' in self.generate_kwargs and self.generate_kwargs['debug'] == True:
+                print("[maker] UPDATE ")
             self.experience_maker.actor = new_actor
             self.experience_maker.critic = new_critic
-            # print(sum((x - y).abs().sum() for x,y in zip(backup.state_dict().values(), self.experience_maker.critic.state_dict().values())))
+            # print(sum((x - y).abs().sum() for x,y in zip(self.experience_maker.reward_model.state_dict().values(), self.experience_maker.critic.state_dict().values())))
+            # print(sum((x - y).abs().sum() for x,y in zip(self.experience_maker.initial_model.state_dict().values(), self.experience_maker.actor.state_dict().values())))
         self.model_visit_lock.release()
         pass
-        
