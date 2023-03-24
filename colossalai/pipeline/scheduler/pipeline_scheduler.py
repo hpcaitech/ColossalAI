@@ -26,7 +26,7 @@ class PipelineScheduler():
         self.device = device
         self.checkpoint = checkpoint
         self.input_ranks = input_ranks
-        self.output_ranks = output_ranks if output_ranks else (self.num_stages - 1)
+        self.output_ranks = output_ranks if output_ranks else [self.num_stages - 1]
 
         self.batch = None
         self.labels = None
@@ -52,7 +52,7 @@ class PipelineScheduler():
     def forward_backward(self, forward_only: bool = False):
         self.worker.set_fwd_only(forward_only)
 
-        if self.is_input_rank():
+        if self.is_input_rank() or self.is_output_rank():
             batch_length = get_batch_lengths(self.batch)[0]
             minibatch_size = math.ceil(batch_length / self.num_minibatches)
             device = self.device
@@ -61,16 +61,17 @@ class PipelineScheduler():
                 batch_start, batch_end = self._get_batch_offsets(minibatch_size, minibatch_id, batch_length)
 
                 # set input
-                minibatch = split_batch(self.batch, batch_start, batch_end, device)
-                self._set_input(minibatch)
+                if self.is_input_rank():
+                    minibatch = split_batch(self.batch, batch_start, batch_end, device)
+                    self._set_input(minibatch)
+                else:    # set labels
+                    if self.labels is not None:
+                        minilabels = split_batch(self.labels, batch_start, batch_end, device)
+                        self._set_labels(minibatch_id, minilabels)
 
-        if self.is_output_rank():
-            for minibatch_id in range(self.num_minibatches):
-                batch_start, batch_end = self._get_batch_offsets(minibatch_size, minibatch_id, batch_length)
-                # set labels
-                if self.labels is not None:
-                    minilabels = split_batch(self.labels, batch_start, batch_end, device)
-                    self._set_labels(minibatch_id, minilabels)
+            if self.is_output_rank():
+                for minibatch_id in range(self.num_minibatches):
+                    batch_start, batch_end = self._get_batch_offsets(minibatch_size, minibatch_id, batch_length)
 
         self._wait_for_done(forward_only)
 

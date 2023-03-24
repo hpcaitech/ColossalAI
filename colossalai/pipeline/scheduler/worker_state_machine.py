@@ -164,11 +164,14 @@ class WorkerStateMachine(StateMachine):
             # choose action according to state
             res = None
             task = self._get_next_task()
+            print(f'rank{self.rank} | get task')
             if task:
                 res = task.execute()
+                print(f'rank{self.rank} | execute task')
 
             if res:
                 self._set_output(res)
+                print(f'rank{self.rank} | set res')
 
     def run(self):
         main_loop_thread = threading.Thread(target=self.loop)
@@ -232,20 +235,21 @@ class WorkerStateMachine(StateMachine):
         return next_state
 
     def _get_next_task(self):
-        task = None
+        task: Task = None
         cur_state = self.get_current_state()
         if cur_state == 'start':
             task = None
         elif cur_state == 'fwd':
-            self._wait_for_last_fwds()
-            stage_input = self._get_input('fwd', self.cur_fwd_id)
-            # TODO use minibatch_id calculated seperately
-            task = Task(self._forward, self.cur_fwd_id, *stage_input.args, **stage_input.kwargs)
+            minibatch_id = self._get_fwd_minibatch_id()
+            self._wait_for_last_fwds(minibatch_id)
+            stage_input = self._get_input('fwd', minibatch_id)
+            task = Task(self._forward, minibatch_id, *stage_input.args, **stage_input.kwargs)
             self.cur_fwd_id += 1
         elif cur_state == 'bwd':
-            self._wait_for_last_bwds()
-            stage_input = self._get_input('bwd', self.cur_bwd_id)
-            task = Task(self._backward, self.cur_bwd_id, *stage_input.args, **stage_input.kwargs)
+            minibatch_id = self._get_bwd_minibatch_id()
+            self._wait_for_last_bwds(minibatch_id)
+            stage_input = self._get_input('bwd', minibatch_id)
+            task = Task(self._backward, minibatch_id, *stage_input.args, **stage_input.kwargs)
             self.cur_bwd_id += 1
         elif cur_state == 'step':
             task = Task(self._step)
@@ -257,6 +261,7 @@ class WorkerStateMachine(StateMachine):
 
     def _get_input(self, state, minibatch_id) -> StageInput:
         # TODO need to add communication framework like p2p
+        # TODO use minibatch_id to target the data, now it depends on receiving sequence.
         stage_input = None
         if state == 'fwd':
             stage_input = self._pop_queue_with_lock(self.input_queue_fwd, self.input_queue_fwd_lock)
@@ -271,10 +276,12 @@ class WorkerStateMachine(StateMachine):
         if cur_state == 'start':
             pass
         elif cur_state == 'fwd':
-            stage_output = StageOutput(res)
+            minibatch_id = self._get_fwd_minibatch_id()
+            stage_output = StageOutput(minibatch_id, res)
             self._push_queue_with_lock(self.output_queue_fwd, self.output_queue_fwd_lock, stage_output)
         elif cur_state == 'bwd':
-            stage_output = StageOutput(res)
+            minibatch_id = self._get_bwd_minibatch_id()
+            stage_output = StageOutput(minibatch_id, res)
             self._push_queue_with_lock(self.output_queue_bwd, self.output_queue_bwd_lock, stage_output)
         elif cur_state == 'step':
             pass
@@ -282,6 +289,16 @@ class WorkerStateMachine(StateMachine):
             pass
         else:    # wrong state
             pass
+
+    def _get_topo(self):
+        if not hasattr(self, '_topo'):
+            with self.partition_condition_lock:
+                self.partition_condition_lock.wait_for(lambda: hasattr(self, 'module_partition'))
+                if hasattr(self.module_partition, '_topo'):
+                    self._topo = self.module_partition._topo
+                else:
+                    self._topo = None
+        return self._topo
 
     def _push_queue_with_lock(self, queue, lock, event):
         with lock:
@@ -291,15 +308,25 @@ class WorkerStateMachine(StateMachine):
         with lock:
             return queue.popleft()
 
-    # TODO use aync thread to do the consumer-producer queue.
-    def _wait_for_last_fwds(self):
-        pass
+    def _get_fwd_minibatch_id(self):
+        return self.cur_fwd_id
+
+    def _get_bwd_minibatch_id(self):
+        return self.cur_bwd_id
 
     # TODO use aync thread to do the consumer-producer queue.
-    def _wait_for_last_bwds(self):
-        pass
-        #stage_input: StageInput = StageInput(self.cur_bwd_id)
-        #self._push_queue_with_lock(self.input_queue_bwd, self.input_queue_bwd_lock, stage_input)
+    def _wait_for_last_fwds(self, minibatch_id):
+        args = ()
+        kwargs = {}
+        stage_input: StageInput = StageInput(minibatch_id, args, kwargs)
+        self._push_queue_with_lock(self.input_queue_fwd, self.input_queue_fwd_lock, stage_input)
+
+    # TODO use aync thread to do the consumer-producer queue.
+    def _wait_for_last_bwds(self, minibatch_id):
+        args = ()
+        kwargs = {}
+        stage_input: StageInput = StageInput(minibatch_id, args, kwargs)
+        self._push_queue_with_lock(self.input_queue_bwd, self.input_queue_bwd_lock, stage_input)
 
     # TODO use aync thread to do the consumer-producer queue.
     def _send_to_next_fwds(self, outputs):
@@ -313,6 +340,7 @@ class WorkerStateMachine(StateMachine):
         return None
 
     def _forward(self, minibatch_id, *args, **kwargs):
+        print(f'rank{self.rank} | forward')
         # exec fwd
         if self.fwd_only:
             with torch.no_grad():
@@ -331,6 +359,9 @@ class WorkerStateMachine(StateMachine):
                                                                               checkpoint=False)
 
     def _backward(self, minibatch_id, *args, **kwargs):
+        print(f'rank{self.rank} | backward')
+        return 2
+
         # prepare data
         backward_cache: BackwardCache = self.minibatch_id_to_backward_cache[minibatch_id]
         stage_outputs = backward_cache.stage_outputs
@@ -338,8 +369,10 @@ class WorkerStateMachine(StateMachine):
         # exec bwd
         autograd.backward(stage_outputs, grad_tensors=grad_tensors)
 
-    def _step(self):
-        pass
+    def _step(self, minibatch_id, *args, **kwargs):
+        print(f'rank{self.rank} | step')
+        return 2
 
-    def _reset(self):
-        pass
+    def _reset(self, minibatch_id, *args, **kwargs):
+        print(f'rank{self.rank} | reset')
+        exit()
