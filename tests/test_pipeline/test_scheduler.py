@@ -91,10 +91,9 @@ def run_scheduler(rank, model_cls, world_size, forward_only, batch_size, dim):
         pp_scheduler.initialize_optimizer(getattr(torch.optim, 'SGD'), lr=1e-3)
 
     for _ in range(epoch):
-        if pp_scheduler.is_input_rank():
-            input_x = torch.randn((batch_size, dim), device=device)
-            input_y = torch.randn((batch_size, dim), device=device)
-            pp_scheduler.set_batch({'x': input_x, 'y': input_y})
+        input_x = torch.randn((batch_size, dim), device=device)
+        input_y = torch.randn((batch_size, dim), device=device)
+        pp_scheduler.set_batch({'x': input_x, 'y': input_y})
         if pp_scheduler.is_output_rank():
             pp_scheduler.set_labels(labels)
 
