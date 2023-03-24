@@ -13,7 +13,11 @@ from colossalai.tensor.d_tensor.sharding_spec import ShardingSpec
 from colossalai.testing import parameterize, rerun_if_address_is_in_use
 from colossalai.utils import free_port
 from colossalai.utils.common import print_rank_0
-from colossalai.utils.model.experimental import LazyInitContext, LazyTensor, _MyTensor
+
+try:
+    from colossalai.utils.model.experimental import LazyInitContext, LazyTensor, _MyTensor
+except:
+    pass
 from tests.kit.model_zoo import model_zoo
 
 # from utils import assert_dist_model_equal, set_seed

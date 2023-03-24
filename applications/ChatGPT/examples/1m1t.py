@@ -14,8 +14,6 @@ from colossalai.nn.optimizer import HybridAdam
 
 import ray
 
-# TODO: update maker actor/critic
-
 
 def main(args):
     # configure strategy
@@ -63,21 +61,12 @@ def main(args):
         debug=args.debug,
     )
 
-    def tokenize_fn(texts):
-        # MUST padding to max length to ensure inputs of all ranks have the same length
-        # Different length may lead to hang when using gemini, as different generation steps
-        batch = tokenizer(texts, return_tensors='pt', max_length=96, padding='max_length', truncation=True)
-        return {k: v.cuda() for k, v in batch.items()}
-
     # configure Experience Maker
     experience_holder_ref = ExperienceMakerHolder.options(name="maker1", num_gpus=1, max_concurrency=2).remote(
         detached_trainer_name_list=["trainer1"],
         strategy=strategy,
-        model=args.model,
-        pretrained=args.pretrain,
-        lora_rank=args.lora_rank,
-        kl_coef=0.1,
         experience_batch_size=args.experience_batch_size,
+        kl_coef=0.1,
         #kwargs:
         max_length=128,
         do_sample=True,
@@ -88,17 +77,23 @@ def main(args):
         debug=args.debug,
     )
 
+    # trainer send its actor and critic to experience holder.
+    ray.get(trainer_ref.initialize_remote_makers.remote())
+
     # configure sampler
     dataset = pd.read_csv(args.prompt_path)['prompt']
     sampler = strategy.setup_sampler(dataset)
 
-    print("waiting for trainer...")
-    ray.get(trainer_ref.ready.remote())
-    print("...ready")
+    def tokenize_fn(texts):
+        # MUST padding to max length to ensure inputs of all ranks have the same length
+        # Different length may lead to hang when using gemini, as different generation steps
+        batch = tokenizer(texts, return_tensors='pt', max_length=96, padding='max_length', truncation=True)
+        return {k: v.cuda() for k, v in batch.items()}
 
     trainer_done_ref = trainer_ref.fit.remote(num_episodes=args.num_episodes, max_timesteps=args.max_timesteps, update_timesteps=args.update_timesteps)
-    # maker_done_ref = experience_holder_ref.workingloop.remote(sampler, tokenize_fn, times=args.num_episodes * args.max_timesteps * args.update_timesteps + 3)
-    maker_done_ref = experience_holder_ref.workingloop.remote(sampler, tokenize_fn, times=1)
+    maker_done_ref = experience_holder_ref.workingloop.remote(sampler, tokenize_fn, times=args.num_episodes * args.max_timesteps * args.update_timesteps + 3)
+    # maker_done_ref = experience_holder_ref.workingloop.remote(sampler, tokenize_fn, times=1)
+
     ray.get([trainer_done_ref, maker_done_ref])
 
     # save model checkpoint after fitting

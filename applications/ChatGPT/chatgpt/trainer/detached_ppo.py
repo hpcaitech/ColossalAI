@@ -61,8 +61,6 @@ class DetachedPPOTrainer(DetachedTrainer):
                  dataloader_pin_memory: bool = True,
                  callbacks: List[Callback] = [],
                  **generate_kwargs) -> None:
-        self.fully_initialized = False
-        
         self.strategy = strategy
         # configure models, loss and optimizers
         with self.strategy.model_init_context():
@@ -77,7 +75,6 @@ class DetachedPPOTrainer(DetachedTrainer):
             self.critic_optim = Adam(self.critic.parameters(), lr=5e-6)
         (self.actor, self.actor_optim), (self.critic, self.critic_optim) = \
             self.strategy.prepare((self.actor, self.actor_optim), (self.critic, self.critic_optim))
-        self.strategy.save_model(self.actor, "trainer_actor_test.pt")
         # self.initial_model = copy.deepcopy(self.actor)
         # self.reward_model = copy.deepcopy(self.critic)
         generate_kwargs = _set_default_generate_kwargs(strategy, generate_kwargs, self.actor)
@@ -92,7 +89,6 @@ class DetachedPPOTrainer(DetachedTrainer):
                          dataloader_pin_memory=dataloader_pin_memory,
                          callbacks=callbacks,
                          **generate_kwargs)
-        self.fully_initialized = True
 
     def _update_remote_makers(self):
         # TODO: balance duties
@@ -102,12 +98,15 @@ class DetachedPPOTrainer(DetachedTrainer):
                 # TODO: reduce malloc
                 with torch.no_grad():
                     ray.get(target_holder.update_experience_maker.remote(self.actor, self.critic))
-
-    def ready(self):
-        # indicate that self is fully initialized
-        while not hasattr(self, "fully_initialized") or self.fully_initialized == False:
-            time.sleep(1.0)
-        return True
+                    
+    def initialize_remote_makers(self):
+        # TODO: balance duties
+        if is_rank_0():
+            self.update_target_holder_list(self.target_holder_name_list)
+            for target_holder in self.target_holder_list:
+                # TODO: reduce malloc
+                with torch.no_grad():
+                    ray.get(target_holder.initialize_experience_maker.remote(self.actor, self.critic))
 
     def training_step(self, experience: Experience) -> Dict[str, float]:
         self.actor.train()

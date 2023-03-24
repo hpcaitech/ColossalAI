@@ -4,15 +4,18 @@ import loralib as lora
 import torch
 import torch.distributed as dist
 from torch.utils.data.distributed import DistributedSampler
-from chatgpt.dataset import SFTDataset
+from chatgpt.dataset import SFTDataset, AlpacaDataset, AlpacaDataCollator
 from chatgpt.models.base import RewardModel
 from chatgpt.models.bloom import BLOOMLM
 from chatgpt.models.gpt import GPTLM
 from chatgpt.models.opt import OPTLM
+from chatgpt.models.llama import LlamaLM
 from chatgpt.trainer import SFTTrainer
 from chatgpt.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
+from chatgpt.utils import prepare_llama_tokenizer_and_embedding
 from datasets import load_dataset
 from torch.optim import Adam
+from torch.utils.data import DataLoader
 from transformers import AutoTokenizer, BloomTokenizerFast
 from transformers.models.gpt2.tokenization_gpt2 import GPT2Tokenizer
 
@@ -41,6 +44,8 @@ def train(args):
             model = OPTLM(pretrained=args.pretrain, lora_rank=args.lora_rank).cuda()
         elif args.model == 'gpt2':
             model = GPTLM(pretrained=args.pretrain, lora_rank=args.lora_rank).cuda()
+        elif args.model == 'llama':
+            model = LlamaLM(pretrained=args.pretrain, lora_rank=args.lora_rank).cuda()
         else:
             raise ValueError(f'Unsupported model "{args.model}"')
 
@@ -53,9 +58,19 @@ def train(args):
         tokenizer.pad_token = tokenizer.eos_token
     elif args.model == 'opt':
         tokenizer = AutoTokenizer.from_pretrained("facebook/opt-350m")
+    elif args.model == 'llama':
+        tokenizer = AutoTokenizer.from_pretrained(
+            args.pretrain,
+            padding_side="right",
+            use_fast=False,
+        )
     else:
         raise ValueError(f'Unsupported model "{args.model}"')
-    tokenizer.pad_token = tokenizer.eos_token
+    
+    if args.model == 'llama':
+        tokenizer = prepare_llama_tokenizer_and_embedding(tokenizer, model)
+    else:
+        tokenizer.pad_token = tokenizer.eos_token
 
     max_len = 512
 
@@ -67,24 +82,38 @@ def train(args):
 
     logger = get_dist_logger()
 
-    train_data = load_dataset(args.dataset, 'super_natural_instructions', split='train')
-    eval_data = load_dataset(args.dataset, 'super_natural_instructions', split='test')
+    # configure dataset
+    if args.dataset == 'yizhongw/self_instruct':
+        train_data = load_dataset(args.dataset, 'super_natural_instructions', split='train')
+        eval_data = load_dataset(args.dataset, 'super_natural_instructions', split='test')
 
-    train_dataset = SFTDataset(train_data, tokenizer, max_len)
-    eval_dataset = SFTDataset(eval_data, tokenizer, max_len)
+        train_dataset = SFTDataset(train_data, tokenizer, max_len)
+        eval_dataset = SFTDataset(eval_data, tokenizer, max_len)
+
+    elif 'alpaca' in args.dataset:
+        train_dataset = AlpacaDataset(tokenizer=tokenizer, data_path=args.dataset)
+        eval_dataset = None
+        data_collator = AlpacaDataCollator(tokenizer=tokenizer)
 
     if dist.is_initialized() and dist.get_world_size() > 1:
-        sampler = DistributedSampler(train_dataset, shuffle=True, seed=42, drop_last=True)
-        logger.info("Using Distributed Sampler")
+        train_sampler = DistributedSampler(train_dataset, shuffle=True, seed=42, drop_last=True)
+        if eval_dataset is not None:
+            eval_sampler = DistributedSampler(eval_dataset, shuffle=False, seed=42, drop_last=False)
     else:
-        sampler = None
+        train_sampler = None
+        eval_sampler = None
+
+    train_dataloader = DataLoader(train_dataset, shuffle=(train_sampler is None), sampler=train_sampler, batch_size=args.batch_size, collate_fn=data_collator)
+    if eval_dataset is not None:
+        eval_dataloader = DataLoader(eval_dataset, shuffle=(eval_sampler is None), sampler=eval_sampler, batch_size=args.batch_size, collate_fn=data_collator)
+    else:
+        eval_dataloader = None
 
     trainer = SFTTrainer(model=model,
                          strategy=strategy,
                          optim=optim,
-                         train_dataset=train_dataset,
-                         eval_dataset=eval_dataset,
-                         sampler=sampler,
+                         train_dataloader=train_dataloader,
+                         eval_dataloader=eval_dataloader,
                          batch_size=args.batch_size,
                          max_epochs=args.max_epochs)
 
@@ -101,7 +130,7 @@ if __name__ == '__main__':
     parser.add_argument('--strategy',
                         choices=['naive', 'ddp', 'colossalai_gemini', 'colossalai_zero2'],
                         default='naive')
-    parser.add_argument('--model', choices=['gpt2', 'bloom', 'opt'], default='bloom')
+    parser.add_argument('--model', choices=['gpt2', 'bloom', 'opt', 'llama'], default='bloom')
     parser.add_argument('--pretrain', type=str, default=None)
     parser.add_argument('--dataset', type=str, default='yizhongw/self_instruct')
     parser.add_argument('--save_path', type=str, default='sft_ckpt.pth')

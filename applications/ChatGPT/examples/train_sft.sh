@@ -17,4 +17,10 @@ set_n_least_used_CUDA_VISIBLE_DEVICES 8
 
 #torchrun --standalone --nproc_per_node=2 train_sft.py --pretrain 'bigscience/bloomz-560m' --model 'bloom' --strategy colossalai_zero2 --log_interval 10
 #torchrun --standalone --nproc_per_node=8 train_sft.py  --model 'gpt2' --strategy colossalai_zero2 --batch_size 1 --log_interval 10
-torchrun --standalone --nproc_per_node=2 train_sft.py --pretrain "facebook/opt-350m" --model 'opt' --strategy colossalai_zero2 --log_interval 10
+torchrun --standalone --nproc_per_node=8 train_sft.py \
+    --pretrain "/data/personal/nus-mql/LLAMA-7B" \
+    --model 'llama' \
+    --strategy colossalai_zero2 \
+    --log_interval 10 \
+    --save_path /data/personal/nus-mql/Coati-7B \
+    --dataset /data/personal/nus-mql/stanford_alpaca/alpaca_data.json
