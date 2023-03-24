@@ -119,10 +119,15 @@ def preprocess(
 class AlpacaDataset(Dataset):
     """Dataset for supervised fine-tuning."""
 
-    def __init__(self, data_path: str, tokenizer: transformers.PreTrainedTokenizer):
+    def __init__(self, data_path: str, tokenizer: transformers.PreTrainedTokenizer, max_length: int=None):
         super(AlpacaDataset, self).__init__()
         logger.info("Loading data...")
         list_data_dict = jload(data_path)
+        logger.info(f"Loaded {len(list_data_dict)} examples.")
+
+        if max_length is not None:
+            logger.info(f"Truncating data to max length {max_length}...")
+            list_data_dict = [example for example in list_data_dict if len(example["input"]) <= max_length]
 
         logger.info("Formatting inputs...")
         prompt_input, prompt_no_input = PROMPT_DICT["prompt_input"], PROMPT_DICT["prompt_no_input"]

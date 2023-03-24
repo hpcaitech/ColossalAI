@@ -60,3 +60,6 @@ class Actor(LoRAModule):
         logits = output['logits']
         log_probs = log_probs_from_logits(logits[:, :-1, :], sequences[:, 1:])
         return log_probs[:, -num_actions:]
+
+    def get_base_model(self):
+        return self.model
