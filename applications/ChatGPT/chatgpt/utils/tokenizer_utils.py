@@ -16,6 +16,8 @@ from typing import Dict
 
 import transformers
 
+from ..models.llama.llama_lm import LlamaLM
+
 DEFAULT_PAD_TOKEN = "[PAD]"
 DEFAULT_EOS_TOKEN = "</s>"
 DEFAULT_BOS_TOKEN = "</s>"
@@ -60,6 +62,10 @@ def smart_tokenizer_and_embedding_resize(
 
     if tokenizer.pad_token is None:
         num_new_tokens = tokenizer.add_special_tokens(special_tokens_dict)
+
+        if isinstance(model, LlamaLM):
+            model = model.get_base_model()
+            
         model.resize_token_embeddings(len(tokenizer))
 
         if num_new_tokens > 0:

@@ -61,13 +61,15 @@ class SFTTrainer(ABC):
             # train
             self.model.train()
             for batch_id, batch in enumerate(self.train_dataloader):
-                prompt_ids = batch["input_ids"]
-                p_mask = batch["attention_mask"]
-                labels = batch["labels"]
-                prompt_ids = prompt_ids.squeeze(1).cuda()
-                p_mask = p_mask.squeeze(1).cuda()
+                prompt_ids = batch["input_ids"].to(torch.cuda.current_device())
+                p_mask = batch["attention_mask"].to(torch.cuda.current_device())
+                labels = batch["labels"].to(torch.cuda.current_device())
+                # prompt_ids = prompt_ids.squeeze(1).cuda()
+                # p_mask = p_mask.squeeze(1).cuda()
                 # prompt_logits = self.model(prompt_ids, attention_mask=p_mask, labels=labels)
-                loss, prompt_logits = self.model(prompt_ids, attention_mask=p_mask, labels=labels)
+                outputs = self.model(prompt_ids, attention_mask=p_mask, labels=labels)
+                loss = outputs.loss
+                prompt_logits = outputs.logits
 
                 # loss = self.loss_fn(prompt_logits, labels)
                 self.strategy.backward(loss, self.model, self.optimizer)
@@ -83,13 +85,16 @@ class SFTTrainer(ABC):
                     loss_sum = 0
                     num_seen = 0
                     for batch in self.eval_dataloader:
-                        prompt_ids = batch["input_ids"]
-                        p_mask = batch["attention_mask"]
-                        prompt_ids = prompt_ids.squeeze(1).cuda()
-                        p_mask = p_mask.squeeze(1).cuda()
+                        prompt_ids = batch["input_ids"].to(torch.cuda.current_device())
+                        p_mask = batch["attention_mask"].to(torch.cuda.current_device())
+                        labels = batch["labels"].to(torch.cuda.current_device())
+                        # prompt_ids = prompt_ids.squeeze(1).cuda()
+                        # p_mask = p_mask.squeeze(1).cuda()
 
-                        prompt_logits = self.model(prompt_ids, attention_mask=p_mask)
-                        loss = self.loss_fn(prompt_logits, prompt_ids)
+                        outputs = self.model(prompt_ids, attention_mask=p_mask, labels=labels)
+                        loss = outputs.loss
+                        # prompt_logits = outputs.logits
+
                         loss_sum += loss.item()
                         num_seen += prompt_ids.size(0)
 
