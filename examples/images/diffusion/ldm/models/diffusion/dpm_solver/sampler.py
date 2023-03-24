@@ -1,16 +1,13 @@
 """SAMPLING ONLY."""
 import torch
 
-from .dpm_solver import NoiseScheduleVP, model_wrapper, DPM_Solver
+from .dpm_solver import DPM_Solver, NoiseScheduleVP, model_wrapper
 
-
-MODEL_TYPES = {
-    "eps": "noise",
-    "v": "v"
-}
+MODEL_TYPES = {"eps": "noise", "v": "v"}
 
 
 class DPMSolverSampler(object):
+
     def __init__(self, model, **kwargs):
         super().__init__()
         self.model = model
@@ -24,30 +21,30 @@ class DPMSolverSampler(object):
         setattr(self, name, attr)
 
     @torch.no_grad()
-    def sample(self,
-               S,
-               batch_size,
-               shape,
-               conditioning=None,
-               callback=None,
-               normals_sequence=None,
-               img_callback=None,
-               quantize_x0=False,
-               eta=0.,
-               mask=None,
-               x0=None,
-               temperature=1.,
-               noise_dropout=0.,
-               score_corrector=None,
-               corrector_kwargs=None,
-               verbose=True,
-               x_T=None,
-               log_every_t=100,
-               unconditional_guidance_scale=1.,
-               unconditional_conditioning=None,
-               # this has to come in the same format as the conditioning, # e.g. as encoded tokens, ...
-               **kwargs
-               ):
+    def sample(
+            self,
+            S,
+            batch_size,
+            shape,
+            conditioning=None,
+            callback=None,
+            normals_sequence=None,
+            img_callback=None,
+            quantize_x0=False,
+            eta=0.,
+            mask=None,
+            x0=None,
+            temperature=1.,
+            noise_dropout=0.,
+            score_corrector=None,
+            corrector_kwargs=None,
+            verbose=True,
+            x_T=None,
+            log_every_t=100,
+            unconditional_guidance_scale=1.,
+            unconditional_conditioning=None,
+    # this has to come in the same format as the conditioning, # e.g. as encoded tokens, ...
+            **kwargs):
         if conditioning is not None:
             if isinstance(conditioning, dict):
                 cbs = conditioning[list(conditioning.keys())[0]].shape[0]
@@ -82,6 +79,11 @@ class DPMSolverSampler(object):
         )
 
         dpm_solver = DPM_Solver(model_fn, ns, predict_x0=True, thresholding=False)
-        x = dpm_solver.sample(img, steps=S, skip_type="time_uniform", method="multistep", order=2, lower_order_final=True)
+        x = dpm_solver.sample(img,
+                              steps=S,
+                              skip_type="time_uniform",
+                              method="multistep",
+                              order=2,
+                              lower_order_final=True)
 
         return x.to(device), None

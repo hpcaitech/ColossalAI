@@ -1,9 +1,11 @@
+from typing import Dict, Optional
+
 import torch
 import torch.distributed as dist
-from colossalai.tensor import ColoTensor
+
 from colossalai.nn.optimizer import ColossalaiOptimizer
+from colossalai.tensor import ColoTensor
 from colossalai.utils.checkpoint.utils import gather_tensor, scatter_tensor
-from typing import Optional, Dict
 
 
 def save_checkpoint(path: str,
@@ -13,7 +15,7 @@ def save_checkpoint(path: str,
                     lr_scheduler: torch.optim.lr_scheduler._LRScheduler = None,
                     *args,
                     **kwargs):
-    """save_checkpoint 
+    """save_checkpoint
     save a model, whose parameters are `ColoTensor`s.
     Args:
         path (str): directory to save the checkpoint files.
@@ -78,7 +80,7 @@ def load_checkpoint(path: str,
                     lr_scheduler: torch.optim.lr_scheduler._LRScheduler = None,
                     torch_load_kwargs: Optional[Dict] = None,
                     load_state_dict_kwargs: Optional[Dict] = None):
-    """load_checkpoint 
+    """load_checkpoint
     load a model, whose parameters are `ColoTensor`s.
     Args:
         path (str): directory to save the checkpoint files.

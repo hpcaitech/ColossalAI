@@ -1,8 +1,8 @@
-import torch
-import torch.nn as nn
-import numpy as np
 from functools import partial
 
+import numpy as np
+import torch
+import torch.nn as nn
 from ldm.modules.diffusionmodules.util import extract_into_tensor, make_beta_schedule
 from ldm.util import default
 
@@ -14,9 +14,16 @@ class AbstractLowScaleModel(nn.Module):
         if noise_schedule_config is not None:
             self.register_schedule(**noise_schedule_config)
 
-    def register_schedule(self, beta_schedule="linear", timesteps=1000,
-                          linear_start=1e-4, linear_end=2e-2, cosine_s=8e-3):
-        betas = make_beta_schedule(beta_schedule, timesteps, linear_start=linear_start, linear_end=linear_end,
+    def register_schedule(self,
+                          beta_schedule="linear",
+                          timesteps=1000,
+                          linear_start=1e-4,
+                          linear_end=2e-2,
+                          cosine_s=8e-3):
+        betas = make_beta_schedule(beta_schedule,
+                                   timesteps,
+                                   linear_start=linear_start,
+                                   linear_end=linear_end,
                                    cosine_s=cosine_s)
         alphas = 1. - betas
         alphas_cumprod = np.cumprod(alphas, axis=0)
@@ -65,6 +72,7 @@ class SimpleImageConcat(AbstractLowScaleModel):
 
 
 class ImageConcatWithNoiseAugmentation(AbstractLowScaleModel):
+
     def __init__(self, noise_schedule_config, max_noise_level=1000, to_cuda=False):
         super().__init__(noise_schedule_config=noise_schedule_config)
         self.max_noise_level = max_noise_level
@@ -76,6 +84,3 @@ class ImageConcatWithNoiseAugmentation(AbstractLowScaleModel):
             assert isinstance(noise_level, torch.Tensor)
         z = self.q_sample(x, noise_level)
         return z, noise_level
-
-
-

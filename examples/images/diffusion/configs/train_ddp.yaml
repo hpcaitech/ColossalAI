@@ -93,7 +93,7 @@ data:
 
 lightning:
   trainer:
-    accelerator: 'gpu' 
+    accelerator: 'gpu'
     devices: 8
     log_gpu_memory: all
     max_epochs: 2

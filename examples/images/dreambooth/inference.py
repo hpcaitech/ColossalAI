@@ -1,5 +1,5 @@
-from diffusers import StableDiffusionPipeline, DiffusionPipeline
 import torch
+from diffusers import DiffusionPipeline, StableDiffusionPipeline
 
 model_id = <Your Model Path>
 print(f"Loading model... from{model_id}")

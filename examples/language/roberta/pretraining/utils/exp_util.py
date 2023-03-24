@@ -1,8 +1,12 @@
 import functools
-import os, shutil
-import torch
+import os
+import shutil
+
 import psutil
+import torch
+
 from colossalai.core import global_context as gpc
+
 
 def logging(s, log_path, print_=True, log_=True):
     if print_:
@@ -11,8 +15,10 @@ def logging(s, log_path, print_=True, log_=True):
         with open(log_path, 'a+') as f_log:
             f_log.write(s + '\n')
 
+
 def get_logger(log_path, **kwargs):
     return functools.partial(logging, log_path=log_path, **kwargs)
+
 
 def create_exp_dir(dir_path, scripts_to_save=None, debug=False):
     if debug:
@@ -33,6 +39,7 @@ def create_exp_dir(dir_path, scripts_to_save=None, debug=False):
 
     return get_logger(log_path=os.path.join(dir_path, 'log.txt'))
 
+
 def get_cpu_mem():
     return psutil.Process().memory_info().rss / 1024**2
 
@@ -52,10 +59,14 @@ def get_tflops(model_numel, batch_size, seq_len, step_time):
 def get_parameters_in_billions(model, world_size=1):
     gpus_per_model = world_size
 
-    approx_parameters_in_billions = sum([sum([p.ds_numel if hasattr(p,'ds_id') else  p.nelement() for p in model_module.parameters()])
-                                        for model_module in model])
+    approx_parameters_in_billions = sum([
+        sum([p.ds_numel if hasattr(p, 'ds_id') else p.nelement()
+             for p in model_module.parameters()])
+        for model_module in model
+    ])
 
     return approx_parameters_in_billions * gpus_per_model / (1e9)
+
 
 def throughput_calculator(numel, args, config, iteration_time, total_iterations, world_size=1):
     gpus_per_model = 1
@@ -76,9 +87,12 @@ def throughput_calculator(numel, args, config, iteration_time, total_iterations,
     # The factor of 4 is when used with activation check-pointing,
     # otherwise it will be 3.
     checkpoint_activations_factor = 4 if args.checkpoint_activations else 3
-    flops_per_iteration = (24 * checkpoint_activations_factor * batch_size * args.max_seq_length * num_layers * (hidden_size**2)) * (1. + (args.max_seq_length / (6. * hidden_size)) + (vocab_size / (16. * num_layers * hidden_size)))
+    flops_per_iteration = (24 * checkpoint_activations_factor * batch_size * args.max_seq_length * num_layers *
+                           (hidden_size**2)) * (1. + (args.max_seq_length / (6. * hidden_size)) +
+                                                (vocab_size / (16. * num_layers * hidden_size)))
     tflops = flops_per_iteration / (elapsed_time_per_iter * (10**12))
     return samples_per_second, tflops, approx_parameters_in_billions
+
 
 def synchronize():
     if not torch.distributed.is_available():
@@ -89,6 +103,7 @@ def synchronize():
     if world_size == 1:
         return
     torch.distributed.barrier()
+
 
 def log_args(logger, args):
     logger.info('--------args----------')

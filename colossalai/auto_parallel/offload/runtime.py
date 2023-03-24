@@ -1,4 +1,5 @@
 from typing import List
+
 import torch
 from torch.fx.node import Node
 
@@ -65,8 +66,7 @@ class AsynPreFwdPostBwdOP(torch.autograd.Function):
 
         sync_rid = fwd_info.get('sync_rid', None)
         if sync_rid is not None:
-            prefetch_event = GlobalRuntimeInfo.fwd_prefetch_event_map.get(
-                sync_rid, None)
+            prefetch_event = GlobalRuntimeInfo.fwd_prefetch_event_map.get(sync_rid, None)
             if prefetch_event:
                 prefetch_event.wait()
 
@@ -92,8 +92,7 @@ class AsynPreFwdPostBwdOP(torch.autograd.Function):
         if sync_rid is not None:
             wait_region = GlobalRuntimeInfo.region_list[sync_rid]
             assert isinstance(wait_region, Region)
-            prefetch_event = GlobalRuntimeInfo.bwd_prefetch_event_map.get(
-                sync_rid, None)
+            prefetch_event = GlobalRuntimeInfo.bwd_prefetch_event_map.get(sync_rid, None)
             if prefetch_event:
                 prefetch_event.wait()
             else:
@@ -128,6 +127,7 @@ def convert_fwd_upload_bwd_offload_to_action(tensor, fwd_info, bwd_info):
     with torch._C.DisableTorchFunction():
         ret = SynPreFwdPostBwdOP.apply(tensor, fwd_info, bwd_info)
     return ret
+
 
 def convert_fwd_prefetch_bwd_offload_to_action(tensor, fwd_info, bwd_info):
     '''
@@ -189,7 +189,8 @@ def runtime_syn_offload_apply_pass(gm: torch.fx.GraphModule, region_list: List[R
 
         if fwd_info or bwd_info:
             with mod_graph.inserting_after(last_inp_node):
-                new_node = mod_graph.create_node('call_function', convert_fwd_upload_bwd_offload_to_action,
+                new_node = mod_graph.create_node('call_function',
+                                                 convert_fwd_upload_bwd_offload_to_action,
                                                  args=(last_inp_node, fwd_info, bwd_info))
             replace_node_users(last_inp_node, new_node)
 
@@ -206,11 +207,11 @@ def runtime_asyn_offload_apply_pass(gm: torch.fx.GraphModule, region_list: List[
 
     # upload parameters of the first region
     last_inp_node = tuple(mod_graph.nodes)[0]
-    first_region_with_p = [
-        region for region in region_list if region.param_size][0]
+    first_region_with_p = [region for region in region_list if region.param_size][0]
     fwd_info = {"h2d_rid": first_region_with_p.r_id}
     with mod_graph.inserting_after(last_inp_node):
-        upload_apply_node = mod_graph.create_node('call_function', convert_fwd_upload_bwd_offload_to_action,
+        upload_apply_node = mod_graph.create_node('call_function',
+                                                  convert_fwd_upload_bwd_offload_to_action,
                                                   args=(last_inp_node, fwd_info, {}))
     replace_node_users(last_inp_node, upload_apply_node)
     last_inp_node = upload_apply_node
@@ -225,19 +226,20 @@ def runtime_asyn_offload_apply_pass(gm: torch.fx.GraphModule, region_list: List[
             fwd_info['h2d_rid'] = fwd_prefetch_region.r_id
 
         # forward offload
-        if r_idx > 0 and region_list[r_idx-1].need_offload:
+        if r_idx > 0 and region_list[r_idx - 1].need_offload:
             fwd_info['d2h_rid'] = r_idx - 1
 
         bwd_info = {}
         # backward prefetch
-        if r_idx > 0 and region_list[r_idx-1].need_offload:
+        if r_idx > 0 and region_list[r_idx - 1].need_offload:
             bwd_info['sync_rid'] = r_idx - 1
-        if r_idx > 0 and region_list[r_idx-1].bwd_prefetch_region:
-            bwd_info['h2d_rid'] = region_list[r_idx-1].bwd_prefetch_region.r_id
+        if r_idx > 0 and region_list[r_idx - 1].bwd_prefetch_region:
+            bwd_info['h2d_rid'] = region_list[r_idx - 1].bwd_prefetch_region.r_id
 
         if fwd_info or bwd_info:
             with mod_graph.inserting_after(last_inp_node):
-                new_node = mod_graph.create_node('call_function', convert_fwd_prefetch_bwd_offload_to_action,
+                new_node = mod_graph.create_node('call_function',
+                                                 convert_fwd_prefetch_bwd_offload_to_action,
                                                  args=(last_inp_node, fwd_info, bwd_info))
             replace_node_users(last_inp_node, new_node)
 
@@ -246,7 +248,8 @@ def runtime_asyn_offload_apply_pass(gm: torch.fx.GraphModule, region_list: List[
     if region.bwd_prefetch_region:
         bwd_info = {'h2d_rid': region.bwd_prefetch_region.r_id}
         with mod_graph.inserting_after(last_inp_node):
-            new_node = mod_graph.create_node('call_function', convert_fwd_prefetch_bwd_offload_to_action,
+            new_node = mod_graph.create_node('call_function',
+                                             convert_fwd_prefetch_bwd_offload_to_action,
                                              args=(last_inp_node, {}, bwd_info))
         replace_node_users(last_inp_node, new_node)
     # gm.graph.print_tabular()

@@ -1,10 +1,11 @@
+from typing import Iterator, List, Optional, Tuple, Union
+
 import torch
 import torch.nn.functional as F
-from typing import List, Optional, Iterator, Tuple, Union
+from torch.nn.parameter import Parameter
 
 from .base_embedding import BaseEmbeddingBag
 from .cache_mgr import CachedParamMgr, EvictionStrategy
-from torch.nn.parameter import Parameter
 
 
 class CachedEmbeddingBag(BaseEmbeddingBag):
@@ -27,7 +28,7 @@ class CachedEmbeddingBag(BaseEmbeddingBag):
         include_last_offset (bool, optional): if True, offsets has one additional element, where the last element is equivalent to the size of indices. This matches the CSR format.. Defaults to False.
         dtype (torch.dtype, optional): data type of the cpu weight initialization. Defaults to None meaning float32.
         device (torch.device, optional): device type to the cpu weight. Defaults to None meaning cpu.
-        cache_ratio (float, float): cache ratio of the #cuda_weight_row / #cpu_weight_row 
+        cache_ratio (float, float): cache ratio of the #cuda_weight_row / #cpu_weight_row
         ids_freq_mapping (Union[List, torch.Tensor], optional): the frequency of each embedding vector occures in dataset. Defaults to None.
         warmup_ratio (float, optional): the ratio of cuda cache is warmuped with. Defaults to 0.7.
         buffer_size (int, optional): the max number of vectors in transmitter buffer. If set to 0, the buffer is not used. Defaults to 0.
@@ -85,10 +86,10 @@ class CachedEmbeddingBag(BaseEmbeddingBag):
                     buffer_size=50_000,
                     pin_weight=False):
         """
-        Called after initialized. 
+        Called after initialized.
         Reorder the weight rows according to the ids_freq_mapping.
         Then, let the weights of the Module be managed by a CachedParamMgr.
-        
+
         Args:
             cuda_row_num (int): number of rows can be hosted in CUDA memory
             ids_freq_mapping (List[int]): a list, idx is id number, value is freq

@@ -1,8 +1,9 @@
-from colossalai.tensor import ColoParameter, ColoTensor, ColoTensorSpec, ProcessGroup
-import torch
 import pytest
+import torch
 from common_utils import tensor_equal
+
 import colossalai
+from colossalai.tensor import ColoParameter, ColoTensor, ColoTensorSpec, ProcessGroup
 from colossalai.utils import free_port
 
 

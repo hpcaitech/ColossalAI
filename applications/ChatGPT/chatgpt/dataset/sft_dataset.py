@@ -13,34 +13,33 @@
 #    limitations under the License.
 
 import copy
+import random
 from dataclasses import dataclass, field
 from typing import Callable, Dict, Sequence
-import random
-from torch.utils.data import Dataset
-import torch.distributed as dist
-from tqdm import tqdm
+
 import torch
+import torch.distributed as dist
+import transformers
+from torch.utils.data import Dataset
+from tqdm import tqdm
+
+from colossalai.logging import get_dist_logger
 
 from .utils import is_rank_0, jload
-
-import transformers
-from colossalai.logging import get_dist_logger
 
 logger = get_dist_logger()
 
 IGNORE_INDEX = -100
 PROMPT_DICT = {
-    "prompt_input": (
-        "Below is an instruction that describes a task, paired with an input that provides further context. "
-        "Write a response that appropriately completes the request.\n\n"
-        "### Instruction:\n{instruction}\n\n### Input:\n{input}\n\n### Response:"
-    ),
-    "prompt_no_input": (
-        "Below is an instruction that describes a task. "
-        "Write a response that appropriately completes the request.\n\n"
-        "### Instruction:\n{instruction}\n\n### Response:"
-    ),
+    "prompt_input":
+        ("Below is an instruction that describes a task, paired with an input that provides further context. "
+         "Write a response that appropriately completes the request.\n\n"
+         "### Instruction:\n{instruction}\n\n### Input:\n{input}\n\n### Response:"),
+    "prompt_no_input": ("Below is an instruction that describes a task. "
+                        "Write a response that appropriately completes the request.\n\n"
+                        "### Instruction:\n{instruction}\n\n### Response:"),
 }
+
 
 class SFTDataset(Dataset):
     """
@@ -52,7 +51,7 @@ class SFTDataset(Dataset):
         max_length: max length of input
     """
 
-    def __init__(self, dataset, tokenizer: Callable, max_length: int=512) -> None:
+    def __init__(self, dataset, tokenizer: Callable, max_length: int = 512) -> None:
         super().__init__()
         # self.prompts = []
         self.input_ids = []
@@ -77,7 +76,7 @@ class SFTDataset(Dataset):
         # dict(input_ids=self.input_ids[i], labels=self.labels[i])
         return dict(input_ids=self.input_ids[i], labels=self.labels[i])
         # return dict(self.prompts[idx], self.prompts[idx])
-    
+
 
 def _tokenize_fn(strings: Sequence[str], tokenizer: transformers.PreTrainedTokenizer) -> Dict:
     """Tokenize a list of strings."""
@@ -88,8 +87,7 @@ def _tokenize_fn(strings: Sequence[str], tokenizer: transformers.PreTrainedToken
             padding="longest",
             max_length=tokenizer.model_max_length,
             truncation=True,
-        )
-        for text in strings
+        ) for text in strings
     ]
     input_ids = labels = [tokenized.input_ids[0] for tokenized in tokenized_list]
     input_ids_lens = labels_lens = [
@@ -101,6 +99,7 @@ def _tokenize_fn(strings: Sequence[str], tokenizer: transformers.PreTrainedToken
         input_ids_lens=input_ids_lens,
         labels_lens=labels_lens,
     )
+
 
 def preprocess(
     sources: Sequence[str],
@@ -115,6 +114,7 @@ def preprocess(
     for label, source_len in zip(labels, sources_tokenized["input_ids_lens"]):
         label[:source_len] = IGNORE_INDEX
     return dict(input_ids=input_ids, labels=labels)
+
 
 class AlpacaDataset(Dataset):
     """Dataset for supervised fine-tuning."""
@@ -143,7 +143,8 @@ class AlpacaDataset(Dataset):
 
     def __getitem__(self, i) -> Dict[str, torch.Tensor]:
         return dict(input_ids=self.input_ids[i], labels=self.labels[i])
-    
+
+
 @dataclass
 class AlpacaDataCollator(object):
     """Collate examples for supervised fine-tuning."""
@@ -152,9 +153,9 @@ class AlpacaDataCollator(object):
 
     def __call__(self, instances: Sequence[Dict]) -> Dict[str, torch.Tensor]:
         input_ids, labels = tuple([instance[key] for instance in instances] for key in ("input_ids", "labels"))
-        input_ids = torch.nn.utils.rnn.pad_sequence(
-            input_ids, batch_first=True, padding_value=self.tokenizer.pad_token_id
-        )
+        input_ids = torch.nn.utils.rnn.pad_sequence(input_ids,
+                                                    batch_first=True,
+                                                    padding_value=self.tokenizer.pad_token_id)
         labels = torch.nn.utils.rnn.pad_sequence(labels, batch_first=True, padding_value=IGNORE_INDEX)
         return dict(
             input_ids=input_ids,

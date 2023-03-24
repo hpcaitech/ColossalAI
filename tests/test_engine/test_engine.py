@@ -1,13 +1,14 @@
 from functools import partial
 
-import colossalai
 import pytest
 import torch.multiprocessing as mp
+
+import colossalai
 from colossalai.amp import AMP_TYPE
 from colossalai.core import global_context as gpc
+from colossalai.testing import parameterize, rerun_if_address_is_in_use
 from colossalai.utils import free_port
 from tests.components_to_test.registry import non_distributed_component_funcs
-from colossalai.testing import parameterize, rerun_if_address_is_in_use
 
 CONFIG = dict(parallel=dict(pipeline=dict(size=1), tensor=dict(size=1, mode=None)),
               fp16=dict(mode=None),

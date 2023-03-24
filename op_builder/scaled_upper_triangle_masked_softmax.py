@@ -9,13 +9,11 @@ class ScaledUpperTrainglemaskedSoftmaxBuilder(Builder):
     PREBUILT_IMPORT_PATH = "colossalai._C.scaled_upper_triangle_masked_softmax"
 
     def __init__(self):
-        super().__init__(name=ScaledUpperTrainglemaskedSoftmaxBuilder.NAME, prebuilt_import_path=ScaledUpperTrainglemaskedSoftmaxBuilder.PREBUILT_IMPORT_PATH)
+        super().__init__(name=ScaledUpperTrainglemaskedSoftmaxBuilder.NAME,
+                         prebuilt_import_path=ScaledUpperTrainglemaskedSoftmaxBuilder.PREBUILT_IMPORT_PATH)
 
     def include_dirs(self):
-        return [
-            self.csrc_abs_path("kernels/include"),
-            self.get_cuda_home_include()
-        ]
+        return [self.csrc_abs_path("kernels/include"), self.get_cuda_home_include()]
 
     def sources_files(self):
         ret = [

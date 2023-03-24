@@ -13,9 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
 from .tokenizer import build_tokenizer
-
 
 _TOKENIZER = None
 _PADDED_VOCAB_SIZE = -1

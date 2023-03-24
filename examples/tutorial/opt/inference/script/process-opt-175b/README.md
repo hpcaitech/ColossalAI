@@ -43,4 +43,3 @@ Finally, you will get 8 files in `<new_output_dir>` with following checksums:
 5d63b8750d827a1aa7c8ae5b02a3a2ca  reshard-model_part-6.pt
 f888bd41e009096804fe9a4b48c7ffe8  reshard-model_part-7.pt
 ```
-

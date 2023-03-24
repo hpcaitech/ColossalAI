@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import List
+
 import torch
+
 from colossalai.fx.profiler import calculate_fwd_out, calculate_fwd_tmp
 
 from .region import Region
@@ -11,6 +13,7 @@ class NodeInfo:
     node_id: int = 0
     runtime_fwd_mem: float = 0
     runtime_bwd_mem: float = 0
+
 
 class NvDevicePower:
     """
@@ -70,21 +73,24 @@ def compute_act_peak_mem(region_list: List[Region]) -> float:
 
     return act_peak_mem
 
+
 def compute_max_param_mem(region_list: List[Region]) -> float:
     return max(region.param_size for region in region_list)
+
 
 def compute_total_param_mem(region_list: List[Region]) -> float:
     return sum(region.param_size for region in region_list if region.r_id <= region.shared_rid)
 
+
 def requires_upload_p_in_fwd(shared_reg: Region):
-    return (shared_reg.r_id >= shared_reg.shared_rid) or (
-                shared_reg.r_id < shared_reg.shared_rid and shared_reg.need_offload)
+    return (shared_reg.r_id >= shared_reg.shared_rid) or (shared_reg.r_id < shared_reg.shared_rid
+                                                          and shared_reg.need_offload)
+
 
 def requires_release_p_in_bwd(shared_reg: Region):
-    return (shared_reg.r_id >= shared_reg.shared_rid) or (
-                shared_reg.r_id < shared_reg.shared_rid and shared_reg.need_offload)
+    return (shared_reg.r_id >= shared_reg.shared_rid) or (shared_reg.r_id < shared_reg.shared_rid
+                                                          and shared_reg.need_offload)
+
 
 def requires_offload_g_in_bwd(region: Region):
     return region.param_size and (region.r_id <= region.shared_rid)
-
-

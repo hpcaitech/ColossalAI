@@ -10,9 +10,7 @@ class MultiHeadAttnBuilder(Builder):
     PREBUILT_IMPORT_PATH = "colossalai._C.multihead_attention"
 
     def __init__(self):
-        super().__init__(name=MultiHeadAttnBuilder.NAME,
-        prebuilt_import_path=MultiHeadAttnBuilder.PREBUILT_IMPORT_PATH)
-        
+        super().__init__(name=MultiHeadAttnBuilder.NAME, prebuilt_import_path=MultiHeadAttnBuilder.PREBUILT_IMPORT_PATH)
 
     def include_dirs(self):
         ret = [self.csrc_abs_path("kernels/include"), self.get_cuda_home_include()]

@@ -6,7 +6,7 @@ from typing import List
 
 
 class Registry:
-    """This is a registry class used to register classes and modules so that a universal 
+    """This is a registry class used to register classes and modules so that a universal
     object builder can be enabled.
 
     Args:
@@ -42,7 +42,7 @@ class Registry:
         return module_class
 
     def get_module(self, module_name: str):
-        """Retrieves a module with name `module_name` and returns the module if it has 
+        """Retrieves a module with name `module_name` and returns the module if it has
         already been registered before.
 
         Args:

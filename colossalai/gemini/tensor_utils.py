@@ -1,6 +1,8 @@
+from typing import Tuple, Union
+
 import torch
+
 from colossalai.gemini.stateful_tensor import StatefulTensor
-from typing import Union, Tuple
 
 
 def is_storage_empty(tensor: torch.Tensor) -> bool:

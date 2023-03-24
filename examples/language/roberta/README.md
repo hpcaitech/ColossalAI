@@ -11,7 +11,7 @@ ssh-keygen
 ssh-copy-id -i ~/.ssh/id_rsa.pub ip_destination
 ```
 
-- In all hosts, edit /etc/hosts to record all hosts' name and ip.The example is shown below. 
+- In all hosts, edit /etc/hosts to record all hosts' name and ip.The example is shown below.
 
 ```bash
 192.168.2.1   GPU001
@@ -29,7 +29,7 @@ ssh-copy-id -i ~/.ssh/id_rsa.pub ip_destination
 service ssh restart
 ```
 
-## 1. Corpus Preprocessing 
+## 1. Corpus Preprocessing
 ```bash
 cd preprocessing
 ```

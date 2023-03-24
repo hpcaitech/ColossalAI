@@ -1,8 +1,8 @@
 import torch
+from rpc_test_utils import RpcTestModel, parse_args, rpc_run
 from torch import nn
 
 from colossalai.pipeline.rpc._pipeline_schedule import FillDrainPipelineEngine, OneFOneBPipelineEngine
-from rpc_test_utils import rpc_run, parse_args, RpcTestModel
 
 # global variable for model created
 feat_num = 100

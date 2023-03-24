@@ -1,35 +1,45 @@
-import transformers
 import logging
-from colossalai.nn.lr_scheduler import LinearWarmupLR
-from transformers import get_linear_schedule_with_warmup
-from transformers import BertForPreTraining, RobertaForMaskedLM, RobertaConfig
-from transformers import GPT2Config, GPT2LMHeadModel
-from transformers import AutoTokenizer, AutoModelForMaskedLM
-from colossalai.nn.optimizer import FusedAdam
-from torch.optim import AdamW
-from colossalai.core import global_context as gpc
-import torch
 import os
 import sys
-sys.path.append(os.getcwd())
-from model.deberta_v2 import DebertaV2ForMaskedLM
-from model.bert import BertForMaskedLM
-import torch.nn as nn
 
+import torch
+import transformers
+from torch.optim import AdamW
+from transformers import (
+    AutoModelForMaskedLM,
+    AutoTokenizer,
+    BertForPreTraining,
+    GPT2Config,
+    GPT2LMHeadModel,
+    RobertaConfig,
+    RobertaForMaskedLM,
+    get_linear_schedule_with_warmup,
+)
+
+from colossalai.core import global_context as gpc
+from colossalai.nn.lr_scheduler import LinearWarmupLR
+from colossalai.nn.optimizer import FusedAdam
+
+sys.path.append(os.getcwd())
 from collections import OrderedDict
+
+import torch.nn as nn
+from model.bert import BertForMaskedLM
+from model.deberta_v2 import DebertaV2ForMaskedLM
 
 __all__ = ['get_model', 'get_optimizer', 'get_lr_scheduler', 'get_dataloader_for_pretraining']
 
 
 def get_new_state_dict(state_dict, start_index=13):
-    new_state_dict = OrderedDict() 
+    new_state_dict = OrderedDict()
     for k, v in state_dict.items():
         name = k[start_index:]
-        new_state_dict[name] = v 
+        new_state_dict[name] = v
     return new_state_dict
 
 
 class LMModel(nn.Module):
+
     def __init__(self, model, config, args):
         super().__init__()
 
@@ -58,16 +68,18 @@ def get_model(args, logger):
     if len(args.load_pretrain_model) > 0:
         assert os.path.exists(args.load_pretrain_model)
         # load_checkpoint(args.load_pretrain_model, model, strict=False)
-        m_state_dict = torch.load(args.load_pretrain_model, map_location=torch.device(f"cuda:{torch.cuda.current_device()}"))
+        m_state_dict = torch.load(args.load_pretrain_model,
+                                  map_location=torch.device(f"cuda:{torch.cuda.current_device()}"))
         # new_state_dict = get_new_state_dict(m_state_dict)
-        model.load_state_dict(m_state_dict, strict=True) # must insure that every process have identical parameters !!!!!!!
+        model.load_state_dict(m_state_dict,
+                              strict=True)    # must insure that every process have identical parameters !!!!!!!
         logger.info("load model success")
-            
+
     numel = sum([p.numel() for p in model.parameters()])
     if args.checkpoint_activations:
         model.gradient_checkpointing_enable()
     # model = LMModel(model, config, args)
-    
+
     return config, model, numel
 
 
@@ -89,7 +101,10 @@ def get_optimizer(model, lr):
 
 def get_lr_scheduler(optimizer, total_steps, warmup_steps=2000, last_epoch=-1):
     # warmup_steps = int(total_steps * warmup_ratio)
-    lr_scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=warmup_steps, num_training_steps=total_steps, last_epoch=last_epoch)
+    lr_scheduler = get_linear_schedule_with_warmup(optimizer,
+                                                   num_warmup_steps=warmup_steps,
+                                                   num_training_steps=total_steps,
+                                                   last_epoch=last_epoch)
     # lr_scheduler = LinearWarmupLR(optimizer, total_steps=total_steps, warmup_steps=warmup_steps)
     return lr_scheduler
 
@@ -103,10 +118,7 @@ def save_ckpt(model, optimizer, lr_scheduler, path, epoch, shard, global_step):
     checkpoint['epoch'] = epoch
     checkpoint['shard'] = shard
     checkpoint['global_step'] = global_step
-    model_state = model.state_dict() #each process must run model.state_dict()
+    model_state = model.state_dict()    #each process must run model.state_dict()
     if gpc.get_global_rank() == 0:
         torch.save(checkpoint, optimizer_lr_path)
         torch.save(model_state, model_path)
-
-
-

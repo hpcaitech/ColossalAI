@@ -2,6 +2,7 @@
 # -*- encoding: utf-8 -*-
 import time
 from typing import Tuple
+
 from .cuda import synchronize
 
 

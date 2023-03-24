@@ -1,9 +1,10 @@
+import pytest
 import torch
 import torch.nn as nn
+from torch.fx import GraphModule
+
 from colossalai.fx.proxy import ColoProxy
 from colossalai.fx.tracer.tracer import ColoTracer
-from torch.fx import GraphModule
-import pytest
 
 
 class Conv1D(nn.Module):

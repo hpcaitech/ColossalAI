@@ -1,20 +1,21 @@
-import os, sys
-import numpy as np
-import scann
 import argparse
 import glob
+import os
+import sys
 from multiprocessing import cpu_count
-from tqdm import tqdm
 
+import numpy as np
+import scann
 from ldm.util import parallel_data_prefetch
+from tqdm import tqdm
 
 
 def search_bruteforce(searcher):
     return searcher.score_brute_force().build()
 
 
-def search_partioned_ah(searcher, dims_per_block, aiq_threshold, reorder_k,
-                        partioning_trainsize, num_leaves, num_leaves_to_search):
+def search_partioned_ah(searcher, dims_per_block, aiq_threshold, reorder_k, partioning_trainsize, num_leaves,
+                        num_leaves_to_search):
     return searcher.tree(num_leaves=num_leaves,
                          num_leaves_to_search=num_leaves_to_search,
                          training_sample_size=partioning_trainsize). \
@@ -22,11 +23,11 @@ def search_partioned_ah(searcher, dims_per_block, aiq_threshold, reorder_k,
 
 
 def search_ah(searcher, dims_per_block, aiq_threshold, reorder_k):
-    return searcher.score_ah(dims_per_block, anisotropic_quantization_threshold=aiq_threshold).reorder(
-        reorder_k).build()
+    return searcher.score_ah(dims_per_block,
+                             anisotropic_quantization_threshold=aiq_threshold).reorder(reorder_k).build()
+
 
 def load_datapool(dpath):
-
 
     def load_single_file(saved_embeddings):
         compressed = np.load(saved_embeddings)
@@ -48,10 +49,14 @@ def load_datapool(dpath):
         data_pool = load_single_file(file_content[0])
     elif len(file_content) > 1:
         data = [np.load(f) for f in file_content]
-        prefetched_data = parallel_data_prefetch(load_multi_files, data,
-                                                 n_proc=min(len(data), cpu_count()), target_data_type='dict')
+        prefetched_data = parallel_data_prefetch(load_multi_files,
+                                                 data,
+                                                 n_proc=min(len(data), cpu_count()),
+                                                 target_data_type='dict')
 
-        data_pool = {key: np.concatenate([od[key] for od in prefetched_data], axis=1)[0] for key in prefetched_data[0].keys()}
+        data_pool = {
+            key: np.concatenate([od[key] for od in prefetched_data], axis=1)[0] for key in prefetched_data[0].keys()
+        }
     else:
         raise ValueError(f'No npz-files in specified path "{dpath}" is this directory existing?')
 
@@ -59,15 +64,17 @@ def load_datapool(dpath):
     return data_pool
 
 
-def train_searcher(opt,
-                   metric='dot_product',
-                   partioning_trainsize=None,
-                   reorder_k=None,
-                   # todo tune
-                   aiq_thld=0.2,
-                   dims_per_block=2,
-                   num_leaves=None,
-                   num_leaves_to_search=None,):
+def train_searcher(
+    opt,
+    metric='dot_product',
+    partioning_trainsize=None,
+    reorder_k=None,
+    # todo tune
+    aiq_thld=0.2,
+    dims_per_block=2,
+    num_leaves=None,
+    num_leaves_to_search=None,
+):
 
     data_pool = load_datapool(opt.database)
     k = opt.knn
@@ -77,7 +84,8 @@ def train_searcher(opt,
 
     # normalize
     # embeddings =
-    searcher = scann.scann_ops_pybind.builder(data_pool['embedding'] / np.linalg.norm(data_pool['embedding'], axis=1)[:, np.newaxis], k, metric)
+    searcher = scann.scann_ops_pybind.builder(
+        data_pool['embedding'] / np.linalg.norm(data_pool['embedding'], axis=1)[:, np.newaxis], k, metric)
     pool_size = data_pool['embedding'].shape[0]
 
     print(*(['#'] * 100))
@@ -114,14 +122,15 @@ def train_searcher(opt,
         print(f'num_leaves: {num_leaves}')
         print(f'num_leaves_to_search: {num_leaves_to_search}')
         # self.searcher = self.search_ah(searcher, dims_per_block, aiq_thld, reorder_k)
-        searcher = search_partioned_ah(searcher, dims_per_block, aiq_thld, reorder_k,
-                                                 partioning_trainsize, num_leaves, num_leaves_to_search)
+        searcher = search_partioned_ah(searcher, dims_per_block, aiq_thld, reorder_k, partioning_trainsize, num_leaves,
+                                       num_leaves_to_search)
 
     print('Finish training searcher')
     searcher_savedir = opt.target_path
     os.makedirs(searcher_savedir, exist_ok=True)
     searcher.serialize(searcher_savedir)
     print(f'Saved trained searcher under "{searcher_savedir}"')
+
 
 if __name__ == '__main__':
     sys.path.append(os.getcwd())
@@ -142,6 +151,6 @@ if __name__ == '__main__':
                         type=int,
                         help='number of nearest neighbors, for which the searcher shall be optimized')
 
-    opt, _  = parser.parse_known_args()
+    opt, _ = parser.parse_known_args()
 
     train_searcher(opt,)

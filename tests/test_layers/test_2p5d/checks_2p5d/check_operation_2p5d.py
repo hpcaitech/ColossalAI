@@ -2,10 +2,9 @@ import torch
 
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.nn.layer.parallel_2p5d._operation import Matmul_AB_2p5D, Matmul_ABT_2p5D, \
-    Matmul_ATB_2p5D
-from colossalai.utils import get_current_device
-from colossalai.utils import print_rank_0
+from colossalai.nn.layer.parallel_2p5d._operation import Matmul_AB_2p5D, Matmul_ABT_2p5D, Matmul_ATB_2p5D
+from colossalai.utils import get_current_device, print_rank_0
+
 from .common import *
 
 

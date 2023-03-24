@@ -1,14 +1,16 @@
-import torch
-from typing import List
-from torch.fx import symbolic_trace
-from torch.fx.node import Node
-from colossalai.fx.passes.split_module import split_module
-from colossalai.tensor.shape_consistency import ShapeConsistencyManager
-from colossalai.device.device_mesh import DeviceMesh
-from colossalai.tensor.sharding_spec import ShardingSpec, _DimSpec
 import builtins
 import operator
 from copy import deepcopy
+from typing import List
+
+import torch
+from torch.fx import symbolic_trace
+from torch.fx.node import Node
+
+from colossalai.device.device_mesh import DeviceMesh
+from colossalai.fx.passes.split_module import split_module
+from colossalai.tensor.shape_consistency import ShapeConsistencyManager
+from colossalai.tensor.sharding_spec import ShardingSpec, _DimSpec
 
 
 def apply(*args, **kwargs):

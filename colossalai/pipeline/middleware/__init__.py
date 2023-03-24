@@ -1,3 +1,3 @@
-from .topo import Topo, Partition, PartitionOutputVal, PartitionInputVal
+from .topo import Partition, PartitionInputVal, PartitionOutputVal, Topo
 
 __all__ = ['Topo', 'Partition', 'PartitionOutputVal', 'PartitionInputVal']

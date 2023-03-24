@@ -1,8 +1,9 @@
 import re
-import torch
-from typing import Callable, List, Any
 from functools import partial
 from inspect import signature
+from typing import Any, Callable, List
+
+import torch
 from packaging import version
 
 
@@ -43,7 +44,7 @@ def parameterize(argument: str, values: List[Any]) -> Callable:
         # > davis: hello
         # > davis: bye
         # > davis: stop
-    
+
     Args:
         argument (str): the name of the argument to parameterize
         values (List[Any]): a list of values to iterate for this argument
@@ -85,13 +86,13 @@ def rerun_on_exception(exception_type: Exception = Exception, pattern: str = Non
         def test_method():
             print('hey')
             raise RuntimeError('Address already in use')
-        
+
         # rerun for infinite times if Runtime error occurs
         @rerun_on_exception(exception_type=RuntimeError, max_try=None)
         def test_method():
             print('hey')
             raise RuntimeError('Address already in use')
-        
+
         # rerun only the exception message is matched with pattern
         # for infinite times if Runtime error occurs
         @rerun_on_exception(exception_type=RuntimeError, pattern="^Address.*$")
@@ -101,10 +102,10 @@ def rerun_on_exception(exception_type: Exception = Exception, pattern: str = Non
 
     Args:
         exception_type (Exception, Optional): The type of exception to detect for rerun
-        pattern (str, Optional): The pattern to match the exception message. 
+        pattern (str, Optional): The pattern to match the exception message.
             If the pattern is not None and matches the exception message,
             the exception will be detected for rerun
-        max_try (int, Optional): Maximum reruns for this function. The default value is 5. 
+        max_try (int, Optional): Maximum reruns for this function. The default value is 5.
             If max_try is None, it will rerun foreven if exception keeps occurings
     """
 

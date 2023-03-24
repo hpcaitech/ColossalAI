@@ -56,7 +56,7 @@ pip install transformers diffusers invisible-watermark
 
 #### Step 2: install lightning
 
-Install Lightning version later than 2022.01.04. We suggest you install lightning from source. Notice that the default download path of pip should be within the conda environment, or you may need to specify using 'which pip' and redirect the path into conda environment. 
+Install Lightning version later than 2022.01.04. We suggest you install lightning from source. Notice that the default download path of pip should be within the conda environment, or you may need to specify using 'which pip' and redirect the path into conda environment.
 
 ##### From Source
 ```

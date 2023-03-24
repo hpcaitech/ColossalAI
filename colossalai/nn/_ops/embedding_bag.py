@@ -1,9 +1,11 @@
-import torch.nn.functional as F
 from typing import Optional
+
+import torch.nn.functional as F
 from torch import Tensor
+
+from colossalai.tensor import ColoTensor, ColoTensorSpec, ComputePattern, ComputeSpec, ReplicaSpec, ShardSpec, distspec
 from colossalai.tensor.op_wrapper import colo_op_impl
-from colossalai.tensor import ComputePattern, ComputePattern, ComputeSpec, ColoTensor, distspec, ColoTensorSpec, \
-    ShardSpec, ReplicaSpec
+
 from ._utils import GeneralTensor, convert_to_colo_tensor
 
 

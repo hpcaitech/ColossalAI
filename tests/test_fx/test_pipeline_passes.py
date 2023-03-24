@@ -1,12 +1,16 @@
+import pytest
 import torch
 import torch.nn as nn
+from torch.fx import symbolic_trace
+
 import colossalai
 import colossalai.nn as col_nn
-from torch.fx import symbolic_trace
-from colossalai.fx.passes.adding_split_node_pass import split_with_split_nodes_pass, balanced_split_pass, \
-                                                        uniform_split_pass, balanced_split_pass_v2
-
-import pytest
+from colossalai.fx.passes.adding_split_node_pass import (
+    balanced_split_pass,
+    balanced_split_pass_v2,
+    split_with_split_nodes_pass,
+    uniform_split_pass,
+)
 
 MODEL_DIM = 16
 BATCH_SIZE = 8

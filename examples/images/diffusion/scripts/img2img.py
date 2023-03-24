@@ -1,28 +1,30 @@
 """make variations of input image"""
 
-import argparse, os
+import argparse
+import os
+from contextlib import nullcontext
+from itertools import islice
+
+import numpy as np
 import PIL
 import torch
-import numpy as np
+from einops import rearrange, repeat
 from omegaconf import OmegaConf
 from PIL import Image
-from tqdm import tqdm, trange
-from itertools import islice
-from einops import rearrange, repeat
-from torchvision.utils import make_grid
 from torch import autocast
-from contextlib import nullcontext
+from torchvision.utils import make_grid
+from tqdm import tqdm, trange
+
 try:
     from lightning.pytorch import seed_everything
 except:
     from pytorch_lightning import seed_everything
+
 from imwatermark import WatermarkEncoder
-
-
-from scripts.txt2img import put_watermark
-from ldm.util import instantiate_from_config
 from ldm.models.diffusion.ddim import DDIMSampler
-from utils import replace_module, getModelSize
+from ldm.util import instantiate_from_config
+from scripts.txt2img import put_watermark
+from utils import getModelSize, replace_module
 
 
 def chunk(it, size):
@@ -53,7 +55,7 @@ def load_img(path):
     image = Image.open(path).convert("RGB")
     w, h = image.size
     print(f"loaded input image of size ({w}, {h}) from {path}")
-    w, h = map(lambda x: x - x % 64, (w, h))  # resize to integer multiple of 64
+    w, h = map(lambda x: x - x % 64, (w, h))    # resize to integer multiple of 64
     image = image.resize((w, h), resample=PIL.Image.LANCZOS)
     image = np.array(image).astype(np.float32) / 255.0
     image = image[None].transpose(0, 3, 1, 2)
@@ -64,28 +66,19 @@ def load_img(path):
 def main():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument(
-        "--prompt",
-        type=str,
-        nargs="?",
-        default="a painting of a virus monster playing guitar",
-        help="the prompt to render"
-    )
+    parser.add_argument("--prompt",
+                        type=str,
+                        nargs="?",
+                        default="a painting of a virus monster playing guitar",
+                        help="the prompt to render")
 
-    parser.add_argument(
-        "--init-img",
-        type=str,
-        nargs="?",
-        help="path to the input image"
-    )
+    parser.add_argument("--init-img", type=str, nargs="?", help="path to the input image")
 
-    parser.add_argument(
-        "--outdir",
-        type=str,
-        nargs="?",
-        help="dir to write results to",
-        default="outputs/img2img-samples"
-    )
+    parser.add_argument("--outdir",
+                        type=str,
+                        nargs="?",
+                        help="dir to write results to",
+                        default="outputs/img2img-samples")
 
     parser.add_argument(
         "--ddim_steps",
@@ -176,13 +169,11 @@ def main():
         default=42,
         help="the seed (for reproducible sampling)",
     )
-    parser.add_argument(
-        "--precision",
-        type=str,
-        help="evaluate at this precision",
-        choices=["full", "autocast"],
-        default="autocast"
-    )
+    parser.add_argument("--precision",
+                        type=str,
+                        help="evaluate at this precision",
+                        choices=["full", "autocast"],
+                        default="autocast")
     parser.add_argument(
         "--use_int8",
         type=bool,
@@ -204,7 +195,7 @@ def main():
         model = replace_module(model)
         # # to compute the model size
         # getModelSize(model)
-    
+
     sampler = DDIMSampler(model)
 
     os.makedirs(opt.outdir, exist_ok=True)
@@ -236,7 +227,7 @@ def main():
     assert os.path.isfile(opt.init_img)
     init_image = load_img(opt.init_img).to(device)
     init_image = repeat(init_image, '1 ... -> b ...', b=batch_size)
-    init_latent = model.get_first_stage_encoding(model.encode_first_stage(init_image))  # move to latent space
+    init_latent = model.get_first_stage_encoding(model.encode_first_stage(init_image))    # move to latent space
 
     sampler.make_schedule(ddim_num_steps=opt.ddim_steps, ddim_eta=opt.ddim_eta, verbose=False)
 
@@ -261,8 +252,13 @@ def main():
                         # encode (scaled latent)
                         z_enc = sampler.stochastic_encode(init_latent, torch.tensor([t_enc] * batch_size).to(device))
                         # decode it
-                        samples = sampler.decode(z_enc, c, t_enc, unconditional_guidance_scale=opt.scale,
-                                                 unconditional_conditioning=uc, )
+                        samples = sampler.decode(
+                            z_enc,
+                            c,
+                            t_enc,
+                            unconditional_guidance_scale=opt.scale,
+                            unconditional_conditioning=uc,
+                        )
 
                         x_samples = model.decode_first_stage(samples)
                         x_samples = torch.clamp((x_samples + 1.0) / 2.0, min=0.0, max=1.0)

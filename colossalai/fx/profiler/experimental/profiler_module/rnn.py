@@ -1,8 +1,10 @@
-from functools import reduce
 import operator
-import torch
-from ..registry import meta_profiler_module
+from functools import reduce
 from typing import Optional, Tuple, Union
+
+import torch
+
+from ..registry import meta_profiler_module
 
 
 def _rnn_flops(flops: int, macs: int, module: torch.nn.RNNBase, w_ih: torch.Tensor,

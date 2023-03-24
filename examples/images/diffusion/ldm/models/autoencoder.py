@@ -1,20 +1,21 @@
 import torch
+
 try:
     import lightning.pytorch as pl
 except:
     import pytorch_lightning as pl
 
-import torch.nn.functional as F
 from contextlib import contextmanager
 
-from ldm.modules.diffusionmodules.model import Encoder, Decoder
+import torch.nn.functional as F
+from ldm.modules.diffusionmodules.model import Decoder, Encoder
 from ldm.modules.distributions.distributions import DiagonalGaussianDistribution
-
-from ldm.util import instantiate_from_config
 from ldm.modules.ema import LitEma
+from ldm.util import instantiate_from_config
 
 
 class AutoencoderKL(pl.LightningModule):
+
     def __init__(self,
                  ddconfig,
                  lossconfig,
@@ -25,8 +26,7 @@ class AutoencoderKL(pl.LightningModule):
                  colorize_nlabels=None,
                  monitor=None,
                  ema_decay=None,
-                 learn_logvar=False
-                 ):
+                 learn_logvar=False):
         super().__init__()
         self.learn_logvar = learn_logvar
         self.image_key = image_key
@@ -34,11 +34,11 @@ class AutoencoderKL(pl.LightningModule):
         self.decoder = Decoder(**ddconfig)
         self.loss = instantiate_from_config(lossconfig)
         assert ddconfig["double_z"]
-        self.quant_conv = torch.nn.Conv2d(2*ddconfig["z_channels"], 2*embed_dim, 1)
+        self.quant_conv = torch.nn.Conv2d(2 * ddconfig["z_channels"], 2 * embed_dim, 1)
         self.post_quant_conv = torch.nn.Conv2d(embed_dim, ddconfig["z_channels"], 1)
         self.embed_dim = embed_dim
         if colorize_nlabels is not None:
-            assert type(colorize_nlabels)==int
+            assert type(colorize_nlabels) == int
             self.register_buffer("colorize", torch.randn(3, colorize_nlabels, 1, 1))
         if monitor is not None:
             self.monitor = monitor
@@ -116,16 +116,26 @@ class AutoencoderKL(pl.LightningModule):
 
         if optimizer_idx == 0:
             # train encoder+decoder+logvar
-            aeloss, log_dict_ae = self.loss(inputs, reconstructions, posterior, optimizer_idx, self.global_step,
-                                            last_layer=self.get_last_layer(), split="train")
+            aeloss, log_dict_ae = self.loss(inputs,
+                                            reconstructions,
+                                            posterior,
+                                            optimizer_idx,
+                                            self.global_step,
+                                            last_layer=self.get_last_layer(),
+                                            split="train")
             self.log("aeloss", aeloss, prog_bar=True, logger=True, on_step=True, on_epoch=True)
             self.log_dict(log_dict_ae, prog_bar=False, logger=True, on_step=True, on_epoch=False)
             return aeloss
 
         if optimizer_idx == 1:
             # train the discriminator
-            discloss, log_dict_disc = self.loss(inputs, reconstructions, posterior, optimizer_idx, self.global_step,
-                                                last_layer=self.get_last_layer(), split="train")
+            discloss, log_dict_disc = self.loss(inputs,
+                                                reconstructions,
+                                                posterior,
+                                                optimizer_idx,
+                                                self.global_step,
+                                                last_layer=self.get_last_layer(),
+                                                split="train")
 
             self.log("discloss", discloss, prog_bar=True, logger=True, on_step=True, on_epoch=True)
             self.log_dict(log_dict_disc, prog_bar=False, logger=True, on_step=True, on_epoch=False)
@@ -140,11 +150,21 @@ class AutoencoderKL(pl.LightningModule):
     def _validation_step(self, batch, batch_idx, postfix=""):
         inputs = self.get_input(batch, self.image_key)
         reconstructions, posterior = self(inputs)
-        aeloss, log_dict_ae = self.loss(inputs, reconstructions, posterior, 0, self.global_step,
-                                        last_layer=self.get_last_layer(), split="val"+postfix)
+        aeloss, log_dict_ae = self.loss(inputs,
+                                        reconstructions,
+                                        posterior,
+                                        0,
+                                        self.global_step,
+                                        last_layer=self.get_last_layer(),
+                                        split="val" + postfix)
 
-        discloss, log_dict_disc = self.loss(inputs, reconstructions, posterior, 1, self.global_step,
-                                            last_layer=self.get_last_layer(), split="val"+postfix)
+        discloss, log_dict_disc = self.loss(inputs,
+                                            reconstructions,
+                                            posterior,
+                                            1,
+                                            self.global_step,
+                                            last_layer=self.get_last_layer(),
+                                            split="val" + postfix)
 
         self.log(f"val{postfix}/rec_loss", log_dict_ae[f"val{postfix}/rec_loss"])
         self.log_dict(log_dict_ae)
@@ -158,10 +178,8 @@ class AutoencoderKL(pl.LightningModule):
         if self.learn_logvar:
             print(f"{self.__class__.__name__}: Learning logvar")
             ae_params_list.append(self.loss.logvar)
-        opt_ae = torch.optim.Adam(ae_params_list,
-                                  lr=lr, betas=(0.5, 0.9))
-        opt_disc = torch.optim.Adam(self.loss.discriminator.parameters(),
-                                    lr=lr, betas=(0.5, 0.9))
+        opt_ae = torch.optim.Adam(ae_params_list, lr=lr, betas=(0.5, 0.9))
+        opt_disc = torch.optim.Adam(self.loss.discriminator.parameters(), lr=lr, betas=(0.5, 0.9))
         return [opt_ae, opt_disc], []
 
     def get_last_layer(self):
@@ -198,11 +216,12 @@ class AutoencoderKL(pl.LightningModule):
         if not hasattr(self, "colorize"):
             self.register_buffer("colorize", torch.randn(3, x.shape[1], 1, 1).to(x))
         x = F.conv2d(x, weight=self.colorize)
-        x = 2.*(x-x.min())/(x.max()-x.min()) - 1.
+        x = 2. * (x - x.min()) / (x.max() - x.min()) - 1.
         return x
 
 
 class IdentityFirstStage(torch.nn.Module):
+
     def __init__(self, *args, vq_interface=False, **kwargs):
         self.vq_interface = vq_interface
         super().__init__()
@@ -220,4 +239,3 @@ class IdentityFirstStage(torch.nn.Module):
 
     def forward(self, x, *args, **kwargs):
         return x
-

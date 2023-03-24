@@ -1,8 +1,9 @@
-from colossalai.global_variables import tensor_parallel_env as env
-from colossalai.nn.layer.utils import get_tensor_parallel_mode
 from torch import nn
 from torch.nn.modules.loss import *
 from torch.nn.modules.loss import _Loss
+
+from colossalai.global_variables import tensor_parallel_env as env
+from colossalai.nn.layer.utils import get_tensor_parallel_mode
 
 from .loss_1d import VocabParallelCrossEntropyLoss1D
 from .loss_2d import CrossEntropyLoss2D, VocabParallelCrossEntropyLoss2D

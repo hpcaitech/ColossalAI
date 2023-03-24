@@ -1,8 +1,10 @@
-import torch
-from colossalai.utils.model.lazy_init_context import LazyInitContext
-from torchvision.models import resnet34
 import random
+
 import numpy as np
+import torch
+from torchvision.models import resnet34
+
+from colossalai.utils.model.lazy_init_context import LazyInitContext
 
 MANUAL_SEED = 0
 random.seed(MANUAL_SEED)

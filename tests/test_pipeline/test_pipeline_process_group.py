@@ -1,13 +1,13 @@
 import os
 
+import pytest
 import torch.distributed.rpc as rpc
 import torch.multiprocessing as mp
-import pytest
+from rpc_test_utils import pg_parse_args, rpc_is_initialized
 
-from colossalai.pipeline.pipeline_process_group import ppg
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
-from rpc_test_utils import pg_parse_args, rpc_is_initialized
+from colossalai.pipeline.pipeline_process_group import ppg
 
 
 def run_worker(rank, args):

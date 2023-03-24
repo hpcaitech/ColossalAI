@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
-from torch.nn import Parameter
 import torch.nn.functional as F
 import torch.nn.init as init
+from torch.nn import Parameter
 
 
 class Linear(nn.Module):
@@ -24,11 +24,7 @@ class Linear(nn.Module):
                        adding bias but instead return it.
     """
 
-    def __init__(self,
-                 input_size,
-                 output_size,
-                 bias=True,
-                 skip_bias_add=False):
+    def __init__(self, input_size, output_size, bias=True, skip_bias_add=False):
         super(Linear, self).__init__()
 
         # Keep input parameters
@@ -36,9 +32,10 @@ class Linear(nn.Module):
         self.output_size = output_size
         self.skip_bias_add = skip_bias_add
 
-        self.weight = Parameter(torch.empty(self.output_size,
-                                            self.input_size,
-                                            ))
+        self.weight = Parameter(torch.empty(
+            self.output_size,
+            self.input_size,
+        ))
         init.normal_(self.weight)
         if bias:
             self.bias = Parameter(torch.empty(self.output_size))

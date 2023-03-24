@@ -1,15 +1,16 @@
 import math
 from abc import ABC
+from typing import Callable, Optional
 
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.distributed as dist
-from colossalai.utils import get_current_device
+from torch.distributed import ProcessGroup
+
 from colossalai.context import MOE_CONTEXT
 from colossalai.nn.layer.moe._operation import moe_cumsum
-from typing import Callable, Optional
-from torch.distributed import ProcessGroup
+from colossalai.utils import get_current_device
 
 
 class MoeRouter(nn.Module, ABC):

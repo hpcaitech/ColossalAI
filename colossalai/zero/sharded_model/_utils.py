@@ -1,8 +1,8 @@
-from typing import Any, Callable, List, Tuple
+from typing import Any, Callable, List, Tuple, Union
 
 import torch
 import torch.nn.functional as F
-from typing import Union
+
 from colossalai.gemini.stateful_tensor import StatefulTensor
 
 

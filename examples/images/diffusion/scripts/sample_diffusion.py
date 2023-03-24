@@ -1,16 +1,21 @@
-import argparse, os, sys, glob, datetime, yaml
-import torch
+import argparse
+import datetime
+import glob
+import os
+import sys
 import time
+
 import numpy as np
-from tqdm import trange
-
-from omegaconf import OmegaConf
-from PIL import Image
-
+import torch
+import yaml
 from ldm.models.diffusion.ddim import DDIMSampler
 from ldm.util import instantiate_from_config
+from omegaconf import OmegaConf
+from PIL import Image
+from tqdm import trange
 
 rescale = lambda x: (x + 1.) / 2.
+
 
 def custom_to_pil(x):
     x = x.detach().cpu()
@@ -51,49 +56,51 @@ def logs2pil(logs, keys=["sample"]):
 
 
 @torch.no_grad()
-def convsample(model, shape, return_intermediates=True,
-               verbose=True,
-               make_prog_row=False):
-
+def convsample(model, shape, return_intermediates=True, verbose=True, make_prog_row=False):
 
     if not make_prog_row:
-        return model.p_sample_loop(None, shape,
-                                   return_intermediates=return_intermediates, verbose=verbose)
+        return model.p_sample_loop(None, shape, return_intermediates=return_intermediates, verbose=verbose)
     else:
-        return model.progressive_denoising(
-            None, shape, verbose=True
-        )
+        return model.progressive_denoising(None, shape, verbose=True)
 
 
 @torch.no_grad()
-def convsample_ddim(model, steps, shape, eta=1.0
-                    ):
+def convsample_ddim(model, steps, shape, eta=1.0):
     ddim = DDIMSampler(model)
     bs = shape[0]
     shape = shape[1:]
-    samples, intermediates = ddim.sample(steps, batch_size=bs, shape=shape, eta=eta, verbose=False,)
+    samples, intermediates = ddim.sample(
+        steps,
+        batch_size=bs,
+        shape=shape,
+        eta=eta,
+        verbose=False,
+    )
     return samples, intermediates
 
 
 @torch.no_grad()
-def make_convolutional_sample(model, batch_size, vanilla=False, custom_steps=None, eta=1.0,):
-
+def make_convolutional_sample(
+    model,
+    batch_size,
+    vanilla=False,
+    custom_steps=None,
+    eta=1.0,
+):
 
     log = dict()
 
-    shape = [batch_size,
-             model.model.diffusion_model.in_channels,
-             model.model.diffusion_model.image_size,
-             model.model.diffusion_model.image_size]
+    shape = [
+        batch_size, model.model.diffusion_model.in_channels, model.model.diffusion_model.image_size,
+        model.model.diffusion_model.image_size
+    ]
 
     with model.ema_scope("Plotting"):
         t0 = time.time()
         if vanilla:
-            sample, progrow = convsample(model, shape,
-                                         make_prog_row=True)
+            sample, progrow = convsample(model, shape, make_prog_row=True)
         else:
-            sample, intermediates = convsample_ddim(model,  steps=custom_steps, shape=shape,
-                                                    eta=eta)
+            sample, intermediates = convsample_ddim(model, steps=custom_steps, shape=shape, eta=eta)
 
         t1 = time.time()
 
@@ -105,23 +112,25 @@ def make_convolutional_sample(model, batch_size, vanilla=False, custom_steps=Non
     print(f'Throughput for this batch: {log["throughput"]}')
     return log
 
+
 def run(model, logdir, batch_size=50, vanilla=False, custom_steps=None, eta=None, n_samples=50000, nplog=None):
     if vanilla:
         print(f'Using Vanilla DDPM sampling with {model.num_timesteps} sampling steps.')
     else:
         print(f'Using DDIM sampling with {custom_steps} sampling steps and eta={eta}')
 
-
     tstart = time.time()
-    n_saved = len(glob.glob(os.path.join(logdir,'*.png')))-1
+    n_saved = len(glob.glob(os.path.join(logdir, '*.png'))) - 1
     # path = logdir
     if model.cond_stage_model is None:
         all_images = []
 
         print(f"Running unconditional sampling for {n_samples} samples")
         for _ in trange(n_samples // batch_size, desc="Sampling Batches (unconditional)"):
-            logs = make_convolutional_sample(model, batch_size=batch_size,
-                                             vanilla=vanilla, custom_steps=custom_steps,
+            logs = make_convolutional_sample(model,
+                                             batch_size=batch_size,
+                                             vanilla=vanilla,
+                                             custom_steps=custom_steps,
                                              eta=eta)
             n_saved = save_logs(logs, logdir, n_saved=n_saved, key="sample")
             all_images.extend([custom_to_np(logs["sample"])])
@@ -135,7 +144,7 @@ def run(model, logdir, batch_size=50, vanilla=False, custom_steps=None, eta=None
         np.savez(nppath, all_img)
 
     else:
-       raise NotImplementedError('Currently only sampling for unconditional models supported.')
+        raise NotImplementedError('Currently only sampling for unconditional models supported.')
 
     print(f"sampling of {n_saved} images finished in {(time.time() - tstart) / 60.:.2f} minutes.")
 
@@ -168,22 +177,13 @@ def get_parser():
         nargs="?",
         help="load from logdir or checkpoint in logdir",
     )
-    parser.add_argument(
-        "-n",
-        "--n_samples",
-        type=int,
-        nargs="?",
-        help="number of samples to draw",
-        default=50000
-    )
-    parser.add_argument(
-        "-e",
-        "--eta",
-        type=float,
-        nargs="?",
-        help="eta for ddim sampling (0.0 yields deterministic sampling)",
-        default=1.0
-    )
+    parser.add_argument("-n", "--n_samples", type=int, nargs="?", help="number of samples to draw", default=50000)
+    parser.add_argument("-e",
+                        "--eta",
+                        type=float,
+                        nargs="?",
+                        help="eta for ddim sampling (0.0 yields deterministic sampling)",
+                        default=1.0)
     parser.add_argument(
         "-v",
         "--vanilla_sample",
@@ -191,35 +191,20 @@ def get_parser():
         action='store_true',
         help="vanilla sampling (default option is DDIM sampling)?",
     )
-    parser.add_argument(
-        "-l",
-        "--logdir",
-        type=str,
-        nargs="?",
-        help="extra logdir",
-        default="none"
-    )
-    parser.add_argument(
-        "-c",
-        "--custom_steps",
-        type=int,
-        nargs="?",
-        help="number of steps for ddim and fastdpm sampling",
-        default=50
-    )
-    parser.add_argument(
-        "--batch_size",
-        type=int,
-        nargs="?",
-        help="the bs",
-        default=10
-    )
+    parser.add_argument("-l", "--logdir", type=str, nargs="?", help="extra logdir", default="none")
+    parser.add_argument("-c",
+                        "--custom_steps",
+                        type=int,
+                        nargs="?",
+                        help="number of steps for ddim and fastdpm sampling",
+                        default=50)
+    parser.add_argument("--batch_size", type=int, nargs="?", help="the bs", default=10)
     return parser
 
 
 def load_model_from_config(config, sd):
     model = instantiate_from_config(config)
-    model.load_state_dict(sd,strict=False)
+    model.load_state_dict(sd, strict=False)
     model.cuda()
     model.eval()
     return model
@@ -233,8 +218,7 @@ def load_model(config, ckpt, gpu, eval_mode):
     else:
         pl_sd = {"state_dict": None}
         global_step = None
-    model = load_model_from_config(config.model,
-                                   pl_sd["state_dict"])
+    model = load_model_from_config(config.model, pl_sd["state_dict"])
 
     return model, global_step
 
@@ -258,7 +242,7 @@ if __name__ == "__main__":
             print(f'Logdir is {logdir}')
         except ValueError:
             paths = opt.resume.split("/")
-            idx = -2  # take a guess: path/to/logdir/checkpoints/model.ckpt
+            idx = -2    # take a guess: path/to/logdir/checkpoints/model.ckpt
             logdir = "/".join(paths[:idx])
         ckpt = opt.resume
     else:
@@ -278,7 +262,8 @@ if __name__ == "__main__":
 
     if opt.logdir != "none":
         locallog = logdir.split(os.sep)[-1]
-        if locallog == "": locallog = logdir.split(os.sep)[-2]
+        if locallog == "":
+            locallog = logdir.split(os.sep)[-2]
         print(f"Switching logdir from '{logdir}' to '{os.path.join(opt.logdir, locallog)}'")
         logdir = os.path.join(opt.logdir, locallog)
 
@@ -305,9 +290,13 @@ if __name__ == "__main__":
         yaml.dump(sampling_conf, f, default_flow_style=False)
     print(sampling_conf)
 
-
-    run(model, imglogdir, eta=opt.eta,
-        vanilla=opt.vanilla_sample,  n_samples=opt.n_samples, custom_steps=opt.custom_steps,
-        batch_size=opt.batch_size, nplog=numpylogdir)
+    run(model,
+        imglogdir,
+        eta=opt.eta,
+        vanilla=opt.vanilla_sample,
+        n_samples=opt.n_samples,
+        custom_steps=opt.custom_steps,
+        batch_size=opt.batch_size,
+        nplog=numpylogdir)
 
     print("done.")

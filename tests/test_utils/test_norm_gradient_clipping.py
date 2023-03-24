@@ -1,16 +1,18 @@
-from colossalai.tensor import distspec, ColoTensorSpec, ProcessGroup
-from colossalai.tensor.colo_parameter import ColoParameter
-import colossalai
+from functools import partial
+
 import pytest
 import torch
 import torch.multiprocessing as mp
-from colossalai.logging import disable_existing_loggers
-from colossalai.utils import free_port, get_current_device
-from torch.nn.utils import clip_grad_norm_
-from functools import partial
-from colossalai.testing import parameterize, rerun_if_address_is_in_use
-from colossalai.utils.common import clip_grad_norm
 from torch.nn.parameter import Parameter
+from torch.nn.utils import clip_grad_norm_
+
+import colossalai
+from colossalai.logging import disable_existing_loggers
+from colossalai.tensor import ColoTensorSpec, ProcessGroup, distspec
+from colossalai.tensor.colo_parameter import ColoParameter
+from colossalai.testing import parameterize, rerun_if_address_is_in_use
+from colossalai.utils import free_port, get_current_device
+from colossalai.utils.common import clip_grad_norm
 
 
 def close(num: float, other: float, rtol: float = 1e-5, atol: float = 1e-8):

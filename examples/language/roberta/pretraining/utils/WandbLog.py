@@ -1,7 +1,9 @@
-import time
-import wandb
 import os
+import time
+
+import wandb
 from torch.utils.tensorboard import SummaryWriter
+
 
 class WandbLog:
 
@@ -15,7 +17,7 @@ class WandbLog:
 
         if model:
             wandb.watch(model)
-        
+
         if gradient:
             wandb.watch(gradient)
 
@@ -30,7 +32,7 @@ class TensorboardLog:
     def log_train(self, result, step):
         for k, v in result.items():
             self.writer.add_scalar(f'{k}/train', v, step)
-    
+
     def log_eval(self, result, step):
         for k, v in result.items():
             self.writer.add_scalar(f'{k}/eval', v, step)
@@ -38,9 +40,3 @@ class TensorboardLog:
     def log_zeroshot(self, result, step):
         for k, v in result.items():
             self.writer.add_scalar(f'{k}_acc/eval', v, step)
-
-
-
-
-
-

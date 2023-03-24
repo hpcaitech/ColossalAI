@@ -1,5 +1,7 @@
 import time
+
 import torch
+
 from .WandbLog import TensorboardLog
 
 _GLOBAL_TIMERS = None
@@ -10,29 +12,33 @@ def set_global_variables(launch_time, tensorboard_path):
     _set_timers()
     _set_tensorboard_writer(launch_time, tensorboard_path)
 
+
 def _set_timers():
     """Initialize timers."""
     global _GLOBAL_TIMERS
     _ensure_var_is_not_initialized(_GLOBAL_TIMERS, 'timers')
     _GLOBAL_TIMERS = Timers()
 
+
 def _set_tensorboard_writer(launch_time, tensorboard_path):
     """Set tensorboard writer."""
     global _GLOBAL_TENSORBOARD_WRITER
-    _ensure_var_is_not_initialized(_GLOBAL_TENSORBOARD_WRITER,
-                                   'tensorboard writer')
+    _ensure_var_is_not_initialized(_GLOBAL_TENSORBOARD_WRITER, 'tensorboard writer')
     if torch.distributed.get_rank() == 0:
         _GLOBAL_TENSORBOARD_WRITER = TensorboardLog(tensorboard_path + f'/{launch_time}', launch_time)
-    
+
+
 def get_timers():
     """Return timers."""
     _ensure_var_is_initialized(_GLOBAL_TIMERS, 'timers')
     return _GLOBAL_TIMERS
 
+
 def get_tensorboard_writer():
     """Return tensorboard writer. It can be None so no need
     to check if it is initialized."""
     return _GLOBAL_TENSORBOARD_WRITER
+
 
 def _ensure_var_is_initialized(var, name):
     """Make sure the input variable is not None."""
@@ -115,12 +121,10 @@ class Timers:
         assert normalizer > 0.0
         string = 'time (ms)'
         for name in names:
-            elapsed_time = self.timers[name].elapsed(
-                reset=reset) * 1000.0 / normalizer
+            elapsed_time = self.timers[name].elapsed(reset=reset) * 1000.0 / normalizer
             string += ' | {}: {:.2f}'.format(name, elapsed_time)
         if torch.distributed.is_initialized():
-            if torch.distributed.get_rank() == (
-                    torch.distributed.get_world_size() - 1):
+            if torch.distributed.get_rank() == (torch.distributed.get_world_size() - 1):
                 print(string, flush=True)
         else:
             print(string, flush=True)

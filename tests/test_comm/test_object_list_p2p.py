@@ -4,12 +4,20 @@ import pytest
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
-from colossalai.communication.p2p import send_forward, recv_forward, send_backward, recv_backward, send_forward_recv_backward, send_backward_recv_forward
+
+from colossalai.communication.p2p import (
+    recv_backward,
+    recv_forward,
+    send_backward,
+    send_backward_recv_forward,
+    send_forward,
+    send_forward_recv_backward,
+)
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.initialize import launch
-from colossalai.utils import free_port, get_current_device
 from colossalai.testing import rerun_if_address_is_in_use
+from colossalai.utils import free_port, get_current_device
 
 CONFIG = dict(parallel=dict(pipeline=2))
 torch.manual_seed(123)

@@ -6,17 +6,26 @@ from functools import partial
 import pytest
 import torch
 import torch.multiprocessing as mp
+from checks_2d.check_layer_2d import (
+    check_classifier_given_embed_weight,
+    check_classifier_no_given_weight,
+    check_embed,
+    check_layernorm,
+    check_linear,
+    check_loss,
+    check_patch_embed,
+    check_vocab_parallel_classifier_given_embed_weight,
+    check_vocab_parallel_classifier_no_given_weight,
+    check_vocab_parallel_embed,
+    check_vocab_parallel_loss,
+)
+from checks_2d.check_operation_2d import check_AB, check_ABT, check_ATB
+
 from colossalai.core import global_context as gpc
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
-from colossalai.utils import free_port
 from colossalai.testing import rerun_if_address_is_in_use
-from checks_2d.check_layer_2d import (check_classifier_given_embed_weight, check_classifier_no_given_weight,
-                                      check_embed, check_layernorm, check_linear, check_loss, check_patch_embed,
-                                      check_vocab_parallel_classifier_given_embed_weight,
-                                      check_vocab_parallel_classifier_no_given_weight, check_vocab_parallel_embed,
-                                      check_vocab_parallel_loss)
-from checks_2d.check_operation_2d import check_AB, check_ABT, check_ATB
+from colossalai.utils import free_port
 
 CONFIG = dict(parallel=dict(pipeline=dict(size=1), tensor=dict(size=4, mode='2d')),)
 

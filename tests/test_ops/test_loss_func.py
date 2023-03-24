@@ -1,14 +1,14 @@
-import torch
-import pytest
-import colossalai
-import torch.nn.functional as F
-import torch.multiprocessing as mp
 from functools import partial
-from colossalai.tensor import ColoTensor, ProcessGroup, ColoTensorSpec
-from colossalai.utils import get_current_device
+
+import pytest
+import torch
+import torch.multiprocessing as mp
+import torch.nn.functional as F
+
+import colossalai
+from colossalai.tensor import ColoTensor, ColoTensorSpec, ComputePattern, ComputeSpec, ProcessGroup, ShardSpec
 from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.utils import free_port
-from colossalai.tensor import ShardSpec, ComputeSpec, ComputePattern
+from colossalai.utils import free_port, get_current_device
 
 
 def check_cross_entropy():

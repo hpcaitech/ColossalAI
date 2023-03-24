@@ -4,12 +4,13 @@ import pytest
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
+
 from colossalai.communication import all_gather, all_reduce, reduce_scatter
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.initialize import launch
-from colossalai.utils import free_port, get_current_device
 from colossalai.testing import rerun_if_address_is_in_use
+from colossalai.utils import free_port, get_current_device
 
 CONFIG = dict(parallel=dict(data=8, pipeline=1, tensor=dict(mode=None, size=1)))
 

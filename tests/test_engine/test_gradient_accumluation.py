@@ -2,20 +2,21 @@ import os
 from functools import partial
 from pathlib import Path
 
-import colossalai
-from colossalai.testing.utils import rerun_if_address_is_in_use
 import pytest
 import torch
 import torch.multiprocessing as mp
 import torch.nn as nn
-from colossalai.core import global_context as gpc
-from colossalai.logging import get_dist_logger
-from colossalai.utils import free_port, get_dataloader
-from colossalai.testing import rerun_if_address_is_in_use
 from torch.optim import Adam
 from torchvision import transforms
 from torchvision.datasets import CIFAR10
 from torchvision.models import resnet18
+
+import colossalai
+from colossalai.core import global_context as gpc
+from colossalai.logging import get_dist_logger
+from colossalai.testing import rerun_if_address_is_in_use
+from colossalai.testing.utils import rerun_if_address_is_in_use
+from colossalai.utils import free_port, get_dataloader
 
 # Config
 BATCH_SIZE = 2

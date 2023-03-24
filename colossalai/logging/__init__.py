@@ -12,7 +12,7 @@ def get_dist_logger(name: str = 'colossalai') -> DistributedLogger:
 
     Args:
         name (str): name of the logger, name must be unique
-    
+
     Returns:
         :class:`colossalai.logging.DistributedLogger`: A distributed logger singleton instance.
     """

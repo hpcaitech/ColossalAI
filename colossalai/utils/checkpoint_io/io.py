@@ -6,8 +6,13 @@ from torch.nn import Module
 from torch.optim import Optimizer
 
 from .backend import get_backend
-from .convertor import (CheckpointConvertor, ModelCheckpointMerger, ModelCheckpointRedistor, OptimizerCheckpointMerger,
-                        OptimizerCheckpointRedistor)
+from .convertor import (
+    CheckpointConvertor,
+    ModelCheckpointMerger,
+    ModelCheckpointRedistor,
+    OptimizerCheckpointMerger,
+    OptimizerCheckpointRedistor,
+)
 from .meta import ParamDistMeta, RedistMeta
 from .utils import build_checkpoints, optimizer_load_state_dict
 

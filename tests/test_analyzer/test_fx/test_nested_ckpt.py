@@ -1,7 +1,7 @@
+import pytest
 import torch
 import torch.nn as nn
 from torch.utils.checkpoint import checkpoint
-import pytest
 
 try:
     from colossalai._analyzer.fx import symbolic_trace

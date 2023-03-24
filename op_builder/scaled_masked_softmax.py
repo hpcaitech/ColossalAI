@@ -9,21 +9,16 @@ class ScaledMaskedSoftmaxBuilder(Builder):
     PREBUILT_IMPORT_PATH = "colossalai._C.scaled_masked_softmax"
 
     def __init__(self):
-        super().__init__(name=ScaledMaskedSoftmaxBuilder.NAME, prebuilt_import_path=ScaledMaskedSoftmaxBuilder.PREBUILT_IMPORT_PATH)
+        super().__init__(name=ScaledMaskedSoftmaxBuilder.NAME,
+                         prebuilt_import_path=ScaledMaskedSoftmaxBuilder.PREBUILT_IMPORT_PATH)
 
     # necessary 4 functions
     def sources_files(self):
-        ret = [
-            self.csrc_abs_path(fname) for fname in 
-            ['scaled_masked_softmax.cpp', 'scaled_masked_softmax_cuda.cu']
-        ]
+        ret = [self.csrc_abs_path(fname) for fname in ['scaled_masked_softmax.cpp', 'scaled_masked_softmax_cuda.cu']]
         return ret
 
     def include_dirs(self):
-        return [
-            self.csrc_abs_path("kernels/include"),
-            self.get_cuda_home_include()
-        ]
+        return [self.csrc_abs_path("kernels/include"), self.get_cuda_home_include()]
 
     def cxx_flags(self):
         return ['-O3'] + self.version_dependent_macros

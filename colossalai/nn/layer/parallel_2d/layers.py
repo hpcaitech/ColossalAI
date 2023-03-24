@@ -5,6 +5,9 @@ from typing import Callable
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch import Tensor
+from torch.nn import Parameter
+
 from colossalai.communication import broadcast
 from colossalai.context import ParallelMode, seed
 from colossalai.core import global_context as gpc
@@ -13,13 +16,19 @@ from colossalai.nn import init as init
 from colossalai.registry import LAYERS
 from colossalai.utils.checkpointing import gather_tensor_parallel_state_dict, partition_tensor_parallel_state_dict
 from colossalai.utils.cuda import get_current_device
-from torch import Tensor
-from torch.nn import Parameter
 
 from ..base_layer import ParallelLayer
 from ..utils import divide, set_tensor_parallel_attribute_by_partition, to_2tuple
-from ._operation import (Matmul_AB_2D, Matmul_ABT_2D, add_bias_2d, all_gather_tensor_2d, classifier_2d, layernorm_2d,
-                         reduce_scatter_tensor_2d, split_batch_2d)
+from ._operation import (
+    Matmul_AB_2D,
+    Matmul_ABT_2D,
+    add_bias_2d,
+    all_gather_tensor_2d,
+    classifier_2d,
+    layernorm_2d,
+    reduce_scatter_tensor_2d,
+    split_batch_2d,
+)
 from ._utils import assert_summa_initialization, get_summa_dim_from_env
 
 

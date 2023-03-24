@@ -4,20 +4,22 @@ import random
 from typing import Optional
 
 import uvicorn
+from batch import BatchManagerForGeneration
+from cache import ListCache, MissCacheError
 from energonai import QueueFullError, launch_engine
 from energonai.model import opt_6B, opt_30B, opt_125M, opt_175B
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 from transformers import GPT2Tokenizer
 
-from batch import BatchManagerForGeneration
-from cache import ListCache, MissCacheError
-
 
 class GenerationTaskReq(BaseModel):
     max_tokens: int = Field(gt=0, le=256, example=64)
     prompt: str = Field(
-        min_length=1, example='Question: Where were the 2004 Olympics held?\nAnswer: Athens, Greece\n\nQuestion: What is the longest river on the earth?\nAnswer:')
+        min_length=1,
+        example=
+        'Question: Where were the 2004 Olympics held?\nAnswer: Athens, Greece\n\nQuestion: What is the longest river on the earth?\nAnswer:'
+    )
     top_k: Optional[int] = Field(default=None, gt=0, example=50)
     top_p: Optional[float] = Field(default=None, gt=0.0, lt=1.0, example=0.5)
     temperature: Optional[float] = Field(default=None, gt=0.0, lt=1.0, example=0.7)
@@ -64,12 +66,7 @@ async def shutdown(*_):
 
 
 def get_model_fn(model_name: str):
-    model_map = {
-        'opt-125m': opt_125M,
-        'opt-6.7b': opt_6B,
-        'opt-30b': opt_30B,
-        'opt-175b': opt_175B
-    }
+    model_map = {'opt-125m': opt_125M, 'opt-6.7b': opt_6B, 'opt-30b': opt_30B, 'opt-175b': opt_175B}
     return model_map[model_name]
 
 
@@ -80,9 +77,12 @@ def print_args(args: argparse.Namespace):
 
 
 FIXED_CACHE_KEYS = [
-    ('Question: What is the name of the largest continent on earth?\nAnswer: Asia\n\nQuestion: What is at the center of the solar system?\nAnswer:', 64),
-    ('A chat between a salesman and a student.\n\nSalesman: Hi boy, are you looking for a new phone?\nStudent: Yes, my phone is not functioning well.\nSalesman: What is your budget? \nStudent: I have received my scholarship so I am fine with any phone.\nSalesman: Great, then perhaps this latest flagship phone is just right for you.', 64),
-    ("English: I am happy today.\nChinese: 我今天很开心。\n\nEnglish: I am going to play basketball.\nChinese: 我一会去打篮球。\n\nEnglish: Let's celebrate our anniversary.\nChinese:", 64)
+    ('Question: What is the name of the largest continent on earth?\nAnswer: Asia\n\nQuestion: What is at the center of the solar system?\nAnswer:',
+     64),
+    ('A chat between a salesman and a student.\n\nSalesman: Hi boy, are you looking for a new phone?\nStudent: Yes, my phone is not functioning well.\nSalesman: What is your budget? \nStudent: I have received my scholarship so I am fine with any phone.\nSalesman: Great, then perhaps this latest flagship phone is just right for you.',
+     64),
+    ("English: I am happy today.\nChinese: 我今天很开心。\n\nEnglish: I am going to play basketball.\nChinese: 我一会去打篮球。\n\nEnglish: Let's celebrate our anniversary.\nChinese:",
+     64)
 ]
 
 if __name__ == '__main__':
@@ -112,7 +112,12 @@ if __name__ == '__main__':
         cache = ListCache(args.cache_size, args.cache_list_size, fixed_keys=FIXED_CACHE_KEYS)
     else:
         cache = None
-    engine = launch_engine(args.tp, 1, args.master_host, args.master_port, args.rpc_port, get_model_fn(args.model),
+    engine = launch_engine(args.tp,
+                           1,
+                           args.master_host,
+                           args.master_port,
+                           args.rpc_port,
+                           get_model_fn(args.model),
                            batch_manager=BatchManagerForGeneration(max_batch_size=args.max_batch_size,
                                                                    pad_token_id=tokenizer.pad_token_id),
                            pipe_size=args.pipe_size,

@@ -1,15 +1,17 @@
 from functools import partial
+
 import pytest
 import torch
-import torch.nn as nn
 import torch.multiprocessing as mp
+import torch.nn as nn
+
 import colossalai
 from colossalai.context import ParallelMode
-from colossalai.core import global_context as gpc
-from colossalai.utils import free_port, get_current_device
-from colossalai.nn.layer.moe import Top1Router, Top2Router, MoeLayer, Experts
 from colossalai.context.moe_context import MOE_CONTEXT
+from colossalai.core import global_context as gpc
+from colossalai.nn.layer.moe import Experts, MoeLayer, Top1Router, Top2Router
 from colossalai.testing import rerun_if_address_is_in_use
+from colossalai.utils import free_port, get_current_device
 
 BATCH_SIZE = 16
 NUM_EXPERTS = 4

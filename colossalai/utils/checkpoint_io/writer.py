@@ -1,8 +1,16 @@
+import os
 from abc import ABC, abstractmethod
 from typing import Optional
-from .constant import MODEL_CKPT_FILE_NAME, OPTIM_CKPT_FILE_NAME, META_CKPT_FILE_NAME, OTHER_CKPT_FILE_NAME, GLOBAL_META_FILE_NAME
+
 import torch
-import os
+
+from .constant import (
+    GLOBAL_META_FILE_NAME,
+    META_CKPT_FILE_NAME,
+    MODEL_CKPT_FILE_NAME,
+    OPTIM_CKPT_FILE_NAME,
+    OTHER_CKPT_FILE_NAME,
+)
 
 
 class CheckpointWriter(ABC):

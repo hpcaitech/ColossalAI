@@ -1,17 +1,15 @@
-import torch
+from functools import partial
+
 import pytest
-from colossalai.tensor import ColoTensor
+import torch
+import torch.multiprocessing as mp
 from numpy import allclose
 
 import colossalai
-from colossalai.utils import free_port
-from colossalai.tensor import ColoTensorSpec
 from colossalai.core import global_context as gpc
-import torch.multiprocessing as mp
+from colossalai.tensor import ColoTensor, ColoTensorSpec, ProcessGroup, ReplicaSpec, ShardSpec, distspec
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port
-from colossalai.tensor import distspec, ColoTensor, ProcessGroup, ShardSpec, ReplicaSpec
-from functools import partial
 
 
 def _run_tensor_indexing():

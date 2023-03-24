@@ -1,20 +1,32 @@
-import pytest
+import random
 from functools import partial
+from typing import List
 
 import numpy as np
-import random
-
+import pytest
 import torch
 import torch.multiprocessing as mp
 
 import colossalai
-from colossalai.utils import free_port
+from colossalai.nn.parallel.layers import (
+    CachedEmbeddingBag,
+    CachedParamMgr,
+    EvictionStrategy,
+    ParallelCachedEmbeddingBag,
+    ParallelCachedEmbeddingBagTablewise,
+    TablewiseEmbeddingBagConfig,
+)
+from colossalai.tensor import (
+    ColoParameter,
+    ColoTensor,
+    ColoTensorSpec,
+    ComputePattern,
+    ComputeSpec,
+    ProcessGroup,
+    ShardSpec,
+)
 from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.tensor import ColoParameter, ProcessGroup, ShardSpec, ComputePattern, ComputeSpec, \
-    ColoTensor, ColoTensorSpec
-from colossalai.nn.parallel.layers import CachedParamMgr, CachedEmbeddingBag, ParallelCachedEmbeddingBag, EvictionStrategy, \
-    ParallelCachedEmbeddingBagTablewise, TablewiseEmbeddingBagConfig
-from typing import List
+from colossalai.utils import free_port
 
 NUM_EMBED, EMBED_DIM = 10, 8
 BATCH_SIZE = 8
@@ -248,7 +260,7 @@ def run_parallel_freq_aware_embed_tablewise(rank, world_size):
     input0      [1,2,3]         [6,7]           []
     input1      []              [9]             [13,15]
     input2      [1,5]           [6,8]           [11]
-                  ↑               ↑               ↑ 
+                  ↑               ↑               ↑
                 rank 0          rank 0          rank 1
     in KJT format
     '''

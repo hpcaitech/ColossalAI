@@ -75,15 +75,15 @@ class DDPStrategy(NaiveStrategy):
     def save_model(self, model: nn.Module, path: str, only_rank0: bool = False) -> None:
         for module in model.modules():
             if isinstance(module, LoraLinear):
-                module.merge_weights=True
+                module.merge_weights = True
                 module.eval()
-                
+
         if only_rank0 and dist.get_rank() != 0:
             return
         model = model.model.module
         state_dict = model.state_dict()
         torch.save(state_dict, path)
-        
+
     def save_optimizer(self, optimizer: Optimizer, path: str, only_rank0: bool = False) -> None:
         if only_rank0 and dist.get_rank() != 0:
             return

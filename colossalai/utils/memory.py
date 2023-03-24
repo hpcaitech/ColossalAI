@@ -1,14 +1,14 @@
-import torch
 import gc
-import psutil
 from collections import namedtuple
 
-from colossalai.context.parallel_mode import ParallelMode
-from colossalai.utils import get_current_device
-from colossalai.core import global_context as gpc
-from colossalai.context.parallel_mode import ParallelMode
-from colossalai.logging import get_dist_logger
+import psutil
+import torch
 from packaging import version
+
+from colossalai.context.parallel_mode import ParallelMode
+from colossalai.core import global_context as gpc
+from colossalai.logging import get_dist_logger
+from colossalai.utils import get_current_device
 
 _GLOBAL_CUDA_MEM_FRACTION = 1.0
 _GLOBAL_CPU_MEM_CAPACITY = -1
@@ -138,7 +138,7 @@ def colo_device_memory_used(device: torch.device) -> int:
 
 
 def colo_set_process_memory_fraction(ratio: float) -> None:
-    """colo_set_process_memory_fraction 
+    """colo_set_process_memory_fraction
 
     set how much cuda memory used on the gpu belonging to the current process.
 

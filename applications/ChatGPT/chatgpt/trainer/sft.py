@@ -1,16 +1,19 @@
 from abc import ABC
 from typing import Optional
+
 import loralib as lora
 import torch
+import torch.distributed as dist
 from chatgpt.models.loss import GPTLMLoss
 from torch.optim import Adam, Optimizer
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm
-import torch.distributed as dist
+
+from colossalai.logging import get_dist_logger
+
 from .strategies import Strategy
 from .utils import is_rank_0
-from colossalai.logging import get_dist_logger
 
 
 class SFTTrainer(ABC):
@@ -74,7 +77,8 @@ class SFTTrainer(ABC):
                 self.strategy.optimizer_step(self.optimizer)
                 self.optimizer.zero_grad()
                 if batch_id % log_interval == 0:
-                    logger.info(f'Train Epoch {epoch}/{self.epochs} Batch {batch_id} Rank {dist.get_rank()} loss {loss.item()}')
+                    logger.info(
+                        f'Train Epoch {epoch}/{self.epochs} Batch {batch_id} Rank {dist.get_rank()} loss {loss.item()}')
 
             # eval
             if self.eval_dataloader is not None:
@@ -96,6 +100,5 @@ class SFTTrainer(ABC):
                     loss_mean = loss_sum / num_seen
                     if dist.get_rank() == 0:
                         logger.info(f'Eval Epoch {epoch}/{self.epochs} loss {loss_mean}')
-                        
-            epoch_bar.update()
 
+            epoch_bar.update()

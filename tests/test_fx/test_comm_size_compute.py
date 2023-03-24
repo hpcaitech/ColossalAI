@@ -1,13 +1,14 @@
-import colossalai
-import colossalai.nn as col_nn
 import pytest
 import torch
 import torch.nn as nn
+from torch.fx import symbolic_trace
+
+import colossalai
+import colossalai.nn as col_nn
 from colossalai.fx._compatibility import is_compatible_with_meta
-from colossalai.fx.passes.adding_split_node_pass import (split_with_split_nodes_pass, uniform_split_pass)
+from colossalai.fx.passes.adding_split_node_pass import split_with_split_nodes_pass, uniform_split_pass
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
 from colossalai.fx.passes.utils import get_comm_size
-from torch.fx import symbolic_trace
 
 is_compatible = is_compatible_with_meta()
 if is_compatible:

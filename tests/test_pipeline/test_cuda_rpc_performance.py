@@ -1,25 +1,25 @@
 import os
-from typing import Callable, List, Optional, Type, Union
 import time
+from typing import Callable, List, Optional, Type, Union
 
 import pytest
 import torch
 import torch.nn as nn
+from rpc_test_utils import parse_args, rpc_run
 from titans.dataloader.cifar10 import build_cifar
 from torchvision.models import resnet50
 from torchvision.models.resnet import BasicBlock, Bottleneck, conv1x1
 from tqdm import tqdm
 
-from rpc_test_utils import rpc_run, parse_args
 import colossalai
 import colossalai.nn as col_nn
+from colossalai.context import ParallelMode
 from colossalai.logging import disable_existing_loggers, get_dist_logger
+from colossalai.pipeline.pipelinable import PipelinableContext, PipelinableModel
+from colossalai.pipeline.pipeline_process_group import ppg
+from colossalai.pipeline.rpc import ChimeraPipelineEngine, OneFOneBPipelineEngine
 from colossalai.trainer import Trainer, hooks
 from colossalai.utils import MultiTimer, get_dataloader
-from colossalai.context import ParallelMode
-from colossalai.pipeline.pipelinable import PipelinableContext, PipelinableModel
-from colossalai.pipeline.rpc import OneFOneBPipelineEngine, ChimeraPipelineEngine
-from colossalai.pipeline.pipeline_process_group import ppg
 
 
 def flatten(x):

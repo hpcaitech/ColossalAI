@@ -1,6 +1,6 @@
 from typing import Any, Callable, Union
-import pytest
 
+import pytest
 import torch
 import torch.nn as nn
 

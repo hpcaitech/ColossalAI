@@ -1,11 +1,12 @@
 """
 This file will not be automatically imported by `colossalai.testing`
-as this file has a dependency on `pytest`. Therefore, you need to 
+as this file has a dependency on `pytest`. Therefore, you need to
 explicitly import this file `from colossalai.testing.pytest_wrapper import <func>`.from
 """
 
-import pytest
 import os
+
+import pytest
 
 
 def run_on_environment_flag(name: str):

@@ -2,22 +2,23 @@ import os
 from functools import partial
 from pathlib import Path
 
-import colossalai
 import pytest
 import torch
 import torch.multiprocessing as mp
 import torch.nn as nn
-from colossalai.context.parallel_mode import ParallelMode
-from colossalai.core import global_context as gpc
-from colossalai.engine.schedule import PipelineSchedule
-from colossalai.logging import get_dist_logger
-from colossalai.trainer import Trainer
-from colossalai.utils import MultiTimer, free_port, get_dataloader
 from torch.optim import Adam
 from torchvision import transforms
 from torchvision.datasets import CIFAR10
 from torchvision.models import resnet18
+
+import colossalai
+from colossalai.context.parallel_mode import ParallelMode
+from colossalai.core import global_context as gpc
+from colossalai.engine.schedule import PipelineSchedule
+from colossalai.logging import get_dist_logger
 from colossalai.testing import rerun_if_address_is_in_use
+from colossalai.trainer import Trainer
+from colossalai.utils import MultiTimer, free_port, get_dataloader
 
 BATCH_SIZE = 4
 IMG_SIZE = 32

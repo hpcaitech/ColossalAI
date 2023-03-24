@@ -9,13 +9,13 @@ import pytest
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
+from torchvision import datasets, transforms
 
 import colossalai
-from torchvision import transforms, datasets
-from colossalai.context import ParallelMode, Config
+from colossalai.context import Config, ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.utils import get_dataloader, free_port
 from colossalai.testing import rerun_if_address_is_in_use
+from colossalai.utils import free_port, get_dataloader
 
 CONFIG = Config(dict(
     parallel=dict(

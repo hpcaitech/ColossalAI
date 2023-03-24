@@ -19,15 +19,12 @@ class VocabEmbedding(torch.nn.Module):
         self._weight = None
 
         # Allocate weights and initialize.
-        self.weight = nn.Parameter(torch.empty(
-            self.num_embeddings, self.embedding_dim))
+        self.weight = nn.Parameter(torch.empty(self.num_embeddings, self.embedding_dim))
         init.xavier_uniform_(self.weight)
 
     def forward(self, hidden_state):
-        output = F.embedding(hidden_state, self.weight,
-                             self.padding_idx, self.max_norm,
-                             self.norm_type, self.scale_grad_by_freq,
-                             self.sparse)
+        output = F.embedding(hidden_state, self.weight, self.padding_idx, self.max_norm, self.norm_type,
+                             self.scale_grad_by_freq, self.sparse)
         return output
 
     def __repr__(self):
@@ -48,12 +45,7 @@ class Embedding(nn.Module):
                         will ignore this embedding
     """
 
-    def __init__(self,
-                 hidden_size,
-                 vocab_size,
-                 max_sequence_length,
-                 embedding_dropout_prob,
-                 num_tokentypes):
+    def __init__(self, hidden_size, vocab_size, max_sequence_length, embedding_dropout_prob, num_tokentypes):
         super(Embedding, self).__init__()
 
         self.hidden_size = hidden_size
@@ -62,16 +54,14 @@ class Embedding(nn.Module):
         self.word_embeddings = VocabEmbedding(vocab_size, self.hidden_size)
 
         # Position embedding (serial).
-        self.position_embeddings = torch.nn.Embedding(
-            max_sequence_length, self.hidden_size)
+        self.position_embeddings = torch.nn.Embedding(max_sequence_length, self.hidden_size)
 
         # Token type embedding.
         # Add this as an optional field that can be added through
         # method call so we can load a pretrain model without
         # token types and add them as needed.
         if self.num_tokentypes > 0:
-            self.tokentype_embeddings = torch.nn.Embedding(self.num_tokentypes,
-                                                           self.hidden_size)
+            self.tokentype_embeddings = torch.nn.Embedding(self.num_tokentypes, self.hidden_size)
         else:
             self.tokentype_embeddings = None
 

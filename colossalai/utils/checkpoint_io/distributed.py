@@ -1,8 +1,10 @@
+from collections import defaultdict
+from typing import List, Optional, Tuple
+
 import torch
 from numpy import prod
 from torch import Tensor
-from typing import List, Optional, Tuple
-from collections import defaultdict
+
 from .meta import ParamDistMeta, ParamRedistMeta
 
 

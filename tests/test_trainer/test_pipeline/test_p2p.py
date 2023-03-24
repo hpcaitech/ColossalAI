@@ -7,15 +7,23 @@ import pytest
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
-from colossalai.communication import (recv_backward, recv_forward, recv_obj_meta, send_backward,
-                                      send_backward_recv_forward, send_forward, send_forward_recv_backward,
-                                      send_obj_meta)
+
+from colossalai.communication import (
+    recv_backward,
+    recv_forward,
+    recv_obj_meta,
+    send_backward,
+    send_backward_recv_forward,
+    send_forward,
+    send_forward_recv_backward,
+    send_obj_meta,
+)
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.initialize import launch
 from colossalai.logging import get_dist_logger
-from colossalai.utils import free_port, get_current_device
 from colossalai.testing import rerun_on_exception
+from colossalai.utils import free_port, get_current_device
 
 BATCH_SIZE = 4
 SEQ_LENGTH = 2

@@ -1,17 +1,17 @@
+import abc
+from typing import List
+
 import torch
 import torch.distributed as dist
 import torch.nn as nn
 from torch.profiler import record_function
 
-from .cached_embedding import CachedEmbeddingBag
-
-from colossalai.tensor import ProcessGroup
 from colossalai.nn._ops._utils import dual_all_to_all_tablewise
-from .embedding_config import TablewiseEmbeddingBagConfig
-from .cache_mgr import EvictionStrategy
+from colossalai.tensor import ProcessGroup
 
-from typing import List
-import abc
+from .cache_mgr import EvictionStrategy
+from .cached_embedding import CachedEmbeddingBag
+from .embedding_config import TablewiseEmbeddingBagConfig
 
 
 class ParallelCachedEmbeddingBagTablewiseSpiltCache(abc.ABC, nn.Module):

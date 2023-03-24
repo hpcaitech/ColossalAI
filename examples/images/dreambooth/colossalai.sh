@@ -1,10 +1,10 @@
-export MODEL_NAME= <Your Pretrained Model Path> 
+export MODEL_NAME= <Your Pretrained Model Path>
 export INSTANCE_DIR= <Your Input Pics Path>
 export CLASS_DIR="path-to-class-images"
 export OUTPUT_DIR="path-to-save-model"
 
-HF_DATASETS_OFFLINE=1 
-TRANSFORMERS_OFFLINE=1 
+HF_DATASETS_OFFLINE=1
+TRANSFORMERS_OFFLINE=1
 DIFFUSERS_OFFLINE=1
 
 torchrun --nproc_per_node 2 --master_port=25641 train_dreambooth_colossalai.py \

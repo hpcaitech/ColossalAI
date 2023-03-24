@@ -39,7 +39,8 @@ def convert(flat_dir: str, output_dir: str, part: int):
         flat_param = flat_sd['model'][flat_key]
         assert sum(param_meta['numels']) == flat_param.numel(
         ), f'flat {flat_key} {flat_param.numel()} vs {sum(param_meta["numels"])}'
-        for name, shape, param in zip(param_meta['names'], param_meta['shapes'], flat_param.split(param_meta['numels'])):
+        for name, shape, param in zip(param_meta['names'], param_meta['shapes'],
+                                      flat_param.split(param_meta['numels'])):
             output_sd[name] = param.view(shape)
 
     torch.save(output_sd, output_path)

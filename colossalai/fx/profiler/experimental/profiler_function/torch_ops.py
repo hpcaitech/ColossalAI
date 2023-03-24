@@ -1,7 +1,9 @@
-from functools import reduce
 import operator
+from functools import reduce
 from typing import Any, Optional, Tuple
+
 import torch
+
 from ..registry import meta_profiler_function
 
 

@@ -1,12 +1,13 @@
 import math
+from typing import Type
 
 import torch
 import torch.nn as nn
+
 from colossalai.context import ParallelMode, seed
-from colossalai.utils import get_current_device
 from colossalai.context.moe_context import MOE_CONTEXT
+from colossalai.utils import get_current_device
 from colossalai.zero.init_ctx import no_shard_zero_decrator
-from typing import Type
 
 
 class MoeExperts(nn.Module):

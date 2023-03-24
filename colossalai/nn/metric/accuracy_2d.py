@@ -1,6 +1,7 @@
 import torch
-from colossalai.nn.layer.parallel_2d import reduce_by_batch_2d, split_batch_2d
 from torch import nn
+
+from colossalai.nn.layer.parallel_2d import reduce_by_batch_2d, split_batch_2d
 
 from ._utils import calc_acc
 

@@ -1,5 +1,6 @@
+from colossalai.tensor import ComputePattern, ProcessGroup, ShardSpec, distspec
+
 from .colo_module import ColoModule
-from colossalai.tensor import ComputePattern, distspec, ProcessGroup, ShardSpec
 
 
 class ColoLinear(ColoModule):

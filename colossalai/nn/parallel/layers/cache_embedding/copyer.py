@@ -3,7 +3,7 @@ from torch import LongTensor
 
 
 class LimitBuffIndexCopyer(object):
-    """LimitBuffIndexCopyer 
+    """LimitBuffIndexCopyer
     Index Copy using limited temp buffer on CUDA.
 
     Args:
@@ -15,7 +15,7 @@ class LimitBuffIndexCopyer(object):
 
     @torch.no_grad()
     def index_copy(self, dim: int, src_index: LongTensor, tgt_index: LongTensor, src: torch.Tensor, tgt: torch.Tensor):
-        """copy 
+        """copy
         src tensor[src_index] -(index_select)-> tmp -(index_copy_)-> tgt tensor [tgt_index]
         The valid rows in the src tensor are continous, while rows in tgt tensor is scattered.
 

@@ -1,22 +1,25 @@
-import argparse, os, sys, glob
-import clip
-import torch
-import torch.nn as nn
-import numpy as np
-from omegaconf import OmegaConf
-from PIL import Image
-from tqdm import tqdm, trange
-from itertools import islice
-from einops import rearrange, repeat
-from torchvision.utils import make_grid
-import scann
+import argparse
+import glob
+import os
+import sys
 import time
+from itertools import islice
 from multiprocessing import cpu_count
 
-from ldm.util import instantiate_from_config, parallel_data_prefetch
+import clip
+import numpy as np
+import scann
+import torch
+import torch.nn as nn
+from einops import rearrange, repeat
 from ldm.models.diffusion.ddim import DDIMSampler
 from ldm.models.diffusion.plms import PLMSSampler
 from ldm.modules.encoders.modules import FrozenClipImageEmbedder, FrozenCLIPTextEmbedder
+from ldm.util import instantiate_from_config, parallel_data_prefetch
+from omegaconf import OmegaConf
+from PIL import Image
+from torchvision.utils import make_grid
+from tqdm import tqdm, trange
 
 DATABASES = [
     "openimages",
@@ -59,6 +62,7 @@ def load_model_from_config(config, ckpt, verbose=False):
 
 
 class Searcher(object):
+
     def __init__(self, database, retriever_version='ViT-L/14'):
         assert database in DATABASES
         # self.database = self.load_database(database)
@@ -66,20 +70,15 @@ class Searcher(object):
         self.searcher_savedir = f'data/rdm/searchers/{self.database_name}'
         self.database_path = f'data/rdm/retrieval_databases/{self.database_name}'
         self.retriever = self.load_retriever(version=retriever_version)
-        self.database = {'embedding': [],
-                         'img_id': [],
-                         'patch_coords': []}
+        self.database = {'embedding': [], 'img_id': [], 'patch_coords': []}
         self.load_database()
         self.load_searcher()
 
-    def train_searcher(self, k,
-                       metric='dot_product',
-                       searcher_savedir=None):
+    def train_searcher(self, k, metric='dot_product', searcher_savedir=None):
 
         print('Start training searcher')
-        searcher = scann.scann_ops_pybind.builder(self.database['embedding'] /
-                                                  np.linalg.norm(self.database['embedding'], axis=1)[:, np.newaxis],
-                                                  k, metric)
+        searcher = scann.scann_ops_pybind.builder(
+            self.database['embedding'] / np.linalg.norm(self.database['embedding'], axis=1)[:, np.newaxis], k, metric)
         self.searcher = searcher.score_brute_force().build()
         print('Finish training searcher')
 
@@ -110,17 +109,23 @@ class Searcher(object):
             self.load_single_file(file_content[0])
         elif len(file_content) > 1:
             data = [np.load(f) for f in file_content]
-            prefetched_data = parallel_data_prefetch(self.load_multi_files, data,
-                                                     n_proc=min(len(data), cpu_count()), target_data_type='dict')
+            prefetched_data = parallel_data_prefetch(self.load_multi_files,
+                                                     data,
+                                                     n_proc=min(len(data), cpu_count()),
+                                                     target_data_type='dict')
 
-            self.database = {key: np.concatenate([od[key] for od in prefetched_data], axis=1)[0] for key in
-                             self.database}
+            self.database = {
+                key: np.concatenate([od[key] for od in prefetched_data], axis=1)[0] for key in self.database
+            }
         else:
             raise ValueError(f'No npz-files in specified path "{self.database_path}" is this directory existing?')
 
         print(f'Finished loading of retrieval database of length {self.database["embedding"].shape[0]}.')
 
-    def load_retriever(self, version='ViT-L/14', ):
+    def load_retriever(
+        self,
+        version='ViT-L/14',
+    ):
         model = FrozenClipImageEmbedder(model=version)
         if torch.cuda.is_available():
             model.cuda()
@@ -134,7 +139,7 @@ class Searcher(object):
 
     def search(self, x, k):
         if self.searcher is None and self.database['embedding'].shape[0] < 2e4:
-            self.train_searcher(k)   # quickly fit searcher on the fly for small databases
+            self.train_searcher(k)    # quickly fit searcher on the fly for small databases
         assert self.searcher is not None, 'Cannot search with uninitialized searcher'
         if isinstance(x, torch.Tensor):
             x = x.detach().cpu().numpy()
@@ -150,13 +155,15 @@ class Searcher(object):
         out_img_ids = self.database['img_id'][nns]
         out_pc = self.database['patch_coords'][nns]
 
-        out = {'nn_embeddings': out_embeddings / np.linalg.norm(out_embeddings, axis=-1)[..., np.newaxis],
-               'img_ids': out_img_ids,
-               'patch_coords': out_pc,
-               'queries': x,
-               'exec_time': end - start,
-               'nns': nns,
-               'q_embeddings': query_embeddings}
+        out = {
+            'nn_embeddings': out_embeddings / np.linalg.norm(out_embeddings, axis=-1)[..., np.newaxis],
+            'img_ids': out_img_ids,
+            'patch_coords': out_pc,
+            'queries': x,
+            'exec_time': end - start,
+            'nns': nns,
+            'q_embeddings': query_embeddings
+        }
 
         return out
 
@@ -168,21 +175,17 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     # TODO: add n_neighbors and modes (text-only, text-image-retrieval, image-image retrieval etc)
     # TODO: add 'image variation' mode when knn=0 but a single image is given instead of a text prompt?
-    parser.add_argument(
-        "--prompt",
-        type=str,
-        nargs="?",
-        default="a painting of a virus monster playing guitar",
-        help="the prompt to render"
-    )
+    parser.add_argument("--prompt",
+                        type=str,
+                        nargs="?",
+                        default="a painting of a virus monster playing guitar",
+                        help="the prompt to render")
 
-    parser.add_argument(
-        "--outdir",
-        type=str,
-        nargs="?",
-        help="dir to write results to",
-        default="outputs/txt2img-samples"
-    )
+    parser.add_argument("--outdir",
+                        type=str,
+                        nargs="?",
+                        help="dir to write results to",
+                        default="outputs/txt2img-samples")
 
     parser.add_argument(
         "--skip_grid",
@@ -363,16 +366,17 @@ if __name__ == "__main__":
                         uc = torch.zeros_like(c)
                     if isinstance(prompts, tuple):
                         prompts = list(prompts)
-                    shape = [16, opt.H // 16, opt.W // 16]  # note: currently hardcoded for f16 model
-                    samples_ddim, _ = sampler.sample(S=opt.ddim_steps,
-                                                     conditioning=c,
-                                                     batch_size=c.shape[0],
-                                                     shape=shape,
-                                                     verbose=False,
-                                                     unconditional_guidance_scale=opt.scale,
-                                                     unconditional_conditioning=uc,
-                                                     eta=opt.ddim_eta,
-                                                     )
+                    shape = [16, opt.H // 16, opt.W // 16]    # note: currently hardcoded for f16 model
+                    samples_ddim, _ = sampler.sample(
+                        S=opt.ddim_steps,
+                        conditioning=c,
+                        batch_size=c.shape[0],
+                        shape=shape,
+                        verbose=False,
+                        unconditional_guidance_scale=opt.scale,
+                        unconditional_conditioning=uc,
+                        eta=opt.ddim_eta,
+                    )
 
                     x_samples_ddim = model.decode_first_stage(samples_ddim)
                     x_samples_ddim = torch.clamp((x_samples_ddim + 1.0) / 2.0, min=0.0, max=1.0)

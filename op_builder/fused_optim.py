@@ -10,7 +10,7 @@ class FusedOptimBuilder(Builder):
 
     def __init__(self):
         super().__init__(name=FusedOptimBuilder.NAME, prebuilt_import_path=FusedOptimBuilder.PREBUILT_IMPORT_PATH)
-        
+
     def sources_files(self):
         ret = [
             self.csrc_abs_path(fname) for fname in [

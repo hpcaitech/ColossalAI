@@ -156,7 +156,7 @@ class ColossalAIStrategy(DDPStrategy):
         # merge lora_weights into weights
         for module in unwrapped_model.modules():
             if isinstance(module, LoraLinear):
-                module.merge_weights=True
+                module.merge_weights = True
                 module.eval()
         # get state_dict and save
         state_dict = unwrapped_model.state_dict()

@@ -1,4 +1,5 @@
 import click
+
 from .check_installation import check_installation
 
 __all__ = ['check']

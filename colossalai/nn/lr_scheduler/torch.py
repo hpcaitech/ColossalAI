@@ -1,7 +1,7 @@
+from torch.optim.lr_scheduler import ExponentialLR as _ExponentialLR
 from torch.optim.lr_scheduler import LambdaLR as _LambdaLR
 from torch.optim.lr_scheduler import MultiplicativeLR as _MultiplicativeLR
 from torch.optim.lr_scheduler import StepLR as _StepLR
-from torch.optim.lr_scheduler import ExponentialLR as _ExponentialLR
 
 from colossalai.registry import LR_SCHEDULERS
 

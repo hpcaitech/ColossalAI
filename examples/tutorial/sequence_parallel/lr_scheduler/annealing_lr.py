@@ -12,7 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 """Learning rate decay functions."""
 
 import math
@@ -86,8 +85,7 @@ class AnnealingLR(object):
         elif self.decay_style == 'cosine':
             coeff = 0.5 * (math.cos(math.pi * decay_ratio) + 1.0)
         else:
-            raise Exception('{} decay style is not supported.'.format(
-                self.decay_style))
+            raise Exception('{} decay style is not supported.'.format(self.decay_style))
 
         return self.min_lr + coeff * delta_lr
 
@@ -127,29 +125,22 @@ class AnnealingLR(object):
             max_lr_ = sd['start_lr']
         else:
             max_lr_ = sd['max_lr']
-        self.max_lr = self._check_and_set(self.max_lr, max_lr_,
-                                          'learning rate')
+        self.max_lr = self._check_and_set(self.max_lr, max_lr_, 'learning rate')
 
-        self.min_lr = self._check_and_set(self.min_lr, sd['min_lr'],
-                                          'minimum learning rate')
+        self.min_lr = self._check_and_set(self.min_lr, sd['min_lr'], 'minimum learning rate')
 
         if 'warmup_iter' in sd:
             warmup_steps_ = sd['warmup_iter']
         else:
             warmup_steps_ = sd['warmup_steps']
-        self.warmup_steps = self._check_and_set(self.warmup_steps,
-                                                warmup_steps_,
-                                                'warmup iterations')
+        self.warmup_steps = self._check_and_set(self.warmup_steps, warmup_steps_, 'warmup iterations')
 
         if 'end_iter' in sd:
             decay_steps_ = sd['end_iter']
         else:
             decay_steps_ = sd['decay_steps']
-        self.decay_steps = self._check_and_set(self.decay_steps, decay_steps_,
-                                               'total number of iterations')
-        self.decay_style = self._check_and_set(self.decay_style,
-                                               sd['decay_style'],
-                                               'decay style')
+        self.decay_steps = self._check_and_set(self.decay_steps, decay_steps_, 'total number of iterations')
+        self.decay_style = self._check_and_set(self.decay_style, sd['decay_style'], 'decay style')
 
         if 'num_iters' in sd:
             num_steps = sd['num_iters']

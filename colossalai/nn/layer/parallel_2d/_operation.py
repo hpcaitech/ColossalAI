@@ -2,13 +2,14 @@ from typing import Any, Optional, Tuple
 
 import torch
 import torch.distributed as dist
-from colossalai.communication.collective import (all_gather, all_reduce, reduce, reduce_scatter)
-from colossalai.context.parallel_mode import ParallelMode
-from colossalai.core import global_context as gpc
-from colossalai.utils import get_current_device
 from torch import Tensor
 from torch.cuda.amp import custom_bwd, custom_fwd
+
+from colossalai.communication.collective import all_gather, all_reduce, reduce, reduce_scatter
+from colossalai.context.parallel_mode import ParallelMode
+from colossalai.core import global_context as gpc
 from colossalai.global_variables import tensor_parallel_env as env
+from colossalai.utils import get_current_device
 
 
 def matmul_2d(

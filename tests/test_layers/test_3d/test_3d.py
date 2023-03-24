@@ -5,15 +5,24 @@ from functools import partial
 import pytest
 import torch
 import torch.multiprocessing as mp
+from checks_3d.check_layer_3d import (
+    check_classifier_no_given_weight,
+    check_embed,
+    check_layernorm,
+    check_linear,
+    check_loss,
+    check_patch_embed,
+    check_vocab_parallel_classifier_given_embed_weight,
+    check_vocab_parallel_classifier_no_given_weight,
+    check_vocab_parallel_embed,
+    check_vocab_parallel_loss,
+)
+
 from colossalai.core import global_context as gpc
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
-from colossalai.utils import free_port
 from colossalai.testing import rerun_if_address_is_in_use, skip_if_not_enough_gpus
-from checks_3d.check_layer_3d import (check_classifier_no_given_weight, check_embed, check_layernorm, check_linear,
-                                      check_loss, check_patch_embed, check_vocab_parallel_classifier_given_embed_weight,
-                                      check_vocab_parallel_classifier_no_given_weight, check_vocab_parallel_embed,
-                                      check_vocab_parallel_loss)
+from colossalai.utils import free_port
 
 CONFIG = dict(
     parallel=dict(

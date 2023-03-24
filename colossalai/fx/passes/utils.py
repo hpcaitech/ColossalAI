@@ -1,7 +1,9 @@
-import torch
 from typing import Dict
-from torch.fx.node import Node, map_arg
+
+import torch
 from torch.fx.graph import Graph
+from torch.fx.node import Node, map_arg
+
 
 def get_comm_size(prev_partition, next_partition):
     """
@@ -83,7 +85,7 @@ def is_top(graph: Graph, node: Node):
 def get_all_consumers(graph: Graph, node: Node):
     """
     Given a graph and a node of this graph, return all consumers of the node.
-    
+
     Returns:
         List of ``Nodes`` that node appear in these nodes ``args`` and ``kwargs``.
     """
@@ -120,7 +122,7 @@ def assign_bfs_level_to_nodes(graph: Graph):
         for node in gm.graph.nodes:
             if hasattr(node, 'bfs_level'):
                 print(node.name, node.bfs_level)
-    
+
     Output:
         graph():
             %x : [#users=2] = placeholder[target=x]
@@ -169,4 +171,3 @@ def get_node_module(node) -> torch.nn.Module:
     assert node.op == 'call_module', f'Expected node.op to be call_module, but found {node.op}'
     module = node.graph.owning_module.get_submodule(node.target)
     return module
-

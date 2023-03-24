@@ -4,18 +4,19 @@
 import pprint
 from functools import partial
 
-import colossalai.nn as col_nn
 import pytest
 import torch
 import torch.multiprocessing as mp
 import torch.nn as nn
+
+import colossalai.nn as col_nn
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
+from colossalai.testing import rerun_on_exception, skip_if_not_enough_gpus
 from colossalai.utils import free_port, get_current_device, is_using_pp
 from colossalai.utils.checkpointing import gather_pipeline_parallel_state_dict, load_checkpoint, save_checkpoint
-from colossalai.testing import rerun_on_exception, skip_if_not_enough_gpus
 
 
 def build_pipeline(model):

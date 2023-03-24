@@ -2,7 +2,6 @@ import torch
 import torch.multiprocessing as mp
 
 from colossalai.pipeline.pipelinable import PipelinableContext
-
 from colossalai.testing import rerun_on_exception
 
 NUM_CHUNKS = 1

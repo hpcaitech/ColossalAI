@@ -1,7 +1,8 @@
 import torch
 import torch.distributed as dist
+
 from colossalai.tensor import ColoTensor, ColoTensorSpec
-from colossalai.tensor.distspec import _DistSpec, DistPlacementPattern
+from colossalai.tensor.distspec import DistPlacementPattern, _DistSpec
 
 
 def robust_broadcast(tensor):

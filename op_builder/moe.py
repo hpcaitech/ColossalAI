@@ -13,10 +13,7 @@ class MOEBuilder(Builder):
         super().__init__(name=MOEBuilder.NAME, prebuilt_import_path=MOEBuilder.PREBUILT_IMPORT_PATH)
 
     def include_dirs(self):
-        ret = [
-            self.csrc_abs_path("kernels/include"),
-            self.get_cuda_home_include()
-        ]
+        ret = [self.csrc_abs_path("kernels/include"), self.get_cuda_home_include()]
         return ret
 
     def sources_files(self):

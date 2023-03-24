@@ -3,6 +3,7 @@
 
 import torch
 import torch.distributed as dist
+
 from colossalai.core import global_context as gpc
 from colossalai.global_variables import tensor_parallel_env as env
 
@@ -124,7 +125,7 @@ class _ReduceInput(torch.autograd.Function):
 class _SplitForwardGatherBackward(torch.autograd.Function):
     """
     Split the input and keep only the corresponding chuck to the rank.
-    
+
     Args:
         input_: input matrix.
         parallel_mode: parallel mode.

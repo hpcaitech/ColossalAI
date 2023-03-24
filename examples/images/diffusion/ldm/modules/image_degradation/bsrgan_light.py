@@ -1,19 +1,17 @@
 # -*- coding: utf-8 -*-
-import numpy as np
-import cv2
-import torch
-
-from functools import partial
 import random
-from scipy import ndimage
+from functools import partial
+
+import albumentations
+import cv2
+import ldm.modules.image_degradation.utils_image as util
+import numpy as np
 import scipy
 import scipy.stats as ss
+import torch
+from scipy import ndimage
 from scipy.interpolate import interp2d
 from scipy.linalg import orth
-import albumentations
-
-import ldm.modules.image_degradation.utils_image as util
-
 """
 # --------------------------------------------
 # Super-Resolution
@@ -24,6 +22,7 @@ import ldm.modules.image_degradation.utils_image as util
 # From 2019/03--2021/08
 # --------------------------------------------
 """
+
 
 def modcrop_np(img, sf):
     '''
@@ -151,18 +150,17 @@ def gen_kernel(k_size=np.array([15, 15]), scale_factor=np.array([4, 4]), min_var
     # Set random eigen-vals (lambdas) and angle (theta) for COV matrix
     lambda_1 = min_var + np.random.rand() * (max_var - min_var)
     lambda_2 = min_var + np.random.rand() * (max_var - min_var)
-    theta = np.random.rand() * np.pi  # random theta
+    theta = np.random.rand() * np.pi    # random theta
     noise = -noise_level + np.random.rand(*k_size) * noise_level * 2
 
     # Set COV matrix using Lambdas and Theta
     LAMBDA = np.diag([lambda_1, lambda_2])
-    Q = np.array([[np.cos(theta), -np.sin(theta)],
-                  [np.sin(theta), np.cos(theta)]])
+    Q = np.array([[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]])
     SIGMA = Q @ LAMBDA @ Q.T
     INV_SIGMA = np.linalg.inv(SIGMA)[None, None, :, :]
 
     # Set expectation position (shifting kernel for aligned image)
-    MU = k_size // 2 - 0.5 * (scale_factor - 1)  # - 0.5 * (scale_factor - k_size % 2)
+    MU = k_size // 2 - 0.5 * (scale_factor - 1)    # - 0.5 * (scale_factor - k_size % 2)
     MU = MU[None, None, :, None]
 
     # Create meshgrid for Gaussian
@@ -253,7 +251,7 @@ def srmd_degradation(x, k, sf=3):
           year={2018}
         }
     '''
-    x = ndimage.convolve(x, np.expand_dims(k, axis=2), mode='wrap')  # 'nearest' | 'mirror'
+    x = ndimage.convolve(x, np.expand_dims(k, axis=2), mode='wrap')    # 'nearest' | 'mirror'
     x = bicubic_degradation(x, sf=sf)
     return x
 
@@ -325,8 +323,8 @@ def add_blur(img, sf=4):
     wd2 = 4.0 + sf
     wd = 2.0 + 0.2 * sf
 
-    wd2 = wd2/4
-    wd = wd/4
+    wd2 = wd2 / 4
+    wd = wd / 4
 
     if random.random() < 0.5:
         l1 = wd2 * random.random()
@@ -341,9 +339,9 @@ def add_blur(img, sf=4):
 
 def add_resize(img, sf=4):
     rnum = np.random.rand()
-    if rnum > 0.8:  # up
+    if rnum > 0.8:    # up
         sf1 = random.uniform(1, 2)
-    elif rnum < 0.7:  # down
+    elif rnum < 0.7:    # down
         sf1 = random.uniform(0.5 / sf, 1)
     else:
         sf1 = 1.0
@@ -369,19 +367,20 @@ def add_resize(img, sf=4):
 #     img = np.clip(img, 0.0, 1.0)
 #     return img
 
+
 def add_Gaussian_noise(img, noise_level1=2, noise_level2=25):
     noise_level = random.randint(noise_level1, noise_level2)
     rnum = np.random.rand()
-    if rnum > 0.6:  # add color Gaussian noise
+    if rnum > 0.6:    # add color Gaussian noise
         img = img + np.random.normal(0, noise_level / 255.0, img.shape).astype(np.float32)
-    elif rnum < 0.4:  # add grayscale Gaussian noise
+    elif rnum < 0.4:    # add grayscale Gaussian noise
         img = img + np.random.normal(0, noise_level / 255.0, (*img.shape[:2], 1)).astype(np.float32)
-    else:  # add  noise
+    else:    # add  noise
         L = noise_level2 / 255.
         D = np.diag(np.random.rand(3))
         U = orth(np.random.rand(3, 3))
         conv = np.dot(np.dot(np.transpose(U), D), U)
-        img = img + np.random.multivariate_normal([0, 0, 0], np.abs(L ** 2 * conv), img.shape[:2]).astype(np.float32)
+        img = img + np.random.multivariate_normal([0, 0, 0], np.abs(L**2 * conv), img.shape[:2]).astype(np.float32)
     img = np.clip(img, 0.0, 1.0)
     return img
 
@@ -399,14 +398,14 @@ def add_speckle_noise(img, noise_level1=2, noise_level2=25):
         D = np.diag(np.random.rand(3))
         U = orth(np.random.rand(3, 3))
         conv = np.dot(np.dot(np.transpose(U), D), U)
-        img += img * np.random.multivariate_normal([0, 0, 0], np.abs(L ** 2 * conv), img.shape[:2]).astype(np.float32)
+        img += img * np.random.multivariate_normal([0, 0, 0], np.abs(L**2 * conv), img.shape[:2]).astype(np.float32)
     img = np.clip(img, 0.0, 1.0)
     return img
 
 
 def add_Poisson_noise(img):
     img = np.clip((img * 255.0).round(), 0, 255) / 255.
-    vals = 10 ** (2 * random.random() + 2.0)  # [2, 4]
+    vals = 10**(2 * random.random() + 2.0)    # [2, 4]
     if random.random() < 0.5:
         img = np.random.poisson(img * vals).astype(np.float32) / vals
     else:
@@ -455,7 +454,7 @@ def degradation_bsrgan(img, sf=4, lq_patchsize=72, isp_model=None):
     sf_ori = sf
 
     h1, w1 = img.shape[:2]
-    img = img.copy()[:w1 - w1 % sf, :h1 - h1 % sf, ...]  # mod crop
+    img = img.copy()[:w1 - w1 % sf, :h1 - h1 % sf, ...]    # mod crop
     h, w = img.shape[:2]
 
     if h < lq_patchsize * sf or w < lq_patchsize * sf:
@@ -463,7 +462,7 @@ def degradation_bsrgan(img, sf=4, lq_patchsize=72, isp_model=None):
 
     hq = img.copy()
 
-    if sf == 4 and random.random() < scale2_prob:  # downsample1
+    if sf == 4 and random.random() < scale2_prob:    # downsample1
         if np.random.rand() < 0.5:
             img = cv2.resize(img, (int(1 / 2 * img.shape[1]), int(1 / 2 * img.shape[0])),
                              interpolation=random.choice([1, 2, 3]))
@@ -474,7 +473,7 @@ def degradation_bsrgan(img, sf=4, lq_patchsize=72, isp_model=None):
 
     shuffle_order = random.sample(range(7), 7)
     idx1, idx2 = shuffle_order.index(2), shuffle_order.index(3)
-    if idx1 > idx2:  # keep downsample3 last
+    if idx1 > idx2:    # keep downsample3 last
         shuffle_order[idx1], shuffle_order[idx2] = shuffle_order[idx2], shuffle_order[idx1]
 
     for i in shuffle_order:
@@ -495,9 +494,9 @@ def degradation_bsrgan(img, sf=4, lq_patchsize=72, isp_model=None):
             else:
                 k = fspecial('gaussian', 25, random.uniform(0.1, 0.6 * sf))
                 k_shifted = shift_pixel(k, sf)
-                k_shifted = k_shifted / k_shifted.sum()  # blur with shifted kernel
+                k_shifted = k_shifted / k_shifted.sum()    # blur with shifted kernel
                 img = ndimage.convolve(img, np.expand_dims(k_shifted, axis=2), mode='mirror')
-                img = img[0::sf, 0::sf, ...]  # nearest downsampling
+                img = img[0::sf, 0::sf, ...]    # nearest downsampling
             img = np.clip(img, 0.0, 1.0)
 
         elif i == 3:
@@ -547,12 +546,12 @@ def degradation_bsrgan_variant(image, sf=4, isp_model=None, up=False):
     sf_ori = sf
 
     h1, w1 = image.shape[:2]
-    image = image.copy()[:w1 - w1 % sf, :h1 - h1 % sf, ...]  # mod crop
+    image = image.copy()[:w1 - w1 % sf, :h1 - h1 % sf, ...]    # mod crop
     h, w = image.shape[:2]
 
     hq = image.copy()
 
-    if sf == 4 and random.random() < scale2_prob:  # downsample1
+    if sf == 4 and random.random() < scale2_prob:    # downsample1
         if np.random.rand() < 0.5:
             image = cv2.resize(image, (int(1 / 2 * image.shape[1]), int(1 / 2 * image.shape[0])),
                                interpolation=random.choice([1, 2, 3]))
@@ -563,7 +562,7 @@ def degradation_bsrgan_variant(image, sf=4, isp_model=None, up=False):
 
     shuffle_order = random.sample(range(7), 7)
     idx1, idx2 = shuffle_order.index(2), shuffle_order.index(3)
-    if idx1 > idx2:  # keep downsample3 last
+    if idx1 > idx2:    # keep downsample3 last
         shuffle_order[idx1], shuffle_order[idx2] = shuffle_order[idx2], shuffle_order[idx1]
 
     for i in shuffle_order:
@@ -587,9 +586,9 @@ def degradation_bsrgan_variant(image, sf=4, isp_model=None, up=False):
             else:
                 k = fspecial('gaussian', 25, random.uniform(0.1, 0.6 * sf))
                 k_shifted = shift_pixel(k, sf)
-                k_shifted = k_shifted / k_shifted.sum()  # blur with shifted kernel
+                k_shifted = k_shifted / k_shifted.sum()    # blur with shifted kernel
                 image = ndimage.convolve(image, np.expand_dims(k_shifted, axis=2), mode='mirror')
-                image = image[0::sf, 0::sf, ...]  # nearest downsampling
+                image = image[0::sf, 0::sf, ...]    # nearest downsampling
 
             image = np.clip(image, 0.0, 1.0)
 
@@ -617,11 +616,10 @@ def degradation_bsrgan_variant(image, sf=4, isp_model=None, up=False):
     image = add_JPEG_noise(image)
     image = util.single2uint(image)
     if up:
-        image = cv2.resize(image, (w1, h1), interpolation=cv2.INTER_CUBIC)  # todo: random, as above? want to condition on it then
+        image = cv2.resize(image, (w1, h1),
+                           interpolation=cv2.INTER_CUBIC)    # todo: random, as above? want to condition on it then
     example = {"image": image}
     return example
-
-
 
 
 if __name__ == '__main__':
@@ -638,7 +636,8 @@ if __name__ == '__main__':
         img_lq = deg_fn(img)["image"]
         img_hq, img_lq = util.uint2single(img_hq), util.uint2single(img_lq)
         print(img_lq)
-        img_lq_bicubic = albumentations.SmallestMaxSize(max_size=h, interpolation=cv2.INTER_CUBIC)(image=img_hq)["image"]
+        img_lq_bicubic = albumentations.SmallestMaxSize(max_size=h,
+                                                        interpolation=cv2.INTER_CUBIC)(image=img_hq)["image"]
         print(img_lq.shape)
         print("bicubic", img_lq_bicubic.shape)
         print(img_hq.shape)

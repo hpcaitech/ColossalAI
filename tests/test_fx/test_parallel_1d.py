@@ -6,13 +6,14 @@ from functools import partial
 import pytest
 import torch
 import torch.multiprocessing as mp
-from colossalai.core import global_context as gpc
-from colossalai.logging import disable_existing_loggers
-from colossalai.initialize import launch
-from colossalai.utils import free_port
-from colossalai.testing import rerun_if_address_is_in_use
 from torch.fx import symbolic_trace
+
+from colossalai.core import global_context as gpc
 from colossalai.fx.passes import column_shard_linear_pass
+from colossalai.initialize import launch
+from colossalai.logging import disable_existing_loggers
+from colossalai.testing import rerun_if_address_is_in_use
+from colossalai.utils import free_port
 
 
 class MLP(torch.nn.Module):

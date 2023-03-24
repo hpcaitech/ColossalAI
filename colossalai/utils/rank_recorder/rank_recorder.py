@@ -1,17 +1,14 @@
-import time
-from typing import List, Dict
+import atexit
 import json
 import os
-import time
 import shutil
-import atexit
+import time
+from typing import Dict, List
 
+import matplotlib.colors as mcolors
+import matplotlib.pyplot as plt
 import torch
 import torch.distributed as dist
-
-import json
-import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
 
 cmap = list(mcolors.TABLEAU_COLORS.values())
 

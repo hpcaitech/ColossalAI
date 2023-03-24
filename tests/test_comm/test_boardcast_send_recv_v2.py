@@ -5,13 +5,14 @@ import pytest
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
-from colossalai.communication.p2p_v2 import _send_object, _recv_object, init_process_group
+
+from colossalai.communication.p2p_v2 import _recv_object, _send_object, init_process_group
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.initialize import launch
-from colossalai.utils import free_port, get_current_device
-from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.logging import disable_existing_loggers
+from colossalai.testing import rerun_if_address_is_in_use
+from colossalai.utils import free_port, get_current_device
 
 disable_existing_loggers()
 world_size = 4

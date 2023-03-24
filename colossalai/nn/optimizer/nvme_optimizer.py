@@ -1,9 +1,10 @@
-import torch
+import math
 import os
 import tempfile
-import math
+from typing import Callable, Dict, List, Optional
+
+import torch
 from torch.nn.parameter import Parameter
-from typing import Optional, List, Dict, Callable
 
 
 class NVMeOptimizer(torch.optim.Optimizer):

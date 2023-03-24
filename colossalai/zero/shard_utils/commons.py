@@ -1,6 +1,7 @@
+from typing import Tuple
+
 import torch
 import torch.nn.functional as F
-from typing import Tuple
 
 
 def get_shard(tensor: torch.Tensor, rank: int, world_size: int) -> Tuple[torch.Tensor, int]:

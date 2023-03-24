@@ -33,6 +33,5 @@ class LlamaLM(LM):
 
         if checkpoint:
             model.gradient_checkpointing_enable()
-            
-        super().__init__(model, lora_rank, lora_train_bias)
 
+        super().__init__(model, lora_rank, lora_train_bias)

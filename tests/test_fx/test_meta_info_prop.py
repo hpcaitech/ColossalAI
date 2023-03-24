@@ -1,7 +1,8 @@
 import torch
+from torch.fx import symbolic_trace
+
 from colossalai.fx._compatibility import is_compatible_with_meta
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp, TensorMetadata
-from torch.fx import symbolic_trace
 
 if is_compatible_with_meta():
     from colossalai.fx.profiler import MetaTensor

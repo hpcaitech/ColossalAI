@@ -20,10 +20,7 @@ class CPUAdamBuilder(Builder):
         return ret
 
     def include_dirs(self):
-        return [
-            self.csrc_abs_path("includes"),
-            self.get_cuda_home_include()
-        ]
+        return [self.csrc_abs_path("includes"), self.get_cuda_home_include()]
 
     def cxx_flags(self):
         extra_cxx_flags = ['-std=c++14', '-lcudart', '-lcublas', '-g', '-Wno-reorder', '-fopenmp', '-march=native']

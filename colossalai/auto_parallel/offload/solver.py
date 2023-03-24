@@ -1,6 +1,6 @@
 import time
-from typing import List, Dict, Type
 from abc import ABC, abstractmethod
+from typing import Dict, List, Type
 
 NOT_NVML = False
 try:
@@ -10,10 +10,11 @@ except:
 
 import torch
 from torch.fx.node import Node
+
 from colossalai.utils.cuda import get_current_device
 
-from .training_simulator import TrainingSimulator, SynTrainingSimulator, AsynTrainingSimulator
 from .region import Region
+from .training_simulator import AsynTrainingSimulator, SynTrainingSimulator, TrainingSimulator
 from .util import NodeInfo, NvDevicePower
 
 
@@ -49,10 +50,7 @@ class Solver(ABC):
             It is used to reduce the memory budget. Due to some errors in the estimation of peak memory and execution time.
     """
 
-    def __init__(self,
-                 region_list: List[Region],
-                 memory_budget: float = -1.0,
-                 error_factor: float = 0.95) -> None:
+    def __init__(self, region_list: List[Region], memory_budget: float = -1.0, error_factor: float = 0.95) -> None:
 
         self.region_list = region_list
 
@@ -60,8 +58,7 @@ class Solver(ABC):
         if memory_budget > 0:
             self.memory_budget = memory_budget * self.error_factor
         else:
-            self.memory_budget = torch.cuda.get_device_properties(
-                get_current_device()).total_memory * self.error_factor
+            self.memory_budget = torch.cuda.get_device_properties(get_current_device()).total_memory * self.error_factor
 
         self.link_to_bandwidth: Dict[str, Dict[float, float]] = self._profile_bandwidth()
         self.comp_power: float = self._extract_computing_power()
@@ -122,9 +119,7 @@ class Solver(ABC):
         self.best_ts = best_ts
         self._update_node_mem_info(best_ts.fwd_node_mem, best_ts.bwd_node_mem)
 
-    def _update_node_mem_info(self,
-                              fwd_mem_info: Dict[Node, float],
-                              bwd_mem_info: Dict[Node, float]):
+    def _update_node_mem_info(self, fwd_mem_info: Dict[Node, float], bwd_mem_info: Dict[Node, float]):
         """
         Update the runtime memory information of the node.
 
@@ -134,12 +129,10 @@ class Solver(ABC):
         """
 
         for node, mem in fwd_mem_info.items():
-            assert hasattr(node, 'node_info') and isinstance(
-                node.node_info, NodeInfo)
+            assert hasattr(node, 'node_info') and isinstance(node.node_info, NodeInfo)
             node.node_info.runtime_fwd_mem = mem
         for node, mem in bwd_mem_info.items():
-            assert hasattr(node, 'node_info') and isinstance(
-                node.node_info, NodeInfo)
+            assert hasattr(node, 'node_info') and isinstance(node.node_info, NodeInfo)
             node.node_info.runtime_bwd_mem = mem
 
     def _extract_computing_power(self):
@@ -183,15 +176,11 @@ class Solver(ABC):
             # from 1KB to 1GB
             for i in range(21):
                 if link == 'h2d':
-                    src_tensor = torch.ones(
-                        int(t_size), dtype=torch.int8, pin_memory=True)
-                    dst_tensor = torch.ones(
-                        (int(t_size)), dtype=torch.int8, device='cuda')
+                    src_tensor = torch.ones(int(t_size), dtype=torch.int8, pin_memory=True)
+                    dst_tensor = torch.ones((int(t_size)), dtype=torch.int8, device='cuda')
                 elif link == 'd2h':
-                    src_tensor = torch.ones(
-                        int(t_size), dtype=torch.int8, device='cuda')
-                    dst_tensor = torch.ones(
-                        (int(t_size)), dtype=torch.int8, pin_memory=True)
+                    src_tensor = torch.ones(int(t_size), dtype=torch.int8, device='cuda')
+                    dst_tensor = torch.ones((int(t_size)), dtype=torch.int8, pin_memory=True)
 
                 def func():
                     dst_tensor.copy_(src_tensor)
@@ -209,9 +198,7 @@ class Solver(ABC):
 
 class SynGreedySolver(Solver):
 
-    def __init__(self,
-                 region_list: List[Region],
-                 memory_budget: float = -1.0) -> None:
+    def __init__(self, region_list: List[Region], memory_budget: float = -1.0) -> None:
         super().__init__(region_list, memory_budget)
 
         self.best_ts: SynTrainingSimulator = None
@@ -302,18 +289,14 @@ class SynGreedySolver(Solver):
         # the shared region needs to be moved twice
         if offload_region.r_id < offload_region.shared_rid:
             extra_comm_cost *= 2.0
-        profit = self._compute_offload_profit(
-            ts.total_mem_saving, self.best_ts.peak_mem - ts.peak_mem, extra_comm_cost)
+        profit = self._compute_offload_profit(ts.total_mem_saving, self.best_ts.peak_mem - ts.peak_mem, extra_comm_cost)
 
         return ts, profit
 
 
 class AsynGreedySolver(Solver):
 
-    def __init__(self,
-                 region_list: List[Region],
-                 memory_budget: float = -1.0,
-                 search_window_size: int = 3):
+    def __init__(self, region_list: List[Region], memory_budget: float = -1.0, search_window_size: int = 3):
         super().__init__(region_list, memory_budget)
 
         self.search_window_size = search_window_size
@@ -331,7 +314,7 @@ class AsynGreedySolver(Solver):
         ts = AsynTrainingSimulator(self.region_list, self.comp_power, self.link_to_bandwidth)
         ts.execute()
         self._update_state(ts)
-        print("init peak memory", self.best_ts.peak_mem / 1024 ** 2, "MB")
+        print("init peak memory", self.best_ts.peak_mem / 1024**2, "MB")
 
     def _call_solver(self):
         """
@@ -362,8 +345,7 @@ class AsynGreedySolver(Solver):
                         if host_region.bwd_prefetch_region is not None:
                             continue
 
-                        temp_ts, profit = self._try_to_offload(
-                            host_region, region)
+                        temp_ts, profit = self._try_to_offload(host_region, region)
 
                         if self._compare_profit(profit, max_prefetch_profit):
                             region_to_region_map[region.r_id] = host_region
@@ -464,8 +446,7 @@ class AsynGreedySolver(Solver):
                 assert offload_region.need_offload
                 assert not offload_region.is_syn
 
-                ts, profit = self._try_convert_to_syn_upload(host_region,
-                                                             offload_region)
+                ts, profit = self._try_convert_to_syn_upload(host_region, offload_region)
 
                 if self._compare_profit(profit, max_profit):
                     undo_host_region = host_region
@@ -500,17 +481,13 @@ class AsynGreedySolver(Solver):
         ts.execute()
 
         extra_comm_cost = max(ts.iter_end_time - self.best_ts.iter_end_time, 0)
-        profit = self._compute_offload_profit(
-            ts.total_mem_saving, self.best_ts.peak_mem - ts.peak_mem, extra_comm_cost)
+        profit = self._compute_offload_profit(ts.total_mem_saving, self.best_ts.peak_mem - ts.peak_mem, extra_comm_cost)
 
         return ts, profit
 
 
 class SolverFactory:
-    solvers: Dict[str, Type[Solver]] = {
-        'syn': SynGreedySolver,
-        'asyn': AsynGreedySolver
-    }
+    solvers: Dict[str, Type[Solver]] = {'syn': SynGreedySolver, 'asyn': AsynGreedySolver}
 
     @staticmethod
     def create(solver_name: str) -> Type[Solver]:

@@ -19,6 +19,5 @@ bash run_pretrain.sh
 bash run_pretrain_resume.sh
 ```
 * `--resume_train`: whether to resume training
-* `--load_pretrain_model`: absolute path which contains model checkpoint 
-* `--load_optimizer_lr`: absolute path which contains optimizer checkpoint 
-
+* `--load_pretrain_model`: absolute path which contains model checkpoint
+* `--load_optimizer_lr`: absolute path which contains optimizer checkpoint

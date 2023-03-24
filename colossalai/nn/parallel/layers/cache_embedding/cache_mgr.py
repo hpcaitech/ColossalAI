@@ -1,12 +1,14 @@
-import numpy as np
-import torch
-from torch.profiler import record_function
-from typing import List, Optional
-from contexttimer import Timer
-from .copyer import LimitBuffIndexCopyer
-from enum import Enum
 import sys
 from contextlib import contextmanager
+from enum import Enum
+from typing import List, Optional
+
+import numpy as np
+import torch
+from contexttimer import Timer
+from torch.profiler import record_function
+
+from .copyer import LimitBuffIndexCopyer
 
 
 class EvictionStrategy(Enum):
@@ -35,7 +37,7 @@ def _wait_for_data(t, stream: Optional[torch.cuda.streams.Stream]) -> None:
 class CachedParamMgr(torch.nn.Module):
     """
     Manage Embedding Weights on CPU and CUDA memory uses a software cache.
-    CPU maintains the entire original weight. 
+    CPU maintains the entire original weight.
     CUDA maintains a fraction of the weights used in the upcoming computation. The row number in CUDA is controlled by `cuda_row_num`.
     During training, GPU needs to transmit embedding rows between CPU and GPU.
     Args:
@@ -115,7 +117,7 @@ class CachedParamMgr(torch.nn.Module):
         self._elapsed_dict[name] += t.elapsed
 
     def _find_evict_gpu_idxs(self, evict_num: int) -> torch.Tensor:
-        """_find_evict_gpu_idxs 
+        """_find_evict_gpu_idxs
         Find the gpu idxs to be evicted, according to their freq.
         Args:
             evict_num (int): how many rows has to be evicted
@@ -202,7 +204,7 @@ class CachedParamMgr(torch.nn.Module):
         """reorder
         reorder the weight according to ids' frequency in dataset before training.
         Execute only once before training, also known as warmup phase.
-        
+
         Note:
             If you would like to use the DATASET as the eviction strategy, you must call this function.
         Note:
@@ -516,7 +518,7 @@ class CachedParamMgr(torch.nn.Module):
         """
         deprecated
         evict one row from cuda to cpu.
-        Returns: 
+        Returns:
         (int) : the slot id be evicted.
         """
         mask = torch.logical_or(torch.isin(self.cached_idx_map, self.evict_backlist), self.cached_idx_map == -1)

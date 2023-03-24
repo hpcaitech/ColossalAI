@@ -6,7 +6,7 @@ from torch import Tensor
 
 from .distributed import merge_param, unmerge_param
 from .meta import ParamDistMeta, RedistMeta
-from .utils import (ModelCheckpointSharder, OptimizerCheckpointSharder, run_if_not_none)
+from .utils import ModelCheckpointSharder, OptimizerCheckpointSharder, run_if_not_none
 
 
 class CheckpointConvertor(ABC):

@@ -1,9 +1,12 @@
+from typing import Optional
+
 import torch
 import torch.nn.functional as F
-from typing import Optional
-from colossalai.tensor.op_wrapper import colo_op_impl
-from colossalai.tensor import ColoTensor, ColoTensorSpec
+
 from colossalai.nn.loss.loss_1d import VocabParallelCrossEntropyLoss1D
+from colossalai.tensor import ColoTensor, ColoTensorSpec
+from colossalai.tensor.op_wrapper import colo_op_impl
+
 from ._utils import GeneralTensor, convert_to_colo_tensor
 
 

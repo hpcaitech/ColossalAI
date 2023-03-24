@@ -1,11 +1,12 @@
-import torch
-from torch.fx import symbolic_trace
-from torch.fx import GraphModule
-from colossalai.fx.passes.adding_split_node_pass import split_with_split_nodes_pass, balanced_split_pass
-from colossalai.fx import ColoTracer
 import inspect
 import random
+
 import numpy as np
+import torch
+from torch.fx import GraphModule, symbolic_trace
+
+from colossalai.fx import ColoTracer
+from colossalai.fx.passes.adding_split_node_pass import balanced_split_pass, split_with_split_nodes_pass
 
 MANUAL_SEED = 0
 random.seed(MANUAL_SEED)

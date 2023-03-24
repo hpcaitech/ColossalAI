@@ -5,30 +5,25 @@ import os.path as osp
 from functools import partial
 from pathlib import Path
 
-import colossalai
 import pytest
 import torch
-import torch.nn as nn
 import torch.multiprocessing as mp
-from colossalai.core import global_context as gpc
-from colossalai.context import ParallelMode
-from colossalai.initialize import launch
-from colossalai.utils import free_port, get_dataloader, print_rank_0
-from colossalai.testing import rerun_on_exception
+import torch.nn as nn
 from torchvision import transforms
 from torchvision.datasets import CIFAR10
 from torchvision.models import resnet18
 
+import colossalai
+from colossalai.context import ParallelMode
+from colossalai.core import global_context as gpc
+from colossalai.initialize import launch
+from colossalai.testing import rerun_on_exception
+from colossalai.utils import free_port, get_dataloader, print_rank_0
 
 BATCH_SIZE = 8
 
-CONFIG=dict(
-    NUM_MICRO_BATCHES=2,
-    parallel = dict(
-        pipeline=dict(size=2),
-        tensor=dict(size=1, mode=None)
-    )
-)
+CONFIG = dict(NUM_MICRO_BATCHES=2, parallel=dict(pipeline=dict(size=2), tensor=dict(size=1, mode=None)))
+
 
 def run_schedule(rank, world_size, port):
     launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')

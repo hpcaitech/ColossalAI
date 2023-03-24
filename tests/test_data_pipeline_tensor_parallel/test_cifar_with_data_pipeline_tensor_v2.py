@@ -1,28 +1,25 @@
 import os
-
 from functools import partial
 from pathlib import Path
 
-import colossalai
 import pytest
 import torch
 import torch.multiprocessing as mp
+from torchvision import transforms
+from torchvision.datasets import CIFAR10
+
+import colossalai
 from colossalai.amp import AMP_TYPE
-from colossalai.trainer import Trainer, hooks
 from colossalai.context import ParallelMode
-from colossalai.testing import rerun_if_address_is_in_use, skip_if_not_enough_gpus
-from colossalai.utils import free_port
 from colossalai.core import global_context as gpc
-from colossalai.logging import get_dist_logger
+from colossalai.engine.schedule._pipeline_schedule_v2 import PipelineScheduleV2
+from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.nn import CrossEntropyLoss
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
-from colossalai.utils import get_dataloader
 from colossalai.pipeline.pipelinable import PipelinableContext
-from colossalai.logging import disable_existing_loggers
-from torchvision.datasets import CIFAR10
-from torchvision import transforms
-
-from colossalai.engine.schedule._pipeline_schedule_v2 import PipelineScheduleV2
+from colossalai.testing import rerun_if_address_is_in_use, skip_if_not_enough_gpus
+from colossalai.trainer import Trainer, hooks
+from colossalai.utils import free_port, get_dataloader
 
 disable_existing_loggers()
 BATCH_SIZE = 4

@@ -1,16 +1,16 @@
-import torch
-import pytest
 from functools import partial
 
-import torch.multiprocessing as mp
+import pytest
+import torch
 import torch.distributed as dist
+import torch.multiprocessing as mp
 
 import colossalai
+from colossalai.tensor import ColoTensor, ColoTensorSpec, ComputePattern, ComputeSpec, ProcessGroup, ShardSpec
 from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.utils.cuda import get_current_device
 from colossalai.utils import free_port
-from colossalai.tensor import ComputePattern, ComputeSpec, ColoTensor, ShardSpec, ProcessGroup, ColoTensorSpec
 from colossalai.utils.checkpoint.utils import gather_tensor, scatter_tensor
+from colossalai.utils.cuda import get_current_device
 from tests.test_tensor.common_utils import tensor_shard_equal
 
 

@@ -1,12 +1,13 @@
+from typing import Iterator, List, Optional, Tuple
+
 import torch
 import torch.nn.functional as F
-from typing import List, Optional, Iterator, Tuple
 
-from .cached_embedding import CachedEmbeddingBag
 from colossalai.nn._ops._utils import dual_all_to_all
+from colossalai.tensor import ColoParameter, ColoTensor, ColoTensorSpec, ComputePattern, ProcessGroup, ShardSpec
 
-from colossalai.tensor import ColoParameter, ShardSpec, ComputePattern, ProcessGroup, ColoTensorSpec, ColoTensor
 from .cache_mgr import CachedParamMgr, EvictionStrategy
+from .cached_embedding import CachedEmbeddingBag
 
 
 def get_partition(embedding_dim, rank, world_size) -> Tuple[int, int, bool]:

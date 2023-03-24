@@ -3,6 +3,7 @@ from typing import Any, Callable, Union
 import pytest
 import torch
 import torch.nn as nn
+
 from colossalai.fx._compatibility import is_compatible_with_meta
 
 if is_compatible_with_meta():

@@ -2,19 +2,25 @@ import os
 from functools import partial
 from tempfile import TemporaryDirectory
 
-import colossalai
 import pytest
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
 import torch.nn as nn
+from torch.optim import Adam
+
+import colossalai
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port
 from colossalai.utils.checkpoint_io.constant import GLOBAL_META_FILE_NAME
 from colossalai.utils.checkpoint_io.io import redist, save
-from colossalai.utils.checkpoint_io.meta import (ParamDistMeta, ParamRedistMeta, PipelineRedistMeta, RankRedistMeta,
-                                                 RedistMeta)
-from torch.optim import Adam
+from colossalai.utils.checkpoint_io.meta import (
+    ParamDistMeta,
+    ParamRedistMeta,
+    PipelineRedistMeta,
+    RankRedistMeta,
+    RedistMeta,
+)
 
 
 class DummyModel(nn.Module):

@@ -3,12 +3,13 @@
 # See LICENSE for license information.
 
 import argparse
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torchvision import datasets, transforms
 from torch.optim.lr_scheduler import StepLR
+from torchvision import datasets, transforms
 
 try:
     from transformer_engine import pytorch as te
@@ -18,6 +19,7 @@ except (ImportError, ModuleNotFoundError):
 
 
 class Net(nn.Module):
+
     def __init__(self, use_te=False):
         super(Net, self).__init__()
         self.conv1 = nn.Conv2d(1, 32, 3, 1)
@@ -62,12 +64,10 @@ def train(args, model, device, train_loader, optimizer, epoch, use_fp8):
         loss.backward()
         optimizer.step()
         if batch_idx % args.log_interval == 0:
-            print(
-                f"Train Epoch: {epoch} "
-                f"[{batch_idx * len(data)}/{len(train_loader.dataset)} "
-                f"({100. * batch_idx / len(train_loader):.0f}%)]\t"
-                f"Loss: {loss.item():.6f}"
-            )
+            print(f"Train Epoch: {epoch} "
+                  f"[{batch_idx * len(data)}/{len(train_loader.dataset)} "
+                  f"({100. * batch_idx / len(train_loader):.0f}%)]\t"
+                  f"Loss: {loss.item():.6f}")
             if args.dry_run:
                 break
 
@@ -83,6 +83,7 @@ def calibrate(model, device, test_loader):
             with te.fp8_autocast(enabled=False, calibrating=True):
                 output = model(data)
 
+
 def test(model, device, test_loader, use_fp8):
     """Testing function."""
     model.eval()
@@ -93,21 +94,15 @@ def test(model, device, test_loader, use_fp8):
             data, target = data.to(device), target.to(device)
             with te.fp8_autocast(enabled=use_fp8):
                 output = model(data)
-            test_loss += F.nll_loss(
-                output, target, reduction="sum"
-            ).item()  # sum up batch loss
-            pred = output.argmax(
-                dim=1, keepdim=True
-            )  # get the index of the max log-probability
+            test_loss += F.nll_loss(output, target, reduction="sum").item()    # sum up batch loss
+            pred = output.argmax(dim=1, keepdim=True)    # get the index of the max log-probability
             correct += pred.eq(target.view_as(pred)).sum().item()
 
     test_loss /= len(test_loader.dataset)
 
-    print(
-        f"\nTest set: Average loss: {test_loss:.4f}, "
-        f"Accuracy: {correct}/{len(test_loader.dataset)} "
-        f"({100. * correct / len(test_loader.dataset):.0f}%)\n"
-    )
+    print(f"\nTest set: Average loss: {test_loss:.4f}, "
+          f"Accuracy: {correct}/{len(test_loader.dataset)} "
+          f"({100. * correct / len(test_loader.dataset):.0f}%)\n")
 
 
 def main():
@@ -154,9 +149,7 @@ def main():
         default=False,
         help="quickly check a single pass",
     )
-    parser.add_argument(
-        "--seed", type=int, default=1, metavar="S", help="random seed (default: 1)"
-    )
+    parser.add_argument("--seed", type=int, default=1, metavar="S", help="random seed (default: 1)")
     parser.add_argument(
         "--log-interval",
         type=int,
@@ -170,15 +163,12 @@ def main():
         default=False,
         help="For Saving the current Model",
     )
-    parser.add_argument(
-        "--use-fp8", action="store_true", default=False, help="Use FP8 for inference and training without recalibration"
-    )
-    parser.add_argument(
-        "--use-fp8-infer", action="store_true", default=False, help="Use FP8 inference only"
-    )
-    parser.add_argument(
-        "--use-te", action="store_true", default=False, help="Use Transformer Engine"
-    )
+    parser.add_argument("--use-fp8",
+                        action="store_true",
+                        default=False,
+                        help="Use FP8 for inference and training without recalibration")
+    parser.add_argument("--use-fp8-infer", action="store_true", default=False, help="Use FP8 inference only")
+    parser.add_argument("--use-te", action="store_true", default=False, help="Use Transformer Engine")
     args = parser.parse_args()
     use_cuda = torch.cuda.is_available()
 
@@ -205,9 +195,7 @@ def main():
         train_kwargs.update(cuda_kwargs)
         test_kwargs.update(cuda_kwargs)
 
-    transform = transforms.Compose(
-        [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
-    )
+    transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
     dataset1 = datasets.MNIST("../data", train=True, download=True, transform=transform)
     dataset2 = datasets.MNIST("../data", train=False, transform=transform)
     train_loader = torch.utils.data.DataLoader(dataset1, **train_kwargs)
@@ -227,7 +215,7 @@ def main():
 
     if args.save_model or args.use_fp8_infer:
         torch.save(model.state_dict(), "mnist_cnn.pt")
-        print('Eval with reloaded checkpoint : fp8='+str(args.use_fp8_infer))
+        print('Eval with reloaded checkpoint : fp8=' + str(args.use_fp8_infer))
         weights = torch.load("mnist_cnn.pt")
         model.load_state_dict(weights)
         test(model, device, test_loader, args.use_fp8_infer)

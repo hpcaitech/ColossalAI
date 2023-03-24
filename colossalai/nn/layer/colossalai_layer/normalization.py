@@ -1,5 +1,6 @@
-from colossalai.utils import get_current_device
 from torch import nn
+
+from colossalai.utils import get_current_device
 
 from ..parallel_1d import LayerNorm1D
 from ..parallel_2d import LayerNorm2D

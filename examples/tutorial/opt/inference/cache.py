@@ -1,7 +1,7 @@
 from collections import OrderedDict
-from threading import Lock
 from contextlib import contextmanager
-from typing import List, Any, Hashable, Dict
+from threading import Lock
+from typing import Any, Dict, Hashable, List
 
 
 class MissCacheError(Exception):
@@ -9,6 +9,7 @@ class MissCacheError(Exception):
 
 
 class ListCache:
+
     def __init__(self, cache_size: int, list_size: int, fixed_keys: List[Hashable] = []) -> None:
         """Cache a list of values. The fixed keys won't be removed. For other keys, LRU is applied.
         When the value list is not full, a cache miss occurs. Otherwise, a cache hit occurs. Redundant values will be removed.

@@ -2,6 +2,7 @@
 # -*- encoding: utf-8 -*-
 
 import torch.distributed as dist
+
 from colossalai.global_variables import tensor_parallel_env as env
 from colossalai.registry import DIST_GROUP_INITIALIZER
 

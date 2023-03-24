@@ -1,20 +1,22 @@
-import torch
+import collections
+import logging
 import os
+import random
+import time
 from enum import IntEnum
 from random import choice
-import random
-import collections
-import time
-import logging
+
 import jieba
+import torch
+
 jieba.setLogLevel(logging.CRITICAL)
 import re
-import numpy as np
+
 import mask
+import numpy as np
 
 PAD = 0
-MaskedLMInstance = collections.namedtuple("MaskedLMInstance",
-                                          ["index", "label"])
+MaskedLMInstance = collections.namedtuple("MaskedLMInstance", ["index", "label"])
 
 
 def map_to_numpy(data):
@@ -22,6 +24,7 @@ def map_to_numpy(data):
 
 
 class PreTrainingDataset():
+
     def __init__(self,
                  tokenizer,
                  max_seq_length,
@@ -43,17 +46,15 @@ class PreTrainingDataset():
         self.mlm_tamper_p = 0.05
         self.mlm_maintain_p = 0.1
 
-
     def tokenize(self, doc):
         temp = []
         for d in doc:
             temp.append(self.tokenizer.tokenize(d))
         return temp
 
-
     def create_training_instance(self, instance):
         is_next = 1
-        raw_text_list = self.get_new_segment(instance) 
+        raw_text_list = self.get_new_segment(instance)
         tokens_a = raw_text_list
         assert len(tokens_a) == len(instance)
         # tokens_a, tokens_b, is_next = instance.get_values()
@@ -83,8 +84,9 @@ class PreTrainingDataset():
 
         # Get Masked LM predictions
         if self.backend == 'c++':
-            output_tokens, masked_lm_output = mask.create_whole_masked_lm_predictions(tokens, original_tokens, self.vocab_words,
-                                                self.tokenizer.vocab, self.max_predictions_per_seq, self.masked_lm_prob)
+            output_tokens, masked_lm_output = mask.create_whole_masked_lm_predictions(
+                tokens, original_tokens, self.vocab_words, self.tokenizer.vocab, self.max_predictions_per_seq,
+                self.masked_lm_prob)
         elif self.backend == 'python':
             output_tokens, masked_lm_output = self.create_whole_masked_lm_predictions(tokens)
 
@@ -102,29 +104,25 @@ class PreTrainingDataset():
             map_to_numpy(input_mask),
             map_to_numpy(segment_ids),
             map_to_numpy(masked_lm_output),
-            map_to_numpy([is_next])  
+            map_to_numpy([is_next])
         ])
-
 
     def create_masked_lm_predictions(self, tokens):
         cand_indexes = []
         for i, token in enumerate(tokens):
             if token == "[CLS]" or token == "[SEP]":
                 continue
-            if (self.do_whole_word_mask and len(cand_indexes) >= 1 and
-                token.startswith("##")):
+            if (self.do_whole_word_mask and len(cand_indexes) >= 1 and token.startswith("##")):
                 cand_indexes[-1].append(i)
             else:
                 cand_indexes.append([i])
-            
+
             # cand_indexes.append(i)
 
         random.shuffle(cand_indexes)
         output_tokens = list(tokens)
 
-        num_to_predict = min(
-            self.max_predictions_per_seq,
-            max(1, int(round(len(tokens) * self.masked_lm_prob))))
+        num_to_predict = min(self.max_predictions_per_seq, max(1, int(round(len(tokens) * self.masked_lm_prob))))
 
         masked_lms = []
         covered_indexes = set()
@@ -145,13 +143,10 @@ class PreTrainingDataset():
                     masked_token = tokens[index]
                 # 10% replace w/ random word
                 else:
-                    masked_token = self.vocab_words[random.randint(
-                        0,
-                        len(self.vocab_words) - 1)]
+                    masked_token = self.vocab_words[random.randint(0, len(self.vocab_words) - 1)]
 
             output_tokens[index] = masked_token
-            masked_lms.append(
-                MaskedLMInstance(index=index, label=tokens[index]))
+            masked_lms.append(MaskedLMInstance(index=index, label=tokens[index]))
 
         masked_lms = sorted(masked_lms, key=lambda x: x.index)
         masked_lm_output = [-1] * len(output_tokens)
@@ -159,7 +154,6 @@ class PreTrainingDataset():
             masked_lm_output[p.index] = self.tokenizer.vocab[p.label]
 
         return (output_tokens, masked_lm_output)
-
 
     def get_new_segment(self, segment):
         """
@@ -172,7 +166,7 @@ class PreTrainingDataset():
         new_segment = []
         i = 0
         while i < len(segment):
-            if len(self.rec.findall(segment[i])) == 0: # 不是中文的，原文加进去。
+            if len(self.rec.findall(segment[i])) == 0:    # 不是中文的，原文加进去。
                 new_segment.append(segment[i])
                 i += 1
                 continue
@@ -181,10 +175,10 @@ class PreTrainingDataset():
             for length in range(3, 0, -1):
                 if i + length > len(segment):
                     continue
-                if ''.join(segment[i: i+length]) in seq_cws_dict:
+                if ''.join(segment[i:i + length]) in seq_cws_dict:
                     new_segment.append(segment[i])
                     for l in range(1, length):
-                        new_segment.append('##' + segment[i+l])
+                        new_segment.append('##' + segment[i + l])
                     i += length
                     has_add = True
                     break
@@ -192,7 +186,6 @@ class PreTrainingDataset():
                 new_segment.append(segment[i])
                 i += 1
         return new_segment
-
 
     def create_whole_masked_lm_predictions(self, tokens):
         """Creates the predictions for the masked LM objective."""
@@ -210,18 +203,16 @@ class PreTrainingDataset():
             # Note that Whole Word Masking does *not* change the training code
             # at all -- we still predict each WordPiece independently, softmaxed
             # over the entire vocabulary.
-            if (self.do_whole_word_mask and len(cand_indexes) >= 1 and
-                    token.startswith("##")):
+            if (self.do_whole_word_mask and len(cand_indexes) >= 1 and token.startswith("##")):
                 cand_indexes[-1].append(i)
             else:
                 cand_indexes.append([i])
 
         random.shuffle(cand_indexes)
 
-        output_tokens = [t[2:] if len(self.whole_rec.findall(t))>0 else t for t in tokens] # 去掉"##"
+        output_tokens = [t[2:] if len(self.whole_rec.findall(t)) > 0 else t for t in tokens]    # 去掉"##"
 
-        num_to_predict = min(self.max_predictions_per_seq,
-                            max(1, int(round(len(tokens) * self.masked_lm_prob))))
+        num_to_predict = min(self.max_predictions_per_seq, max(1, int(round(len(tokens) * self.masked_lm_prob))))
 
         masked_lms = []
         covered_indexes = set()
@@ -249,14 +240,18 @@ class PreTrainingDataset():
                 else:
                     # 10% of the time, keep original
                     if random.random() < 0.5:
-                        masked_token = tokens[index][2:] if len(self.whole_rec.findall(tokens[index]))>0 else tokens[index] # 去掉"##"
+                        masked_token = tokens[index][2:] if len(self.whole_rec.findall(
+                            tokens[index])) > 0 else tokens[index]    # 去掉"##"
                     # 10% of the time, replace with random word
                     else:
                         masked_token = self.vocab_words[random.randint(0, len(self.vocab_words) - 1)]
 
                 output_tokens[index] = masked_token
 
-                masked_lms.append(MaskedLMInstance(index=index, label=tokens[index][2:] if len(self.whole_rec.findall(tokens[index]))>0 else tokens[index]))
+                masked_lms.append(
+                    MaskedLMInstance(
+                        index=index,
+                        label=tokens[index][2:] if len(self.whole_rec.findall(tokens[index])) > 0 else tokens[index]))
         assert len(masked_lms) <= num_to_predict
         masked_lms = sorted(masked_lms, key=lambda x: x.index)
         masked_lm_output = [-1] * len(output_tokens)

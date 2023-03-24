@@ -1,9 +1,11 @@
-import os
 import math
+import os
+
 import torch
+from nvidia_bert_dataset_provider import NvidiaBertDatasetProvider
 from tqdm import tqdm
-from utils.global_vars import get_timers, get_tensorboard_writer
-from nvidia_bert_dataset_provider import NvidiaBertDatasetProvider 
+from utils.global_vars import get_tensorboard_writer, get_timers
+
 
 def evaluate(engine, args, logger, global_step):
     evaluate_dataset_provider = NvidiaBertDatasetProvider(args, evaluate=True)
@@ -20,16 +22,19 @@ def evaluate(engine, args, logger, global_step):
 
         for shard in range(start_shard, len(os.listdir(args.eval_data_path_prefix))):
 
-            timers('eval_shard_time').start() 
+            timers('eval_shard_time').start()
 
             dataset_iterator, total_length = evaluate_dataset_provider.get_shard(shard)
             # evaluate_dataset_provider.prefetch_shard(shard + 1)
             if torch.distributed.get_rank() == 0:
-                iterator_data = tqdm(enumerate(dataset_iterator), total=(total_length // args.eval_micro_batch_size_per_gpu // world_size), colour='MAGENTA', smoothing=1)
+                iterator_data = tqdm(enumerate(dataset_iterator),
+                                     total=(total_length // args.eval_micro_batch_size_per_gpu // world_size),
+                                     colour='MAGENTA',
+                                     smoothing=1)
             else:
                 iterator_data = enumerate(dataset_iterator)
-            
-            for step, batch_data in iterator_data: #tqdm(enumerate(dataset_iterator), total=(total_length // args.train_micro_batch_size_per_gpu // world_size), colour='cyan', smoothing=1):     
+
+            for step, batch_data in iterator_data:    #tqdm(enumerate(dataset_iterator), total=(total_length // args.train_micro_batch_size_per_gpu // world_size), colour='cyan', smoothing=1):
 
                 # batch_data = pretrain_dataset_provider.get_batch(batch_index)
                 eval_step += 1
@@ -40,8 +45,8 @@ def evaluate(engine, args, logger, global_step):
                 # nsp_label = batch_data[5].cuda()
 
                 output = engine(input_ids=input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask)
-                
-                loss = engine.criterion(output.logits, mlm_label)#prediction_scores
+
+                loss = engine.criterion(output.logits, mlm_label)    #prediction_scores
                 evaluate_dataset_provider.prefetch_batch()
 
                 eval_loss += loss.float().item()
@@ -54,10 +59,10 @@ def evaluate(engine, args, logger, global_step):
             if args.wandb and torch.distributed.get_rank() == 0:
                 tensorboard_log = get_tensorboard_writer()
                 tensorboard_log.log_eval({
-                                'loss': cur_loss,
-                                'ppl': ppl,
-                                'mins_batch': elapsed_time_per_iteration
-                            }, global_step)
+                    'loss': cur_loss,
+                    'ppl': ppl,
+                    'mins_batch': elapsed_time_per_iteration
+                }, global_step)
 
             eval_log_str = f'evaluation shard: {shard} | step: {eval_step} | elapsed_time: {elapsed_time / 60 :.3f} minutes ' + \
                             f'| mins/batch: {elapsed_time_per_iteration :.3f} seconds | loss: {cur_loss:.7f} | ppl: {ppl:.7f}'

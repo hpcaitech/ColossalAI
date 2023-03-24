@@ -1,5 +1,5 @@
-from colossalai.zero.shard_utils import TensorShardStrategy
 from colossalai.nn.optimizer import FusedAdam
+from colossalai.zero.shard_utils import TensorShardStrategy
 
 # fp16 = dict(
 #     mode=AMP_TYPE.TORCH,

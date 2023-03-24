@@ -1,14 +1,15 @@
-import colossalai
-import colossalai.nn as col_nn
+from functools import partial
+
+import pytest
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
-import pytest
 
-from colossalai.core import global_context as gpc
+import colossalai
+import colossalai.nn as col_nn
 from colossalai.context import ParallelMode
+from colossalai.core import global_context as gpc
 from colossalai.testing import rerun_if_address_is_in_use
-from functools import partial
 
 CONFIG = dict(parallel=dict(tensor=dict(size=4, mode='sequence')))
 

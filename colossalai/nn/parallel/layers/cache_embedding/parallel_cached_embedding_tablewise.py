@@ -1,15 +1,16 @@
+import time
+from typing import List
+
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
 
-from .cached_embedding import CachedEmbeddingBag
-from .cache_mgr import EvictionStrategy
-from .embedding_config import TablewiseEmbeddingBagConfig
-from colossalai.tensor import ProcessGroup
 from colossalai.nn._ops._utils import dual_all_to_all_tablewise
+from colossalai.tensor import ProcessGroup
 
-from typing import List
-import time
+from .cache_mgr import EvictionStrategy
+from .cached_embedding import CachedEmbeddingBag
+from .embedding_config import TablewiseEmbeddingBagConfig
 
 
 class ParallelCachedEmbeddingBagTablewise(CachedEmbeddingBag):

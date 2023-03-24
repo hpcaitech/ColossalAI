@@ -37,4 +37,3 @@ env OMP_NUM_THREADS=40 colossalai run --hostfile ./hostfile \
                 --mlm bert \
                 --wandb \
                 --checkpoint_activations \
-                

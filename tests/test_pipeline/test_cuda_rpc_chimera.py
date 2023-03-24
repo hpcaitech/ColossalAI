@@ -1,10 +1,10 @@
 import torch
-from torch import nn
 import torch.autograd as autograd
+from rpc_test_utils import RpcTestModel, parse_args, rpc_run
+from torch import nn
 
 from colossalai.pipeline.rpc import ChimeraPipelineEngine
 from colossalai.testing import assert_close
-from rpc_test_utils import rpc_run, parse_args, RpcTestModel
 
 # global variable for model created
 feat_num = 100

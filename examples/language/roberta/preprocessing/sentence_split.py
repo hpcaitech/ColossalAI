@@ -1,13 +1,14 @@
-
+import argparse
+import functools
+import json
 import multiprocessing
 import os
 import re
-from tqdm import tqdm
-from typing import List
-import json
 import time
-import argparse
-import functools
+from typing import List
+
+from tqdm import tqdm
+
 
 def split_sentence(document: str, flag: str = "all", limit: int = 510) -> List[str]:
     """
@@ -20,16 +21,17 @@ def split_sentence(document: str, flag: str = "all", limit: int = 510) -> List[s
     sent_list = []
     try:
         if flag == "zh":
-            document = re.sub('(?P<quotation_mark>([。？！…](?![”’"\'])))', r'\g<quotation_mark>\n', document)  # 单字符断句符
-            document = re.sub('(?P<quotation_mark>([。？！]|…{1,2})[”’"\'])', r'\g<quotation_mark>\n', document)  # 特殊引号
+            document = re.sub('(?P<quotation_mark>([。？！…](?![”’"\'])))', r'\g<quotation_mark>\n', document)    # 单字符断句符
+            document = re.sub('(?P<quotation_mark>([。？！]|…{1,2})[”’"\'])', r'\g<quotation_mark>\n', document)    # 特殊引号
         elif flag == "en":
-            document = re.sub('(?P<quotation_mark>([.?!](?![”’"\'])))', r'\g<quotation_mark>\n', document)  # 英文单字符断句符
-            document = re.sub('(?P<quotation_mark>([?!.]["\']))', r'\g<quotation_mark>\n', document)  # 特殊引号
+            document = re.sub('(?P<quotation_mark>([.?!](?![”’"\'])))', r'\g<quotation_mark>\n', document)    # 英文单字符断句符
+            document = re.sub('(?P<quotation_mark>([?!.]["\']))', r'\g<quotation_mark>\n', document)    # 特殊引号
         else:
-            document = re.sub('(?P<quotation_mark>([。？！….?!](?![”’"\'])))', r'\g<quotation_mark>\n', document)  # 单字符断句符
-            
+            document = re.sub('(?P<quotation_mark>([。？！….?!](?![”’"\'])))', r'\g<quotation_mark>\n',
+                              document)    # 单字符断句符
+
             document = re.sub('(?P<quotation_mark>(([。？！.!?]|…{1,2})[”’"\']))', r'\g<quotation_mark>\n',
-                            document)  # 特殊引号
+                              document)    # 特殊引号
 
         sent_list_ori = document.splitlines()
         for sent in sent_list_ori:
@@ -50,17 +52,15 @@ def split_sentence(document: str, flag: str = "all", limit: int = 510) -> List[s
     return sent_list
 
 
-def get_sent(output_path,
-            input_path,
-            fin_list=[], host=-1, seq_len=512) -> None:
+def get_sent(output_path, input_path, fin_list=[], host=-1, seq_len=512) -> None:
 
     workers = 32
 
     if input_path[-1] == '/':
         input_path = input_path[:-1]
-    
+
     cur_path = os.path.join(output_path, str(host) + '.txt')
-    new_split_sentence = functools.partial(split_sentence, limit=seq_len-2)
+    new_split_sentence = functools.partial(split_sentence, limit=seq_len - 2)
     with open(cur_path, 'w', encoding='utf-8') as f:
         for fi, fin_path in enumerate(fin_list):
             if not os.path.exists(os.path.join(input_path, fin_path[0])):
@@ -69,7 +69,7 @@ def get_sent(output_path,
                 continue
 
             print("Processing ", fin_path[0], " ", fi)
-            
+
             with open(os.path.join(input_path, fin_path[0]), 'r') as fin:
                 f_data = [l['content'] for l in json.load(fin)]
 
@@ -106,17 +106,17 @@ def getFileSize(filepath, shard):
             real_shard.append(temp)
             accu_size = 0
             temp = []
-            
+
     if len(temp) > 0:
         real_shard.append(temp)
-    
+
     return real_shard
 
 
 def get_start_end(real_shard, base=0, server_num=10, server_name='GPU'):
     import socket
     host = int(socket.gethostname().split(server_name)[-1])
-    
+
     fin_list = real_shard[server_num * base + host - 1]
     print(fin_list)
     print(f'I am server {host}, process {server_num * base + host - 1}, len {len(fin_list)}')
@@ -133,28 +133,24 @@ if __name__ == '__main__':
     parser.add_argument('--output_path', type=str, required=True, help='output path of shard which has split sentence')
     args = parser.parse_args()
 
-    server_num = args.server_num 
+    server_num = args.server_num
     seq_len = args.seq_len
-    shard = args.shard 
+    shard = args.shard
     input_path = args.input_path
-    output_path = args.output_path 
+    output_path = args.output_path
 
     real_shard = getFileSize(input_path, shard)
 
     start = time.time()
     for index, shard in enumerate(real_shard):
-        get_sent(output_path,
-                input_path,
-                fin_list=shard, 
-                host=index,
-                seq_len=seq_len)
+        get_sent(output_path, input_path, fin_list=shard, host=index, seq_len=seq_len)
     print(f'cost {str(time.time() - start)}')
 
     # if you have multiple server, you can use code below or modify code to openmpi
-    
+
     # for i in range(len(real_shard) // server_num + 1):
     #     fin_list, host = get_start_end(real_shard, i)
-        
+
     #     start = time.time()
     #     get_sent(output_path,
     #             input_path,

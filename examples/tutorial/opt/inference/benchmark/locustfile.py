@@ -1,8 +1,10 @@
-from locust import HttpUser, task
 from json import JSONDecodeError
+
+from locust import HttpUser, task
 
 
 class GenerationUser(HttpUser):
+
     @task
     def generate(self):
         prompt = 'Question: What is the longest river on the earth? Answer:'

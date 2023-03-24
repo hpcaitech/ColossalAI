@@ -12,7 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 """Blendable dataset."""
 
 import time
@@ -46,9 +45,7 @@ class BlendableDataset(torch.utils.data.Dataset):
         self.dataset_sample_index = np.zeros(self.size, dtype=np.int64)
 
         from . import helpers
-        helpers.build_blending_indices(self.dataset_index,
-                                       self.dataset_sample_index,
-                                       weights, num_datasets, self.size,
+        helpers.build_blending_indices(self.dataset_index, self.dataset_sample_index, weights, num_datasets, self.size,
                                        torch.distributed.get_rank() == 0)
         print('> elapsed time for building blendable dataset indices: '
               '{:.2f} (sec)'.format(time.time() - start_time))

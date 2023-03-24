@@ -40,4 +40,3 @@ env OMP_NUM_THREADS=40 colossalai run --hostfile ./hostfile \
                 --resume_train \
                 --load_pretrain_model /ckpt/1.pt \
                 --load_optimizer_lr /ckpt/1.op_lrs \
-                

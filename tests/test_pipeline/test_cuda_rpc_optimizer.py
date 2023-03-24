@@ -1,11 +1,10 @@
 import torch
-from torch import nn
-from torch import autograd
-from torch.optim import SGD, Adam, RMSprop, Optimizer
+from rpc_test_utils import RpcTestModel, parse_args, rpc_run
+from torch import autograd, nn
+from torch.optim import SGD, Adam, Optimizer, RMSprop
 
 from colossalai.pipeline.rpc._pipeline_schedule import FillDrainPipelineEngine, OneFOneBPipelineEngine
 from colossalai.testing import assert_close
-from rpc_test_utils import rpc_run, parse_args, RpcTestModel
 
 # global variable for model created
 feat_num = 100

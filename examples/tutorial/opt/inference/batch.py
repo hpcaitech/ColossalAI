@@ -1,9 +1,11 @@
+from typing import Any, Deque, Hashable, List, Tuple
+
 import torch
-from typing import List, Deque, Tuple, Hashable, Any
 from energonai import BatchManager, SubmitEntry, TaskEntry
 
 
 class BatchManagerForGeneration(BatchManager):
+
     def __init__(self, max_batch_size: int = 1, pad_token_id: int = 0) -> None:
         super().__init__()
         self.max_batch_size = max_batch_size

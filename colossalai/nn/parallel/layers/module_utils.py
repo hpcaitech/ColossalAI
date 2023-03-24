@@ -1,8 +1,10 @@
 from typing import Dict
-from colossalai.tensor import ColoParameter, ComputeSpec, ProcessGroup
-from colossalai.tensor import distspec
-from . import ColoModule
+
 import torch
+
+from colossalai.tensor import ColoParameter, ComputeSpec, ProcessGroup, distspec
+
+from . import ColoModule
 
 _COLOSSAL_MODULES: Dict[type, ColoModule] = {}
 

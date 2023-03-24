@@ -1,28 +1,33 @@
-import argparse, os
+import argparse
+import os
+from itertools import islice
+
 import cv2
-import torch
 import numpy as np
+import torch
+from einops import rearrange
 from omegaconf import OmegaConf
 from PIL import Image
-from tqdm import tqdm, trange
-from itertools import islice
-from einops import rearrange
 from torchvision.utils import make_grid
+from tqdm import tqdm, trange
+
 try:
     from lightning.pytorch import seed_everything
 except:
     from pytorch_lightning import seed_everything
-from torch import autocast
-from contextlib import nullcontext
-from imwatermark import WatermarkEncoder
 
-from ldm.util import instantiate_from_config
+from contextlib import nullcontext
+
+from imwatermark import WatermarkEncoder
 from ldm.models.diffusion.ddim import DDIMSampler
-from ldm.models.diffusion.plms import PLMSSampler
 from ldm.models.diffusion.dpm_solver import DPMSolverSampler
-from utils import replace_module, getModelSize
+from ldm.models.diffusion.plms import PLMSSampler
+from ldm.util import instantiate_from_config
+from torch import autocast
+from utils import getModelSize, replace_module
 
 torch.set_grad_enabled(False)
+
 
 def chunk(it, size):
     it = iter(it)
@@ -50,20 +55,16 @@ def load_model_from_config(config, ckpt, verbose=False):
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--prompt",
-        type=str,
-        nargs="?",
-        default="a professional photograph of an astronaut riding a triceratops",
-        help="the prompt to render"
-    )
-    parser.add_argument(
-        "--outdir",
-        type=str,
-        nargs="?",
-        help="dir to write results to",
-        default="outputs/txt2img-samples"
-    )
+    parser.add_argument("--prompt",
+                        type=str,
+                        nargs="?",
+                        default="a professional photograph of an astronaut riding a triceratops",
+                        help="the prompt to render")
+    parser.add_argument("--outdir",
+                        type=str,
+                        nargs="?",
+                        help="dir to write results to",
+                        default="outputs/txt2img-samples")
     parser.add_argument(
         "--steps",
         type=int,
@@ -161,13 +162,11 @@ def parse_args():
         default=42,
         help="the seed (for reproducible sampling)",
     )
-    parser.add_argument(
-        "--precision",
-        type=str,
-        help="evaluate at this precision",
-        choices=["full", "autocast"],
-        default="autocast"
-    )
+    parser.add_argument("--precision",
+                        type=str,
+                        help="evaluate at this precision",
+                        choices=["full", "autocast"],
+                        default="autocast")
     parser.add_argument(
         "--repeat",
         type=int,
@@ -197,17 +196,17 @@ def main(opt):
 
     config = OmegaConf.load(f"{opt.config}")
     model = load_model_from_config(config, f"{opt.ckpt}")
-    
+
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
     model = model.to(device)
-    
+
     # quantize model
     if opt.use_int8:
         model = replace_module(model)
         # # to compute the model size
         # getModelSize(model)
-    
+
     if opt.plms:
         sampler = PLMSSampler(model)
     elif opt.dpm:
@@ -251,50 +250,50 @@ def main(opt):
     with torch.no_grad(), \
         precision_scope("cuda"), \
         model.ema_scope():
-            all_samples = list()
-            for n in trange(opt.n_iter, desc="Sampling"):
-                for prompts in tqdm(data, desc="data"):
-                    uc = None
-                    if opt.scale != 1.0:
-                        uc = model.get_learned_conditioning(batch_size * [""])
-                    if isinstance(prompts, tuple):
-                        prompts = list(prompts)
-                    c = model.get_learned_conditioning(prompts)
-                    shape = [opt.C, opt.H // opt.f, opt.W // opt.f]
-                    samples, _ = sampler.sample(S=opt.steps,
-                                                     conditioning=c,
-                                                     batch_size=opt.n_samples,
-                                                     shape=shape,
-                                                     verbose=False,
-                                                     unconditional_guidance_scale=opt.scale,
-                                                     unconditional_conditioning=uc,
-                                                     eta=opt.ddim_eta,
-                                                     x_T=start_code)
+        all_samples = list()
+        for n in trange(opt.n_iter, desc="Sampling"):
+            for prompts in tqdm(data, desc="data"):
+                uc = None
+                if opt.scale != 1.0:
+                    uc = model.get_learned_conditioning(batch_size * [""])
+                if isinstance(prompts, tuple):
+                    prompts = list(prompts)
+                c = model.get_learned_conditioning(prompts)
+                shape = [opt.C, opt.H // opt.f, opt.W // opt.f]
+                samples, _ = sampler.sample(S=opt.steps,
+                                            conditioning=c,
+                                            batch_size=opt.n_samples,
+                                            shape=shape,
+                                            verbose=False,
+                                            unconditional_guidance_scale=opt.scale,
+                                            unconditional_conditioning=uc,
+                                            eta=opt.ddim_eta,
+                                            x_T=start_code)
 
-                    x_samples = model.decode_first_stage(samples)
-                    x_samples = torch.clamp((x_samples + 1.0) / 2.0, min=0.0, max=1.0)
+                x_samples = model.decode_first_stage(samples)
+                x_samples = torch.clamp((x_samples + 1.0) / 2.0, min=0.0, max=1.0)
 
-                    for x_sample in x_samples:
-                        x_sample = 255. * rearrange(x_sample.cpu().numpy(), 'c h w -> h w c')
-                        img = Image.fromarray(x_sample.astype(np.uint8))
-                        img = put_watermark(img, wm_encoder)
-                        img.save(os.path.join(sample_path, f"{base_count:05}.png"))
-                        base_count += 1
-                        sample_count += 1
+                for x_sample in x_samples:
+                    x_sample = 255. * rearrange(x_sample.cpu().numpy(), 'c h w -> h w c')
+                    img = Image.fromarray(x_sample.astype(np.uint8))
+                    img = put_watermark(img, wm_encoder)
+                    img.save(os.path.join(sample_path, f"{base_count:05}.png"))
+                    base_count += 1
+                    sample_count += 1
 
-                    all_samples.append(x_samples)
+                all_samples.append(x_samples)
 
-            # additionally, save as grid
-            grid = torch.stack(all_samples, 0)
-            grid = rearrange(grid, 'n b c h w -> (n b) c h w')
-            grid = make_grid(grid, nrow=n_rows)
+        # additionally, save as grid
+        grid = torch.stack(all_samples, 0)
+        grid = rearrange(grid, 'n b c h w -> (n b) c h w')
+        grid = make_grid(grid, nrow=n_rows)
 
-            # to image
-            grid = 255. * rearrange(grid, 'c h w -> h w c').cpu().numpy()
-            grid = Image.fromarray(grid.astype(np.uint8))
-            grid = put_watermark(grid, wm_encoder)
-            grid.save(os.path.join(outpath, f'grid-{grid_count:04}.png'))
-            grid_count += 1
+        # to image
+        grid = 255. * rearrange(grid, 'c h w -> h w c').cpu().numpy()
+        grid = Image.fromarray(grid.astype(np.uint8))
+        grid = put_watermark(grid, wm_encoder)
+        grid.save(os.path.join(outpath, f'grid-{grid_count:04}.png'))
+        grid_count += 1
 
     print(f"Your samples are ready and waiting for you here: \n{outpath} \n"
           f" \nEnjoy.")

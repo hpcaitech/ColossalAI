@@ -1,6 +1,7 @@
 import torch
+
+from colossalai.utils.checkpoint_io.distributed import gather_tp_param, merge_param, unflatten_zero_param
 from colossalai.utils.checkpoint_io.meta import ParamDistMeta
-from colossalai.utils.checkpoint_io.distributed import unflatten_zero_param, gather_tp_param, merge_param
 
 
 def test_unflatten_zero_param_even() -> None:

@@ -1,15 +1,16 @@
 from functools import partial
 
-import colossalai
 import pytest
 import torch
-import torch.multiprocessing as mp
 import torch.distributed as dist
+import torch.multiprocessing as mp
+
+import colossalai
+from colossalai.tensor import ColoTensor, ColoTensorSpec, ProcessGroup, ShardSpec
+from colossalai.tensor.distspec import DistPlacementPattern
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port, get_current_device
-from colossalai.tensor import ColoTensorSpec, ProcessGroup, ColoTensor, ShardSpec
-from colossalai.tensor.distspec import DistPlacementPattern
-from tests.test_tensor.common_utils import split_param_row_tp1d, split_param_col_tp1d, debug_print
+from tests.test_tensor.common_utils import debug_print, split_param_col_tp1d, split_param_row_tp1d
 
 
 def exam_view_core(pg):

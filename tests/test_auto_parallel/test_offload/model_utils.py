@@ -1,17 +1,13 @@
 import torch
 import torch.nn as nn
-from transformers import GPT2Config, GPT2LMHeadModel
-from transformers import BertConfig, BertLMHeadModel
+from transformers import BertConfig, BertLMHeadModel, GPT2Config, GPT2LMHeadModel
+
 from tests.components_to_test.registry import non_distributed_component_funcs
+
 
 class GPTLMModel(nn.Module):
 
-    def __init__(self,
-                 hidden_size=768,
-                 num_layers=12,
-                 num_attention_heads=12,
-                 max_seq_len=1024,
-                 vocab_size=50257):
+    def __init__(self, hidden_size=768, num_layers=12, num_attention_heads=12, max_seq_len=1024, vocab_size=50257):
         super().__init__()
         self.model = GPT2LMHeadModel(
             GPT2Config(n_embd=hidden_size,
@@ -38,16 +34,23 @@ class LMLoss(nn.Module):
         # Flatten the tokens
         return self.loss_fn(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
 
+
 class BertLMModel(nn.Module):
+
     def __init__(self, hidden_size=768, num_layers=12, num_attention_heads=32, vocab_size=30522):
         super().__init__()
-        self.model = BertLMHeadModel(BertConfig(n_embd=hidden_size, num_hidden_layers=num_layers, hidden_size=hidden_size,
-                                                num_attention_heads=num_attention_heads, max_position_embeddings=hidden_size,
-                                                vocab_size=vocab_size))
+        self.model = BertLMHeadModel(
+            BertConfig(n_embd=hidden_size,
+                       num_hidden_layers=num_layers,
+                       hidden_size=hidden_size,
+                       num_attention_heads=num_attention_heads,
+                       max_position_embeddings=hidden_size,
+                       vocab_size=vocab_size))
 
     def forward(self, input_ids, attention_mask):
         # Only return lm_logits
         return self.model(input_ids=input_ids, attention_mask=attention_mask, use_cache=True)[0]
+
 
 @non_distributed_component_funcs.register(name='bert_')
 def get_bert_components():
@@ -66,6 +69,7 @@ def get_bert_components():
         return kwargs
 
     return bert_model_builder, bert_data_gen
+
 
 @non_distributed_component_funcs.register(name='gpt2_')
 def get_gpt2_components():

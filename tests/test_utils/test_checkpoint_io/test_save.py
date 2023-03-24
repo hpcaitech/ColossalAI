@@ -3,20 +3,25 @@ from functools import partial
 from tempfile import TemporaryDirectory
 from typing import Dict
 
-import colossalai
 import pytest
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
 import torch.nn as nn
-from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.utils import free_port
-from colossalai.utils.checkpoint_io.constant import (GLOBAL_META_FILE_NAME, META_CKPT_FILE_NAME, MODEL_CKPT_FILE_NAME,
-                                                     OTHER_CKPT_FILE_NAME)
-from colossalai.utils.checkpoint_io.io import save
-from colossalai.utils.checkpoint_io.meta import ParamDistMeta
 from torch import Tensor
 from torch.optim import Adam
+
+import colossalai
+from colossalai.testing import rerun_if_address_is_in_use
+from colossalai.utils import free_port
+from colossalai.utils.checkpoint_io.constant import (
+    GLOBAL_META_FILE_NAME,
+    META_CKPT_FILE_NAME,
+    MODEL_CKPT_FILE_NAME,
+    OTHER_CKPT_FILE_NAME,
+)
+from colossalai.utils.checkpoint_io.io import save
+from colossalai.utils.checkpoint_io.meta import ParamDistMeta
 
 
 def check_model_state_dict(a: Dict[str, Tensor], b: Dict[str, Tensor]) -> None:

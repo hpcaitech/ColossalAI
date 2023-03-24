@@ -1,8 +1,9 @@
 import torch
 import torch.nn as nn
+from torch.optim import Adam
+
 from colossalai.utils.checkpoint_io.meta import ParamDistMeta
 from colossalai.utils.checkpoint_io.utils import build_checkpoints
-from torch.optim import Adam
 
 
 class DummyModel(nn.Module):
