@@ -90,8 +90,9 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
         else:
             raise NotImplementedError
 
-        self._full_param_groups = dict()
-        self._sharded_flat_param_groups_of_current_rank = dict()
+        # working and master params for mixed precision training
+        self._working_param_groups = dict()
+        self._master_flat_param_groups_of_current_rank = dict()
 
         # communication params
         self._overlap_communication = overlap_communication
@@ -137,8 +138,8 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
                 if param.requires_grad:
                     group_params.append(param)
 
-            # add the params to full_param_groups for bookkeeping
-            self._full_param_groups[group_id] = group_params
+            # add the working params to working_param_groups for bookkeeping
+            self._working_param_groups[group_id] = group_params
 
             # assign parameters to ranks
             # the params in the list are sorted
@@ -170,21 +171,21 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
                 tensor_list = self._param_store.get_params_by_rank_group(rank, group_id)
                 sync_param(flat_tensor=flat_tensor, tensor_list=tensor_list)
 
-            # create a copy of fp32 weights of the parameters for which this rank is responsible
-            flat_current_rank = self._param_store.get_flat_param_by_rank_group(self._local_rank, group_id)
-            fp32_flat_current_rank = flat_current_rank.float()
+            # create a copy of fp32 master weights of the parameters for which this rank is responsible
+            working_flat_current_rank = self._param_store.get_flat_param_by_rank_group(self._local_rank, group_id)
+            master_flat_current_rank = working_flat_current_rank.float()
             device = 'cpu' if self._cpu_offload else get_current_device()
-            fp32_flat_current_rank = fp32_flat_current_rank.to(device)
-            fp32_flat_current_rank.requires_grad = True
-            self._sharded_flat_param_groups_of_current_rank[group_id] = fp32_flat_current_rank
+            master_flat_current_rank = master_flat_current_rank.to(device)
+            master_flat_current_rank.requires_grad = True
+            self._master_flat_param_groups_of_current_rank[group_id] = master_flat_current_rank
 
             # need to replace the params in the `params` field in the optimizer
             # so that when the optimizer calls step(), it only updates the tensors
             # managed by this data parallel rank
-            param_group['params'] = [fp32_flat_current_rank]
+            param_group['params'] = [master_flat_current_rank]
 
             # set reduction state
-            for param in self._full_param_groups[group_id]:
+            for param in self._working_param_groups[group_id]:
                 self._param_store.set_param_reduction_state(param, False)
 
         # intialize communication stream for
@@ -208,7 +209,7 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
 
     @property
     def num_param_groups(self):
-        return len(self._full_param_groups)
+        return len(self._working_param_groups)
 
     def _sanity_checks(self):
         assert torch.cuda.is_available(), 'CUDA is required'
@@ -260,10 +261,10 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
         return grad
 
     def _attach_reduction_hook(self):
-        # we iterate over the full params
+        # we iterate over the working params
         # on each param, we register a hook to its AccumulateGrad object
         for group_id in range(self.num_param_groups):
-            param_group = self._full_param_groups[group_id]
+            param_group = self._working_param_groups[group_id]
             for param in param_group:
                 if param.requires_grad:
                     # determines the reduction destionation rank
@@ -417,7 +418,7 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
         :param set_to_none: Whether set the gradient to None. Default value is True.
         :type set_to_none: bool
         """
-        for _, param_group in self._full_param_groups.items():
+        for _, param_group in self._working_param_groups.items():
             for param in param_group:
                 if set_to_none:
                     param.grad = None
@@ -443,6 +444,7 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
             self.zero_grad()
             return
 
+        # copy the grad of working param to master param
         single_grad_partition_groups = []
         norm_groups = []
 
@@ -455,20 +457,20 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
                                       mp_group=self._mp_torch_group)
             norm_groups.append(norm_group)
 
-            # create flat gradient for the flat fp32 params
-            avg_grads = self._grad_store.get_averaged_gradients_by_group(group_id)
-            flat_avg_grads = flatten(avg_grads)
+            # create flat gradient for the flat fp32 master params
+            working_avg_grads = self._grad_store.get_averaged_gradients_by_group(group_id)
+            flat_working_avg_grads = flatten(working_avg_grads)
 
-            dtype = self._sharded_flat_param_groups_of_current_rank[group_id].dtype
-            flat_fp32_avg_grads = flat_avg_grads.to(dtype)
+            dtype = self._master_flat_param_groups_of_current_rank[group_id].dtype
+            flat_master_avg_grads = flat_working_avg_grads.to(dtype)
 
-            param_shape = self._sharded_flat_param_groups_of_current_rank[group_id].shape
-            assert param_shape == flat_fp32_avg_grads.shape, \
-                f'fp32 param and grad have different shape {param_shape} vs {flat_fp32_avg_grads.shape}'
+            param_shape = self._master_flat_param_groups_of_current_rank[group_id].shape
+            assert param_shape == flat_master_avg_grads.shape, \
+                f'fp32 param and grad have different shape {param_shape} vs {flat_master_avg_grads.shape}'
 
-            single_grad_partition_groups.append(flat_fp32_avg_grads)
-            device = self._sharded_flat_param_groups_of_current_rank[group_id].device
-            self._sharded_flat_param_groups_of_current_rank[group_id].grad = flat_fp32_avg_grads.to(device)
+            single_grad_partition_groups.append(flat_master_avg_grads)
+            device = self._master_flat_param_groups_of_current_rank[group_id].device
+            self._master_flat_param_groups_of_current_rank[group_id].grad = flat_master_avg_grads.to(device)
             self._grad_store.reset_average_gradients_by_group(group_id)
 
         # unscale and clip grads
@@ -477,22 +479,22 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
 
         # update the parameters
         self.optim.step()
-        # release the fp32 grad
-        release_param_grad(self._sharded_flat_param_groups_of_current_rank.values())
+        # release the master grad
+        release_param_grad(self._master_flat_param_groups_of_current_rank.values())
 
-        # update partition updated by the current rank
-        for group_id in range(len(self._full_param_groups)):
-            param = self._param_store.get_flat_param_by_rank_group(rank=self._local_rank, group_id=group_id)
-            fp32_param = self._sharded_flat_param_groups_of_current_rank[group_id]
-            param.data.copy_(fp32_param)
+        # update working partition updated by the current rank
+        for group_id in range(len(self._working_param_groups)):
+            working_param = self._param_store.get_flat_param_by_rank_group(rank=self._local_rank, group_id=group_id)
+            master_param = self._master_flat_param_groups_of_current_rank[group_id]
+            working_param.data.copy_(master_param)
 
         # broadcast the updated model weights
         handles = []
         for group_id in range(self.num_param_groups):
             for index in range(self._world_size):
                 rank = self._dp_global_ranks[index]
-                param = self._param_store.get_flat_param_by_rank_group(rank=index, group_id=group_id)
-                handle = dist.broadcast(param, src=rank, group=self._dp_torch_group, async_op=True)
+                working_param = self._param_store.get_flat_param_by_rank_group(rank=index, group_id=group_id)
+                handle = dist.broadcast(working_param, src=rank, group=self._dp_torch_group, async_op=True)
                 handles.append(handle)
 
         for handle in handles:
@@ -507,7 +509,7 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
         self._found_overflow.fill_(0.0)
 
         # check for overflow
-        for group_id in range(len(self._full_param_groups)):
+        for group_id in range(len(self._working_param_groups)):
             for avg_grad in self._grad_store.get_averaged_gradients_by_group(group_id):
                 if avg_grad is not None and has_inf_or_nan(avg_grad):
                     self._found_overflow.fill_(1.0)
@@ -571,8 +573,8 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
         # if not overlapping communication (no reduction hook is attached)
         # we need to manually reduce these gradients
         if not self._overlap_communication:
-            for group_id in range(len(self._full_param_groups)):
-                param_group = self._full_param_groups[group_id]
+            for group_id in range(len(self._working_param_groups)):
+                param_group = self._working_param_groups[group_id]
                 for param in param_group:
                     if param.grad is not None:
                         self._add_to_reduction_bucket(param)
