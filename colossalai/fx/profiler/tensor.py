@@ -80,6 +80,7 @@ class MetaTensor(torch.Tensor):
             kwargs['device'] = torch.device('meta')
 
         # run aten for backend=CPU but actually on backend=Meta
+        print("FUNC", func.__name__)
         out = func(*args, **kwargs)
 
         # here we keep the uuid of input because ALIAS_ATEN do not generate a physical copy
