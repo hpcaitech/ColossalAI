@@ -11,11 +11,59 @@ from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 
-from colossalai.booster.interface import OptimizerWrapper
+from colossalai.checkpoint_io import CheckpointIO, GeneralCheckpointIO
+from colossalai.cluster import DistCoordinator
+from colossalai.interface import ModelWrapper, OptimizerWrapper
 
 from .plugin_base import Plugin
 
 __all__ = ['TorchDDPPlugin']
+
+
+class TorchDDPCheckpointIO(GeneralCheckpointIO):
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.coordinator = DistCoordinator()
+
+    def load_unsharded_model(self, model: nn.Module, checkpoint: str, strict: bool = True):
+        """
+        Load model from checkpoint with automatic unwrapping.
+        """
+        # the model should be unwrapped in self.load_model via ModelWrapper.unwrap
+        return super().load_unsharded_model(model, checkpoint, strict=strict)
+
+    def save_unsharded_model(self, model: nn.Module, checkpoint: str):
+        """
+        Save model to checkpoint but only on master process.
+        """
+        # the model should be unwrapped in self.load_model via ModelWrapper.unwrap
+        if self.coordinator.is_master():
+            super().save_unsharded_model(model, checkpoint)
+
+    def save_unsharded_optimizer(self, optimizer: Optimizer, checkpoint: str):
+        """
+        Save optimizer to checkpoint but only on master process.
+        """
+        if self.coordinator.is_master():
+            super().save_unsharded_optimizer(optimizer, checkpoint)
+
+    def save_lr_scheduler(self, lr_scheduler: LRScheduler, checkpoint: str):
+        """
+        Save model to checkpoint but only on master process.
+        """
+        if self.coordinator.is_master():
+            super().save_lr_scheduler(lr_scheduler, checkpoint)
+
+
+class TorchDDPModel(ModelWrapper):
+
+    def __init__(self, module: nn.Module, *args, **kwargs) -> None:
+        super().__init__(module)
+        self.module = DDP(module, *args, **kwargs)
+
+    def unwrap(self):
+        return self.module.module
 
 
 class TorchDDPPlugin(Plugin):
@@ -138,10 +186,19 @@ class TorchDDPPlugin(Plugin):
         # cast model to cuda
         model = model.cuda()
 
+        # convert model to sync bn
+        model = nn.SyncBatchNorm.convert_sync_batchnorm(model, None)
+
         # wrap the model with PyTorch DDP
-        model = DDP(model, **self.ddp_kwargs)
+        model = TorchDDPModel(model, **self.ddp_kwargs)
 
         if not isinstance(optimizer, OptimizerWrapper):
             optimizer = OptimizerWrapper(optimizer)
 
         return model, optimizer, criterion, dataloader, lr_scheduler
+
+    def control_checkpoint_io(self) -> bool:
+        return True
+
+    def get_checkpoint_io(self) -> CheckpointIO:
+        return TorchDDPCheckpointIO()
