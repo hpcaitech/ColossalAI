@@ -14,11 +14,6 @@ from .strategies import Strategy
 from .utils import is_rank_0
 
 import ray
-import sys
-import time
-
-# @ray.remote
-
 
 class DetachedTrainer(ABC):
     '''
