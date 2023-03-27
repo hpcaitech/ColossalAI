@@ -41,7 +41,7 @@ def main(args):
         raise ValueError(f'Unsupported model "{args.model}"')
 
     # configure Trainer
-    trainer_ref = DetachedPPOTrainer.options(name="trainer1", num_gpus=1, max_concurrency=3).remote(
+    trainer_ref = DetachedPPOTrainer.options(name="trainer1", num_gpus=1, max_concurrency=2).remote(
         experience_maker_holder_name_list=["maker1"],
         strategy=strategy,
         model=args.model,
@@ -91,7 +91,8 @@ def main(args):
         return {k: v.cuda() for k, v in batch.items()}
 
     trainer_done_ref = trainer_ref.fit.remote(num_episodes=args.num_episodes, max_timesteps=args.max_timesteps, update_timesteps=args.update_timesteps)
-    maker_done_ref = experience_holder_ref.workingloop.remote(sampler, tokenize_fn, times=args.num_episodes * args.max_timesteps * args.update_timesteps + 3)
+    num_exp_per_maker = args.num_episodes * args.max_timesteps // args.update_timesteps * args.max_epochs + 3 # +3 for fault tolerance
+    maker_done_ref = experience_holder_ref.workingloop.remote(sampler, tokenize_fn, times=num_exp_per_maker)
 
     ray.get([trainer_done_ref, maker_done_ref])
 

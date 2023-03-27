@@ -15,6 +15,7 @@ from .utils import is_rank_0
 
 import ray
 import sys
+import time
 
 # @ray.remote
 
@@ -43,7 +44,7 @@ class DetachedTrainer(ABC):
                  buffer_limit: int = 0,
                  buffer_cpu_offload: bool = True,
                  experience_batch_size: int = 8,
-                 max_epochs: int = 10,
+                 max_epochs: int = 1,
                  dataloader_pin_memory: bool = True,
                  callbacks: List[Callback] = [],
                  **generate_kwargs) -> None:
@@ -77,7 +78,7 @@ class DetachedTrainer(ABC):
         for _ in pbar:
             if 'debug' in self.generate_kwargs and self.generate_kwargs['debug'] == True:
                 print("[trainer] sampling exp")
-            experience = self.detached_replay_buffer.sample()
+            experience = self._buffer_sample()
             if 'debug' in self.generate_kwargs and self.generate_kwargs['debug'] == True:
                 print("[trainer] training step")
             metrics = self.training_step(experience)
@@ -93,21 +94,25 @@ class DetachedTrainer(ABC):
                 self._learn()
                 self._update_remote_makers()
             self._on_episode_end(episode)
-        self._on_fit_end()
+        self._on_fit_end() 
 
-    @ray.method(concurrency_group="io")
+    @ray.method(concurrency_group="experience_io")
     def buffer_get_length(self):
         # called by ExperienceMakerHolder
         if 'debug' in self.generate_kwargs and self.generate_kwargs['debug'] == True:
             print("[trainer] telling length")
         return self.detached_replay_buffer.get_length()
 
-    @ray.method(concurrency_group="io")
+    @ray.method(concurrency_group="experience_io")
     def buffer_append(self, experience: Experience):
         # called by ExperienceMakerHolder
         if 'debug' in self.generate_kwargs and self.generate_kwargs['debug'] == True:
             print(f"[trainer] receiving exp. Current buffer length: {self.detached_replay_buffer.get_length()}")
         self.detached_replay_buffer.append(experience)
+        
+    @ray.method(concurrency_group="experience_io")
+    def _buffer_sample(self):
+        return self.detached_replay_buffer.sample()
 
     def _on_fit_start(self) -> None:
         for callback in self.callbacks:

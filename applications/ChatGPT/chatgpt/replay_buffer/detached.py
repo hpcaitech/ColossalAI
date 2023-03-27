@@ -38,7 +38,7 @@ class DetachedReplayBuffer:
         self.tp_world_size = tp_world_size
         self.worker_state = [False] * self.tp_world_size
         self.held_sample = None
-        self.worker_state_lock = Lock()
+        self._worker_state_lock = Lock()
 
     @torch.no_grad()
     def append(self, experience: Experience) -> None:
@@ -64,19 +64,19 @@ class DetachedReplayBuffer:
      
     @torch.no_grad()
     def sample(self, worker_rank = 0, to_device = "cpu") -> Experience:
-        self.worker_state_lock.acquire()
+        self._worker_state_lock.acquire()
         if not any(self.worker_state):
             self.held_sample = self._sample_and_erase()
         self.worker_state[worker_rank] = True
-        self.worker_state_lock.release()
+        self._worker_state_lock.release()
 
         ret = copy.deepcopy(self.held_sample)
         ret.to_device(to_device)
         
-        self.worker_state_lock.acquire()
+        self._worker_state_lock.acquire()
         if all(self.worker_state):
             self.worker_state = [False] * self.tp_world_size
-        self.worker_state_lock.release()
+        self._worker_state_lock.release()
         return ret
         
     @torch.no_grad()

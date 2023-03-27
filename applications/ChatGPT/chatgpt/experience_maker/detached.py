@@ -13,8 +13,7 @@ from copy import deepcopy
 from threading import Lock
 import time
 
-
-@ray.remote
+@ray.remote(concurrency_groups={"experience_io": 1, "model_io": 1, "compute": 1})
 class ExperienceMakerHolder:
     '''
     Args:
@@ -40,7 +39,7 @@ class ExperienceMakerHolder:
         # Need a trainer to give an actor and a critic via initialize_experience_maker(...)
         actor, critic, reward_model, initial_model = None, None, None, None
         self.experience_maker = NaiveExperienceMaker(actor, critic, reward_model, initial_model, self.kl_coef)
-        self.model_visit_lock = Lock()
+        self._model_visit_lock = Lock()
         self.fully_initialized = False
         if 'debug' in self.generate_kwargs and self.generate_kwargs['debug'] == True:
             print('[maker] Waiting for INIT')
@@ -49,8 +48,15 @@ class ExperienceMakerHolder:
         while not self.fully_initialized:
             time.sleep(1.0)
 
+    def update_target_trainer_list(self, detached_trainer_name_list):
+        self.target_trainer_list = []
+        for name in detached_trainer_name_list:
+            self.target_trainer_list.append(ray.get_actor(name))
+
     # copy from ../trainer/base.py
+    @ray.method(concurrency_group="compute")
     def _make_experience(self, inputs: Union[Tensor, Dict[str, Tensor]]) -> Experience:
+        self._get_ready()
         if isinstance(inputs, Tensor):
             return self.experience_maker.make_experience(inputs, **self.generate_kwargs)
         elif isinstance(inputs, dict):
@@ -58,14 +64,8 @@ class ExperienceMakerHolder:
         else:
             raise ValueError(f'Unsupported input type "{type(inputs)}"')
 
-    def update_target_trainer_list(self, detached_trainer_name_list):
-        self.target_trainer_list = []
-        for name in detached_trainer_name_list:
-            self.target_trainer_list.append(ray.get_actor(name))
-
-    def make_and_send(self, inputs):
-        self._get_ready()
-        experience = self._make_experience(inputs)
+    @ray.method(concurrency_group="experience_io")
+    def _send_experience(self, experience):
         # choose a trainer that has the least experience batch in its detached_replay_buffer
         chosen_trainer = None
         min_length = None
@@ -93,10 +93,12 @@ class ExperienceMakerHolder:
                 inputs = tokenizer(rand_prompts)
             else:
                 inputs = rand_prompts
-            self.model_visit_lock.acquire()
-            self.make_and_send(inputs)
-            self.model_visit_lock.release()
+            self._model_visit_lock.acquire()
+            experience = self._make_experience(inputs=inputs)
+            self._model_visit_lock.release()
+            self._send_experience(experience=experience)
 
+    @ray.method(concurrency_group="model_io")
     def initialize_experience_maker(self, init_actor: Actor, init_critic: Critic):
         '''
         called by trainer. Only once.
@@ -119,15 +121,16 @@ class ExperienceMakerHolder:
         self.experience_maker.reward_model = reward_model
         self.fully_initialized = True
 
+    @ray.method(concurrency_group="model_io")
     def update_experience_maker(self, new_actor: Actor, new_critic: Critic):
         '''
             called by trainer
         '''
         # TODO: reduce malloc
-        self.model_visit_lock.acquire()
+        self._model_visit_lock.acquire()
         with torch.no_grad():
             if 'debug' in self.generate_kwargs and self.generate_kwargs['debug'] == True:
                 print("[maker] UPDATE ")
             self.experience_maker.actor = new_actor
             self.experience_maker.critic = new_critic
-        self.model_visit_lock.release()
+        self._model_visit_lock.release()
