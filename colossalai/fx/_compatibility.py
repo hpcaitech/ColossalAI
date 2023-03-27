@@ -2,11 +2,21 @@ from typing import Callable
 
 import torch
 
-try:
-    from . import _meta_registrations
-    META_COMPATIBILITY = True
-except:
+TORCH_MAJOR = int(torch.__version__.split('.')[0])
+TORCH_MINOR = int(torch.__version__.split('.')[1])
+
+if TORCH_MAJOR == 1 and TORCH_MINOR < 12:
     META_COMPATIBILITY = False
+elif TORCH_MAJOR == 1 and TORCH_MINOR == 12:
+    from . import _meta_regist_12
+    META_COMPATIBILITY = True
+elif TORCH_MAJOR == 1 and TORCH_MINOR == 13:
+    from . import _meta_regist_13
+    META_COMPATIBILITY = True
+elif TORCH_MAJOR == 2:
+    from . import _meta_regist_13
+    META_COMPATIBILITY = True
+    raise UserWarning("Colossalai is not tested with torch2.0 yet!!!")
 
 
 def compatibility(is_backward_compatible: bool = False) -> Callable:

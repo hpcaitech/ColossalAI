@@ -8,8 +8,8 @@ from torch.optim import SGD
 
 import colossalai
 from colossalai.booster import Booster
-from colossalai.booster.interface import OptimizerWrapper
 from colossalai.booster.plugin import TorchDDPPlugin
+from colossalai.interface import OptimizerWrapper
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port
 from tests.kit.model_zoo import model_zoo
@@ -34,7 +34,7 @@ def check_torch_ddp_plugin():
 
         model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
 
-        assert isinstance(model, DDP)
+        assert isinstance(model.module, DDP)
         assert isinstance(optimizer, OptimizerWrapper)
 
         output = model(**data)
