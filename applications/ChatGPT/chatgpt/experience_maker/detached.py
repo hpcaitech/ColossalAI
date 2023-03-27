@@ -42,6 +42,8 @@ class ExperienceMakerHolder:
         self.experience_maker = NaiveExperienceMaker(actor, critic, reward_model, initial_model, self.kl_coef)
         self.model_visit_lock = Lock()
         self.fully_initialized = False
+        if 'debug' in self.generate_kwargs and self.generate_kwargs['debug'] == True:
+            print('[maker] Waiting for INIT')
 
     def _get_ready(self):
         while not self.fully_initialized:

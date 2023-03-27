@@ -23,7 +23,7 @@ from .utils import is_rank_0, get_cuda_actor_critic_from_args
 import ray
 import copy
 
-@ray.remote
+@ray.remote(concurrency_groups={"io": 4, "compute": 2})
 class DetachedPPOTrainer(DetachedTrainer):
     '''
         Detached Trainer for PPO algorithm
@@ -88,6 +88,7 @@ class DetachedPPOTrainer(DetachedTrainer):
                          callbacks=callbacks,
                          **generate_kwargs)
 
+    @ray.method(concurrency_group="io")
     def _update_remote_makers(self):
         # TODO: balance duties
         if is_rank_0():
@@ -97,6 +98,7 @@ class DetachedPPOTrainer(DetachedTrainer):
                 with torch.no_grad():
                     ray.get(target_holder.update_experience_maker.remote(self.actor, self.critic))
                     
+    @ray.method(concurrency_group="io")
     def initialize_remote_makers(self):
         # TODO: balance duties
         if is_rank_0():
@@ -106,6 +108,7 @@ class DetachedPPOTrainer(DetachedTrainer):
                 with torch.no_grad():
                     ray.get(target_holder.initialize_experience_maker.remote(self.actor, self.critic))
 
+    @ray.method(concurrency_group="compute")
     def training_step(self, experience: Experience) -> Dict[str, float]:
         self.actor.train()
         self.critic.train()

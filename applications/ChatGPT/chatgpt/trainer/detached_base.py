@@ -95,16 +95,18 @@ class DetachedTrainer(ABC):
             self._on_episode_end(episode)
         self._on_fit_end()
 
+    @ray.method(concurrency_group="io")
     def buffer_get_length(self):
         # called by ExperienceMakerHolder
         if 'debug' in self.generate_kwargs and self.generate_kwargs['debug'] == True:
             print("[trainer] telling length")
         return self.detached_replay_buffer.get_length()
 
+    @ray.method(concurrency_group="io")
     def buffer_append(self, experience: Experience):
         # called by ExperienceMakerHolder
         if 'debug' in self.generate_kwargs and self.generate_kwargs['debug'] == True:
-            print("[trainer] receiving exp")
+            print(f"[trainer] receiving exp. Current buffer length: {self.detached_replay_buffer.get_length()}")
         self.detached_replay_buffer.append(experience)
 
     def _on_fit_start(self) -> None:
