@@ -5,7 +5,8 @@ import torch.nn as nn
 from torch import Tensor
 from torch.optim import Optimizer
 
-from ..interface import OptimizerWrapper
+from colossalai.interface import ModelWrapper, OptimizerWrapper
+
 from .mixed_precision_base import MixedPrecision
 
 __all__ = ['FP16_Torch_MixedPrecision', 'TorchAMPOptimizer', 'TorchAMPModule']
@@ -45,7 +46,9 @@ class TorchAMPOptimizer(OptimizerWrapper):
         scaled_loss.backward(*args, **kwargs)
 
     def step(self, *args, **kwargs) -> Optional[float]:
-        return self.scaler.step(self.optim, *args, **kwargs)
+        out = self.scaler.step(self.optim, *args, **kwargs)
+        self.scaler.update()
+        return out
 
     def scale_loss(self, loss: Tensor) -> Tensor:
         return self.scaler.scale(loss)
@@ -67,7 +70,7 @@ class TorchAMPOptimizer(OptimizerWrapper):
         super().clip_grad_by_norm(max_norm, norm_type, error_if_nonfinite, *args, **kwargs)
 
 
-class TorchAMPModule(nn.Module):
+class TorchAMPModule(ModelWrapper):
     """
     Module wrapper for mixed precision training in FP16 using PyTorch AMP.
 
@@ -76,8 +79,7 @@ class TorchAMPModule(nn.Module):
     """
 
     def __init__(self, module: nn.Module):
-        super().__init__()
-        self.module = module
+        super().__init__(module)
 
     def forward(self, *args, **kwargs):
         with torch.cuda.amp.autocast():
