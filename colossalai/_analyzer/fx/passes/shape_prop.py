@@ -51,7 +51,10 @@ def _normalize_tuple(x):
 
 
 def _current_device(module):
-    return next(module.parameters()).device
+    try:
+        return next(module.parameters()).device
+    except StopIteration:
+        return torch.device('cpu')
 
 
 @compatibility(is_backward_compatible=False)
@@ -120,9 +123,13 @@ class ShapeProp(torch.fx.Interpreter):
                     return t.to('meta')
 
             if isinstance(elem, MetaTensor):
+                if isinstance(elem, torch.nn.Parameter):
+                    return torch.nn.Parameter(_convert_meta(elem._tensor))
                 return _convert_meta(elem._tensor)
 
             elif isinstance(elem, torch.Tensor):
+                if isinstance(elem, torch.nn.Parameter):
+                    return torch.nn.Parameter(_convert_meta(elem))
                 return _convert_meta(elem)
 
             else:
@@ -149,7 +156,11 @@ class ShapeProp(torch.fx.Interpreter):
         n_info.inputs = tuple(v for v in args if is_pure_tensor(v)) + \
                         tuple(v for v in kwargs.values() if is_pure_tensor(v))
 
-        n._meta_data = tree_map(unwrap_fn, _normalize_tuple(r))    # align with SPMD
+        # align with SPMD
+        if isinstance(r, (tuple, list)):
+            n._meta_data = tree_map(unwrap_fn, _normalize_tuple(r))
+        else:
+            n._meta_data = unwrap_fn(r)
 
         n_info.global_ctx = self.global_hook.ctx
         n_info.curr_ctx = self.global_hook.ctx.copy()
