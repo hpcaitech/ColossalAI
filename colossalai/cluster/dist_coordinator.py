@@ -1,3 +1,4 @@
+import functools
 import os
 from contextlib import contextmanager
 
@@ -141,12 +142,12 @@ class DistCoordinator(metaclass=SingletonMeta):
         should_block = rank != executor_rank
 
         if should_block:
-            dist.barrier(group=process_group)
+            self.block_all(process_group)
 
         yield
 
         if not should_block:
-            dist.barrier(group=process_group)
+            self.block_all(process_group)
 
     def destroy(self, process_group: ProcessGroup = None):
         """
@@ -156,3 +157,38 @@ class DistCoordinator(metaclass=SingletonMeta):
             process_group (ProcessGroup, optional): process group to destroy. Defaults to None, which refers to the default process group.
         """
         dist.destroy_process_group(process_group)
+
+    def block_all(self, process_group: ProcessGroup = None):
+        """
+        Block all processes in the process group.
+
+        Args:
+            process_group (ProcessGroup, optional): process group to block. Defaults to None, which refers to the default process group.
+        """
+        dist.barrier(group=process_group)
+
+    def on_master_only(self, process_group: ProcessGroup = None):
+        """
+        A function wrapper that only executes the wrapped function on the master process (rank 0).
+
+        Example:
+            >>> from colossalai.cluster import DistCoordinator
+            >>> dist_coordinator = DistCoordinator()
+            >>>
+            >>> @dist_coordinator.on_master_only()
+            >>> def print_on_master(msg):
+            >>>     print(msg)
+        """
+        is_master = self.is_master(process_group)
+
+        # define an inner functiuon
+        def decorator(func):
+
+            @functools.wraps(func)
+            def wrapper(*args, **kwargs):
+                if is_master:
+                    return func(*args, **kwargs)
+
+            return wrapper
+
+        return decorator

@@ -12,7 +12,7 @@ import torch
 from scipy import ndimage
 from scipy.interpolate import interp2d
 from scipy.linalg import orth
-"""
+
 # --------------------------------------------
 # Super-Resolution
 # --------------------------------------------
@@ -21,7 +21,6 @@ from scipy.linalg import orth
 # https://github.com/cszn
 # From 2019/03--2021/08
 # --------------------------------------------
-"""
 
 
 def modcrop_np(img, sf):
@@ -207,7 +206,7 @@ def fspecial_laplacian(alpha):
 def fspecial(filter_type, *args, **kwargs):
     '''
     python code from:
-    https://github.com/ronaldosena/imagens-medicas-2/blob/40171a6c259edec7827a6693a93955de2bd39e76/Aulas/aula_2_-_uniform_filter/matlab_fspecial.py
+    https://github.com/ronaldosena/imagens-medicas-2/blob/40171a6c259edec7827a6693a93955de2bd39e76/Aulas/aula_2_-_uniform_filter/matlab_fspecial.py  # noqa
     '''
     if filter_type == 'gaussian':
         return fspecial_gaussian(*args, **kwargs)

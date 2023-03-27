@@ -28,11 +28,11 @@ struct MaskedLMInstance {
   }
 };
 
-auto get_new_segment(std::vector<std::string> segment,
-                     std::vector<std::string> segment_jieba,
-                     const std::vector<bool> chinese_vocab) {  // const
-                                                               // std::unordered_set<std::string>
-                                                               // &chinese_vocab
+auto get_new_segment(
+    std::vector<std::string> segment, std::vector<std::string> segment_jieba,
+    const std::vector<bool> chinese_vocab) {  // const
+                                              // std::unordered_set<std::string>
+                                              // &chinese_vocab
   std::unordered_set<std::string> seq_cws_dict;
   for (auto word : segment_jieba) {
     seq_cws_dict.insert(word);
