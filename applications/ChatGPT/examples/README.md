@@ -16,16 +16,16 @@ torchrun --standalone --nproc_per_node=2 train_reward_model.py --pretrain "faceb
 ```
 
 ### Features and tricks in RM training
-- We support [Anthropic/hh-rlhf](https://huggingface.co/datasets/Anthropic/hh-rlhf)and[rm-static](https://huggingface.co/datasets/Dahoas/rm-static) datasets.
+- We support [Anthropic/hh-rlhf](https://huggingface.co/datasets/Anthropic/hh-rlhf) and [rm-static](https://huggingface.co/datasets/Dahoas/rm-static) datasets.
 - We support 2 kinds of loss_function named 'log_sig'(used by OpenAI) and 'log_exp'(used by Anthropic).
 - We change the loss to valid_acc and pair_dist to monitor progress during training.
 - We add special token to the end of the sequence to get better result.
 - We use cosine-reducing lr-scheduler for RM training.
 - We set value_head as 1 liner layer and initialize the weight of value_head using N(0，1/(d_model + 1)) distribution.
-- We train a Bloom-560m reward model for 1 epoch and find the test acc of the model achieve the performance mentions in [Anthropics paper](https://arxiv.org/abs/2112.00861).
+- We train a Bloom-560m reward model for 1 epoch and find the test acc of the model achieve the performance mentions in [Anthropics paper](https://arxiv.org/abs/2204.05862).
 
 ### Experiment result
-Model performance in [Anthropics paper](https://arxiv.org/abs/2112.00861):
+Model performance in [Anthropics paper](https://arxiv.org/abs/2204.05862):
 
 <div align=center> <img width="512" alt="image" src="https://user-images.githubusercontent.com/70618399/225263321-8d64c3a8-6877-4cc8-9b61-0e1c52d3d94f.png">
 

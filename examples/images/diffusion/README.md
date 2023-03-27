@@ -47,40 +47,21 @@ conda env create -f environment.yaml
 conda activate ldm
 ```
 
-You can also update an existing [latent diffusion](https://github.com/CompVis/latent-diffusion) environment by running
+You can also update an existing [latent diffusion](https://github.com/CompVis/latent-diffusion) environment by running:
 
 ```
 conda install pytorch==1.12.1 torchvision==0.13.1 torchaudio==0.12.1 cudatoolkit=11.3 -c pytorch
 pip install transformers diffusers invisible-watermark
 ```
 
-#### Step 2: install lightning
-
-Install Lightning version later than 2022.01.04. We suggest you install lightning from source. Notice that the default download path of pip should be within the conda environment, or you may need to specify using 'which pip' and redirect the path into conda environment. 
-
-##### From Source
-```
-git clone https://github.com/Lightning-AI/lightning.git
-pip install -r requirements.txt
-python setup.py install
-```
-
-##### From pip
-
-```
-pip install pytorch-lightning
-```
-
-#### Step 3:Install [Colossal-AI](https://colossalai.org/download/) From Our Official Website
+#### Step 2:Install [Colossal-AI](https://colossalai.org/download/) From Our Official Website
 
 You can install the latest version (0.2.7) from our official website or from source. Notice that the suitable version for this training is colossalai(0.2.5), which stands for torch(1.12.1).
 
 ##### Download suggested verision for this training
 
 ```
-
 pip install colossalai==0.2.5
-
 ```
 
 ##### Download the latest version from pip for latest torch version
@@ -89,7 +70,7 @@ pip install colossalai==0.2.5
 pip install colossalai
 ```
 
-##### From source
+##### From source:
 
 ```
 git clone https://github.com/hpcaitech/ColossalAI.git
@@ -99,7 +80,7 @@ cd ColossalAI
 CUDA_EXT=1 pip install .
 ```
 
-#### Step 4:Accelerate with flash attention by xformers(Optional)
+#### Step 3:Accelerate with flash attention by xformers(Optional)
 
 Notice that xformers will accelerate the training process in cost of extra disk space. The suitable version of xformers for this training process is 0.12.0. You can download xformers directly via pip. For more release versions, feel free to check its official website: [XFormers](./https://pypi.org/project/xformers/)
 
@@ -113,7 +94,7 @@ To use the stable diffusion Docker image, you can either build using the provide
 
 ```
 # 1. build from dockerfile
-cd docker
+cd ColossalAI/examples/images/diffusion/docker
 docker build -t hpcaitech/diffusion:0.2.0  .
 
 # 2. pull from our docker hub
@@ -127,7 +108,7 @@ Once you have the image ready, you can launch the image with the following comma
 # On Your Host Machine #
 ########################
 # make sure you start your image in the repository root directory
-cd Colossal-AI
+cd ColossalAI
 
 # run the docker container
 docker run --rm \
@@ -144,13 +125,15 @@ docker run --rm \
 # Once you have entered the docker container, go to the stable diffusion directory for training
 cd examples/images/diffusion/
 
+# Download the model checkpoint from pretrained (See the following steps)
+# Set up your configuration the "train_colossalai.sh" (See the following steps)
 # start training with colossalai
 bash train_colossalai.sh
 ```
 
 It is important for you to configure your volume mapping in order to get the best training experience.
-1. **Mandatory**, mount your prepared data to `/data/scratch` via `-v <your-data-dir>:/data/scratch`, where you need to replace `<your-data-dir>` with the actual data path on your machine.
-2. **Recommended**, store the downloaded model weights to your host machine instead of the container directory via `-v <hf-cache-dir>:/root/.cache/huggingface`, where you need to repliace the `<hf-cache-dir>` with the actual path. In this way, you don't have to repeatedly download the pretrained weights for every `docker run`.
+1. **Mandatory**, mount your prepared data to `/data/scratch` via `-v <your-data-dir>:/data/scratch`, where you need to replace `<your-data-dir>` with the actual data path on your machine. Notice that within docker we need to transform Win expresison into Linuxd, e.g. C:\User\Desktop into /c/User/Desktop. 
+2. **Recommended**, store the downloaded model weights to your host machine instead of the container directory via `-v <hf-cache-dir>:/root/.cache/huggingface`, where you need to replace the `<hf-cache-dir>` with the actual path. In this way, you don't have to repeatedly download the pretrained weights for every `docker run`.
 3. **Optional**, if you encounter any problem stating that shared memory is insufficient inside container, please add `-v /dev/shm:/dev/shm` to your `docker run` command.
 
 
