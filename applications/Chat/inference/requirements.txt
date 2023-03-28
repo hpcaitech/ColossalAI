@@ -1,5 +1,5 @@
 fastapi
-locustio
+locust
 numpy
 pydantic
 safetensors
@@ -8,3 +8,5 @@ sse_starlette
 torch
 uvicorn
 git+https://github.com/huggingface/transformers
+accelerate
+bitsandbytes

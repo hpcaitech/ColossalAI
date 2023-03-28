@@ -36,6 +36,12 @@ Tha data is from [LLaMA Int8 4bit ChatBot Guide v2](https://rentry.org/llama-tar
 | LLaMA-30B | 15.8GB | 20GB | 64GB | RTX 3080 20GB, A4500, A5000, 3090, 4090, 6000, Tesla V100 |
 | LLaMA-65B | 31.2GB | 40GB | 128GB | A100 40GB, 2x3090, 2x4090, A40, RTX A6000, 8000, Titan Ada |
 
+## General setup
+
+```shell
+pip install -r requirements.txt
+```
+
 ## 8-bit setup
 
 8-bit quantization is originally supported by the latest [transformers](https://github.com/huggingface/transformers). Please install it from source.

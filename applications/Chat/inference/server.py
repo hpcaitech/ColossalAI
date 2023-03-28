@@ -17,7 +17,7 @@ from transformers import AutoTokenizer, GenerationConfig, LlamaForCausalLM
 from utils import ChatPromptProcessor, Dialogue, LockedIterator, sample_streamingly, update_model_kwargs_fn
 
 CONTEXT = 'Below is an instruction that describes a task. Write a response that appropriately completes the request. Do not generate new instructions.'
-MAX_LEN = 2048
+MAX_LEN = 512
 running_lock = Lock()
 
 
@@ -116,7 +116,7 @@ def generate_no_stream(data: GenerationTaskReq, request: Request):
     prompt_len = inputs['input_ids'].size(1)
     response = output[0, prompt_len:]
     out_string = tokenizer.decode(response, skip_special_tokens=True)
-    return out_string.lstrip()
+    return prompt_processor.postprocess_output(out_string)
 
 
 if __name__ == '__main__':
