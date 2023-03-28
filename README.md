@@ -238,7 +238,7 @@ Please visit our [documentation](https://www.colossalai.org/) and [examples](htt
 - Up to 10.3x growth in model capacity on one GPU
 - A mini demo training process requires only 1.62GB of GPU memory (any consumer-grade GPU)
 
-<p id="inference" align="center">
+<p id="ColossalChat-LoRA" align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chatgpt/LoRA%20data.jpg" width=600/>
 </p>
 
