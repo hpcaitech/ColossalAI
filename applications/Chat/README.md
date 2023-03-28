@@ -21,6 +21,8 @@
 - [Coati7B examples](#coati7b-examples)
   - [Generation](#generation)
   - [Open QA](#open-qa)
+  - [Limitation for LLaMA-finetuned models](#limitation-for-llama-finetuned-models)
+  - [Limitation of dataset](#limitation-of-dataset)
 - [FAQ](#faq)
   - [How to save/load checkpoint](#how-to-saveload-checkpoint)
 - [The Plan](#the-plan)
@@ -263,6 +265,21 @@ For more details, see [`inference/`](https://github.com/hpcaitech/ColossalAI/tre
 
 You can find more examples in this [repo](https://github.com/XueFuzhao/InstructionWild/blob/main/compare.md).
 
+### Limitation for LLaMA-finetuned models
+- Both Alpaca and ColossalChat are based on LLaMA. It is hard to compensate for the missing knowledge in the pre-training stage.
+- Lack of counting ability: Cannot count the number of items in a list.
+- Lack of Logics (reasoning and calculation)
+- Tend to repeat the last sentence (fail to produce the end token).
+- Poor multilingual results: LLaMA is mainly trained on English datasets (Generation performs better than QA).
+
+### Limitation of dataset
+- Lack of summarization ability: No such instructions in finetune datasets.
+- Lack of multi-turn chat: No such instructions in finetune datasets
+- Lack of self-recognition: No such instructions in finetune datasets
+- Lack of Safety:
+  - When the input contains fake facts, the model makes up false facts and explanations.
+  - Cannot abide by OpenAI's policy: When generating prompts from OpenAI API, it always abides by its policy. So no violation case is in the datasets.
+
 ## FAQ
 
 ### How to save/load checkpoint
@@ -379,6 +396,15 @@ The Phd student [Zangwei Zheng](https://github.com/zhengzangw) and [Xue Fuzhao](
   publisher = {GitHub},
   journal = {GitHub repository},
   howpublished = {\url{https://github.com/tatsu-lab/stanford_alpaca}},
+}
+
+@misc{instructionwild,
+  author = {Fuzhao Xue and Zangwei Zheng and Yang You },
+  title = {Instruction in the Wild: A User-based Instruction Dataset},
+  year = {2023},
+  publisher = {GitHub},
+  journal = {GitHub repository},
+  howpublished = {\url{https://github.com/XueFuzhao/InstructionWild}},
 }
 ```
 
