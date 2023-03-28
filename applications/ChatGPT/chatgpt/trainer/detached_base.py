@@ -14,6 +14,7 @@ from .strategies import Strategy
 from .utils import is_rank_0
 
 import ray
+import os
 
 class DetachedTrainer(ABC):
     '''
@@ -34,7 +35,6 @@ class DetachedTrainer(ABC):
 
     def __init__(self,
                  experience_maker_holder_name_list: List[str],
-                 strategy: Strategy,  # TODO: DetachedStrategy
                  train_batch_size: int = 8,
                  buffer_limit: int = 0,
                  buffer_cpu_offload: bool = True,
@@ -44,7 +44,6 @@ class DetachedTrainer(ABC):
                  callbacks: List[Callback] = [],
                  **generate_kwargs) -> None:
         super().__init__()
-        self.strategy = strategy
         self.detached_replay_buffer = DetachedReplayBuffer(train_batch_size, limit=buffer_limit, cpu_offload=buffer_cpu_offload)
         self.experience_batch_size = experience_batch_size
         self.max_epochs = max_epochs
@@ -58,7 +57,7 @@ class DetachedTrainer(ABC):
         self.target_holder_name_list = experience_maker_holder_name_list
         self.target_holder_list = []
         for name in self.target_holder_name_list:
-            self.target_holder_list.append(ray.get_actor(name))
+            self.target_holder_list.append(ray.get_actor(name, namespace=os.environ["RAY_NAMESPACE"]))
 
     @abstractmethod
     def _update_remote_makers(self):

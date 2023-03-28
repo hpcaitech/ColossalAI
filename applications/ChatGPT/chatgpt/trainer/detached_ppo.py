@@ -18,7 +18,7 @@ from colossalai.nn.optimizer import HybridAdam
 from .detached_base import DetachedTrainer
 from .callbacks import Callback
 from .strategies import Strategy
-from .utils import is_rank_0, get_cuda_actor_critic_from_args
+from .utils import is_rank_0, get_cuda_actor_critic_from_args, get_strategy_from_args
 
 import ray
 import copy
@@ -47,7 +47,7 @@ class DetachedPPOTrainer(DetachedTrainer):
 
     def __init__(self,
                  experience_maker_holder_name_list: List[str],
-                 strategy: Strategy,
+                 strategy: str,
                  model: str,
                  pretrained: str = None,
                  lora_rank: int = 0,
@@ -61,10 +61,12 @@ class DetachedPPOTrainer(DetachedTrainer):
                  dataloader_pin_memory: bool = True,
                  callbacks: List[Callback] = [],
                  **generate_kwargs) -> None:
-        self.strategy = strategy
+        # configure strategy
+        self.strategy = get_strategy_from_args(strategy)
         # configure models, loss and optimizers
         with self.strategy.model_init_context():
             self.actor, self.critic = get_cuda_actor_critic_from_args(model, pretrained, lora_rank)
+
         self.actor_loss_fn = PolicyLoss(eps_clip)
         self.critic_loss_fn = ValueLoss(value_clip)
         if isinstance(self.strategy, ColossalAIStrategy):
@@ -75,10 +77,9 @@ class DetachedPPOTrainer(DetachedTrainer):
             self.critic_optim = Adam(self.critic.parameters(), lr=5e-6)
         (self.actor, self.actor_optim), (self.critic, self.critic_optim) = \
             self.strategy.prepare((self.actor, self.actor_optim), (self.critic, self.critic_optim))
-        generate_kwargs = _set_default_generate_kwargs(strategy, generate_kwargs, self.actor)
+        generate_kwargs = _set_default_generate_kwargs(self.strategy, generate_kwargs, self.actor)
 
         super().__init__(experience_maker_holder_name_list,
-                         strategy=strategy,
                          train_batch_size=train_batch_size,
                          buffer_limit=buffer_limit,
                          buffer_cpu_offload=buffer_cpu_offload,

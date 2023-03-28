@@ -13,21 +13,9 @@ from transformers.models.gpt2.tokenization_gpt2 import GPT2Tokenizer
 from colossalai.nn.optimizer import HybridAdam
 
 import ray
-
+import os
 
 def main(args):
-    # configure strategy
-    if args.strategy == 'naive':
-        strategy = NaiveStrategy()
-    elif args.strategy == 'ddp':
-        strategy = DDPStrategy()
-    elif args.strategy == 'colossalai_gemini':
-        strategy = ColossalAIStrategy(stage=3, placement_policy='cuda', initial_scale=2**5)
-    elif args.strategy == 'colossalai_zero2':
-        strategy = ColossalAIStrategy(stage=2, placement_policy='cuda')
-    else:
-        raise ValueError(f'Unsupported strategy "{args.strategy}"')
-
     # configure tokenizer
     if args.model == 'gpt2':
         tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
@@ -43,7 +31,7 @@ def main(args):
     # configure Trainer
     trainer_ref = DetachedPPOTrainer.options(name="trainer1", num_gpus=1, max_concurrency=2).remote(
         experience_maker_holder_name_list=["maker1"],
-        strategy=strategy,
+        strategy=args.trainer_strategy,
         model=args.model,
         pretrained=args.pretrain,
         lora_rank=args.lora_rank,
@@ -64,7 +52,7 @@ def main(args):
     # configure Experience Maker
     experience_holder_ref = ExperienceMakerHolder.options(name="maker1", num_gpus=1, max_concurrency=2).remote(
         detached_trainer_name_list=["trainer1"],
-        strategy=strategy,
+        strategy=args.maker_strategy,
         experience_batch_size=args.experience_batch_size,
         kl_coef=0.1,
         #kwargs:
@@ -77,12 +65,11 @@ def main(args):
         debug=args.debug,
     )
 
-    # trainer send its actor and critic to experience holder.
+    # trainer send its actor and critic to experience holders.
     ray.get(trainer_ref.initialize_remote_makers.remote())
 
     # configure sampler
     dataset = pd.read_csv(args.prompt_path)['prompt']
-    sampler = strategy.setup_sampler(dataset)
 
     def tokenize_fn(texts):
         # MUST padding to max length to ensure inputs of all ranks have the same length
@@ -92,8 +79,8 @@ def main(args):
 
     trainer_done_ref = trainer_ref.fit.remote(num_episodes=args.num_episodes, max_timesteps=args.max_timesteps, update_timesteps=args.update_timesteps)
     num_exp_per_maker = args.num_episodes * args.max_timesteps // args.update_timesteps * args.max_epochs + 3 # +3 for fault tolerance
-    maker_done_ref = experience_holder_ref.workingloop.remote(sampler, tokenize_fn, times=num_exp_per_maker)
-
+    maker_done_ref = experience_holder_ref.workingloop.remote(dataset, tokenize_fn, times=num_exp_per_maker)
+    
     ray.get([trainer_done_ref, maker_done_ref])
 
     # save model checkpoint after fitting
@@ -103,11 +90,13 @@ def main(args):
         trainer_ref.strategy_save_actor_optim.remote('actor_optim_checkpoint_prompts_%d.pt' % (torch.cuda.current_device()),
                                                      only_rank0=False)
 
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('prompt_path')
-    parser.add_argument('--strategy',
+    parser.add_argument('--trainer_strategy',
+                        choices=['naive', 'ddp', 'colossalai_gemini', 'colossalai_zero2'],
+                        default='naive')
+    parser.add_argument('--maker_strategy',
                         choices=['naive', 'ddp', 'colossalai_gemini', 'colossalai_zero2'],
                         default='naive')
     parser.add_argument('--model', default='gpt2', choices=['gpt2', 'bloom', 'opt'])
@@ -124,5 +113,5 @@ if __name__ == '__main__':
 
     parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
-    ray.init()
+    ray.init(namespace=os.environ["RAY_NAMESPACE"])
     main(args)

@@ -8,10 +8,12 @@ import torch.nn as nn
 from chatgpt.models.base import Actor, Critic, RewardModel
 from chatgpt.trainer.strategies.sampler import DistributedSampler
 from chatgpt.trainer.strategies import Strategy
-from chatgpt.trainer.utils import is_rank_0, get_cuda_actor_critic_from_args
+from chatgpt.trainer.utils import is_rank_0, get_strategy_from_args
 from copy import deepcopy
 from threading import Lock
 import time
+import os
+
 
 @ray.remote(concurrency_groups={"experience_io": 1, "model_io": 1, "compute": 1})
 class ExperienceMakerHolder:
@@ -25,14 +27,14 @@ class ExperienceMakerHolder:
 
     def __init__(self,
                  detached_trainer_name_list: List[str],
-                 strategy: Strategy,
+                 strategy: str,
                  experience_batch_size: int = 8,
                  kl_coef: float = 0.1,
                  **generate_kwargs):
         self.target_trainer_list = []
         for name in detached_trainer_name_list:
-            self.target_trainer_list.append(ray.get_actor(name))
-        self.strategy = strategy
+            self.target_trainer_list.append(ray.get_actor(name, namespace=os.environ["RAY_NAMESPACE"]))
+        self.strategy = get_strategy_from_args(strategy)
         self.experience_batch_size = experience_batch_size
         self.kl_coef = kl_coef
         self.generate_kwargs = generate_kwargs
@@ -85,8 +87,9 @@ class ExperienceMakerHolder:
             print("[maker] sending exp")
         chosen_trainer.buffer_append.remote(experience)
 
-    def workingloop(self, sampler: DistributedSampler, tokenizer: Optional[Callable[[Any], dict]] = None, times=5000 * 50000):
+    def workingloop(self, dataset, tokenizer: Optional[Callable[[Any], dict]] = None, times=5000 * 50000):
         self._get_ready()
+        sampler = self.strategy.setup_sampler(dataset)
         for _ in range(times):
             rand_prompts = sampler.sample(self.experience_batch_size)
             if tokenizer is not None:
@@ -108,17 +111,19 @@ class ExperienceMakerHolder:
             return
         if 'debug' in self.generate_kwargs and self.generate_kwargs['debug'] == True:
             print('[maker] INIT')
-        actor = init_actor
-        critic = init_critic
+        with torch.no_grad():
+            actor = init_actor
+            critic = init_critic
 
-        with self.strategy.model_init_context():
-            initial_model = deepcopy(actor)
-            reward_model = RewardModel(deepcopy(critic.model), deepcopy(critic.value_head)).to(torch.cuda.current_device())
+            with self.strategy.model_init_context():
+                initial_model = deepcopy(actor)
+                reward_model = RewardModel(deepcopy(critic.model), 
+                                           deepcopy(critic.value_head)).to(torch.cuda.current_device())
 
-        self.experience_maker.actor = actor
-        self.experience_maker.critic = critic
-        self.experience_maker.initial_model = initial_model
-        self.experience_maker.reward_model = reward_model
+            self.experience_maker.actor = actor
+            self.experience_maker.critic = critic
+            self.experience_maker.initial_model = initial_model
+            self.experience_maker.reward_model = reward_model
         self.fully_initialized = True
 
     @ray.method(concurrency_group="model_io")
