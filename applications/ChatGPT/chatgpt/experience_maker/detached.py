@@ -8,7 +8,7 @@ import torch.nn as nn
 from chatgpt.models.base import Actor, Critic, RewardModel
 from chatgpt.trainer.strategies.sampler import DistributedSampler
 from chatgpt.trainer.strategies import Strategy
-from chatgpt.trainer.utils import is_rank_0, get_strategy_from_args
+from chatgpt.trainer.utils import is_rank_0, get_strategy_from_args, set_dist_env
 from copy import deepcopy
 from threading import Lock
 import time
@@ -28,9 +28,13 @@ class ExperienceMakerHolder:
     def __init__(self,
                  detached_trainer_name_list: List[str],
                  strategy: str,
+                 env_info: Dict[str, str] = None,
                  experience_batch_size: int = 8,
                  kl_coef: float = 0.1,
                  **generate_kwargs):
+        # set environment variables
+        if env_info:
+            set_dist_env(env_info=env_info)
         self.target_trainer_list = []
         for name in detached_trainer_name_list:
             self.target_trainer_list.append(ray.get_actor(name, namespace=os.environ["RAY_NAMESPACE"]))

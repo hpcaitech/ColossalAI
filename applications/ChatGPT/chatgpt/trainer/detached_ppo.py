@@ -18,7 +18,7 @@ from colossalai.nn.optimizer import HybridAdam
 from .detached_base import DetachedTrainer
 from .callbacks import Callback
 from .strategies import Strategy
-from .utils import is_rank_0, get_cuda_actor_critic_from_args, get_strategy_from_args
+from .utils import is_rank_0, get_cuda_actor_critic_from_args, get_strategy_from_args, set_dist_env
 
 import ray
 import copy
@@ -49,6 +49,7 @@ class DetachedPPOTrainer(DetachedTrainer):
                  experience_maker_holder_name_list: List[str],
                  strategy: str,
                  model: str,
+                 env_info: Dict[str, str] = None,
                  pretrained: str = None,
                  lora_rank: int = 0,
                  train_batch_size: int = 8,
@@ -61,6 +62,9 @@ class DetachedPPOTrainer(DetachedTrainer):
                  dataloader_pin_memory: bool = True,
                  callbacks: List[Callback] = [],
                  **generate_kwargs) -> None:
+        # set environment variables
+        if env_info:
+            set_dist_env(env_info=env_info)
         # configure strategy
         self.strategy = get_strategy_from_args(strategy)
         # configure models, loss and optimizers

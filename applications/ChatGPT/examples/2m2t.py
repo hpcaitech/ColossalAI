@@ -33,27 +33,7 @@ def get_local_ip():
 
 def launch_trainer(args, env_info):
     ray.init()
-    # manually set environs
-    os.environ["RANK"] = env_info['rank']
-    os.environ["LOCAL_RANK"] = env_info['local_rank']
-    os.environ["WORLD_SIZE"] = env_info['world_size']
-    os.environ['MASTER_PORT'] = env_info['master_port']
-    os.environ['MASTER_ADDR'] = env_info['master_addr']
-    rank = int(os.environ['RANK'])
-
-    # configure Trainer strategy
-    # ! Supposed to be DDP !
-    if args.trainer_strategy == 'naive':
-        strategy = NaiveStrategy()
-    elif args.trainer_strategy == 'ddp':
-        strategy = DDPStrategy()
-    elif args.trainer_strategy == 'colossalai_gemini':
-        strategy = ColossalAIStrategy(stage=3, placement_policy='cuda', initial_scale=2**5)
-    elif args.trainer_strategy == 'colossalai_zero2':
-        strategy = ColossalAIStrategy(stage=2, placement_policy='cuda')
-    else:
-        raise ValueError(f'Unsupported strategy "{args.trainer_strategy}"')
-
+    rank = int(env_info['rank'])
     # configure tokenizer
     if args.model == 'gpt2':
         tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
@@ -73,8 +53,9 @@ def launch_trainer(args, env_info):
         name = "trainer2"
     trainer_ref = DetachedPPOTrainer.options(name=name, namespace=os.environ["RAY_NAMESPACE"], num_gpus=1, max_concurrency=2).remote(
         experience_maker_holder_name_list=["maker1", "maker2"],
-        strategy=strategy,
+        strategy=args.trainer_strategy,
         model=args.model,
+        env_info=env_info,
         pretrained=args.pretrain,
         lora_rank=args.lora_rank,
         train_batch_size=args.train_batch_size,
@@ -104,30 +85,9 @@ def launch_trainer(args, env_info):
         trainer_ref.strategy_save_actor_optim.remote('actor_optim_checkpoint_prompts_%d.pt' % (torch.cuda.current_device()),
                                                      only_rank0=False)
 
-
-
 def launch_maker(args, env_info):
     ray.init()
-    os.environ["RANK"] = env_info['rank']
-    os.environ["LOCAL_RANK"] = env_info['local_rank']
-    os.environ["WORLD_SIZE"] = env_info['world_size']
-    os.environ['MASTER_PORT'] = env_info['master_port']
-    os.environ['MASTER_ADDR'] = env_info['master_addr']
-    rank = int(os.environ['RANK'])
-
-    # configure Trainer strategy
-    # ! Supposed to be DDP !
-    if args.maker_strategy == 'naive':
-        strategy = NaiveStrategy()
-    elif args.maker_strategy == 'ddp':
-        strategy = DDPStrategy()
-    elif args.maker_strategy == 'colossalai_gemini':
-        strategy = ColossalAIStrategy(stage=3, placement_policy='cuda', initial_scale=2**5)
-    elif args.maker_strategy == 'colossalai_zero2':
-        strategy = ColossalAIStrategy(stage=2, placement_policy='cuda')
-    else:
-        raise ValueError(f'Unsupported strategy "{args.maker_strategy}"')
-
+    rank = int(env_info['rank'])
      # configure tokenizer
     if args.model == 'gpt2':
         tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
@@ -139,7 +99,6 @@ def launch_maker(args, env_info):
         tokenizer = AutoTokenizer.from_pretrained("facebook/opt-350m")
     else:
         raise ValueError(f'Unsupported model "{args.model}"')
-
     # configure Experience Maker
     if rank == 0:
         name = "maker1"
@@ -147,7 +106,8 @@ def launch_maker(args, env_info):
         name = "maker2"
     experience_holder_ref = ExperienceMakerHolder.options(name=name, namespace=os.environ["RAY_NAMESPACE"], num_gpus=1, max_concurrency=2).remote(
         detached_trainer_name_list=["trainer1", "trainer2"],
-        strategy=strategy,
+        strategy=args.maker_strategy,
+        env_info=env_info,
         experience_batch_size=args.experience_batch_size,
         kl_coef=0.1,
         #kwargs:
@@ -161,7 +121,6 @@ def launch_maker(args, env_info):
     )
     # configure sampler
     dataset = pd.read_csv(args.prompt_path)['prompt']
-    sampler = strategy.setup_sampler(dataset)
 
     def tokenize_fn(texts):
         # MUST padding to max length to ensure inputs of all ranks have the same length
@@ -170,7 +129,7 @@ def launch_maker(args, env_info):
         return {k: v.cuda() for k, v in batch.items()}
 
     num_exp_per_maker = args.num_episodes * args.max_timesteps // args.update_timesteps * args.max_epochs + 3  # +3 for fault tolerance
-    maker_done_ref = experience_holder_ref.workingloop.remote(sampler, tokenize_fn, times=num_exp_per_maker)
+    maker_done_ref = experience_holder_ref.workingloop.remote(dataset, tokenize_fn, times=num_exp_per_maker)
 
     ray.get(maker_done_ref)
 

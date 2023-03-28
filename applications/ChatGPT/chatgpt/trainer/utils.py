@@ -1,9 +1,12 @@
 import torch.distributed as dist
+from typing import Any, Callable, Dict, List, Optional
 from chatgpt.models.bloom import BLOOMActor, BLOOMCritic
 from chatgpt.models.gpt import GPTActor, GPTCritic
 from chatgpt.models.opt import OPTActor, OPTCritic
 from chatgpt.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
 import torch
+import os
+
 def is_rank_0() -> bool:
     return not dist.is_initialized() or dist.get_rank() == 0
 
@@ -34,3 +37,10 @@ def get_strategy_from_args(strategy:str):
     else:
         raise ValueError(f'Unsupported strategy "{strategy}"')
     return strategy_
+
+def set_dist_env(env_info: Dict[str, str]):
+    os.environ["RANK"] = env_info['rank']
+    os.environ["LOCAL_RANK"] = env_info['local_rank']
+    os.environ["WORLD_SIZE"] = env_info['world_size']
+    os.environ['MASTER_PORT'] = env_info['master_port']
+    os.environ['MASTER_ADDR'] = env_info['master_addr']
