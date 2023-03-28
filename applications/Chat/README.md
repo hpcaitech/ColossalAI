@@ -20,6 +20,8 @@
 - [Coati7B examples](#coati7b-examples)
   - [Generation](#generation)
   - [Open QA](#open-qa)
+  - [Limitation for LLaMA-finetuned models](#limitation-for-llama-finetuned-models)
+  - [Limitation of dataset](#limitation-of-dataset)
 - [FAQ](#faq)
   - [How to save/load checkpoint](#how-to-saveload-checkpoint)
 - [The Plan](#the-plan)
@@ -214,6 +216,19 @@ We also support training reward model with true-world data. See `examples/train_
 
 </details>
 
+### Limitation for LLaMA-finetuned models
+- Both Alpaca and ColossalChat are based on LLaMA. It is hard to compensate for the missing knowledge in the pre-training stage.
+- Lack of counting ability: Cannot count the number of items in a list.
+- Lack of Logics (reasoning and calculation)
+- Tend to repeat the last sentence (fail to produce the end token).
+- Poor multilingual results: LLaMA is mainly trained on English datasets (Generation performs better than QA).
+### Limitation of dataset
+- Lack of summarization ability: No such instructions in finetune datasets.
+- Lack of multi-turn chat: No such instructions in finetune datasets
+- Lack of self-recognition: No such instructions in finetune datasets
+- Lack of Safety:
+  - When the input contains fake facts, the model makes up false facts and explanations.
+  - Cannot abide by OpenAI's policy: When generating prompts from OpenAI API, it always abides by its policy. So no violation case is in the datasets.
 ## FAQ
 
 ### How to save/load checkpoint
