@@ -18,6 +18,8 @@
   - [Stage2 - Training reward model](#stage2---training-reward-model)
   - [Stage3 - Training model with reinforcement learning by human feedback](#stage3---training-model-with-reinforcement-learning-by-human-feedback)
 - [Coati7B examples](#coati7b-examples)
+  - [Generation](#generation)
+  - [Open QA](#open-qa)
 - [FAQ](#faq)
   - [How to save/load checkpoint](#how-to-saveload-checkpoint)
 - [The Plan](#the-plan)
@@ -77,6 +79,7 @@ pip install .
 ### Supervised datasets collection
 
 we colllected 104K bilingual dataset of Chinese and English, and you can find the datasets in this repo
+[InstructionWild](https://github.com/XueFuzhao/InstructionWild)
 
 Here is how we collected the data
 <p align="center">
@@ -143,6 +146,73 @@ We also support training reward model with true-world data. See `examples/train_
 
 ## Coati7B examples
 
+### Generation
+
+<details><summary><b>E-mail</b></summary>
+
+![phd](assets/Phd.png)
+</details>
+
+<details><summary><b>coding</b></summary>
+
+![sort](assets/quick_sort.png)
+
+</details>
+
+<details><summary><b>regex</b></summary>
+
+![regex](assets/regex.png)
+
+</details>
+
+<details><summary><b>Tex</b></summary>
+
+![tex](assets/tex.png)
+
+</details>
+
+<details><summary><b>writing</b></summary>
+
+![writing](assets/writing.png)
+
+</details>
+
+<details><summary><b>Table</b></summary>
+
+![Table](assets/table.png)
+
+</details>
+
+### Open QA
+<details><summary><b>Game</b></summary>
+
+![Game](assets/game.png)
+
+</details>
+
+<details><summary><b>Travel</b></summary>
+
+![Travel](assets/travel.png)
+
+</details>
+
+<details><summary><b>Physical</b></summary>
+
+![Physical](assets/Physical.png)
+
+</details>
+
+<details><summary><b>Chemical</b></summary>
+
+![Chemical](assets/chemical.png)
+
+</details>
+
+<details><summary><b>Economy</b></summary>
+
+![Economy](assets/economy.png)
+
+</details>
 
 ## FAQ
 
