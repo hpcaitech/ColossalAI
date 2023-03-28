@@ -127,22 +127,24 @@ torchrun --standalone --nproc_per_node=4 train_reward_model.py
 Stage3 uses reinforcement learning algorithm, which is the most complex part of the training process:
 
 <p align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/stage-3.jpeg" width=500/>
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/stage-3.jpeg" width=800/>
 </p>
 
 you can run the `examples/train_prompts.sh` to start training PPO with human feedback
 
 ```
-torchrun --standalone --nproc_per_node=4 train_prompts.py prompts.csv \
-  --pretrain "/path/to/LLaMa-7B/" \
-  --model 'llama' \
-  --strategy colossalai_zero2
+torchrun --standalone --nproc_per_node=4 train_prompts.py \
+         --pretrain "/path/to/LLaMa-7B/" \
+         --model 'llama' \
+         --strategy colossalai_zero2 \
+         --prompt_path /path/to/your/prompt_dataset \
+         --pretrain_dataset /path/to/your/pretrain_dataset \
+         --rm_pretrain /your/pretrain/rm/defination \
+         --rm_path /your/rm/model/path
 ```
 
 
-For more details, see `examples/`.
-
-We also support training reward model with true-world data. See `examples/train_reward_model.py`.
+For more details, see [`examples/`](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat/examples).
 
 ## Coati7B examples
 
@@ -198,7 +200,7 @@ We also support training reward model with true-world data. See `examples/train_
 
 <details><summary><b>Physical</b></summary>
 
-![Physical](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/Physical.png)
+![Physical](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/physical.png)
 
 </details>
 
@@ -247,7 +249,6 @@ trainer.save_model(path=args.save_path, only_rank0=True, tokenizer=tokenizer)
 - [x] implement training reward model
 - [x] support LoRA
 - [x] support inference
-- [x] open source the reward model weight
 - [x] support llama from [facebook](https://github.com/facebookresearch/llama)
 - [x] implement PPO-ptx fine-tuning
 - [ ] integrate with Ray
