@@ -1,6 +1,7 @@
 import re
 from threading import Lock
 from typing import Any, Callable, Generator, List, Optional
+import json
 
 import torch
 import torch.distributed as dist
@@ -123,11 +124,16 @@ STOP_PAT = re.compile(r'(###|instruction:).*', flags=(re.I | re.S))
 
 
 class ChatPromptProcessor:
+    SAFE_RESPONSE = 'The input/response contains inappropriate content, please rephrase your prompt.'
 
-    def __init__(self, tokenizer, context: str, max_len: int = 2048):
+    def __init__(self, tokenizer, context: str, max_len: int = 2048, censored_words: List[str]=[]):
         self.tokenizer = tokenizer
         self.context = context
         self.max_len = max_len
+        if len(censored_words) > 0:
+            self.censored_pat = re.compile(f'({"|".join(map(re.escape, censored_words))})', flags=re.I)
+        else:
+            self.censored_pat = None
         # These will be initialized after the first call of preprocess_prompt()
         self.context_len: Optional[int] = None
         self.dialogue_placeholder_len: Optional[int] = None
@@ -172,6 +178,10 @@ class ChatPromptProcessor:
         output = STOP_PAT.sub('', output)
         return output.strip()
 
+    def has_censored_words(self, text: str) -> bool:
+        if self.censored_pat is None:
+            return False
+        return self.censored_pat.search(text) is not None
 
 class LockedIterator:
 
@@ -185,3 +195,7 @@ class LockedIterator:
     def __next__(self):
         with self.lock:
             return next(self.it)
+
+def load_json(path: str):
+    with open(path) as f:
+        return json.load(f)
