@@ -66,7 +66,7 @@
 <li>
    <a href="#Colossal-AI-in-the-Real-World">Colossal-AI 成功案例</a>
    <ul>
-     <li><a href="#ColossalChat">完整RLHF流程0门槛克隆ChatGPT</a></li>
+     <li><a href="#ColossalChat">ColossalChat：完整RLHF流程0门槛克隆ChatGPT</a></li>
      <li><a href="#AIGC">AIGC: 加速 Stable Diffusion</a></li>
      <li><a href="#生物医药">生物医药: 加速AlphaFold蛋白质结构预测</a></li>
    </ul>

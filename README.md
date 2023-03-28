@@ -66,7 +66,7 @@
    <li>
    <a href="#Colossal-AI-in-the-Real-World">Colossal-AI for Real World Applications</a>
    <ul>
-     <li><a href="#ColossalChat">ChatGPT: An Open-Source Solution for Cloning ChatGPT With a Complete RLHF Pipeline</a></li>
+     <li><a href="#ColossalChat">ColossalChat: An Open-Source Solution for Cloning ChatGPT With a Complete RLHF Pipeline</a></li>
      <li><a href="#AIGC">AIGC: Acceleration of Stable Diffusion</a></li>
      <li><a href="#Biomedicine">Biomedicine: Acceleration of AlphaFold Protein Structure</a></li>
    </ul>
