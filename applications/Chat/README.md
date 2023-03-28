@@ -216,6 +216,8 @@ For more details, see [`examples/`](https://github.com/hpcaitech/ColossalAI/tree
 
 </details>
 
+You can find more examples in this [repo](https://github.com/XueFuzhao/InstructionWild/blob/main/compare.md).
+
 ## FAQ
 
 ### How to save/load checkpoint
