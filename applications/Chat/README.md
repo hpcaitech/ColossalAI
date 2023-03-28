@@ -1,6 +1,6 @@
 <h1 align="center">
     <span>Coati - ColossalAI Talking Intelligence</span>
-    <img width="auto" height="50px", src="assets/logo_coati.png"/>
+    <img width="auto" height="50px", src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/logo_coati.png"/>
 </h1>
 
 
@@ -60,7 +60,7 @@ You can experience the performance of Coati7B on this page.
 ### Install the environment
 
 ```shell
-conda creat -n coati
+conda create -n coati
 conda activate coati
 pip install .
 ```
@@ -83,7 +83,7 @@ we colllected 104K bilingual dataset of Chinese and English, and you can find th
 
 Here is how we collected the data
 <p align="center">
-<img src="assets/data-collect.png" width=500/>
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/data-collect.png" width=500/>
 </p>
 
 ### Stage1 - Supervised instructs tuning
@@ -127,7 +127,7 @@ torchrun --standalone --nproc_per_node=4 train_reward_model.py
 Stage3 uses reinforcement learning algorithm, which is the most complex part of the training process:
 
 <p align="center">
-<img src="assets/stage-3.jpeg" width=500/>
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/stage-3.jpeg" width=500/>
 </p>
 
 you can run the `examples/train_prompts.sh` to start training PPO with human feedback
@@ -150,67 +150,67 @@ We also support training reward model with true-world data. See `examples/train_
 
 <details><summary><b>E-mail</b></summary>
 
-![phd](assets/Phd.png)
+![phd](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/Phd.png)
 </details>
 
 <details><summary><b>coding</b></summary>
 
-![sort](assets/quick_sort.png)
+![sort](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/quick_sort.png)
 
 </details>
 
 <details><summary><b>regex</b></summary>
 
-![regex](assets/regex.png)
+![regex](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/regex.png)
 
 </details>
 
 <details><summary><b>Tex</b></summary>
 
-![tex](assets/tex.png)
+![tex](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/tex.png)
 
 </details>
 
 <details><summary><b>writing</b></summary>
 
-![writing](assets/writing.png)
+![writing](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/writing.png)
 
 </details>
 
 <details><summary><b>Table</b></summary>
 
-![Table](assets/table.png)
+![Table](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/table.png)
 
 </details>
 
 ### Open QA
 <details><summary><b>Game</b></summary>
 
-![Game](assets/game.png)
+![Game](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/game.png)
 
 </details>
 
 <details><summary><b>Travel</b></summary>
 
-![Travel](assets/travel.png)
+![Travel](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/travel.png)
 
 </details>
 
 <details><summary><b>Physical</b></summary>
 
-![Physical](assets/Physical.png)
+![Physical](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/Physical.png)
 
 </details>
 
 <details><summary><b>Chemical</b></summary>
 
-![Chemical](assets/chemical.png)
+![Chemical](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/chemical.png)
 
 </details>
 
 <details><summary><b>Economy</b></summary>
 
-![Economy](assets/economy.png)
+![Economy](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/economy.png)
 
 </details>
 
