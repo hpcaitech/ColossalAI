@@ -66,7 +66,7 @@
    <li>
    <a href="#Colossal-AI-in-the-Real-World">Colossal-AI for Real World Applications</a>
    <ul>
-     <li><a href="#ChatGPT">ChatGPT: Low-cost ChatGPT Equivalent Implementation Process</a></li>
+     <li><a href="#ColossalChat">ColossalChat: An Open-Source Solution for Cloning ChatGPT With a Complete RLHF Pipeline</a></li>
      <li><a href="#AIGC">AIGC: Acceleration of Stable Diffusion</a></li>
      <li><a href="#Biomedicine">Biomedicine: Acceleration of AlphaFold Protein Structure</a></li>
    </ul>
@@ -80,7 +80,7 @@
  </li>
  <li><a href="#Use-Docker">Use Docker</a></li>
  <li><a href="#Community">Community</a></li>
- <li><a href="#contributing">Contributing</a></li>
+ <li><a href="#Contributing">Contributing</a></li>
  <li><a href="#Cite-Us">Cite Us</a></li>
 </ul>
 
@@ -214,22 +214,31 @@ Please visit our [documentation](https://www.colossalai.org/) and [examples](htt
 <p align="right">(<a href="#top">back to top</a>)</p>
 
 ## Colossal-AI in the Real World
-### ChatGPT
-A low-cost [ChatGPT](https://openai.com/blog/chatgpt/) equivalent implementation process. [[code]](https://github.com/hpcaitech/ColossalAI/tree/main/applications/ChatGPT) [[blog]](https://www.hpc-ai.tech/blog/colossal-ai-chatgpt)
-<p id="ChatGPT_scaling" align="center">
+
+### ColossalChat
+
+<div align="center">
+   <a href="https://chat.colossalai.org/">
+   <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/Chat-demo.png" width="700" />
+   </a>
+</div>
+
+[ColossalChat](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat): An open-source solution for cloning [ChatGPT](https://openai.com/blog/chatgpt/) with a complete RLHF pipeline. [[code]](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat) [[blog]](https://www.hpc-ai.tech/blog/colossal-ai-chatgpt) [[demo]](https://chat.colossalai.org)
+
+<p id="ColossalChat_scaling" align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chatgpt/ChatGPT%20scaling.png" width=800/>
 </p>
 
 - Up to 7.73 times faster for single server training and 1.42 times faster for single-GPU inference
 
-<p id="ChatGPT-1GPU" align="center">
+<p id="ColossalChat-1GPU" align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chatgpt/ChatGPT-1GPU.jpg" width=450/>
 </p>
 
 - Up to 10.3x growth in model capacity on one GPU
 - A mini demo training process requires only 1.62GB of GPU memory (any consumer-grade GPU)
 
-<p id="inference" align="center">
+<p id="ColossalChat-LoRA" align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chatgpt/LoRA%20data.jpg" width=600/>
 </p>
 
@@ -375,7 +384,7 @@ Join the Colossal-AI community on [Forum](https://github.com/hpcaitech/ColossalA
 [Slack](https://join.slack.com/t/colossalaiworkspace/shared_invite/zt-z7b26eeb-CBp7jouvu~r0~lcFzX832w),
 and [WeChat(微信)](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/WeChat.png "qrcode") to share your suggestions, feedback, and questions with our engineering team.
 
-## Invitation to open-source contribution
+## Contributing
 Referring to the successful attempts of [BLOOM](https://bigscience.huggingface.co/) and [Stable Diffusion](https://en.wikipedia.org/wiki/Stable_Diffusion), any and all developers and partners with computing powers, datasets, models are welcome to join and build the Colossal-AI community, making efforts towards the era of big AI models!
 
 You may contact us or participate in the following ways:

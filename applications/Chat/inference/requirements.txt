@@ -1,0 +1,13 @@
+fastapi
+locust
+numpy
+pydantic
+safetensors
+slowapi
+sse_starlette
+torch
+uvicorn
+git+https://github.com/huggingface/transformers
+accelerate
+bitsandbytes
+jieba

@@ -138,6 +138,15 @@ class ColoTensor(torch.Tensor):
     def get_tp_world_size(self) -> int:
         return self.process_group.tp_world_size()
 
+    def get_dp_world_size(self) -> int:
+        """get_dp_world_size
+        get the dp world size of the tensor.
+
+        Returns:
+            int: dp world size
+        """
+        return self.process_group.dp_world_size()
+
     def set_dist_spec(self, dist_spec: _DistSpec):
         """set_dist_spec
         set dist spec and change the payloads.

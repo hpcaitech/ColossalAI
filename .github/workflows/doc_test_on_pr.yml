@@ -71,7 +71,7 @@ jobs:
 
       - name: Checkout ColossalAI
         uses: actions/checkout@v3
-      
+
       - name: Install Doc Test Requirements
         run: |
           source activate pytorch
