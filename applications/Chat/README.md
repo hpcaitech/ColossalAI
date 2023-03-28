@@ -52,6 +52,14 @@ The Coati package provides a unified large language model framework that has imp
 - Fast model deploying
 - Perfectly integration with the Hugging Face ecosystem, high degree of model customization
 
+<div align="center">
+  <p align="center">
+    <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chatgpt/chatgpt.png" width=700/>
+  </p>
+
+   Image source: https://openai.com/blog/chatgpt
+</div>
+
 **As Colossa-AI is undergoing some major updates, this project will be actively maintained to stay in line with the Colossal-AI project.**
 
 
@@ -87,11 +95,6 @@ pip install .
 ```
 
 ## How to use?
-
-<p align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chatgpt/chatgpt.png" width=700/>
-<span>Image source: https://openai.com/blog/chatgpt</span>
-</p>
 
 ### Supervised datasets collection
 
