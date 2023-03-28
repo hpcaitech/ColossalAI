@@ -17,7 +17,7 @@
   - [Stage1 - Supervised instructs tuning](#stage1---supervised-instructs-tuning)
   - [Stage2 - Training reward model](#stage2---training-reward-model)
   - [Stage3 - Training model with reinforcement learning by human feedback](#stage3---training-model-with-reinforcement-learning-by-human-feedback)
-  - [Inference - After Training](#inference---after-training) 
+  - [Inference - After Training](#inference---after-training)
 - [Coati7B examples](#coati7b-examples)
   - [Generation](#generation)
   - [Open QA](#open-qa)

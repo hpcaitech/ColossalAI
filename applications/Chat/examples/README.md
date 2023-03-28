@@ -100,7 +100,7 @@ Model performance in [Anthropics paper](https://arxiv.org/abs/2204.05862):
 - --max_len:           max sentence length for generation, type=int, default=512
 - --test:              whether is only tesing, if it's ture, the dataset will be small
 
-## Stage3 - Training model using prompts with RL 
+## Stage3 - Training model using prompts with RL
 
 Stage3 uses reinforcement learning algorithm, which is the most complex part of the training process, as shown below:
 
