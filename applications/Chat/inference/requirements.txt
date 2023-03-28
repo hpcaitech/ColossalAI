@@ -9,3 +9,4 @@ torch
 uvicorn
 git+https://github.com/huggingface/transformers
 accelerate
+bitsandbytes
