@@ -17,6 +17,7 @@
   - [Stage1 - Supervised instructs tuning](#stage1---supervised-instructs-tuning)
   - [Stage2 - Training reward model](#stage2---training-reward-model)
   - [Stage3 - Training model with reinforcement learning by human feedback](#stage3---training-model-with-reinforcement-learning-by-human-feedback)
+  - [Inference - After Training](#inference---after-training) 
 - [Coati7B examples](#coati7b-examples)
   - [Generation](#generation)
   - [Open QA](#open-qa)
@@ -143,8 +144,52 @@ torchrun --standalone --nproc_per_node=4 train_prompts.py \
          --rm_path /your/rm/model/path
 ```
 
-
 For more details, see [`examples/`](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat/examples).
+
+### Inference - After Training
+#### 8-bit setup
+
+8-bit quantization is originally supported by the latest [transformers](https://github.com/huggingface/transformers). Please install it from source.
+
+Please ensure you have downloaded HF-format model weights of LLaMA models.
+
+Usage:
+
+```python
+from transformers import LlamaForCausalLM
+USE_8BIT = True # use 8-bit quantization; otherwise, use fp16
+model = LlamaForCausalLM.from_pretrained(
+            "pretrained/path",
+            load_in_8bit=USE_8BIT,
+            torch_dtype=torch.float16,
+            device_map="auto",
+        )
+if not USE_8BIT:
+    model.half()  # use fp16
+model.eval()
+```
+
+**Troubleshooting**: if you get error indicating your CUDA-related libraries not found when loading 8-bit model, you can check whether your `LD_LIBRARY_PATH` is correct.
+
+E.g. you can set `export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH`.
+
+#### 4-bit setup
+
+Please ensure you have downloaded HF-format model weights of LLaMA models first.
+
+Then you can follow [GPTQ-for-LLaMa](https://github.com/qwopqwop200/GPTQ-for-LLaMa). This lib provides efficient CUDA kernels and weight convertion script.
+
+After installing this lib, we may convert the original HF-format LLaMA model weights to 4-bit version.
+
+```shell
+CUDA_VISIBLE_DEVICES=0 python llama.py /path/to/pretrained/llama-7b c4 --wbits 4 --groupsize 128 --save llama7b-4bit.pt
+```
+
+Run this command in your cloned `GPTQ-for-LLaMa` directory, then you will get a 4-bit weight file `llama7b-4bit-128g.pt`.
+
+**Troubleshooting**: if you get error about `position_ids`, you can checkout to commit `50287c3b9ae4a3b66f6b5127c643ec39b769b155`(`GPTQ-for-LLaMa` repo).
+
+For more details, see [`inference/`](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat/inference).
 
 ## Coati7B examples
 
