@@ -88,7 +88,7 @@ class ExperienceMakerHolder:
                         min_length = temp_length
                         chosen_trainer = target_trainer
         if 'debug' in self.generate_kwargs and self.generate_kwargs['debug'] == True:
-            print("[maker] sending exp")
+            print(f"[maker] sending exp to {chosen_trainer}")
         chosen_trainer.buffer_append.remote(experience)
 
     def workingloop(self, dataset, tokenizer: Optional[Callable[[Any], dict]] = None, times=5000 * 50000):
