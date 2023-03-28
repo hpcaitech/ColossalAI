@@ -332,6 +332,15 @@ The Phd student [Zangwei Zheng](https://github.com/zhengzangw) and [Xue Fuzhao](
   journal = {GitHub repository},
   howpublished = {\url{https://github.com/tatsu-lab/stanford_alpaca}},
 }
+
+@misc{instructionwild,
+  author = {Fuzhao Xue and Zangwei Zheng and Yang You },
+  title = {Instruction in the Wild: A User-based Instruction Dataset},
+  year = {2023},
+  publisher = {GitHub},
+  journal = {GitHub repository},
+  howpublished = {\url{https://github.com/XueFuzhao/InstructionWild}},
+}
 ```
 
 ## Licenses
