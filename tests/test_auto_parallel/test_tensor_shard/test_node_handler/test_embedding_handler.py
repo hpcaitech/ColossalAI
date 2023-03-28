@@ -5,13 +5,15 @@ import torch
 import torch.multiprocessing as mp
 import torch.nn as nn
 
+from colossalai._analyzer.fx.graph_module import ColoGraphModule
+from colossalai._analyzer.fx.passes.shape_prop import shape_prop_pass
+from colossalai._analyzer.fx.tracer.tracer import ColoTracer
 from colossalai.auto_parallel.tensor_shard.node_handler.embedding_handler import (
     EmbeddingFunctionHandler,
     EmbeddingModuleHandler,
 )
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationData, OperationDataType, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
-from colossalai.fx import ColoGraphModule, ColoTracer
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
 from colossalai.testing import assert_close, parameterize, rerun_if_address_is_in_use
@@ -60,9 +62,11 @@ def check_embedding_module_handler(rank, world_size, port):
                                      input_args=[input],
                                      meta_arg_names=['input'])
 
-    tracer = ColoTracer()
-    graph = tracer.trace(model, meta_args={"input": torch.rand(4, 16, 16).to('meta')})
+    tracer = ColoTracer(bias_addition_split=True)
+    meta_args = {"input": torch.rand(4, 16, 16).to('meta')}
+    graph = tracer.trace(model, meta_args=meta_args)
     gm = ColoGraphModule(model, graph)
+    shape_prop_pass(gm, *meta_args.values())
     embedding_node = list(graph.nodes)[1]
     strategies_vector = StrategiesVector(embedding_node)
 
@@ -171,7 +175,7 @@ def check_embedding_function_handler(rank, world_size, port):
                                      input_args=input_args,
                                      meta_arg_names=meta_arg_names,
                                      input_kwargs=input_kwargs)
-    tracer = ColoTracer()
+    tracer = ColoTracer(bias_addition_split=True)
     # graph():
     #     %input_1 : torch.Tensor [#users=1] = placeholder[target=input]
     #     %others : torch.Tensor [#users=1] = placeholder[target=others]
@@ -183,6 +187,7 @@ def check_embedding_function_handler(rank, world_size, port):
     }
     graph = tracer.trace(model, meta_args=meta_args)
     gm = ColoGraphModule(model, graph)
+    shape_prop_pass(gm, *meta_args.values())
 
     embedding_node = list(graph.nodes)[2]
     strategies_vector = StrategiesVector(embedding_node)

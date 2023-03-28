@@ -8,7 +8,6 @@ import torch.nn as nn
 from colossalai._analyzer.fx.graph_module import ColoGraphModule
 from colossalai._analyzer.fx.passes.shape_prop import shape_prop_pass
 from colossalai._analyzer.fx.tracer.tracer import ColoTracer
-from colossalai.auto_parallel.tensor_shard.node_handler.conv_handler import ConvFunctionHandler
 from colossalai.auto_parallel.tensor_shard.node_handler.linear_handler import LinearFunctionHandler
 from colossalai.auto_parallel.tensor_shard.node_handler.sum_handler import SumHandler
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationData, OperationDataType, StrategiesVector

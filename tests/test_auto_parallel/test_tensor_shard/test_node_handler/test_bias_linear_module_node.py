@@ -1,13 +1,13 @@
-from faulthandler import disable
 from functools import partial
-from xml.dom import WrongDocumentErr
 
 import pytest
 import torch
 import torch.multiprocessing as mp
 import torch.nn as nn
-from typing_extensions import Self
 
+from colossalai._analyzer.fx.graph_module import ColoGraphModule
+from colossalai._analyzer.fx.passes.shape_prop import shape_prop_pass
+from colossalai._analyzer.fx.tracer.tracer import ColoTracer
 from colossalai.auto_parallel.tensor_shard.node_handler import LinearFunctionHandler, LinearModuleHandler
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
     OperationData,
@@ -16,12 +16,10 @@ from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
     StrategiesVector,
 )
 from colossalai.device.device_mesh import DeviceMesh
-from colossalai.fx import ColoGraphModule, ColoTracer
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
 from colossalai.testing import assert_close, parameterize, rerun_if_address_is_in_use
 from colossalai.testing.pytest_wrapper import run_on_environment_flag
-from colossalai.testing.utils import parameterize
 from colossalai.utils import free_port
 from tests.test_auto_parallel.test_tensor_shard.test_node_handler.utils import numerical_test_for_node_strategy
 
@@ -62,9 +60,11 @@ def check_linear_module_handler(rank, bias, world_size, port):
                                      meta_arg_names=meta_arg_names,
                                      node_type='bias_module')
 
-    tracer = ColoTracer()
-    graph = tracer.trace(model, meta_args={"x": torch.rand(4, 4, 4, 16).to('meta')})
+    tracer = ColoTracer(bias_addition_split=True)
+    meta_args = {"x": torch.rand(4, 4, 4, 16).to('meta')}
+    graph = tracer.trace(model, meta_args=meta_args)
     gm = ColoGraphModule(model, graph)
+    shape_prop_pass(gm, *meta_args.values())
 
     linear_mod_node = list(graph.nodes)[3]
     strategies_vector = StrategiesVector(linear_mod_node)
