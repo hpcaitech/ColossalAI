@@ -17,6 +17,7 @@
   - [Stage1 - Supervised instructs tuning](#stage1---supervised-instructs-tuning)
   - [Stage2 - Training reward model](#stage2---training-reward-model)
   - [Stage3 - Training model with reinforcement learning by human feedback](#stage3---training-model-with-reinforcement-learning-by-human-feedback)
+  - [Inference - After Training](#inference---after-training) 
 - [Coati7B examples](#coati7b-examples)
   - [Generation](#generation)
   - [Open QA](#open-qa)
@@ -129,22 +130,68 @@ torchrun --standalone --nproc_per_node=4 train_reward_model.py
 Stage3 uses reinforcement learning algorithm, which is the most complex part of the training process:
 
 <p align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/stage-3.jpeg" width=500/>
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/stage-3.jpeg" width=800/>
 </p>
 
 you can run the `examples/train_prompts.sh` to start training PPO with human feedback
 
 ```
-torchrun --standalone --nproc_per_node=4 train_prompts.py prompts.csv \
-  --pretrain "/path/to/LLaMa-7B/" \
-  --model 'llama' \
-  --strategy colossalai_zero2
+torchrun --standalone --nproc_per_node=4 train_prompts.py \
+         --pretrain "/path/to/LLaMa-7B/" \
+         --model 'llama' \
+         --strategy colossalai_zero2 \
+         --prompt_path /path/to/your/prompt_dataset \
+         --pretrain_dataset /path/to/your/pretrain_dataset \
+         --rm_pretrain /your/pretrain/rm/defination \
+         --rm_path /your/rm/model/path
 ```
 
+For more details, see [`examples/`](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat/examples).
 
-For more details, see `examples/`.
+### Inference - After Training
+#### 8-bit setup
 
-We also support training reward model with true-world data. See `examples/train_reward_model.py`.
+8-bit quantization is originally supported by the latest [transformers](https://github.com/huggingface/transformers). Please install it from source.
+
+Please ensure you have downloaded HF-format model weights of LLaMA models.
+
+Usage:
+
+```python
+from transformers import LlamaForCausalLM
+USE_8BIT = True # use 8-bit quantization; otherwise, use fp16
+model = LlamaForCausalLM.from_pretrained(
+            "pretrained/path",
+            load_in_8bit=USE_8BIT,
+            torch_dtype=torch.float16,
+            device_map="auto",
+        )
+if not USE_8BIT:
+    model.half()  # use fp16
+model.eval()
+```
+
+**Troubleshooting**: if you get error indicating your CUDA-related libraries not found when loading 8-bit model, you can check whether your `LD_LIBRARY_PATH` is correct.
+
+E.g. you can set `export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH`.
+
+#### 4-bit setup
+
+Please ensure you have downloaded HF-format model weights of LLaMA models first.
+
+Then you can follow [GPTQ-for-LLaMa](https://github.com/qwopqwop200/GPTQ-for-LLaMa). This lib provides efficient CUDA kernels and weight convertion script.
+
+After installing this lib, we may convert the original HF-format LLaMA model weights to 4-bit version.
+
+```shell
+CUDA_VISIBLE_DEVICES=0 python llama.py /path/to/pretrained/llama-7b c4 --wbits 4 --groupsize 128 --save llama7b-4bit.pt
+```
+
+Run this command in your cloned `GPTQ-for-LLaMa` directory, then you will get a 4-bit weight file `llama7b-4bit-128g.pt`.
+
+**Troubleshooting**: if you get error about `position_ids`, you can checkout to commit `50287c3b9ae4a3b66f6b5127c643ec39b769b155`(`GPTQ-for-LLaMa` repo).
+
+For more details, see [`inference/`](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat/inference).
 
 ## Coati7B examples
 
@@ -200,7 +247,7 @@ We also support training reward model with true-world data. See `examples/train_
 
 <details><summary><b>Physical</b></summary>
 
-![Physical](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/Physical.png)
+![Physical](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/physical.png)
 
 </details>
 
@@ -216,12 +263,15 @@ We also support training reward model with true-world data. See `examples/train_
 
 </details>
 
+You can find more examples in this [repo](https://github.com/XueFuzhao/InstructionWild/blob/main/compare.md).
+
 ### Limitation for LLaMA-finetuned models
 - Both Alpaca and ColossalChat are based on LLaMA. It is hard to compensate for the missing knowledge in the pre-training stage.
 - Lack of counting ability: Cannot count the number of items in a list.
 - Lack of Logics (reasoning and calculation)
 - Tend to repeat the last sentence (fail to produce the end token).
 - Poor multilingual results: LLaMA is mainly trained on English datasets (Generation performs better than QA).
+
 ### Limitation of dataset
 - Lack of summarization ability: No such instructions in finetune datasets.
 - Lack of multi-turn chat: No such instructions in finetune datasets
@@ -229,6 +279,7 @@ We also support training reward model with true-world data. See `examples/train_
 - Lack of Safety:
   - When the input contains fake facts, the model makes up false facts and explanations.
   - Cannot abide by OpenAI's policy: When generating prompts from OpenAI API, it always abides by its policy. So no violation case is in the datasets.
+
 ## FAQ
 
 ### How to save/load checkpoint
@@ -262,7 +313,6 @@ trainer.save_model(path=args.save_path, only_rank0=True, tokenizer=tokenizer)
 - [x] implement training reward model
 - [x] support LoRA
 - [x] support inference
-- [x] open source the reward model weight
 - [x] support llama from [facebook](https://github.com/facebookresearch/llama)
 - [x] implement PPO-ptx fine-tuning
 - [ ] integrate with Ray
