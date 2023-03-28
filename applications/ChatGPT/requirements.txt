@@ -1,7 +1,0 @@
-transformers>=4.20.1
-tqdm
-datasets
-loralib
-colossalai>=0.2.4
-torch==1.12.1
-langchain
