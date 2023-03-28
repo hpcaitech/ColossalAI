@@ -10,3 +10,4 @@ uvicorn
 git+https://github.com/huggingface/transformers
 accelerate
 bitsandbytes
+jieba
