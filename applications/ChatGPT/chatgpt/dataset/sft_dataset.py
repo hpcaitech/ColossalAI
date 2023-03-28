@@ -69,9 +69,8 @@ class SFTDataset(Dataset):
             self.input_ids.append(prompt_token)
             self.labels = copy.deepcopy(self.input_ids)
 
-    def __len__(self):
-        length = len(self.prompts)
-        return length
+    def __len__(self) -> int:
+        return len(self.input_ids)
 
     def __getitem__(self, idx):
         # dict(input_ids=self.input_ids[i], labels=self.labels[i])
