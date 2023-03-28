@@ -7,6 +7,7 @@ import torch
 from torch import autograd, nn, optim
 
 from colossalai.communication.dag_comm import DAGCommunication
+from colossalai.pipeline.middleware import Partition, Topo
 from colossalai.pipeline.scheduler.stage_info import StageInput, StageOutput
 from colossalai.pipeline.scheduler.task import Task
 
@@ -115,6 +116,7 @@ class WorkerStateMachine(StateMachine):
         self.input_queue_bwd = deque()
         self.output_queue_fwd = deque()
         self.output_queue_bwd = deque()
+        self.data_queue = deque()
         self.minibatch_id_to_labels = dict()
         self.minibatch_id_to_backward_cache = dict()
 
@@ -124,10 +126,25 @@ class WorkerStateMachine(StateMachine):
         self.input_queue_bwd_lock = threading.Condition(threading.Lock())
         self.output_queue_fwd_lock = threading.Condition(threading.Lock())
         self.output_queue_bwd_lock = threading.Condition(threading.Lock())
+        self.data_queue_lock = threading.Condition(threading.Lock())
         self.label_lock = threading.Condition(threading.Lock())
 
     def init_comm(self, rank):
+        # initialize comm group with topo
         self.comm = DAGCommunication(rank)
+
+        # add all process groups
+        topo: Topo = self._get_topo()
+        _, input_partition_ids = self._get_input_partition_ids()
+        _, output_partition_ids = self._get_output_partition_ids()
+
+        for input_id in input_partition_ids:
+            src_rank = self._partition_id_to_pp_rank(input_id, topo)
+            self.comm.add_process_group(src_rank, self.rank)
+
+        for output_id in output_partition_ids:
+            dst_rank = self._partition_id_to_pp_rank(output_id, topo)
+            self.comm.add_process_group(self.rank, dst_rank)
 
     def set_fwd_only(self, fwd_only=True):
         self.fwd_only = fwd_only
@@ -300,6 +317,91 @@ class WorkerStateMachine(StateMachine):
                     self._topo = None
         return self._topo
 
+    def _pp_rank_to_partition_id(self, pp_rank: int, topo: Topo):
+        partition_ids = topo.get_mid_partition_ids()
+        return partition_ids[pp_rank]
+
+    def _partition_id_to_pp_rank(self, partition_id: int, topo: Topo):
+        partition_ids = topo.get_mid_partition_ids()
+        for i, id in enumerate(partition_ids):
+            if id == partition_id:
+                return i
+
+    def _get_input_partition_ids(self, model_input=True):
+        topo: Topo = self._get_topo()
+        partition_id = self._pp_rank_to_partition_id(self.rank, topo)
+        partition: Partition = topo.get_partition_by_id(partition_id)
+        model_input_partition_id = topo.get_input_partition_id()
+        if model_input:
+            input_partition_ids = partition.get_input_partition_ids(input_partition_id=model_input_partition_id)
+        else:
+            input_partition_ids = partition.get_input_partition_ids()
+        return model_input_partition_id, input_partition_ids
+
+    def _get_output_partition_ids(self, model_output=True):
+        topo: Topo = self._get_topo()
+        partition_id = self._pp_rank_to_partition_id(self.rank, topo)
+        partition: Partition = topo.get_partition_by_id(partition_id)
+        model_output_partition_id = topo.get_output_partition_id()
+        if model_output:
+            output_partition_ids = partition.get_output_partition_ids(output_partition_id=model_output_partition_id)
+        else:
+            output_partition_ids = partition.get_output_partition_ids()
+        return model_output_partition_id, output_partition_ids
+
+    def _get_input_offsets_by_index(self, target_index):
+        res = []
+        topo: Topo = self._get_topo()
+        model_input_partition_id, input_partition_ids = self._get_input_partition_ids(model_input=False)
+        self_partition_id = self._pp_rank_to_partition_id(self.rank, topo)
+        self_partition: Partition = topo.get_partition_by_id(self_partition_id)
+        input_vals = self_partition.get_input_vals()
+
+        if self._need_model_input():
+            base = 1
+        else:
+            base = 0
+        for val in input_vals:
+            val_pos = val.get()
+            src_partition_id = val_pos.partition_id
+            src_offset = val_pos.offset
+            src_index = base
+            src_partition = topo.get_partition_by_id(src_partition_id)
+            output_len = len(src_partition.get_output_vals())
+            # data from not-input partition
+            if src_partition_id != model_input_partition_id:
+                src_stage_id = self._partition_id_to_pp_rank(src_partition_id, topo)
+                src_index = base
+                for i, id in enumerate(input_partition_ids):
+                    stage_id = self._partition_id_to_pp_rank(id, topo)
+                    if stage_id == src_stage_id:
+                        src_index += i
+                        break
+            else:    # data from input partition
+                src_index = 0
+            # when output_len = 1, not iterable
+            if target_index == src_index:
+                if output_len == 1:
+                    res = None    # offset = None to get all outputs
+                    return res
+                else:
+                    res.append(src_offset)
+        return res
+
+    def _need_model_input(self):
+        need_input = False
+        topo: Topo = self._get_topo()
+        self_partition_id = self._pp_rank_to_partition_id(self.rank, topo)
+        self_partition = topo.get_partition_by_id(self_partition_id)
+        partition_inputs = self_partition.get_input_partition_ids()
+        model_input_partition_id = topo.get_input_partition_id()
+        if model_input_partition_id in partition_inputs:
+            need_input = True
+        return not self._is_first_stage() and need_input
+
+    def _is_first_stage(self):
+        return self.rank == 0
+
     def _push_queue_with_lock(self, queue, lock, event):
         with lock:
             queue.append(event)
@@ -316,8 +418,63 @@ class WorkerStateMachine(StateMachine):
 
     # TODO use aync thread to do the consumer-producer queue.
     def _wait_for_last_fwds(self, minibatch_id):
-        args = ()
+        args = []
         kwargs = {}
+        # add communication framework like p2p
+        topo: Topo = self._get_topo()
+        model_input_partition_id, input_partition_ids = self._get_input_partition_ids(model_input=False)
+
+        input_rank = self._partition_id_to_pp_rank(model_input_partition_id, topo)
+        # input rank need input only
+        if self.rank == input_rank:
+            return
+        else:
+            res = []
+            if self._need_model_input():
+                src_rank = self._partition_id_to_pp_rank(model_input_partition_id, topo)
+                arg = self.comm.recv(src_rank)
+                res.append(arg)
+            for input_id in input_partition_ids:
+                if model_input_partition_id != input_id:
+                    src_rank = self._partition_id_to_pp_rank(input_id, topo)
+                    arg = self.comm.recv(src_rank)
+                    res.append(arg)
+
+        self_partition_id = self._pp_rank_to_partition_id(self.rank, topo)
+        self_partition: Partition = topo.get_partition_by_id(self_partition_id)
+        input_vals = self_partition.get_input_vals()
+
+        if self._need_model_input():
+            base = 1
+        else:
+            base = 0
+        for val in input_vals:
+            val_pos = val.get()
+            src_partition_id = val_pos.partition_id
+            src_offset = val_pos.offset
+            src_index = base
+            src_partition = topo.get_partition_by_id(src_partition_id)
+            output_len = len(src_partition.get_output_vals())
+            # data from not-input partition
+            if src_partition_id != model_input_partition_id:
+                src_stage_id = self._partition_id_to_pp_rank(src_partition_id, topo)
+                src_index = base
+                for i, id in enumerate(input_partition_ids):
+                    stage_id = self._partition_id_to_pp_rank(id, topo)
+                    if stage_id == src_stage_id:
+                        src_index += i
+                        break
+            else:    # data from input partition
+                src_index = 0
+            # when output_len = 1, not iterable
+            if output_len == 1:
+                target = res[src_index]
+            else:
+                offsets = self._get_input_offsets_by_index(src_index)
+                real_offset = offsets.index(src_offset)
+                target = res[src_index][real_offset]
+            args.append(target)
+
         stage_input: StageInput = StageInput(minibatch_id, args, kwargs)
         self._push_queue_with_lock(self.input_queue_fwd, self.input_queue_fwd_lock, stage_input)
 
@@ -330,7 +487,16 @@ class WorkerStateMachine(StateMachine):
 
     # TODO use aync thread to do the consumer-producer queue.
     def _send_to_next_fwds(self, outputs):
-        pass
+        args = []
+        topo: Topo = self._get_topo()
+        _, model_output_partition_ids = self._get_output_partition_ids(model_output=False)
+        inputs = self._po
+
+        if self._is_first_stage():
+            input_partition = topo.get_input_partition()
+            partition_ids = input_partition.get_input_partition_ids()
+            for id in partition_ids:
+                dst_rank = self._partition_id_to_pp_rank(id, topo)
 
     # TODO use aync thread to do the consumer-producer queue.
     def _send_to_next_bwds(self, grads):

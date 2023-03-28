@@ -89,8 +89,8 @@ class PipelineScheduler():
         self.worker.set_initial_state("start")
         self.worker.set_device(self.device)
         self.worker.initialize_partition(self.partition_fn, partition_args=(self.rank, self.num_stages))
-        self.worker.run()
         self._initialize_communication()
+        self.worker.run()
 
     def _initialize_communication(self):
         self.worker.init_comm(self.rank)
