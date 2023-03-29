@@ -3,6 +3,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 from .naive import NaiveExperienceMaker, Experience, ExperienceMaker
 from ..replay_buffer.detached import DetachedReplayBuffer
 import ray
+from ray.exceptions import GetTimeoutError
 from torch import Tensor
 import torch.nn as nn
 from chatgpt.models.base import Actor, Critic, RewardModel
@@ -79,14 +80,18 @@ class ExperienceMakerHolder:
             print("[maker] choosing tartget trainer")
         while chosen_trainer is None:
             for target_trainer in self.target_trainer_list:
-                temp_length = ray.get(target_trainer.buffer_get_length.remote())
-                if min_length is None:
-                    min_length = temp_length
-                    chosen_trainer = target_trainer
-                else:
-                    if temp_length < min_length:
+                try:
+                    temp_length = ray.get(target_trainer.buffer_get_length.remote(), timeout=1.0)
+                    if min_length is None:
                         min_length = temp_length
                         chosen_trainer = target_trainer
+                    else:
+                        if temp_length < min_length:
+                            min_length = temp_length
+                            chosen_trainer = target_trainer
+                except GetTimeoutError:
+                    pass
+                    
         if 'debug' in self.generate_kwargs and self.generate_kwargs['debug'] == True:
             print(f"[maker] sending exp to {chosen_trainer}")
         chosen_trainer.buffer_append.remote(experience)
