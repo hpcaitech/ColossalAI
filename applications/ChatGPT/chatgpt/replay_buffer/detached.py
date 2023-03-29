@@ -53,7 +53,6 @@ class DetachedReplayBuffer:
             items = self.batch_collector[:self.sample_batch_size]
             experience = make_experience_batch(items)
             self.items.put(experience, block=True)
-            print(" queue exp in")
             self.batch_collector = self.batch_collector[self.sample_batch_size:]
 
     def clear(self) -> None:
@@ -81,10 +80,8 @@ class DetachedReplayBuffer:
     @torch.no_grad()
     def _sample_and_erase(self) -> Experience:
         ret = self.items.get(block=True)
-        print(" queue exp out")
         return ret
 
     def get_length(self) -> int:
         ret = self.items.qsize()
-        print(" queue return length")
         return ret

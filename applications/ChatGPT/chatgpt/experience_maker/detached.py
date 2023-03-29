@@ -81,7 +81,7 @@ class ExperienceMakerHolder:
         while chosen_trainer is None:
             for target_trainer in self.target_trainer_list:
                 try:
-                    temp_length = ray.get(target_trainer.buffer_get_length.remote(), timeout=1.0)
+                    temp_length = ray.get(target_trainer.buffer_get_length.remote(), timeout=0.1)
                     if min_length is None:
                         min_length = temp_length
                         chosen_trainer = target_trainer
