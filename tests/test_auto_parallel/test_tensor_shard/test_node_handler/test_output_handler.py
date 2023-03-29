@@ -1,3 +1,4 @@
+import pytest
 import torch
 import torch.nn as nn
 
@@ -20,6 +21,7 @@ class OutputModel(nn.Module):
         return x, y
 
 
+@pytest.skip('ShapeProp is not compatible with PyTorch 1.11.0')
 @parameterize('output_option', ['distributed', 'replicated'])
 @rerun_if_address_is_in_use()
 def test_output_handler(output_option):

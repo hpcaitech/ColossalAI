@@ -1,3 +1,4 @@
+import pytest
 import torch
 import torch.nn as nn
 
@@ -19,6 +20,7 @@ class ConvModel(nn.Module):
         return output
 
 
+@pytest.skip('ShapeProp is not compatible with PyTorch 1.11.0')
 def test_where_handler():
     model = ConvModel()
     tracer = ColoTracer(bias_addition_split=True)

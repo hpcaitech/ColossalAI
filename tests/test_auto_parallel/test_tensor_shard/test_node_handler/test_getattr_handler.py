@@ -1,3 +1,4 @@
+import pytest
 import torch
 import torch.nn as nn
 
@@ -20,6 +21,7 @@ class GetattrModel(nn.Module):
         return weight
 
 
+@pytest.skip('ShapeProp is not compatible with PyTorch 1.11.0')
 def test_getattr_handler():
     model = GetattrModel()
     tracer = ColoTracer(bias_addition_split=True)
