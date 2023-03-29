@@ -280,7 +280,7 @@ For more details, see [`inference/`](https://github.com/hpcaitech/ColossalAI/tre
 
 </details>
 
-You can find more examples in this [repo](https://github.com/XueFuzhao/InstructionWild/blob/main/compare.md).
+You can find more examples in this [repo](https://github.com/XueFuzhao/InstructionWild/blob/main/comparison.md).
 
 ### Limitation for LLaMA-finetuned models
 - Both Alpaca and ColossalChat are based on LLaMA. It is hard to compensate for the missing knowledge in the pre-training stage.
