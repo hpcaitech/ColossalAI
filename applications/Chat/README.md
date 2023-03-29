@@ -377,9 +377,16 @@ Thanks so much to all of our amazing contributors!
 
 ## Authors
 
-Coati is developed by ColossalAI Team: [Fazzie](https://fazzie-key.cool/about/index.html), [FrankLeeeee](https://github.com/FrankLeeeee), [BlueRum](https://github.com/ht-zhou), [ver217](https://github.com/ver217)
+Coati is developed by ColossalAI Team:
+- [Fazzie](https://fazzie-key.cool/about/index.html)
+- [FrankLeeeee](https://github.com/FrankLeeeee)
+- [BlueRum](https://github.com/ht-zhou)
+- [ver217](https://github.com/ver217)
+- [ofey404](https://github.com/ofey404)
 
-The Phd student [Zangwei Zheng](https://github.com/zhengzangw) and [Xue Fuzhao](https://github.com/XueFuzhao) also contributed a lot to this project.
+The Phd student from [(HPC-AI) Lab](https://ai.comp.nus.edu.sg/) also contributed a lot to this project.
+- [Zangwei Zheng](https://github.com/zhengzangw)
+- [Xue Fuzhao](https://github.com/XueFuzhao)
 
 ## Citations
 
