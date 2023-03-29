@@ -1,13 +1,14 @@
 <h1 align="center">
-    <span>Coati - ColossalAI Talking Intelligence</span>
-    <img width="auto" height="50px", src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/logo_coati.png"/>
+  <img width="auto" height="100px", src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/logo_coati.png"/>
+  <br/>
+  <span>ColossalChat</span>
 </h1>
 
 
 ## Table of Contents
 
 - [Table of Contents](#table-of-contents)
-- [What is Coati ?](#what-is-coati-)
+- [What is ColossalChat and Coati ?](#what-is-colossalchat-and-coati-)
 - [Online demo](#online-demo)
 - [Install](#install)
   - [Install the environment](#install-the-environment)
@@ -18,6 +19,8 @@
   - [Stage2 - Training reward model](#stage2---training-reward-model)
   - [Stage3 - Training model with reinforcement learning by human feedback](#stage3---training-model-with-reinforcement-learning-by-human-feedback)
   - [Inference - After Training](#inference---after-training)
+    - [8-bit setup](#8-bit-setup)
+    - [4-bit setup](#4-bit-setup)
 - [Coati7B examples](#coati7b-examples)
   - [Generation](#generation)
   - [Open QA](#open-qa)
@@ -33,9 +36,13 @@
 - [Citations](#citations)
 - [Licenses](#licenses)
 ---
-## What is Coati ?
+## What is ColossalChat and Coati ?
 
-Coati is a large language model developed by Colossal-AI, which is also a unified large language model framework that has implemented the following functions
+ColossalChat is the project to implement LLM with RLHF, powered by the Colossal-AI project.
+
+Coati stands for `ColossalAI Talking Intelligence`. It is the name for the module implemented in this project and is also the name of the large language model developed by the ColossalChat project.
+
+The Coati package provides a unified large language model framework that has implemented the following functions
 - Supports comprehensive large-model training acceleration capabilities for ColossalAI, without requiring knowledge of complex distributed training algorithms
 - Supervised datasets collection
 - Supervised insturcts fine-tuning
@@ -45,17 +52,23 @@ Coati is a large language model developed by Colossal-AI, which is also a unifie
 - Fast model deploying
 - Perfectly integration with the Hugging Face ecosystem, high degree of model customization
 
+**As Colossa-AI is undergoing some major updates, this project will be actively maintained to stay in line with the Colossal-AI project.**
+
 
 More details can be found in the [blog](https://www.hpc-ai.tech/blog/colossal-ai-chatgpt).
 
 <p align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chatgpt/chatgpt.png" width=700/>
+<span>Image source: https://openai.com/blog/chatgpt</span>
 </p>
+
 
 ## Online demo
 You can experience the performance of Coati7B on this page.
 
 [chat.colossalai.org](https://chat.colossalai.org/)
+
+Due to resource constraints, we will only provide this service from 29th Mar 2023 to 5 April 2023. However, we have provided the inference code in the [inference](./inference/) folder. The WebUI will be open-sourced soon as well.
 
 > Warning: Due to model and dataset size limitations, Coati is just a baby model, Coati7B may output incorrect information and lack the ability for multi-turn dialogue. There is still significant room for improvement.
 ## Install
