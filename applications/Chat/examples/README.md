@@ -125,6 +125,7 @@ torchrun --standalone --nproc_per_node=4 train_prompts.py \
 - --strategy:          the strategy using for training, choices=['naive', 'ddp', 'colossalai_gemini', 'colossalai_zero2'], default='naive'
 - --model:             model type of actor, choices=['gpt2', 'bloom', 'opt', 'llama'], default='bloom'
 - --pretrain:          pretrain model, type=str, default=None
+- --rm_model:          reward model type, type=str, choices=['gpt2', 'bloom', 'opt', 'llama'], default=None
 - --rm_pretrain:       pretrain model for reward model, type=str, default=None
 - --rm_path:           the path of rm model, type=str, default=None
 - --save_path:         path to save the model, type=str, default='output'
