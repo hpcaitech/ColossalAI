@@ -84,9 +84,9 @@ def numerical_test_for_node_strategy(model: torch.nn.Module,
         tracer = ColoTracer(bias_addition_split=True)
         input_sample = {}
         for input_arg, meta_arg_name in zip(input_args, meta_arg_names):
-            input_sample[meta_arg_name] = torch.rand(input_arg.shape).to('meta')
+            input_sample[meta_arg_name] = torch.empty(input_arg.shape, dtype=input_arg.dtype).to('meta')
         for meta_kwarg_name, input_kwarg in input_kwargs.items():
-            input_sample[meta_kwarg_name] = torch.rand(input_kwarg.shape).to('meta')
+            input_sample[meta_kwarg_name] = torch.empty(input_kwarg.shape, dtype=input_kwarg.dtype).to('meta')
         graph = tracer.trace(root=model_to_shard, meta_args=input_sample)
         gm = ColoGraphModule(model_to_shard, graph, model_to_shard.__class__.__name__)
         shape_prop_pass(gm, *input_sample.values())

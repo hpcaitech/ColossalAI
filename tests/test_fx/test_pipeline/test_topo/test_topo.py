@@ -7,7 +7,7 @@ BATCH_SIZE = 1
 SEQ_LENGHT = 16
 
 
-@pytest.skip('ShapeProp is not compatible with PyTorch 1.11.0')
+@pytest.mark.skip('ShapeProp is not compatible with PyTorch 1.11.0')
 def test_opt():
     MODEL_LIST = [
         MLP,

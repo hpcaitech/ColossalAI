@@ -20,7 +20,7 @@ class PlaceholderModel(nn.Module):
         return input
 
 
-@pytest.skip('ShapeProp is not compatible with PyTorch 1.11.0')
+@pytest.mark.skip('ShapeProp is not compatible with PyTorch 1.11.0')
 @parameterize('placeholder_option', ['distributed', 'replicated'])
 @rerun_if_address_is_in_use()
 def test_placeholder_handler(placeholder_option):

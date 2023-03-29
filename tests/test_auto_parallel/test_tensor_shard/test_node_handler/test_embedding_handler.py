@@ -63,7 +63,7 @@ def check_embedding_module_handler(rank, world_size, port):
                                      meta_arg_names=['input'])
 
     tracer = ColoTracer(bias_addition_split=True)
-    meta_args = {"input": torch.rand(4, 16, 16).to('meta')}
+    meta_args = {"input": torch.randint(NUM_EMBEDDINGS, (4, 16, 16)).to('meta')}
     graph = tracer.trace(model, meta_args=meta_args)
     gm = ColoGraphModule(model, graph)
     shape_prop_pass(gm, *meta_args.values())
@@ -182,7 +182,7 @@ def check_embedding_function_handler(rank, world_size, port):
     #     %embedding : [#users=1] = call_function[target=torch.nn.functional.embedding](args = (%input_1, %others), kwargs = {padding_idx: None, max_norm: None, norm_type: 2.0, scale_grad_by_freq: False, sparse: False})
     #     return embedding
     meta_args = {
-        "input": torch.rand(4, 16, 16).to('meta'),
+        "input": torch.randint(NUM_EMBEDDINGS, (4, 16, 16)).to('meta'),
         "others": torch.rand(NUM_EMBEDDINGS, EMBEDDING_DIMS).to('meta')
     }
     graph = tracer.trace(model, meta_args=meta_args)

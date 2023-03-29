@@ -448,12 +448,6 @@ if version.parse(torch.__version__) >= version.parse('1.12.0'):
                                       scale_grad_by_freq):
         return new((num_weights, grad_output.size(-1)), dtype=grad_output.dtype, layout=grad_output.layout)
 
-    @register_meta(aten.embedding.default)
-    def meta_embedding_default(weight: torch.Tensor, indices: torch.Tensor):
-        shape = list(indices.shape)
-        shape.append(weight.shape[-1])
-        return new(shape, dtype=indices.dtype, layout=indices.layout)
-
     # ============================== Dropout ===========================================
     # https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/Dropout.cpp
     @register_meta(aten.native_dropout.default)
