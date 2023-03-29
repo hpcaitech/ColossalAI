@@ -23,7 +23,7 @@ from .utils import is_rank_0, get_cuda_actor_critic_from_args, get_strategy_from
 import ray
 import copy
 
-@ray.remote(concurrency_groups={"experience_io": 4, "model_io": 1, "compute": 2})
+@ray.remote(concurrency_groups={"buffer_length": 1, "buffer_append":1, "buffer_sample":1,"model_io": 1, "compute": 1})
 class DetachedPPOTrainer(DetachedTrainer):
     '''
         Detached Trainer for PPO algorithm

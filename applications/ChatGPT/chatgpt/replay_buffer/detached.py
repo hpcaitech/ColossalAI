@@ -52,7 +52,8 @@ class DetachedReplayBuffer:
         while len(self.batch_collector) >= self.sample_batch_size:
             items = self.batch_collector[:self.sample_batch_size]
             experience = make_experience_batch(items)
-            self.items.put(experience, block=False)
+            self.items.put(experience, block=True)
+            print(" queue exp in")
             self.batch_collector = self.batch_collector[self.sample_batch_size:]
 
     def clear(self) -> None:
@@ -68,20 +69,22 @@ class DetachedReplayBuffer:
         if not any(self.worker_state):
             self.held_sample = self._sample_and_erase()
         self.worker_state[worker_rank] = True
-        self._worker_state_lock.release()
-
-        ret = copy.deepcopy(self.held_sample)
-        ret.to_device(to_device)
-        
-        self._worker_state_lock.acquire()
         if all(self.worker_state):
             self.worker_state = [False] * self.tp_world_size
+            ret = self.held_sample
+        else:
+            ret = copy.deepcopy(self.held_sample)
         self._worker_state_lock.release()
+        ret.to_device(to_device)
         return ret
-        
+
     @torch.no_grad()
     def _sample_and_erase(self) -> Experience:
-        return self.items.get(block=True)
+        ret = self.items.get(block=True)
+        print(" queue exp out")
+        return ret
 
     def get_length(self) -> int:
-        return self.items.qsize()
+        ret = self.items.qsize()
+        print(" queue return length")
+        return ret

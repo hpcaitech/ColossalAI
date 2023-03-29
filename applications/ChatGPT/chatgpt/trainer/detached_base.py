@@ -77,6 +77,8 @@ class DetachedTrainer(ABC):
             if 'debug' in self.generate_kwargs and self.generate_kwargs['debug'] == True:
                 print("[trainer] training step")
             metrics = self.training_step(experience)
+            if 'debug' in self.generate_kwargs and self.generate_kwargs['debug'] == True:
+                print("[trainer] step over")
             pbar.set_postfix(metrics)
 
     def fit(self, num_episodes: int = 50000, max_timesteps: int = 500, update_timesteps: int = 5000) -> None:
@@ -91,22 +93,22 @@ class DetachedTrainer(ABC):
             self._on_episode_end(episode)
         self._on_fit_end()
 
-    @ray.method(concurrency_group="experience_io")
+    @ray.method(concurrency_group="buffer_length")
     def buffer_get_length(self):
         # called by ExperienceMakerHolder
         if 'debug' in self.generate_kwargs and self.generate_kwargs['debug'] == True:
-            print("[trainer]        telling length")
+            print("[trainer]                telling length")
         return self.detached_replay_buffer.get_length()
 
-    @ray.method(concurrency_group="experience_io")
+    @ray.method(concurrency_group="buffer_append")
     def buffer_append(self, experience: Experience):
         # called by ExperienceMakerHolder
         if 'debug' in self.generate_kwargs and self.generate_kwargs['debug'] == True:
             # print(f"[trainer] receiving exp. Current buffer length: {self.detached_replay_buffer.get_length()}")
-            print(f"[trainer]        receiving exp.")
+            print(f"[trainer]               receiving exp.")
         self.detached_replay_buffer.append(experience)
 
-    @ray.method(concurrency_group="experience_io")
+    @ray.method(concurrency_group="buffer_sample")
     def _buffer_sample(self):
         return self.detached_replay_buffer.sample()
 

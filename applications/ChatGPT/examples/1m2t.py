@@ -66,7 +66,7 @@ def main(args):
         tokenizer = AutoTokenizer.from_pretrained("facebook/opt-350m")
     else:
         raise ValueError(f'Unsupported model "{args.model}"')
-    
+
     # configure Trainer
     trainer_1_ref = DetachedPPOTrainer.options(name="trainer1", namespace=os.environ["RAY_NAMESPACE"], num_gpus=1, max_concurrency=2).remote(
         experience_maker_holder_name_list=["maker1"],
@@ -107,7 +107,7 @@ def main(args):
         top_k=50,
         pad_token_id=tokenizer.pad_token_id,
         eos_token_id=tokenizer.eos_token_id,
-        debug=args.debug,
+        debug= False#args.debug,
     )
 
     # configure Experience Maker

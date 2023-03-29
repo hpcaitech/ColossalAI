@@ -14,8 +14,37 @@ from colossalai.nn.optimizer import HybridAdam
 
 import ray
 import os
+import socket
 
+def get_free_port():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(('', 0))
+        return s.getsockname()[1]
+
+
+def get_local_ip():
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        s.connect(('8.8.8.8', 80))
+        return s.getsockname()[0]
+    
 def main(args):
+    master_addr = str(get_local_ip())
+    # trainer_env_info
+    trainer_port = str(get_free_port())
+    env_info_trainer = {'local_rank' : '0',
+                          'rank' : '0',
+                          'world_size' : '1',
+                          'master_port' : trainer_port,
+                          'master_addr' : master_addr}
+    
+    # maker_env_info
+    maker_port = str(get_free_port())
+    env_info_maker = {'local_rank' : '0',
+                        'rank' : '0',
+                        'world_size' : '1',
+                        'master_port' : maker_port,
+                        'master_addr' : master_addr}
+
     # configure tokenizer
     if args.model == 'gpt2':
         tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
@@ -33,6 +62,7 @@ def main(args):
         experience_maker_holder_name_list=["maker1"],
         strategy=args.trainer_strategy,
         model=args.model,
+        env_info = env_info_trainer,
         pretrained=args.pretrain,
         lora_rank=args.lora_rank,
         train_batch_size=args.train_batch_size,
@@ -53,6 +83,7 @@ def main(args):
     experience_holder_ref = ExperienceMakerHolder.options(name="maker1", num_gpus=1, max_concurrency=2).remote(
         detached_trainer_name_list=["trainer1"],
         strategy=args.maker_strategy,
+        env_info = env_info_maker,
         experience_batch_size=args.experience_batch_size,
         kl_coef=0.1,
         #kwargs:
