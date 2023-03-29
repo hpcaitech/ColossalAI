@@ -1,8 +1,13 @@
+# Copyright (c) Microsoft Corporation.
+
+# Licensed under the MIT License.
+import math
 import operator
 from functools import reduce
-import math
 from typing import Tuple
+
 import torch
+
 from ..registry import meta_profiler_module
 
 

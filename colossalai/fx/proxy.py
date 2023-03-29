@@ -1,7 +1,9 @@
 import operator
+from typing import Any, List, Union
+
 import torch
-from torch.fx.proxy import Proxy, Attribute
-from typing import List, Union, Any
+from torch.fx.proxy import Attribute, Proxy
+
 from colossalai.fx.tracer.meta_patch import meta_patched_function
 
 __all__ = ['ColoProxy']

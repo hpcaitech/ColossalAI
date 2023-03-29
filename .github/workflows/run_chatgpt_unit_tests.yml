@@ -36,6 +36,7 @@ jobs:
       - name: Execute Unit Testing
         run: |
           cd applications/ChatGPT
+          rm -rf ~/.cache/colossalai
           pytest tests/
         env:
           NCCL_SHM_DISABLE: 1

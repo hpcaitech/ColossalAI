@@ -15,7 +15,7 @@ RUN git clone https://github.com/NVIDIA/apex && \
 #     && cd ./ColossalAI \
 #     && pip install -v --no-cache-dir .
 
-RUN pip install colossalai==0.1.12+torch1.12cu11.3 -f https://release.colossalai.org
+RUN pip install colossalai
 
 
 # install titans

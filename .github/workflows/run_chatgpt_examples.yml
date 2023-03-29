@@ -35,6 +35,7 @@ jobs:
       - name: Execute Examples
         run: |
           cd applications/ChatGPT
+          rm -rf ~/.cache/colossalai
           ./examples/test_ci.sh
         env:
           NCCL_SHM_DISABLE: 1

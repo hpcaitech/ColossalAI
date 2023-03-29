@@ -1,3 +1,4 @@
+# this code is inspired by the DeepSpeed library and implemented with our own design from scratch
 import functools
 import itertools
 from collections import OrderedDict
@@ -493,6 +494,7 @@ class ShardedModelV2(nn.Module):
             error_msgs (list of str): error messages should be added to this
                 list, and will be reported together in
                 :meth:`~torch.nn.Module.load_state_dict`
+            shard_strategy (Optional[BaseShardStrategy], optional): A shard strategy to manage shard behavior. Defaults to None.
         """
         for hook in self._load_state_dict_pre_hooks.values():
             hook(state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs)

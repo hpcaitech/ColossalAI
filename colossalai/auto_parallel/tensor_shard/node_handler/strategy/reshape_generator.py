@@ -343,6 +343,7 @@ class DefaultReshapeGenerator(ReshapeGenerator):
                     comm_type=CommType.BEFORE,
                     arg_index=0)
                 input_comm_action.comm_spec.gather_dim = total_mesh_dim_list
+                input_comm_action.comm_spec.shard_dim = total_mesh_dim_list
 
             elif len(total_mesh_dim_list) >= 2:
                 source_spec = sharding_spec_mapping["input"]
