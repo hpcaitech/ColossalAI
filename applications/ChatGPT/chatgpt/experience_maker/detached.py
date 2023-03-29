@@ -19,7 +19,7 @@ import os
 class ExperienceMakerHolder:
     '''
     Args:
-        detached_trainer_name_list: str list to get ray actor handles
+        detached_trainer_name_list: str list to get ray actor handleskkk
         strategy: 
         experience_batch_size: batch size of generated experience
         kl_coef: the coefficient of kl divergence loss
@@ -120,7 +120,7 @@ class ExperienceMakerHolder:
                 actor = init_actor
                 critic = init_critic
                 initial_model = deepcopy(actor)
-                reward_model = RewardModel(deepcopy(critic.model), 
+                reward_model = RewardModel(deepcopy(critic.model),
                                            deepcopy(critic.value_head)).to(torch.cuda.current_device())
 
             self.experience_maker.actor = actor

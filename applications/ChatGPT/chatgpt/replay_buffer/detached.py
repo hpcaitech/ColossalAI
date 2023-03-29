@@ -27,7 +27,7 @@ class DetachedReplayBuffer:
         self.cpu_offload = cpu_offload
         self.sample_batch_size = sample_batch_size
         self.limit = limit
-        self.items = Queue(self.limit)
+        self.items = Queue(self.limit, actor_options={"num_cpus":1})
         self.batch_collector : List[BufferItem] = []
 
         '''
@@ -52,7 +52,7 @@ class DetachedReplayBuffer:
         while len(self.batch_collector) >= self.sample_batch_size:
             items = self.batch_collector[:self.sample_batch_size]
             experience = make_experience_batch(items)
-            self.items.put(experience)
+            self.items.put(experience, block=False)
             self.batch_collector = self.batch_collector[self.sample_batch_size:]
 
     def clear(self) -> None:

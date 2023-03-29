@@ -7,11 +7,12 @@ from chatgpt.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStr
 import torch
 import os
 
+
 def is_rank_0() -> bool:
     return not dist.is_initialized() or dist.get_rank() == 0
 
 
-def get_cuda_actor_critic_from_args(model:str, pretrained: str = None, lora_rank=0):
+def get_cuda_actor_critic_from_args(model: str, pretrained: str = None, lora_rank=0):
     if model == 'gpt2':
         actor = GPTActor(pretrained=pretrained, lora_rank=lora_rank).to(torch.cuda.current_device())
         critic = GPTCritic(pretrained=pretrained, lora_rank=lora_rank).to(torch.cuda.current_device())
@@ -25,7 +26,8 @@ def get_cuda_actor_critic_from_args(model:str, pretrained: str = None, lora_rank
         raise ValueError(f'Unsupported model "{model}"')
     return actor, critic
 
-def get_strategy_from_args(strategy:str):
+
+def get_strategy_from_args(strategy: str):
     if strategy == 'naive':
         strategy_ = NaiveStrategy()
     elif strategy == 'ddp':
@@ -37,6 +39,7 @@ def get_strategy_from_args(strategy:str):
     else:
         raise ValueError(f'Unsupported strategy "{strategy}"')
     return strategy_
+
 
 def set_dist_env(env_info: Dict[str, str]):
     os.environ["RANK"] = env_info['rank']
