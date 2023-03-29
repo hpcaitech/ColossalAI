@@ -38,7 +38,7 @@
 ---
 ## What is ColossalChat and Coati ?
 
-ColossalChat is the project to implement LLM with RLHF, powered by the Colossal-AI project.
+[ColossalChat](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat) is the project to implement LLM with RLHF, powered by the [Colossal-AI](https://github.com/hpcaitech/ColossalAI) project.
 
 Coati stands for `ColossalAI Talking Intelligence`. It is the name for the module implemented in this project and is also the name of the large language model developed by the ColossalChat project.
 
@@ -52,16 +52,20 @@ The Coati package provides a unified large language model framework that has imp
 - Fast model deploying
 - Perfectly integration with the Hugging Face ecosystem, high degree of model customization
 
+<div align="center">
+  <p align="center">
+    <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chatgpt/chatgpt.png" width=700/>
+  </p>
+
+   Image source: https://openai.com/blog/chatgpt
+</div>
+
 **As Colossa-AI is undergoing some major updates, this project will be actively maintained to stay in line with the Colossal-AI project.**
 
 
-More details can be found in the [blog](https://www.hpc-ai.tech/blog/colossal-ai-chatgpt).
-
-<p align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chatgpt/chatgpt.png" width=700/>
-<span>Image source: https://openai.com/blog/chatgpt</span>
-</p>
-
+More details can be found in the latest news.
+* [2023/03] [ColossalChat: An Open-Source Solution for Cloning ChatGPT With a Complete RLHF Pipeline](https://medium.com/@yangyou_berkeley/colossalchat-an-open-source-solution-for-cloning-chatgpt-with-a-complete-rlhf-pipeline-5edf08fb538b)
+* [2023/02] [Open Source Solution Replicates ChatGPT Training Process! Ready to go with only 1.6GB GPU Memory](https://www.hpc-ai.tech/blog/colossal-ai-chatgpt)
 
 ## Online demo
 You can experience the performance of Coati7B on this page.
