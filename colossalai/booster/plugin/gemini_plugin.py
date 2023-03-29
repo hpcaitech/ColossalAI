@@ -21,7 +21,7 @@ from colossalai.utils import get_current_device
 
 from .plugin_base import Plugin
 
-__all__ = ['TorchDDPPlugin']
+__all__ = ['GeminiPlugin']
 
 
 class GeminiCheckpointIO(GeneralCheckpointIO):
@@ -66,7 +66,7 @@ class GeminiModel(ModelWrapper):
 
     def __init__(self, module: nn.Module, gemini_config: dict) -> None:
         super().__init__(module)
-        # TODO: only support Gemini now
+        # TODO(ver217): only support Gemini now
         self.module = zero_model_wrapper(module, zero_stage=3, gemini_config=gemini_config)
 
     def unwrap(self):
@@ -101,22 +101,43 @@ class GeminiPlugin(Plugin):
 
     Example:
         >>> from colossalai.booster import Booster
-        >>> from colossalai.booster.plugin import TorchDDPPlugin
+        >>> from colossalai.booster.plugin import GeminiPlugin
         >>>
         >>> model, train_dataset, optimizer, criterion = ...
-        >>> plugin = TorchDDPPlugin()
+        >>> plugin = GeminiPlugin()
 
         >>> train_dataloader = plugin.prepare_train_dataloader(train_dataset, batch_size=8)
         >>> booster = Booster(plugin=plugin)
         >>> model, optimizer, train_dataloader, criterion = booster.boost(model, optimizer, train_dataloader, criterion)
 
     Args:
-        broadcast_buffers (bool, optional): Whether to broadcast buffers in the beginning of training. Defaults to True.
-        bucket_cap_mb (int, optional): The bucket size in MB. Defaults to 25.
-        find_unused_parameters (bool, optional): Whether to find unused parameters. Defaults to False.
-        check_reduction (bool, optional): Whether to check reduction. Defaults to False.
-        gradient_as_bucket_view (bool, optional): Whether to use gradient as bucket view. Defaults to False.
-        static_graph (bool, optional): Whether to use static graph. Defaults to False.
+        device (torch.device): device to place the model.
+        placement_policy (str, optional): "cpu", "cuda", "auto". Defaults to "cpu".
+        pin_memory (bool, optional): use pin memory on CPU. Defaults to False.
+        force_outputs_fp32 (bool, optional): force outputs are fp32. Defaults to False.
+        strict_ddp_mode (bool, optional): use strict ddp mode (only use dp without other parallelism). Defaults to False.
+        search_range_mb (int, optional): chunk size searching range in MegaByte. Defaults to 32.
+        hidden_dim (int, optional): the hidden dimension of DNN.
+            Users can provide this argument to speed up searching.
+            If users do not know this argument before training, it is ok. We will use a default value 1024.
+        min_chunk_size_mb (float, optional): the minimum chunk size in MegaByte.
+            If the aggregate size of parameters is still samller than the minimum chunk size,
+            all parameters will be compacted into one small chunk.
+        memstats (MemStats, optional) the memory statistics collector by a runtime memory tracer.
+        gpu_margin_mem_ratio (float, optional): The ratio of GPU remaining memory (after the first forward-backward)
+            which will be used when using hybrid CPU optimizer.
+            This argument is meaningless when `placement_policy` of `GeminiManager` is not "auto".
+            Defaults to 0.0.
+        initial_scale (float, optional): Initial scale used by DynamicGradScaler. Defaults to 2**32.
+        min_scale (float, optional): Min scale used by DynamicGradScaler. Defaults to 1.
+        growth_factor (float, optional): growth_factor used by DynamicGradScaler. Defaults to 2.
+        backoff_factor (float, optional): backoff_factor used by DynamicGradScaler. Defaults to 0.5.
+        growth_interval (float, optional): growth_interval used by DynamicGradScaler. Defaults to 1000.
+        hysteresis (float, optional): hysteresis used by DynamicGradScaler. Defaults to 2.
+        max_scale (int, optional): max_scale used by DynamicGradScaler. Defaults to 2**32.
+        max_norm (float, optional): max_norm used for `clip_grad_norm`. You should notice that you shall not do
+            clip_grad_norm by yourself when using ZeRO DDP. The ZeRO optimizer will take care of clip_grad_norm.
+        norm_type (float, optional): norm_type used for `clip_grad_norm`.
     """
 
     def __init__(
