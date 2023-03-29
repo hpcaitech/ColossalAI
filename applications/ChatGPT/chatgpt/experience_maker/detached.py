@@ -116,10 +116,9 @@ class ExperienceMakerHolder:
         if 'debug' in self.generate_kwargs and self.generate_kwargs['debug'] == True:
             print('[maker] INIT')
         with torch.no_grad():
-            actor = init_actor
-            critic = init_critic
-
             with self.strategy.model_init_context():
+                actor = init_actor
+                critic = init_critic
                 initial_model = deepcopy(actor)
                 reward_model = RewardModel(deepcopy(critic.model), 
                                            deepcopy(critic.value_head)).to(torch.cuda.current_device())

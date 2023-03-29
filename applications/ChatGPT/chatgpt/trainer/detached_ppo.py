@@ -23,7 +23,7 @@ from .utils import is_rank_0, get_cuda_actor_critic_from_args, get_strategy_from
 import ray
 import copy
 
-@ray.remote(concurrency_groups={"experience_io": 3, "model_io": 1, "compute": 1})
+@ray.remote(concurrency_groups={"experience_io": 4, "model_io": 1, "compute": 2})
 class DetachedPPOTrainer(DetachedTrainer):
     '''
         Detached Trainer for PPO algorithm
@@ -101,7 +101,7 @@ class DetachedPPOTrainer(DetachedTrainer):
             for target_holder in self.target_holder_list:
                 # TODO: reduce malloc
                 with torch.no_grad():
-                    ray.get(target_holder.update_experience_maker.remote(self.actor, self.critic))
+                    ray.get(target_holder.update_experience_maker.remote(self._get_unwrapped_actor(), self._get_unwrapped_critic()))
                     
     @ray.method(concurrency_group="model_io")
     def initialize_remote_makers(self):
@@ -111,7 +111,7 @@ class DetachedPPOTrainer(DetachedTrainer):
             for target_holder in self.target_holder_list:
                 # TODO: reduce malloc
                 with torch.no_grad():
-                    ray.get(target_holder.initialize_experience_maker.remote(self.actor, self.critic))
+                    ray.get(target_holder.initialize_experience_maker.remote(self._get_unwrapped_actor(), self._get_unwrapped_critic()))
 
     @ray.method(concurrency_group="compute")
     def training_step(self, experience: Experience) -> Dict[str, float]:
@@ -154,11 +154,21 @@ class DetachedPPOTrainer(DetachedTrainer):
     def strategy_save_critic_optim(self, path: str, only_rank0: bool = False) -> None:
         self.strategy.save_optimizer(self.critic_optim, path, only_rank0)
 
-    def get_actor(self):
-        return self.actor
-    
-    def get_critic(self):
-        return self.critic
+    def _get_unwrapped_actor(self):
+        if False:
+            pass
+        elif isinstance(self.strategy, DDPStrategy):
+            return Actor(self.strategy._unwrap_actor(self.actor))
+        elif isinstance(self.strategy, NaiveStrategy):
+            return self.actor
+
+    def _get_unwrapped_critic(self):
+        if False:
+            pass
+        elif isinstance(self.strategy, DDPStrategy):
+            return self.critic.module
+        elif isinstance(self.strategy, NaiveStrategy):
+            return self.critic
 
 def _set_default_generate_kwargs(strategy: Strategy, generate_kwargs: dict, actor: Actor) -> None:
     origin_model = strategy._unwrap_actor(actor)
