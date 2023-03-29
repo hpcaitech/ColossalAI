@@ -17,11 +17,40 @@ from colossalai.cluster import DistCoordinator
 from colossalai.gemini.memory_tracer import MemStats
 from colossalai.interface import ModelWrapper, OptimizerWrapper
 from colossalai.nn.parallel import GeminiDDP, zero_model_wrapper, zero_optim_wrapper
+from colossalai.tensor.colo_parameter import ColoParameter
 from colossalai.utils import get_current_device
+from colossalai.utils.model.colo_init_context import _convert_to_coloparam
 
 from .plugin_base import Plugin
 
 __all__ = ['GeminiPlugin']
+
+
+def convert_to_colo_param(module: nn.Module) -> None:
+    """Convert module's paramters to ColoParameter. This is a workaround and will be deprecated when lazy init is compatible with Gemini.
+
+    Args:
+        module (nn.Module): Module to be converted.
+    """
+    converted_modules = set()    # handle shared modules
+    converted_params = dict()    # record mapping between (torch.Tensor, ColoTensor) to distinguish the same reference
+
+    def convert_recursively(m: nn.Module):
+        for child in m.children():
+            if child not in converted_modules:
+                converted_modules.add(child)
+                convert_recursively(child)
+
+        for name, p in m.named_parameters():
+            assert not isinstance(p, ColoParameter)
+            if p not in converted_params:
+                target = converted_params[p]
+            else:
+                target = _convert_to_coloparam(p, p.device, p.dtype)
+            setattr(m, name, target)
+            target.shared_param_modules.append(m)
+
+    convert_recursively(module)
 
 
 class GeminiCheckpointIO(GeneralCheckpointIO):
@@ -67,6 +96,7 @@ class GeminiModel(ModelWrapper):
     def __init__(self, module: nn.Module, gemini_config: dict) -> None:
         super().__init__(module)
         # TODO(ver217): only support Gemini now
+        convert_to_colo_param(module)
         self.module = zero_model_wrapper(module, zero_stage=3, gemini_config=gemini_config)
 
     def unwrap(self):
