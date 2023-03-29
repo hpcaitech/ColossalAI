@@ -52,6 +52,8 @@ The Coati package provides a unified large language model framework that has imp
 - Fast model deploying
 - Perfectly integration with the Hugging Face ecosystem, high degree of model customization
 
+**As Colossa-AI is undergoing some major updates, this project will be actively maintained to stay in line with the Colossal-AI project.**
+
 
 More details can be found in the [blog](https://www.hpc-ai.tech/blog/colossal-ai-chatgpt).
 
