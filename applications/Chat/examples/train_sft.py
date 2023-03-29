@@ -101,6 +101,7 @@ def train(args):
 
         train_dataset = SFTDataset(train_data, tokenizer)
         eval_dataset = SFTDataset(eval_data, tokenizer)
+        data_collator = None
 
     else:
         train_dataset = SupervisedDataset(tokenizer=tokenizer,

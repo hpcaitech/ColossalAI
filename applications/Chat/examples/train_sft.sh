@@ -1,3 +1,6 @@
+#!/usr/bin/env bash
+export WANDB_API_KEY="your wandb api key"
+
 torchrun --standalone --nproc_per_node=4 train_sft.py \
     --pretrain "/path/to/LLaMa-7B/" \
     --model 'llama' \

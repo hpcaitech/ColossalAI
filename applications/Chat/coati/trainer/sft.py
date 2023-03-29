@@ -8,6 +8,7 @@ import torch
 import torch.distributed as dist
 import wandb
 from coati.models.loss import GPTLMLoss
+from coati.models.llama import LlamaLM
 from torch import nn
 from torch.optim import Adam, Optimizer
 from torch.optim.lr_scheduler import LambdaLR
@@ -69,32 +70,31 @@ class SFTTrainer(ABC):
                                        num_warmup_steps=math.ceil(max_steps * 0.03),
                                        num_training_steps=max_steps)
 
+        if not isinstance(self.model, LlamaLM):
+            self.loss_fn = GPTLMLoss()
+
     def fit(self, logger, log_interval=10):
         wandb.init(project="Coati", name=time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
         wandb.watch(self.model)
         total_loss = 0
-        # epoch_bar = tqdm(range(self.epochs), desc='Epochs', disable=not is_rank_0())
+
         step_bar = tqdm(range(len(self.train_dataloader) // self.accimulation_steps * self.epochs),
                         desc=f'steps',
                         disable=not is_rank_0())
         for epoch in range(self.epochs):
-
-            # process_bar = tqdm(range(len(self.train_dataloader)), desc=f'Train process for{epoch}', disable=not is_rank_0())
             # train
             self.model.train()
             for batch_id, batch in enumerate(self.train_dataloader):
 
                 prompt_ids = batch["input_ids"].to(torch.cuda.current_device())
                 p_mask = batch["attention_mask"].to(torch.cuda.current_device())
-                labels = batch["labels"].to(torch.cuda.current_device())
-                # prompt_ids = prompt_ids.squeeze(1).cuda()
-                # p_mask = p_mask.squeeze(1).cuda()
-                # prompt_logits = self.model(prompt_ids, attention_mask=p_mask, labels=labels)
-
-                outputs = self.model(prompt_ids, attention_mask=p_mask, labels=labels)
-
-                loss = outputs.loss
-                prompt_logits = outputs.logits
+                if isinstance(self.model, LlamaLM):
+                    labels = batch["labels"].to(torch.cuda.current_device())
+                    outputs = self.model(prompt_ids, attention_mask=p_mask, labels=labels)
+                    loss = outputs.loss
+                else:
+                    prompt_logits = self.model(prompt_ids, attention_mask=p_mask)
+                    loss = self.loss_fn(prompt_logits, prompt_ids)
 
                 if loss >= 2.5:
                     logger.warning(f"batch_id:{batch_id}, abnormal loss: {loss}")
@@ -119,12 +119,6 @@ class SFTTrainer(ABC):
                     total_loss = 0
                     step_bar.update()
 
-                # if batch_id % log_interval == 0:
-                # logger.info(f'Train Epoch {epoch}/{self.epochs} Batch {batch_id} Rank {dist.get_rank()} loss {loss.item()}')
-                # wandb.log({"loss": loss.item()})
-
-                # process_bar.update()
-
             # eval
             if self.eval_dataloader is not None:
                 self.model.eval()
@@ -134,13 +128,15 @@ class SFTTrainer(ABC):
                     for batch in self.eval_dataloader:
                         prompt_ids = batch["input_ids"].to(torch.cuda.current_device())
                         p_mask = batch["attention_mask"].to(torch.cuda.current_device())
-                        labels = batch["labels"].to(torch.cuda.current_device())
-                        # prompt_ids = prompt_ids.squeeze(1).cuda()
-                        # p_mask = p_mask.squeeze(1).cuda()
 
-                        outputs = self.model(prompt_ids, attention_mask=p_mask, labels=labels)
-                        loss = outputs.loss
-                        # prompt_logits = outputs.logits
+                        if isinstance(self.model, LlamaLM):
+                            labels = batch["labels"].to(torch.cuda.current_device())
+
+                            outputs = self.model(prompt_ids, attention_mask=p_mask, labels=labels)
+                            loss = outputs.loss
+                        else:
+                            prompt_logits = self.model(prompt_ids, attention_mask=p_mask)
+                            loss = self.loss_fn(prompt_logits, prompt_ids)
 
                         loss_sum += loss.item()
                         num_seen += prompt_ids.size(0)
@@ -148,8 +144,6 @@ class SFTTrainer(ABC):
                     loss_mean = loss_sum / num_seen
                     if dist.get_rank() == 0:
                         logger.info(f'Eval Epoch {epoch}/{self.epochs} loss {loss_mean}')
-
-            # epoch_bar.update()
 
     def save_model(self,
                    path: str,

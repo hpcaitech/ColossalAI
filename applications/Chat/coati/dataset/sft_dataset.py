@@ -1,4 +1,4 @@
-#    Copyright 2023 Rohan Taori, Ishaan Gulrajani, Tianyi Zhang, Yann Dubois, Xuechen Li
+#    Copyright 2023 Rohan Taori, Ishaan Gulrajani, Tianyi Zhang, Yann Dubois, Xuechen Li, Pengpeng Zhang
 #
 #    Licensed under the Apache License, Version 2.0 (the "License");
 #    you may not use this file except in compliance with the License.
@@ -53,7 +53,6 @@ class SFTDataset(Dataset):
 
     def __init__(self, dataset, tokenizer: Callable, max_length: int = 512) -> None:
         super().__init__()
-        # self.prompts = []
         self.input_ids = []
 
         for data in tqdm(dataset, disable=not is_rank_0()):
@@ -64,18 +63,14 @@ class SFTDataset(Dataset):
                                      truncation=True,
                                      return_tensors="pt")
 
-            # self.prompts.append(prompt_token)s
             self.input_ids.append(prompt_token)
-            self.labels = copy.deepcopy(self.input_ids)
 
     def __len__(self):
-        length = len(self.prompts)
+        length = len(self.input_ids)
         return length
 
     def __getitem__(self, idx):
-        # dict(input_ids=self.input_ids[i], labels=self.labels[i])
-        return dict(input_ids=self.input_ids[idx], labels=self.labels[idx])
-        # return dict(self.prompts[idx], self.prompts[idx])
+        return self.input_ids[idx]
 
 
 def _tokenize_fn(strings: Sequence[str], tokenizer: transformers.PreTrainedTokenizer) -> Dict:
