@@ -99,6 +99,15 @@ class ExperienceMakerHolder:
     def workingloop(self, dataset, tokenizer: Optional[Callable[[Any], dict]] = None, times=5000 * 50000):
         self._get_ready()
         sampler = self.strategy.setup_sampler(dataset)
+        prof = torch.profiler.profile(
+                            schedule=torch.profiler.schedule(wait=1, warmup=1, active=18, repeat=1),
+                            on_trace_ready=torch.profiler.tensorboard_trace_handler('./log/1m1t_maker'),
+                            record_shapes=True,
+                            profile_memory=True,
+                            with_stack=True)
+        prof.start()
+        count_time = 0
+        saved = False
         for _ in range(times):
             rand_prompts = sampler.sample(self.experience_batch_size)
             if tokenizer is not None:
@@ -109,6 +118,14 @@ class ExperienceMakerHolder:
             experience = self._make_experience(inputs=inputs)
             self._model_visit_lock.release()
             self._send_experience(experience=experience)
+            
+            if count_time >= 20:
+                prof.stop()
+                count_time = 0
+                saved = True
+            if not saved:
+                count_time+=1
+                prof.step()
 
     @ray.method(concurrency_group="model_io")
     def initialize_experience_maker(self, init_actor: Actor, init_critic: Critic):
