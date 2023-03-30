@@ -474,11 +474,12 @@ def main(args):
     experience_batch_size = args.experience_batch_size
     # Start training
     logging.info("Training start")
-    # Set all models to eval
+    # Set all models to eval and add experience maker
     all_ray_actors = actor_group._actor_handlers + critic_group._actor_handlers + \
         initial_group._actor_handlers + reward_group._actor_handlers
     num_ray_actors = len(all_ray_actors)
     ray.get([ray_actor.eval.remote() for ray_actor in all_ray_actors])
+    ray.get([ray_actor.add_experience_maker.remote() for ray_actor in all_ray_actors])
     # Used as a queue to coordinate experience making
     experience_composition_refs = []
     time = 0
