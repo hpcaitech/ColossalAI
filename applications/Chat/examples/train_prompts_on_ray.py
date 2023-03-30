@@ -370,8 +370,8 @@ class PPOActorRayActorGroup(TrainableModelRayActorGroup):
             refs.append(actor.setup_generate_kwargs.remote(generation_kwargs))
         return refs
 
-    def load_csv_prompts_data_from_url_to_sampler(self, csv_url):
-        ray.get([actor.load_csv_prompts_data_from_url_to_sampler.remote(csv_url) for actor in self._actor_handlers])
+    def load_csv_prompt_file_from_url_to_sampler(self, csv_url):
+        ray.get([actor.load_csv_prompt_file_from_url_to_sampler.remote(csv_url) for actor in self._actor_handlers])
 
     def async_sample_prompts_and_make_sequence(self, experience_batch_size):
         return [actor.sample_prompts_and_make_sequence.remote(experience_batch_size) for actor in self._actor_handlers]
@@ -466,7 +466,7 @@ def main(args):
     logging.info("Models prepared for training")
 
     # Load training data to actor group
-    actor_group.load_csv_prompts_data_from_url_to_sampler(args.prompt_csv_url)
+    actor_group.load_csv_prompt_file_from_url_to_sampler(args.prompt_csv_url)
     # Training parameter
     num_episodes = args.num_episodes
     max_timesteps = args.max_timesteps
