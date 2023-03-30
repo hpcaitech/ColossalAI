@@ -341,9 +341,11 @@ class PPORayActorGroup:
                                                                                   master_addr, master_port)
                 self._actor_handlers.append(worker_actor)
 
-    def async_init_model_from_pretrained(self, strategy: str, model_class: Type[LoRAModule], pretrain: str):
+    def async_init_model_from_pretrained(self, strategy: str, model_class: Type[LoRAModule], pretrain: str,
+                                         has_optimizer: bool):
         return [
-            actor.init_model_from_pretrained.remote(strategy, model_class, pretrain) for actor in self._actor_handlers
+            actor.init_model_from_pretrained.remote(strategy, model_class, pretrain, has_optimizer)
+            for actor in self._actor_handlers
         ]
 
 
@@ -464,10 +466,10 @@ def main(args):
     # Prepare model for training
     generate_kwargs = {'max_length': 128, 'do_sample': True, 'temperature': 1.0, 'top_k': 50}
     ray.get(
-        actor_group.async_init_model_from_pretrained(args.strategy, actor_model_class, args.pretrain) +
-        critic_group.async_init_model_from_pretrained(args.strategy, critic_model_class, args.pretrain) +
-        initial_group.async_init_model_from_pretrained(args.strategy, actor_model_class, args.pretrain) +
-        reward_group.async_init_model_from_pretrained(args.strategy, critic_model_class, args.pretrain) +
+        actor_group.async_init_model_from_pretrained(args.strategy, actor_model_class, args.pretrain, True) +
+        critic_group.async_init_model_from_pretrained(args.strategy, critic_model_class, args.pretrain, True) +
+        initial_group.async_init_model_from_pretrained(args.strategy, actor_model_class, args.pretrain, False) +
+        reward_group.async_init_model_from_pretrained(args.strategy, critic_model_class, args.pretrain, False) +
         actor_group.async_prepare_for_sequence_generation(args.model, args.pretrain, generate_kwargs))
     logging.info("Models prepared for training")
 
