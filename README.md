@@ -300,7 +300,7 @@ Acceleration of [AlphaFold Protein Structure](https://alphafold.ebi.ac.uk/)
 ## Installation
 
 Requirements:
-- PyTorch >= 1.11 (PyTorch 2.x in progress)
+- PyTorch >= 1.11
 - Python >= 3.7
 - CUDA >= 11.0
 
