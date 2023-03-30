@@ -6,12 +6,12 @@ import torch.nn as nn
 from torch.optim import Optimizer
 from torch.optim import Adam
 
-from chatgpt.experience_maker import Experience, NaiveExperienceMaker
-from chatgpt.models.base import Actor, Critic
-from chatgpt.models.generation_utils import update_model_kwargs_fn
-from chatgpt.models.loss import PolicyLoss, ValueLoss
-from chatgpt.replay_buffer import DetachedReplayBuffer
-from chatgpt.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
+from coati.experience_maker import Experience, NaiveExperienceMaker
+from coati.models.base import Actor, Critic
+from coati.models.generation_utils import update_model_kwargs_fn
+from coati.models.loss import PolicyLoss, ValueLoss
+from coati.replay_buffer import DetachedReplayBuffer
+from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
 
 from colossalai.nn.optimizer import HybridAdam
 

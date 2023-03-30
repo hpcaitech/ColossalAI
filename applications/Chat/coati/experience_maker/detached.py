@@ -6,10 +6,10 @@ import ray
 from ray.exceptions import GetTimeoutError
 from torch import Tensor
 import torch.nn as nn
-from chatgpt.models.base import Actor, Critic, RewardModel
-from chatgpt.trainer.strategies.sampler import DistributedSampler
-from chatgpt.trainer.strategies import Strategy
-from chatgpt.trainer.utils import is_rank_0, get_strategy_from_args, set_dist_env
+from coati.models.base import Actor, Critic, RewardModel
+from coati.trainer.strategies.sampler import DistributedSampler
+from coati.trainer.strategies import Strategy
+from coati.trainer.utils import is_rank_0, get_strategy_from_args, set_dist_env
 from copy import deepcopy
 from threading import Lock
 import time

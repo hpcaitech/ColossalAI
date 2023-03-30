@@ -5,8 +5,8 @@ import torch
 from torch import Tensor
 import torch.nn as nn
 from torch.optim import Optimizer
-from chatgpt.experience_maker import Experience
-from chatgpt.replay_buffer import DetachedReplayBuffer
+from coati.experience_maker import Experience
+from coati.replay_buffer import DetachedReplayBuffer
 from tqdm import tqdm
 
 from .callbacks import Callback

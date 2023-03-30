@@ -5,7 +5,7 @@ from .base import ReplayBuffer
 # from torch.multiprocessing import Queue
 from ray.util.queue import Queue
 import ray
-from chatgpt.experience_maker.base import Experience
+from coati.experience_maker.base import Experience
 from .utils import BufferItem, make_experience_batch, split_experience_batch
 from threading import Lock
 import copy
