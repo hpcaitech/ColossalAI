@@ -164,7 +164,7 @@ class TrainablePPORole(BasePPORole):
 @ray.remote(num_gpus=1)
 class RayPPOActor(TrainablePPORole):
 
-    def set_loss_function(self, eps_clip: float = 0.2):
+    def set_loss_function(self, eps_clip: float):
         self._actor_loss_fn = PolicyLoss(eps_clip)
 
     def load_tokenizer_from_pretrained(self, model_type: str, pretrained):
@@ -250,7 +250,7 @@ class RayPPOActor(TrainablePPORole):
 @ray.remote(num_gpus=1)
 class RayPPOCritic(TrainablePPORole):
 
-    def set_loss_function(self, value_clip):
+    def set_loss_function(self, value_clip: float):
         self._critic_loss_fn = ValueLoss(value_clip)
 
     def _training_step(self, experience):
@@ -385,6 +385,9 @@ class PPOActorRayActorGroup(TrainableModelRayActorGroup):
             action_log_probs_refs.append(action_log_probs_ref)
         return action_log_probs_refs
 
+    def set_loss_function(self, eps_clip: float = 0.2):
+        ray.get([actor.set_loss_function.remote(eps_clip) for actor in self._actor_handlers])
+
     def save_checkpoint(self, save_path, should_save_optimizer):
         ray.get([actor.save_checkpoint.remote(save_path, should_save_optimizer) for actor in self._actor_handlers])
 
@@ -402,6 +405,9 @@ class PPOCriticRayActorGroup(TrainableModelRayActorGroup):
                 sequences_attention_mask_action_mask_refs[i])
             value_refs.append(value_ref)
         return value_refs
+
+    def set_loss_function(self, value_clip: float = 0.4):
+        ray.get([actor.set_loss_function.remote(value_clip) for actor in self._actor_handlers])
 
 
 class PPOInitialRayActorGroup(PPORayActorGroup):
@@ -465,8 +471,10 @@ def main(args):
         actor_group.async_prepare_for_sequence_generation(args.model, args.pretrain, generate_kwargs))
     logging.info("Models prepared for training")
 
-    # Load training data to actor group
+    # Prepare models for training
     actor_group.load_csv_prompt_file_from_url_to_sampler(args.prompt_csv_url)
+    actor_group.set_loss_function()
+    critic_group.set_loss_function()
     # Training parameter
     num_episodes = args.num_episodes
     max_timesteps = args.max_timesteps
