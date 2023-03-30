@@ -6,6 +6,30 @@ __all__ = ['parse_args']
 
 def parse_args():
     parser = colossalai.get_default_parser()
+
+    parser.add_argument(
+        "--distplan",
+        type=str,
+        default='CAI_Gemini',
+        help="The distributed plan [colossalai, zero1, zero2, torch_ddp, torch_zero].",
+    )
+    parser.add_argument(
+        "--tp_degree",
+        type=int,
+        default=1,
+        help="Tensor Parallelism Degree. Valid when using colossalai as dist plan.",
+    )
+    parser.add_argument(
+        "--placement",
+        type=str,
+        default='cpu',
+        help="Placement Policy for Gemini. Valid when using colossalai as dist plan.",
+    )
+    parser.add_argument(
+        "--shardinit",
+        action='store_true',
+        help="Shard the tensors when init the model to shrink peak memory size on the assigned device. Valid when using colossalai as dist plan.",
+    )
     
     parser.add_argument(
         '--lr', 

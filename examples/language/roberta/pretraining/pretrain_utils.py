@@ -5,7 +5,7 @@ from transformers import get_linear_schedule_with_warmup
 from transformers import BertForPreTraining, RobertaForMaskedLM, RobertaConfig
 from transformers import GPT2Config, GPT2LMHeadModel
 from transformers import AutoTokenizer, AutoModelForMaskedLM
-from colossalai.nn.optimizer import FusedAdam
+from colossalai.nn.optimizer import FusedAdam, HybridAdam
 from torch.optim import AdamW
 from colossalai.core import global_context as gpc
 import torch
@@ -83,7 +83,7 @@ def get_optimizer(model, lr):
         'params': [p for n, p in param_optimizer if any(nd in n for nd in no_decay)],
         'weight_decay': 0.0
     }]
-    optimizer = FusedAdam(optimizer_grouped_parameters, lr=lr, betas=[0.9, 0.95])
+    optimizer = HybridAdam(optimizer_grouped_parameters, lr=lr, betas=[0.9, 0.95])
     return optimizer
 
 
