@@ -315,7 +315,13 @@ class GeminiPlugin(Plugin):
 
         if not isinstance(model, ModelWrapper):
             # convert model to sync bn
-            model = nn.SyncBatchNorm.convert_sync_batchnorm(model, None)
+            # FIXME(ver217): gemini does not support sync bn
+            # In torch/nn/modules/_functions.py, line 22, ``mean, invstd = torch.batch_norm_stats(input, eps)`` will get fp32 mean and invstd even though the input is fp16.
+            # This inconsistency of dtype will cause the error.
+            # We have two possible solutions:
+            # 1. keep batch norm always in fp32. This is hard for gemini, as it use chunks.
+            # 2. patch sync bn or write a new on. This is relatively easy, but we need to test it.
+            # model = nn.SyncBatchNorm.convert_sync_batchnorm(model, None)
 
             # wrap the model with Gemini
             model = GeminiModel(model, self.gemini_config)
