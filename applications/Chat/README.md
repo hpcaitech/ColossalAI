@@ -45,12 +45,12 @@ Coati stands for `ColossalAI Talking Intelligence`. It is the name for the modul
 The Coati package provides a unified large language model framework that has implemented the following functions
 - Supports comprehensive large-model training acceleration capabilities for ColossalAI, without requiring knowledge of complex distributed training algorithms
 - Supervised datasets collection
-- Supervised insturcts fine-tuning
+- Supervised instructions fine-tuning
 - Training reward model
 - Reinforcement learning with human feedback
 - Quantization inference
 - Fast model deploying
-- Perfectly integration with the Hugging Face ecosystem, high degree of model customization
+- Perfectly integrated with the Hugging Face ecosystem, a high degree of model customization
 
 <div align="center">
   <p align="center">
@@ -98,7 +98,7 @@ pip install .
 
 ### Supervised datasets collection
 
-we colllected 104K bilingual dataset of Chinese and English, and you can find the datasets in this repo
+we collected 104K bilingual datasets of Chinese and English, and you can find the datasets in this repo
 [InstructionWild](https://github.com/XueFuzhao/InstructionWild)
 
 Here is how we collected the data
@@ -188,17 +188,17 @@ if not USE_8BIT:
 model.eval()
 ```
 
-**Troubleshooting**: if you get error indicating your CUDA-related libraries not found when loading 8-bit model, you can check whether your `LD_LIBRARY_PATH` is correct.
+**Troubleshooting**: if you get errors indicating your CUDA-related libraries are not found when loading the 8-bit model, you can check whether your `LD_LIBRARY_PATH` is correct.
 
 E.g. you can set `export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH`.
 
 #### 4-bit setup
 
-Please ensure you have downloaded HF-format model weights of LLaMA models first.
+Please ensure you have downloaded the HF-format model weights of LLaMA models first.
 
-Then you can follow [GPTQ-for-LLaMa](https://github.com/qwopqwop200/GPTQ-for-LLaMa). This lib provides efficient CUDA kernels and weight convertion script.
+Then you can follow [GPTQ-for-LLaMa](https://github.com/qwopqwop200/GPTQ-for-LLaMa). This lib provides efficient CUDA kernels and weight conversion scripts.
 
-After installing this lib, we may convert the original HF-format LLaMA model weights to 4-bit version.
+After installing this lib, we may convert the original HF-format LLaMA model weights to a 4-bit version.
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 python llama.py /path/to/pretrained/llama-7b c4 --wbits 4 --groupsize 128 --save llama7b-4bit.pt
@@ -206,7 +206,7 @@ CUDA_VISIBLE_DEVICES=0 python llama.py /path/to/pretrained/llama-7b c4 --wbits 4
 
 Run this command in your cloned `GPTQ-for-LLaMa` directory, then you will get a 4-bit weight file `llama7b-4bit-128g.pt`.
 
-**Troubleshooting**: if you get error about `position_ids`, you can checkout to commit `50287c3b9ae4a3b66f6b5127c643ec39b769b155`(`GPTQ-for-LLaMa` repo).
+**Troubleshooting**: if you get errors about `position_ids`, you can checkout to commit `50287c3b9ae4a3b66f6b5127c643ec39b769b155`(`GPTQ-for-LLaMa` repo).
 
 For more details, see [`inference/`](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat/inference).
 
@@ -334,7 +334,7 @@ trainer.save_model(path=args.save_path, only_rank0=True, tokenizer=tokenizer)
 - [x] implement PPO-ptx fine-tuning
 - [ ] integrate with Ray
 - [ ] support more RL paradigms, like Implicit Language Q-Learning (ILQL),
-- [ ] support chain of throught by [langchain](https://github.com/hwchase17/langchain)
+- [ ] support chain-of-thought by [langchain](https://github.com/hwchase17/langchain)
 
 ### Real-time progress
 You will find our progress in github project broad
