@@ -31,6 +31,20 @@ def check_gemini_plugin(early_stop: bool = True):
         if name in ('diffusers_auto_encoder_kl', 'diffusers_vq_model', 'diffusers_unet2d_model', 'timm_resmlp',
                     'timm_gmixer_12_224', 'timm_gmlp_b16_224', 'timm_mixer_b16_224', 'timm_convnext'):
             continue
+        # These models are not compatible with gemini
+        if name in [
+                'diffusers_clip_vision_model', 'timm_resnet', 'timm_beit', 'timm_beitv2', 'timm_eca_nfnet',
+                'timm_efficientformer', 'timm_hrnet_w18_small', 'timm_nf_ecaresnet101', 'timm_nf_regnet_b0',
+                'timm_skresnet18', 'timm_wide_resnet50_2', 'timm_convit', 'timm_dm_nfnet', 'timm_swin_transformer',
+                'torchaudio_conformer', 'torchaudio_deepspeech', 'torchaudio_wavernn', 'torchaudio_tacotron',
+                'deepfm_interactionarch', 'deepfm_simpledeepfmnn', 'dlrm', 'dlrm_interactionarch',
+                'torchvision_googlenet', 'torchvision_inception_v3', 'torchvision_mobilenet_v3_small',
+                'torchvision_resnet18', 'torchvision_resnext50_32x4d', 'torchvision_wide_resnet50_2',
+                'torchvision_vit_b_16', 'torchvision_convnext_base', 'torchvision_swin_s', 'transformers_albert',
+                'transformers_albert_for_pretraining', 'transformers_bert', 'transformers_bert_for_pretraining',
+                'transformers_gpt_double_heads'
+        ]:
+            continue
         try:
             model = model_fn()
             optimizer = HybridAdam(model.parameters(), lr=1e-3)
