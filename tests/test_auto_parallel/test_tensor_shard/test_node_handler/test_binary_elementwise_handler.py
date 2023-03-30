@@ -5,10 +5,12 @@ import torch
 import torch.multiprocessing as mp
 import torch.nn as nn
 
+from colossalai._analyzer.fx.graph_module import ColoGraphModule
+from colossalai._analyzer.fx.passes.shape_prop import shape_prop_pass
+from colossalai._analyzer.fx.tracer.tracer import ColoTracer
 from colossalai.auto_parallel.tensor_shard.node_handler import BinaryElementwiseHandler
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationData, OperationDataType, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
-from colossalai.fx import ColoGraphModule, ColoTracer
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
 from colossalai.testing import assert_close, parameterize, rerun_if_address_is_in_use
@@ -52,10 +54,11 @@ def check_binary_elementwise_handler_with_tensor(rank, op, other_dim, world_size
                                      input_args=input_args,
                                      meta_arg_names=meta_arg_names)
 
-    tracer = ColoTracer()
+    tracer = ColoTracer(bias_addition_split=True)
     meta_args = {'x1': torch.rand(4, 4).to('meta'), 'x2': torch.rand([4] * other_dim).to('meta')}
     graph = tracer.trace(model, meta_args=meta_args)
     gm = ColoGraphModule(model, graph)
+    shape_prop_pass(gm, *meta_args.values())
 
     op_node = list(graph.nodes)[2]
     strategies_vector = StrategiesVector(op_node)
@@ -172,12 +175,11 @@ def check_binary_elementwise_handler_with_int(rank, op, other_dim, model_cls, wo
                                      strategy_number=strategy_number,
                                      input_args=input_args,
                                      meta_arg_names=meta_arg_names)
-    tracer = ColoTracer()
+    tracer = ColoTracer(bias_addition_split=True)
     meta_args = {'x1': torch.rand(4, 4).to('meta')}
     graph = tracer.trace(model, meta_args=meta_args)
-    print(graph)
-    # assert False
     gm = ColoGraphModule(model, graph)
+    shape_prop_pass(gm, *meta_args.values())
 
     if model_cls == BEOpModelWithNodeConst:
         op_node = list(graph.nodes)[2]
