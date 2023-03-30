@@ -1,17 +1,24 @@
 import math
+from typing import Optional, Tuple, Type
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 from colossalai.context.moe_context import MOE_CONTEXT
-from colossalai.utils import get_current_device
-from colossalai.nn.layer.moe._operation import COL_MOE_KERNEL_FLAG, AllToAll, AllGather, \
-    ReduceScatter, MoeDispatch, MoeCombine
-from colossalai.nn.layer.moe.experts import MoeExperts, Experts
-from colossalai.nn.layer.moe.utils import UniformNoiseGenerator, NormalNoiseGenerator
+from colossalai.nn.layer.moe._operation import (
+    COL_MOE_KERNEL_FLAG,
+    AllGather,
+    AllToAll,
+    MoeCombine,
+    MoeDispatch,
+    ReduceScatter,
+)
+from colossalai.nn.layer.moe.experts import Experts, MoeExperts
 from colossalai.nn.layer.moe.routers import MoeRouter, Top1Router, Top2Router
+from colossalai.nn.layer.moe.utils import NormalNoiseGenerator, UniformNoiseGenerator
+from colossalai.utils import get_current_device
 from colossalai.zero.init_ctx import no_shard_zero_context, no_shard_zero_decrator
-from typing import Optional, Type, Tuple
 
 
 @no_shard_zero_decrator(is_replicated=True)
@@ -178,16 +185,16 @@ class MoeModule(nn.Module):
                 self.residual_combine = nn.Linear(dim_model, 2, device=get_current_device())
 
         if expert_instance is not None:
-            self.experts = expert_instance
+            my_experts = expert_instance
         else:
             assert expert_cls is not None, \
                 "Expert class can't be None when experts instance is not given"
-            self.experts = Experts(expert_cls, num_experts, **expert_args)
+            my_experts = Experts(expert_cls, num_experts, **expert_args)
 
         self.moe_layer = MoeLayer(dim_model=dim_model,
                                   num_experts=num_experts,
                                   router=self.moe_router,
-                                  experts=self.experts)
+                                  experts=my_experts)
 
     def forward(self, inputs: torch.Tensor):
         moe_output, l_aux = self.moe_layer(inputs)
