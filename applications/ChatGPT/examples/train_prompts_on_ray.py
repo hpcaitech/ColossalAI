@@ -3,6 +3,7 @@ import logging
 import os
 import socket
 from copy import deepcopy
+from typing import Type
 
 import ray
 import torch
@@ -10,6 +11,7 @@ from chatgpt.experience_maker.base import Experience
 from chatgpt.models.base import RewardModel
 from chatgpt.models.bloom import BLOOMActor, BLOOMCritic
 from chatgpt.models.gpt import GPTActor, GPTCritic
+from chatgpt.models.lora import LoRAModule
 from chatgpt.models.loss import PolicyLoss, ValueLoss
 from chatgpt.models.opt import OPTActor, OPTCritic
 from chatgpt.models.utils import compute_reward
@@ -19,7 +21,6 @@ from ray.util.placement_group import placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from torch.optim import Adam
 from transformers import AutoTokenizer, BloomTokenizerFast
-from transformers.models.gpt2.configuration_gpt2 import GPT2Config
 from transformers.models.gpt2.tokenization_gpt2 import GPT2Tokenizer
 
 from colossalai.nn.optimizer import HybridAdam
@@ -57,9 +58,9 @@ class ExperienceMaker:
         return experience
 
 
-class BasePPOActor:
+class DistributedTorchRayActor:
 
-    def __init__(self, world_size, rank, local_rank, master_addr, master_port, kl_coef: float = 0.1):
+    def __init__(self, world_size, rank, local_rank, master_addr, master_port):
         logging.basicConfig(format='%(asctime)s %(levelname)-8s %(message)s',
                             level=logging.INFO,
                             datefmt='%Y-%m-%d %H:%M:%S')
@@ -74,9 +75,30 @@ class BasePPOActor:
         os.environ["WORLD_SIZE"] = str(self._world_size)
         os.environ["RANK"] = str(self._rank)
         os.environ["LOCAL_RANK"] = str(self._local_rank)
+
+    @staticmethod
+    def _get_current_node_ip():
+        return ray._private.services.get_node_ip_address()
+
+    @staticmethod
+    def _get_free_port():
+        with socket.socket() as sock:
+            sock.bind(('', 0))
+            return sock.getsockname()[1]
+
+    def get_master_addr_port(self):
+        return self._master_addr, self._master_port
+
+
+class BasePPORole(DistributedTorchRayActor):
+
+    def add_experience_maker(self, kl_coef: float = 0.1):
         self._experience_maker = ExperienceMaker(kl_coef)
 
-    def _init_strategy(self, strategy):
+    def make_experience(self, experience_computation_ref: ExperienceCompositionRefs):
+        return self._experience_maker.make_experience(experience_computation_ref)
+
+    def _init_strategy(self, strategy: str):
         # configure strategy
         if strategy == 'naive':
             self._strategy = NaiveStrategy()
@@ -102,98 +124,33 @@ class BasePPOActor:
         else:
             self._model = self._strategy.prepare(self._model)
 
-    @staticmethod
-    def _get_gpt_config(model_name: str):
-        model_map = {
-            's': GPT2Config(),
-            'm': GPT2Config(n_embd=1024, n_layer=24, n_head=16),
-            'l': GPT2Config(n_embd=1280, n_layer=36, n_head=20),
-            'xl': GPT2Config(n_embd=1600, n_layer=48, n_head=25),
-            '2b': GPT2Config(n_embd=2048, n_layer=40, n_head=16),
-            '4b': GPT2Config(n_embd=2304, n_layer=64, n_head=16),
-            '6b': GPT2Config(n_embd=4096, n_layer=30, n_head=16),
-            '8b': GPT2Config(n_embd=4096, n_layer=40, n_head=16),
-            '10b': GPT2Config(n_embd=4096, n_layer=50, n_head=16),
-            '12b': GPT2Config(n_embd=4096, n_layer=60, n_head=16),
-            '15b': GPT2Config(n_embd=4096, n_layer=78, n_head=16),
-            '18b': GPT2Config(n_embd=4096, n_layer=90, n_head=16),
-            '20b': GPT2Config(n_embd=8192, n_layer=25, n_head=16),
-            '24b': GPT2Config(n_embd=8192, n_layer=30, n_head=16),
-            '28b': GPT2Config(n_embd=8192, n_layer=35, n_head=16),
-            '32b': GPT2Config(n_embd=8192, n_layer=40, n_head=16),
-            '36b': GPT2Config(n_embd=8192, n_layer=45, n_head=16),
-            '40b': GPT2Config(n_embd=8192, n_layer=50, n_head=16),
-            '175b': GPT2Config(n_positions=2048, n_embd=12288, n_layer=96, n_head=96),
-        }
-        try:
-            return model_map[model_name]
-        except KeyError:
-            raise ValueError(f'Unknown model "{model_name}"')
-
-    @staticmethod
-    def _get_current_node_ip():
-        return ray._private.services.get_node_ip_address()
-
-    @staticmethod
-    def _get_free_port():
-        with socket.socket() as sock:
-            sock.bind(('', 0))
-            return sock.getsockname()[1]
-
-    def get_master_addr_port(self):
-        return self._master_addr, self._master_port
-
-    def init_model_from_pretrained(self, strategy, model, pretrained_model_name_or_path, has_optimizer=False):
-        self._init_strategy(strategy)
-        self._load_model_from_pretrained(model, pretrained_model_name_or_path)
-        self._prepare_model_with_strategy(has_optimizer)
-
-    def init_model_from_model_name(self, strategy, model, model_name, has_optimizer=False):
-        self._init_strategy(strategy)
-        self._load_model_from_model_name(model, model_name)
-        self._prepare_model_with_strategy(has_optimizer)
-
-    def _load_model_from_pretrained(self, model, pretrained_model_name_or_path):
+    def _load_model_from_pretrained(self, model_class: Type[LoRAModule], pretrain: str):
         raise NotImplementedError()
 
-    def _load_model_from_model_name(self, model, model_config):
-        raise NotImplementedError()
+    def init_model_from_pretrained(self,
+                                   strategy: str,
+                                   model_class: Type[LoRAModule],
+                                   pretrain: str,
+                                   has_optimizer=False):
+        self._init_strategy(strategy)
+        self._load_model_from_pretrained(model_class, pretrain)
+        self._prepare_model_with_strategy(has_optimizer)
 
     def eval(self):
         self._model.eval()
 
-    def make_experience(self, experience_computation_ref: ExperienceCompositionRefs):
-        return self._experience_maker.make_experience(experience_computation_ref)
 
+class TrainablePPORole(BasePPORole):
 
-class TrainablePPOActor(BasePPOActor):
-
-    def __init__(self,
-                 world_size,
-                 rank,
-                 local_rank,
-                 master_addr,
-                 master_port,
-                 kl_coef: float = 0.1,
-                 train_batch_size: int = 1,
-                 buffer_limit: int = 0,
-                 buffer_cpu_offload: bool = True,
-                 dataloader_pin_memory: bool = True):
-        super().__init__(world_size, rank, local_rank, master_addr, master_port, kl_coef)
-        self._replay_buffer = NaiveReplayBuffer(train_batch_size, buffer_limit, buffer_cpu_offload)
-        self._dataloader_pin_memory = dataloader_pin_memory
-
-    def init_model_from_pretrained(self, strategy, model, pretrained_model_name_or_path):
-        super().init_model_from_pretrained(strategy, model, pretrained_model_name_or_path, True)
-
-    def init_model_from_model_name(self, strategy, model, pretrained_model_name_or_path):
-        super().init_model_from_model_name(strategy, model, pretrained_model_name_or_path, True)
+    def _load_model_from_pretrained(self, model_class, pretrain):
+        with self._strategy.model_init_context():
+            self._model = model_class(pretrain).to(torch.cuda.current_device())
 
     def _train(self):
         self._model.train()
 
     def _training_step(self, experience: Experience):
-        pass
+        raise NotImplementedError()
 
     def learn_on_experiences(self, experience_refs):
         experiences = ray.get(experience_refs)
@@ -206,107 +163,51 @@ class TrainablePPOActor(BasePPOActor):
 
 
 @ray.remote(num_gpus=1)
-class RayPPOActor(TrainablePPOActor):
+class RayPPOActor(TrainablePPORole):
 
-    def __init__(self,
-                 world_size,
-                 rank,
-                 local_rank,
-                 master_addr,
-                 master_port,
-                 kl_coef: float = 0.1,
-                 train_batch_size: int = 1,
-                 buffer_limit: int = 0,
-                 buffer_cpu_offload: bool = True,
-                 dataloader_pin_memory: bool = True,
-                 eps_clip: float = 0.2):
-        super().__init__(world_size, rank, local_rank, master_addr, master_port, kl_coef, train_batch_size,
-                         buffer_limit, buffer_cpu_offload, dataloader_pin_memory)
+    def set_loss_function(self, eps_clip: float = 0.2):
         self._actor_loss_fn = PolicyLoss(eps_clip)
 
-    def _load_model_from_pretrained(self, model, pretrained_model_name_or_path):
-        with self._strategy.model_init_context():
-            if model == 'gpt2':
-                self._model = GPTActor(pretrained=os.path.abspath("gpt2")).to(torch.cuda.current_device())
-            elif model == 'bloom':
-                self._model = BLOOMActor(pretrained=pretrained_model_name_or_path).to(torch.cuda.current_device())
-            elif model == 'opt':
-                self._model = OPTActor(pretrained=pretrained_model_name_or_path).to(torch.cuda.current_device())
-            else:
-                raise ValueError(f'Unsupported model "{model}"')
-
-    def _load_model_from_model_name(self, model, model_name):
-        if model == 'gpt2':
-            model_config = self._get_gpt_config(model_name)
-            with self._strategy.model_init_context():
-                self._model = GPTActor(config=model_config).to(torch.cuda.current_device())
-        else:
-            raise ValueError(f'Unsupported model "{model}"')
-
-    def load_tokenizer_from_pretrained(self, model, pretrained):
-        if model == 'gpt2':
-            self._model_tokenizer = GPT2Tokenizer.from_pretrained(os.path.abspath('gpt2'))
+    def load_tokenizer_from_pretrained(self, model_type: str, pretrained):
+        if model_type == 'gpt2':
+            self._model_tokenizer = GPT2Tokenizer.from_pretrained(pretrained)
             self._model_tokenizer.pad_token = self._model_tokenizer.eos_token
-        elif model == 'bloom':
+        elif model_type == 'bloom':
             self._model_tokenizer = BloomTokenizerFast.from_pretrained(pretrained)
             self._model_tokenizer.pad_token = self._model_tokenizer.eos_token
-        elif model == 'opt':
-            self._model_tokenizer = AutoTokenizer.from_pretrained("facebook/opt-350m")
+        elif model_type == 'opt':
+            self._model_tokenizer = AutoTokenizer.from_pretrained(pretrained)
         else:
-            raise ValueError(f'Unsupported model "{model}"')
+            raise ValueError(f'Unsupported model "{model_type}"')
 
-    def set_generate_kwargs(self, generate_kwargs: dict):
-        self._generate_kwargs = {}
-        self._generate_kwargs['pad_token_id'] = self._model_tokenizer.pad_token_id
-        self._generate_kwargs['eos_token_id'] = self._model_tokenizer.eos_token_id
-        self._generate_kwargs.update(generate_kwargs)
-        self._generate_kwargs.update(self._get_generate_function_kwargs(generate_kwargs))
-
-    def _get_generate_function_kwargs(self, generate_kwargs: dict):
-        origin_model = self._strategy._unwrap_actor(self._model)
-        _to_update_kwargs = {}
-        # use huggingface models method directly
-        if 'prepare_inputs_fn' not in generate_kwargs and hasattr(origin_model, 'prepare_inputs_for_generation'):
-            _to_update_kwargs['prepare_inputs_fn'] = origin_model.prepare_inputs_for_generation
-
-        def update_model_kwargs_fn(outputs: dict, **model_kwargs) -> dict:
-            if "past_key_values" in outputs:
-                model_kwargs["past"] = outputs["past_key_values"]
-            else:
-                model_kwargs["past"] = None
-
-            # update token_type_ids with last value
-            if "token_type_ids" in model_kwargs:
-                token_type_ids = model_kwargs["token_type_ids"]
-                model_kwargs["token_type_ids"] = torch.cat([token_type_ids, token_type_ids[:, -1].unsqueeze(-1)],
-                                                           dim=-1)
-
-            # update attention mask
-            if "attention_mask" in model_kwargs:
-                attention_mask = model_kwargs["attention_mask"]
-                model_kwargs["attention_mask"] = torch.cat(
-                    [attention_mask, attention_mask.new_ones((attention_mask.shape[0], 1))], dim=-1)
-
-            return model_kwargs
-
-        if 'update_model_kwargs_fn' not in generate_kwargs:
-            _to_update_kwargs['update_model_kwargs_fn'] = update_model_kwargs_fn
-        return _to_update_kwargs
-
-    def load_csv_prompt_file_from_url(self, url):
-        import pandas as pd
-        prompts = pd.read_csv(url)['prompt']
-
-        # Set tokenize function for training
-        def _tokenize_fn(texts):
+        # Set tokenize function for sequence generation
+        def _text_input_tokenize_fn(texts):
             batch = self._model_tokenizer(texts, return_tensors='pt', max_length=96, padding=True, truncation=True)
             return {k: v.cuda() for k, v in batch.items()}
 
-        self._tokenize_function = _tokenize_fn
+        self._sample_tokenize_function = _text_input_tokenize_fn
+
+    def setup_generate_kwargs(self, generate_kwargs: dict):
+        from chatgpt.trainer.ppo import _set_default_generate_kwargs
+        self._generate_kwargs = _set_default_generate_kwargs(self._strategy, generate_kwargs, self._model)
+        self._generate_kwargs['pad_token_id'] = self._model_tokenizer.pad_token_id
+        self._generate_kwargs['eos_token_id'] = self._model_tokenizer.eos_token_id
+
+    def load_csv_prompt_file_from_url_to_sampler(self, prompt_url):
+        import pandas as pd
+        prompts = pd.read_csv(prompt_url)['prompt']
         self._sampler = self._strategy.setup_sampler(prompts)
 
     def _generate(self, input_ids, **generate_kwargs):
         return self._model.generate(input_ids, return_action_mask=True, **generate_kwargs)
+
+    def sample_prompts_and_make_sequence(self, experience_batch_size):
+        sampled_prompts = self._sampler.sample(experience_batch_size)
+        input_ids = self._sample_tokenize_function(sampled_prompts)
+        if isinstance(input_ids, dict):
+            return self._generate(**input_ids, **self._generate_kwargs)
+        else:
+            return self._generate(input_ids, **self._generate_kwargs)
 
     @torch.no_grad()
     def calculate_action_log_probs(self, sequence_attention_action_mask):
@@ -324,16 +225,6 @@ class RayPPOActor(TrainablePPOActor):
         self._strategy.optimizer_step(self._optimizer)
         self._optimizer.zero_grad()
         logging.info("actor_loss: {}".format(actor_loss))
-
-    def _sample_prompts(self, experience_batch_size) -> list:
-        return self._sampler.sample(experience_batch_size)
-
-    def sample_prompts_and_make_sequence(self, experience_batch_size):
-        input_ids = self._tokenize_function(self._sample_prompts(experience_batch_size))
-        if isinstance(input_ids, dict):
-            return self._generate(**input_ids, **self._generate_kwargs)
-        else:
-            return self._generate(input_ids, **self._generate_kwargs)
 
     def save_checkpoint(self, save_path, should_save_optimizer: bool):
         if self._rank == 0:
@@ -358,42 +249,10 @@ class RayPPOActor(TrainablePPOActor):
 
 
 @ray.remote(num_gpus=1)
-class RayPPOCritic(TrainablePPOActor):
+class RayPPOCritic(TrainablePPORole):
 
-    def __init__(self,
-                 world_size,
-                 rank,
-                 local_rank,
-                 master_addr,
-                 master_port,
-                 kl_coef: float = 0.1,
-                 train_batch_size: int = 1,
-                 buffer_limit: int = 0,
-                 buffer_cpu_offload: bool = True,
-                 dataloader_pin_memory: bool = True,
-                 value_clip: float = 0.4):
-        super().__init__(world_size, rank, local_rank, master_addr, master_port, kl_coef, train_batch_size,
-                         buffer_limit, buffer_cpu_offload, dataloader_pin_memory)
+    def set_loss_function(self, value_clip):
         self._critic_loss_fn = ValueLoss(value_clip)
-
-    def _load_model_from_pretrained(self, model, pretrained_model_name_or_path):
-        with self._strategy.model_init_context():
-            if model == 'gpt2':
-                self._model = GPTCritic(pretrained=pretrained_model_name_or_path).to(torch.cuda.current_device())
-            elif model == 'bloom':
-                self._model = BLOOMCritic(pretrained=pretrained_model_name_or_path).to(torch.cuda.current_device())
-            elif model == 'opt':
-                self._model = OPTCritic(pretrained=pretrained_model_name_or_path).to(torch.cuda.current_device())
-            else:
-                raise ValueError(f'Unsupported model "{model}"')
-
-    def _load_model_from_model_name(self, model, model_name):
-        if model == 'gpt2':
-            model_config = self._get_gpt_config(model_name)
-            with self._strategy.model_init_context():
-                self._model = GPTCritic(config=model_config).to(torch.cuda.current_device())
-        else:
-            raise ValueError(f'Unsupported model "{model}"')
 
     def _training_step(self, experience):
         values = self._model(experience.sequences,
@@ -415,29 +274,13 @@ class RayPPOCritic(TrainablePPOActor):
 
 
 @ray.remote(num_gpus=1)
-class RayPPORewardModel(BasePPOActor):
+class RayPPORewardModel(BasePPORole):
 
-    def _load_model_from_pretrained(self, model, pretrained_model_name_or_path):
+    def _load_model_from_pretrained(self, model_class, pretrain):
         with self._strategy.model_init_context():
-            if model == 'gpt2':
-                critic = GPTCritic(pretrained=pretrained_model_name_or_path).to(torch.cuda.current_device())
-            elif model == 'bloom':
-                critic = BLOOMCritic(pretrained=pretrained_model_name_or_path).to(torch.cuda.current_device())
-            elif model == 'opt':
-                critic = OPTCritic(pretrained=pretrained_model_name_or_path).to(torch.cuda.current_device())
-            else:
-                raise ValueError(f'Unsupported model "{model}"')
+            critic = model_class(pretrained=pretrain).to(torch.cuda.current_device())
             self._model = RewardModel(deepcopy(critic.model),
                                       deepcopy(critic.value_head)).to(torch.cuda.current_device())
-
-    def _load_model_from_model_name(self, model, model_name):
-        if model == 'gpt2':
-            model_config = self._get_gpt_config(model_name)
-            with self._strategy.model_init_context():
-                critic = GPTCritic(config=model_config).to(torch.cuda.current_device())
-        else:
-            raise ValueError(f'Unsupported model "{model}"')
-        self._model = RewardModel(deepcopy(critic.model), deepcopy(critic.value_head)).to(torch.cuda.current_device())
 
     @torch.no_grad()
     def calculate_r(self, sequence_attention_action_mask):
@@ -446,90 +289,66 @@ class RayPPORewardModel(BasePPOActor):
 
 
 @ray.remote(num_gpus=1)
-class RayPPOInitialModel(BasePPOActor):
+class RayPPOInitialModel(BasePPORole):
 
-    def _load_model_from_pretrained(self, model, pretrained_model_name_or_path):
+    def _load_model_from_pretrained(self, model_class, pretrain):
         with self._strategy.model_init_context():
-            if model == 'gpt2':
-                self._model = GPTActor(pretrained=pretrained_model_name_or_path).to(torch.cuda.current_device())
-            elif model == 'bloom':
-                self._model = BLOOMActor(pretrained=pretrained_model_name_or_path).to(torch.cuda.current_device())
-            elif model == 'opt':
-                self._model = OPTActor(pretrained=pretrained_model_name_or_path).to(torch.cuda.current_device())
-            else:
-                raise ValueError(f'Unsupported model "{model}"')
-
-    def _load_model_from_model_name(self, model, model_name):
-        if model == 'gpt2':
-            model_config = self._get_gpt_config(model_name)
-            with self._strategy.model_init_context():
-                self._model = GPTActor(config=model_config).to(torch.cuda.current_device())
-        else:
-            raise ValueError(f'Unsupported model "{model}"')
+            self._model = model_class(pretrain).to(torch.cuda.current_device())
 
     @torch.no_grad()
     def calculate_base_action_log_probs(self, sequence_attention_action_mask):
         sequences, attention_mask, action_mask = sequence_attention_action_mask
         return self._model(sequences, action_mask.size(1), attention_mask)
 
-    def load_model_from_model_config(self, model):
-        model_config = self._get_gpt_config(model)
-        with self._strategy.model_init_context():
-            self._model = GPTActor(config=model_config).cuda()
-        return True
 
+class PPORayActorGroup:
+    """
+        A group of ray actors
+        Functions start with 'async' should return list of object refs
+    """
 
-class ModelRayActorGroup:
-
-    def __init__(self, num_nodes, num_gpus_per_node, actor_type) -> None:
+    def __init__(self, num_nodes, num_gpus_per_node, ray_actor_type: Type[BasePPORole]) -> None:
         self._num_nodes = num_nodes
         self._num_gpus_per_node = num_gpus_per_node
-        self._actor_type = actor_type
+        self.ray_actor_type = ray_actor_type
+        self._initiate_actors()
 
-    def initiate_actors(self):
+    def _initiate_actors(self):
         world_size = self._num_nodes * self._num_gpus_per_node
+        # Use placement group to lock resources for models of same type
         pg = None
-        if self._num_gpus_per_node >= 1:
-            bundles = [{
-                "GPU": self._num_gpus_per_node,
-                "CPU": 1 * self._num_gpus_per_node
-            } for _ in range(self._num_nodes)]
+        if self._num_gpus_per_node > 1:
+            bundles = [{"GPU": self._num_gpus_per_node, "CPU": self._num_gpus_per_node} for _ in range(self._num_nodes)]
             pg = placement_group(bundles, strategy="STRICT_SPREAD")
             ray.get(pg.ready())
-            print("PG is ready")
         if pg:
-            master_actor = self._actor_type.options(scheduling_strategy=PlacementGroupSchedulingStrategy(
+            master_actor = self.ray_actor_type.options(scheduling_strategy=PlacementGroupSchedulingStrategy(
                 placement_group=pg, placement_group_bundle_index=0)).remote(world_size, 0, 0, None, None)
         else:
-            master_actor = self._actor_type.options(num_gpus=1).remote(world_size, 0, 0, None, None)
+            master_actor = self.ray_actor_type.options(num_gpus=1).remote(world_size, 0, 0, None, None)
         self._actor_handlers = [master_actor]
+
+        # Create worker actors
         if world_size > 1:
             master_addr, master_port = ray.get(master_actor.get_master_addr_port.remote())
             for rank in range(1, world_size):
                 local_rank = rank % self._num_gpus_per_node
                 if pg:
-                    worker_actor = self._actor_type.options(scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    worker_actor = self.ray_actor_type.options(scheduling_strategy=PlacementGroupSchedulingStrategy(
                         placement_group=pg, placement_group_bundle_index=rank // self._num_gpus_per_node)).remote(
                             world_size, rank, local_rank, master_addr, master_port)
                 else:
-                    worker_actor = self._actor_type.options(num_gpus=1).remote(world_size, rank, local_rank,
-                                                                               master_addr, master_port)
+                    worker_actor = self.ray_actor_type.options(num_gpus=1).remote(world_size, rank, local_rank,
+                                                                                  master_addr, master_port)
                 self._actor_handlers.append(worker_actor)
 
-    def async_init_model_from_pretrained(self, strategy: str, model: str, pretrained_model_name_or_path: str):
+    def async_init_model_from_pretrained(self, strategy: str, model_class: Type[LoRAModule], pretrain: str):
         return [
-            actor.init_model_from_pretrained.remote(strategy, model, pretrained_model_name_or_path)
-            for actor in self._actor_handlers
+            actor.init_model_from_pretrained.remote(strategy, model_class, pretrain) for actor in self._actor_handlers
         ]
 
-    def async_init_model_from_model_name(self, strategy: str, model: str, model_name: str):
-        return [actor.init_model_from_model_name.remote(strategy, model, model_name) for actor in self._actor_handlers]
 
-
-class TrainableModelRayActorGroup(ModelRayActorGroup):
-
-    def __init__(self, num_nodes, num_gpus_per_node, actor_type) -> None:
-        super().__init__(num_nodes, num_gpus_per_node, actor_type)
+class TrainableModelRayActorGroup(PPORayActorGroup):
 
     def async_learn_on_experiences(self, experience_refs):
         num_actors = len(self._actor_handlers)
@@ -540,21 +359,20 @@ class TrainableModelRayActorGroup(ModelRayActorGroup):
         return learn_result_refs
 
 
-class GPTActorRayActorGroup(TrainableModelRayActorGroup):
+class PPOActorRayActorGroup(TrainableModelRayActorGroup):
 
     def __init__(self, num_nodes, num_gpus_per_node) -> None:
         super().__init__(num_nodes, num_gpus_per_node, RayPPOActor)
-        self._world_size = num_nodes * num_gpus_per_node
-        self._next_actor_index_used_in_inference = 0
 
-    def async_load_tokenizer_from_pretrained(self, model, pretrained) -> list:
-        return [actor.load_tokenizer_from_pretrained.remote(model, pretrained) for actor in self._actor_handlers]
+    def async_prepare_for_sequence_generation(self, model: str, pretrain: str, generation_kwargs: dict):
+        refs = []
+        for actor in self._actor_handlers:
+            refs.append(actor.load_tokenizer_from_pretrained.remote(model, pretrain))
+            refs.append(actor.setup_generate_kwargs.remote(generation_kwargs))
+        return refs
 
-    def load_csv_prompts_data_from_url(self, csv_url):
-        ray.get([actor.load_csv_prompt_file_from_url.remote(csv_url) for actor in self._actor_handlers])
-
-    def set_generate_kwargs(self, kwargs: dict):
-        return ray.get([actor.set_generate_kwargs.remote(kwargs) for actor in self._actor_handlers])
+    def load_csv_prompts_data_from_url_to_sampler(self, csv_url):
+        ray.get([actor.load_csv_prompts_data_from_url_to_sampler.remote(csv_url) for actor in self._actor_handlers])
 
     def async_sample_prompts_and_make_sequence(self, experience_batch_size):
         return [actor.sample_prompts_and_make_sequence.remote(experience_batch_size) for actor in self._actor_handlers]
@@ -571,16 +389,8 @@ class GPTActorRayActorGroup(TrainableModelRayActorGroup):
     def save_checkpoint(self, save_path, should_save_optimizer):
         ray.get([actor.save_checkpoint.remote(save_path, should_save_optimizer) for actor in self._actor_handlers])
 
-    def generate_answer(self, prompt, max_length=30, num_return_sequences=1):
-        refs = [
-            actor.generate_answer.remote(prompt, max_length, num_return_sequences) for actor in self._actor_handlers
-        ]
-        answers = ray.get(refs[0])
-        self._next_actor_index_used_in_inference = (self._next_actor_index_used_in_inference + 1) % self._world_size
-        return answers
 
-
-class GPTCriticRayActorGroup(TrainableModelRayActorGroup):
+class PPOCriticRayActorGroup(TrainableModelRayActorGroup):
 
     def __init__(self, num_nodes, num_gpus_per_node) -> None:
         super().__init__(num_nodes, num_gpus_per_node, RayPPOCritic)
@@ -595,7 +405,7 @@ class GPTCriticRayActorGroup(TrainableModelRayActorGroup):
         return value_refs
 
 
-class GPTInitialRayActorGroup(ModelRayActorGroup):
+class PPOInitialRayActorGroup(PPORayActorGroup):
 
     def __init__(self, num_nodes, num_gpus_per_node) -> None:
         super().__init__(num_nodes, num_gpus_per_node, RayPPOInitialModel)
@@ -610,7 +420,7 @@ class GPTInitialRayActorGroup(ModelRayActorGroup):
         return base_action_log_probs_refs
 
 
-class GPTRewardRayActorGroup(ModelRayActorGroup):
+class PPORewardRayActorGroup(PPORayActorGroup):
 
     def __init__(self, num_nodes, num_gpus_per_node) -> None:
         super().__init__(num_nodes, num_gpus_per_node, RayPPORewardModel)
@@ -629,32 +439,35 @@ def main(args):
     logging.basicConfig(format='%(asctime)s %(levelname)-8s %(message)s',
                         level=logging.INFO,
                         datefmt='%Y-%m-%d %H:%M:%S')
+    if args.model == 'gpt2':
+        actor_model_class, critic_model_class = GPTActor, GPTCritic
+    elif args.model == 'bloom':
+        actor_model_class, critic_model_class = BLOOMActor, BLOOMCritic
+    elif args.model == 'opt':
+        actor_model_class, critic_model_class = OPTActor, OPTActor
+    else:
+        raise ValueError(f'Unsupported model "{args.model}"')
+
     logging.info("Start creating actors")
     # Initialize 4 models (actor, critic, initial_model and reward_model)
-    actor_group = GPTActorRayActorGroup(num_nodes=args.num_actor_nodes, num_gpus_per_node=args.num_gpus_per_node)
-    actor_group.initiate_actors()
-    critic_group = GPTCriticRayActorGroup(num_nodes=args.num_critic_nodes, num_gpus_per_node=args.num_gpus_per_node)
-    critic_group.initiate_actors()
-    initial_group = GPTInitialRayActorGroup(num_nodes=args.num_initial_nodes, num_gpus_per_node=args.num_gpus_per_node)
-    initial_group.initiate_actors()
-    reward_group = GPTRewardRayActorGroup(num_nodes=args.num_reward_nodes, num_gpus_per_node=args.num_gpus_per_node)
-    reward_group.initiate_actors()
+    actor_group = PPOActorRayActorGroup(num_nodes=args.num_actor_nodes, num_gpus_per_node=args.num_gpus_per_node)
+    critic_group = PPOCriticRayActorGroup(num_nodes=args.num_critic_nodes, num_gpus_per_node=args.num_gpus_per_node)
+    initial_group = PPOInitialRayActorGroup(num_nodes=args.num_initial_nodes, num_gpus_per_node=args.num_gpus_per_node)
+    reward_group = PPORewardRayActorGroup(num_nodes=args.num_reward_nodes, num_gpus_per_node=args.num_gpus_per_node)
     logging.info("Actors created")
 
-    # Load model
-    ray.get(
-        actor_group.async_init_model_from_pretrained(args.strategy, args.model, args.pretrain) +
-        critic_group.async_init_model_from_model_name(args.strategy, args.model, args.model_name) +
-        initial_group.async_init_model_from_pretrained(args.strategy, args.model, args.pretrain) +
-        reward_group.async_init_model_from_model_name(args.strategy, args.model, args.model_name))
-    ray.get(actor_group.async_load_tokenizer_from_pretrained(args.model, args.pretrain))
-
-    # Prepare actors for training
-    actor_group.load_csv_prompts_data_from_url(args.prompt_csv_url)
+    # Prepare model for training
     generate_kwargs = {'max_length': 128, 'do_sample': True, 'temperature': 1.0, 'top_k': 50}
-    actor_group.set_generate_kwargs(generate_kwargs)
+    ray.get(
+        actor_group.async_init_model_from_pretrained(args.strategy, actor_model_class, args.pretrain) +
+        critic_group.async_init_model_from_pretrained(args.strategy, critic_model_class, args.pretrain) +
+        initial_group.async_init_model_from_pretrained(args.strategy, actor_model_class, args.pretrain) +
+        reward_group.async_init_model_from_pretrained(args.strategy, critic_model_class, args.pretrain) +
+        actor_group.async_prepare_for_sequence_generation(args.model, args.pretrain, generate_kwargs))
     logging.info("Models prepared for training")
 
+    # Load training data to actor group
+    actor_group.load_csv_prompts_data_from_url_to_sampler(args.prompt_csv_url)
     # Training parameter
     num_episodes = args.num_episodes
     max_timesteps = args.max_timesteps
@@ -662,7 +475,7 @@ def main(args):
     experience_batch_size = args.experience_batch_size
     # Start training
     logging.info("Training start")
-    ray.get([ray_actor.eval.remote() for ray_actor in actor_group._actor_handlers])
+    # Set all models to eval
     all_ray_actors = actor_group._actor_handlers + critic_group._actor_handlers + \
         initial_group._actor_handlers + reward_group._actor_handlers
     num_ray_actors = len(all_ray_actors)
@@ -674,6 +487,7 @@ def main(args):
         logging.info("episode {} started".format(episode))
         for _ in range(max_timesteps):
             time += 1
+            # Experience queueing stage
             sequences_attention_mask_action_mask_refs = actor_group.async_sample_prompts_and_make_sequence(
                 experience_batch_size)
             base_action_log_probs_refs = initial_group.async_calculate_base_action_log_probs(
@@ -687,6 +501,7 @@ def main(args):
                                           base_action_log_probs_refs[i], values_refs[i], r_refs[i])
                 for i in range(len(sequences_attention_mask_action_mask_refs))
             ])
+            # Learning stage
             if time % update_timesteps == 0:
                 experience_refs = []
                 # calculate experiences
@@ -701,6 +516,7 @@ def main(args):
                 # clear refs queue
                 experience_composition_refs.clear()
     logging.info("Training finished")
+    # Save checkpoint
     actor_group.save_checkpoint(args.save_path, args.need_optim_ckpt)
 
 
