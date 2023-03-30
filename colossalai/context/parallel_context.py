@@ -10,15 +10,16 @@ from typing import Union
 import numpy as np
 import torch
 import torch.distributed as dist
+
 from colossalai.constants import ALLOWED_MODES, INITIALIZER_MAPPING
 from colossalai.context.config import Config
+from colossalai.context.singleton_meta import SingletonMeta
 from colossalai.global_variables import tensor_parallel_env as env
 from colossalai.logging import get_dist_logger
 from colossalai.registry import DIST_GROUP_INITIALIZER
 
 from .parallel_mode import ParallelMode
 from .random import add_seed, get_seeds, set_mode
-from colossalai.context.singleton_meta import SingletonMeta
 
 
 class ParallelContext(metaclass=SingletonMeta):
