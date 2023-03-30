@@ -1,16 +1,26 @@
+import math
+import time
 from abc import ABC
 from typing import Optional
+
 import loralib as lora
 import torch
-from chatgpt.models.loss import GPTLMLoss
+import torch.distributed as dist
+import wandb
+from coati.models.loss import GPTLMLoss
+from torch import nn
 from torch.optim import Adam, Optimizer
+from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm
-import torch.distributed as dist
+from transformers.tokenization_utils_base import PreTrainedTokenizerBase
+from transformers.trainer import get_scheduler
+
+from colossalai.logging import get_dist_logger
+
 from .strategies import Strategy
 from .utils import is_rank_0
-from colossalai.logging import get_dist_logger
 
 
 class SFTTrainer(ABC):
@@ -35,48 +45,85 @@ class SFTTrainer(ABC):
         optim: Optimizer,
         train_dataloader: DataLoader,
         eval_dataloader: DataLoader = None,
-        sampler: Optional[DistributedSampler] = None,
         batch_size: int = 1,
         max_epochs: int = 2,
+        accimulation_steps: int = 8,
     ) -> None:
         super().__init__()
         self.strategy = strategy
         self.epochs = max_epochs
-        self.sampler = sampler
-
         self.train_dataloader = train_dataloader
         self.eval_dataloader = eval_dataloader
 
         self.model = strategy.setup_model(model)
         if "DDP" in str(self.strategy):
             self.model = self.model.module
-        self.loss_fn = GPTLMLoss()
         self.optimizer = strategy.setup_optimizer(optim, self.model)
 
-    def fit(self, logger, use_lora, log_interval=10):
-        epoch_bar = tqdm(range(self.epochs), desc='Train epoch', disable=not is_rank_0())
+        self.accimulation_steps = accimulation_steps
+        num_update_steps_per_epoch = len(train_dataloader) // self.accimulation_steps
+        max_steps = math.ceil(self.epochs * num_update_steps_per_epoch)
+
+        self.scheduler = get_scheduler("cosine",
+                                       self.optimizer,
+                                       num_warmup_steps=math.ceil(max_steps * 0.03),
+                                       num_training_steps=max_steps)
+
+    def fit(self, logger, log_interval=10):
+        wandb.init(project="Coati", name=time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+        wandb.watch(self.model)
+        total_loss = 0
+        # epoch_bar = tqdm(range(self.epochs), desc='Epochs', disable=not is_rank_0())
+        step_bar = tqdm(range(len(self.train_dataloader) // self.accimulation_steps * self.epochs),
+                        desc=f'steps',
+                        disable=not is_rank_0())
         for epoch in range(self.epochs):
-            if isinstance(self.sampler, DistributedSampler):
-                self.sampler.set_epoch(epoch)
+
+            # process_bar = tqdm(range(len(self.train_dataloader)), desc=f'Train process for{epoch}', disable=not is_rank_0())
             # train
             self.model.train()
             for batch_id, batch in enumerate(self.train_dataloader):
+
                 prompt_ids = batch["input_ids"].to(torch.cuda.current_device())
                 p_mask = batch["attention_mask"].to(torch.cuda.current_device())
                 labels = batch["labels"].to(torch.cuda.current_device())
                 # prompt_ids = prompt_ids.squeeze(1).cuda()
                 # p_mask = p_mask.squeeze(1).cuda()
                 # prompt_logits = self.model(prompt_ids, attention_mask=p_mask, labels=labels)
+
                 outputs = self.model(prompt_ids, attention_mask=p_mask, labels=labels)
+
                 loss = outputs.loss
                 prompt_logits = outputs.logits
 
-                # loss = self.loss_fn(prompt_logits, labels)
+                if loss >= 2.5:
+                    logger.warning(f"batch_id:{batch_id}, abnormal loss: {loss}")
+
+                loss = loss / self.accimulation_steps
+
                 self.strategy.backward(loss, self.model, self.optimizer)
-                self.strategy.optimizer_step(self.optimizer)
-                self.optimizer.zero_grad()
-                if batch_id % log_interval == 0:
-                    logger.info(f'Train Epoch {epoch}/{self.epochs} Batch {batch_id} Rank {dist.get_rank()} loss {loss.item()}')
+
+                total_loss += loss.item()
+
+                # gradient accumulation
+                if (batch_id + 1) % self.accimulation_steps == 0:
+                    self.strategy.optimizer_step(self.optimizer)
+                    self.optimizer.zero_grad()
+                    self.scheduler.step()
+                    wandb.log({
+                        "loss": total_loss / self.accimulation_steps,
+                        "lr": self.scheduler.get_last_lr()[0],
+                        "epoch": epoch,
+                        "batch_id": batch_id
+                    })
+                    total_loss = 0
+                    step_bar.update()
+
+                # if batch_id % log_interval == 0:
+                # logger.info(f'Train Epoch {epoch}/{self.epochs} Batch {batch_id} Rank {dist.get_rank()} loss {loss.item()}')
+                # wandb.log({"loss": loss.item()})
+
+                # process_bar.update()
 
             # eval
             if self.eval_dataloader is not None:
@@ -101,6 +148,11 @@ class SFTTrainer(ABC):
                     loss_mean = loss_sum / num_seen
                     if dist.get_rank() == 0:
                         logger.info(f'Eval Epoch {epoch}/{self.epochs} loss {loss_mean}')
-                        
-            epoch_bar.update()
 
+            # epoch_bar.update()
+
+    def save_model(self,
+                   path: str,
+                   only_rank0: bool = False,
+                   tokenizer: Optional[PreTrainedTokenizerBase] = None) -> None:
+        self.strategy.save_model(model=self.model, path=path, only_rank0=only_rank0, tokenizer=tokenizer)

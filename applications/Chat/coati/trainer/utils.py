@@ -1,9 +1,9 @@
 import torch.distributed as dist
 from typing import Any, Callable, Dict, List, Optional
-from chatgpt.models.bloom import BLOOMActor, BLOOMCritic
-from chatgpt.models.gpt import GPTActor, GPTCritic
-from chatgpt.models.opt import OPTActor, OPTCritic
-from chatgpt.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
+from coati.models.bloom import BLOOMActor, BLOOMCritic
+from coati.models.gpt import GPTActor, GPTCritic
+from coati.models.opt import OPTActor, OPTCritic
+from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
 import torch
 import os
 

@@ -1,8 +1,8 @@
 import os
 
 import torch.distributed as dist
-from chatgpt.trainer.strategies import ColossalAIStrategy, Strategy
-from chatgpt.trainer.utils import is_rank_0
+from coati.trainer.strategies import ColossalAIStrategy, Strategy
+from coati.trainer.utils import is_rank_0
 from torch import nn
 from torch.optim import Optimizer
 
@@ -11,7 +11,7 @@ from .base import Callback
 
 class SaveCheckpoint(Callback):
     """
-        The callback for saving checkpoint for chatgpt.
+        The callback for saving checkpoint for coati.
 
         Only support saving actor and critic model.
         A typical architecture of the saved checkpoint would be:

@@ -3,7 +3,7 @@ from typing import Optional
 
 import torch
 import torch.distributed as dist
-from chatgpt.experience_maker import Experience
+from coati.experience_maker import Experience
 
 from .base import Callback
 

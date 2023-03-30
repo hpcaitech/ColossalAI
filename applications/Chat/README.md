@@ -1,139 +1,327 @@
-# RLHF - Colossal-AI
+<h1 align="center">
+  <img width="auto" height="100px", src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/logo_coati.png"/>
+  <br/>
+  <span>ColossalChat</span>
+</h1>
+
 
 ## Table of Contents
 
-- [What is RLHF - Colossal-AI?](#intro)
-- [How to Install?](#install)
+- [Table of Contents](#table-of-contents)
+- [What is ColossalChat and Coati ?](#what-is-colossalchat-and-coati-)
+- [Online demo](#online-demo)
+- [Install](#install)
+  - [Install the environment](#install-the-environment)
+  - [Install the Transformers](#install-the-transformers)
+- [How to use?](#how-to-use)
+  - [Supervised datasets collection](#supervised-datasets-collection)
+  - [Stage1 - Supervised instructs tuning](#stage1---supervised-instructs-tuning)
+  - [Stage2 - Training reward model](#stage2---training-reward-model)
+  - [Stage3 - Training model with reinforcement learning by human feedback](#stage3---training-model-with-reinforcement-learning-by-human-feedback)
+  - [Inference - After Training](#inference---after-training)
+    - [8-bit setup](#8-bit-setup)
+    - [4-bit setup](#4-bit-setup)
+- [Coati7B examples](#coati7b-examples)
+  - [Generation](#generation)
+  - [Open QA](#open-qa)
+  - [Limitation for LLaMA-finetuned models](#limitation-for-llama-finetuned-models)
+  - [Limitation of dataset](#limitation-of-dataset)
+- [FAQ](#faq)
+  - [How to save/load checkpoint](#how-to-saveload-checkpoint)
 - [The Plan](#the-plan)
-- [How can you partcipate in open source?](#invitation-to-open-source-contribution)
+  - [Real-time progress](#real-time-progress)
+- [Invitation to open-source contribution](#invitation-to-open-source-contribution)
+- [Quick Preview](#quick-preview)
+- [Authors](#authors)
+- [Citations](#citations)
+- [Licenses](#licenses)
 ---
-## Intro
-Implementation of RLHF (Reinforcement Learning with Human Feedback) powered by Colossal-AI. It supports distributed training and offloading, which can fit extremly large models. More details can be found in the [blog](https://www.hpc-ai.tech/blog/colossal-ai-chatgpt).
+## What is ColossalChat and Coati ?
 
-<p align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chatgpt/chatgpt.png" width=700/>
-</p>
+[ColossalChat](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat) is the project to implement LLM with RLHF, powered by the [Colossal-AI](https://github.com/hpcaitech/ColossalAI) project.
 
-## Training process (step 3)
-<p align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chatgpt/experience.jpg" width=500/>
-</p>
-<p align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chatgpt/train.jpg" width=500/>
-</p>
+Coati stands for `ColossalAI Talking Intelligence`. It is the name for the module implemented in this project and is also the name of the large language model developed by the ColossalChat project.
+
+The Coati package provides a unified large language model framework that has implemented the following functions
+- Supports comprehensive large-model training acceleration capabilities for ColossalAI, without requiring knowledge of complex distributed training algorithms
+- Supervised datasets collection
+- Supervised instructions fine-tuning
+- Training reward model
+- Reinforcement learning with human feedback
+- Quantization inference
+- Fast model deploying
+- Perfectly integrated with the Hugging Face ecosystem, a high degree of model customization
+
+<div align="center">
+  <p align="center">
+    <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chatgpt/chatgpt.png" width=700/>
+  </p>
+
+   Image source: https://openai.com/blog/chatgpt
+</div>
+
+**As Colossa-AI is undergoing some major updates, this project will be actively maintained to stay in line with the Colossal-AI project.**
 
 
+More details can be found in the latest news.
+* [2023/03] [ColossalChat: An Open-Source Solution for Cloning ChatGPT With a Complete RLHF Pipeline](https://medium.com/@yangyou_berkeley/colossalchat-an-open-source-solution-for-cloning-chatgpt-with-a-complete-rlhf-pipeline-5edf08fb538b)
+* [2023/02] [Open Source Solution Replicates ChatGPT Training Process! Ready to go with only 1.6GB GPU Memory](https://www.hpc-ai.tech/blog/colossal-ai-chatgpt)
+
+## Online demo
+You can experience the performance of Coati7B on this page.
+
+[chat.colossalai.org](https://chat.colossalai.org/)
+
+Due to resource constraints, we will only provide this service from 29th Mar 2023 to 5 April 2023. However, we have provided the inference code in the [inference](./inference/) folder. The WebUI will be open-sourced soon as well.
+
+> Warning: Due to model and dataset size limitations, Coati is just a baby model, Coati7B may output incorrect information and lack the ability for multi-turn dialogue. There is still significant room for improvement.
 ## Install
+
+### Install the environment
+
 ```shell
+conda create -n coati
+conda activate coati
 pip install .
 ```
 
-## Usage
+### Install the Transformers
+Given Hugging Face hasn't officially supported the LLaMA models, We fork a branch of Transformers that can be compatible with our code
 
-The main entrypoint is `Trainer`. We only support PPO trainer now. We support many training strategies:
-
-- NaiveStrategy: simplest strategy. Train on single GPU.
-- DDPStrategy: use `torch.nn.parallel.DistributedDataParallel`. Train on multi GPUs.
-- ColossalAIStrategy: use Gemini and Zero of ColossalAI. It eliminates model duplication on each GPU and supports offload. It's very useful when training large models on multi GPUs.
-
-Simplest usage:
-
-```python
-from chatgpt.trainer import PPOTrainer
-from chatgpt.trainer.strategies import ColossalAIStrategy
-from chatgpt.models.gpt import GPTActor, GPTCritic
-from chatgpt.models.base import RewardModel
-from copy import deepcopy
-from colossalai.nn.optimizer import HybridAdam
-
-strategy = ColossalAIStrategy()
-
-with strategy.model_init_context():
-  # init your model here
-  # load pretrained gpt2
-  actor = GPTActor(pretrained='gpt2')
-  critic = GPTCritic()
-  initial_model = deepcopy(actor).cuda()
-  reward_model = RewardModel(deepcopy(critic.model), deepcopy(critic.value_head)).cuda()
-
-actor_optim = HybridAdam(actor.parameters(), lr=5e-6)
-critic_optim = HybridAdam(critic.parameters(), lr=5e-6)
-
-# prepare models and optimizers
-(actor, actor_optim), (critic, critic_optim), reward_model, initial_model = strategy.prepare(
-        (actor, actor_optim), (critic, critic_optim), reward_model, initial_model)
-
-# load saved model checkpoint after preparing
-strategy.load_model(actor, 'actor_checkpoint.pt', strict=False)
-# load saved optimizer checkpoint after preparing
-strategy.load_optimizer(actor_optim, 'actor_optim_checkpoint.pt')
-
-trainer = PPOTrainer(strategy,
-                     actor,
-                     critic,
-                     reward_model,
-                     initial_model,
-                     actor_optim,
-                     critic_optim,
-                     ...)
-
-trainer.fit(dataset, ...)
-
-# save model checkpoint after fitting on only rank0
-strategy.save_model(actor, 'actor_checkpoint.pt', only_rank0=True)
-# save optimizer checkpoint on all ranks
-strategy.save_optimizer(actor_optim, 'actor_optim_checkpoint.pt', only_rank0=False)
+```shell
+git clone https://github.com/hpcaitech/transformers
+cd transformers
+pip install .
 ```
 
-For more details, see `examples/`.
+## How to use?
 
-We also support training reward model with true-world data. See `examples/train_reward_model.py`.
+### Supervised datasets collection
+
+we collected 104K bilingual datasets of Chinese and English, and you can find the datasets in this repo
+[InstructionWild](https://github.com/XueFuzhao/InstructionWild)
+
+Here is how we collected the data
+<p align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/data-collect.png" width=500/>
+</p>
+
+### Stage1 - Supervised instructs tuning
+
+Stage1 is supervised instructs fine-tuning, which uses the datasets mentioned earlier to fine-tune the model
+
+you can run the `examples/train_sft.sh` to start a supervised instructs fine-tuning
+
+```
+torchrun --standalone --nproc_per_node=4 train_sft.py \
+    --pretrain "/path/to/LLaMa-7B/" \
+    --model 'llama' \
+    --strategy colossalai_zero2 \
+    --log_interval 10 \
+    --save_path  /path/to/Coati-7B \
+    --dataset /path/to/data.json \
+    --batch_size 4 \
+    --accimulation_steps 8 \
+    --lr 2e-5 \
+    --max_datasets_size 512 \
+    --max_epochs 1 \
+```
+
+### Stage2 - Training reward model
+
+Stage2 trains a reward model, which obtains corresponding scores by manually ranking different outputs for the same prompt and supervises the training of the reward model
+
+you can run the `examples/train_rm.sh` to start a reward model training
+
+```
+torchrun --standalone --nproc_per_node=4 train_reward_model.py
+    --pretrain "/path/to/LLaMa-7B/" \
+    --model 'llama' \
+    --strategy colossalai_zero2 \
+    --loss_fn 'log_exp'\
+    --save_path 'rmstatic.pt' \
+```
+
+### Stage3 - Training model with reinforcement learning by human feedback
+
+Stage3 uses reinforcement learning algorithm, which is the most complex part of the training process:
+
+<p align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/stage-3.jpeg" width=800/>
+</p>
+
+you can run the `examples/train_prompts.sh` to start training PPO with human feedback
+
+```
+torchrun --standalone --nproc_per_node=4 train_prompts.py \
+         --pretrain "/path/to/LLaMa-7B/" \
+         --model 'llama' \
+         --strategy colossalai_zero2 \
+         --prompt_path /path/to/your/prompt_dataset \
+         --pretrain_dataset /path/to/your/pretrain_dataset \
+         --rm_pretrain /your/pretrain/rm/defination \
+         --rm_path /your/rm/model/path
+```
+
+For more details, see [`examples/`](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat/examples).
+
+### Inference - After Training
+#### 8-bit setup
+
+8-bit quantization is originally supported by the latest [transformers](https://github.com/huggingface/transformers). Please install it from source.
+
+Please ensure you have downloaded HF-format model weights of LLaMA models.
+
+Usage:
+
+```python
+from transformers import LlamaForCausalLM
+USE_8BIT = True # use 8-bit quantization; otherwise, use fp16
+model = LlamaForCausalLM.from_pretrained(
+            "pretrained/path",
+            load_in_8bit=USE_8BIT,
+            torch_dtype=torch.float16,
+            device_map="auto",
+        )
+if not USE_8BIT:
+    model.half()  # use fp16
+model.eval()
+```
+
+**Troubleshooting**: if you get errors indicating your CUDA-related libraries are not found when loading the 8-bit model, you can check whether your `LD_LIBRARY_PATH` is correct.
+
+E.g. you can set `export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH`.
+
+#### 4-bit setup
+
+Please ensure you have downloaded the HF-format model weights of LLaMA models first.
+
+Then you can follow [GPTQ-for-LLaMa](https://github.com/qwopqwop200/GPTQ-for-LLaMa). This lib provides efficient CUDA kernels and weight conversion scripts.
+
+After installing this lib, we may convert the original HF-format LLaMA model weights to a 4-bit version.
+
+```shell
+CUDA_VISIBLE_DEVICES=0 python llama.py /path/to/pretrained/llama-7b c4 --wbits 4 --groupsize 128 --save llama7b-4bit.pt
+```
+
+Run this command in your cloned `GPTQ-for-LLaMa` directory, then you will get a 4-bit weight file `llama7b-4bit-128g.pt`.
+
+**Troubleshooting**: if you get errors about `position_ids`, you can checkout to commit `50287c3b9ae4a3b66f6b5127c643ec39b769b155`(`GPTQ-for-LLaMa` repo).
+
+For more details, see [`inference/`](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat/inference).
+
+## Coati7B examples
+
+### Generation
+
+<details><summary><b>E-mail</b></summary>
+
+![phd](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/Phd.png)
+</details>
+
+<details><summary><b>coding</b></summary>
+
+![sort](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/quick_sort.png)
+
+</details>
+
+<details><summary><b>regex</b></summary>
+
+![regex](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/regex.png)
+
+</details>
+
+<details><summary><b>Tex</b></summary>
+
+![tex](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/tex.png)
+
+</details>
+
+<details><summary><b>writing</b></summary>
+
+![writing](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/writing.png)
+
+</details>
+
+<details><summary><b>Table</b></summary>
+
+![Table](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/table.png)
+
+</details>
+
+### Open QA
+<details><summary><b>Game</b></summary>
+
+![Game](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/game.png)
+
+</details>
+
+<details><summary><b>Travel</b></summary>
+
+![Travel](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/travel.png)
+
+</details>
+
+<details><summary><b>Physical</b></summary>
+
+![Physical](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/physical.png)
+
+</details>
+
+<details><summary><b>Chemical</b></summary>
+
+![Chemical](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/chemical.png)
+
+</details>
+
+<details><summary><b>Economy</b></summary>
+
+![Economy](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/economy.png)
+
+</details>
+
+You can find more examples in this [repo](https://github.com/XueFuzhao/InstructionWild/blob/main/comparison.md).
+
+### Limitation for LLaMA-finetuned models
+- Both Alpaca and ColossalChat are based on LLaMA. It is hard to compensate for the missing knowledge in the pre-training stage.
+- Lack of counting ability: Cannot count the number of items in a list.
+- Lack of Logics (reasoning and calculation)
+- Tend to repeat the last sentence (fail to produce the end token).
+- Poor multilingual results: LLaMA is mainly trained on English datasets (Generation performs better than QA).
+
+### Limitation of dataset
+- Lack of summarization ability: No such instructions in finetune datasets.
+- Lack of multi-turn chat: No such instructions in finetune datasets
+- Lack of self-recognition: No such instructions in finetune datasets
+- Lack of Safety:
+  - When the input contains fake facts, the model makes up false facts and explanations.
+  - Cannot abide by OpenAI's policy: When generating prompts from OpenAI API, it always abides by its policy. So no violation case is in the datasets.
 
 ## FAQ
 
 ### How to save/load checkpoint
 
-To load pretrained model, you can simply use huggingface pretrained models:
+We have integrated the Transformers save and load pipeline, allowing users to freely call Hugging Face's language models and save them in the HF format.
 
-```python
-# load OPT-350m pretrained model
-actor = OPTActor(pretrained='facebook/opt-350m')
 ```
+from coati.models.llama import LlamaLM
+from coati.trainer import SFTTrainer
 
-To save model checkpoint:
+model = LlamaLM(pretrained=args.pretrain)
+tokenizer = AutoTokenizer.from_pretrained(args.pretrain)
 
-```python
-# save model checkpoint on only rank0
-strategy.save_model(actor, 'actor_checkpoint.pt', only_rank0=True)
-```
+trainer = SFTTrainer(model=model,
+    strategy=strategy,
+    optim=optim,
+    train_dataloader=train_dataloader,
+    eval_dataloader=eval_dataloader,
+    batch_size=args.batch_size,
+    max_epochs=args.max_epochs,
+    accimulation_steps = args.accimulation_steps
+)
 
-This function must be called after `strategy.prepare()`.
-
-For DDP strategy, model weights are replicated on all ranks. And for ColossalAI strategy, model weights may be sharded, but all-gather will be applied before returning state dict. You can set `only_rank0=True` for both of them, which only saves checkpoint on rank0, to save disk space usage. The checkpoint is float32.
-
-To save optimizer checkpoint:
-
-```python
-# save optimizer checkpoint on all ranks
-strategy.save_optimizer(actor_optim, 'actor_optim_checkpoint.pt', only_rank0=False)
-```
-
-For DDP strategy, optimizer states are replicated on all ranks. You can set `only_rank0=True`. But for ColossalAI strategy, optimizer states are sharded over all ranks, and no all-gather will be applied. So for ColossalAI strategy, you can only set `only_rank0=False`. That is to say, each rank will save a cehckpoint. When loading, each rank should load the corresponding part.
-
-Note that different stategy may have different shapes of optimizer checkpoint.
-
-To load model checkpoint:
-
-```python
-# load saved model checkpoint after preparing
-strategy.load_model(actor, 'actor_checkpoint.pt', strict=False)
-```
-
-To load optimizer checkpoint:
-
-```python
-# load saved optimizer checkpoint after preparing
-strategy.load_optimizer(actor_optim, 'actor_optim_checkpoint.pt')
+trainer.fit()
+trainer.save_model(path=args.save_path, only_rank0=True, tokenizer=tokenizer)
 ```
 
 ## The Plan
@@ -142,18 +330,16 @@ strategy.load_optimizer(actor_optim, 'actor_optim_checkpoint.pt')
 - [x] implement training reward model
 - [x] support LoRA
 - [x] support inference
-- [ ] open source the reward model weight
-- [ ] support llama from [facebook](https://github.com/facebookresearch/llama)
-- [ ] support BoN(best of N sample)
-- [ ] implement PPO-ptx fine-tuning
+- [x] support llama from [facebook](https://github.com/facebookresearch/llama)
+- [x] implement PPO-ptx fine-tuning
 - [ ] integrate with Ray
 - [ ] support more RL paradigms, like Implicit Language Q-Learning (ILQL),
-- [ ] support chain of throught by [langchain](https://github.com/hwchase17/langchain)
+- [ ] support chain-of-thought by [langchain](https://github.com/hwchase17/langchain)
 
 ### Real-time progress
 You will find our progress in github project broad
 
-[Open ChatGPT](https://github.com/orgs/hpcaitech/projects/17/views/1)
+[Coati](https://github.com/orgs/hpcaitech/projects/17/views/1)
 
 ## Invitation to open-source contribution
 Referring to the successful attempts of [BLOOM](https://bigscience.huggingface.co/) and [Stable Diffusion](https://en.wikipedia.org/wiki/Stable_Diffusion), any and all developers and partners with computing powers, datasets, models are welcome to join and build the Colossal-AI community, making efforts towards the era of big AI models from the starting point of replicating ChatGPT!
@@ -189,6 +375,19 @@ Thanks so much to all of our amazing contributors!
 - Increase the capacity of the fine-tuning model by up to 3.7 times on a single GPU
 - Keep in a sufficiently high running speed
 
+## Authors
+
+Coati is developed by ColossalAI Team:
+- [Fazzie](https://fazzie-key.cool/about/index.html)
+- [FrankLeeeee](https://github.com/FrankLeeeee)
+- [BlueRum](https://github.com/ht-zhou)
+- [ver217](https://github.com/ver217)
+- [ofey404](https://github.com/ofey404)
+
+The Phd student from [(HPC-AI) Lab](https://ai.comp.nus.edu.sg/) also contributed a lot to this project.
+- [Zangwei Zheng](https://github.com/zhengzangw)
+- [Xue Fuzhao](https://github.com/XueFuzhao)
+
 ## Citations
 
 ```bibtex
@@ -206,4 +405,33 @@ Thanks so much to all of our amazing contributors!
   journal={arXiv preprint arXiv:2203.02155},
   year={2022}
 }
+
+@article{touvron2023llama,
+  title={LLaMA: Open and Efficient Foundation Language Models},
+  author={Touvron, Hugo and Lavril, Thibaut and Izacard, Gautier and Martinet, Xavier and Lachaux, Marie-Anne and Lacroix, Timoth{\'e}e and Rozi{\`e}re, Baptiste and Goyal, Naman and Hambro, Eric and Azhar, Faisal and Rodriguez, Aurelien and Joulin, Armand and Grave, Edouard and Lample, Guillaume},
+  journal={arXiv preprint arXiv:2302.13971},
+  year={2023}
+}
+
+@misc{alpaca,
+  author = {Rohan Taori and Ishaan Gulrajani and Tianyi Zhang and Yann Dubois and Xuechen Li and Carlos Guestrin and Percy Liang and Tatsunori B. Hashimoto },
+  title = {Stanford Alpaca: An Instruction-following LLaMA model},
+  year = {2023},
+  publisher = {GitHub},
+  journal = {GitHub repository},
+  howpublished = {\url{https://github.com/tatsu-lab/stanford_alpaca}},
+}
+
+@misc{instructionwild,
+  author = {Fuzhao Xue and Zangwei Zheng and Yang You },
+  title = {Instruction in the Wild: A User-based Instruction Dataset},
+  year = {2023},
+  publisher = {GitHub},
+  journal = {GitHub repository},
+  howpublished = {\url{https://github.com/XueFuzhao/InstructionWild}},
+}
 ```
+
+## Licenses
+
+Coati is licensed under the [Apache 2.0 License](LICENSE).

@@ -5,6 +5,7 @@ from tqdm import tqdm
 
 from .utils import is_rank_0
 
+
 # Dahaos/rm-static
 class RmStaticDataset(Dataset):
     """
@@ -58,6 +59,7 @@ class RmStaticDataset(Dataset):
         return self.chosen[idx]["input_ids"], self.chosen[idx]["attention_mask"], self.reject[idx][
             "input_ids"], self.reject[idx]["attention_mask"]
 
+
 # Anthropic/hh-rlhf
 class HhRlhfDataset(Dataset):
     """
@@ -69,6 +71,7 @@ class HhRlhfDataset(Dataset):
         max_length: max length of input
         special_token: special token at the end of sentence
     """
+
     def __init__(self, dataset, tokenizer: Callable, max_length: int, special_token=None) -> None:
         super().__init__()
         self.chosen = []

@@ -1,5 +1,5 @@
 import torch
-from chatgpt.models.utils import compute_reward, normalize
+from coati.models.utils import compute_reward, normalize
 
 from .base import Experience, ExperienceMaker
 
@@ -25,7 +25,6 @@ class NaiveExperienceMaker(ExperienceMaker):
         base_action_log_probs = self.initial_model(sequences, num_actions, attention_mask)
         value = self.critic(sequences, action_mask, attention_mask)
         r = self.reward_model(sequences, attention_mask)
-
         reward = compute_reward(r, self.kl_coef, action_log_probs, base_action_log_probs, action_mask=action_mask)
 
         advantage = reward - value

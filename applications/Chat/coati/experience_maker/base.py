@@ -4,7 +4,7 @@ from typing import Optional
 
 import torch
 import torch.nn as nn
-from chatgpt.models.base import Actor
+from coati.models.base import Actor
 
 
 @dataclass

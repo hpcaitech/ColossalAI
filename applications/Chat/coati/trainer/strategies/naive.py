@@ -3,7 +3,7 @@ from typing import Any
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from chatgpt.replay_buffer import ReplayBuffer
+from coati.replay_buffer import ReplayBuffer
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 

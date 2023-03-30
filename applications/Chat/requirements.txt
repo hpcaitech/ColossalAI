@@ -3,5 +3,11 @@ tqdm
 datasets
 loralib
 colossalai>=0.2.4
-torch==1.12.1
+torch<2.0.0, >=1.12.1
 langchain
+tokenizers
+fastapi
+sse_starlette
+wandb
+sentencepiece
+gpustat

@@ -33,4 +33,3 @@ class OPTLM(LM):
         if checkpoint:
             model.gradient_checkpointing_enable()
         super().__init__(model, lora_rank, lora_train_bias)
-

@@ -17,18 +17,18 @@ def fetch_version():
 
 
 setup(
-    name='chatgpt',
+    name='coati',
     version=fetch_version(),
     packages=find_packages(exclude=(
         'tests',
         'benchmarks',
         '*.egg-info',
     )),
-    description='A RLFH implementation (ChatGPT) powered by ColossalAI',
+    description='Colossal-AI Talking Intelligence',
     long_description=fetch_readme(),
     long_description_content_type='text/markdown',
     license='Apache Software License 2.0',
-    url='https://github.com/hpcaitech/ChatGPT',
+    url='https://github.com/hpcaitech/Coati',
     install_requires=fetch_requirements('requirements.txt'),
     python_requires='>=3.6',
     classifiers=[

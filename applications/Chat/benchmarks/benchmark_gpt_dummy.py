@@ -4,11 +4,11 @@ from copy import deepcopy
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-from chatgpt.models.base import RewardModel
-from chatgpt.models.gpt import GPTActor, GPTCritic
-from chatgpt.trainer import PPOTrainer
-from chatgpt.trainer.callbacks import PerformanceEvaluator
-from chatgpt.trainer.strategies import ColossalAIStrategy, DDPStrategy, Strategy
+from coati.models.base import RewardModel
+from coati.models.gpt import GPTActor, GPTCritic
+from coati.trainer import PPOTrainer
+from coati.trainer.callbacks import PerformanceEvaluator
+from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy, Strategy
 from torch.optim import Adam
 from transformers.models.gpt2.configuration_gpt2 import GPT2Config
 from transformers.models.gpt2.tokenization_gpt2 import GPT2Tokenizer

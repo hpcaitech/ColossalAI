@@ -23,10 +23,11 @@ DEFAULT_EOS_TOKEN = "</s>"
 DEFAULT_BOS_TOKEN = "</s>"
 DEFAULT_UNK_TOKEN = "</s>"
 
+
 def prepare_llama_tokenizer_and_embedding(
-    tokenizer: transformers.PreTrainedTokenizer,
-    model: transformers.PreTrainedModel,
-    special_tokens_dict: Dict = dict(pad_token=DEFAULT_PAD_TOKEN),
+        tokenizer: transformers.PreTrainedTokenizer,
+        model: transformers.PreTrainedModel,
+        special_tokens_dict: Dict = dict(pad_token=DEFAULT_PAD_TOKEN),
 ):
     """prepare llama tokenizer and embedding.
 
@@ -39,21 +40,19 @@ def prepare_llama_tokenizer_and_embedding(
             model=model,
         )
 
-    tokenizer.add_special_tokens(
-        {
-            "eos_token": DEFAULT_EOS_TOKEN,
-            "bos_token": DEFAULT_BOS_TOKEN,
-            "unk_token": DEFAULT_UNK_TOKEN,
-        }
-    )
+    tokenizer.add_special_tokens({
+        "eos_token": DEFAULT_EOS_TOKEN,
+        "bos_token": DEFAULT_BOS_TOKEN,
+        "unk_token": DEFAULT_UNK_TOKEN,
+    })
 
     return tokenizer
 
 
 def smart_tokenizer_and_embedding_resize(
-    tokenizer: transformers.PreTrainedTokenizer,
-    model: transformers.PreTrainedModel,
-    special_tokens_dict: Dict = dict(pad_token=DEFAULT_PAD_TOKEN),
+        tokenizer: transformers.PreTrainedTokenizer,
+        model: transformers.PreTrainedModel,
+        special_tokens_dict: Dict = dict(pad_token=DEFAULT_PAD_TOKEN),
 ):
     """Resize tokenizer and embedding.
 
@@ -65,7 +64,7 @@ def smart_tokenizer_and_embedding_resize(
 
         if isinstance(model, LlamaLM):
             model = model.get_base_model()
-            
+
         model.resize_token_embeddings(len(tokenizer))
 
         if num_new_tokens > 0:
@@ -77,4 +76,3 @@ def smart_tokenizer_and_embedding_resize(
 
             input_embeddings[-num_new_tokens:] = input_embeddings_avg
             output_embeddings[-num_new_tokens:] = output_embeddings_avg
-            

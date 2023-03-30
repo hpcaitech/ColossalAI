@@ -3,7 +3,7 @@ from typing import List, Optional
 
 import torch
 import torch.nn.functional as F
-from chatgpt.experience_maker.base import Experience
+from coati.experience_maker.base import Experience
 
 
 @dataclass

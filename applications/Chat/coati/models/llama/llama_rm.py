@@ -1,7 +1,7 @@
 from typing import Optional
 
 import torch.nn as nn
-from transformers import LlamaConfig, LlamaForCausalLM
+from transformers import LlamaConfig, LlamaForCausalLM, LlamaModel
 
 from ..base import RewardModel
 
@@ -26,16 +26,15 @@ class LlamaRM(RewardModel):
                  lora_train_bias: str = 'none') -> None:
 
         if pretrained is not None:
-            model = LlamaForCausalLM.from_pretrained(pretrained)
+            model = LlamaModel.from_pretrained(pretrained)
         elif config is not None:
-            model = LlamaForCausalLM(config)
+            model = LlamaModel(config)
         else:
-            model = LlamaForCausalLM(LlamaConfig())
+            model = LlamaModel(LlamaConfig())
 
         if checkpoint:
             model.gradient_checkpointing_enable()
-
         value_head = nn.Linear(model.config.hidden_size, 1)
         value_head.weight.data.normal_(mean=0.0, std=1 / (model.config.hidden_size + 1))
 
-        super().__init__(model, lora_rank, lora_train_bias)
+        super().__init__(model, value_head, lora_rank, lora_train_bias)

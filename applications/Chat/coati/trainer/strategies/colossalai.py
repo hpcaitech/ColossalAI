@@ -5,20 +5,22 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 import torch.optim as optim
-from chatgpt.models.base import Actor
-from chatgpt.models.lora import LoraLinear
+from coati.models.base import LM, Actor, RewardModel
+from coati.models.lora import LoraLinear
 from torch.optim import Optimizer
-
 from transformers.modeling_utils import PreTrainedModel
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
 import colossalai
+from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import CPUAdam, HybridAdam
 from colossalai.nn.parallel import ZeroDDP, zero_model_wrapper, zero_optim_wrapper
 from colossalai.nn.parallel.utils import get_static_torch_model
 from colossalai.tensor import ProcessGroup, ShardSpec
 from colossalai.utils import get_current_device
 from colossalai.utils.model.colo_init_context import ColoInitContext
+
+logger = get_dist_logger(__name__)
 
 from .base import Strategy
 from .ddp import DDPStrategy
@@ -134,7 +136,9 @@ class ColossalAIStrategy(DDPStrategy):
         return super().model_init_context()
 
     def setup_model(self, model: nn.Module) -> nn.Module:
+
         model = zero_model_wrapper(model, zero_stage=self.stage, gemini_config=self.gemini_config)
+
         if self.stage != 3 and self.precision == 'fp16':
             model = model.half()
         return model
@@ -156,32 +160,51 @@ class ColossalAIStrategy(DDPStrategy):
             return model.module
         return model
 
-    def save_model(self, model: nn.Module, path: str, only_rank0: bool = False, tokenizer: Optional[PreTrainedTokenizerBase] = None) -> None:
+    def _unwrap_model(self, model: Union[nn.Module, ZeroDDP]) -> nn.Module:
+        if isinstance(model, ZeroDDP) and self.stage == 3:
+            logger.info(f"model type: {type(model)}, get static torch model")
+            model = get_static_torch_model(model)
+            logger.info(f"unwrapped_model type: {type(model)}")
+
+        return super()._unwrap_model(model)
+
+    def save_model(self,
+                   model: nn.Module,
+                   path: str,
+                   only_rank0: bool = True,
+                   tokenizer: Optional[PreTrainedTokenizerBase] = None) -> None:
+
+        if only_rank0 and dist.get_rank() != 0:
+            return None
         unwrapped_model = self._unwrap_model(model)
         # TODO : better way to get torch model from gemini model
         # to get torch model from gemini model
-        if isinstance(unwrapped_model, ZeroDDP):
-            state_dict = unwrapped_model.state_dict()
-            unwrapped_model = get_static_torch_model(unwrapped_model)
-            if only_rank0 and dist.get_rank() != 0:
-                return
-            unwrapped_model.load_state_dict(state_dict)
-        # merge lora_weights into weights
+
         for module in unwrapped_model.modules():
             if isinstance(module, LoraLinear):
                 module.merge_weights = True
                 module.eval()
-        # get state_dict and save
-
-        if not isinstance(self.model, PreTrainedModel):
+        if isinstance(unwrapped_model, RewardModel):
             state_dict = unwrapped_model.state_dict()
             if only_rank0 and dist.get_rank() != 0:
                 return
             torch.save(state_dict, path)
         else:
-            self.model.save_pretrained(path)
-            if tokenizer is not None:
-                tokenizer.save_pretrained(path)
+            try:
+                if isinstance(unwrapped_model, LM):
+                    unwrapped_model = unwrapped_model.model
+                logger.info(f'Saving model to {path}', ranks=[0])
+                unwrapped_model.save_pretrained(path)
+                logger.info(f'Model saved to {path} Successfully', ranks=[0])
+                if tokenizer is not None:
+                    logger.info(f'Saving tokenizer to {path}', ranks=[0])
+                    tokenizer.save_pretrained(path)
+                    logger.info(f'Tokenizer saved to {path} Successfully', ranks=[0])
+            except AttributeError:
+                state_dict = unwrapped_model.state_dict()
+                if only_rank0 and dist.get_rank() != 0:
+                    return
+                torch.save(state_dict, path)
 
     def save_optimizer(self, optimizer: Optimizer, path: str, only_rank0: bool = False) -> None:
         if only_rank0:

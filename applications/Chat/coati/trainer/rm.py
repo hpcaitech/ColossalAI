@@ -1,12 +1,15 @@
 from abc import ABC
-import pandas as pd
-import loralib as lora
-import torch
 from datetime import datetime
+from typing import Optional
+
+import pandas as pd
+import torch
+import torch.distributed as dist
 from torch.optim import Optimizer, lr_scheduler
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, DistributedSampler
 from tqdm import tqdm
- 
+from transformers.tokenization_utils_base import PreTrainedTokenizerBase
+
 from .strategies import Strategy
 from .utils import is_rank_0
 
@@ -42,15 +45,21 @@ class RewardModelTrainer(ABC):
         super().__init__()
         self.strategy = strategy
         self.epochs = max_epochs
-        self.train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+        train_sampler = None
+
+        if dist.is_initialized() and dist.get_world_size() > 1:
+            train_sampler = DistributedSampler(train_dataset, shuffle=True, seed=42, drop_last=True)
+        self.train_dataloader = DataLoader(train_dataset,
+                                           shuffle=(train_sampler is None),
+                                           sampler=train_sampler,
+                                           batch_size=batch_size)
         self.valid_dataloader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=True)
         self.eval_dataloader = DataLoader(eval_dataset, batch_size=batch_size, shuffle=True)
-        
+
         self.model = strategy.setup_model(model)
         self.loss_fn = loss_fn
         self.optimizer = strategy.setup_optimizer(optim, self.model)
-        self.scheduler = lr_scheduler.CosineAnnealingLR(self.optimizer, self.train_dataloader.__len__()//100)
-
+        self.scheduler = lr_scheduler.CosineAnnealingLR(self.optimizer, self.train_dataloader.__len__() // 100)
 
     def eval_acc(self, dataloader):
         dist = 0
@@ -74,7 +83,6 @@ class RewardModelTrainer(ABC):
             acc = on / cnt
         self.model.train()
         return dist_mean, acc
-    
 
     def fit(self):
         time = datetime.now()
@@ -105,16 +113,23 @@ class RewardModelTrainer(ABC):
                     dist, acc = self.eval_acc(self.valid_dataloader)
                     cnt = 0
                     if is_rank_0():
-                        log = pd.DataFrame([[step_bar.n, loss.item(), dist, acc]], columns=['step', 'loss', 'dist', 'acc'])
+                        log = pd.DataFrame([[step_bar.n, loss.item(), dist, acc]],
+                                           columns=['step', 'loss', 'dist', 'acc'])
                         log.to_csv('log_%s.csv' % time, mode='a', header=False, index=False)
                 step_bar.update()
                 step_bar.set_postfix({'dist': dist, 'acc': acc})
-                
+
             # eval
             dist, acc = self.eval_acc(self.eval_dataloader)
             if is_rank_0():
-                    log = pd.DataFrame([[step_bar.n, loss.item(), dist, acc]], columns=['step', 'loss', 'dist', 'acc'])
-                    log.to_csv('log.csv', mode='a', header=False, index=False)
+                log = pd.DataFrame([[step_bar.n, loss.item(), dist, acc]], columns=['step', 'loss', 'dist', 'acc'])
+                log.to_csv('log.csv', mode='a', header=False, index=False)
             epoch_bar.update()
             step_bar.set_postfix({'dist': dist, 'acc': acc})
             step_bar.close()
+
+    def save_model(self,
+                   path: str,
+                   only_rank0: bool = False,
+                   tokenizer: Optional[PreTrainedTokenizerBase] = None) -> None:
+        self.strategy.save_model(model=self.model, path=path, only_rank0=only_rank0, tokenizer=tokenizer)

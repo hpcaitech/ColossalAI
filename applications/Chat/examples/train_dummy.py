@@ -2,13 +2,13 @@ import argparse
 from copy import deepcopy
 
 import torch
-from chatgpt.models.base import RewardModel
-from chatgpt.models.bloom import BLOOMActor, BLOOMCritic
-from chatgpt.models.gpt import GPTActor, GPTCritic
-from chatgpt.models.opt import OPTActor, OPTCritic
-from chatgpt.trainer import PPOTrainer
-from chatgpt.trainer.callbacks import SaveCheckpoint
-from chatgpt.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
+from coati.models.base import RewardModel
+from coati.models.bloom import BLOOMActor, BLOOMCritic
+from coati.models.gpt import GPTActor, GPTCritic
+from coati.models.opt import OPTActor, OPTCritic
+from coati.trainer import PPOTrainer
+from coati.trainer.callbacks import SaveCheckpoint
+from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
 from torch.optim import Adam
 from transformers import AutoTokenizer, BloomTokenizerFast
 from transformers.models.gpt2.tokenization_gpt2 import GPT2Tokenizer
@@ -115,7 +115,7 @@ def main(args):
                 update_timesteps=args.update_timesteps)
 
     # save model checkpoint after fitting
-    strategy.save_model(actor, args.save_path, only_rank0=True)
+    trainer.save_model(args.save_path, only_rank0=True)
     # save optimizer checkpoint on all ranks
     if args.need_optim_ckpt:
         strategy.save_optimizer(actor_optim,

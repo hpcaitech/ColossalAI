@@ -2,8 +2,8 @@ from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
-from chatgpt.experience_maker import Experience, ExperienceMaker
-from chatgpt.replay_buffer import ReplayBuffer
+from coati.experience_maker import Experience, ExperienceMaker
+from coati.replay_buffer import ReplayBuffer
 from torch import Tensor
 from torch.utils.data import DistributedSampler
 from tqdm import tqdm
@@ -95,9 +95,15 @@ class Trainer(ABC):
                     pbar.set_postfix(metrics)
                 self._on_learn_epoch_end(epoch)
 
-    def fit(self, prompts, num_episodes: int = 50000, max_timesteps: int = 500, update_timesteps: int = 5000) -> None:
+    def fit(self,
+            prompt_dataloader,
+            pretrain_dataloader,
+            num_episodes: int = 50000,
+            max_timesteps: int = 500,
+            update_timesteps: int = 5000) -> None:
         time = 0
-        sampler = self.strategy.setup_sampler(prompts)
+        self.pretrain_dataloader = pretrain_dataloader
+        self.prompt_dataloader = prompt_dataloader
         self._on_fit_start()
         for episode in range(num_episodes):
             self._on_episode_start(episode)
@@ -105,16 +111,16 @@ class Trainer(ABC):
                                  desc=f'Episode [{episode+1}/{num_episodes}]',
                                  disable=not is_rank_0()):
                 time += 1
-                rand_prompts = sampler.sample(self.experience_batch_size)
-                if self.tokenizer is not None:
-                    inputs = self.tokenizer(rand_prompts)
-                else:
-                    inputs = rand_prompts
+                prompts = next(iter(self.prompt_dataloader))
                 self._on_make_experience_start()
-                experience = self._make_experience(inputs)
+                self.experience_maker.initial_model.to(torch.cuda.current_device())
+                self.experience_maker.reward_model.to(torch.cuda.current_device())
+                experience = self._make_experience(prompts)
                 self._on_make_experience_end(experience)
                 self.replay_buffer.append(experience)
                 if time % update_timesteps == 0:
+                    self.experience_maker.initial_model.to('cpu')
+                    self.experience_maker.reward_model.to('cpu')
                     self._learn()
                     self.replay_buffer.clear()
             self._on_episode_end(episode)

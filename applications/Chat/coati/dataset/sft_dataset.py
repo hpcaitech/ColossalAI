@@ -13,34 +13,33 @@
 #    limitations under the License.
 
 import copy
+import random
 from dataclasses import dataclass, field
 from typing import Callable, Dict, Sequence
-import random
-from torch.utils.data import Dataset
-import torch.distributed as dist
-from tqdm import tqdm
+
 import torch
+import torch.distributed as dist
+import transformers
+from torch.utils.data import Dataset
+from tqdm import tqdm
+
+from colossalai.logging import get_dist_logger
 
 from .utils import is_rank_0, jload
-
-import transformers
-from colossalai.logging import get_dist_logger
 
 logger = get_dist_logger()
 
 IGNORE_INDEX = -100
 PROMPT_DICT = {
-    "prompt_input": (
-        "Below is an instruction that describes a task, paired with an input that provides further context. "
-        "Write a response that appropriately completes the request.\n\n"
-        "### Instruction:\n{instruction}\n\n### Input:\n{input}\n\n### Response:"
-    ),
-    "prompt_no_input": (
-        "Below is an instruction that describes a task. "
-        "Write a response that appropriately completes the request.\n\n"
-        "### Instruction:\n{instruction}\n\n### Response:"
-    ),
+    "prompt_input":
+        ("Below is an instruction that describes a task, paired with an input that provides further context. "
+         "Write a response that appropriately completes the request.\n\n"
+         "### Instruction:\n{instruction}\n\n### Input:\n{input}\n\n### Response:"),
+    "prompt_no_input": ("Below is an instruction that describes a task. "
+                        "Write a response that appropriately completes the request.\n\n"
+                        "### Instruction:\n{instruction}\n\n### Response:"),
 }
+
 
 class SFTDataset(Dataset):
     """
@@ -52,7 +51,7 @@ class SFTDataset(Dataset):
         max_length: max length of input
     """
 
-    def __init__(self, dataset, tokenizer: Callable, max_length: int=512) -> None:
+    def __init__(self, dataset, tokenizer: Callable, max_length: int = 512) -> None:
         super().__init__()
         # self.prompts = []
         self.input_ids = []
@@ -75,9 +74,9 @@ class SFTDataset(Dataset):
 
     def __getitem__(self, idx):
         # dict(input_ids=self.input_ids[i], labels=self.labels[i])
-        return dict(input_ids=self.input_ids[i], labels=self.labels[i])
+        return dict(input_ids=self.input_ids[idx], labels=self.labels[idx])
         # return dict(self.prompts[idx], self.prompts[idx])
-    
+
 
 def _tokenize_fn(strings: Sequence[str], tokenizer: transformers.PreTrainedTokenizer) -> Dict:
     """Tokenize a list of strings."""
@@ -88,8 +87,7 @@ def _tokenize_fn(strings: Sequence[str], tokenizer: transformers.PreTrainedToken
             padding="longest",
             max_length=tokenizer.model_max_length,
             truncation=True,
-        )
-        for text in strings
+        ) for text in strings
     ]
     input_ids = labels = [tokenized.input_ids[0] for tokenized in tokenized_list]
     input_ids_lens = labels_lens = [
@@ -101,6 +99,7 @@ def _tokenize_fn(strings: Sequence[str], tokenizer: transformers.PreTrainedToken
         input_ids_lens=input_ids_lens,
         labels_lens=labels_lens,
     )
+
 
 def preprocess(
     sources: Sequence[str],
@@ -116,18 +115,19 @@ def preprocess(
         label[:source_len] = IGNORE_INDEX
     return dict(input_ids=input_ids, labels=labels)
 
-class AlpacaDataset(Dataset):
+
+class SupervisedDataset(Dataset):
     """Dataset for supervised fine-tuning."""
 
-    def __init__(self, data_path: str, tokenizer: transformers.PreTrainedTokenizer, max_length: int=None):
-        super(AlpacaDataset, self).__init__()
+    def __init__(self, data_path: str, tokenizer: transformers.PreTrainedTokenizer, max_datasets_size: int = None):
+        super(SupervisedDataset, self).__init__()
         logger.info("Loading data...")
         list_data_dict = jload(data_path)
         logger.info(f"Loaded {len(list_data_dict)} examples.")
 
-        if max_length is not None:
-            logger.info(f"Truncating data to max length {max_length}...")
-            list_data_dict = [example for example in list_data_dict if len(example["input"]) <= max_length]
+        if max_datasets_size is not None:
+            logger.info(f"Limiting dataset to {max_datasets_size} examples.")
+            list_data_dict = list_data_dict[:max_datasets_size]
 
         logger.info("Formatting inputs...")
         prompt_input, prompt_no_input = PROMPT_DICT["prompt_input"], PROMPT_DICT["prompt_no_input"]
@@ -148,18 +148,19 @@ class AlpacaDataset(Dataset):
 
     def __getitem__(self, i) -> Dict[str, torch.Tensor]:
         return dict(input_ids=self.input_ids[i], labels=self.labels[i])
-    
+
+
 @dataclass
-class AlpacaDataCollator(object):
+class DataCollatorForSupervisedDataset(object):
     """Collate examples for supervised fine-tuning."""
 
     tokenizer: transformers.PreTrainedTokenizer
 
     def __call__(self, instances: Sequence[Dict]) -> Dict[str, torch.Tensor]:
         input_ids, labels = tuple([instance[key] for instance in instances] for key in ("input_ids", "labels"))
-        input_ids = torch.nn.utils.rnn.pad_sequence(
-            input_ids, batch_first=True, padding_value=self.tokenizer.pad_token_id
-        )
+        input_ids = torch.nn.utils.rnn.pad_sequence(input_ids,
+                                                    batch_first=True,
+                                                    padding_value=self.tokenizer.pad_token_id)
         labels = torch.nn.utils.rnn.pad_sequence(labels, batch_first=True, padding_value=IGNORE_INDEX)
         return dict(
             input_ids=input_ids,
