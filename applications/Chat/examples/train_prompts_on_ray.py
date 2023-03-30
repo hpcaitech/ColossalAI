@@ -527,7 +527,6 @@ if __name__ == '__main__':
                         default='naive')
     parser.add_argument('--model', default='gpt2', choices=['gpt2', 'bloom', 'opt'])
     parser.add_argument('--pretrain', type=str, default='gpt2')
-    parser.add_argument('--model_name', type=str, help='gpt2 model name represented in pretrain model', default='s')
     parser.add_argument('--save_path', type=str, default='actor_checkpoint_prompts.pt')
     parser.add_argument('--need_optim_ckpt', type=bool, default=False)
     parser.add_argument('--num_episodes', type=int, default=10)
