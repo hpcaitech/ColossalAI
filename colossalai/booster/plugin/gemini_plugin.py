@@ -191,7 +191,7 @@ class GeminiPlugin(Plugin):
 
     def __init__(
         self,
-        device: torch.device = get_current_device(),
+        device: Optional[torch.device] = None,
         placement_policy: str = "cpu",
         pin_memory: bool = False,
         force_outputs_fp32: bool = False,
@@ -217,7 +217,7 @@ class GeminiPlugin(Plugin):
         self.rank = dist.get_rank()
         self.world_size = dist.get_world_size()
         self.gemini_config = dict(
-            device=device,
+            device=(device or get_current_device()),
             placement_policy=placement_policy,
             pin_memory=pin_memory,
             force_outputs_fp32=force_outputs_fp32,
@@ -317,7 +317,7 @@ class GeminiPlugin(Plugin):
             # convert model to sync bn
             model = nn.SyncBatchNorm.convert_sync_batchnorm(model, None)
 
-            # wrap the model with PyTorch DDP
+            # wrap the model with Gemini
             model = GeminiModel(model, self.gemini_config)
 
         if not isinstance(optimizer, OptimizerWrapper):
