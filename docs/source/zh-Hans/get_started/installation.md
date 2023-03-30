@@ -2,7 +2,7 @@
 
 环境要求:
 
-- PyTorch >= 1.11 (PyTorch 2.x 正在适配中)
+- PyTorch >= 1.11
 - Python >= 3.7
 - CUDA >= 11.0
 
