@@ -12,3 +12,5 @@ client.submit_job(
             "tokenizers", "fastapi", "sse_starlette", "wandb", "sentencepiece", "gpustat"
         ]
     })
+
+# Use this script with 'python train_prompts_on_ray_job_submission_script' on your Ray cluster.
