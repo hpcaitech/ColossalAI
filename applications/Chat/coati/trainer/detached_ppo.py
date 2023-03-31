@@ -71,17 +71,23 @@ class DetachedPPOTrainer(DetachedTrainer):
         with self.strategy.model_init_context():
             self.actor, self.critic = get_cuda_actor_critic_from_args(model, pretrained, lora_rank)
 
-        self.actor_loss_fn = PolicyLoss(eps_clip)
-        self.critic_loss_fn = ValueLoss(value_clip)
-        if isinstance(self.strategy, ColossalAIStrategy):
+        if strategy != 'colossalai_gemini':
+            self.actor.to(torch.float16).to(torch.cuda.current_device())
+            self.critic.to(torch.float16).to(torch.cuda.current_device())
+
+        if strategy.startswith('colossalai'):
             self.actor_optim = HybridAdam(self.actor.parameters(), lr=5e-6)
             self.critic_optim = HybridAdam(self.critic.parameters(), lr=5e-6)
         else:
             self.actor_optim = Adam(self.actor.parameters(), lr=5e-6)
             self.critic_optim = Adam(self.critic.parameters(), lr=5e-6)
+
         (self.actor, self.actor_optim), (self.critic, self.critic_optim) = \
             self.strategy.prepare((self.actor, self.actor_optim), (self.critic, self.critic_optim))
         generate_kwargs = _set_default_generate_kwargs(self.strategy, generate_kwargs, self.actor)
+
+        self.actor_loss_fn = PolicyLoss(eps_clip)
+        self.critic_loss_fn = ValueLoss(value_clip)
 
         super().__init__(experience_maker_holder_name_list,
                          train_batch_size=train_batch_size,
@@ -157,6 +163,8 @@ class DetachedPPOTrainer(DetachedTrainer):
     def _get_unwrapped_actor(self):
         if False:
             pass
+        elif isinstance(self.strategy, ColossalAIStrategy):
+            return Actor(self.strategy._unwrap_model(self.actor))
         elif isinstance(self.strategy, DDPStrategy):
             return Actor(self.strategy._unwrap_actor(self.actor))
         elif isinstance(self.strategy, NaiveStrategy):
@@ -165,6 +173,8 @@ class DetachedPPOTrainer(DetachedTrainer):
     def _get_unwrapped_critic(self):
         if False:
             pass
+        elif isinstance(self.strategy, ColossalAIStrategy):
+            return self.strategy._unwrap_model(self.critic)
         elif isinstance(self.strategy, DDPStrategy):
             return self.critic.module
         elif isinstance(self.strategy, NaiveStrategy):

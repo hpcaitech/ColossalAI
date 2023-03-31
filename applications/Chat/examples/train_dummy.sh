@@ -14,5 +14,5 @@ set_n_least_used_CUDA_VISIBLE_DEVICES() {
 }
 
 set_n_least_used_CUDA_VISIBLE_DEVICES 2
-
+export CUDA_VISIBLE_DEVICES="0,1,2,3"
 torchrun --standalone --nproc_per_node=2 train_dummy.py --strategy colossalai_zero2
