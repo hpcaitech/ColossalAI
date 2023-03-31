@@ -1,12 +1,15 @@
 import math
+from copy import deepcopy
+from typing import Type
 
 import torch
+import torch.distributed as dist
 import torch.nn as nn
+
 from colossalai.context import ParallelMode, seed
-from colossalai.utils import get_current_device
 from colossalai.context.moe_context import MOE_CONTEXT
+from colossalai.utils import get_current_device
 from colossalai.zero.init_ctx import no_shard_zero_decrator
-from typing import Type
 
 
 class MoeExperts(nn.Module):
@@ -20,6 +23,7 @@ class MoeExperts(nn.Module):
         assert comm_name in {"all_to_all", "all_gather"}, \
             "This kind of communication has not been implemented yet.\n Please use Experts build function."
         self.comm_name = comm_name
+        self.num_total_experts = num_experts
         # Get the configuration of experts' deployment and parallel information from moe contex
         self.num_local_experts, self.dist_info = MOE_CONTEXT.get_info(num_experts)
 
@@ -60,6 +64,33 @@ class Experts(MoeExperts):
         # Concatenate all outputs together
         output = torch.cat(expert_output, dim=1).contiguous()
         return output
+
+    def state_dict(self, destination=None, prefix='', keep_vars=False):
+        assert keep_vars == False, "Only support keep_vars=False now"
+        dp_rank = dist.get_rank(self.dist_info.dp_group)
+        ep_rank = dist.get_rank(self.dist_info.ep_group)
+        submodule_dict = dict()
+        example_submodule = None
+        for name, subm in self.experts.named_modules():
+            if subm is self.experts:
+                continue
+            module_number = self.num_local_experts * ep_rank + int(name)
+            submodule_dict[module_number] = subm
+            example_submodule = subm
+
+        if dp_rank == 0:
+            local_prefix = prefix + 'experts.'
+            buffer_module = deepcopy(example_submodule)
+            for i in range(self.num_total_experts):
+                source_rank = i // self.num_local_experts
+                current_prefix = local_prefix + str(i) + '.'
+                comm_module = submodule_dict.get(i, buffer_module)
+                for name, param in comm_module.named_parameters():
+                    dist.broadcast(param.data, src=source_rank, group=self.dist_info.ep_group)
+                    if ep_rank == 0:
+                        destination[current_prefix + name] = param.data.cpu()
+
+        dist.barrier()
 
 
 class FFNExperts(MoeExperts):
