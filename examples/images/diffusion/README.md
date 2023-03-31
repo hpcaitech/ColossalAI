@@ -82,7 +82,7 @@ CUDA_EXT=1 pip install .
 
 #### Step 3:Accelerate with flash attention by xformers(Optional)
 
-Notice that xformers will accelerate the training process in cost of extra disk space. The suitable version of xformers for this training process is 0.12.0. You can download xformers directly via pip. For more release versions, feel free to check its official website: [XFormers](./https://pypi.org/project/xformers/)
+Notice that xformers will accelerate the training process in cost of extra disk space. The suitable version of xformers for this training process is 0.0.12. You can download xformers directly via pip. For more release versions, feel free to check its official website: [XFormers](./https://pypi.org/project/xformers/)
 
 ```
 pip install xformers==0.0.12
