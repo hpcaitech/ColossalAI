@@ -21,6 +21,14 @@ from colossalai.utils import get_current_device
 from colossalai.utils.model.colo_init_context import ColoInitContext
 from colossalai.utils.model.experimental import LazyInitContext
 
+
+class Fool(nn.Module):
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.p = nn.Parameter(torch.empty(1024, 1024, 1024))
+
+
 CAI_VERSION = colossalai.__version__
 
 
@@ -151,18 +159,25 @@ def main():
 
     # build GPT model
     with ctx:
-        model = model_builder(args.model_type)(checkpoint=True)
+        if args.model_type == 'fool':
+            model = Fool()
+        else:
+            model = model_builder(args.model_type)(checkpoint=True)
 
     logger.info(get_mem_info(prefix='After init model, '), ranks=[0])
     logger.info(get_peak_mem_info(prefix='After init model, '), ranks=[0])
     # asign running configurations
 
     if args.use_gemini:
+        if args.model_type == 'fool':
+            hidden_dim = None
+        else:
+            hidden_dim = model.config.n_embd
         gemini_config = dict(strict_ddp_mode=True,
-                             device=get_current_device(),
+                             device='cpu',
                              placement_policy=args.placement,
-                             pin_memory=True,
-                             hidden_dim=model.config.n_embd,
+                             pin_memory=False,
+                             hidden_dim=hidden_dim,
                              search_range_mb=128)
 
         # build a highly optimized gpu/cpu optimizer
