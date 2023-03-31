@@ -2,6 +2,9 @@ import pytest
 import torch
 import torch.nn as nn
 
+from colossalai._analyzer.fx.graph_module import ColoGraphModule
+from colossalai._analyzer.fx.passes.shape_prop import shape_prop_pass
+from colossalai._analyzer.fx.tracer.tracer import ColoTracer
 from colossalai.auto_parallel.tensor_shard.node_handler.matmul_handler import (
     MatMulHandler,
     MatMulType,
@@ -15,7 +18,6 @@ from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
     StrategiesVector,
 )
 from colossalai.device.device_mesh import DeviceMesh
-from colossalai.fx import ColoGraphModule, ColoTracer
 from colossalai.testing.utils import parameterize
 
 
@@ -57,9 +59,11 @@ def test_matmul_node_handler(tensor_shapes):
 
     model = MatMulModule()
 
-    tracer = ColoTracer()
-    graph = tracer.trace(model, meta_args={"x1": x1.to('meta'), 'x2': x2.to('meta')})
+    tracer = ColoTracer(bias_addition_split=True)
+    meta_args = {"x1": x1.to('meta'), 'x2': x2.to('meta')}
+    graph = tracer.trace(model, meta_args=meta_args)
     gm = ColoGraphModule(model, graph)
+    shape_prop_pass(gm, *meta_args.values())
     physical_mesh_id = torch.arange(0, 4)
 
     print(graph)
@@ -124,7 +128,6 @@ def test_matmul_node_handler(tensor_shapes):
         input_sharding_spec = strategy.get_sharding_spec_by_name('x1')
         other_sharding_spec = strategy.get_sharding_spec_by_name('x2')
         output_sharding_spec = strategy.get_sharding_spec_by_name('matmul')
-
         if matmul_type == MatMulType.DOT:
             # dot product will produce a scaler
             # results should fulfill:
@@ -159,7 +162,10 @@ def test_matmul_node_handler(tensor_shapes):
             if len(other_shape) > 1:
                 assert other_sharding_spec.sharding_sequence[-1] == output_sharding_spec.sharding_sequence[-1]
             if len(input_shape) > 1:
-                assert input_sharding_spec.sharding_sequence[-2] == output_sharding_spec.sharding_sequence[-2]
+                if len(other_shape) == 1:
+                    assert input_sharding_spec.sharding_sequence[-2] == output_sharding_spec.sharding_sequence[-1]
+                else:
+                    assert input_sharding_spec.sharding_sequence[-2] == output_sharding_spec.sharding_sequence[-2]
             if len(other_shape) > 2:
                 assert other_sharding_spec.sharding_sequence[-2] == input_sharding_spec.sharding_sequence[-1]
 

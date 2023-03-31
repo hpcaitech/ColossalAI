@@ -5,12 +5,14 @@ import torch
 import torch.multiprocessing as mp
 import torch.nn as nn
 
+from colossalai._analyzer.fx.graph_module import ColoGraphModule
+from colossalai._analyzer.fx.passes.shape_prop import shape_prop_pass
+from colossalai._analyzer.fx.tracer.tracer import ColoTracer
 from colossalai.auto_parallel.tensor_shard.node_handler import PermuteHandler, TransposeHandler
 from colossalai.auto_parallel.tensor_shard.node_handler.conv_handler import ConvFunctionHandler
 from colossalai.auto_parallel.tensor_shard.node_handler.linear_handler import LinearFunctionHandler
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationData, OperationDataType, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
-from colossalai.fx import ColoGraphModule, ColoTracer
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
 from colossalai.testing import assert_close, parameterize, rerun_if_address_is_in_use
@@ -88,7 +90,7 @@ def check_view_handler(rank, call_function, reshape_dims, model_cls, world_size,
                                      input_args=[input, other],
                                      meta_arg_names=['input', 'other'],
                                      node_type='following')
-    tracer = ColoTracer()
+    tracer = ColoTracer(bias_addition_split=True)
     if model_cls.__name__ == 'ConvReshapeModel':
         # graph():
         #     %input_1 : torch.Tensor [#users=1] = placeholder[target=input]
@@ -96,11 +98,11 @@ def check_view_handler(rank, call_function, reshape_dims, model_cls, world_size,
         #     %conv2d : [#users=1] = call_function[target=torch.conv2d](args = (%input_1, %other), kwargs = {bias: None})
         #     %permute : [#users=1] = call_function[target=torch.permute](args = (%conv2d, (0, 2, 1, 3)), kwargs = {})
         #     return permute
-        graph = tracer.trace(model,
-                             meta_args={
-                                 "input": torch.rand(8, 8, 66, 66).to('meta'),
-                                 "other": torch.rand(16, 8, 3, 3).to('meta'),
-                             })
+        meta_args = {
+            'input': torch.rand(8, 8, 66, 66).to('meta'),
+            'other': torch.rand(16, 8, 3, 3).to('meta'),
+        }
+        graph = tracer.trace(model, meta_args=meta_args)
 
     if model_cls.__name__ == 'LinearReshapeModel':
         # graph():
@@ -109,13 +111,14 @@ def check_view_handler(rank, call_function, reshape_dims, model_cls, world_size,
         #     %linear : [#users=1] = call_function[target=torch._C._nn.linear](args = (%input_1, %other), kwargs = {bias: None})
         #     %permute : [#users=1] = call_method[target=view](args = (%linear, 32, 4, 32, 32, 4), kwargs = {})
         #     return permute
-        graph = tracer.trace(model,
-                             meta_args={
-                                 "input": torch.rand(8, 16, 64, 32).to('meta'),
-                                 "other": torch.rand(64, 32).to('meta'),
-                             })
+        meta_args = {
+            'input': torch.rand(8, 16, 64, 32).to('meta'),
+            'other': torch.rand(64, 32).to('meta'),
+        }
+        graph = tracer.trace(model, meta_args=meta_args)
 
     gm = ColoGraphModule(model, graph)
+    shape_prop_pass(gm, *meta_args.values())
 
     previous_mod_node = list(graph.nodes)[2]
     reshape_node = list(graph.nodes)[3]

@@ -4,6 +4,9 @@ from typing import Dict, List
 import torch
 from torch.fx import GraphModule
 
+from colossalai._analyzer.fx.graph_module import ColoGraphModule
+from colossalai._analyzer.fx.passes.shape_prop import shape_prop_pass
+from colossalai._analyzer.fx.tracer.tracer import ColoTracer
 from colossalai.auto_parallel.passes.runtime_apply_pass import runtime_apply_pass
 from colossalai.auto_parallel.passes.runtime_preparation_pass import runtime_preparation_pass
 from colossalai.auto_parallel.tensor_shard.options import SolverOptions
@@ -11,7 +14,6 @@ from colossalai.auto_parallel.tensor_shard.solver import StrategiesConstructor
 from colossalai.auto_parallel.tensor_shard.solver.cost_graph import CostGraph
 from colossalai.auto_parallel.tensor_shard.solver.solver import Solver
 from colossalai.device.device_mesh import DeviceMesh
-from colossalai.fx.tracer.tracer import ColoTracer
 from colossalai.tensor.shape_consistency import to_global
 from colossalai.testing.comparison import assert_close
 
@@ -79,14 +81,16 @@ def numerical_test_for_node_strategy(model: torch.nn.Module,
         model_to_shard, args_to_shard, kwargs_to_shard = _build_model_to_compare(model, input_args, input_kwargs,
                                                                                  grad_to_shard_dict)
 
-        tracer = ColoTracer()
+        tracer = ColoTracer(bias_addition_split=True)
         input_sample = {}
         for input_arg, meta_arg_name in zip(input_args, meta_arg_names):
-            input_sample[meta_arg_name] = torch.rand(input_arg.shape).to('meta')
+            input_sample[meta_arg_name] = torch.empty(input_arg.shape, dtype=input_arg.dtype).to('meta')
         for meta_kwarg_name, input_kwarg in input_kwargs.items():
-            input_sample[meta_kwarg_name] = torch.rand(input_kwarg.shape).to('meta')
+            input_sample[meta_kwarg_name] = torch.empty(input_kwarg.shape, dtype=input_kwarg.dtype).to('meta')
         graph = tracer.trace(root=model_to_shard, meta_args=input_sample)
-        gm = GraphModule(model_to_shard, graph, model_to_shard.__class__.__name__)
+        gm = ColoGraphModule(model_to_shard, graph, model_to_shard.__class__.__name__)
+        shape_prop_pass(gm, *input_sample.values())
+
         solver_options = SolverOptions()
         strategies_constructor = StrategiesConstructor(graph, device_mesh, solver_options)
         strategies_constructor.build_strategies_and_cost()
