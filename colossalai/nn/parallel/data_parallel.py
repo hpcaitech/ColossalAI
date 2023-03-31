@@ -1,7 +1,7 @@
 import itertools
 from collections import OrderedDict
 from functools import partial
-from typing import Dict, Iterable, List, Optional, Set
+from typing import Dict, Iterable, List, Optional, Set, Union
 
 import torch
 import torch.distributed as dist
@@ -17,6 +17,7 @@ from colossalai.tensor import ReplicaSpec
 from colossalai.tensor.colo_parameter import ColoParameter, ColoTensor, ColoTensorSpec
 from colossalai.tensor.param_op_hook import ColoParamOpHookManager
 from colossalai.utils import get_current_device, is_ddp_ignored
+from colossalai.utils.model.experimental import LazyTensor
 from colossalai.zero.utils.gemini_hook import GeminiZeROHook
 
 from .reducer import Reducer
@@ -214,7 +215,6 @@ class ZeroDDP(ColoDDP):
                  pin_memory: bool = False,
                  force_outputs_fp32: bool = False,
                  strict_ddp_mode: bool = False) -> None:
-        super().__init__(module, process_group=ColoProcessGroup())
         self.gemini_manager = gemini_manager
         self.chunk_manager: ChunkManager = gemini_manager.chunk_manager
         self.force_outputs_fp32 = force_outputs_fp32
@@ -226,7 +226,6 @@ class ZeroDDP(ColoDDP):
         self.param2name: Dict[nn.Parameter, str] = dict()
         self.name2param: Dict[str, nn.Parameter] = dict()
 
-        self._cast_buffers()
         self._logger = get_dist_logger()
 
         if self.gemini_manager._premade_memstats_:
@@ -250,6 +249,8 @@ class ZeroDDP(ColoDDP):
             for p_name, p_var in m_var.named_parameters(recurse=False):
                 param_name = m_name + '.' + p_name if m_name else p_name
                 self.name2param[param_name] = p_var
+        super().__init__(module, process_group=ColoProcessGroup())
+        self._cast_buffers()
 
     def _post_forward(self):
         """This function is only triggered for inference.
@@ -637,7 +638,8 @@ class ZeroDDP(ColoDDP):
     def _init_chunks(self, param_order, strict_ddp_mode: bool, cpu_offload: bool, pin_memory: bool):
         ddp_pg = ColoProcessGroup()
         for p in param_order.generate():
-            assert isinstance(p, ColoParameter)
+            self._preprocess_param(p)
+            assert type(p) is ColoParameter
 
             # gather sharded parameters in the strict ddp mode
             if strict_ddp_mode:
@@ -693,3 +695,19 @@ class ZeroDDP(ColoDDP):
             buffer.data = buffer.cuda()
             if torch.is_floating_point(buffer):
                 buffer.data = buffer.half()
+
+    def _preprocess_param(self, p: Union[nn.Parameter, ColoParameter, LazyTensor]) -> None:
+        """Convert parameter to ColoParameter in-place.
+
+        Args:
+            p (Union[nn.Parameter, ColoParameter, LazyTensor]): parameter to be converted
+        """
+        if type(p) is ColoParameter:
+            # model is initialized with ColoInitContext
+            return
+        requires_grad = p.requires_grad
+        if isinstance(p, LazyTensor):
+            # model is initialized with LazyInitContext
+            p.materialize()
+        p.__class__ = ColoParameter
+        p.__init__(p, requires_grad=requires_grad)
