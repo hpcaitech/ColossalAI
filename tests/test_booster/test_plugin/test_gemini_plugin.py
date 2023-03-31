@@ -139,7 +139,7 @@ def run_dist(rank, world_size, port, early_stop: bool = True):
 
 @rerun_if_address_is_in_use()
 def test_gemini_plugin(early_stop: bool = True):
-    world_size = 2
+    world_size = 4
     run_func = partial(run_dist, world_size=world_size, port=free_port(), early_stop=early_stop)
     mp.spawn(run_func, nprocs=world_size)
 
