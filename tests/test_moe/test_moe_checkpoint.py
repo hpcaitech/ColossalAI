@@ -27,7 +27,7 @@ def exam_moe_checkpoint():
     load_moe_model(other_model, 'temp_path.pth')
 
     state_0 = model.state_dict()
-    state_1 = model.state_dict()
+    state_1 = other_model.state_dict()
     for k, v in state_0.items():
         u = state_1.get(k)
         assert torch.equal(u.data, v.data)
