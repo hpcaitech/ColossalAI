@@ -1,5 +1,6 @@
 from functools import partial
 
+import pytest
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
@@ -137,6 +138,7 @@ def run_dist(rank, world_size, port, early_stop: bool = True):
     check_gemini_plugin(early_stop=early_stop)
 
 
+@pytest.mark.skip(reason='Skip gemini plugin test due to OOM')
 @rerun_if_address_is_in_use()
 def test_gemini_plugin(early_stop: bool = True):
     world_size = 2
