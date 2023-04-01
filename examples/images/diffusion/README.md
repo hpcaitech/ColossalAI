@@ -37,7 +37,7 @@ This project is in rapid development.
 
 ## Installation
 
-### Option #1: install from source
+### Option #1: Install from source
 #### Step 1: Requirements
 
 To begin with, make sure your operating system has the cuda version suitable for this exciting training session, which is cuda11.6/11.8. For your convience, we have set up the rest of packages here. You can create and activate a suitable [conda](https://conda.io/) environment named `ldm` :
@@ -54,11 +54,11 @@ conda install pytorch==1.12.1 torchvision==0.13.1 torchaudio==0.12.1 cudatoolkit
 pip install transformers diffusers invisible-watermark
 ```
 
-#### Step 2:Install [Colossal-AI](https://colossalai.org/download/) From Our Official Website
+#### Step 2: Install [Colossal-AI](https://colossalai.org/download/) From Our Official Website
 
 You can install the latest version (0.2.7) from our official website or from source. Notice that the suitable version for this training is colossalai(0.2.5), which stands for torch(1.12.1).
 
-##### Download suggested verision for this training
+##### Download suggested version for this training
 
 ```
 pip install colossalai==0.2.5
@@ -80,9 +80,9 @@ cd ColossalAI
 CUDA_EXT=1 pip install .
 ```
 
-#### Step 3:Accelerate with flash attention by xformers(Optional)
+#### Step 3: Accelerate with flash attention by xformers (Optional)
 
-Notice that xformers will accelerate the training process in cost of extra disk space. The suitable version of xformers for this training process is 0.0.12. You can download xformers directly via pip. For more release versions, feel free to check its official website: [XFormers](./https://pypi.org/project/xformers/)
+Notice that xformers will accelerate the training process at the cost of extra disk space. The suitable version of xformers for this training process is 0.0.12, which can be downloaded directly via pip. For more release versions, feel free to check its official website: [XFormers](https://pypi.org/project/xformers/)
 
 ```
 pip install xformers==0.0.12
@@ -120,7 +120,7 @@ docker run --rm \
   /bin/bash
 
 ########################
-#  Insider Container   #
+#  Inside a Container  #
 ########################
 # Once you have entered the docker container, go to the stable diffusion directory for training
 cd examples/images/diffusion/
@@ -132,14 +132,14 @@ bash train_colossalai.sh
 ```
 
 It is important for you to configure your volume mapping in order to get the best training experience.
-1. **Mandatory**, mount your prepared data to `/data/scratch` via `-v <your-data-dir>:/data/scratch`, where you need to replace `<your-data-dir>` with the actual data path on your machine. Notice that within docker we need to transform Win expresison into Linuxd, e.g. C:\User\Desktop into /c/User/Desktop. 
+1. **Mandatory**, mount your prepared data to `/data/scratch` via `-v <your-data-dir>:/data/scratch`, where you need to replace `<your-data-dir>` with the actual data path on your machine. Notice that within docker we need to transform the Windows path to a Linux one, e.g. `C:\User\Desktop` into `/mnt/c/User/Desktop`. 
 2. **Recommended**, store the downloaded model weights to your host machine instead of the container directory via `-v <hf-cache-dir>:/root/.cache/huggingface`, where you need to replace the `<hf-cache-dir>` with the actual path. In this way, you don't have to repeatedly download the pretrained weights for every `docker run`.
 3. **Optional**, if you encounter any problem stating that shared memory is insufficient inside container, please add `-v /dev/shm:/dev/shm` to your `docker run` command.
 
 
 ## Download the model checkpoint from pretrained
 
-### stable-diffusion-v2-base(Recommand)
+### stable-diffusion-v2-base (Recommended)
 
 ```
 wget https://huggingface.co/stabilityai/stable-diffusion-2-base/resolve/main/512-base-ema.ckpt
@@ -182,12 +182,12 @@ python main.py --logdir /tmp/ --train --base configs/train_colossalai.yaml --ckp
 
 ### Training config
 
-You can change the trainging config in the yaml file
+You can change the training config in the yaml file
 
 - devices: device number used for training, default = 8
 - max_epochs: max training epochs, default = 2
 - precision: the precision type used in training, default = 16 (fp16), you must use fp16 if you want to apply colossalai
-- placement_policy: the training strategy supported by Colossal AI, defult = 'cuda', which refers to loading all the parameters into cuda memory. On the other hand, 'cpu' refers to 'cpu offload' strategy while 'auto' enables 'Gemini', both featured by Colossal AI.
+- placement_policy: the training strategy supported by Colossal AI, default = 'cuda', which refers to loading all the parameters into cuda memory. On the other hand, 'cpu' refers to 'cpu offload' strategy while 'auto' enables 'Gemini', both featured by Colossal AI.
 - more information about the configuration of ColossalAIStrategy can be found [here](https://pytorch-lightning.readthedocs.io/en/latest/advanced/model_parallel.html#colossal-ai)
 
 
@@ -202,7 +202,8 @@ python main.py --logdir /tmp/ -t -b configs/Teyvat/train_colossalai_teyvat.yaml
 ```
 
 ## Inference
-you can get yout training last.ckpt and train config.yaml in your `--logdir`, and run by
+
+You can get your training last.ckpt and train config.yaml in your `--logdir`, and run by
 ```
 python scripts/txt2img.py --prompt "a photograph of an astronaut riding a horse" --plms
     --outdir ./output \
