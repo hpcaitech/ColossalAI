@@ -2,10 +2,12 @@ import pytest
 import torch
 import torch.nn as nn
 
+from colossalai._analyzer.fx.graph_module import ColoGraphModule
+from colossalai._analyzer.fx.passes.shape_prop import shape_prop_pass
+from colossalai._analyzer.fx.tracer.tracer import ColoTracer
 from colossalai.auto_parallel.tensor_shard.node_handler.normal_pooling_handler import NormPoolingHandler
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationData, OperationDataType, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
-from colossalai.fx import ColoGraphModule, ColoTracer
 from colossalai.fx.tracer.meta_patch.patched_module import linear
 from colossalai.testing.pytest_wrapper import run_on_environment_flag
 
@@ -13,14 +15,16 @@ from colossalai.testing.pytest_wrapper import run_on_environment_flag
 @run_on_environment_flag(name='AUTO_PARALLEL')
 def test_norm_pool_handler():
     model = nn.Sequential(nn.MaxPool2d(4, padding=1).to('meta'))
-    tracer = ColoTracer()
+    tracer = ColoTracer(bias_addition_split=True)
     # graph():
     #     %input_1 : torch.Tensor [#users=1] = placeholder[target=input]
     #     %_0 : [#users=1] = call_module[target=0](args = (%input_1,), kwargs = {})
     #     return _0
-    graph = tracer.trace(model, meta_args={"input": torch.rand(4, 4, 64, 64).to('meta')})
+    meta_args = {"input": torch.rand(4, 4, 64, 64).to('meta')}
+    graph = tracer.trace(model, meta_args=meta_args)
 
     gm = ColoGraphModule(model, graph)
+    shape_prop_pass(gm, *meta_args.values())
     physical_mesh_id = torch.arange(0, 4)
 
     mesh_shape = (2, 2)

@@ -446,10 +446,7 @@ if version.parse(torch.__version__) >= version.parse('1.12.0'):
     @register_meta(aten.embedding_dense_backward.default)
     def meta_embedding_dense_backward(grad_output: torch.Tensor, indices: torch.Tensor, num_weights, padding_idx,
                                       scale_grad_by_freq):
-        return new((num_weights, grad_output.size(-1)),
-                   dtype=grad_output.dtype,
-                   device=grad_output.device,
-                   layout=grad_output.layout)
+        return new((num_weights, grad_output.size(-1)), dtype=grad_output.dtype, layout=grad_output.layout)
 
     # ============================== Dropout ===========================================
     # https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/Dropout.cpp

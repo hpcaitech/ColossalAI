@@ -1,22 +1,20 @@
-from faulthandler import disable
 from functools import partial
-from xml.dom import WrongDocumentErr
 
 import pytest
 import torch
 import torch.multiprocessing as mp
 import torch.nn as nn
-from typing_extensions import Self
 
+from colossalai._analyzer.fx.graph_module import ColoGraphModule
+from colossalai._analyzer.fx.passes.shape_prop import shape_prop_pass
+from colossalai._analyzer.fx.tracer.tracer import ColoTracer
 from colossalai.auto_parallel.tensor_shard.node_handler import LinearFunctionHandler
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
-    OperationData,
     OperationDataType,
     ShardingStrategy,
     StrategiesVector,
 )
 from colossalai.device.device_mesh import DeviceMesh
-from colossalai.fx import ColoGraphModule, ColoTracer
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
 from colossalai.testing import parameterize, rerun_if_address_is_in_use
@@ -96,7 +94,7 @@ def check_addmm_function_handler(rank, input_shape, model_cls, world_size, port)
                                      meta_arg_names=meta_arg_names,
                                      node_type='bias_module')
 
-    tracer = ColoTracer()
+    tracer = ColoTracer(bias_addition_split=True)
     # graph():
     #     %input_1 : torch.Tensor [#users=1] = placeholder[target=input]
     #     %m1 : torch.Tensor [#users=1] = placeholder[target=m1]
@@ -109,6 +107,7 @@ def check_addmm_function_handler(rank, input_shape, model_cls, world_size, port)
     #     return add
     graph = tracer.trace(model, meta_args=meta_args_for_tracer)
     gm = ColoGraphModule(model, graph)
+    shape_prop_pass(gm, *meta_args_for_tracer.values())
     # [input_1, m1, m2, addmm, output]
     node_list = list(graph.nodes)
     linear_node = node_list[4]
