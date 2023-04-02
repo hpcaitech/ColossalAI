@@ -3,7 +3,7 @@
 
    [![logo](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/colossal-ai_logo_vertical.png)](https://www.colossalai.org/)
 
-   Colossal-AI: Making large AI models cheaper, faster and more accessible
+   Colossal-AI: Making large AI models cheaper, faster, and more accessible
 
    <h3> <a href="https://arxiv.org/abs/2110.14883"> Paper </a> |
    <a href="https://www.colossalai.org/"> Documentation </a> |
@@ -25,8 +25,10 @@
 </div>
 
 ## Latest News
+* [2023/03] [ColossalChat: An Open-Source Solution for Cloning ChatGPT With a Complete RLHF Pipeline](https://medium.com/@yangyou_berkeley/colossalchat-an-open-source-solution-for-cloning-chatgpt-with-a-complete-rlhf-pipeline-5edf08fb538b)
+* [2023/03] [Intel and Colossal-AI Partner to Deliver Cost-Efficient Open-Source Solution for Protein Folding Structure Prediction](https://www.hpc-ai.tech/blog/intel-habana)
 * [2023/03] [AWS and Google Fund Colossal-AI with Startup Cloud Programs](https://www.hpc-ai.tech/blog/aws-and-google-fund-colossal-ai-with-startup-cloud-programs)
-* [2023/02] [Open source solution replicates ChatGPT training process! Ready to go with only 1.6GB GPU memory](https://www.hpc-ai.tech/blog/colossal-ai-chatgpt)
+* [2023/02] [Open Source Solution Replicates ChatGPT Training Process! Ready to go with only 1.6GB GPU Memory](https://www.hpc-ai.tech/blog/colossal-ai-chatgpt)
 * [2023/01] [Hardware Savings Up to 46 Times for AIGC and  Automatic Parallelism](https://medium.com/pytorch/latest-colossal-ai-boasts-novel-automatic-parallelism-and-offers-savings-up-to-46x-for-stable-1453b48f3f02)
 * [2022/11] [Diffusion Pretraining and Hardware Fine-Tuning Can Be Almost 7X Cheaper](https://www.hpc-ai.tech/blog/diffusion-pretraining-and-hardware-fine-tuning-can-be-almost-7x-cheaper)
 * [2022/10] [Use a Laptop to Analyze 90% of Proteins, With a Single-GPU Inference Sequence Exceeding 10,000](https://www.hpc-ai.tech/blog/use-a-laptop-to-analyze-90-of-proteins-with-a-single-gpu-inference-sequence-exceeding)
@@ -113,7 +115,7 @@ distributed training and inference in a few lines.
   - [PatrickStar](https://arxiv.org/abs/2108.05818)
 
 - Friendly Usage
-  - Parallelism based on configuration file
+  - Parallelism based on the configuration file
 
 - Inference
   - [Energon-AI](https://github.com/hpcaitech/EnergonAI)
@@ -127,7 +129,7 @@ distributed training and inference in a few lines.
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/GPT3-v5.png" width=700/>
 </p>
 
-- Save 50% GPU resources, and 10.7% acceleration
+- Save 50% GPU resources and 10.7% acceleration
 
 ### GPT-2
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/GPT2.png" width=800/>
@@ -149,7 +151,7 @@ distributed training and inference in a few lines.
 ### OPT
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/OPT_update.png" width=800/>
 
-- [Open Pretrained Transformer (OPT)](https://github.com/facebookresearch/metaseq), a 175-Billion parameter AI language model released by Meta, which stimulates AI programmers to perform various downstream tasks and application deployments because public pretrained model weights.
+- [Open Pretrained Transformer (OPT)](https://github.com/facebookresearch/metaseq), a 175-Billion parameter AI language model released by Meta, which stimulates AI programmers to perform various downstream tasks and application deployments because of public pre-trained model weights.
 - 45% speedup fine-tuning OPT at low cost in lines. [[Example]](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/opt) [[Online Serving]](https://colossalai.org/docs/advanced_tutorials/opt_service)
 
 Please visit our [documentation](https://www.colossalai.org/) and [examples](https://github.com/hpcaitech/ColossalAI/tree/main/examples) for more details.
@@ -223,7 +225,7 @@ Please visit our [documentation](https://www.colossalai.org/) and [examples](htt
    </a>
 </div>
 
-[ColossalChat](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat): An open-source solution for cloning [ChatGPT](https://openai.com/blog/chatgpt/) with a complete RLHF pipeline. [[code]](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat) [[blog]](https://www.hpc-ai.tech/blog/colossal-ai-chatgpt) [[demo]](https://chat.colossalai.org)
+[ColossalChat](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat): An open-source solution for cloning [ChatGPT](https://openai.com/blog/chatgpt/) with a complete RLHF pipeline. [[code]](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat) [[blog]](https://medium.com/@yangyou_berkeley/colossalchat-an-open-source-solution-for-cloning-chatgpt-with-a-complete-rlhf-pipeline-5edf08fb538b) [[demo]](https://chat.colossalai.org)
 
 <p id="ColossalChat_scaling" align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chatgpt/ChatGPT%20scaling.png" width=800/>
@@ -243,7 +245,7 @@ Please visit our [documentation](https://www.colossalai.org/) and [examples](htt
 </p>
 
 - Increase the capacity of the fine-tuning model by up to 3.7 times on a single GPU
-- Keep in a sufficiently high running speed
+- Keep at a sufficiently high running speed
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
@@ -302,7 +304,7 @@ Requirements:
 - Python >= 3.7
 - CUDA >= 11.0
 
-If you encounter any problem about installation, you may want to raise an [issue](https://github.com/hpcaitech/ColossalAI/issues/new/choose) in this repository.
+If you encounter any problem with installation, you may want to raise an [issue](https://github.com/hpcaitech/ColossalAI/issues/new/choose) in this repository.
 
 ### Install from PyPI
 
@@ -320,9 +322,9 @@ However, if you want to build the PyTorch extensions during installation, you ca
 CUDA_EXT=1 pip install colossalai
 ```
 
-**Otherwise, CUDA kernels will be built during runtime when you actually need it.**
+**Otherwise, CUDA kernels will be built during runtime when you actually need them.**
 
-We also keep release the nightly version to PyPI on a weekly basis. This allows you to access the unreleased features and bug fixes in the main branch.
+We also keep releasing the nightly version to PyPI every week. This allows you to access the unreleased features and bug fixes in the main branch.
 Installation can be made via
 
 ```bash
@@ -331,7 +333,7 @@ pip install colossalai-nightly
 
 ### Download From Source
 
-> The version of Colossal-AI will be in line with the main branch of the repository. Feel free to raise an issue if you encounter any problem. :)
+> The version of Colossal-AI will be in line with the main branch of the repository. Feel free to raise an issue if you encounter any problems. :)
 
 ```shell
 git clone https://github.com/hpcaitech/ColossalAI.git
@@ -421,6 +423,6 @@ To cite this project, you can use the following BibTeX citation.
 }
 ```
 
-Colossal-AI has been accepted as official tutorials by top conference [SC](https://sc22.supercomputing.org/), [AAAI](https://aaai.org/Conferences/AAAI-23/), [PPoPP](https://ppopp23.sigplan.org/), [CVPR](https://cvpr2023.thecvf.com/), [ISC](https://www.isc-hpc.com/), etc.
+Colossal-AI has been accepted as official tutorial by top conferences [SC](https://sc22.supercomputing.org/), [AAAI](https://aaai.org/Conferences/AAAI-23/), [PPoPP](https://ppopp23.sigplan.org/), [CVPR](https://cvpr2023.thecvf.com/), [ISC](https://www.isc-hpc.com/), etc.
 
 <p align="right">(<a href="#top">back to top</a>)</p>

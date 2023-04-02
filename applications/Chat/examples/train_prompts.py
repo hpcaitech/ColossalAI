@@ -6,7 +6,7 @@ import torch.distributed as dist
 from coati.dataset import DataCollatorForSupervisedDataset, PromptDataset, SupervisedDataset
 from coati.models.bloom import BLOOMRM, BLOOMActor, BLOOMCritic
 from coati.models.gpt import GPTRM, GPTActor, GPTCritic
-from coati.models.llama import LlamaActor
+from coati.models.llama import LlamaActor, LlamaCritic, LlamaRM
 from coati.models.opt import OPTRM, OPTActor, OPTCritic
 from coati.trainer import PPOTrainer
 from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
@@ -38,18 +38,31 @@ def main(args):
     # configure model
     if args.model == 'gpt2':
         initial_model = GPTActor(pretrained=args.pretrain)
-        reward_model = GPTRM(pretrained=args.rm_pretrain)
     elif args.model == 'bloom':
         initial_model = BLOOMActor(pretrained=args.pretrain)
-        reward_model = BLOOMRM(pretrained=args.rm_pretrain)
     elif args.model == 'opt':
         initial_model = OPTActor(pretrained=args.pretrain)
-        reward_model = OPTRM(pretrained=args.rm_pretrain)
     elif args.model == 'llama':
         initial_model = LlamaActor(pretrained=args.pretrain)
-        reward_model = BLOOMRM(pretrained=args.rm_pretrain)
     else:
-        raise ValueError(f'Unsupported model "{args.model}"')
+        raise ValueError(f'Unsupported actor model "{args.model}"')
+
+    if args.rm_model == None:
+        rm_model_name = args.model
+    else:
+        rm_model_name = args.rm_model
+
+    if rm_model_name == 'gpt2':
+        reward_model = GPTRM(pretrained=args.rm_pretrain)
+    elif rm_model_name == 'bloom':
+        reward_model = BLOOMRM(pretrained=args.rm_pretrain)
+    elif rm_model_name == 'opt':
+        reward_model = OPTRM(pretrained=args.rm_pretrain)
+    elif rm_model_name == 'llama':
+        reward_model = LlamaRM(pretrained=args.rm_pretrain)
+    else:
+        raise ValueError(f'Unsupported reward model "{rm_model_name}"')
+
     if args.rm_path is not None:
         reward_model.load_state_dict(state_dict)
 
@@ -60,18 +73,26 @@ def main(args):
     with strategy.model_init_context():
         if args.model == 'gpt2':
             actor = GPTActor(pretrained=args.pretrain, lora_rank=args.lora_rank)
-            critic = GPTCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank, use_action_mask=True)
         elif args.model == 'bloom':
             actor = BLOOMActor(pretrained=args.pretrain, lora_rank=args.lora_rank)
-            critic = BLOOMCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank, use_action_mask=True)
         elif args.model == 'opt':
             actor = OPTActor(pretrained=args.pretrain, lora_rank=args.lora_rank)
-            critic = OPTCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank, use_action_mask=True)
         elif args.model == 'llama':
             actor = LlamaActor(pretrained=args.pretrain, lora_rank=args.lora_rank)
-            critic = BLOOMCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank, use_action_mask=True)
         else:
-            raise ValueError(f'Unsupported model "{args.model}"')
+            raise ValueError(f'Unsupported actor model "{args.model}"')
+
+        if rm_model_name == 'gpt2':
+            critic = GPTCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank, use_action_mask=True)
+        elif rm_model_name == 'bloom':
+            critic = BLOOMCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank, use_action_mask=True)
+        elif rm_model_name == 'opt':
+            critic = OPTCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank, use_action_mask=True)
+        elif rm_model_name == 'llama':
+            critic = LlamaCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank, use_action_mask=True)
+        else:
+            raise ValueError(f'Unsupported reward model "{rm_model_name}"')
+
         if args.rm_path is not None:
             critic.load_state_dict(state_dict)
             del state_dict
@@ -181,6 +202,7 @@ if __name__ == '__main__':
                         help='strategy to use')
     parser.add_argument('--model', default='gpt2', choices=['gpt2', 'bloom', 'opt', 'llama'])
     parser.add_argument('--pretrain', type=str, default=None)
+    parser.add_argument('--rm_model', default=None, choices=['gpt2', 'bloom', 'opt', 'llama'])
     parser.add_argument('--rm_path', type=str, default=None)
     parser.add_argument('--rm_pretrain', type=str, default=None)
     parser.add_argument('--save_path', type=str, default='actor_checkpoint_prompts')

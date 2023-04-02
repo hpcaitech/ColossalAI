@@ -70,14 +70,28 @@ class MetaInfo:
         if self._strategy is not None and self._target is not None:
             self.compute_metainfo()
 
-    def compute_sharded_opdata(self, operation_data: OperationData, sharding_spec: ShardingSpec) -> torch.Tensor:
+    def compute_sharded_opdata(self, operation_data: OperationData, sharding_spec: ShardingSpec):
         """
         Compute sharded opdata based on the given data and sharding spec.
         """
-        return OperationData(name=operation_data.name,
-                             data=torch.zeros(sharding_spec.get_sharded_shape_per_device(), device="meta"),
-                             type=operation_data.type,
-                             logical_shape=operation_data.logical_shape)
+
+        if isinstance(sharding_spec, ShardingSpec):
+            op_data = OperationData(name=operation_data.name,
+                                    data=torch.zeros(sharding_spec.get_sharded_shape_per_device(), device="meta"),
+                                    type=operation_data.type,
+                                    logical_shape=operation_data.logical_shape)
+        elif isinstance(sharding_spec, (list, tuple)):
+            data = operation_data.data
+            assert isinstance(data, (list, tuple)), f"Data Should be list or tuple, but got {type(data)}."
+            assert len(data) == len(sharding_spec), f"Length of data and sharding spec should be the same."
+            sharded_data = []
+            for d, s in zip(data, sharding_spec):
+                sharded_data.append(torch.zeros(s.get_sharded_shape_per_device(), device="meta"))
+            op_data = OperationData(name=operation_data.name, data=sharded_data, type=operation_data.type)
+        else:
+            raise ValueError(f"Sharding spec should be ShardingSpec or list, but got {type(sharding_spec)}.")
+
+        return op_data
 
     def compute_metainfo(self):
         """
