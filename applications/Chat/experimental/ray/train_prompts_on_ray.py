@@ -27,8 +27,8 @@ from colossalai.nn.optimizer import HybridAdam
 
 class ExperienceCompositionRefs:
 
-    def __init__(self, sequences_attention_mask_action_mask_ref, action_log_probs_ref, base_action_log_probs_ref,
-                 value_ref, r_ref) -> None:
+    def __init__(self, sequences_attention_mask_action_mask_ref: ray.ObjectRef, action_log_probs_ref: ray.ObjectRef,
+                 base_action_log_probs_ref: ray.ObjectRef, value_ref: ray.ObjectRef, r_ref: ray.ObjectRef) -> None:
         self.sequences_attention_mask_action_mask_ref = sequences_attention_mask_action_mask_ref
         self.action_log_probs_ref = action_log_probs_ref
         self.base_action_log_probs_ref = base_action_log_probs_ref
@@ -515,8 +515,8 @@ def main(args):
             if time % update_timesteps == 0:
                 experience_refs = []
                 # calculate experiences
-                for i in range(len(experience_composition_refs)):
-                    exp_composition_ref = experience_composition_refs[i]
+                for i, experience_composition_ref in enumerate(experience_composition_refs):
+                    exp_composition_ref = experience_composition_ref
                     selected_ray_actor = all_ray_actors[i % num_ray_actors]
                     experience_refs.append(selected_ray_actor.make_experience.remote(exp_composition_ref))
                 # backward
