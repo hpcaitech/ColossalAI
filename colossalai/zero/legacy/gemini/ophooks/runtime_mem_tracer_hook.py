@@ -7,7 +7,7 @@ import torch
 
 from colossalai.tensor.param_op_hook import ColoParamOpHook
 from colossalai.zero.gemini.memory_tracer import MemStats, SyncCudaMemoryMonitor
-from colossalai.zero.gemini.tensor_utils import alloc_storage, free_storage
+from colossalai.zero.legacy.gemini.tensor_utils import alloc_storage, free_storage
 
 
 class TrainingPhase(Enum):

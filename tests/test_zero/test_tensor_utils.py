@@ -1,18 +1,21 @@
+from functools import partial
+
 import pytest
+import torch
+import torch.multiprocessing as mp
 
 import colossalai
-from colossalai.utils.cuda import get_current_device
-from colossalai.gemini.tensor_utils import (colo_tensor_mem_usage, colo_model_data_tensor_move,
-                                            colo_model_data_tensor_move_inline, colo_model_data_move_to_cpu,
-                                            colo_model_tensor_clone)
-from colossalai.gemini.stateful_tensor import StatefulTensor
-from colossalai.utils import free_port
 from colossalai.testing import rerun_if_address_is_in_use
-
-import torch
-
-from functools import partial
-import torch.multiprocessing as mp
+from colossalai.utils import free_port
+from colossalai.utils.cuda import get_current_device
+from colossalai.zero.legacy.gemini.stateful_tensor import StatefulTensor
+from colossalai.zero.legacy.gemini.tensor_utils import (
+    colo_model_data_move_to_cpu,
+    colo_model_data_tensor_move,
+    colo_model_data_tensor_move_inline,
+    colo_model_tensor_clone,
+    colo_tensor_mem_usage,
+)
 
 
 def _run_colo_tensor_mem_usage():

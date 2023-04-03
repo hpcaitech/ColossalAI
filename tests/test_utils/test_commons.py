@@ -1,12 +1,11 @@
-from colossalai.utils import free_port
-from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.zero.sharded_param import ShardedTensor
-from colossalai.gemini.tensor_utils import colo_model_data_tensor_move, colo_model_data_tensor_move_inline
-import colossalai
-
 import torch
-
 import torch.multiprocessing as mp
+
+import colossalai
+from colossalai.testing import rerun_if_address_is_in_use
+from colossalai.utils import free_port
+from colossalai.zero.legacy.gemini.tensor_utils import colo_model_data_tensor_move, colo_model_data_tensor_move_inline
+from colossalai.zero.legacy.sharded_param import ShardedTensor
 
 
 def run_tensor_move(rank):

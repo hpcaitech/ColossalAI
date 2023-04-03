@@ -6,9 +6,9 @@ import torch
 import torch.multiprocessing as mp
 
 import colossalai
-from colossalai.gemini.stateful_tensor import StatefulTensor
 from colossalai.testing import parameterize, rerun_if_address_is_in_use
 from colossalai.utils import free_port
+from colossalai.zero.legacy.gemini.stateful_tensor import StatefulTensor
 from colossalai.zero.legacy.shard_utils import BucketTensorShardStrategy, TensorShardStrategy
 from colossalai.zero.legacy.sharded_param import ShardedTensor
 from colossalai.zero.legacy.sharded_param.sharded_param import ShardedParamV2
