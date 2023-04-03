@@ -15,11 +15,11 @@ from colossalai.tensor.sharding_spec import ShardingSpec
 from .constants import INPLACE_MODULE, INPLACE_OPS, NO_SAVE_ACTIVATION
 from .registry import meta_register
 
-__all__ = ['MetaInfo']
+__all__ = ['ShardMetaInfo']
 
 
-class MetaInfo:
-    """MetaInfo class
+class ShardMetaInfo:
+    """ShardMetaInfo class
     This class is used to store meta info based on sharding strategy and the given
     target function.
     """
@@ -46,9 +46,9 @@ class MetaInfo:
         # target function
         self._target = target
 
-        # compute metainfo if possible
+        # compute shard_metainfo if possible
         if self._strategy is not None and self._target is not None:
-            self.compute_metainfo()
+            self.compute_shard_metainfo()
 
     @property
     def strategy(self) -> ShardingStrategy:
@@ -62,13 +62,13 @@ class MetaInfo:
     def strategy(self, strategy: ShardingStrategy) -> None:
         self._strategy = strategy
         if self._strategy is not None and self._target is not None:
-            self.compute_metainfo()
+            self.compute_shard_metainfo()
 
     @target.setter
     def target(self, target: Callable) -> None:
         self._target = target
         if self._strategy is not None and self._target is not None:
-            self.compute_metainfo()
+            self.compute_shard_metainfo()
 
     def compute_sharded_opdata(self, operation_data: OperationData, sharding_spec: ShardingSpec):
         """
@@ -93,7 +93,7 @@ class MetaInfo:
 
         return op_data
 
-    def compute_metainfo(self):
+    def compute_shard_metainfo(self):
         """
         Compute meta info based on sharding strategy and the given target function.
         """

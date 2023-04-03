@@ -23,7 +23,7 @@ from colossalai.utils import free_port
 from tests.test_auto_parallel.test_tensor_shard.test_metainfo.utils import mem_test_for_node_strategy, print_results
 
 if torch.__version__ >= '1.12.0':
-    from colossalai.auto_parallel.meta_profiler import MetaInfo, meta_register
+    from colossalai.auto_parallel.meta_profiler import ShardMetaInfo, meta_register
 
 
 def _batchnorm_module_mem_test(rank, world_size, port):
