@@ -5,10 +5,10 @@ from typing import List
 
 import torch
 
-from colossalai.gemini import TensorState
-from colossalai.gemini.gemini_mgr import GeminiManager
 from colossalai.tensor.param_op_hook import ColoParamOpHook
 from colossalai.utils import is_ddp_ignored
+from colossalai.zero.gemini import TensorState
+from colossalai.zero.gemini.gemini_mgr import GeminiManager
 
 
 class TrainingPhase(Enum):

@@ -4,7 +4,7 @@ from typing import Dict, Optional
 import torch
 import torch.nn as nn
 
-from .gemini_parallel import GeminiDDP
+from .gemini import GeminiDDP
 
 
 def zero_model_wrapper(model: nn.Module, zero_stage: int = 1, gemini_config: Optional[Dict] = None):
@@ -104,6 +104,6 @@ def zero_optim_wrapper(model: nn.Module,
         config_dict['clip_grad_norm'] = max_norm
         return LowLevelZeroOptimizer(optimizer, **config_dict)
     else:
-        from colossalai.nn.optimizer.zero_optimizer import ZeroOptimizer
+        from colossalai.zero.gemini.gemini_optimizer import ZeroOptimizer
         config_dict['clipping_norm'] = max_norm
         return ZeroOptimizer(optimizer, model, **config_dict)

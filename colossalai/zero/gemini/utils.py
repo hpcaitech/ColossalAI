@@ -6,8 +6,9 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 
-from colossalai.gemini.chunk import Chunk
 from colossalai.utils import get_current_device
+
+from .chunk import Chunk
 
 
 def get_temp_total_chunk_on_cuda(chunk: Chunk):
@@ -77,7 +78,7 @@ def get_static_torch_model(zero_ddp_model,
     Returns:
         torch.nn.Module: a static torch model used for saving checkpoints or numeric checks
     """
-    from colossalai.nn.parallel import ZeroDDP
+    from colossalai.zero.gemini.gemini_ddp import ZeroDDP
     assert isinstance(zero_ddp_model, ZeroDDP)
 
     state_dict = zero_ddp_model.state_dict(only_rank_0=only_rank_0)

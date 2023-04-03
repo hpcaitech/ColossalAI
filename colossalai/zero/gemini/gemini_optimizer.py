@@ -10,11 +10,14 @@ from torch.nn import Parameter
 from torch.optim import Optimizer
 
 from colossalai.amp.naive_amp.grad_scaler import DynamicGradScaler
-from colossalai.gemini.chunk import Chunk, ChunkManager
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import ColossalaiOptimizer, CPUAdam, FusedAdam, HybridAdam
-from colossalai.nn.parallel.data_parallel import ZeroDDP
 from colossalai.utils import disposable, get_current_device, is_ddp_ignored
+
+from .chunk import Chunk, ChunkManager
+from .gemini_ddp import ZeroDDP
+
+__all__ = ['ZeroOptimizer', 'GeminiAdamOptimizer']
 
 _AVAIL_OPTIM_LIST = {FusedAdam, CPUAdam, HybridAdam}
 
@@ -316,3 +319,10 @@ class ZeroOptimizer(ColossalaiOptimizer):
                 fake_params_list.append(fake_param)
 
             group['params'] = fake_params_list
+
+
+class GeminiAdamOptimizer(ZeroOptimizer):
+
+    def __init__(self, model: torch.nn.Module, **defaults: Any) -> None:
+        optimizer = HybridAdam(model.parameters(), **defaults)
+        super().__init__(optimizer, model, **defaults)
