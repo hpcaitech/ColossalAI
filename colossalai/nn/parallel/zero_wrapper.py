@@ -99,7 +99,7 @@ def zero_optim_wrapper(model: nn.Module,
     config_dict['max_scale'] = max_scale
 
     if zero_stage in [1, 2]:
-        from colossalai.zero.sharded_optim.low_level_optim import LowLevelZeroOptimizer
+        from colossalai.zero.low_level import LowLevelZeroOptimizer
         config_dict['partition_grad'] = zero_stage == 2
         config_dict['clip_grad_norm'] = max_norm
         return LowLevelZeroOptimizer(optimizer, **config_dict)

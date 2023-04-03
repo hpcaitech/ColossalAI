@@ -15,8 +15,8 @@ from colossalai.testing import parameterize, rerun_if_address_is_in_use
 from colossalai.utils import free_port
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils.memory import colo_device_memory_used
-from colossalai.zero.init_ctx import ZeroInitContext
-from colossalai.zero.shard_utils import BucketTensorShardStrategy, TensorShardStrategy
+from colossalai.zero.legacy.init_ctx import ZeroInitContext
+from colossalai.zero.legacy.shard_utils import BucketTensorShardStrategy, TensorShardStrategy
 from tests.components_to_test.registry import non_distributed_component_funcs
 
 

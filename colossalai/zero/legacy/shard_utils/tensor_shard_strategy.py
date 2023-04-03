@@ -2,11 +2,12 @@ from typing import List, Optional
 
 import torch
 import torch.distributed as dist
+
+from colossalai.gemini.tensor_utils import colo_model_data_tensor_move_inline
 from colossalai.utils import get_current_device
 from colossalai.zero.shard_utils import BaseShardStrategy
 from colossalai.zero.shard_utils.commons import get_shard
 from colossalai.zero.sharded_param.sharded_tensor import ShardedTensor
-from colossalai.gemini.tensor_utils import colo_model_data_tensor_move_inline
 
 
 class TensorShardStrategy(BaseShardStrategy):
@@ -27,7 +28,7 @@ class TensorShardStrategy(BaseShardStrategy):
 
         Args:
             t (ShardedTensor): a tensor to be sharded.
-            process_group (Optional[dist.ProcessGroup], optional): the process group among which tensor shards. 
+            process_group (Optional[dist.ProcessGroup], optional): the process group among which tensor shards.
             Defaults to None.
         """
         if t.is_sharded:

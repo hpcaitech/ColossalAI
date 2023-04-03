@@ -2,10 +2,11 @@ from functools import partial
 
 import torch
 import torch.distributed as dist
+
 from colossalai.logging import get_dist_logger
 from colossalai.utils import checkpoint
-from colossalai.zero.shard_utils import TensorShardStrategy
-from colossalai.zero.sharded_model import ShardedModelV2
+from colossalai.zero.legacy.shard_utils import TensorShardStrategy
+from colossalai.zero.legacy.sharded_model import ShardedModelV2
 
 LOGGER = get_dist_logger('zero_test')
 

@@ -3,21 +3,21 @@
 
 from functools import partial
 
-import colossalai
 import pytest
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
+from common import MP_PARALLEL_CONFIG, ZERO_PARALLEL_CONFIG, check_params, check_sharded_model_params
+from torch.nn.parallel import DistributedDataParallel as DDP
+
+import colossalai
 from colossalai.core import global_context as gpc
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port
-from colossalai.zero.init_ctx import ZeroInitContext
-from colossalai.zero.sharded_model.utils import col_model_deepcopy
-from colossalai.zero.sharded_optim._utils import has_inf_or_nan
+from colossalai.zero.legacy.init_ctx import ZeroInitContext
+from colossalai.zero.legacy.sharded_model.utils import col_model_deepcopy
+from colossalai.zero.low_level._utils import has_inf_or_nan
 from tests.components_to_test.registry import non_distributed_component_funcs
-from torch.nn.parallel import DistributedDataParallel as DDP
-
-from common import (MP_PARALLEL_CONFIG, ZERO_PARALLEL_CONFIG, check_params, check_sharded_model_params)
 
 
 def run_dist(rank, world_size, port, parallel_config):

@@ -2,17 +2,18 @@ from typing import List, Optional
 
 import torch
 import torch.distributed as dist
+from torch._utils import _flatten_dense_tensors as flatten
+
 from colossalai.utils import get_current_device
 from colossalai.zero.sharded_param.sharded_tensor import ShardedTensor
-from torch._utils import _flatten_dense_tensors as flatten
 
 from .tensor_shard_strategy import TensorShardStrategy
 
 
 class BucketTensorShardStrategy(TensorShardStrategy):
-    """Use the same shard scheme as `TensorShardStrategy`'s, but it gathers tensors of a sub-module together, 
-    which will fully utilize network bandwidth. 
-    It is especially useful when sub-module contains bias, 
+    """Use the same shard scheme as `TensorShardStrategy`'s, but it gathers tensors of a sub-module together,
+    which will fully utilize network bandwidth.
+    It is especially useful when sub-module contains bias,
     since we cannot utilize network bandwidth well if we only gather a bias tensor (bias is usaully small).
     """
 
