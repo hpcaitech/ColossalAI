@@ -6,7 +6,7 @@ from torch.fx import symbolic_trace
 
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
 from colossalai.fx.profiler import calculate_fwd_out, calculate_fwd_tmp, is_compatible_with_meta
-from colossalai.gemini.chunk import ChunkManager
+from colossalai.zero.gemini.chunk import ChunkManager
 
 if is_compatible_with_meta():
     from colossalai.fx.profiler import MetaTensor

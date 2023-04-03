@@ -1,12 +1,9 @@
 import time
-from typing import List, Optional
+from typing import Optional
 
-import torch
+from colossalai.zero.gemini.stateful_tensor import StatefulTensor
 
-from colossalai.gemini.memory_tracer import SyncCudaMemoryMonitor
-from colossalai.gemini.stateful_tensor import StatefulTensor
-from colossalai.utils.memory import colo_device_memory_used
-
+from .memory_monitor import SyncCudaMemoryMonitor
 from .memory_stats import MemStats
 
 
@@ -49,7 +46,7 @@ class MemStatsCollector:
         assert self._step_total > 0, 'Cannot get mem stats info before collection phase.'
         assert len(self._memstats.non_model_data_list(device_type)) > self._step_idx, \
             f"{len(self._memstats.non_model_data_list(device_type))} should be > than step idx {self._step_idx}, "\
-                f"step total {self._step_total}"
+            f"step total {self._step_total}"
         next_non_model_data = self._memstats.non_model_data_list(device_type)[self._step_idx]
         self._step_idx = (self._step_idx + 1) % self._step_total
         return next_non_model_data

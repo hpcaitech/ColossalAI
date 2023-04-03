@@ -5,11 +5,12 @@ from typing import List, Optional, Type
 
 import torch
 
-from colossalai.gemini.memory_tracer import MemStatsCollector
-from colossalai.gemini.stateful_tensor import StatefulTensor
-from colossalai.gemini.tensor_utils import colo_model_data_tensor_move_inline, colo_tensor_mem_usage
 from colossalai.utils import get_current_device
 from colossalai.utils.memory import colo_device_memory_capacity
+from colossalai.zero.gemini.memory_tracer import MemStatsCollector
+
+from .stateful_tensor import StatefulTensor
+from .tensor_utils import colo_model_data_tensor_move_inline, colo_tensor_mem_usage
 
 
 class TensorPlacementPolicy(ABC):

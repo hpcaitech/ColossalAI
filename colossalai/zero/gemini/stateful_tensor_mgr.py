@@ -1,13 +1,16 @@
 import functools
-import torch
 import types
-from colossalai.utils.cuda import get_current_device
-from colossalai.gemini.tensor_utils import colo_model_data_tensor_move_inline, colo_tensor_mem_usage
-from colossalai.gemini.stateful_tensor import StatefulTensor, TensorState
-from colossalai.gemini.tensor_placement_policy import TensorPlacementPolicy
-from typing import List
-from colossalai.logging import get_dist_logger
 from time import time
+from typing import List
+
+import torch
+
+from colossalai.logging import get_dist_logger
+from colossalai.utils.cuda import get_current_device
+
+from .stateful_tensor import StatefulTensor, TensorState
+from .tensor_placement_policy import TensorPlacementPolicy
+from .tensor_utils import colo_model_data_tensor_move_inline, colo_tensor_mem_usage
 
 
 class StatefulTensorMgr(object):

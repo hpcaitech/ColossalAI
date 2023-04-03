@@ -4,10 +4,8 @@ from typing import List, Optional, Tuple
 
 import torch
 
-from colossalai.gemini.chunk import Chunk, ChunkManager
-from colossalai.gemini.memory_tracer import MemStats
-
-from .memory_tracer import ChunkMemStatsCollector
+from .chunk import Chunk, ChunkManager
+from .memory_tracer import ChunkMemStatsCollector, MemStats
 from .placement_policy import PlacementPolicyFactory
 
 

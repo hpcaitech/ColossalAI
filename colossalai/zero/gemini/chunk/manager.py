@@ -3,9 +3,10 @@ from typing import Deque, Dict, Iterable, List, Optional, Set, Tuple
 
 import torch
 
-from colossalai.gemini.chunk import Chunk, ChunkFullError, TensorState
 from colossalai.tensor import ColoTensor
 from colossalai.utils import get_current_device
+
+from .chunk import Chunk, ChunkFullError, TensorState
 
 
 class ChunkManager:

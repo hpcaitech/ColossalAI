@@ -2,7 +2,7 @@ from typing import Any, Dict, List, Optional
 
 import torch
 
-from colossalai.gemini.memory_tracer import OrderedParamGenerator
+from .param_runtime_order import OrderedParamGenerator
 
 
 class MemStats(object):

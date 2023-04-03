@@ -5,9 +5,9 @@ import numpy as np
 import torch.distributed as dist
 import torch.nn as nn
 
-from colossalai.gemini.memory_tracer import MemStats, OrderedParamGenerator
 from colossalai.tensor import ColoParameter
 from colossalai.utils import is_ddp_ignored
+from colossalai.zero.gemini.memory_tracer import MemStats, OrderedParamGenerator
 
 
 def _filter_exlarge_params(model: nn.Module, size_dict: Dict[int, List[int]]) -> None:

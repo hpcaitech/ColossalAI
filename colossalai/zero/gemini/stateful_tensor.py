@@ -1,9 +1,9 @@
 from enum import Enum
-from typing import Optional
-import torch
-from typing import Union
+from typing import Optional, Union
 
-from colossalai.gemini.gemini_context import GeminiMemoryManager
+import torch
+
+from .gemini_context import GeminiMemoryManager
 
 
 def sizeof_tensor(tensor: torch.Tensor):
@@ -19,7 +19,7 @@ class TensorState(Enum):
 
 
 class StatefulTensor(object):
-    """A Structure stores a Torch Tensor and labeled states. 
+    """A Structure stores a Torch Tensor and labeled states.
     Inspired from the paper:
     PatrickStar: Parallel Training of Pre-trained Models via Chunk-based Memory Management
 

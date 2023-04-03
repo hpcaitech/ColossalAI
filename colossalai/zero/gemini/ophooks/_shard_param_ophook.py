@@ -1,4 +1,5 @@
 import torch
+
 from colossalai.registry import OPHOOKS
 
 from . import BaseOpHook

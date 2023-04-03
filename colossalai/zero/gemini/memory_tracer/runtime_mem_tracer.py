@@ -1,9 +1,10 @@
 import torch.nn
 
-from colossalai.gemini.memory_tracer import MemStats
-from colossalai.gemini.ophooks.runtime_mem_tracer_hook import GradMemStats, GradMemTracerHook, ParamMemTracerHook
 from colossalai.nn.parallel.data_parallel import _cast_float
 from colossalai.tensor.param_op_hook import ColoParamOpHookManager
+from colossalai.zero.gemini.ophooks.runtime_mem_tracer_hook import GradMemStats, GradMemTracerHook, ParamMemTracerHook
+
+from .memory_stats import MemStats
 
 __all__ = ['RuntimeMemTracer']
 

@@ -1,10 +1,10 @@
 from typing import Optional
 
-from colossalai.gemini.chunk import ChunkManager
-from colossalai.gemini.memory_tracer import MemStats
 from colossalai.utils import get_current_device
 from colossalai.utils.memory import colo_device_memory_capacity
+from colossalai.zero.gemini.chunk import ChunkManager
 
+from .memory_stats import MemStats
 from .memstats_collector import MemStatsCollector
 
 
