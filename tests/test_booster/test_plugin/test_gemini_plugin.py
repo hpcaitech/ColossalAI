@@ -40,7 +40,8 @@ def check_gemini_plugin(early_stop: bool = True):
                 'torchvision_resnet18', 'torchvision_resnext50_32x4d', 'torchvision_wide_resnet50_2',
                 'torchvision_vit_b_16', 'torchvision_convnext_base', 'torchvision_swin_s', 'transformers_albert',
                 'transformers_albert_for_pretraining', 'transformers_bert', 'transformers_bert_for_pretraining',
-                'transformers_gpt_double_heads', 'torchaudio_hubert_base', 'torchaudio_wav2vec2_base'
+                'transformers_gpt_double_heads', 'torchaudio_hubert_base', 'torchaudio_wav2vec2_base',
+                'transformers_t5_for_conditional_generation', 'transformers_t5', 'transformers_t5_encoder_model'
         ]:
             continue
 
