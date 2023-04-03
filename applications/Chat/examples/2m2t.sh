@@ -15,7 +15,7 @@
 # 
 # set_n_least_used_CUDA_VISIBLE_DEVICES 2
 
-export CUDA_VISIBLE_DEVICES="0,1,2,3"
+# export CUDA_VISIBLE_DEVICES="0,1,2,3"
 export RAY_NAMESPACE="lccsr"
 
 python 2m2t.py "./awesome-chatgpt-prompts/prompts.csv" \

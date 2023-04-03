@@ -164,7 +164,8 @@ class DetachedPPOTrainer(DetachedTrainer):
         if False:
             pass
         elif isinstance(self.strategy, ColossalAIStrategy):
-            return Actor(self.strategy._unwrap_model(self.actor))
+            ret = Actor(self.strategy._unwrap_model(self.actor))
+            return ret
         elif isinstance(self.strategy, DDPStrategy):
             return Actor(self.strategy._unwrap_actor(self.actor))
         elif isinstance(self.strategy, NaiveStrategy):
@@ -174,11 +175,13 @@ class DetachedPPOTrainer(DetachedTrainer):
         if False:
             pass
         elif isinstance(self.strategy, ColossalAIStrategy):
-            return self.strategy._unwrap_model(self.critic)
+            ret = self.strategy._unwrap_model(self.critic)
+            return ret
         elif isinstance(self.strategy, DDPStrategy):
             return self.critic.module
         elif isinstance(self.strategy, NaiveStrategy):
             return self.critic
+
 
 def _set_default_generate_kwargs(strategy: Strategy, generate_kwargs: dict, actor: Actor) -> None:
     origin_model = strategy._unwrap_actor(actor)
