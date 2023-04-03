@@ -8,13 +8,14 @@ from coati.models.bloom import BLOOMRM, BLOOMActor, BLOOMCritic
 from coati.models.gpt import GPTRM, GPTActor, GPTCritic
 from coati.models.llama import LlamaActor, LlamaCritic, LlamaRM
 from coati.models.opt import OPTRM, OPTActor, OPTCritic
+from coati.models.roberta import RoBERTaRM, RoBERTaActor, RoBERTaCritic
 from coati.trainer import PPOTrainer
 from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
 from coati.utils import prepare_llama_tokenizer_and_embedding
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
-from transformers import AutoTokenizer, BloomTokenizerFast, GPT2Tokenizer, LlamaTokenizer
+from transformers import AutoTokenizer, BloomTokenizerFast, GPT2Tokenizer, LlamaTokenizer, RobertaTokenizer
 
 from colossalai.nn.optimizer import HybridAdam
 
@@ -44,6 +45,8 @@ def main(args):
         initial_model = OPTActor(pretrained=args.pretrain)
     elif args.model == 'llama':
         initial_model = LlamaActor(pretrained=args.pretrain)
+    elif args.model == 'roberta':
+        initial_model = RoBERTaActor(pretrained=args.pretrain)
     else:
         raise ValueError(f'Unsupported actor model "{args.model}"')
 
@@ -60,6 +63,8 @@ def main(args):
         reward_model = OPTRM(pretrained=args.rm_pretrain)
     elif rm_model_name == 'llama':
         reward_model = LlamaRM(pretrained=args.rm_pretrain)
+    elif rm_model_name == 'roberta':
+        reward_model = RoBERTaRM(pretrained=args.rm_pretrain)
     else:
         raise ValueError(f'Unsupported reward model "{rm_model_name}"')
 
@@ -79,6 +84,8 @@ def main(args):
             actor = OPTActor(pretrained=args.pretrain, lora_rank=args.lora_rank)
         elif args.model == 'llama':
             actor = LlamaActor(pretrained=args.pretrain, lora_rank=args.lora_rank)
+        elif args.model == 'roberta':
+            actor = RoBERTaActor(pretrained=args.pretrain, lora_rank=args.lora_rank)
         else:
             raise ValueError(f'Unsupported actor model "{args.model}"')
 
@@ -90,6 +97,8 @@ def main(args):
             critic = OPTCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank, use_action_mask=True)
         elif rm_model_name == 'llama':
             critic = LlamaCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank, use_action_mask=True)
+        elif rm_model_name == 'roberta':
+            critic = RoBERTaCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank, use_action_mask=True)
         else:
             raise ValueError(f'Unsupported reward model "{rm_model_name}"')
 
@@ -119,6 +128,8 @@ def main(args):
     elif args.model == 'llama':
         tokenizer = LlamaTokenizer.from_pretrained(args.pretrain)
         tokenizer.eos_token = '<\s>'
+    elif args.model == 'roberta':
+        tokenizer = RobertaTokenizer.from_pretrained("roberta-base")
     else:
         raise ValueError(f'Unsupported model "{args.model}"')
 
@@ -200,9 +211,9 @@ if __name__ == '__main__':
                         choices=['naive', 'ddp', 'colossalai_gemini', 'colossalai_zero2'],
                         default='naive',
                         help='strategy to use')
-    parser.add_argument('--model', default='gpt2', choices=['gpt2', 'bloom', 'opt', 'llama'])
+    parser.add_argument('--model', default='gpt2', choices=['gpt2', 'bloom', 'opt', 'llama', 'roberta'])
     parser.add_argument('--pretrain', type=str, default=None)
-    parser.add_argument('--rm_model', default=None, choices=['gpt2', 'bloom', 'opt', 'llama'])
+    parser.add_argument('--rm_model', default=None, choices=['gpt2', 'bloom', 'opt', 'llama', 'roberta'])
     parser.add_argument('--rm_path', type=str, default=None)
     parser.add_argument('--rm_pretrain', type=str, default=None)
     parser.add_argument('--save_path', type=str, default='actor_checkpoint_prompts')
