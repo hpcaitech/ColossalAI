@@ -1,8 +1,12 @@
 from typing import Any, Callable, Dict, Iterable, List, Tuple
 
 import torch
+
+try:
+    from torch.fx.graph import CodeGen
+except:
+    pass
 from torch.fx.graph import (
-    CodeGen,
     PythonCode,
     _custom_builtins,
     _format_target,
