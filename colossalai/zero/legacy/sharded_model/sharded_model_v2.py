@@ -23,9 +23,9 @@ from colossalai.gemini.tensor_utils import colo_model_data_move_to_cpu
 from colossalai.logging import get_dist_logger
 from colossalai.utils import disposable, get_current_device
 from colossalai.utils.memory import colo_device_memory_capacity
+from colossalai.zero.legacy.gemini.zero_hook import ZeroHook
 from colossalai.zero.legacy.shard_utils import BaseShardStrategy
 from colossalai.zero.legacy.sharded_model.reduce_scatter import ReduceScatterBucketer
-from colossalai.zero.utils import ZeroHook
 
 from ._utils import (
     cast_float_arguments,

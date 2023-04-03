@@ -10,7 +10,7 @@ from colossalai.gemini.stateful_tensor_mgr import StatefulTensorMgr
 from colossalai.logging import get_dist_logger
 from colossalai.registry import OPHOOKS
 from colossalai.utils import get_current_device
-from colossalai.zero.shard_utils import BaseShardStrategy
+from colossalai.zero.legacy.shard_utils import BaseShardStrategy
 
 
 @OPHOOKS.register_module
