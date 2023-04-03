@@ -4,7 +4,8 @@ import torch
 
 from colossalai.gemini.stateful_tensor import StatefulTensor, TensorState
 from colossalai.gemini.tensor_utils import colo_tensor_mem_usage
-from colossalai.zero.sharded_param.sharded_tensor import ShardedTensor
+
+from .sharded_tensor import ShardedTensor
 
 EMPTY_TENSOR_DICT = {}
 

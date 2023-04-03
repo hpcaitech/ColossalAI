@@ -19,8 +19,8 @@ from colossalai.gemini.tensor_placement_policy import AutoTensorPlacementPolicy
 from colossalai.gemini.tensor_utils import colo_model_data_tensor_move_inline, colo_tensor_mem_usage
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import ColossalaiOptimizer
-from colossalai.zero.sharded_model import ShardedModelV2
-from colossalai.zero.sharded_model._utils import cast_tensor_to_fp32
+from colossalai.zero.legacy.sharded_model import ShardedModelV2
+from colossalai.zero.legacy.sharded_model._utils import cast_tensor_to_fp32
 
 
 class OptimState(Enum):
