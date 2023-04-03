@@ -20,6 +20,7 @@ class LM(Actor):
 
     def __init__(self, model: nn.Module, lora_rank: int = 0, lora_train_bias: str = 'none') -> None:
         super().__init__(model=model, lora_rank=lora_rank, lora_train_bias=lora_train_bias)
+        self.convert_to_lora()
 
     def forward(self, sequences: torch.LongTensor, attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         """Returns output log probs
