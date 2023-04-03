@@ -13,16 +13,16 @@ from torch.nn.parameter import Parameter
 
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.gemini.memory_tracer import MemStatsCollector, StaticMemStatsCollector
-from colossalai.gemini.ophooks import register_ophooks_recursively
-from colossalai.gemini.paramhooks import BaseParamHookMgr
-from colossalai.gemini.stateful_tensor import TensorState
-from colossalai.gemini.stateful_tensor_mgr import StatefulTensorMgr
-from colossalai.gemini.tensor_placement_policy import TensorPlacementPolicy, TensorPlacementPolicyFactory
-from colossalai.gemini.tensor_utils import colo_model_data_move_to_cpu
 from colossalai.logging import get_dist_logger
 from colossalai.utils import disposable, get_current_device
 from colossalai.utils.memory import colo_device_memory_capacity
+from colossalai.zero.gemini.memory_tracer import MemStatsCollector, StaticMemStatsCollector
+from colossalai.zero.legacy.gemini.ophooks import register_ophooks_recursively
+from colossalai.zero.legacy.gemini.paramhooks import BaseParamHookMgr
+from colossalai.zero.legacy.gemini.stateful_tensor import TensorState
+from colossalai.zero.legacy.gemini.stateful_tensor_mgr import StatefulTensorMgr
+from colossalai.zero.legacy.gemini.tensor_placement_policy import TensorPlacementPolicy, TensorPlacementPolicyFactory
+from colossalai.zero.legacy.gemini.tensor_utils import colo_model_data_move_to_cpu
 from colossalai.zero.legacy.gemini.zero_hook import ZeroHook
 from colossalai.zero.legacy.shard_utils import BaseShardStrategy
 from colossalai.zero.legacy.sharded_model.reduce_scatter import ReduceScatterBucketer

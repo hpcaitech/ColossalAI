@@ -2,8 +2,8 @@ from typing import List, Optional, Tuple
 
 import torch
 
-from colossalai.gemini.stateful_tensor import StatefulTensor, TensorState
-from colossalai.gemini.tensor_utils import colo_tensor_mem_usage
+from colossalai.zero.legacy.gemini.stateful_tensor import StatefulTensor, TensorState
+from colossalai.zero.legacy.gemini.tensor_utils import colo_tensor_mem_usage
 
 from .sharded_tensor import ShardedTensor
 
