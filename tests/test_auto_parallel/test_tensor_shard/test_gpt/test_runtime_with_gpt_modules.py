@@ -13,12 +13,18 @@ from torch.fx import GraphModule
 from colossalai._analyzer.fx.passes.shape_prop import shape_prop_pass
 # from colossalai.fx.tracer.tracer import ColoTracer
 from colossalai._analyzer.fx.tracer.tracer import ColoTracer
-from colossalai.auto_parallel.tensor_shard.initialize import (
-    ModuleWrapper,
-    build_strategy_constructor,
-    solve_solution,
-    transform_to_sharded_model,
-)
+
+try:
+    from colossalai.auto_parallel.tensor_shard.initialize import (
+        ModuleWrapper,
+        build_strategy_constructor,
+        solve_solution,
+        transform_to_sharded_model,
+    )
+    NO_CODEGEN = False
+except:
+    NO_CODEGEN = True
+
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import ShardingSpec
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.initialize import launch
@@ -179,6 +185,7 @@ def check_attention_layer(rank, model_cls, world_size, port):
 
 
 @run_on_environment_flag(name='AUTO_PARALLEL')
+@pytest.mark.skipif(NO_CODEGEN, reason="no codegen module")
 @pytest.mark.dist
 @parameterize('model_cls', [GPT2MLP, GPT2Block, GPT2Attention, GPT2Model])
 @rerun_if_address_is_in_use()
