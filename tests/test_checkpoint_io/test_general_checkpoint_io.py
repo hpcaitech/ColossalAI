@@ -1,5 +1,6 @@
 import tempfile
 
+import pytest
 import torch
 from torch.optim import Adam
 from torchvision.models import resnet18
@@ -14,7 +15,8 @@ from colossalai.checkpoint_io import GeneralCheckpointIO
 # ========
 
 
-def test_unsharded_checkpoint():
+@pytest.mark.parametrize('use_safetensors', [True, False])
+def test_unsharded_checkpoint(use_safetensors: bool):
     # create a model and optimizer
     model = resnet18()
     optimizer = Adam(model.parameters(), lr=0.001)
@@ -29,12 +31,16 @@ def test_unsharded_checkpoint():
     optimizer.step()
 
     # create a temp file for checkpoint
-    model_ckpt_tempfile = tempfile.NamedTemporaryFile()
+    if use_safetensors:
+        suffix = ".safetensors"
+    else:
+        suffix = ".bin"
+    model_ckpt_tempfile = tempfile.NamedTemporaryFile(suffix=suffix)
     optimizer_ckpt_tempfile = tempfile.NamedTemporaryFile()
 
     # save the model and optimizer
     ckpt_io = GeneralCheckpointIO()
-    ckpt_io.save_model(model, model_ckpt_tempfile.name)
+    ckpt_io.save_model(model, model_ckpt_tempfile.name, use_safetensors=use_safetensors)
     ckpt_io.save_optimizer(optimizer, optimizer_ckpt_tempfile.name)
 
     # create new model
@@ -67,4 +73,5 @@ def test_unsharded_checkpoint():
 
     # check for model and optimizer state dict recursively
     recursive_check(model.state_dict(), new_model.state_dict())
+    recursive_check(optimizer.state_dict(), new_optimizer.state_dict())
     recursive_check(optimizer.state_dict(), new_optimizer.state_dict())
