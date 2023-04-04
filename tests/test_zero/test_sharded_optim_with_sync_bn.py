@@ -3,18 +3,19 @@
 
 from functools import partial
 
-import colossalai
 import pytest
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
+from torchvision.models import resnet50
+
+import colossalai
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port
-from colossalai.zero.init_ctx import ZeroInitContext
-from colossalai.zero.shard_utils import TensorShardStrategy
-from torchvision.models import resnet50
+from colossalai.zero.legacy.init_ctx import ZeroInitContext
+from colossalai.zero.legacy.shard_utils import TensorShardStrategy
 
 
 def run_dist(rank, world_size, port):

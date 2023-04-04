@@ -2,7 +2,7 @@ import copy
 
 import torch
 
-from colossalai.gemini.paramhooks import BaseParamHookMgr
+from colossalai.zero.legacy.gemini.paramhooks import BaseParamHookMgr
 from tests.components_to_test.registry import non_distributed_component_funcs
 
 

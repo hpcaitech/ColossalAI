@@ -9,6 +9,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.testing import assert_close
 
 import colossalai
+from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.testing.random import seed_all
 from colossalai.utils import free_port
 from colossalai.zero import LowLevelZeroOptimizer
@@ -176,6 +177,7 @@ def run_dist(rank, world_size, port):
 
 
 @pytest.mark.dist
+@rerun_if_address_is_in_use()
 def test_zero_1_2():
     world_size = 2
     run_func = partial(run_dist, world_size=world_size, port=free_port())

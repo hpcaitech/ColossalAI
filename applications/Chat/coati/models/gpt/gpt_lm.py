@@ -33,3 +33,6 @@ class GPTLM(LM):
         if checkpoint:
             model.gradient_checkpointing_enable()
         super().__init__(model, lora_rank, lora_train_bias)
+
+    def forward(self, input_ids, attention_mask=None, labels=None, **kwargs):
+        return self.model(input_ids, attention_mask=attention_mask, labels=labels, **kwargs)

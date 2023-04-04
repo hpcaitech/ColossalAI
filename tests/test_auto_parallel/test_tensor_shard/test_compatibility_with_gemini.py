@@ -11,12 +11,11 @@ from colossalai.device.device_mesh import DeviceMesh
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.nn.parallel import zero_model_wrapper, zero_optim_wrapper
 from colossalai.tensor.process_group import ProcessGroup
 from colossalai.testing import assert_close, rerun_if_address_is_in_use
 from colossalai.testing.pytest_wrapper import run_on_environment_flag
 from colossalai.utils import free_port, get_current_device
-from colossalai.utils.model.colo_init_context import ColoInitContext, post_process_colo_init_ctx
+from colossalai.zero import ColoInitContext, post_process_colo_init_ctx, zero_model_wrapper, zero_optim_wrapper
 
 
 class MLP(torch.nn.Module):
