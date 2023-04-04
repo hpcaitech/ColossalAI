@@ -14,7 +14,7 @@ from colossalai.testing import parameterize, rerun_if_address_is_in_use
 from colossalai.utils import free_port, get_current_device
 from colossalai.zero.legacy.init_ctx import ZeroInitContext
 from colossalai.zero.legacy.shard_utils import BucketTensorShardStrategy, TensorShardStrategy
-from tests.test_zero.common import CONFIG
+from tests.test_zero.test_legacy.common import CONFIG
 
 
 class MoeModel(nn.Module):

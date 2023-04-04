@@ -17,7 +17,7 @@ from colossalai.zero.legacy.sharded_model._utils import cast_tensor_to_fp16
 from colossalai.zero.legacy.sharded_model.utils import col_model_deepcopy
 from tests.components_to_test.registry import non_distributed_component_funcs
 from tests.test_moe.test_moe_zero_init import MoeModel
-from tests.test_zero.common import CONFIG, check_grads_padding, run_fwd_bwd
+from tests.test_zero.test_legacy.common import CONFIG, check_grads_padding, run_fwd_bwd
 
 
 @parameterize("enable_autocast", [False])
