@@ -57,8 +57,7 @@ from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.tensor import ProcessGroup
 from colossalai.utils import get_current_device, get_dataloader
-from colossalai.utils.model.colo_init_context import ColoInitContext
-from colossalai.zero.gemini import ZeroDDP, ZeroOptimizer
+from colossalai.zero import ColoInitContext, ZeroDDP, ZeroOptimizer
 
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt")
 

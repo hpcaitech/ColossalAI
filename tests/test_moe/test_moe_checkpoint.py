@@ -11,7 +11,7 @@ from colossalai.context import MOE_CONTEXT
 from colossalai.nn.layer.moe import load_moe_model, save_moe_model
 from colossalai.testing import parameterize, rerun_if_address_is_in_use
 from colossalai.utils import free_port, get_current_device
-from colossalai.utils.model.colo_init_context import ColoInitContext
+from colossalai.zero import ColoInitContext
 from tests.test_moe.test_moe_zero_init import MoeModel
 from tests.test_tensor.common_utils import debug_print
 from tests.test_zero.common import CONFIG

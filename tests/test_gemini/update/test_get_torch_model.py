@@ -10,8 +10,7 @@ from colossalai.tensor import ColoParameter
 from colossalai.testing import parameterize, rerun_if_address_is_in_use
 from colossalai.utils import free_port
 from colossalai.utils.cuda import get_current_device
-from colossalai.utils.model.colo_init_context import ColoInitContext
-from colossalai.zero.gemini import GeminiDDP
+from colossalai.zero import ColoInitContext, GeminiDDP
 from colossalai.zero.gemini.utils import get_static_torch_model
 from tests.components_to_test.registry import non_distributed_component_funcs
 

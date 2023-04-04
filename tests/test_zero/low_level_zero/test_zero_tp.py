@@ -11,8 +11,7 @@ import colossalai
 from colossalai.tensor import ProcessGroup
 from colossalai.testing import parameterize, rerun_if_address_is_in_use
 from colossalai.utils import free_port, get_current_device
-from colossalai.utils.model.colo_init_context import ColoInitContext
-from colossalai.zero import LowLevelZeroOptimizer
+from colossalai.zero import ColoInitContext, LowLevelZeroOptimizer
 from tests.test_tensor.common_utils import set_seed, split_param_col_tp1d, split_param_row_tp1d, tensor_shard_equal
 
 

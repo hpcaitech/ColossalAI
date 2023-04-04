@@ -15,8 +15,7 @@ from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.tensor import ColoParameter, ComputePattern, ComputeSpec, ProcessGroup, ReplicaSpec, ShardSpec
 from colossalai.utils import get_current_device
-from colossalai.utils.model.colo_init_context import ColoInitContext
-from colossalai.zero import zero_model_wrapper, zero_optim_wrapper
+from colossalai.zero import ColoInitContext, zero_model_wrapper, zero_optim_wrapper
 
 CAI_VERSION = colossalai.__version__
 

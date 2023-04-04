@@ -1,25 +1,23 @@
-import os, shutil
-import torch
-import pytest
+import os
+import shutil
 from copy import deepcopy
 from functools import partial
 
-import torch.multiprocessing as mp
+import pytest
+import torch
 import torch.distributed as dist
-
-from torch.optim.lr_scheduler import CosineAnnealingLR
-from torch.optim.lr_scheduler import MultiplicativeLR
-from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
+import torch.multiprocessing as mp
+from torch.optim.lr_scheduler import CosineAnnealingLR, MultiplicativeLR
 
 import colossalai
-from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.utils.cuda import get_current_device
-from colossalai.utils import free_port
-from colossalai.utils.model.colo_init_context import ColoInitContext
-from colossalai.tensor import ComputePattern, ComputeSpec, ColoTensor, ShardSpec, ProcessGroup
-from colossalai.utils.checkpoint import save_checkpoint, load_checkpoint
+from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.nn.optimizer import ColossalaiOptimizer
-
+from colossalai.tensor import ColoTensor, ComputePattern, ComputeSpec, ProcessGroup, ShardSpec
+from colossalai.testing import rerun_if_address_is_in_use
+from colossalai.utils import free_port
+from colossalai.utils.checkpoint import load_checkpoint, save_checkpoint
+from colossalai.utils.cuda import get_current_device
+from colossalai.zero import ColoInitContext
 from tests.components_to_test.registry import non_distributed_component_funcs
 
 

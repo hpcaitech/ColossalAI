@@ -7,11 +7,10 @@ from colossalai.logging import get_dist_logger
 from colossalai.registry import OPHOOKS
 from colossalai.utils import get_current_device
 from colossalai.zero.gemini.memory_tracer import MemStatsCollector
+from colossalai.zero.legacy.gemini.ophooks import BaseOpHook
+from colossalai.zero.legacy.gemini.stateful_tensor import TensorState
+from colossalai.zero.legacy.gemini.stateful_tensor_mgr import StatefulTensorMgr
 from colossalai.zero.legacy.shard_utils import BaseShardStrategy
-
-from .ophooks import BaseOpHook
-from .stateful_tensor import TensorState
-from .stateful_tensor_mgr import StatefulTensorMgr
 
 
 @OPHOOKS.register_module

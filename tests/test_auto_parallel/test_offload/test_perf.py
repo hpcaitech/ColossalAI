@@ -14,8 +14,7 @@ from colossalai.fx.profiler import parameter_size
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.testing import parameterize
 from colossalai.utils import free_port, get_current_device
-from colossalai.utils.model.colo_init_context import ColoInitContext
-from colossalai.zero import zero_model_wrapper, zero_optim_wrapper
+from colossalai.zero import ColoInitContext, zero_model_wrapper, zero_optim_wrapper
 from tests.test_auto_parallel.test_offload.model_utils import *
 from tests.test_tensor.common_utils import set_seed
 

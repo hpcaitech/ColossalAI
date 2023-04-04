@@ -15,8 +15,7 @@ from colossalai.tensor import ProcessGroup
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port
 from colossalai.utils.cuda import get_current_device
-from colossalai.utils.model.colo_init_context import ColoInitContext
-from colossalai.zero import ZeroDDP
+from colossalai.zero import ColoInitContext, ZeroDDP
 from colossalai.zero.gemini.chunk import ChunkManager, search_chunk_configuration
 from colossalai.zero.gemini.gemini_mgr import GeminiManager
 

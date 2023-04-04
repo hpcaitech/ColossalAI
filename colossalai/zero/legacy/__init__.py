@@ -5,6 +5,7 @@ import torch.nn as nn
 
 from colossalai.logging import get_dist_logger
 
+from .init_ctx import ZeroInitContext, no_shard_zero_context, no_shard_zero_decrator
 from .sharded_model import ShardedModelV2
 from .sharded_optim import ShardedOptimizerV2
 
@@ -37,4 +38,7 @@ def convert_to_zero_v2(model: nn.Module, optimizer: torch.optim.Optimizer, model
     return zero_model, zero_optimizer
 
 
-__all__ = ['convert_to_zero_v2', 'ShardedModelV2', 'ShardedOptimizerV2']
+__all__ = [
+    'convert_to_zero_v2', 'ShardedModelV2', 'ShardedOptimizerV2', 'ZeroInitContext', 'no_shard_zero_context',
+    'no_shard_zero_decrator'
+]

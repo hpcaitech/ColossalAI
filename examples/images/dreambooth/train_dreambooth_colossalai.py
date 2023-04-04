@@ -22,9 +22,8 @@ from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.utils import get_current_device
-from colossalai.utils.model.colo_init_context import ColoInitContext
-from colossalai.zero.gemini import GeminiAdamOptimizer
-from colossalai.zero.gemini.utils import get_static_torch_model
+from colossalai.zero import ColoInitContext, GeminiAdamOptimizer
+from colossalai.zero.gemini import get_static_torch_model
 
 disable_existing_loggers()
 logger = get_dist_logger()

@@ -23,7 +23,6 @@ from colossalai.zero.legacy.gemini.stateful_tensor import TensorState
 from colossalai.zero.legacy.gemini.stateful_tensor_mgr import StatefulTensorMgr
 from colossalai.zero.legacy.gemini.tensor_placement_policy import TensorPlacementPolicy, TensorPlacementPolicyFactory
 from colossalai.zero.legacy.gemini.tensor_utils import colo_model_data_move_to_cpu
-from colossalai.zero.legacy.gemini.zero_hook import ZeroHook
 from colossalai.zero.legacy.shard_utils import BaseShardStrategy
 from colossalai.zero.legacy.sharded_model.reduce_scatter import ReduceScatterBucketer
 
@@ -35,6 +34,7 @@ from ._utils import (
     free_storage,
     get_gradient_predivide_factor,
 )
+from .zero_hook import ZeroHook
 
 try:
     from torch.nn.modules.module import _EXTRA_STATE_KEY_SUFFIX

@@ -1,18 +1,19 @@
 import copy
+from collections import OrderedDict
+from functools import partial
 
 import pytest
-import colossalai
 import torch
 import torch.multiprocessing as mp
-from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.utils.cuda import get_current_device
-from colossalai.utils import free_port
-from colossalai.utils.model.colo_init_context import ColoInitContext
-from functools import partial
-from tests.components_to_test.registry import non_distributed_component_funcs
+
+import colossalai
 from colossalai.nn.parallel import ColoDDP
-from collections import OrderedDict
-from colossalai.tensor import ProcessGroup, ColoParameter
+from colossalai.tensor import ColoParameter, ProcessGroup
+from colossalai.testing import rerun_if_address_is_in_use
+from colossalai.utils import free_port
+from colossalai.utils.cuda import get_current_device
+from colossalai.zero import ColoInitContext
+from tests.components_to_test.registry import non_distributed_component_funcs
 
 
 def check_state_dict_equal(state_dict: OrderedDict, other_state_dict: OrderedDict):

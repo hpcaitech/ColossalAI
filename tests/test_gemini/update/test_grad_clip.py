@@ -14,8 +14,7 @@ from colossalai.nn.optimizer import HybridAdam
 from colossalai.testing import parameterize, rerun_if_address_is_in_use
 from colossalai.utils import free_port
 from colossalai.utils.cuda import get_current_device
-from colossalai.utils.model.colo_init_context import ColoInitContext
-from colossalai.zero.gemini import ZeroDDP, ZeroOptimizer
+from colossalai.zero import ColoInitContext, ZeroDDP, ZeroOptimizer
 from colossalai.zero.gemini.chunk import ChunkManager, search_chunk_configuration
 from colossalai.zero.gemini.gemini_mgr import GeminiManager
 from tests.components_to_test import run_fwd_bwd

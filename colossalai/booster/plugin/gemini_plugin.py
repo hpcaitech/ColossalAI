@@ -17,8 +17,8 @@ from colossalai.cluster import DistCoordinator
 from colossalai.interface import ModelWrapper, OptimizerWrapper
 from colossalai.tensor.colo_parameter import ColoParameter
 from colossalai.utils import get_current_device
-from colossalai.utils.model.colo_init_context import _convert_to_coloparam
 from colossalai.zero import GeminiDDP, zero_model_wrapper, zero_optim_wrapper
+from colossalai.zero.gemini.colo_init_context import _convert_to_coloparam
 from colossalai.zero.gemini.memory_tracer import MemStats
 
 from .plugin_base import Plugin

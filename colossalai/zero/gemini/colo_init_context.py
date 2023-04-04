@@ -3,10 +3,8 @@ from typing import Any, Dict, Iterator, Optional, Tuple, Union
 import torch
 from torch import nn
 
-from colossalai.nn.parallel.layers import ColoEmbedding, ColoLinear, register_colo_module
 from colossalai.tensor import ColoParameter, ColoTensor, ProcessGroup
-
-from .utils import InsertPostInitMethodToModuleSubClasses
+from colossalai.utils.model.utils import InsertPostInitMethodToModuleSubClasses
 
 # find named_params includes replica
 
@@ -89,6 +87,7 @@ class ColoInitContext(InsertPostInitMethodToModuleSubClasses):
         self._default_dist_spec = default_dist_spec
 
     def _register_colo_modules(self):
+        from colossalai.nn.parallel.layers import ColoEmbedding, ColoLinear, register_colo_module
         register_colo_module(torch.nn.Linear, ColoLinear())
         register_colo_module(torch.nn.Embedding, ColoEmbedding())
 

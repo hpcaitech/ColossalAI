@@ -9,7 +9,7 @@ import colossalai
 from colossalai.tensor import ComputePattern, ComputeSpec, ProcessGroup, ShardSpec
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port, get_current_device
-from colossalai.utils.model.colo_init_context import ColoInitContext
+from colossalai.zero import ColoInitContext
 from colossalai.zero.gemini.chunk import init_chunk_manager, search_chunk_configuration
 from tests.components_to_test.registry import non_distributed_component_funcs
 
