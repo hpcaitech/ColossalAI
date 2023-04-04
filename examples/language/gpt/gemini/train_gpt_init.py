@@ -10,16 +10,57 @@ from packaging import version
 
 import colossalai
 from colossalai.logging import disable_existing_loggers, get_dist_logger
-from colossalai.tensor import ProcessGroup, ShardSpec
-from colossalai.utils.model.experimental import LazyInitContext
+from colossalai.tensor import ColoParameter
+from colossalai.tensor import ProcessGroup
+from colossalai.tensor import ProcessGroup as ColoProcessGroup
+from colossalai.tensor import ShardSpec
+from colossalai.utils.model.experimental import LazyInitContext, LazyTensor
 from colossalai.zero import ColoInitContext, zero_model_wrapper
+from colossalai.zero.gemini.chunk import ChunkManager
+from colossalai.zero.gemini.chunk.search_utils import search_chunk_configuration
+
+
+def chunk_wrapper(model: nn.Module,
+                  search_range_mb: float,
+                  search_interval_byte: int,
+                  register_chunk: bool = False) -> nn.Module:
+
+    def preprocess_param(p: nn.Parameter):
+        if type(p) is ColoParameter:
+            # model is initialized with ColoInitContext
+            return
+        requires_grad = p.requires_grad
+        if isinstance(p, LazyTensor):
+            # model is initialized with LazyInitContext
+            p.materialize()
+        p.__class__ = ColoParameter
+        p.__init__(p, requires_grad=requires_grad)
+
+    cfg, total, wasted = search_chunk_configuration(model, search_range_mb, search_interval_byte, strict_ddp_flag=True)
+    print(cfg)
+    chunk_manager = ChunkManager(cfg, 'cpu')
+    ddp_pg = ColoProcessGroup()
+    for p in model.parameters():
+        preprocess_param(p)
+        p.set_process_group(ddp_pg)
+        dp_world_size = p.process_group.dp_world_size()
+        if register_chunk:
+            chunk_manager.register_tensor(tensor=p,
+                                          group_type='fp32_param',
+                                          config_key=dp_world_size,
+                                          cpu_offload=True,
+                                          pin_memory=False)
+    if register_chunk:
+        chunk_manager.close_all_groups()
+    print(chunk_manager.total_mem)
+    return cfg
 
 
 class Fool(nn.Module):
 
     def __init__(self) -> None:
         super().__init__()
-        self.p = nn.Parameter(torch.empty(1024, 1024, 1024))
+        self.p = nn.Parameter(torch.rand(1024, 1024, 1024))
 
 
 CAI_VERSION = colossalai.__version__
@@ -44,9 +85,9 @@ def parse_args():
         help="model model scale",
     )
     parser.add_argument(
-        "--use_gemini",
-        default=False,
-        action='store_true',
+        '--chunk_method',
+        default='none',
+        choices=['gemini', 'chunk', 'none'],
     )
 
     args = parser.parse_args()
@@ -161,7 +202,7 @@ def main():
     logger.info(get_peak_mem_info(prefix='After init model, '), ranks=[0])
     # asign running configurations
 
-    if args.use_gemini:
+    if args.chunk_method == 'gemini':
         if args.model_type == 'fool':
             hidden_dim = None
         else:
@@ -180,6 +221,14 @@ def main():
 
         logger.info(get_mem_info(prefix='After init gemini, '), ranks=[0])
         logger.info(get_peak_mem_info(prefix='After init gemini, '), ranks=[0])
+    elif args.chunk_method == 'chunk':
+        if args.model_type == 'fool':
+            hidden_dim = 1024
+        else:
+            hidden_dim = model.config.n_embd
+        cfg = chunk_wrapper(model, 128, hidden_dim, register_chunk=False)
+        logger.info(get_mem_info(prefix='After init chunk, '), ranks=[0])
+        logger.info(get_peak_mem_info(prefix='After init chunk, '), ranks=[0])
     else:
         if args.init_method == 'colo':
             logger.info('ColoInitContext is coupled with Gemini, ignore', ranks=[0])
