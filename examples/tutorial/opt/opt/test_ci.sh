@@ -2,6 +2,8 @@
 
 set -xue
 
+pip install -r requirements.txt
+
 BS=8
 MEMCAP=0
 GPUNUM=2
