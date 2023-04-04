@@ -5,15 +5,13 @@ import torch
 import torch.multiprocessing as mp
 
 import colossalai
-from colossalai.gemini.chunk import ChunkManager, search_chunk_configuration
-from colossalai.gemini.gemini_mgr import GeminiManager
-from colossalai.gemini.memory_tracer.runtime_mem_tracer import RuntimeMemTracer
-from colossalai.nn.optimizer.gemini_optimizer import GeminiAdamOptimizer
-from colossalai.nn.parallel import GeminiDDP, ZeroDDP
 from colossalai.tensor import ProcessGroup
 from colossalai.testing import parameterize, rerun_if_address_is_in_use
 from colossalai.utils import free_port
-from colossalai.utils.model.colo_init_context import ColoInitContext
+from colossalai.zero import ColoInitContext, GeminiAdamOptimizer, GeminiDDP, ZeroDDP
+from colossalai.zero.gemini.chunk import ChunkManager, search_chunk_configuration
+from colossalai.zero.gemini.gemini_mgr import GeminiManager
+from colossalai.zero.gemini.memory_tracer.runtime_mem_tracer import RuntimeMemTracer
 from tests.components_to_test import run_fwd_bwd
 from tests.components_to_test.registry import non_distributed_component_funcs
 from tests.test_tensor.common_utils import set_seed

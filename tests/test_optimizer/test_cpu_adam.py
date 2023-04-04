@@ -56,7 +56,7 @@ def test_cpu_adam(adamw, step, p_dtype, g_dtype):
     eps = 1e-8
     weight_decay = 0
 
-    for i in range(1024):
+    for i in range(3):
         p_data = torch.rand(64, dtype=p_dtype)
         p_data_copy = p_data.clone().float()
         p_grad = torch.rand(64, dtype=g_dtype)

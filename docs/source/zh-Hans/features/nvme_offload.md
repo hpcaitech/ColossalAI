@@ -77,7 +77,7 @@ from transformers.models.gpt2.configuration_gpt2 import GPT2Config
 from transformers.models.gpt2.modeling_gpt2 import GPT2LMHeadModel
 import colossalai
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.nn.parallel import zero_model_wrapper, zero_optim_wrapper
+from colossalai.zero import zero_model_wrapper, zero_optim_wrapper
 from colossalai.utils.model.colo_init_context import ColoInitContext
 ```
 

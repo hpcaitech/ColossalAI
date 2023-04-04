@@ -13,12 +13,12 @@ from colossalai.nn.optimizer import CPUAdam
 from colossalai.testing import parameterize, rerun_if_address_is_in_use
 from colossalai.utils import free_port
 from colossalai.utils.cuda import get_current_device
-from colossalai.zero.init_ctx import ZeroInitContext
-from colossalai.zero.shard_utils import BucketTensorShardStrategy, TensorShardStrategy
-from colossalai.zero.sharded_model import ShardedModelV2
-from colossalai.zero.sharded_model.utils import col_model_deepcopy
-from colossalai.zero.sharded_optim import ShardedOptimizerV2
-from colossalai.zero.sharded_optim._utils import has_inf_or_nan
+from colossalai.zero.legacy.init_ctx import ZeroInitContext
+from colossalai.zero.legacy.shard_utils import BucketTensorShardStrategy, TensorShardStrategy
+from colossalai.zero.legacy.sharded_model import ShardedModelV2
+from colossalai.zero.legacy.sharded_model.utils import col_model_deepcopy
+from colossalai.zero.legacy.sharded_optim import ShardedOptimizerV2
+from colossalai.zero.low_level._utils import has_inf_or_nan
 from tests.components_to_test.registry import non_distributed_component_funcs
 
 

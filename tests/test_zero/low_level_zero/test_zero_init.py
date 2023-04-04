@@ -9,8 +9,7 @@ import torch.nn as nn
 import colossalai
 from colossalai.tensor import ProcessGroup
 from colossalai.utils import free_port, get_current_device
-from colossalai.utils.model.colo_init_context import ColoInitContext
-from colossalai.zero import LowLevelZeroOptimizer
+from colossalai.zero import ColoInitContext, LowLevelZeroOptimizer
 
 
 class MlpModel(nn.Module):

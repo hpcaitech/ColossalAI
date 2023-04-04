@@ -1,22 +1,19 @@
 from functools import partial
 
-import colossalai
 import pytest
 import torch
-import torch.multiprocessing as mp
 import torch.distributed as dist
-from colossalai.testing import parameterize
-from colossalai.utils import free_port
+import torch.multiprocessing as mp
+
+import colossalai
 from colossalai.context import MOE_CONTEXT
 from colossalai.tensor import ColoParameter
-from colossalai.utils.model.colo_init_context import ColoInitContext
-
-from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.utils import get_current_device
-
-from tests.test_zero.common import CONFIG
+from colossalai.testing import parameterize, rerun_if_address_is_in_use
+from colossalai.utils import free_port, get_current_device
+from colossalai.zero import ColoInitContext
 from tests.test_moe.test_moe_zero_init import MoeModel
 from tests.test_tensor.common_utils import debug_print
+from tests.test_zero.common import CONFIG
 
 
 @parameterize("init_device_type", ['cpu', 'cuda'])
