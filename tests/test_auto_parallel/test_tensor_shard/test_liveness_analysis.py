@@ -1,3 +1,4 @@
+import pytest
 import torch
 import torch.nn as nn
 
@@ -22,6 +23,9 @@ class LinearModel(nn.Module):
         x1 = self.linear2(x1)
         out = x1 + x2
         return out
+
+
+pytest.mark.skip('meta tensor has some bugs in 1.11')
 
 
 def test_liveness_analysis():
