@@ -67,8 +67,8 @@ class BaseOffloadModule:
         for p in self.model.parameters():
             p.grad = None
 
-        GlobalRuntimeInfo.fwd_prefetch_event_map.clear()
-        GlobalRuntimeInfo.bwd_prefetch_event_map.clear()
+        GlobalRuntimeInfo().fwd_prefetch_event_map.clear()
+        GlobalRuntimeInfo().bwd_prefetch_event_map.clear()
 
     def grad_handle(self, p, grad):
         empty_grad = torch.empty_like(grad)
@@ -80,7 +80,7 @@ class BaseOffloadModule:
                 self.overflow_counter += region.has_inf_or_nan
                 master_stream = torch.cuda.current_stream()
                 with torch.cuda.stream(self.grad_offload_stream):
-                    GlobalRuntimeInfo.d2h_stream.wait_stream(master_stream)
+                    GlobalRuntimeInfo().d2h_stream.wait_stream(master_stream)
                     region.move_grad_to_cpu()
         return empty_grad
 
