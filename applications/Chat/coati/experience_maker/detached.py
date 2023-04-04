@@ -74,6 +74,7 @@ class ExperienceMakerHolder:
 
     @ray.method(concurrency_group="experience_io")
     def _send_experience(self, experience):
+        '''
         # choose a trainer that has the least experience batch in its detached_replay_buffer
         chosen_trainer = None
         min_length = None
@@ -96,6 +97,15 @@ class ExperienceMakerHolder:
         if 'debug' in self.generate_kwargs and self.generate_kwargs['debug'] == True:
             print(f"[maker] sending exp to {chosen_trainer}")
         chosen_trainer.buffer_append.remote(experience)
+        '''
+        # 
+        if not hasattr(self, "_target_idx"):
+            self._target_idx = 0
+        chosen_trainer = self.target_trainer_list[self._target_idx]
+        if 'debug' in self.generate_kwargs and self.generate_kwargs['debug'] == True:
+            print(f"[maker] sending exp to {chosen_trainer}")
+        chosen_trainer.buffer_append.remote(experience)
+        self._target_idx = (self._target_idx + 1) % len(self.target_trainer_list)
 
     def workingloop(self, dataset, tokenizer: Optional[Callable[[Any], dict]] = None, times=5000 * 50000):
         self._get_ready()

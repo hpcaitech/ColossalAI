@@ -21,4 +21,4 @@ export RAY_NAMESPACE="lccsr"
 python 2m2t.py "./awesome-chatgpt-prompts/prompts.csv" \
     --maker_strategy naive --trainer_strategy colossalai_zero2 --lora_rank 2 \
     --num_episodes 10 --max_timesteps 10 --update_timesteps 10 \
-    --max_epochs 10  # --debug 
+    --max_epochs 10  --debug
