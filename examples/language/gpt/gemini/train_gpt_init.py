@@ -1,25 +1,18 @@
 import os
 import resource
 from contextlib import nullcontext
-from functools import partial
-from time import time
 
 import psutil
 import torch
 import torch.nn as nn
 from commons.model_zoo import model_builder
-from commons.utils import get_data, get_profile_context, get_tflops, get_time_stamp
 from packaging import version
-from torch.nn.parallel import DistributedDataParallel as DDP
 
 import colossalai
 from colossalai.logging import disable_existing_loggers, get_dist_logger
-from colossalai.nn.optimizer import HybridAdam
-from colossalai.nn.parallel import zero_model_wrapper, zero_optim_wrapper
-from colossalai.tensor import ColoParameter, ComputePattern, ComputeSpec, ProcessGroup, ReplicaSpec, ShardSpec
-from colossalai.utils import get_current_device
-from colossalai.utils.model.colo_init_context import ColoInitContext
+from colossalai.tensor import ProcessGroup, ShardSpec
 from colossalai.utils.model.experimental import LazyInitContext
+from colossalai.zero import ColoInitContext, zero_model_wrapper
 
 
 class Fool(nn.Module):
