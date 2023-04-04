@@ -155,7 +155,7 @@ class ColoTracer(Tracer):
 
     def create_node(self, *args, **kwargs) -> Node:
         node = super().create_node(*args, **kwargs)
-        n_info = MetaInfo(node, mod_dir=self.mod_dir, to_recompute=tuple(self.ckpt_regions))
+        n_info = MetaInfo(node, mod_dir=self.mod_dir, activation_checkpoint=tuple(self.ckpt_regions))
         return node
 
     def trace(self,

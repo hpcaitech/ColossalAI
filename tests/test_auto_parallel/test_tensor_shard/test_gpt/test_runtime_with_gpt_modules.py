@@ -10,15 +10,23 @@ import torch.multiprocessing as mp
 import transformers
 from torch.fx import GraphModule
 
-from colossalai.auto_parallel.tensor_shard.initialize import (
-    ModuleWrapper,
-    build_strategy_constructor,
-    solve_solution,
-    transform_to_sharded_model,
-)
+from colossalai._analyzer.fx.passes.shape_prop import shape_prop_pass
+# from colossalai.fx.tracer.tracer import ColoTracer
+from colossalai._analyzer.fx.tracer.tracer import ColoTracer
+
+try:
+    from colossalai.auto_parallel.tensor_shard.initialize import (
+        ModuleWrapper,
+        build_strategy_constructor,
+        solve_solution,
+        transform_to_sharded_model,
+    )
+    NO_CODEGEN = False
+except:
+    NO_CODEGEN = True
+
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import ShardingSpec
 from colossalai.device.device_mesh import DeviceMesh
-from colossalai.fx.tracer.tracer import ColoTracer
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
 from colossalai.tensor.shape_consistency import to_global
@@ -52,9 +60,8 @@ def _check_module_grad(module: torch.nn.Module, origin_param_dict: Dict[str, tor
             param_sharding_spec = best_sharding_spec_dict[new_name]
             grad_to_compare = copy.deepcopy(param_grad)
             param_grad_global = to_global(grad_to_compare, param_sharding_spec)
-
             try:
-                assert_close_loose(param_grad_global, origin_param_grad, rtol=1e-03, atol=1e-03)
+                assert_close_loose(param_grad_global, origin_param_grad, rtol=1e-03, atol=1e-05)
             except:
                 difference = param_grad_global - origin_param_grad
                 avg_diff = difference.abs().sum() / difference.numel()
@@ -66,7 +73,7 @@ def check_attention_layer(rank, model_cls, world_size, port):
     disable_existing_loggers()
     launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
 
-    config = transformers.GPT2Config(n_position=64, n_layer=1, n_head=16, n_embd=HIDDEN_DIM)
+    config = transformers.GPT2Config(n_position=64, n_layer=2, n_head=16, n_embd=HIDDEN_DIM)
 
     if model_cls == GPT2MLP:
         model = model_cls(intermediate_size=4 * config.hidden_size, config=config).to('cuda')
@@ -111,15 +118,17 @@ def check_attention_layer(rank, model_cls, world_size, port):
     # [[0, 1]
     #  [2, 3]]
     device_mesh = DeviceMesh(physical_mesh_id, mesh_shape, init_process_group=True)
-    tracer = ColoTracer()
+    tracer = ColoTracer(bias_addition_split=True)
 
     graph = tracer.trace(root=model, meta_args=meta_input_sample)
     gm = GraphModule(model, graph, model.__class__.__name__)
+    shape_prop_pass(gm, *meta_input_sample.values())
     gm.recompile()
 
     strategies_constructor = build_strategy_constructor(graph, device_mesh, 'standard', 'replicated', 'standard')
     solution = solve_solution(gm, strategies_constructor, memory_budget=-1)
-    gm, sharding_spec_dicts = transform_to_sharded_model(gm, solution, device_mesh, strategies_constructor)
+    gm, sharding_spec_dicts = transform_to_sharded_model(gm, meta_input_sample, solution, device_mesh,
+                                                         strategies_constructor)
     gm = ModuleWrapper(gm, *sharding_spec_dicts)
 
     nodes = [strategies_vector.node for strategies_vector in strategies_constructor.leaf_strategies]
@@ -176,6 +185,7 @@ def check_attention_layer(rank, model_cls, world_size, port):
 
 
 @run_on_environment_flag(name='AUTO_PARALLEL')
+@pytest.mark.skipif(NO_CODEGEN, reason="no codegen module")
 @pytest.mark.dist
 @parameterize('model_cls', [GPT2MLP, GPT2Block, GPT2Attention, GPT2Model])
 @rerun_if_address_is_in_use()

@@ -2,6 +2,8 @@ from typing import Callable, Dict, List, Tuple, Union
 
 import torch
 
+from colossalai._analyzer._subclasses.flop_tensor import flop_mapping
+from colossalai._analyzer.fx.node_util import compute_size_in_bytes
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
     MemoryCost,
     OperationData,
@@ -10,8 +12,6 @@ from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
     StrategiesVector,
     TrainCycleItem,
 )
-from colossalai.fx.profiler.memory_utils import activation_size
-from colossalai.fx.profiler.opcount import flop_mapping
 from colossalai.tensor.sharding_spec import ShardingSpec
 
 from ..registry import meta_register
@@ -110,18 +110,18 @@ def convnd_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleItem, L
     # calculate memory cost
     # TODO: use profiler to check conv temp memory
     # NOTE: currently in SPMD solver we always believe that there will be a new tensor created in forward
-    fwd_memory_cost = MemoryCost(
-        activation=activation_size([input_tensor, output_tensor]),
-        parameter=activation_size([weight_tensor, bias_tensor]) if has_bias else activation_size(weight_tensor),
-        temp=0,
-        buffer=0)
+    fwd_memory_cost = MemoryCost(activation=compute_size_in_bytes([input_tensor, output_tensor]),
+                                 parameter=compute_size_in_bytes([weight_tensor, bias_tensor])
+                                 if has_bias else compute_size_in_bytes(weight_tensor),
+                                 temp=0,
+                                 buffer=0)
 
-    bwd_memory_cost = MemoryCost(
-        activation=activation_size([input_tensor, weight_tensor, bias_tensor])
-        if has_bias else activation_size([input_tensor, weight_tensor]),
-        parameter=activation_size([weight_tensor, bias_tensor]) if has_bias else activation_size(weight_tensor),
-        temp=0,
-        buffer=0)
+    bwd_memory_cost = MemoryCost(activation=compute_size_in_bytes([input_tensor, weight_tensor, bias_tensor])
+                                 if has_bias else compute_size_in_bytes([input_tensor, weight_tensor]),
+                                 parameter=compute_size_in_bytes([weight_tensor, bias_tensor])
+                                 if has_bias else compute_size_in_bytes(weight_tensor),
+                                 temp=0,
+                                 buffer=0)
 
     # total cost is the sum of forward and backward cost
     total_cost = MemoryCost(activation=fwd_memory_cost.activation + bwd_memory_cost.activation,

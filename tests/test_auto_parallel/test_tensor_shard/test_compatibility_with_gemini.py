@@ -6,7 +6,12 @@ import torch
 import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
 
-from colossalai.auto_parallel.tensor_shard.initialize import initialize_model
+try:
+    from colossalai.auto_parallel.tensor_shard.initialize import initialize_model
+    NO_CODEGEN = False
+except:
+    NO_CODEGEN = True
+
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
@@ -101,6 +106,7 @@ def check_auto_parallel_with_gemini(rank, world_size, port):
 
 
 @run_on_environment_flag(name='AUTO_PARALLEL')
+@pytest.mark.skipif(NO_CODEGEN, reason='No codegen found')
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_auto_parallel_with_gemini():
