@@ -3,7 +3,7 @@
 
    [![logo](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/colossal-ai_logo_vertical.png)](https://www.colossalai.org/)
 
-   Colossal-AI: Making large AI models cheaper, faster and more accessible
+   Colossal-AI: Making large AI models cheaper, faster, and more accessible
 
    <h3> <a href="https://arxiv.org/abs/2110.14883"> Paper </a> |
    <a href="https://www.colossalai.org/"> Documentation </a> |
@@ -115,7 +115,7 @@ distributed training and inference in a few lines.
   - [PatrickStar](https://arxiv.org/abs/2108.05818)
 
 - Friendly Usage
-  - Parallelism based on configuration file
+  - Parallelism based on the configuration file
 
 - Inference
   - [Energon-AI](https://github.com/hpcaitech/EnergonAI)
@@ -129,7 +129,7 @@ distributed training and inference in a few lines.
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/GPT3-v5.png" width=700/>
 </p>
 
-- Save 50% GPU resources, and 10.7% acceleration
+- Save 50% GPU resources and 10.7% acceleration
 
 ### GPT-2
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/GPT2.png" width=800/>
@@ -151,7 +151,7 @@ distributed training and inference in a few lines.
 ### OPT
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/OPT_update.png" width=800/>
 
-- [Open Pretrained Transformer (OPT)](https://github.com/facebookresearch/metaseq), a 175-Billion parameter AI language model released by Meta, which stimulates AI programmers to perform various downstream tasks and application deployments because public pretrained model weights.
+- [Open Pretrained Transformer (OPT)](https://github.com/facebookresearch/metaseq), a 175-Billion parameter AI language model released by Meta, which stimulates AI programmers to perform various downstream tasks and application deployments because of public pre-trained model weights.
 - 45% speedup fine-tuning OPT at low cost in lines. [[Example]](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/opt) [[Online Serving]](https://colossalai.org/docs/advanced_tutorials/opt_service)
 
 Please visit our [documentation](https://www.colossalai.org/) and [examples](https://github.com/hpcaitech/ColossalAI/tree/main/examples) for more details.
@@ -245,7 +245,7 @@ Please visit our [documentation](https://www.colossalai.org/) and [examples](htt
 </p>
 
 - Increase the capacity of the fine-tuning model by up to 3.7 times on a single GPU
-- Keep in a sufficiently high running speed
+- Keep at a sufficiently high running speed
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
@@ -304,7 +304,7 @@ Requirements:
 - Python >= 3.7
 - CUDA >= 11.0
 
-If you encounter any problem about installation, you may want to raise an [issue](https://github.com/hpcaitech/ColossalAI/issues/new/choose) in this repository.
+If you encounter any problem with installation, you may want to raise an [issue](https://github.com/hpcaitech/ColossalAI/issues/new/choose) in this repository.
 
 ### Install from PyPI
 
@@ -322,9 +322,9 @@ However, if you want to build the PyTorch extensions during installation, you ca
 CUDA_EXT=1 pip install colossalai
 ```
 
-**Otherwise, CUDA kernels will be built during runtime when you actually need it.**
+**Otherwise, CUDA kernels will be built during runtime when you actually need them.**
 
-We also keep release the nightly version to PyPI on a weekly basis. This allows you to access the unreleased features and bug fixes in the main branch.
+We also keep releasing the nightly version to PyPI every week. This allows you to access the unreleased features and bug fixes in the main branch.
 Installation can be made via
 
 ```bash
@@ -333,7 +333,7 @@ pip install colossalai-nightly
 
 ### Download From Source
 
-> The version of Colossal-AI will be in line with the main branch of the repository. Feel free to raise an issue if you encounter any problem. :)
+> The version of Colossal-AI will be in line with the main branch of the repository. Feel free to raise an issue if you encounter any problems. :)
 
 ```shell
 git clone https://github.com/hpcaitech/ColossalAI.git
@@ -423,6 +423,6 @@ To cite this project, you can use the following BibTeX citation.
 }
 ```
 
-Colossal-AI has been accepted as official tutorials by top conference [SC](https://sc22.supercomputing.org/), [AAAI](https://aaai.org/Conferences/AAAI-23/), [PPoPP](https://ppopp23.sigplan.org/), [CVPR](https://cvpr2023.thecvf.com/), [ISC](https://www.isc-hpc.com/), etc.
+Colossal-AI has been accepted as official tutorial by top conferences [SC](https://sc22.supercomputing.org/), [AAAI](https://aaai.org/Conferences/AAAI-23/), [PPoPP](https://ppopp23.sigplan.org/), [CVPR](https://cvpr2023.thecvf.com/), [ISC](https://www.isc-hpc.com/), etc.
 
 <p align="right">(<a href="#top">back to top</a>)</p>

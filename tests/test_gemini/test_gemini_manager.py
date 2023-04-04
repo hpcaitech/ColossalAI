@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from colossalai.gemini.stateful_tensor import TensorState, StatefulTensor
+from colossalai.zero.legacy.gemini.stateful_tensor import StatefulTensor, TensorState
 
 
 @pytest.mark.dist

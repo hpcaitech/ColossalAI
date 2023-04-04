@@ -1,20 +1,21 @@
+from functools import partial
+
 import pytest
-import colossalai
 import torch
 import torch.multiprocessing as mp
-from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.utils.cuda import get_current_device
-from colossalai.utils import free_port
-from functools import partial
-from tests.test_tensor.common_utils import set_seed
-from tests.components_to_test.registry import non_distributed_component_funcs
-from colossalai.testing import parameterize
+
+import colossalai
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.zero.init_ctx import ZeroInitContext
-from colossalai.zero.shard_utils import TensorShardStrategy
-from colossalai.zero.sharded_model import ShardedModelV2
-from colossalai.zero.sharded_optim import ShardedOptimizerV2
 from colossalai.tensor import ProcessGroup
+from colossalai.testing import parameterize, rerun_if_address_is_in_use
+from colossalai.utils import free_port
+from colossalai.utils.cuda import get_current_device
+from colossalai.zero.legacy.init_ctx import ZeroInitContext
+from colossalai.zero.legacy.shard_utils import TensorShardStrategy
+from colossalai.zero.legacy.sharded_model import ShardedModelV2
+from colossalai.zero.legacy.sharded_optim import ShardedOptimizerV2
+from tests.components_to_test.registry import non_distributed_component_funcs
+from tests.test_tensor.common_utils import set_seed
 
 
 def init_zero(model_builder, placement_policy):

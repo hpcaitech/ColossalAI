@@ -10,14 +10,14 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 
 import colossalai
-from colossalai.gemini.chunk import ChunkManager, search_chunk_configuration
-from colossalai.gemini.gemini_mgr import GeminiManager
-from colossalai.nn.parallel import ColoDDP, ZeroDDP
+from colossalai.nn.parallel import ColoDDP
 from colossalai.tensor import ProcessGroup
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port
 from colossalai.utils.cuda import get_current_device
-from colossalai.utils.model.colo_init_context import ColoInitContext
+from colossalai.zero import ColoInitContext, ZeroDDP
+from colossalai.zero.gemini.chunk import ChunkManager, search_chunk_configuration
+from colossalai.zero.gemini.gemini_mgr import GeminiManager
 
 
 def set_seed(seed):

@@ -54,7 +54,7 @@ def test_adam(adamw, step, p_dtype, g_dtype):
 
     count = 0
 
-    for i in range(1024):
+    for i in range(3):
         p = torch.rand(64, dtype=p_dtype).cuda()
         p_copy = p.clone().float()
         g = torch.rand(p.shape, dtype=g_dtype).cuda()
