@@ -92,9 +92,10 @@ class PPOTrainer(Trainer):
 
         # ptx loss
         if self.ptx_coef != 0:
-            ptx = next(iter(self.pretrain_dataloader))['input_ids'].to(torch.cuda.current_device())
-            label = next(iter(self.pretrain_dataloader))['labels'].to(torch.cuda.current_device())[:, 1:]
-            attention_mask = next(iter(self.pretrain_dataloader))['attention_mask'].to(torch.cuda.current_device())
+            batch = next(iter(self.pretrain_dataloader))
+            ptx = batch['input_ids'].to(torch.cuda.current_device())
+            label = batch['labels'].to(torch.cuda.current_device())[:, 1:]
+            attention_mask = batch['attention_mask'].to(torch.cuda.current_device())
             ptx_log_probs = self.actor.get_base_model()(ptx, attention_mask=attention_mask)['logits'][..., :-1, :]
             ptx_loss = self.ptx_loss_fn(ptx_log_probs.view(-1, ptx_log_probs.size(-1)), label.view(-1))
             actor_loss = ptx_loss * self.ptx_coef + actor_loss * (1 - self.ptx_coef)
