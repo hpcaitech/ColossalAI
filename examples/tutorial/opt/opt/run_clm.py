@@ -413,7 +413,11 @@ def main():
     cai_version = colossalai.__version__
     logger.info(f'using Colossal-AI version {cai_version}')
     if version.parse(cai_version) > version.parse("0.1.10"):
-        from colossalai.nn.parallel import GeminiDDP
+        try:
+            from colossalai.nn.parallel import GeminiDDP
+        except ImportError:
+            # this works for unreleased main branch, and this may be released on 0.2.9
+            from colossalai.zero import GeminiDDP
         model = GeminiDDP(model, device=get_current_device(), placement_policy=PLACEMENT_POLICY, pin_memory=True)
     elif version.parse(cai_version) <= version.parse("0.1.10") and version.parse(cai_version) >= version.parse("0.1.9"):
         from colossalai.gemini import ChunkManager, GeminiManager
