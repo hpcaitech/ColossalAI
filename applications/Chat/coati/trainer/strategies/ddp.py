@@ -1,3 +1,5 @@
+from typing import Optional
+
 import os
 import random
 
@@ -5,12 +7,13 @@ import numpy as np
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-from coati.models.base import Actor
+from coati.models.base import LM, Actor, RewardModel
 from coati.models.lora import LoraLinear
 from coati.replay_buffer import ReplayBuffer
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
+from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
 from .base import Strategy
 from .naive import NaiveStrategy
@@ -72,17 +75,32 @@ class DDPStrategy(NaiveStrategy):
         model: DDP = Strategy._unwrap_actor(actor)
         return model.module
 
-    def save_model(self, model: nn.Module, path: str, only_rank0: bool = False) -> None:
+    def save_model(self, model: nn.Module, path: str, only_rank0: bool = False, tokenizer: Optional[PreTrainedTokenizerBase] = None) -> None:
+        if only_rank0 and dist.get_rank() != 0:
+            return None
+        
         for module in model.modules():
             if isinstance(module, LoraLinear):
                 module.merge_weights = True
                 module.eval()
-
-        if only_rank0 and dist.get_rank() != 0:
-            return
-        model = model.model.module
-        state_dict = model.state_dict()
-        torch.save(state_dict, path)
+        
+        if isinstance(model, RewardModel):
+            state_dict = model.state_dict()
+            if only_rank0 and dist.get_rank() != 0:
+                return
+            torch.save(state_dict, path)
+        else:
+            try:
+                if isinstance(model, LM):
+                    model = model.model
+                model.save_pretrained(path)
+                if tokenizer is not None:
+                    tokenizer.save_pretrained(path)
+            except AttributeError:
+                state_dict = model.state_dict()
+                if only_rank0 and dist.get_rank() != 0:
+                    return
+                torch.save(state_dict, path)
 
     def save_optimizer(self, optimizer: Optimizer, path: str, only_rank0: bool = False) -> None:
         if only_rank0 and dist.get_rank() != 0:
