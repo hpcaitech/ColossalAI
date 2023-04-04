@@ -226,7 +226,7 @@ def main():
             hidden_dim = 1024
         else:
             hidden_dim = model.config.n_embd
-        cfg = chunk_wrapper(model, 128, hidden_dim, register_chunk=False)
+        chunk_wrapper(model, 128, hidden_dim, register_chunk=True)
         logger.info(get_mem_info(prefix='After init chunk, '), ranks=[0])
         logger.info(get_peak_mem_info(prefix='After init chunk, '), ranks=[0])
     else:
