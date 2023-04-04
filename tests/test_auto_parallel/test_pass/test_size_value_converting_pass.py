@@ -1,3 +1,4 @@
+import pytest
 import torch
 import torch.nn.functional as F
 
@@ -34,6 +35,7 @@ def recover_narrow(gm, narrow_node):
     return gm
 
 
+@pytest.mark.skip('ShapeProp is not compatible with PyTorch 1.11.0')
 def test_size_value_converting_pass():
     model = TestModule()
     physical_mesh_id = torch.arange(0, 4)

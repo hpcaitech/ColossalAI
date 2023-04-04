@@ -25,9 +25,7 @@ class LinearModel(nn.Module):
         return out
 
 
-pytest.mark.skip('meta tensor has some bugs in 1.11')
-
-
+@pytest.mark.skip('meta tensor has some bugs in 1.11')
 def test_liveness_analysis():
     model = LinearModel()
     tracer = ColoTracer(bias_addition_split=True)
