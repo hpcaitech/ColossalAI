@@ -22,7 +22,7 @@ from colossalai.utils import free_port
 from tests.test_auto_parallel.test_tensor_shard.test_metainfo.utils import print_results
 
 if torch.__version__ >= '1.12.0':
-    from colossalai.auto_parallel.meta_profiler import MetaInfo, meta_register
+    from colossalai.auto_parallel.meta_profiler import ShardMetaInfo, meta_register
 
 
 @pytest.mark.skipif(torch.__version__ < '1.12.0', reason="need pytorch 1.12.0 or higher for aten level operations")
