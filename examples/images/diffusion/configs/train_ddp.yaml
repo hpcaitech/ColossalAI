@@ -1,6 +1,6 @@
 model:
   base_learning_rate: 1.0e-4
-  target: ldm.models.diffusion.ddpm.LatentDiffusion
+  #target: ldm.models.diffusion.ddpm.LatentDiffusion
   params:
     parameterization: "v"
     linear_start: 0.00085
@@ -29,7 +29,7 @@ model:
 
 
     unet_config:
-      target: ldm.modules.diffusionmodules.openaimodel.UNetModel
+      #target: ldm.modules.diffusionmodules.openaimodel.UNetModel
       params:
         use_checkpoint: True
         use_fp16: True
@@ -48,7 +48,7 @@ model:
         legacy: False
 
     first_stage_config:
-      target: ldm.models.autoencoder.AutoencoderKL
+      #target: ldm.models.autoencoder.AutoencoderKL
       params:
         embed_dim: 4
         monitor: val/rec_loss
@@ -72,13 +72,13 @@ model:
           target: torch.nn.Identity
 
     cond_stage_config:
-      target: ldm.modules.encoders.modules.FrozenOpenCLIPEmbedder
+      #target: ldm.modules.encoders.modules.FrozenOpenCLIPEmbedder
       params:
         freeze: True
         layer: "penultimate"
 
 data:
-  target: main.DataModuleFromConfig
+  #target: main.DataModuleFromConfig
   params:
     batch_size: 128
     # num_workwers should be 2 * batch_size, and the total num less than 1024
@@ -100,7 +100,7 @@ lightning:
     precision: 16
     auto_select_gpus: False
     strategy:
-      target: strategies.DDPStrategy
+      #target: strategies.DDPStrategy
       params:
         find_unused_parameters: False
     log_every_n_steps: 2
@@ -111,7 +111,7 @@ lightning:
 
   logger_config:
     wandb:
-      target: loggers.WandbLogger
+      #target: loggers.WandbLogger
       params:
           name: nowname
           save_dir: "/data2/tmp/diff_log/"
