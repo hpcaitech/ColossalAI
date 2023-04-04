@@ -1,4 +1,4 @@
-from colossalai.zero.shard_utils import TensorShardStrategy
+from colossalai.zero.legacy import TensorShardStrategy
 
 zero = dict(model_config=dict(shard_strategy=TensorShardStrategy(),
                               tensor_placement_policy="auto",
