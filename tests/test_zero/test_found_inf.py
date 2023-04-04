@@ -1,22 +1,22 @@
 from functools import partial
 
-import colossalai
-from colossalai.utils.cuda import get_current_device
 import pytest
 import torch
 import torch.multiprocessing as mp
+from common import CONFIG
+
+import colossalai
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.testing import parameterize, rerun_if_address_is_in_use
 from colossalai.utils import free_port
-from colossalai.zero.init_ctx import ZeroInitContext
-from colossalai.zero.shard_utils import BucketTensorShardStrategy
-from colossalai.zero.sharded_model import ShardedModelV2
-from colossalai.zero.sharded_optim import ShardedOptimizerV2
-from colossalai.zero.sharded_optim._utils import has_inf_or_nan
+from colossalai.utils.cuda import get_current_device
+from colossalai.zero.legacy.init_ctx import ZeroInitContext
+from colossalai.zero.legacy.shard_utils import BucketTensorShardStrategy
+from colossalai.zero.legacy.sharded_model import ShardedModelV2
+from colossalai.zero.legacy.sharded_optim import ShardedOptimizerV2
+from colossalai.zero.low_level._utils import has_inf_or_nan
 from tests.components_to_test.registry import non_distributed_component_funcs
 from tests.test_zero.test_sharded_optim_v2 import _run_step
-
-from common import CONFIG
 
 
 @parameterize("cpu_offload", [True, False])

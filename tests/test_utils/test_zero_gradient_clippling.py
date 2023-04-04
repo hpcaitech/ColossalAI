@@ -2,21 +2,22 @@
 # -*- encoding: utf-8 -*-
 
 import copy
+from functools import partial
 
-import colossalai
-from colossalai.zero.sharded_model.sharded_model_v2 import ShardedModelV2
 import pytest
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
 import torch.nn as nn
-from colossalai.logging import disable_existing_loggers
-from colossalai.utils import checkpoint, clip_grad_norm_fp32, free_port
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.nn.utils import clip_grad_norm_
-from colossalai.zero.shard_utils.tensor_shard_strategy import TensorShardStrategy
-from functools import partial
+
+import colossalai
+from colossalai.logging import disable_existing_loggers
 from colossalai.testing import parameterize, rerun_if_address_is_in_use
+from colossalai.utils import checkpoint, clip_grad_norm_fp32, free_port
+from colossalai.zero.legacy.shard_utils.tensor_shard_strategy import TensorShardStrategy
+from colossalai.zero.legacy.sharded_model.sharded_model_v2 import ShardedModelV2
 
 
 def checkpoint_wrapper(module, enable=True):

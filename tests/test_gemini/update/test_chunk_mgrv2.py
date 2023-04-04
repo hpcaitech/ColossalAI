@@ -5,10 +5,10 @@ import torch
 import torch.multiprocessing as mp
 
 import colossalai
-from colossalai.gemini.chunk import ChunkManager
 from colossalai.tensor import ColoTensor, ColoTensorSpec, ProcessGroup
 from colossalai.testing import parameterize, rerun_if_address_is_in_use
 from colossalai.utils import free_port
+from colossalai.zero.gemini.chunk import ChunkManager
 from tests.test_tensor.common_utils import debug_print
 
 CUDA_MEM_0 = {False: 512, True: 1024}
