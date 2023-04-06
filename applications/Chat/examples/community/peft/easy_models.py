@@ -3,12 +3,12 @@ from typing import Optional, Tuple, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.nn.modules import Module
-
 from coati.models.generation import generate
-from coati.models.utils import log_probs_from_logits,masked_mean
-from transformers import BloomConfig,BloomForCausalLM
+from coati.models.utils import log_probs_from_logits, masked_mean
 from peft import PeftModel
+from torch.nn.modules import Module
+from transformers import BloomConfig, BloomForCausalLM
+
 
 class Actor(Module):
     """
@@ -87,11 +87,10 @@ class BLOOMActor(Actor):
         else:
             model = BloomForCausalLM(BloomConfig())
         if lora_path is not None:
-            model = PeftModel.from_pretrained(model,lora_path)
+            model = PeftModel.from_pretrained(model, lora_path)
         if checkpoint:
             model.gradient_checkpointing_enable()
         super().__init__(model)
-        
+
     def print_trainable_parameters(self):
         self.get_base_model().print_trainable_parameters()
-

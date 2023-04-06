@@ -10,7 +10,7 @@ Since the current pypi peft package(0.2) has some bugs, please install the peft 
 git clone https://github.com/huggingface/peft
 cd peft
 pip install .
-``` 
+```
 
 # Usage
 For SFT training, just call train_peft_sft.py

@@ -5,21 +5,22 @@ import torch
 import torch.distributed as dist
 from coati.dataset import DataCollatorForSupervisedDataset, PromptDataset, SupervisedDataset
 from coati.models.bloom import BLOOMRM, BLOOMCritic
-from easy_models import BLOOMActor
 from coati.models.gpt import GPTRM, GPTActor, GPTCritic
 from coati.models.llama import LlamaActor, LlamaCritic, LlamaRM
 from coati.models.opt import OPTRM, OPTActor, OPTCritic
 from coati.trainer import PPOTrainer
 from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
 from coati.utils import prepare_llama_tokenizer_and_embedding
+from easy_dataset import EasyPromptsDataset, EasySupervisedDataset
+from easy_models import BLOOMActor
+from peft import PeftModel
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 from transformers import AutoTokenizer, BloomTokenizerFast, GPT2Tokenizer, LlamaTokenizer
 
 from colossalai.nn.optimizer import HybridAdam
-from peft import PeftModel
-from easy_dataset import EasyPromptsDataset,EasySupervisedDataset
+
 
 def main(args):
     # configure strategy
@@ -41,7 +42,7 @@ def main(args):
     if args.model == 'bloom':
         # initial_model = BLOOMActor(pretrained=args.pretrain)
         print('Using peft lora to load Bloom model as inital_model')
-        initial_model = BLOOMActor(pretrained=args.pretrain,lora_path=args.sft_lora_path)
+        initial_model = BLOOMActor(pretrained=args.pretrain, lora_path=args.sft_lora_path)
         print('Using peft lora to load Bloom model as initial_model (Done)')
     else:
         raise ValueError(f'Unsupported actor model "{args.model}"')
@@ -54,7 +55,7 @@ def main(args):
     if rm_model_name == 'gpt2':
         reward_model = GPTRM(pretrained=args.rm_pretrain)
     elif rm_model_name == 'bloom':
-        print("load bloom reward model ",args.rm_pretrain)
+        print("load bloom reward model ", args.rm_pretrain)
         reward_model = BLOOMRM(pretrained=args.rm_pretrain)
     elif rm_model_name == 'opt':
         reward_model = OPTRM(pretrained=args.rm_pretrain)
@@ -75,7 +76,7 @@ def main(args):
         if args.model == 'bloom':
             # actor = BLOOMActor(pretrained=args.pretrain, lora_rank=args.lora_rank)
             print('Using peft lora to load Bloom model as Actor')
-            actor = BLOOMActor(pretrained=args.pretrain,lora_path=args.sft_lora_path)
+            actor = BLOOMActor(pretrained=args.pretrain, lora_path=args.sft_lora_path)
             print('Using peft lora to load Bloom model as Actor (Done)')
         else:
             raise ValueError(f'Unsupported actor model "{args.model}"')
@@ -83,7 +84,7 @@ def main(args):
         if rm_model_name == 'gpt2':
             critic = GPTCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank, use_action_mask=True)
         elif rm_model_name == 'bloom':
-            print("load bloom critic ",args.rm_pretrain," lora_rank ",args.lora_rank," use_action_mask ",True)
+            print("load bloom critic ", args.rm_pretrain, " lora_rank ", args.lora_rank, " use_action_mask ", True)
             critic = BLOOMCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank, use_action_mask=True)
             print("load bloom critic (Done) ")
         elif rm_model_name == 'opt':
@@ -130,7 +131,7 @@ def main(args):
 
     data_collator = DataCollatorForSupervisedDataset(tokenizer=tokenizer)
 
-    prompt_dataset = EasyPromptsDataset(args.prompt_path,tokenizer)
+    prompt_dataset = EasyPromptsDataset(args.prompt_path, tokenizer)
     if dist.is_initialized() and dist.get_world_size() > 1:
         prompt_sampler = DistributedSampler(prompt_dataset, shuffle=True, seed=42, drop_last=True)
     else:

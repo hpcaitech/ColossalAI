@@ -14,19 +14,19 @@ from coati.trainer import SFTTrainer
 from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
 from coati.utils import prepare_llama_tokenizer_and_embedding
 from datasets import load_dataset
+from easy_dataset import EasyDataset
+from peft import LoraConfig, PeftModel, TaskType, get_peft_model
 from torch.optim import Adam
 from torch.utils.data import DataLoader
+from torch.utils.data.dataloader import default_collate
 from torch.utils.data.distributed import DistributedSampler
-from transformers import AutoTokenizer, BloomTokenizerFast,AutoModelForCausalLM
+from transformers import AutoModelForCausalLM, AutoTokenizer, BloomTokenizerFast
 from transformers.models.gpt2.tokenization_gpt2 import GPT2Tokenizer
 
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.tensor import ColoParameter
 
-from torch.utils.data.dataloader import default_collate
-from peft import LoraConfig, TaskType,get_peft_model,PeftModel
-from easy_dataset import EasyDataset
 
 def train(args):
     # configure strategy
@@ -48,16 +48,19 @@ def train(args):
         #if the args.save_path exists and args.save_path+'/adapter_config.json' exists, we'll load the adapter_config.json
         if os.path.exists(args.save_path) and os.path.exists(args.save_path+'/adapter_config.json') \
             and os.path.exists(args.save_path+'/adapter_model.bin'):
-            print("loading from saved peft model ",args.save_path)
+            print("loading from saved peft model ", args.save_path)
             model = PeftModel.from_pretrained(model, args.save_path)
         else:
             #we'll use peft lora library to do the lora
             lora_rank = args.lora_rank if args.lora_rank > 0 else 32
             #config lora with rank of lora_rank
-            lora_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=lora_rank, lora_alpha=32, lora_dropout=0.1)
+            lora_config = LoraConfig(task_type=TaskType.CAUSAL_LM,
+                                     inference_mode=False,
+                                     r=lora_rank,
+                                     lora_alpha=32,
+                                     lora_dropout=0.1)
             model = get_peft_model(model, lora_config)
         model.print_trainable_parameters()
-
 
     # configure tokenizer
     if args.model == 'gpt2':
@@ -103,12 +106,12 @@ def train(args):
     logger.set_level('WARNING')
 
     # configure dataset
-    law_dataset = EasyDataset(args.dataset,tokenizer=tokenizer,is_group_texts=not args.is_short_text)
+    law_dataset = EasyDataset(args.dataset, tokenizer=tokenizer, is_group_texts=not args.is_short_text)
     train_dataset = law_dataset
     print(train_dataset)
     eval_dataset = None
     if args.eval_dataset is not None:
-        eval_dataset = EasyDataset(args.eval_dataset,tokenizer=tokenizer,is_group_texts=not args.is_short_text)
+        eval_dataset = EasyDataset(args.eval_dataset, tokenizer=tokenizer, is_group_texts=not args.is_short_text)
     data_collator = default_collate
     if dist.is_initialized() and dist.get_world_size() > 1:
         train_sampler = DistributedSampler(train_dataset,
@@ -181,7 +184,7 @@ if __name__ == '__main__':
     parser.add_argument('--log_interval', type=int, default=100, help="how many steps to log")
     parser.add_argument('--lr', type=float, default=5e-6)
     parser.add_argument('--accimulation_steps', type=int, default=8)
-    parser.add_argument('--enable_peft_lora',action='store_true', default=False)
-    parser.add_argument("--is_short_text",action='store_true', default=False)
+    parser.add_argument('--enable_peft_lora', action='store_true', default=False)
+    parser.add_argument("--is_short_text", action='store_true', default=False)
     args = parser.parse_args()
     train(args)
