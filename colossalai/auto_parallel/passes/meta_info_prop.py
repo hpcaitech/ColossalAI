@@ -68,7 +68,7 @@ class MetaInfoProp:
         graph_info = GraphInfo()
         out = _normalize_tuple(getattr(node, '_meta_data', None))
         graph_info.fwd_out = list(out) if out[0] is not None else []
-        node.meta = {**asdict(graph_info)}
+        node.meta.update(asdict(graph_info))
 
     @compatibility(is_backward_compatible=False)
     def get_attr_handler(self, node: Node) -> None:
@@ -76,7 +76,7 @@ class MetaInfoProp:
         Handle the get_attr node.
         """
         graph_info = GraphInfo()
-        node.meta = {**asdict(graph_info)}
+        node.meta.update(asdict(graph_info))
 
     @compatibility(is_backward_compatible=False)
     def output_handler(self, node: Node) -> None:
@@ -89,7 +89,7 @@ class MetaInfoProp:
             if par.meta:
                 output_tensors += par.meta["fwd_out"]
         graph_info.fwd_in = output_tensors
-        node.meta = {**asdict(graph_info)}
+        node.meta.update(asdict(graph_info))
 
     @compatibility(is_backward_compatible=False)
     def node_handler(self, node: Node) -> None:
@@ -114,7 +114,7 @@ class MetaInfoProp:
             # communication cost is a float
             graph_info.fwd_time = 10
             graph_info.bwd_time = 10
-            node.meta = {**asdict(graph_info)}
+            node.meta.update(asdict(graph_info))
             # print(node.name, [isinstance(arg, torch.Tensor) for arg in node.args], isinstance(node._meta_data, torch.Tensor))
             return
         assert hasattr(node, 'best_strategy_info'), f"Cannot find best_strategy_info in node {node}, {node.op}"
@@ -184,5 +184,4 @@ class MetaInfoProp:
         compute_cost = meta_info.compute_cost
         graph_info.fwd_time = compute_cost.fwd
         graph_info.bwd_time = compute_cost.bwd
-
-        node.meta = {**asdict(graph_info)}
+        node.meta.update(asdict(graph_info))

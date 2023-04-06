@@ -5,12 +5,12 @@ from typing import Any, List
 import torch
 from torch.fx import Graph, Node
 
+from colossalai._analyzer.fx.codegen import ActivationCheckpointCodeGen
 from colossalai.auto_parallel.passes.runtime_apply_pass import (
     runtime_apply,
     runtime_apply_for_iterable_object,
     runtime_comm_spec_apply,
 )
-from colossalai.fx.codegen.activation_checkpoint_codegen import ActivationCheckpointCodeGen
 
 __all___ = ['CheckpointSolverBase']
 

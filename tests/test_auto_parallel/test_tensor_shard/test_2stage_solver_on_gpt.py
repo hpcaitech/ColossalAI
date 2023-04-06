@@ -1,49 +1,34 @@
-import copy
-from pprint import pprint
 from time import time
 
-import numpy as np
 import psutil
+import pytest
 import torch
-import torch.distributed as dist
 import transformers
-from torch.fx import GraphModule
 
+from colossalai._analyzer.fx.codegen import ActivationCheckpointCodeGen
 from colossalai._analyzer.fx.graph_module import ColoGraphModule
 from colossalai._analyzer.fx.passes import shape_prop_pass
-# from colossalai.fx.tracer.tracer import ColoTracer
-# from colossalai.fx import ColoGraphModule
 from colossalai._analyzer.fx.tracer.tracer import ColoTracer
 from colossalai.auto_parallel.checkpoint.ckpt_solver_rotor import CheckpointSolverRotor
 from colossalai.auto_parallel.passes.comm_metainfo_pass import comm_metainfo_pass
 from colossalai.auto_parallel.passes.meta_info_prop import MetaInfoProp
-from colossalai.auto_parallel.passes.runtime_apply_pass import runtime_apply_pass
-from colossalai.auto_parallel.passes.runtime_preparation_pass import runtime_preparation_pass
-from colossalai.auto_parallel.tensor_shard.constants import BATCHNORM_MODULE_OP
-from colossalai.auto_parallel.tensor_shard.options import DataloaderOption, ShardOption, SolverOptions, SolverPerference
-from colossalai.auto_parallel.tensor_shard.sharding_strategy import ShardingSpec
-from colossalai.auto_parallel.tensor_shard.solver import CostGraph, GraphAnalyser, Solver, StrategiesConstructor
+from colossalai.auto_parallel.tensor_shard.initialize import (
+    ModuleWrapper,
+    build_strategy_constructor,
+    solve_solution,
+    transform_to_sharded_model,
+)
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.initialize import launch, launch_from_torch
 from colossalai.logging import disable_existing_loggers, get_dist_logger
-from colossalai.tensor.shape_consistency import ShapeConsistencyManager, to_global
-from colossalai.testing import assert_close, assert_close_loose, parameterize, rerun_if_address_is_in_use
-from colossalai.testing.pytest_wrapper import run_on_environment_flag
-from colossalai.utils import free_port
-from tests.test_auto_parallel.test_tensor_shard.test_gpt.gpt_modules import (
-    GPT2MLP,
-    GPT2Attention,
-    GPT2Block,
-    GPT2LMHeadModel,
-    GPT2Model,
-    GPTLMLoss,
-)
+from colossalai.testing import parameterize, rerun_if_address_is_in_use, run_on_environment_flag, spawn
+from tests.test_auto_parallel.test_tensor_shard.test_gpt.gpt_modules import GPT2MLP, GPT2Attention, GPT2Block, GPT2Model
 
-BATCH_SIZE = 128
-SEQ_LENGTH = 128
-HIDDEN_DIM = 4096
-NUM_HEADS = 32
-NUM_LAYERS = 4
+BATCH_SIZE = 16
+SEQ_LENGTH = 1024
+HIDDEN_DIM = 2048
+NUM_HEADS = 16
+NUM_LAYERS = 2
 VOCAB_SIZE = 50257
 NUM_STEPS = 10
 
@@ -60,79 +45,81 @@ def get_mem_info(prefix=''):
     return f'{prefix}GPU memory usage: {get_gpu_mem():.2f} MB, CPU memory usage: {get_cpu_mem():.2f} MB'
 
 
-def data_gen_resnet(batch_size, shape):
+def data_gen_mlp(model_cls):
     """
     Generate random data for resnet benchmarking
     """
-    data = torch.empty(batch_size, *shape, device=torch.cuda.current_device())
-    label = torch.empty(batch_size, dtype=torch.long, device=torch.cuda.current_device()).random_(1000)
-    return data, label
-
-
-def data_gen_mlp(batch_size, shape):
-    """
-    Generate random data for resnet benchmarking
-    """
-    data = torch.empty(batch_size, *shape, device=torch.cuda.current_device())
-    label = torch.empty(batch_size, dtype=torch.long, device=torch.cuda.current_device()).random_(1000)
-    return data, label
-
-
-def main():
-    disable_existing_loggers()
-    launch_from_torch(config={})
-    logger = get_dist_logger()
-    config = transformers.GPT2Config(n_position=64, n_layer=2, n_head=16, n_embd=HIDDEN_DIM)
-    model = GPT2MLP(intermediate_size=4 * config.hidden_size, config=config).to('cuda')
     input_ids = torch.zeros((BATCH_SIZE, SEQ_LENGTH), dtype=torch.int64)
-    token_type_ids = torch.zeros((BATCH_SIZE, SEQ_LENGTH), dtype=torch.int64)
-    attention_mask = torch.zeros((BATCH_SIZE, SEQ_LENGTH), dtype=torch.int64)
     hidden_states = torch.rand((BATCH_SIZE, SEQ_LENGTH, HIDDEN_DIM), dtype=torch.float32)
-    input_sample = (hidden_states.to('cuda'),)
-    test_input_sample = copy.deepcopy(input_sample)
-    meta_input_sample = {
-        'hidden_states': hidden_states.to('meta'),
-    }
+
+    if model_cls == GPT2MLP:
+        input_sample = (hidden_states.to('cuda'),)
+        meta_input_sample = {
+            'hidden_states': hidden_states.to('meta'),
+        }
+    elif model_cls in (GPT2Attention, GPT2Block):
+        attention_mask = torch.zeros((1, SEQ_LENGTH), dtype=torch.int64)
+        input_sample = (
+            hidden_states.to('cuda'),
+            attention_mask.to('cuda'),
+        )
+        meta_input_sample = {
+            'hidden_states': hidden_states.to('meta'),
+            'attention_mask': attention_mask.to('meta'),
+        }
+    else:
+        attention_mask = torch.zeros((BATCH_SIZE, SEQ_LENGTH), dtype=torch.int64)
+        input_sample = (
+            input_ids.to('cuda'),
+            attention_mask.to('cuda'),
+        )
+        meta_input_sample = {
+            'input_ids': input_ids.to('meta'),
+            'attention_mask': attention_mask.to('meta'),
+        }
+    return input_sample, meta_input_sample
+
+
+def check_2stage_solver_on_gpt(rank, world_size, port, model_cls):
+    disable_existing_loggers()
+    launch(config={}, rank=rank, world_size=world_size, port=port, host='localhost', backend='nccl')
+    logger = get_dist_logger()
+    config = transformers.GPT2Config(n_position=SEQ_LENGTH, n_layer=NUM_LAYERS, n_head=NUM_HEADS, n_embd=HIDDEN_DIM)
+    if model_cls == GPT2MLP:
+        model = model_cls(intermediate_size=4 * config.hidden_size, config=config).to('cuda')
+    else:
+        model = model_cls(config=config).to('cuda')
+
+    input_sample, meta_input_sample = data_gen_mlp(model_cls)
 
     physical_mesh_id = torch.arange(0, 4)
     mesh_shape = (2, 2)
     # [[0, 1]
     #  [2, 3]]
     device_mesh = DeviceMesh(physical_mesh_id, mesh_shape, init_process_group=True)
-    shape_consistency_manager = ShapeConsistencyManager()
 
-    tracer = ColoTracer(bias_addition_split=True, trace_act_ckpt=True)
+    tracer = ColoTracer(bias_addition_split=True)
 
     graph = tracer.trace(root=model, meta_args=meta_input_sample)
+    graph.set_codegen(ActivationCheckpointCodeGen())
     gm = ColoGraphModule(model, graph, model.__class__.__name__)
     shape_prop_pass(gm, *meta_input_sample.values())
     gm.recompile()
 
-    graph_analyser = GraphAnalyser(gm)
-    liveness_list = graph_analyser.liveness_analysis()
-    solver_options = SolverOptions()
-    strategies_constructor = StrategiesConstructor(graph, device_mesh, solver_options)
-    strategies_constructor.build_strategies_and_cost()
+    strategies_constructor = build_strategy_constructor(graph, device_mesh, 'standard', 'replicated', 'standard')
+    solution = solve_solution(gm, strategies_constructor, memory_budget=-1)
+    gm, sharding_spec_dicts = transform_to_sharded_model(gm, meta_input_sample, solution, device_mesh,
+                                                         strategies_constructor)
+    comm_metainfo_pass(gm, *sharding_spec_dicts)
 
-    cost_graph = CostGraph(strategies_constructor.leaf_strategies)
-    cost_graph.simplify_graph()
-    solver = Solver(gm.graph, strategies_constructor, cost_graph, graph_analyser, memory_budget=-1)
-    ret = solver.call_solver_serialized_args()
-
-    solution = list(ret[0])
-    gm, sharding_spec_dict, origin_spec_dict, comm_actions_dict = runtime_preparation_pass(
-        gm, solution, device_mesh, strategies_constructor)
-    gm: GraphModule
-    gm = runtime_apply_pass(gm)
-    shape_prop_pass(gm, *meta_input_sample.values(), sharding_spec_dict, origin_spec_dict, comm_actions_dict)
-
-    gm.recompile()
-    comm_metainfo_pass(gm, sharding_spec_dict, origin_spec_dict, comm_actions_dict)
     MetaInfoProp(gm).run()
-    ckpt_solver = CheckpointSolverRotor(gm.graph, 8 * 1024**3)
-    gm.graph = ckpt_solver.solve()
+
+    gm = ModuleWrapper(gm, *sharding_spec_dicts)
+    ckpt_solver = CheckpointSolverRotor(gm.module.graph, 8 * 1024**3)
+    gm.module.graph = ckpt_solver.solve()
     ckpt_solver.print_sequence()
-    # assert False
+    gm.module.recompile()
+    print(gm.module)
     logger.info("*******************strategy selected*******************", ranks=[0])
     strategies_list = solution
 
@@ -141,26 +128,19 @@ def main():
         logger.info(node.name, ranks=[0])
         logger.info(node.strategies_vector[strategies_list[index]].name, ranks=[0])
 
-    # build criterion
-    criterion = torch.nn.CrossEntropyLoss().cuda()
-
     optimizer = torch.optim.Adam(gm.parameters(), lr=0.01)
     logger.info(get_mem_info(prefix='After init model, '), ranks=[0])
     torch.cuda.synchronize()
-    model.train()
-    # outputs = gm(*input_sample, sharding_spec_dict, origin_spec_dict, comm_actions_dict)
-    # print(outputs)
+    gm.train()
+
     for n in range(10):
         # we just use randomly generated data here
-        # data, label = data_gen_resnet(128 * 4, (3, 224, 224))
-        data = torch.rand(input_sample[0].shape, dtype=torch.float32).to('cuda')
+        input_sample, _ = data_gen_mlp(model_cls)
         mem_stamp0 = torch.cuda.memory_allocated(device='cuda:0') / 1024**2
         optimizer.zero_grad()
         start = time()
-        loss = gm(data, sharding_spec_dict, origin_spec_dict, comm_actions_dict)
+        loss = gm(*input_sample)
         loss.sum().backward()
-        # loss = criterion(outputs, label)
-        # loss.backward()
         optimizer.step()
         # prof.step()
         torch.cuda.synchronize()
@@ -172,5 +152,17 @@ def main():
     torch.cuda.synchronize()
 
 
+@run_on_environment_flag(name='AUTO_PARALLEL')
+@pytest.mark.dist
+@rerun_if_address_is_in_use()
+@parameterize('model_cls', [GPT2MLP, GPT2Attention, GPT2Block, GPT2Model])
+def test_2stage_solver_on_gpt(model_cls):
+    spawn(
+        check_2stage_solver_on_gpt,
+        4,
+        model_cls=model_cls,
+    )
+
+
 if __name__ == '__main__':
-    main()
+    test_2stage_solver_on_gpt()

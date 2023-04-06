@@ -191,7 +191,6 @@ class NodeHandler(ABC):
                 post_processed_strategies = list(updated_strategies)
 
             self.strategies_vector.extend(post_processed_strategies)
-        setattr(self, "strategies_info", strategies_info)
 
         # validating the correctness of the sharding strategy
         for strategy in self.strategies_vector:

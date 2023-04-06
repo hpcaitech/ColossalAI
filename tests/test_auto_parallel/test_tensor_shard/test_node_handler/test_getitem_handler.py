@@ -100,7 +100,7 @@ def check_getitem_from_tensor_handler(rank, getitem_index, world_size, port):
 # @parameterize('getitem_index', [slice(0, 2), (slice(None), slice(None))])
 @parameterize('getitem_index', [1, (1, 4), slice(0, 2), (slice(None), slice(None))])
 def test_getitem_from_tensor_handler(getitem_index):
-    spawn(check_getitem_from_tensor_handler, 4)
+    spawn(check_getitem_from_tensor_handler, 4, getitem_index=getitem_index)
 
 
 class GetItemFromTupleModel(nn.Module):
