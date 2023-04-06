@@ -24,7 +24,13 @@ __all__ = ['GeneralCheckpointIO']
 
 
 class GeneralCheckpointIO(CheckpointIO):
-    """Checkpoint IO"""
+    """
+    Checkpoint IO
+    """
+    def load_unsharded_model(self, model: nn.Module, checkpoint: str, strict: bool):
+        checkpoint = load_state_dict(checkpoint)
+        model.load_state_dict(checkpoint, strict=strict)
+
     def save_unsharded_model(self, model: nn.Module, checkpoint: str, gather_dtensor: bool, use_safetensors: bool):
         state_dict = model.state_dict()
 
@@ -107,14 +113,13 @@ class GeneralCheckpointIO(CheckpointIO):
         checkpoint_path = checkpoint_index_file.parent
 
         if use_safetensors and not is_safetensors_available():
-            raise ImportError("`safe_serialization` requires the `safetensors library: `pip install safetensors`.")
+            raise ImportError("`safe_serialization` requires the `safetensors` library: `pip install safetensors`.")
         
         # read checkpoint index file
         ckpt_index_file = CheckpointIndexFile()
         ckpt_index_file.load(checkpoint_index_file)
         checkpoint_files, _ = ckpt_index_file.get_checkpoint_fileanames()
         sharded_metadata = ckpt_index_file.get_checkpoint_metadata()
-        # checkpoint_files, sharded_metadata = get_checkpoint_shard_files(checkpoint_path, checkpoint_index_file)
         missing_keys = sharded_metadata["all_checkpoint_keys"]
 
         for shard_file in checkpoint_files:

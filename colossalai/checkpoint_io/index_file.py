@@ -159,7 +159,8 @@ class CheckpointIndexFile:
         Returns:
             str: checkpoint file name.
         """
-        ckpt_metadata = self.metadata
+        ckpt_metadata = {}
+        ckpt_metadata["metadata"] = self.metadata
         ckpt_metadata["all_checkpoint_keys"] = list(self.weight_map.keys())
         ckpt_metadata["weight_map"] = self.weight_map.copy()
         return ckpt_metadata

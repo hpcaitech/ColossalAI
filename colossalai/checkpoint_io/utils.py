@@ -10,50 +10,14 @@ from typing import List, Dict, Mapping, OrderedDict, Optional, Tuple
 from colossalai.tensor.d_tensor.d_tensor import DTensor
 import logging
 
-# ======================================
-# General helper functions
-# ======================================
-
 SAFE_WEIGHTS_NAME = "model.safetensors"
 WEIGHTS_NAME = "model.bin"
 SAFE_WEIGHTS_INDEX_NAME = "model.safetensors.index.json"
 WEIGHTS_INDEX_NAME = "model.bin.index.json"
 
 # ======================================
-# Function for check if safetensor available
+# General helper functions
 # ======================================
-
-# if sys.version_info < (3, 8):
-#     import importlib_metadata
-# else:
-#     import importlib.metadata as importlib_metadata
-
-# def is_safetensors_available():
-#     torch_available, torch_version = is_torch_available()
-#     if torch_available:
-#         if version.parse(torch_version) >= version.parse("1.10"):
-#             return importlib.util.find_spec("safetensors") is not None
-#         else:
-#             return False
-#     else:
-#         return importlib.util.find_spec("safetensors") is not None
-    
-
-# def is_torch_available():
-#     torch_version = "N/A"
-#     torch_available = importlib.util.find_spec("torch") is not None
-#     if torch_available:
-#         try:
-#             torch_version = importlib_metadata.version("torch")
-#         except importlib_metadata.PackageNotFoundError:
-#             torch_available = False
-
-#     return torch_available, torch_version
-
-# if is_safetensors_available():
-#     from safetensors import safe_open
-#     from safetensors.torch import load_file as safe_load_file
-#     from safetensors.torch import save_file as safe_save_file
 
 def calculate_tensor_size(tensor: torch.Tensor) -> float:
     """
@@ -167,20 +131,6 @@ def shard_checkpoint(state_dict: torch.Tensor, max_shard_size: int = 1024, weigh
     metadata = {"total_size": total_size}
     index = {"metadata": metadata, "weight_map": weight_map}
     return shards, index
-
-# def get_checkpoint_shard_files(checkpoint_root: Path, checkpoint_index_file: Path):
-#     """get checkpoint shard files"""
-#     with checkpoint_index_file.open("r") as f:
-#         index = json.loads(f.read())
-#     logging.info(index)
-#     shard_filenames = sorted(set(index["weight_map"].values()))
-#     sharded_metadata = index["metadata"]
-#     sharded_metadata["all_checkpoint_keys"] = list(index["weight_map"].keys())
-#     sharded_metadata["weight_map"] = index["weight_map"].copy()
-
-#     shard_filenames = [Path.joinpath(checkpoint_root, f) for f in shard_filenames]
-
-#     return shard_filenames, sharded_metadata
 
 def load_shard_state_dict(checkpoint_file: Path, use_safetensors: bool =False):
     """
