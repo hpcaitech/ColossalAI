@@ -1,14 +1,9 @@
 # coding=utf-8
-import importlib.util
-import sys
-from packaging import version
 from pathlib import Path
 import torch
 import torch.nn as nn
-import json
 from typing import List, Dict, Mapping, OrderedDict, Optional, Tuple
 from colossalai.tensor.d_tensor.d_tensor import DTensor
-import logging
 
 SAFE_WEIGHTS_NAME = "model.safetensors"
 WEIGHTS_NAME = "model.bin"

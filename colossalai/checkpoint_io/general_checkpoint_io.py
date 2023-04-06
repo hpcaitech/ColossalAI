@@ -110,7 +110,6 @@ class GeneralCheckpointIO(CheckpointIO):
         use_safetensors = False
         if "safetensors" in checkpoint_index_file.name:
             use_safetensors = True
-        checkpoint_path = checkpoint_index_file.parent
 
         if use_safetensors and not is_safetensors_available():
             raise ImportError("`safe_serialization` requires the `safetensors` library: `pip install safetensors`.")
@@ -119,8 +118,7 @@ class GeneralCheckpointIO(CheckpointIO):
         ckpt_index_file = CheckpointIndexFile()
         ckpt_index_file.load(checkpoint_index_file)
         checkpoint_files, _ = ckpt_index_file.get_checkpoint_fileanames()
-        sharded_metadata = ckpt_index_file.get_checkpoint_metadata()
-        missing_keys = sharded_metadata["all_checkpoint_keys"]
+        missing_keys = ckpt_index_file.get_all_param_names()
 
         for shard_file in checkpoint_files:
             state_dict = load_shard_state_dict(Path(shard_file), use_safetensors)

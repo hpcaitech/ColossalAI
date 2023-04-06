@@ -148,19 +148,15 @@ class CheckpointIndexFile:
         """
         ckpt_path = self.weight_map[param_name]
         return ckpt_path
-
-
-    def get_checkpoint_metadata(self) -> str:
+    
+    def get_checkpoint_metadata(self) -> str: 
         """
         Get the checkpoint index metadata.
-
-        Args:
-
-        Returns:
-            str: checkpoint file name.
         """
-        ckpt_metadata = {}
-        ckpt_metadata["metadata"] = self.metadata
-        ckpt_metadata["all_checkpoint_keys"] = list(self.weight_map.keys())
-        ckpt_metadata["weight_map"] = self.weight_map.copy()
-        return ckpt_metadata
+        return self.metadata
+    
+    def get_all_param_names(self):
+        """
+        Get all the weight keys.
+        """
+        return list(self.weight_map.keys())
