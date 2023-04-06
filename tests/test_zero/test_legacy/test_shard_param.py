@@ -4,6 +4,7 @@ from functools import partial
 import pytest
 import torch
 import torch.multiprocessing as mp
+from common import CONFIG, allclose
 
 import colossalai
 from colossalai.testing import parameterize, rerun_if_address_is_in_use
@@ -12,7 +13,6 @@ from colossalai.zero.legacy.gemini.stateful_tensor import StatefulTensor
 from colossalai.zero.legacy.shard_utils import BucketTensorShardStrategy, TensorShardStrategy
 from colossalai.zero.legacy.sharded_param import ShardedTensor
 from colossalai.zero.legacy.sharded_param.sharded_param import ShardedParamV2
-from tests.test_zero.common import CONFIG, allclose
 
 
 @parameterize("shard_strategy_class", [TensorShardStrategy, BucketTensorShardStrategy])

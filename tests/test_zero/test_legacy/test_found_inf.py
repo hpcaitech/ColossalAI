@@ -4,6 +4,7 @@ import pytest
 import torch
 import torch.multiprocessing as mp
 from common import CONFIG
+from test_sharded_optim_v2 import _run_step
 
 import colossalai
 from colossalai.nn.optimizer import HybridAdam
@@ -16,7 +17,6 @@ from colossalai.zero.legacy.sharded_model import ShardedModelV2
 from colossalai.zero.legacy.sharded_optim import ShardedOptimizerV2
 from colossalai.zero.low_level._utils import has_inf_or_nan
 from tests.components_to_test.registry import non_distributed_component_funcs
-from tests.test_zero.test_sharded_optim_v2 import _run_step
 
 
 @parameterize("cpu_offload", [True, False])
