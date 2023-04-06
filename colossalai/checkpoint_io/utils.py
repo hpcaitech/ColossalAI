@@ -239,11 +239,11 @@ def load_state_dict_into_model(model: nn.Module, state_dict: torch.Tensor, missi
 
     # deal with missing key
     if len(missing_keys) > 0:
-        delete_key = []
+        deleted_keys = []
         for key in missing_keys:
             if key not in sub_missing_keys:
-                delete_key.append(key)
-        for key in delete_key:
+                deleted_keys.append(key)
+        for key in deleted_keys:
             missing_keys.remove(key)
 
     if strict:
