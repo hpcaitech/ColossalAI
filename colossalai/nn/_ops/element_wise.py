@@ -52,13 +52,13 @@ def inplace_div(input_tensor: ColoTensor, *args, **kwargs):
 
 
 @colo_op_impl(Tensor.subtract_)
-def input_subtract(input_tensor: ColoTensor, *args, **kwargs):
+def inplace_subtract(input_tensor: ColoTensor, *args, **kwargs):
     input_tensor = input_tensor.subtract(*args, **kwargs)
     return input_tensor
 
 
 @colo_op_impl(Tensor.mul_)
-def input_mul(input_tensor: ColoTensor, *args, **kwargs):
+def inplace_mul(input_tensor: ColoTensor, *args, **kwargs):
     input_tensor = input_tensor.mul(*args, **kwargs)
     return input_tensor
 
