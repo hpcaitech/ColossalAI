@@ -27,7 +27,6 @@ def calculate_tensor_size(tensor: torch.Tensor) -> float:
     """
     return tensor.numel() * tensor.element_size() / 1024 / 1024
 
-
 def is_safetensors_available() -> bool:
     """
     Check whether safetensors is available.
