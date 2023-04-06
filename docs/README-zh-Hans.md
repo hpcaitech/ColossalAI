@@ -396,9 +396,9 @@ docker run -ti --gpus all --rm --ipc=host colossalai bash
 
 真诚感谢所有贡献者！
 
-<a href="https://github.com/hpcaitech/ColossalAI/graphs/contributors"><img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/contributor_avatar.png" width="800px"></a>
-
-*贡献者头像的展示顺序是随机的。*
+<a href="https://github.com/hpcaitech/ColossalAI/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=hpcaitech/ColossalAI"  width="800px"/>
+</a>
 
 <p align="right">(<a href="#top">返回顶端</a>)</p>
 
