@@ -1,6 +1,6 @@
 model:
   base_learning_rate: 1.0e-4
-  #target: ldm.models.diffusion.ddpm.LatentDiffusion
+  target: ldm.models.diffusion.ddpm.LatentDiffusion
   params:
     parameterization: "v"
     linear_start: 0.00085
@@ -20,7 +20,7 @@ model:
     use_ema: False
 
     scheduler_config: # 10000 warmup steps
-      #target: ldm.lr_scheduler.LambdaLinearScheduler
+      target: ldm.lr_scheduler.LambdaLinearScheduler
       params:
         warm_up_steps: [ 1 ] # NOTE for resuming. use 10000 if starting from scratch
         cycle_lengths: [ 10000000000000 ] # incredibly large number to prevent corner cases
@@ -30,7 +30,7 @@ model:
 
 
     unet_config:
-      #target: ldm.modules.diffusionmodules.openaimodel.UNetModel
+      target: ldm.modules.diffusionmodules.openaimodel.UNetModel
       params:
         use_checkpoint: True
         use_fp16: True
@@ -49,7 +49,7 @@ model:
         legacy: False
 
     first_stage_config:
-      #target: ldm.models.autoencoder.AutoencoderKL
+      target: ldm.models.autoencoder.AutoencoderKL
       params:
         embed_dim: 4
         monitor: val/rec_loss
@@ -73,13 +73,13 @@ model:
           target: torch.nn.Identity
 
     cond_stage_config:
-      #target: ldm.modules.encoders.modules.FrozenOpenCLIPEmbedder
+      target: ldm.modules.encoders.modules.FrozenOpenCLIPEmbedder
       params:
         freeze: True
         layer: "penultimate"
 
 data:
-  #target: main.DataModuleFromConfig
+  target: main.DataModuleFromConfig
   params:
     batch_size: 16
     num_workers: 4
@@ -105,7 +105,7 @@ lightning:
     precision: 16
     auto_select_gpus: False
     strategy:
-      #target: strategies.ColossalAIStrategy
+      target: strategies.ColossalAIStrategy
       params:
         use_chunk: True
         enable_distributed_storage: True
@@ -120,7 +120,7 @@ lightning:
 
   logger_config:
     wandb:
-      #target: loggers.WandbLogger
+      target: loggers.WandbLogger
       params:
           name: nowname
           save_dir: "/tmp/diff_log/"
