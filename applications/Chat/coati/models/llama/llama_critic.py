@@ -2,7 +2,7 @@ from typing import Optional
 
 import torch
 import torch.nn as nn
-from transformers import AutoModelForCausalLM, LlamaConfig, LlamaForCausalLM
+from transformers import AutoModelForCausalLM, LlamaConfig, LlamaModel
 
 from ..base import Critic
 
@@ -28,11 +28,11 @@ class LlamaCritic(Critic):
                  **kwargs) -> None:
 
         if pretrained is not None:
-            model = LlamaForCausalLM.from_pretrained(pretrained)
+            model = LlamaModel.from_pretrained(pretrained)
         elif config is not None:
-            model = LlamaForCausalLM(config)
+            model = LlamaModel(config)
         else:
-            model = LlamaForCausalLM(LlamaConfig())
+            model = LlamaModel(LlamaConfig())
 
         if checkpoint:
             model.gradient_checkpointing_enable()
