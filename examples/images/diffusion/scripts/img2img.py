@@ -20,8 +20,8 @@ from imwatermark import WatermarkEncoder
 
 
 from scripts.txt2img import put_watermark
+from ldm.util import instantiate_from_config
 from ldm.models.diffusion.ddim import DDIMSampler
-from ldm.models.diffusion.ddpm import LatentDiffusion
 from utils import replace_module, getModelSize
 
 
@@ -36,7 +36,7 @@ def load_model_from_config(config, ckpt, verbose=False):
     if "global_step" in pl_sd:
         print(f"Global Step: {pl_sd['global_step']}")
     sd = pl_sd["state_dict"]
-    model = LatentDiffusion(**config.model.get("params", dict()))
+    model = instantiate_from_config(config.model)
     m, u = model.load_state_dict(sd, strict=False)
     if len(m) > 0 and verbose:
         print("missing keys:")
