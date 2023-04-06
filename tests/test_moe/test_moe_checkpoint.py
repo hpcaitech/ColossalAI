@@ -11,7 +11,7 @@ from colossalai.testing import rerun_if_address_is_in_use, spawn
 from colossalai.utils import get_current_device
 from colossalai.zero import ColoInitContext
 from tests.test_moe.test_moe_zero_init import MoeModel
-from tests.test_zero.common import CONFIG
+from tests.test_zero.test_legacy.common import CONFIG
 
 
 def exam_moe_checkpoint():
