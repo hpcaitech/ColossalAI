@@ -4,7 +4,7 @@ from PIL import Image
 from tqdm import tqdm
 import numpy as np
 import torch
-from main import instantiate_from_config
+from ldm.models.diffusion.ddpm import LatentgDiffusion
 from ldm.models.diffusion.ddim import DDIMSampler
 
 
@@ -57,7 +57,7 @@ if __name__ == "__main__":
     print(f"Found {len(masks)} inputs.")
 
     config = OmegaConf.load("models/ldm/inpainting_big/config.yaml")
-    model = instantiate_from_config(config.model)
+    model = LatentDiffusion(**config.model.get("params", dict()))
     model.load_state_dict(torch.load("models/ldm/inpainting_big/last.ckpt")["state_dict"],
                           strict=False)
 
