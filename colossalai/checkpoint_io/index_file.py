@@ -148,3 +148,9 @@ class CheckpointIndexFile:
         """
         ckpt_path = self.weight_map[param_name]
         return ckpt_path
+    
+    def get_all_param_names(self):
+        """
+        Get all the weight keys.
+        """
+        return list(self.weight_map.keys())
