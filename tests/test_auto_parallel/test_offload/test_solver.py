@@ -3,20 +3,20 @@ import torch.fx
 from torch.fx import GraphModule
 from torch.utils._pytree import tree_map
 
+from colossalai.auto_parallel.offload.region_manager import RegionManager
+from colossalai.auto_parallel.offload.solver import NOT_NVML, SolverFactory
 from colossalai.fx import ColoTracer, is_compatible_with_meta
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
-from colossalai.auto_parallel.offload.region_manager import RegionManager
-from colossalai.auto_parallel.offload.solver import SolverFactory, NOT_NVML
-from colossalai.testing import parameterize
+from colossalai.testing import clear_cache_before_run, parameterize
 from tests.test_auto_parallel.test_offload.model_utils import *
 
+
 @pytest.mark.skipif(NOT_NVML, reason='pynvml is not installed')
+@clear_cache_before_run()
 @parameterize('model_name', ['gpt2_', 'bert_'])
 @parameterize('memory_budget', [4000])
 @parameterize('solver_name', ['syn', 'asyn'])
-def solver_test(model_name: str,
-                memory_budget: float,
-                solver_name: str):
+def solver_test(model_name: str, memory_budget: float, solver_name: str):
 
     get_components_func = non_distributed_component_funcs.get_callable(model_name)
     model_builder, data_gen = get_components_func()
@@ -52,11 +52,16 @@ def solver_test(model_name: str,
     for region in region_list:
         need_offload = region.need_offload
         to_prefetch = region.fwd_prefetch_region.r_id if region.fwd_prefetch_region is not None else None
-        print(f'| {model_name} forward | region id: {region.r_id} | need_offload: {need_offload} | to_prefetch: {to_prefetch}')
+        print(
+            f'| {model_name} forward | region id: {region.r_id} | need_offload: {need_offload} | to_prefetch: {to_prefetch}'
+        )
     for region in region_list.__reversed__():
         need_offload = region.need_offload
         to_prefetch = region.bwd_prefetch_region.r_id if region.bwd_prefetch_region is not None else None
-        print(f'| {model_name} backward | region id: {region.r_id} | need_offload: {need_offload} | to_prefetch: {to_prefetch}')
+        print(
+            f'| {model_name} backward | region id: {region.r_id} | need_offload: {need_offload} | to_prefetch: {to_prefetch}'
+        )
+
 
 if __name__ == '__main__':
     solver_test()

@@ -1,17 +1,11 @@
-from functools import partial
-
 import pytest
 import torch
-import torch.distributed as dist
-import torch.multiprocessing as mp
-import torch.nn as nn
 
 import colossalai
 from colossalai.fx import ColoTracer
 from colossalai.fx.passes.shard_1d_pass import transformer_mlp_pass
 from colossalai.tensor import ProcessGroup
-from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.utils import free_port
+from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.utils.model.lazy_init_context import LazyInitContext
 
 
@@ -67,20 +61,20 @@ def run_workflow(world_size, dev):
     assert torch.equal(non_fx_out, fx_out), f'{non_fx_out} vs {fx_out}'
 
 
-def run_dist(rank, world_size, dev, port):
+def run_dist(rank, world_size, port, dev):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     run_workflow(world_size, dev)
 
 
 @pytest.mark.dist
-@pytest.mark.parametrize('world_size', [1, 2])
-@pytest.mark.parametrize('dev', ['cuda', 'cpu'])
+@clear_cache_before_run()
+@parameterize('world_size', [1, 2])
+@parameterize('dev', ['cuda', 'cpu'])
 @rerun_if_address_is_in_use()
 def test_complete_workflow(world_size, dev):
     if dev == 'cpu' and world_size > 1:
         return
-    run_func = partial(run_dist, world_size=world_size, dev=dev, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_dist, 2, dev=dev)
 
 
 if __name__ == '__main__':

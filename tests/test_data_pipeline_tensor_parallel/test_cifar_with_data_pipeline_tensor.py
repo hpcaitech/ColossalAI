@@ -1,25 +1,22 @@
 import os
-
-from functools import partial
 from pathlib import Path
 
-import colossalai
 import pytest
 import torch
-import torch.multiprocessing as mp
+from torchvision import transforms
+from torchvision.datasets import CIFAR10
+
+import colossalai
 from colossalai.amp import AMP_TYPE
-from colossalai.trainer import Trainer, hooks
 from colossalai.context import ParallelMode
-from colossalai.testing import rerun_if_address_is_in_use, skip_if_not_enough_gpus
-from colossalai.utils import free_port
 from colossalai.core import global_context as gpc
 from colossalai.logging import get_dist_logger
 from colossalai.nn import CrossEntropyLoss
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
-from colossalai.utils import get_dataloader
 from colossalai.pipeline.pipelinable import PipelinableContext
-from torchvision.datasets import CIFAR10
-from torchvision import transforms
+from colossalai.testing import rerun_if_address_is_in_use, skip_if_not_enough_gpus, spawn
+from colossalai.trainer import Trainer, hooks
+from colossalai.utils import get_dataloader
 
 BATCH_SIZE = 4
 NUM_EPOCHS = 60
@@ -96,9 +93,7 @@ def run_trainer(rank, world_size, port):
 @skip_if_not_enough_gpus(min_gpus=8)
 @rerun_if_address_is_in_use()
 def test_hybrid_parallel():
-    world_size = 8
-    run_func = partial(run_trainer, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_trainer, 8)
 
 
 if __name__ == '__main__':

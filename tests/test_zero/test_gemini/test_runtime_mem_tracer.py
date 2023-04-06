@@ -3,12 +3,14 @@ from copy import deepcopy
 import numpy as np
 import torch
 
+from colossalai.testing import clear_cache_before_run
 from colossalai.zero import ColoInitContext
 from colossalai.zero.gemini.memory_tracer.runtime_mem_tracer import RuntimeMemTracer
 from tests.components_to_test import run_fwd_bwd
 from tests.components_to_test.registry import non_distributed_component_funcs
 
 
+@clear_cache_before_run()
 def test_runtime_mem_tracer():
     test_models = ['gpt2', 'bert', 'simple_net', 'repeated_computed_layers', 'nested_model', 'albert']
 

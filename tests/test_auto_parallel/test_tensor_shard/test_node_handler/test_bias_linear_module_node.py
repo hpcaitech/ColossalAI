@@ -1,14 +1,10 @@
-from functools import partial
-
 import pytest
 import torch
-import torch.multiprocessing as mp
-import torch.nn as nn
 
 from colossalai._analyzer.fx.graph_module import ColoGraphModule
 from colossalai._analyzer.fx.passes.shape_prop import shape_prop_pass
 from colossalai._analyzer.fx.tracer.tracer import ColoTracer
-from colossalai.auto_parallel.tensor_shard.node_handler import LinearFunctionHandler, LinearModuleHandler
+from colossalai.auto_parallel.tensor_shard.node_handler import LinearFunctionHandler
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
     OperationData,
     OperationDataType,
@@ -18,9 +14,7 @@ from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
-from colossalai.testing import assert_close, parameterize, rerun_if_address_is_in_use
-from colossalai.testing.pytest_wrapper import run_on_environment_flag
-from colossalai.utils import free_port
+from colossalai.testing import rerun_if_address_is_in_use, run_on_environment_flag, spawn
 from tests.test_auto_parallel.test_tensor_shard.test_node_handler.utils import numerical_test_for_node_strategy
 
 
@@ -35,7 +29,7 @@ class LinearModule(torch.nn.Module):
         return x
 
 
-def check_linear_module_handler(rank, bias, world_size, port):
+def check_linear_module_handler(rank, world_size, port, bias):
     disable_existing_loggers()
     launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     model = LinearModule(16, 32, bias=bias).cuda()
@@ -157,9 +151,7 @@ def check_linear_module_handler(rank, bias, world_size, port):
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_linear_handler(bias=True):
-    world_size = 4
-    run_func_module = partial(check_linear_module_handler, bias=bias, world_size=world_size, port=free_port())
-    mp.spawn(run_func_module, nprocs=world_size)
+    spawn(check_linear_module_handler, bias=bias)
 
 
 if __name__ == '__main__':

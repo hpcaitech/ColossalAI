@@ -8,6 +8,7 @@ from colossalai._analyzer.fx.tracer.tracer import ColoTracer
 from colossalai.auto_parallel.passes.runtime_preparation_pass import size_value_converting_pass
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.tensor.sharding_spec import ShardingSpec
+from colossalai.testing import clear_cache_before_run
 
 
 class TestModule(torch.nn.Module):
@@ -36,6 +37,7 @@ def recover_narrow(gm, narrow_node):
 
 
 @pytest.mark.skip('ShapeProp is not compatible with PyTorch 1.11.0')
+@clear_cache_before_run()
 def test_size_value_converting_pass():
     model = TestModule()
     physical_mesh_id = torch.arange(0, 4)

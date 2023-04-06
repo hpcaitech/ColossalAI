@@ -1,4 +1,7 @@
+import gc
+import random
 import re
+import socket
 from functools import partial
 from inspect import signature
 from typing import Any, Callable, List
@@ -206,25 +209,70 @@ def skip_if_not_enough_gpus(min_gpus: int):
     return _wrap_func
 
 
-def spawn(world_size=1):
+def free_port() -> int:
+    """Get a free port on localhost.
+
+    Returns:
+        int: A free port on localhost.
+    """
+    while True:
+        port = random.randint(20000, 65000)
+        try:
+            with socket.socket() as sock:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                sock.bind(("localhost", port))
+                return port
+        except OSError:
+            continue
+
+
+def spawn(func, nprocs=1, **kwargs):
     """
     This function is used to spawn processes for testing.
 
-    Usage::
-
-        @spawn(world_size=4)
-        def test_something():
+    Usage:
+        # must contians arguments rank, world_size, port
+        def do_something(rank, world_size, port):
             ...
 
+        spawn(do_something, nprocs=8)
+
+        # can also pass other arguments
+        def do_something(rank, world_size, port, arg1, arg2):
+            ...
+
+        spawn(do_something, nprocs=8, arg1=1, arg2=2)
+
     Args:
-        world_size (int): the number of processes to spawn, default is 1.
+        func (Callable): The function to be spawned.
+        nprocs (int, optional): The number of processes to spawn. Defaults to 1.
+    """
+    port = free_port()
+    wrapped_func = partial(func, world_size=nprocs, port=port, **kwargs)
+    mp.spawn(wrapped_func, nprocs=nprocs)
+
+
+def clear_cache_before_run():
+    """
+    This function is a wrapper to clear CUDA and python cache before executing the function.
+
+    Usage:
+        @clear_cache_before_run()
+        def test_something():
+            ...
     """
 
     def _wrap_func(f):
 
-        def _execute_by_spawn(*args, **kwargs):
-            mp.spawn(f, args=args, kwargs=kwargs, nprocs=world_size)
+        def _clear_cache(*args, **kwargs):
+            torch.cuda.empty_cache()
+            torch.cuda.reset_peak_memory_stats()
+            torch.cuda.reset_max_memory_allocated()
+            torch.cuda.reset_max_memory_cached()
+            torch.cuda.synchronize()
+            gc.collect()
+            f(*args, **kwargs)
 
-        return _execute_by_spawn
+        return _clear_cache
 
     return _wrap_func

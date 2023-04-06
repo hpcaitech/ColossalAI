@@ -1,10 +1,12 @@
 import pytest
 import torch
 
+from colossalai.testing import clear_cache_before_run
 from colossalai.zero.legacy.gemini.stateful_tensor import StatefulTensor, TensorState
 
 
 @pytest.mark.dist
+@clear_cache_before_run()
 def test_gemini_manager():
     # reset the manager, in case that there exists memory information left
     manager = StatefulTensor.GST_MGR

@@ -1,9 +1,7 @@
 from copy import deepcopy
-from functools import partial
 
 import pytest
 import torch
-import torch.multiprocessing as mp
 
 import colossalai
 from colossalai.nn.parallel.layers import check_colo_module, init_colo_module
@@ -17,8 +15,7 @@ from colossalai.tensor import (
     ShardSpec,
     distspec,
 )
-from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.utils import free_port
+from colossalai.testing import rerun_if_address_is_in_use, spawn
 from colossalai.utils.cuda import get_current_device
 from colossalai.zero import ColoInitContext
 from tests.components_to_test.registry import non_distributed_component_funcs
@@ -207,8 +204,7 @@ def run_dist_check(rank, world_size, port):
 @pytest.mark.skip("for higher testing speed")
 @rerun_if_address_is_in_use()
 def test_module_linear_1d(world_size):
-    run_func = partial(run_dist, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_dist, world_size)
 
 
 @pytest.mark.dist
@@ -216,8 +212,7 @@ def test_module_linear_1d(world_size):
 @pytest.mark.skip("for higher testing speed")
 @rerun_if_address_is_in_use()
 def test_module_model(world_size):
-    run_func = partial(run_dist_model, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_dist_model, world_size)
 
 
 @pytest.mark.dist
@@ -225,8 +220,7 @@ def test_module_model(world_size):
 @pytest.mark.skip("for higher testing speed")
 @rerun_if_address_is_in_use()
 def test_module_check(world_size):
-    run_func = partial(run_dist_check, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_dist_check, world_size)
 
 
 if __name__ == '__main__':

@@ -1,8 +1,5 @@
-from functools import partial
-
 import pytest
 import torch
-import torch.multiprocessing as mp
 
 import colossalai
 from colossalai.tensor import (
@@ -14,8 +11,7 @@ from colossalai.tensor import (
     ReplicaSpec,
     ShardSpec,
 )
-from colossalai.testing import parameterize, rerun_if_address_is_in_use
-from colossalai.utils import free_port
+from colossalai.testing import rerun_if_address_is_in_use, spawn
 from colossalai.utils.cuda import get_current_device
 from colossalai.zero import ColoInitContext
 from tests.components_to_test.registry import non_distributed_component_funcs
@@ -61,8 +57,7 @@ def run_colo_init_context(rank: int, world_size: int, port: int):
 @pytest.mark.parametrize('world_size', [1, 4])
 @rerun_if_address_is_in_use()
 def test_colo_init_context(world_size):
-    run_func = partial(run_colo_init_context, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_colo_init_context, world_size)
 
 
 if __name__ == '__main__':

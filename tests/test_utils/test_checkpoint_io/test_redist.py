@@ -2,19 +2,23 @@ import os
 from functools import partial
 from tempfile import TemporaryDirectory
 
-import colossalai
 import pytest
 import torch
 import torch.distributed as dist
-import torch.multiprocessing as mp
 import torch.nn as nn
-from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.utils import free_port
+from torch.optim import Adam
+
+import colossalai
+from colossalai.testing import rerun_if_address_is_in_use, spawn
 from colossalai.utils.checkpoint_io.constant import GLOBAL_META_FILE_NAME
 from colossalai.utils.checkpoint_io.io import redist, save
-from colossalai.utils.checkpoint_io.meta import (ParamDistMeta, ParamRedistMeta, PipelineRedistMeta, RankRedistMeta,
-                                                 RedistMeta)
-from torch.optim import Adam
+from colossalai.utils.checkpoint_io.meta import (
+    ParamDistMeta,
+    ParamRedistMeta,
+    PipelineRedistMeta,
+    RankRedistMeta,
+    RedistMeta,
+)
 
 
 class DummyModel(nn.Module):
@@ -105,7 +109,7 @@ def test_global_to_dist():
             check_checkpoint_shape(output_dir)
 
 
-def run_dist(rank, world_size, port, func):
+def run_dist(rank, world_size, port, test_fn):
     colossalai.launch(config={'parallel': {
         'tensor': {
             'mode': '1d',
@@ -117,7 +121,7 @@ def run_dist(rank, world_size, port, func):
                       host='localhost',
                       port=port,
                       backend='nccl')
-    func()
+    test_fn()
 
 
 def run_save_dist(dir_name: str, zero: bool):
@@ -133,8 +137,7 @@ def test_dist_to_dist(zero: bool):
     with TemporaryDirectory() as dir_name:
         fn = partial(run_save_dist, dir_name, zero)
         world_size = 4
-        proc_fn = partial(run_dist, world_size=world_size, port=free_port(), func=fn)
-        mp.spawn(proc_fn, nprocs=world_size)
+        spawn(run_dist, world_size, test_fn=fn)
         with TemporaryDirectory() as output_dir:
             redist(dir_name, output_dir, get_redist_meta(4), get_dist_metas(4))
             if not zero:

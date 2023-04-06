@@ -1,15 +1,13 @@
-from functools import partial
-
-import colossalai
 import pytest
 import torch
-import torch.multiprocessing as mp
 import torch.distributed as dist
-from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.utils import free_port, get_current_device
-from colossalai.tensor import ColoTensorSpec, ProcessGroup, ColoTensor, ShardSpec
+
+import colossalai
+from colossalai.tensor import ColoTensor, ColoTensorSpec, ProcessGroup, ShardSpec
 from colossalai.tensor.distspec import DistPlacementPattern
-from tests.test_tensor.common_utils import split_param_row_tp1d, split_param_col_tp1d, debug_print
+from colossalai.testing import rerun_if_address_is_in_use, spawn
+from colossalai.utils import get_current_device
+from tests.test_tensor.common_utils import debug_print, split_param_col_tp1d, split_param_row_tp1d
 
 
 def exam_view_core(pg):
@@ -92,8 +90,7 @@ def run_dist(rank, world_size, port):
 @pytest.mark.parametrize('world_size', [2])
 @rerun_if_address_is_in_use()
 def test_view(world_size):
-    run_func = partial(run_dist, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_dist, world_size)
 
 
 if __name__ == '__main__':

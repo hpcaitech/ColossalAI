@@ -10,8 +10,7 @@ from colossalai._analyzer.fx.passes import shape_prop_pass
 # from colossalai.fx.tracer.tracer import ColoTracer
 from colossalai._analyzer.fx.tracer.tracer import ColoTracer
 from colossalai.auto_parallel.tensor_shard.utils.factory import find_repeat_blocks
-from colossalai.testing import parameterize
-from colossalai.testing.pytest_wrapper import run_on_environment_flag
+from colossalai.testing import clear_cache_before_run, parameterize, run_on_environment_flag
 
 NUM_REPEAT_BLOCKS = 4
 BATCH_SIZE = 1
@@ -81,6 +80,7 @@ class NonRepeatModel(nn.Module):
 
 
 @run_on_environment_flag(name='AUTO_PARALLEL')
+@clear_cache_before_run()
 @parameterize('model_cls', [RepeatModel, NonRepeatModel])
 def test_repeat_blocks(model_cls):
 

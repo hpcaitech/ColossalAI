@@ -1,16 +1,13 @@
-from functools import partial
-
 import pytest
 import torch
-import torch.multiprocessing as mp
 import torch.nn as nn
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.testing import assert_close
 
 import colossalai
 from colossalai.tensor import ProcessGroup
-from colossalai.testing import parameterize, rerun_if_address_is_in_use
-from colossalai.utils import free_port, get_current_device
+from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
+from colossalai.utils import get_current_device
 from colossalai.zero import ColoInitContext, LowLevelZeroOptimizer
 from tests.test_tensor.common_utils import set_seed, split_param_col_tp1d, split_param_row_tp1d, tensor_shard_equal
 
@@ -89,9 +86,7 @@ def run_dist(rank, world_size, port):
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_zero_with_tp():
-    world_size = 4
-    run_func = partial(run_dist, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_dist, 4)
 
 
 if __name__ == '__main__':

@@ -2,6 +2,7 @@ import copy
 
 import torch
 
+from colossalai.testing import clear_cache_before_run
 from colossalai.zero.legacy.gemini.paramhooks import BaseParamHookMgr
 from tests.components_to_test.registry import non_distributed_component_funcs
 
@@ -49,6 +50,7 @@ def run_model(model, inputs, label, criterion, use_param_hook=False):
         return hookwrapper.hook_triggered_times
 
 
+@clear_cache_before_run()
 def test_base_param_hook():
     test_models = ['repeated_computed_layers', 'resnet18', 'hanging_param_model', 'inline_op_model']
     # test_models = ['bert']

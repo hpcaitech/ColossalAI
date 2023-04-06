@@ -1,15 +1,12 @@
-from functools import partial
-
 import pytest
 import torch
 import torch.distributed as dist
-import torch.multiprocessing as mp
 
 import colossalai
 from colossalai.tensor import ColoParameter
 from colossalai.tensor import ProcessGroup as ColoProcessGroup
-from colossalai.testing import parameterize, rerun_if_address_is_in_use
-from colossalai.utils import free_port, get_current_device
+from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
+from colossalai.utils import get_current_device
 from colossalai.zero.gemini import TensorState
 from colossalai.zero.gemini.chunk import Chunk
 
@@ -117,8 +114,7 @@ def run_dist(rank, world_size, port):
 @pytest.mark.parametrize('world_size', [1, 2, 4])
 @rerun_if_address_is_in_use()
 def test_chunk_function(world_size):
-    run_func = partial(run_dist, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_dist, world_size)
 
 
 if __name__ == '__main__':

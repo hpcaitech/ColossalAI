@@ -1,9 +1,7 @@
 import time
-from functools import partial
 
 import pytest
 import torch
-import torch.multiprocessing as mp
 from torch.utils._pytree import tree_map
 
 import colossalai
@@ -12,8 +10,8 @@ from colossalai.auto_parallel.offload.mem_optimize import memory_optimize
 from colossalai.auto_parallel.offload.solver import NOT_NVML
 from colossalai.fx.profiler import parameter_size
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.testing import parameterize
-from colossalai.utils import free_port, get_current_device
+from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
+from colossalai.utils import get_current_device
 from colossalai.zero import ColoInitContext, zero_model_wrapper, zero_optim_wrapper
 from tests.test_auto_parallel.test_offload.model_utils import *
 from tests.test_tensor.common_utils import set_seed
@@ -140,9 +138,9 @@ def run_dist(rank, world_size, port):
 
 @pytest.mark.skip("this test failed")
 @pytest.mark.skipif(NOT_NVML, reason='pynvml is not installed')
+@rerun_if_address_is_in_use()
 def test_perf():
-    run_func = partial(run_dist, world_size=1, port=free_port())
-    mp.spawn(run_func, nprocs=1)
+    spawn(run_dist, 1)
 
 
 if __name__ == '__main__':

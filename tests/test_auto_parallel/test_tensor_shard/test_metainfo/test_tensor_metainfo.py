@@ -1,26 +1,9 @@
-from functools import partial
-
 import pytest
 import torch
-import torch.multiprocessing as mp
 import torch.nn as nn
 
-from colossalai.auto_parallel.tensor_shard.node_handler import LinearModuleHandler
-from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
-    MemoryCost,
-    OperationData,
-    OperationDataType,
-    ShardingStrategy,
-    StrategiesVector,
-    TrainCycleItem,
-)
-from colossalai.device.device_mesh import DeviceMesh
-from colossalai.fx import ColoGraphModule, ColoTracer
-from colossalai.initialize import launch
-from colossalai.logging import disable_existing_loggers
-from colossalai.testing.pytest_wrapper import run_on_environment_flag
-from colossalai.testing.utils import parameterize, rerun_if_address_is_in_use
-from colossalai.utils import free_port
+from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationData, OperationDataType
+from colossalai.testing.utils import clear_cache_before_run
 from tests.test_auto_parallel.test_tensor_shard.test_metainfo.utils import print_results
 
 if torch.__version__ >= '1.12.0':
@@ -37,6 +20,7 @@ class SplitModule(nn.Module):
 
 
 @pytest.mark.skipif(torch.__version__ < '1.12.0', reason="need pytorch 1.12.0 or higher for aten level operations")
+@clear_cache_before_run()
 def test_tensor_meta_info():
     """test tensor related meta information
     We will just use torch.Tensor.split for the test

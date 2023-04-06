@@ -1,16 +1,15 @@
-from functools import partial
 import pytest
 import torch
-import torch.nn as nn
-import torch.multiprocessing as mp
 import torch.distributed as dist
+import torch.nn as nn
+
 import colossalai
-from colossalai.utils import free_port, get_current_device
-from colossalai.nn.layer.moe import Top1Router, UniformNoiseGenerator, MoeLayer, Experts
 from colossalai.context.moe_context import MOE_CONTEXT
-from colossalai.utils.moe import sync_moe_model_param
 from colossalai.engine.gradient_handler import MoeGradientHandler
-from colossalai.testing import assert_equal_in_group, rerun_if_address_is_in_use
+from colossalai.nn.layer.moe import Experts, MoeLayer, Top1Router, UniformNoiseGenerator
+from colossalai.testing import assert_equal_in_group, rerun_if_address_is_in_use, spawn
+from colossalai.utils import get_current_device
+from colossalai.utils.moe import sync_moe_model_param
 
 BATCH_SIZE = 4
 DIM = 16
@@ -65,9 +64,7 @@ def run_test(rank, world_size, port):
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_grad_handler():
-    world_size = 4
-    run_func = partial(run_test, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_test, 4)
 
 
 if __name__ == '__main__':

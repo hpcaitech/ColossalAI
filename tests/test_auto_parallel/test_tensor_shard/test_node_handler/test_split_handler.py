@@ -1,8 +1,5 @@
-from functools import partial
-
 import pytest
 import torch
-import torch.multiprocessing as mp
 import torch.nn as nn
 
 from colossalai._analyzer.fx.graph_module import ColoGraphModule
@@ -15,9 +12,7 @@ from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationDat
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
-from colossalai.testing import assert_close, parameterize, rerun_if_address_is_in_use
-from colossalai.testing.pytest_wrapper import run_on_environment_flag
-from colossalai.utils import free_port
+from colossalai.testing import parameterize, rerun_if_address_is_in_use, run_on_environment_flag, spawn
 from tests.test_auto_parallel.test_tensor_shard.test_node_handler.utils import numerical_test_for_node_strategy
 
 
@@ -47,7 +42,7 @@ class LinearSplitModel(nn.Module):
         return split_node
 
 
-def check_split_handler(rank, split_size, split_dim, model_cls, world_size, port):
+def check_split_handler(rank, world_size, port, split_size, split_dim, model_cls):
     disable_existing_loggers()
     launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     model = model_cls(split_size=split_size, split_dim=split_dim).cuda()
@@ -258,14 +253,7 @@ def check_split_handler(rank, split_size, split_dim, model_cls, world_size, port
 @parameterize('split_dim', [0, 1, 2])
 @parameterize('model_cls', [ConvSplitModel, LinearSplitModel])
 def test_split_handler(split_size, split_dim, model_cls):
-    world_size = 4
-    run_func = partial(check_split_handler,
-                       split_size=split_size,
-                       split_dim=split_dim,
-                       model_cls=model_cls,
-                       world_size=world_size,
-                       port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(check_split_handler, 4, split_size=split_size, split_dim=split_dim, model_cls=model_cls)
 
 
 if __name__ == '__main__':
