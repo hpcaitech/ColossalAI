@@ -35,25 +35,31 @@ def register_elementwise_op(op):
 
 
 @colo_op_impl(torch.relu_)
-def elementwise_op(input_tensor):
+def inplace_relu(input_tensor):
     return torch.relu(input_tensor.data)
 
 
 @colo_op_impl(Tensor.add_)
-def elementwise_op(input_tensor: ColoTensor, *args, **kwargs):
+def inplace_add(input_tensor: ColoTensor, *args, **kwargs):
     input_tensor = input_tensor.add(*args, **kwargs)
     return input_tensor
 
 
 @colo_op_impl(Tensor.div_)
-def elementwise_op(input_tensor: ColoTensor, *args, **kwargs):
+def inplace_div(input_tensor: ColoTensor, *args, **kwargs):
     input_tensor = input_tensor.div(*args, **kwargs)
     return input_tensor
 
 
 @colo_op_impl(Tensor.subtract_)
-def elementwise_op(input_tensor: ColoTensor, *args, **kwargs):
+def input_subtract(input_tensor: ColoTensor, *args, **kwargs):
     input_tensor = input_tensor.subtract(*args, **kwargs)
+    return input_tensor
+
+
+@colo_op_impl(Tensor.mul_)
+def input_mul(input_tensor: ColoTensor, *args, **kwargs):
+    input_tensor = input_tensor.mul(*args, **kwargs)
     return input_tensor
 
 
