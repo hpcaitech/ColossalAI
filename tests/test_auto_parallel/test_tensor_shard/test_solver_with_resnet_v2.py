@@ -2,16 +2,19 @@ import torch
 from torch.fx import GraphModule
 from torchvision.models import resnet50
 
+from colossalai._analyzer.fx.passes import shape_prop_pass
+# from colossalai.fx.tracer.tracer import ColoTracer
+from colossalai._analyzer.fx.tracer.tracer import ColoTracer
 from colossalai.auto_parallel.tensor_shard.constants import BATCHNORM_MODULE_OP
 from colossalai.auto_parallel.tensor_shard.options import SolverOptions
 from colossalai.auto_parallel.tensor_shard.solver import CostGraph, GraphAnalyser, Solver, StrategiesConstructor
 from colossalai.device.device_mesh import DeviceMesh
-from colossalai.fx.tracer.tracer import ColoTracer
 from colossalai.tensor.shape_consistency import ShapeConsistencyManager
-from colossalai.testing.pytest_wrapper import run_on_environment_flag
+from colossalai.testing import clear_cache_before_run, run_on_environment_flag
 
 
 @run_on_environment_flag(name='AUTO_PARALLEL')
+@clear_cache_before_run()
 def test_cost_graph():
     physical_mesh_id = torch.arange(0, 8)
     mesh_shape = (2, 4)
@@ -20,7 +23,7 @@ def test_cost_graph():
     device_mesh = DeviceMesh(physical_mesh_id, mesh_shape)
     shape_consistency_manager = ShapeConsistencyManager()
 
-    tracer = ColoTracer()
+    tracer = ColoTracer(bias_addition_split=True)
     model = resnet50(num_classes=100000)
     input_sample = {'x': torch.rand(128, 3, 224, 224).to('meta')}
 
@@ -50,6 +53,7 @@ def test_cost_graph():
     #     %fc : [#users=1] = call_module[target=fc](args = (%flatten,), kwargs = {})
     #     return fc
     gm = GraphModule(model, graph, model.__class__.__name__)
+    shape_prop_pass(gm, *input_sample.values())
     gm.recompile()
 
     solver_options = SolverOptions()

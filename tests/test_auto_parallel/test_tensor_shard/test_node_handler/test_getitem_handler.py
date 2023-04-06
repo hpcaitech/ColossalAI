@@ -2,22 +2,21 @@ from functools import partial
 
 import pytest
 import torch
-import torch.multiprocessing as mp
 import torch.nn as nn
 
+from colossalai._analyzer.fx.graph_module import ColoGraphModule
+from colossalai._analyzer.fx.passes.shape_prop import shape_prop_pass
+from colossalai._analyzer.fx.tracer.tracer import ColoTracer
 from colossalai.auto_parallel.tensor_shard.node_handler.default_reshape_handler import DefaultReshapeHandler
 from colossalai.auto_parallel.tensor_shard.node_handler.getitem_handler import GetItemHandler
 from colossalai.auto_parallel.tensor_shard.node_handler.linear_handler import LinearFunctionHandler
 from colossalai.auto_parallel.tensor_shard.node_handler.placeholder_handler import PlaceholderHandler
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationData, OperationDataType, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
-from colossalai.fx import ColoGraphModule, ColoTracer
-from colossalai.fx.tracer.meta_patch.patched_module import linear
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
-from colossalai.testing import assert_close, parameterize, rerun_if_address_is_in_use
+from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.testing.pytest_wrapper import run_on_environment_flag
-from colossalai.utils import free_port
 from tests.test_auto_parallel.test_tensor_shard.test_node_handler.utils import numerical_test_for_node_strategy
 
 
@@ -58,15 +57,15 @@ def check_getitem_from_tensor_handler(rank, getitem_index, world_size, port):
                                      meta_arg_names=['input', 'other'],
                                      node_type='following')
 
-    tracer = ColoTracer()
-
-    graph = tracer.trace(model,
-                         meta_args={
-                             "input": torch.rand(8, 16, 64, 32).to('meta'),
-                             "other": torch.rand(64, 32).to('meta'),
-                         })
+    tracer = ColoTracer(bias_addition_split=True)
+    meta_args = {
+        "input": torch.rand(8, 16, 64, 32).to('meta'),
+        "other": torch.rand(64, 32).to('meta'),
+    }
+    graph = tracer.trace(model, meta_args=meta_args)
 
     gm = ColoGraphModule(model, graph)
+    shape_prop_pass(gm, *list(meta_args.values()))
     linear_mod_node = list(graph.nodes)[2]
     getitem_mod_node = list(graph.nodes)[3]
     getitem_strategies_vector = StrategiesVector(getitem_mod_node)
@@ -101,12 +100,7 @@ def check_getitem_from_tensor_handler(rank, getitem_index, world_size, port):
 # @parameterize('getitem_index', [slice(0, 2), (slice(None), slice(None))])
 @parameterize('getitem_index', [1, (1, 4), slice(0, 2), (slice(None), slice(None))])
 def test_getitem_from_tensor_handler(getitem_index):
-    world_size = 4
-    run_func = partial(check_getitem_from_tensor_handler,
-                       getitem_index=getitem_index,
-                       world_size=world_size,
-                       port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(check_getitem_from_tensor_handler, 4)
 
 
 class GetItemFromTupleModel(nn.Module):
@@ -121,6 +115,7 @@ class GetItemFromTupleModel(nn.Module):
 
 
 @run_on_environment_flag(name='AUTO_PARALLEL')
+@clear_cache_before_run()
 def test_getitem_from_tuple_handler():
     model = GetItemFromTupleModel()
     tracer = ColoTracer()
@@ -129,10 +124,12 @@ def test_getitem_from_tuple_handler():
     #     %split : [#users=1] = call_function[target=torch.functional.split](args = (%conv2d, 2), kwargs = {dim: 0})
     #     %getitem : [#users=1] = call_function[target=operator.getitem](args = (%split, 1), kwargs = {})
     #     return getitem
-    graph = tracer.trace(model, meta_args={
+    meta_args = {
         "input": torch.rand(4, 4, 64, 64).to('meta'),
-    })
+    }
+    graph = tracer.trace(model, meta_args=meta_args)
     gm = ColoGraphModule(model, graph)
+    shape_prop_pass(gm, *meta_args.values())
     physical_mesh_id = torch.arange(0, 4)
 
     mesh_shape = (2, 2)

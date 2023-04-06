@@ -71,6 +71,7 @@ def train(args):
     else:
         raise ValueError(f'Unsupported model "{args.model}"')
     tokenizer.pad_token = tokenizer.eos_token
+    max_len = args.max_len
     if args.model == 'llama':
         tokenizer = prepare_llama_tokenizer_and_embedding(tokenizer, model)
 
@@ -99,13 +100,14 @@ def train(args):
         train_data = load_dataset(args.dataset, 'super_natural_instructions', split='train')
         eval_data = load_dataset(args.dataset, 'super_natural_instructions', split='test')
 
-        train_dataset = SFTDataset(train_data, tokenizer)
-        eval_dataset = SFTDataset(eval_data, tokenizer)
+        train_dataset = SFTDataset(train_data, tokenizer, max_len)
+        eval_dataset = SFTDataset(eval_data, tokenizer, max_len)
 
     else:
         train_dataset = SupervisedDataset(tokenizer=tokenizer,
                                           data_path=args.dataset,
-                                          max_datasets_size=args.max_datasets_size)
+                                          max_datasets_size=args.max_datasets_size,
+                                          max_length=max_len)
         eval_dataset = None
         data_collator = DataCollatorForSupervisedDataset(tokenizer=tokenizer)
 
@@ -176,6 +178,7 @@ if __name__ == '__main__':
     parser.add_argument('--need_optim_ckpt', type=bool, default=False)
     parser.add_argument('--max_epochs', type=int, default=3)
     parser.add_argument('--batch_size', type=int, default=4)
+    parser.add_argument('--max_len', type=int, default=512)
     parser.add_argument('--lora_rank', type=int, default=0, help="low-rank adaptation matrices rank")
     parser.add_argument('--log_interval', type=int, default=100, help="how many steps to log")
     parser.add_argument('--lr', type=float, default=5e-6)

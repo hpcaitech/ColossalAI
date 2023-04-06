@@ -4,6 +4,7 @@ from torch.fx import GraphModule
 from torch.utils.checkpoint import checkpoint
 
 from colossalai.fx import ColoTracer
+from colossalai.testing import clear_cache_before_run
 
 
 class MLP(torch.nn.Module):
@@ -35,6 +36,7 @@ class MyModule(torch.nn.Module):
         return x
 
 
+@clear_cache_before_run()
 def test_activation_checkpoint_annotation():
     module = MyModule()
 

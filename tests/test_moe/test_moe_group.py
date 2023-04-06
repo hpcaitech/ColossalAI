@@ -1,21 +1,20 @@
-from functools import partial
 import pytest
-import torch.nn as nn
-import torch.multiprocessing as mp
 import torch.distributed as dist
+import torch.nn as nn
+
 import colossalai
-from colossalai.utils import free_port, get_current_device
-from colossalai.nn.layer.moe import Experts
 from colossalai.context.moe_context import MOE_CONTEXT
+from colossalai.nn.layer.moe import Experts
+from colossalai.testing import assert_equal_in_group, rerun_if_address_is_in_use, spawn
+from colossalai.utils import get_current_device
 from colossalai.utils.moe import sync_moe_model_param
-from colossalai.testing import assert_equal_in_group, rerun_if_address_is_in_use
 
 D_MODEL = 4
 D_FF = 8
 CONFIG = dict()
 
 
-def run_test(rank, port):
+def run_test(rank, world_size, port):
     world_size = 4
     colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     expert_module = nn.Linear
@@ -62,9 +61,7 @@ def run_test(rank, port):
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_moe_initialization():
-    world_size = 4
-    run_func = partial(run_test, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_test, 4)
 
 
 if __name__ == '__main__':

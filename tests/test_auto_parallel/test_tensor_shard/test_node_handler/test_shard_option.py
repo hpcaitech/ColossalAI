@@ -1,17 +1,14 @@
-from functools import partial
-
 import torch
-import torch.multiprocessing as mp
 import torch.nn as nn
 
+from colossalai._analyzer.fx.graph_module import ColoGraphModule
+from colossalai._analyzer.fx.passes.shape_prop import shape_prop_pass
+from colossalai._analyzer.fx.tracer.tracer import ColoTracer
 from colossalai.auto_parallel.tensor_shard.node_handler import LinearFunctionHandler
 from colossalai.auto_parallel.tensor_shard.options import ShardOption
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
-from colossalai.fx import ColoGraphModule, ColoTracer
-from colossalai.testing import parameterize
-from colossalai.testing.pytest_wrapper import run_on_environment_flag
-from colossalai.testing.utils import parameterize
+from colossalai.testing import clear_cache_before_run, run_on_environment_flag
 
 
 class LinearModel(nn.Module):
@@ -30,13 +27,11 @@ def check_shard_option(shard_option):
     mesh_shape = (2, 2)
     device_mesh = DeviceMesh(physical_mesh_id, mesh_shape)
 
-    tracer = ColoTracer()
-    graph = tracer.trace(model,
-                         meta_args={
-                             "input": torch.rand(4, 4, 4, 16).to('meta'),
-                             'others': torch.rand(32, 16).to('meta')
-                         })
+    tracer = ColoTracer(bias_addition_split=True)
+    meta_args = {'input': torch.rand(4, 4, 4, 16).to('meta'), 'others': torch.rand(32, 16).to('meta')}
+    graph = tracer.trace(model, meta_args=meta_args)
     gm = ColoGraphModule(model, graph)
+    shape_prop_pass(gm, *meta_args.values())
     linear_func_node = list(graph.nodes)[2]
     strategies_vector = StrategiesVector(linear_func_node)
 
@@ -112,6 +107,7 @@ def check_shard_option(shard_option):
 
 
 @run_on_environment_flag(name='AUTO_PARALLEL')
+@clear_cache_before_run()
 def test_shard_option():
     # for shard_option in [ShardOption.STANDARD, ShardOption.SHARD, ShardOption.FULL_SHARD, ShardOption.SHARD_LAST_AXIS]:
     for shard_option in [ShardOption.SHARD_LAST_AXIS]:

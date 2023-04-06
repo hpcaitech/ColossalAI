@@ -1,8 +1,5 @@
-from functools import partial
-
 import pytest
 import torch
-import torch.multiprocessing as mp
 import torch.nn as nn
 
 from colossalai.auto_parallel.tensor_shard.node_handler import BMMFunctionHandler
@@ -11,9 +8,7 @@ from colossalai.device.device_mesh import DeviceMesh
 from colossalai.fx import ColoGraphModule, ColoTracer
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
-from colossalai.testing import assert_close, parameterize, rerun_if_address_is_in_use
-from colossalai.testing.pytest_wrapper import run_on_environment_flag
-from colossalai.utils import free_port
+from colossalai.testing import parameterize, rerun_if_address_is_in_use, run_on_environment_flag, spawn
 from tests.test_auto_parallel.test_tensor_shard.test_node_handler.utils import numerical_test_for_node_strategy
 
 
@@ -45,7 +40,7 @@ class AddBMMTorchFunctionModule(nn.Module):
         return output
 
 
-def check_2d_device_mesh(rank, module, bias_shape, using_kwargs, world_size, port):
+def check_2d_device_mesh(rank, world_size, port, module, bias_shape, using_kwargs):
     disable_existing_loggers()
     launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     model = module(using_kwargs).cuda()
@@ -249,14 +244,13 @@ def check_1d_device_mesh(rank, module, bias_shape, using_kwargs, world_size, por
 @parameterize('using_kwargs', [True, False])
 @rerun_if_address_is_in_use()
 def test_2d_device_mesh(module, bias_shape, using_kwargs):
-    world_size = 4
-    run_func = partial(check_2d_device_mesh,
-                       module=module,
-                       bias_shape=bias_shape,
-                       world_size=world_size,
-                       using_kwargs=using_kwargs,
-                       port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(
+        check_2d_device_mesh,
+        4,
+        module=module,
+        bias_shape=bias_shape,
+        using_kwargs=using_kwargs,
+    )
 
 
 @pytest.mark.skip("skip due to bias cases not ready")
@@ -267,14 +261,13 @@ def test_2d_device_mesh(module, bias_shape, using_kwargs):
 @parameterize('using_kwargs', [True, False])
 @rerun_if_address_is_in_use()
 def test_1d_device_mesh(module, bias_shape, using_kwargs):
-    world_size = 4
-    run_func = partial(check_1d_device_mesh,
-                       module=module,
-                       bias_shape=bias_shape,
-                       using_kwargs=using_kwargs,
-                       world_size=world_size,
-                       port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(
+        check_1d_device_mesh,
+        4,
+        module=module,
+        bias_shape=bias_shape,
+        using_kwargs=using_kwargs,
+    )
 
 
 if __name__ == '__main__':

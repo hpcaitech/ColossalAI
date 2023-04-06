@@ -1,9 +1,11 @@
 import torch
 
 from colossalai._analyzer.fx import symbolic_trace
+from colossalai.testing import clear_cache_before_run
 from tests.kit.model_zoo import model_zoo
 
 
+@clear_cache_before_run()
 def test_torchvision_models():
     torch.backends.cudnn.deterministic = True
     tv_sub_registry = model_zoo.get_sub_registry('torchvision')

@@ -5,10 +5,12 @@ import torch.nn as nn
 from torch.fx import GraphModule
 from transformers.pytorch_utils import Conv1D
 
+from colossalai._analyzer.fx.graph_module import ColoGraphModule
+from colossalai._analyzer.fx.passes import shape_prop_pass
+# from colossalai.fx.tracer.tracer import ColoTracer
+from colossalai._analyzer.fx.tracer.tracer import ColoTracer
 from colossalai.auto_parallel.tensor_shard.utils.factory import find_repeat_blocks
-from colossalai.fx.tracer.tracer import ColoTracer
-from colossalai.testing import parameterize
-from colossalai.testing.pytest_wrapper import run_on_environment_flag
+from colossalai.testing import clear_cache_before_run, parameterize, run_on_environment_flag
 
 NUM_REPEAT_BLOCKS = 4
 BATCH_SIZE = 1
@@ -78,16 +80,18 @@ class NonRepeatModel(nn.Module):
 
 
 @run_on_environment_flag(name='AUTO_PARALLEL')
+@clear_cache_before_run()
 @parameterize('model_cls', [RepeatModel, NonRepeatModel])
 def test_repeat_blocks(model_cls):
 
     model = model_cls(4 * HIDDEN_DIM, HIDDEN_DIM, NUM_REPEAT_BLOCKS)
 
-    tracer = ColoTracer()
+    tracer = ColoTracer(bias_addition_split=True)
     input_sample = {'x': torch.rand(BATCH_SIZE, SEQ_LENGTH, HIDDEN_DIM).to('meta')}
     graph = tracer.trace(root=model, meta_args=input_sample)
 
     gm = GraphModule(model, graph, model.__class__.__name__)
+    shape_prop_pass(gm, *input_sample.values())
     gm.recompile()
 
     node_list = list(graph.nodes)
