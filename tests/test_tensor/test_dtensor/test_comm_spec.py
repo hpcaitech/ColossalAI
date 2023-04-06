@@ -1,9 +1,6 @@
-from functools import partial
-
 import pytest
 import torch
 import torch.distributed as dist
-import torch.multiprocessing as mp
 from torch.distributed import ReduceOp
 
 from colossalai.core import global_context as gpc
@@ -12,8 +9,7 @@ from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
 from colossalai.tensor.d_tensor.comm_spec import CollectiveCommPattern, CommSpec
 from colossalai.tensor.d_tensor.sharding_spec import ShardingSpec
-from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.utils import free_port
+from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 
 def check_all_gather(process_groups_dict, rank):
@@ -182,8 +178,7 @@ def check_comm(rank, world_size, port):
 @rerun_if_address_is_in_use()
 def test_comm_spec():
     world_size = 4
-    run_func = partial(check_comm, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(check_comm, world_size)
 
 
 if __name__ == '__main__':

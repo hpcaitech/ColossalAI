@@ -18,7 +18,7 @@ from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
     StrategiesVector,
 )
 from colossalai.device.device_mesh import DeviceMesh
-from colossalai.testing.utils import parameterize
+from colossalai.testing.utils import clear_cache_before_run, parameterize
 
 
 class MatMulModule(nn.Module):
@@ -28,6 +28,7 @@ class MatMulModule(nn.Module):
 
 
 @pytest.mark.skipif(torch.__version__ < '1.12.0', reason="need pytorch 1.12.0 or higher for aten level operations")
+@clear_cache_before_run()
 @parameterize(
     'tensor_shapes',
     [

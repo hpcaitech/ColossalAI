@@ -1,9 +1,7 @@
-from functools import partial
 from typing import List, Tuple
 
 import pytest
 import torch
-import torch.multiprocessing as mp
 
 try:
     from transformers import GPT2Config, GPT2Model
@@ -16,6 +14,7 @@ except:
 from test_autochunk_transformer_utils import run_test
 
 from colossalai.autochunk.autochunk_codegen import AUTOCHUNK_AVAILABLE
+from colossalai.testing import clear_cache_before_run, parameterize, spawn
 
 BATCH_SIZE = 1
 SEQ_LENGTH = 512
@@ -35,18 +34,19 @@ def get_data(shape: tuple) -> Tuple[List, List]:
     not (AUTOCHUNK_AVAILABLE and HAS_REPO),
     reason="torch version is lower than 1.12.0",
 )
-@pytest.mark.parametrize("model", MODELS)
-@pytest.mark.parametrize("shape", [(BATCH_SIZE, SEQ_LENGTH)])
-@pytest.mark.parametrize("max_memory", [None, 6, 8])
+@clear_cache_before_run()
+@parameterize("model", MODELS)
+@parameterize("shape", [(BATCH_SIZE, SEQ_LENGTH)])
+@parameterize("max_memory", [None, 6, 8])
 def test_autochunk_gpt(model, shape, max_memory):
-    run_func = partial(
+    spawn(
         run_test,
+        1,
         data=get_data(shape),
         max_memory=max_memory,
         model=model,
         config=GPT2Config(n_embd=96, n_positions=shape[1], n_layer=2, n_head=4),
     )
-    mp.spawn(run_func, nprocs=1)
 
 
 if __name__ == "__main__":

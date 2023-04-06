@@ -1,17 +1,13 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
-from functools import partial
-
 import pytest
 import torch
-import torch.multiprocessing as mp
 from common import CONFIG
 
 import colossalai
 from colossalai.logging import get_dist_logger
-from colossalai.testing import parameterize, rerun_if_address_is_in_use
-from colossalai.utils import free_port
+from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils.memory import colo_device_memory_used
 from colossalai.zero.gemini.memory_tracer.utils import colo_model_mem_usage
@@ -70,8 +66,7 @@ def run_dist(rank, world_size, port):
 @pytest.mark.parametrize("world_size", [1, 4])
 @rerun_if_address_is_in_use()
 def test_zero_init_context(world_size):
-    run_func = partial(run_dist, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_dist, world_size)
 
 
 if __name__ == '__main__':

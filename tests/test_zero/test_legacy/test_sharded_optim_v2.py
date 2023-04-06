@@ -1,17 +1,13 @@
-from functools import partial
-
 import pytest
 import torch
 import torch.distributed as dist
-import torch.multiprocessing as mp
 from common import CONFIG, check_sharded_model_params
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 import colossalai
 from colossalai.amp import convert_to_apex_amp
 from colossalai.nn.optimizer import CPUAdam
-from colossalai.testing import parameterize, rerun_if_address_is_in_use
-from colossalai.utils import free_port
+from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.utils.cuda import get_current_device
 from colossalai.zero.legacy.init_ctx import ZeroInitContext
 from colossalai.zero.legacy.shard_utils import BucketTensorShardStrategy, TensorShardStrategy
@@ -107,8 +103,7 @@ def _run_dist(rank, world_size, port):
 @pytest.mark.parametrize("world_size", [1, 2])
 @rerun_if_address_is_in_use()
 def test_sharded_optim_v2(world_size):
-    run_func = partial(_run_dist, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(_run_dist, world_size)
 
 
 if __name__ == '__main__':

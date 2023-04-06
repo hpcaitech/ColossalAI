@@ -3,7 +3,7 @@ import torch
 from packaging import version
 from torch.utils.checkpoint import checkpoint
 
-from colossalai.testing.utils import parameterize
+from colossalai.testing.utils import clear_cache_before_run, parameterize
 
 try:
     from colossalai._analyzer.fx import symbolic_trace
@@ -81,6 +81,7 @@ class AddmmModel(torch.nn.Module):
 
 
 @pytest.mark.skipif(version.parse(torch.__version__) < version.parse('1.12.0'), reason='torch version < 12')
+@clear_cache_before_run()
 @parameterize("bias", [True, False])
 @parameterize("bias_addition_split", [True, False])
 @parameterize("shape", [(3, 3, 3), (3, 3, 3, 3)])

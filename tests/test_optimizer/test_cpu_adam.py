@@ -2,7 +2,7 @@ import math
 
 import torch
 
-from colossalai.testing import parameterize
+from colossalai.testing import clear_cache_before_run, parameterize
 
 
 def torch_adam_update(
@@ -46,6 +46,7 @@ def assertTrue(condition, msg):
     assert condition, msg
 
 
+@clear_cache_before_run()
 @parameterize('adamw', [True, False])
 @parameterize('step', [1, 2])
 @parameterize('p_dtype', [torch.float, torch.half])

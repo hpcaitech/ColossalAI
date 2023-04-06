@@ -1,19 +1,15 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
-from functools import partial
-
 import pytest
 import torch
 import torch.distributed as dist
-import torch.multiprocessing as mp
 from torchvision.models import resnet50
 
 import colossalai
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.utils import free_port
+from colossalai.testing import rerun_if_address_is_in_use, spawn
 from colossalai.zero.legacy.init_ctx import ZeroInitContext
 from colossalai.zero.legacy.shard_utils import TensorShardStrategy
 
@@ -84,9 +80,7 @@ def test_sharded_optim_with_sync_bn():
     wanted if we are doing predictions.
 
     """
-    world_size = 2
-    run_func = partial(run_dist, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_dist, 2)
 
 
 if __name__ == '__main__':

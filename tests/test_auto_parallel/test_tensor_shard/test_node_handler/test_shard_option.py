@@ -1,5 +1,4 @@
 import torch
-import torch.multiprocessing as mp
 import torch.nn as nn
 
 from colossalai._analyzer.fx.graph_module import ColoGraphModule
@@ -9,7 +8,7 @@ from colossalai.auto_parallel.tensor_shard.node_handler import LinearFunctionHan
 from colossalai.auto_parallel.tensor_shard.options import ShardOption
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
-from colossalai.testing.pytest_wrapper import run_on_environment_flag
+from colossalai.testing import clear_cache_before_run, run_on_environment_flag
 
 
 class LinearModel(nn.Module):
@@ -108,6 +107,7 @@ def check_shard_option(shard_option):
 
 
 @run_on_environment_flag(name='AUTO_PARALLEL')
+@clear_cache_before_run()
 def test_shard_option():
     # for shard_option in [ShardOption.STANDARD, ShardOption.SHARD, ShardOption.FULL_SHARD, ShardOption.SHARD_LAST_AXIS]:
     for shard_option in [ShardOption.SHARD_LAST_AXIS]:

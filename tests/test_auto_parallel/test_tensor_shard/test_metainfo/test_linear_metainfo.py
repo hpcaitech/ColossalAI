@@ -1,23 +1,13 @@
-from functools import partial
-
 import pytest
 import torch
-import torch.multiprocessing as mp
 import torch.nn as nn
 
-from colossalai.auto_parallel.tensor_shard.node_handler import LinearModuleHandler
-from colossalai.auto_parallel.tensor_shard.sharding_strategy import ShardingStrategy, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
-from colossalai.fx import ColoGraphModule, ColoTracer
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
 from colossalai.testing.pytest_wrapper import run_on_environment_flag
-from colossalai.testing.utils import parameterize, rerun_if_address_is_in_use
-from colossalai.utils import free_port
+from colossalai.testing.utils import rerun_if_address_is_in_use, spawn
 from tests.test_auto_parallel.test_tensor_shard.test_metainfo.utils import mem_test_for_node_strategy
-
-if torch.__version__ >= '1.12.0':
-    from colossalai.auto_parallel.meta_profiler import ShardMetaInfo, meta_register
 
 
 class MyModule(nn.Module):
@@ -63,9 +53,7 @@ def _linear_module_mem_test(rank, world_size, port):
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_linear_module_meta_concrete_info_match():
-    world_size = 4
-    run_func_module = partial(_linear_module_mem_test, world_size=world_size, port=free_port())
-    mp.spawn(run_func_module, nprocs=world_size)
+    spawn(_linear_module_mem_test, 4)
 
 
 def _linear_function_mem_test(rank, world_size, port):
@@ -101,9 +89,7 @@ def _linear_function_mem_test(rank, world_size, port):
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_linear_function_meta_concrete_info_match():
-    world_size = 4
-    run_func_module = partial(_linear_function_mem_test, world_size=world_size, port=free_port())
-    mp.spawn(run_func_module, nprocs=world_size)
+    spawn(_linear_function_mem_test, 4)
 
 
 if __name__ == '__main__':

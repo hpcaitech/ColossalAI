@@ -4,3 +4,4 @@ packaging
 tensornvme
 psutil
 transformers
+pytest

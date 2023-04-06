@@ -6,6 +6,7 @@ from torch.optim import Adam
 from torchvision.models import resnet18
 
 from colossalai.checkpoint_io import GeneralCheckpointIO
+from colossalai.testing import clear_cache_before_run, parameterize
 
 # ========
 # Note:
@@ -15,7 +16,8 @@ from colossalai.checkpoint_io import GeneralCheckpointIO
 # ========
 
 
-@pytest.mark.parametrize('use_safetensors', [True, False])
+@clear_cache_before_run()
+@parameterize('use_safetensors', [True, False])
 def test_unsharded_checkpoint(use_safetensors: bool):
     # create a model and optimizer
     model = resnet18()

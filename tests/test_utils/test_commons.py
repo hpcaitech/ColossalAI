@@ -1,15 +1,13 @@
 import torch
-import torch.multiprocessing as mp
 
 import colossalai
-from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.utils import free_port
+from colossalai.testing import rerun_if_address_is_in_use, spawn
 from colossalai.zero.legacy.gemini.tensor_utils import colo_model_data_tensor_move, colo_model_data_tensor_move_inline
 from colossalai.zero.legacy.sharded_param import ShardedTensor
 
 
-def run_tensor_move(rank):
-    colossalai.launch(config={}, rank=0, world_size=1, host='localhost', port=free_port(), backend='nccl')
+def run_tensor_move(rank, world_size, port):
+    colossalai.launch(config={}, rank=0, world_size=world_size, host='localhost', port=port, backend='nccl')
 
     src_t = torch.ones(2, 3).cuda()
     tgt_t = torch.zeros(2, 3)
@@ -36,7 +34,7 @@ def run_tensor_move(rank):
 
 @rerun_if_address_is_in_use()
 def test_tensor_move():
-    mp.spawn(run_tensor_move, nprocs=1)
+    spawn(run_tensor_move, 1)
 
 
 if __name__ == '__main__':

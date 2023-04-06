@@ -1,12 +1,10 @@
 import copy
 import random
-from functools import partial
 from typing import Dict
 
 import numpy as np
 import pytest
 import torch
-import torch.multiprocessing as mp
 import transformers
 from torch.fx import GraphModule
 
@@ -30,9 +28,8 @@ from colossalai.device.device_mesh import DeviceMesh
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
 from colossalai.tensor.shape_consistency import to_global
-from colossalai.testing import assert_close, assert_close_loose, parameterize, rerun_if_address_is_in_use
+from colossalai.testing import assert_close, assert_close_loose, parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.testing.pytest_wrapper import run_on_environment_flag
-from colossalai.utils import free_port
 from tests.test_auto_parallel.test_tensor_shard.test_gpt.gpt_modules import GPT2MLP, GPT2Attention, GPT2Block, GPT2Model
 
 BATCH_SIZE = 1
@@ -190,9 +187,7 @@ def check_attention_layer(rank, model_cls, world_size, port):
 @parameterize('model_cls', [GPT2MLP, GPT2Block, GPT2Attention, GPT2Model])
 @rerun_if_address_is_in_use()
 def test_mlp_layer(model_cls):
-    world_size = 4
-    run_func = partial(check_attention_layer, model_cls=model_cls, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(check_attention_layer, 4, model_cls=model_cls)
 
 
 if __name__ == '__main__':

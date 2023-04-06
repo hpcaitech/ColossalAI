@@ -1,14 +1,11 @@
 from copy import deepcopy
-from functools import partial
 
 import pytest
 import torch
-import torch.multiprocessing as mp
 from common import CONFIG, allclose
 
 import colossalai
-from colossalai.testing import parameterize, rerun_if_address_is_in_use
-from colossalai.utils import free_port
+from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.zero.legacy.gemini.stateful_tensor import StatefulTensor
 from colossalai.zero.legacy.shard_utils import BucketTensorShardStrategy, TensorShardStrategy
 from colossalai.zero.legacy.sharded_param import ShardedTensor
@@ -39,8 +36,7 @@ def _run_shard_tensor(rank, world_size, port):
 @pytest.mark.parametrize("world_size", [1, 2])
 @rerun_if_address_is_in_use()
 def test_shard_tensor(world_size):
-    run_func = partial(_run_shard_tensor, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(_run_shard_tensor, world_size)
 
 
 def _run_shard_param_v2(rank, world_size, port):
@@ -87,8 +83,7 @@ def _run_shard_param_v2(rank, world_size, port):
 @pytest.mark.parametrize("world_size", [1, 2])
 @rerun_if_address_is_in_use()
 def test_shard_param_v2(world_size):
-    run_func = partial(_run_shard_param_v2, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(_run_shard_param_v2, world_size)
 
 
 if __name__ == '__main__':
