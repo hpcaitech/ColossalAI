@@ -8,6 +8,7 @@ from omegaconf import OmegaConf
 from PIL import Image
 
 from ldm.models.diffusion.ddim import DDIMSampler
+from ldm.util import instantiate_from_config
 
 rescale = lambda x: (x + 1.) / 2.
 
@@ -217,7 +218,7 @@ def get_parser():
 
 
 def load_model_from_config(config, sd):
-    model = LatentDiffusion(**config.get("params", dict()))
+    model = instantiate_from_config(config)
     model.load_state_dict(sd,strict=False)
     model.cuda()
     model.eval()
