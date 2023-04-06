@@ -102,7 +102,6 @@ class StrategiesConstructor:
 
             if _check_no_strategy_for_node(node):
                 self.no_strategy_nodes.append(node)
-                pass
 
             # placeholder node
             elif node.op == 'placeholder':

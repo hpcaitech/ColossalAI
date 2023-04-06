@@ -157,8 +157,21 @@ class NodeHandler(ABC):
         Register different sharding strategies for the current node.
         """
         strategy_generators = self.get_strategy_generator()
+        strategies_info = []
         for generator in strategy_generators:
             strategies = generator.generate()
+
+            for strategy in strategies:
+                shard_metainfo = ShardMetaInfo()
+                shard_metainfo.compute_cost = strategy.compute_cost
+                shard_metainfo.memory_cost = strategy.memory_cost
+                shard_metainfo.fwd_in = []
+                if isinstance(self.node._meta_data, torch.Tensor):
+                    shard_metainfo.fwd_out = [self.node._meta_data]
+                else:
+                    shard_metainfo.fwd_out = self.node._meta_data
+                shard_metainfo.fwd_buffer = []
+                strategies_info.append(shard_metainfo)
 
             # postprocess a strategy
             # postprocess can produce one strategy or multiple strategies
@@ -178,6 +191,7 @@ class NodeHandler(ABC):
                 post_processed_strategies = list(updated_strategies)
 
             self.strategies_vector.extend(post_processed_strategies)
+        setattr(self, "strategies_info", strategies_info)
 
         # validating the correctness of the sharding strategy
         for strategy in self.strategies_vector:

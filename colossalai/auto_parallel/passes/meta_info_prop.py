@@ -96,8 +96,29 @@ class MetaInfoProp:
         """
         Handle other kind of nodes
         """
-        assert hasattr(node, 'best_strategy_info'), f"Cannot find best_strategy_info in node {node}, {node.op}"
         graph_info = GraphInfo()
+        if not hasattr(node, 'best_strategy_info'):
+            # attach them to graph_info
+            graph_info.fwd_in = []
+            graph_info.fwd_tmp = []
+            graph_info.fwd_out = []
+
+            # fetch other memory informations
+            graph_info.fwd_mem_tmp = 10
+            graph_info.fwd_mem_out = 10
+            graph_info.bwd_mem_tmp = 10
+            graph_info.bwd_mem_out = 10
+
+            # fetch flop information
+            # here we use fwd_time and bwd_time to deal with the case that
+            # communication cost is a float
+            graph_info.fwd_time = 10
+            graph_info.bwd_time = 10
+            node.meta = {**asdict(graph_info)}
+            # print(node.name, [isinstance(arg, torch.Tensor) for arg in node.args], isinstance(node._meta_data, torch.Tensor))
+            return
+        assert hasattr(node, 'best_strategy_info'), f"Cannot find best_strategy_info in node {node}, {node.op}"
+
         meta_info = node.best_strategy_info
         meta_info: ShardMetaInfo
 
@@ -124,6 +145,8 @@ class MetaInfoProp:
             for par in node._input_nodes:
                 # set data_ptr for the input_tensor of current node from the output_tensor of its parent node
                 for tensor in par.meta.get("fwd_out", []):
+                    if not isinstance(tensor, torch.Tensor):
+                        continue
                     tensor: torch.Tensor
                     target_input_tensor = next(
                         (x for x in input_tensors if not x.data_ptr() and x.shape == tensor.shape), None)
