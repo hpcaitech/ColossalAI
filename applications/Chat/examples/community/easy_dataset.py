@@ -51,9 +51,7 @@ def preprocess(
         label[:source_len] = IGNORE_INDEX
     return dict(input_ids=input_ids, labels=labels)
 
-'''
-Easy supervised dataset, which looks like '提问：xxx 回答：xxx'
-'''
+
 class EasySupervisedDataset(Dataset):
     def __init__(self, data_file :str, tokenizer :AutoTokenizer,max_length :int = 512) -> None:
         super(EasySupervisedDataset,self).__init__()
@@ -95,7 +93,6 @@ class EasyPromptsDataset(Dataset):
         super(EasyPromptsDataset,self).__init__()
         with open(data_file,"r",encoding="UTF-8") as f:
             all_lines = f.readlines()
-            #the line look like : "提问：你好，问一下事情可以吗 回答：需要详细的信息，可以私聊", truncate the characters after "回答：" if "回答：" is in the line
             all_lines = [line if "回答：" not in line else line[:line.index("回答：")+3] for line in all_lines]
         self.prompts = [
             tokenizer(line,
@@ -118,11 +115,7 @@ class EasyPromptsDataset(Dataset):
     def __str__(self):
         return f"LawPromptsDataset(data_file={self.data_file}, prompts_len={len(self.prompts)})"
 
-'''
-jsonl file that every line is a json object, which looks like:
-{'prompt':'xxx','chosen':'xxx','reject':'xxx'}
-The EasyRewardDataset will change the prompt to '提问：xxx 回答：' and add the chosen and reject to the dict.
-'''
+
 class EasyRewardDataset(Dataset):
     def __init__(self,train_file :str,tokenizer :AutoTokenizer, special_token = None,max_length = 512) -> None:
         super(EasyRewardDataset,self).__init__()

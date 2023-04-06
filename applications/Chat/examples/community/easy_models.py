@@ -95,12 +95,3 @@ class BLOOMActor(Actor):
     def print_trainable_parameters(self):
         self.get_base_model().print_trainable_parameters()
 
-
-if __name__ == '__main__':
-    bloom_pretrained = '/Users/yueyulin/bloomz-560m'
-    lora_path = '/Users/yueyulin/model/sft_lora_560m'
-    from transformers import AutoTokenizer
-    tokenizer = AutoTokenizer.from_pretrained(bloom_pretrained)
-    actor = BLOOMActor(bloom_pretrained,lora_path=lora_path)
-    print(actor)
-    actor.print_trainable_parameters()
