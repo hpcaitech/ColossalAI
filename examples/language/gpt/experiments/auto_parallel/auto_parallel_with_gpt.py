@@ -1,18 +1,13 @@
 from functools import partial
 from time import time
-from typing import Dict, Optional, Tuple, Union
 
 import psutil
 import torch
-import torch.multiprocessing as mp
-import torch.nn as nn
 import transformers
 from gpt_modules import GPT2LMHeadModel, GPTLMLoss
-from torch.fx import GraphModule
 
-from colossalai.auto_parallel.tensor_shard.initialize import autoparallelize, initialize_model
+from colossalai.auto_parallel.tensor_shard.initialize import autoparallelize
 from colossalai.core import global_context as gpc
-from colossalai.device.device_mesh import DeviceMesh
 from colossalai.initialize import launch_from_torch
 from colossalai.logging import disable_existing_loggers, get_dist_logger
 

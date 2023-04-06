@@ -10,10 +10,11 @@ from colossalai.auto_parallel.tensor_shard.options import SolverOptions
 from colossalai.auto_parallel.tensor_shard.solver import CostGraph, GraphAnalyser, Solver, StrategiesConstructor
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.tensor.shape_consistency import ShapeConsistencyManager
-from colossalai.testing.pytest_wrapper import run_on_environment_flag
+from colossalai.testing import clear_cache_before_run, run_on_environment_flag
 
 
 @run_on_environment_flag(name='AUTO_PARALLEL')
+@clear_cache_before_run()
 def test_cost_graph():
     physical_mesh_id = torch.arange(0, 8)
     mesh_shape = (2, 4)

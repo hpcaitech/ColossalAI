@@ -1,17 +1,13 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
-from functools import partial
-
 import pytest
 import torch
-import torch.multiprocessing as mp
 from common import CONFIG, check_grads_padding, run_fwd_bwd
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 import colossalai
-from colossalai.testing import parameterize, rerun_if_address_is_in_use
-from colossalai.utils import free_port
+from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.zero.legacy.init_ctx import ZeroInitContext
 from colossalai.zero.legacy.shard_utils import BucketTensorShardStrategy
 from colossalai.zero.legacy.sharded_model import ShardedModelV2
@@ -61,8 +57,7 @@ def run_dist(rank, world_size, port):
 @pytest.mark.parametrize("world_size", [1, 2])
 @rerun_if_address_is_in_use()
 def test_shard_model_v2(world_size):
-    run_func = partial(run_dist, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_dist, world_size)
 
 
 if __name__ == '__main__':

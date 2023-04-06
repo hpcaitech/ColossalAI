@@ -2,7 +2,6 @@ from functools import partial
 
 import pytest
 import torch
-import torch.multiprocessing as mp
 import torch.nn as nn
 
 from colossalai._analyzer.fx.graph_module import ColoGraphModule
@@ -15,9 +14,8 @@ from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationDat
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
-from colossalai.testing import assert_close, parameterize, rerun_if_address_is_in_use
+from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.testing.pytest_wrapper import run_on_environment_flag
-from colossalai.utils import free_port
 from tests.test_auto_parallel.test_tensor_shard.test_node_handler.utils import numerical_test_for_node_strategy
 
 
@@ -55,7 +53,7 @@ class LinearReshapeModel(nn.Module):
         return permute_node
 
 
-def check_view_handler(rank, call_function, reshape_dims, model_cls, world_size, port):
+def check_view_handler(rank, world_size, port, call_function, reshape_dims, model_cls):
     disable_existing_loggers()
     launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     if call_function == torch.permute:
@@ -328,14 +326,13 @@ def check_view_handler(rank, call_function, reshape_dims, model_cls, world_size,
 @parameterize('reshape_dims', [((0, 2, 1, 3), (1, 2)), ((2, 0, 1, 3), (1, 3))])
 @parameterize('model_cls', [ConvReshapeModel, LinearReshapeModel])
 def test_view_handler(call_function, reshape_dims, model_cls):
-    world_size = 4
-    run_func = partial(check_view_handler,
-                       call_function=call_function,
-                       reshape_dims=reshape_dims,
-                       model_cls=model_cls,
-                       world_size=world_size,
-                       port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(
+        check_view_handler,
+        4,
+        call_function=call_function,
+        reshape_dims=reshape_dims,
+        model_cls=model_cls,
+    )
 
 
 if __name__ == '__main__':

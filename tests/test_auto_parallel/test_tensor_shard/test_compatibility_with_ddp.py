@@ -1,9 +1,7 @@
 import copy
-from functools import partial
 
 import pytest
 import torch
-import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 try:
@@ -15,9 +13,7 @@ except:
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
-from colossalai.testing import assert_close, rerun_if_address_is_in_use
-from colossalai.testing.pytest_wrapper import run_on_environment_flag
-from colossalai.utils import free_port
+from colossalai.testing import assert_close, rerun_if_address_is_in_use, run_on_environment_flag, spawn
 
 
 class MLP(torch.nn.Module):
@@ -102,9 +98,7 @@ def check_compatibility_with_ddp(rank, world_size, port):
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_compatibility_with_ddp():
-    world_size = 4
-    run_func = partial(check_compatibility_with_ddp, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(check_compatibility_with_ddp, 4)
 
 
 if __name__ == '__main__':

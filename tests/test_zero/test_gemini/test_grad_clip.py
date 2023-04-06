@@ -1,25 +1,20 @@
-from functools import partial
-from time import time
-
 import pytest
 import torch
 import torch.distributed as dist
-import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.testing import assert_close
 
 import colossalai
 from colossalai.amp import convert_to_apex_amp
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.testing import parameterize, rerun_if_address_is_in_use
-from colossalai.utils import free_port
+from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.utils.cuda import get_current_device
 from colossalai.zero import ColoInitContext, ZeroDDP, ZeroOptimizer
 from colossalai.zero.gemini.chunk import ChunkManager, search_chunk_configuration
 from colossalai.zero.gemini.gemini_mgr import GeminiManager
 from tests.components_to_test import run_fwd_bwd
 from tests.components_to_test.registry import non_distributed_component_funcs
-from tests.test_tensor.common_utils import debug_print, set_seed
+from tests.test_tensor.common_utils import set_seed
 
 
 def check_param(model: ZeroDDP, torch_model: torch.nn.Module):
@@ -105,8 +100,7 @@ def run_dist(rank, world_size, port):
 @pytest.mark.parametrize('world_size', [1, 2])
 @rerun_if_address_is_in_use()
 def test_grad_clip(world_size):
-    run_func = partial(run_dist, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_dist, world_size)
 
 
 if __name__ == '__main__':

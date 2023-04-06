@@ -1,14 +1,12 @@
-from functools import partial
-
 import pytest
 import torch
 import torch.distributed as dist
-import torch.multiprocessing as mp
 import torch.nn as nn
 
 import colossalai
 from colossalai.tensor import ProcessGroup
-from colossalai.utils import free_port, get_current_device
+from colossalai.testing import spawn
+from colossalai.utils import get_current_device
 from colossalai.zero import ColoInitContext, LowLevelZeroOptimizer
 
 
@@ -51,9 +49,7 @@ def run_dist(rank, world_size, port):
 
 @pytest.mark.dist
 def test_zero_init():
-    world_size = 4
-    run_func = partial(run_dist, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_dist, 4)
 
 
 if __name__ == '__main__':

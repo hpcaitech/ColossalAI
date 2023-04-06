@@ -1,19 +1,15 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
-from functools import partial
-
 import pytest
 import torch
 import torch.distributed as dist
-import torch.multiprocessing as mp
 from common import MP_PARALLEL_CONFIG, ZERO_PARALLEL_CONFIG, check_params, check_sharded_model_params
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 import colossalai
 from colossalai.core import global_context as gpc
-from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.utils import free_port
+from colossalai.testing import rerun_if_address_is_in_use, spawn
 from colossalai.zero.legacy.init_ctx import ZeroInitContext
 from colossalai.zero.legacy.sharded_model.utils import col_model_deepcopy
 from colossalai.zero.low_level._utils import has_inf_or_nan
@@ -96,16 +92,14 @@ def run_dist(rank, world_size, port, parallel_config):
 @pytest.mark.parametrize("world_size", [2, 4])
 @rerun_if_address_is_in_use()
 def test_mp_engine(world_size):
-    run_func = partial(run_dist, world_size=world_size, port=free_port(), parallel_config=MP_PARALLEL_CONFIG)
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_dist, world_size, parallel_config=MP_PARALLEL_CONFIG)
 
 
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [1, 2])
 @rerun_if_address_is_in_use()
 def test_zero_engine(world_size):
-    run_func = partial(run_dist, world_size=world_size, port=free_port(), parallel_config=ZERO_PARALLEL_CONFIG)
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_dist, world_size, parallel_config=ZERO_PARALLEL_CONFIG)
 
 
 if __name__ == '__main__':

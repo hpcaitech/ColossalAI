@@ -6,6 +6,8 @@ from colossalai._analyzer.fx.graph_module import ColoGraphModule
 from colossalai._analyzer.fx.passes import shape_prop_pass
 from colossalai._analyzer.fx.tracer.tracer import ColoTracer
 from colossalai.auto_parallel.tensor_shard.solver import GraphAnalyser
+from colossalai.fx import ColoGraphModule, ColoTracer
+from colossalai.testing import clear_cache_before_run
 
 
 class LinearModel(nn.Module):
@@ -26,6 +28,7 @@ class LinearModel(nn.Module):
 
 
 @pytest.mark.skip('meta tensor has some bugs in 1.11')
+@clear_cache_before_run()
 def test_liveness_analysis():
     model = LinearModel()
     tracer = ColoTracer(bias_addition_split=True)

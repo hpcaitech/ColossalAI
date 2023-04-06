@@ -1,20 +1,20 @@
-import time
-import pytest
 import argparse
-from functools import partial
+import time
 
+import pytest
 import torch
+from model_zoo import GPTLMLoss, get_gpt2_components
 from torch.utils._pytree import tree_map
-import torch.multiprocessing as mp
 
 import colossalai
-from colossalai.nn.optimizer import HybridAdam
-from colossalai.fx.profiler import parameter_size
-from colossalai.utils import free_port, get_current_device
 from colossalai.auto_parallel.offload.amp_optimizer import AMPOptimizer
 from colossalai.auto_parallel.offload.mem_optimize import memory_optimize
 from colossalai.auto_parallel.offload.solver import NOT_NVML
-from model_zoo import get_gpt2_components, GPTLMLoss
+from colossalai.fx.profiler import parameter_size
+from colossalai.nn.optimizer import HybridAdam
+from colossalai.testing import spawn
+from colossalai.utils import get_current_device
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -23,6 +23,7 @@ def parse_args():
     parser.add_argument('--solver_type', type=str, default='asyn')
     parser.add_argument('--memory_budget', type=float, default=16)
     return parser.parse_args()
+
 
 @pytest.mark.skipif(NOT_NVML, reason='pynvml is not installed')
 def train_gpt(args):
@@ -33,13 +34,16 @@ def train_gpt(args):
 
     # build model
     model_builder, data_gen = get_gpt2_components(model_type=model_type, batch_size=batch_size)
-    label = torch.randint(low=0, high=128, size=(64, 8,), device=get_current_device())
+    label = torch.randint(low=0, high=128, size=(
+        64,
+        8,
+    ), device=get_current_device())
     criterion = GPTLMLoss()
 
     start_time = time.time()
     model = model_builder()
     model.train()
-    param_size = parameter_size(model) / 1024 ** 2 / 2
+    param_size = parameter_size(model) / 1024**2 / 2
     init_time = time.time() - start_time
     print(f"init_param_size={param_size:.3f} MB | init_model_time={init_time:.3f} s")
 
@@ -74,21 +78,20 @@ def train_gpt(args):
     torch.cuda.synchronize()
 
     exec_time = sum(sorted(time_list)[:5]) / 5
-    runtime_peak_mem_alc = torch.cuda.max_memory_allocated() / 1024 ** 2
-    runtime_peak_mem_res = torch.cuda.max_memory_reserved() / 1024 ** 2
+    runtime_peak_mem_alc = torch.cuda.max_memory_allocated() / 1024**2
+    runtime_peak_mem_res = torch.cuda.max_memory_reserved() / 1024**2
     print(f'solver_type: {solver_type} | model_type: {model_type}')
-    print(
-        f'| exec_time={exec_time:.3f} s | param_size={param_size:.3f} MB '
-        f'| runtime_peak_mem_alc={runtime_peak_mem_alc:.3f} MB| runtime_peak_mem_res={runtime_peak_mem_res:.3f} MB|'
-    )
+    print(f'| exec_time={exec_time:.3f} s | param_size={param_size:.3f} MB '
+          f'| runtime_peak_mem_alc={runtime_peak_mem_alc:.3f} MB| runtime_peak_mem_res={runtime_peak_mem_res:.3f} MB|')
     print(time_list)
+
 
 def run(rank, world_size, port, args):
     config = {}
     colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     train_gpt(args)
 
+
 if __name__ == '__main__':
     args = parse_args()
-    run_func = partial(run, world_size=1, port=free_port(), args=args)
-    mp.spawn(run_func, nprocs=1)
+    spawn(run, 1, args=args)

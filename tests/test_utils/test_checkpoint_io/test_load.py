@@ -3,19 +3,18 @@ from functools import partial
 from tempfile import TemporaryDirectory
 from typing import Dict
 
-import colossalai
 import pytest
 import torch
 import torch.distributed as dist
-import torch.multiprocessing as mp
 import torch.nn as nn
-from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.utils import free_port
-from colossalai.utils.checkpoint_io.io import load, save
-from colossalai.utils.checkpoint_io.meta import (ParamDistMeta, ParamRedistMeta, RankRedistMeta, RedistMeta)
 from torch import Tensor
 from torch.nn import Module
 from torch.optim import Adam, Optimizer
+
+import colossalai
+from colossalai.testing import rerun_if_address_is_in_use, spawn
+from colossalai.utils.checkpoint_io.io import load, save
+from colossalai.utils.checkpoint_io.meta import ParamDistMeta, ParamRedistMeta, RankRedistMeta, RedistMeta
 
 
 def check_model_state_dict(a: Dict[str, Tensor], b: Dict[str, Tensor]) -> None:
@@ -120,14 +119,13 @@ def test_save_global_load_global(max_shard_size_gb: float):
         check_optim_state_dict(optimizer.state_dict(), new_optimizer.state_dict())
 
 
-def run_dist(rank, world_size, port, func):
+def run_dist(rank, world_size, port, test_fn):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    func()
+    test_fn()
 
 
 def launch_dist(fn, world_size: int):
-    proc_fn = partial(run_dist, world_size=world_size, port=free_port(), func=fn)
-    mp.spawn(proc_fn, nprocs=world_size)
+    spawn(run_dist, world_size, test_fn=fn)
 
 
 def save_dist(dir_name: str, zero: bool):

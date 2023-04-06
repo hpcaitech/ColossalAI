@@ -1,14 +1,10 @@
-from functools import partial
-
 import pytest
 import torch
-import torch.multiprocessing as mp
 
 import colossalai
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.tensor import ProcessGroup
-from colossalai.testing import parameterize, rerun_if_address_is_in_use
-from colossalai.utils import free_port
+from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.utils.cuda import get_current_device
 from colossalai.zero.legacy.init_ctx import ZeroInitContext
 from colossalai.zero.legacy.shard_utils import TensorShardStrategy
@@ -86,8 +82,7 @@ def run_dist(rank, world_size, port):
 @pytest.mark.parametrize('world_size', [1, 2])
 @rerun_if_address_is_in_use()
 def test_sharded_optim_state_dist(world_size):
-    run_func = partial(run_dist, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_dist, world_size)
 
 
 if __name__ == '__main__':

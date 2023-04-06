@@ -1,5 +1,4 @@
 import torch
-import torch.nn as nn
 import transformers
 from torch.fx import GraphModule
 
@@ -7,10 +6,10 @@ from colossalai._analyzer.fx.passes.shape_prop import shape_prop_pass
 from colossalai._analyzer.fx.tracer.tracer import ColoTracer
 from colossalai.auto_parallel.tensor_shard.constants import BATCHNORM_MODULE_OP
 from colossalai.auto_parallel.tensor_shard.options import SolverOptions
-from colossalai.auto_parallel.tensor_shard.solver import CostGraph, GraphAnalyser, Solver, StrategiesConstructor
+from colossalai.auto_parallel.tensor_shard.solver import CostGraph, Solver, StrategiesConstructor
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.tensor.shape_consistency import ShapeConsistencyManager
-from colossalai.testing import parameterize
+from colossalai.testing import clear_cache_before_run, parameterize
 from colossalai.testing.pytest_wrapper import run_on_environment_flag
 from tests.test_auto_parallel.test_tensor_shard.test_gpt.gpt_modules import GPT2MLP, GPT2Attention, GPT2Block, GPT2Model
 
@@ -20,6 +19,7 @@ HIDDEN_DIM = 384
 
 
 @run_on_environment_flag(name='AUTO_PARALLEL')
+@clear_cache_before_run()
 @parameterize('model_cls', [GPT2Block, GPT2Attention, GPT2MLP, GPT2Model])
 def test_self_attention_block(model_cls):
     config = transformers.GPT2Config(n_position=64, n_layer=2, n_head=16, n_embd=HIDDEN_DIM)

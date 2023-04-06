@@ -1,10 +1,10 @@
 import torch
 import torch.nn as nn
-from torch.optim.adam import Adam
 from torch.optim import AdamW
+from torch.optim.adam import Adam
 
 from colossalai.nn.optimizer.fused_adam import FusedAdam
-from colossalai.testing import parameterize
+from colossalai.testing import clear_cache_before_run, parameterize
 
 
 class FC(nn.Module):
@@ -17,6 +17,7 @@ class FC(nn.Module):
         return self.fc(x)
 
 
+@clear_cache_before_run()
 @parameterize('adamw', [False, True])
 @parameterize('p_dtype', [torch.float, torch.half])
 @parameterize('g_dtype', [torch.float, torch.half])

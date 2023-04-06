@@ -1,9 +1,7 @@
-from functools import partial
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import pytest
 import torch
-import torch.multiprocessing as mp
 import torch.nn as nn
 from torch.utils.checkpoint import checkpoint
 from transformers.pytorch_utils import Conv1D
@@ -17,9 +15,7 @@ except:
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
-from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.testing.pytest_wrapper import run_on_environment_flag
-from colossalai.utils import free_port
+from colossalai.testing import rerun_if_address_is_in_use, run_on_environment_flag, spawn
 
 HIDDEN_SIZE = 16
 
@@ -65,9 +61,7 @@ def check_act_ckpt(rank, world_size, port):
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_mlp_layer():
-    world_size = 4
-    run_func = partial(check_act_ckpt, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(check_act_ckpt, 4)
 
 
 if __name__ == '__main__':

@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 from numpy import dtype
 
-from colossalai.testing import parameterize
+from colossalai.testing import clear_cache_before_run, parameterize
 from colossalai.utils import multi_tensor_applier
 
 
@@ -41,6 +41,7 @@ def torch_adam_update(
     param.addcdiv_(exp_avg, denom, value=-step_size)
 
 
+@clear_cache_before_run()
 @parameterize('adamw', [False, True])
 @parameterize('step', [1, 2])
 @parameterize('p_dtype', [torch.float, torch.half])
