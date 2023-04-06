@@ -5,7 +5,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 import colossalai
 from colossalai.amp import convert_to_apex_amp
 from colossalai.tensor import ColoTensor, ColoTensorSpec, ComputePattern, ComputeSpec, ProcessGroup, ShardSpec
-from colossalai.testing import parameterize, rerun_if_address_is_in_use
+from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.utils.cuda import get_current_device
 from colossalai.zero import ColoInitContext, GeminiAdamOptimizer, GeminiDDP, ZeroDDP
 from colossalai.zero.gemini import search_chunk_configuration
