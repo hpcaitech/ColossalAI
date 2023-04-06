@@ -85,9 +85,6 @@ class EasySupervisedDataset(Dataset):
     def __str__(self):
         return f"LawSupervisedDataset(data_file={self.data_file}, input_ids_len={len(self.input_ids)}, labels_len={len(self.labels)})"
 
-'''
-Easy prompts dataset, which looks like '提问：xxx 回答：xxx', the characters after "回答：" will be truncated
-'''
 class EasyPromptsDataset(Dataset):
     def __init__(self,data_file :str, tokenizer :AutoTokenizer, max_length :int = 96) -> None:
         super(EasyPromptsDataset,self).__init__()
