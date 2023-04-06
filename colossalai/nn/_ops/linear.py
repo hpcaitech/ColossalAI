@@ -68,6 +68,7 @@ def colo_linear_imp(input_tensor: GeneralTensor,
     assert pg
     input_tensor = convert_to_colo_tensor(input_tensor, pg)
     bias = convert_to_colo_tensor(bias, pg)
+
     # input_tensor, weight, bias = tuple(map(convert_to_colo_tensor, (input_tensor, weight, bias)))
 
     # Add communication logic before and after linear call.
