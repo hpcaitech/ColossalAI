@@ -20,7 +20,7 @@ from colossalai.zero.legacy.sharded_optim import ShardedOptimizerV2
 from colossalai.zero.low_level._utils import has_inf_or_nan
 from tests.components_to_test.registry import non_distributed_component_funcs
 from tests.test_moe.test_moe_zero_init import MoeModel
-from tests.test_zero.common import CONFIG, check_sharded_model_params
+from tests.test_zero.test_legacy.common import CONFIG, check_sharded_model_params
 
 
 def _run_step(model, optimizer, data, label, criterion, grad_handler):
