@@ -68,7 +68,7 @@ class GeneralCheckpointIO(CheckpointIO):
         save_state_dict(optimizer.state_dict(), checkpoint, use_safetensors=False)
 
 
-    def save_sharded_model(self, model: nn.Module, checkpoint_path: str, gather_dtensor:bool = False, \
+    def save_sharded_model(self, model: nn.Module, checkpoint_path: str, gather_dtensor:bool = False, 
                            prefix: str = "", max_shard_size: int = 1024, use_safetensors: bool = False):
         """ 
         implement this method as it can be supported by Huggingface model,
@@ -115,8 +115,7 @@ class GeneralCheckpointIO(CheckpointIO):
             raise ImportError("`safe_serialization` requires the `safetensors` library: `pip install safetensors`.")
         
         # read checkpoint index file
-        ckpt_index_file = CheckpointIndexFile()
-        ckpt_index_file.load(checkpoint_index_file)
+        ckpt_index_file = CheckpointIndexFile.from_file(checkpoint_index_file)
         checkpoint_files, _ = ckpt_index_file.get_checkpoint_fileanames()
         missing_keys = ckpt_index_file.get_all_param_names()
 

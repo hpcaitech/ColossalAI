@@ -82,13 +82,12 @@ def test_sharded_checkpoint(use_safetensors: bool):
         WEIGHTS_INDEX_NAME = "model.bin.index.json"
     
     # model_ckpt_dir = tempfile.TemporaryDirectory(suffix=suffix)
-    model_ckpt_dir = tempfile.TemporaryDirectory(dir='/tmp')
+    model_ckpt_dir = tempfile.TemporaryDirectory()
     optimizer_ckpt_tempfile = tempfile.NamedTemporaryFile()
 
     # save the model and optimizer
     ckpt_io = GeneralCheckpointIO()
-    print(model_ckpt_dir.name)
-    print(os.listdir(model_ckpt_dir.name))
+
     ckpt_io.save_model(model, model_ckpt_dir.name, True, True, "", 10, use_safetensors=use_safetensors)
     ckpt_io.save_optimizer(optimizer, optimizer_ckpt_tempfile.name, shard=False)
     
