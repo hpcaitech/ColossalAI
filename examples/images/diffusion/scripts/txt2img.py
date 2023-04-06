@@ -16,9 +16,9 @@ from torch import autocast
 from contextlib import nullcontext
 from imwatermark import WatermarkEncoder
 
-from ldm.util import instantiate_from_config
 from ldm.models.diffusion.ddim import DDIMSampler
 from ldm.models.diffusion.plms import PLMSSampler
+from ldm.models.diffusion.ddpm import LatentDiffusion
 from ldm.models.diffusion.dpm_solver import DPMSolverSampler
 from utils import replace_module, getModelSize
 
@@ -35,7 +35,7 @@ def load_model_from_config(config, ckpt, verbose=False):
     if "global_step" in pl_sd:
         print(f"Global Step: {pl_sd['global_step']}")
     sd = pl_sd["state_dict"]
-    model = instantiate_from_config(config.model)
+    model = LatentDiffusion(**config.model.get("params", dict()))
     m, u = model.load_state_dict(sd, strict=False)
     if len(m) > 0 and verbose:
         print("missing keys:")

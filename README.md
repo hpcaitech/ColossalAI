@@ -396,9 +396,10 @@ You may contact us or participate in the following ways:
 
 Thanks so much to all of our amazing contributors!
 
-<a href="https://github.com/hpcaitech/ColossalAI/graphs/contributors"><img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/contributor_avatar.png" width="800px"></a>
+<a href="https://github.com/hpcaitech/ColossalAI/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=hpcaitech/ColossalAI"  width="800px"/>
+</a>
 
-*The order of contributor avatars is randomly shuffled.*
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
