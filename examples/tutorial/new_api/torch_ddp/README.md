@@ -2,10 +2,10 @@
 
 ## 🚀 Quick Start
 
-This example provides a training script and and evaluation script. The training script provides a an example of training ResNet on CIFAR10 dataset from scratch.
+This example provides a training script and an evaluation script. The training script provides an example of training ResNet on CIFAR10 dataset from scratch.
 
 - Training Arguments
-  - `-r, `--resume`: resume from checkpoint file path
+  - `-r`, `--resume`: resume from checkpoint file path
   - `-c`, `--checkpoint`: the folder to save checkpoints
   - `-i`, `--interval`: epoch interval to save checkpoints
   - `-f`, `--fp16`: use fp16
@@ -41,4 +41,4 @@ Expected accuracy performance will be:
 | --------- | ------------------------ | --------------------- | --------------------- |
 | ResNet-18 | 85.85%                   | 85.03%                | 85.12%                |
 
-**Note: the baseline is a adapted from the [script](https://pytorch-tutorial.readthedocs.io/en/latest/tutorial/chapter03_intermediate/3_2_2_cnn_resnet_cifar10/) to use `torchvision.models.resnet18`**
+**Note: the baseline is adapted from the [script](https://pytorch-tutorial.readthedocs.io/en/latest/tutorial/chapter03_intermediate/3_2_2_cnn_resnet_cifar10/) to use `torchvision.models.resnet18`**
