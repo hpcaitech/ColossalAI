@@ -6,9 +6,9 @@ from typing import List, Dict, Mapping, OrderedDict, Optional, Tuple
 from colossalai.tensor.d_tensor.d_tensor import DTensor
 
 SAFE_WEIGHTS_NAME = "model.safetensors"
-WEIGHTS_NAME = "model.bin"
+WEIGHTS_NAME = "pytorch_model.bin"
 SAFE_WEIGHTS_INDEX_NAME = "model.safetensors.index.json"
-WEIGHTS_INDEX_NAME = "model.bin.index.json"
+WEIGHTS_INDEX_NAME = "pytorch_model.bin.index.json"
 
 # ======================================
 # General helper functions
