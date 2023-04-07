@@ -10,11 +10,7 @@ import time
 import numpy as np
 import torch
 import torchvision
-
-try:
-    import lightning.pytorch as pl
-except:
-    import pytorch_lightning as pl
+import lightning.pytorch as pl
 
 from functools import partial
 
@@ -24,7 +20,7 @@ from PIL import Image
 from prefetch_generator import BackgroundGenerator
 from torch.utils.data import DataLoader, Dataset, Subset, random_split
 from ldm.models.diffusion.ddpm import LatentDiffusion
-#try:
+
 from lightning.pytorch import seed_everything
 from lightning.pytorch.callbacks import Callback, LearningRateMonitor, ModelCheckpoint
 from lightning.pytorch.trainer import Trainer
@@ -32,15 +28,9 @@ from lightning.pytorch.utilities import rank_zero_info, rank_zero_only
 from lightning.pytorch.loggers import WandbLogger, TensorBoardLogger
 from lightning.pytorch.strategies import ColossalAIStrategy,DDPStrategy
 LIGHTNING_PACK_NAME = "lightning.pytorch."
-# #except:
-#     from pytorch_lightning import seed_everything
-#     from pytorch_lightning.callbacks import Callback, LearningRateMonitor, ModelCheckpoint
-#     from pytorch_lightning.trainer import Trainer
-#     from pytorch_lightning.utilities import rank_zero_info, rank_zero_only
-#     LIGHTNING_PACK_NAME = "pytorch_lightning."
 
 from ldm.data.base import Txt2ImgIterableBaseDataset
-from ldm.util import instantiate_from_config
+
 
 # from ldm.modules.attention import enable_flash_attentions
 
