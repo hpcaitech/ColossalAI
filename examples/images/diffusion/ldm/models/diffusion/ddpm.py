@@ -37,7 +37,7 @@ from ldm.modules.distributions.distributions import DiagonalGaussianDistribution
 from ldm.modules.midas.api import MiDaSInference
 from ldm.modules.ema import LitEma
 from ldm.modules.encoders.modules import *
-from ldm.util import count_params, default, exists, instantiate_from_config, isimage, ismap, log_txt_as_img, mean_flat
+from ldm.util import count_params, default, exists, isimage, ismap, log_txt_as_img, mean_flat
 from omegaconf import ListConfig
 from torch.optim.lr_scheduler import LambdaLR
 from torchvision.utils import make_grid
