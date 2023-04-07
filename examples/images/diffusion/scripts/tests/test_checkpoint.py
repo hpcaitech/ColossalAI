@@ -7,7 +7,6 @@ from datetime import datetime
 
 from diffusers import StableDiffusionPipeline
 import torch
-from ldm.util import instantiate_from_config
 from main import get_parser
 from ldm.modules.diffusionmodules.openaimodel import UNetModel
 if __name__ == "__main__":
