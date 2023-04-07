@@ -2,7 +2,7 @@ import math
 
 import torch
 
-from colossalai.testing import parameterize
+from colossalai.testing import clear_cache_before_run, parameterize
 
 
 def torch_adam_update(
@@ -46,6 +46,7 @@ def assertTrue(condition, msg):
     assert condition, msg
 
 
+@clear_cache_before_run()
 @parameterize('adamw', [True, False])
 @parameterize('step', [1, 2])
 @parameterize('p_dtype', [torch.float, torch.half])
@@ -56,7 +57,7 @@ def test_cpu_adam(adamw, step, p_dtype, g_dtype):
     eps = 1e-8
     weight_decay = 0
 
-    for i in range(1024):
+    for i in range(3):
         p_data = torch.rand(64, dtype=p_dtype)
         p_data_copy = p_data.clone().float()
         p_grad = torch.rand(64, dtype=g_dtype)

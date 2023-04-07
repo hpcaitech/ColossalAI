@@ -1,12 +1,15 @@
 import pytest
 import torch
-import torch.distributed as dist
 import torchvision.models as tm
+from packaging import version
+
+from colossalai.testing import clear_cache_before_run, parameterize
+
 try:
     from colossalai._analyzer._subclasses import MetaTensor, MetaTensorMode
 except:
     pass
-from .zoo import tm_models, tmm_models
+from tests.test_analyzer.test_fx.zoo import tm_models, tmm_models
 
 
 def compare_all(tensor: torch.Tensor, meta_tensor: torch.Tensor):
@@ -28,8 +31,9 @@ def run_and_compare(model):
     compare_all(x.grad, meta_x.grad)
 
 
-@pytest.mark.skipif(torch.__version__ < '1.12.0', reason='torch version < 12')
-@pytest.mark.parametrize('m', tm_models + tmm_models)
+@pytest.mark.skipif(version.parse(torch.__version__) < version.parse('1.12.0'), reason='torch version < 12')
+@clear_cache_before_run()
+@parameterize('m', tm_models + tmm_models)
 def test_meta_mode_shape(m):
     run_and_compare(m())
 

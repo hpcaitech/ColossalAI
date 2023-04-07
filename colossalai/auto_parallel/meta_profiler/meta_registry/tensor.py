@@ -2,9 +2,9 @@ from typing import Callable, List, Tuple
 
 import torch
 
+from colossalai._analyzer._subclasses.flop_tensor import flop_mapping
+from colossalai._analyzer.fx.node_util import compute_size_in_bytes
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import MemoryCost, OperationDataType, TrainCycleItem
-from colossalai.fx.profiler.memory_utils import activation_size
-from colossalai.fx.profiler.opcount import flop_mapping
 
 from ..registry import meta_register
 
@@ -35,11 +35,11 @@ def tensor_related_metainfo(bwd_mem_out_factor: float = 1, bwd_mem_tmp_factor: f
 
         # memory costs
         # NOTE: currently in SPMD solver we always believe that there will be a new tensor created in forward
-        fwd_mem_cost = MemoryCost(activation=activation_size(outputs) * 2, parameter=0, temp=0, buffer=0)
+        fwd_mem_cost = MemoryCost(activation=compute_size_in_bytes(outputs) * 2, parameter=0, temp=0, buffer=0)
 
-        bwd_mem_cost = MemoryCost(activation=activation_size(outputs) * bwd_mem_out_factor,
+        bwd_mem_cost = MemoryCost(activation=compute_size_in_bytes(outputs) * bwd_mem_out_factor,
                                   parameter=0,
-                                  temp=activation_size(outputs) * bwd_mem_tmp_factor,
+                                  temp=compute_size_in_bytes(outputs) * bwd_mem_tmp_factor,
                                   buffer=0)
 
         total_mem_cost = MemoryCost(activation=fwd_mem_cost.activation + bwd_mem_cost.activation,

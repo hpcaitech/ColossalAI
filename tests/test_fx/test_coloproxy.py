@@ -1,9 +1,11 @@
+import pytest
 import torch
 import torch.nn as nn
+from torch.fx import GraphModule
+
 from colossalai.fx.proxy import ColoProxy
 from colossalai.fx.tracer.tracer import ColoTracer
-from torch.fx import GraphModule
-import pytest
+from colossalai.testing import clear_cache_before_run
 
 
 class Conv1D(nn.Module):
@@ -23,6 +25,7 @@ class Conv1D(nn.Module):
         return x
 
 
+@clear_cache_before_run()
 def test_coloproxy():
 
     tracer = ColoTracer()

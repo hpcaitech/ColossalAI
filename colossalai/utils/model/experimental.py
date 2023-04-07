@@ -1,17 +1,20 @@
+from types import MethodType
 from typing import Callable, Optional, Union
 
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 from torch import Tensor
 from torch.utils._pytree import tree_map
 
-from colossalai.fx.profiler import MetaTensor
+from colossalai.fx.profiler.tensor import MetaTensor
+from colossalai.tensor.d_tensor.d_tensor import DTensor
+from colossalai.tensor.d_tensor.layout import Layout
 
 # reference: https://pytorch.org/cppdocs/notes/tensor_creation.html
-_TorchFactoryMethod = [
+_NORMAL_FACTORY = [
     "arange",
     "empty",
-    "eye",
     "full",
     "linspace",
     "logspace",
@@ -24,7 +27,32 @@ _TorchFactoryMethod = [
     "tensor",
 ]
 
+# factory function that does not support meta tensor backend
+_NO_META_FACTORY = [
+    "eye",
+]
+
 _EARLY_MATERIALIZED_OPS = ['__getitem__', 'split']
+
+# If your intent is to change the metadata of a Tensor (such as sizes / strides / storage / storage_offset)
+# without autograd tracking the change, remove the .data / .detach() call and wrap the change in a `with torch.no_grad():` block.
+# These ops cannot be unwrapped using .data
+_CHANGE_META_OPS = ['_cudnn_rnn_flatten_weight', 'requires_grad_', '__get__']
+
+_LEGACY_TENSOR_CONSTRUCTOR = {
+    'FloatTensor': torch.float,
+    'DoubleTensor': torch.double,
+    'HalfTensor': torch.half,
+    'BFloat16Tensor': torch.bfloat16,
+    'ByteTensor': torch.uint8,
+    'CharTensor': torch.int8,
+    'ShortTensor': torch.short,
+    'IntTensor': torch.int,
+    'LongTensor': torch.long,
+    'BoolTensor': torch.bool,
+}
+
+_EMPTY_DATA = torch.empty(0)
 
 
 class _MyTensor(Tensor):
@@ -32,15 +60,42 @@ class _MyTensor(Tensor):
     """
     _pre_op_fn: Callable[['LazyTensor'], None] = lambda *args: None
 
-    def __new__(cls, func, *args, dtype=None, device=None, **kwargs) -> '_MyTensor':
+    def __new__(cls, func, *args, concrete_data=None, **kwargs) -> '_MyTensor':
         cls._pre_op_fn()
-        data = func(*args, dtype=dtype, device=device, **kwargs)
+        if concrete_data is not None:
+            # uniform api as LazyTensor
+            data = concrete_data
+        else:
+            data = func(*args, **kwargs)
         return Tensor._make_subclass(cls, data, require_grad=data.requires_grad)
 
     @classmethod
     def __torch_function__(cls, func, types, args=(), kwargs=None):
         cls._pre_op_fn()
         return super().__torch_function__(func, types, args, kwargs)
+
+
+def _convert_cls(tensor: 'LazyTensor', target: torch.Tensor) -> torch.Tensor:
+    """Convert a lazy tensor's class to target's class, with target's data.
+
+    The reason why we change the class of a lazy tensor in-place is that this can easily handle shared modules/parameters, which is common in huggingface models.
+    If we create a new tensor and update the module by ``setattr(module, name, param)``, the shared parameters will not be updated. And we have to track all shared parameters and update them manually.
+
+    Args:
+        tensor (LazyTensor): the LazyTensor to be converted
+        target (torch.Tensor): target tensor
+
+    Returns:
+        torch.Tensor: the converted tensor
+    """
+    cls_to_become = nn.Parameter if isinstance(tensor, nn.Parameter) else torch.Tensor
+    tensor.__class__ = cls_to_become
+    tensor.data = target
+    tensor.requires_grad = target.requires_grad
+    # subclass of torch.Tensor does not have tolist() method
+    # overwrite this method after materialization or distribution
+    tensor.tolist = MethodType(torch.Tensor.tolist, target)
+    return tensor
 
 
 class LazyTensor(torch.Tensor):
@@ -66,11 +121,13 @@ class LazyTensor(torch.Tensor):
         >>> x.add_(1) # modifying origin tensor after cloning leads to wrong materialization
         >>> z = x.tolist()
         >>> x.zeros_() # modifying origin tensor after cloning tolist is not allowed
-        >>> x.data = torch.rand(2, 3) # directly set data of a lazy tensor is not allowed
+        >>> nn.utils.weight_norm(self.conv, name="weight", dim=2) # applying weight norm on a lazy tensor is not allowed
+
 
         2. Cases that ``LazyTensor`` becomes eager (early materialization).
         >>> b = a[:, 2:]  # get a slice of a lazy tensor triggers early materialization
         >>> chunks = a.split(3)  # this also triggers early materialization
+        >>> x.data = torch.rand(2, 3) # directly setting data of a lazy tensor triggers early materialization
 
     """
 
@@ -79,38 +136,49 @@ class LazyTensor(torch.Tensor):
     _pre_op_fn: Callable[['LazyTensor'], None] = lambda *args: None
 
     @staticmethod
-    def __new__(cls, func, *args, meta_data=None, **kwargs):
-        if meta_data is None:
-            device = kwargs.get('device', 'cpu')
-            elem = func(*args, **{**kwargs, 'device': 'meta'})
-            meta_data = MetaTensor(elem, fake_device=device)
-        elem = meta_data._tensor
-        r = torch.Tensor._make_wrapper_subclass(cls,
-                                                elem.size(),
-                                                strides=elem.stride(),
-                                                storage_offset=elem.storage_offset(),
-                                                dtype=elem.dtype,
-                                                layout=elem.layout,
-                                                device=elem.device,
-                                                requires_grad=elem.requires_grad)
+    def __new__(cls, func, *args, meta_data=None, concrete_data=None, **kwargs):
+        if concrete_data is not None:
+            # some ops don't support meta backend and should have concrete data
+            elem = concrete_data
+        else:
+            if meta_data is None:
+                device = kwargs.get('device', 'cpu')
+                elem = func(*args, **{**kwargs, 'device': 'meta'})
+                meta_data = MetaTensor(elem, fake_device=device)
+            elem = meta_data._tensor
+        # As a meta tensor cannot be modified __class__ to torch.Tensor, we should use an empty real tensor here
+        r = torch.Tensor._make_subclass(cls, _EMPTY_DATA, require_grad=elem.requires_grad)
         r._meta_data = meta_data
         return r
 
-    def __init__(self, func, *args, meta_data=None, **kwargs):
+    def __init__(self, func, *args, meta_data=None, concrete_data=None, **kwargs):
         self._factory_method = (func, args, kwargs)    # (func, args, kwargs)
         self._op_buffer = []    # (func, args, kwargs, replace)
-        self._materialized_data: Optional[torch.Tensor] = None    # materialized data
+        self._materialized_data: Optional[torch.Tensor] = concrete_data    # materialized data
 
     def materialize(self) -> torch.Tensor:
-        """Materialize the ``LazyTensor`` to ``torch.Tensor``.
+        """Materialize the ``LazyTensor`` to ``torch.Tensor`` by modifying __class__ (inplace).
 
         Returns:
-            torch.Tensor: The materialized tensor.
+            torch.Tensor: The materialized tensor (self).
         """
         target = self._materialize_data()
-        if isinstance(self, nn.Parameter):
-            target = nn.Parameter(target, requires_grad=self.requires_grad)
-        return target
+        self.clean()
+        return _convert_cls(self, target)
+
+    def distribute(self, layout: Layout) -> torch.Tensor:
+        """Distribute the ``LazyTensor`` to ``torch.Tensor`` by modifying __class__ (inplace), according to the layout.
+
+        Args:
+            layout (Layout): Distribution layout.
+
+        Returns:
+            torch.Tensor: The distributed tensor (self).
+        """
+        target = self._materialize_data()
+        self.clean()
+        local_tensor = DTensor(target, layout).local_tensor
+        return _convert_cls(self, local_tensor)
 
     def clean(self) -> None:
         """Clean all stored operations, meta data and materialized data, which prevents memory leaking. This should be called after all tensors are materialized.
@@ -189,6 +257,8 @@ class LazyTensor(torch.Tensor):
         is_inplace: bool = (func.__name__.endswith('_') and not (func.__name__.endswith('__'))
                             or func.__name__ == "__setitem__")
 
+        is_change_meta_op: bool = func.__name__ in _CHANGE_META_OPS
+
         if isinstance(func, torch._C.ScriptMethod):
             # FIXME(ver217): torch script functions are not verified
 
@@ -212,10 +282,10 @@ class LazyTensor(torch.Tensor):
                 if isinstance(x, LazyTensor):
                     if x._materialized_data is not None:
                         # for early materialized tensor, use its materialized data directly
-                        return x._materialized_data
+                        return x._materialized_data if is_change_meta_op else x._materialized_data.data
                     t = x if is_inplace else x.clone()
                     t._op_buffer.append((func, args, kwargs))
-                    meta = x._meta_data.data
+                    meta = x._meta_data if is_change_meta_op else x._meta_data.data
                     meta_to_lazy[meta] = t
                     return meta
                 return x
@@ -232,13 +302,10 @@ class LazyTensor(torch.Tensor):
                         return lazy_y
                 elif type(y) is Tensor:
                     # for early materialized tensor
-                    with torch._C.DisableTorchFunction():
-                        meta = MetaTensor(y.new_empty(y.shape, dtype=y.dtype, device='meta'), fake_device=y.device)
-                    lazy_y = LazyTensor(lambda: None, meta_data=meta)
-                    lazy_y._materialized_data = y
-                    return lazy_y
+                    return LazyTensor(lambda: None, concrete_data=y)
                 return y
 
+            cls._pre_op_fn()
             o = func(*tree_map(unwrap, args), **tree_map(unwrap, kwargs))
             if isinstance(o, (tuple, list)):
                 return type(o)(wrap(y, i=i) for i, y in enumerate(o))
@@ -266,10 +333,36 @@ class LazyTensor(torch.Tensor):
 
     @data.setter
     def data(self, other: 'LazyTensor'):
-        raise NotImplementedError
+        """This is sightly different from oringinal `data` setter.
+
+        E.g.:
+            >>> a = torch.randn(3, 3) # a is a Tensor
+            >>> b = torch.rand(2, 2)
+            >>> a.data = b
+            >>> b.add_(1)   # this will affect a
+            >>> x = torch.randn(3, 3) # x is a LazyTensor
+            >>> y = torch.rand(2, 2) # y is a LazyTensor
+            >>> x.data = y
+            >>> y.add_(1)   # this will not affect x
+
+        """
+        if other is self:
+            return
+
+        self._op_buffer.append(other._factory_method)
+
+        def replace(x):
+            if x is other:
+                return self
+            return x
+
+        for func, args, kwargs in other._op_buffer:
+            self._op_buffer.append((func, tree_map(replace, args), tree_map(replace, kwargs)))
 
     def tolist(self) -> list:
-        t = self.materialize()
+        # Though self.__class__ is modified to torch.Tensor, in C++ side, it is still a subclass of torch.Tensor
+        # And subclass of torch.Tensor does not have tolist() method
+        t = self._materialize_data()
         return t.tolist()
 
     def __hash__(self):
@@ -330,16 +423,59 @@ class LazyInitContext:
 
             return wrapper, target
 
+        def wrap_legacy_constructor(target, dtype):
+            # legacy constructor (e.g. torch.LongTensor())
+            def wrapper(*args, **kwargs):
+                if len(args) == 1 and isinstance(args[0], torch.Tensor):
+                    # (Tensor other)
+                    return args[0]
+                elif len(args) == 1:
+                    # (object data, *, torch.device device)
+                    kwargs = {**kwargs, 'dtype': dtype}
+                    replaced, orig = self.overrides['tensor']
+                    return replaced(*args, **kwargs)
+                elif _is_int_tuple(args):
+                    # (tuple of ints size, *, torch.device device)
+                    kwargs = {**kwargs, 'dtype': dtype}
+                    replaced, orig = self.overrides['empty']
+                    return replaced(*args, **kwargs)
+                else:
+                    raise TypeError(
+                        f'new() received an invalid combination of arguments - got {tuple(type(x) for x in args)}, but expected one of:\n * (Tensor other)\n * (tuple of ints size, *, torch.device device)\n * (object data, *, torch.device device)'
+                    )
+
+            return wrapper, target
+
+        def wrap_no_meta_factory(target):
+            # factory functions which don't support meta tensor backend
+            def wrapper(*args, **kwargs):
+                tensor = target(*args, **kwargs)
+                return self.tensor_cls(lambda: None, concrete_data=tensor)
+
+            return wrapper, target
+
         self.overrides = {
             target: wrap_factory_method(getattr(torch, target))
-            for target in _TorchFactoryMethod
+            for target in _NORMAL_FACTORY
             if callable(getattr(torch, target, None))
         }
 
         self.overrides.update({
             target + '_like': wrap_factory_like_method(getattr(torch, target), getattr(torch, target + '_like'))
-            for target in _TorchFactoryMethod
+            for target in _NORMAL_FACTORY
             if callable(getattr(torch, target + '_like', None))
+        })
+
+        self.overrides.update({
+            target: wrap_legacy_constructor(getattr(torch, target), dtype)
+            for target, dtype in _LEGACY_TENSOR_CONSTRUCTOR.items()
+            if callable(getattr(torch, target, None))
+        })
+
+        self.overrides.update({
+            target: wrap_no_meta_factory(getattr(torch, target))
+            for target in _NO_META_FACTORY
+            if callable(getattr(torch, target, None))
         })
 
         for name, (wrapper, orig) in self.overrides.items():
@@ -351,46 +487,90 @@ class LazyInitContext:
             setattr(torch, name, orig)
 
     @staticmethod
-    def materialize(module: torch.nn.Module, verbose: bool = False):
-        """Initialize all ``nn.Parameter`` from ``LazyTensor``.
+    def materialize(module: nn.Module, verbose: bool = False) -> nn.Module:
+        """Initialize all ``nn.Parameter`` from ``LazyTensor``. This function will modify the module in-place.
 
         Args:
-            module (torch.nn.Module): Target ``nn.Module``
+            module (nn.Module): Target ``nn.Module``
             verbose (bool): Whether to print lazy initialization rate. Defaults to False.
         """
+
+        def apply_fn(name: str, p: LazyTensor):
+            p.materialize()
+
+        return _apply_to_lazy_module(module, apply_fn, verbose)
+
+    @staticmethod
+    def distribute(module: nn.Module, layout_dict: dict, verbose: bool = False) -> nn.Module:
+        """Distribute all ``nn.Parameter`` from ``LazyTensor``. This function will modify the module in-place.
+
+        Args:
+            module (nn.Module): Target ``nn.Module``
+            layout_dict (dict): Dict of layout for each parameter/buffer. The key is the parameter/buffer name, and the value is the layout.
+            verbose (bool, optional): Whether to print lazy initialization rate. Defaults to False.
+        """
+
+        def apply_fn(name: str, p: LazyTensor):
+            p.distribute(layout_dict[name])
+
+        return _apply_to_lazy_module(module, apply_fn, verbose)
+
+
+def _apply_to_lazy_module(module: nn.Module,
+                          apply_fn: Callable[[str, torch.Tensor], None],
+                          verbose: bool = False) -> nn.Module:
+    if verbose:
+        # verbose info
+        param_cnt = 0
+        param_lazy_cnt = 0
+        buf_cnt = 0
+        buf_lazy_cnt = 0
+        total_numel = 0
+        non_lazy_numel = 0
+
+    for name, p in module.named_parameters():
         if verbose:
-            param_cnt = 0
-            param_lazy_cnt = 0
-            buf_cnt = 0
-            buf_lazy_cnt = 0
+            param_cnt += 1
+            total_numel += p.numel()
+            if getattr(p, '_materialized_data', False) is None:
+                # if no _materialized_data attr, the tensor is not lazy
+                param_lazy_cnt += 1
+            else:
+                non_lazy_numel += p.numel()
+        if isinstance(p, LazyTensor):
+            apply_fn(name, p)
 
-        @torch.no_grad()
-        def init_recursively(module: nn.Module):
-            nonlocal param_cnt, param_lazy_cnt, buf_cnt, buf_lazy_cnt
-            # recursively initialize the module
-            for mod in module.children():
-                init_recursively(mod)
-
-            # initialize tensors directly attached to the current module
-            for name, param in module.named_parameters(recurse=False):
-                if verbose:
-                    param_cnt += 1
-                    if param._materialized_data is None:
-                        param_lazy_cnt += 1
-                setattr(module, name, param.materialize())
-                param.clean()
-
-            for name, buf in module.named_buffers(recurse=False):
-                if verbose:
-                    buf_cnt += 1
-                    if buf._materialized_data is None:
-                        buf_lazy_cnt += 1
-                setattr(module, name, buf.materialize())
-                buf.clean()
-
-        init_recursively(module)
-
+    for name, buf in module.named_buffers():
         if verbose:
-            print(f'Param lazy rate: {param_lazy_cnt}/{param_cnt}')
-            print(f'Buffer lazy rate: {buf_lazy_cnt}/{buf_cnt}')
-        return module
+            buf_cnt += 1
+            total_numel += buf.numel()
+            if getattr(buf, "_materialized_data", False) is None:
+                # if no _materialized_data attr, the tensor is not lazy
+                buf_lazy_cnt += 1
+            else:
+                non_lazy_numel += buf.numel()
+        if isinstance(buf, LazyTensor):
+            apply_fn(name, buf)
+
+    if verbose:
+        non_lazy_numel_ratio = non_lazy_numel / total_numel * 100 if non_lazy_numel != 0 else 0
+        _print_rank_0(f'Param lazy rate: {param_lazy_cnt}/{param_cnt}')
+        _print_rank_0(f'Buffer lazy rate: {buf_lazy_cnt}/{buf_cnt}')
+        _print_rank_0(
+            f'Non lazy numel: {non_lazy_numel} ({non_lazy_numel/1024**2:.3f} M), ratio: {non_lazy_numel_ratio}%')
+
+    return module
+
+
+def _print_rank_0(*args, **kwargs):
+    if not dist.is_initialized() or dist.get_rank() == 0:
+        print(*args, **kwargs)
+
+
+def _is_int_tuple(args) -> bool:
+    if not isinstance(args, tuple):
+        return False
+    for x in args:
+        if not isinstance(x, int):
+            return False
+    return True
