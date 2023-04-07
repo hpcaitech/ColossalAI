@@ -5,7 +5,12 @@ import pytest
 import torch
 import torchvision.models as tm
 
-from colossalai._analyzer.fx.codegen import ActivationCheckpointCodeGen
+try:
+    from colossalai._analyzer.fx.codegen import ActivationCheckpointCodeGen
+    NON_CODEGEN = False
+except:
+    NON_CODEGEN = True
+
 from colossalai._analyzer.fx.graph_module import ColoGraphModule
 from colossalai._analyzer.fx.passes import shape_prop_pass
 from colossalai._analyzer.fx.tracer.tracer import ColoTracer
@@ -119,6 +124,7 @@ def check_2stage_solver_on_resnet(rank, world_size, port):
 
 
 @run_on_environment_flag(name='AUTO_PARALLEL')
+@pytest.mark.skipif(NON_CODEGEN, reason='codegen is not available')
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_2stage_solver_on_resnet():
