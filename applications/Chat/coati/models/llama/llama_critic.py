@@ -1,8 +1,7 @@
 from typing import Optional
 
-import torch
 import torch.nn as nn
-from transformers import AutoModelForCausalLM, LlamaConfig, LlamaModel
+from transformers import LlamaConfig, LlamaModel
 
 from ..base import Critic
 
