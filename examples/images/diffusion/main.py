@@ -842,7 +842,7 @@ if __name__ == "__main__":
         if "metrics_over_trainsteps_checkpoint" in callbacks_cfg:
             metrics_over_config = callbacks_cfg['metrics_over_trainsteps_checkpoint']
             trainer_kwargs["callbacks"].append(ModelCheckpoint(**metrics_over_config.get("params", dict())))
-        #trainer_kwargs["callbacks"] = [instantiate_from_config(callbacks_cfg[k]) for k in callbacks_cfg]
+        
         trainer = Trainer.from_argparse_args(trainer_opt, **trainer_kwargs)
         trainer.logdir = logdir
         
