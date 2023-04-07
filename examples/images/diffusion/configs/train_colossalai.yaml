@@ -1,6 +1,6 @@
 model:
   base_learning_rate: 1.0e-4
-  #target: ldm.models.diffusion.ddpm.LatentDiffusion
+  target: ldm.models.diffusion.ddpm.LatentDiffusion
   params:
     parameterization: "v"
     linear_start: 0.00085
@@ -19,7 +19,7 @@ model:
     use_ema: False # we set this to false because this is an inference only config
 
     scheduler_config: # 10000 warmup steps
-      #target: ldm.lr_scheduler.LambdaLinearScheduler
+      target: ldm.lr_scheduler.LambdaLinearScheduler
       params:
         warm_up_steps: [ 1 ] # NOTE for resuming. use 10000 if starting from scratch
         cycle_lengths: [ 10000000000000 ] # incredibly large number to prevent corner cases
@@ -29,7 +29,7 @@ model:
 
 
     unet_config:
-      #target: ldm.modules.diffusionmodules.openaimodel.UNetModel
+      target: ldm.modules.diffusionmodules.openaimodel.UNetModel
       params:
         use_checkpoint: True
         use_fp16: True
@@ -48,7 +48,7 @@ model:
         legacy: False
 
     first_stage_config:
-      #target: ldm.models.autoencoder.AutoencoderKL
+      target: ldm.models.autoencoder.AutoencoderKL
       params:
         embed_dim: 4
         monitor: val/rec_loss
@@ -69,16 +69,16 @@ model:
           attn_resolutions: []
           dropout: 0.0
         lossconfig:
-          #target: torch.nn.Identity
+          target: torch.nn.Identity
 
     cond_stage_config:
-      #target: #ldm.modules.encoders.modules.FrozenOpenCLIPEmbedder
+      target: ldm.modules.encoders.modules.FrozenOpenCLIPEmbedder
       params:
         freeze: True
         layer: "penultimate"
 
 data:
-  #target: #main.DataModuleFromConfig
+  target: main.DataModuleFromConfig
   params:
     batch_size: 128
     wrap: False
@@ -88,20 +88,20 @@ data:
     train:
       target: ldm.data.base.Txt2ImgIterableBaseDataset
       params:
-        file_path: /data/scratch/diffuser/laion_part0/
+        file_path: # YOUR DATASET_PATH
         world_size: 1
         rank: 0
 
 lightning:
   trainer:
     accelerator: 'gpu'
-    devices: 2
+    devices: 8
     log_gpu_memory: all
     max_epochs: 2
     precision: 16
     auto_select_gpus: False
     strategy:
-      #target: #strategies.ColossalAIStrategy
+      target: strategies.ColossalAIStrategy
       params:
         use_chunk: True
         enable_distributed_storage: True
@@ -116,7 +116,7 @@ lightning:
 
   logger_config:
     wandb:
-      #target: #loggers.WandbLogger
+      target: loggers.WandbLogger
       params:
           name: nowname
           save_dir: "/tmp/diff_log/"
