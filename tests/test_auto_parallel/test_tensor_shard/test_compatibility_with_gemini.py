@@ -1,22 +1,22 @@
 import copy
-from functools import partial
 
 import pytest
 import torch
-import torch.multiprocessing as mp
-from torch.nn.parallel import DistributedDataParallel as DDP
 
-from colossalai.auto_parallel.tensor_shard.initialize import initialize_model
+try:
+    from colossalai.auto_parallel.tensor_shard.initialize import initialize_model
+    NO_CODEGEN = False
+except:
+    NO_CODEGEN = True
+
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.nn.parallel import zero_model_wrapper, zero_optim_wrapper
 from colossalai.tensor.process_group import ProcessGroup
-from colossalai.testing import assert_close, rerun_if_address_is_in_use
-from colossalai.testing.pytest_wrapper import run_on_environment_flag
-from colossalai.utils import free_port, get_current_device
-from colossalai.utils.model.colo_init_context import ColoInitContext, post_process_colo_init_ctx
+from colossalai.testing import assert_close, rerun_if_address_is_in_use, run_on_environment_flag, spawn
+from colossalai.utils import get_current_device
+from colossalai.zero import post_process_colo_init_ctx, zero_model_wrapper, zero_optim_wrapper
 
 
 class MLP(torch.nn.Module):
@@ -102,12 +102,11 @@ def check_auto_parallel_with_gemini(rank, world_size, port):
 
 
 @run_on_environment_flag(name='AUTO_PARALLEL')
+@pytest.mark.skipif(NO_CODEGEN, reason='No codegen found')
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_auto_parallel_with_gemini():
-    world_size = 4
-    run_func = partial(check_auto_parallel_with_gemini, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(check_auto_parallel_with_gemini, 4)
 
 
 if __name__ == '__main__':

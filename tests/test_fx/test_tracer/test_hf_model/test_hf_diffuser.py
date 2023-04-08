@@ -2,6 +2,7 @@ import pytest
 import torch
 
 from colossalai.fx import symbolic_trace
+from colossalai.testing import clear_cache_before_run
 from colossalai.testing.random import seed_all
 from tests.kit.model_zoo import model_zoo
 
@@ -40,6 +41,7 @@ def trace_and_compare(model_cls, data, output_fn):
 
 
 @pytest.mark.skip(reason='cannot pass this test yet')
+@clear_cache_before_run()
 def test_diffusers():
     seed_all(9091, cuda_deterministic=True)
 
@@ -52,6 +54,7 @@ def test_diffusers():
         print(f"{name:40s} √")
 
 
+@clear_cache_before_run()
 def test_torch_diffusers():
     seed_all(65535, cuda_deterministic=True)
 

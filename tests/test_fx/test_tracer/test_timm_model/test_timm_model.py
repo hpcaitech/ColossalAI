@@ -3,6 +3,7 @@ import torch
 from packaging import version
 
 from colossalai._analyzer.fx import symbolic_trace
+from colossalai.testing import clear_cache_before_run
 from tests.kit.model_zoo import model_zoo
 
 
@@ -43,6 +44,7 @@ def trace_and_compare(model_cls, data, output_transform_fn, meta_args=None):
 
 
 @pytest.mark.skipif(version.parse(torch.__version__) < version.parse('1.12.0'), reason='torch version < 12')
+@clear_cache_before_run()
 def test_timm_models():
     torch.backends.cudnn.deterministic = True
 

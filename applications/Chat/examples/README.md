@@ -57,7 +57,7 @@ You can run the `examples/train_rm.sh` to start a reward model training.
 
 You can also use the following cmd to start training a reward model.
 ```
-torchrun --standalone --nproc_per_node=4 train_reward_model.py
+torchrun --standalone --nproc_per_node=4 train_reward_model.py \
     --pretrain "/path/to/LLaMa-7B/" \
     --model 'llama' \
     --strategy colossalai_zero2 \

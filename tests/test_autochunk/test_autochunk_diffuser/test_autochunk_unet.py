@@ -1,9 +1,7 @@
-from functools import partial
 from typing import List, Tuple
 
 import pytest
 import torch
-import torch.multiprocessing as mp
 
 try:
     from diffusers import UNet2DModel
@@ -16,6 +14,7 @@ except:
 from test_autochunk_diffuser_utils import run_test
 
 from colossalai.autochunk.autochunk_codegen import AUTOCHUNK_AVAILABLE
+from colossalai.testing import clear_cache_before_run, parameterize, spawn
 
 BATCH_SIZE = 1
 HEIGHT = 448
@@ -37,17 +36,18 @@ def get_data(shape: tuple) -> Tuple[List, List]:
     not (AUTOCHUNK_AVAILABLE and HAS_REPO),
     reason="torch version is lower than 1.12.0",
 )
-@pytest.mark.parametrize("model", MODELS)
-@pytest.mark.parametrize("shape", [LATENTS_SHAPE])
-@pytest.mark.parametrize("max_memory", [None, 150, 300])
+@clear_cache_before_run()
+@parameterize("model", MODELS)
+@parameterize("shape", [LATENTS_SHAPE])
+@parameterize("max_memory", [None, 150, 300])
 def test_evoformer_block(model, shape, max_memory):
-    run_func = partial(
+    spawn(
         run_test,
+        1,
         max_memory=max_memory,
         model=model,
         data=get_data(shape),
     )
-    mp.spawn(run_func, nprocs=1)
 
 
 if __name__ == "__main__":

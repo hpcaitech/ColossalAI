@@ -10,8 +10,8 @@ from torch.nn.modules.loss import _Loss
 
 from colossalai.engine.gradient_handler import BaseGradientHandler
 from colossalai.engine.schedule import BaseSchedule, InterleavedPipelineSchedule, NonPipelineSchedule, PipelineSchedule
-from colossalai.gemini.ophooks import BaseOpHook, register_ophooks_recursively
 from colossalai.logging import get_dist_logger
+from colossalai.zero.legacy.gemini import BaseOpHook, register_ophooks_recursively
 
 
 class Engine:

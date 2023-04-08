@@ -237,7 +237,14 @@ class ShapeProp(torch.fx.Interpreter):
         Returns:
             Any: The value returned from executing the Module
         """
-        wrap_fn = lambda elem: MetaTensor(elem, device=device)
+
+        # wrap_fn = lambda elem: MetaTensor(elem, device=device)
+        def wrap_fn(elem, device=device):
+            if isinstance(elem, torch.Tensor):
+                return MetaTensor(elem, device=device)
+            else:
+                return elem
+
         with self._mode:
             return super().run(*tree_map(wrap_fn, args))
 

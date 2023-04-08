@@ -1,14 +1,14 @@
-import pytest
-import colossalai
-import torch
-import torch.multiprocessing as mp
-from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.utils.cuda import get_current_device
-from colossalai.utils import free_port
 from functools import partial
-from colossalai.nn.parallel.reducer import Reducer
+
+import pytest
+import torch
 import torch.distributed as dist
 from torch.distributed.distributed_c10d import _get_default_group
+
+import colossalai
+from colossalai.nn.parallel.reducer import Reducer
+from colossalai.testing import rerun_if_address_is_in_use, spawn
+from colossalai.utils.cuda import get_current_device
 
 REDUCE_CNT = 0
 
@@ -40,8 +40,7 @@ def run_dist(rank, world_size, port):
 @pytest.mark.parametrize('world_size', [1, 2])
 @rerun_if_address_is_in_use()
 def test_reducer(world_size):
-    run_func = partial(run_dist, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_dist, world_size)
 
 
 if __name__ == '__main__':

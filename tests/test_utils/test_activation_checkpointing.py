@@ -4,8 +4,10 @@
 import pytest
 import torch
 import torch.nn.functional as F
+
 from colossalai.context.parallel_mode import ParallelMode
-from colossalai.context.random import add_seed, seed, set_mode, reset_seeds
+from colossalai.context.random import add_seed, reset_seeds, seed, set_mode
+from colossalai.testing import clear_cache_before_run, parameterize
 from colossalai.utils.activation_checkpoint import checkpoint
 
 
@@ -39,8 +41,9 @@ def forward_inplace(x, weight):
 
 
 @pytest.mark.gpu
-@pytest.mark.parametrize("use_reentrant", [True, False])
-@pytest.mark.parametrize("cpu_offload", [True, False])
+@clear_cache_before_run()
+@parameterize("use_reentrant", [True, False])
+@parameterize("cpu_offload", [True, False])
 def test_activation_checkpointing(cpu_offload, use_reentrant):
 
     # as seed manager is singleton

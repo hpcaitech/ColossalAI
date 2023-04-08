@@ -1,15 +1,11 @@
 import pytest
 import torch
-import torch.multiprocessing as mp
-import torch.nn.functional as F
-from torch.fx import GraphModule
-from torch.utils.checkpoint import checkpoint
 
 import colossalai
 from colossalai.core import global_context as gpc
 from colossalai.fx import ColoTracer
 from colossalai.fx.graph_module import ColoGraphModule
-from colossalai.utils import free_port
+from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 try:
     from colossalai.fx.codegen import ActivationCheckpointCodeGen
@@ -35,9 +31,9 @@ class MyModule(torch.nn.Module):
         return self.linear6(self.linear5(self.linear4(self.linear3(self.linear2(self.linear1(x))))))
 
 
-def _run_act_ckpt_codegen(rank):
+def _run_act_ckpt_codegen(rank, world_size, port):
     # launch colossalai to make sure we could execute colossalai.utils.checkpoint currectly
-    colossalai.launch(config={}, rank=rank, world_size=1, host='localhost', port=free_port(), backend='nccl')
+    colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
 
     # build model and run forward
     model = MyModule()
@@ -89,12 +85,12 @@ def _run_act_ckpt_codegen(rank):
 
 @pytest.mark.skipif(not with_codegen, reason='torch version is lower than 1.12.0')
 def test_act_ckpt_codegen():
-    mp.spawn(_run_act_ckpt_codegen, nprocs=1)
+    spawn(_run_act_ckpt_codegen, 1)
 
 
-def _run_act_ckpt_python_code_torch11(rank):
+def _run_act_ckpt_python_code_torch11(rank, world_size, port):
     # launch colossalai to make sure we could execute colossalai.utils.checkpoint currectly
-    colossalai.launch(config={}, rank=rank, world_size=1, host='localhost', port=free_port(), backend='nccl')
+    colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
 
     # build model and run forward
     model = MyModule()
@@ -146,8 +142,9 @@ def _run_act_ckpt_python_code_torch11(rank):
 
 @pytest.mark.skipif(with_codegen, reason='torch version is equal to or higher than 1.12.0')
 @pytest.mark.skip(reason="currently torch11 ColoGraphModule is not done")
+@rerun_if_address_is_in_use()
 def test_act_ckpt_python_code_torch11():
-    mp.spawn(_run_act_ckpt_python_code_torch11, nprocs=1)
+    spawn(_run_act_ckpt_python_code_torch11, 1)
 
 
 if __name__ == '__main__':
