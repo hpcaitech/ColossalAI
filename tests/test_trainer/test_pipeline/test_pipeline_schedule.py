@@ -1,34 +1,26 @@
 # referenced from Megatron and used to testify communication
 
 import os
-import os.path as osp
-from functools import partial
 from pathlib import Path
 
-import colossalai
 import pytest
 import torch
 import torch.nn as nn
-import torch.multiprocessing as mp
-from colossalai.core import global_context as gpc
-from colossalai.context import ParallelMode
-from colossalai.initialize import launch
-from colossalai.utils import free_port, get_dataloader, print_rank_0
-from colossalai.testing import rerun_on_exception
 from torchvision import transforms
 from torchvision.datasets import CIFAR10
 from torchvision.models import resnet18
 
+import colossalai
+from colossalai.context import ParallelMode
+from colossalai.core import global_context as gpc
+from colossalai.initialize import launch
+from colossalai.testing import rerun_if_address_is_in_use, spawn
+from colossalai.utils import get_dataloader, print_rank_0
 
 BATCH_SIZE = 8
 
-CONFIG=dict(
-    NUM_MICRO_BATCHES=2,
-    parallel = dict(
-        pipeline=dict(size=2),
-        tensor=dict(size=1, mode=None)
-    )
-)
+CONFIG = dict(NUM_MICRO_BATCHES=2, parallel=dict(pipeline=dict(size=2), tensor=dict(size=1, mode=None)))
+
 
 def run_schedule(rank, world_size, port):
     launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
@@ -85,11 +77,10 @@ def run_schedule(rank, world_size, port):
 
 
 @pytest.mark.dist
-@rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
+@rerun_if_address_is_in_use()
 def test_pipeline_schedule():
     world_size = 2
-    run_func = partial(run_schedule, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_schedule, world_size)
 
 
 if __name__ == '__main__':

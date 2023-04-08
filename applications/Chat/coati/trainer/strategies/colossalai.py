@@ -14,16 +14,15 @@ from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 import colossalai
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import CPUAdam, HybridAdam
-from colossalai.nn.parallel import ZeroDDP, zero_model_wrapper, zero_optim_wrapper
-from colossalai.nn.parallel.utils import get_static_torch_model
 from colossalai.tensor import ProcessGroup, ShardSpec
 from colossalai.utils import get_current_device
-from colossalai.utils.model.colo_init_context import ColoInitContext
-
-logger = get_dist_logger(__name__)
+from colossalai.zero import ColoInitContext, ZeroDDP, zero_model_wrapper, zero_optim_wrapper
+from colossalai.zero.gemini.utils import get_static_torch_model
 
 from .base import Strategy
 from .ddp import DDPStrategy
+
+logger = get_dist_logger(__name__)
 
 
 class ColossalAIStrategy(DDPStrategy):

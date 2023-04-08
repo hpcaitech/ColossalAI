@@ -1,7 +1,4 @@
-from functools import partial
-
 import torch
-import torch.multiprocessing as mp
 
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.initialize import launch
@@ -9,7 +6,7 @@ from colossalai.logging import disable_existing_loggers
 from colossalai.tensor.d_tensor.d_tensor import DTensor, distribute_tensor
 from colossalai.tensor.d_tensor.layout import Layout
 from colossalai.tensor.d_tensor.sharding_spec import ShardingSpec
-from colossalai.utils import free_port
+from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 
 class TestModel(torch.nn.Module):
@@ -92,10 +89,10 @@ def check_dtensor(rank, world_size, port):
         raise ValueError(f'rank {rank} is not in the device mesh')
 
 
+@rerun_if_address_is_in_use()
 def test_dtensor():
     world_size = 4
-    run_func = partial(check_dtensor, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(check_dtensor, world_size)
 
 
 if __name__ == '__main__':

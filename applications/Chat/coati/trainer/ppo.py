@@ -92,9 +92,10 @@ class PPOTrainer(Trainer):
 
         # ptx loss
         if self.ptx_coef != 0:
-            ptx = next(iter(self.pretrain_dataloader))['input_ids'].to(torch.cuda.current_device())
-            label = next(iter(self.pretrain_dataloader))['labels'].to(torch.cuda.current_device())[:, 1:]
-            attention_mask = next(iter(self.pretrain_dataloader))['attention_mask'].to(torch.cuda.current_device())
+            batch = next(iter(self.pretrain_dataloader))
+            ptx = batch['input_ids'].to(torch.cuda.current_device())
+            label = batch['labels'].to(torch.cuda.current_device())[:, 1:]
+            attention_mask = batch['attention_mask'].to(torch.cuda.current_device())
             ptx_log_probs = self.actor.get_base_model()(ptx, attention_mask=attention_mask)['logits'][..., :-1, :]
             ptx_loss = self.ptx_loss_fn(ptx_log_probs.view(-1, ptx_log_probs.size(-1)), label.view(-1))
             actor_loss = ptx_loss * self.ptx_coef + actor_loss * (1 - self.ptx_coef)
@@ -116,6 +117,12 @@ class PPOTrainer(Trainer):
         self.critic_optim.zero_grad()
 
         return {'reward': experience.reward.mean().item()}
+    
+    def save_model(self, path: str, only_rank0: bool = False, tokenizer: Optional[PreTrainedTokenizerBase] = None) -> None:
+        self.strategy.save_model(model=self.actor, path=path, only_rank0=only_rank0, tokenizer=tokenizer)
+
+    def save_model(self, path: str, only_rank0: bool = False, tokenizer: Optional[PreTrainedTokenizerBase] = None) -> None:
+        self.strategy.save_model(model=self.actor, path=path, only_rank0=only_rank0, tokenizer=tokenizer)
 
 
 def _set_default_generate_kwargs(strategy: Strategy, generate_kwargs: dict, actor: Actor) -> None:
@@ -129,7 +136,3 @@ def _set_default_generate_kwargs(strategy: Strategy, generate_kwargs: dict, acto
         new_kwargs['update_model_kwargs_fn'] = update_model_kwargs_fn
 
     return new_kwargs
-
-
-def save_model(self, path: str, only_rank0: bool = False, tokenizer: Optional[PreTrainedTokenizerBase] = None) -> None:
-    self.strategy.save_model(model=self.actor, path=path, only_rank0=only_rank0, tokenizer=tokenizer)

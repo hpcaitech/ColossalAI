@@ -5,7 +5,7 @@ torchrun --standalone --nproc_per_node=1 debug.py
 from diffusers import AutoencoderKL
 
 import colossalai
-from colossalai.utils.model.colo_init_context import ColoInitContext, post_process_colo_init_ctx
+from colossalai.zero import ColoInitContext, post_process_colo_init_ctx
 
 path = "/data/scratch/diffuser/stable-diffusion-v1-4"
 

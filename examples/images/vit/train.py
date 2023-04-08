@@ -19,7 +19,7 @@ from colossalai.nn.optimizer import HybridAdam
 from colossalai.nn.parallel.data_parallel import ColoDDP
 from colossalai.tensor import ComputePattern, ComputeSpec, DistSpecManager, ProcessGroup, ShardSpec
 from colossalai.utils import get_current_device
-from colossalai.utils.model.colo_init_context import ColoInitContext
+from colossalai.zero import ColoInitContext
 
 
 def init_1d_row_for_linear_weight_spec(model, world_size: int):

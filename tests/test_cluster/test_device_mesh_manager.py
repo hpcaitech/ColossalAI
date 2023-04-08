@@ -1,14 +1,9 @@
-from functools import partial
-
 import torch
-import torch.multiprocessing as mp
 
 from colossalai.cluster.device_mesh_manager import DeviceMeshInfo, DeviceMeshManager
-from colossalai.device.device_mesh import DeviceMesh
-from colossalai.fx.tracer import ColoTracer
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
-from colossalai.utils import free_port
+from colossalai.testing import spawn
 
 
 def check_device_mesh_manager(rank, world_size, port):
@@ -31,9 +26,7 @@ def check_device_mesh_manager(rank, world_size, port):
 
 
 def test_device_mesh_manager():
-    world_size = 4
-    run_func = partial(check_device_mesh_manager, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(check_device_mesh_manager, 4)
 
 
 if __name__ == '__main__':

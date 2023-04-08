@@ -1,10 +1,17 @@
+from typing import Iterable, List
+
 import torch.nn as nn
-from typing import List
-from colossalai.engine import BaseGradientHandler
-from typing import Iterable
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
-from ._gradient_accumulation import GradAccumDataloader, GradAccumOptimizer, GradAccumLrSchedulerByStep, GradAccumGradientHandler
+
+from colossalai.engine import BaseGradientHandler
+
+from ._gradient_accumulation import (
+    GradAccumDataloader,
+    GradAccumGradientHandler,
+    GradAccumLrSchedulerByStep,
+    GradAccumOptimizer,
+)
 
 __all__ = [
     'accumulate_gradient', 'GradAccumDataloader', 'GradAccumOptimizer', 'GradAccumLrSchedulerByStep',

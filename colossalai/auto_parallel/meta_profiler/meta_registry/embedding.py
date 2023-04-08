@@ -2,9 +2,9 @@ from typing import List, Tuple
 
 import torch
 
+from colossalai._analyzer._subclasses.flop_tensor import flop_mapping
+from colossalai._analyzer.fx.node_util import compute_size_in_bytes
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import MemoryCost, OperationDataType, TrainCycleItem
-from colossalai.fx.profiler.memory_utils import activation_size
-from colossalai.fx.profiler.opcount import flop_mapping
 
 from ..registry import meta_register
 
@@ -34,11 +34,11 @@ def embedding_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleItem
     # NOTE: during the backward phase of torch.nn.Embedding, it seems when the input is large enough, it will
     # have a temp memory which is kind of weird and we don't know the reason yet, so currently we just assume
     # that there will be no temp memory, as the temp memory is significantly smaller than the gradient memory
-    fwd_memory_cost = MemoryCost(activation=activation_size([input_tensor, output_tensor]),
+    fwd_memory_cost = MemoryCost(activation=compute_size_in_bytes([input_tensor, output_tensor]),
                                  parameter=0,
                                  temp=0,
                                  buffer=0)
-    bwd_memory_cost = MemoryCost(activation=activation_size([weight_tensor]), parameter=0, temp=0, buffer=0)
+    bwd_memory_cost = MemoryCost(activation=compute_size_in_bytes([weight_tensor]), parameter=0, temp=0, buffer=0)
 
     total_memory_cost = MemoryCost(activation=fwd_memory_cost.activation + bwd_memory_cost.activation)
 

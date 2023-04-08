@@ -1,23 +1,21 @@
 import os
-from functools import partial
 from pathlib import Path
 
-import colossalai
 import pytest
 import torch
-import torch.multiprocessing as mp
 import torch.nn as nn
-from colossalai.context.parallel_mode import ParallelMode
-from colossalai.core import global_context as gpc
-from colossalai.engine.schedule import PipelineSchedule
-from colossalai.logging import get_dist_logger
-from colossalai.trainer import Trainer
-from colossalai.utils import MultiTimer, free_port, get_dataloader
 from torch.optim import Adam
 from torchvision import transforms
 from torchvision.datasets import CIFAR10
 from torchvision.models import resnet18
-from colossalai.testing import rerun_if_address_is_in_use
+
+import colossalai
+from colossalai.context.parallel_mode import ParallelMode
+from colossalai.core import global_context as gpc
+from colossalai.logging import get_dist_logger
+from colossalai.testing import rerun_if_address_is_in_use, spawn
+from colossalai.trainer import Trainer
+from colossalai.utils import MultiTimer, get_dataloader
 
 BATCH_SIZE = 4
 IMG_SIZE = 32
@@ -91,8 +89,7 @@ def run_trainer_with_pipeline(rank, world_size, port):
 @rerun_if_address_is_in_use()
 def test_trainer_with_pipeline():
     world_size = 4
-    run_func = partial(run_trainer_with_pipeline, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_trainer_with_pipeline, world_size)
 
 
 if __name__ == '__main__':

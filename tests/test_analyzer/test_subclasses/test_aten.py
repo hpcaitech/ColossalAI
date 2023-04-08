@@ -1,8 +1,10 @@
 from typing import Any, Callable, Union
-import pytest
 
+import pytest
 import torch
 import torch.nn as nn
+
+from colossalai.testing import clear_cache_before_run
 
 try:
     from colossalai._analyzer._subclasses import MetaTensor
@@ -72,6 +74,7 @@ def run_and_compare(f: Union[nn.Module, Callable], x: torch.Tensor, requires_bac
 
 
 @pytest.mark.skipif(torch.__version__ < '1.12.0', reason='torch version < 12')
+@clear_cache_before_run()
 def test_meta_aten():
     for (aten_op, requires_backward), v in registered_meta.items():
         for f, x in v:
