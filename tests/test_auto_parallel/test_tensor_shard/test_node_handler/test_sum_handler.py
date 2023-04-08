@@ -1,8 +1,5 @@
-from functools import partial
-
 import pytest
 import torch
-import torch.multiprocessing as mp
 import torch.nn as nn
 
 from colossalai._analyzer.fx.graph_module import ColoGraphModule
@@ -14,9 +11,7 @@ from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationDat
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
-from colossalai.testing import assert_close, parameterize, rerun_if_address_is_in_use
-from colossalai.testing.pytest_wrapper import run_on_environment_flag
-from colossalai.utils import free_port
+from colossalai.testing import parameterize, rerun_if_address_is_in_use, run_on_environment_flag, spawn
 from tests.test_auto_parallel.test_tensor_shard.test_node_handler.utils import numerical_test_for_node_strategy
 
 
@@ -36,7 +31,7 @@ class LinearSumModel(nn.Module):
         return sum_node
 
 
-def check_sum_handler(rank, sum_dims, keepdim, world_size, port):
+def check_sum_handler(rank, world_size, port, sum_dims, keepdim):
     disable_existing_loggers()
     launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     model = LinearSumModel(sum_dims=sum_dims, keepdim=keepdim).cuda()
@@ -228,9 +223,7 @@ def check_sum_handler(rank, sum_dims, keepdim, world_size, port):
 @parameterize('sum_dims', [(0, 2), 1])
 @parameterize('keepdim', [False, True])
 def test_sum_handler(sum_dims, keepdim):
-    world_size = 4
-    run_func = partial(check_sum_handler, sum_dims=sum_dims, keepdim=keepdim, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(check_sum_handler, 4, sum_dims=sum_dims, keepdim=keepdim)
 
 
 if __name__ == '__main__':

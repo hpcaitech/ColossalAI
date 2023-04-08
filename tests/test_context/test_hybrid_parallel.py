@@ -1,19 +1,17 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
-from functools import partial
 from pathlib import Path
+
 import pytest
 import torch
-import torch.multiprocessing as mp
 
 from colossalai import launch
+from colossalai.context import reset_seeds
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.utils import free_port
-from colossalai.context import reset_seeds
 from colossalai.global_variables import tensor_parallel_env as tp_env
-from colossalai.testing import rerun_if_address_is_in_use
+from colossalai.testing import free_port, rerun_if_address_is_in_use, spawn
 
 CONFIG_PATH_LIST = list(Path(__file__).parent.glob('configs/*.py'))
 
@@ -134,9 +132,14 @@ def init_context(config_path, rank, world_size, backend, port, host):
     torch.cuda.empty_cache()
 
 
-def run_dist(rank, world_size, backend, port_list, host):
-    for config_path, port in zip(CONFIG_PATH_LIST, port_list):
-        init_context(config_path=config_path, rank=rank, world_size=world_size, backend=backend, port=port, host=host)
+def run_dist(rank, world_size, port, backend, port_list, host):
+    for config_path, current_port in zip(CONFIG_PATH_LIST, port_list):
+        init_context(config_path=config_path,
+                     rank=rank,
+                     world_size=world_size,
+                     backend=backend,
+                     port=current_port,
+                     host=host)
         reset_seeds()
 
 
@@ -156,8 +159,7 @@ def test_context():
                 port_list.append(port)
                 break
 
-    test_fn = partial(run_dist, world_size=world_size, backend='gloo', port_list=port_list, host='localhost')
-    mp.spawn(test_fn, nprocs=world_size)
+    spawn(run_dist, world_size, backend='gloo', port_list=port_list, host='localhost')
 
 
 if __name__ == '__main__':

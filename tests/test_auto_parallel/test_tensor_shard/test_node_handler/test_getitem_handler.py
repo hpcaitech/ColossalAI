@@ -2,7 +2,6 @@ from functools import partial
 
 import pytest
 import torch
-import torch.multiprocessing as mp
 import torch.nn as nn
 
 from colossalai._analyzer.fx.graph_module import ColoGraphModule
@@ -14,12 +13,10 @@ from colossalai.auto_parallel.tensor_shard.node_handler.linear_handler import Li
 from colossalai.auto_parallel.tensor_shard.node_handler.placeholder_handler import PlaceholderHandler
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationData, OperationDataType, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
-from colossalai.fx.tracer.meta_patch.patched_module import linear
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
-from colossalai.testing import assert_close, parameterize, rerun_if_address_is_in_use
+from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.testing.pytest_wrapper import run_on_environment_flag
-from colossalai.utils import free_port
 from tests.test_auto_parallel.test_tensor_shard.test_node_handler.utils import numerical_test_for_node_strategy
 
 
@@ -103,12 +100,7 @@ def check_getitem_from_tensor_handler(rank, getitem_index, world_size, port):
 # @parameterize('getitem_index', [slice(0, 2), (slice(None), slice(None))])
 @parameterize('getitem_index', [1, (1, 4), slice(0, 2), (slice(None), slice(None))])
 def test_getitem_from_tensor_handler(getitem_index):
-    world_size = 4
-    run_func = partial(check_getitem_from_tensor_handler,
-                       getitem_index=getitem_index,
-                       world_size=world_size,
-                       port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(check_getitem_from_tensor_handler, 4)
 
 
 class GetItemFromTupleModel(nn.Module):
@@ -123,6 +115,7 @@ class GetItemFromTupleModel(nn.Module):
 
 
 @run_on_environment_flag(name='AUTO_PARALLEL')
+@clear_cache_before_run()
 def test_getitem_from_tuple_handler():
     model = GetItemFromTupleModel()
     tracer = ColoTracer()

@@ -6,6 +6,7 @@ import torch
 from torch.fx import symbolic_trace
 from torch.fx.node import Node
 
+from colossalai._analyzer.fx.node_util import MetaInfo
 from colossalai.auto_parallel.tensor_shard.constants import RESHAPE_FUNC_OP
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
     CommAction,
@@ -74,9 +75,9 @@ def solution_annotatation_pass(gm: torch.fx.GraphModule, solution: List[int],
         origin_node_sharding_spec_dict[node_index] = strategies_vector[strategy_index].get_sharding_spec_by_name(
             str(node))
 
-        # attach the corresponding metainfo if node has the attribute `metainfo_vector`
-        if hasattr(node, 'metainfo_vector'):
-            setattr(node, 'best_metainfo', node.metainfo_vector[strategy_index])
+        # attach the corresponding metainfo if node has the attribute `strategies_info`
+        if hasattr(node, 'strategies_info'):
+            setattr(node, 'best_strategy_info', node.strategies_info[strategy_index])
 
     # the dict to get input sharding specs of user node
     sharding_spec_convert_dict = {}
@@ -172,8 +173,11 @@ def size_value_converting_pass(gm: torch.fx.GraphModule, device_mesh: DeviceMesh
         # It will be used to replace the original node with processing node in slice object
         node_pairs[node] = size_processing_node
         size_processing_node._meta_data = node._meta_data
-        if 'activation_checkpoint' in node.meta:
-            size_processing_node.meta['activation_checkpoint'] = node.meta['activation_checkpoint']
+
+        if hasattr(node.meta['info'], 'activation_checkpoint'):
+            MetaInfo(size_processing_node,
+                     mod_dir=node.meta['info'].mod_dir,
+                     activation_checkpoint=tuple(node.meta['info'].activation_checkpoint))
 
         user_list = list(node.users.keys())
         for user in user_list:

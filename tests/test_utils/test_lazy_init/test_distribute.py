@@ -1,17 +1,14 @@
-from functools import partial
 from typing import Optional
 
 import pytest
 import torch
-import torch.multiprocessing as mp
 import torch.nn as nn
 
 import colossalai
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.tensor.d_tensor.layout import Layout
 from colossalai.tensor.d_tensor.sharding_spec import ShardingSpec
-from colossalai.testing import parameterize, rerun_if_address_is_in_use
-from colossalai.utils import free_port
+from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.utils.common import print_rank_0
 
 try:
@@ -105,9 +102,7 @@ def run_dist(rank, world_size, port) -> None:
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_dist_lazy_init():
-    world_size = 4
-    run_func = partial(run_dist, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_dist, 4)
 
 
 if __name__ == '__main__':

@@ -2,6 +2,8 @@ from typing import Callable, Dict, List, Tuple, Union
 
 import torch
 
+from colossalai._analyzer._subclasses.flop_tensor import flop_mapping
+from colossalai._analyzer.fx.node_util import compute_size_in_bytes
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
     MemoryCost,
     OperationData,
@@ -10,8 +12,6 @@ from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
     StrategiesVector,
     TrainCycleItem,
 )
-from colossalai.fx.profiler.memory_utils import activation_size
-from colossalai.fx.profiler.opcount import flop_mapping
 from colossalai.tensor.sharding_spec import ShardingSpec
 
 from ..registry import meta_register
@@ -77,17 +77,18 @@ def batchnormnd_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleIt
     # calculate memory cost
     # the fwd activation cost is output plus saved mean and saved inv std
     # NOTE: currently in SPMD solver we always believe that there will be a new tensor created in forward
-    fwd_memory_cost = MemoryCost(activation=activation_size([input_tensor, output_tensor, mean_tensor, var_tensor]),
-                                 parameter=activation_size([weight_tensor, bias_tensor]),
+    fwd_memory_cost = MemoryCost(activation=compute_size_in_bytes(
+        [input_tensor, output_tensor, mean_tensor, var_tensor]),
+                                 parameter=compute_size_in_bytes([weight_tensor, bias_tensor]),
                                  temp=0,
-                                 buffer=activation_size([mean_tensor, var_tensor]))
+                                 buffer=compute_size_in_bytes([mean_tensor, var_tensor]))
 
     # the bwd memory cost is quite tricky here, BatchNorm will remove saved mean
     # and saved inv std during backward phase
-    bwd_memory_cost = MemoryCost(activation=activation_size([input_tensor]),
-                                 parameter=activation_size([weight_tensor, bias_tensor]),
-                                 temp=activation_size([mean_tensor, var_tensor]),
-                                 buffer=activation_size([mean_tensor, var_tensor]))
+    bwd_memory_cost = MemoryCost(activation=compute_size_in_bytes([input_tensor]),
+                                 parameter=compute_size_in_bytes([weight_tensor, bias_tensor]),
+                                 temp=compute_size_in_bytes([mean_tensor, var_tensor]),
+                                 buffer=compute_size_in_bytes([mean_tensor, var_tensor]))
 
     # total cost is the sum of forward and backward cost
     total_cost = MemoryCost(activation=fwd_memory_cost.activation + bwd_memory_cost.activation,
@@ -131,15 +132,16 @@ def layernorm_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleItem
 
     # memory cost
     # NOTE: currently in SPMD solver we always believe that there will be a new tensor created in forward
-    fwd_memory_cost = MemoryCost(activation=activation_size([input_tensor, output_tensor, weight_tensor, bias_tensor]),
-                                 parameter=activation_size([weight_tensor, bias_tensor]),
+    fwd_memory_cost = MemoryCost(activation=compute_size_in_bytes(
+        [input_tensor, output_tensor, weight_tensor, bias_tensor]),
+                                 parameter=compute_size_in_bytes([weight_tensor, bias_tensor]),
                                  temp=0,
-                                 buffer=activation_size([running_mean, running_var]))
+                                 buffer=compute_size_in_bytes([running_mean, running_var]))
 
-    bwd_memory_cost = MemoryCost(activation=activation_size([input_tensor, weight_tensor, bias_tensor]),
-                                 parameter=activation_size([weight_tensor, bias_tensor]),
-                                 temp=activation_size([running_mean, running_var]),
-                                 buffer=activation_size([running_mean, running_var]))
+    bwd_memory_cost = MemoryCost(activation=compute_size_in_bytes([input_tensor, weight_tensor, bias_tensor]),
+                                 parameter=compute_size_in_bytes([weight_tensor, bias_tensor]),
+                                 temp=compute_size_in_bytes([running_mean, running_var]),
+                                 buffer=compute_size_in_bytes([running_mean, running_var]))
 
     total_cost = MemoryCost(activation=fwd_memory_cost.activation + bwd_memory_cost.activation,
                             parameter=fwd_memory_cost.parameter + bwd_memory_cost.parameter,

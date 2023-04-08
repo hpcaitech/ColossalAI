@@ -1,14 +1,11 @@
-import colossalai
-import torch
 import pytest
+import torch
 import torch.nn as nn
-import torch.multiprocessing as mp
-from colossalai.tensor import ColoTensor, ProcessGroup
-from colossalai.tensor import ColoTensorSpec
-from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.utils import free_port
-from functools import partial
-from tests.test_tensor.common_utils import tensor_shard_equal, tensor_equal, split_param_row_tp1d, split_param_col_tp1d
+
+import colossalai
+from colossalai.tensor import ColoTensor, ColoTensorSpec, ProcessGroup
+from colossalai.testing import rerun_if_address_is_in_use, spawn
+from tests.test_tensor.common_utils import split_param_col_tp1d, split_param_row_tp1d, tensor_equal, tensor_shard_equal
 
 
 class Conv1D(nn.Module):
@@ -69,8 +66,7 @@ def run_dist(rank, world_size, port):
 @pytest.mark.parametrize('world_size', [1, 4])
 @rerun_if_address_is_in_use()
 def test_addmm_1d(world_size):
-    run_func = partial(run_dist, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_dist, world_size)
 
 
 if __name__ == '__main__':

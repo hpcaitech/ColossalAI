@@ -1,21 +1,26 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
-from functools import partial
-
 import pytest
 import torch
 import torch.distributed as dist
-import torch.multiprocessing as mp
-from colossalai.communication import (recv_backward, recv_forward, recv_obj_meta, send_backward,
-                                      send_backward_recv_forward, send_forward, send_forward_recv_backward,
-                                      send_obj_meta)
+
+from colossalai.communication import (
+    recv_backward,
+    recv_forward,
+    recv_obj_meta,
+    send_backward,
+    send_backward_recv_forward,
+    send_forward,
+    send_forward_recv_backward,
+    send_obj_meta,
+)
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.initialize import launch
 from colossalai.logging import get_dist_logger
-from colossalai.utils import free_port, get_current_device
-from colossalai.testing import rerun_on_exception
+from colossalai.testing import rerun_if_address_is_in_use, spawn
+from colossalai.utils import get_current_device
 
 BATCH_SIZE = 4
 SEQ_LENGTH = 2
@@ -93,11 +98,10 @@ def run_check(rank, world_size, port):
 
 
 @pytest.mark.dist
-@rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
+@rerun_if_address_is_in_use()
 def test_p2p():
     world_size = 4
-    run_func = partial(run_check, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_check, world_size)
 
 
 if __name__ == '__main__':

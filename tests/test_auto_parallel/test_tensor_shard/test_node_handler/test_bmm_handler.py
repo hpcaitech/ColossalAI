@@ -1,8 +1,5 @@
-from functools import partial
-
 import pytest
 import torch
-import torch.multiprocessing as mp
 import torch.nn as nn
 
 from colossalai._analyzer.fx.graph_module import ColoGraphModule
@@ -13,9 +10,7 @@ from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationDat
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
-from colossalai.testing import assert_close, parameterize, rerun_if_address_is_in_use
-from colossalai.testing.pytest_wrapper import run_on_environment_flag
-from colossalai.utils import free_port
+from colossalai.testing import parameterize, rerun_if_address_is_in_use, run_on_environment_flag, spawn
 from tests.test_auto_parallel.test_tensor_shard.test_node_handler.utils import numerical_test_for_node_strategy
 
 
@@ -207,11 +202,8 @@ def check_1d_device_mesh(rank, module, world_size, port):
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_bmm_handler(module):
-    world_size = 4
-    run_func_2d = partial(check_2d_device_mesh, module=module, world_size=world_size, port=free_port())
-    mp.spawn(run_func_2d, nprocs=world_size)
-    run_func_1d = partial(check_1d_device_mesh, module=module, world_size=world_size, port=free_port())
-    mp.spawn(run_func_1d, nprocs=world_size)
+    spawn(check_2d_device_mesh, 4, module=module)
+    spawn(check_1d_device_mesh, 4, module=module)
 
 
 if __name__ == '__main__':

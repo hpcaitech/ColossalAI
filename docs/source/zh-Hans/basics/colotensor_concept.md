@@ -57,12 +57,12 @@ ColoTensor 包含额外的属性[ColoTensorSpec](https://colossalai.readthedocs.
 ```python
 import torch
 import torch.multiprocessing as mp
-from colossalai.utils import free_port, print_rank_0
+from colossalai.utils import print_rank_0
 from functools import partial
 
 import colossalai
 from colossalai.tensor import ProcessGroup, ColoTensor, ColoTensorSpec, ShardSpec, ComputeSpec, ComputePattern
-from colossalai.utils import free_port
+from colossalai.testing import spawn
 
 import torch
 
@@ -84,8 +84,7 @@ def run_dist_tests(rank, world_size, port):
     print_rank_0(f"shape {t1.shape}, {t1.data}")
 
 def test_dist_cases(world_size):
-    run_func = partial(run_dist_tests, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_dist_tests, world_size)
 
 if __name__ == '__main__':
     test_dist_cases(4)

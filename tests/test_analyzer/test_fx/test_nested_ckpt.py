@@ -1,7 +1,9 @@
+import pytest
 import torch
 import torch.nn as nn
 from torch.utils.checkpoint import checkpoint
-import pytest
+
+from colossalai.testing import clear_cache_before_run
 
 try:
     from colossalai._analyzer.fx import symbolic_trace
@@ -42,6 +44,7 @@ class MyModule(nn.Module):
 
 
 @pytest.mark.skipif(torch.__version__ < '1.12.0', reason='torch version < 12')
+@clear_cache_before_run()
 def test_nested_ckpt():
     model = MyModule()
     x = torch.rand(10, 10)

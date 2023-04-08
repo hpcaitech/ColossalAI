@@ -1,9 +1,7 @@
 import math
-from functools import partial
 
 import pytest
 import torch
-import torch.multiprocessing as mp
 
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.initialize import launch
@@ -12,8 +10,7 @@ from colossalai.tensor.d_tensor.comm_spec import CollectiveCommPattern
 from colossalai.tensor.d_tensor.layout import Layout
 from colossalai.tensor.d_tensor.layout_converter import LayoutConverter
 from colossalai.tensor.d_tensor.sharding_spec import DimSpec, ShardingSpec
-from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.utils import free_port
+from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 entire_shape = torch.Size((64, 32, 16))
 layout_converter = LayoutConverter()
@@ -192,14 +189,9 @@ def check_layout_converting_apply(rank, world_size, port):
 @rerun_if_address_is_in_use()
 def test_layout_converter():
     world_size = 4
-    run_func = partial(check_one_step_transform, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
-
-    run_func = partial(check_layout_converting, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
-
-    run_func = partial(check_layout_converting_apply, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(check_one_step_transform, world_size)
+    spawn(check_layout_converting, world_size)
+    spawn(check_layout_converting_apply, world_size)
 
 
 if __name__ == '__main__':

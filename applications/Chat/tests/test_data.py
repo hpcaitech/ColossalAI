@@ -1,11 +1,9 @@
 import os
 from copy import deepcopy
-from functools import partial
 
 import pytest
 import torch
 import torch.distributed as dist
-import torch.multiprocessing as mp
 from coati.experience_maker import NaiveExperienceMaker
 from coati.models.base import RewardModel
 from coati.models.gpt import GPTActor, GPTCritic
@@ -13,8 +11,7 @@ from coati.replay_buffer import NaiveReplayBuffer
 from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy
 from transformers.models.gpt2.configuration_gpt2 import GPT2Config
 
-from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.utils import free_port
+from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 GPT_CONFIG = GPT2Config(n_embd=128, n_layer=4, n_head=4)
 
@@ -114,8 +111,7 @@ def run_dist(rank, world_size, port, strategy):
 @pytest.mark.parametrize('strategy', ['ddp', 'colossalai'])
 @rerun_if_address_is_in_use()
 def test_data(world_size, strategy):
-    run_func = partial(run_dist, world_size=world_size, port=free_port(), strategy=strategy)
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_dist, world_size, strategy=strategy)
 
 
 if __name__ == '__main__':

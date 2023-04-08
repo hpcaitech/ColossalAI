@@ -157,7 +157,7 @@ class PipelineSchedule(BaseSchedule):
         return self._move_to_device(mciro_batch_data)
 
     def pre_processing(self, engine):
-        from colossalai.zero.sharded_model.sharded_model_v2 import ShardedModelV2
+        from colossalai.zero.legacy import ShardedModelV2
 
         # TODO: remove this after testing new zero with pipeline parallelism
         model = engine.model

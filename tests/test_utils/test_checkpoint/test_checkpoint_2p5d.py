@@ -2,20 +2,19 @@
 # -*- encoding: utf-8 -*-
 
 import pprint
-from functools import partial
 
-import colossalai.nn as col_nn
 import pytest
 import torch
-import torch.multiprocessing as mp
 import torch.nn as nn
+
+import colossalai.nn as col_nn
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
-from colossalai.utils import free_port, get_current_device, is_using_pp
+from colossalai.testing import rerun_if_address_is_in_use, skip_if_not_enough_gpus, spawn
+from colossalai.utils import is_using_pp
 from colossalai.utils.checkpointing import gather_pipeline_parallel_state_dict, load_checkpoint, save_checkpoint
-from colossalai.testing import rerun_on_exception, skip_if_not_enough_gpus
 
 
 def build_pipeline(model):
@@ -69,11 +68,9 @@ def check_checkpoint_2p5d(rank, world_size, port):
 @pytest.mark.dist
 @pytest.mark.skip("takes too long")
 @skip_if_not_enough_gpus(min_gpus=8)
-@rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
+@rerun_if_address_is_in_use()
 def test_checkpoint_2p5d():
-    world_size = 8
-    run_func = partial(check_checkpoint_2p5d, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(check_checkpoint_2p5d, 8)
 
 
 if __name__ == "__main__":
