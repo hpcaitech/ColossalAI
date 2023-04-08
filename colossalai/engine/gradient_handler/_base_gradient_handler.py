@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 
 
 class BaseGradientHandler(ABC):
-    """A basic helper class to handle all-reduce operations of gradients across different parallel groups 
+    """A basic helper class to handle all-reduce operations of gradients across different parallel groups
     before optimization.
 
     Args:

@@ -7,7 +7,6 @@ from .common import (
     count_zeros_fp32,
     disposable,
     ensure_path_exists,
-    free_port,
     is_ddp_ignored,
     is_dp_rank_0,
     is_model_parallel_parameter,
@@ -37,7 +36,6 @@ from .timer import MultiTimer, Timer
 
 __all__ = [
     'checkpoint',
-    'free_port',
     'print_rank_0',
     'sync_model_param',
     'is_ddp_ignored',

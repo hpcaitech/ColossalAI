@@ -18,7 +18,7 @@ from colossalai.nn.layer.moe.experts import Experts, MoeExperts
 from colossalai.nn.layer.moe.routers import MoeRouter, Top1Router, Top2Router
 from colossalai.nn.layer.moe.utils import NormalNoiseGenerator, UniformNoiseGenerator
 from colossalai.utils import get_current_device
-from colossalai.zero.init_ctx import no_shard_zero_context, no_shard_zero_decrator
+from colossalai.zero.legacy.init_ctx import no_shard_zero_context, no_shard_zero_decrator
 
 
 @no_shard_zero_decrator(is_replicated=True)

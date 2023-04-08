@@ -2,6 +2,7 @@ import pytest
 import torch
 
 from colossalai._analyzer.fx import symbolic_trace
+from colossalai.testing import clear_cache_before_run
 from tests.kit.model_zoo import model_zoo
 
 BATCH = 2
@@ -47,6 +48,7 @@ def trace_and_compare(model_cls, data, output_transform_fn, meta_args=None):
                                  ), f'{model.__class__.__name__} has inconsistent outputs, {fx_out} vs {non_fx_out}'
 
 
+@clear_cache_before_run()
 def test_torchrec_dlrm_models():
     torch.backends.cudnn.deterministic = True
     dlrm_models = model_zoo.get_sub_registry('dlrm')

@@ -1,16 +1,12 @@
-from functools import partial
-
 import pytest
 import torch
-import torch.distributed as dist
-import torch.multiprocessing as mp
-from colossalai.communication.p2p_v2 import send_forward, recv_forward, send_backward, recv_backward, init_process_group
-from colossalai.context import ParallelMode, Initializer_Pipeline
+
+from colossalai.communication.p2p_v2 import recv_backward, recv_forward, send_backward, send_forward
+from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.initialize import launch
-from colossalai.utils import free_port, get_current_device
-from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.logging import disable_existing_loggers
+from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 disable_existing_loggers()
 
@@ -121,10 +117,7 @@ def check_layer(rank, world_size, port):
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_object_list_p2p():
-    disable_existing_loggers()
-    run_func = partial(check_layer, world_size=world_size, port=free_port())
-    disable_existing_loggers()
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(check_layer, world_size)
 
 
 if __name__ == '__main__':
