@@ -758,7 +758,7 @@ if __name__ == "__main__":
             modelckpt_cfg = OmegaConf.create()
         modelckpt_cfg = OmegaConf.merge(default_modelckpt_cfg, modelckpt_cfg)
         if version.parse(pl.__version__) < version.parse('1.4.0'):
-            trainer_kwargs["checkpoint_callback"] =  trainer_kwargs["checkpoint_callback"] = ModelCheckpoint(**modelckpt_cfg.get("params", dict()))
+            trainer_kwargs["checkpoint_callback"] = ModelCheckpoint(**modelckpt_cfg.get("params", dict()))
             
         # Set up various callbacks, including logging, learning rate monitoring, and CUDA management
         # add callback which sets up log directory
