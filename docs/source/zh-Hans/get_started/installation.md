@@ -5,6 +5,8 @@
 - PyTorch >= 1.11 (PyTorch 2.x 正在适配中)
 - Python >= 3.7
 - CUDA >= 11.0
+- [NVIDIA GPU Compute Capability](https://developer.nvidia.com/cuda-gpus) >= 7.0 (V100/RTX20 and higher)
+- Linux OS
 
 如果你遇到安装问题，可以向本项目 [反馈](https://github.com/hpcaitech/ColossalAI/issues/new/choose)。
 

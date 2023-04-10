@@ -46,12 +46,15 @@ class ZeroOptimizer(ColossalaiOptimizer):
             Defaults to 0.0.
         initial_scale (float, optional): Initial scale used by DynamicGradScaler. Defaults to 2**32.
         min_scale (float, optional): Min scale used by DynamicGradScaler. Defaults to 1.
-        growth_factor (float, optional): growth_factor used by DynamicGradScaler. Defaults to 2.
-        backoff_factor (float, optional): backoff_factor used by DynamicGradScaler. Defaults to 0.5.
-        growth_interval (float, optional): growth_interval used by DynamicGradScaler. Defaults to 1000.
-        hysteresis (float, optional): hysteresis used by DynamicGradScaler. Defaults to 2.
-        max_scale (int, optional): max_scale used by DynamicGradScaler. Defaults to 2**32.
-        """
+        growth_factor (float, optional): Growth_factor used by DynamicGradScaler. Defaults to 2.
+        backoff_factor (float, optional): Backoff_factor used by DynamicGradScaler. Defaults to 0.5.
+        growth_interval (float, optional): Growth_interval used by DynamicGradScaler. Defaults to 1000.
+        hysteresis (float, optional): Hysteresis used by DynamicGradScaler. Defaults to 2.
+        max_scale (int, optional): Max_scale used by DynamicGradScaler. Defaults to 2**32.
+        clipping_norm (float, optional): The norm value used to clip gradient. Defaults to 0.0.
+        norm_type (float, optional): The type of norm used for gradient clipping. Currently, only L2-norm (norm_type=2.0)
+            is supported in ZeroOptimizer. Defaults to 2.0.
+    """
 
     def __init__(self,
                  optim: Optimizer,
