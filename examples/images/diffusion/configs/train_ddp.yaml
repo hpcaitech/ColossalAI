@@ -69,7 +69,8 @@ model:
           attn_resolutions: []
           dropout: 0.0
         lossconfig:
-          target: torch.nn.Identity
+          #target: torch.nn.Identity
+          params:
 
     cond_stage_config:
       #target: ldm.modules.encoders.modules.FrozenOpenCLIPEmbedder
