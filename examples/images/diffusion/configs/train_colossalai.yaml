@@ -89,14 +89,14 @@ data:
     train:
       target: ldm.data.base.Txt2ImgIterableBaseDataset
       params:
-        file_path: Your/Data_Path
+        file_path: Replace_by_Your_Data_Path_Here
         world_size: 1
         rank: 0
 
 lightning:
   trainer:
     accelerator: 'gpu'
-    devices: 2
+    devices: 8
     log_gpu_memory: all
     max_epochs: 2
     precision: 16
