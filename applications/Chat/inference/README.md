@@ -51,6 +51,7 @@ Please ensure you have downloaded HF-format model weights of LLaMA models.
 Usage:
 
 ```python
+import torch
 from transformers import LlamaForCausalLM
 
 USE_8BIT = True # use 8-bit quantization; otherwise, use fp16

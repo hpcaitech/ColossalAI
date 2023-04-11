@@ -1,8 +1,5 @@
-from functools import partial
-
 import torch
 import torch.distributed as dist
-import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim import SGD
 
@@ -10,8 +7,7 @@ import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin import TorchDDPPlugin
 from colossalai.interface import OptimizerWrapper
-from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.utils import free_port
+from colossalai.testing import rerun_if_address_is_in_use, spawn
 from tests.kit.model_zoo import model_zoo
 
 
@@ -103,6 +99,4 @@ def run_dist(rank, world_size, port):
 
 @rerun_if_address_is_in_use()
 def test_torch_ddp_plugin():
-    world_size = 2
-    run_func = partial(run_dist, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_dist, 2)

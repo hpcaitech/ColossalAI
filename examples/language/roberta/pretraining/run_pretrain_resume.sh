@@ -7,7 +7,6 @@ tensorboard_path="$root_path/tensorboard"
 log_path="$root_path/exp_log"
 ckpt_path="$root_path/ckpt"
 
-colossal_config="$root_path/../configs/colossalai_ddp.py"
 
 mkdir -p $tensorboard_path
 mkdir -p $log_path
@@ -32,7 +31,6 @@ env OMP_NUM_THREADS=40 colossalai run --hostfile ./hostfile \
                 --tensorboard_path $tensorboard_path \
                 --log_path $log_path \
                 --ckpt_path $ckpt_path \
-                --colossal_config $colossal_config \
                 --log_interval 50 \
                 --mlm bert \
                 --wandb \

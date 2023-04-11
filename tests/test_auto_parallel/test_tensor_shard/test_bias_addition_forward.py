@@ -2,15 +2,17 @@ from functools import partial
 
 import pytest
 import torch
-import torch.multiprocessing as mp
 
-from colossalai.auto_parallel.tensor_shard.initialize import initialize_model
+try:
+    from colossalai.auto_parallel.tensor_shard.initialize import initialize_model
+    NO_CODEGEN = False
+except:
+    NO_CODEGEN = True
+
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
-from colossalai.testing import assert_close, rerun_if_address_is_in_use
-from colossalai.testing.pytest_wrapper import run_on_environment_flag
-from colossalai.utils import free_port
+from colossalai.testing import assert_close, rerun_if_address_is_in_use, run_on_environment_flag, spawn
 
 
 class LinearModel(torch.nn.Module):
@@ -77,14 +79,12 @@ def check_conv_module(rank, world_size, port):
 
 
 @run_on_environment_flag(name='AUTO_PARALLEL')
+@pytest.mark.skipif(NO_CODEGEN, reason='No codegen found')
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_bias_addition_module():
-    world_size = 4
-    run_func_linear = partial(check_linear_module, world_size=world_size, port=free_port())
-    mp.spawn(run_func_linear, nprocs=world_size)
-    run_func_conv = partial(check_conv_module, world_size=world_size, port=free_port())
-    mp.spawn(run_func_conv, nprocs=world_size)
+    spawn(check_linear_module, 4)
+    spawn(check_conv_module, 4)
 
 
 if __name__ == '__main__':

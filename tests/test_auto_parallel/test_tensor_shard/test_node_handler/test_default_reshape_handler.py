@@ -8,7 +8,7 @@ from colossalai.auto_parallel.tensor_shard.node_handler import DefaultReshapeHan
 from colossalai.auto_parallel.tensor_shard.node_handler.conv_handler import ConvFunctionHandler
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationData, OperationDataType, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
-from colossalai.testing.pytest_wrapper import run_on_environment_flag
+from colossalai.testing import clear_cache_before_run, run_on_environment_flag
 
 
 class ReshapeModel(nn.Module):
@@ -23,6 +23,7 @@ class ReshapeModel(nn.Module):
 
 
 @run_on_environment_flag(name='AUTO_PARALLEL')
+@clear_cache_before_run()
 def test_reshape_handler():
     model = ReshapeModel()
     tracer = ColoTracer(bias_addition_split=True)

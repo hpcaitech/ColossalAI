@@ -1,11 +1,9 @@
 import os
 import random
-from functools import partial
 
 import numpy as np
 import pytest
 import torch
-import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
 from vit import get_training_components
 
@@ -15,8 +13,7 @@ from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.nn.parallel.data_parallel import ColoDDP
 from colossalai.tensor import ComputePattern, ComputeSpec, DistSpecManager, ProcessGroup, ShardSpec
-from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.utils import free_port
+from colossalai.testing import rerun_if_address_is_in_use, spawn
 from colossalai.utils.cuda import get_current_device
 from colossalai.zero import ColoInitContext
 
@@ -156,8 +153,7 @@ def run_dist(rank, world_size, port, use_ddp):
 @pytest.mark.parametrize('use_ddp', [False, True])
 @rerun_if_address_is_in_use()
 def test_vit(world_size, use_ddp):
-    run_func = partial(run_dist, world_size=world_size, port=free_port(), use_ddp=use_ddp)
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_dist, world_size, use_ddp=use_ddp)
 
 
 if __name__ == '__main__':

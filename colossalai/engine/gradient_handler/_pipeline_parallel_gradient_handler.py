@@ -4,9 +4,10 @@ from collections import defaultdict
 
 import torch
 import torch.distributed as dist
+from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
+
 from colossalai.core import global_context as gpc
 from colossalai.registry import GRADIENT_HANDLER
-from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 
 from ._base_gradient_handler import BaseGradientHandler
 
@@ -14,9 +15,9 @@ from ._base_gradient_handler import BaseGradientHandler
 @GRADIENT_HANDLER.register_module
 class PipelineSharedModuleGradientHandler(BaseGradientHandler):
     """A helper class to handle all-reduce operations in sub parallel groups.
-    A all-reduce collective communication will be operated in 
+    A all-reduce collective communication will be operated in
     :func:`handle_gradient` among all sub pipeline parallel groups.
-    For better performance, it bucketizes the gradients of all parameters that are 
+    For better performance, it bucketizes the gradients of all parameters that are
     the same type to improve the efficiency of communication.
 
     Args:

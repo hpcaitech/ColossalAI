@@ -1,20 +1,17 @@
 import os
 import shutil
 from copy import deepcopy
-from functools import partial
 
 import pytest
 import torch
 import torch.distributed as dist
-import torch.multiprocessing as mp
 from torch.optim.lr_scheduler import CosineAnnealingLR, MultiplicativeLR
 
 import colossalai
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.nn.optimizer import ColossalaiOptimizer
 from colossalai.tensor import ColoTensor, ComputePattern, ComputeSpec, ProcessGroup, ShardSpec
-from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.utils import free_port
+from colossalai.testing import rerun_if_address_is_in_use, spawn
 from colossalai.utils.checkpoint import load_checkpoint, save_checkpoint
 from colossalai.utils.cuda import get_current_device
 from colossalai.zero import ColoInitContext
@@ -202,13 +199,7 @@ def run_dist(rank, world_size, port, use_ddp, use_mp_reload, test_scheduler):
 # @pytest.mark.parametrize('test_scheduler', ['colossalai_cosine_warmup', 'torch_cosine', 'torch_lambda'])
 @rerun_if_address_is_in_use()
 def test_checkpoint(world_size, use_ddp, use_mp_reload, test_scheduler=None):
-    run_func = partial(run_dist,
-                       world_size=world_size,
-                       port=free_port(),
-                       use_ddp=use_ddp,
-                       use_mp_reload=use_mp_reload,
-                       test_scheduler=test_scheduler)
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_dist, world_size, use_ddp=use_ddp, use_mp_reload=use_mp_reload, test_scheduler=test_scheduler)
 
 
 if __name__ == '__main__':

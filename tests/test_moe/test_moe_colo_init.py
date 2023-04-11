@@ -1,19 +1,16 @@
-from functools import partial
-
 import pytest
 import torch
 import torch.distributed as dist
-import torch.multiprocessing as mp
 
 import colossalai
 from colossalai.context import MOE_CONTEXT
 from colossalai.tensor import ColoParameter
-from colossalai.testing import parameterize, rerun_if_address_is_in_use
-from colossalai.utils import free_port, get_current_device
+from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
+from colossalai.utils import get_current_device
 from colossalai.zero import ColoInitContext
 from tests.test_moe.test_moe_zero_init import MoeModel
 from tests.test_tensor.common_utils import debug_print
-from tests.test_zero.common import CONFIG
+from tests.test_zero.test_legacy.common import CONFIG
 
 
 @parameterize("init_device_type", ['cpu', 'cuda'])
@@ -52,8 +49,7 @@ def _run_dist(rank, world_size, port):
 @pytest.mark.parametrize("world_size", [4])
 @rerun_if_address_is_in_use()
 def test_moe_colo_init(world_size):
-    run_func = partial(_run_dist, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(_run_dist, world_size)
 
 
 if __name__ == '__main__':

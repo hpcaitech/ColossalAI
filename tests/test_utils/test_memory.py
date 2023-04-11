@@ -1,12 +1,9 @@
 import pytest
 
 import colossalai
+from colossalai.testing import spawn
 from colossalai.utils.cuda import get_current_device
-from colossalai.utils.memory import colo_set_process_memory_fraction, colo_device_memory_capacity
-from colossalai.utils import free_port
-
-from functools import partial
-import torch.multiprocessing as mp
+from colossalai.utils.memory import colo_device_memory_capacity, colo_set_process_memory_fraction
 
 
 def _run_colo_set_process_memory_fraction_and_colo_device_memory_capacity():
@@ -24,8 +21,7 @@ def run_dist(rank, world_size, port):
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [3, 4])
 def test_memory_utils(world_size):
-    run_func = partial(run_dist, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_dist, world_size)
 
 
 if __name__ == '__main__':

@@ -5,11 +5,11 @@ from tqdm import tqdm
 from utils.global_vars import get_timers, get_tensorboard_writer
 from nvidia_bert_dataset_provider import NvidiaBertDatasetProvider 
 
-def evaluate(engine, args, logger, global_step):
+def evaluate(model, args, logger, global_step, criterion):
     evaluate_dataset_provider = NvidiaBertDatasetProvider(args, evaluate=True)
     start_shard = 0
 
-    engine.eval()
+    model.eval()
     timers = get_timers()
     eval_step = 0
     eval_loss = 0
@@ -39,9 +39,9 @@ def evaluate(engine, args, logger, global_step):
                 mlm_label = batch_data[3].cuda()
                 # nsp_label = batch_data[5].cuda()
 
-                output = engine(input_ids=input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask)
+                output = model(input_ids=input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask)
                 
-                loss = engine.criterion(output.logits, mlm_label)#prediction_scores
+                loss = criterion(output.logits, mlm_label)#prediction_scores
                 evaluate_dataset_provider.prefetch_batch()
 
                 eval_loss += loss.float().item()
@@ -67,5 +67,5 @@ def evaluate(engine, args, logger, global_step):
             logger.info('')
 
     evaluate_dataset_provider.release_shard()
-    engine.train()
+    model.train()
     return cur_loss

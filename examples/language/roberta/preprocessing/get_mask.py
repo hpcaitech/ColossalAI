@@ -163,16 +163,15 @@ class PreTrainingDataset():
 
     def get_new_segment(self, segment):
         """
-        输入一句话，返回一句经过处理的话: 为了支持中文全称mask，将被分开的词，将上特殊标记("#")，使得后续处理模块，能够知道哪些字是属于同一个词的。
-        :param segment: 一句话
-        :return: 一句处理过的话
+        Input a sentence, return a processed sentence: In order to support the Chinese whole word mask, the words that are separated will be marked with a special mark ("#"), so that the subsequent processing module can know which words belong to the same word.
+        :param segment: a sentence
         """
         seq_cws = jieba.lcut(''.join(segment))
         seq_cws_dict = {x: 1 for x in seq_cws}
         new_segment = []
         i = 0
         while i < len(segment):
-            if len(self.rec.findall(segment[i])) == 0: # 不是中文的，原文加进去。
+            if len(self.rec.findall(segment[i])) == 0: 
                 new_segment.append(segment[i])
                 i += 1
                 continue
