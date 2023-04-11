@@ -533,6 +533,8 @@ class ZeroDDP(ColoDDP):
 
     def _cast_buffers(self):
         for buffer in self.module.buffers():
+            if isinstance(buffer, LazyTensor):
+                buffer.materialize()
             buffer.data = buffer.cuda()
             if torch.is_floating_point(buffer):
                 buffer.data = buffer.half()
