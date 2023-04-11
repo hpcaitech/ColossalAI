@@ -490,7 +490,6 @@ class WorkerStateMachine(StateMachine):
         args = []
         topo: Topo = self._get_topo()
         _, model_output_partition_ids = self._get_output_partition_ids(model_output=False)
-        inputs = self._po
 
         if self._is_first_stage():
             input_partition = topo.get_input_partition()
