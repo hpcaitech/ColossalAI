@@ -2,12 +2,11 @@ from typing import Any, Dict, Tuple
 
 
 class StageInput:
-    __slots__ = ('minibatch_id', 'args', 'kwargs')
+    __slots__ = ('minibatch_id', 'args')
     minibatch_id: int
     args: Tuple[Any]
-    kwargs: Dict[str, Any]
 
-    def __init__(self, minibatch_id, args, kwargs) -> None:
+    def __init__(self, minibatch_id, args) -> None:
         for attr_name in self.__slots__:
             setattr(self, attr_name, locals()[attr_name])
 

@@ -87,6 +87,7 @@ def run_scheduler(rank, model_cls, world_size, forward_only, batch_size, dim):
                                      partition_fn=partial(partition, model, data_kwargs),
                                      device=device,
                                      checkpoint=use_checkpoint)
+
     if not forward_only:
         pp_scheduler.initialize_optimizer(getattr(torch.optim, 'SGD'), lr=1e-3)
 
@@ -118,7 +119,7 @@ def test_scheduler_gpipe(model_cls, forward_only, world_size, batch_size, dim):
 # @parameterize('forward_only', [True, False])
 @parameterize('model_cls', [MLP])
 @parameterize('forward_only', [True])
-@parameterize('world_size', [4])
+@parameterize('world_size', [2])
 @parameterize('batch_size', [16])
 @parameterize('dim', [10])
 @pytest.mark.dist

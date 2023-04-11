@@ -16,12 +16,10 @@ class BackwardCache:
     __slots__ = ('checkpoint', 'stage_input_args', 'stage_input_kwargs', 'stage_outputs')
     checkpoint: bool
     stage_input_args: Tuple[Any]
-    stage_input_kwargs: Dict[Any, Any]
     stage_outputs: Tuple[Any]
 
     def __init__(self,
                  stage_input_args: Tuple[Any],
-                 stage_input_kwargs: Dict[Any, Any] = None,
                  stage_outputs: Tuple[Any] = None,
                  checkpoint: bool = False) -> None:
         for arg_name in self.__slots__:
@@ -140,11 +138,14 @@ class WorkerStateMachine(StateMachine):
 
         for input_id in input_partition_ids:
             src_rank = self._partition_id_to_pp_rank(input_id, topo)
-            self.comm.add_process_group(src_rank, self.rank)
+            if src_rank is not None:    # src_rank is None means it is the first stage
+                self.comm.add_process_group(src_rank, self.rank)
 
         for output_id in output_partition_ids:
             dst_rank = self._partition_id_to_pp_rank(output_id, topo)
             self.comm.add_process_group(self.rank, dst_rank)
+
+        print(f'rank={self.rank} | pg={self.comm._pg_manager}')
 
     def set_fwd_only(self, fwd_only=True):
         self.fwd_only = fwd_only
@@ -174,12 +175,15 @@ class WorkerStateMachine(StateMachine):
         return True
 
     def loop(self):
+        cnt = 0
         while True:
+            cnt += 1
             # change state
             next_state = self._change_state()
 
             # choose action according to state
             res = None
+            print(f'rank={self.rank} | cnt={cnt}')
             task = self._get_next_task()
             print(f'rank{self.rank} | get task')
             if task:
@@ -191,12 +195,16 @@ class WorkerStateMachine(StateMachine):
                 print(f'rank{self.rank} | set res')
 
     def run(self):
-        main_loop_thread = threading.Thread(target=self.loop)
-        main_loop_thread.start()
-        main_loop_thread.join()
+        # main loop
+        self.main_loop_thread = threading.Thread(target=self.loop, name=f'rank_{self.rank}')
+        self.main_loop_thread.start()
 
     def add_minibatch(self, minibatch):
-        self._push_queue_with_lock(self.input_queue_fwd, self.input_queue_fwd_lock, minibatch)
+        print(f'raw minibatch: {minibatch}')
+        args, _ = self._make_args_kwargs(minibatch, merge=True)
+        print(f'minibatch: {args}')
+        stage_input: StageInput = StageInput(self._get_fwd_minibatch_id(), args)
+        self._push_queue_with_lock(self.input_queue_fwd, self.input_queue_fwd_lock, stage_input, notify=True)
 
     def add_labels(self, minibatch_id, minilabels):
         with self.label_lock:
@@ -204,6 +212,7 @@ class WorkerStateMachine(StateMachine):
             self.label_lock.notify_all()
 
     def wait_for_done(self, forward_only):
+        self.main_loop_thread.join()
         return False
 
     def initialize_optimizer(self, optimizer_class: type, **kwargs):
@@ -258,15 +267,17 @@ class WorkerStateMachine(StateMachine):
             task = None
         elif cur_state == 'fwd':
             minibatch_id = self._get_fwd_minibatch_id()
+            print(f'rank={self.rank} | before wait fwd')
             self._wait_for_last_fwds(minibatch_id)
+            print(f'rank={self.rank} | after wait fwd')
             stage_input = self._get_input('fwd', minibatch_id)
-            task = Task(self._forward, minibatch_id, *stage_input.args, **stage_input.kwargs)
+            task = Task(self._forward, minibatch_id, stage_input.args)
             self.cur_fwd_id += 1
         elif cur_state == 'bwd':
             minibatch_id = self._get_bwd_minibatch_id()
             self._wait_for_last_bwds(minibatch_id)
             stage_input = self._get_input('bwd', minibatch_id)
-            task = Task(self._backward, minibatch_id, *stage_input.args, **stage_input.kwargs)
+            task = Task(self._backward, minibatch_id, stage_input.args)
             self.cur_bwd_id += 1
         elif cur_state == 'step':
             task = Task(self._step)
@@ -399,12 +410,43 @@ class WorkerStateMachine(StateMachine):
             need_input = True
         return not self._is_first_stage() and need_input
 
+    def _make_args_kwargs(self, minibatch, merge=False):
+        if isinstance(minibatch, dict):
+            if merge:
+                return list(minibatch.values()), {}
+            return [], minibatch
+        elif isinstance(minibatch, torch.Tensor):
+            return [minibatch], {}
+        elif isinstance(minibatch, (tuple, list)):
+            args = []
+            kwargs = {}
+            for arg in minibatch:
+                if isinstance(arg, dict):
+                    kwargs.update(arg)
+                else:
+                    args.append(arg)
+            if merge:
+                arg_lst = args
+                for arg in kwargs.values():
+                    arg_lst.append(arg)
+                return arg_lst, {}
+            return args, kwargs
+        else:
+            raise TypeError(f"Input batch can be only dict, list, tuple or tensor, but receive {type(minibatch)}")
+
+    # TODO reduce communication by cutting res in send, instead of recv
+    def _make_args(self, src_partition_id, dst_partition_id, args):
+        res = args
+        return args
+
     def _is_first_stage(self):
         return self.rank == 0
 
-    def _push_queue_with_lock(self, queue, lock, event):
+    def _push_queue_with_lock(self, queue, lock, event, notify=False):
         with lock:
             queue.append(event)
+            if notify:
+                lock.notify_all()
 
     def _pop_queue_with_lock(self, queue, lock):
         with lock:
@@ -419,14 +461,25 @@ class WorkerStateMachine(StateMachine):
     # TODO use aync thread to do the consumer-producer queue.
     def _wait_for_last_fwds(self, minibatch_id):
         args = []
-        kwargs = {}
         # add communication framework like p2p
         topo: Topo = self._get_topo()
         model_input_partition_id, input_partition_ids = self._get_input_partition_ids(model_input=False)
 
-        input_rank = self._partition_id_to_pp_rank(model_input_partition_id, topo)
         # input rank need input only
-        if self.rank == input_rank:
+        if self._is_first_stage():
+            with self.input_queue_fwd_lock:
+                print(f'rank={self.rank} | wait lock')
+                self.input_queue_fwd_lock.wait_for(lambda: len(self.input_queue_fwd) > 0)
+                input_partition = topo.get_input_partition()
+                len_model_input = len(input_partition.get_input_vals())
+                if len_model_input == 1:
+                    model_input = self.input_queue_fwd.popleft()
+                    args = model_input.args
+                    if args > 1:
+                        model_input.args = [arg for arg in args]
+                    self.input_queue_fwd.appendleft(model_input)
+
+            print(f'rank={self.rank} | get lock')
             return
         else:
             res = []
@@ -466,6 +519,7 @@ class WorkerStateMachine(StateMachine):
                         break
             else:    # data from input partition
                 src_index = 0
+
             # when output_len = 1, not iterable
             if output_len == 1:
                 target = res[src_index]
@@ -475,27 +529,33 @@ class WorkerStateMachine(StateMachine):
                 target = res[src_index][real_offset]
             args.append(target)
 
-        stage_input: StageInput = StageInput(minibatch_id, args, kwargs)
+        stage_input: StageInput = StageInput(minibatch_id, args)
         self._push_queue_with_lock(self.input_queue_fwd, self.input_queue_fwd_lock, stage_input)
 
     # TODO use aync thread to do the consumer-producer queue.
     def _wait_for_last_bwds(self, minibatch_id):
         args = ()
-        kwargs = {}
-        stage_input: StageInput = StageInput(minibatch_id, args, kwargs)
+        stage_input: StageInput = StageInput(minibatch_id, args)
         self._push_queue_with_lock(self.input_queue_bwd, self.input_queue_bwd_lock, stage_input)
 
     # TODO use aync thread to do the consumer-producer queue.
     def _send_to_next_fwds(self, outputs):
-        args = []
         topo: Topo = self._get_topo()
-        _, model_output_partition_ids = self._get_output_partition_ids(model_output=False)
 
+        # input stage send input to other stages if necessary
         if self._is_first_stage():
             input_partition = topo.get_input_partition()
-            partition_ids = input_partition.get_input_partition_ids()
+            partition_ids = input_partition.get_output_partition_ids()
             for id in partition_ids:
                 dst_rank = self._partition_id_to_pp_rank(id, topo)
+                args = self._make_args(self._pp_rank_to_partition_id(self.rank), id, outputs)
+                self.comm.send(args, dst_rank)
+        else:    # send output to next stages
+            _, output_partition_ids = self._get_output_partition_ids(model_output=False)
+            for output_partition_id in output_partition_ids:
+                dst_rank = self._partition_id_to_pp_rank(output_partition_id, topo)
+                args = self._make_args(self._pp_rank_to_partition_id(self.rank), output_partition_id, outputs)
+                self.comm.send(args, dst_rank)
 
     # TODO use aync thread to do the consumer-producer queue.
     def _send_to_next_bwds(self, grads):
@@ -504,26 +564,34 @@ class WorkerStateMachine(StateMachine):
     def _gather_grad(self, **args):
         return None
 
-    def _forward(self, minibatch_id, *args, **kwargs):
-        print(f'rank{self.rank} | forward')
+    def _forward(self, minibatch_id, args):
+        print(f'rank={self.rank} | forward')
         # exec fwd
+        print(args)
         if self.fwd_only:
             with torch.no_grad():
-                stage_outputs = self.module_partition(*args, **kwargs)
+                stage_outputs = self.module_partition(*args)
         else:
-            stage_outputs = self.module_partition(*args, **kwargs)
+            stage_outputs = self.module_partition(*args)
 
         # send output
+        if self._is_first_stage():
+            print(f'SEND INPUT TO NEXT STAGE: src_rank={self.rank}')
+            self._send_to_next_fwds(args)
+            print(f'DONE SEND INPUT TO NEXT STAGE: src_rank={self.rank}')
+        print(f'SEND OUTPUT TO NEXT STAGE: src_rank={self.rank}')
         self._send_to_next_fwds(stage_outputs)
+        print(f'DONE SEND OUTPUT TO NEXT STAGE: src_rank={self.rank}')
 
         # save for bwd
         if not self.fwd_only:
-            self.minibatch_id_to_backward_cache[minibatch_id] = BackwardCache(args,
-                                                                              kwargs,
-                                                                              stage_outputs,
-                                                                              checkpoint=False)
+            self.minibatch_id_to_backward_cache[minibatch_id] = BackwardCache(args, stage_outputs, checkpoint=False)
 
-    def _backward(self, minibatch_id, *args, **kwargs):
+    def _backward(
+        self,
+        minibatch_id,
+        args,
+    ):
         print(f'rank{self.rank} | backward')
         return 2
 
@@ -534,10 +602,10 @@ class WorkerStateMachine(StateMachine):
         # exec bwd
         autograd.backward(stage_outputs, grad_tensors=grad_tensors)
 
-    def _step(self, minibatch_id, *args, **kwargs):
+    def _step(self, minibatch_id, args):
         print(f'rank{self.rank} | step')
         return 2
 
-    def _reset(self, minibatch_id, *args, **kwargs):
+    def _reset(self, minibatch_id, args):
         print(f'rank{self.rank} | reset')
         exit()
