@@ -75,6 +75,12 @@ class _MyTensor(Tensor):
         return super().__torch_function__(func, types, args, kwargs)
 
 
+def _data_tolist(tensor: torch.Tensor) -> list:
+    """tolist() method is not allowed for a subclass of tensor. Tensor.data returns a Tensor.
+    """
+    return tensor.data.tolist()
+
+
 def _convert_cls(tensor: 'LazyTensor', target: torch.Tensor) -> torch.Tensor:
     """Convert a lazy tensor's class to target's class, with target's data.
 
@@ -94,7 +100,7 @@ def _convert_cls(tensor: 'LazyTensor', target: torch.Tensor) -> torch.Tensor:
     tensor.requires_grad = target.requires_grad
     # subclass of torch.Tensor does not have tolist() method
     # overwrite this method after materialization or distribution
-    tensor.tolist = MethodType(torch.Tensor.tolist, target)
+    tensor.tolist = MethodType(_data_tolist, tensor)
     return tensor
 
 
