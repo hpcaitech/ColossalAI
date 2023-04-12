@@ -104,7 +104,7 @@ class CheckpointIO(ABC):
                    checkpoint: str,
                    shard: bool = False,
                    gather_dtensor: bool = True,
-                   prefix: str = None,
+                   variant: str = None,
                    size_per_shard: int = 1024,
                    use_safetensors: bool = False):
         """
@@ -138,7 +138,7 @@ class CheckpointIO(ABC):
             model = model.unwrap()
 
         if shard:
-            self.save_sharded_model(model, checkpoint, gather_dtensor, prefix, size_per_shard, use_safetensors)
+            self.save_sharded_model(model, checkpoint, gather_dtensor, variant, size_per_shard, use_safetensors)
         else:
             self.save_unsharded_model(model, checkpoint, gather_dtensor, use_safetensors)
 

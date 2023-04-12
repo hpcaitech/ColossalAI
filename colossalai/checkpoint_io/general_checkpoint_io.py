@@ -6,6 +6,7 @@ import logging
 import os
 import json
 import gc
+from typing import Optional
 
 from .checkpoint_io_base import CheckpointIO
 from .index_file import CheckpointIndexFile
@@ -16,7 +17,8 @@ from .utils import (
     is_safetensors_available,
     shard_checkpoint,
     load_shard_state_dict,
-    load_state_dict_into_model
+    load_state_dict_into_model,
+    add_variant
     )
 from .utils import SAFE_WEIGHTS_NAME, WEIGHTS_NAME, SAFE_WEIGHTS_INDEX_NAME, WEIGHTS_INDEX_NAME
 
@@ -69,8 +71,8 @@ class GeneralCheckpointIO(CheckpointIO):
         save_state_dict(optimizer.state_dict(), checkpoint, use_safetensors=False)
 
 
-    def save_sharded_model(self, model: nn.Module, checkpoint_path: str, gather_dtensor:bool = False, 
-                           prefix: str = "", max_shard_size: int = 1024, use_safetensors: bool = False):
+    def save_sharded_model(self, model: nn.Module, checkpoint_path: str,  gather_dtensor:bool = False, 
+                           variant: Optional[str] = None, max_shard_size: int = 1024, use_safetensors: bool = False):
         """ 
         implement this method as it can be supported by Huggingface model,
         save shard model, save model to multiple files
@@ -84,6 +86,7 @@ class GeneralCheckpointIO(CheckpointIO):
         # shard checkpoint
         state_dict = model.state_dict()
         weights_name = SAFE_WEIGHTS_NAME if use_safetensors else WEIGHTS_NAME
+        weights_name = add_variant(weights_name, variant)
         shards, index = shard_checkpoint(state_dict, max_shard_size=max_shard_size, weights_name=weights_name)
 
         # Save the model
@@ -93,7 +96,8 @@ class GeneralCheckpointIO(CheckpointIO):
 
         # save index file
         save_index_file = SAFE_WEIGHTS_INDEX_NAME if use_safetensors else WEIGHTS_INDEX_NAME
-        save_index_file = os.path.join(checkpoint_path, save_index_file)
+
+        save_index_file = os.path.join(checkpoint_path, add_variant(save_index_file, variant))
         with open(save_index_file, "w", encoding="utf-8") as f:
             content = json.dumps(index, indent=2, sort_keys=True) + "\n"
             f.write(content)
