@@ -138,7 +138,7 @@ class Builder(ABC):
         # make sure system CUDA and pytorch CUDA match, an error will raised inside the function if not
         check_system_pytorch_cuda_match(CUDA_HOME)
 
-    def load(self, verbose=True):
+    def load(self, verbose=False):
         """
         load the kernel during runtime. If the kernel is not built during pip install, it will build the kernel.
         If the kernel is built during runtime, it will be stored in `~/.cache/colossalai/torch_extensions/`. If the

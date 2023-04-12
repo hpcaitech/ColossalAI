@@ -20,6 +20,7 @@ def safe_div(a, b):
 def init_chunk_manager(model: nn.Module,
                        init_device: Optional[torch.device] = None,
                        hidden_dim: Optional[int] = None,
+                       verbose: bool = False,
                        **kwargs) -> ChunkManager:
     if hidden_dim:
         search_interval_byte = hidden_dim
@@ -39,7 +40,7 @@ def init_chunk_manager(model: nn.Module,
     total_size /= mb_size
     wasted_size /= mb_size
 
-    if dist.get_rank() == 0:
+    if verbose and dist.get_rank() == 0:
         print("searching chunk configuration is completed in {:.2f} s.\n".format(span_s),
               "used number: {:.2f} MB, wasted number: {:.2f} MB\n".format(total_size, wasted_size),
               "total wasted percentage is {:.2f}%".format(100 * safe_div(wasted_size, total_size + wasted_size)),
