@@ -10,8 +10,7 @@ from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 
 from colossalai.interface import ModelWrapper
 
-# from .utils import has_index_file
-from utils import has_index_file
+from .utils import has_index_file
 
 __all__ = ['CheckpointIO']
 
