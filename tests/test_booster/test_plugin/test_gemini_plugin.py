@@ -113,7 +113,6 @@ def run_dist(rank, world_size, port, early_stop: bool = True):
     check_gemini_plugin(early_stop=early_stop)
 
 
-@pytest.mark.skip
 @rerun_if_address_is_in_use()
 def test_gemini_plugin(early_stop: bool = True):
     spawn(run_dist, 2, early_stop=early_stop)
