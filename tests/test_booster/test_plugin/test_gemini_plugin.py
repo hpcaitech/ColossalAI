@@ -6,10 +6,10 @@ import torch.distributed as dist
 import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin
+from colossalai.fx import is_compatible_with_meta
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.tensor.colo_parameter import ColoParameter
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
-from colossalai.utils.model.experimental import LazyInitContext
 from colossalai.zero import ColoInitContext
 from tests.kit.model_zoo import model_zoo
 
@@ -21,6 +21,11 @@ def check_gemini_plugin(init_method: str = 'none', early_stop: bool = True):
     Args:
         early_stop (bool, optional): Whether to stop when getting the first error. Defaults to True.
     """
+    is_support_meta = is_compatible_with_meta()
+    if not is_support_meta and init_method == 'lazy':
+        return
+
+    from colossalai.utils.model.experimental import LazyInitContext
     passed_models = []
     failed_info = {}    # (model_name, error) pair
 
