@@ -4,11 +4,12 @@ from torch.optim import AdamW
 from torch.optim.adam import Adam
 
 from colossalai.nn.optimizer.hybrid_adam import HybridAdam
-from colossalai.testing import parameterize
+from colossalai.testing import clear_cache_before_run, parameterize
 
 RE = 3
 
 
+@clear_cache_before_run()
 @parameterize('adamw', [False, True])
 @parameterize('device', ['cpu', 'cuda:0'])
 @parameterize('p_dtype', [torch.float])

@@ -17,5 +17,4 @@ set_n_least_used_CUDA_VISIBLE_DEVICES 2
 export CUDA_VISIBLE_DEVICES="0,1,2,3"
 # torchrun --standalone --nproc_per_node=2 train_prompts.py prompts.csv --strategy colossalai_zero2
 
-torchrun --standalone --nproc_per_node=2 train_prompts.py --prompt_path "./awesome-chatgpt-prompts/prompts.csv" \
-    --strategy colossalai_zero2 --lora_rank 2
+torchrun --standalone --nproc_per_node=2 train_prompts.py --prompt_path /path/to/data.json --strategy colossalai_zero2

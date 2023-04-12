@@ -65,7 +65,7 @@ class ValueLoss(nn.Module):
         surr2 = (values - reward)**2
         loss = torch.max(surr1, surr2)
         loss = loss.mean()
-        return loss
+        return 0.5 * loss
 
 
 class PPOPtxActorLoss(nn.Module):

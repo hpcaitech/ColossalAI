@@ -8,6 +8,7 @@ from colossalai._analyzer.fx.tracer.tracer import ColoTracer
 from colossalai.auto_parallel.tensor_shard.node_handler.getattr_handler import GetattrHandler
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationData, OperationDataType, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
+from colossalai.testing import clear_cache_before_run
 
 
 class GetattrModel(nn.Module):
@@ -22,6 +23,7 @@ class GetattrModel(nn.Module):
 
 
 @pytest.mark.skip('ShapeProp is not compatible with PyTorch 1.11.0')
+@clear_cache_before_run()
 def test_getattr_handler():
     model = GetattrModel()
     tracer = ColoTracer(bias_addition_split=True)

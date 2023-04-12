@@ -1,17 +1,12 @@
-from functools import partial
-
-import pytest
 import torch
 import torch.distributed as dist
-import torch.multiprocessing as mp
 
 import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.tensor.colo_parameter import ColoParameter
-from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.utils import free_port
+from colossalai.testing import rerun_if_address_is_in_use, spawn
 from tests.kit.model_zoo import model_zoo
 
 
@@ -119,9 +114,7 @@ def run_dist(rank, world_size, port, early_stop: bool = True):
 
 @rerun_if_address_is_in_use()
 def test_gemini_plugin(early_stop: bool = True):
-    world_size = 2
-    run_func = partial(run_dist, world_size=world_size, port=free_port(), early_stop=early_stop)
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_dist, 2, early_stop=early_stop)
 
 
 if __name__ == '__main__':

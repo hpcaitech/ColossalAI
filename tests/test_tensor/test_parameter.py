@@ -1,9 +1,10 @@
-from colossalai.tensor import ColoParameter, ColoTensor, ColoTensorSpec, ProcessGroup
-import torch
 import pytest
+import torch
 from common_utils import tensor_equal
+
 import colossalai
-from colossalai.utils import free_port
+from colossalai.tensor import ColoParameter, ColoTensor, ColoTensorSpec, ProcessGroup
+from colossalai.testing import free_port
 
 
 @pytest.mark.skip

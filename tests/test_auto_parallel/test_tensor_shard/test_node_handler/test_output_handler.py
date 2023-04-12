@@ -8,7 +8,7 @@ from colossalai._analyzer.fx.tracer.tracer import ColoTracer
 from colossalai.auto_parallel.tensor_shard.node_handler.output_handler import OutputHandler
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationData, OperationDataType, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
-from colossalai.testing import assert_close, parameterize, rerun_if_address_is_in_use
+from colossalai.testing import clear_cache_before_run, parameterize
 
 
 class OutputModel(nn.Module):
@@ -23,7 +23,7 @@ class OutputModel(nn.Module):
 
 @pytest.mark.skip('ShapeProp is not compatible with PyTorch 1.11.0')
 @parameterize('output_option', ['distributed', 'replicated'])
-@rerun_if_address_is_in_use()
+@clear_cache_before_run()
 def test_output_handler(output_option):
     model = OutputModel()
     tracer = ColoTracer(bias_addition_split=True)
