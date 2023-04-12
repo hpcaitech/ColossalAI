@@ -2,7 +2,8 @@ import json
 from pathlib import Path
 from typing import Any, List, Union
 
-from .utils import is_dtensor_checkpoint
+# from .utils import is_dtensor_checkpoint
+from utils import is_dtensor_checkpoint
 
 __all__ = ['CheckpointIndexFile']
 

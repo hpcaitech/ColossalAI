@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Union
+from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -9,7 +10,8 @@ from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 
 from colossalai.interface import ModelWrapper
 
-from .utils import has_index_file
+# from .utils import has_index_file
+from utils import has_index_file
 
 __all__ = ['CheckpointIO']
 
@@ -129,7 +131,7 @@ class CheckpointIO(ABC):
                 multiple files. The model shards will be specificed by a `model.index.json` file. When shard = True, please ensure
                 that the checkpoint path is a directory path instead of a file path.
             gather_dtensor (bool): whether to gather the distributed tensor to the first device. Default: True.
-            prefix (str): prefix for the model checkpoint file name when shard=True. Default: None.
+            variant (str): If specified, weights are saved in the format pytorch_model.<variant>.bin. Default: None.
             size_per_shard (int): size per shard in MB. Default: 1024. This value is only used when shard = True.
             use_safetensors (bool): whether to use safe tensors. Default: False. If set to True, the checkpoint will be saved
         """
@@ -219,7 +221,7 @@ class CheckpointIO(ABC):
         pass
 
     @abstractmethod
-    def save_sharded_model(self, model: nn.Module, checkpoint: str, gather_dtensor: bool, prefix: str,
+    def save_sharded_model(self, model: nn.Module, checkpoint: str, gather_dtensor: bool, variant: Optional[str],
                            size_per_shard: int, use_safetensors: bool):
         """
         Save model to sharded checkpoint.
