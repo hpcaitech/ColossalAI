@@ -542,7 +542,7 @@ class ZeroDDP(ColoDDP):
             if torch.is_floating_point(buffer):
                 buffer.data = buffer.half()
 
-    def _preprocess_param(self, p: Union[nn.Parameter, ColoParameter, LazyTensor]) -> None:
+    def _preprocess_param(self, p: Union[nn.Parameter, ColoParameter, 'LazyTensor']) -> None:
         """Convert parameter to ColoParameter in-place.
         Args:
             p (Union[nn.Parameter, ColoParameter, LazyTensor]): parameter to be converted
