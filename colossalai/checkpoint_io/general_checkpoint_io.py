@@ -85,7 +85,7 @@ class GeneralCheckpointIO(CheckpointIO):
         save_state_dict(optimizer.state_dict(), checkpoint, use_safetensors=False)
 
 
-    def save_sharded_model(self, model: nn.Module, checkpoint_path: str,  gather_dtensor:bool = False, 
+    def save_sharded_model(self, model: nn.Module, checkpoint_path: str, gather_dtensor:bool = False, 
                            variant: Optional[str] = None, max_shard_size: int = 1024, use_safetensors: bool = False):
         """ 
         implement this method as it can be supported by Huggingface model,
