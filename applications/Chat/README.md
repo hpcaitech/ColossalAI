@@ -28,6 +28,7 @@
   - [Limitation of dataset](#limitation-of-dataset)
 - [FAQ](#faq)
   - [How to save/load checkpoint](#how-to-saveload-checkpoint)
+  - [How to train with limited resources](#how-to-train-with-limited-resources)
 - [The Plan](#the-plan)
   - [Real-time progress](#real-time-progress)
 - [Invitation to open-source contribution](#invitation-to-open-source-contribution)
@@ -322,6 +323,59 @@ trainer = SFTTrainer(model=model,
 
 trainer.fit()
 trainer.save_model(path=args.save_path, only_rank0=True, tokenizer=tokenizer)
+```
+
+### How to train with limited resources
+
+Here are some examples that can allow you to train a 7B model on a single or multiple consumer-grade GPUs.
+
+If you only have a single 24G GPU, you can use the following script. `batch_size` and `lora_rank` are the most important parameters to successfully train the model.
+```
+torchrun --standalone --nproc_per_node=1 train_sft.py \
+    --pretrain "/path/to/LLaMa-7B/" \
+    --model 'llama' \
+    --strategy naive \
+    --log_interval 10 \
+    --save_path  /path/to/Coati-7B \
+    --dataset /path/to/data.json \
+    --batch_size 1 \
+    --accimulation_steps 8 \
+    --lr 2e-5 \
+    --max_datasets_size 512 \
+    --max_epochs 1 \
+    --lora_rank 16 \
+```
+
+`colossalai_gemini` strategy can enable a single 24G GPU to train the whole model without using LoRA if you have sufficient CPU memory. You can use the following script.
+```
+torchrun --standalone --nproc_per_node=1 train_sft.py \
+    --pretrain "/path/to/LLaMa-7B/" \
+    --model 'llama' \
+    --strategy colossalai_gemini \
+    --log_interval 10 \
+    --save_path  /path/to/Coati-7B \
+    --dataset /path/to/data.json \
+    --batch_size 1 \
+    --accimulation_steps 8 \
+    --lr 2e-5 \
+    --max_datasets_size 512 \
+    --max_epochs 1 \
+``` 
+
+If you have 4x32 GB GPUs, you can even train the whole 7B model using our `colossalai_zero2_cpu` strategy! The script is given as follows.
+```
+torchrun --standalone --nproc_per_node=4 train_sft.py \
+    --pretrain "/path/to/LLaMa-7B/" \
+    --model 'llama' \
+    --strategy colossalai_zero2_cpu \
+    --log_interval 10 \
+    --save_path  /path/to/Coati-7B \
+    --dataset /path/to/data.json \
+    --batch_size 1 \
+    --accimulation_steps 8 \
+    --lr 2e-5 \
+    --max_datasets_size 512 \
+    --max_epochs 1 \
 ```
 
 ## The Plan
