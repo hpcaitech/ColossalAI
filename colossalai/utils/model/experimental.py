@@ -7,7 +7,7 @@ import torch.nn as nn
 from torch import Tensor
 from torch.utils._pytree import tree_map
 
-from colossalai.fx.profiler.tensor import MetaTensor
+from colossalai._analyzer._subclasses import MetaTensor
 from colossalai.tensor.d_tensor.d_tensor import DTensor
 from colossalai.tensor.d_tensor.layout import Layout
 
@@ -150,7 +150,7 @@ class LazyTensor(torch.Tensor):
             if meta_data is None:
                 device = kwargs.get('device', 'cpu')
                 elem = func(*args, **{**kwargs, 'device': 'meta'})
-                meta_data = MetaTensor(elem, fake_device=device)
+                meta_data = MetaTensor(elem, device=device)
             elem = meta_data._tensor
         # As a meta tensor cannot be modified __class__ to torch.Tensor, we should use an empty real tensor here
         r = torch.Tensor._make_subclass(cls, _EMPTY_DATA, require_grad=elem.requires_grad)
