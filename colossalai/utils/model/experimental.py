@@ -37,7 +37,7 @@ _EARLY_MATERIALIZED_OPS = ['__getitem__', 'split']
 # If your intent is to change the metadata of a Tensor (such as sizes / strides / storage / storage_offset)
 # without autograd tracking the change, remove the .data / .detach() call and wrap the change in a `with torch.no_grad():` block.
 # These ops cannot be unwrapped using .data
-_CHANGE_META_OPS = ['_cudnn_rnn_flatten_weight', 'requires_grad_', '__get__']
+_CHANGE_META_OPS = ['_cudnn_rnn_flatten_weight', 'requires_grad_', '__get__', '__set__']
 
 _LEGACY_TENSOR_CONSTRUCTOR = {
     'FloatTensor': torch.float,
@@ -261,7 +261,7 @@ class LazyTensor(torch.Tensor):
             tree_map(cls._replace_with_materialized, args)
             tree_map(cls._replace_with_materialized, kwargs)
         is_inplace: bool = (func.__name__.endswith('_') and not (func.__name__.endswith('__'))
-                            or func.__name__ == "__setitem__")
+                            or func.__name__ in ('__setitem__', '__set__'))
 
         is_change_meta_op: bool = func.__name__ in _CHANGE_META_OPS
 
