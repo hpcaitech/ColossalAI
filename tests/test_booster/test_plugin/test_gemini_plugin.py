@@ -6,8 +6,36 @@ from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.tensor.colo_parameter import ColoParameter
-from colossalai.testing import rerun_if_address_is_in_use, spawn
+from colossalai.testing import clear_cache_before_run, rerun_if_address_is_in_use, spawn
 from tests.kit.model_zoo import model_zoo
+
+
+@clear_cache_before_run()
+def run_with_gemini_plugin(model_fn, data_gen_fn, output_transform_fn, name, passed_models):
+    plugin = GeminiPlugin(placement_policy='cuda', strict_ddp_mode=True, max_norm=1.0, initial_scale=2**5)
+    booster = Booster(plugin=plugin)
+    model = model_fn()
+    optimizer = HybridAdam(model.parameters(), lr=1e-3)
+    criterion = lambda x: x.mean()
+    data = data_gen_fn()
+
+    data = {k: v.to('cuda') if torch.is_tensor(v) or 'Tensor' in v.__class__.__name__ else v for k, v in data.items()}
+
+    model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
+
+    for n, p in model.named_parameters():
+        assert isinstance(p, ColoParameter), f'{n} is not a ColoParameter'
+
+    output = model(**data)
+    output = output_transform_fn(output)
+    output_key = list(output.keys())[0]
+    loss = criterion(output[output_key])
+
+    booster.backward(loss, optimizer)
+    optimizer.step()
+    passed_models.append(name)
+
+    del booster, plugin, model, optimizer, criterion, data, output, loss
 
 
 def check_gemini_plugin(early_stop: bool = True):
@@ -39,33 +67,7 @@ def check_gemini_plugin(early_stop: bool = True):
             continue
 
         try:
-            plugin = GeminiPlugin(placement_policy='cuda', strict_ddp_mode=True, max_norm=1.0, initial_scale=2**5)
-            booster = Booster(plugin=plugin)
-            model = model_fn()
-            optimizer = HybridAdam(model.parameters(), lr=1e-3)
-            criterion = lambda x: x.mean()
-            data = data_gen_fn()
-
-            data = {
-                k: v.to('cuda') if torch.is_tensor(v) or 'Tensor' in v.__class__.__name__ else v
-                for k, v in data.items()
-            }
-
-            model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
-
-            for n, p in model.named_parameters():
-                assert isinstance(p, ColoParameter), f'{n} is not a ColoParameter'
-
-            output = model(**data)
-            output = output_transform_fn(output)
-            output_key = list(output.keys())[0]
-            loss = criterion(output[output_key])
-
-            booster.backward(loss, optimizer)
-            optimizer.step()
-            passed_models.append(name)
-
-            del booster, plugin, model, optimizer, criterion, data, output, loss
+            run_with_gemini_plugin(model_fn, data_gen_fn, output_transform_fn, name, passed_models)
         except Exception as e:
             failed_info[name] = e
             if early_stop:
