@@ -11,8 +11,7 @@ git clone https://github.com/hpcaitech/ColossalAI.git
 ```
 ### 3. Submit the ray job
 ```shell
-cd applications/Chat/experimental/ray
-python ray_job_script.py http://your.head.node.addrees:8265
+python applications/Chat/examples/community/ray/ray_job_script.py http://your.head.node.addrees:8265
 ```
 ### 4. View your job on the Ray Dashboard
 Open your ray cluster dashboard http://your.head.node.addrees:8265 to view your submitted training job.
