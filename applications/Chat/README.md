@@ -22,11 +22,11 @@
 - [Coati7B examples](#coati7b-examples)
   - [Generation](#generation)
   - [Open QA](#open-qa)
-  - [Limitation for LLaMA-finetuned models](#limitation-for-llama-finetuned-models)
-  - [Limitation of dataset](#limitation-of-dataset)
+  - [Limitation for LLaMA-finetuned models](#limitation)
+  - [Limitation of dataset](#limitation)
 - [FAQ](#faq)
-  - [How to save/load checkpoint](#how-to-saveload-checkpoint)
-  - [How to train with limited resources](#how-to-train-with-limited-resources)
+  - [How to save/load checkpoint](#faq)
+  - [How to train with limited resources](#faq)
 - [The Plan](#the-plan)
   - [Real-time progress](#real-time-progress)
 - [Invitation to open-source contribution](#invitation-to-open-source-contribution)
@@ -210,24 +210,27 @@ For more details, see [`inference/`](https://github.com/hpcaitech/ColossalAI/tre
 
 You can find more examples in this [repo](https://github.com/XueFuzhao/InstructionWild/blob/main/comparison.md).
 
-### Limitation for LLaMA-finetuned models
+### Limitation
+<details><summary><b>Limitation for LLaMA-finetuned models</b></summary>
 - Both Alpaca and ColossalChat are based on LLaMA. It is hard to compensate for the missing knowledge in the pre-training stage.
 - Lack of counting ability: Cannot count the number of items in a list.
 - Lack of Logics (reasoning and calculation)
 - Tend to repeat the last sentence (fail to produce the end token).
 - Poor multilingual results: LLaMA is mainly trained on English datasets (Generation performs better than QA).
+</details>
 
-### Limitation of dataset
+<details><summary><b>Limitation of dataset</b></summary>
 - Lack of summarization ability: No such instructions in finetune datasets.
 - Lack of multi-turn chat: No such instructions in finetune datasets
 - Lack of self-recognition: No such instructions in finetune datasets
 - Lack of Safety:
   - When the input contains fake facts, the model makes up false facts and explanations.
   - Cannot abide by OpenAI's policy: When generating prompts from OpenAI API, it always abides by its policy. So no violation case is in the datasets.
+</details>
 
 ## FAQ
 
-### How to save/load checkpoint
+<details><summary><b>How to save/load checkpoint</b></summary>
 
 We have integrated the Transformers save and load pipeline, allowing users to freely call Hugging Face's language models and save them in the HF format.
 
@@ -252,7 +255,9 @@ trainer.fit()
 trainer.save_model(path=args.save_path, only_rank0=True, tokenizer=tokenizer)
 ```
 
-### How to train with limited resources
+</details>
+
+<details><summary><b>How to train with limited resources</b></summary>
 
 Here are some examples that can allow you to train a 7B model on a single or multiple consumer-grade GPUs.
 
@@ -304,6 +309,8 @@ torchrun --standalone --nproc_per_node=4 train_sft.py \
     --max_datasets_size 512 \
     --max_epochs 1 \
 ```
+</details>
+
 
 ## The Plan
 
