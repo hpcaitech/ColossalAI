@@ -3,9 +3,11 @@ from copy import deepcopy
 
 import pandas as pd
 import torch
-from coati.trainer import PPOTrainer, DetachedPPOTrainer
+from coati.trainer import PPOTrainer
+from src.detached_trainer_ppo import DetachedPPOTrainer
+from src.experience_maker_holder import ExperienceMakerHolder
 from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
-from coati.experience_maker import NaiveExperienceMaker, ExperienceMakerHolder
+from coati.experience_maker import NaiveExperienceMaker
 from torch.optim import Adam
 from transformers import AutoTokenizer, BloomTokenizerFast
 from transformers.models.gpt2.tokenization_gpt2 import GPT2Tokenizer
@@ -13,11 +15,8 @@ from transformers.models.gpt2.tokenization_gpt2 import GPT2Tokenizer
 from colossalai.nn.optimizer import HybridAdam
 
 import ray
-
 import os
 import socket
-import multiprocessing
-
 
 def get_free_port():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -51,16 +50,10 @@ def main(args):
                         'world_size' : '2',
                         'master_port' : maker_port,
                         'master_addr' : master_addr}
-    env_info_maker_2 = {'local_rank' : '0',
-                        'rank' : '1',
-                        'world_size' : '2',
-                        'master_port': maker_port,
-                        'master_addr' : master_addr}
     print([env_info_trainer_1, 
            env_info_trainer_2,
-           env_info_maker_1,
-           env_info_maker_2])
-    ray.init()
+           env_info_maker_1])
+    ray.init(dashboard_port = 1145)
     # configure tokenizer
     if args.model == 'gpt2':
         tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
@@ -72,10 +65,10 @@ def main(args):
         tokenizer = AutoTokenizer.from_pretrained("facebook/opt-350m")
     else:
         raise ValueError(f'Unsupported model "{args.model}"')
-    
+
     # configure Trainer
     trainer_1_ref = DetachedPPOTrainer.options(name="trainer1", namespace=os.environ["RAY_NAMESPACE"], num_gpus=1, max_concurrency=2).remote(
-        experience_maker_holder_name_list=["maker1", "maker2"],
+        experience_maker_holder_name_list=["maker1"],
         strategy=args.trainer_strategy,
         model=args.model,
         env_info=env_info_trainer_1,
@@ -96,7 +89,7 @@ def main(args):
     )
 
     trainer_2_ref = DetachedPPOTrainer.options(name="trainer2", namespace=os.environ["RAY_NAMESPACE"], num_gpus=1, max_concurrency=2).remote(
-        experience_maker_holder_name_list=["maker1", "maker2"],
+        experience_maker_holder_name_list=["maker1"],
         strategy=args.trainer_strategy,
         model=args.model,
         env_info=env_info_trainer_2,
@@ -113,7 +106,7 @@ def main(args):
         top_k=50,
         pad_token_id=tokenizer.pad_token_id,
         eos_token_id=tokenizer.eos_token_id,
-        debug=args.debug,
+        debug= args.debug,
     )
 
     # configure Experience Maker
@@ -121,22 +114,6 @@ def main(args):
         detached_trainer_name_list=["trainer1", "trainer2"],
         strategy=args.maker_strategy,
         env_info=env_info_maker_1,
-        experience_batch_size=args.experience_batch_size,
-        kl_coef=0.1,
-        #kwargs:
-        max_length=128,
-        do_sample=True,
-        temperature=1.0,
-        top_k=50,
-        pad_token_id=tokenizer.pad_token_id,
-        eos_token_id=tokenizer.eos_token_id,
-        debug=args.debug,
-    )
-    
-    experience_holder_2_ref = ExperienceMakerHolder.options(name="maker2", namespace=os.environ["RAY_NAMESPACE"], num_gpus=1, max_concurrency=2).remote(
-        detached_trainer_name_list=["trainer1", "trainer2"],
-        strategy=args.maker_strategy,
-        env_info=env_info_maker_2,
         experience_batch_size=args.experience_batch_size,
         kl_coef=0.1,
         #kwargs:
@@ -164,11 +141,10 @@ def main(args):
 
     trainer_1_done_ref = trainer_1_ref.fit.remote(num_episodes=args.num_episodes, max_timesteps=args.max_timesteps, update_timesteps=args.update_timesteps)
     trainer_2_done_ref = trainer_2_ref.fit.remote(num_episodes=args.num_episodes, max_timesteps=args.max_timesteps, update_timesteps=args.update_timesteps)
-    num_exp_per_maker = args.num_episodes * args.max_timesteps // args.update_timesteps * args.max_epochs + 3  # +3 for fault tolerance
+    num_exp_per_maker = args.num_episodes * args.max_timesteps // args.update_timesteps * args.max_epochs * 2 + 3  # +3 for fault tolerance
     maker_1_done_ref = experience_holder_1_ref.workingloop.remote(dataset, tokenize_fn, times=num_exp_per_maker)
-    maker_2_done_ref = experience_holder_2_ref.workingloop.remote(dataset, tokenize_fn, times=num_exp_per_maker)
     
-    ray.get([trainer_1_done_ref, trainer_2_done_ref, maker_1_done_ref, maker_2_done_ref])
+    ray.get([trainer_1_done_ref, trainer_2_done_ref, maker_1_done_ref])
     # save model checkpoint after fitting
     trainer_1_ref.strategy_save_actor.remote(args.save_path, only_rank0=True)
     trainer_2_ref.strategy_save_actor.remote(args.save_path, only_rank0=True)

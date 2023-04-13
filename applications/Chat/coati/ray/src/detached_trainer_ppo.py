@@ -1,27 +1,22 @@
 from typing import Any, Callable, Dict, List, Optional
-import time
-
 import torch
-import torch.nn as nn
-from torch.optim import Optimizer
 from torch.optim import Adam
 
 from coati.experience_maker import Experience, NaiveExperienceMaker
 from coati.models.base import Actor, Critic
 from coati.models.generation_utils import update_model_kwargs_fn
 from coati.models.loss import PolicyLoss, ValueLoss
-from coati.replay_buffer import DetachedReplayBuffer
-from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
+from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy, Strategy
+from coati.trainer.callbacks import Callback
 
 from colossalai.nn.optimizer import HybridAdam
 
-from .detached_base import DetachedTrainer
-from .callbacks import Callback
-from .strategies import Strategy
-from .utils import is_rank_0, get_cuda_actor_critic_from_args, get_strategy_from_args, set_dist_env
-
 import ray
-import copy
+
+
+from .utils import is_rank_0, get_cuda_actor_critic_from_args, get_strategy_from_args, set_dist_env
+from .detached_trainer_base import DetachedTrainer
+
 
 @ray.remote(concurrency_groups={"buffer_length": 1, "buffer_append":1, "buffer_sample":1,"model_io": 1, "compute": 1})
 class DetachedPPOTrainer(DetachedTrainer):

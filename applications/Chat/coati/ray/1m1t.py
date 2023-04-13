@@ -3,9 +3,11 @@ from copy import deepcopy
 
 import pandas as pd
 import torch
-from coati.trainer import PPOTrainer, DetachedPPOTrainer
+from coati.trainer import PPOTrainer
+from src.detached_trainer_ppo import DetachedPPOTrainer
+from src.experience_maker_holder import ExperienceMakerHolder
 from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
-from coati.experience_maker import NaiveExperienceMaker, ExperienceMakerHolder
+from coati.experience_maker import NaiveExperienceMaker
 from torch.optim import Adam
 from transformers import AutoTokenizer, BloomTokenizerFast
 from transformers.models.gpt2.tokenization_gpt2 import GPT2Tokenizer

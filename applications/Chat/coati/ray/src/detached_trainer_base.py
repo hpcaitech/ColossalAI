@@ -1,21 +1,13 @@
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, List, Optional, Union
-
-import torch
-from torch import Tensor
-import torch.nn as nn
-from torch.optim import Optimizer
-from coati.experience_maker import Experience
-from coati.replay_buffer import DetachedReplayBuffer
 from tqdm import tqdm
-
-from .callbacks import Callback
-from .strategies import Strategy
-from .utils import is_rank_0
-
+from coati.trainer.callbacks import Callback
+from coati.experience_maker import Experience
 import ray
 import os
 
+from .detached_replay_buffer import DetachedReplayBuffer
+from .utils import is_rank_0
 
 class DetachedTrainer(ABC):
     '''

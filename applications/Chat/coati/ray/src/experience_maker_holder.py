@@ -1,7 +1,5 @@
 import torch
 from typing import Any, Callable, Dict, List, Optional, Union
-from .naive import NaiveExperienceMaker, Experience, ExperienceMaker
-from ..replay_buffer.detached import DetachedReplayBuffer
 import ray
 from ray.exceptions import GetTimeoutError
 from torch import Tensor
@@ -9,11 +7,15 @@ import torch.nn as nn
 from coati.models.base import Actor, Critic, RewardModel
 from coati.trainer.strategies.sampler import DistributedSampler
 from coati.trainer.strategies import Strategy
-from coati.trainer.utils import is_rank_0, get_strategy_from_args, set_dist_env
+from coati.experience_maker import NaiveExperienceMaker, Experience, ExperienceMaker
+
 from copy import deepcopy
 from threading import Lock
 import time
 import os
+
+
+from .utils import is_rank_0, get_strategy_from_args, set_dist_env
 
 
 @ray.remote(concurrency_groups={"experience_io": 1, "model_io": 1, "compute": 1})
@@ -75,6 +77,8 @@ class ExperienceMakerHolder:
     @ray.method(concurrency_group="experience_io")
     def _send_experience(self, experience):
         '''
+        ignore it
+
         # choose a trainer that has the least experience batch in its detached_replay_buffer
         chosen_trainer = None
         min_length = None

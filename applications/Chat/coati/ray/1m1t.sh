@@ -13,12 +13,11 @@ set_n_least_used_CUDA_VISIBLE_DEVICES() {
     echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 }
 
-set_n_least_used_CUDA_VISIBLE_DEVICES 3
+set_n_least_used_CUDA_VISIBLE_DEVICES 2
 
-export CUDA_VISIBLE_DEVICES="0,1,2,3"
-export RAY_NAMESPACE="lccsr"
+export RAY_NAMESPACE="admin"
 
-python 2m1t.py "./awesome-chatgpt-prompts/prompts.csv" \
-    --trainer_strategy naive --maker_strategy naive --lora_rank 2 --pretrain "facebook/opt-350m" --model 'opt' \
+python 1m1t.py "/path/to/prompts.csv" \
+    --trainer_strategy colossalai_zero2 --maker_strategy naive --lora_rank 2 --pretrain "facebook/opt-350m" --model 'opt' \
     --num_episodes 10 --max_timesteps 10 --update_timesteps 10 \
-    --max_epochs 10  # --debug
+    --max_epochs 10   --debug

@@ -1,13 +1,13 @@
 import torch
 import random
 from typing import List, Any
-from .base import ReplayBuffer
 # from torch.multiprocessing import Queue
 from ray.util.queue import Queue
 import ray
 import asyncio
 from coati.experience_maker.base import Experience
-from .utils import BufferItem, make_experience_batch, split_experience_batch
+from coati.replay_buffer.utils import BufferItem, make_experience_batch, split_experience_batch
+from coati.replay_buffer import ReplayBuffer
 from threading import Lock
 import copy
 
