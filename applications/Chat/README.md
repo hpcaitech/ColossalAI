@@ -343,6 +343,14 @@ and [WeChat(微信)](https://raw.githubusercontent.com/hpcaitech/public_assets/m
 Thanks so much to all of our amazing contributors!
 
 ## Quick Preview
+<div align="center">
+   <a href="https://chat.colossalai.org/">
+   <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/Chat-demo.png" width="700" />
+   </a>
+</div>
+
+- An open-source low cost solution for cloning [ChatGPT](https://openai.com/blog/chatgpt/) with a complete RLHF pipeline.
+
 <p id="ChatGPT_scaling" align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chatgpt/ChatGPT%20scaling.png" width=800/>
 </p>
