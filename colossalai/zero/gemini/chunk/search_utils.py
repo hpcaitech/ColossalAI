@@ -46,9 +46,10 @@ def _get_unused_byte(size_list: List[int], chunk_size: int) -> int:
 
 
 def _tensor_numel(local_param: ColoParameter, strict_ddp_flag: bool):
-    if strict_ddp_flag:
+    if strict_ddp_flag and type(local_param) is ColoParameter:
         return local_param.numel_global()
     else:
+        # if local_param is not ColoParameter, we assume it's replicated
         return local_param.numel()
 
 
@@ -67,11 +68,13 @@ def classify_params_by_dp_degree(param_order: OrderedParamGenerator,
     """
     params_dict: Dict[int, List[ColoParameter]] = dict()
     for param in param_order.generate():
-        assert isinstance(param, ColoParameter), "please init model in the ColoInitContext"
+        # assert isinstance(param, ColoParameter), "please init model in the ColoInitContext"
         if is_ddp_ignored(param):
             continue
 
-        if strict_ddp_flag:
+        if strict_ddp_flag or type(param) is not ColoParameter:
+            # if model is not initialized with ColoInitContext, we assume it's replicated
+            # TODO(ver217): integrate DTensor
             param_key = dist.get_world_size()
         else:
             param_key = param.process_group.dp_world_size()

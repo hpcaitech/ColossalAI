@@ -1,21 +1,31 @@
+from contextlib import nullcontext
+
 import torch
 import torch.distributed as dist
 
 import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin
+from colossalai.fx import is_compatible_with_meta
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.tensor.colo_parameter import ColoParameter
-from colossalai.testing import rerun_if_address_is_in_use, spawn
+from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
+from colossalai.zero import ColoInitContext
 from tests.kit.model_zoo import model_zoo
 
 
-def check_gemini_plugin(early_stop: bool = True):
+@parameterize('init_method', ['lazy', 'none', 'colo'])
+def check_gemini_plugin(init_method: str = 'none', early_stop: bool = True):
     """check gemini plugin over model zoo
 
     Args:
         early_stop (bool, optional): Whether to stop when getting the first error. Defaults to True.
     """
+    is_support_meta = is_compatible_with_meta()
+    if not is_support_meta and init_method == 'lazy':
+        return
+
+    from colossalai.utils.model.experimental import LazyInitContext
     passed_models = []
     failed_info = {}    # (model_name, error) pair
 
@@ -40,10 +50,25 @@ def check_gemini_plugin(early_stop: bool = True):
         ]:
             continue
 
+        if init_method == 'lazy' and name in [
+                'timm_convmixer', 'timm_vision_transformer', 'timm_deit', 'timm_deit3', 'timm_inception_v3',
+                'timm_tnt_b_patch16_224', 'timm_rexnet', 'torchvision_densenet121', 'torchvision_efficientnet_b0',
+                'torchvision_mobilenet_v2', 'torchvision_mnasnet0_5', 'torchvision_regnet_x_16gf',
+                'torchvision_shufflenet_v2_x0_5', 'torchvision_efficientnet_v2_s'
+        ]:
+            continue
+
         try:
+            if init_method == 'colo':
+                ctx = ColoInitContext()
+            elif init_method == 'lazy':
+                ctx = LazyInitContext()
+            else:
+                ctx = nullcontext()
             plugin = GeminiPlugin(placement_policy='cuda', strict_ddp_mode=True, max_norm=1.0, initial_scale=2**5)
             booster = Booster(plugin=plugin)
-            model = model_fn()
+            with ctx:
+                model = model_fn()
             optimizer = HybridAdam(model.parameters(), lr=1e-3)
             criterion = lambda x: x.mean()
             data = data_gen_fn()
@@ -76,6 +101,7 @@ def check_gemini_plugin(early_stop: bool = True):
         torch.cuda.empty_cache()
 
     if dist.get_rank() == 0:
+        print(f'Init method: {init_method}')
         print(f'Passed models({len(passed_models)}): {passed_models}\n\n')
         print(f'Failed models({len(failed_info)}): {list(failed_info.keys())}\n\n')
     assert len(failed_info) == 0, '\n'.join([f'{k}: {v}' for k, v in failed_info.items()])
