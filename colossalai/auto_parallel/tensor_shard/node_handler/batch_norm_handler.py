@@ -2,8 +2,6 @@ from typing import Dict, List
 
 import torch
 
-from colossalai.auto_parallel.meta_profiler.metainfo import MetaInfo
-
 from ..sharding_strategy import OperationData, OperationDataType, StrategiesVector
 from .node_handler import MetaInfoModuleHandler, ModuleHandler
 from .registry import operator_registry

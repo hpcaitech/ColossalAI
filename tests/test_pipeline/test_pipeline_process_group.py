@@ -1,13 +1,12 @@
 import os
 
 import torch.distributed.rpc as rpc
-import torch.multiprocessing as mp
-import pytest
+from rpc_test_utils import pg_parse_args, rpc_is_initialized
 
-from colossalai.pipeline.pipeline_process_group import ppg
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
-from rpc_test_utils import pg_parse_args, rpc_is_initialized
+from colossalai.pipeline.pipeline_process_group import ppg
+from colossalai.testing import spawn
 
 
 def run_worker(rank, args):
@@ -40,4 +39,4 @@ def run_worker(rank, args):
 if __name__ == "__main__":
     args = pg_parse_args()
     world_size = args.world_size
-    mp.spawn(run_worker, args=(args,), nprocs=world_size)
+    spawn(run_worker, world_size, args=args)

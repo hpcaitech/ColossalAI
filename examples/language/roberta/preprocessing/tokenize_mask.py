@@ -15,8 +15,8 @@ from get_mask import PreTrainingDataset
 def get_raw_instance(document, max_sequence_length=512):
 
     """
-    获取初步的训练实例，将整段按照max_sequence_length切分成多个部分,并以多个处理好的实例的形式返回。
-    :param document: 一整段
+    Get the initial training instances, split the whole segment into multiple parts according to the max_sequence_length, and return as multiple processed instances.
+    :param document: document
     :param max_sequence_length:
     :return: a list. each element is a sequence of text
     """
@@ -26,10 +26,9 @@ def get_raw_instance(document, max_sequence_length=512):
     sizes = [len(seq) for seq in document]
 
     result_list = []
-    curr_seq = [] # 当前处理的序列
+    curr_seq = [] 
     sz_idx = 0
     while sz_idx < len(sizes):
-        # 当前句子加上新的句子，如果长度小于最大限制，则合并当前句子和新句子；否则即超过了最大限制，那么做为一个新的序列加到目标列表中
         
         if len(curr_seq) + sizes[sz_idx] <= max_sequence_length_allowed: # or len(curr_seq)==0:
             curr_seq += document[sz_idx]
@@ -43,14 +42,13 @@ def get_raw_instance(document, max_sequence_length=512):
         else:
             result_list.append(curr_seq)
             curr_seq = []
-    # 对最后一个序列进行处理，如果太短的话，丢弃掉。
+
     if len(curr_seq) > max_sequence_length_allowed / 2: # /2
         result_list.append(curr_seq)
 
-    # # 计算总共可以得到多少份
     # num_instance=int(len(big_list)/max_sequence_length_allowed)+1
     # print("num_instance:",num_instance)
-    # # 切分成多份，添加到列表中
+
     # result_list=[]
     # for j in range(num_instance):
     #     index=j*max_sequence_length_allowed

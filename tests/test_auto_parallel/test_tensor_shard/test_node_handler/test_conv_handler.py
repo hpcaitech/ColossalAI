@@ -1,23 +1,20 @@
-from functools import partial
-
 import pytest
 import torch
-import torch.multiprocessing as mp
 import torch.nn as nn
 
+from colossalai._analyzer.fx.graph_module import ColoGraphModule
+from colossalai._analyzer.fx.passes.shape_prop import shape_prop_pass
+from colossalai._analyzer.fx.tracer.tracer import ColoTracer
 from colossalai.auto_parallel.tensor_shard.node_handler.conv_handler import ConvFunctionHandler, ConvModuleHandler
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationData, OperationDataType, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
-from colossalai.fx import ColoGraphModule, ColoTracer
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
-from colossalai.testing import assert_close, parameterize, rerun_if_address_is_in_use
-from colossalai.testing.pytest_wrapper import run_on_environment_flag
-from colossalai.utils import free_port
+from colossalai.testing import rerun_if_address_is_in_use, run_on_environment_flag, spawn
 from tests.test_auto_parallel.test_tensor_shard.test_node_handler.utils import numerical_test_for_node_strategy
 
 
-def check_conv_module_handler(rank, bias, world_size, port):
+def check_conv_module_handler(rank, world_size, port, bias):
     disable_existing_loggers()
     launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     model = nn.Sequential(nn.Conv2d(4, 16, 3, padding=1, bias=bias)).cuda()
@@ -41,9 +38,11 @@ def check_conv_module_handler(rank, bias, world_size, port):
                                      strategy_number=strategy_number,
                                      input_args=[input],
                                      meta_arg_names=['input'])
-    tracer = ColoTracer()
-    graph = tracer.trace(model, meta_args={"input": torch.rand(4, 4, 64, 64).to('meta')})
+    tracer = ColoTracer(bias_addition_split=True)
+    meta_args = {'input': torch.rand(4, 4, 64, 64).to('meta')}
+    graph = tracer.trace(model, meta_args=meta_args)
     gm = ColoGraphModule(model, graph)
+    shape_prop_pass(gm, *meta_args.values())
     conv_mod_node = list(graph.nodes)[1]
     strategies_vector = StrategiesVector(conv_mod_node)
 
@@ -151,7 +150,7 @@ class ConvModel(nn.Module):
         return x
 
 
-def check_conv_function_handler(rank, bias, world_size, port):
+def check_conv_function_handler(rank, world_size, port, bias):
     disable_existing_loggers()
     launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     model = ConvModel().cuda()
@@ -178,7 +177,7 @@ def check_conv_function_handler(rank, bias, world_size, port):
                                      meta_arg_names=meta_arg_names,
                                      input_kwargs=input_kwargs)
 
-    tracer = ColoTracer()
+    tracer = ColoTracer(bias_addition_split=True)
     # graph():
     #     %input_1 : torch.Tensor [#users=1] = placeholder[target=input]
     #     %others : torch.Tensor [#users=1] = placeholder[target=others]
@@ -189,6 +188,7 @@ def check_conv_function_handler(rank, bias, world_size, port):
         meta_args['bias'] = torch.rand(16).to('meta')
     graph = tracer.trace(model, meta_args=meta_args)
     gm = ColoGraphModule(model, graph)
+    shape_prop_pass(gm, *meta_args.values())
 
     if bias:
         conv_mod_node = list(graph.nodes)[3]
@@ -297,9 +297,7 @@ def check_conv_function_handler(rank, bias, world_size, port):
 # @parameterize('bias', [True, False])
 @rerun_if_address_is_in_use()
 def test_conv_module_handler(bias=False):
-    world_size = 4
-    run_func = partial(check_conv_module_handler, bias=bias, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(check_conv_module_handler, 4, bias=bias)
 
 
 @run_on_environment_flag(name='AUTO_PARALLEL')
@@ -309,9 +307,7 @@ def test_conv_module_handler(bias=False):
 # @parameterize('bias', [True, False])
 @rerun_if_address_is_in_use()
 def test_conv_function_handler(bias=False):
-    world_size = 4
-    run_func = partial(check_conv_function_handler, bias=bias, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(check_conv_function_handler, 4, bias=bias)
 
 
 if __name__ == '__main__':

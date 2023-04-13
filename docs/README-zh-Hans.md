@@ -39,6 +39,14 @@
  <li><a href="#为何选择-Colossal-AI">为何选择 Colossal-AI</a> </li>
  <li><a href="#特点">特点</a> </li>
  <li>
+   <a href="#Colossal-AI-in-the-Real-World">Colossal-AI 成功案例</a>
+   <ul>
+     <li><a href="#ColossalChat">ColossalChat：完整RLHF流程0门槛克隆ChatGPT</a></li>
+     <li><a href="#AIGC">AIGC: 加速 Stable Diffusion</a></li>
+     <li><a href="#生物医药">生物医药: 加速AlphaFold蛋白质结构预测</a></li>
+   </ul>
+ </li>
+ <li>
    <a href="#并行训练样例展示">并行训练样例展示</a>
    <ul>
      <li><a href="#GPT-3">GPT-3</a></li>
@@ -63,14 +71,6 @@
      <li><a href="#GPT-3-Inference">GPT-3</a></li>
      <li><a href="#OPT-Serving">1750亿参数OPT在线推理服务</a></li>
      <li><a href="#BLOOM-Inference">1760亿参数 BLOOM</a></li>
-   </ul>
- </li>
-<li>
-   <a href="#Colossal-AI-in-the-Real-World">Colossal-AI 成功案例</a>
-   <ul>
-     <li><a href="#ColossalChat">ColossalChat：完整RLHF流程0门槛克隆ChatGPT</a></li>
-     <li><a href="#AIGC">AIGC: 加速 Stable Diffusion</a></li>
-     <li><a href="#生物医药">生物医药: 加速AlphaFold蛋白质结构预测</a></li>
    </ul>
  </li>
  <li>
@@ -117,8 +117,88 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 
 <p align="right">(<a href="#top">返回顶端</a>)</p>
 
-## 并行训练样例展示
+## Colossal-AI 成功案例
+### ColossalChat
 
+<div align="center">
+   <a href="https://chat.colossalai.org/">
+   <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/Chat-demo.png" width="700" />
+   </a>
+</div>
+
+[ColossalChat](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat): 完整RLHF流程0门槛克隆 [ChatGPT](https://openai.com/blog/chatgpt/) [[代码]](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat) [[博客]](https://medium.com/@yangyou_berkeley/colossalchat-an-open-source-solution-for-cloning-chatgpt-with-a-complete-rlhf-pipeline-5edf08fb538b) [[在线样例]](https://chat.colossalai.org)
+
+<p id="ColossalChat_scaling" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chatgpt/ChatGPT%20scaling.png" width=800/>
+</p>
+
+- 最高可提升单机训练速度7.73倍，单卡推理速度1.42倍
+
+<p id="ColossalChat-1GPU" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chatgpt/ChatGPT-1GPU.jpg" width=450/>
+</p>
+
+- 单卡模型容量最多提升10.3倍
+- 最小demo训练流程最低仅需1.62GB显存 (任意消费级GPU)
+
+<p id="ColossalChat-LoRA" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chatgpt/LoRA%20data.jpg" width=600/>
+</p>
+
+- 提升单卡的微调模型容量3.7倍
+- 同时保持高速运行
+
+<p align="right">(<a href="#top">back to top</a>)</p>
+
+### AIGC
+加速AIGC(AI内容生成)模型，如[Stable Diffusion v1](https://github.com/CompVis/stable-diffusion) 和 [Stable Diffusion v2](https://github.com/Stability-AI/stablediffusion)
+
+<p id="diffusion_train" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/Stable%20Diffusion%20v2.png" width=800/>
+</p>
+
+- [训练](https://github.com/hpcaitech/ColossalAI/tree/main/examples/images/diffusion): 减少5.6倍显存消耗，硬件成本最高降低46倍(从A100到RTX3060)
+
+<p id="diffusion_demo" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/DreamBooth.png" width=800/>
+</p>
+
+- [DreamBooth微调](https://github.com/hpcaitech/ColossalAI/tree/main/examples/images/dreambooth): 仅需3-5张目标主题图像个性化微调
+
+<p id="inference" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/Stable%20Diffusion%20Inference.jpg" width=800/>
+</p>
+
+- [推理](https://github.com/hpcaitech/ColossalAI/tree/main/examples/images/diffusion): GPU推理显存消耗降低2.5倍
+
+
+<p align="right">(<a href="#top">返回顶端</a>)</p>
+
+### 生物医药
+
+加速 [AlphaFold](https://alphafold.ebi.ac.uk/) 蛋白质结构预测
+
+<p id="FastFold" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/FastFold.jpg" width=800/>
+</p>
+
+- [FastFold](https://github.com/hpcaitech/FastFold): 加速AlphaFold训练与推理、数据前处理、推理序列长度超过10000残基
+
+<p id="FastFold-Intel" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/data%20preprocessing%20with%20Intel.jpg" width=600/>
+</p>
+
+- [FastFold with Intel](https://github.com/hpcaitech/FastFold): 3倍推理加速和39%成本节省
+
+<p id="xTrimoMultimer" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/xTrimoMultimer_Table.jpg" width=800/>
+</p>
+
+- [xTrimoMultimer](https://github.com/biomap-research/xTrimoMultimer): 11倍加速蛋白质单体与复合物结构预测
+
+<p align="right">(<a href="#top">返回顶端</a>)</p>
+
+## 并行训练样例展示
 
 ### GPT-3
 <p align="center">
@@ -213,87 +293,6 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 
 <p align="right">(<a href="#top">返回顶端</a>)</p>
 
-## Colossal-AI 成功案例
-### ColossalChat
-
-<div align="center">
-   <a href="https://chat.colossalai.org/">
-   <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/Chat-demo.png" width="700" />
-   </a>
-</div>
-
-[ColossalChat](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat): 完整RLHF流程0门槛克隆 [ChatGPT](https://openai.com/blog/chatgpt/) [[代码]](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat) [[博客]](https://medium.com/@yangyou_berkeley/colossalchat-an-open-source-solution-for-cloning-chatgpt-with-a-complete-rlhf-pipeline-5edf08fb538b) [[在线样例]](https://chat.colossalai.org)
-
-<p id="ColossalChat_scaling" align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chatgpt/ChatGPT%20scaling.png" width=800/>
-</p>
-
-- 最高可提升单机训练速度7.73倍，单卡推理速度1.42倍
-
-<p id="ColossalChat-1GPU" align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chatgpt/ChatGPT-1GPU.jpg" width=450/>
-</p>
-
-- 单卡模型容量最多提升10.3倍
-- 最小demo训练流程最低仅需1.62GB显存 (任意消费级GPU)
-
-<p id="ColossalChat-LoRA" align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chatgpt/LoRA%20data.jpg" width=600/>
-</p>
-
-- 提升单卡的微调模型容量3.7倍
-- 同时保持高速运行
-
-<p align="right">(<a href="#top">back to top</a>)</p>
-
-### AIGC
-加速AIGC(AI内容生成)模型，如[Stable Diffusion v1](https://github.com/CompVis/stable-diffusion) 和 [Stable Diffusion v2](https://github.com/Stability-AI/stablediffusion)
-
-<p id="diffusion_train" align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/Stable%20Diffusion%20v2.png" width=800/>
-</p>
-
-- [训练](https://github.com/hpcaitech/ColossalAI/tree/main/examples/images/diffusion): 减少5.6倍显存消耗，硬件成本最高降低46倍(从A100到RTX3060)
-
-<p id="diffusion_demo" align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/DreamBooth.png" width=800/>
-</p>
-
-- [DreamBooth微调](https://github.com/hpcaitech/ColossalAI/tree/main/examples/images/dreambooth): 仅需3-5张目标主题图像个性化微调
-
-<p id="inference" align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/Stable%20Diffusion%20Inference.jpg" width=800/>
-</p>
-
-- [推理](https://github.com/hpcaitech/ColossalAI/tree/main/examples/images/diffusion): GPU推理显存消耗降低2.5倍
-
-
-<p align="right">(<a href="#top">返回顶端</a>)</p>
-
-### 生物医药
-
-加速 [AlphaFold](https://alphafold.ebi.ac.uk/) 蛋白质结构预测
-
-<p id="FastFold" align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/FastFold.jpg" width=800/>
-</p>
-
-- [FastFold](https://github.com/hpcaitech/FastFold): 加速AlphaFold训练与推理、数据前处理、推理序列长度超过10000残基
-
-<p id="FastFold-Intel" align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/data%20preprocessing%20with%20Intel.jpg" width=600/>
-</p>
-
-- [FastFold with Intel](https://github.com/hpcaitech/FastFold): 3倍推理加速和39%成本节省
-
-<p id="xTrimoMultimer" align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/xTrimoMultimer_Table.jpg" width=800/>
-</p>
-
-- [xTrimoMultimer](https://github.com/biomap-research/xTrimoMultimer): 11倍加速蛋白质单体与复合物结构预测
-
-<p align="right">(<a href="#top">返回顶端</a>)</p>
-
 ## 安装
 
 环境要求:
@@ -301,6 +300,8 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 - PyTorch >= 1.11 (PyTorch 2.x 正在适配中)
 - Python >= 3.7
 - CUDA >= 11.0
+- [NVIDIA GPU Compute Capability](https://developer.nvidia.com/cuda-gpus) >= 7.0 (V100/RTX20 and higher)
+- Linux OS
 
 如果你遇到安装问题，可以向本项目 [反馈](https://github.com/hpcaitech/ColossalAI/issues/new/choose)。
 
@@ -396,16 +397,16 @@ docker run -ti --gpus all --rm --ipc=host colossalai bash
 
 真诚感谢所有贡献者！
 
-<a href="https://github.com/hpcaitech/ColossalAI/graphs/contributors"><img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/contributor_avatar.png" width="800px"></a>
-
-*贡献者头像的展示顺序是随机的。*
+<a href="https://github.com/hpcaitech/ColossalAI/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=hpcaitech/ColossalAI"  width="800px"/>
+</a>
 
 <p align="right">(<a href="#top">返回顶端</a>)</p>
 
 
 ## CI/CD
 
-我们使用[GitHub Actions](https://github.com/features/actions)来自动化大部分开发以及部署流程。如果想了解这些工作流是如何运行的，请查看这个[文档](.github/workflows/README.md).
+我们使用[GitHub Actions](https://github.com/features/actions)来自动化大部分开发以及部署流程。如果想了解这些工作流是如何运行的，请查看这个[文档](https://github.com/hpcaitech/ColossalAI/blob/main/.github/workflows/README.md).
 
 
 ## 引用我们
