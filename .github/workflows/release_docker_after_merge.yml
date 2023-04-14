@@ -27,6 +27,7 @@ jobs:
           version=$(cat version.txt)
           tag=hpcaitech/colossalai:$version
           docker build --build-arg http_proxy=http://172.17.0.1:7890 --build-arg https_proxy=http://172.17.0.1:7890 -t $tag ./docker
+          docker tag $tag latest
           echo "tag=${tag}" >> $GITHUB_OUTPUT
 
       - name: Log in to Docker Hub
@@ -39,6 +40,7 @@ jobs:
         id: docker-push
         run: |
           docker push ${{ steps.build.outputs.tag }}
+          docker push latest
 
   notify:
     name: Notify Lark via webhook
