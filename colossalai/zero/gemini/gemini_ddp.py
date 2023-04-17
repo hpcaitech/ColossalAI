@@ -575,6 +575,23 @@ class ZeroDDP(ColoDDP):
                          keep_vars: bool = False,
                          max_shard_size: int = 1024,
                          only_rank_0: bool = True) -> Iterator[OrderedDict]:
+        """Returns dictionaries containing a whole state of the module one by one. The max size of dictionary shard is specified by ``max_shard_size``.
+
+        Both parameters and persistent buffers (e.g. running averages) are included.
+        Keys are corresponding parameter and buffer names.
+        Parameters and buffers set to ``None`` are not included.
+
+        Args:
+            prefix (str, optional): the prefix for parameters and buffers used in this
+                module. Defaults to ''.
+            keep_vars (bool, optional): whether to keep variables. Defaults to False.
+            max_shard_size (int, optional): max size of state dict shard (in MB). Defaults to 1024.
+            only_rank_0 (bool, optional): only get data on rank0. Defaults to True.
+
+
+        Yields:
+            Iterator[OrderedDict]: A generator of state dict shard
+        """
         # get the mapping between copies and fp16 parameters
         fp16_to_fp32 = dict()
         for p, fp32_p in zip(self.fp16_params, self.fp32_params):
