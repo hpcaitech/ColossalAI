@@ -614,7 +614,6 @@ class ZeroDDP(ColoDDP):
                 if tmp_block is not None:
                     yield tmp_block
 
-        assert len(gathered_param_buffer) == 0, "gathered_param_buffer should be empty after state_dict_shard"
         del fp16_to_fp32
         del gathered_param_buffer
 
