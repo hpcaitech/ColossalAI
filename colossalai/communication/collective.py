@@ -48,7 +48,38 @@ def all_gather(tensor: Tensor, dim: int, parallel_mode: ParallelMode, async_op: 
         return out, work
     else:
         return out
+    
+def gather(tensor: Tensor, dim: int, parallel_mode: ParallelMode, dst: int = 0,  async_op: bool = False) -> Tensor:
+    r"""Gathers all tensors from the parallel group and concatenates them in a
+    specific dimension.
 
+    Note:
+        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
+        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
+
+    Args:
+        tensor (:class:`torch.Tensor`): Tensor to be gathered.
+        dim (int): The dimension concatenating in.
+        parallel_mode (:class:`colossalai.context.ParallelMode`): Parallel group mode used in this communication.
+        dst (int, optional): The destination rank.
+        async_op (bool, optional): Whether operations are asynchronous.
+
+    Returns:
+        Union[tuple(:class:`torch.Tensor`, work handle), :class:`torch.Tensor`]: The result of all-together only,
+    """
+    depth = gpc.get_world_size(parallel_mode)
+    if depth == 1:
+        out = tensor
+        work = None
+    out = tensor.contiguous()
+    group = gpc.get_cpu_group(parallel_mode) if tensor.device.type == "cpu" else gpc.get_group(parallel_mode)
+    work = dist.gather(tensor, out, dst=dst, group=group, async_op=async_op)
+    if async_op:
+        return out, work
+    else:
+        return out
+    
+    
 
 def reduce_scatter(tensor: Tensor,
                    dim: int,
