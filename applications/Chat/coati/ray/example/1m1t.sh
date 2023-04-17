@@ -15,6 +15,9 @@ set_n_least_used_CUDA_VISIBLE_DEVICES() {
 
 set_n_least_used_CUDA_VISIBLE_DEVICES 2
 
-# torchrun --standalone --nproc_per_node=2 train_prompts.py prompts.csv --strategy colossalai_zero2
+export RAY_NAMESPACE="admin"
 
-torchrun --standalone --nproc_per_node=2 train_prompts.py --prompt_path /path/to/data.json --strategy colossalai_zero2
+python 1m1t.py "/path/to/prompts.csv" \
+    --trainer_strategy colossalai_zero2 --maker_strategy naive --lora_rank 2 --pretrain "facebook/opt-350m" --model 'opt' \
+    --num_episodes 10 --max_timesteps 10 --update_timesteps 10 \
+    --max_epochs 10   --debug
