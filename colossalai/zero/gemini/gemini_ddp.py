@@ -592,6 +592,8 @@ class ZeroDDP(ColoDDP):
         Yields:
             Iterator[OrderedDict]: A generator of state dict shard
         """
+        sharder = _StateDictSharder(max_shard_size)
+
         # get the mapping between copies and fp16 parameters
         fp16_to_fp32 = dict()
         for p, fp32_p in zip(self.fp16_params, self.fp32_params):
@@ -599,22 +601,6 @@ class ZeroDDP(ColoDDP):
 
         # key is fp32 param, and value is gathered param on CPU
         gathered_param_buffer = dict()
-
-        current_block = OrderedDict()
-        current_block_size = 0
-
-        def _save_to_block(name, tensor):
-            nonlocal current_block, current_block_size
-            tensor_size = calculate_tensor_size(tensor)
-            returned_block = None
-            if current_block_size + tensor_size > max_shard_size:
-                returned_block = current_block
-                current_block = OrderedDict()
-                current_block_size = 0
-            current_block[name] = tensor
-            current_block_size += tensor_size
-            return returned_block
-
         for name, param in self.name2param.items():
             if param is not None:
                 if is_ddp_ignored(param):
@@ -627,9 +613,9 @@ class ZeroDDP(ColoDDP):
                         gathered_param_buffer.update(self._get_chunk_to_save_data(chunk, only_rank_0))
                     gathered_param = gathered_param_buffer.pop(fp32_param)
 
-                tmp_block = _save_to_block(prefix + name, gathered_param)
-                if tmp_block is not None:
-                    yield tmp_block
+                block = sharder.append(prefix + name, gathered_param)
+                if block is not None:
+                    yield block
 
         del fp16_to_fp32
         del gathered_param_buffer
@@ -638,19 +624,38 @@ class ZeroDDP(ColoDDP):
         for name, buf in self.named_buffers():
             if buf is not None and name not in self._non_persistent_buffers_set:
                 buffer = buf if keep_vars else buf.detach()
-                tmp_block = _save_to_block(prefix + name, buffer)
-                if tmp_block is not None:
-                    yield tmp_block
+                block = sharder.append(prefix + name, buffer)
+                if block is not None:
+                    yield block
         # save extra states
         extra_state_key = prefix + _EXTRA_STATE_KEY_SUFFIX
         if getattr(self.__class__, "get_extra_state",
                    torch.nn.Module.get_extra_state) is not torch.nn.Module.get_extra_state:
             extra_state = self.get_extra_state()
-            tmp_block = _save_to_block(extra_state_key, extra_state)
-            if tmp_block is not None:
-                yield tmp_block
+            block = sharder.append(extra_state_key, extra_state)
+            if block is not None:
+                yield block
 
-        yield current_block
+        yield sharder.current_block
+
+
+class _StateDictSharder:
+
+    def __init__(self, max_shard_size: int) -> None:
+        self.max_shard_size = max_shard_size
+        self.current_block = OrderedDict()
+        self.current_block_size = 0
+
+    def append(self, name: str, tensor: torch.Tensor) -> Optional[OrderedDict]:
+        tensor_size = calculate_tensor_size(tensor)
+        ret_block = None
+        if self.current_block_size + tensor_size > self.max_shard_size:
+            ret_block = self.current_block
+            self.current_block = OrderedDict()
+            self.current_block_size = 0
+        self.current_block[name] = tensor
+        self.current_block_size += tensor_size
+        return ret_block
 
 
 class GeminiDDP(ZeroDDP):
