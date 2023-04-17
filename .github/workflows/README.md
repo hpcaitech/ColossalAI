@@ -58,7 +58,7 @@ I will provide the details of each workflow below.
 #### Example Test on Dispatch
 
 This workflow is triggered by manually dispatching the workflow. It has the following input parameters:
-- `example_directory`: the example directory to test. Multiple directories are supported and must be separated b$$y comma. For example, language/gpt, images/vit. Simply input language or simply gpt does not work.
+- `example_directory`: the example directory to test. Multiple directories are supported and must be separated by comma. For example, language/gpt, images/vit. Simply input language or simply gpt does not work.
 
 ### Compatibility Test
 
