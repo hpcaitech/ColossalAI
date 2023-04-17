@@ -1,5 +1,35 @@
 # Examples
 
+## Table of Contents
+
+- [Examples](#examples)
+  - [Table of Contents](#table-of-contents)
+  - [Install requirements](#install-requirements)
+  - [Supervised datasets collection](#supervised-datasets-collection)
+  - [Stage1 - Supervised instructs tuning](#stage1---supervised-instructs-tuning)
+    - [Arg List](#arg-list)
+  - [Stage2 - Training reward model](#stage2---training-reward-model)
+    - [Features and tricks in RM training](#features-and-tricks-in-rm-training)
+    - [Experiment result](#experiment-result)
+    - [Arg List](#arg-list-1)
+  - [Stage3 - Training model using prompts with RL](#stage3---training-model-using-prompts-with-rl)
+    - [Arg List](#arg-list-2)
+  - [Inference example - After Stage3](#inference-example---after-stage3)
+  - [Attention](#attention)
+      - [data](#data)
+  - [Support Model](#support-model)
+    - [GPT](#gpt)
+    - [BLOOM](#bloom)
+    - [OPT](#opt)
+    - [LLaMA](#llama)
+  - [Add your own models](#add-your-own-models)
+    - [Actor model](#actor-model)
+    - [LM model](#lm-model)
+    - [Reward model](#reward-model)
+    - [Critic model](#critic-model)
+
+
+---
 ## Install requirements
 
 ```shell
@@ -164,7 +194,7 @@ The examples are demos for the whole training process.You need to change the hyp
 - [x]  GPT2-S (s)
 - [x]  GPT2-M (m)
 - [x]  GPT2-L (l)
-- [ ]  GPT2-XL (xl)
+- [x]  GPT2-XL (xl)
 - [x]  GPT2-4B (4b)
 - [ ]  GPT2-6B (6b)
 
@@ -178,9 +208,9 @@ The examples are demos for the whole training process.You need to change the hyp
 ### OPT
 - [x] [OPT-125M](https://huggingface.co/facebook/opt-125m)
 - [x] [OPT-350M](https://huggingface.co/facebook/opt-350m)
-- [ ] [OPT-1.3B](https://huggingface.co/facebook/opt-1.3b)
-- [ ] [OPT-2.7B](https://huggingface.co/facebook/opt-2.7b)
-- [ ] [OPT-6.7B](https://huggingface.co/facebook/opt-6.7b)
+- [x] [OPT-1.3B](https://huggingface.co/facebook/opt-1.3b)
+- [x] [OPT-2.7B](https://huggingface.co/facebook/opt-2.7b)
+- [x] [OPT-6.7B](https://huggingface.co/facebook/opt-6.7b)
 - [ ] [OPT-13B](https://huggingface.co/facebook/opt-13b)
 - [ ] [OPT-30B](https://huggingface.co/facebook/opt-30b)
 
@@ -189,3 +219,101 @@ The examples are demos for the whole training process.You need to change the hyp
 - [x]  LLaMA-13B
 - [ ]  LLaMA-33B
 - [ ]  LLaMA-65B
+
+## Add your own models
+
+If you want to support your own model in Coati, please refer the pull request for RoBERTa support as an example --[[chatgpt] add pre-trained model RoBERTa for RLHF stage 2 & 3](https://github.com/hpcaitech/ColossalAI/pull/3223), and submit a PR to us.
+
+You should complete the implementation of four model classes, including Reward model, Critic model, LM model, Actor model
+
+here are some example code for a NewModel named `Coati`.
+if it is supported in huggingaface [transformers](https://github.com/huggingface/transformers), you can load it by `from_pretrained`, o
+r you can build your own model by yourself.
+
+### Actor model
+```
+from ..base import Actor
+from transformers.models.coati import CoatiModel
+
+class CoatiActor(Actor):
+
+    def __init__(self,
+                 pretrained: Optional[str] = None,
+                 checkpoint: bool = False,
+                 lora_rank: int = 0,
+                 lora_train_bias: str = 'none') -> None:
+        if pretrained is not None:
+            model = CoatiModel.from_pretrained(pretrained)
+        else:
+            model = build_model() # load your own model if it is not support in trainsformers
+
+        super().__init__(model, lora_rank, lora_train_bias)
+```
+
+### LM model
+
+```
+from ..base import LM
+from transformers.models.coati import CoatiModel
+
+class GPTLM(LM):
+
+    def __init__(self,
+                 pretrained: Optional[str] = None,
+                 checkpoint: bool = False,
+                 lora_rank: int = 0,
+                 lora_train_bias: str = 'none') -> None:
+        if pretrained is not None:
+            model = CoatiModel.from_pretrained(pretrained)
+        else:
+            model = build_model() # load your own model if it is not support in trainsformers
+
+        super().__init__(model, lora_rank, lora_train_bias)
+
+    def forward(self, input_ids, attention_mask=None, labels=None, **kwargs):
+        return self.model(input_ids, attention_mask=attention_mask, labels=labels, **kwargs)
+```
+### Reward model
+```
+from ..base import RewardModel
+from transformers.models.coati import CoatiModel
+
+class CoatiRM(RewardModel):
+
+    def __init__(self,
+                 pretrained: Optional[str] = None,
+                 checkpoint: bool = False,
+                 lora_rank: int = 0,
+                 lora_train_bias: str = 'none') -> None:
+        if pretrained is not None:
+            model = CoatiModel.from_pretrained(pretrained)
+        else:
+            model = build_model() # load your own model if it is not support in trainsformers
+
+        value_head = nn.Linear(model.config.n_embd, 1)
+        value_head.weight.data.normal_(mean=0.0, std=1 / (model.config.n_embd + 1))
+        super().__init__(model, value_head, lora_rank, lora_train_bias)
+```
+
+### Critic model
+
+```
+from ..base import Critic
+from transformers.models.coati import CoatiModel
+
+class CoatiCritic(Critic):
+
+    def __init__(self,
+                 pretrained: Optional[str] = None,
+                 checkpoint: bool = False,
+                 lora_rank: int = 0,
+                 lora_train_bias: str = 'none') -> None:
+        if pretrained is not None:
+            model = CoatiModel.from_pretrained(pretrained)
+        else:
+            model = build_model() # load your own model if it is not support in trainsformers
+
+        value_head = nn.Linear(model.config.n_embd, 1)
+        value_head.weight.data.normal_(mean=0.0, std=1 / (model.config.n_embd + 1))
+        super().__init__(model, value_head, lora_rank, lora_train_bias)
+```
