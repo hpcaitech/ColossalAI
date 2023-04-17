@@ -96,7 +96,7 @@ class SFTTrainer(ABC):
                 loss = outputs.loss
                 prompt_logits = outputs.logits
 
-                if loss >= 2.5:
+                if loss >= 2.5 and is_rank_0():
                     logger.warning(f"batch_id:{batch_id}, abnormal loss: {loss}")
 
                 loss = loss / self.accimulation_steps
@@ -110,12 +110,13 @@ class SFTTrainer(ABC):
                     self.strategy.optimizer_step(self.optimizer)
                     self.optimizer.zero_grad()
                     self.scheduler.step()
-                    wandb.log({
-                        "loss": total_loss / self.accimulation_steps,
-                        "lr": self.scheduler.get_last_lr()[0],
-                        "epoch": epoch,
-                        "batch_id": batch_id
-                    })
+                    if is_rank_0():
+                        wandb.log({
+                            "loss": total_loss / self.accimulation_steps,
+                            "lr": self.scheduler.get_last_lr()[0],
+                            "epoch": epoch,
+                            "batch_id": batch_id
+                        })
                     total_loss = 0
                     step_bar.update()
 
