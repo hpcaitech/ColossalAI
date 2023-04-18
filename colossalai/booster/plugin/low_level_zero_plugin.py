@@ -9,6 +9,7 @@ import torch.nn as nn
 from torch import Tensor
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
+from torch.utils._pytree import tree_map
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 
@@ -21,6 +22,12 @@ from .plugin_base import Plugin
 from .torch_ddp_plugin import TorchDDPCheckpointIO
 
 __all__ = ['LowLevelZeroPlugin']
+
+
+def _convert_to_fp16(x):
+    if isinstance(x, torch.Tensor) and torch.is_floating_point(x):
+        return x.half()
+    return x
 
 
 class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
@@ -37,11 +44,18 @@ class LowLevelZeroModel(ModelWrapper):
 
     def __init__(self, module: nn.Module, stage: int, precision: str) -> None:
         super().__init__(module)
+        self.convert_inputs = (precision == 'fp16')
         module = zero_model_wrapper(module, zero_stage=stage)
         if precision == 'fp16':
             module = module.half()
         module = module.to(get_current_device())
         self.module = module
+
+    def forward(self, *args, **kwargs):
+        if self.convert_inputs:
+            args = tree_map(_convert_to_fp16, args)
+            kwargs = tree_map(_convert_to_fp16, kwargs)
+        return super().forward(*args, **kwargs)
 
 
 class LowLevelZeroOptimizer(OptimizerWrapper):
