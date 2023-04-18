@@ -372,7 +372,7 @@ if version.parse(torch.__version__) >= version.parse('1.12.0'):
     def meta_native_dropout_backward_default(grad: torch.Tensor, mask: torch.Tensor, scale: float):
         return new_like(grad)    # (grad_in)
 
-    if version.parse(torch.__version__) < version.parse('1.13.1'):
+    if version.parse(torch.__version__) < version.parse('1.13.0'):
         # https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/native_functions.yaml
         @register_meta(aten.eye.m_out)
         def meta_eye(n: int, m: int, out: torch.Tensor):
