@@ -234,7 +234,7 @@ class ZeroDDP(ColoDDP):
                 destination = hook_result
         return destination
 
-    def _get_chunk_to_save_data(self, chunk: Chunk, only_rank_0: bool) -> Dict:
+    def _get_chunk_to_save_data(self, chunk: Chunk, only_rank_0: bool, dtype: torch.dtype = torch.float16) -> Dict:
         """
         get gathered chunk content.
 
@@ -247,7 +247,7 @@ class ZeroDDP(ColoDDP):
         """
         # save parameters
         chunk_to_save_data = dict()
-        temp_chunk = get_temp_total_chunk_on_cuda(chunk)
+        temp_chunk = get_temp_total_chunk_on_cuda(chunk).to(dtype)
         for tensor, tensor_info in chunk.tensors_info.items():
             record_tensor = torch.empty([0])
             record_flag = (not only_rank_0) | (dist.get_rank(chunk.torch_pg) == 0)
@@ -260,7 +260,8 @@ class ZeroDDP(ColoDDP):
         del temp_chunk
         return chunk_to_save_data
 
-    def _get_param_to_save_data(self, param_list: List[torch.nn.Parameter], only_rank_0: bool) -> Dict:
+    def _get_param_to_save_data(self, param_list: List[torch.nn.Parameter], only_rank_0: bool,
+                                dtype: torch.dtype) -> Dict:
         """
         get param content from chunks.
 
@@ -275,7 +276,7 @@ class ZeroDDP(ColoDDP):
         param_to_save_data = dict()
         chunk_list = self.chunk_manager.get_chunks(param_list)
         for chunk in chunk_list:
-            param_to_save_data.update(self._get_chunk_to_save_data(chunk, only_rank_0))
+            param_to_save_data.update(self._get_chunk_to_save_data(chunk, only_rank_0, dtype))
         return param_to_save_data
 
     def _save_to_state_dict(self, destination, prefix, keep_vars, only_rank_0=True, dtype=torch.float16):
@@ -293,19 +294,16 @@ class ZeroDDP(ColoDDP):
         """
         assert keep_vars is False, "`state_dict` with parameter, `keep_vars=True`, is not supported now."
 
-        params_to_save = self.fp16_params if dtype == torch.float16 else self.fp32_params
         # get copies of fp32 parameters in CPU
-        param_to_save_data = self._get_param_to_save_data(params_to_save, only_rank_0)
+        # as memory of fp16_params may be reused by grad, it's not reliable, we should use fp32_params and convert to fp16
+        param_to_save_data = self._get_param_to_save_data(self.fp32_params, only_rank_0, dtype)
         # get the mapping between copies and fp16 parameters
         p_mapping = dict()
         for p, fp32_p in zip(self.fp16_params, self.fp32_params):
-            if dtype == torch.float16:
-                p_mapping[p] = param_to_save_data[p]
-            else:
-                name = self.param2name[p]
-                assert fp32_p in param_to_save_data, "Parameter '{}' is neglected in the chunk list".format(name)
-                record_parameter = param_to_save_data[fp32_p]
-                p_mapping[p] = record_parameter
+            name = self.param2name[p]
+            assert fp32_p in param_to_save_data, "Parameter '{}' is neglected in the chunk list".format(name)
+            record_parameter = param_to_save_data[fp32_p]
+            p_mapping[p] = record_parameter
         for name, param in self.name2param.items():
             if param is not None:
                 if is_ddp_ignored(param):
@@ -617,11 +615,12 @@ class ZeroDDP(ColoDDP):
                     # deal with ddp ignored parameters
                     gathered_param = param if keep_vars else param.detach()
                 else:
-                    param_to_save = param if dtype == torch.float16 else fp16_to_fp32[param]
-                    if param_to_save not in gathered_param_buffer:
-                        chunk = self.chunk_manager.get_chunk(param_to_save)
-                        gathered_param_buffer.update(self._get_chunk_to_save_data(chunk, only_rank_0))
-                    gathered_param = gathered_param_buffer.pop(param_to_save)
+                    # as memory of fp16 param may be reused, we should use fp32 param and then convert to fp16
+                    fp32_param = fp16_to_fp32[param]
+                    if fp32_param not in gathered_param_buffer:
+                        chunk = self.chunk_manager.get_chunk(fp32_param)
+                        gathered_param_buffer.update(self._get_chunk_to_save_data(chunk, only_rank_0, dtype))
+                    gathered_param = gathered_param_buffer.pop(fp32_param)
 
                 block = sharder.append(prefix + name, gathered_param)
                 if block is not None:

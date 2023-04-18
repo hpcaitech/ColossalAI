@@ -81,7 +81,7 @@ def exam_load_state_dict(placement_policy, keep_gathered, model_name: str):
 
     torch_dict = torch_model.state_dict()
     model.load_state_dict(torch_dict, strict=False)
-    zero_dict = model.state_dict(only_rank_0=False)
+    zero_dict = model.state_dict(only_rank_0=False, dtype=torch.float32)
 
     for key, value in torch_dict.items():
         assert key in zero_dict, "{} not in ZeRO dictionary.".format(key)
