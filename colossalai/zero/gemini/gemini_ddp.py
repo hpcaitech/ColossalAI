@@ -247,7 +247,9 @@ class ZeroDDP(ColoDDP):
         """
         # save parameters
         chunk_to_save_data = dict()
-        temp_chunk = get_temp_total_chunk_on_cuda(chunk).to(dtype)
+        temp_chunk = get_temp_total_chunk_on_cuda(chunk)
+        if torch.is_floating_point(temp_chunk):
+            temp_chunk = temp_chunk.to(dtype)
         for tensor, tensor_info in chunk.tensors_info.items():
             record_tensor = torch.empty([0])
             record_flag = (not only_rank_0) | (dist.get_rank(chunk.torch_pg) == 0)
