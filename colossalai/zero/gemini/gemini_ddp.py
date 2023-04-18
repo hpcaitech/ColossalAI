@@ -583,7 +583,8 @@ class ZeroDDP(ColoDDP):
                          prefix: str = '',
                          keep_vars: bool = False,
                          max_shard_size: int = 1024,
-                         only_rank_0: bool = True) -> Iterator[OrderedDict]:
+                         only_rank_0: bool = True,
+                         dtype: torch.dtype = torch.float16) -> Iterator[OrderedDict]:
         """Returns dictionaries containing a whole state of the module one by one. The max size of dictionary shard is specified by ``max_shard_size``.
 
         Both parameters and persistent buffers (e.g. running averages) are included.
@@ -616,11 +617,11 @@ class ZeroDDP(ColoDDP):
                     # deal with ddp ignored parameters
                     gathered_param = param if keep_vars else param.detach()
                 else:
-                    fp32_param = fp16_to_fp32[param]
-                    if fp32_param not in gathered_param_buffer:
-                        chunk = self.chunk_manager.get_chunk(fp32_param)
+                    param_to_save = param if dtype == torch.float16 else fp16_to_fp32[param]
+                    if param_to_save not in gathered_param_buffer:
+                        chunk = self.chunk_manager.get_chunk(param_to_save)
                         gathered_param_buffer.update(self._get_chunk_to_save_data(chunk, only_rank_0))
-                    gathered_param = gathered_param_buffer.pop(fp32_param)
+                    gathered_param = gathered_param_buffer.pop(param_to_save)
 
                 block = sharder.append(prefix + name, gathered_param)
                 if block is not None:
