@@ -114,8 +114,10 @@ def main(args):
                          eos_token_id=tokenizer.eos_token_id,
                          callbacks=callbacks)
 
-    random_prompts = torch.randint(tokenizer.vocab_size, (1000, 64), device=torch.cuda.current_device())
-    trainer.fit(random_prompts,
+    random_prompts = torch.randint(tokenizer.vocab_size, (1000, 1, 64), device=torch.cuda.current_device())
+    random_attention_mask = torch.randint(1, (1000, 1, 64), device=torch.cuda.current_device()).to(torch.bool)
+    random_pretrain = [{'input_ids':random_prompts[i], 'labels':random_prompts[i], 'attention_mask':random_attention_mask[i]} for i in range(1000)]
+    trainer.fit(random_prompts, random_pretrain,
                 num_episodes=args.num_episodes,
                 max_timesteps=args.max_timesteps,
                 update_timesteps=args.update_timesteps)
@@ -136,7 +138,7 @@ if __name__ == '__main__':
                         default='naive')
     parser.add_argument('--model', type=str, default='gpt2', choices=['gpt2', 'bloom', 'opt', 'roberta'])
     parser.add_argument('--pretrain', type=str, default=None)
-    parser.add_argument('--save_path', type=str, default='actor_checkpoint_dummy.pt')
+    parser.add_argument('--save_path', type=str, default='actor_checkpoint_dummy')
     parser.add_argument('--need_optim_ckpt', type=bool, default=False)
     parser.add_argument('--num_episodes', type=int, default=50)
     parser.add_argument('--max_timesteps', type=int, default=10)

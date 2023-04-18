@@ -1,6 +1,5 @@
-from abc import ABC
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 
 import pandas as pd
 import torch
@@ -10,11 +9,13 @@ from torch.utils.data import DataLoader, Dataset, DistributedSampler
 from tqdm import tqdm
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
+from .callbacks import Callback
+from .base import Trainer
 from .strategies import Strategy
 from .utils import is_rank_0
 
 
-class RewardModelTrainer(ABC):
+class RewardModelTrainer(Trainer):
     """
         Trainer to use while training reward model.
 
@@ -23,11 +24,12 @@ class RewardModelTrainer(ABC):
         strategy (Strategy): the strategy to use for training
         optim(Optimizer): the optimizer to use for training
         loss_fn (callable): the loss function to use for training
-        train_dataset (Dataset): the dataset to use for training
-        valid_dataset (Dataset): the dataset to use for validation
-        eval_dataset (Dataset): the dataset to use for evaluation
+        train_dataloader (DataLoader): the dataloader to use for training
+        valid_dataloader (DataLoader): the dataloader to use for validation
+        eval_dataloader (DataLoader): the dataloader to use for evaluation
         batch_size (int, defaults to 1): the batch size while training
         max_epochs (int, defaults to 2): the number of epochs to train
+        callbacks (List[Callback], defaults to []): the callbacks to call during training process
     """
 
     def __init__(
@@ -36,25 +38,19 @@ class RewardModelTrainer(ABC):
         strategy: Strategy,
         optim: Optimizer,
         loss_fn,
-        train_dataset: Dataset,
-        valid_dataset: Dataset,
-        eval_dataset: Dataset,
+        train_dataloader: DataLoader,
+        valid_dataloader: DataLoader,
+        eval_dataloader: DataLoader,
         batch_size: int = 1,
         max_epochs: int = 1,
+        callbacks: List[Callback] = [],
     ) -> None:
-        super().__init__()
-        self.strategy = strategy
-        self.epochs = max_epochs
+        super().__init__(strategy, max_epochs, callbacks=callbacks)
         train_sampler = None
 
-        if dist.is_initialized() and dist.get_world_size() > 1:
-            train_sampler = DistributedSampler(train_dataset, shuffle=True, seed=42, drop_last=True)
-        self.train_dataloader = DataLoader(train_dataset,
-                                           shuffle=(train_sampler is None),
-                                           sampler=train_sampler,
-                                           batch_size=batch_size)
-        self.valid_dataloader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=True)
-        self.eval_dataloader = DataLoader(eval_dataset, batch_size=batch_size, shuffle=True)
+        self.train_dataloader = train_dataloader
+        self.valid_dataloader = valid_dataloader
+        self.eval_dataloader = eval_dataloader
 
         self.model = strategy.setup_model(model)
         self.loss_fn = loss_fn
@@ -86,8 +82,8 @@ class RewardModelTrainer(ABC):
 
     def fit(self):
         time = datetime.now()
-        epoch_bar = tqdm(range(self.epochs), desc='Train epoch', disable=not is_rank_0())
-        for epoch in range(self.epochs):
+        epoch_bar = tqdm(range(self.max_epochs), desc='Train epoch', disable=not is_rank_0())
+        for epoch in range(self.max_epochs):
             step_bar = tqdm(range(self.train_dataloader.__len__()),
                             desc='Train step of epoch %d' % epoch,
                             disable=not is_rank_0())
