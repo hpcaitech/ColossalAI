@@ -81,6 +81,8 @@ Due to resource constraints, we will only provide this service from 29th Mar 202
 ```shell
 conda create -n coati
 conda activate coati
+git clone https://github.com/hpcaitech/ColossalAI.git
+cd ColossalAI/applications/Chat
 pip install .
 ```
 
