@@ -202,7 +202,12 @@ class ZeroDDP(ColoDDP):
         for tensor in chunk.get_tensors():
             self.grads_device[tensor] = device
 
-    def state_dict(self, destination=None, prefix='', keep_vars=False, only_rank_0: bool = True):
+    def state_dict(self,
+                   destination=None,
+                   prefix='',
+                   keep_vars=False,
+                   only_rank_0: bool = True,
+                   dtype: torch.dtype = torch.float16):
         """Returns a dictionary containing a whole state of the module.
 
         Both parameters and persistent buffers (e.g. running averages) are included.
@@ -221,7 +226,7 @@ class ZeroDDP(ColoDDP):
             destination = OrderedDict()
             destination._metadata = OrderedDict()
         destination._metadata[prefix[:-1]] = local_metadata = dict(version=self._version)
-        self._save_to_state_dict(destination, prefix, keep_vars, only_rank_0)
+        self._save_to_state_dict(destination, prefix, keep_vars, only_rank_0, dtype)
 
         for hook in self._state_dict_hooks.values():
             hook_result = hook(self, destination, prefix, local_metadata)
@@ -273,7 +278,7 @@ class ZeroDDP(ColoDDP):
             param_to_save_data.update(self._get_chunk_to_save_data(chunk, only_rank_0))
         return param_to_save_data
 
-    def _save_to_state_dict(self, destination, prefix, keep_vars, only_rank_0=True):
+    def _save_to_state_dict(self, destination, prefix, keep_vars, only_rank_0=True, dtype=torch.float16):
         r"""Saves module state to `destination` dictionary, containing a state
         of the module, but not its descendants. This is called on every
         submodule in :meth:`~torch.nn.Module.state_dict`.
@@ -288,15 +293,19 @@ class ZeroDDP(ColoDDP):
         """
         assert keep_vars is False, "`state_dict` with parameter, `keep_vars=True`, is not supported now."
 
+        params_to_save = self.fp16_params if dtype == torch.float16 else self.fp32_params
         # get copies of fp32 parameters in CPU
-        param_to_save_data = self._get_param_to_save_data(self.fp32_params, only_rank_0)
+        param_to_save_data = self._get_param_to_save_data(params_to_save, only_rank_0)
         # get the mapping between copies and fp16 parameters
         p_mapping = dict()
         for p, fp32_p in zip(self.fp16_params, self.fp32_params):
-            name = self.param2name[p]
-            assert fp32_p in param_to_save_data, "Parameter '{}' is neglected in the chunk list".format(name)
-            record_parameter = param_to_save_data[fp32_p]
-            p_mapping[p] = record_parameter
+            if dtype == torch.float16:
+                p_mapping[p] = param_to_save_data[p]
+            else:
+                name = self.param2name[p]
+                assert fp32_p in param_to_save_data, "Parameter '{}' is neglected in the chunk list".format(name)
+                record_parameter = param_to_save_data[fp32_p]
+                p_mapping[p] = record_parameter
         for name, param in self.name2param.items():
             if param is not None:
                 if is_ddp_ignored(param):
