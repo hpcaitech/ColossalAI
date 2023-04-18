@@ -274,10 +274,14 @@ if version.parse(torch.__version__) >= version.parse('1.12.0'):
         aten.prelu.default,
         aten.hardswish.default,
         aten.hardtanh.default,
-        aten.prelu_backward.default,
         aten.hardswish_backward.default,
         aten.hardtanh_backward.default,
     ]
+
+    if version.parse(torch.__version__) < version.parse('2.0.0'):
+        _unregistered_ewise += [
+            aten.prelu_backward.default,
+        ]
 
     @register_meta(_unregistered_ewise)
     def meta_unregistered_ewise(input: torch.Tensor, *args):
