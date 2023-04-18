@@ -336,7 +336,6 @@ if version.parse(torch.__version__) >= version.parse('1.12.0'):
         return new_like(input)
 
     # https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/native_functions.yaml
-
     @register_meta(aten.roll.default)
     def meta_roll(input: torch.Tensor, shifts, dims):
         return input
