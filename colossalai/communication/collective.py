@@ -68,16 +68,28 @@ def gather(tensor: Tensor, dim: int, parallel_mode: ParallelMode, dst: int = 0, 
         Union[tuple(:class:`torch.Tensor`, work handle), :class:`torch.Tensor`]: The result of all-together only,
     """
     depth = gpc.get_world_size(parallel_mode)
+    rank = gpc.get_world_rank(parallel_mode)
     if depth == 1:
         out = tensor
         work = None
-    out = tensor.contiguous()
+    tensor_in = tensor.contiguous() if dim == 0 else tensor.transpose(0, dim).contiguous()
     group = gpc.get_cpu_group(parallel_mode) if tensor.device.type == "cpu" else gpc.get_group(parallel_mode)
-    work = dist.gather(tensor, out, dst=dst, group=group, async_op=async_op)
-    if async_op:
-        return out, work
+
+    if dst == rank:
+        out_shape = (tensor_in.shape[0] * depth,) + tensor_in.shape[1:]
+        tensor_out = torch.empty(out_shape, dtype=tensor.dtype, device=tensor.device)
+        work = dist.gather(tensor, out, dst=dst, group=group, async_op=async_op)
+        out = tensor_out if dim == 0 else tensor_out.transpose(0, dim)
+        if async_op:
+            return out, work
+        else:
+            return out
     else:
-        return out
+        work = dist.gather(tensor, dst=dst, group=group, async_op=async_op)
+        if async_op:
+            return work
+        else:
+            return None
     
     
 

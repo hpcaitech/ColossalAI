@@ -1,4 +1,5 @@
 import torch
+from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 
 def data_frag(*args, in_dims: int, num_devices: int, **kwargs):
@@ -13,7 +14,9 @@ def data_frag(*args, in_dims: int, num_devices: int, **kwargs):
     
     for k, v in kwargs.items():
         if not isinstance(v, torch.Tensor):
-            raise TypeError("Only tensors can be mapped")
+            for i in range(n):
+                new_kwargs[i][k] = v
+            continue
         v = torch.tensor_split(v, num_devices, dim=in_dims)
         for i in range(num_devices):
             new_kwargs[i][k] = v[i]
