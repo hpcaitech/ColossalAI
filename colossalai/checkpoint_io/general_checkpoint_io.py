@@ -18,24 +18,9 @@ from .utils import (
     shard_checkpoint,
     load_shard_state_dict,
     load_state_dict_into_model,
-    add_variant
+    build_index,
+    write_model_files
     )
-from .utils import SAFE_WEIGHTS_NAME, WEIGHTS_NAME, SAFE_WEIGHTS_INDEX_NAME, WEIGHTS_INDEX_NAME
-
-# from checkpoint_io_base import CheckpointIO
-# from index_file import CheckpointIndexFile
-# from utils import (
-#     has_index_file, 
-#     load_state_dict, 
-#     save_state_dict, 
-#     is_safetensors_available,
-#     shard_checkpoint,
-#     load_shard_state_dict,
-#     load_state_dict_into_model,
-#     build_index,
-#     write_model_files
-#     )
-
 
 __all__ = ['GeneralCheckpointIO']
 
@@ -133,14 +118,14 @@ class GeneralCheckpointIO(CheckpointIO):
             raise RuntimeError('Error(s) in loading state_dict for {}:\n\t{}'.format(
                                self.__class__.__name__, "\n\t".join(error_msgs)))
 
-    def save_gemini_shard_ckp(self, state_dict_shard: Iterator[OrderedDict], checkpoint_path: str, gather_dtensor: bool = False, variant: Optional[str] = None, use_safetensors: bool = False):
-        # gather all shards
-        sharded_state_dicts = []
-        total_size = 0
-        for shard, s_size in state_dict_shard:
-            sharded_state_dicts = sharded_state_dicts.append(shard)
-            total_size = total_size + s_size
+    # def save_gemini_shard_ckp(self, state_dict_shard: Iterator[OrderedDict], checkpoint_path: str, gather_dtensor: bool = False, variant: Optional[str] = None, use_safetensors: bool = False):
+    #     # gather all shards
+    #     sharded_state_dicts = []
+    #     total_size = 0
+    #     for shard, s_size in state_dict_shard:
+    #         sharded_state_dicts = sharded_state_dicts.append(shard)
+    #         total_size = total_size + s_size
 
-        shards, shards_index = build_index(sharded_state_dicts, total_size, use_safetensors, variant)
-        write_model_files(shards, shards_index, checkpoint_path, use_safetensors)
+    #     shards, shards_index = build_index(sharded_state_dicts, total_size, use_safetensors, variant)
+    #     write_model_files(shards, shards_index, checkpoint_path, use_safetensors)
 
