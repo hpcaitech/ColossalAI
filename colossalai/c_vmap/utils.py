@@ -4,7 +4,7 @@ import torch
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 
-
+#TODO accept nestwed inputs cmap(f)((x,y),z)
 def data_frag(*args, in_dims: Union[int, tuple], num_devices: int, **kwargs):
     new_args = [[] for _ in range(num_devices)]
     new_kwargs = {i: {} for i in range(num_devices)}

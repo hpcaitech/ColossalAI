@@ -18,10 +18,11 @@ class CudaError(Exception):
     pass
 
 
-# TODO: add process_group argument
+# TODO add process_group argument
+# TODO add support for grad functions
 def cmap(func: Callable,
-         in_dims: Union[int, tuple],
-         out_dims: Union[int, tuple],
+         in_dims: Union[int, tuple] = 0,
+         out_dims: Union[int, tuple] = 0,
          raw_pt: bool = False,
          group=None, dst=-1):
 
