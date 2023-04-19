@@ -1,4 +1,5 @@
-import pytest
+from typing import Optional
+
 import torch
 import torch.distributed as dist
 
@@ -23,8 +24,35 @@ _STUCK_MODELS = [
 ]
 
 
+def run_fn(stage, model_fn, data_gen_fn, output_transform_fn) -> Optional[str]:
+    try:
+        plugin = LowLevelZeroPlugin(stage=stage, max_norm=1.0, initial_scale=2**5)
+        booster = Booster(plugin=plugin)
+        model = model_fn()
+        optimizer = HybridAdam(model.parameters(), lr=1e-3)
+        criterion = lambda x: x.mean()
+        data = data_gen_fn()
+
+        data = {
+            k: v.to('cuda') if torch.is_tensor(v) or 'Tensor' in v.__class__.__name__ else v for k, v in data.items()
+        }
+
+        model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
+
+        output = model(**data)
+        output = output_transform_fn(output)
+        output_key = list(output.keys())[0]
+        loss = criterion(output[output_key])
+
+        booster.backward(loss, optimizer)
+        optimizer.step()
+
+    except Exception as e:
+        return repr(e)
+
+
 @parameterize('stage', [2])
-def check_low_level_zero_plugin(stage: int, early_stop: bool = True, subset: str = 'transformers'):
+def check_low_level_zero_plugin(stage: int, early_stop: bool = True):
     """check low level zero plugin over model zoo
 
     Args:
@@ -36,42 +64,20 @@ def check_low_level_zero_plugin(stage: int, early_stop: bool = True, subset: str
     ignore_models = _AMP_ERR_MODELS + _LOW_LEVEL_ZERO_ERR_MODELS + _STUCK_MODELS
     skipped_models = []
 
-    for name, (model_fn, data_gen_fn, output_transform_fn, _) in model_zoo.get_sub_registry(subset).items():
+    for name, (model_fn, data_gen_fn, output_transform_fn, _) in model_zoo.items():
         # FIXME(ver217): fix these models
         if name in ignore_models:
             skipped_models.append(name)
             continue
-        try:
-            plugin = LowLevelZeroPlugin(stage=stage, max_norm=1.0, initial_scale=2**5)
-            booster = Booster(plugin=plugin)
-            model = model_fn()
-            optimizer = HybridAdam(model.parameters(), lr=1e-3)
-            criterion = lambda x: x.mean()
-            data = data_gen_fn()
-
-            data = {
-                k: v.to('cuda') if torch.is_tensor(v) or 'Tensor' in v.__class__.__name__ else v
-                for k, v in data.items()
-            }
-
-            model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
-
-            output = model(**data)
-            output = output_transform_fn(output)
-            output_key = list(output.keys())[0]
-            loss = criterion(output[output_key])
-
-            booster.backward(loss, optimizer)
-            optimizer.step()
-            passed_models.append(name)
-
-            del booster, plugin, model, optimizer, criterion, data, output, loss
-        except Exception as e:
-            failed_info[name] = e
-            if early_stop:
-                raise e
-
+        err = run_fn(stage, model_fn, data_gen_fn, output_transform_fn)
         torch.cuda.empty_cache()
+
+        if err is None:
+            passed_models.append(name)
+        else:
+            failed_info[name] = err
+            if early_stop:
+                break
 
     if dist.get_rank() == 0:
         print(f'Passed models({len(passed_models)}): {passed_models}\n\n')
@@ -104,17 +110,16 @@ def check_dataloader_sharding():
                                batch_to_compare), 'Same number was found across ranks but expected it to be different'
 
 
-def run_dist(rank, world_size, port, early_stop: bool = True, subset: str = 'transformers'):
+def run_dist(rank, world_size, port, early_stop: bool = True):
     # init dist env
     colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host='localhost')
-    check_low_level_zero_plugin(early_stop=early_stop, subset=subset)
+    check_low_level_zero_plugin(early_stop=early_stop)
 
 
-@pytest.mark.parametrize('subset', ['diffusers', 'transformers', 'timm', 'torchaudio', 'dlrm', 'deepfm', 'torchvision'])
 @rerun_if_address_is_in_use()
-def test_low_level_zero_plugin(subset: str, early_stop: bool = True):
-    spawn(run_dist, 2, early_stop=early_stop, subset=subset)
+def test_low_level_zero_plugin(early_stop: bool = True):
+    spawn(run_dist, 2, early_stop=early_stop)
 
 
 if __name__ == '__main__':
-    test_low_level_zero_plugin('transformers', early_stop=False)
+    test_low_level_zero_plugin(early_stop=False)
