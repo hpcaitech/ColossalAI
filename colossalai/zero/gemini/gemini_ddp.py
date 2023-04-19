@@ -583,12 +583,8 @@ class ZeroDDP(ColoDDP):
                          prefix: str = '',
                          keep_vars: bool = False,
                          max_shard_size: int = 1024,
-<<<<<<< Updated upstream
                          only_rank_0: bool = True,
-                         dtype: torch.dtype = torch.float16) -> Iterator[OrderedDict]:
-=======
-                         only_rank_0: bool = True) -> Iterator[Tuple[OrderedDict, int]]:
->>>>>>> Stashed changes
+                         dtype: torch.dtype = torch.float16) -> Iterator[Tuple[OrderedDict, int]]:
         """Returns dictionaries containing a whole state of the module one by one. The max size of dictionary shard is specified by ``max_shard_size``.
 
         Both parameters and persistent buffers (e.g. running averages) are included.
