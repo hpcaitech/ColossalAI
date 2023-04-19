@@ -6,7 +6,8 @@ import logging
 import os
 import json
 import gc
-from typing import Optional, Iterator, OrderedDict
+from typing import Optional, Iterator, OrderedDict, Tuple
+import itertools
 
 from .checkpoint_io_base import CheckpointIO
 from .index_file import CheckpointIndexFile
@@ -84,9 +85,15 @@ class GeneralCheckpointIO(CheckpointIO):
         
         # shard checkpoint
         state_dict = model.state_dict()
-        sharded_state_dicts, total_size = shard_checkpoint(state_dict, max_shard_size=max_shard_size)
+        state_dict_shard = shard_checkpoint(state_dict, max_shard_size=max_shard_size)
+
+        
+        # copy a duplicated iterator to get the total number of shards
+        state_dict_shard_tee = itertools.tee(state_dict_shard, 2)
+        shards_total_num = sum(1 for _ in state_dict_shard_tee[0])
+
         # let's build the index
-        shards, shards_index = build_index(sharded_state_dicts, total_size, use_safetensors, variant)
+        shards, shards_index = build_index(state_dict_shard_tee[1], shards_total_num, use_safetensors, variant)
         write_model_files(shards, shards_index, checkpoint_path, use_safetensors)
 
 
@@ -118,14 +125,11 @@ class GeneralCheckpointIO(CheckpointIO):
             raise RuntimeError('Error(s) in loading state_dict for {}:\n\t{}'.format(
                                self.__class__.__name__, "\n\t".join(error_msgs)))
 
-    # def save_gemini_shard_ckp(self, state_dict_shard: Iterator[OrderedDict], checkpoint_path: str, gather_dtensor: bool = False, variant: Optional[str] = None, use_safetensors: bool = False):
-    #     # gather all shards
-    #     sharded_state_dicts = []
-    #     total_size = 0
-    #     for shard, s_size in state_dict_shard:
-    #         sharded_state_dicts = sharded_state_dicts.append(shard)
-    #         total_size = total_size + s_size
+    def save_gemini_shard_ckp(self, state_dict_shard: Iterator[Tuple[OrderedDict, int]], checkpoint_path: str, gather_dtensor: bool = False, variant: Optional[str] = None, use_safetensors: bool = False):
 
-    #     shards, shards_index = build_index(sharded_state_dicts, total_size, use_safetensors, variant)
-    #     write_model_files(shards, shards_index, checkpoint_path, use_safetensors)
+        # copy a duplicated iterator to get the total number of shards
+        state_dict_shard_tee = itertools.tee(state_dict_shard, 2)
+        shards_total_num = sum(1 for _ in state_dict_shard_tee[0])
+        shards, shards_index = build_index(state_dict_shard[1], shards_total_num, use_safetensors, variant)
+        write_model_files(shards, shards_index, checkpoint_path, use_safetensors)
 

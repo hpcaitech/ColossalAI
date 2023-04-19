@@ -2,7 +2,7 @@
 from pathlib import Path
 import torch
 import torch.nn as nn
-from typing import List, Mapping, OrderedDict, Optional, Tuple
+from typing import List, Mapping, OrderedDict, Optional, Tuple, Iterator
 from colossalai.tensor.d_tensor.d_tensor import DTensor
 import re
 import os
@@ -80,38 +80,44 @@ def is_safetensor_checkpoint(checkpoint_file_path: str) -> bool:
 # ======================================
 # Helper functions for saving shard file
 # ======================================
-def shard_checkpoint(state_dict: torch.Tensor, max_shard_size: int = 1024):
+def shard_checkpoint(state_dict: torch.Tensor, max_shard_size: int = 1024) -> Iterator[Tuple[OrderedDict, int]]:
  
     """
     Splits a model state dictionary in sub-checkpoints so that the final size of each sub-checkpoint does not exceed a
     given size.
     """
-    sharded_state_dicts = []
+    # sharded_state_dicts = []
     current_block = {}
     current_block_size = 0
-    total_size = 0
+    # total_size = 0
 
     for key, weight in state_dict.items():
+        ret_block = None
+        ret_block_size = 0
         if type(weight) != DTensor:
             weight_size = calculate_tensor_size(weight)
 
             # If this weight is going to tip up over the maximal size, we split.
             if current_block_size + weight_size > max_shard_size:
-                sharded_state_dicts.append(current_block)
+                ret_block = current_block
+                ret_block_size = current_block_size
+                # sharded_state_dicts.append(current_block)
                 current_block = {}
                 current_block_size = 0
 
             current_block[key] = weight
             current_block_size += weight_size
-            total_size += weight_size
+            # total_size += weight_size
 
+        if ret_block != None:
+            yield ret_block, ret_block_size
     # Add the last block
-    sharded_state_dicts.append(current_block)
+    # sharded_state_dicts.append(current_block)
 
-    return sharded_state_dicts, total_size
+    yield current_block, current_block_size
     
 
-def build_index(sharded_state_dicts: List[OrderedDict], total_size: int, use_safetensors: bool, variant: str):
+def build_index(state_dict_shard: Iterator[Tuple[OrderedDict, int]], shards_total_num: int, use_safetensors: bool, variant: str):
     # If we only have one shard, we return it
     weights_name = SAFE_WEIGHTS_NAME if use_safetensors else WEIGHTS_NAME
     weights_name = add_variant(weights_name, variant)
@@ -119,19 +125,24 @@ def build_index(sharded_state_dicts: List[OrderedDict], total_size: int, use_saf
     save_index_file = SAFE_WEIGHTS_INDEX_NAME if use_safetensors else WEIGHTS_INDEX_NAME
     save_index_file = add_variant(save_index_file, variant)
 
-    if len(sharded_state_dicts) == 1:
-        return {weights_name: sharded_state_dicts[0]}, None
+    if shards_total_num == 1:
+        # return {weights_name: sharded_state_dicts[0]}, None
+        # print("bbbb", next(state_dict_shard))
+        return {weights_name: next(state_dict_shard)[0]}, None
     
     weight_map = {}
     shards = {}
-    for idx, shard in enumerate(sharded_state_dicts):
-        shard_file = weights_name.replace(".bin", f"-{idx+1:05d}-of-{len(sharded_state_dicts):05d}.bin")
+    total_size = 0
+    # shard_pair is like (shard, shard_size)
+    for idx, shard_pair in enumerate(state_dict_shard):
+        shard_file = weights_name.replace(".bin", f"-{idx+1:05d}-of-{shards_total_num:05d}.bin")
         shard_file = shard_file.replace(
-            ".safetensors", f"-{idx + 1:05d}-of-{len(sharded_state_dicts):05d}.safetensors"
+            ".safetensors", f"-{idx + 1:05d}-of-{shards_total_num:05d}.safetensors"
         )
-        shards[shard_file] = shard
-        for key in shard.keys():
+        shards[shard_file] = shard_pair[0]
+        for key in shard_pair[0].keys():
             weight_map[key] = shard_file
+        total_size = total_size + shard_pair[1]
 
     # Add the metadata
     metadata = {"total_size": total_size}
