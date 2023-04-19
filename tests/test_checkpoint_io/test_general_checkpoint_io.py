@@ -120,7 +120,6 @@ def test_sharded_checkpoint(use_safetensors: bool):
 @parameterize('model_name', ['bert'])
 @parameterize('use_safetensors', [True, False])
 def exam_state_dict(placement_policy, model_name: str, use_safetensors: bool):
-    logging.info("aaaa")
     get_components_func = non_distributed_component_funcs.get_callable(model_name)
     model_builder, *_ = get_components_func()
 
@@ -178,16 +177,12 @@ def recursive_check(d1, d2):
                 if isinstance(v[i], torch.Tensor):
                     v[i].to("cpu")
                     d2[k][i].to("cpu")
-                    # assert v[i].device == "cpu"
-                    # assert d2[k][i].device == "cpu"
                     assert torch.equal(v[i], d2[k][i])
                 else:
                     assert v[i] == d2[k][i]
         elif isinstance(v, torch.Tensor):
             v.to("cpu")
             d2[k].to("cpu")
-            # assert v.device == "cpu"
-            # assert d2[k].device == "cpu"
             assert torch.equal(v, d2[k])
         else:
             assert v == d2[k]
