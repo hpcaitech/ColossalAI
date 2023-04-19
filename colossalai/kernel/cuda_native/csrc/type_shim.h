@@ -204,10 +204,10 @@
         using p_scalar_t_##LEVEL = float;                                                        \
         __VA_ARGS__;                                                                             \
     }                                                                                            \
-    else if (GTYPE == at::ScalarType::BFloat16 && PTYPE == at::ScalarType::BFloat16)                \
+    else if (GTYPE == at::ScalarType::BFloat16 && PTYPE == at::ScalarType::BFloat16)             \
     {                                                                                            \
         using g_scalar_t_##LEVEL = at::BFloat16;                                                 \
-        using p_scalar_t_##LEVEL = at::BFloat16;                                                        \
+        using p_scalar_t_##LEVEL = at::BFloat16;                                                 \
         __VA_ARGS__;                                                                             \
     }                                                                                            \
     else                                                                                         \
