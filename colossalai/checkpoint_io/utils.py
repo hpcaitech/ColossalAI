@@ -86,10 +86,8 @@ def shard_checkpoint(state_dict: torch.Tensor, max_shard_size: int = 1024) -> It
     Splits a model state dictionary in sub-checkpoints so that the final size of each sub-checkpoint does not exceed a
     given size.
     """
-    # sharded_state_dicts = []
     current_block = {}
     current_block_size = 0
-    # total_size = 0
 
     for key, weight in state_dict.items():
         ret_block = None
@@ -101,18 +99,13 @@ def shard_checkpoint(state_dict: torch.Tensor, max_shard_size: int = 1024) -> It
             if current_block_size + weight_size > max_shard_size:
                 ret_block = current_block
                 ret_block_size = current_block_size
-                # sharded_state_dicts.append(current_block)
                 current_block = {}
                 current_block_size = 0
-
             current_block[key] = weight
             current_block_size += weight_size
-            # total_size += weight_size
-
+            
         if ret_block != None:
             yield ret_block, ret_block_size
-    # Add the last block
-    # sharded_state_dicts.append(current_block)
 
     yield current_block, current_block_size
     
@@ -126,8 +119,6 @@ def build_index(state_dict_shard: Iterator[Tuple[OrderedDict, int]], shards_tota
     save_index_file = add_variant(save_index_file, variant)
 
     if shards_total_num == 1:
-        # return {weights_name: sharded_state_dicts[0]}, None
-        # print("bbbb", next(state_dict_shard))
         return {weights_name: next(state_dict_shard)[0]}, None
     
     weight_map = {}
