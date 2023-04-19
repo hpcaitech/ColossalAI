@@ -2,9 +2,12 @@
 from pathlib import Path
 import torch
 import torch.nn as nn
-from typing import List, Dict, Mapping, OrderedDict, Optional, Tuple
+from typing import List, Mapping, OrderedDict, Optional, Tuple
 from colossalai.tensor.d_tensor.d_tensor import DTensor
 import re
+import os
+import json
+import logging
 
 SAFE_WEIGHTS_NAME = "model.safetensors"
 WEIGHTS_NAME = "pytorch_model.bin"
@@ -77,7 +80,7 @@ def is_safetensor_checkpoint(checkpoint_file_path: str) -> bool:
 # ======================================
 # Helper functions for saving shard file
 # ======================================
-def shard_checkpoint(state_dict: torch.Tensor, max_shard_size: int = 1024, weights_name: str = WEIGHTS_NAME):
+def shard_checkpoint(state_dict: torch.Tensor, max_shard_size: int = 1024):
  
     """
     Splits a model state dictionary in sub-checkpoints so that the final size of each sub-checkpoint does not exceed a
@@ -105,14 +108,22 @@ def shard_checkpoint(state_dict: torch.Tensor, max_shard_size: int = 1024, weigh
     # Add the last block
     sharded_state_dicts.append(current_block)
 
+    return sharded_state_dicts, total_size
+    
+
+def build_index(sharded_state_dicts: List[OrderedDict], total_size: int, use_safetensors: bool, variant: str):
     # If we only have one shard, we return it
+    weights_name = SAFE_WEIGHTS_NAME if use_safetensors else WEIGHTS_NAME
+    weights_name = add_variant(weights_name, variant)
+
+    save_index_file = SAFE_WEIGHTS_INDEX_NAME if use_safetensors else WEIGHTS_INDEX_NAME
+    save_index_file = add_variant(save_index_file, variant)
+
     if len(sharded_state_dicts) == 1:
         return {weights_name: sharded_state_dicts[0]}, None
     
-    # Otherwise, let's build the index
     weight_map = {}
     shards = {}
-
     for idx, shard in enumerate(sharded_state_dicts):
         shard_file = weights_name.replace(".bin", f"-{idx+1:05d}-of-{len(sharded_state_dicts):05d}.bin")
         shard_file = shard_file.replace(
@@ -125,7 +136,9 @@ def shard_checkpoint(state_dict: torch.Tensor, max_shard_size: int = 1024, weigh
     # Add the metadata
     metadata = {"total_size": total_size}
     index = {"metadata": metadata, "weight_map": weight_map}
-    return shards, index
+    shards_index = {save_index_file: index}
+    return shards, shards_index
+
 
 def load_shard_state_dict(checkpoint_file: Path, use_safetensors: bool =False):
     """
@@ -417,3 +430,26 @@ def add_variant(weights_name: str, variant: Optional[str] = None) -> str:
         weights_name = ".".join(splits)
 
     return weights_name
+
+
+def write_model_files(shards: dict, shards_index: dict, checkpoint_path: str, use_safetensors: bool = False):
+      # Save the model
+        for shard_file, shard in shards.items():
+            checkpoint_file_path = os.path.join(checkpoint_path, shard_file)
+            save_state_dict(shard, checkpoint_file_path, use_safetensors)
+
+        # when it only has one shard, index is None
+        if shards_index == None:
+            return
+        
+        save_index_file = next(iter(shards_index))
+        index = shards_index[save_index_file]
+        save_index_file = os.path.join(checkpoint_path, save_index_file)
+        with open(save_index_file, "w", encoding="utf-8") as f:
+            content = json.dumps(index, indent=2, sort_keys=True) + "\n"
+            f.write(content)
+        logging.info(
+            f"The model is going to be split in {len(shards)} checkpoint shards. "
+            f"You can find where each parameters has been saved in the "
+            f"index located at {save_index_file}."
+        )

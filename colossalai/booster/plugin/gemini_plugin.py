@@ -1,6 +1,7 @@
 import random
 import warnings
 from typing import Callable, List, Optional, Tuple, Union
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -62,6 +63,13 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
         if self.coordinator.is_master():
             super().save_lr_scheduler(lr_scheduler, checkpoint)
 
+    def save_sharded_model(self, model: GeminiDDP, checkpoint_path: str, gather_dtensor: bool = False, variant: Optional[str] = None, max_shard_size: int = 1024, use_safetensors: bool = False):
+        state_dict_shard = model.state_dict_shard(max_shard_size=max_shard_size, only_rank_0=False)
+        if self.coordinator.is_master():
+            super().save_gemini_shard_ckp(state_dict_shard, checkpoint_path, gather_dtensor, variant, use_safetensors)
+
+    def load_sharded_model(self, model: nn.Module, checkpoint_index_file: Path, strict: bool = False, use_safetensors: bool = False):
+        return super().load_sharded_model(model, checkpoint_index_file, strict, use_safetensors)
 
 class GeminiModel(ModelWrapper):
 

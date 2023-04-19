@@ -1,7 +1,7 @@
 import itertools
 from collections import OrderedDict
 from functools import partial
-from typing import Dict, Iterator, List, Optional, Union
+from typing import Dict, Iterator, List, Optional, Union, Tuple
 
 import torch
 import torch.distributed as dist
@@ -583,8 +583,12 @@ class ZeroDDP(ColoDDP):
                          prefix: str = '',
                          keep_vars: bool = False,
                          max_shard_size: int = 1024,
+<<<<<<< Updated upstream
                          only_rank_0: bool = True,
                          dtype: torch.dtype = torch.float16) -> Iterator[OrderedDict]:
+=======
+                         only_rank_0: bool = True) -> Iterator[Tuple[OrderedDict, int]]:
+>>>>>>> Stashed changes
         """Returns dictionaries containing a whole state of the module one by one. The max size of dictionary shard is specified by ``max_shard_size``.
 
         Both parameters and persistent buffers (e.g. running averages) are included.
@@ -624,9 +628,9 @@ class ZeroDDP(ColoDDP):
                         gathered_param_buffer.update(self._get_chunk_to_save_data(chunk, only_rank_0, dtype))
                     gathered_param = gathered_param_buffer.pop(fp32_param)
 
-                block = sharder.append(prefix + name, gathered_param)
+                block, block_size = sharder.append(prefix + name, gathered_param)
                 if block is not None:
-                    yield block
+                    yield block, block_size
 
         del fp16_to_fp32
         del gathered_param_buffer
@@ -635,19 +639,19 @@ class ZeroDDP(ColoDDP):
         for name, buf in self.named_buffers():
             if buf is not None and name not in self._non_persistent_buffers_set:
                 buffer = buf if keep_vars else buf.detach()
-                block = sharder.append(prefix + name, buffer)
+                block, block_size = sharder.append(prefix + name, buffer)
                 if block is not None:
-                    yield block
+                    yield block, block_size
         # save extra states
         extra_state_key = prefix + _EXTRA_STATE_KEY_SUFFIX
         if getattr(self.__class__, "get_extra_state",
                    torch.nn.Module.get_extra_state) is not torch.nn.Module.get_extra_state:
             extra_state = self.get_extra_state()
-            block = sharder.append(extra_state_key, extra_state)
+            block, block_size = sharder.append(extra_state_key, extra_state)
             if block is not None:
-                yield block
+                yield block, block_size
 
-        yield sharder.current_block
+        yield sharder.current_block, sharder.current_block_size
 
 
 class _StateDictSharder:
@@ -657,16 +661,18 @@ class _StateDictSharder:
         self.current_block = OrderedDict()
         self.current_block_size = 0
 
-    def append(self, name: str, tensor: torch.Tensor) -> Optional[OrderedDict]:
+    def append(self, name: str, tensor: torch.Tensor) -> Tuple[Optional[OrderedDict], int]:
         tensor_size = calculate_tensor_size(tensor)
         ret_block = None
+        ret_block_size = 0
         if self.current_block_size + tensor_size > self.max_shard_size:
             ret_block = self.current_block
+            ret_block_size = self.current_block_size
             self.current_block = OrderedDict()
             self.current_block_size = 0
         self.current_block[name] = tensor
         self.current_block_size += tensor_size
-        return ret_block
+        return ret_block, ret_block_size
 
 
 class GeminiDDP(ZeroDDP):

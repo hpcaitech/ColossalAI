@@ -11,6 +11,14 @@ import subprocess
 from colossalai.checkpoint_io import GeneralCheckpointIO
 from colossalai.testing import clear_cache_before_run, parameterize
 
+import colossalai
+from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
+from colossalai.utils.cuda import get_current_device
+from colossalai.zero import ColoInitContext, ZeroDDP
+from colossalai.zero.gemini.chunk import ChunkManager, search_chunk_configuration
+from colossalai.zero.gemini.gemini_mgr import GeminiManager
+from tests.components_to_test.registry import non_distributed_component_funcs
+
 # ========
 # Note:
 # 1. due to checkpoint IO can be quite slow if tested with all models, we will only test on resnet for now
@@ -83,7 +91,6 @@ def test_sharded_checkpoint(use_safetensors: bool):
         suffix = ".bin"
         WEIGHTS_INDEX_NAME = "model.bin.index.json"
     
-    # model_ckpt_dir = tempfile.TemporaryDirectory(suffix=suffix)
     model_ckpt_dir = tempfile.TemporaryDirectory()
     optimizer_ckpt_tempfile = tempfile.NamedTemporaryFile()
 
@@ -103,6 +110,45 @@ def test_sharded_checkpoint(use_safetensors: bool):
     # check for model and optimizer state dict recursively
     recursive_check(model.state_dict(), new_model.state_dict())
     recursive_check(optimizer.state_dict(), new_optimizer.state_dict())
+
+
+@parameterize('placement_policy', ['cuda', 'cpu'])
+@parameterize('model_name', ['bert'])
+@parameterize('use_safetensors', [True, False])
+def exam_state_dict(placement_policy, model_name: str, use_safetensors: bool):
+    get_components_func = non_distributed_component_funcs.get_callable(model_name)
+    model_builder, *_ = get_components_func()
+
+    with ColoInitContext(device=get_current_device()):
+        model = model_builder()
+        new_model = model_builder()
+
+    config_dict, *_ = search_chunk_configuration(model, search_range_mb=1, search_interval_byte=100)
+    chunk_manager = ChunkManager(config_dict)
+    gemini_manager = GeminiManager(placement_policy, chunk_manager)
+    model = ZeroDDP(model, gemini_manager)
+    model.train()
+
+    #save model
+    model_ckpt_dir = tempfile.TemporaryDirectory()
+    ckpt_io = GeneralCheckpointIO()
+    ckpt_io.save_model(model, model_ckpt_dir.name, True, True, "", 10, use_safetensors=use_safetensors)
+
+    # load model
+    new_chunk_manager = ChunkManager(config_dict)
+    new_gemini_manager = GeminiManager(placement_policy, new_chunk_manager)
+    new_model = ZeroDDP(new_model, new_gemini_manager)
+    ckpt_io.load_model(new_model, str(model_ckpt_dir.name), strict=True)
+
+    model_dict, _ = model.state_dict_shard(max_shard_size=10, only_rank_0=False)
+    accumulated_keys = set()
+    # ensure number of shards > 1
+    for shard, _ in new_model.state_dict_shard(max_shard_size=10, only_rank_0=False):
+        for key, value in shard.items():
+            assert key not in accumulated_keys, f"key `{key}` is duplicated."
+            accumulated_keys.add(key)
+            assert key in model_dict, f"{key} not in ZeRO dictionary."
+            assert torch.equal(value, model_dict[key]), f"{key} not equal."
 
 
 # do recursive check for the optimizer state dict
