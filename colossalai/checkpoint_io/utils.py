@@ -133,7 +133,7 @@ def build_index(state_dict_shard: Iterator[Tuple[OrderedDict, int]], shards_tota
     weight_map = {}
     shards = {}
     total_size = 0
-    # shard_pair is like (shard, shard_size)
+    # shard_pair like (shard, shard_size)
     for idx, shard_pair in enumerate(state_dict_shard):
         shard_file = weights_name.replace(".bin", f"-{idx+1:05d}-of-{shards_total_num:05d}.bin")
         shard_file = shard_file.replace(
