@@ -2,7 +2,6 @@ from typing import Callable, Union
 from packaging import version
 
 import torch
-
 import torch.distributed as dist
 
 from colossalai.core import global_context as gpc
@@ -22,7 +21,7 @@ class CudaError(Exception):
 # TODO: add process_group argument
 def cmap(func: Callable,
          in_dims: Union[int, tuple],
-         out_dims: int,
+         out_dims: Union[int, tuple],
          raw_pt: bool = False,
          group=None, dst=-1):
 
