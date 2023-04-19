@@ -1,25 +1,33 @@
+from typing import Union
+
 import torch
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
-
-def data_frag(*args, in_dims: int, num_devices: int, **kwargs):
+ 
+def data_frag(*args, in_dims: Union[int,tuple], num_devices: int, **kwargs):
     new_args = [[] for _ in range(num_devices)]
     new_kwargs = {i:{} for i in range(num_devices)}
-    for a in args:
-        if not isinstance(a, torch.Tensor):
-            raise TypeError("Only tensors can be mapped")
-        a = torch.tensor_split(a, num_devices, dim=in_dims)
-        for i in range(num_devices):
-            new_args[i].append(a[i])
+    if isinstance(in_dims, int):
+        for a in args:
+            if not isinstance(a, torch.Tensor):
+                raise TypeError("Only tensors can be mapped")
+            a = torch.tensor_split(a, num_devices, dim=in_dims)
+            for i in range(num_devices):
+                new_args[i].append(a[i])
+    else:
+        if len(d) != len(args):
+            raise ValueError("Number of in_dims must match number of args")
+        for d, a in zip(in_dims, args):
+            if not isinstance(a, torch.Tensor):
+                raise TypeError("Only tensors can be mapped")
+            a = torch.tensor_split(a, num_devices, dim=d)
+            for i in range(num_devices):
+                new_args[i].append(a[i])
     
     for k, v in kwargs.items():
-        if not isinstance(v, torch.Tensor):
-            for i in range(n):
-                new_kwargs[i][k] = v
-            continue
-        v = torch.tensor_split(v, num_devices, dim=in_dims)
         for i in range(num_devices):
-            new_kwargs[i][k] = v[i]
+            new_kwargs[i][k] = v
+            
     return new_args, new_kwargs
     
 def data_to_device(*args, raw_pt=False, **kwargs):

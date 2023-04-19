@@ -1,4 +1,4 @@
-from typing import Callable
+from typing import Callable, Union
 from packaging import version
 #import inspect
 
@@ -13,13 +13,20 @@ from colossalai.communication.collective import all_gather, gather
 
 from colossalai.c_vmap.utils import data_frag, data_to_device
 
-def cmap(func: Callable, in_dims: int, out_dims: int, raw_pt:bool = False, group=None, dst=-1): #add option for process group
+class VersionError(Exception):
+    pass
+
+class CudaError(Exception):
+    pass
+
+def cmap(func: Callable, in_dims: Union[int,tuple], out_dims: int, raw_pt:bool = False, group=None, dst=-1): #add option for process group
 
     if version.parse(torch.__version__) < version.parse("2.0"):
-        def no_wrap(*args, **kwargs):
-            print(f"torch version: {torch.__version__} in order to cmap your function torch2.0 is required")
-            return func(*args, **kwargs)
-        return no_wrap
+        raise VersionError(f"torch version: {torch.__version__}: in order to cmap your function torch2.0 is required")
+    
+    elif not torch.cuda.is_available:
+        raise CudaError(f"cuda is not available. in order to cmap your function cuda is required")
+
 
     def wrap_raw(*args, **kwargs):
         num_devices = dist.get_world_size(group=group)
@@ -38,11 +45,14 @@ def cmap(func: Callable, in_dims: int, out_dims: int, raw_pt:bool = False, group
                 for i in range(len(output_empties)):
                     dist.all_gather(output_empties[i], func_out[i], group=group)
                     torch.cuda.synchronize()
+                for i in range(len(out_dims)):
+                    output_empties[i] = torch.cat(output_empties[i], dim=out_dims[i])
+                return tuple(output_empties)
             else:
                 output_empties = list([torch.zeros_like(func_out) for _ in range(num_devices)])
                 dist.all_gather(output_empties, func_out, group=group)
                 torch.cuda.synchronize()
-            return torch.cat(output_empties, dim=out_dims)
+                return torch.cat(output_empties, dim=out_dims)
 
         else:
             if rank == dst:
@@ -51,23 +61,24 @@ def cmap(func: Callable, in_dims: int, out_dims: int, raw_pt:bool = False, group
                     for i in range(len(output_empties)):
                         dist.gather(output_empties[i], func_out[i], dst=dst, group=group)
                         torch.cuda.synchronize()
+                    for i in range(len(out_dims)):
+                        output_empties[i] = torch.cat(output_empties[i], dim=out_dims[i])
+                    return tuple(output_empties)
                 else:
                     output_empties = list([torch.zeros_like(func_out) for _ in range(num_devices)])
                     dist.gather(output_empties, func_out, dst=dst, group=group)
                     torch.cuda.synchronize()
+                    return torch.cat(output_empties, dim=out_dims)
             else:
                 if isinstance(func_out, tuple):
                     for i in range(len(func_out)):
                         dist.gather(func_out[i], dst=dst, group=group)
                         torch.cuda.synchronize()
+                    return None
                 else:      
                     dist.gather(func_out, dst=dst, group=group)
                     torch.cuda.synchronize()
-
-            if rank == dst:
-                return torch.cat(output_empties, dim=out_dims)
-            else:
-                return None
+                    return None
     
 
     def ColWrap(*args, **kwargs):
@@ -83,22 +94,24 @@ def cmap(func: Callable, in_dims: int, out_dims: int, raw_pt:bool = False, group
             if isinstance(func_out, tuple):
                 results = []
                 for i in range(len(func_out)):
-                    results.append(all_gather(tensor=func_out[i], dim=out_dims, parallel_mode=ParallelMode.GLOBAL))
+                    results.append(all_gather(tensor=func_out[i], dim=out_dims[i], parallel_mode=ParallelMode.GLOBAL))
                     torch.cuda.synchronize()
                 return tuple(results)
             else:
                 out = all_gather(tensor=func_out, dim=out_dims, parallel_mode=ParallelMode.GLOBAL)
                 torch.cuda.synchronize()
                 return out
+        
         else:
             if isinstance(func_out, tuple):
                 results = []
                 for i in range(len(func_out)):
-                    results.append(gather(tensor=func_out[i], dim=out_dims, dst=dst, parallel_mode=ParallelMode.GLOBAL))
+                    results.append(gather(tensor=func_out[i], dim=out_dims[i], dst=dst, parallel_mode=ParallelMode.GLOBAL))
                     torch.cuda.synchronize()
                 return tuple(results)
-            out = gather(tensor=func_out, dim=out_dims, dst=dst, parallel_mode=ParallelMode.GLOBAL)
-            return out
+            else:
+                out = gather(tensor=func_out, dim=out_dims, dst=dst, parallel_mode=ParallelMode.GLOBAL)
+                return out
 
     if raw_pt:
         return wrap_raw
@@ -121,3 +134,4 @@ if __name__ == "__main__":
 
         #print(vmaped_fn(c))
         #print(vmaped_fn(c).shape)
+        
