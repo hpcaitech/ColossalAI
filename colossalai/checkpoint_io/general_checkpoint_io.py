@@ -130,6 +130,7 @@ class GeneralCheckpointIO(CheckpointIO):
         # copy a duplicated iterator to get the total number of shards
         state_dict_shard_tee = itertools.tee(state_dict_shard, 2)
         shards_total_num = sum(1 for _ in state_dict_shard_tee[0])
-        shards, shards_index = build_index(state_dict_shard[1], shards_total_num, use_safetensors, variant)
+        logging.warning("shards_total_num {shards_total_num}")
+        shards, shards_index = build_index(state_dict_shard_tee[1], shards_total_num, use_safetensors, variant)
         write_model_files(shards, shards_index, checkpoint_path, use_safetensors)
 

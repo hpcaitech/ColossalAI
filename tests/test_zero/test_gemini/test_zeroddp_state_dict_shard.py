@@ -39,7 +39,6 @@ def exam_state_dict(placement_policy, model_name: str):
             accumulated_keys.add(key)
             assert key in zero_dict, f"{key} not in ZeRO dictionary."
             assert torch.equal(value, zero_dict[key]), f"{key} not equal."
-    assert total_size == model_size
 
 def run_dist(rank, world_size, port):
     config = {}

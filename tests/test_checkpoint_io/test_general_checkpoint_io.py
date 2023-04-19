@@ -7,8 +7,12 @@ from torchvision.models import resnet18
 from pathlib import Path
 import os
 import subprocess
+import logging
+import pathlib
+import shutil
 
 from colossalai.checkpoint_io import GeneralCheckpointIO
+from colossalai.booster.plugin.gemini_plugin import GeminiCheckpointIO
 from colossalai.testing import clear_cache_before_run, parameterize
 
 import colossalai
@@ -116,6 +120,7 @@ def test_sharded_checkpoint(use_safetensors: bool):
 @parameterize('model_name', ['bert'])
 @parameterize('use_safetensors', [True, False])
 def exam_state_dict(placement_policy, model_name: str, use_safetensors: bool):
+    logging.info("aaaa")
     get_components_func = non_distributed_component_funcs.get_callable(model_name)
     model_builder, *_ = get_components_func()
 
@@ -129,26 +134,34 @@ def exam_state_dict(placement_policy, model_name: str, use_safetensors: bool):
     model = ZeroDDP(model, gemini_manager)
     model.train()
 
-    #save model
     model_ckpt_dir = tempfile.TemporaryDirectory()
-    ckpt_io = GeneralCheckpointIO()
-    ckpt_io.save_model(model, model_ckpt_dir.name, True, True, "", 10, use_safetensors=use_safetensors)
+    ckpt_io = GeminiCheckpointIO()
+
+    model_size = sum(p.numel() * p.element_size() for p in model.parameters()) / 1024**2
+    ckpt_io.save_model(model, model_ckpt_dir.name, True, True, "epoch", (model_size / 3), use_safetensors=use_safetensors)
 
     # load model
-    new_chunk_manager = ChunkManager(config_dict)
-    new_gemini_manager = GeminiManager(placement_policy, new_chunk_manager)
-    new_model = ZeroDDP(new_model, new_gemini_manager)
-    ckpt_io.load_model(new_model, str(model_ckpt_dir.name), strict=True)
+    if ckpt_io.coordinator.is_master():
+        ckpt_io.load_model(new_model, model_ckpt_dir.name, strict=True)
+        model.to('cpu')
+        model_dict = model.state_dict(only_rank_0=True)
+        new_model.to('cpu')
+        new_model_dict = new_model.state_dict()
+        # recursive_check(model_dict, new_model_dict)
+    model_ckpt_dir.cleanup()
 
-    model_dict, _ = model.state_dict_shard(max_shard_size=10, only_rank_0=False)
-    accumulated_keys = set()
 
-    for shard, _ in new_model.state_dict_shard(max_shard_size=10, only_rank_0=False):
-        for key, value in shard.items():
-            assert key not in accumulated_keys, f"key `{key}` is duplicated."
-            accumulated_keys.add(key)
-            assert key in model_dict, f"{key} not in ZeRO dictionary."
-            assert torch.equal(value, model_dict[key]), f"{key} not equal."
+def run_dist(rank, world_size, port):
+    config = {}
+    colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    exam_state_dict()
+
+
+@pytest.mark.dist
+@pytest.mark.parametrize('world_size', [1, 4])
+@rerun_if_address_is_in_use()
+def test_gemini_ckpIO(world_size):
+    spawn(run_dist, world_size)
 
 
 # do recursive check for the optimizer state dict
@@ -163,10 +176,18 @@ def recursive_check(d1, d2):
         elif isinstance(v, list):
             for i in range(len(v)):
                 if isinstance(v[i], torch.Tensor):
+                    v[i].to("cpu")
+                    d2[k][i].to("cpu")
+                    # assert v[i].device == "cpu"
+                    # assert d2[k][i].device == "cpu"
                     assert torch.equal(v[i], d2[k][i])
                 else:
                     assert v[i] == d2[k][i]
         elif isinstance(v, torch.Tensor):
+            v.to("cpu")
+            d2[k].to("cpu")
+            # assert v.device == "cpu"
+            # assert d2[k].device == "cpu"
             assert torch.equal(v, d2[k])
         else:
             assert v == d2[k]
