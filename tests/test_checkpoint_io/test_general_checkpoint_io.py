@@ -142,7 +142,7 @@ def exam_state_dict(placement_policy, model_name: str, use_safetensors: bool):
 
     model_dict, _ = model.state_dict_shard(max_shard_size=10, only_rank_0=False)
     accumulated_keys = set()
-    # ensure number of shards > 1
+
     for shard, _ in new_model.state_dict_shard(max_shard_size=10, only_rank_0=False):
         for key, value in shard.items():
             assert key not in accumulated_keys, f"key `{key}` is duplicated."
