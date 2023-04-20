@@ -30,10 +30,8 @@ def exam_state_dict(placement_policy, model_name: str):
 
     zero_dict = model.state_dict(only_rank_0=False)
     accumulated_keys = set()
-    total_size = 0
     # ensure number of shards > 1
-    for shard, s_size in model.state_dict_shard(max_shard_size=(model_size / 3), only_rank_0=False):
-        total_size = total_size + s_size
+    for shard, _ in model.state_dict_shard(max_shard_size=(model_size / 3), only_rank_0=False):
         for key, value in shard.items():
             assert key not in accumulated_keys, f"key `{key}` is duplicated."
             accumulated_keys.add(key)
