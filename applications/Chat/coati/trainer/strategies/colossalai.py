@@ -5,7 +5,7 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 import torch.optim as optim
-from coati.models.base import LM, Actor, RewardModel
+from coati.models.base import LM, Actor, RewardModel, Critic
 from coati.models.lora import LoraLinear
 from torch.optim import Optimizer
 from transformers.modeling_utils import PreTrainedModel
@@ -159,12 +159,12 @@ class ColossalAIStrategy(DDPStrategy):
             return model.module
         return model
 
-    def _unwrap_model(self, model: Union[nn.Module, ZeroDDP]) -> nn.Module:
-        if isinstance(model, ZeroDDP) and self.stage == 3:
-            logger.info(f"model type: {type(model)}, get static torch model")
-            model = get_static_torch_model(model)
-            logger.info(f"unwrapped_model type: {type(model)}")
+    @staticmethod
+    def _unwrap_critic(critic: Critic) -> nn.Module:
+        return Strategy._unwrap_critic(critic)
 
+
+    def _unwrap_model(self, model: Union[nn.Module, ZeroDDP]) -> nn.Module:
         return super()._unwrap_model(model)
 
     def save_model(self,
@@ -210,3 +210,14 @@ class ColossalAIStrategy(DDPStrategy):
             raise RuntimeError(
                 f'Optimizer states are sharded when using ColossalAIStrategy. Only rank0 is not supported.')
         torch.save(optimizer.state_dict(), path)
+
+    def get_model_state_dict_shard(self, model: nn.Module, **config):
+        if self.stage != 3:
+            yield from super().get_model_state_dict_shard(model, **config)
+        else:
+            unwrapped_model = self._unwrap_model(model)
+            for module in unwrapped_model.modules():
+                if isinstance(module, LoraLinear):
+                    module.merge_weights = True
+                    module.eval()
+            yield from model.state_dict_shard(max_shard_size=1024)

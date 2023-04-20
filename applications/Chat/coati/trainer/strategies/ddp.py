@@ -7,7 +7,7 @@ import numpy as np
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-from coati.models.base import LM, Actor, RewardModel
+from coati.models.base import LM, Actor, RewardModel, Critic
 from coati.models.lora import LoraLinear
 from coati.replay_buffer import ReplayBuffer
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -74,6 +74,11 @@ class DDPStrategy(NaiveStrategy):
     def _unwrap_actor(actor: Actor) -> nn.Module:
         model: DDP = Strategy._unwrap_actor(actor)
         return model.module
+    
+    @staticmethod
+    def _unwrap_critic(critic: Critic) -> nn.Module:
+        model: DDP = Strategy._unwrap_critic(critic)
+        return model.module
 
     def save_model(self, model: nn.Module, path: str, only_rank0: bool = False, tokenizer: Optional[PreTrainedTokenizerBase] = None) -> None:
         if only_rank0 and dist.get_rank() != 0:
@@ -109,3 +114,4 @@ class DDPStrategy(NaiveStrategy):
 
     def setup_sampler(self, dataset) -> DistributedSampler:
         return DistributedSampler(dataset, dist.get_world_size(), dist.get_rank())
+

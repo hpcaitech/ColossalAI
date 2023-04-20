@@ -112,6 +112,11 @@ class Strategy(ABC):
         """
         return Strategy._unwrap_model(actor)
 
+    @staticmethod
+    def _unwrap_critic(critic: Critic) -> nn.Module:
+        return Strategy._unwrap_model(critic)
+
+
     @abstractmethod
     def save_model(self,
                    model: nn.Module,

@@ -72,3 +72,15 @@ class NaiveStrategy(Strategy):
     def load_optimizer(self, optimizer: Optimizer, path: str, map_location: Any = None) -> None:
         state_dict = torch.load(path, map_location=map_location)
         optimizer.load_state_dict(state_dict)
+
+    def get_model_state_dict_shard(self, model: nn.Module, **config):
+        # TODO: implement sharding on naive strategy
+        state_dict = model.state_dict()
+        yield state_dict
+        
+    def merge_lora_weight(self, model: nn.Module):
+        unwrapped_model = self._unwrap_model(model)
+        for module in unwrapped_model.modules():
+            if isinstance(module, LoraLinear):
+                module.merge_weights = True
+                module.eval()
