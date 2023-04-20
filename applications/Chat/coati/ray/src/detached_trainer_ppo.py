@@ -29,7 +29,7 @@ class DetachedPPOTrainer(DetachedTrainer):
         lora_rank (int) : for actor / critic init
         train_batch_size (int, defaults to 8): the batch size to use for training
         train_batch_size (int, defaults to 8): the batch size to use for training
-        buffer_limit (int, defaults to 0): the max_size limitaiton of replay buffer
+        buffer_limit (int, defaults to 0): the max_size limitation of replay buffer
         buffer_cpu_offload (bool, defaults to True): whether to offload replay buffer to cpu
         eps_clip (float, defaults to 0.2): the clip coefficient of policy loss
         value_clip (float, defaults to 0.4): the clip coefficient of value loss

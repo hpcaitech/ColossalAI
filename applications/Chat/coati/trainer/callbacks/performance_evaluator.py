@@ -114,7 +114,7 @@ class PerformanceEvaluator(Callback):
 
         # actor forward-backward, 3 means forward(1) + backward(2)
         self.learn_flop += self.actor_num_params * batch_size * seq_len * 2 * (3 + int(self.enable_grad_checkpoint))
-        # critic foward-backward
+        # critic forward-backward
         self.learn_flop += self.critic_num_params * batch_size * seq_len * 2 * (3 + int(self.enable_grad_checkpoint))
 
     def on_fit_end(self) -> None:

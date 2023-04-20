@@ -28,12 +28,12 @@ class PPOTrainer(Trainer):
         actor (Actor): the actor model in ppo algorithm
         critic (Critic): the critic model in ppo algorithm
         reward_model (nn.Module): the reward model in rlhf algorithm to make reward of sentences
-        initial_model (Actor): the initial model in rlhf algorithm to generate reference logits to limit the update of actor
+        initial_model (Actor): the initial model in rlhf algorithm to generate reference logics to limit the update of actor
         actor_optim (Optimizer): the optimizer to use for actor model
         critic_optim (Optimizer): the optimizer to use for critic model
         kl_coef (float, defaults to 0.1): the coefficient of kl divergence loss
         train_batch_size (int, defaults to 8): the batch size to use for training
-        buffer_limit (int, defaults to 0): the max_size limitaiton of replay buffer
+        buffer_limit (int, defaults to 0): the max_size limitation of replay buffer
         buffer_cpu_offload (bool, defaults to True): whether to offload replay buffer to cpu
         eps_clip (float, defaults to 0.2): the clip coefficient of policy loss
         vf_coef (float, defaults to 1.0): the coefficient of value loss
@@ -41,7 +41,7 @@ class PPOTrainer(Trainer):
         value_clip (float, defaults to 0.4): the clip coefficient of value loss
         experience_batch_size (int, defaults to 8): the batch size to use for experience generation
         max_epochs (int, defaults to 1): the number of epochs of training process
-        tokenier (Callable, optional): the tokenizer to use for tokenizing the input
+        tokenizer (Callable, optional): the tokenizer to use for tokenizing the input
         sample_replay_buffer (bool, defaults to False): whether to sample from replay buffer
         dataloader_pin_memory (bool, defaults to True): whether to pin memory for data loader
         callbacks (List[Callback], defaults to []): the callbacks to call during training process
