@@ -1,14 +1,8 @@
 import tempfile
 import pytest
 import torch
-import logging
 from torch.optim import Adam
 from torchvision.models import resnet18
-from pathlib import Path
-import os
-import subprocess
-import logging
-import shutil
 
 from colossalai.checkpoint_io import GeneralCheckpointIO
 from colossalai.booster.plugin.gemini_plugin import GeminiCheckpointIO
