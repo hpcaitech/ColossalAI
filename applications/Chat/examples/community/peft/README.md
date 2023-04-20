@@ -1,10 +1,10 @@
 # Add Peft support for SFT and Prompts model training
 
-The orginal implementation just adopts the loralib and merges the layers into the final model. The huggingface peft is a better lora model implementation and can be easily training and distributed.
+The original implementation just adopts the loralib and merges the layers into the final model. The huggingface peft is a better lora model implementation and can be easily training and distributed.
 
 Since reward model is relative small, I just keep it as original one. I suggest train full model to get the proper reward/critic model.
 
-# Prelimenary installation
+# Preliminary installation
 Since the current pypi peft package(0.2) has some bugs, please install the peft package using source.
 ```
 git clone https://github.com/huggingface/peft

@@ -1,7 +1,6 @@
 import math
 import time
-from abc import ABC
-from typing import Optional
+from typing import Optional, List
 
 import loralib as lora
 import torch
@@ -19,11 +18,13 @@ from transformers.trainer import get_scheduler
 
 from colossalai.logging import get_dist_logger
 
+from .callbacks import Callback
+from .base import Trainer
 from .strategies import Strategy
 from .utils import is_rank_0
 
 
-class SFTTrainer(ABC):
+class SFTTrainer(Trainer):
     """
         Trainer to use while training reward model.
 
@@ -35,6 +36,7 @@ class SFTTrainer(ABC):
         eval_dataloader: the dataloader to use for evaluation
         batch_size (int, defaults to 1): the batch size while training
         max_epochs (int, defaults to 2): the number of epochs to train
+        callbacks (List[Callback], defaults to []): the callbacks to call during training process
         optim_kwargs (dict, defaults to {'lr':1e-4}): the kwargs to use while initializing optimizer
     """
 
@@ -48,10 +50,9 @@ class SFTTrainer(ABC):
         batch_size: int = 1,
         max_epochs: int = 2,
         accimulation_steps: int = 8,
+        callbacks: List[Callback] = [],
     ) -> None:
-        super().__init__()
-        self.strategy = strategy
-        self.epochs = max_epochs
+        super().__init__(strategy, max_epochs, callbacks=callbacks)
         self.train_dataloader = train_dataloader
         self.eval_dataloader = eval_dataloader
 
@@ -62,7 +63,7 @@ class SFTTrainer(ABC):
 
         self.accimulation_steps = accimulation_steps
         num_update_steps_per_epoch = len(train_dataloader) // self.accimulation_steps
-        max_steps = math.ceil(self.epochs * num_update_steps_per_epoch)
+        max_steps = math.ceil(self.max_epochs * num_update_steps_per_epoch)
 
         self.scheduler = get_scheduler("cosine",
                                        self.optimizer,
@@ -74,10 +75,10 @@ class SFTTrainer(ABC):
         wandb.watch(self.model)
         total_loss = 0
         # epoch_bar = tqdm(range(self.epochs), desc='Epochs', disable=not is_rank_0())
-        step_bar = tqdm(range(len(self.train_dataloader) // self.accimulation_steps * self.epochs),
+        step_bar = tqdm(range(len(self.train_dataloader) // self.accimulation_steps * self.max_epochs),
                         desc=f'steps',
                         disable=not is_rank_0())
-        for epoch in range(self.epochs):
+        for epoch in range(self.max_epochs):
 
             # process_bar = tqdm(range(len(self.train_dataloader)), desc=f'Train process for{epoch}', disable=not is_rank_0())
             # train
@@ -96,7 +97,7 @@ class SFTTrainer(ABC):
                 loss = outputs.loss
                 prompt_logits = outputs.logits
 
-                if loss >= 2.5:
+                if loss >= 2.5 and is_rank_0():
                     logger.warning(f"batch_id:{batch_id}, abnormal loss: {loss}")
 
                 loss = loss / self.accimulation_steps
@@ -110,12 +111,13 @@ class SFTTrainer(ABC):
                     self.strategy.optimizer_step(self.optimizer)
                     self.optimizer.zero_grad()
                     self.scheduler.step()
-                    wandb.log({
-                        "loss": total_loss / self.accimulation_steps,
-                        "lr": self.scheduler.get_last_lr()[0],
-                        "epoch": epoch,
-                        "batch_id": batch_id
-                    })
+                    if is_rank_0():
+                        wandb.log({
+                            "loss": total_loss / self.accimulation_steps,
+                            "lr": self.scheduler.get_last_lr()[0],
+                            "epoch": epoch,
+                            "batch_id": batch_id
+                        })
                     total_loss = 0
                     step_bar.update()
 
@@ -147,7 +149,7 @@ class SFTTrainer(ABC):
 
                     loss_mean = loss_sum / num_seen
                     if dist.get_rank() == 0:
-                        logger.info(f'Eval Epoch {epoch}/{self.epochs} loss {loss_mean}')
+                        logger.info(f'Eval Epoch {epoch}/{self.max_epochs} loss {loss_mean}')
 
             # epoch_bar.update()
 

@@ -15,19 +15,18 @@
   - [Install the Transformers](#install-the-transformers)
 - [How to use?](#how-to-use)
   - [Supervised datasets collection](#supervised-datasets-collection)
-  - [Stage1 - Supervised instructs tuning](#stage1---supervised-instructs-tuning)
-  - [Stage2 - Training reward model](#stage2---training-reward-model)
-  - [Stage3 - Training model with reinforcement learning by human feedback](#stage3---training-model-with-reinforcement-learning-by-human-feedback)
-  - [Inference - After Training](#inference---after-training)
-    - [8-bit setup](#8-bit-setup)
-    - [4-bit setup](#4-bit-setup)
+  - [RLHF Training Stage1 - Supervised instructs tuning](#RLHF-training-stage1---supervised-instructs-tuning)
+  - [RLHF Training Stage2 - Training reward model](#RLHF-training-stage2---training-reward-model)
+  - [RLHF Training Stage3 - Training model with reinforcement learning by human feedback](#RLHF-training-stage3---training-model-with-reinforcement-learning-by-human-feedback)
+  - [Inference Quantization and Serving - After Training](#inference-quantization-and-serving---after-training)
 - [Coati7B examples](#coati7b-examples)
   - [Generation](#generation)
   - [Open QA](#open-qa)
-  - [Limitation for LLaMA-finetuned models](#limitation-for-llama-finetuned-models)
-  - [Limitation of dataset](#limitation-of-dataset)
+  - [Limitation for LLaMA-finetuned models](#limitation)
+  - [Limitation of dataset](#limitation)
 - [FAQ](#faq)
-  - [How to save/load checkpoint](#how-to-saveload-checkpoint)
+  - [How to save/load checkpoint](#faq)
+  - [How to train with limited resources](#faq)
 - [The Plan](#the-plan)
   - [Real-time progress](#real-time-progress)
 - [Invitation to open-source contribution](#invitation-to-open-source-contribution)
@@ -82,6 +81,8 @@ Due to resource constraints, we will only provide this service from 29th Mar 202
 ```shell
 conda create -n coati
 conda activate coati
+git clone https://github.com/hpcaitech/ColossalAI.git
+cd ColossalAI/applications/Chat
 pip install .
 ```
 
@@ -106,43 +107,19 @@ Here is how we collected the data
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/data-collect.png" width=500/>
 </p>
 
-### Stage1 - Supervised instructs tuning
+### RLHF Training Stage1 - Supervised instructs tuning
 
-Stage1 is supervised instructs fine-tuning, which uses the datasets mentioned earlier to fine-tune the model
+Stage1 is supervised instructs fine-tuning, which uses the datasets mentioned earlier to fine-tune the model.
 
-you can run the `examples/train_sft.sh` to start a supervised instructs fine-tuning
+You can run the `examples/train_sft.sh` to start a supervised instructs fine-tuning.
 
-```
-torchrun --standalone --nproc_per_node=4 train_sft.py \
-    --pretrain "/path/to/LLaMa-7B/" \
-    --model 'llama' \
-    --strategy colossalai_zero2 \
-    --log_interval 10 \
-    --save_path  /path/to/Coati-7B \
-    --dataset /path/to/data.json \
-    --batch_size 4 \
-    --accimulation_steps 8 \
-    --lr 2e-5 \
-    --max_datasets_size 512 \
-    --max_epochs 1 \
-```
-
-### Stage2 - Training reward model
+### RLHF Training Stage2 - Training reward model
 
 Stage2 trains a reward model, which obtains corresponding scores by manually ranking different outputs for the same prompt and supervises the training of the reward model
 
-you can run the `examples/train_rm.sh` to start a reward model training
+You can run the `examples/train_rm.sh` to start a reward model training.
 
-```
-torchrun --standalone --nproc_per_node=4 train_reward_model.py
-    --pretrain "/path/to/LLaMa-7B/" \
-    --model 'llama' \
-    --strategy colossalai_zero2 \
-    --loss_fn 'log_exp'\
-    --save_path 'rmstatic.pt' \
-```
-
-### Stage3 - Training model with reinforcement learning by human feedback
+### RLHF Training Stage3 - Training model with reinforcement learning by human feedback
 
 Stage3 uses reinforcement learning algorithm, which is the most complex part of the training process:
 
@@ -150,63 +127,16 @@ Stage3 uses reinforcement learning algorithm, which is the most complex part of 
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/stage-3.jpeg" width=800/>
 </p>
 
-you can run the `examples/train_prompts.sh` to start training PPO with human feedback
-
-```
-torchrun --standalone --nproc_per_node=4 train_prompts.py \
-         --pretrain "/path/to/LLaMa-7B/" \
-         --model 'llama' \
-         --strategy colossalai_zero2 \
-         --prompt_path /path/to/your/prompt_dataset \
-         --pretrain_dataset /path/to/your/pretrain_dataset \
-         --rm_pretrain /your/pretrain/rm/defination \
-         --rm_path /your/rm/model/path
-```
+You can run the `examples/train_prompts.sh` to start training PPO with human feedback.
 
 For more details, see [`examples/`](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat/examples).
 
-### Inference - After Training
-#### 8-bit setup
+### Inference Quantization and Serving - After Training
 
-8-bit quantization is originally supported by the latest [transformers](https://github.com/huggingface/transformers). Please install it from source.
+We provide an online inference server and a benchmark. We aim to run inference on single GPU, so quantization is essential when using large models.
 
-Please ensure you have downloaded HF-format model weights of LLaMA models.
-
-Usage:
-
-```python
-from transformers import LlamaForCausalLM
-USE_8BIT = True # use 8-bit quantization; otherwise, use fp16
-model = LlamaForCausalLM.from_pretrained(
-            "pretrained/path",
-            load_in_8bit=USE_8BIT,
-            torch_dtype=torch.float16,
-            device_map="auto",
-        )
-if not USE_8BIT:
-    model.half()  # use fp16
-model.eval()
-```
-
-**Troubleshooting**: if you get errors indicating your CUDA-related libraries are not found when loading the 8-bit model, you can check whether your `LD_LIBRARY_PATH` is correct.
-
-E.g. you can set `export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH`.
-
-#### 4-bit setup
-
-Please ensure you have downloaded the HF-format model weights of LLaMA models first.
-
-Then you can follow [GPTQ-for-LLaMa](https://github.com/qwopqwop200/GPTQ-for-LLaMa). This lib provides efficient CUDA kernels and weight conversion scripts.
-
-After installing this lib, we may convert the original HF-format LLaMA model weights to a 4-bit version.
-
-```shell
-CUDA_VISIBLE_DEVICES=0 python llama.py /path/to/pretrained/llama-7b c4 --wbits 4 --groupsize 128 --save llama7b-4bit.pt
-```
-
-Run this command in your cloned `GPTQ-for-LLaMa` directory, then you will get a 4-bit weight file `llama7b-4bit-128g.pt`.
-
-**Troubleshooting**: if you get errors about `position_ids`, you can checkout to commit `50287c3b9ae4a3b66f6b5127c643ec39b769b155`(`GPTQ-for-LLaMa` repo).
+We support 8-bit quantization (RTN), 4-bit quantization (GPTQ), and  FP16 inference. You can
+Online inference server scripts can help you deploy your own services.
 
 For more details, see [`inference/`](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat/inference).
 
@@ -282,24 +212,27 @@ For more details, see [`inference/`](https://github.com/hpcaitech/ColossalAI/tre
 
 You can find more examples in this [repo](https://github.com/XueFuzhao/InstructionWild/blob/main/comparison.md).
 
-### Limitation for LLaMA-finetuned models
+### Limitation
+<details><summary><b>Limitation for LLaMA-finetuned models</b></summary>
 - Both Alpaca and ColossalChat are based on LLaMA. It is hard to compensate for the missing knowledge in the pre-training stage.
 - Lack of counting ability: Cannot count the number of items in a list.
 - Lack of Logics (reasoning and calculation)
 - Tend to repeat the last sentence (fail to produce the end token).
 - Poor multilingual results: LLaMA is mainly trained on English datasets (Generation performs better than QA).
+</details>
 
-### Limitation of dataset
+<details><summary><b>Limitation of dataset</b></summary>
 - Lack of summarization ability: No such instructions in finetune datasets.
 - Lack of multi-turn chat: No such instructions in finetune datasets
 - Lack of self-recognition: No such instructions in finetune datasets
 - Lack of Safety:
   - When the input contains fake facts, the model makes up false facts and explanations.
   - Cannot abide by OpenAI's policy: When generating prompts from OpenAI API, it always abides by its policy. So no violation case is in the datasets.
+</details>
 
 ## FAQ
 
-### How to save/load checkpoint
+<details><summary><b>How to save/load checkpoint</b></summary>
 
 We have integrated the Transformers save and load pipeline, allowing users to freely call Hugging Face's language models and save them in the HF format.
 
@@ -323,6 +256,63 @@ trainer = SFTTrainer(model=model,
 trainer.fit()
 trainer.save_model(path=args.save_path, only_rank0=True, tokenizer=tokenizer)
 ```
+
+</details>
+
+<details><summary><b>How to train with limited resources</b></summary>
+
+Here are some examples that can allow you to train a 7B model on a single or multiple consumer-grade GPUs.
+
+If you only have a single 24G GPU, you can use the following script. `batch_size` and `lora_rank` are the most important parameters to successfully train the model.
+```
+torchrun --standalone --nproc_per_node=1 train_sft.py \
+    --pretrain "/path/to/LLaMa-7B/" \
+    --model 'llama' \
+    --strategy naive \
+    --log_interval 10 \
+    --save_path  /path/to/Coati-7B \
+    --dataset /path/to/data.json \
+    --batch_size 1 \
+    --accimulation_steps 8 \
+    --lr 2e-5 \
+    --max_datasets_size 512 \
+    --max_epochs 1 \
+    --lora_rank 16 \
+```
+
+`colossalai_gemini` strategy can enable a single 24G GPU to train the whole model without using LoRA if you have sufficient CPU memory. You can use the following script.
+```
+torchrun --standalone --nproc_per_node=1 train_sft.py \
+    --pretrain "/path/to/LLaMa-7B/" \
+    --model 'llama' \
+    --strategy colossalai_gemini \
+    --log_interval 10 \
+    --save_path  /path/to/Coati-7B \
+    --dataset /path/to/data.json \
+    --batch_size 1 \
+    --accimulation_steps 8 \
+    --lr 2e-5 \
+    --max_datasets_size 512 \
+    --max_epochs 1 \
+```
+
+If you have 4x32 GB GPUs, you can even train the whole 7B model using our `colossalai_zero2_cpu` strategy! The script is given as follows.
+```
+torchrun --standalone --nproc_per_node=4 train_sft.py \
+    --pretrain "/path/to/LLaMa-7B/" \
+    --model 'llama' \
+    --strategy colossalai_zero2_cpu \
+    --log_interval 10 \
+    --save_path  /path/to/Coati-7B \
+    --dataset /path/to/data.json \
+    --batch_size 1 \
+    --accimulation_steps 8 \
+    --lr 2e-5 \
+    --max_datasets_size 512 \
+    --max_epochs 1 \
+```
+</details>
+
 
 ## The Plan
 
@@ -355,6 +345,14 @@ and [WeChat(微信)](https://raw.githubusercontent.com/hpcaitech/public_assets/m
 Thanks so much to all of our amazing contributors!
 
 ## Quick Preview
+<div align="center">
+   <a href="https://chat.colossalai.org/">
+   <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/Chat-demo.png" width="700" />
+   </a>
+</div>
+
+- An open-source low cost solution for cloning [ChatGPT](https://openai.com/blog/chatgpt/) with a complete RLHF pipeline. [[demo]](https://chat.colossalai.org)
+
 <p id="ChatGPT_scaling" align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chatgpt/ChatGPT%20scaling.png" width=800/>
 </p>
@@ -374,6 +372,13 @@ Thanks so much to all of our amazing contributors!
 
 - Increase the capacity of the fine-tuning model by up to 3.7 times on a single GPU
 - Keep in a sufficiently high running speed
+
+|  Model Pair   | Alpaca-7B ⚔ Coati-7B | Coati-7B ⚔ Alpaca-7B |
+| :-----------: | :------------------: | :------------------: |
+| Better Cases  |     38 ⚔ **41**      |     **45** ⚔ 33      |
+|   Win Rate    |    48% ⚔ **52%**     |    **58%** ⚔ 42%     |
+| Average Score |   7.06 ⚔ **7.13**    |   **7.31** ⚔ 6.82    |
+- Our Coati-7B model performs better than Alpaca-7B when using GPT-4 to evaluate model performance. The Coati-7B model we evaluate is an old version we trained a few weeks ago and the new version is around the corner.
 
 ## Authors
 

@@ -90,7 +90,6 @@ def check_system_pytorch_cuda_match(cuda_dir):
             'Please make sure you have set the CUDA_HOME correctly and installed the correct PyTorch in https://pytorch.org/get-started/locally/ .'
         )
 
-    print(bare_metal_minor != torch_cuda_minor)
     if bare_metal_minor != torch_cuda_minor:
         warnings.warn(
             f"[extension] The CUDA version on the system ({bare_metal_major}.{bare_metal_minor}) does not match with the version ({torch_cuda_major}.{torch_cuda_minor}) torch was compiled with. "
@@ -156,16 +155,15 @@ def set_cuda_arch_list(cuda_dir):
 
     # we only need to set this when CUDA is not available for cross-compilation
     if not cuda_available:
-        warnings.warn(
-            '\n[extension]  PyTorch did not find available GPUs on this system.\n'
-            'If your intention is to cross-compile, this is not an error.\n'
-            'By default, Colossal-AI will cross-compile for \n'
-            '1. Pascal (compute capabilities 6.0, 6.1, 6.2),\n'
-            '2. Volta (compute capability 7.0)\n'
-            '3. Turing (compute capability 7.5),\n'
-            '4. Ampere (compute capability 8.0, 8.6)if the CUDA version is >= 11.0\n'
-            '\nIf you wish to cross-compile for a single specific architecture,\n'
-            'export TORCH_CUDA_ARCH_LIST="compute capability" before running setup.py.\n')
+        warnings.warn('\n[extension]  PyTorch did not find available GPUs on this system.\n'
+                      'If your intention is to cross-compile, this is not an error.\n'
+                      'By default, Colossal-AI will cross-compile for \n'
+                      '1. Pascal (compute capabilities 6.0, 6.1, 6.2),\n'
+                      '2. Volta (compute capability 7.0)\n'
+                      '3. Turing (compute capability 7.5),\n'
+                      '4. Ampere (compute capability 8.0, 8.6)if the CUDA version is >= 11.0\n'
+                      '\nIf you wish to cross-compile for a single specific architecture,\n'
+                      'export TORCH_CUDA_ARCH_LIST="compute capability" before running setup.py.\n')
 
         if os.environ.get("TORCH_CUDA_ARCH_LIST", None) is None:
             bare_metal_major, bare_metal_minor = get_cuda_bare_metal_version(cuda_dir)
