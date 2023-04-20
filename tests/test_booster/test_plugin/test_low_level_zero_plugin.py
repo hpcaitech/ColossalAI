@@ -11,12 +11,9 @@ from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from tests.kit.model_zoo import model_zoo
 
 # These models are not compatible with AMP
-_AMP_ERR_MODELS = ['timm_convit']
-# fp32 param and grad have different shape
-_LOW_LEVEL_ZERO_ERR_MODELS = [
-    'torchaudio_tacotron', 'torchaudio_wav2vec2_base', 'dlrm', 'dlrm_interactionarch', 'deepfm_interactionarch',
-    'deepfm_simpledeepfmnn', 'torchvision_googlenet', 'torchvision_inception_v3', 'diffusers_clip_vision_model'
-]
+_AMP_ERR_MODELS = ['timm_convit', 'dlrm', 'deepfm_interactionarch', 'deepfm_simpledeepfmnn`']
+# These models have no parameters
+_LOW_LEVEL_ZERO_ERR_MODELS = ['dlrm_interactionarch']
 # These models will get stuck
 _STUCK_MODELS = [
     'diffusers_vq_model', 'transformers_albert', 'transformers_albert_for_pretraining', 'transformers_bert',
