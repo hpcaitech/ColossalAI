@@ -154,7 +154,7 @@ def cmap(func: Callable,
     else:
         return ColWrap
 
-  
+
 if __name__ == "__main__":
     torch.distributed.init_process_group(backend="gloo")
 
