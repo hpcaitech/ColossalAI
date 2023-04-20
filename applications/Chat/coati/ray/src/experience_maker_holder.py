@@ -83,7 +83,7 @@ class ExperienceMakerHolder:
         chosen_trainer = None
         min_length = None
         if 'debug' in self.generate_kwargs and self.generate_kwargs['debug'] == True:
-            print("[maker] choosing tartget trainer")
+            print("[maker] choosing target trainer")
         while chosen_trainer is None:
             for target_trainer in self.target_trainer_list:
                 try:

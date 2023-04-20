@@ -38,7 +38,7 @@ pip install -r requirements.txt
 
 ## Supervised datasets collection
 
-We colllected 104K bilingual dataset of Chinese and English, and you can find the datasets in this repo
+We collected 104K bilingual dataset of Chinese and English, and you can find the datasets in this repo
 [InstructionWild](https://github.com/XueFuzhao/InstructionWild).
 
 The following pic shows how we collected the data.
@@ -128,7 +128,7 @@ Model performance in [Anthropics paper](https://arxiv.org/abs/2204.05862):
 - --lora_rank:         low-rank adaptation matrices rank, type=int, default=0
 - --loss_func:         which kind of loss function, choices=['log_sig', 'log_exp']
 - --max_len:           max sentence length for generation, type=int, default=512
-- --test:              whether is only tesing, if it's ture, the dataset will be small
+- --test:              whether is only testing, if it's true, the dataset will be small
 
 ## Stage3 - Training model using prompts with RL
 
@@ -245,7 +245,7 @@ class CoatiActor(Actor):
         if pretrained is not None:
             model = CoatiModel.from_pretrained(pretrained)
         else:
-            model = build_model() # load your own model if it is not support in trainsformers
+            model = build_model() # load your own model if it is not support in transformers
 
         super().__init__(model, lora_rank, lora_train_bias)
 ```
@@ -266,7 +266,7 @@ class GPTLM(LM):
         if pretrained is not None:
             model = CoatiModel.from_pretrained(pretrained)
         else:
-            model = build_model() # load your own model if it is not support in trainsformers
+            model = build_model() # load your own model if it is not support in transformers
 
         super().__init__(model, lora_rank, lora_train_bias)
 
@@ -288,7 +288,7 @@ class CoatiRM(RewardModel):
         if pretrained is not None:
             model = CoatiModel.from_pretrained(pretrained)
         else:
-            model = build_model() # load your own model if it is not support in trainsformers
+            model = build_model() # load your own model if it is not support in transformers
 
         value_head = nn.Linear(model.config.n_embd, 1)
         value_head.weight.data.normal_(mean=0.0, std=1 / (model.config.n_embd + 1))
@@ -311,7 +311,7 @@ class CoatiCritic(Critic):
         if pretrained is not None:
             model = CoatiModel.from_pretrained(pretrained)
         else:
-            model = build_model() # load your own model if it is not support in trainsformers
+            model = build_model() # load your own model if it is not support in transformers
 
         value_head = nn.Linear(model.config.n_embd, 1)
         value_head.weight.data.normal_(mean=0.0, std=1 / (model.config.n_embd + 1))
