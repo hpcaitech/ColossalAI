@@ -109,6 +109,23 @@ def test_sharded_checkpoint(use_safetensors: bool):
     recursive_check(optimizer.state_dict(), new_optimizer.state_dict())
 
 
+@pytest.mark.parametrize('use_safetensors', [True, False])
+def test_hf_load_colossalai_checkpoint(use_safetensors: bool):
+    from transformers import BertTokenizer, BertModel, BertForMaskedLM, BertConfig
+
+    ckpt_io = GeneralCheckpointIO()
+    bert_model = BertModel.from_pretrained('bert-base-chinese')
+    model_ckpt_dir = tempfile.TemporaryDirectory()
+    bert_model.config.save_pretrained(save_directory=model_ckpt_dir.name)
+    ckpt_io.save_model(bert_model, model_ckpt_dir.name, True, True, "", 10, use_safetensors=False)
+
+    new_bert_config = bert_model.config
+    new_bert_model = BertModel(config=new_bert_config)
+    new_bert_model = BertModel.from_pretrained(model_ckpt_dir.name) 
+
+    recursive_check(bert_model.state_dict(), new_bert_model.state_dict())
+
+
 @parameterize('placement_policy', ['cuda', 'cpu'])
 @parameterize('model_name', ['gpt2', 'bert'])
 @parameterize('use_safetensors', [True, False])

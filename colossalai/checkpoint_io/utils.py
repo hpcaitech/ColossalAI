@@ -110,7 +110,7 @@ def shard_checkpoint(state_dict: torch.Tensor, max_shard_size: int = 1024) -> It
     yield current_block, current_block_size
     
 
-def build_index(state_dict_shard: Iterator[Tuple[OrderedDict, int]], shards_total_num: int, use_safetensors: bool, variant: str):
+def build_index(state_dict_shard: Iterator[Tuple[OrderedDict, int]], use_safetensors: bool, variant: str):
     # If we only have one shard, we return it
     weights_name = SAFE_WEIGHTS_NAME if use_safetensors else WEIGHTS_NAME
     weights_name = add_variant(weights_name, variant)
@@ -118,23 +118,25 @@ def build_index(state_dict_shard: Iterator[Tuple[OrderedDict, int]], shards_tota
     save_index_file = SAFE_WEIGHTS_INDEX_NAME if use_safetensors else WEIGHTS_INDEX_NAME
     save_index_file = add_variant(save_index_file, variant)
 
-    if shards_total_num == 1:
-        return {weights_name: next(state_dict_shard)[0]}, None
-    
     weight_map = {}
     shards = {}
     total_size = 0
+    shards_total_num = 0
     # shard_pair like (shard, shard_size)
+    single_shard = None
     for idx, shard_pair in enumerate(state_dict_shard):
-        shard_file = weights_name.replace(".bin", f"-{idx+1:05d}-of-{shards_total_num:05d}.bin")
-        shard_file = shard_file.replace(
-            ".safetensors", f"-{idx + 1:05d}-of-{shards_total_num:05d}.safetensors"
-        )
+        if idx == 0:
+            single_shard = shard_pair[0]
+        shard_file = weights_name.replace(".bin", f"-{idx+1:05d}.bin")
+        shard_file = shard_file.replace(".safetensors", f"-{idx + 1:05d}.safetensors")
         shards[shard_file] = shard_pair[0]
         for key in shard_pair[0].keys():
             weight_map[key] = shard_file
+        shards_total_num = shards_total_num + 1
         total_size = total_size + shard_pair[1]
-
+    # if only one shard, then we don't build index
+    if shards_total_num == 1:
+        return {weights_name: single_shard}, None
     # Add the metadata
     metadata = {"total_size": total_size}
     index = {"metadata": metadata, "weight_map": weight_map}
