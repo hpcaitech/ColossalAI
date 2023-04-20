@@ -4,10 +4,10 @@ on:
   pull_request:
     types: [synchronize, opened, reopened]
     paths:
-      - 'applications/ChatGPT/chatgpt/**'
-      - 'applications/ChatGPT/requirements.txt'
-      - 'applications/ChatGPT/setup.py'
-      - 'applications/ChatGPT/examples/**'
+      - 'applications/Chat/coati/**'
+      - 'applications/Chat/requirements.txt'
+      - 'applications/Chat/setup.py'
+      - 'applications/Chat/examples/**'
 
 
 jobs:
@@ -16,7 +16,7 @@ jobs:
     runs-on: [self-hosted, gpu]
     container:
       image: hpcaitech/pytorch-cuda:1.12.0-11.3.0
-      options: --gpus all --rm -v /data/scratch/chatgpt:/data/scratch/chatgpt
+      options: --gpus all --rm -v /data/scratch/github_actions/chat:/data/scratch/github_actions/chat
     timeout-minutes: 30
     defaults:
       run:
@@ -27,17 +27,26 @@ jobs:
 
       - name: Install ColossalAI and ChatGPT
         run: |
-          pip install -v .
-          cd applications/ChatGPT
+          pip install -e .
+          cd applications/Chat
           pip install -v .
           pip install -r examples/requirements.txt
 
+      - name: Install Transformers
+        run: |
+          cd applications/Chat
+          git clone https://github.com/hpcaitech/transformers
+          cd transformers
+          pip install -v .
+
       - name: Execute Examples
         run: |
-          cd applications/ChatGPT
+          cd applications/Chat
           rm -rf ~/.cache/colossalai
           ./examples/test_ci.sh
         env:
           NCCL_SHM_DISABLE: 1
           MAX_JOBS: 8
-          PROMPT_PATH: /data/scratch/chatgpt/prompts.csv
+          SFT_DATASET: /data/scratch/github_actions/chat/data.json
+          PROMPT_PATH: /data/scratch/github_actions/chat/prompts_en.jsonl
+          PRETRAIN_DATASET: /data/scratch/github_actions/chat/alpaca_data.json

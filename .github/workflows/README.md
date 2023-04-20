@@ -30,7 +30,7 @@ In the section below, we will dive into the details of different workflows avail
 Refer to this [documentation](https://docs.github.com/en/actions/managing-workflow-runs/manually-running-a-workflow) on how to manually trigger a workflow.
 I will provide the details of each workflow below.
 
-**A PR which changes the `version.txt` is considered as a release PR in the following coontext.**
+**A PR which changes the `version.txt` is considered as a release PR in the following context.**
 
 
 ### Code Style Check
@@ -58,15 +58,15 @@ I will provide the details of each workflow below.
 #### Example Test on Dispatch
 
 This workflow is triggered by manually dispatching the workflow. It has the following input parameters:
-- `example_directory`: the example directory to test. Multiple directories are supported and must be separated b$$y comma. For example, language/gpt, images/vit. Simply input language or simply gpt does not work.
+- `example_directory`: the example directory to test. Multiple directories are supported and must be separated by comma. For example, language/gpt, images/vit. Simply input language or simply gpt does not work.
 
 ### Compatibility Test
 
 | Workflow Name                    | File name                            | Description                                                                                                          |
 | -------------------------------- | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
-| `Compatibility Test on PR`       | `compatibility_test_on_pr.yml`       | Check Colossal-AI's compatiblity when `version.txt` is changed in a PR.                                              |
-| `Compatibility Test on Schedule` | `compatibility_test_on_schedule.yml` | This workflow will check the compatiblity of Colossal-AI against PyTorch specified in `.compatibility` every Sunday. |
-| `Compatiblity Test on Dispatch`  | `compatibility_test_on_dispatch.yml` | Test PyTorch Compatibility manually.                                                                                 |
+| `Compatibility Test on PR`       | `compatibility_test_on_pr.yml`       | Check Colossal-AI's compatibility when `version.txt` is changed in a PR.                                              |
+| `Compatibility Test on Schedule` | `compatibility_test_on_schedule.yml` | This workflow will check the compatibility of Colossal-AI against PyTorch specified in `.compatibility` every Sunday. |
+| `Compatibility Test on Dispatch`  | `compatibility_test_on_dispatch.yml` | Test PyTorch Compatibility manually.                                                                                 |
 
 
 #### Compatibility Test on Dispatch
@@ -74,7 +74,7 @@ This workflow is triggered by manually dispatching the workflow. It has the foll
 - `torch version`:torch version to test against, multiple versions are supported but must be separated by comma. The default is value is all, which will test all available torch versions listed in this [repository](https://github.com/hpcaitech/public_assets/tree/main/colossalai/torch_build/torch_wheels).
 - `cuda version`: cuda versions to test against, multiple versions are supported but must be separated by comma. The CUDA versions must be present in our [DockerHub repository](https://hub.docker.com/r/hpcaitech/cuda-conda).
 
-> It only test the compatiblity of the main branch
+> It only test the compatibility of the main branch
 
 
 ### Release
@@ -113,7 +113,7 @@ This `.compatibility` file is to tell GitHub Actions which PyTorch and CUDA vers
 
 2. `.cuda_ext.json`
 
-This file controls which CUDA versions will be checked against CUDA extenson built. You can add a new entry according to the json schema below to check the AOT build of PyTorch extensions before release.
+This file controls which CUDA versions will be checked against CUDA extension built. You can add a new entry according to the json schema below to check the AOT build of PyTorch extensions before release.
 
 ```json
 {
@@ -144,7 +144,7 @@ This file controls which CUDA versions will be checked against CUDA extenson bui
   - [x] check on PR
   - [x] regular check
   - [x] manual dispatch
-- [x] compatiblity check
+- [x] compatibility check
   - [x] check on PR
   - [x] manual dispatch
   - [x] auto test when release
