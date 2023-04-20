@@ -4,11 +4,12 @@ import torch
 import torch.nn as nn
 from typing import List, Dict, Mapping, OrderedDict, Optional, Tuple
 from colossalai.tensor.d_tensor.d_tensor import DTensor
+import re
 
 SAFE_WEIGHTS_NAME = "model.safetensors"
-WEIGHTS_NAME = "model.bin"
+WEIGHTS_NAME = "pytorch_model.bin"
 SAFE_WEIGHTS_INDEX_NAME = "model.safetensors.index.json"
-WEIGHTS_INDEX_NAME = "model.bin.index.json"
+WEIGHTS_INDEX_NAME = "pytorch_model.bin.index.json"
 
 # ======================================
 # General helper functions
@@ -26,7 +27,6 @@ def calculate_tensor_size(tensor: torch.Tensor) -> float:
         float: size of the tensor in MB.
     """
     return tensor.numel() * tensor.element_size() / 1024 / 1024
-
 
 def is_safetensors_available() -> bool:
     """
@@ -358,13 +358,14 @@ def has_index_file(checkpoint_path: str) -> Tuple[bool, Optional[Path]]:
     checkpoint_path = Path(checkpoint_path)
     if checkpoint_path.is_file():
         # check if it is .index.json
-        if checkpoint_path.name.endswith('.index.json'):
+        reg = re.compile("(.*?).index((\..*)?).json")
+        if reg.fullmatch(checkpoint_path.name) is not None:
             return True, checkpoint_path
         else:
             return False, None
     elif checkpoint_path.is_dir():
         # check if there is only one a file ending with .index.json in this directory
-        index_files = list(checkpoint_path.glob('*.index.json'))
+        index_files = list(checkpoint_path.glob('*.index.*json'))
 
         # if we found a .index.json file, make sure there is only one
         if len(index_files) > 0:
@@ -406,3 +407,13 @@ def load_state_dict(checkpoint_file_path: Path):
     else:
         # load with torch
         return torch.load(checkpoint_file_path)
+    
+
+
+def add_variant(weights_name: str, variant: Optional[str] = None) -> str:
+    if variant is not None and len(variant) > 0:
+        splits = weights_name.split(".")
+        splits = splits[:-1] + [variant] + splits[-1:]
+        weights_name = ".".join(splits)
+
+    return weights_name

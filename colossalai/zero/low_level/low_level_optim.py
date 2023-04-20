@@ -440,6 +440,8 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
         # update loss scale if overflow occurs
         if found_inf:
             self._grad_store.reset_all_average_gradients()
+            if self._verbose:
+                self._logger.info(f'Found overflow. Skip step')
             self.zero_grad()
             return
 

@@ -16,59 +16,13 @@ from colossalai.checkpoint_io import CheckpointIO, GeneralCheckpointIO
 from colossalai.checkpoint_io.utils import save_state_dict
 from colossalai.cluster import DistCoordinator
 from colossalai.interface import ModelWrapper, OptimizerWrapper
-from colossalai.tensor.colo_parameter import ColoParameter
 from colossalai.utils import get_current_device
 from colossalai.zero import GeminiDDP, zero_model_wrapper, zero_optim_wrapper
-from colossalai.zero.gemini.colo_init_context import _convert_to_coloparam
 from colossalai.zero.gemini.memory_tracer import MemStats
 
 from .plugin_base import Plugin
 
 __all__ = ['GeminiPlugin']
-
-
-def convert_to_colo_param(module: nn.Module) -> None:
-    """Convert module's paramters to ColoParameter. This is a workaround and will be deprecated when lazy init is compatible with Gemini.
-
-    Args:
-        module (nn.Module): Module to be converted.
-    """
-    converted_modules = set()    # handle shared modules
-    converted_params = dict()    # record mapping between (torch.Tensor, ColoTensor) to distinguish the same reference
-
-    def convert_recursively(m: nn.Module):
-        for child in m.children():
-            if child not in converted_modules:
-                converted_modules.add(child)
-                convert_recursively(child)
-
-        for name, p in m.named_parameters(recurse=False):
-            assert not isinstance(p, ColoParameter)
-            if p in converted_params:
-                target = converted_params[p]
-            else:
-                target = _convert_to_coloparam(p, p.device, p.dtype)
-                converted_params[p] = target
-            setattr(m, name, target)
-            target.shared_param_modules.append(m)
-
-    convert_recursively(module)
-
-    # optimizer should replace params in group as well. This attr should be deleted after replacing to avoid memory leak
-    module._converted_params = converted_params
-
-
-def replace_param_in_group(optimizer: Optimizer, converted_params: dict) -> None:
-    """Replace param in optimizer's group with converted ColoParameter.
-
-    Args:
-        optimizer (Optimizer): Optimizer to be replaced.
-        converted_params (dict): Mapping between (torch.Tensor, ColoTensor).
-    """
-    for group in optimizer.param_groups:
-        for i, p in enumerate(group['params']):
-            if p in converted_params:
-                group['params'][i] = converted_params[p]
 
 
 class GeminiCheckpointIO(GeneralCheckpointIO):
@@ -111,11 +65,9 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
 
 class GeminiModel(ModelWrapper):
 
-    def __init__(self, module: nn.Module, gemini_config: dict) -> None:
+    def __init__(self, module: nn.Module, gemini_config: dict, verbose: bool = False) -> None:
         super().__init__(module)
-        # TODO(ver217): only support Gemini now
-        convert_to_colo_param(module)
-        self.module = zero_model_wrapper(module, zero_stage=3, gemini_config=gemini_config)
+        self.module = zero_model_wrapper(module, zero_stage=3, gemini_config=gemini_config, verbose=verbose)
 
     def unwrap(self):
         # as save/load state dict is coupled with the GeminiDDP, we only return GeminiDDP model
@@ -124,10 +76,17 @@ class GeminiModel(ModelWrapper):
 
 class GeminiOptimizer(OptimizerWrapper):
 
-    def __init__(self, module: GeminiDDP, optimizer: Optimizer, zero_optim_config: dict, optim_kwargs: dict) -> None:
-        replace_param_in_group(optimizer, module.module._converted_params)
-        del module.module._converted_params
-        optimizer = zero_optim_wrapper(module, optimizer, optim_config=zero_optim_config, **optim_kwargs)
+    def __init__(self,
+                 module: GeminiDDP,
+                 optimizer: Optimizer,
+                 zero_optim_config: dict,
+                 optim_kwargs: dict,
+                 verbose: bool = False) -> None:
+        optimizer = zero_optim_wrapper(module,
+                                       optimizer,
+                                       optim_config=zero_optim_config,
+                                       **optim_kwargs,
+                                       verbose=verbose)
         super().__init__(optimizer)
 
     def backward(self, loss: Tensor, *args, **kwargs):
@@ -188,6 +147,7 @@ class GeminiPlugin(Plugin):
         max_norm (float, optional): max_norm used for `clip_grad_norm`. You should notice that you shall not do
             clip_grad_norm by yourself when using ZeRO DDP. The ZeRO optimizer will take care of clip_grad_norm.
         norm_type (float, optional): norm_type used for `clip_grad_norm`.
+        verbose (bool, optional): verbose mode. Debug info including chunk search result will be printed. Defaults to False.
     """
 
     def __init__(
@@ -211,6 +171,7 @@ class GeminiPlugin(Plugin):
         max_scale: float = 2**32,
         max_norm: float = 0.0,
         norm_type: float = 2.0,
+        verbose: bool = False,
     ) -> None:
 
         assert dist.is_initialized(
@@ -238,6 +199,7 @@ class GeminiPlugin(Plugin):
                                  max_scale=max_scale,
                                  max_norm=max_norm,
                                  norm_type=norm_type)
+        self.verbose = verbose
 
     def support_no_sync(self) -> bool:
         return False
@@ -325,10 +287,11 @@ class GeminiPlugin(Plugin):
             # model = nn.SyncBatchNorm.convert_sync_batchnorm(model, None)
 
             # wrap the model with Gemini
-            model = GeminiModel(model, self.gemini_config)
+            model = GeminiModel(model, self.gemini_config, self.verbose)
 
         if not isinstance(optimizer, OptimizerWrapper):
-            optimizer = GeminiOptimizer(model.unwrap(), optimizer, self.zero_optim_config, self.optim_kwargs)
+            optimizer = GeminiOptimizer(model.unwrap(), optimizer, self.zero_optim_config, self.optim_kwargs,
+                                        self.verbose)
 
         return model, optimizer, criterion, dataloader, lr_scheduler
 

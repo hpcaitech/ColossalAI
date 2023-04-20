@@ -11,8 +11,13 @@ from colossalai.zero.gemini.memory_tracer import MemStats, OrderedParamGenerator
 
 
 def _filter_exlarge_params(model: nn.Module, size_dict: Dict[int, List[int]]) -> None:
-    """
+    """_filter_exlarge_params
+
     Filter those parameters whose size is too large (more than 3x standard deviations) from others.
+
+    Args:
+        model (nn.Module): the model.
+        size_dict (Dict[int, List[int]]): the size dict of parameters.
     """
     agg_size_list = []
     for key in size_dict:
@@ -33,7 +38,16 @@ def _filter_exlarge_params(model: nn.Module, size_dict: Dict[int, List[int]]) ->
 
 
 def _get_unused_byte(size_list: List[int], chunk_size: int) -> int:
-    """Get unused byte for a certain chunk size.
+    """_get_unused_byte
+
+    Get unused byte for a certain chunk size.
+
+    Args:
+        size_list (List[int]): the size list of parameters.
+        chunk_size (int): the chunk size.
+
+    Returns:
+        int: the unused byte.
     """
     acc = 0
     left = 0
@@ -45,10 +59,22 @@ def _get_unused_byte(size_list: List[int], chunk_size: int) -> int:
     return left + acc
 
 
-def _tensor_numel(local_param: ColoParameter, strict_ddp_flag: bool):
-    if strict_ddp_flag:
+def _tensor_numel(local_param: ColoParameter, strict_ddp_flag: bool) -> int:
+    """_tensor_numel
+
+    Get the number of elements of a tensor.
+
+    Args:
+        local_param (ColoParameter): The local parameter.
+        strict_ddp_flag (bool): whether to enable the strict ddp mode.
+
+    Returns:
+        int: the number of elements.
+    """
+    if strict_ddp_flag and type(local_param) is ColoParameter:
         return local_param.numel_global()
     else:
+        # if local_param is not ColoParameter, we assume it's replicated
         return local_param.numel()
 
 
@@ -60,6 +86,7 @@ def classify_params_by_dp_degree(param_order: OrderedParamGenerator,
 
     Args:
         param_order (OrderedParamGenerator): the order of param be visied
+        strict_ddp_flag (bool, optional): whether to enable the strict ddp mode. Defaults to False.
 
     Returns:
         Dict[int, List[ColoParameter]]: a dict contains the classification results.
@@ -67,11 +94,13 @@ def classify_params_by_dp_degree(param_order: OrderedParamGenerator,
     """
     params_dict: Dict[int, List[ColoParameter]] = dict()
     for param in param_order.generate():
-        assert isinstance(param, ColoParameter), "please init model in the ColoInitContext"
+        # assert isinstance(param, ColoParameter), "please init model in the ColoInitContext"
         if is_ddp_ignored(param):
             continue
 
-        if strict_ddp_flag:
+        if strict_ddp_flag or type(param) is not ColoParameter:
+            # if model is not initialized with ColoInitContext, we assume it's replicated
+            # TODO(ver217): integrate DTensor
             param_key = dist.get_world_size()
         else:
             param_key = param.process_group.dp_world_size()
@@ -92,6 +121,8 @@ def search_chunk_configuration(
         strict_ddp_flag: bool = False,
         memstas: Optional[MemStats] = None) -> Tuple[Dict, int, int]:
     """search_chunk_configuration
+
+    Search the chunk configuration for a model.
 
     Args:
         model (nn.Module): torch module
