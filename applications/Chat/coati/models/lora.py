@@ -108,7 +108,7 @@ def convert_to_lora_recursively(module: nn.Module, lora_rank: int) -> None:
 
 class LoRAModule(nn.Module):
     """A LoRA module base class. All derived classes should call `convert_to_lora()` at the bottom of `__init__()`.
-    This calss will convert all torch.nn.Linear layer to LoraLinear layer.
+    This class will convert all torch.nn.Linear layer to LoraLinear layer.
 
     Args:
         lora_rank (int, optional): LoRA rank. 0 means LoRA is not applied. Defaults to 0.

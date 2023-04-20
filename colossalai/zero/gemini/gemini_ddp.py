@@ -1,12 +1,13 @@
 import itertools
 from collections import OrderedDict
 from functools import partial
-from typing import Dict, List, Optional
+from typing import Dict, Iterator, List, Optional, Union
 
 import torch
 import torch.distributed as dist
 import torch.nn as nn
 
+from colossalai.checkpoint_io.utils import calculate_tensor_size
 from colossalai.logging import get_dist_logger
 from colossalai.nn.parallel.data_parallel import ColoDDP, _cast_float, free_storage
 from colossalai.tensor import ProcessGroup as ColoProcessGroup
@@ -14,6 +15,7 @@ from colossalai.tensor import ReplicaSpec
 from colossalai.tensor.colo_parameter import ColoParameter, ColoTensor, ColoTensorSpec
 from colossalai.tensor.param_op_hook import ColoParamOpHookManager
 from colossalai.utils import get_current_device, is_ddp_ignored
+from colossalai.utils.model.experimental import LazyTensor
 
 from .chunk import Chunk, ChunkManager, TensorState, init_chunk_manager
 from .gemini_hook import GeminiZeROHook
@@ -55,7 +57,6 @@ class ZeroDDP(ColoDDP):
                  pin_memory: bool = False,
                  force_outputs_fp32: bool = False,
                  strict_ddp_mode: bool = False) -> None:
-        super().__init__(module, process_group=ColoProcessGroup())
         self.gemini_manager = gemini_manager
         self.chunk_manager: ChunkManager = gemini_manager.chunk_manager
         self.force_outputs_fp32 = force_outputs_fp32
@@ -67,7 +68,6 @@ class ZeroDDP(ColoDDP):
         self.param2name: Dict[nn.Parameter, str] = dict()
         self.name2param: Dict[str, nn.Parameter] = dict()
 
-        self._cast_buffers()
         self._logger = get_dist_logger()
 
         if self.gemini_manager._premade_memstats_:
@@ -91,6 +91,8 @@ class ZeroDDP(ColoDDP):
             for p_name, p_var in m_var.named_parameters(recurse=False):
                 param_name = m_name + '.' + p_name if m_name else p_name
                 self.name2param[param_name] = p_var
+        super().__init__(module, process_group=ColoProcessGroup())
+        self._cast_buffers()
 
     def _post_forward(self):
         """This function is only triggered for inference.
@@ -200,7 +202,12 @@ class ZeroDDP(ColoDDP):
         for tensor in chunk.get_tensors():
             self.grads_device[tensor] = device
 
-    def state_dict(self, destination=None, prefix='', keep_vars=False, only_rank_0: bool = True):
+    def state_dict(self,
+                   destination=None,
+                   prefix='',
+                   keep_vars=False,
+                   only_rank_0: bool = True,
+                   dtype: torch.dtype = torch.float16):
         """Returns a dictionary containing a whole state of the module.
 
         Both parameters and persistent buffers (e.g. running averages) are included.
@@ -219,7 +226,7 @@ class ZeroDDP(ColoDDP):
             destination = OrderedDict()
             destination._metadata = OrderedDict()
         destination._metadata[prefix[:-1]] = local_metadata = dict(version=self._version)
-        self._save_to_state_dict(destination, prefix, keep_vars, only_rank_0)
+        self._save_to_state_dict(destination, prefix, keep_vars, only_rank_0, dtype)
 
         for hook in self._state_dict_hooks.values():
             hook_result = hook(self, destination, prefix, local_metadata)
@@ -227,7 +234,36 @@ class ZeroDDP(ColoDDP):
                 destination = hook_result
         return destination
 
-    def _get_param_to_save_data(self, param_list: List[torch.nn.Parameter], only_rank_0: bool) -> Dict:
+    def _get_chunk_to_save_data(self, chunk: Chunk, only_rank_0: bool, dtype: torch.dtype = torch.float16) -> Dict:
+        """
+        get gathered chunk content.
+
+        Args:
+            chunk (Chunk): a chunk
+            only_rank_0 (bool): whether to only save data on rank 0
+
+        Returns:
+            Dict: a dict whose key is param name and value is param with correct payload
+        """
+        # save parameters
+        chunk_to_save_data = dict()
+        temp_chunk = get_temp_total_chunk_on_cuda(chunk)
+        if torch.is_floating_point(temp_chunk):
+            temp_chunk = temp_chunk.to(dtype)
+        for tensor, tensor_info in chunk.tensors_info.items():
+            record_tensor = torch.empty([0])
+            record_flag = (not only_rank_0) | (dist.get_rank(chunk.torch_pg) == 0)
+            if record_flag:
+                record_tensor = temp_chunk[tensor_info.offset:tensor_info.end].view(tensor.shape).cpu()
+
+            assert tensor not in chunk_to_save_data
+            chunk_to_save_data[tensor] = record_tensor
+
+        del temp_chunk
+        return chunk_to_save_data
+
+    def _get_param_to_save_data(self, param_list: List[torch.nn.Parameter], only_rank_0: bool,
+                                dtype: torch.dtype) -> Dict:
         """
         get param content from chunks.
 
@@ -242,21 +278,10 @@ class ZeroDDP(ColoDDP):
         param_to_save_data = dict()
         chunk_list = self.chunk_manager.get_chunks(param_list)
         for chunk in chunk_list:
-            temp_chunk = get_temp_total_chunk_on_cuda(chunk)
-
-            for tensor, tensor_info in chunk.tensors_info.items():
-                record_tensor = torch.empty([0])
-                record_flag = (not only_rank_0) | (dist.get_rank(chunk.torch_pg) == 0)
-                if record_flag:
-                    record_tensor = temp_chunk[tensor_info.offset:tensor_info.end].view(tensor.shape).cpu()
-
-                assert tensor not in param_to_save_data
-                param_to_save_data[tensor] = record_tensor
-
-            del temp_chunk
+            param_to_save_data.update(self._get_chunk_to_save_data(chunk, only_rank_0, dtype))
         return param_to_save_data
 
-    def _save_to_state_dict(self, destination, prefix, keep_vars, only_rank_0=True):
+    def _save_to_state_dict(self, destination, prefix, keep_vars, only_rank_0=True, dtype=torch.float16):
         r"""Saves module state to `destination` dictionary, containing a state
         of the module, but not its descendants. This is called on every
         submodule in :meth:`~torch.nn.Module.state_dict`.
@@ -272,7 +297,8 @@ class ZeroDDP(ColoDDP):
         assert keep_vars is False, "`state_dict` with parameter, `keep_vars=True`, is not supported now."
 
         # get copies of fp32 parameters in CPU
-        param_to_save_data = self._get_param_to_save_data(self.fp32_params, only_rank_0)
+        # as memory of fp16_params may be reused by grad, it's not reliable, we should use fp32_params and convert to fp16
+        param_to_save_data = self._get_param_to_save_data(self.fp32_params, only_rank_0, dtype)
         # get the mapping between copies and fp16 parameters
         p_mapping = dict()
         for p, fp32_p in zip(self.fp16_params, self.fp32_params):
@@ -478,7 +504,8 @@ class ZeroDDP(ColoDDP):
     def _init_chunks(self, param_order, strict_ddp_mode: bool, cpu_offload: bool, pin_memory: bool):
         ddp_pg = ColoProcessGroup()
         for p in param_order.generate():
-            assert isinstance(p, ColoParameter)
+            self._preprocess_param(p)
+            assert type(p) is ColoParameter
 
             # gather sharded parameters in the strict ddp mode
             if strict_ddp_mode:
@@ -531,9 +558,115 @@ class ZeroDDP(ColoDDP):
 
     def _cast_buffers(self):
         for buffer in self.module.buffers():
+            if isinstance(buffer, LazyTensor):
+                buffer.materialize()
             buffer.data = buffer.cuda()
             if torch.is_floating_point(buffer):
                 buffer.data = buffer.half()
+
+    def _preprocess_param(self, p: Union[nn.Parameter, ColoParameter, 'LazyTensor']) -> None:
+        """Convert parameter to ColoParameter in-place.
+        Args:
+            p (Union[nn.Parameter, ColoParameter, LazyTensor]): parameter to be converted
+        """
+        if type(p) is ColoParameter:
+            # model is initialized with ColoInitContext
+            return
+        requires_grad = p.requires_grad
+        if isinstance(p, LazyTensor):
+            # model is initialized with LazyInitContext
+            p.materialize()
+        p.__class__ = ColoParameter
+        p.__init__(p, requires_grad=requires_grad)
+
+    def state_dict_shard(self,
+                         prefix: str = '',
+                         keep_vars: bool = False,
+                         max_shard_size: int = 1024,
+                         only_rank_0: bool = True,
+                         dtype: torch.dtype = torch.float16) -> Iterator[OrderedDict]:
+        """Returns dictionaries containing a whole state of the module one by one. The max size of dictionary shard is specified by ``max_shard_size``.
+
+        Both parameters and persistent buffers (e.g. running averages) are included.
+        Keys are corresponding parameter and buffer names.
+        Parameters and buffers set to ``None`` are not included.
+
+        Args:
+            prefix (str, optional): the prefix for parameters and buffers used in this
+                module. Defaults to ''.
+            keep_vars (bool, optional): whether to keep variables. Defaults to False.
+            max_shard_size (int, optional): max size of state dict shard (in MB). Defaults to 1024.
+            only_rank_0 (bool, optional): only get data on rank0. Defaults to True.
+
+
+        Yields:
+            Iterator[OrderedDict]: A generator of state dict shard
+        """
+        sharder = _StateDictSharder(max_shard_size)
+
+        # get the mapping between copies and fp16 parameters
+        fp16_to_fp32 = dict()
+        for p, fp32_p in zip(self.fp16_params, self.fp32_params):
+            fp16_to_fp32[p] = fp32_p
+
+        # key is fp32 param, and value is gathered param on CPU
+        gathered_param_buffer = dict()
+        for name, param in self.name2param.items():
+            if param is not None:
+                if is_ddp_ignored(param):
+                    # deal with ddp ignored parameters
+                    gathered_param = param if keep_vars else param.detach()
+                else:
+                    # as memory of fp16 param may be reused, we should use fp32 param and then convert to fp16
+                    fp32_param = fp16_to_fp32[param]
+                    if fp32_param not in gathered_param_buffer:
+                        chunk = self.chunk_manager.get_chunk(fp32_param)
+                        gathered_param_buffer.update(self._get_chunk_to_save_data(chunk, only_rank_0, dtype))
+                    gathered_param = gathered_param_buffer.pop(fp32_param)
+
+                block = sharder.append(prefix + name, gathered_param)
+                if block is not None:
+                    yield block
+
+        del fp16_to_fp32
+        del gathered_param_buffer
+
+        # save all buffers
+        for name, buf in self.named_buffers():
+            if buf is not None and name not in self._non_persistent_buffers_set:
+                buffer = buf if keep_vars else buf.detach()
+                block = sharder.append(prefix + name, buffer)
+                if block is not None:
+                    yield block
+        # save extra states
+        extra_state_key = prefix + _EXTRA_STATE_KEY_SUFFIX
+        if getattr(self.__class__, "get_extra_state",
+                   torch.nn.Module.get_extra_state) is not torch.nn.Module.get_extra_state:
+            extra_state = self.get_extra_state()
+            block = sharder.append(extra_state_key, extra_state)
+            if block is not None:
+                yield block
+
+        yield sharder.current_block
+
+
+class _StateDictSharder:
+
+    def __init__(self, max_shard_size: int) -> None:
+        self.max_shard_size = max_shard_size
+        self.current_block = OrderedDict()
+        self.current_block_size = 0
+
+    def append(self, name: str, tensor: torch.Tensor) -> Optional[OrderedDict]:
+        tensor_size = calculate_tensor_size(tensor)
+        ret_block = None
+        if self.current_block_size + tensor_size > self.max_shard_size:
+            ret_block = self.current_block
+            self.current_block = OrderedDict()
+            self.current_block_size = 0
+        self.current_block[name] = tensor
+        self.current_block_size += tensor_size
+        return ret_block
 
 
 class GeminiDDP(ZeroDDP):
@@ -548,7 +681,8 @@ class GeminiDDP(ZeroDDP):
                  search_range_mb: int = 32,
                  hidden_dim: Optional[int] = None,
                  min_chunk_size_mb: float = 32,
-                 memstats: Optional[MemStats] = None) -> None:
+                 memstats: Optional[MemStats] = None,
+                 verbose: bool = False) -> None:
         """
         A torch.Module warpper using ZeRO-DP and Genimi.
         ZeRO is for parallel. Gemini is for memory management.
@@ -585,6 +719,7 @@ class GeminiDDP(ZeroDDP):
                                            hidden_dim=hidden_dim,
                                            search_range_mb=search_range_mb,
                                            min_chunk_size_mb=min_chunk_size_mb,
-                                           strict_ddp_flag=strict_ddp_mode)
+                                           strict_ddp_flag=strict_ddp_mode,
+                                           verbose=verbose)
         gemini_manager = GeminiManager(placement_policy, chunk_manager, memstats)
         super().__init__(module, gemini_manager, pin_memory, force_outputs_fp32, strict_ddp_mode)

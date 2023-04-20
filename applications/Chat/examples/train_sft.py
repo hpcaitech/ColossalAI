@@ -111,7 +111,7 @@ def train(args):
                                           max_datasets_size=args.max_datasets_size,
                                           max_length=max_len)
         eval_dataset = None
-        data_collator = DataCollatorForSupervisedDataset(tokenizer=tokenizer)
+    data_collator = DataCollatorForSupervisedDataset(tokenizer=tokenizer)
 
     if dist.is_initialized() and dist.get_world_size() > 1:
         train_sampler = DistributedSampler(train_dataset,

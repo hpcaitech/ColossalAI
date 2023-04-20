@@ -7,7 +7,10 @@ import torch.nn as nn
 from .gemini import GeminiDDP
 
 
-def zero_model_wrapper(model: nn.Module, zero_stage: int = 1, gemini_config: Optional[Dict] = None):
+def zero_model_wrapper(model: nn.Module,
+                       zero_stage: int = 1,
+                       gemini_config: Optional[Dict] = None,
+                       verbose: bool = False):
     """This wrapper function is used to wrap your training model for ZeRO DDP.
 
     Example:
@@ -40,7 +43,7 @@ def zero_model_wrapper(model: nn.Module, zero_stage: int = 1, gemini_config: Opt
     if zero_stage in [1, 2]:
         wrapped_model = model
     else:
-        wrapped_model = GeminiDDP(model, **gemini_config)
+        wrapped_model = GeminiDDP(model, **gemini_config, verbose=verbose)
 
     setattr(wrapped_model, "_colo_zero_stage", zero_stage)
 
@@ -58,7 +61,8 @@ def zero_optim_wrapper(model: nn.Module,
                        max_scale: float = 2**32,
                        max_norm: float = 0.0,
                        norm_type: float = 2.0,
-                       optim_config: Optional[Dict] = None):
+                       optim_config: Optional[Dict] = None,
+                       verbose: bool = False):
     """This wrapper function is used to wrap your training optimizer for ZeRO DDP.
 
     Args:
@@ -79,6 +83,7 @@ def zero_optim_wrapper(model: nn.Module,
 
                 >>> zero2_config = dict(reduce_bucket_size=12 * 1024 * 1024, overlap_communication=True)
                 >>> optim = zero_optim_wrapper(model, optim, optim_config=zero2_config)
+        verbose (bool, optional): Whether to print the verbose info.
     """
     assert hasattr(model, "_colo_zero_stage"), "You should use `zero_ddp_wrapper` first"
     zero_stage = getattr(model, "_colo_zero_stage")
@@ -102,8 +107,8 @@ def zero_optim_wrapper(model: nn.Module,
         from colossalai.zero.low_level import LowLevelZeroOptimizer
         config_dict['partition_grad'] = zero_stage == 2
         config_dict['clip_grad_norm'] = max_norm
-        return LowLevelZeroOptimizer(optimizer, **config_dict)
+        return LowLevelZeroOptimizer(optimizer, **config_dict, verbose=verbose)
     else:
         from colossalai.zero.gemini.gemini_optimizer import ZeroOptimizer
         config_dict['clipping_norm'] = max_norm
-        return ZeroOptimizer(optimizer, model, **config_dict)
+        return ZeroOptimizer(optimizer, model, **config_dict, verbose=verbose)
