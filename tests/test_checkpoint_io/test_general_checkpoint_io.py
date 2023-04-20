@@ -8,7 +8,6 @@ from pathlib import Path
 import os
 import subprocess
 import logging
-import pathlib
 import shutil
 
 from colossalai.checkpoint_io import GeneralCheckpointIO
@@ -117,7 +116,7 @@ def test_sharded_checkpoint(use_safetensors: bool):
 
 
 @parameterize('placement_policy', ['cuda', 'cpu'])
-@parameterize('model_name', ['bert'])
+@parameterize('model_name', ['gpt2', 'bert'])
 @parameterize('use_safetensors', [True, False])
 def exam_state_dict(placement_policy, model_name: str, use_safetensors: bool):
     get_components_func = non_distributed_component_funcs.get_callable(model_name)
@@ -131,6 +130,12 @@ def exam_state_dict(placement_policy, model_name: str, use_safetensors: bool):
     chunk_manager = ChunkManager(config_dict)
     gemini_manager = GeminiManager(placement_policy, chunk_manager)
     model = ZeroDDP(model, gemini_manager)
+
+    new_config_dict, *_ = search_chunk_configuration(new_model, search_range_mb=1, search_interval_byte=100)
+    new_chunk_manager = ChunkManager(new_config_dict)
+    new_gemini_manager = GeminiManager(placement_policy, new_chunk_manager)
+    new_model = ZeroDDP(new_model, new_gemini_manager)
+
     model.train()
 
     model_ckpt_dir = tempfile.TemporaryDirectory()
@@ -145,8 +150,8 @@ def exam_state_dict(placement_policy, model_name: str, use_safetensors: bool):
         model.to('cpu')
         model_dict = model.state_dict(only_rank_0=True)
         new_model.to('cpu')
-        new_model_dict = new_model.state_dict()
-        # recursive_check(model_dict, new_model_dict)
+        new_model_dict = new_model.state_dict(only_rank_0=True)
+        recursive_check(model_dict, new_model_dict)
     model_ckpt_dir.cleanup()
 
 
@@ -175,14 +180,10 @@ def recursive_check(d1, d2):
         elif isinstance(v, list):
             for i in range(len(v)):
                 if isinstance(v[i], torch.Tensor):
-                    v[i].to("cpu")
-                    d2[k][i].to("cpu")
                     assert torch.equal(v[i], d2[k][i])
                 else:
                     assert v[i] == d2[k][i]
         elif isinstance(v, torch.Tensor):
-            v.to("cpu")
-            d2[k].to("cpu")
             assert torch.equal(v, d2[k])
         else:
             assert v == d2[k]
