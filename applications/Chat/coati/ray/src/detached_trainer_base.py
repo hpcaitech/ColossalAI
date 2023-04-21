@@ -1,17 +1,19 @@
+import os
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, List, Optional, Union
-from tqdm import tqdm
-from coati.trainer.callbacks import Callback
-from coati.experience_maker import Experience
+
 import ray
-import os
+from coati.experience_maker import Experience
+from coati.trainer.callbacks import Callback
+from tqdm import tqdm
 
 from .detached_replay_buffer import DetachedReplayBuffer
 from .utils import is_rank_0
 
+
 class DetachedTrainer(ABC):
     '''
-        Base class for detached rlhf trainers. 
+        Base class for detached rlhf trainers.
         'detach' means that the experience maker is detached compared to a normal Trainer.
         Please set name attribute during init:
             >>> trainer = DetachedTrainer.options(..., name = "xxx", ...).remote()
@@ -36,9 +38,12 @@ class DetachedTrainer(ABC):
                  max_epochs: int = 1,
                  dataloader_pin_memory: bool = True,
                  callbacks: List[Callback] = [],
+                 debug: bool = False,
                  **generate_kwargs) -> None:
         super().__init__()
-        self.detached_replay_buffer = DetachedReplayBuffer(train_batch_size, limit=buffer_limit, cpu_offload=buffer_cpu_offload)
+        self.detached_replay_buffer = DetachedReplayBuffer(train_batch_size,
+                                                           limit=buffer_limit,
+                                                           cpu_offload=buffer_cpu_offload)
         self.experience_batch_size = experience_batch_size
         self.max_epochs = max_epochs
         self.dataloader_pin_memory = dataloader_pin_memory
@@ -46,11 +51,8 @@ class DetachedTrainer(ABC):
         self.generate_kwargs = generate_kwargs
         self.target_holder_name_list = experience_maker_holder_name_list
         self.target_holder_list = []
-        
-        if 'debug' in self.generate_kwargs and self.generate_kwargs['debug'] == True:
-            self._debug = True
-        else:
-            self._debug = False
+
+        self._debug = debug
 
     def update_target_holder_list(self, experience_maker_holder_name_list):
         self.target_holder_name_list = experience_maker_holder_name_list
@@ -69,13 +71,15 @@ class DetachedTrainer(ABC):
     def _learn(self):
         pbar = tqdm(range(self.max_epochs), desc='Train epoch', disable=not is_rank_0())
         for _ in pbar:
-            if self._debug: 
+            if self._debug:
                 print("[trainer] sampling exp")
             experience = self._buffer_sample()
-            if self._debug: 
+            if self._debug:
                 print("[trainer] training step")
+            self._on_learn_batch_start()
             metrics = self.training_step(experience)
-            if self._debug: 
+            self._on_learn_batch_end(metrics, experience)
+            if self._debug:
                 print("[trainer] step over")
             pbar.set_postfix(metrics)
 
@@ -90,18 +94,19 @@ class DetachedTrainer(ABC):
                 self._update_remote_makers()
             self._on_episode_end(episode)
         self._on_fit_end()
+        self._on_finish()
 
     @ray.method(concurrency_group="buffer_length")
     def buffer_get_length(self):
         # called by ExperienceMakerHolder
-        if self._debug: 
+        if self._debug:
             print("[trainer]                telling length")
         return self.detached_replay_buffer.get_length()
 
     @ray.method(concurrency_group="buffer_append")
     def buffer_append(self, experience: Experience):
         # called by ExperienceMakerHolder
-        if self._debug: 
+        if self._debug:
             print(f"[trainer]               receiving exp.")
         self.detached_replay_buffer.append(experience)
 
@@ -124,3 +129,24 @@ class DetachedTrainer(ABC):
     def _on_episode_end(self, episode: int) -> None:
         for callback in self.callbacks:
             callback.on_episode_end(episode)
+
+    def _on_learn_epoch_start(self, epoch: int) -> None:
+        for callback in self.callbacks:
+            callback.on_learn_epoch_start(epoch)
+
+    def _on_learn_epoch_end(self, epoch: int) -> None:
+        for callback in self.callbacks:
+            callback.on_learn_epoch_end(epoch)
+
+    def _on_learn_batch_start(self) -> None:
+        for callback in self.callbacks:
+            callback.on_learn_batch_start()
+
+    def _on_learn_batch_end(self, metrics: dict, experience: Experience) -> None:
+        for callback in self.callbacks:
+            callback.on_learn_batch_end(metrics, experience)
+
+    def _on_finish(self) -> None:
+        for callback in self.callbacks:
+            if hasattr(callback, 'on_finish'):
+                callback.on_finish()

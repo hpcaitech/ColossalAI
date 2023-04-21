@@ -1,22 +1,31 @@
-import torch
-from typing import Any, Callable, Dict, List, Optional, Union
-import ray
-from ray.exceptions import GetTimeoutError
-from torch import Tensor
-import torch.nn as nn
-from coati.models.base import Actor, Critic, RewardModel
-from coati.trainer.strategies.sampler import DistributedSampler
-from coati.trainer.strategies import Strategy
-from coati.experience_maker import NaiveExperienceMaker, Experience, ExperienceMaker
-
+import os
+import time
+import tracemalloc
 from copy import deepcopy
 from threading import Lock
-import time
-import os
-import tracemalloc
+from typing import Any, Callable, Dict, List, Optional, Union
 
-from .utils import is_rank_0, get_strategy_from_args, set_dist_env, get_actor_from_args, get_critic_from_args, \
-    get_reward_model_from_args
+import ray
+import torch
+import torch.nn as nn
+from coati.experience_maker import Experience, ExperienceMaker, NaiveExperienceMaker
+from coati.models.base import Actor, Critic, RewardModel
+from coati.trainer.callbacks import Callback
+from coati.trainer.callbacks.performance_evaluator import ExperienceMakerPerformanceEvaluator
+from coati.trainer.strategies import Strategy
+from coati.trainer.strategies.sampler import DistributedSampler
+from ray.exceptions import GetTimeoutError
+from torch import Tensor
+
+from .utils import (
+    get_actor_from_args,
+    get_critic_from_args,
+    get_model_numel,
+    get_reward_model_from_args,
+    get_strategy_from_args,
+    is_rank_0,
+    set_dist_env,
+)
 
 
 @ray.remote(concurrency_groups={"experience_io": 1, "model_io": 1, "compute": 1})
@@ -24,7 +33,7 @@ class ExperienceMakerHolder:
     '''
     Args:
         detached_trainer_name_list: str list to get ray actor handles
-        strategy: 
+        strategy:
         experience_batch_size: batch size of generated experience
         kl_coef: the coefficient of kl divergence loss
     '''
@@ -35,6 +44,9 @@ class ExperienceMakerHolder:
                  env_info: Dict[str, str] = None,
                  experience_batch_size: int = 8,
                  kl_coef: float = 0.1,
+                 callbacks: List[Callback] = [],
+                 eval_performance: bool = False,
+                 debug: bool = False,
                  **generate_kwargs):
         # set environment variables
         if env_info:
@@ -49,6 +61,8 @@ class ExperienceMakerHolder:
         self.generate_kwargs = generate_kwargs
         actor, critic, reward_model, initial_model = None, None, None, None
         self.experience_maker = NaiveExperienceMaker(actor, critic, reward_model, initial_model, self.kl_coef)
+        self.callbacks = callbacks
+        self.eval_performance = eval_performance
 
         self._model_visit_lock = Lock()
         self._initial_model_initialized = False
@@ -56,10 +70,7 @@ class ExperienceMakerHolder:
         self._actor_initialized = False
         self._critic_initialized = False
 
-        if 'debug' in self.generate_kwargs and self.generate_kwargs['debug'] == True:
-            self._debug = True
-        else:
-            self._debug = False
+        self._debug = debug
         self.target_auto_balance = False
 
         if self._debug:
@@ -68,6 +79,17 @@ class ExperienceMakerHolder:
     def _get_ready(self):
         while not self._fully_initialized():
             time.sleep(1.0)
+        # setup performance evaluator
+        if self.eval_performance:
+            actor_numel = get_model_numel(self.experience_maker.actor)
+            critic_numel = get_model_numel(self.experience_maker.critic)
+            initial_model_numel = get_model_numel(self.experience_maker.initial_model)
+            reward_model_numel = get_model_numel(self.experience_maker.reward_model)
+            evaluator = ExperienceMakerPerformanceEvaluator(actor_numel, critic_numel, initial_model_numel,
+                                                            reward_model_numel)
+            self.callbacks.append(evaluator)
+
+        self.generate_kwargs = _set_default_generate_kwargs(self.generate_kwargs, self.experience_maker.actor)
 
     def _fully_initialized(self):
         if not self._initial_model_initialized:
@@ -139,9 +161,12 @@ class ExperienceMakerHolder:
             else:
                 inputs = rand_prompts
             self._model_visit_lock.acquire()
+            self._on_make_experience_start()
             experience = self._make_experience(inputs=inputs)
+            self._on_make_experience_end(experience)
             self._model_visit_lock.release()
             self._send_experience(experience=experience)
+        self._on_finish()
 
     @ray.method(concurrency_group="model_io")
     def initialize_experience_maker(self,
@@ -158,7 +183,7 @@ class ExperienceMakerHolder:
             chunk_start: Set True at the first call. Before sending state_dict calls
             chunk_end: Set True at the last call. After sending state_dict calls.
 
-            TODO: load_state_dict integrate with model-sharding strategy 
+            TODO: load_state_dict integrate with model-sharding strategy
         '''
         if self._fully_initialized():
             return
@@ -170,13 +195,17 @@ class ExperienceMakerHolder:
                 # (csric) any better way to get model structure?
                 with self.strategy.model_init_context():
                     if not self._actor_initialized and actor_model is not None:
-                        self.experience_maker.actor = get_actor_from_args(actor_model, actor_pretrained).half().requires_grad_(False)
+                        self.experience_maker.actor = get_actor_from_args(actor_model,
+                                                                          actor_pretrained).half().requires_grad_(False)
                     if not self._critic_initialized and critic_model is not None:
-                        self.experience_maker.critic = get_critic_from_args(critic_model, critic_pretrained).half().requires_grad_(False)
+                        self.experience_maker.critic = get_critic_from_args(
+                            critic_model, critic_pretrained).half().requires_grad_(False)
                     if not self._initial_model_initialized and actor_model is not None:
-                        self.experience_maker.initial_model = get_actor_from_args(actor_model, actor_pretrained).half().requires_grad_(False)
+                        self.experience_maker.initial_model = get_actor_from_args(
+                            actor_model, actor_pretrained).half().requires_grad_(False)
                     if not self._reward_model_initialized and critic_model is not None:
-                        self.experience_maker.reward_model = get_reward_model_from_args(critic_model, critic_pretrained).half().requires_grad_(False)
+                        self.experience_maker.reward_model = get_reward_model_from_args(
+                            critic_model, critic_pretrained).half().requires_grad_(False)
 
         with torch.no_grad():
             if not self._actor_initialized and actor_state_dict is not None:
@@ -188,24 +217,26 @@ class ExperienceMakerHolder:
             if not self._reward_model_initialized and critic_state_dict is not None:
                 self.experience_maker.reward_model.load_state_dict(critic_state_dict, strict=False)
 
-
         if chunk_end:
             with torch.no_grad():
                 if actor_model is not None:
                     if not self._actor_initialized:
-                        self.experience_maker.actor = self.strategy.prepare(self.experience_maker.actor.to(torch.cuda.current_device()))
+                        self.experience_maker.actor = self.strategy.prepare(
+                            self.experience_maker.actor.to(torch.cuda.current_device()))
                     if not self._initial_model_initialized:
-                        self.experience_maker.initial_model = self.strategy.prepare(self.experience_maker.initial_model.to(torch.cuda.current_device()))
+                        self.experience_maker.initial_model = self.strategy.prepare(
+                            self.experience_maker.initial_model.to(torch.cuda.current_device()))
                     self._actor_initialized = True
                     self._initial_model_initialized = True
                 if critic_model is not None:
                     if not self._critic_initialized:
-                        self.experience_maker.critic = self.strategy.prepare(self.experience_maker.critic.to(torch.cuda.current_device()))
+                        self.experience_maker.critic = self.strategy.prepare(
+                            self.experience_maker.critic.to(torch.cuda.current_device()))
                     if not self._reward_model_initialized:
-                        self.experience_maker.reward_model = self.strategy.prepare(self.experience_maker.reward_model.to(torch.cuda.current_device()))
+                        self.experience_maker.reward_model = self.strategy.prepare(
+                            self.experience_maker.reward_model.to(torch.cuda.current_device()))
                     self._critic_initialized = True
                     self._reward_model_initialized = True
-
 
     def initialize_experience_maker_local(self,
                                           initial_model_func=None,
@@ -241,10 +272,10 @@ class ExperienceMakerHolder:
             called by trainer
             chunk_start: Set True at the first call. Before sending state_dict calls
             chunk_end: Set True at the last call. After sending state_dict calls.
-                
+
             TODO: load_state_dict integrate with model-sharding strategy
         '''
-        _watch_memory = True
+        _watch_memory = self._debug
         if chunk_start:
             if self._debug:
                 print("[maker] UPDATE ")
@@ -264,3 +295,29 @@ class ExperienceMakerHolder:
                 current, peak = tracemalloc.get_traced_memory()
                 print(f"Current memory usage is {current / 10**6}MB; Peak was {peak / 10**6}MB")
                 tracemalloc.stop()
+
+    def _on_make_experience_start(self) -> None:
+        for callback in self.callbacks:
+            callback.on_make_experience_start()
+
+    def _on_make_experience_end(self, experience: Experience) -> None:
+        for callback in self.callbacks:
+            callback.on_make_experience_end(experience)
+
+    def _on_finish(self) -> None:
+        for callback in self.callbacks:
+            if hasattr(callback, 'on_finish'):
+                callback.on_finish()
+
+
+def _set_default_generate_kwargs(generate_kwargs: dict, actor: Actor) -> None:
+    origin_model = actor.model
+    new_kwargs = {**generate_kwargs}
+    # use huggingface models method directly
+    if 'prepare_inputs_fn' not in generate_kwargs and hasattr(origin_model, 'prepare_inputs_for_generation'):
+        new_kwargs['prepare_inputs_fn'] = origin_model.prepare_inputs_for_generation
+
+    if 'update_model_kwargs_fn' not in generate_kwargs and hasattr(origin_model, '_update_model_kwargs_for_generation'):
+        new_kwargs['update_model_kwargs_fn'] = origin_model._update_model_kwargs_for_generation
+
+    return new_kwargs

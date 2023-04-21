@@ -1,22 +1,24 @@
-import torch
+import asyncio
+import copy
 import random
-from typing import List, Any
+from threading import Lock
+from typing import Any, List
+
+import ray
+import torch
+from coati.experience_maker.base import Experience
+from coati.replay_buffer import ReplayBuffer
+from coati.replay_buffer.utils import BufferItem, make_experience_batch, split_experience_batch
 # from torch.multiprocessing import Queue
 from ray.util.queue import Queue
-import ray
-import asyncio
-from coati.experience_maker.base import Experience
-from coati.replay_buffer.utils import BufferItem, make_experience_batch, split_experience_batch
-from coati.replay_buffer import ReplayBuffer
-from threading import Lock
-import copy
+
 
 class DetachedReplayBuffer:
     '''
-        Detached replay buffer. Share Experience across workers on the same node. 
-        Therefore a trainer node is expected to have only one instance. 
+        Detached replay buffer. Share Experience across workers on the same node.
+        Therefore a trainer node is expected to have only one instance.
         It is ExperienceMakerHolder's duty to call append(exp) method, remotely.
-    
+
     Args:
         sample_batch_size: Batch size when sampling. Exp won't enqueue until they formed a batch.
         tp_world_size: Number of workers in the same tp group
@@ -24,13 +26,16 @@ class DetachedReplayBuffer:
         cpu_offload: Whether to offload experience to cpu when sampling. Defaults to True.
     '''
 
-    def __init__(self, sample_batch_size: int, tp_world_size: int = 1, limit : int = 0, cpu_offload: bool = True) -> None:
+    def __init__(self,
+                 sample_batch_size: int,
+                 tp_world_size: int = 1,
+                 limit: int = 0,
+                 cpu_offload: bool = True) -> None:
         self.cpu_offload = cpu_offload
         self.sample_batch_size = sample_batch_size
         self.limit = limit
-        self.items = Queue(self.limit, actor_options={"num_cpus":1})
-        self.batch_collector : List[BufferItem] = []
-
+        self.items = Queue(self.limit, actor_options={"num_cpus": 1})
+        self.batch_collector: List[BufferItem] = []
         '''
         Workers in the same tp group share this buffer and need same sample for one step.
             Therefore a held_sample should be returned tp_world_size times before it could be dropped.
@@ -62,9 +67,9 @@ class DetachedReplayBuffer:
         self.items = Queue(self.limit)
         self.worker_state = [False] * self.tp_world_size
         self.batch_collector = []
-     
+
     @torch.no_grad()
-    def sample(self, worker_rank = 0, to_device = "cpu") -> Experience:
+    def sample(self, worker_rank=0, to_device="cpu") -> Experience:
         self._worker_state_lock.acquire()
         if not any(self.worker_state):
             self.held_sample = self._sample_and_erase()

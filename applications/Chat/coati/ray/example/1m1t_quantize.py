@@ -1,15 +1,15 @@
 import argparse
-import pandas as pd
-import torch
-import ray
 import os
 import socket
 
-from coati.ray.src.experience_maker_holder import ExperienceMakerHolder
+import pandas as pd
+import ray
+import torch
 from coati.ray.src.detached_trainer_ppo import DetachedPPOTrainer
-
+from coati.ray.src.experience_maker_holder import ExperienceMakerHolder
 from transformers import AutoTokenizer, BloomTokenizerFast
 from transformers.models.gpt2.tokenization_gpt2 import GPT2Tokenizer
+
 
 def get_free_port():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -21,25 +21,29 @@ def get_local_ip():
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
         s.connect(('8.8.8.8', 80))
         return s.getsockname()[0]
-    
+
 
 def main(args):
     master_addr = str(get_local_ip())
     # trainer_env_info
     trainer_port = str(get_free_port())
-    env_info_trainer = {'local_rank' : '0',
-                          'rank' : '0',
-                          'world_size' : '1',
-                          'master_port' : trainer_port,
-                          'master_addr' : master_addr}
-    
+    env_info_trainer = {
+        'local_rank': '0',
+        'rank': '0',
+        'world_size': '1',
+        'master_port': trainer_port,
+        'master_addr': master_addr
+    }
+
     # maker_env_info
     maker_port = str(get_free_port())
-    env_info_maker = {'local_rank' : '0',
-                        'rank' : '0',
-                        'world_size' : '1',
-                        'master_port' : maker_port,
-                        'master_addr' : master_addr}
+    env_info_maker = {
+        'local_rank': '0',
+        'rank': '0',
+        'world_size': '1',
+        'master_port': maker_port,
+        'master_addr': master_addr
+    }
 
     # configure tokenizer
     if args.model == 'gpt2':
@@ -58,14 +62,14 @@ def main(args):
         experience_maker_holder_name_list=["maker1"],
         strategy=args.trainer_strategy,
         model=args.model,
-        env_info = env_info_trainer,
+        env_info=env_info_trainer,
         pretrained=args.pretrain,
         lora_rank=args.lora_rank,
         train_batch_size=args.train_batch_size,
         buffer_limit=16,
         experience_batch_size=args.experience_batch_size,
         max_epochs=args.max_epochs,
-        #kwargs:
+    # kwargs:
         max_length=128,
         do_sample=True,
         temperature=1.0,
@@ -73,16 +77,17 @@ def main(args):
         pad_token_id=tokenizer.pad_token_id,
         eos_token_id=tokenizer.eos_token_id,
         debug=args.debug,
+        eval_performance=True,
     )
 
     # configure Experience Maker
     experience_holder_ref = ExperienceMakerHolder.options(name="maker1", num_gpus=1, max_concurrency=2).remote(
         detached_trainer_name_list=["trainer1"],
         strategy=args.maker_strategy,
-        env_info = env_info_maker,
+        env_info=env_info_maker,
         experience_batch_size=args.experience_batch_size,
         kl_coef=0.1,
-        #kwargs:
+    # kwargs:
         max_length=128,
         do_sample=True,
         temperature=1.0,
@@ -90,14 +95,13 @@ def main(args):
         pad_token_id=tokenizer.pad_token_id,
         eos_token_id=tokenizer.eos_token_id,
         debug=args.debug,
+        eval_performance=True,
     )
 
     # a 'jump wire' to set quantized initial_model and reward_model
-    
 
     # trainer send its actor and critic to experience holders.
     # ray.get(trainer_ref.initialize_remote_makers.remote())
-
     # configure sampler
     dataset = pd.read_csv(args.prompt_path)['prompt']
 
@@ -107,18 +111,23 @@ def main(args):
         batch = tokenizer(texts, return_tensors='pt', max_length=96, padding='max_length', truncation=True)
         return {k: v.cuda() for k, v in batch.items()}
 
-    trainer_done_ref = trainer_ref.fit.remote(num_episodes=args.num_episodes, max_timesteps=args.max_timesteps, update_timesteps=args.update_timesteps)
-    num_exp_per_maker = args.num_episodes * args.max_timesteps // args.update_timesteps * args.max_epochs + 3 # +3 for fault tolerance
+    trainer_done_ref = trainer_ref.fit.remote(num_episodes=args.num_episodes,
+                                              max_timesteps=args.max_timesteps,
+                                              update_timesteps=args.update_timesteps)
+    num_exp_per_maker = args.num_episodes * args.max_timesteps // args.update_timesteps * \
+        args.max_epochs + 3  # +3 for fault tolerance
     maker_done_ref = experience_holder_ref.workingloop.remote(dataset, tokenize_fn, times=num_exp_per_maker)
-    
+
     ray.get([trainer_done_ref, maker_done_ref])
 
     # save model checkpoint after fitting
     trainer_ref.strategy_save_actor.remote(args.save_path, only_rank0=True)
     # save optimizer checkpoint on all ranks
     if args.need_optim_ckpt:
-        trainer_ref.strategy_save_actor_optim.remote('actor_optim_checkpoint_prompts_%d.pt' % (torch.cuda.current_device()),
+        trainer_ref.strategy_save_actor_optim.remote('actor_optim_checkpoint_prompts_%d.pt' %
+                                                     (torch.cuda.current_device()),
                                                      only_rank0=False)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

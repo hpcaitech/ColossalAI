@@ -1,64 +1,70 @@
-import torch.distributed as dist
-from typing import Any, Callable, Dict, List, Optional
-from coati.models.bloom import BLOOMActor, BLOOMCritic, BLOOMRM
-from coati.models.gpt import GPTActor, GPTCritic, GPTRM
-from coati.models.opt import OPTActor, OPTCritic, OPTRM
-from coati.models.roberta import RoBERTaRM, RoBERTaActor, RoBERTaCritic
-from coati.models.llama import LlamaActor, LlamaCritic, LlamaRM
-
-from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
-import torch
 import os
+from typing import Any, Callable, Dict, List, Optional
+
+import torch
+import torch.distributed as dist
+import torch.nn as nn
+from coati.models.bloom import BLOOMRM, BLOOMActor, BLOOMCritic
+from coati.models.gpt import GPTRM, GPTActor, GPTCritic
+from coati.models.llama import LlamaActor, LlamaCritic, LlamaRM
+from coati.models.opt import OPTRM, OPTActor, OPTCritic
+from coati.models.roberta import RoBERTaActor, RoBERTaCritic, RoBERTaRM
+from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
+from coati.utils import prepare_llama_tokenizer_and_embedding
+from transformers import AutoTokenizer, BloomTokenizerFast, GPT2Tokenizer, LlamaTokenizer, RobertaTokenizer
 
 
 def is_rank_0() -> bool:
     return not dist.is_initialized() or dist.get_rank() == 0
 
 
-def get_actor_from_args(model: str, pretrained: str = None, lora_rank = 0):
+def get_actor_from_args(model: str, pretrained: str = None, config=None, lora_rank=0):
     if model == 'gpt2':
-        actor = GPTActor(pretrained=pretrained, lora_rank=lora_rank)
+        actor = GPTActor(pretrained=pretrained, config=config, lora_rank=lora_rank)
     elif model == 'bloom':
-        actor = BLOOMActor(pretrained=pretrained, lora_rank=lora_rank)
+        actor = BLOOMActor(pretrained=pretrained, config=config, lora_rank=lora_rank)
     elif model == 'opt':
-        actor = OPTActor(pretrained=pretrained, lora_rank=lora_rank)
+        actor = OPTActor(pretrained=pretrained, config=config, lora_rank=lora_rank)
     elif model == 'llama':
-        actor = LlamaActor(pretrained=pretrained, lora_rank=lora_rank)
+        actor = LlamaActor(pretrained=pretrained, config=config, lora_rank=lora_rank)
     elif model == 'roberta':
-        actor = RoBERTaActor(pretrained=pretrained, lora_rank=lora_rank)
+        actor = RoBERTaActor(pretrained=pretrained, config=config, lora_rank=lora_rank)
     else:
         raise ValueError(f'Unsupported actor model "{model}"')
     return actor
 
-def get_critic_from_args(model: str, pretrained: str = None, lora_rank = 0):
+
+def get_critic_from_args(model: str, pretrained: str = None, config=None, lora_rank=0):
     if model == 'gpt2':
-        critic = GPTCritic(pretrained=pretrained, lora_rank=lora_rank, use_action_mask=True)
+        critic = GPTCritic(pretrained=pretrained, lora_rank=lora_rank, config=config, use_action_mask=True)
     elif model == 'bloom':
-        critic = BLOOMCritic(pretrained=pretrained, lora_rank=lora_rank, use_action_mask=True)
+        critic = BLOOMCritic(pretrained=pretrained, lora_rank=lora_rank, config=config, use_action_mask=True)
     elif model == 'opt':
-        critic = OPTCritic(pretrained=pretrained, lora_rank=lora_rank, use_action_mask=True)
+        critic = OPTCritic(pretrained=pretrained, lora_rank=lora_rank, config=config, use_action_mask=True)
     elif model == 'llama':
-        critic = LlamaCritic(pretrained=pretrained, lora_rank=lora_rank, use_action_mask=True)
+        critic = LlamaCritic(pretrained=pretrained, lora_rank=lora_rank, config=config, use_action_mask=True)
     elif model == 'roberta':
-        critic = RoBERTaCritic(pretrained=pretrained, lora_rank=lora_rank, use_action_mask=True)
+        critic = RoBERTaCritic(pretrained=pretrained, lora_rank=lora_rank, config=config, use_action_mask=True)
     else:
         raise ValueError(f'Unsupported reward model "{model}"')
     return critic
 
-def get_reward_model_from_args(model: str, pretrained: str = None):
+
+def get_reward_model_from_args(model: str, pretrained: str = None, config=None):
     if model == 'gpt2':
-        reward_model = GPTRM(pretrained=pretrained)
+        reward_model = GPTRM(pretrained=pretrained, config=config)
     elif model == 'bloom':
-        reward_model = BLOOMRM(pretrained=pretrained)
+        reward_model = BLOOMRM(pretrained=pretrained, config=config)
     elif model == 'opt':
-        reward_model = OPTRM(pretrained=pretrained)
+        reward_model = OPTRM(pretrained=pretrained, config=config)
     elif model == 'llama':
-        reward_model = LlamaRM(pretrained=pretrained)
+        reward_model = LlamaRM(pretrained=pretrained, config=config)
     elif model == 'roberta':
-        reward_model = RoBERTaRM(pretrained=pretrained)
+        reward_model = RoBERTaRM(pretrained=pretrained, config=config)
     else:
         raise ValueError(f'Unsupported reward model "{model}"')
     return reward_model
+
 
 def get_strategy_from_args(strategy: str):
     if strategy == 'naive':
@@ -73,9 +79,6 @@ def get_strategy_from_args(strategy: str):
         raise ValueError(f'Unsupported strategy "{strategy}"')
     return strategy_
 
-
-from transformers import AutoTokenizer, BloomTokenizerFast, GPT2Tokenizer, LlamaTokenizer, RobertaTokenizer
-from coati.utils import prepare_llama_tokenizer_and_embedding
 
 def get_tokenizer_from_args(model: str, **kwargs):
     if model == 'gpt2':
@@ -95,6 +98,7 @@ def get_tokenizer_from_args(model: str, **kwargs):
     tokenizer.pad_token = tokenizer.eos_token
     return tokenizer
 
+
 def set_dist_env(env_info: Dict[str, str]):
     os.environ["RANK"] = env_info['rank']
     os.environ["LOCAL_RANK"] = env_info['local_rank']
@@ -103,11 +107,18 @@ def set_dist_env(env_info: Dict[str, str]):
     os.environ['MASTER_ADDR'] = env_info['master_addr']
 
 
-def state_dict_to(state_dict: Dict[str, Any], dtype: torch.dtype = torch.float16, device: torch.device = torch.device('cpu')):
+def state_dict_to(state_dict: Dict[str, Any],
+                  dtype: torch.dtype = torch.float16,
+                  device: torch.device = torch.device('cpu')):
     '''
         keep state_dict intact
     '''
     new_state_dict = {}
     for k, v in state_dict.items():
-        new_state_dict[k] = v.to(dtype = dtype, device = device)
+        new_state_dict[k] = v.to(dtype=dtype, device=device)
     return new_state_dict
+
+
+def get_model_numel(model: nn.Module) -> int:
+    numel = sum(p.numel() for p in model.parameters())
+    return numel

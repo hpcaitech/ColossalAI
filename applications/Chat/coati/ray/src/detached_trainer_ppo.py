@@ -1,26 +1,37 @@
 from typing import Any, Callable, Dict, List, Optional
-import torch
-from torch.optim import Adam
 
+import ray
+import torch
 from coati.experience_maker import Experience, NaiveExperienceMaker
 from coati.models.base import Actor, Critic
 from coati.models.generation_utils import update_model_kwargs_fn
 from coati.models.loss import PolicyLoss, ValueLoss
-from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy, Strategy
 from coati.trainer.callbacks import Callback
+from coati.trainer.callbacks.performance_evaluator import TrainerPerformaceEvaluator
+from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy, Strategy
+from torch.optim import Adam
 
 from colossalai.nn.optimizer import HybridAdam
 
-import ray
-
-
-from .utils import is_rank_0, get_actor_from_args, get_critic_from_args, get_strategy_from_args, set_dist_env, \
-    state_dict_to
-
 from .detached_trainer_base import DetachedTrainer
+from .utils import (
+    get_actor_from_args,
+    get_critic_from_args,
+    get_model_numel,
+    get_strategy_from_args,
+    is_rank_0,
+    set_dist_env,
+    state_dict_to,
+)
 
 
-@ray.remote(concurrency_groups={"buffer_length": 1, "buffer_append": 1, "buffer_sample": 1, "model_io": 1, "compute": 1})
+@ray.remote(concurrency_groups={
+    "buffer_length": 1,
+    "buffer_append": 1,
+    "buffer_sample": 1,
+    "model_io": 1,
+    "compute": 1
+})
 class DetachedPPOTrainer(DetachedTrainer):
     '''
         Detached Trainer for PPO algorithm
@@ -42,26 +53,29 @@ class DetachedPPOTrainer(DetachedTrainer):
         generate_kwargs (dict, optional): the kwargs to use while model generating
     '''
 
-    def __init__(self,
-                 experience_maker_holder_name_list: List[str],
-                 strategy: str,
-                 model: str,
-                 pretrained: str = None,
-                 lora_rank: int = 0,
-                 cr_model: str = None,  # if not None, use below cr settings for critic
-                 cr_pretrained: str = None,
-                 cr_lora_rank: int = 0,
-                 env_info: Dict[str, str] = None,
-                 train_batch_size: int = 8,
-                 buffer_limit: int = 0,
-                 buffer_cpu_offload: bool = True,
-                 eps_clip: float = 0.2,
-                 value_clip: float = 0.4,
-                 experience_batch_size: int = 8,
-                 max_epochs: int = 10,
-                 dataloader_pin_memory: bool = True,
-                 callbacks: List[Callback] = [],
-                 **generate_kwargs) -> None:
+    def __init__(
+            self,
+            experience_maker_holder_name_list: List[str],
+            strategy: str,
+            model: str,
+            pretrained: str = None,
+            lora_rank: int = 0,
+            cr_model: str = None,    # if not None, use below cr settings for critic
+            cr_pretrained: str = None,
+            cr_lora_rank: int = 0,
+            env_info: Dict[str, str] = None,
+            train_batch_size: int = 8,
+            buffer_limit: int = 0,
+            buffer_cpu_offload: bool = True,
+            eps_clip: float = 0.2,
+            value_clip: float = 0.4,
+            experience_batch_size: int = 8,
+            max_epochs: int = 10,
+            dataloader_pin_memory: bool = True,
+            callbacks: List[Callback] = [],
+            eval_performance: bool = False,
+            debug: bool = False,
+            **generate_kwargs) -> None:
         # set environment variables
         if env_info:
             set_dist_env(env_info=env_info)
@@ -77,10 +91,15 @@ class DetachedPPOTrainer(DetachedTrainer):
             self.actor = get_actor_from_args(model, pretrained, lora_rank)
             self.critic = get_critic_from_args(cr_model, cr_pretrained, cr_lora_rank)
 
-        if strategy != 'colossalai_gemini':
-            self.actor.to(torch.cuda.current_device()) #.to(torch.float16)
-            self.critic.to(torch.cuda.current_device()) #.to(torch.float16)
+        if eval_performance:
+            actor_numel = get_model_numel(self.actor)
+            critic_numel = get_model_numel(self.critic)
+            evaluator = TrainerPerformaceEvaluator(actor_numel, critic_numel)
+            callbacks = callbacks + [evaluator]
 
+        if strategy != 'colossalai_gemini':
+            self.actor.to(torch.cuda.current_device())    # .to(torch.float16)
+            self.critic.to(torch.cuda.current_device())    # .to(torch.float16)
 
         if strategy.startswith('colossalai'):
             self.actor_optim = HybridAdam(self.actor.parameters(), lr=1e-7)
@@ -105,6 +124,7 @@ class DetachedPPOTrainer(DetachedTrainer):
                          max_epochs=max_epochs,
                          dataloader_pin_memory=dataloader_pin_memory,
                          callbacks=callbacks,
+                         debug=debug,
                          **generate_kwargs)
 
         # for remote maker initialization
@@ -114,33 +134,39 @@ class DetachedPPOTrainer(DetachedTrainer):
         self._cr_pretrained = cr_pretrained
 
     @ray.method(concurrency_group="model_io")
+    @torch.no_grad()
     def _update_remote_makers(self, **config):
         # TODO: balance duties
         if is_rank_0():
             self.update_target_holder_list(self.target_holder_name_list)
-            with torch.no_grad():
             # actor:
-                # mark start
+        if is_rank_0():
+            # mark start
+            for target_holder in self.target_holder_list:
+                target_holder.update_experience_maker.remote(chunk_start=True)
+        # sending loop
+        for state_dict_shard in self._get_model_state_dict_shard(self.strategy._unwrap_model(self.actor), **config):
+            if is_rank_0():
                 for target_holder in self.target_holder_list:
-                    target_holder.update_experience_maker.remote(chunk_start=True)
-                # sending loop
-                for state_dict_shard in self._get_model_state_dict_shard(self.strategy._unwrap_actor(self.actor), **config):
-                    for target_holder in self.target_holder_list:
-                        target_holder.update_experience_maker.remote(new_actor_state_dict = state_dict_shard)
-                # mark end
+                    target_holder.update_experience_maker.remote(new_actor_state_dict=state_dict_shard)
+        if is_rank_0():
+            # mark end
+            for target_holder in self.target_holder_list:
+                target_holder.update_experience_maker.remote(chunk_end=True)
+        # critic
+        if is_rank_0():
+            # mark start
+            for target_holder in self.target_holder_list:
+                target_holder.update_experience_maker.remote(chunk_start=True)
+            # sending loop
+        for state_dict_shard in self._get_model_state_dict_shard(self.strategy._unwrap_critic(self.critic), **config):
+            if is_rank_0():
                 for target_holder in self.target_holder_list:
-                    target_holder.update_experience_maker.remote(chunk_end=True)
-            # critic
-                # mark start
-                for target_holder in self.target_holder_list:
-                    target_holder.update_experience_maker.remote(chunk_start=True)
-                # sending loop
-                for state_dict_shard in self._get_model_state_dict_shard(self.strategy._unwrap_critic(self.critic), **config):
-                    for target_holder in self.target_holder_list:
-                        target_holder.update_experience_maker.remote(new_critic_state_dict = state_dict_shard)
-                # mark end
-                for target_holder in self.target_holder_list:
-                    target_holder.update_experience_maker.remote(chunk_end=True)
+                    target_holder.update_experience_maker.remote(new_critic_state_dict=state_dict_shard)
+        if is_rank_0():
+            # mark end
+            for target_holder in self.target_holder_list:
+                target_holder.update_experience_maker.remote(chunk_end=True)
 
     @ray.method(concurrency_group="model_io")
     def initialize_remote_makers(self, **config):
@@ -148,23 +174,29 @@ class DetachedPPOTrainer(DetachedTrainer):
         if is_rank_0():
             self.update_target_holder_list(self.target_holder_name_list)
             with torch.no_grad():
-            # actor / initial_model:
+                # actor / initial_model:
                 # mark start
                 for target_holder in self.target_holder_list:
-                    target_holder.initialize_experience_maker.remote(actor_model=self._model_str,actor_pretrained=self._pretrained,chunk_start=True)
+                    target_holder.initialize_experience_maker.remote(actor_model=self._model_str,
+                                                                     actor_pretrained=self._pretrained,
+                                                                     chunk_start=True)
                 # sending loop
-                for state_dict_shard in self._get_model_state_dict_shard(self.strategy._unwrap_actor(self.actor), **config):
+                for state_dict_shard in self._get_model_state_dict_shard(self.strategy._unwrap_actor(self.actor),
+                                                                         **config):
                     for target_holder in self.target_holder_list:
                         target_holder.initialize_experience_maker.remote(actor_state_dict=state_dict_shard)
                 # mark end
                 for target_holder in self.target_holder_list:
                     target_holder.initialize_experience_maker.remote(actor_model=self._model_str, chunk_end=True)
             # critic / reward_model:
-                # mark start
+            # mark start
                 for target_holder in self.target_holder_list:
-                    target_holder.initialize_experience_maker.remote(critic_model=self._cr_model_str,critic_pretrained=self._cr_pretrained,chunk_start=True)
+                    target_holder.initialize_experience_maker.remote(critic_model=self._cr_model_str,
+                                                                     critic_pretrained=self._cr_pretrained,
+                                                                     chunk_start=True)
                 # sending loop
-                for state_dict_shard in self._get_model_state_dict_shard(self.strategy._unwrap_critic(self.critic), **config):
+                for state_dict_shard in self._get_model_state_dict_shard(self.strategy._unwrap_critic(self.critic),
+                                                                         **config):
                     for target_holder in self.target_holder_list:
                         target_holder.initialize_experience_maker.remote(critic_state_dict=state_dict_shard)
                 # mark end
