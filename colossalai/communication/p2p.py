@@ -91,7 +91,7 @@ def _communicate(object_send_next: Union[torch.Tensor, List[torch.Tensor]] = Non
                  dtype: torch.dtype = None,
                  scatter_gather_tensors: bool = False) -> Tuple[Union[torch.Tensor, List[torch.Tensor]]]:
     """
-    Adapted from megatron.p2p_communication.
+    Adapted from megaton.p2p_communication.
     Communicate tensors between stages. Used as helper method in other
     communication methods that are used in pipeline schedule.
     Takes the following arguments:
@@ -103,10 +103,10 @@ def _communicate(object_send_next: Union[torch.Tensor, List[torch.Tensor]] = Non
                    previous rank.
         recv_next (bool): boolean for whether tensor should be received from
                    next rank.
-        recv_prev_shape (Union[:class:`torch.Size`, List[:class:`torch.Size`]]): shape of the tensor to be received from the previous stage, defualts to None.
-        recv_next_shape (Union[:class:`torch.Size`, List[:class:`torch.Size`]]): shape of the tensor to be received from the next stage, defualts to None.
-        prev_rank (int): the rank of the previous pipeline stage, defualts to None,
-        next_rank (int): the rank of the next pipeline stage, defualts to None,
+        recv_prev_shape (Union[:class:`torch.Size`, List[:class:`torch.Size`]]): shape of the tensor to be received from the previous stage, defaults to None.
+        recv_next_shape (Union[:class:`torch.Size`, List[:class:`torch.Size`]]): shape of the tensor to be received from the next stage, defaults to None.
+        prev_rank (int): the rank of the previous pipeline stage, defaults to None,
+        next_rank (int): the rank of the next pipeline stage, defaults to None,
         dtype (torch.dtype): data type of intermediate buffers, defaults to None
         scatter_gather_tensors (bool): whether to scatter and gather tensor between pipeline stages, defaults to False
 
