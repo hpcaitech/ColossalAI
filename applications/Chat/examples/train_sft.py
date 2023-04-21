@@ -17,7 +17,7 @@ from datasets import load_dataset
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
-from transformers import AutoTokenizer, BloomTokenizerFast
+from transformers import AutoTokenizer, BloomTokenizerFast, LlamaTokenizer
 from transformers.models.gpt2.tokenization_gpt2 import GPT2Tokenizer
 
 from colossalai.logging import get_dist_logger
@@ -64,11 +64,7 @@ def train(args):
     elif args.model == 'opt':
         tokenizer = AutoTokenizer.from_pretrained("facebook/opt-350m")
     elif args.model == 'llama':
-        tokenizer = AutoTokenizer.from_pretrained(
-            args.pretrain,
-            padding_side="right",
-            use_fast=False,
-        )
+        tokenizer = LlamaTokenizer.from_pretrained('decapoda-research/llama-7b-hf')
         tokenizer.eos_token = '<\s>'
     else:
         raise ValueError(f'Unsupported model "{args.model}"')
@@ -186,4 +182,4 @@ if __name__ == '__main__':
     parser.add_argument('--lr', type=float, default=5e-6)
     parser.add_argument('--accimulation_steps', type=int, default=8)
     args = parser.parse_args()
-    train(args)
+    train(args) 

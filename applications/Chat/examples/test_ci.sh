@@ -27,8 +27,13 @@ pip install -r ${BASE}/requirements.txt
 wandb init -m offline
 
 # train sft
+torchrun --standalone --nproc_per_node=4 ${BASE}/train_sft.py \
+        --model 'llama' --strategy colossalai_zero2 \
+        --dataset $SFT_DATASET --max_datasets_size 512 --max_epochs 1 \
+        --save_path ${BASE}/output_llama
+
 torchrun --standalone --nproc_per_node=4 ${BASE}/train_sft.py --pretrain 'bigscience/bloom-560m' \
-        --model 'bloom' --strategy colossalai_zero2 --lora_rank 4\
+        --model 'bloom' --strategy colossalai_zero2 --lora_rank 4 \
         --dataset $SFT_DATASET --max_datasets_size 512 --max_epochs 1 \
         --save_path ${BASE}/output
 
@@ -55,6 +60,13 @@ torchrun --standalone --nproc_per_node=4 ${BASE}/train_sft.py --pretrain 'gpt2' 
 rm -rf ${BASE}/output
 
 # train rm
+torchrun --standalone --nproc_per_node=2 ${BASE}/train_reward_model.py \
+                            --pretrain ${BASE}/output_llama --model 'llama' \
+                            --strategy colossalai_zero2 --loss_fn 'log_sig'\
+                            --dataset 'Anthropic/hh-rlhf' --subset 'harmless-base' \
+                            --test True --lora_rank 4 \
+                            --save_path ${BASE}/rm_ckpt_llama.pt
+
 torchrun --standalone --nproc_per_node=2 ${BASE}/train_reward_model.py \
                             --pretrain 'facebook/opt-350m' --model 'opt' \
                             --strategy colossalai_zero2 --loss_fn 'log_sig'\
@@ -98,6 +110,16 @@ torchrun --standalone --nproc_per_node=2 ${BASE}/train_reward_model.py \
                             --save_path ${BASE}/rm_ckpt.pt
 
 rm -rf ${BASE}/rm_ckpt.pt
+
+torchrun --standalone --nproc_per_node=2 ${BASE}/train_prompts.py --prompt_path $PROMPT_PATH --pretrain_dataset $PRETRAIN_DATASET \
+         --strategy colossalai_zero2 --num_episodes 1 --max_timesteps 2 \
+         --update_timesteps 2 --max_epochs 1 --train_batch_size 2 \
+         --pretrain ${BASE}/output_llama --model llama \
+         --rm_pretrain ${BASE}/output_llama \
+         --rm_path ${BASE}/rm_ckpt_llama.pt \
+         --save_path ${BASE}/actor_checkpoint_prompts.pt
+rm -rf ${BASE}/output_llama
+rm -rf ${BASE}/rm_ckpt_llama.pt
 
 torchrun --standalone --nproc_per_node=2 ${BASE}/train_prompts.py --prompt_path $PROMPT_PATH --pretrain_dataset $PRETRAIN_DATASET \
         --strategy colossalai_zero2 --num_episodes 1 --max_timesteps 2 \
