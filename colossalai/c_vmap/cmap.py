@@ -18,13 +18,37 @@ class CudaError(Exception):
     pass
 
 
+
 # TODO add process_group argument
 # TODO add support for grad functions
 def cmap(func: Callable,
          in_dims: Union[int, tuple] = 0,
          out_dims: Union[int, tuple] = 0,
          raw_pt: bool = False,
-         group=None, dst=-1):
+         group=None,
+         parallel_mode = ParallelMode.GLOBAL,
+         dst=-1) -> Callable:
+    """Colossal map designed to act like jax.pmap but to work with collassal AI tools(Hybrid Parallelism, Gemini, AMP, etc)
+
+    The purpose of cmap is to express single-program multiple-data programs. Wraping a function with cmap will split the 
+    input chunks and run each chunk on each cuda device. cmap is very similar to torch.vmap as both transformations map a 
+    function over array axes. For best performance all cuda devices should be identical.
+
+    Args:
+        func: Fucntion to be mapped over argument axes, the function must return a tensor or multiple tensors
+        in_dims: Specifies which dimension of the inputs should be mapped over. in_dims should have a structure like the 
+                 inputs. If the in_dim for a particular input is None, then that indicates there is no map dimension.
+        out_dims: Specifies where the mapped dimension should appear in the outputs. If out_dims is a Tuple, then it should 
+                  have one element per output
+        raw_pt: Whether the cmap is to be implmented using raw pytorch to be run with torch.distributed.init_process_group(...) 
+                or alongside colossal ai tools with colossalai.launch(...)
+        group: The process group to work on. If None, the default process group will be used. for use when raw_pt=False
+        parallel_mode: Parallel group mode used in this communication. for use when raw_pt=True
+        dst: This kwarg determines whether the output array is scattered to all devices and gathered onto a single device with 
+             rank in proccess dst 
+    Returns:
+        A parallelized version of func
+    """
 
     if version.parse(torch.__version__) < version.parse("2.0"):
         raise VersionError(f"torch version: {torch.__version__}: in order to cmap your function torch2.0 is required")
@@ -33,15 +57,21 @@ def cmap(func: Callable,
         raise CudaError("cuda is not available. in order to cmap your function cuda is required")
 
     def wrap_raw(*args, **kwargs):
-        num_devices = dist.get_world_size(group=group)
-        rank = dist.get_rank()
+        rank = dist.get_rank(group=group)
+        if not num_processes:
+            num_processes = dist.get_world_size(group=group)
+        else:
+            group = dist.new_group(ranks=list(range(num_processes)))
+            if rank < num_processes-1:
+                return None
+        
 
-        if num_devices == 1:
+        if num_processes == 1:
             return torch.vmap(func, in_dims=in_dims, out_dims=out_dims)(*args, **kwargs)
 
         new_args, new_kwargs = data_frag(*args,
                                          in_dims=in_dims,
-                                         num_devices=num_devices,
+                                         num_devices=num_processes,
                                          **kwargs)
         data_to_device(*new_args[rank],
                        raw_pt=raw_pt,
@@ -50,7 +80,7 @@ def cmap(func: Callable,
 
         if dst == -1:
             if isinstance(func_out, tuple):
-                output_empties = [[torch.zeros_like(i) for _ in range(num_devices)] for i in func_out]
+                output_empties = [[torch.zeros_like(i) for _ in range(num_processes)] for i in func_out]
                 for i in range(len(output_empties)):
                     dist.all_gather(output_empties[i],
                                     func_out[i],
@@ -60,7 +90,7 @@ def cmap(func: Callable,
                     output_empties[i] = torch.cat(output_empties[i], dim=out_dims[i])
                 return tuple(output_empties)
             else:
-                output_empties = list([torch.zeros_like(func_out) for _ in range(num_devices)])
+                output_empties = list([torch.zeros_like(func_out) for _ in range(num_processes)])
                 dist.all_gather(output_empties,
                                 func_out,
                                 group=group)
@@ -70,7 +100,7 @@ def cmap(func: Callable,
         else:
             if rank == dst:
                 if isinstance(func_out, tuple):
-                    output_empties = [[torch.zeros_like(i) for _ in range(num_devices)] for i in func_out]
+                    output_empties = [[torch.zeros_like(i) for _ in range(num_processes)] for i in func_out]
                     for i in range(len(output_empties)):
                         dist.gather(output_empties[i],
                                     func_out[i],
@@ -81,7 +111,7 @@ def cmap(func: Callable,
                         output_empties[i] = torch.cat(output_empties[i], dim=out_dims[i])
                     return tuple(output_empties)
                 else:
-                    output_empties = list([torch.zeros_like(func_out) for _ in range(num_devices)])
+                    output_empties = list([torch.zeros_like(func_out) for _ in range(num_processes)])
                     dist.gather(output_empties,
                                 func_out,
                                 dst=dst,
@@ -104,13 +134,14 @@ def cmap(func: Callable,
                     return None
 
     def ColWrap(*args, **kwargs):
-        num_devices = gpc.get_global_rank()
         rank = gpc.get_global_rank()
-
+        if not num_processes:
+            num_processes = gpc.get_global_rank()
+        
         new_args, new_kwargs = data_frag(*args,
                                          in_dims=in_dims,
                                          out_dims=out_dims,
-                                         num_devices=num_devices,
+                                         num_devices=num_processes,
                                          **kwargs)
         data_to_device(*new_args[rank],
                        raw_pt=raw_pt,
@@ -124,13 +155,14 @@ def cmap(func: Callable,
                 for i in range(len(func_out)):
                     results.append(all_gather(tensor=func_out[i],
                                               dim=out_dims[i],
-                                              parallel_mode=ParallelMode.GLOBAL))
+                                              parallel_mode=parallel_mode))
                     torch.cuda.synchronize()
                 return tuple(results)
             else:
                 out = all_gather(tensor=func_out,
                                  dim=out_dims,
-                                 parallel_mode=ParallelMode.GLOBAL)
+                                 parallel_mode=parallel_mode)
+                torch.cuda.synchronize()
                 return out
         else:
             if isinstance(func_out, tuple):
@@ -139,14 +171,15 @@ def cmap(func: Callable,
                     results.append(gather(tensor=func_out[i],
                                           dim=out_dims[i],
                                           dst=dst,
-                                          parallel_mode=ParallelMode.GLOBAL))
+                                          parallel_mode=parallel_mode))
                     torch.cuda.synchronize()
                 return tuple(results)
             else:
                 out = gather(tensor=func_out,
                              dim=out_dims,
                              dst=dst,
-                             parallel_mode=ParallelMode.GLOBAL)
+                             parallel_mode=parallel_mode)
+                torch.cuda.synchronize()
                 return out
 
     if raw_pt:
