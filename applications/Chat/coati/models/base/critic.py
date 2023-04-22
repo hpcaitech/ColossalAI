@@ -44,7 +44,7 @@ class Critic(LoRAModule):
 
         if action_mask is not None and self.use_action_mask:
             num_actions = action_mask.size(1)
-            values = values[:, -num_actions:]
+            values = values[:, -num_actions - 1:-1]
             value = masked_mean(values, action_mask, dim=1)
             return value
 
