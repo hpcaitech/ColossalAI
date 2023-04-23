@@ -33,9 +33,16 @@ class RewardModel(LoRAModule):
         else:
             self.value_head = nn.Linear(model.config.n_embd, 1)
 
-    def forward(self, sequences: torch.LongTensor, attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(self,
+                sequences: torch.LongTensor,
+                attention_mask: Optional[torch.Tensor] = None,
+                action_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         outputs = self.model(sequences, attention_mask=attention_mask)
         last_hidden_states = outputs['last_hidden_state']
         values = self.value_head(last_hidden_states)[:, :-1]
-        value = values.mean(dim=1).squeeze(1)    # ensure shape is (B)
+        if action_mask is not None:
+            num_actions = action_mask.size(1)
+            value = (values[:, -num_actions:] * action_mask).mean(dim=1).squeeze(1)
+        else:
+            value = values.mean(dim=1).squeeze(1)    # ensure shape is (B)
         return value
