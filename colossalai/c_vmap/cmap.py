@@ -18,8 +18,6 @@ class CudaError(Exception):
     pass
 
 
-
-# TODO add process_group argument
 # TODO add support for grad functions
 def cmap(func: Callable,
          in_dims: Union[int, tuple] = 0,
@@ -28,11 +26,12 @@ def cmap(func: Callable,
          group=None,
          parallel_mode = ParallelMode.GLOBAL,
          dst=-1) -> Callable:
-    """Colossal map designed to act like jax.pmap but to work with collassal AI tools(Hybrid Parallelism, Gemini, AMP, etc)
+    """Colossal map designed to act like jax.pmap but to work with collassal AI tools(Gemini, Zero, etc)
 
     The purpose of cmap is to express single-program multiple-data programs. Wraping a function with cmap will split the 
     input chunks and run each chunk on each cuda device. cmap is very similar to torch.vmap as both transformations map a 
-    function over array axes. For best performance all cuda devices should be identical.
+    function over array axes. For best performance all cuda devices should be identical. cmap can be used as an alternative
+    to data parallelism
 
     Args:
         func: Fucntion to be mapped over argument axes, the function must return a tensor or multiple tensors
@@ -48,6 +47,30 @@ def cmap(func: Callable,
              rank in proccess dst 
     Returns:
         A parallelized version of func
+    
+    Usage:
+    ---------------------------------------------
+        x = torch.randn(64, 128)
+        y = torch.randn(64, 128)
+        batch_dot = cmap(torch.dot)
+        batch_dot(x,y)
+    ---------------------------------------------
+        class Model(nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.linear = nn.Linear(128, 128)
+                self.relu = nn.ReLU()
+
+            def forward(self, x):
+                x = self.linear(x)
+                x = self.relu(x)
+                return x
+
+        model = Model()
+        batched_model = cmap(model)
+        input = torch.randn(64, 128)
+        batched_model(input)
+    ---------------------------------------------
     """
 
     if version.parse(torch.__version__) < version.parse("2.0"):
@@ -65,7 +88,6 @@ def cmap(func: Callable,
             if rank < num_processes-1:
                 return None
         
-
         if num_processes == 1:
             return torch.vmap(func, in_dims=in_dims, out_dims=out_dims)(*args, **kwargs)
 

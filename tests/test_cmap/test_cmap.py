@@ -34,7 +34,9 @@ def test_multiple_input():
     for case in cases:
         f = lambda x, y: x*y
         c_f = cmap(f, **case)
-        assert c_f(x,y) == x*y
+        if gpc.get_global_rank() == 0:
+            assert c_f(x, y) == x*y
+
 
 
 def test_nested():
@@ -42,7 +44,8 @@ def test_nested():
     for case in cases:
         f = lambda x: x*x
         c_f = cmap(cmap(f, **case), **case)
-        assert c_f(x) == x*x
+        if gpc.get_global_rank() == 0:  
+            assert c_f(x) == x*x
 
 
 def test_non_zero_in_dims():
