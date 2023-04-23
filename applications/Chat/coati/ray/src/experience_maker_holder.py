@@ -3,14 +3,14 @@ import time
 import tracemalloc
 from copy import deepcopy
 from threading import Lock
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import ray
 import torch
 import torch.nn as nn
 from coati.experience_maker import Experience, ExperienceMaker, NaiveExperienceMaker
 from coati.models.base import Actor, Critic, RewardModel
-from coati.replay_buffer.utils import split_experience_batch, make_experience_batch, BufferItem
+from coati.replay_buffer.utils import BufferItem, make_experience_batch, split_experience_batch
 from coati.trainer.callbacks import Callback
 from coati.trainer.callbacks.performance_evaluator import ExperienceMakerPerformanceEvaluator
 from coati.trainer.strategies import Strategy
@@ -37,73 +37,67 @@ class ExperienceMakerHolder:
         strategy:
         experience_batch_size: batch size of generated experience
         kl_coef: the coefficient of kl divergence loss
+        sync_models_from_trainers: whether to sync models from trainers. If True, you must call sync_models_to_remote_makers() in trainers to sync models.
     '''
 
-    def __init__(self,
-                 detached_trainer_name_list: List[str],
-                 strategy: str,
-                 env_info: Dict[str, str] = None,
-                 experience_batch_size: int = 8,
-                 kl_coef: float = 0.1,
-                 callbacks: List[Callback] = [],
-                 eval_performance: bool = False,
-                 debug: bool = False,
-                 send_grain_size: int = 4,
-                 **generate_kwargs):
+    def __init__(
+            self,
+            detached_trainer_name_list: List[str],
+            strategy_fn: Callable[[], Strategy],
+    # a function returns (actor, critic, reward_model, initial_model)
+            model_fn: Callable[[], Tuple[Actor, Critic, RewardModel, Actor]],
+            env_info: Dict[str, str] = None,
+            sync_models_from_trainers: bool = False,
+            experience_batch_size: int = 8,
+            send_grain_size: int = 4,
+            kl_coef: float = 0.1,
+            callbacks: List[Callback] = [],
+            eval_performance: bool = False,
+            debug: bool = False,
+            **generate_kwargs):
         # set environment variables
         if env_info:
             set_dist_env(env_info=env_info)
         self.target_trainer_list = []
         for name in detached_trainer_name_list:
             self.target_trainer_list.append(ray.get_actor(name, namespace=os.environ["RAY_NAMESPACE"]))
-        self.strategy_str = strategy
-        self.strategy = get_strategy_from_args(strategy)
+        self.strategy = strategy_fn()
         self.experience_batch_size = experience_batch_size
         self.kl_coef = kl_coef
-        self.generate_kwargs = generate_kwargs
-        actor, critic, reward_model, initial_model = None, None, None, None
+        # init models
+        with self.strategy.model_init_context():
+            actor, critic, reward_model, initial_model = model_fn()
+        self.generate_kwargs = _set_default_generate_kwargs(generate_kwargs, actor)
+        if eval_performance:
+            actor_numel = get_model_numel(actor)
+            critic_numel = get_model_numel(critic)
+            initial_model_numel = get_model_numel(initial_model)
+            reward_model_numel = get_model_numel(reward_model)
+            evaluator = ExperienceMakerPerformanceEvaluator(actor_numel, critic_numel, initial_model_numel,
+                                                            reward_model_numel)
+            callbacks = callbacks + [evaluator]
+
+        actor, critic, reward_model, initial_model = self.strategy.prepare(actor, critic, reward_model, initial_model)
         self.experience_maker = NaiveExperienceMaker(actor, critic, reward_model, initial_model, self.kl_coef)
         self.callbacks = callbacks
-        self.eval_performance = eval_performance
         self.send_grain_size = send_grain_size
 
         self._model_visit_lock = Lock()
-        self._initial_model_initialized = False
-        self._reward_model_initialized = False
-        self._actor_initialized = False
-        self._critic_initialized = False
+
+        self._is_fully_initialized = not sync_models_from_trainers
 
         self._debug = debug
         self.target_auto_balance = False
 
-        if self._debug:
+        if self._debug and not self._is_fully_initialized:
             print('[maker] Waiting for INIT')
 
     def _get_ready(self):
         while not self._fully_initialized():
             time.sleep(1.0)
-        # setup performance evaluator
-        if self.eval_performance:
-            actor_numel = get_model_numel(self.experience_maker.actor)
-            critic_numel = get_model_numel(self.experience_maker.critic)
-            initial_model_numel = get_model_numel(self.experience_maker.initial_model)
-            reward_model_numel = get_model_numel(self.experience_maker.reward_model)
-            evaluator = ExperienceMakerPerformanceEvaluator(actor_numel, critic_numel, initial_model_numel,
-                                                            reward_model_numel)
-            self.callbacks.append(evaluator)
-
-        self.generate_kwargs = _set_default_generate_kwargs(self.generate_kwargs, self.experience_maker.actor)
 
     def _fully_initialized(self):
-        if not self._initial_model_initialized:
-            return False
-        if not self._reward_model_initialized:
-            return False
-        if not self._actor_initialized:
-            return False
-        if not self._critic_initialized:
-            return False
-        return True
+        return self._is_fully_initialized
 
     def update_target_trainer_list(self, detached_trainer_name_list):
         self.target_trainer_list = []
@@ -184,109 +178,17 @@ class ExperienceMakerHolder:
         self._on_finish()
 
     @ray.method(concurrency_group="model_io")
-    def initialize_experience_maker(self,
-                                    actor_model: str = None,
-                                    actor_pretrained: str = None,
-                                    actor_state_dict: Dict[str, Any] = None,
-                                    critic_model: str = None,
-                                    critic_pretrained: str = None,
-                                    critic_state_dict: Dict[str, Any] = None,
-                                    chunk_start: bool = None,
-                                    chunk_end: bool = None):
-        '''
-            called by trainer
-            chunk_start: Set True at the first call. Before sending state_dict calls
-            chunk_end: Set True at the last call. After sending state_dict calls.
-
-            TODO: load_state_dict integrate with model-sharding strategy
-        '''
-        if self._fully_initialized():
-            return
-
-        if chunk_start:
-            if self._debug:
-                print('[maker] INIT')
-            with torch.no_grad():
-                # (csric) any better way to get model structure?
-                with self.strategy.model_init_context():
-                    if not self._actor_initialized and actor_model is not None:
-                        self.experience_maker.actor = get_actor_from_args(actor_model,
-                                                                          actor_pretrained).half().requires_grad_(False)
-                    if not self._critic_initialized and critic_model is not None:
-                        self.experience_maker.critic = get_critic_from_args(
-                            critic_model, critic_pretrained).half().requires_grad_(False)
-                    if not self._initial_model_initialized and actor_model is not None:
-                        self.experience_maker.initial_model = get_actor_from_args(
-                            actor_model, actor_pretrained).half().requires_grad_(False)
-                    if not self._reward_model_initialized and critic_model is not None:
-                        self.experience_maker.reward_model = get_reward_model_from_args(
-                            critic_model, critic_pretrained).half().requires_grad_(False)
-
-        with torch.no_grad():
-            if not self._actor_initialized and actor_state_dict is not None:
-                self.experience_maker.actor.model.load_state_dict(actor_state_dict, strict=False)
-            if not self._critic_initialized and critic_state_dict is not None:
-                self.experience_maker.critic.load_state_dict(critic_state_dict, strict=False)
-            if not self._initial_model_initialized and actor_state_dict is not None:
-                self.experience_maker.initial_model.model.load_state_dict(actor_state_dict, strict=False)
-            if not self._reward_model_initialized and critic_state_dict is not None:
-                self.experience_maker.reward_model.load_state_dict(critic_state_dict, strict=False)
-
-        if chunk_end:
-            with torch.no_grad():
-                if actor_model is not None:
-                    if not self._actor_initialized:
-                        self.experience_maker.actor = self.strategy.prepare(
-                            self.experience_maker.actor.to(torch.cuda.current_device()))
-                    if not self._initial_model_initialized:
-                        self.experience_maker.initial_model = self.strategy.prepare(
-                            self.experience_maker.initial_model.to(torch.cuda.current_device()))
-                    self._actor_initialized = True
-                    self._initial_model_initialized = True
-                if critic_model is not None:
-                    if not self._critic_initialized:
-                        self.experience_maker.critic = self.strategy.prepare(
-                            self.experience_maker.critic.to(torch.cuda.current_device()))
-                    if not self._reward_model_initialized:
-                        self.experience_maker.reward_model = self.strategy.prepare(
-                            self.experience_maker.reward_model.to(torch.cuda.current_device()))
-                    self._critic_initialized = True
-                    self._reward_model_initialized = True
-
-    def initialize_experience_maker_local(self,
-                                          initial_model_func=None,
-                                          reward_model_func=None,
-                                          actor_func=None,
-                                          critic_func=None):
-        '''
-            Use function call to construct the model here, because some strategy requieres env_info
-            The model initialized here will be IGNORED in initialize_experience_maker.
-            initial_model and reward_model can have their own strategy rather than self.strategy. For example, Quantization.
-        '''
-
-        if actor_func is not None:
-            self.experience_maker.actor = actor_func()
-            self._actor_initialized = True
-        if critic_func is not None:
-            self.experience_maker.critic = critic_func()
-            self._critic_initialized = True
-        if initial_model_func is not None:
-            self.experience_maker.initial_model = initial_model_func()
-            self._initial_model_initialized = True
-        if reward_model_func is not None:
-            self.experience_maker.reward_model = reward_model_func()
-            self._reward_model_initialized = True
-
-    @ray.method(concurrency_group="model_io")
     def update_experience_maker(self,
                                 new_actor_state_dict: Dict[str, Any] = None,
                                 new_critic_state_dict: Dict[str, Any] = None,
+                                fully_update: bool = False,
                                 chunk_start: bool = None,
                                 chunk_end: bool = None):
         '''
             called by trainer
             chunk_start: Set True at the first call. Before sending state_dict calls
             chunk_end: Set True at the last call. After sending state_dict calls.
+            fully_update: Set True if you want to sync models when initializing
 
             TODO: load_state_dict integrate with model-sharding strategy
         '''
@@ -304,12 +206,15 @@ class ExperienceMakerHolder:
             if new_critic_state_dict is not None:
                 self.experience_maker.critic.load_state_dict(new_critic_state_dict, strict=False)
 
+        # the lock must be released after both actor and critic being updated
         if chunk_end:
             self._model_visit_lock.release()
             if _watch_memory:
                 current, peak = tracemalloc.get_traced_memory()
                 print(f"Current memory usage is {current / 10**6}MB; Peak was {peak / 10**6}MB")
                 tracemalloc.stop()
+            if fully_update:
+                self._is_fully_initialized = True
 
     def _on_make_experience_start(self) -> None:
         for callback in self.callbacks:

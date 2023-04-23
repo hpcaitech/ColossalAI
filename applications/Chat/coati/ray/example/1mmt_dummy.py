@@ -1,15 +1,18 @@
 import argparse
 import os
 import socket
-from copy import deepcopy
 from functools import partial
 
 import ray
 import torch
-from coati.models.base import RewardModel
 from coati.ray.src.detached_trainer_ppo import DetachedPPOTrainer
 from coati.ray.src.experience_maker_holder import ExperienceMakerHolder
-from coati.ray.src.utils import get_actor_from_args, get_critic_from_args, get_reward_model_from_args
+from coati.ray.src.utils import (
+    get_actor_from_args,
+    get_critic_from_args,
+    get_reward_model_from_args,
+    get_strategy_from_args,
+)
 from transformers import AutoTokenizer, BloomTokenizerFast
 from transformers.models.gpt2.configuration_gpt2 import GPT2Config
 from transformers.models.gpt2.tokenization_gpt2 import GPT2Tokenizer
@@ -81,39 +84,44 @@ def main(args):
     tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
     tokenizer.pad_token = tokenizer.eos_token
 
+    def trainer_model_fn():
+        actor = get_actor_from_args(args.model, args.pretrain).half().cuda()
+        critic = get_critic_from_args(args.model, args.pretrain).half().cuda()
+        return actor, critic
+
     # configure Trainer
     trainer_refs = [
         DetachedPPOTrainer.options(name=f"trainer{i}", num_gpus=1, max_concurrency=2).remote(
             experience_maker_holder_name_list=["maker1"],
-            strategy=args.trainer_strategy,
-            model=args.model,
+            strategy_fn=partial(get_strategy_from_args, args.trainer_strategy),
+            model_fn=trainer_model_fn,
             env_info=env_info_trainer,
-            pretrained=args.pretrain,
-            lora_rank=args.lora_rank,
             train_batch_size=args.train_batch_size,
             buffer_limit=16,
-            experience_batch_size=args.experience_batch_size,
             max_epochs=args.max_epochs,
-    # kwargs:
-            max_length=512,
-            do_sample=True,
-            temperature=1.0,
-            top_k=50,
-            pad_token_id=tokenizer.pad_token_id,
-            eos_token_id=tokenizer.eos_token_id,
             eval_performance=True,
             debug=args.debug,
         ) for i, env_info_trainer in enumerate(env_info_trainers)
     ]
 
+    def model_fn():
+        actor = get_actor_from_args(args.model, args.pretrain).half().cuda()
+        critic = get_critic_from_args(args.model, args.pretrain).half().cuda()
+        reward_model = get_reward_model_from_args(args.model, args.pretrain).half().cuda()
+        initial_model = get_actor_from_args(args.model, args.pretrain).half().cuda()
+        return actor, critic, reward_model, initial_model
+
     # configure Experience Maker
     experience_holder_ref = ExperienceMakerHolder.options(name="maker1", num_gpus=1, max_concurrency=2).remote(
         detached_trainer_name_list=[f'trainer{i}' for i in range(args.num_trainers)],
-        strategy=args.maker_strategy,
+        strategy_fn=partial(get_strategy_from_args, args.maker_strategy),
+        model_fn=model_fn,
         env_info=env_info_maker,
         experience_batch_size=args.experience_batch_size,
         kl_coef=0.1,
-    # kwargs:
+        debug=args.debug,
+    # sync_models_from_trainers=True,
+    # generation kwargs:
         max_length=512,
         do_sample=True,
         temperature=1.0,
@@ -122,31 +130,21 @@ def main(args):
         eos_token_id=tokenizer.eos_token_id,
         eval_performance=True,
         use_cache=True,
-        debug=args.debug,
     )
-
-    def init_inference_model(fn, model_name, pretrained):
-        model = fn(model_name, pretrained)
-        return model.half().cuda()
-
-    # init maker locally
-    ray.get(
-        experience_holder_ref.initialize_experience_maker_local.remote(
-            initial_model_func=partial(init_inference_model, get_actor_from_args, args.model, args.pretrain),
-            reward_model_func=partial(init_inference_model, get_reward_model_from_args, args.model, args.pretrain),
-            actor_func=partial(init_inference_model, get_actor_from_args, args.model, args.pretrain),
-            critic_func=partial(init_inference_model, get_critic_from_args, args.model, args.pretrain),
-        ))
 
     # configure sampler
     random_prompts = torch.randint(tokenizer.vocab_size, (1000, 400))
 
     def tokenize_fn(texts):
-        # print(texts)
         input_ids = torch.stack(texts).cuda()
-        # print(input_ids.shape)
         attn_mask = torch.ones_like(input_ids)
         return {'input_ids': input_ids, 'attention_mask': attn_mask}
+
+    # uncomment this function if sync_models_from_trainers is True
+    # ray.get([
+    #     trainer_ref.sync_models_to_remote_makers.remote()
+    #     for trainer_ref in trainer_refs
+    # ])
 
     wait_tasks = []
 

@@ -21,7 +21,6 @@ class DetachedTrainer(ABC):
     Args:
         detached_strategy (DetachedStrategy): the strategy to use for training
         detached_replay_buffer_ref (ObjectRef[DetachedReplayBuffer]): the replay buffer to use for training
-        experience_batch_size (int, defaults to 8): the batch size to use for experience generation
         max_epochs (int, defaults to 1): the number of epochs of training process
         data_loader_pin_memory (bool, defaults to True): whether to pin memory for data loader
         callbacks (List[Callback], defaults to []): the callbacks to call during training process
@@ -34,21 +33,17 @@ class DetachedTrainer(ABC):
                  train_batch_size: int = 8,
                  buffer_limit: int = 0,
                  buffer_cpu_offload: bool = True,
-                 experience_batch_size: int = 8,
                  max_epochs: int = 1,
                  dataloader_pin_memory: bool = True,
                  callbacks: List[Callback] = [],
-                 debug: bool = False,
-                 **generate_kwargs) -> None:
+                 debug: bool = False) -> None:
         super().__init__()
         self.detached_replay_buffer = DetachedReplayBuffer(train_batch_size,
                                                            limit=buffer_limit,
                                                            cpu_offload=buffer_cpu_offload)
-        self.experience_batch_size = experience_batch_size
         self.max_epochs = max_epochs
         self.dataloader_pin_memory = dataloader_pin_memory
         self.callbacks = callbacks
-        self.generate_kwargs = generate_kwargs
         self.target_holder_name_list = experience_maker_holder_name_list
         self.target_holder_list = []
 
@@ -61,8 +56,11 @@ class DetachedTrainer(ABC):
             self.target_holder_list.append(ray.get_actor(name, namespace=os.environ["RAY_NAMESPACE"]))
 
     @abstractmethod
-    def _update_remote_makers(self):
+    def _update_remote_makers(self, fully_update: bool = False, **kwargs):
         pass
+
+    def sync_models_to_remote_makers(self, **kwargs):
+        self._update_remote_makers(fully_update=True, **kwargs)
 
     @abstractmethod
     def training_step(self, experience: Experience) -> Dict[str, Any]:

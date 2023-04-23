@@ -5,7 +5,7 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 import torch.optim as optim
-from coati.models.base import LM, Actor, RewardModel, Critic
+from coati.models.base import LM, Actor, Critic, RewardModel
 from coati.models.lora import LoraLinear
 from torch.optim import Optimizer
 from transformers.modeling_utils import PreTrainedModel
@@ -139,7 +139,7 @@ class ColossalAIStrategy(DDPStrategy):
         model = zero_model_wrapper(model, zero_stage=self.stage, gemini_config=self.gemini_config)
 
         if self.stage != 3 and self.precision == 'fp16':
-            model = model.half()
+            model = model.half().cuda()
         return model
 
     def setup_optimizer(self, optimizer: optim.Optimizer, model: nn.Module) -> optim.Optimizer:
@@ -162,7 +162,6 @@ class ColossalAIStrategy(DDPStrategy):
     @staticmethod
     def _unwrap_critic(critic: Critic) -> nn.Module:
         return Strategy._unwrap_critic(critic)
-
 
     def _unwrap_model(self, model: Union[nn.Module, ZeroDDP]) -> nn.Module:
         return super()._unwrap_model(model)
