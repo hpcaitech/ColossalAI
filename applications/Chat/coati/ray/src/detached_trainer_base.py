@@ -1,10 +1,13 @@
 import os
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Union
 
 import ray
+import torch
 from coati.experience_maker import Experience
+from coati.replay_buffer.utils import BufferItem
 from coati.trainer.callbacks import Callback
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from .detached_replay_buffer import DetachedReplayBuffer
@@ -21,7 +24,6 @@ class DetachedTrainer(ABC):
     Args:
         detached_strategy (DetachedStrategy): the strategy to use for training
         detached_replay_buffer_ref (ObjectRef[DetachedReplayBuffer]): the replay buffer to use for training
-        max_epochs (int, defaults to 1): the number of epochs of training process
         data_loader_pin_memory (bool, defaults to True): whether to pin memory for data loader
         callbacks (List[Callback], defaults to []): the callbacks to call during training process
         generate_kwargs (dict, optional): the kwargs to use while model generating
@@ -32,16 +34,11 @@ class DetachedTrainer(ABC):
                  experience_maker_holder_name_list: List[str],
                  train_batch_size: int = 8,
                  buffer_limit: int = 0,
-                 buffer_cpu_offload: bool = True,
-                 max_epochs: int = 1,
                  dataloader_pin_memory: bool = True,
                  callbacks: List[Callback] = [],
                  debug: bool = False) -> None:
         super().__init__()
-        self.detached_replay_buffer = DetachedReplayBuffer(train_batch_size,
-                                                           limit=buffer_limit,
-                                                           cpu_offload=buffer_cpu_offload)
-        self.max_epochs = max_epochs
+        self.detached_replay_buffer = DetachedReplayBuffer(train_batch_size, limit=buffer_limit)
         self.dataloader_pin_memory = dataloader_pin_memory
         self.callbacks = callbacks
         self.target_holder_name_list = experience_maker_holder_name_list
@@ -66,31 +63,45 @@ class DetachedTrainer(ABC):
     def training_step(self, experience: Experience) -> Dict[str, Any]:
         pass
 
-    def _learn(self):
-        pbar = tqdm(range(self.max_epochs), desc='Train epoch', disable=not is_rank_0())
-        for _ in pbar:
-            if self._debug:
-                print("[trainer] sampling exp")
-            experience = self._buffer_sample()
+    def _learn(self, update_steps: int, train_epochs: int) -> None:
+        data = []
+        # warmup
+        pbar = tqdm(range(update_steps), desc=f'Train epoch [1/{train_epochs}]', disable=not is_rank_0())
+        self._learn_epoch(pbar, data)
+        # item is already a batch
+        dataloader = DataLoader(data,
+                                batch_size=1,
+                                shuffle=True,
+                                pin_memory=self.dataloader_pin_memory,
+                                collate_fn=lambda x: x[0])
+        for epoch in range(1, train_epochs):
+            pbar = tqdm(dataloader, desc=f'Train epoch [{epoch + 1}/{train_epochs}]', disable=not is_rank_0())
+            self._learn_epoch(pbar, data)
+
+    def _learn_epoch(self, pbar: tqdm, data: List[Experience]) -> None:
+        is_warmup = len(data) == 0
+        for x in pbar:
             if self._debug:
                 print("[trainer] training step")
+            # sample a batch and then train to avoid waiting
+            experience = x if not is_warmup else self._buffer_sample()
+            experience.to_device(torch.cuda.current_device())
             self._on_learn_batch_start()
             metrics = self.training_step(experience)
             self._on_learn_batch_end(metrics, experience)
+
             if self._debug:
                 print("[trainer] step over")
+            experience.to_device("cpu")
+            if is_warmup:
+                data.append(experience)
             pbar.set_postfix(metrics)
 
-    def fit(self, num_episodes: int = 50000, max_timesteps: int = 500, update_timesteps: int = 5000) -> None:
+    def fit(self, total_steps: int, update_steps: int, train_epochs: int = 1) -> None:
         self._on_fit_start()
-        for episode in range(num_episodes):
-            self._on_episode_start(episode)
-            for timestep in tqdm(range(max_timesteps // update_timesteps),
-                                 desc=f'Episode [{episode+1}/{num_episodes}]',
-                                 disable=not is_rank_0()):
-                self._learn()
-                self._update_remote_makers()
-            self._on_episode_end(episode)
+        for _ in tqdm(range(total_steps // update_steps), desc='Trainer', disable=not is_rank_0()):
+            self._learn(update_steps, train_epochs)
+            self._update_remote_makers()
         self._on_fit_end()
         self._on_finish()
 
@@ -107,6 +118,13 @@ class DetachedTrainer(ABC):
         if self._debug:
             print(f"[trainer]               receiving exp.")
         self.detached_replay_buffer.append(experience)
+
+    @ray.method(concurrency_group="buffer_append")
+    def buffer_extend(self, items: List[BufferItem]):
+        # called by ExperienceMakerHolder
+        if self._debug:
+            print(f"[trainer]               receiving exp.")
+        self.detached_replay_buffer.extend(items)
 
     @ray.method(concurrency_group="buffer_sample")
     def _buffer_sample(self):

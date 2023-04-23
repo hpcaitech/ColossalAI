@@ -3,7 +3,7 @@ import time
 import tracemalloc
 from copy import deepcopy
 from threading import Lock
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 import ray
 import torch
@@ -17,16 +17,9 @@ from coati.trainer.strategies import Strategy
 from coati.trainer.strategies.sampler import DistributedSampler
 from ray.exceptions import GetTimeoutError
 from torch import Tensor
+from tqdm import tqdm
 
-from .utils import (
-    get_actor_from_args,
-    get_critic_from_args,
-    get_model_numel,
-    get_reward_model_from_args,
-    get_strategy_from_args,
-    is_rank_0,
-    set_dist_env,
-)
+from .utils import get_model_numel, is_rank_0, set_dist_env
 
 
 @ray.remote(concurrency_groups={"experience_io": 1, "model_io": 1, "compute": 1})
@@ -35,7 +28,6 @@ class ExperienceMakerHolder:
     Args:
         detached_trainer_name_list: str list to get ray actor handles
         strategy:
-        experience_batch_size: batch size of generated experience
         kl_coef: the coefficient of kl divergence loss
         sync_models_from_trainers: whether to sync models from trainers. If True, you must call sync_models_to_remote_makers() in trainers to sync models.
     '''
@@ -48,8 +40,7 @@ class ExperienceMakerHolder:
             model_fn: Callable[[], Tuple[Actor, Critic, RewardModel, Actor]],
             env_info: Dict[str, str] = None,
             sync_models_from_trainers: bool = False,
-            experience_batch_size: int = 8,
-            send_grain_size: int = 4,
+            buffer_cpu_offload: bool = True,
             kl_coef: float = 0.1,
             callbacks: List[Callback] = [],
             eval_performance: bool = False,
@@ -62,7 +53,7 @@ class ExperienceMakerHolder:
         for name in detached_trainer_name_list:
             self.target_trainer_list.append(ray.get_actor(name, namespace=os.environ["RAY_NAMESPACE"]))
         self.strategy = strategy_fn()
-        self.experience_batch_size = experience_batch_size
+        self.buffer_cpu_offload = buffer_cpu_offload
         self.kl_coef = kl_coef
         # init models
         with self.strategy.model_init_context():
@@ -80,7 +71,6 @@ class ExperienceMakerHolder:
         actor, critic, reward_model, initial_model = self.strategy.prepare(actor, critic, reward_model, initial_model)
         self.experience_maker = NaiveExperienceMaker(actor, critic, reward_model, initial_model, self.kl_coef)
         self.callbacks = callbacks
-        self.send_grain_size = send_grain_size
 
         self._model_visit_lock = Lock()
 
@@ -88,6 +78,8 @@ class ExperienceMakerHolder:
 
         self._debug = debug
         self.target_auto_balance = False
+
+        self._target_idx = 0
 
         if self._debug and not self._is_fully_initialized:
             print('[maker] Waiting for INIT')
@@ -114,6 +106,7 @@ class ExperienceMakerHolder:
         else:
             raise ValueError(f'Unsupported input type "{type(inputs)}"')
 
+    # TODO(ver217): remove this method
     @ray.method(concurrency_group="experience_io")
     def _send_experience(self, experience):
         if not self.target_auto_balance:
@@ -148,33 +141,52 @@ class ExperienceMakerHolder:
                 print(f"[maker] sending exp to {chosen_trainer}")
             chosen_trainer.buffer_append.remote(experience)
 
-    def workingloop(self, dataset, tokenizer: Optional[Callable[[Any], dict]] = None, times=5000 * 50000):
-        self._get_ready()
-        sampler = self.strategy.setup_sampler(dataset)
-        for _ in range(times):
-            rand_prompts = sampler.sample(self.experience_batch_size)
-            if tokenizer is not None:
-                inputs = tokenizer(rand_prompts)
-            else:
-                inputs = rand_prompts
-            self._model_visit_lock.acquire()
+    @ray.method(concurrency_group="experience_io")
+    def _send_items(self, experience: Experience) -> None:
+        items = split_experience_batch(experience)
+        items_per_trainer = [[] for _ in range(len(self.target_trainer_list))]
+        for item in items:
+            items_per_trainer[self._target_idx].append(item)
+            self._target_idx = (self._target_idx + 1) % len(self.target_trainer_list)
+        for i, target_trainer in enumerate(self.target_trainer_list):
+            if len(items_per_trainer[i]) > 0:
+                target_trainer.buffer_extend.remote(items_per_trainer[i])
+
+    def _inference_step(self, batch) -> None:
+        with self._model_visit_lock:
             self._on_make_experience_start()
-            experience = self._make_experience(inputs=inputs)
+            experience = self._make_experience(batch)
             self._on_make_experience_end(experience)
-            self._model_visit_lock.release()
-            # split experience for smoother handover
-            items = split_experience_batch(experience)
-            temp_buffer = []
-            for item in items:
-                temp_buffer.append(item)
-                if len(temp_buffer) >= self.send_grain_size:
-                    experience_fragment = make_experience_batch(temp_buffer)
-                    self._send_experience(experience=experience_fragment)
-                    temp_buffer = []
-            # remain
-            if len(temp_buffer) > 0:
-                experience_fragment = make_experience_batch(temp_buffer)
-                self._send_experience(experience=experience_fragment)
+        if self.buffer_cpu_offload:
+            experience.to_device('cpu')
+        self._send_items(experience)
+
+    def workingloop(self, dataloader_fn: Callable[[], Iterable], num_epochs: int = 1, num_steps: int = 0):
+        """Working loop of the experience maker.
+
+        Args:
+            dataloader_fn (Callable[[], Iterable]): A function that returns a dataloader.
+            num_epochs (int, optional): Iterate the dataloader for number of epochs. Defaults to 1.
+            num_steps (int, optional): Iterate the dataloader for number if steps. If this value > 0, num_epochs will be ignored. Defaults to 0.
+        """
+        self._get_ready()
+        dataloader = dataloader_fn()
+        if num_steps > 0:
+            # ignore num epochs
+            it = iter(dataloader)
+            for _ in tqdm(range(num_steps), desc='ExperienceMaker', disable=not is_rank_0()):
+                try:
+                    batch = next(it)
+                except StopIteration:
+                    it = iter(dataloader)
+                    batch = next(it)
+                self._inference_step(batch)
+        else:
+            with tqdm(total=num_epochs * len(dataloader), desc='ExperienceMaker', disable=not is_rank_0()) as pbar:
+                for _ in range(num_epochs):
+                    for batch in dataloader:
+                        self._inference_step(batch)
+                        pbar.update()
         self._on_finish()
 
     @ray.method(concurrency_group="model_io")

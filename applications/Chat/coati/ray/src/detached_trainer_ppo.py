@@ -60,10 +60,8 @@ class DetachedPPOTrainer(DetachedTrainer):
         env_info: Dict[str, str] = None,
         train_batch_size: int = 8,
         buffer_limit: int = 0,
-        buffer_cpu_offload: bool = True,
         eps_clip: float = 0.2,
         value_clip: float = 0.4,
-        max_epochs: int = 10,
         dataloader_pin_memory: bool = True,
         callbacks: List[Callback] = [],
         eval_performance: bool = False,
@@ -101,8 +99,6 @@ class DetachedPPOTrainer(DetachedTrainer):
         super().__init__(experience_maker_holder_name_list,
                          train_batch_size=train_batch_size,
                          buffer_limit=buffer_limit,
-                         buffer_cpu_offload=buffer_cpu_offload,
-                         max_epochs=max_epochs,
                          dataloader_pin_memory=dataloader_pin_memory,
                          callbacks=callbacks,
                          debug=debug)
@@ -144,7 +140,6 @@ class DetachedPPOTrainer(DetachedTrainer):
         self.actor.train()
         self.critic.train()
 
-        experience.to_device(torch.cuda.current_device())
         num_actions = experience.action_mask.size(1)
         action_log_probs = self.actor(experience.sequences, num_actions, attention_mask=experience.attention_mask)
         actor_loss = self.actor_loss_fn(action_log_probs,
