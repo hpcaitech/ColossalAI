@@ -5,9 +5,9 @@ from functools import partial
 
 import ray
 import torch
-from coati.ray.src.detached_trainer_ppo import DetachedPPOTrainer
-from coati.ray.src.experience_maker_holder import ExperienceMakerHolder
-from coati.ray.src.utils import (
+from coati.ray.detached_trainer_ppo import DetachedPPOTrainer
+from coati.ray.experience_maker_holder import ExperienceMakerHolder
+from coati.ray.utils import (
     get_actor_from_args,
     get_critic_from_args,
     get_reward_model_from_args,
