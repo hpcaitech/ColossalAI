@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 
 from ..lora import LoRAModule
+from ..utils import masked_mean
 
 
 class RewardModel(LoRAModule):
@@ -39,10 +40,10 @@ class RewardModel(LoRAModule):
                 action_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         outputs = self.model(sequences, attention_mask=attention_mask)
         last_hidden_states = outputs['last_hidden_state']
-        values = self.value_head(last_hidden_states)[:, :-1]
+        values = self.value_head(last_hidden_states)[:, :-1].squeeze(-1)
         if action_mask is not None:
             num_actions = action_mask.size(1)
-            value = (values[:, -num_actions:] * action_mask).mean(dim=1).squeeze(1)
+            value = masked_mean(values[:, -num_actions:], action_mask)
         else:
             value = values.mean(dim=1).squeeze(1)    # ensure shape is (B)
         return value
