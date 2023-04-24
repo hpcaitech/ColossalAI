@@ -213,7 +213,8 @@ class ZeroDDP(ColoDDP):
                  gemini_manager: GeminiManager,
                  pin_memory: bool = False,
                  force_outputs_fp32: bool = False,
-                 strict_ddp_mode: bool = False) -> None:
+                 strict_ddp_mode: bool = False,
+                 gradient_accumulation: int = 1) -> None:
         super().__init__(module, process_group=ColoProcessGroup())
         self.gemini_manager = gemini_manager
         self.chunk_manager: ChunkManager = gemini_manager.chunk_manager
@@ -225,6 +226,8 @@ class ZeroDDP(ColoDDP):
         self.grads_device: Dict[torch.Tensor, torch.device] = dict()
         self.param2name: Dict[nn.Parameter, str] = dict()
         self.name2param: Dict[str, nn.Parameter] = dict()
+        self.gradient_accumulation = gradient_accumulation
+        self.gradient_accumulation_iter = 0
 
         self.use_bf16 = False
         for p in module.parameters():
@@ -322,7 +325,10 @@ class ZeroDDP(ColoDDP):
             raise RuntimeError("ZERO DDP error: the synchronization of gradients doesn't exit properly.",
                                "The most possible reason is that the model is not compatible with ZeroDDP.\n",
                                f"{error_str}")
+
         self._setup_grads_ptr()
+        self.gradient_accumulation_iter = (self.gradient_accumulation_iter + 1) % self.gradient_accumulation
+
         self._logger.debug(
             f'comp cuda demand time: {self.gemini_manager._comp_cuda_demand_time}, layout time: {self.gemini_manager._layout_time}, evict time: {self.gemini_manager._evict_time}, CPU->CUDA vol: {self.gemini_manager._h2d_volume}B, CUDA->CPU vol: {self.gemini_manager._d2h_volume}'
         )
@@ -358,7 +364,7 @@ class ZeroDDP(ColoDDP):
                 # check overflow elements
                 self.overflow_counter += chunk.has_inf_or_nan
                 # record l2 norm for gradient clipping
-                if chunk.l2_norm_flag:
+                if chunk.l2_norm_flag and (self.gradient_accumulation_iter + 1) == self.gradient_accumulation:
                     chunk.set_l2_norm()
                 self.chunk_manager.move_chunk(chunk, self.grads_device[p], force_copy=True)
         return empty_grad
