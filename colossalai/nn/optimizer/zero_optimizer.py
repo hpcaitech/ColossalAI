@@ -8,7 +8,7 @@ import torch.distributed as dist
 from torch.nn import Parameter
 from torch.optim import Optimizer
 
-from colossalai.amp.naive_amp.grad_scaler import DynamicGradScaler
+from colossalai.amp.naive_amp.grad_scaler import DynamicGradScaler, ConstantGradScaler
 from colossalai.gemini.chunk import Chunk, ChunkManager
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import ColossalaiOptimizer, CPUAdam, FusedAdam, HybridAdam
@@ -62,6 +62,8 @@ class ZeroOptimizer(ColossalaiOptimizer):
                  max_scale: float = 2**32,
                  clipping_norm: float = 0.0,
                  norm_type: float = 2.0,
+                 gradient_accumulation: int = 1,
+                 dynamic_grad_scaler: bool = True,
                  **defaults: Any):
         super().__init__(optim)
         assert isinstance(module, ZeroDDP)
@@ -77,6 +79,7 @@ class ZeroOptimizer(ColossalaiOptimizer):
         self.clipping_flag = clipping_norm > 0.0
         self.max_norm = clipping_norm
         self.p_index = []
+        self.gradient_accumulation = gradient_accumulation
 
         if self.clipping_flag:
             assert norm_type == 2.0, "ZeroOptimizer only supports L2 norm now"
@@ -99,13 +102,17 @@ class ZeroOptimizer(ColossalaiOptimizer):
         self.__init__optimizer()
 
         # Grad scaler
-        self.grad_scaler = DynamicGradScaler(initial_scale=initial_scale,
-                                             min_scale=min_scale,
-                                             growth_factor=growth_factor,
-                                             backoff_factor=backoff_factor,
-                                             growth_interval=growth_interval,
-                                             hysteresis=hysteresis,
-                                             max_scale=max_scale)
+        if not dynamic_grad_scaler:
+            self.grad_scaler = ConstantGradScaler(initial_scale=initial_scale, verbose=True)
+        else:
+            self.grad_scaler = DynamicGradScaler(initial_scale=initial_scale,
+                                                min_scale=min_scale,
+                                                growth_factor=growth_factor,
+                                                backoff_factor=backoff_factor,
+                                                growth_interval=growth_interval,
+                                                hysteresis=hysteresis,
+                                                max_scale=max_scale)
+
         self._found_overflow: torch.Tensor = torch.zeros(1, dtype=torch.int64, device=get_current_device())
         self._logger = get_dist_logger()
 
@@ -121,15 +128,56 @@ class ZeroOptimizer(ColossalaiOptimizer):
 
         self._register_states = disposable(self._register_states_)
 
-    def _set_grad_ptr(self):
-        for group in self.param_groups:
-            for fake_param in group['params']:
+    def print_grad(self, tag='grad', gid=0, pid=0):
+        for _gid, group in enumerate(self.param_groups):
+            for _pid, fake_param in enumerate(group['params']):
+                if(_gid==gid and _pid==pid):
+                        print(f"[{tag}]gid={gid},pid={pid},read gradient_accumulation, data={fake_param.data}")
+                        print(f"[{tag}]gid={gid},pid={pid},read gradient_accumulation, grad={fake_param.grad}")
+
+    def _gradient_accumulation(self, debug=False):
+        # set grad ptr to chunk16
+        self._set_grad_ptr(debug)
+        if debug:
+            self.print_grad(tag='after_set_grad_ptr')
+        
+        #Update the fp16 chunks via their fp32 chunks
+        for chunk16 in self.chunk16_set:
+            chunk16.optim_update()
+
+        if debug:
+            self.print_grad(tag='after_optim_update')
+
+    def _set_grad_ptr(self, use_saved_grad=False, debug=False):
+        for gid, group in enumerate(self.param_groups):
+            for pid, fake_param in enumerate(group['params']):
                 chunk32 = self.param_to_chunk32[fake_param]
                 begin, end = self.param_to_range[fake_param]
                 chunk16 = chunk32.paired_chunk
-
+                if debug and (gid==0 and pid==0):
+                    print(f"[grad]gid={gid},pid={pid},before move gradient_accumulation, fake_param.data={fake_param.data}")
                 fake_param.data = chunk16.payload[begin:end]
-                fake_param.grad = fake_param.data
+                
+                if self.gradient_accumulation <=1:
+                    fake_param.grad = fake_param.data
+                else:
+                    if getattr(fake_param, '_saved_grad', None) is not None:
+                        if debug and (gid==0 and pid==0):
+                            print(f"[grad]gid={gid}, pid={pid} before add gradient_accumulation, fake_param._saved_grad={fake_param._saved_grad}")
+                            print(f"[grad]gid={gid}, pid={pid} before add gradient_accumulation, fake_param.data={fake_param.data}")
+                        fake_param._saved_grad.add_(fake_param.data)
+                    else:
+                        fake_param._saved_grad = fake_param.data.clone().detach()
+                        if debug and (gid==0 and pid==0):
+                            print(f"[grad]gid={gid}, pid={pid} init gradient_accumulation, fake_param._saved_grad={fake_param._saved_grad}")
+                    #only call in step()
+                    if use_saved_grad:
+                        fake_param.grad = fake_param._saved_grad
+                    
+                    if debug and (gid==0 and pid==0):
+                        print(f"[grad]gid={gid},pid={pid}after gradient_accumulation, fake_param._saved_grad={fake_param._saved_grad}")
+
+                #reload weight from fp32
                 fake_param.data = chunk32.payload[begin:end]
 
     def _update_fp16_params(self):
@@ -160,7 +208,6 @@ class ZeroOptimizer(ColossalaiOptimizer):
         group_to_norm = dict()
         for c16 in self.chunk16_set:
             assert c16.l2_norm is not None
-
             if c16.is_gathered:
                 norm_sqr += c16.l2_norm
             else:
@@ -205,11 +252,15 @@ class ZeroOptimizer(ColossalaiOptimizer):
 
     def zero_grad(self, *args, **kwargs):
         self.module.overflow_counter = 0
+        for gid, group in enumerate(self.param_groups):
+            for pid, p in enumerate(group['params']):
+                if getattr(p, '_saved_grad', None) is not None:
+                        p._saved_grad = None
         return self.optim.zero_grad(set_to_none=True)
 
     def step(self, *args, **kwargs):
         self._maybe_move_fp32_params()
-        self._set_grad_ptr()
+        self._set_grad_ptr(use_saved_grad=True)
 
         found_inf = self._check_overflow()
         if found_inf:
@@ -238,7 +289,9 @@ class ZeroOptimizer(ColossalaiOptimizer):
     def backward(self, loss: torch.Tensor):
         loss = self.loss_scale * loss
         self.optim_state = OptimState.SCALED
+        self.print_grad(tag='before_module.backward')
         self.module.backward(loss)
+        self.print_grad(tag='after_module.backward')
 
     def backward_by_grad(self, tensor: torch.Tensor, grad: torch.Tensor):
         # This function is called except the last stage of pipeline parallel
