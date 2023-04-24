@@ -19,8 +19,8 @@ from .utils import (
     shard_checkpoint,
     load_shard_state_dict,
     load_state_dict_into_model,
-    build_index,
-    write_model_files
+    get_shard_filename,
+    get_base_filenames
     )
 
 __all__ = ['GeneralCheckpointIO']
@@ -87,7 +87,45 @@ class GeneralCheckpointIO(CheckpointIO):
         state_dict = model.state_dict()
         state_dict_shard = shard_checkpoint(state_dict, max_shard_size=max_shard_size)
 
-        self.save_shards(state_dict_shard, checkpoint_path, variant, use_safetensors)
+        weights_name, save_index_file = get_base_filenames(variant, use_safetensors)
+        total_size = 0
+        single_shard = None
+        single_shard_file = None
+        index_file = CheckpointIndexFile(checkpoint_path)
+        for idx, shard_pair in enumerate(state_dict_shard):
+            shard = shard_pair[0]
+            shard_file = get_shard_filename(weights_name, idx)
+            total_size = total_size + shard_pair[1]
+            for key in shard.keys():
+                index_file.append_weight_map(key, shard_file)
+            if idx == 0:
+                single_shard = shard
+                single_shard_file = get_shard_filename(weights_name, idx)
+                continue
+            if idx == 1:
+                print(single_shard)
+                print("single_shard_file", single_shard_file)
+                checkpoint_file_path = os.path.join(checkpoint_path, single_shard_file)
+                save_state_dict(single_shard, checkpoint_file_path, use_safetensors)
+                single_shard = None
+                single_shard_file = None
+            
+            total_size = total_size + shard_pair[1]
+            checkpoint_file_path = os.path.join(checkpoint_path, shard_file)
+            save_state_dict(shard, checkpoint_file_path, use_safetensors)
+
+        if  single_shard is not None:
+            checkpoint_file_path = os.path.join(checkpoint_path, weights_name)
+            save_state_dict(single_shard, checkpoint_file_path, use_safetensors)
+            return
+        
+        index_file.append_meta_data("total_size", total_size)
+        index_file.write_index_file(save_index_file)
+        logging.info(
+            f"The model is going to be split to checkpoint shards. "
+            f"You can find where each parameters has been saved in the "
+            f"index located at {save_index_file}."
+        )
 
 
     def load_sharded_model(self, model: nn.Module, checkpoint_index_file: Path, strict: bool = False, use_safetensors: bool = False):
@@ -118,8 +156,5 @@ class GeneralCheckpointIO(CheckpointIO):
             raise RuntimeError('Error(s) in loading state_dict for {}:\n\t{}'.format(
                                self.__class__.__name__, "\n\t".join(error_msgs)))
 
-    def save_shards(self, state_dict_shard: Iterator[Tuple[OrderedDict, int]], checkpoint_path: str, variant: Optional[str] = None, use_safetensors: bool = False):
-        # copy a duplicated iterator to get the total number of shards
-        shards, shards_index = build_index(state_dict_shard, use_safetensors, variant)
-        write_model_files(shards, shards_index, checkpoint_path, use_safetensors)
+
 
