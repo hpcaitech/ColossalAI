@@ -99,7 +99,7 @@ def cmap(func: Callable,
         new_args, new_kwargs = data_frag(*args, in_dims=in_dims, num_devices=num_processes, **kwargs)
         data_to_device(*new_args[rank], raw_pt=raw_pt, **new_kwargs[rank])
         func_out = torch.vmap(func, in_dims=in_dims, out_dims=out_dims)(*new_args[rank], **new_kwargs[rank])
-        func_out = scalar_to_vec(func_out)
+        func_out = scalar_to_vec(*func_out)
 
         if dst == -1:
             if isinstance(func_out, tuple):
@@ -158,7 +158,7 @@ def cmap(func: Callable,
         data_to_device(*new_args[rank], raw_pt=raw_pt, **new_kwargs[rank])
 
         func_out = torch.vmap(func, in_dims=in_dims, out_dims=out_dims)(*new_args[rank], **new_kwargs[rank])
-        func_out = scalar_to_vec(func_out)
+        func_out = scalar_to_vec(*func_out)
 
         if dst == -1:
             if isinstance(func_out, tuple):
