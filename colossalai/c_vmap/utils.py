@@ -1,8 +1,10 @@
 from typing import Union
 
 import torch
+
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
+
 
 #TODO accept nestwed inputs cmap(f)((x,y),z)
 def data_frag(*args, in_dims: Union[int, tuple], num_devices: int, **kwargs):
@@ -50,5 +52,6 @@ def data_to_device(*args, raw_pt=False, **kwargs):
             kwargs[k] = v.to(gpc.get_global_rank(ParallelMode.GLOBAL))
     return new_args, kwargs
 
-def process_needed_for_function(func):
-    pass
+
+def scalar_to_vec(*args):
+    return tuple(map(lambda x: x.unsqueeze(0) if x.dim() == 0 else x, args))

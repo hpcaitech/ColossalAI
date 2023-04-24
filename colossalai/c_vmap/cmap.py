@@ -4,7 +4,7 @@ import torch
 import torch.distributed as dist
 from packaging import version
 
-from colossalai.c_vmap.utils import data_frag, data_to_device
+from colossalai.c_vmap.utils import data_frag, data_to_device, scalar_to_vec
 from colossalai.communication.collective import all_gather, gather
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
@@ -99,10 +99,13 @@ def cmap(func: Callable,
         new_args, new_kwargs = data_frag(*args, in_dims=in_dims, num_devices=num_processes, **kwargs)
         data_to_device(*new_args[rank], raw_pt=raw_pt, **new_kwargs[rank])
         func_out = torch.vmap(func, in_dims=in_dims, out_dims=out_dims)(*new_args[rank], **new_kwargs[rank])
+        func_out = scalar_to_vec(func_out)
 
         if dst == -1:
             if isinstance(func_out, tuple):
-                output_empties = [[torch.zeros_like(i) for _ in range(num_processes)] for i in func_out]
+                output_empties = [[torch.empty_like(i) for _ in range(num_processes)] for i in func_out]
+                if isinstance(out_dims, int):
+                    out_dims = (out_dims,) * num_processes
                 for i in range(len(output_empties)):
                     dist.all_gather(output_empties[i], func_out[i], group=group)
                     torch.cuda.synchronize()
@@ -110,7 +113,7 @@ def cmap(func: Callable,
                     output_empties[i] = torch.cat(output_empties[i], dim=out_dims[i])
                 return tuple(output_empties)
             else:
-                output_empties = list([torch.zeros_like(func_out) for _ in range(num_processes)])
+                output_empties = list([torch.empty_like(func_out) for _ in range(num_processes)])
                 dist.all_gather(output_empties, func_out, group=group)
                 torch.cuda.synchronize()
                 return torch.cat(output_empties, dim=out_dims)
@@ -118,16 +121,18 @@ def cmap(func: Callable,
         else:
             if rank == dst:
                 if isinstance(func_out, tuple):
-                    output_empties = [[torch.zeros_like(i) for _ in range(num_processes)] for i in func_out]
+                    output_empties = [[torch.empty_like(i) for _ in range(num_processes)] for i in func_out]
+                    if isinstance(out_dims, int):
+                        out_dims = (out_dims,) * num_processes
                     for i in range(len(output_empties)):
-                        dist.gather(output_empties[i], func_out[i], dst=dst, group=group)
+                        dist.gather(func_out[i], output_empties[i], dst=dst, group=group)
                         torch.cuda.synchronize()
                     for i in range(len(out_dims)):
                         output_empties[i] = torch.cat(output_empties[i], dim=out_dims[i])
                     return tuple(output_empties)
                 else:
-                    output_empties = list([torch.zeros_like(func_out) for _ in range(num_processes)])
-                    dist.gather(output_empties, func_out, dst=dst, group=group)
+                    output_empties = list([torch.empty_like(func_out) for _ in range(num_processes)])
+                    dist.gather(func_out, output_empties, dst=dst, group=group)
                     torch.cuda.synchronize()
                     return torch.cat(output_empties, dim=out_dims)
             else:
@@ -153,10 +158,13 @@ def cmap(func: Callable,
         data_to_device(*new_args[rank], raw_pt=raw_pt, **new_kwargs[rank])
 
         func_out = torch.vmap(func, in_dims=in_dims, out_dims=out_dims)(*new_args[rank], **new_kwargs[rank])
+        func_out = scalar_to_vec(func_out)
 
         if dst == -1:
             if isinstance(func_out, tuple):
                 results = []
+                if isinstance(out_dims, int):
+                    out_dims = (out_dims,) * num_processes
                 for i in range(len(func_out)):
                     results.append(all_gather(tensor=func_out[i], dim=out_dims[i], parallel_mode=parallel_mode))
                     torch.cuda.synchronize()

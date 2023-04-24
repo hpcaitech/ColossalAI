@@ -77,16 +77,18 @@ def gather(tensor: Tensor, dim: int, parallel_mode: ParallelMode, dst: int = 0, 
     group = gpc.get_cpu_group(parallel_mode) if tensor.device.type == "cpu" else gpc.get_group(parallel_mode)
 
     if dst == rank:
-        out_shape = (tensor_in.shape[0] * depth,) + tensor_in.shape[1:]
-        tensor_out = torch.empty(out_shape, dtype=tensor.dtype, device=tensor.device)
-        work = dist.gather(tensor, tensor_out, dst=dst, group=group, async_op=async_op)
+        tensor_out = [
+            torch.empty(tensor_in.shape, device=tensor_in.device, dtype=tensor_in.dtype) for _ in range(depth)
+        ]
+        work = dist.gather(tensor_in, tensor_out, dst=dst, group=group, async_op=async_op)
+        tensor = torch.cat(tensor_out, dim=dim)
         out = tensor_out if dim == 0 else tensor_out.transpose(0, dim)
         if async_op:
             return out, work
         else:
             return out
     else:
-        work = dist.gather(tensor, dst=dst, group=group, async_op=async_op)
+        work = dist.gather(tensor_in, dst=dst, group=group, async_op=async_op)
         if async_op:
             return work
         else:
