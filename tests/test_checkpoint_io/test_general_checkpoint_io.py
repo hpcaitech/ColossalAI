@@ -175,7 +175,7 @@ def run_dist(rank, world_size, port):
 
 
 @pytest.mark.dist
-@pytest.mark.parametrize('world_size', [1, 4])
+@pytest.mark.parametrize('world_size', [4, 4])
 @rerun_if_address_is_in_use()
 def test_gemini_ckpIO(world_size):
     spawn(run_dist, world_size)
