@@ -129,7 +129,7 @@ def load_shard_state_dict(checkpoint_file: Path, use_safetensors: bool =False):
     else:
         return torch.load(checkpoint_file)
     
-def load_state_dict_into_model(model: nn.Module, state_dict: torch.Tensor, missing_keys: List, strict: bool = False):
+def load_state_dict_into_model(model: nn.Module, state_dict: torch.Tensor, missing_keys: List, strict: bool = False, load_sub_module: bool = True):
     r"""Copies parameters and buffers from :attr:`state_dict` into
     this module and its descendants. 
 
@@ -150,29 +150,22 @@ def load_state_dict_into_model(model: nn.Module, state_dict: torch.Tensor, missi
     if metadata is not None:
         state_dict._metadata = metadata
 
-    def load(module: nn.Module, state_dict, prefix=""):
+    def load(module: nn.Module, state_dict, prefix="", load_sub_module: bool = True):
         local_metadata = {} if metadata is None else metadata.get(prefix[:-1], {})
-        args = (state_dict, prefix, local_metadata, True, [], [], error_msgs)
+        args = (state_dict, prefix, local_metadata, True, sub_missing_keys, [], error_msgs)
         # Parameters of module and children will start with prefix. We can exit early if there are none in this
         # state_dict
         if len([key for key in state_dict if key.startswith(prefix)]) > 0:
             module._load_from_state_dict(*args)
+        if load_sub_module:
+            for name, child in module._modules.items():
+                if child is not None:
+                    load(child, state_dict, prefix + name + ".")
 
-        for name, child in module._modules.items():
-            if child is not None:
-                load(child, state_dict, prefix + name + ".")
-
-    load(model, state_dict, "")
+    load(model, state_dict, "", load_sub_module)
     del load
 
-    # deal with missing key
-    if len(missing_keys) > 0:
-        deleted_keys = []
-        for key in missing_keys:
-            if key not in sub_missing_keys:
-                deleted_keys.append(key)
-        for key in deleted_keys:
-            missing_keys.remove(key)
+    missing_keys = missing_keys.append(sub_missing_keys)
 
     if strict:
         if len(unexpected_keys) > 0:

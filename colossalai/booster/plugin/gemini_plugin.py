@@ -5,6 +5,7 @@ from pathlib import Path
 import os
 import json
 import logging
+import gc
 
 import numpy as np
 import torch
@@ -26,7 +27,9 @@ from colossalai.zero.gemini.memory_tracer import MemStats
 
 from colossalai.checkpoint_io.utils import (
     get_base_filenames,
-    get_shard_filename
+    get_shard_filename,
+    is_safetensors_available,
+    load_shard_state_dict
     )
 
 from colossalai.checkpoint_io import CheckpointIndexFile
@@ -102,8 +105,11 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
         )
 
 
-    def load_sharded_model(self, model: nn.Module, checkpoint_index_file: Path, strict: bool = False, use_safetensors: bool = False):
-        return super().load_sharded_model(model, checkpoint_index_file, strict, use_safetensors)
+    def load_sharded_model(self, model: GeminiDDP, checkpoint_index_file: Path, strict: bool = False, use_safetensors: bool = False):
+        """
+        load shard model, load model from multiple files
+        """
+        return super().load_sharded_model(model, checkpoint_index_file, strict, use_safetensors, load_sub_module=False)
 
 class GeminiModel(ModelWrapper):
 

@@ -143,13 +143,13 @@ def exam_state_dict(placement_policy, model_name: str, use_safetensors: bool):
     chunk_manager = ChunkManager(config_dict)
     gemini_manager = GeminiManager(placement_policy, chunk_manager)
     model = ZeroDDP(model, gemini_manager)
+    model.train()
 
     new_config_dict, *_ = search_chunk_configuration(new_model, search_range_mb=1, search_interval_byte=100)
     new_chunk_manager = ChunkManager(new_config_dict)
     new_gemini_manager = GeminiManager(placement_policy, new_chunk_manager)
     new_model = ZeroDDP(new_model, new_gemini_manager)
 
-    model.train()
 
     model_ckpt_dir = tempfile.TemporaryDirectory()
     ckpt_io = GeminiCheckpointIO()

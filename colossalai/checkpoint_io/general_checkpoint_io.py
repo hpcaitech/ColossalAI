@@ -109,7 +109,8 @@ class GeneralCheckpointIO(CheckpointIO):
         )
 
 
-    def load_sharded_model(self, model: nn.Module, checkpoint_index_file: Path, strict: bool = False, use_safetensors: bool = False):
+    def load_sharded_model(self, model: nn.Module, checkpoint_index_file: Path, strict: bool = False, 
+                           use_safetensors: bool = False, load_sub_module: bool = True):
         """
         load shard model, load model from multiple files
         """
@@ -123,19 +124,26 @@ class GeneralCheckpointIO(CheckpointIO):
         # read checkpoint index file
         ckpt_index_file = CheckpointIndexFile.from_file(checkpoint_index_file)
         checkpoint_files, _ = ckpt_index_file.get_checkpoint_fileanames()
-        missing_keys = ckpt_index_file.get_all_param_names()
+        missing_keys = []
 
         for shard_file in checkpoint_files:
             state_dict = load_shard_state_dict(Path(shard_file), use_safetensors)
-            load_state_dict_into_model(model, state_dict, missing_keys, strict)
+            load_state_dict_into_model(model, state_dict, missing_keys, strict, load_sub_module)
             del state_dict
             gc.collect()
 
-        if strict and len(missing_keys) > 0:
-            error_msgs = 'Missing key(s) in state_dict: {}. '.format(
-                        ', '.join('"{}"'.format(k) for k in missing_keys))
-            raise RuntimeError('Error(s) in loading state_dict for {}:\n\t{}'.format(
-                               self.__class__.__name__, "\n\t".join(error_msgs)))
+        if strict:
+            remain_keys = set()
+            for i, sub_missing_keys in enumerate(missing_keys):
+                if i == 0:
+                    remain_keys = set(sub_missing_keys)
+                else:
+                    remain_keys = remain_keys & set(sub_missing_keys)
+            if len(remain_keys) > 0:
+                error_msgs = 'Missing key(s) in state_dict: {}. '.format(
+                            ', '.join('"{}"'.format(k) for k in missing_keys))
+                raise RuntimeError('Error(s) in loading state_dict for {}:\n\t{}'.format(
+                                self.__class__.__name__, "\n\t".join(error_msgs)))
 
 
 
