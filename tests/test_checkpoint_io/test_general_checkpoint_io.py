@@ -137,7 +137,6 @@ def exam_state_dict(placement_policy, model_name: str, use_safetensors: bool):
     with ColoInitContext(device=get_current_device()):
         model = model_builder()
         new_model = model_builder()
-        temp_model = model_builder()
 
     config_dict, *_ = search_chunk_configuration(model, search_range_mb=1, search_interval_byte=100)
     chunk_manager = ChunkManager(config_dict)
@@ -165,11 +164,6 @@ def exam_state_dict(placement_policy, model_name: str, use_safetensors: bool):
         new_model.to('cpu')
         new_model_dict = new_model.state_dict(only_rank_0=True)
         recursive_check(model_dict, new_model_dict)
-        
-        temp_path = pathlib.Path("/home/lcjmy/code/ColossalAI/tests/test_checkpoint_io/a/test")
-        pathlib.Path(temp_path).mkdir(parents=True, exist_ok=True)
-        ckpt_io.load_model(temp_model, model_ckpt_dir.name, strict=True)
-        pathlib.Path("/home/lcjmy/code/ColossalAI/tests/test_checkpoint_io/a/test/model_state_dict.txt").write_text(str(temp_model.state_dict()))
 
     model_ckpt_dir.cleanup()
 
