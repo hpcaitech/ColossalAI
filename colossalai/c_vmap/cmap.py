@@ -181,9 +181,3 @@ def cmap(func: Callable,
         return wrap_raw
     else:
         return ColWrap
-
-
-if __name__ == "__main__":
-    torch.distributed.init_process_group(backend="gloo")
-
-    a = torch.arange(10000).reshape(10, 10, 100).cuda()
