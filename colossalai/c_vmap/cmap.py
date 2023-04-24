@@ -29,22 +29,22 @@ def cmap(func: Callable,
     """Colossal map designed to act like jax.pmap but to work with collassal AI tools(Gemini, Zero, etc)
 
     The purpose of cmap is to express single-program multiple-data programs. Wraping a function with cmap will split the
-    input chunks and run each chunk on each cuda device. cmap is very similar to torch.vmap as both transformations map a
-    function over array axes. For best performance all cuda devices should be identical. cmap can be used as an alternative
-    to data parallelism
+    input chunks and run each chunk on each cuda device. cmap is very similar to torch.vmap as both transformations map
+    a function over array axes. For best performance all cuda devices should be identical. cmap can be used as an
+    alternative to data parallelism
 
     Args:
         func: Fucntion to be mapped over argument axes, the function must return a tensor or multiple tensors
         in_dims: Specifies which dimension of the inputs should be mapped over. in_dims should have a structure like the
                  inputs. If the in_dim for a particular input is None, then that indicates there is no map dimension.
-        out_dims: Specifies where the mapped dimension should appear in the outputs. If out_dims is a Tuple, then it should
-                  have one element per output
-        raw_pt: Whether the cmap is to be implmented using raw pytorch to be run with torch.distributed.init_process_group(...)
-                or alongside colossal ai tools with colossalai.launch(...)
+        out_dims: Specifies where the mapped dimension should appear in the outputs. If out_dims is a Tuple, then it
+                  should have one element per output
+        raw_pt: Whether the cmap is to be implmented using raw pytorch to be run with
+                torch.distributed.init_process_group(...) or alongside colossal ai tools with colossalai.launch(...)
         group: The process group to work on. If None, the default process group will be used. for use when raw_pt=False
         parallel_mode: Parallel group mode used in this communication. for use when raw_pt=True
-        dst: This kwarg determines whether the output array is scattered to all devices and gathered onto a single device with
-             rank in proccess dst
+        dst: This kwarg determines whether the output array is scattered to all devices and gathered onto a single
+             device with rank in proccess dst
     Returns:
         A parallelized version of func
 
