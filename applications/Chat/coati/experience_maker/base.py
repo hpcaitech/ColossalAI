@@ -18,7 +18,7 @@ class Experience:
     action_log_probs: (B, A)
     values: (B)
     reward: (B)
-    advatanges: (B)
+    advantages: (B)
     attention_mask: (B, S)
     action_mask: (B, A)
 
