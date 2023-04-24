@@ -42,7 +42,7 @@ Given $P$ processors, we present the theoretical computation and memory cost, as
 
 ## Usage
 
-To enable 1D tensor parallelism for our model, e.g. on 2 GPUs, we need to configure the parallism setting as below.
+To enable 1D tensor parallelism for our model, e.g. on 2 GPUs, we need to configure the parallelism setting as below.
 ```python
 CONFIG = dict(parallel=dict(
     data=1,
@@ -52,7 +52,7 @@ CONFIG = dict(parallel=dict(
 ```
 Then Colossal-AI will automatically apply 1D parallelism to all the layers from `colossalai.nn`.
 
-Let's define a model that consists of a two-layer multi-layer perceptron (MLP) as below.
+Let's define a model that consists of a two-layer multi-layer perception (MLP) as below.
 ```python
 import colossalai
 import colossalai.nn as col_nn

@@ -195,7 +195,7 @@ def launch_from_torch(config: Union[str, Path, Config, Dict],
                       backend: str = 'nccl',
                       seed: int = 1024,
                       verbose: bool = True):
-    """A wrapper for colossalai.launch for torchrun or torch.distributed.launch by reading rank and world size
+    """A wrapper for colossalai.launch for torch run or torch.distributed.launch by reading rank and world size
     from the environment variables set by PyTorch
 
     Args:

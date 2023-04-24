@@ -77,7 +77,7 @@ CONFIG = dict(parallel=dict(
 ```
 Then Colossal-AI will automatically apply 3D parallelism to all the layers from `colossalai.nn`.
 
-Let's define a model that consists of a two-layer multi-layer perceptron (MLP) as below.
+Let's define a model that consists of a two-layer multi-layer perception (MLP) as below.
 ```python
 import colossalai
 import colossalai.nn as col_nn

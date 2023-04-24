@@ -8,7 +8,7 @@ from . import BaseOpHook
 @OPHOOKS.register_module
 class ShardParamHook(BaseOpHook):
     """
-    A hook to process sharded param before and afther FWD and BWD operator executing.
+    A hook to process sharded param before and after FWD and BWD operator executing.
     """
 
     def __init__(self):
