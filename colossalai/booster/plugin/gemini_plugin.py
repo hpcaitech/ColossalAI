@@ -80,8 +80,6 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
         state_dict_shard = model.state_dict_shard(max_shard_size=max_shard_size, only_rank_0=False)
         weights_name, save_index_file = get_base_filenames(variant, use_safetensors)
         total_size = 0
-        single_shard = None
-        single_shard_file = None
         index_file = CheckpointIndexFile(checkpoint_path)
         for idx, shard_pair in enumerate(state_dict_shard):
             if not self.coordinator.is_master():
@@ -91,24 +89,9 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
             total_size = total_size + shard_pair[1]
             for key in shard.keys():
                 index_file.append_weight_map(key, shard_file)
-            if idx == 0:
-                single_shard = shard
-                single_shard_file = get_shard_filename(weights_name, idx)
-                continue
-            if idx == 1:
-                checkpoint_file_path = os.path.join(checkpoint_path, single_shard_file)
-                save_state_dict(single_shard, checkpoint_file_path, use_safetensors)
-                single_shard = None
-                single_shard_file = None
             
-            total_size = total_size + shard_pair[1]
             checkpoint_file_path = os.path.join(checkpoint_path, shard_file)
             save_state_dict(shard, checkpoint_file_path, use_safetensors)
-
-        if  single_shard is not None:
-            checkpoint_file_path = os.path.join(checkpoint_path, weights_name)
-            save_state_dict(single_shard, checkpoint_file_path, use_safetensors)
-            return
         
         index_file.append_meta_data("total_size", total_size)
         index_file.write_index_file(save_index_file)
