@@ -48,8 +48,9 @@ def all_gather(tensor: Tensor, dim: int, parallel_mode: ParallelMode, async_op: 
         return out, work
     else:
         return out
-    
-def gather(tensor: Tensor, dim: int, parallel_mode: ParallelMode, dst: int = 0,  async_op: bool = False) -> Tensor:
+
+
+def gather(tensor: Tensor, dim: int, parallel_mode: ParallelMode, dst: int = 0, async_op: bool = False) -> Tensor:
     r"""Gathers all tensors from the parallel group and concatenates them in a
     specific dimension.
 
@@ -78,7 +79,7 @@ def gather(tensor: Tensor, dim: int, parallel_mode: ParallelMode, dst: int = 0, 
     if dst == rank:
         out_shape = (tensor_in.shape[0] * depth,) + tensor_in.shape[1:]
         tensor_out = torch.empty(out_shape, dtype=tensor.dtype, device=tensor.device)
-        work = dist.gather(tensor, out, dst=dst, group=group, async_op=async_op)
+        work = dist.gather(tensor, tensor_out, dst=dst, group=group, async_op=async_op)
         out = tensor_out if dim == 0 else tensor_out.transpose(0, dim)
         if async_op:
             return out, work
@@ -90,8 +91,7 @@ def gather(tensor: Tensor, dim: int, parallel_mode: ParallelMode, dst: int = 0, 
             return work
         else:
             return None
-    
-    
+
 
 def reduce_scatter(tensor: Tensor,
                    dim: int,

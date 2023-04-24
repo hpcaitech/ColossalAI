@@ -2,7 +2,7 @@ import pytest
 import torch
 import torch.distributed as dist
 
-from colossalai.communication import all_gather, all_reduce, reduce_scatter
+from colossalai.communication import all_gather, all_reduce, gather, reduce_scatter
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.initialize import launch
@@ -47,6 +47,17 @@ def check_all_reduce():
     torch.cuda.synchronize()
 
 
+def check_gather():
+    tensor = torch.tensor([dist.get_rank() * SIZE + j for j in range(SIZE)])
+    tensor = tensor.to(get_current_device())
+    print('Before:   Rank {0} - {1}'.format(dist.get_rank(), tensor))
+    tensor, op = gather(tensor, 0, ParallelMode.GLOBAL, 0, async_op=True)
+    print('After:    Rank {0} - {1}'.format(dist.get_rank(), tensor))
+    op.wait()
+    print('Complete: Rank {0} - {1}'.format(dist.get_rank(), tensor))
+    torch.cuda.synchronize()
+
+
 def check_layer(rank, world_size, port):
     launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
 
@@ -56,6 +67,7 @@ def check_layer(rank, world_size, port):
     check_all_gather()
     check_reduce_scatter()
     check_all_reduce()
+    check_gather()
 
     gpc.destroy()
     torch.cuda.empty_cache()
