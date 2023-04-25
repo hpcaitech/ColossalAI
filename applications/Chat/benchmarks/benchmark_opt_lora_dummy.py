@@ -93,13 +93,13 @@ def main(args):
     torch.cuda.set_per_process_memory_fraction(args.cuda_mem_frac)
 
     model_config = get_gpt_config(args.model)
-
+    critic_config = get_gpt_config(args.critic_model)
     with strategy.model_init_context():
         actor = OPTActor(config=model_config, lora_rank=args.lora_rank).cuda()
-        critic = OPTCritic(config=model_config, lora_rank=args.lora_rank).cuda()
+        critic = OPTCritic(config=critic_config, lora_rank=args.lora_rank).cuda()
 
-        initial_model = deepcopy(actor).cuda()
-        reward_model = RewardModel(deepcopy(critic.model), deepcopy(critic.value_head)).cuda()
+        initial_model = deepcopy(actor).cuda().half()
+        reward_model = RewardModel(deepcopy(critic.model), deepcopy(critic.value_head)).cuda().half()
 
     actor_numel = get_model_numel(actor, strategy)
     critic_numel = get_model_numel(critic, strategy)
@@ -128,8 +128,7 @@ def main(args):
     tokenizer = AutoTokenizer.from_pretrained('facebook/opt-350m')
     tokenizer.pad_token = tokenizer.eos_token
 
-    (actor, actor_optim), (critic, critic_optim), reward_model, initial_model = strategy.prepare(
-        (actor, actor_optim), (critic, critic_optim), reward_model, initial_model)
+    (actor, actor_optim), (critic, critic_optim) = strategy.prepare((actor, actor_optim), (critic, critic_optim))
 
     trainer = PPOTrainer(strategy,
                          actor,
@@ -170,6 +169,7 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--model', default='125m')
+    parser.add_argument('--critic_model', default='125m')
     parser.add_argument('--strategy',
                         choices=[
                             'ddp', 'colossalai_gemini', 'colossalai_gemini_cpu', 'colossalai_zero2',
