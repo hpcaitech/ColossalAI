@@ -143,7 +143,7 @@ class Top1Router(MoeRouter):
 
 class Top2Router(MoeRouter):
     """Top2 router that returns the dispatch mask [s, e, c] and combine weight [s, e, c]
-    for routing usage. More derailed function can be found in the paper about ViT-MoE.
+    for routing usage. More detailed function can be found in the paper about ViT-MoE.
     Args:
         capacity_factor_train (float, optional): Capacity factor in routing of training.
         capacity_factor_eval (float, optional): Capacity factor in routing of evaluation.
