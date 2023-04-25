@@ -399,7 +399,7 @@ You may contact us or participate in the following ways:
 Thanks so much to all of our amazing contributors!
 
 <a href="https://github.com/hpcaitech/ColossalAI/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=hpcaitech/ColossalAI&r="  width="800px"/>
+  <img src="https://contrib.rocks/image?repo=hpcaitech/ColossalAI"  width="800px"/>
 </a>
 
 
