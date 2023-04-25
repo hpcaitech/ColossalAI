@@ -67,6 +67,7 @@ class ColossalAIStrategy(DDPStrategy):
             placement_policy: str = 'cuda',
             pin_memory: bool = True,    # only for stage 3
             force_outputs_fp32: bool = False,    # only for stage 3
+            scatter_after_inference: bool = False,    # only for stage 3
             search_range_mb: int = 32,    # only for stage 3
             hidden_dim: Optional[int] = None,    # only for stage 3
             min_chunk_size_mb: float = 32,    # only for stage 3
@@ -103,7 +104,8 @@ class ColossalAIStrategy(DDPStrategy):
                                   strict_ddp_mode=shard_init,
                                   search_range_mb=search_range_mb,
                                   hidden_dim=hidden_dim,
-                                  min_chunk_size_mb=min_chunk_size_mb)
+                                  min_chunk_size_mb=min_chunk_size_mb,
+                                  scatter_after_inference=scatter_after_inference)
         if stage == 3:
             self.zero_optim_config = dict(gpu_margin_mem_ratio=gpu_margin_mem_ratio)
         else:
