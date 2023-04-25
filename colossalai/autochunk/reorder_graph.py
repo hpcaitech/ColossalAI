@@ -4,7 +4,7 @@ from .utils import NodeMgr
 
 class ReorderGraph(object):
     """
-    Reorder node list and indices trace list
+    Reorder node list and indice trace list
     """
 
     def __init__(self, trace_indice: TraceIndice, node_mgr: NodeMgr) -> None:
