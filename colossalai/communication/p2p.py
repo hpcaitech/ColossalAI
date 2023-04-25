@@ -91,7 +91,7 @@ def _communicate(object_send_next: Union[torch.Tensor, List[torch.Tensor]] = Non
                  dtype: torch.dtype = None,
                  scatter_gather_tensors: bool = False) -> Tuple[Union[torch.Tensor, List[torch.Tensor]]]:
     """
-    Adapted from megaton.p2p_communication.
+    Adapted from megatron.p2p_communication.
     Communicate tensors between stages. Used as helper method in other
     communication methods that are used in pipeline schedule.
     Takes the following arguments:
