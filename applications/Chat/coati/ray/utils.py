@@ -18,6 +18,14 @@ def is_rank_0() -> bool:
     return not dist.is_initialized() or dist.get_rank() == 0
 
 
+def get_rank() -> int:
+    return dist.get_rank() if dist.is_initialized() else 0
+
+
+def get_world_size() -> int:
+    return dist.get_world_size() if dist.is_initialized() else 1
+
+
 def get_actor_from_args(model: str, pretrained: str = None, config=None, lora_rank=0):
     if model == 'gpt2':
         actor = GPTActor(pretrained=pretrained, config=config, lora_rank=lora_rank)
@@ -76,9 +84,9 @@ def get_strategy_from_args(strategy: str):
     elif strategy == 'colossalai_zero2':
         strategy_ = ColossalAIStrategy(stage=2, placement_policy='cuda')
     elif strategy == 'colossalai_gemini_cpu':
-        strategy = ColossalAIStrategy(stage=3, placement_policy='cpu', initial_scale=2**5)
+        strategy_ = ColossalAIStrategy(stage=3, placement_policy='cpu', initial_scale=2**5)
     elif strategy == 'colossalai_zero2_cpu':
-        strategy = ColossalAIStrategy(stage=2, placement_policy='cpu')
+        strategy_ = ColossalAIStrategy(stage=2, placement_policy='cpu')
     else:
         raise ValueError(f'Unsupported strategy "{strategy}"')
     return strategy_
@@ -126,3 +134,18 @@ def state_dict_to(state_dict: Dict[str, Any],
 def get_model_numel(model: nn.Module) -> int:
     numel = sum(p.numel() for p in model.parameters())
     return numel
+
+
+def get_receivers_per_sender(sender_idx: int, num_senders: int, num_receivers: int, allow_idle_sender: bool) -> list:
+    target_receivers = []
+    if num_senders <= num_receivers or allow_idle_sender:
+        # a sender will send data to one or more than one receivers
+        # a receiver only has one sender
+        for i in range(num_receivers):
+            if i % num_senders == sender_idx:
+                target_receivers.append(i)
+    else:
+        # a sender will send data to one receiver
+        # a receiver may have more than one sender
+        target_receivers.append(sender_idx % num_receivers)
+    return target_receivers

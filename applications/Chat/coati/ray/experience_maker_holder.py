@@ -19,7 +19,7 @@ from ray.exceptions import GetTimeoutError
 from torch import Tensor
 from tqdm import tqdm
 
-from .utils import get_model_numel, is_rank_0, set_dist_env
+from .utils import get_model_numel, get_rank, get_world_size, is_rank_0, set_dist_env
 
 
 @ray.remote(concurrency_groups={"experience_io": 1, "model_io": 1, "compute": 1})
@@ -50,8 +50,8 @@ class ExperienceMakerHolder:
         if env_info:
             set_dist_env(env_info=env_info)
         self.target_trainer_list = []
-        for name in detached_trainer_name_list:
-            self.target_trainer_list.append(ray.get_actor(name, namespace=os.environ["RAY_NAMESPACE"]))
+        assert len(detached_trainer_name_list) > 0
+        self._detached_trainer_name_list = detached_trainer_name_list
         self.strategy = strategy_fn()
         self.buffer_cpu_offload = buffer_cpu_offload
         self.kl_coef = kl_coef
@@ -81,8 +81,10 @@ class ExperienceMakerHolder:
 
         self._target_idx = 0
 
-        if self._debug and not self._is_fully_initialized:
-            print('[maker] Waiting for INIT')
+        if self._debug:
+            print(f'[maker{get_rank()}] will send items to {self._detached_trainer_name_list}')
+            if not self._is_fully_initialized:
+                print(f'[maker{get_rank()}] Waiting for INIT')
 
     def _get_ready(self):
         while not self._fully_initialized():
@@ -91,10 +93,11 @@ class ExperienceMakerHolder:
     def _fully_initialized(self):
         return self._is_fully_initialized
 
-    def update_target_trainer_list(self, detached_trainer_name_list):
-        self.target_trainer_list = []
-        for name in detached_trainer_name_list:
-            self.target_trainer_list.append(ray.get_actor(name))
+    def _init_target_trainer_list(self):
+        if len(self.target_trainer_list) > 0:
+            return
+        for name in self._detached_trainer_name_list:
+            self.target_trainer_list.append(ray.get_actor(name, namespace=os.environ["RAY_NAMESPACE"]))
 
     # copy from ../trainer/base.py
     @ray.method(concurrency_group="compute")
@@ -106,43 +109,9 @@ class ExperienceMakerHolder:
         else:
             raise ValueError(f'Unsupported input type "{type(inputs)}"')
 
-    # TODO(ver217): remove this method
-    @ray.method(concurrency_group="experience_io")
-    def _send_experience(self, experience):
-        if not self.target_auto_balance:
-            # choose the trainer in polling mannar
-            if not hasattr(self, "_target_idx"):
-                self._target_idx = 0
-            chosen_trainer = self.target_trainer_list[self._target_idx]
-            if self._debug:
-                print(f"[maker] sending exp to {chosen_trainer}")
-            chosen_trainer.buffer_append.remote(experience)
-            self._target_idx = (self._target_idx + 1) % len(self.target_trainer_list)
-        else:
-            # choose a trainer that has the least experience batch in its detached_replay_buffer
-            chosen_trainer = None
-            min_length = None
-            if self._debug:
-                print("[maker] choosing tartget trainer")
-            while chosen_trainer is None:
-                for target_trainer in self.target_trainer_list:
-                    try:
-                        temp_length = ray.get(target_trainer.buffer_get_length.remote(), timeout=0.1)
-                        if min_length is None:
-                            min_length = temp_length
-                            chosen_trainer = target_trainer
-                        else:
-                            if temp_length < min_length:
-                                min_length = temp_length
-                                chosen_trainer = target_trainer
-                    except GetTimeoutError:
-                        pass
-            if self._debug:
-                print(f"[maker] sending exp to {chosen_trainer}")
-            chosen_trainer.buffer_append.remote(experience)
-
     @ray.method(concurrency_group="experience_io")
     def _send_items(self, experience: Experience) -> None:
+        self._init_target_trainer_list()
         items = split_experience_batch(experience)
         items_per_trainer = [[] for _ in range(len(self.target_trainer_list))]
         for item in items:

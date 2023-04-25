@@ -43,14 +43,15 @@ class DetachedTrainer(ABC):
         self.callbacks = callbacks
         self.target_holder_name_list = experience_maker_holder_name_list
         self.target_holder_list = []
-
+        self._is_target_holder_initialized = False
         self._debug = debug
 
-    def update_target_holder_list(self, experience_maker_holder_name_list):
-        self.target_holder_name_list = experience_maker_holder_name_list
-        self.target_holder_list = []
-        for name in self.target_holder_name_list:
-            self.target_holder_list.append(ray.get_actor(name, namespace=os.environ["RAY_NAMESPACE"]))
+    def update_target_holder_list(self):
+        # as the length of target_holder_list may be zero, we need to check it by a bool flag
+        if not self._is_target_holder_initialized:
+            for name in self.target_holder_name_list:
+                self.target_holder_list.append(ray.get_actor(name, namespace=os.environ["RAY_NAMESPACE"]))
+            self._is_target_holder_initialized = True
 
     @abstractmethod
     def _update_remote_makers(self, fully_update: bool = False, **kwargs):

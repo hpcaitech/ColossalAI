@@ -1,13 +1,12 @@
-from typing import Optional
-
 import os
 import random
+from typing import Optional
 
 import numpy as np
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-from coati.models.base import LM, Actor, RewardModel, Critic
+from coati.models.base import LM, Actor, Critic, RewardModel
 from coati.models.lora import LoraLinear
 from coati.replay_buffer import ReplayBuffer
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -30,19 +29,8 @@ class DDPStrategy(NaiveStrategy):
         super().__init__()
 
     def setup_distributed(self) -> None:
-        try:
-            rank = int(os.environ['RANK'])
-            local_rank = int(os.environ['LOCAL_RANK'])
-            world_size = int(os.environ['WORLD_SIZE'])
-            host = os.environ['MASTER_ADDR']
-            port = int(os.environ['MASTER_PORT'])
-        except KeyError as e:
-            raise RuntimeError(
-                f"Could not find {e} in the torch environment, visit https://www.colossalai.org/ for more information on launching with torch"
-            )
-        dist.init_process_group('nccl', init_method=f'tcp://[{host}]:{port}', world_size=world_size, rank=rank)
+        self._try_init_dist(force=True)
         self.set_seed(self.seed)
-        torch.cuda.set_device(local_rank)
 
     def set_seed(self, seed: int) -> None:
         random.seed(seed)
@@ -74,21 +62,25 @@ class DDPStrategy(NaiveStrategy):
     def _unwrap_actor(actor: Actor) -> nn.Module:
         model: DDP = Strategy._unwrap_actor(actor)
         return model.module
-    
+
     @staticmethod
     def _unwrap_critic(critic: Critic) -> nn.Module:
         model: DDP = Strategy._unwrap_critic(critic)
         return model.module
 
-    def save_model(self, model: nn.Module, path: str, only_rank0: bool = False, tokenizer: Optional[PreTrainedTokenizerBase] = None) -> None:
+    def save_model(self,
+                   model: nn.Module,
+                   path: str,
+                   only_rank0: bool = False,
+                   tokenizer: Optional[PreTrainedTokenizerBase] = None) -> None:
         if only_rank0 and dist.get_rank() != 0:
             return None
-        
+
         for module in model.modules():
             if isinstance(module, LoraLinear):
                 module.merge_weights = True
                 module.eval()
-        
+
         if isinstance(model, RewardModel):
             state_dict = model.state_dict()
             if only_rank0 and dist.get_rank() != 0:
@@ -114,4 +106,3 @@ class DDPStrategy(NaiveStrategy):
 
     def setup_sampler(self, dataset) -> DistributedSampler:
         return DistributedSampler(dataset, dist.get_world_size(), dist.get_rank())
-
