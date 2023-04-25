@@ -429,7 +429,7 @@ def module_params_sharding_pass(gm: torch.fx.GraphModule, device_mesh: DeviceMes
             setattr(param, 'sharding_spec', origin_sharding_spec)
             # TODO: build a ColoParameter class to manager the distributed parameters
             # we could use .data here, because all the operations just happen before the real training
-            # loop, so we don't need to track these operations in the autograft graph.
+            # loop, so we don't need to track these operations in the autograd graph.
             param = torch.nn.Parameter(
                 shape_consistency_manager.apply_for_autoparallel_runtime(param.data, param.sharding_spec,
                                                                          target_sharding_spec).detach().clone())
