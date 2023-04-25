@@ -60,7 +60,7 @@ class MoeRouter(nn.Module, ABC):
 
 class Top1Router(MoeRouter):
     """Top1 router that returns the dispatch mask [s, e, c] and combine weight [s, e, c]
-    for routing usage. More derailed function can be found in the paper about Switch Transformer
+    for routing usage. More detailed function can be found in the paper about Switch Transformer
     of Google.
     Args:
         capacity_factor_train (float, optional): Capacity factor in routing of training.
