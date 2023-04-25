@@ -6,10 +6,10 @@ import ray
 import torch
 from coati.experience_maker import Experience
 from coati.replay_buffer.utils import BufferItem
-from coati.trainer.callbacks import Callback
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+from .callbacks import TrainerCallback
 from .detached_replay_buffer import DetachedReplayBuffer
 from .utils import is_rank_0
 
@@ -35,7 +35,7 @@ class DetachedTrainer(ABC):
                  train_batch_size: int = 8,
                  buffer_limit: int = 0,
                  dataloader_pin_memory: bool = True,
-                 callbacks: List[Callback] = [],
+                 callbacks: List[TrainerCallback] = [],
                  debug: bool = False) -> None:
         super().__init__()
         self.detached_replay_buffer = DetachedReplayBuffer(train_batch_size, limit=buffer_limit)
@@ -68,7 +68,9 @@ class DetachedTrainer(ABC):
         data = []
         # warmup
         pbar = tqdm(range(update_steps), desc=f'Train epoch [1/{train_epochs}]', disable=not is_rank_0())
+        self._on_epoch_start(0)
         self._learn_epoch(pbar, data)
+        self._on_epoch_end(0)
         # item is already a batch
         dataloader = DataLoader(data,
                                 batch_size=1,
@@ -77,7 +79,9 @@ class DetachedTrainer(ABC):
                                 collate_fn=lambda x: x[0])
         for epoch in range(1, train_epochs):
             pbar = tqdm(dataloader, desc=f'Train epoch [{epoch + 1}/{train_epochs}]', disable=not is_rank_0())
+            self._on_epoch_start(epoch)
             self._learn_epoch(pbar, data)
+            self._on_epoch_end(epoch)
 
     def _learn_epoch(self, pbar: tqdm, data: List[Experience]) -> None:
         is_warmup = len(data) == 0
@@ -87,9 +91,9 @@ class DetachedTrainer(ABC):
             # sample a batch and then train to avoid waiting
             experience = x if not is_warmup else self._buffer_sample()
             experience.to_device(torch.cuda.current_device())
-            self._on_learn_batch_start()
+            self._on_batch_start()
             metrics = self.training_step(experience)
-            self._on_learn_batch_end(metrics, experience)
+            self._on_batch_end(metrics, experience)
 
             if self._debug:
                 print("[trainer] step over")
@@ -100,11 +104,14 @@ class DetachedTrainer(ABC):
 
     def fit(self, total_steps: int, update_steps: int, train_epochs: int = 1) -> None:
         self._on_fit_start()
-        for _ in tqdm(range(total_steps // update_steps), desc='Trainer', disable=not is_rank_0()):
+        for i in tqdm(range(total_steps // update_steps), desc='Trainer', disable=not is_rank_0()):
+            self._on_episode_start(i)
             self._learn(update_steps, train_epochs)
+            self._on_update_start()
             self._update_remote_makers()
+            self._on_update_end()
+            self._on_episode_end(i)
         self._on_fit_end()
-        self._on_finish()
 
     @ray.method(concurrency_group="buffer_length")
     def buffer_get_length(self):
@@ -147,23 +154,26 @@ class DetachedTrainer(ABC):
         for callback in self.callbacks:
             callback.on_episode_end(episode)
 
-    def _on_learn_epoch_start(self, epoch: int) -> None:
+    def _on_epoch_start(self, epoch: int) -> None:
         for callback in self.callbacks:
-            callback.on_learn_epoch_start(epoch)
+            callback.on_epoch_start(epoch)
 
-    def _on_learn_epoch_end(self, epoch: int) -> None:
+    def _on_epoch_end(self, epoch: int) -> None:
         for callback in self.callbacks:
-            callback.on_learn_epoch_end(epoch)
+            callback.on_epoch_end(epoch)
 
-    def _on_learn_batch_start(self) -> None:
+    def _on_batch_start(self) -> None:
         for callback in self.callbacks:
-            callback.on_learn_batch_start()
+            callback.on_batch_start()
 
-    def _on_learn_batch_end(self, metrics: dict, experience: Experience) -> None:
+    def _on_batch_end(self, metrics: dict, experience: Experience) -> None:
         for callback in self.callbacks:
-            callback.on_learn_batch_end(metrics, experience)
+            callback.on_batch_end(metrics, experience)
 
-    def _on_finish(self) -> None:
+    def _on_update_start(self) -> None:
         for callback in self.callbacks:
-            if hasattr(callback, 'on_finish'):
-                callback.on_finish()
+            callback.on_update_start()
+
+    def _on_update_end(self) -> None:
+        for callback in self.callbacks:
+            callback.on_update_end()

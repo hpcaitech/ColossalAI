@@ -12,13 +12,13 @@ from coati.experience_maker import Experience, ExperienceMaker, NaiveExperienceM
 from coati.models.base import Actor, Critic, RewardModel
 from coati.replay_buffer.utils import BufferItem, make_experience_batch, split_experience_batch
 from coati.trainer.callbacks import Callback
-from coati.trainer.callbacks.performance_evaluator import ExperienceMakerPerformanceEvaluator
 from coati.trainer.strategies import Strategy
 from coati.trainer.strategies.sampler import DistributedSampler
 from ray.exceptions import GetTimeoutError
 from torch import Tensor
 from tqdm import tqdm
 
+from .callbacks import ExperienceMakerPerformanceEvaluator, MakerCallback
 from .utils import get_model_numel, get_rank, get_world_size, is_rank_0, set_dist_env
 
 
@@ -42,7 +42,7 @@ class ExperienceMakerHolder:
             sync_models_from_trainers: bool = False,
             buffer_cpu_offload: bool = True,
             kl_coef: float = 0.1,
-            callbacks: List[Callback] = [],
+            callbacks: List[MakerCallback] = [],
             eval_performance: bool = False,
             debug: bool = False,
             **generate_kwargs):
@@ -122,13 +122,17 @@ class ExperienceMakerHolder:
                 target_trainer.buffer_extend.remote(items_per_trainer[i])
 
     def _inference_step(self, batch) -> None:
+        self._on_batch_start()
         with self._model_visit_lock:
             self._on_make_experience_start()
             experience = self._make_experience(batch)
             self._on_make_experience_end(experience)
+        self._on_send_start()
         if self.buffer_cpu_offload:
             experience.to_device('cpu')
         self._send_items(experience)
+        self._on_send_end()
+        self._on_batch_end()
 
     def workingloop(self, dataloader_fn: Callable[[], Iterable], num_epochs: int = 1, num_steps: int = 0):
         """Working loop of the experience maker.
@@ -139,6 +143,7 @@ class ExperienceMakerHolder:
             num_steps (int, optional): Iterate the dataloader for number if steps. If this value > 0, num_epochs will be ignored. Defaults to 0.
         """
         self._get_ready()
+        self._on_loop_start()
         dataloader = dataloader_fn()
         if num_steps > 0:
             # ignore num epochs
@@ -156,7 +161,7 @@ class ExperienceMakerHolder:
                     for batch in dataloader:
                         self._inference_step(batch)
                         pbar.update()
-        self._on_finish()
+        self._on_loop_end()
 
     @ray.method(concurrency_group="model_io")
     def update_experience_maker(self,
@@ -205,10 +210,29 @@ class ExperienceMakerHolder:
         for callback in self.callbacks:
             callback.on_make_experience_end(experience)
 
-    def _on_finish(self) -> None:
+    def _on_loop_start(self) -> None:
         for callback in self.callbacks:
-            if hasattr(callback, 'on_finish'):
-                callback.on_finish()
+            callback.on_loop_start()
+
+    def _on_loop_end(self) -> None:
+        for callback in self.callbacks:
+            callback.on_loop_end()
+
+    def _on_send_start(self) -> None:
+        for callback in self.callbacks:
+            callback.on_send_start()
+
+    def _on_send_end(self) -> None:
+        for callback in self.callbacks:
+            callback.on_send_end()
+
+    def _on_batch_start(self) -> None:
+        for callback in self.callbacks:
+            callback.on_batch_start()
+
+    def _on_batch_end(self) -> None:
+        for callback in self.callbacks:
+            callback.on_batch_end()
 
 
 def _set_default_generate_kwargs(generate_kwargs: dict, actor: Actor) -> None:
