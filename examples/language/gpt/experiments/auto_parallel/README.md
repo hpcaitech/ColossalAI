@@ -39,6 +39,6 @@ For simplicity, the input data is randomly generated here.
 ## Training
 
 ```bash
-#Run the auto parallel resent example with 4 GPUs with a dummy dataset.
+#Run the auto parallel resnet example with 4 GPUs with a dummy dataset.
 colossalai run --nproc_per_node 4 auto_parallel_with_gpt.py
 ```
