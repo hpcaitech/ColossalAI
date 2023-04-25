@@ -16,7 +16,7 @@ class SearchChunk(object):
     This is the core class for AutoChunk.
 
     It defines the framework of the strategy of AutoChunk.
-    Chunks will be selected one by one utile search stops.
+    Chunks will be selected one by one until search stops.
 
     The chunk search is as follows:
     1. find the peak memory node
