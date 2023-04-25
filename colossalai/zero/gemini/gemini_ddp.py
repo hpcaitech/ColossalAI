@@ -49,6 +49,7 @@ class ZeroDDP(ColoDDP):
             Defaults to False.
         strict_ddp_mode (bool): If set to True, there is no tensor sharding, each tensor is replicated.
             Defaults to False. Users can set it to True, when they clearly know that they only need DDP.
+        scatter_after_inference (bool): If set to True, the model will be scattered after inference. This will save memory but slow down the consecutive inference.
     """
 
     def __init__(self,
@@ -56,7 +57,8 @@ class ZeroDDP(ColoDDP):
                  gemini_manager: GeminiManager,
                  pin_memory: bool = False,
                  force_outputs_fp32: bool = False,
-                 strict_ddp_mode: bool = False) -> None:
+                 strict_ddp_mode: bool = False,
+                 scatter_after_inference: bool = True) -> None:
         self.gemini_manager = gemini_manager
         self.chunk_manager: ChunkManager = gemini_manager.chunk_manager
         self.force_outputs_fp32 = force_outputs_fp32
@@ -67,6 +69,7 @@ class ZeroDDP(ColoDDP):
         self.grads_device: Dict[torch.Tensor, torch.device] = dict()
         self.param2name: Dict[nn.Parameter, str] = dict()
         self.name2param: Dict[str, nn.Parameter] = dict()
+        self.scatter_after_inference = scatter_after_inference
 
         self._logger = get_dist_logger()
 
@@ -124,7 +127,7 @@ class ZeroDDP(ColoDDP):
         with ColoParamOpHookManager.use_hooks(self.param_op_hook):
             outputs = self.module(*args, **kwargs)
         # scatter chunks in the inference mode
-        if not grad_flag:
+        if not grad_flag and self.scatter_after_inference:
             self._post_forward()
 
         if self.force_outputs_fp32:
