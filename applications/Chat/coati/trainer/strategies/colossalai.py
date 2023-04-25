@@ -161,14 +161,6 @@ class ColossalAIStrategy(DDPStrategy):
             return model.module
         return model
 
-    def _unwrap_model(self, model: Union[nn.Module, ZeroDDP]) -> nn.Module:
-        if isinstance(model, ZeroDDP) and self.stage == 3:
-            logger.info(f"model type: {type(model)}, get static torch model")
-            model = get_static_torch_model(model)
-            logger.info(f"unwrapped_model type: {type(model)}")
-
-        return super()._unwrap_model(model)
-
     def save_model(self,
                    model: nn.Module,
                    path: str,
