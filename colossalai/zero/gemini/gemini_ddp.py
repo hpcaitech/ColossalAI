@@ -1,5 +1,6 @@
 import itertools
 from collections import OrderedDict
+from contextlib import nullcontext
 from functools import partial
 from typing import Dict, Iterator, List, Optional, Union
 
@@ -111,8 +112,6 @@ class ZeroDDP(ColoDDP):
             first_param = next(iter(chunk.tensors_info))
             self.chunk_manager.move_chunk(chunk, self.grads_device[first_param])
         assert self.chunk_manager.accessed_mem == 0
-        # reset all recorded attributes
-        self.gemini_manager.reset_attributes()
 
     def forward(self, *args, **kwargs):
         # check whether we are in a inference mode
@@ -123,15 +122,33 @@ class ZeroDDP(ColoDDP):
 
         args, kwargs = _cast_float(args, torch.half), _cast_float(kwargs, torch.half)
         self.module.zero_grad(set_to_none=True)
-        self.gemini_manager.pre_iter(*args)
-        with ColoParamOpHookManager.use_hooks(self.param_op_hook):
-            outputs = self.module(*args, **kwargs)
-        # scatter chunks in the inference mode
-        if not grad_flag and self.scatter_after_inference:
-            self._post_forward()
+        if not grad_flag:
+            outputs = self._inference_forward(*args, **kwargs)
+        else:
+            self.gemini_manager.pre_iter(*args)
+            with ColoParamOpHookManager.use_hooks(self.param_op_hook):
+                outputs = self.module(*args, **kwargs)
 
         if self.force_outputs_fp32:
             return _cast_float(outputs, torch.float)
+        return outputs
+
+    def _inference_forward(self, *args, **kwargs):
+        """This function is only triggered for inference.
+        """
+        fwd_ctx = ColoParamOpHookManager.use_hooks(self.param_op_hook)
+        if not self.scatter_after_inference:
+            # gather all chunks
+            for chunk in self.chunk_manager.get_chunks(self.fp16_params):
+                self.chunk_manager.access_chunk(chunk)
+            fwd_ctx = nullcontext()
+        with fwd_ctx:
+            outputs = self.module(*args, **kwargs)
+        if self.scatter_after_inference:
+            # scatter chunks
+            self._post_forward()
+        # reset all recorded attributes
+        self.gemini_manager.reset_attributes()
         return outputs
 
     def _setup_grads_ptr(self):
