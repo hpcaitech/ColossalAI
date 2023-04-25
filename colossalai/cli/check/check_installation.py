@@ -88,7 +88,7 @@ def check_installation():
     click.echo(f"Note:")
     click.echo(f"1. The table above checks the version compatibility of the libraries/tools in the current environment")
     click.echo(
-        f"   - PyTorch version misteach: whether the PyTorch version in the current environment is compatible with the PyTorch version used for AOT compilation"
+        f"   - PyTorch version mismatch: whether the PyTorch version in the current environment is compatible with the PyTorch version used for AOT compilation"
     )
     click.echo(
         f"   - System and PyTorch CUDA version match: whether the CUDA version in the current environment is compatible with the CUDA version required by PyTorch"
