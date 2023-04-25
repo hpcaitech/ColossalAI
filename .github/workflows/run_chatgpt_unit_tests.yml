@@ -4,16 +4,20 @@ on:
   pull_request:
     types: [synchronize, opened, reopened]
     paths:
-      - 'applications/ChatGPT/chatgpt/**'
-      - 'applications/ChatGPT/requirements.txt'
-      - 'applications/ChatGPT/setup.py'
-      - 'applications/ChatGPT/requirements-test.txt'
-      - 'applications/ChatGPT/tests/**'
-      - 'applications/ChatGPT/pytest.ini'
+      - 'applications/Chat/coati/**'
+      - 'applications/Chat/requirements.txt'
+      - 'applications/Chat/setup.py'
+      - 'applications/Chat/requirements-test.txt'
+      - 'applications/Chat/tests/**'
+      - 'applications/Chat/pytest.ini'
 
 jobs:
   tests:
     name: Run ChatGPT unit tests
+    if: |
+      github.event.pull_request.draft == false &&
+      github.base_ref == 'main' &&
+      github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
     runs-on: [self-hosted, gpu]
     container:
       image: hpcaitech/pytorch-cuda:1.12.0-11.3.0
