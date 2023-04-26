@@ -18,7 +18,7 @@ NAN = 'nan'
 
 class _DimSpec:
     '''
-    Sharding spec for single dimension of the sharded tensor decribe the sharding dimension of
+    Sharding spec for single dimension of the sharded tensor describe the sharding dimension of
     logical device mesh and give a method to compute the difference between them.
     This class is used internally in ShardingSpec.
 

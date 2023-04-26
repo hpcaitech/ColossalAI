@@ -172,7 +172,7 @@ In this config file, we specify that we want to use batch size 128 per GPU and r
 #### Step 2. Initialize Distributed Environment
 
 We need to initialize the distributed training environment. This has been introduced in the tutorial on how to
-[launch Colossal-AI](./launch_colossalai.md). For this demostration, we use `launch_from_torch` and PyTorch launch utility.
+[launch Colossal-AI](./launch_colossalai.md). For this demonstration, we use `launch_from_torch` and PyTorch launch utility.
 
 ```python
 import colossalai

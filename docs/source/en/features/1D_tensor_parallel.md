@@ -42,7 +42,7 @@ Given $P$ processors, we present the theoretical computation and memory cost, as
 
 ## Usage
 
-To enable 1D tensor parallelism for our model, e.g. on 2 GPUs, we need to configure the parallism setting as below.
+To enable 1D tensor parallelism for our model, e.g. on 2 GPUs, we need to configure the parallelism setting as below.
 ```python
 CONFIG = dict(parallel=dict(
     data=1,
