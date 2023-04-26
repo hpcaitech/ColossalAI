@@ -7,9 +7,18 @@ from colossalai.core import global_context as gpc
 
 
 # TODO accept nestwed inputs cmap(f)((x,y),z)
-def data_frag(*args, in_dims: Union[int, tuple], num_devices: int, **kwargs):
+def data_frag(*args, in_dims: Union[int, tuple], num_devices: int):
+    """This fucntion splits the input arguments across a given dimension.
+
+    Args:
+        args (tuple): Input arguments
+        in_dims (int or tuple): The dimension(s) to split across
+        num_devices (int): The number of devices to split across
+
+    Returns:
+        list: The split arguments
+    """
     new_args = [[] for _ in range(num_devices)]
-    new_kwargs = {i: {} for i in range(num_devices)}
     if isinstance(in_dims, int):
         for a in args:
             if not isinstance(a, torch.Tensor):
@@ -31,10 +40,7 @@ def data_frag(*args, in_dims: Union[int, tuple], num_devices: int, **kwargs):
                 for i in range(num_devices):
                     new_args[i].append(a)
 
-    for k, v in kwargs.items():
-        for i in range(num_devices):
-            new_kwargs[i][k] = v
-    return new_args, new_kwargs
+    return new_args
 
 
 def data_to_device(*args):

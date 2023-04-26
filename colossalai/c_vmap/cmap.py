@@ -77,7 +77,7 @@ def cmap(func: Callable,
             return torch.dot(x, y)
         a = torch.randn(64, 128)
         b = torch.randn(128)
-        out = batch_dot(a, b)  # None on all devices except 0
+        out = batch_dot(a, b)  # out = None on all process except process 0
     ---------------------------------------------
     """
 
@@ -97,9 +97,9 @@ def cmap(func: Callable,
         if num_processes == 1:
             return torch.vmap(func, in_dims=in_dims, out_dims=out_dims)(*args, **kwargs)
 
-        new_args, new_kwargs = data_frag(*args, in_dims=in_dims, num_devices=num_processes, **kwargs)
+        new_args = data_frag(*args, in_dims=in_dims, num_devices=num_processes)
         data_to_device(*new_args[rank])
-        func_out = torch.vmap(func, in_dims=in_dims, out_dims=out_dims)(*new_args[rank], **new_kwargs[rank])
+        func_out = torch.vmap(func, in_dims=in_dims, out_dims=out_dims)(*new_args[rank], **kwargs)
         func_out = scalar_to_vec(*func_out)
 
         if dst == -1:
