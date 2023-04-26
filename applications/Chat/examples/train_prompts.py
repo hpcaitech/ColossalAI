@@ -149,7 +149,10 @@ def main(args):
                                    sampler=prompt_sampler,
                                    batch_size=args.experience_batch_size)
 
-    pretrain_dataset = SupervisedDataset(tokenizer=tokenizer, data_path=args.pretrain_dataset, max_datasets_size=16384)
+    pretrain_dataset = SupervisedDataset(tokenizer=tokenizer,
+                                         data_path=args.pretrain_dataset,
+                                         max_datasets_size=16384,
+                                         max_length=args.max_input_len)
     if dist.is_initialized() and dist.get_world_size() > 1:
         pretrain_sampler = DistributedSampler(pretrain_dataset, shuffle=True, seed=42, drop_last=True)
     else:
@@ -175,7 +178,8 @@ def main(args):
         ptx_coef=args.ptx_coef,
         max_epochs=args.max_epochs,
         train_batch_size=args.train_batch_size,
-        max_length=128,
+        max_length=args.max_seq_len,
+        use_cache=True,
         do_sample=True,
         temperature=1.0,
         top_k=50,
@@ -223,5 +227,7 @@ if __name__ == '__main__':
     parser.add_argument('--lora_rank', type=int, default=0, help="low-rank adaptation matrices rank")
     parser.add_argument('--kl_coef', type=float, default=0.1)
     parser.add_argument('--ptx_coef', type=float, default=0.9)
+    parser.add_argument('--max_input_len', type=int, default=96)
+    parser.add_argument('--max_seq_len', type=int, default=128)
     args = parser.parse_args()
     main(args)
