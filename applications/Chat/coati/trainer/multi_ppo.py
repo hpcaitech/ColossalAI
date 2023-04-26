@@ -2,10 +2,11 @@ from typing import Any, Callable, Dict, List, Optional
 
 import torch
 import torch.nn as nn
-from coati.experience_maker import Experience, NaiveExperienceMaker
+import torch.nn.functional as F
+from coati.experience_maker import Experience, NaiveExperienceMaker, MultiStepExperienceMaker
 from coati.models.base import Actor, Critic
 from coati.models.generation_utils import update_model_kwargs_fn
-from coati.models.loss import PolicyLoss, ValueLoss
+from coati.models.loss import PolicyLoss, ValueLoss, MPolicyLoss
 from coati.replay_buffer import NaiveReplayBuffer
 from torch.optim import Optimizer
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
@@ -15,7 +16,7 @@ from .callbacks import Callback
 from .strategies import Strategy
 
 
-class PPOTrainer(Trainer):
+class MPPOTrainer(Trainer):
     """
         Trainer for PPO algorithm.
 
@@ -66,7 +67,8 @@ class PPOTrainer(Trainer):
                  dataloader_pin_memory: bool = True,
                  callbacks: List[Callback] = [],
                  **generate_kwargs) -> None:
-        experience_maker = NaiveExperienceMaker(actor, critic, reward_model, initial_model, kl_coef)
+        experience_maker = MultiStepExperienceMaker(actor, critic, reward_model, initial_model, kl_coef, **generate_kwargs)
+        # experience_maker = NaiveExperienceMaker(actor, critic, reward_model, initial_model, kl_coef, **generate_kwargs)
         replay_buffer = NaiveReplayBuffer(train_batch_size, buffer_limit, buffer_cpu_offload)
         generate_kwargs = _set_default_generate_kwargs(strategy, generate_kwargs, actor)
         super().__init__(strategy, experience_maker, replay_buffer, experience_batch_size, max_epochs, tokenizer,
@@ -74,28 +76,29 @@ class PPOTrainer(Trainer):
         self.actor = actor
         self.critic = critic
 
-        self.actor_loss_fn = PolicyLoss(eps_clip)
+        self.actor_loss_fn = MPolicyLoss(eps_clip)
         self.critic_loss_fn = ValueLoss(value_clip)
         self.vf_coef = vf_coef
         self.ptx_loss_fn = nn.CrossEntropyLoss(ignore_index=-100)
         self.ptx_coef = ptx_coef
         self.actor_optim = actor_optim
         self.critic_optim = critic_optim
-
+        
+        
     def training_step(self, experience: Experience) -> Dict[str, float]:
         self.actor.train()
         self.critic.train()
         # policy loss
         num_actions = experience.action_mask.size(1)
-        action_log_probs = self.actor(experience.sequences, num_actions, attention_mask=experience.attention_mask)
+        action_logits = self.actor.model(experience.sequences)['logits'][:, -1]
+        action_log_probs = F.log_softmax(action_logits, dim=-1)
+
         actor_loss = self.actor_loss_fn(action_log_probs,
                                         experience.action_log_probs,
-                                        experience.advantages,
-                                        action_mask=experience.action_mask)
-
+                                        experience.advantages)
         # ptx loss
         if self.ptx_coef != 0:
-            batch = next(iter(self.pretrain_dataloader))
+            batch = next(self.ptx_data_iter)
             ptx = batch['input_ids'].to(torch.cuda.current_device())
             label = batch['labels'].to(torch.cuda.current_device())[:, 1:]
             attention_mask = batch['attention_mask'].to(torch.cuda.current_device())

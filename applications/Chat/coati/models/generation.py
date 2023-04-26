@@ -36,6 +36,7 @@ def _is_sequence_finished(unfinished_sequences: torch.Tensor) -> bool:
     return unfinished_sequences.max() == 0
 
 
+@torch.no_grad()
 def sample(model: nn.Module,
            input_ids: torch.Tensor,
            max_length: int,
@@ -94,7 +95,7 @@ def generate(model: nn.Module,
              max_length: int,
              num_beams: int = 1,
              do_sample: bool = True,
-             early_stopping: bool = False,
+             early_stopping: bool = True,
              eos_token_id: Optional[int] = None,
              pad_token_id: Optional[int] = None,
              top_k: Optional[int] = None,
@@ -144,3 +145,74 @@ def generate(model: nn.Module,
         raise NotImplementedError
     else:
         raise ValueError("Unsupported generation mode")
+
+
+@torch.no_grad()
+def generate_with_value(actor: nn.Module,
+                        critic: nn.Module,
+                        input_ids: torch.Tensor,
+                        max_length: int,
+                        early_stopping: bool = True,
+                        eos_token_id: Optional[int] = None,
+                        pad_token_id: Optional[int] = None,
+                        top_k: Optional[int] = None,
+                        top_p: Optional[float] = None,
+                        temperature: Optional[float] = None,
+                        prepare_inputs_fn: Optional[Callable[[torch.Tensor, Any], dict]] = None,
+                        update_model_kwargs_fn: Optional[Callable[[dict, Any], dict]] = None,
+                        **model_kwargs) -> torch.Tensor:
+    if input_ids.size(1) >= max_length:
+        return input_ids
+
+    temperature = 1.0
+    logits_processor = prepare_logits_processor(top_k, top_p, temperature)
+    unfinished_sequences = input_ids.new(input_ids.shape[0]).fill_(1)
+
+    values = []
+    
+    for _ in range(input_ids.size(1), max_length):
+        model_inputs = prepare_inputs_fn(input_ids, **model_kwargs) if prepare_inputs_fn is not None else {
+            'input_ids': input_ids
+        }
+        outputs = actor(**model_inputs)
+
+        next_token_logits = outputs['logits'][:, -1, :]
+        # pre-process distribution
+        next_token_logits = logits_processor(input_ids, next_token_logits)
+        # sample
+        probs = torch.softmax(next_token_logits, dim=-1, dtype=torch.float)
+        if 'nan' in str(probs):
+            for name, param in actor.named_parameters():
+                print(name, param)
+        next_tokens = torch.multinomial(probs, num_samples=1).squeeze(1)
+
+        # finished sentences should have their next token be a padding token
+        if eos_token_id is not None:
+            if pad_token_id is None:
+                raise ValueError("If `eos_token_id` is defined, make sure that `pad_token_id` is defined.")
+            next_tokens = next_tokens * unfinished_sequences + pad_token_id * (1 - unfinished_sequences)
+
+
+        # compute value on the last hidden_state
+        eos_tensor = torch.tensor([eos_token_id], device=input_ids.device).repeat(input_ids.size(0), 1)
+        value_input = torch.cat([input_ids, eos_tensor], dim=-1)
+        value = critic(value_input)
+        values.append(value)
+        
+        # update generated ids, model inputs for next step
+        input_ids = torch.cat([input_ids, next_tokens[:, None]], dim=-1)
+        if update_model_kwargs_fn is not None:
+            model_kwargs = update_model_kwargs_fn(outputs, **model_kwargs)
+
+        # if eos_token was found in one sentence, set sentence to finished
+        if eos_token_id is not None:
+            unfinished_sequences = unfinished_sequences.mul((next_tokens != eos_token_id).long())
+
+        # stop when each sentence is finished if early_stopping=True
+        if early_stopping and _is_sequence_finished(unfinished_sequences):
+            break
+    # transform values to tensor
+    values = torch.cat(values, dim=0)
+    # reshape to (x,4)
+    values = values.view(4, -1)
+    return input_ids, values

@@ -9,7 +9,7 @@ from coati.models.gpt import GPTRM, GPTActor, GPTCritic
 from coati.models.llama import LlamaActor, LlamaCritic, LlamaRM
 from coati.models.opt import OPTRM, OPTActor, OPTCritic
 from coati.models.roberta import RoBERTaRM, RoBERTaActor, RoBERTaCritic
-from coati.trainer import PPOTrainer
+from coati.trainer import PPOTrainer, MPPOTrainer
 from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
 from coati.utils import prepare_llama_tokenizer_and_embedding
 from torch.optim import Adam
@@ -110,10 +110,11 @@ def main(args):
         critic.to(torch.float16).to(torch.cuda.current_device())
         actor.to(torch.float16).to(torch.cuda.current_device())
 
+
     # configure optimizer
     if args.strategy.startswith('colossalai'):
-        actor_optim = HybridAdam(actor.parameters(), lr=1e-7)
-        critic_optim = HybridAdam(critic.parameters(), lr=1e-7)
+        actor_optim = HybridAdam(actor.parameters(), lr=1e-5)
+        critic_optim = HybridAdam(critic.parameters(), lr=1e-5)
     else:
         actor_optim = Adam(actor.parameters(), lr=1e-7)
         critic_optim = Adam(critic.parameters(), lr=1e-7)
@@ -170,7 +171,8 @@ def main(args):
     (actor, actor_optim), (critic, critic_optim) = strategy.prepare((actor, actor_optim), (critic, critic_optim))
 
     # configure trainer
-    trainer = PPOTrainer(
+    # trainer = PPOTrainer(
+    trainer = MPPOTrainer(
         strategy,
         actor,
         critic,

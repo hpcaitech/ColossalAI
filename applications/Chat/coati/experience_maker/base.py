@@ -64,13 +64,26 @@ class ExperienceMaker(ABC):
                  critic: nn.Module,
                  reward_model: nn.Module,
                  initial_model: Actor,
-                 kl_coef: float = 0.1) -> None:
+                 kl_coef: float = 0.1,
+                 max_length: int = 128,
+                 eos_token_id: Optional[int] = None,
+                 pad_token_id: Optional[int] = None,
+                 top_k: Optional[int] = None,
+                 top_p: Optional[float] = None,
+                 temperature: Optional[float] = None,
+                 **generate_kwargs) -> None:
         super().__init__()
         self.actor = actor
         self.critic = critic
         self.reward_model = reward_model
         self.initial_model = initial_model
         self.kl_coef = kl_coef
+        self.max_length = max_length
+        self.eos_token_id = eos_token_id
+        self.pad_token_id = pad_token_id
+        self.top_k = top_k
+        self.top_p = top_p
+        self.temperature = temperature
 
     @abstractmethod
     def make_experience(self, input_ids: torch.Tensor, **generate_kwargs) -> Experience:

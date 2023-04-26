@@ -80,6 +80,7 @@ class HhRlhfDataset(Dataset):
             self.end_token = tokenizer.eos_token
         else:
             self.end_token = special_token
+        tokenizer.padding_side='left'
         for data in tqdm(dataset, disable=not is_rank_0()):
             chosen = data['chosen'] + self.end_token
             chosen_token = tokenizer(chosen,

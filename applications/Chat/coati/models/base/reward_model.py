@@ -34,8 +34,10 @@ class RewardModel(LoRAModule):
             self.value_head = nn.Linear(model.config.n_embd, 1)
 
     def forward(self, sequences: torch.LongTensor, attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+        # we have added a <eos> token at the end of each sequence while preparing for the dataset
+        # so we can use the last hidden state to be the input of the marking linear layer to get the reward score 
         outputs = self.model(sequences, attention_mask=attention_mask)
         last_hidden_states = outputs['last_hidden_state']
-        values = self.value_head(last_hidden_states)[:, :-1]
-        value = values.mean(dim=1).squeeze(1)    # ensure shape is (B)
-        return value
+        reward_prob = last_hidden_states[:, -1]
+        reward = self.value_head(reward_prob).squeeze(1) # ensure shape is (B)
+        return reward

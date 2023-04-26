@@ -47,6 +47,12 @@ def split_experience_batch(experience: Experience) -> List[BufferItem]:
     items = [BufferItem(**kwargs) for kwargs in batch_kwargs]
     return items
 
+def exp_to_buffer_item(exp: Experience) -> BufferItem:
+    kwargs = {}
+    keys = ('sequences', 'action_log_probs', 'values', 'reward', 'advantages', 'attention_mask', 'action_mask')
+    for key in keys:
+        kwargs[key] = getattr(exp, key)
+    return BufferItem(**kwargs)
 
 def zero_pad_sequences(sequences: List[torch.Tensor], side: str = 'left') -> torch.Tensor:
     assert side in ('left', 'right')
