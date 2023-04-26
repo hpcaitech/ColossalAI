@@ -1,19 +1,28 @@
-from colossalai.c_vmap import cmap
+from functools import partial
 
+import pytest
+import torch
+
+from colossalai.c_vmap import cmap
 # from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 
-from functools import partial
-import torch
-import pytest
-
-cases = [{"raw_pt": True, "dst": -1},
-         {"raw_pt": True, "dst": 0},
-         {"raw_pt": False, "dst": -1},
-         {"raw_pt": False, "dst": 0}]
+cases = [{
+    "raw_pt": True,
+    "dst": -1
+}, {
+    "raw_pt": True,
+    "dst": 0
+}, {
+    "raw_pt": False,
+    "dst": -1
+}, {
+    "raw_pt": False,
+    "dst": 0
+}]
 disable_existing_loggers()
 world_size = 8
 CONFIG = dict(parallel=dict(pipeline=world_size))
@@ -21,64 +30,74 @@ torch.manual_seed(123)
 
 
 def test_single_input():
-    x = torch.randn(8*10, 10)
+    x = torch.randn(8 * 10, 10)
     for case in cases:
-        f = lambda x: x*x
+        f = lambda x: x * x
         c_f = cmap(f, **case)
-        assert c_f(x) == x*x
+        assert c_f(x) == x * x
 
 
 def test_multiple_input():
-    x = torch.randn(8*10, 10)
-    y = torch.randn(8*10, 10)
+    x = torch.randn(8 * 10, 10)
+    y = torch.randn(8 * 10, 10)
     for case in cases:
-        f = lambda x, y: x*y
+        f = lambda x, y: x * y
         c_f = cmap(f, **case)
         if gpc.get_global_rank() == 0:
-            assert c_f(x, y) == x*y
-
+            assert c_f(x, y) == x * y
 
 
 def test_nested():
-    x = torch.randn(8*10, 8*10, 10)
+    x = torch.randn(8 * 10, 8 * 10, 10)
     for case in cases:
-        f = lambda x: x*x
+        f = lambda x: x * x
         c_f = cmap(cmap(f, **case), **case)
-        if gpc.get_global_rank() == 0:  
-            assert c_f(x) == x*x
+        if gpc.get_global_rank() == 0:
+            assert c_f(x) == x * x
 
 
 def test_non_zero_in_dims():
-    x = torch.randn(10, 8*10, 10)
+    x = torch.randn(10, 8 * 10, 10)
     for case in cases:
-        f = lambda x: x*x
+        f = lambda x: x * x
         c_f = cmap(f, in_dims=1, **case)
         c_f(x)
 
 
 def test_non_zero_out_dims():
-    x = torch.randn(10, 8*10, 10)
+    x = torch.randn(10, 8 * 10, 10)
     for case in cases:
-        f = lambda x: x*x
-        c_f = cmap(f, out_dims=1,**case)
+        f = lambda x: x * x
+        c_f = cmap(f, out_dims=1, **case)
         c_f(x)
 
 
 def test_non_zero_in_out_dims():
-    x = torch.randn(10, 8*10, 10)
+    x = torch.randn(10, 8 * 10, 10)
     for case in cases:
-        f = lambda x: x*x
+        f = lambda x: x * x
         c_f = cmap(f, in_dims=1, out_dims=2, **case)
         c_f(x)
 
 
 def test_multiple_in_multiple_out():
-    x = torch.randn(10, 8*10, 10)
-    y = torch.randn(10, 10, 8*10)
+    x = torch.randn(10, 8 * 10, 10)
+    y = torch.randn(10, 10, 8 * 10)
     for case in cases:
-        def f(x,y):
-            return x*y, x+y 
-        c_f = cmap(f, in_dims=(1, 2), out_dims=(1, 2) **case)
+
+        def f(x, y):
+            return x * y, x + y
+
+        c_f = cmap(f, in_dims=(1, 2), out_dims=(1, 2)**case)
+        c_f(x, y)
+
+
+def test_none_input_dims():
+    x = torch.randn(10, 8 * 10)
+    y = torch.randn(10)
+    for case in cases:
+        f = lambda x, y: x * y
+        c_f = cmap(f, in_dims=(1, None), out_dims=1**case)
         c_f(x, y)
 
 
@@ -101,15 +120,17 @@ def test_functools_partial():
 
 
 def test_kwargs():
+
     def f(x, scale=1.0):
-        return x*scale
-    x = torch.randn(8*10, 10)
+        return x * scale
+
+    x = torch.randn(8 * 10, 10)
     for case in cases:
         c_f = cmap(f, **case)
         c_f(x, scale=8.0)
 
 
-def check_vmap(rank, world_size, port):
+def check_layer(rank, world_size, port):
     disable_existing_loggers()
     launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl', verbose=False)
 
@@ -118,6 +139,8 @@ def check_vmap(rank, world_size, port):
     test_nested()
     test_non_zero_in_dims()
     test_non_zero_out_dims()
+    test_multiple_in_multiple_out()
+    test_none_input_dims()
     test_nn_module()
     test_functools_partial()
     test_kwargs()
@@ -129,7 +152,7 @@ def check_vmap(rank, world_size, port):
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_cmap():
-    spawn(check_vmap, world_size)
+    spawn(check_layer, world_size)
 
 
 if __name__ == '__main__':

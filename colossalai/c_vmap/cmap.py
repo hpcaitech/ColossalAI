@@ -18,6 +18,7 @@ class CudaError(Exception):
     pass
 
 
+# TODO add suport for multi-node cpu mapping
 # TODO add support for grad functions
 def cmap(func: Callable,
          in_dims: Union[int, tuple] = 0,
@@ -71,12 +72,12 @@ def cmap(func: Callable,
         input = torch.randn(64, 128)
         batched_model(input)
     ---------------------------------------------
-    @cmap(in_dims=(0,None), dst=0)
-    def batch_dot(x, y):
-        return torch.dot(x, y)
-    a = torch.randn(64, 128)
-    b = torch.randn(128)
-    out = batch_dot(a, b)  # None on all devices except 0
+        @cmap(in_dims=(0,None), dst=0)
+        def batch_dot(x, y):
+            return torch.dot(x, y)
+        a = torch.randn(64, 128)
+        b = torch.randn(128)
+        out = batch_dot(a, b)  # None on all devices except 0
     ---------------------------------------------
     """
 
@@ -97,7 +98,7 @@ def cmap(func: Callable,
             return torch.vmap(func, in_dims=in_dims, out_dims=out_dims)(*args, **kwargs)
 
         new_args, new_kwargs = data_frag(*args, in_dims=in_dims, num_devices=num_processes, **kwargs)
-        data_to_device(*new_args[rank], raw_pt=raw_pt, **new_kwargs[rank])
+        data_to_device(*new_args[rank])
         func_out = torch.vmap(func, in_dims=in_dims, out_dims=out_dims)(*new_args[rank], **new_kwargs[rank])
         func_out = scalar_to_vec(*func_out)
 

@@ -37,19 +37,10 @@ def data_frag(*args, in_dims: Union[int, tuple], num_devices: int, **kwargs):
     return new_args, new_kwargs
 
 
-def data_to_device(*args, raw_pt=False, **kwargs):
+def data_to_device(*args):
     new_args = []
-    if raw_pt:
-        for a in args:
-            new_args.append(a.to(torch.cuda.current_device()))
-        for k, v in kwargs.items():
-            kwargs[k] = v.to(torch.cuda.current_device())
-    else:
-        for a in args:
-            new_args.append(a.to(gpc.get_global_rank(ParallelMode.GLOBAL)))
-
-        for k, v in kwargs.items():
-            kwargs[k] = v.to(gpc.get_global_rank(ParallelMode.GLOBAL))
+    for a in args:
+        new_args.append(a.to(torch.cuda.current_device()))
     return new_args, kwargs
 
 
