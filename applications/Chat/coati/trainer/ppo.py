@@ -4,14 +4,13 @@ import torch
 import torch.nn as nn
 from coati.experience_maker import Experience, NaiveExperienceMaker
 from coati.models.base import Actor, Critic
-from coati.models.generation_utils import update_model_kwargs_fn
 from coati.models.loss import PolicyLoss, ValueLoss
 from coati.replay_buffer import NaiveReplayBuffer
 from torch import Tensor
 from torch.optim import Optimizer
 from torch.utils.data import DistributedSampler
-from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 from tqdm import tqdm
+from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
 from .base import Trainer
 from .callbacks import Callback
@@ -102,19 +101,16 @@ class PPOTrainer(Trainer):
 
     def _sample_prompts(self, prompts) -> list:
         indices = list(range(len(prompts)))
-        sampled_indices = self.strategy.experience_sampler.choice(
-            indices, self.experience_batch_size, replace=False)
+        sampled_indices = self.strategy.experience_sampler.choice(indices, self.experience_batch_size, replace=False)
         return [prompts[i] for i in sampled_indices]
 
     def _learn(self):
         # replay buffer may be empty at first, we should rebuild at each training
         if not self.sample_replay_buffer:
-            dataloader = self.strategy.setup_dataloader(
-                self.replay_buffer, self.dataloader_pin_memory)
+            dataloader = self.strategy.setup_dataloader(self.replay_buffer, self.dataloader_pin_memory)
             device = torch.cuda.current_device()
         if self.sample_replay_buffer:
-            pbar = tqdm(range(self.max_epochs), desc='Train epoch',
-                        disable=not is_rank_0())
+            pbar = tqdm(range(self.max_epochs), desc='Train epoch', disable=not is_rank_0())
             for _ in pbar:
                 experience = self.replay_buffer.sample()
                 metrics = self.training_step(experience)
@@ -124,8 +120,7 @@ class PPOTrainer(Trainer):
                 self._on_learn_epoch_start(epoch)
                 if isinstance(dataloader.sampler, DistributedSampler):
                     dataloader.sampler.set_epoch(epoch)
-                pbar = tqdm(
-                    dataloader, desc=f'Train epoch [{epoch+1}/{self.max_epochs}]', disable=not is_rank_0())
+                pbar = tqdm(dataloader, desc=f'Train epoch [{epoch+1}/{self.max_epochs}]', disable=not is_rank_0())
                 for experience in pbar:
                     self._on_learn_batch_start()
                     experience.to_device(device)
@@ -152,10 +147,8 @@ class PPOTrainer(Trainer):
                 time += 1
                 prompts = next(iter(self.prompt_dataloader))
                 self._on_make_experience_start()
-                self.experience_maker.initial_model.to(
-                    torch.cuda.current_device())
-                self.experience_maker.reward_model.to(
-                    torch.cuda.current_device())
+                self.experience_maker.initial_model.to(torch.cuda.current_device())
+                self.experience_maker.reward_model.to(torch.cuda.current_device())
                 experience = self._make_experience(prompts)
                 self._on_make_experience_end(experience)
                 self.replay_buffer.append(experience)
@@ -206,8 +199,11 @@ class PPOTrainer(Trainer):
         self.critic_optim.zero_grad()
 
         return {'reward': experience.reward.mean().item()}
-    
-    def save_model(self, path: str, only_rank0: bool = False, tokenizer: Optional[PreTrainedTokenizerBase] = None) -> None:
+
+    def save_model(self,
+                   path: str,
+                   only_rank0: bool = False,
+                   tokenizer: Optional[PreTrainedTokenizerBase] = None) -> None:
         self.strategy.save_model(model=self.actor, path=path, only_rank0=only_rank0, tokenizer=tokenizer)
 
 
@@ -218,7 +214,7 @@ def _set_default_generate_kwargs(strategy: Strategy, generate_kwargs: dict, acto
     if 'prepare_inputs_fn' not in generate_kwargs and hasattr(origin_model, 'prepare_inputs_for_generation'):
         new_kwargs['prepare_inputs_fn'] = origin_model.prepare_inputs_for_generation
 
-    if 'update_model_kwargs_fn' not in generate_kwargs:
-        new_kwargs['update_model_kwargs_fn'] = update_model_kwargs_fn
+    if 'update_model_kwargs_fn' not in generate_kwargs and hasattr(origin_model, '_update_model_kwargs_for_generation'):
+        new_kwargs['update_model_kwargs_fn'] = origin_model._update_model_kwargs_for_generation
 
     return new_kwargs
