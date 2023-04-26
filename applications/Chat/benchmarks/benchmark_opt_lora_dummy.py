@@ -177,7 +177,7 @@ if __name__ == '__main__':
     parser.add_argument('--num_episodes', type=int, default=3)
     parser.add_argument('--max_timesteps', type=int, default=8)
     parser.add_argument('--update_timesteps', type=int, default=8)
-    parser.add_argument('--max_epochs', type=int, default=3)
+    parser.add_argument('--max_epochs', type=int, default=1)
     parser.add_argument('--train_batch_size', type=int, default=8)
     parser.add_argument('--experience_batch_size', type=int, default=8)
     parser.add_argument('--lora_rank', type=int, default=0)
