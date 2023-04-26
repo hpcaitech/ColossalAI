@@ -133,13 +133,15 @@ class GeneralCheckpointIO(CheckpointIO):
             gc.collect()
 
         if strict:
-            remain_keys = set()
-            for i, sub_missing_keys in enumerate(missing_keys):
-                if i == 0:
-                    remain_keys = set(sub_missing_keys)
-                else:
-                    remain_keys = remain_keys & set(sub_missing_keys)
-            if len(remain_keys) > 0:
+            def intersection(ll):
+                if len(ll) == 1:
+                    return set(ll[0])
+                if len(ll) == 2:
+                    return set(ll[0]) & set(ll[1])
+                n = len(ll)
+                return intersection(ll[:n//2]) & intersection(ll[n//2:])
+            remian_keys = intersection(missing_keys)
+            if len(remian_keys) > 0:
                 error_msgs = 'Missing key(s) in state_dict: {}. '.format(
                             ', '.join('"{}"'.format(k) for k in missing_keys))
                 raise RuntimeError('Error(s) in loading state_dict for {}:\n\t{}'.format(

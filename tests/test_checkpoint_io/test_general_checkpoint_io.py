@@ -159,9 +159,7 @@ def exam_state_dict(placement_policy, model_name: str, use_safetensors: bool):
     # load model
     if ckpt_io.coordinator.is_master():
         ckpt_io.load_model(new_model, model_ckpt_dir.name, strict=True)
-        model.to('cpu')
         model_dict = model.state_dict(only_rank_0=True)
-        new_model.to('cpu')
         new_model_dict = new_model.state_dict(only_rank_0=True)
         recursive_check(model_dict, new_model_dict)
 
