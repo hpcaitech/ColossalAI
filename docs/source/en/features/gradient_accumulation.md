@@ -28,7 +28,7 @@ gradient_accumulation = <int>
 ## Hands-on Practice
 
 We provide a [runnable example](https://github.com/hpcaitech/ColossalAI-Examples/tree/main/features/gradient_accumulation)
-to demonstrate gradient accumulation. In this example, we set the gradinet accumulation size to be 4. You can run the script using this command:
+to demonstrate gradient accumulation. In this example, we set the gradient accumulation size to be 4. You can run the script using this command:
 
 ```shell
 python -m torch.distributed.launch --nproc_per_node 1 --master_addr localhost --master_port 29500  run_resnet_cifar10_with_engine.py

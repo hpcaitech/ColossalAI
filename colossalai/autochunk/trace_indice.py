@@ -8,7 +8,7 @@ from .utils import NodeMgr, find_first_tensor_arg, flat_list, get_module_node_na
 
 class TraceIndice(object):
     """
-    Trace all indice infomation for every node.
+    Trace all indice information for every node.
 
     Indice is a logical concept. Equal dims can been treated as one indice.
     eg. dim(x1) = [a, b, c]
@@ -153,7 +153,7 @@ class TraceIndice(object):
 
     def _inherit_more_indice_from_node_with_exclude(self, node_from: Node, node_to: Node, exclude: List = None) -> None:
         """
-        inheirt indice from node without init
+        inherit indice from node without init
         """
         if exclude == None:
             exclude = []
@@ -301,7 +301,7 @@ class TraceIndice(object):
     def _assign_linear_indice(self, node: Node, node_idx: int) -> None:
         """
         Assign indice for linear op.
-        1. copy trace from input node and change last indice accroding to weight
+        1. copy trace from input node and change last indice according to weight
         2. mark equal for input node last indice, weight first dim and bias dim.
         3. inherit input's computation, mark computation for last dim.
 
@@ -360,7 +360,7 @@ class TraceIndice(object):
     def _assign_matmul_indice(self, node: Node, node_idx: int) -> None:
         """
         Assign indice for matmul op.
-        1. copy trace from matmul_left and change last indice accroding to matmul_right. (assert they have same length)
+        1. copy trace from matmul_left and change last indice according to matmul_right. (assert they have same length)
         2. mark equal for input matmul_left -1 indice and matmul_right -2 dim.
         3. inherit matmul_left and matmul_right computation, mark computation for last dim.
 
@@ -720,11 +720,11 @@ class TraceIndice(object):
         Assign indice for view and reshape op.
         1. get origin shape and target shape by meta info.
         2. compute the real value of -1 in target shape.
-        3. determine changed dim, and assgin indice for generated dim.
+        3. determine changed dim, and assign indice for generated dim.
         4. log changed dim and generated dim for restore
         5. inherit computation.
         6. look into view list to see whether the view is associated with other,
-           if so assgin equal dim according to previous view.
+           if so assign equal dim according to previous view.
 
         Args:
             node (node)

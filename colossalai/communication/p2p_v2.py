@@ -230,7 +230,7 @@ def recv_backward(next_rank: int = None) -> Any:
         next_rank (int, optional): The rank of the source of the tensor.
 
     Returns:
-        Any: The input gradient tensor or gradident tensor list.
+        Any: The input gradient tensor or gradient tensor list.
     """
     if gpc.is_pipeline_last_stage():
         output_tensor_grad = None

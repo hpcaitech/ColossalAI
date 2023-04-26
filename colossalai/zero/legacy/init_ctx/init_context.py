@@ -97,7 +97,7 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
         """We use this function to substitute fan-in and fan-out calculation in torch.nn.init.
         This can help us get correct fan-in and fan-out for sharded tensor.
         """
-        assert isinstance(tensor, nn.Parameter), "Sharded tensor initilization is only allowed for paramters"
+        assert isinstance(tensor, nn.Parameter), "Sharded tensor initialization is only allowed for parameters"
 
         # get correct shape of input tensor
         if not hasattr(tensor, 'colo_attr') or not tensor.colo_attr.param_is_sharded:

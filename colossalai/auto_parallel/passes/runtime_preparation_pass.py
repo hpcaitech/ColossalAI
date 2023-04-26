@@ -149,7 +149,7 @@ def size_value_converting_pass(gm: torch.fx.GraphModule, device_mesh: DeviceMesh
 
     def _extract_target_dim(node):
         '''
-        A helper function to etract the target dimension from size node.
+        A helper function to extract the target dimension from size node.
         There are two usages of torch.Tensor.size:
         1. tensor.size()
         2. tensor.size(dim)
@@ -427,7 +427,7 @@ def module_params_sharding_pass(gm: torch.fx.GraphModule, device_mesh: DeviceMes
         if target_sharding_spec.dim_partition_dict != {}:
             origin_sharding_spec = ShardingSpec(device_mesh, param.shape, {})
             setattr(param, 'sharding_spec', origin_sharding_spec)
-            # TODO: build a ColoParamter class to manager the distributed parameters
+            # TODO: build a ColoParameter class to manager the distributed parameters
             # we could use .data here, because all the operations just happen before the real training
             # loop, so we don't need to track these operations in the autograd graph.
             param = torch.nn.Parameter(
