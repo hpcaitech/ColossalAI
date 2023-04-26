@@ -32,7 +32,7 @@ jobs:
 
       - name: Install ColossalAI and ChatGPT
         run: |
-          pip install -v .
+          pip install -e .
           cd applications/Chat
           pip install -v .
           pip install -r requirements-test.txt
