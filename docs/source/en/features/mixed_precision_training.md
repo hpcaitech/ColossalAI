@@ -101,7 +101,7 @@ you can use `colossalai.amp.convert_to_amp`.
 ```python
 from colossalai.amp import AMP_TYPE
 
-# exmaple of using torch amp
+# example of using torch amp
 model, optimizer, criterion = colossalai.amp.convert_to_amp(model,
                                                             optimizer,
                                                             criterion,
@@ -220,7 +220,7 @@ The default parameters of Naive AMP:
 - initial_scale(int): initial scale of gradient scaler
 - growth_factor(int): the growth rate of loss scale
 - backoff_factor(float): the decrease rate of loss scale
-- hysterisis(int): delay shift in dynamic loss scaling
+- hysteresis(int): delay shift in dynamic loss scaling
 - max_scale(int): maximum loss scale allowed
 - verbose(bool): if set to `True`, will print debug info
 
@@ -292,7 +292,7 @@ colossalai.launch_from_torch(config=args.config)
 ### Step 4. Create training components
 
 Build your model, optimizer, loss function, lr scheduler and dataloaders. Note that the root path of the dataset is
-obtained from the environment varialbe `DATA`. You may `export DATA=/path/to/data` or change `Path(os.environ['DATA'])`
+obtained from the environment variable `DATA`. You may `export DATA=/path/to/data` or change `Path(os.environ['DATA'])`
 to a path on your machine. Data will be automatically downloaded to the root path.
 
 ```python
@@ -326,7 +326,7 @@ to a path on your machine. Data will be automatically downloaded to the root pat
     # build loss
     criterion = torch.nn.CrossEntropyLoss()
 
-    # lr_scheduelr
+    # lr_scheduler
     lr_scheduler = LinearWarmupLR(optimizer, warmup_steps=50, total_steps=gpc.config.NUM_EPOCHS)
 ```
 

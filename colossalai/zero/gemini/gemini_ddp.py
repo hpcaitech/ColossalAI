@@ -42,7 +42,7 @@ class ZeroDDP(ColoDDP):
 
     Args:
         module (torch.nn.Module): Module to apply ZeRO-DP.
-        gemini_manager (GeminiManager): Manages the chunk manager and heterogeneous momery space.
+        gemini_manager (GeminiManager): Manages the chunk manager and heterogeneous memory space.
             For more details, see the API reference of ``GeminiManager``.
         pin_memory (bool): Chunks on CPU Memory use pin-memory.
         force_outputs_fp32 (bool): If set to True, outputs will be fp32. Otherwise, outputs will be fp16.
@@ -684,7 +684,7 @@ class GeminiDDP(ZeroDDP):
                  memstats: Optional[MemStats] = None,
                  verbose: bool = False) -> None:
         """
-        A torch.Module warpper using ZeRO-DP and Genimi.
+        A torch.Module wrapper using ZeRO-DP and Gemini.
         ZeRO is for parallel. Gemini is for memory management.
         WARNING: The class will modify the module inline!
 
@@ -706,7 +706,7 @@ class GeminiDDP(ZeroDDP):
                 Users can provide this argument to speed up searching.
                 If users do not know this argument before training, it is ok. We will use a default value 1024.
             min_chunk_size_mb (float, optional): the minimum chunk size in MegaByte.
-                If the aggregate size of parameters is still samller than the minimum chunk size,
+                If the aggregate size of parameters is still smaller than the minimum chunk size,
                 all parameters will be compacted into one small chunk.
             memstats (MemStats, optional) the memory statistics collector by a runtime memory tracer.
         """

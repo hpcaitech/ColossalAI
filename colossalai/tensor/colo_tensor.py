@@ -184,7 +184,7 @@ class ColoTensor(torch.Tensor):
             # we have to capture the `backward` function
             # and make sure that it does not in `torch._C.DisableTorchFunction()` context
             if func is torch.Tensor.backward:
-                assert len(args) == 1    # only has 1 paramter
+                assert len(args) == 1    # only has 1 parameter
                 backward_tensor = torch.Tensor(args[0])
                 tensor_kwargs = {k: torch.Tensor(v) if torch.is_tensor(v) else v for k, v in kwargs.items()}
                 return backward_tensor.backward(**tensor_kwargs)
@@ -228,7 +228,7 @@ class ColoTensor(torch.Tensor):
         2. If the pg is not not None and not equal to the current process group.
         First, convert the tensor as replicated among the TP process group.
         Second, reset the process group to the new pg.
-        Third, conver the tensor (new replicated both among the tp process group) to the new dist_spec.
+        Third, convert the tensor (new replicated both among the tp process group) to the new dist_spec.
 
         Args:
             dist_spec (_DistSpec): the new dist spec.
@@ -297,7 +297,7 @@ class ColoTensor(torch.Tensor):
     def size_global(self, *args) -> torch.Size:
         """size_global
 
-        override the torch buildin size()
+        override the torch building size()
         the shape passed in must be in a replicate placement.
 
         Returns:

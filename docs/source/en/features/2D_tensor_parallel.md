@@ -60,7 +60,7 @@ Given $P=q\times q$ processors, we present the theoretical computation and memor
 
 ## Usage
 
-To enable 2D tensor parallelism for our model, e.g. on 4 GPUs, we need to configure the parallism setting as below.
+To enable 2D tensor parallelism for our model, e.g. on 4 GPUs, we need to configure the parallelism setting as below.
 ```python
 CONFIG = dict(parallel=dict(
     data=1,

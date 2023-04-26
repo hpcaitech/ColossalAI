@@ -55,6 +55,7 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
         # 2. contiguous gradients
         # 3. cpu offload
         # 4. support when some parameters requires_grad = False
+        # 5. support layer drop
         super(LowLevelZeroOptimizer, self).__init__(optim=optimizer)
         self._dtype = self.optim.param_groups[0]['params'][0].dtype
         self._logger = get_dist_logger()

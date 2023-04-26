@@ -76,7 +76,7 @@ def check_installation():
     click.echo("")
     click.echo(f"Note:")
     click.echo(
-        f"1. AOT (ahead-of-time) compilation of the CUDA kernels occurs during installation when the environment varialbe CUDA_EXT=1 is set"
+        f"1. AOT (ahead-of-time) compilation of the CUDA kernels occurs during installation when the environment variable CUDA_EXT=1 is set"
     )
     click.echo(f"2. If AOT compilation is not enabled, stay calm as the CUDA kernels can still be built during runtime")
 
@@ -88,7 +88,7 @@ def check_installation():
     click.echo(f"Note:")
     click.echo(f"1. The table above checks the version compatibility of the libraries/tools in the current environment")
     click.echo(
-        f"   - PyTorch version mistach: whether the PyTorch version in the current environment is compatible with the PyTorch version used for AOT compilation"
+        f"   - PyTorch version mismatch: whether the PyTorch version in the current environment is compatible with the PyTorch version used for AOT compilation"
     )
     click.echo(
         f"   - System and PyTorch CUDA version match: whether the CUDA version in the current environment is compatible with the CUDA version required by PyTorch"
