@@ -305,7 +305,7 @@ def emit_ckpt_func(body,
                    delete_unused_value_func,
                    level=0,
                    in_ckpt=False):
-    """Emit ckpt fuction in nested way
+    """Emit ckpt function in nested way
     Args:
         body: forward code, in recursive calls, this part will be checkpoint
         functions code

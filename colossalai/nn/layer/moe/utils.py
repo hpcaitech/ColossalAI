@@ -12,7 +12,7 @@ class ForceFP32Parameter(torch.nn.Parameter):
 
 
 class NormalNoiseGenerator:
-    """Generates a random noisy mask for logtis tensor.
+    """Generates a random noisy mask for logits tensor.
 
     All noise is generated from a normal distribution :math:`(0, 1 / E^2)`, where
     `E = the number of experts`.
@@ -32,7 +32,7 @@ class NormalNoiseGenerator:
 
 
 class UniformNoiseGenerator:
-    """Generates a random noisy mask for logtis tensor.
+    """Generates a random noisy mask for logits tensor.
     copied from mesh tensorflow:
     Multiply values by a random number between :math:`1-epsilon` and :math:`1+epsilon`.
     Makes models more resilient to rounding errors introduced by bfloat16.

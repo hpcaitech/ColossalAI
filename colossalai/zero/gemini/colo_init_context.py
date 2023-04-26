@@ -74,7 +74,7 @@ class ColoInitContext(InsertPostInitMethodToModuleSubClasses):
         """
         Args:
             device (torch.device): the device where parameters initialized are resident. Defaults to torch.device('cpu').
-            dtype (torch.dtype): the dtype of parameters initialized. Defults to torch.float.
+            dtype (torch.dtype): the dtype of parameters initialized. Defaults to torch.float.
             default_pg (ProcessGroup): the default process group for all initialized parameters.
             default_dist_spec: the default distributed specifications.
         """
@@ -164,7 +164,7 @@ def post_process_colo_init_ctx(model: torch.nn.Module,
         model (torch.nn.module): the model
         device (torch.device, optional): device type of the model params. Defaults to torch.device('cpu').
         dtype (torch.dtype, optional): dtype of the model params. Defaults to torch.float.
-        default_pg (Optional[ProcessGroup], optional): default process group. Defaults to None. Inidicates a DP-only process group.
+        default_pg (Optional[ProcessGroup], optional): default process group. Defaults to None. Indicates a DP-only process group.
         default_dist_spec (Any, optional): default dist spec of params. Defaults to None.
 
     Raises:

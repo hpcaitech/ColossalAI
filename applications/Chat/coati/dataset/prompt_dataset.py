@@ -1,5 +1,6 @@
 import copy
 import random
+from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Callable, Dict, Sequence
 
@@ -19,9 +20,13 @@ logger = get_dist_logger()
 class PromptDataset(Dataset):
     """Dataset for supervised fine-tuning."""
 
-    def __init__(self, data_path: str, tokenizer: transformers.PreTrainedTokenizer, max_datasets_size: int = None):
+    def __init__(self,
+                 data_path: str,
+                 tokenizer: transformers.PreTrainedTokenizer,
+                 max_datasets_size: int = None,
+                 max_length: int = 96):
         super(PromptDataset, self).__init__()
-        self.prompt = []
+        self.keyed_prompt = defaultdict(list)
         logger.info("Loading data...")
         list_data_dict = jload(data_path)
         logger.info(f"Loaded {len(list_data_dict)} examples.")
@@ -33,14 +38,14 @@ class PromptDataset(Dataset):
         for data_dict in list_data_dict:
             token = tokenizer(data_dict["instruction"],
                               return_tensors='pt',
-                              max_length=96,
+                              max_length=max_length,
                               padding='max_length',
                               truncation=True)
-            for idx in token['input_ids']:
-                self.prompt.append(idx.to(torch.cuda.current_device()))
+            for k, tensor in token.items():
+                self.keyed_prompt[k].extend(tensor.to(torch.cuda.current_device()).unbind())
 
     def __len__(self):
-        return len(self.prompt)
+        return len(self.keyed_prompt)
 
     def __getitem__(self, i) -> Dict[str, torch.Tensor]:
-        return self.prompt[i]
+        return {k: v[i] for k, v in self.keyed_prompt.items()}

@@ -27,7 +27,7 @@ pip install transformers
 
 ## Dataset
 
-For simplicity, the input data is randonly generated here.
+For simplicity, the input data is randomly generated here.
 
 ## Training
 
