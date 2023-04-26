@@ -140,6 +140,7 @@ def main(args):
                          ptx_coef=0,
                          max_epochs=args.max_epochs,
                          train_batch_size=args.train_batch_size,
+                         offload_inference_models=args.offload_inference_models,
                          max_length=512,
                          do_sample=True,
                          temperature=1.0,
@@ -182,5 +183,6 @@ if __name__ == '__main__':
     parser.add_argument('--experience_batch_size', type=int, default=8)
     parser.add_argument('--lora_rank', type=int, default=0)
     parser.add_argument('--cuda_mem_frac', type=float, default=1.0)
+    parser.add_argument('--offload_inference_models', action='store_true', default=False)
     args = parser.parse_args()
     main(args)

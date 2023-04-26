@@ -40,11 +40,10 @@ class PPOTrainer(Trainer):
         vf_coef (float, defaults to 1.0): the coefficient of value loss
         ptx_coef (float, defaults to 0.9): the coefficient of ptx loss
         value_clip (float, defaults to 0.4): the clip coefficient of value loss
-        experience_batch_size (int, defaults to 8): the batch size to use for experience generation
         max_epochs (int, defaults to 1): the number of epochs of training process
-        tokenizer (Callable, optional): the tokenizer to use for tokenizing the input
         sample_replay_buffer (bool, defaults to False): whether to sample from replay buffer
         dataloader_pin_memory (bool, defaults to True): whether to pin memory for data loader
+        offload_inference_models (bool, defaults to True): whether to offload inference models to cpu during training process
         callbacks (List[Callback], defaults to []): the callbacks to call during training process
         generate_kwargs (dict, optional): the kwargs to use while model generating
     """
