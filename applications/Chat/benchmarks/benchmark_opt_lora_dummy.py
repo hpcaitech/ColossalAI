@@ -140,8 +140,6 @@ def main(args):
                          ptx_coef=0,
                          max_epochs=args.max_epochs,
                          train_batch_size=args.train_batch_size,
-                         experience_batch_size=args.experience_batch_size,
-                         tokenizer=preprocess_batch,
                          max_length=512,
                          do_sample=True,
                          temperature=1.0,
