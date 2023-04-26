@@ -78,7 +78,7 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
         """
         Save sharded model
         """
-        state_dict_shard = model.state_dict_shard(max_shard_size=max_shard_size, only_rank_0=False)
+        state_dict_shard = model.state_dict_shard(max_shard_size=max_shard_size, only_rank_0=True)
         weights_name, save_index_file = get_base_filenames(variant, use_safetensors)
         total_size = 0
         index_file = CheckpointIndexFile(checkpoint_path)
