@@ -287,7 +287,7 @@ def emit_code_with_chunk(body: List[str],
             body = _replace_new_tensor_like_shape(search_chunk, chunk_infos, region_idx, node_idx, node, body)
             # new tensor
             body = _replace_new_tensor_shape(search_chunk, chunk_infos, region_idx, node_idx, node, body)
-            # reassgin reshape size
+            # reassign reshape size
             body[-1] = _replace_reshape_size(body[-1], node.name, chunk_infos[region_idx]["reshape_size"])
             body[-1] = "    " + body[-1]
             delete_unused_value_func(node, body, chunk_inputs_names)

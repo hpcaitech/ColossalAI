@@ -35,6 +35,8 @@ def train(args):
         strategy = ColossalAIStrategy(stage=3, placement_policy='cuda')
     elif args.strategy == 'colossalai_zero2':
         strategy = ColossalAIStrategy(stage=2, placement_policy='cuda')
+    elif args.strategy == 'colossalai_zero2_cpu':
+        strategy = ColossalAIStrategy(stage=2, placement_policy='cpu')
     else:
         raise ValueError(f'Unsupported strategy "{args.strategy}"')
 
@@ -109,7 +111,7 @@ def train(args):
                                           max_datasets_size=args.max_datasets_size,
                                           max_length=max_len)
         eval_dataset = None
-        data_collator = DataCollatorForSupervisedDataset(tokenizer=tokenizer)
+    data_collator = DataCollatorForSupervisedDataset(tokenizer=tokenizer)
 
     if dist.is_initialized() and dist.get_world_size() > 1:
         train_sampler = DistributedSampler(train_dataset,
@@ -154,7 +156,7 @@ def train(args):
                          max_epochs=args.max_epochs,
                          accimulation_steps=args.accimulation_steps)
 
-    trainer.fit(logger=logger, log_interval=args.log_interval)
+    trainer.fit(logger=logger, use_wandb=args.use_wandb)
 
     # save model checkpoint after fitting on only rank0
     trainer.save_model(path=args.save_path, only_rank0=True, tokenizer=tokenizer)
@@ -168,7 +170,7 @@ def train(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--strategy',
-                        choices=['naive', 'ddp', 'colossalai_gemini', 'colossalai_zero2'],
+                        choices=['naive', 'ddp', 'colossalai_gemini', 'colossalai_zero2', 'colossalai_zero2_cpu'],
                         default='naive')
     parser.add_argument('--model', choices=['gpt2', 'bloom', 'opt', 'llama'], default='bloom')
     parser.add_argument('--pretrain', type=str, default=None)
@@ -183,5 +185,6 @@ if __name__ == '__main__':
     parser.add_argument('--log_interval', type=int, default=100, help="how many steps to log")
     parser.add_argument('--lr', type=float, default=5e-6)
     parser.add_argument('--accimulation_steps', type=int, default=8)
+    parser.add_argument('--use_wandb', default=False, action='store_true')
     args = parser.parse_args()
     train(args)

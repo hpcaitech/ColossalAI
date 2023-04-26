@@ -46,12 +46,16 @@ class ZeroOptimizer(ColossalaiOptimizer):
             Defaults to 0.0.
         initial_scale (float, optional): Initial scale used by DynamicGradScaler. Defaults to 2**32.
         min_scale (float, optional): Min scale used by DynamicGradScaler. Defaults to 1.
-        growth_factor (float, optional): growth_factor used by DynamicGradScaler. Defaults to 2.
-        backoff_factor (float, optional): backoff_factor used by DynamicGradScaler. Defaults to 0.5.
-        growth_interval (float, optional): growth_interval used by DynamicGradScaler. Defaults to 1000.
-        hysteresis (float, optional): hysteresis used by DynamicGradScaler. Defaults to 2.
-        max_scale (int, optional): max_scale used by DynamicGradScaler. Defaults to 2**32.
-        """
+        growth_factor (float, optional): Growth_factor used by DynamicGradScaler. Defaults to 2.
+        backoff_factor (float, optional): Backoff_factor used by DynamicGradScaler. Defaults to 0.5.
+        growth_interval (float, optional): Growth_interval used by DynamicGradScaler. Defaults to 1000.
+        hysteresis (float, optional): Hysteresis used by DynamicGradScaler. Defaults to 2.
+        max_scale (int, optional): Max_scale used by DynamicGradScaler. Defaults to 2**32.
+        clipping_norm (float, optional): The norm value used to clip gradient. Defaults to 0.0.
+        norm_type (float, optional): The type of norm used for gradient clipping. Currently, only L2-norm (norm_type=2.0)
+            is supported in ZeroOptimizer. Defaults to 2.0.
+        verbose (bool, optional): Whether to print verbose information, including grad overflow info. Defaults to False.
+    """
 
     def __init__(self,
                  optim: Optimizer,
@@ -66,6 +70,7 @@ class ZeroOptimizer(ColossalaiOptimizer):
                  max_scale: float = 2**32,
                  clipping_norm: float = 0.0,
                  norm_type: float = 2.0,
+                 verbose: bool = False,
                  **defaults: Any):
         super().__init__(optim)
         assert isinstance(module, ZeroDDP)
@@ -80,6 +85,7 @@ class ZeroOptimizer(ColossalaiOptimizer):
         self.chunk16_set: Set[Chunk] = set()
         self.clipping_flag = clipping_norm > 0.0
         self.max_norm = clipping_norm
+        self.verbose = verbose
 
         if self.clipping_flag:
             assert norm_type == 2.0, "ZeroOptimizer only supports L2 norm now"
@@ -218,7 +224,8 @@ class ZeroOptimizer(ColossalaiOptimizer):
         if found_inf:
             self.optim_state = OptimState.UNSCALED    # no need to unscale grad
             self.grad_scaler.update(found_inf)    # update gradient scaler
-            self._logger.info(f'Found overflow. Skip step')
+            if self.verbose:
+                self._logger.info(f'Found overflow. Skip step')
             self._clear_global_norm()    # clear recorded norm
             self.zero_grad()    # reset all gradients
             self._update_fp16_params()

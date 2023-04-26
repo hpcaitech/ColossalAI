@@ -7,7 +7,7 @@ import os
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from .utils import check_cuda_availability, check_system_pytorch_cuda_match, print_rank_0
 
@@ -78,7 +78,7 @@ class Builder(ABC):
     @abstractmethod
     def include_dirs(self) -> List[str]:
         """
-        This function should return a list of inlcude files for extensions.
+        This function should return a list of include files for extensions.
         """
         pass
 
@@ -127,18 +127,18 @@ class Builder(ABC):
 
         if CUDA_HOME is None:
             raise RuntimeError(
-                "CUDA_HOME is not found. You need to export CUDA_HOME environment vairable or install CUDA Toolkit first in order to build CUDA extensions"
+                "CUDA_HOME is not found. You need to export CUDA_HOME environment variable or install CUDA Toolkit first in order to build CUDA extensions"
             )
 
         # make sure CUDA is available for compilation during
         cuda_available = check_cuda_availability()
         if not cuda_available:
-            raise RuntimeError("CUDA is not available on your system as torch.cuda.is_avaible() returns False.")
+            raise RuntimeError("CUDA is not available on your system as torch.cuda.is_available() returns False.")
 
         # make sure system CUDA and pytorch CUDA match, an error will raised inside the function if not
         check_system_pytorch_cuda_match(CUDA_HOME)
 
-    def load(self, verbose=True):
+    def load(self, verbose: Optional[bool] = None):
         """
         load the kernel during runtime. If the kernel is not built during pip install, it will build the kernel.
         If the kernel is built during runtime, it will be stored in `~/.cache/colossalai/torch_extensions/`. If the
@@ -149,6 +149,8 @@ class Builder(ABC):
         Args:
             verbose (bool, optional): show detailed info. Defaults to True.
         """
+        if verbose is None:
+            verbose = os.environ.get('CAI_KERNEL_VERBOSE', '0') == '1'
         # if the kernel has be compiled and cached, we directly use it
         if self.cached_op_module is not None:
             return self.cached_op_module
@@ -159,7 +161,7 @@ class Builder(ABC):
             op_module = self.import_op()
             if verbose:
                 print_rank_0(
-                    f"[extension] OP {self.prebuilt_import_path} has been compileed ahead of time, skip building.")
+                    f"[extension] OP {self.prebuilt_import_path} has been compiled ahead of time, skip building.")
         except ImportError:
             # check environment
             self.check_runtime_build_environment()

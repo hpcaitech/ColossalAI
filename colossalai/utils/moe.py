@@ -38,7 +38,7 @@ def sync_moe_model_param(model: nn.Module):
 
         param_dict = get_moe_epsize_param_dict(model)
 
-        # synchrosize the parameters whose dp_group is the whole world
+        # synchronize the parameters whose dp_group is the whole world
         if 1 in param_dict:
             src_rank = gpc.get_ranks_in_group(ParallelMode.DATA)[0]
             for param in param_dict[1]:

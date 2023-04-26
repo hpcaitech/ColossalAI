@@ -8,7 +8,7 @@ from coati.models.bloom import BLOOMRM, BLOOMActor, BLOOMCritic
 from coati.models.gpt import GPTRM, GPTActor, GPTCritic
 from coati.models.llama import LlamaActor, LlamaCritic, LlamaRM
 from coati.models.opt import OPTRM, OPTActor, OPTCritic
-from coati.models.roberta import RoBERTaRM, RoBERTaActor, RoBERTaCritic
+from coati.models.roberta import RoBERTaActor, RoBERTaCritic, RoBERTaRM
 from coati.trainer import PPOTrainer
 from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
 from coati.utils import prepare_llama_tokenizer_and_embedding
@@ -71,9 +71,8 @@ def main(args):
     if args.rm_path is not None:
         reward_model.load_state_dict(state_dict)
 
-    if args.strategy != 'colossalai_gemini':
-        initial_model.to(torch.float16).to(torch.cuda.current_device())
-        reward_model.to(torch.float16).to(torch.cuda.current_device())
+    initial_model.to(torch.float16).to(torch.cuda.current_device())
+    reward_model.to(torch.float16).to(torch.cuda.current_device())
 
     with strategy.model_init_context():
         if args.model == 'gpt2':
@@ -143,25 +142,26 @@ def main(args):
     prompt_dataset = PromptDataset(tokenizer=tokenizer, data_path=args.prompt_path, max_datasets_size=16384)
     if dist.is_initialized() and dist.get_world_size() > 1:
         prompt_sampler = DistributedSampler(prompt_dataset, shuffle=True, seed=42, drop_last=True)
+    else:
+        prompt_sampler = None
     prompt_dataloader = DataLoader(prompt_dataset,
                                    shuffle=(prompt_sampler is None),
                                    sampler=prompt_sampler,
-                                   batch_size=args.train_batch_size)
+                                   batch_size=args.experience_batch_size)
 
-    pretrain_dataset = SupervisedDataset(tokenizer=tokenizer, data_path=args.pretrain_dataset, max_datasets_size=16384)
+    pretrain_dataset = SupervisedDataset(tokenizer=tokenizer,
+                                         data_path=args.pretrain_dataset,
+                                         max_datasets_size=16384,
+                                         max_length=args.max_input_len)
     if dist.is_initialized() and dist.get_world_size() > 1:
         pretrain_sampler = DistributedSampler(pretrain_dataset, shuffle=True, seed=42, drop_last=True)
+    else:
+        pretrain_sampler = None
     pretrain_dataloader = DataLoader(pretrain_dataset,
                                      shuffle=(pretrain_sampler is None),
                                      sampler=pretrain_sampler,
                                      batch_size=args.ptx_batch_size,
                                      collate_fn=data_collator)
-
-    def tokenize_fn(texts):
-        # MUST padding to max length to ensure inputs of all ranks have the same length
-        # Different length may lead to hang when using gemini, as different generation steps
-        batch = tokenizer(texts, return_tensors='pt', max_length=96, padding='max_length', truncation=True)
-        return {k: v.to(torch.cuda.current_device()) for k, v in batch.items()}
 
     (actor, actor_optim), (critic, critic_optim) = strategy.prepare((actor, actor_optim), (critic, critic_optim))
 
@@ -178,9 +178,8 @@ def main(args):
         ptx_coef=args.ptx_coef,
         max_epochs=args.max_epochs,
         train_batch_size=args.train_batch_size,
-        experience_batch_size=args.experience_batch_size,
-        tokenizer=tokenize_fn,
-        max_length=128,
+        max_length=args.max_seq_len,
+        use_cache=True,
         do_sample=True,
         temperature=1.0,
         top_k=50,
@@ -228,5 +227,7 @@ if __name__ == '__main__':
     parser.add_argument('--lora_rank', type=int, default=0, help="low-rank adaptation matrices rank")
     parser.add_argument('--kl_coef', type=float, default=0.1)
     parser.add_argument('--ptx_coef', type=float, default=0.9)
+    parser.add_argument('--max_input_len', type=int, default=96)
+    parser.add_argument('--max_seq_len', type=int, default=128)
     args = parser.parse_args()
     main(args)

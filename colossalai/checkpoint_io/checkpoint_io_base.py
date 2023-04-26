@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Union
+from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -70,7 +71,7 @@ class CheckpointIO(ABC):
 
         Args:
             model (nn.Module): model to be loaded.
-            checkpoint (str): checkpoint path. This value is made compatiblity with the model checkpoints in the
+            checkpoint (str): checkpoint path. This value is made compatibility with the model checkpoints in the
                         mainstream model zoos such as Hugging Face and TIMM. The checkpoint path can be:
                         1. a file path, e.g. 'model.pt'
                         2. a path to a json file which defines the index to the sharded checkpoint
@@ -104,7 +105,7 @@ class CheckpointIO(ABC):
                    checkpoint: str,
                    shard: bool = False,
                    gather_dtensor: bool = True,
-                   prefix: str = None,
+                   variant: str = None,
                    size_per_shard: int = 1024,
                    use_safetensors: bool = False):
         """
@@ -126,10 +127,10 @@ class CheckpointIO(ABC):
                 1. a file path, e.g. 'model.pt'
                 2. a directory path to save the sharded checkpoint, e.g. './checkpoints/' when shard = True.
             shard (bool): whether to shard the checkpoint. Default: False. If set to True, the checkpoint will be sharded into
-                multiple files. The model shards will be specificed by a `model.index.json` file. When shard = True, please ensure
+                multiple files. The model shards will be specified by a `model.index.json` file. When shard = True, please ensure
                 that the checkpoint path is a directory path instead of a file path.
             gather_dtensor (bool): whether to gather the distributed tensor to the first device. Default: True.
-            prefix (str): prefix for the model checkpoint file name when shard=True. Default: None.
+            variant (str): If specified, weights are saved in the format pytorch_model.<variant>.bin. Default: None.
             size_per_shard (int): size per shard in MB. Default: 1024. This value is only used when shard = True.
             use_safetensors (bool): whether to use safe tensors. Default: False. If set to True, the checkpoint will be saved
         """
@@ -138,7 +139,7 @@ class CheckpointIO(ABC):
             model = model.unwrap()
 
         if shard:
-            self.save_sharded_model(model, checkpoint, gather_dtensor, prefix, size_per_shard, use_safetensors)
+            self.save_sharded_model(model, checkpoint, gather_dtensor, variant, size_per_shard, use_safetensors)
         else:
             self.save_unsharded_model(model, checkpoint, gather_dtensor, use_safetensors)
 
@@ -148,7 +149,7 @@ class CheckpointIO(ABC):
 
         Args:
             optimizer (Optimizer): optimizer to be loaded.
-            checkpoint (str): checkpoint path. This value is made compatiblity with the model checkpoints in the
+            checkpoint (str): checkpoint path. This value is made compatibility with the model checkpoints in the
         """
         index_file_exists, index_file_path = has_index_file(checkpoint)
 
@@ -179,7 +180,7 @@ class CheckpointIO(ABC):
                 2. a path to a json file which defines the index to the sharded checkpoint for the optimizer
                 3. a path to a folder containing a unique .index.json file for sharded checkpoint
             shard (bool): whether to shard the checkpoint. Default: False. If set to True, the checkpoint will be sharded into
-                multiple files. The optimizer shards will be specificed by a `optimizer.index.json` file.
+                multiple files. The optimizer shards will be specified by a `optimizer.index.json` file.
             gather_dtensor (bool): whether to gather the distributed tensor to the first device. Default: True.
             prefix (str): prefix for the optimizer checkpoint when shard = True. Default: None.
             size_per_shard (int): size per shard in MB. Default: 1024. This value is only used when shard is set to True.
@@ -219,7 +220,7 @@ class CheckpointIO(ABC):
         pass
 
     @abstractmethod
-    def save_sharded_model(self, model: nn.Module, checkpoint: str, gather_dtensor: bool, prefix: str,
+    def save_sharded_model(self, model: nn.Module, checkpoint: str, gather_dtensor: bool, variant: Optional[str],
                            size_per_shard: int, use_safetensors: bool):
         """
         Save model to sharded checkpoint.

@@ -20,7 +20,7 @@ To launch the distributed inference service quickly, you can download the OPT-12
 
 2. Prepare a prebuilt service image
 
-Pull a docker image from dockerhub installed with Colossal-AI inference.
+Pull a docker image from docker hub installed with Colossal-AI inference.
 
 ```bash
 docker pull hpcaitech/energon-ai:latest

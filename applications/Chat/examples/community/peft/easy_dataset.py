@@ -166,7 +166,7 @@ class EasyRewardDataset(Dataset):
 
 
 '''
-Easy SFT just accept a text file which can be read line by line. However the datasest will group texts together to max_length so LLM will learn the texts meaning better.
+Easy SFT just accept a text file which can be read line by line. However the datasets will group texts together to max_length so LLM will learn the texts meaning better.
 If individual lines are not related, just set is_group_texts to False.
 '''
 

@@ -44,7 +44,7 @@ class ParallelContext(metaclass=SingletonMeta):
         # load config from file
         self._config = None
 
-        # default 3D parallel args, will be overwritten during process group intialization
+        # default 3D parallel args, will be overwritten during process group initialization
         self.world_size = 1
         self.data_parallel_size = 1
         self.pipeline_parallel_size = 1
@@ -264,7 +264,7 @@ class ParallelContext(metaclass=SingletonMeta):
         """Adds world size for `parallel_mode`.
 
         Args:
-            parallel_mode (:class:`colossalai.context.ParallelMode`): The parallel mode correponding to the process group
+            parallel_mode (:class:`colossalai.context.ParallelMode`): The parallel mode corresponding to the process group
             world_size (int): The world size to be added
 
         Raises:

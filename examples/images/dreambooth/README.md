@@ -61,7 +61,7 @@ torchrun --nproc_per_node 2 train_dreambooth_colossalai.py \
 - `INSTANCE_DIR` refers to personalized path to instance images, you might need to insert information here.
 - `OUTPUT_DIR` refers to local path to save the trained model, you might need to find a path with enough space.
 - `resolution` refers to the corresponding resolution number of your target model. Note: Change the `resolution` to 768 if you are using the [stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) 768x768 model.
-- `placement`  refers to the training strategy supported by Colossal AI, defult = 'cuda', which refers to loading all the parameters into cuda memory. On the other hand, 'cpu' refers to 'cpu offload' strategy while 'auto' enables 'Gemini', both featured by Colossal AI.
+- `placement`  refers to the training strategy supported by Colossal AI, default = 'cuda', which refers to loading all the parameters into cuda memory. On the other hand, 'cpu' refers to 'cpu offload' strategy while 'auto' enables 'Gemini', both featured by Colossal AI.
 
 ### Training with prior-preservation loss
 

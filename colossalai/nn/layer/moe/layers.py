@@ -25,7 +25,7 @@ from colossalai.zero.legacy.init_ctx import no_shard_zero_context, no_shard_zero
 class MoeLayer(nn.Module):
     """A MoE layer, that puts its input tensor to its gate and uses the output logits
     to router all tokens, is mainly used to exchange all tokens for every expert across
-    the moe tensor group by all to all comunication. Then it will get the output of all
+    the moe tensor group by all to all communication. Then it will get the output of all
     experts and exchange the output. At last returns the output of the moe system.
 
     Args:
@@ -122,7 +122,7 @@ class MoeModule(nn.Module):
         drop_tks (bool, optional): Whether drops tokens in evaluation
         use_residual (bool, optional): Makes this MoE layer a Residual MoE.
             More information can be found in `Microsoft paper`_.
-        residual_instance (nn.Module, optional): The instance of residual module in Resiual MoE
+        residual_instance (nn.Module, optional): The instance of residual module in Residual MoE
         expert_instance (MoeExperts, optional): The instance of experts module in MoeLayer
         expert_cls (Type[nn.Module], optional): The class of each expert when no instance is given
         expert_args (optional): The args of expert when no instance is given

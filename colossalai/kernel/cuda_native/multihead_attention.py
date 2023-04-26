@@ -111,7 +111,7 @@ class MultiHeadAttention(nn.Module):
     Arguments:
         hidden_size: Total dimension of hidden_size.
         nhead: Number of parallel attention heads.
-        batch_size: Batch Size for one foward
+        batch_size: Batch Size for one forward
         max_seq_len: Max length of input sequence
         dropout: Dropout probability
         norm_first: perform LayerNorms before attention
