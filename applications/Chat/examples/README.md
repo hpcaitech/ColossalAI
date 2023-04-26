@@ -151,6 +151,10 @@ torchrun --standalone --nproc_per_node=4 train_prompts.py \
          --rm_pretrain /your/pretrain/rm/defination \
          --rm_path /your/rm/model/path
 ```
+
+Prompt dataset: the instruction dataset mentioned in the above figure which includes the instructions.  
+Pretrain dataset: the pretrain dataset including both the instruction and response, e.g. [alpaca_data.json](https://github.com/tatsu-lab/stanford_alpaca).
+
 ### Arg List
 - --strategy:          the strategy using for training, choices=['naive', 'ddp', 'colossalai_gemini', 'colossalai_zero2'], default='naive'
 - --model:             model type of actor, choices=['gpt2', 'bloom', 'opt', 'llama'], default='bloom'
