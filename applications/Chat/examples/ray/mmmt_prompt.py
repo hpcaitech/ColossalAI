@@ -5,6 +5,7 @@ from functools import partial
 
 import ray
 import torch
+import pandas as pd
 from coati.quant import llama_load_quant, low_resource_init
 from coati.ray.detached_trainer_ppo import DetachedPPOTrainer
 from coati.ray.experience_maker_holder import ExperienceMakerHolder
@@ -59,19 +60,18 @@ def main(args):
     tokenizer.pad_token = tokenizer.eos_token
 
     def model_fn():
-        actor_cfg = AutoConfig.from_pretrained(args.pretrain)
-        critic_cfg = AutoConfig.from_pretrained(args.critic_pretrain)
-        actor = get_actor_from_args(args.model, config=actor_cfg).requires_grad_(False).half().cuda()
-        critic = get_critic_from_args(args.critic_model, config=critic_cfg).requires_grad_(False).half().cuda()
-        reward_model = get_reward_model_from_args(args.critic_model, config=critic_cfg).requires_grad_(False).half().cuda()
+        actor = get_actor_from_args(args.model, args.pretrain).requires_grad_(False).half().cuda()
+        critic = get_critic_from_args(args.model, args.critic_pretrain).requires_grad_(False).half().cuda()
+        reward_model = get_reward_model_from_args(args.model, args.critic_pretrain).requires_grad_(False).half().cuda()
         if args.initial_model_quant_ckpt is not None and args.model == 'llama':
             # quantize initial model
+            actor_cfg = AutoConfig.from_pretrained(args.pretrain)
             with low_resource_init(), no_init_weights():
                 initial_model = get_actor_from_args(args.model, config=actor_cfg)
             initial_model.model = llama_load_quant(initial_model.model, args.initial_model_quant_ckpt, args.quant_bits,
                                                    args.quant_group_size).cuda().requires_grad_(False)
         else:
-            initial_model = get_actor_from_args(args.model, config=actor_cfg).requires_grad_(False).half().cuda()
+            initial_model = get_actor_from_args(args.model, args.pretrain).requires_grad_(False).half().cuda()
         return actor, critic, reward_model, initial_model
 
     # configure Experience Maker
@@ -101,9 +101,8 @@ def main(args):
     ]
 
     def trainer_model_fn():
-        actor = get_actor_from_args(args.model, config=AutoConfig.from_pretrained(args.pretrain)).half().cuda()
-        critic = get_critic_from_args(args.critic_model,
-                                      config=AutoConfig.from_pretrained(args.critic_pretrain)).half().cuda()
+        actor = get_actor_from_args(args.model, args.pretrain).half().cuda()
+        critic = get_critic_from_args(args.model, args.critic_pretrain).half().cuda()
         return actor, critic
 
     # configure Trainer
@@ -125,15 +124,18 @@ def main(args):
     ]
 
     dataset_size = args.experience_batch_size * 4
+    
+    def build_dataloader():
+        def tokenize_fn(texts):
+            batch = tokenizer(texts, return_tensors='pt', max_length=96, padding='max_length', truncation=True)
+            return {k: v.cuda() for k, v in batch.items()}
 
-    def data_gen_fn():
-        input_ids = torch.randint(tokenizer.vocab_size, (256,), device=torch.cuda.current_device())
-        attn_mask = torch.ones_like(input_ids)
-        return {'input_ids': input_ids, 'attention_mask': attn_mask}
-
-    def build_dataloader(size):
-        dataset = [data_gen_fn() for _ in range(size)]
-        dataloader = DataLoader(dataset, batch_size=args.experience_batch_size)
+        dataset = pd.read_csv(args.prompt_path)['prompt']
+        dataloader = DataLoader(dataset=dataset,
+                   batch_size=dataset_size,
+                   shuffle=True,
+                   collate_fn=tokenize_fn
+                   )
         return dataloader
 
     # uncomment this function if sync_models_from_trainers is True
@@ -146,7 +148,7 @@ def main(args):
 
     for experience_holder_ref in experience_holder_refs:
         wait_tasks.append(
-            experience_holder_ref.workingloop.remote(partial(build_dataloader, dataset_size),
+            experience_holder_ref.workingloop.remote(build_dataloader, 
                                                      num_steps=args.experience_steps))
 
     total_steps = args.experience_batch_size * args.experience_steps * \
@@ -159,6 +161,7 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
+    parser.add_argument('--prompt_path', type=str, default=None)
     parser.add_argument('--num_makers', type=int, default=1)
     parser.add_argument('--num_trainers', type=int, default=1)
     parser.add_argument('--trainer_strategy',

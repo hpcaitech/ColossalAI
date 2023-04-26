@@ -26,20 +26,12 @@ class DetachedReplayBuffer:
         cpu_offload: Whether to offload experience to cpu when sampling. Defaults to True.
     '''
 
-    def __init__(self, sample_batch_size: int, tp_world_size: int = 1, limit: int = 0) -> None:
+    def __init__(self, sample_batch_size: int, limit: int = 0) -> None:
         self.sample_batch_size = sample_batch_size
         self.limit = limit
         self.items = Queue(self.limit, actor_options={"num_cpus": 1})
         self.batch_collector: List[BufferItem] = []
-        '''
-        Workers in the same tp group share this buffer and need same sample for one step.
-            Therefore a held_sample should be returned tp_world_size times before it could be dropped.
-            worker_state records wheter a worker got the held_sample
-        '''
-        self.tp_world_size = tp_world_size
-        self.worker_state = [False] * self.tp_world_size
-        self.held_sample = None
-        self._worker_state_lock = Lock()
+
 
     @torch.no_grad()
     def append(self, experience: Experience) -> None:
@@ -70,16 +62,7 @@ class DetachedReplayBuffer:
 
     @torch.no_grad()
     def sample(self, worker_rank=0, to_device="cpu") -> Experience:
-        self._worker_state_lock.acquire()
-        if not any(self.worker_state):
-            self.held_sample = self._sample_and_erase()
-        self.worker_state[worker_rank] = True
-        if all(self.worker_state):
-            self.worker_state = [False] * self.tp_world_size
-            ret = self.held_sample
-        else:
-            ret = copy.deepcopy(self.held_sample)
-        self._worker_state_lock.release()
+        ret = self._sample_and_erase()
         ret.to_device(to_device)
         return ret
 

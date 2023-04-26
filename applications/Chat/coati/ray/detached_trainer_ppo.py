@@ -110,6 +110,8 @@ class DetachedPPOTrainer(DetachedTrainer):
     @torch.no_grad()
     def _update_remote_makers(self, fully_update: bool = False, **config):
         # TODO: balance duties
+        if not fully_update:
+            config['requires_grad_only'] = True
         self.update_target_holder_list()
         # mark start, ensure order
         tasks = []
@@ -197,9 +199,9 @@ class DetachedPPOTrainer(DetachedTrainer):
             return self.critic
 
     def _get_model_state_dict_shard(self, model: torch.nn.Module, **config):
-        try:
-            self.strategy.merge_lora_weight(model)
-        except AttributeError:
-            pass
+        # try:
+        #     self.strategy.merge_lora_weight(model)
+        # except AttributeError:
+        #     pass
         for state_dict in self.strategy.get_model_state_dict_shard(model, **config):
             yield state_dict_to(state_dict)

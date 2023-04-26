@@ -61,17 +61,17 @@ def main(args):
     def model_fn():
         actor_cfg = AutoConfig.from_pretrained(args.pretrain)
         critic_cfg = AutoConfig.from_pretrained(args.critic_pretrain)
-        actor = get_actor_from_args(args.model, config=actor_cfg).half().cuda()
-        critic = get_critic_from_args(args.critic_model, config=critic_cfg).half().cuda()
-        reward_model = get_reward_model_from_args(args.critic_model, config=critic_cfg).half().cuda()
+        actor = get_actor_from_args(args.model, config=actor_cfg).requires_grad_(False).half().cuda()
+        critic = get_critic_from_args(args.critic_model, config=critic_cfg).requires_grad_(False).half().cuda()
+        reward_model = get_reward_model_from_args(args.critic_model, config=critic_cfg).requires_grad_(False).half().cuda()
         if args.initial_model_quant_ckpt is not None and args.model == 'llama':
             # quantize initial model
             with low_resource_init(), no_init_weights():
                 initial_model = get_actor_from_args(args.model, config=actor_cfg)
             initial_model.model = llama_load_quant(initial_model.model, args.initial_model_quant_ckpt, args.quant_bits,
-                                                   args.quant_group_size).cuda()
+                                                   args.quant_group_size).cuda().requires_grad_(False)
         else:
-            initial_model = get_actor_from_args(args.model, config=actor_cfg).half().cuda()
+            initial_model = get_actor_from_args(args.model, config=actor_cfg).requires_grad_(False).half().cuda()
         return actor, critic, reward_model, initial_model
 
     # configure Experience Maker

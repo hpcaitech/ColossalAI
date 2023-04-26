@@ -1,6 +1,7 @@
 import os
-from typing import Any, Optional
-
+import sys
+from typing import Any, Optional, Dict
+from collections import OrderedDict
 import torch
 import torch.distributed as dist
 import torch.nn as nn
@@ -13,6 +14,14 @@ from torch.utils.data import DataLoader
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
 from .base import Strategy
+
+# TODO Move this to a util.py   (Moving to ray.util introduces ringed import)
+def get_grad_required_state_dict(model: nn.Module):
+    state_dict = OrderedDict()
+    for name, parameter in model.named_parameters():
+        if parameter.requires_grad:
+            state_dict[name] = parameter.detach()
+    return state_dict
 
 
 class NaiveStrategy(Strategy):
@@ -81,8 +90,26 @@ class NaiveStrategy(Strategy):
 
     def get_model_state_dict_shard(self, model: nn.Module, **config):
         # TODO: implement sharding on naive strategy
-        state_dict = model.state_dict()
-        yield state_dict
+        if 'requires_grad_only' in config and config['requires_grad_only'] == True:
+            state_dict = get_grad_required_state_dict(model)
+        else:
+            state_dict = model.state_dict()
+
+        if 'shard_size' in config: 
+            shard_size = config['shard_size']
+            accumulate_size = 0
+            state_dict_shard = OrderedDict()
+            for name, param in state_dict.items():
+                state_dict_shard[name] = param
+                accumulate_size += param.numel() * param.element_size()
+                if accumulate_size >= shard_size:
+                    accumulate_size = 0
+                    yield state_dict_shard
+                    state_dict_shard = OrderedDict()
+            if accumulate_size > 0:
+                yield state_dict_shard
+        else:
+            yield state_dict
 
     def merge_lora_weight(self, model: nn.Module):
         unwrapped_model = self._unwrap_model(model)

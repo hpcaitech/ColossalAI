@@ -192,6 +192,7 @@ class ExperienceMakerHolder:
             if new_critic_state_dict is not None:
                 self.experience_maker.critic.load_state_dict(new_critic_state_dict, strict=False)
 
+
         # the lock must be released after both actor and critic being updated
         if chunk_end:
             self._model_visit_lock.release()

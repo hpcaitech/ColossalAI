@@ -6,6 +6,7 @@ from functools import partial
 import pandas as pd
 import ray
 import torch
+from coati.quant import llama_load_quant, low_resource_init
 from coati.ray.detached_trainer_ppo import DetachedPPOTrainer
 from coati.ray.experience_maker_holder import ExperienceMakerHolder
 from coati.ray.utils import (
@@ -17,6 +18,8 @@ from coati.ray.utils import (
 )
 
 from torch.utils.data import DataLoader
+from transformers import AutoConfig
+from transformers.modeling_utils import no_init_weights
 
 def get_free_port():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -74,10 +77,18 @@ def main(args):
     ]
     
     def model_fn():
-        actor = get_actor_from_args(args.model, args.pretrain).half().cuda()
-        critic = get_critic_from_args(args.model, args.critic_pretrain).half().cuda()
-        reward_model = get_reward_model_from_args(args.model, args.critic_pretrain).half().cuda()
-        initial_model = get_actor_from_args(args.model, args.pretrain).half().cuda()
+        actor = get_actor_from_args(args.model, args.pretrain).requires_grad_(False).half().cuda()
+        critic = get_critic_from_args(args.model, args.critic_pretrain).requires_grad_(False).half().cuda()
+        reward_model = get_reward_model_from_args(args.model, args.critic_pretrain).requires_grad_(False).half().cuda()
+        if args.initial_model_quant_ckpt is not None and args.model == 'llama':
+           # quantize initial model
+           actor_cfg = AutoConfig.from_pretrained(args.pretrain)
+           with low_resource_init(), no_init_weights():
+               initial_model = get_actor_from_args(args.model, config=actor_cfg)
+           initial_model.model = llama_load_quant(initial_model.model, args.initial_model_quant_ckpt, args.quant_bits,
+                                                  args.quant_group_size).cuda().requires_grad_(False)
+        else:
+            initial_model = get_actor_from_args(args.model, args.pretrain).requires_grad_(False).half().cuda()
         return actor, critic, reward_model, initial_model
     
     # configure Experience Maker
@@ -118,7 +129,6 @@ def main(args):
 
     
     dataset_size = args.experience_batch_size * 4
-    from torch.utils.data import DataLoader
 
     def build_dataloader():
         def tokenize_fn(texts):
@@ -145,10 +155,14 @@ if __name__ == '__main__':
     parser.add_argument('--prompt_path', type=str, default=None)
     parser.add_argument('--num_trainers', type=int, default=1)
     parser.add_argument('--trainer_strategy',
-                        choices=['naive', 'ddp', 'colossalai_gemini', 'colossalai_zero2'],
+                        choices=[
+                            'naive', 'ddp', 'colossalai_gemini', 'colossalai_zero2', 'colossalai_gemini_cpu',
+                            'colossalai_zero2_cpu'
+                        ],
                         default='naive')
     parser.add_argument('--maker_strategy', choices=['naive'], default='naive')
-    parser.add_argument('--model', default='gpt2', choices=['gpt2', 'bloom', 'opt'])
+    parser.add_argument('--model', default='gpt2', choices=['gpt2', 'bloom', 'opt', 'llama'])
+    parser.add_argument('--critic_model', default='gpt2', choices=['gpt2', 'bloom', 'opt', 'llama'])
     parser.add_argument('--pretrain', type=str, default=None)
     parser.add_argument('--critic_pretrain', type=str, default=None)
     parser.add_argument('--experience_steps', type=int, default=4)
@@ -158,6 +172,9 @@ if __name__ == '__main__':
     parser.add_argument('--train_batch_size', type=int, default=8)
     parser.add_argument('--lora_rank', type=int, default=0, help="low-rank adaptation matrices rank")
 
+    parser.add_argument('--initial_model_quant_ckpt', type=str, default=None)
+    parser.add_argument('--quant_bits', type=int, default=4)
+    parser.add_argument('--quant_group_size', type=int, default=128)
     parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
     ray.init(namespace=os.environ["RAY_NAMESPACE"])
