@@ -1,6 +1,6 @@
 import math
 import time
-from typing import Optional, List
+from typing import List, Optional
 
 import loralib as lora
 import torch
@@ -18,8 +18,8 @@ from transformers.trainer import get_scheduler
 
 from colossalai.logging import get_dist_logger
 
-from .callbacks import Callback
 from .base import Trainer
+from .callbacks import Callback
 from .strategies import Strategy
 from .utils import is_rank_0
 
@@ -70,9 +70,10 @@ class SFTTrainer(Trainer):
                                        num_warmup_steps=math.ceil(max_steps * 0.03),
                                        num_training_steps=max_steps)
 
-    def fit(self, logger, log_interval=10):
-        wandb.init(project="Coati", name=time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
-        wandb.watch(self.model)
+    def fit(self, logger, use_wandb: bool = False):
+        if use_wandb:
+            wandb.init(project="Coati", name=time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+            wandb.watch(self.model)
         total_loss = 0
         # epoch_bar = tqdm(range(self.epochs), desc='Epochs', disable=not is_rank_0())
         step_bar = tqdm(range(len(self.train_dataloader) // self.accimulation_steps * self.max_epochs),
@@ -111,7 +112,7 @@ class SFTTrainer(Trainer):
                     self.strategy.optimizer_step(self.optimizer)
                     self.optimizer.zero_grad()
                     self.scheduler.step()
-                    if is_rank_0():
+                    if is_rank_0() and use_wandb:
                         wandb.log({
                             "loss": total_loss / self.accimulation_steps,
                             "lr": self.scheduler.get_last_lr()[0],
