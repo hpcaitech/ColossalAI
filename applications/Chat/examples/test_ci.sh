@@ -99,7 +99,7 @@ torchrun --standalone --nproc_per_node=2 ${BASE}/train_reward_model.py \
 
 rm -rf ${BASE}/rm_ckpt.pt
 
-torchrun --standalone --nproc_per_node=2 ${BASE}/train_prompts.py --prompt_path $PROMPT_PATH --pretrain_dataset $PRETRAIN_DATASET \
+torchrun --standalone --nproc_per_node=2 ${BASE}/train_prompts.py --prompt_dataset $PROMPT_PATH --pretrain_dataset $PRETRAIN_DATASET \
         --strategy colossalai_zero2 --num_episodes 1 --max_timesteps 2 \
         --update_timesteps 2 --max_epochs 1 --train_batch_size 2 \
         --pretrain 'facebook/opt-350m' --model opt \
@@ -108,7 +108,7 @@ torchrun --standalone --nproc_per_node=2 ${BASE}/train_prompts.py --prompt_path 
         --save_path ${BASE}/actor_checkpoint_prompts.pt
 rm -rf ${BASE}/rm_ckpt_opt.pt
 
-torchrun --standalone --nproc_per_node=2 ${BASE}/train_prompts.py --prompt_path $PROMPT_PATH --pretrain_dataset $PRETRAIN_DATASET \
+torchrun --standalone --nproc_per_node=2 ${BASE}/train_prompts.py --prompt_dataset $PROMPT_PATH --pretrain_dataset $PRETRAIN_DATASET \
          --strategy colossalai_zero2 --num_episodes 1 --max_timesteps 2 \
          --update_timesteps 2 --max_epochs 1 --train_batch_size 2 \
          --pretrain 'gpt2' --model gpt2 \
