@@ -5,7 +5,7 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 import torch.optim as optim
-from coati.models.base import LM, Actor, RewardModel
+from coati.models.base import Actor, RewardModel
 from coati.models.lora import LoraLinear
 from torch.optim import Optimizer
 from transformers.modeling_utils import PreTrainedModel
@@ -173,10 +173,6 @@ class ColossalAIStrategy(DDPStrategy):
         # TODO : better way to get torch model from gemini model
         # to get torch model from gemini model
 
-        for module in unwrapped_model.modules():
-            if isinstance(module, LoraLinear):
-                module.merge_weights = True
-                module.eval()
         if isinstance(unwrapped_model, RewardModel):
             state_dict = unwrapped_model.state_dict()
             if only_rank0 and dist.get_rank() != 0:
@@ -184,8 +180,6 @@ class ColossalAIStrategy(DDPStrategy):
             torch.save(state_dict, path)
         else:
             try:
-                if isinstance(unwrapped_model, LM):
-                    unwrapped_model = unwrapped_model.model
                 logger.info(f'Saving model to {path}', ranks=[0])
                 unwrapped_model.save_pretrained(path)
                 logger.info(f'Model saved to {path} Successfully', ranks=[0])

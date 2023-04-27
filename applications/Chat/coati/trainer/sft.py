@@ -2,26 +2,19 @@ import math
 import time
 from typing import List, Optional
 
-import loralib as lora
 import torch
 import torch.distributed as dist
 import wandb
-from coati.models.loss import GPTLMLoss
-from torch import nn
-from torch.optim import Adam, Optimizer
-from torch.optim.lr_scheduler import LambdaLR
+from torch.optim import Optimizer
 from torch.utils.data import DataLoader
-from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 from transformers.trainer import get_scheduler
 
-from colossalai.logging import get_dist_logger
-
 from .base import Trainer
 from .callbacks import Callback
-from .strategies import Strategy
-from .utils import is_rank_0
+from .strategies import ColossalAIStrategy, Strategy
+from .utils import is_rank_0, to_device
 
 
 class SFTTrainer(Trainer):
@@ -47,19 +40,17 @@ class SFTTrainer(Trainer):
         optim: Optimizer,
         train_dataloader: DataLoader,
         eval_dataloader: DataLoader = None,
-        batch_size: int = 1,
         max_epochs: int = 2,
         accimulation_steps: int = 8,
         callbacks: List[Callback] = [],
     ) -> None:
+        if accimulation_steps > 1 and isinstance(strategy, ColossalAIStrategy) and strategy.stage == 3:
+            raise ValueError("Accumulation steps are not supported in stage 3 of ColossalAI")
         super().__init__(strategy, max_epochs, callbacks=callbacks)
         self.train_dataloader = train_dataloader
         self.eval_dataloader = eval_dataloader
 
-        self.model = strategy.setup_model(model)
-        if "DDP" in str(self.strategy):
-            self.model = self.model.module
-        self.optimizer = strategy.setup_optimizer(optim, self.model)
+        (self.model, self.optimizer) = strategy.prepare((model, optim))
 
         self.accimulation_steps = accimulation_steps
         num_update_steps_per_epoch = len(train_dataloader) // self.accimulation_steps
@@ -86,17 +77,10 @@ class SFTTrainer(Trainer):
             self.model.train()
             for batch_id, batch in enumerate(self.train_dataloader):
 
-                prompt_ids = batch["input_ids"].to(torch.cuda.current_device())
-                p_mask = batch["attention_mask"].to(torch.cuda.current_device())
-                labels = batch["labels"].to(torch.cuda.current_device())
-                # prompt_ids = prompt_ids.squeeze(1).cuda()
-                # p_mask = p_mask.squeeze(1).cuda()
-                # prompt_logits = self.model(prompt_ids, attention_mask=p_mask, labels=labels)
-
-                outputs = self.model(prompt_ids, attention_mask=p_mask, labels=labels)
+                batch = to_device(batch, torch.cuda.current_device())
+                outputs = self.model(batch["input_ids"], attention_mask=batch["attention_mask"], labels=batch["labels"])
 
                 loss = outputs.loss
-                prompt_logits = outputs.logits
 
                 if loss >= 2.5 and is_rank_0():
                     logger.warning(f"batch_id:{batch_id}, abnormal loss: {loss}")
@@ -135,18 +119,14 @@ class SFTTrainer(Trainer):
                     loss_sum = 0
                     num_seen = 0
                     for batch in self.eval_dataloader:
-                        prompt_ids = batch["input_ids"].to(torch.cuda.current_device())
-                        p_mask = batch["attention_mask"].to(torch.cuda.current_device())
-                        labels = batch["labels"].to(torch.cuda.current_device())
-                        # prompt_ids = prompt_ids.squeeze(1).cuda()
-                        # p_mask = p_mask.squeeze(1).cuda()
-
-                        outputs = self.model(prompt_ids, attention_mask=p_mask, labels=labels)
+                        batch = to_device(batch, torch.cuda.current_device())
+                        outputs = self.model(batch["input_ids"],
+                                             attention_mask=batch["attention_mask"],
+                                             labels=batch["labels"])
                         loss = outputs.loss
-                        # prompt_logits = outputs.logits
 
                         loss_sum += loss.item()
-                        num_seen += prompt_ids.size(0)
+                        num_seen += batch["input_ids"].size(0)
 
                     loss_mean = loss_sum / num_seen
                     if dist.get_rank() == 0:
