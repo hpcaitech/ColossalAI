@@ -97,7 +97,7 @@ We would like to mention that the evaluation of model answers using the GPT-3.5 
 ## Data Format
 
 ### Questions
-The file [questions.json](./sample/questions.json) shows the example questions used to evaluate the performance of the model. The current sample questions are collected from [FastChat](https://github.com/lm-sys/FastChat/blob/main/fastchat/eval/table/question.jsonl). Each question record has the following field:
+The file [questions.json](./sample/questions.json) shows the example questions used to evaluate the performance of the model. Each question record has the following field:
 * `id` (id, compulsory): The ID of the instruction / question.
 * `instruction` (str, compulsory): The instruction / question for the LLM.
 * `input` (str, optional): The additional context of the instruction / question.
