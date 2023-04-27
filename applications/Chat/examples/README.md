@@ -66,6 +66,7 @@ torchrun --standalone --nproc_per_node=4 train_sft.py \
     --lr 2e-5 \
     --max_datasets_size 512 \
     --max_epochs 1 \
+    --grad_checkpoint
 ```
 ### Arg List
 - --strategy:          the strategy using for training, choices=['naive', 'ddp', 'colossalai_gemini', 'colossalai_zero2'], default='naive'
@@ -78,6 +79,7 @@ torchrun --standalone --nproc_per_node=4 train_sft.py \
 - --batch_size:        batch size while training, type=int, default=4
 - --lora_rank:         low-rank adaptation matrices rank, type=int, default=0
 - --log_interval:      how many steps to log, type=int, default=100
+- --grad_checkpoint:   enable gradient checkpointing, type=bool, default=False
 
 ## Stage2 - Training reward model
 
@@ -152,7 +154,7 @@ torchrun --standalone --nproc_per_node=4 train_prompts.py \
          --rm_path /your/rm/model/path
 ```
 
-Prompt dataset: the instruction dataset mentioned in the above figure which includes the instructions, e.g. you can use [seed_prompts_ch.jsonl](https://github.com/XueFuzhao/InstructionWild/blob/main/data/seed_prompts_ch.jsonl) or [seed_prompts_en.jsonl](https://github.com/XueFuzhao/InstructionWild/blob/main/data/seed_prompts_en.jsonl) in InstructionWild.  
+Prompt dataset: the instruction dataset mentioned in the above figure which includes the instructions, e.g. you can use [seed_prompts_ch.jsonl](https://github.com/XueFuzhao/InstructionWild/blob/main/data/seed_prompts_ch.jsonl) or [seed_prompts_en.jsonl](https://github.com/XueFuzhao/InstructionWild/blob/main/data/seed_prompts_en.jsonl) in InstructionWild.
 Pretrain dataset: the pretrain dataset including the instruction and corresponding response, e.g. you can use the [InstructWild Data](https://github.com/XueFuzhao/InstructionWild/tree/main/data) in stage 1 supervised instructs tuning.
 
 ### Arg List
@@ -254,29 +256,6 @@ class CoatiActor(Actor):
         super().__init__(model, lora_rank, lora_train_bias)
 ```
 
-### LM model
-
-```
-from ..base import LM
-from transformers.models.coati import CoatiModel
-
-class GPTLM(LM):
-
-    def __init__(self,
-                 pretrained: Optional[str] = None,
-                 checkpoint: bool = False,
-                 lora_rank: int = 0,
-                 lora_train_bias: str = 'none') -> None:
-        if pretrained is not None:
-            model = CoatiModel.from_pretrained(pretrained)
-        else:
-            model = build_model() # load your own model if it is not support in transformers
-
-        super().__init__(model, lora_rank, lora_train_bias)
-
-    def forward(self, input_ids, attention_mask=None, labels=None, **kwargs):
-        return self.model(input_ids, attention_mask=attention_mask, labels=labels, **kwargs)
-```
 ### Reward model
 ```
 from ..base import RewardModel
