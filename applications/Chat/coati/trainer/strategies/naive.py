@@ -3,9 +3,8 @@ from typing import Any, Optional
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from coati.models.base import RewardModel
 from coati.replay_buffer import ReplayBuffer
-from coati.models.base import LM, RewardModel
-from coati.models.lora import LoraLinear
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
@@ -41,19 +40,16 @@ class NaiveStrategy(Strategy):
                           pin_memory=pin_memory,
                           collate_fn=replay_buffer.collate_fn)
 
-    def save_model(self, model: nn.Module, path: str, only_rank0: bool = False, tokenizer: Optional[PreTrainedTokenizerBase] = None) -> None:
-        for module in model.modules():
-            if isinstance(module, LoraLinear):
-                module.merge_weights = True
-                module.eval()
-        
+    def save_model(self,
+                   model: nn.Module,
+                   path: str,
+                   only_rank0: bool = False,
+                   tokenizer: Optional[PreTrainedTokenizerBase] = None) -> None:
         if isinstance(model, RewardModel):
             state_dict = model.state_dict()
             torch.save(state_dict, path)
         else:
             try:
-                if isinstance(model, LM):
-                    model = model.model
                 model.save_pretrained(path)
                 if tokenizer is not None:
                     tokenizer.save_pretrained(path)
