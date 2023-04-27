@@ -5,11 +5,7 @@ import loralib as lora
 import torch
 import torch.distributed as dist
 from coati.dataset import DataCollatorForSupervisedDataset, SFTDataset, SupervisedDataset
-from coati.models.base import RewardModel
-from coati.models.bloom import BLOOMLM
-from coati.models.gpt import GPTLM
-from coati.models.llama import LlamaLM
-from coati.models.opt import OPTLM
+from coati.models import convert_to_lora_module
 from coati.trainer import SFTTrainer
 from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
 from coati.utils import prepare_llama_tokenizer_and_embedding
@@ -36,6 +32,8 @@ def train(args):
     elif args.strategy == 'ddp':
         strategy = DDPStrategy()
     elif args.strategy == 'colossalai_gemini':
+        raise NotImplementedError(
+            'Gemini is not supported .from_pretrained() yet. We will update this after checkpoint io is ready.')
         strategy = ColossalAIStrategy(stage=3, placement_policy='cuda')
     elif args.strategy == 'colossalai_zero2':
         strategy = ColossalAIStrategy(stage=2, placement_policy='cuda')
@@ -47,16 +45,17 @@ def train(args):
     # configure model
     with strategy.model_init_context():
         if args.model == 'bloom':
-            model = BLOOMLM(pretrained=args.pretrain, lora_rank=args.lora_rank).to(torch.cuda.current_device())
+            model = convert_to_lora_module(BloomForCausalLM.from_pretrained(args.pretrain)).half().cuda()
         elif args.model == 'opt':
-            model = OPTLM(pretrained=args.pretrain, lora_rank=args.lora_rank).to(torch.cuda.current_device())
+            model = convert_to_lora_module(OPTForCausalLM.from_pretrained(args.pretrain)).half().cuda()
         elif args.model == 'gpt2':
-            model = GPTLM(pretrained=args.pretrain, lora_rank=args.lora_rank).to(torch.cuda.current_device())
+            model = convert_to_lora_module(GPT2LMHeadModel.from_pretrained(args.pretrain)).half().cuda()
         elif args.model == 'llama':
-            model = LlamaLM(pretrained=args.pretrain, lora_rank=args.lora_rank,
-                            checkpoint=True).to(torch.float16).to(torch.cuda.current_device())
+            model = convert_to_lora_module(LlamaForCausalLM.from_pretrained(args.pretrain)).half().cuda()
         else:
             raise ValueError(f'Unsupported model "{args.model}"')
+    if args.grad_checkpoint:
+        model.gradient_checkpointing_enable()
 
     # configure tokenizer
     if args.model == 'gpt2':
@@ -156,7 +155,6 @@ def train(args):
                          optim=optim,
                          train_dataloader=train_dataloader,
                          eval_dataloader=eval_dataloader,
-                         batch_size=args.batch_size,
                          max_epochs=args.max_epochs,
                          accimulation_steps=args.accimulation_steps)
 
@@ -190,5 +188,6 @@ if __name__ == '__main__':
     parser.add_argument('--lr', type=float, default=5e-6)
     parser.add_argument('--accimulation_steps', type=int, default=8)
     parser.add_argument('--use_wandb', default=False, action='store_true')
+    parser.add_argument('--grad_checkpoint', default=False, action='store_true')
     args = parser.parse_args()
     train(args)
