@@ -5,21 +5,11 @@ In this directory we will introduce how you can evaluate your model with GPT-4.
 ## Evaluation Pipeline
 
 The whole evaluation process undergoes two steps. 
-
-1. Generate answers from different models: Use `generate_gpt35_answers.py` to generate answers of GPT 3.5 and use `generate_answers.py` to generate answers of your own models.
-2. Evaluate models using GPT 4: Use `evaluate.py` to evaluate model answers with GPT-4.
+1. Prepare the questions following the internal data structure in the data format section (described below).
+2. Generate answers from different models: Use `generate_gpt35_answers.py` to generate answers of GPT 3.5 and use `generate_answers.py` to generate answers of your own models.
+3. Evaluate models using GPT 4: Use `evaluate.py` to evaluate model answers with GPT-4.
 
 ### Generate Answers
-
-To generate answers, you should first format [FastChat's]([FastChat/question.jsonl at main · lm-sys/FastChat (github.com)](https://github.com/lm-sys/FastChat/blob/main/fastchat/eval/table/question.jsonl)) `question.jsonl` file. We do this formatting because we would like to add more questions later and the pipeline for generating new questions may follow that of Self-Instruct and Stanford Alpaca. An example script is given as follows.
-
-```shell
-python format_questions.py \
-    --questions_path "path to FastChat's question.jsonl" \
-    --save_path "path to the formatted file" \
-
-```
-
 In `generate_answers.py`, the model will generate answers in a batch way and different GPU processes will do inference on different shards of the given questions. Once all GPU process generate its answers, `merge.py` will merge different shards of answers and output a single answer file. Finally, the script will also remove the answer shards. An example script is given as follows.
 
 ```shell
@@ -107,16 +97,23 @@ We would like to mention that the evaluation of model answers using the GPT-3.5 
 ## Data Format
 
 ### Questions
+The file [questions.json](./sample/questions.json) shows the example questions used to evaluate the performance of the model. The current sample questions are collected from [FastChat](https://github.com/lm-sys/FastChat/blob/main/fastchat/eval/table/question.jsonl). Each question record has the following field:
+* `id` (id, compulsory): The ID of the instruction / question.
+* `instruction` (str, compulsory): The instruction / question for the LLM.
+* `input` (str, optional): The additional context of the instruction / question.
+* `output` (str, optional): The sample output of the instruction / question.
+* `category` (str, compulsory): The category of the instruction / question.
 
-We store questions in `questions.json`. The JSON file contains one list. Each element in the list is a question record.
-
-A question record has the following field:
-
-* `category` (str): The category of the question.
-* `instruction` (str): The question.
-* `input` (str): This is empty if you only use [FastChat's]([FastChat/question.jsonl at main · lm-sys/FastChat (github.com)](https://github.com/lm-sys/FastChat/blob/main/fastchat/eval/table/question.jsonl)) questions.
-* `output` (str): This is empty.
-* `id` (int): The question id.
+Example:
+```
+{
+    "id": 0,
+    "instruction": "Help me summarize the following short story?",
+    "input": "{story}",
+    "output": "{summarized story}",
+    "category": "closed qa"
+}
+```
 
 ### Answers
 
@@ -126,7 +123,7 @@ An answer record has the following field:
 
 * `category` (str): The category of the question.
 * `instruction` (str): The question.
-* `input` (str): This is empty if you only use [FastChat's]([FastChat/question.jsonl at main · lm-sys/FastChat (github.com)](https://github.com/lm-sys/FastChat/blob/main/fastchat/eval/table/question.jsonl)) questions.
+* `input` (str): This is empty if you only use [FastChat's]((https://github.com/lm-sys/FastChat/blob/main/fastchat/eval/table/question.jsonl)) questions.
 * `output` (str): The answer to the question.
 * `id` (int): The question id.
 
@@ -158,15 +155,11 @@ A record has the following field:
 
 ### Prompts
 
-The data format is the same with [FastChat's]([FastChat/prompt.jsonl at main · lm-sys/FastChat (github.com)](https://github.com/lm-sys/FastChat/blob/main/fastchat/eval/table/prompt.jsonl)) prompts.
+The data format is the same with [FastChat's](https://github.com/lm-sys/FastChat/blob/main/fastchat/eval/table/prompt.jsonl) prompts.
 
 ### Reviewer
 
-The data format is the same with [FastChat's]([FastChat/reviewer.jsonl at main · lm-sys/FastChat (github.com)](https://github.com/lm-sys/FastChat/blob/main/fastchat/eval/table/reviewer.jsonl)) reviewers.
-
-## Plan
-
-- [ ] Extend the questions
+The data format is the same with [FastChat's](https://github.com/lm-sys/FastChat/blob/main/fastchat/eval/table/reviewer.jsonl) reviewers.
 
 ## Citations
 
