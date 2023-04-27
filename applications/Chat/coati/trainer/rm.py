@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional, List
+from typing import List, Optional
 
 import pandas as pd
 import torch
@@ -9,8 +9,8 @@ from torch.utils.data import DataLoader, Dataset, DistributedSampler
 from tqdm import tqdm
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
-from .callbacks import Callback
 from .base import Trainer
+from .callbacks import Callback
 from .strategies import Strategy
 from .utils import is_rank_0
 
@@ -124,8 +124,5 @@ class RewardModelTrainer(Trainer):
             step_bar.set_postfix({'dist': dist, 'acc': acc})
             step_bar.close()
 
-    def save_model(self,
-                   path: str,
-                   only_rank0: bool = False,
-                   tokenizer: Optional[PreTrainedTokenizerBase] = None) -> None:
-        self.strategy.save_model(model=self.model, path=path, only_rank0=only_rank0, tokenizer=tokenizer)
+    def save_model(self, path: str, only_rank0: bool = False) -> None:
+        self.strategy.save_model(model=self.model, path=path, only_rank0=only_rank0)
