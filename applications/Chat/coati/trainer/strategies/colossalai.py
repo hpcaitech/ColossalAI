@@ -5,7 +5,7 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 import torch.optim as optim
-from coati.models.base import Actor, RewardModel
+from coati.models.base import Actor, RewardModel, get_base_model
 from coati.models.lora import LoraLinear
 from torch.optim import Optimizer
 from transformers.modeling_utils import PreTrainedModel
@@ -154,13 +154,6 @@ class ColossalAIStrategy(DDPStrategy):
     def optimizer_step(self, optimizer: optim.Optimizer, **kwargs) -> None:
         optimizer.step()
 
-    @staticmethod
-    def _unwrap_actor(actor: Actor) -> nn.Module:
-        model: Union[nn.Module, ZeroDDP] = Strategy._unwrap_actor(actor)
-        if isinstance(model, ZeroDDP):
-            return model.module
-        return model
-
     def save_model(self,
                    model: nn.Module,
                    path: str,
@@ -169,7 +162,7 @@ class ColossalAIStrategy(DDPStrategy):
 
         if only_rank0 and dist.get_rank() != 0:
             return None
-        unwrapped_model = self._unwrap_model(model)
+        base_model = get_base_model(model)
         # TODO : better way to get torch model from gemini model
         # to get torch model from gemini model
 
@@ -198,3 +191,10 @@ class ColossalAIStrategy(DDPStrategy):
             raise RuntimeError(
                 f'Optimizer states are sharded when using ColossalAIStrategy. Only rank0 is not supported.')
         torch.save(optimizer.state_dict(), path)
+
+    def unwrap_model(self, model: nn.Module) -> nn.Module:
+        base_model: Union[nn.Module, ZeroDDP] = get_base_model(model)
+        if self.stage == 3:
+            assert isinstance(base_model, ZeroDDP)
+            return base_model.module
+        return base_model

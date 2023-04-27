@@ -3,7 +3,7 @@ from typing import Any, Optional
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from coati.models.base import RewardModel
+from coati.models.base import RewardModel, get_base_model
 from coati.replay_buffer import ReplayBuffer
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
@@ -58,9 +58,9 @@ class NaiveStrategy(Strategy):
                 torch.save(state_dict, path)
 
     def load_model(self, model: nn.Module, path: str, map_location: Any = None, strict: bool = True) -> None:
-        unwrapped_model = self._unwrap_model(model)
+        base_model = get_base_model(model)
         state_dict = torch.load(path, map_location=map_location)
-        unwrapped_model.load_state_dict(state_dict, strict=strict)
+        base_model.load_state_dict(state_dict, strict=strict)
 
     def save_optimizer(self, optimizer: Optimizer, path: str, only_rank0: bool = False) -> None:
         torch.save(optimizer.state_dict(), path)

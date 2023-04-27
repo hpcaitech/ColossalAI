@@ -207,7 +207,7 @@ class PPOTrainer(Trainer):
 
 
 def _set_default_generate_kwargs(strategy: Strategy, generate_kwargs: dict, actor: Actor) -> None:
-    origin_model = strategy._unwrap_actor(actor)
+    origin_model = strategy.unwrap_model(actor)
     new_kwargs = {**generate_kwargs}
     # use huggingface models method directly
     if 'prepare_inputs_fn' not in generate_kwargs and hasattr(origin_model, 'prepare_inputs_for_generation'):

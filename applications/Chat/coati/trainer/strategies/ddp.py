@@ -68,11 +68,6 @@ class DDPStrategy(NaiveStrategy):
             pin_memory=pin_memory,
             collate_fn=replay_buffer.collate_fn)
 
-    @staticmethod
-    def _unwrap_actor(actor: Actor) -> nn.Module:
-        model: DDP = Strategy._unwrap_actor(actor)
-        return model.module
-
     def save_model(self,
                    model: nn.Module,
                    path: str,
@@ -104,3 +99,7 @@ class DDPStrategy(NaiveStrategy):
 
     def setup_sampler(self, dataset) -> DistributedSampler:
         return DistributedSampler(dataset, dist.get_world_size(), dist.get_rank())
+
+    def unwrap_model(self, model: nn.Module) -> nn.Module:
+        base_model: DDP = super().unwrap_model(model)
+        return base_model.module
