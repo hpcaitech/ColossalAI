@@ -62,14 +62,14 @@ torchrun --standalone --nproc_per_node=2 ${BASE}/train_reward_model.py \
                             --pretrain 'facebook/opt-350m' --model 'opt' \
                             --strategy colossalai_zero2 --loss_fn 'log_sig'\
                             --dataset 'Anthropic/hh-rlhf' --subset 'harmless-base' \
-                            --test True --lora_rank 4 \
+                            --test True --lora_rank 0 \
                             --save_path ${BASE}/rm_ckpt_opt.pt
 
 torchrun --standalone --nproc_per_node=2 ${BASE}/train_reward_model.py \
                             --pretrain 'gpt2' --model 'gpt2' \
                             --strategy colossalai_zero2 --loss_fn 'log_exp' \
                             --dataset 'Dahoas/rm-static' \
-                            --test True  --lora_rank 4 \
+                            --test True  --lora_rank 0 \
                             --save_path ${BASE}/rm_ckpt_gpt.pt
 
 torchrun --standalone --nproc_per_node=2 ${BASE}/train_reward_model.py \
