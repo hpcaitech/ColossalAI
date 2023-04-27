@@ -139,7 +139,7 @@ def main(args):
 
     data_collator = DataCollatorForSupervisedDataset(tokenizer=tokenizer)
 
-    prompt_dataset = PromptDataset(tokenizer=tokenizer, data_path=args.prompt_path, max_datasets_size=16384)
+    prompt_dataset = PromptDataset(tokenizer=tokenizer, data_path=args.prompt_dataset, max_datasets_size=16384)
     if dist.is_initialized() and dist.get_world_size() > 1:
         prompt_sampler = DistributedSampler(prompt_dataset, shuffle=True, seed=42, drop_last=True)
     else:
@@ -204,7 +204,7 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--prompt_path', type=str, default=None, help='path to the prompt dataset')
+    parser.add_argument('--prompt_dataset', type=str, default=None, help='path to the prompt dataset')
     parser.add_argument('--pretrain_dataset', type=str, default=None, help='path to the pretrained dataset')
     parser.add_argument('--strategy',
                         choices=['naive', 'ddp', 'colossalai_gemini', 'colossalai_zero2'],
