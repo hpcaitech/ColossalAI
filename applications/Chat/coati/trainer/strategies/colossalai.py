@@ -182,7 +182,7 @@ class ColossalAIStrategy(DDPStrategy):
                         model: nn.Module,
                         path: str,
                         only_rank0: bool = True,
-                        tokenizer: PreTrainedTokenizerBase | None = None) -> None:
+                        tokenizer: Optional[PreTrainedTokenizerBase] = None) -> None:
         if self.stage == 3:
             raise RuntimeError('ColossalAI strategy with stage-3 does not support save_pretrained() now')
         super().save_pretrained(model, path, only_rank0, tokenizer)

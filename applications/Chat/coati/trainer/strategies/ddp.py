@@ -1,5 +1,6 @@
 import os
 import random
+from typing import Optional
 
 import numpy as np
 import torch
@@ -86,7 +87,7 @@ class DDPStrategy(NaiveStrategy):
                         model: nn.Module,
                         path: str,
                         only_rank0: bool = True,
-                        tokenizer: PreTrainedTokenizerBase | None = None) -> None:
+                        tokenizer: Optional[PreTrainedTokenizerBase] = None) -> None:
         if only_rank0 and dist.get_rank() != 0:
             return
         super().save_pretrained(model, path, only_rank0, tokenizer)

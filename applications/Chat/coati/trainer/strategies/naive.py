@@ -62,7 +62,7 @@ class NaiveStrategy(Strategy):
                         model: nn.Module,
                         path: str,
                         only_rank0: bool = True,
-                        tokenizer: PreTrainedTokenizerBase | None = None) -> None:
+                        tokenizer: Optional[PreTrainedTokenizerBase] = None) -> None:
         unwrapped_model = self.unwrap_model(model)
         assert isinstance(unwrapped_model, PreTrainedModel)
         unwrapped_model.save_pretrained(path)
