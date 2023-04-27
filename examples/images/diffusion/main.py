@@ -40,7 +40,7 @@ class DataLoaderX(DataLoader):
 # A custom data loader class that inherits from DataLoader
     def __iter__(self):
         # Overriding the __iter__ method of DataLoader to return a BackgroundGenerator
-        #This is to enable data laoding in the background to improve training performance
+        #This is to enable data loading in the background to improve training performance
         return BackgroundGenerator(super().__iter__())
 
 
@@ -60,7 +60,7 @@ def get_parser(**parser_kwargs):
     # Create an ArgumentParser object with specifies kwargs
     parser = argparse.ArgumentParser(**parser_kwargs)
 
-    # Add vairous command line arguments with their default balues and descriptions
+    # Add various command line arguments with their default values and descriptions
     parser.add_argument(
         "-n",
         "--name",
@@ -162,7 +162,7 @@ def get_parser(**parser_kwargs):
 
 # A function that returns the non-default arguments between two objects
 def nondefault_trainer_args(opt):
-    # create an argument parsser
+    # create an argument parser
     parser = argparse.ArgumentParser()
     # add pytorch lightning trainer default arguments
     parser = Trainer.add_argparse_args(parser)
@@ -203,7 +203,7 @@ def worker_init_fn(_):
     else:
         return np.random.seed(np.random.get_state()[1][0] + worker_id)
 
-#Provide functionality for creating data loadedrs based on provided dataset configurations
+#Provide functionality for creating data loaders based on provided dataset configurations
 class DataModuleFromConfig(pl.LightningDataModule):
 
     def __init__(self,
@@ -255,7 +255,7 @@ class DataModuleFromConfig(pl.LightningDataModule):
     def _train_dataloader(self):
         #Check if the train dataset is iterable
         is_iterable_dataset = isinstance(self.datasets['train'], Txt2ImgIterableBaseDataset)
-        #Set the worker initialization function of the dataset isiterable or use_worker_init_fn is True
+        #Set the worker initialization function of the dataset is iterable or use_worker_init_fn is True
         if is_iterable_dataset or self.use_worker_init_fn:
             init_fn = worker_init_fn
         else:
@@ -310,7 +310,7 @@ class DataModuleFromConfig(pl.LightningDataModule):
 
 
 class SetupCallback(Callback):
-    # I nitialize the callback with the necessary parameters
+    # Initialize the callback with the necessary parameters
 
     def __init__(self, resume, now, logdir, ckptdir, cfgdir, config, lightning_config):
         super().__init__()
@@ -371,7 +371,7 @@ class SetupCallback(Callback):
     #         trainer.save_checkpoint(ckpt_path)
 
 
-# PyTorch Lightning callback for ogging images during training and validation of a deep learning model
+# PyTorch Lightning callback for logging images during training and validation of a deep learning model
 class ImageLogger(Callback):
 
     def __init__(self,
@@ -379,10 +379,10 @@ class ImageLogger(Callback):
                  max_images,      # Maximum number of images to log
                  clamp=True,      # Whether to clamp pixel values to [-1,1]
                  increase_log_steps=True,   # Whether to increase frequency of log steps exponentially
-                 rescale=True,    # Whetehr to rescale pixel values to [0,1]
+                 rescale=True,    # Whether to rescale pixel values to [0,1]
                  disabled=False,  # Whether to disable logging
-                 log_on_batch_idx=False,   # Whether to log on baych index instead of global step
-                 log_first_step=False,     # Whetehr to log on the first step
+                 log_on_batch_idx=False,   # Whether to log on batch index instead of global step
+                 log_first_step=False,     # Whether to log on the first step
                  log_images_kwargs=None):  # Additional keyword arguments to pass to log_images method
         super().__init__()
         self.rescale = rescale
@@ -593,7 +593,7 @@ if __name__ == "__main__":
     parser = Trainer.add_argparse_args(parser)
 
     opt, unknown = parser.parse_known_args()
-    # Veirfy the arguments are both specified
+    # Verify the arguments are both specified
     if opt.name and opt.resume:
         raise ValueError("-n/--name and -r/--resume cannot be specified both."
                          "If you want to resume training in a new log folder, "
@@ -646,7 +646,7 @@ if __name__ == "__main__":
     # Sets the seed for the random number generator to ensure reproducibility
     seed_everything(opt.seed)
 
-    # Intinalize and save configuratioon using teh OmegaConf library. 
+    # Initialize and save configuration using teh OmegaConf library. 
     try:
         # init and save configs
         configs = [OmegaConf.load(cfg) for cfg in opt.base]

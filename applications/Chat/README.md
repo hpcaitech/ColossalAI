@@ -243,6 +243,7 @@ from coati.trainer import SFTTrainer
 model = LlamaLM(pretrained=args.pretrain)
 tokenizer = AutoTokenizer.from_pretrained(args.pretrain)
 
+(model, optim) = strategy.prepare((model, optim))
 trainer = SFTTrainer(model=model,
     strategy=strategy,
     optim=optim,
@@ -254,7 +255,11 @@ trainer = SFTTrainer(model=model,
 )
 
 trainer.fit()
-trainer.save_model(path=args.save_path, only_rank0=True, tokenizer=tokenizer)
+# this saves in pytorch format
+strategy.save_model(model, args.save_path, only_rank0=True)
+
+# this saves in HF format. ColossalAI strategy with stage-3 doesn't support this method
+strategy.save_pretrained(model, args.save_path, only_rank0=True, tokenizer=tokenizer)
 ```
 
 </details>
@@ -263,7 +268,7 @@ trainer.save_model(path=args.save_path, only_rank0=True, tokenizer=tokenizer)
 
 Here are some examples that can allow you to train a 7B model on a single or multiple consumer-grade GPUs.
 
-If you only have a single 24G GPU, you can use the following script. `batch_size` and `lora_rank` are the most important parameters to successfully train the model.
+If you only have a single 24G GPU, you can use the following script. `batch_size`, `lora_rank` and `grad_checkpoint` are the most important parameters to successfully train the model.
 ```
 torchrun --standalone --nproc_per_node=1 train_sft.py \
     --pretrain "/path/to/LLaMa-7B/" \
@@ -278,6 +283,7 @@ torchrun --standalone --nproc_per_node=1 train_sft.py \
     --max_datasets_size 512 \
     --max_epochs 1 \
     --lora_rank 16 \
+    --grad_checkpoint
 ```
 
 `colossalai_gemini` strategy can enable a single 24G GPU to train the whole model without using LoRA if you have sufficient CPU memory. You can use the following script.
@@ -294,6 +300,7 @@ torchrun --standalone --nproc_per_node=1 train_sft.py \
     --lr 2e-5 \
     --max_datasets_size 512 \
     --max_epochs 1 \
+    --grad_checkpoint
 ```
 
 If you have 4x32 GB GPUs, you can even train the whole 7B model using our `colossalai_zero2_cpu` strategy! The script is given as follows.
@@ -310,6 +317,7 @@ torchrun --standalone --nproc_per_node=4 train_sft.py \
     --lr 2e-5 \
     --max_datasets_size 512 \
     --max_epochs 1 \
+    --grad_checkpoint
 ```
 </details>
 

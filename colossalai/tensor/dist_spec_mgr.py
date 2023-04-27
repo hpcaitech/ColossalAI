@@ -61,7 +61,7 @@ class DistSpecManager:
         Args:
             tensor (torch.Tensor): a global (replicated) tensor before shard
             dist_spec (_DistSpec): the distributed spec. to be sharded as.
-            pg (ProcessGrouo): the process group of the corresponding colotensor
+            pg (ProcessGroup): the process group of the corresponding colotensor
         Returns:
             torch.Tensor: a torch tensor after sharded.
         """

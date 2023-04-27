@@ -1,19 +1,21 @@
 import os
 import sys
-from typing import Any, Optional, Dict
 from collections import OrderedDict
+from typing import Any, Dict, Optional
+
 import torch
 import torch.distributed as dist
 import torch.nn as nn
 import torch.optim as optim
-from coati.models.base import LM, RewardModel
-from coati.models.lora import LoraLinear
+from coati.models.base import get_base_model
 from coati.replay_buffer import ReplayBuffer
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
+from transformers.modeling_utils import PreTrainedModel
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
 from .base import Strategy
+
 
 # TODO Move this to a util.py   (Moving to ray.util introduces ringed import)
 def get_grad_required_state_dict(model: nn.Module):
@@ -52,34 +54,15 @@ class NaiveStrategy(Strategy):
                           pin_memory=pin_memory,
                           collate_fn=replay_buffer.collate_fn)
 
-    def save_model(self,
-                   model: nn.Module,
-                   path: str,
-                   only_rank0: bool = False,
-                   tokenizer: Optional[PreTrainedTokenizerBase] = None) -> None:
-        for module in model.modules():
-            if isinstance(module, LoraLinear):
-                module.merge_weights = True
-                module.eval()
-
-        if isinstance(model, RewardModel):
-            state_dict = model.state_dict()
-            torch.save(state_dict, path)
-        else:
-            try:
-                if isinstance(model, LM):
-                    model = model.model
-                model.save_pretrained(path)
-                if tokenizer is not None:
-                    tokenizer.save_pretrained(path)
-            except AttributeError:
-                state_dict = model.state_dict()
-                torch.save(state_dict, path)
+    def save_model(self, model: nn.Module, path: str, only_rank0: bool = True) -> None:
+        base_model = get_base_model(model)
+        state_dict = base_model.state_dict()
+        torch.save(state_dict, path)
 
     def load_model(self, model: nn.Module, path: str, map_location: Any = None, strict: bool = True) -> None:
-        unwrapped_model = self._unwrap_model(model)
+        base_model = get_base_model(model)
         state_dict = torch.load(path, map_location=map_location)
-        unwrapped_model.load_state_dict(state_dict, strict=strict)
+        base_model.load_state_dict(state_dict, strict=strict)
 
     def save_optimizer(self, optimizer: Optimizer, path: str, only_rank0: bool = False) -> None:
         torch.save(optimizer.state_dict(), path)
@@ -95,7 +78,7 @@ class NaiveStrategy(Strategy):
         else:
             state_dict = model.state_dict()
 
-        if 'shard_size' in config: 
+        if 'shard_size' in config:
             shard_size = config['shard_size']
             accumulate_size = 0
             state_dict_shard = OrderedDict()
@@ -110,13 +93,6 @@ class NaiveStrategy(Strategy):
                 yield state_dict_shard
         else:
             yield state_dict
-
-    def merge_lora_weight(self, model: nn.Module):
-        unwrapped_model = self._unwrap_model(model)
-        for module in unwrapped_model.modules():
-            if isinstance(module, LoraLinear):
-                module.merge_weights = True
-                module.eval()
 
     def _try_init_dist(self, force: bool = False) -> None:
         try:
@@ -135,3 +111,14 @@ class NaiveStrategy(Strategy):
         except Exception as e:
             if force:
                 raise e
+
+    def save_pretrained(self,
+                        model: nn.Module,
+                        path: str,
+                        only_rank0: bool = True,
+                        tokenizer: Optional[PreTrainedTokenizerBase] = None) -> None:
+        unwrapped_model = self.unwrap_model(model)
+        assert isinstance(unwrapped_model, PreTrainedModel)
+        unwrapped_model.save_pretrained(path)
+        if tokenizer is not None:
+            tokenizer.save_pretrained(path)
