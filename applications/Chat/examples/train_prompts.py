@@ -194,7 +194,7 @@ def main(args):
                 update_timesteps=args.update_timesteps)
 
     # save model checkpoint after fitting
-    trainer.save_model(args.save_path, only_rank0=True, tokenizer=tokenizer)
+    strategy.save_model(actor, args.save_path, only_rank0=True)
     # save optimizer checkpoint on all ranks
     if args.need_optim_ckpt:
         strategy.save_optimizer(actor_optim,

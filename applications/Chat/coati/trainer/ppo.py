@@ -199,9 +199,6 @@ class PPOTrainer(Trainer):
 
         return {'reward': experience.reward.mean().item()}
 
-    def save_model(self, path: str, only_rank0: bool = False) -> None:
-        self.strategy.save_model(model=self.actor, path=path, only_rank0=only_rank0)
-
 
 def _set_default_generate_kwargs(strategy: Strategy, generate_kwargs: dict, actor: Actor) -> None:
     origin_model = strategy.unwrap_model(actor)

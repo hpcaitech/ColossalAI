@@ -41,20 +41,18 @@ class RewardModelTrainer(Trainer):
         train_dataloader: DataLoader,
         valid_dataloader: DataLoader,
         eval_dataloader: DataLoader,
-        batch_size: int = 1,
         max_epochs: int = 1,
         callbacks: List[Callback] = [],
     ) -> None:
         super().__init__(strategy, max_epochs, callbacks=callbacks)
-        train_sampler = None
 
         self.train_dataloader = train_dataloader
         self.valid_dataloader = valid_dataloader
         self.eval_dataloader = eval_dataloader
 
-        self.model = strategy.setup_model(model)
+        self.model = model
         self.loss_fn = loss_fn
-        self.optimizer = strategy.setup_optimizer(optim, self.model)
+        self.optimizer = optim
         self.scheduler = lr_scheduler.CosineAnnealingLR(self.optimizer, self.train_dataloader.__len__() // 100)
 
     def eval_acc(self, dataloader):
@@ -123,6 +121,3 @@ class RewardModelTrainer(Trainer):
             epoch_bar.update()
             step_bar.set_postfix({'dist': dist, 'acc': acc})
             step_bar.close()
-
-    def save_model(self, path: str, only_rank0: bool = False) -> None:
-        self.strategy.save_model(model=self.model, path=path, only_rank0=only_rank0)
