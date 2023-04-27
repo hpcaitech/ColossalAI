@@ -5,7 +5,7 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 import torch.optim as optim
-from coati.models.base import LM, Actor, RewardModel
+from coati.models.base import Actor, RewardModel
 from coati.models.lora import LoraLinear
 from torch.optim import Optimizer
 from transformers.modeling_utils import PreTrainedModel

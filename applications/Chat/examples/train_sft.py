@@ -45,13 +45,15 @@ def train(args):
     # configure model
     with strategy.model_init_context():
         if args.model == 'bloom':
-            model = convert_to_lora_module(BloomForCausalLM.from_pretrained(args.pretrain)).half().cuda()
+            model = convert_to_lora_module(BloomForCausalLM.from_pretrained(args.pretrain),
+                                           args.lora_rank).half().cuda()
         elif args.model == 'opt':
-            model = convert_to_lora_module(OPTForCausalLM.from_pretrained(args.pretrain)).half().cuda()
+            model = convert_to_lora_module(OPTForCausalLM.from_pretrained(args.pretrain), args.lora_rank).half().cuda()
         elif args.model == 'gpt2':
-            model = convert_to_lora_module(GPT2LMHeadModel.from_pretrained(args.pretrain)).half().cuda()
+            model = convert_to_lora_module(GPT2LMHeadModel.from_pretrained(args.pretrain), args.lora_rank).half().cuda()
         elif args.model == 'llama':
-            model = convert_to_lora_module(LlamaForCausalLM.from_pretrained(args.pretrain)).half().cuda()
+            model = convert_to_lora_module(LlamaForCausalLM.from_pretrained(args.pretrain),
+                                           args.lora_rank).half().cuda()
         else:
             raise ValueError(f'Unsupported model "{args.model}"')
     if args.grad_checkpoint:

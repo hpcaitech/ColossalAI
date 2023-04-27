@@ -5,7 +5,7 @@ from typing import Any, List, Optional, Tuple, Union
 import numpy as np
 import torch
 import torch.nn as nn
-from coati.models.base import LM, Actor, Critic, RewardModel
+from coati.models.base import Actor, Critic, RewardModel
 from coati.replay_buffer import ReplayBuffer
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
@@ -99,7 +99,7 @@ class Strategy(ABC):
         Args:
             model (nn.Module): an actor or a critic
         """
-        if isinstance(model, Actor) or isinstance(model, LM):
+        if isinstance(model, Actor):
             return model.model
         return model
 
