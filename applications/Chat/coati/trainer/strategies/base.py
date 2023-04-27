@@ -105,11 +105,7 @@ class Strategy(ABC):
         return get_base_model(model)
 
     @abstractmethod
-    def save_model(self,
-                   model: nn.Module,
-                   path: str,
-                   only_rank0: bool = False,
-                   tokenizer: Optional[PreTrainedTokenizerBase] = None) -> None:
+    def save_model(self, model: nn.Module, path: str, only_rank0: bool = True) -> None:
         pass
 
     @abstractmethod
@@ -126,3 +122,11 @@ class Strategy(ABC):
 
     def setup_sampler(self, dataset) -> DistributedSampler:
         return DistributedSampler(dataset, 1, 0)
+
+    @abstractmethod
+    def save_pretrained(self,
+                        model: nn.Module,
+                        path: str,
+                        only_rank0: bool = True,
+                        tokenizer: Optional[PreTrainedTokenizerBase] = None) -> None:
+        pass
