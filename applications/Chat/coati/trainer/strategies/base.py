@@ -2,10 +2,9 @@ from abc import ABC, abstractmethod
 from contextlib import nullcontext
 from typing import Any, List, Optional, Tuple, Union
 
-import numpy as np
 import torch
 import torch.nn as nn
-from coati.models.base import Actor, Critic, RewardModel
+from coati.models.base import Actor, get_base_model
 from coati.replay_buffer import ReplayBuffer
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
@@ -72,8 +71,8 @@ class Strategy(ABC):
 
         def prepare_model(model: nn.Module):
             if isinstance(model, Actor):
-                return Actor(self.setup_model(self._unwrap_model(model)))
-            return self.setup_model(self._unwrap_model(model))
+                return Actor(self.setup_model(model.get_base_model()))
+            return self.setup_model(model)
 
         rets = []
         for arg in models_or_model_optim_pairs:
@@ -81,7 +80,7 @@ class Strategy(ABC):
                 assert len(arg) == 2, f'Expect (model, optimizer) pair, got a tuple with size "{len(arg)}"'
                 model, optimizer = arg
                 model = prepare_model(model)
-                optimizer = self.setup_optimizer(optimizer, self._unwrap_model(model))
+                optimizer = self.setup_optimizer(optimizer, get_base_model(model))
                 rets.append((model, optimizer))
             elif isinstance(arg, nn.Module):
                 rets.append(prepare_model(arg))
@@ -93,31 +92,20 @@ class Strategy(ABC):
         return rets
 
     @staticmethod
-    def _unwrap_model(model: nn.Module) -> nn.Module:
-        """Useful for saving state dict. As actor is wrapped by Actor class again in `prepare()`, we should unwrap it before saving.
+    def unwrap_model(model: nn.Module) -> nn.Module:
+        """Get the unwrapped model from a wrapped model. Useful for getting original huggingface model.
+        For Actor, it will unwrap `actor.model`.
 
         Args:
-            model (nn.Module): an actor or a critic
-        """
-        if isinstance(model, Actor):
-            return model.model
-        return model
+            model (nn.Module): the model to unwrap
 
-    @staticmethod
-    def _unwrap_actor(actor: Actor) -> nn.Module:
-        """Get `actor.model` from a wrapped (by `prepare()`) actor. Useful for getting original huggingface model.
-
-        Args:
-            actor (Actor): a wrapped actor
+        Returns:
+            nn.Module: the original model (usually a huggingface model)
         """
-        return Strategy._unwrap_model(actor)
+        return get_base_model(model)
 
     @abstractmethod
-    def save_model(self,
-                   model: nn.Module,
-                   path: str,
-                   only_rank0: bool = False,
-                   tokenizer: Optional[PreTrainedTokenizerBase] = None) -> None:
+    def save_model(self, model: nn.Module, path: str, only_rank0: bool = True) -> None:
         pass
 
     @abstractmethod
@@ -134,3 +122,11 @@ class Strategy(ABC):
 
     def setup_sampler(self, dataset) -> DistributedSampler:
         return DistributedSampler(dataset, 1, 0)
+
+    @abstractmethod
+    def save_pretrained(self,
+                        model: nn.Module,
+                        path: str,
+                        only_rank0: bool = True,
+                        tokenizer: Optional[PreTrainedTokenizerBase] = None) -> None:
+        pass

@@ -49,8 +49,8 @@ class SFTTrainer(Trainer):
         super().__init__(strategy, max_epochs, callbacks=callbacks)
         self.train_dataloader = train_dataloader
         self.eval_dataloader = eval_dataloader
-
-        (self.model, self.optimizer) = strategy.prepare((model, optim))
+        self.model = model
+        self.optimizer = optim
 
         self.accimulation_steps = accimulation_steps
         num_update_steps_per_epoch = len(train_dataloader) // self.accimulation_steps
@@ -133,9 +133,3 @@ class SFTTrainer(Trainer):
                         logger.info(f'Eval Epoch {epoch}/{self.max_epochs} loss {loss_mean}')
 
             # epoch_bar.update()
-
-    def save_model(self,
-                   path: str,
-                   only_rank0: bool = False,
-                   tokenizer: Optional[PreTrainedTokenizerBase] = None) -> None:
-        self.strategy.save_model(model=self.model, path=path, only_rank0=only_rank0, tokenizer=tokenizer)

@@ -152,6 +152,7 @@ def train(args):
     else:
         eval_dataloader = None
 
+    (model, optim) = strategy.prepare((model, optim))
     trainer = SFTTrainer(model=model,
                          strategy=strategy,
                          optim=optim,
@@ -163,7 +164,7 @@ def train(args):
     trainer.fit(logger=logger, use_wandb=args.use_wandb)
 
     # save model checkpoint after fitting on only rank0
-    trainer.save_model(path=args.save_path, only_rank0=True, tokenizer=tokenizer)
+    strategy.save_pretrained(model, path=args.save_path, only_rank0=True, tokenizer=tokenizer)
     # save optimizer checkpoint on all ranks
     if args.need_optim_ckpt:
         strategy.save_optimizer(trainer.optimizer,
