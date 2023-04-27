@@ -146,11 +146,15 @@ torchrun --standalone --nproc_per_node=4 train_prompts.py \
          --pretrain "/path/to/LLaMa-7B/" \
          --model 'llama' \
          --strategy colossalai_zero2 \
-         --prompt_path /path/to/your/prompt_dataset \
+         --prompt_dataset /path/to/your/prompt_dataset \
          --pretrain_dataset /path/to/your/pretrain_dataset \
          --rm_pretrain /your/pretrain/rm/defination \
          --rm_path /your/rm/model/path
 ```
+
+Prompt dataset: the instruction dataset mentioned in the above figure which includes the instructions, e.g. you can use [seed_prompts_ch.jsonl](https://github.com/XueFuzhao/InstructionWild/blob/main/data/seed_prompts_ch.jsonl) or [seed_prompts_en.jsonl](https://github.com/XueFuzhao/InstructionWild/blob/main/data/seed_prompts_en.jsonl) in InstructionWild.  
+Pretrain dataset: the pretrain dataset including the instruction and corresponding response, e.g. you can use the [InstructWild Data](https://github.com/XueFuzhao/InstructionWild/tree/main/data) in stage 1 supervised instructs tuning.
+
 ### Arg List
 - --strategy:          the strategy using for training, choices=['naive', 'ddp', 'colossalai_gemini', 'colossalai_zero2'], default='naive'
 - --model:             model type of actor, choices=['gpt2', 'bloom', 'opt', 'llama'], default='bloom'
@@ -159,7 +163,7 @@ torchrun --standalone --nproc_per_node=4 train_prompts.py \
 - --rm_pretrain:       pretrain model for reward model, type=str, default=None
 - --rm_path:           the path of rm model, type=str, default=None
 - --save_path:         path to save the model, type=str, default='output'
-- --prompt_path:       path of the prompt dataset, type=str, default=None
+- --prompt_dataset:       path of the prompt dataset, type=str, default=None
 - --pretrain_dataset:  path of the ptx dataset, type=str, default=None
 - --need_optim_ckpt:   whether to save optim ckpt, type=bool, default=False
 - --num_episodes:      num of episodes for training, type=int, default=10
