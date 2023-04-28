@@ -120,18 +120,6 @@ def set_dist_env(env_info: Dict[str, str]):
     os.environ['MASTER_ADDR'] = env_info['master_addr']
 
 
-def state_dict_to(state_dict: Dict[str, Any],
-                  dtype: torch.dtype = torch.float16,
-                  device: torch.device = torch.device('cpu')):
-    '''
-        keep state_dict intact
-    '''
-    new_state_dict = {}
-    for k, v in state_dict.items():
-        new_state_dict[k] = v.to(dtype=dtype, device=device)
-    return new_state_dict
-
-
 def get_model_numel(model: nn.Module) -> int:
     numel = sum(p.numel() for p in model.parameters())
     return numel
@@ -150,3 +138,41 @@ def get_receivers_per_sender(sender_idx: int, num_senders: int, num_receivers: i
         # a receiver may have more than one sender
         target_receivers.append(sender_idx % num_receivers)
     return target_receivers
+
+
+def state_dict_to(state_dict: Dict[str, Any],
+                  dtype: torch.dtype = torch.float16,
+                  device: torch.device = torch.device('cpu')):
+    '''
+        keep state_dict intact
+    '''
+    new_state_dict = OrderedDict()
+    for k, v in state_dict.items():
+        new_state_dict[k] = v.to(dtype=dtype, device=device)
+    return new_state_dict
+
+
+def state_dict_filter_lora(state_dict: Dict[str, Any], keep_non_lora = False):
+    '''
+    if keep_non_lora, also return non_lora state_dict
+    '''
+    state_dict_lora = OrderedDict()
+    state_dict_non_lora = OrderedDict()
+    for k, v in state_dict:
+        if 'lora_A' in k or 'lora_B' in k:
+            state_dict_lora[k] = v
+        elif keep_non_lora:
+            state_dict_non_lora[k] = v
+    if keep_non_lora:
+        return state_dict_lora, state_dict_non_lora
+    else:
+        return state_dict_lora
+
+
+def state_dict_lora_reconstruct(state_dict_lora: Dict[str, Any]):
+    '''
+        xxx.lora_A, xxx.lora_B -->> xxx.weight
+    '''
+    state_dict_reconstruct = OrderedDict()
+    
+    

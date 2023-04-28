@@ -101,8 +101,8 @@ def main(args):
     ]
 
     def trainer_model_fn():
-        actor = get_actor_from_args(args.model, args.pretrain).half().cuda()
-        critic = get_critic_from_args(args.model, args.critic_pretrain).half().cuda()
+        actor = get_actor_from_args(args.model, args.pretrain, lora_rank=args.lora_rank).half().cuda()
+        critic = get_critic_from_args(args.model, args.critic_pretrain, lora_rank=args.lora_rank).half().cuda()
         return actor, critic
 
     # configure Trainer

@@ -9,6 +9,9 @@ import torch.nn as nn
 import torch.optim as optim
 from coati.models.base import get_base_model
 from coati.replay_buffer import ReplayBuffer
+from coati.models.base import RewardModel
+from coati.models.lora import LoraLinear
+from coati.replay_buffer import ReplayBuffer
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 from transformers.modeling_utils import PreTrainedModel
@@ -71,8 +74,20 @@ class NaiveStrategy(Strategy):
         state_dict = torch.load(path, map_location=map_location)
         optimizer.load_state_dict(state_dict)
 
+    def save_pretrained(self,
+                        model: nn.Module,
+                        path: str,
+                        only_rank0: bool = True,
+                        tokenizer: Optional[PreTrainedTokenizerBase] = None) -> None:
+        unwrapped_model = self.unwrap_model(model)
+        assert isinstance(unwrapped_model, PreTrainedModel)
+        unwrapped_model.save_pretrained(path)
+        if tokenizer is not None:
+            tokenizer.save_pretrained(path)
+
     def get_model_state_dict_shard(self, model: nn.Module, **config):
         # TODO: implement sharding on naive strategy
+        model = self.unwrap_model(model)
         if 'requires_grad_only' in config and config['requires_grad_only'] == True:
             state_dict = get_grad_required_state_dict(model)
         else:
@@ -111,14 +126,3 @@ class NaiveStrategy(Strategy):
         except Exception as e:
             if force:
                 raise e
-
-    def save_pretrained(self,
-                        model: nn.Module,
-                        path: str,
-                        only_rank0: bool = True,
-                        tokenizer: Optional[PreTrainedTokenizerBase] = None) -> None:
-        unwrapped_model = self.unwrap_model(model)
-        assert isinstance(unwrapped_model, PreTrainedModel)
-        unwrapped_model.save_pretrained(path)
-        if tokenizer is not None:
-            tokenizer.save_pretrained(path)

@@ -104,10 +104,6 @@ class Strategy(ABC):
         """
         return get_base_model(model)
 
-    @staticmethod
-    def _unwrap_critic(critic: Critic) -> nn.Module:
-        return Strategy._unwrap_model(critic)
-
     @abstractmethod
     def save_model(self, model: nn.Module, path: str, only_rank0: bool = True) -> None:
         pass
@@ -133,4 +129,8 @@ class Strategy(ABC):
                         path: str,
                         only_rank0: bool = True,
                         tokenizer: Optional[PreTrainedTokenizerBase] = None) -> None:
+        pass
+
+    @abstractmethod
+    def get_model_state_dict_shard(self, model: nn.Module, **config):
         pass

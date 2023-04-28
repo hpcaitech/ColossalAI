@@ -77,6 +77,7 @@ def sample(model: nn.Module,
         input_ids = torch.cat([input_ids, next_tokens[:, None]], dim=-1)
         if update_model_kwargs_fn is not None:
             model_kwargs = update_model_kwargs_fn(outputs, model_kwargs)
+
         # if eos_token was found in one sentence, set sentence to finished
         if eos_token_id is not None:
             unfinished_sequences = unfinished_sequences.mul((next_tokens != eos_token_id).long())
