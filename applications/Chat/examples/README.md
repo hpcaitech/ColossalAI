@@ -233,7 +233,7 @@ If you want to support your own model in Coati, please refer the pull request fo
 You should complete the implementation of four model classes, including Reward model, Critic model, LM model, Actor model
 
 here are some example code for a NewModel named `Coati`.
-if it is supported in huggingaface [transformers](https://github.com/huggingface/transformers), you can load it by `from_pretrained`, o
+if it is supported in huggingface [transformers](https://github.com/huggingface/transformers), you can load it by `from_pretrained`, o
 r you can build your own model by yourself.
 
 ### Actor model
