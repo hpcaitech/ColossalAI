@@ -159,7 +159,7 @@ def train(args):
                          train_dataloader=train_dataloader,
                          eval_dataloader=eval_dataloader,
                          max_epochs=args.max_epochs,
-                         accimulation_steps=args.accimulation_steps)
+                         accumulation_steps=args.accumulation_steps)
 
     trainer.fit(logger=logger, use_wandb=args.use_wandb)
 
@@ -189,7 +189,7 @@ if __name__ == '__main__':
     parser.add_argument('--lora_rank', type=int, default=0, help="low-rank adaptation matrices rank")
     parser.add_argument('--log_interval', type=int, default=100, help="how many steps to log")
     parser.add_argument('--lr', type=float, default=5e-6)
-    parser.add_argument('--accimulation_steps', type=int, default=8)
+    parser.add_argument('--accumulation_steps', type=int, default=8)
     parser.add_argument('--use_wandb', default=False, action='store_true')
     parser.add_argument('--grad_checkpoint', default=False, action='store_true')
     args = parser.parse_args()

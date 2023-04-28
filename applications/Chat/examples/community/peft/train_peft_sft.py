@@ -154,7 +154,7 @@ def train(args):
                          eval_dataloader=eval_dataloader,
                          batch_size=args.batch_size,
                          max_epochs=args.max_epochs,
-                         accimulation_steps=args.accimulation_steps)
+                         accumulation_steps=args.accumulation_steps)
 
     trainer.fit(logger=logger, log_interval=args.log_interval)
 
@@ -183,7 +183,7 @@ if __name__ == '__main__':
     parser.add_argument('--lora_rank', type=int, default=0, help="low-rank adaptation matrices rank")
     parser.add_argument('--log_interval', type=int, default=100, help="how many steps to log")
     parser.add_argument('--lr', type=float, default=5e-6)
-    parser.add_argument('--accimulation_steps', type=int, default=8)
+    parser.add_argument('--accumulation_steps', type=int, default=8)
     parser.add_argument('--enable_peft_lora', action='store_true', default=False)
     parser.add_argument("--is_short_text", action='store_true', default=False)
     args = parser.parse_args()
