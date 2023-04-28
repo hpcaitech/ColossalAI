@@ -7,13 +7,13 @@ In this directory, we introduce how you can evaluate your model with GPT-4.
 The whole evaluation process undergoes the following three steps: 
 1. Prepare the questions following the internal data structure in the data format section (described below).
 2. Generate answers from different models: 
-    * Generate answers using GPT-3.5: [generate_gpt35_answers.py](generate_gpt35_answers.py).
-    * Generate answers using your own models: [generate_answers.py](generate_answers.py).
-3. Evaluate models using GPT-4: [evaluate.py](evaluate.py).
+    * Generate answers using GPT-3.5: [`generate_gpt35_answers.py`](generate_gpt35_answers.py).
+    * Generate answers using your own models: [`generate_answers.py`](generate_answers.py).
+3. Evaluate models using GPT-4: [`evaluate.py`](evaluate.py).
 
 ### Generate Answers
 #### Generate Answers Using GPT-3.5
-You can provide your own OpenAI key to generate answers from GPT-3.5 using [generate_gpt35_answers.py](./generate_gpt35_answers.py).
+You can provide your own OpenAI key to generate answers from GPT-3.5 using [`generate_gpt35_answers.py`](./generate_gpt35_answers.py).
 
 An example script is provided as follows:
 ```shell
@@ -27,8 +27,8 @@ python generate_gpt35_answers.py \
 
 #### Generate Answers Using our Own Model
 You can also generate answers using your own models. The generation process is divided into two stages:
-1. Generate answers using multiple GPUs (optional) with batch processing: [generate_answers.py](./generate_answers.py).
-2. Merge multiple shards and output a single file: [merge.py](./merge.py).
+1. Generate answers using multiple GPUs (optional) with batch processing: [`generate_answers.py`](./generate_answers.py).
+2. Merge multiple shards and output a single file: [`merge.py`](./merge.py).
 
 An example script is given as follows:
 
@@ -63,7 +63,7 @@ done
 
 ### Evaluate Answers
 
-In [evaluate.py](./evaluate.py), GPT-4 helps to review and score answers of two different models. Here `Model 1` refers to the first model you specify in the `--answer_file_list` and `Model 2` refers to the second model. The script shows several metrics and output the corresponding JSON files.
+In [`evaluate.py`](./evaluate.py), GPT-4 helps to review and score answers of two different models. Here `Model 1` refers to the first model you specify in the `--answer_file_list` and `Model 2` refers to the second model. The script shows several metrics and output the corresponding JSON files.
 
 The metrics include:
 
@@ -105,7 +105,7 @@ We would like to mention that the evaluation of model answers using the GPT-3.5 
 ## Data Format
 
 ### Questions
-The file [questions.json](./sample/questions.json) shows the example questions used to evaluate the performance of the model. Each question record has the following field:
+The file [`questions.json`](./sample/questions.json) shows the example questions used to evaluate the performance of the model. Each question record has the following field:
 * `id` (id, compulsory): The ID of the instruction / question.
 * `instruction` (str, compulsory): The instruction / question for the LLM.
 * `input` (str, optional): The additional context of the instruction / question.
@@ -163,11 +163,11 @@ A record has the following field:
 
 ### Prompts
 
-The data format is the same with [FastChat's](https://github.com/lm-sys/FastChat/blob/main/fastchat/eval/table/prompt.jsonl) prompts.
+The data format is the same with [`FastChat's`](https://github.com/lm-sys/FastChat/blob/main/fastchat/eval/table/prompt.jsonl) prompts.
 
 ### Reviewer
 
-The data format is the same with [FastChat's](https://github.com/lm-sys/FastChat/blob/main/fastchat/eval/table/reviewer.jsonl) reviewers.
+The data format is the same with [`FastChat's`](https://github.com/lm-sys/FastChat/blob/main/fastchat/eval/table/reviewer.jsonl) reviewers.
 
 ## Citations
 
