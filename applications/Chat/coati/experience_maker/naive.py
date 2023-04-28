@@ -25,6 +25,7 @@ class NaiveExperienceMaker(ExperienceMaker):
 
         action_log_probs = self.actor(sequences, num_actions, attention_mask)
         value = self.critic(sequences, action_mask, attention_mask)
+        # transfer to torch.tensor when using gemini strategy
         if isinstance(sequences, ColoTensor):
             torch_sequences = sequences.data.to(torch.cuda.current_device())
             torch_attention_mask = attention_mask.data.to(torch.cuda.current_device())
