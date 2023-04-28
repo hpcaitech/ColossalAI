@@ -1,7 +1,7 @@
 torchrun --standalone --nproc_per_node=4 train_sft.py \
     --pretrain "/path/to/LLaMa-7B/" \
     --model 'llama' \
-    --strategy colossalai_gemini \
+    --strategy colossalai_zero2 \
     --log_interval 10 \
     --save_path  /path/to/Coati-7B \
     --dataset /path/to/data.json \
