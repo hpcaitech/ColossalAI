@@ -1,16 +1,36 @@
 # Evaluation
 
-In this directory we will introduce how you can evaluate your model with GPT-4. 
+In this directory, we introduce how you can evaluate your model with GPT-4. 
 
 ## Evaluation Pipeline
 
-The whole evaluation process undergoes two steps. 
+The whole evaluation process undergoes the following three steps: 
 1. Prepare the questions following the internal data structure in the data format section (described below).
-2. Generate answers from different models: Use `generate_gpt35_answers.py` to generate answers of GPT 3.5 and use `generate_answers.py` to generate answers of your own models.
-3. Evaluate models using GPT 4: Use `evaluate.py` to evaluate model answers with GPT-4.
+2. Generate answers from different models: 
+    * Generate answers using GPT-3.5: [generate_gpt35_answers.py](generate_gpt35_answers.py).
+    * Generate answers using your own models: [generate_answers.py](generate_answers.py).
+3. Evaluate models using GPT-4: [evaluate.py](evaluate.py).
 
 ### Generate Answers
-In `generate_answers.py`, the model will generate answers in a batch way and different GPU processes will do inference on different shards of the given questions. Once all GPU process generate its answers, `merge.py` will merge different shards of answers and output a single answer file. Finally, the script will also remove the answer shards. An example script is given as follows.
+#### Generate Answers Using GPT-3.5
+You can provide your own OpenAI key to generate answers from GPT-3.5 using [generate_gpt35_answers.py](./generate_gpt35_answers.py).
+
+An example script is provided as follows:
+```shell
+python generate_gpt35_answers.py \
+    --dataset "path to the question dataset" \
+    --answer_path "path to answer folder" \
+    --num_workers 4 \
+    --openai_key "your openai key" \
+    --max_tokens 512 \
+``` 
+
+#### Generate Answers Using our Own Model
+You can also generate answers using your own models. The generation process is divided into two stages:
+1. Generate answers using multiple GPUs (optional) with batch processing: [generate_answers.py](./generate_answers.py).
+2. Merge multiple shards and output a single file: [merge.py](./merge.py).
+
+An example script is given as follows:
 
 ```shell
 device_number=number of your devices
@@ -41,21 +61,9 @@ done
 
 ```
 
-`generate_gpt35_answers.py` will generate answers of GPT-3.5 An example script is given as follows.
-
-```shell
-python generate_gpt35_answers.py \
-    --dataset "path to the question dataset" \
-    --answer_path "path to answer folder" \
-    --num_workers 4 \
-    --openai_key "your openai key" \
-    --max_tokens 512 \
-
-```
-
 ### Evaluate Answers
 
-In `evaluate.py`, GPT-4 will help review and score answers of two different models. Here `Model 1` refers to the first model you specify in the `--answer_file_list` and `Model 2` refers to the second model. The script will finally print several metrics and output corresponding JSON files.
+In [evaluate.py](./evaluate.py), GPT-4 helps to review and score answers of two different models. Here `Model 1` refers to the first model you specify in the `--answer_file_list` and `Model 2` refers to the second model. The script shows several metrics and output the corresponding JSON files.
 
 The metrics include:
 
@@ -121,11 +129,11 @@ We store model answers in `{model_name}_answers.json`. The JSON file contains on
 
 An answer record has the following field:
 
-* `category` (str): The category of the question.
-* `instruction` (str): The question.
-* `input` (str): This is empty if you only use [FastChat's]((https://github.com/lm-sys/FastChat/blob/main/fastchat/eval/table/question.jsonl)) questions.
-* `output` (str): The answer to the question.
-* `id` (int): The question id.
+* `category` (str, compulsory): The category of the instruction / question.
+* `instruction` (str, compulsory): The instruction / question for the LLM.
+* `input` (str, optional): The additional context of the instruction / question.
+* `output` (str, compulsory): The output from the LLM.
+* `id` (int, compulsory): The ID of the instruction / question.
 
 ### Results
 
@@ -133,12 +141,12 @@ We store evaluation results in `results.json`. The JSON file contains one dictio
 
 The value has the following field:
 
-* `model` (list): The names of the two models.
-* `better` (int): The number of reviews where Model 2 receives a higher score.
-* `worse` (int): The number of reviews where Model 2 receives a lower score.
-* `tie` (int): The number of reviews where two models play to a tie.
-* `win_rate` (float): Win rate of Model 2.
-* `score` (list): Average score of the two models.
+* `model` (list, compulsory): The names of the two models.
+* `better` (int, compulsory): The number of reviews where Model 2 receives a higher score.
+* `worse` (int, compulsory): The number of reviews where Model 2 receives a lower score.
+* `tie` (int, compulsory): The number of reviews where two models play to a tie.
+* `win_rate` (float, compulsory): Win rate of Model 2.
+* `score` (list, compulsory): Average score of the two models.
 
 ### Better, Worse, Tie, Invalid, Review
 
@@ -146,12 +154,12 @@ To help better compare the model answers, we store JSON files whose name ends wi
 
 A record has the following field:
 
-* `review_id` (str): Random UUID, not in use.
-* `id` (int): The question id.
-* `reviewer_id` (int): A unique ID for a reviewer. Different reviewer id use different prompts.
-* `metadata` (dict): It is empty.
-* `review` (str): GPT-4 's review.
-* `score` (list): The scores of two models.
+* `review_id` (str, optional): Random UUID, not in use.
+* `id` (int, compulsory): The ID of the instruction / question.
+* `reviewer_id` (int, compulsory): A unique ID for a reviewer. Different reviewer id use different prompts.
+* `metadata` (dict, optional): It is empty.
+* `review` (str, optional): GPT-4's review.
+* `score` (list, compulsory): The scores of two models.
 
 ### Prompts
 
