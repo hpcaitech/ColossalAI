@@ -89,7 +89,7 @@ def sample(model: nn.Module,
 
     return input_ids
 
-
+@torch.no_grad()
 def generate(model: nn.Module,
              input_ids: torch.Tensor,
              max_length: int,
@@ -181,9 +181,9 @@ def generate_with_value(actor: nn.Module,
         next_token_logits = logits_processor(input_ids, next_token_logits)
         # sample
         probs = torch.softmax(next_token_logits, dim=-1, dtype=torch.float)
-        if 'nan' in str(probs):
-            for name, param in actor.named_parameters():
-                print(name, param)
+        # if 'nan' in str(probs):
+        #     for name, param in actor.named_parameters():
+        #         print(name, param)
         next_tokens = torch.multinomial(probs, num_samples=1).squeeze(1)
 
         # finished sentences should have their next token be a padding token

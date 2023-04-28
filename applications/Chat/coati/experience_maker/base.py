@@ -84,6 +84,9 @@ class ExperienceMaker(ABC):
         self.top_k = top_k
         self.top_p = top_p
         self.temperature = temperature
+        self.reward_count = 0
+        self.reward_mean = 0.0
+        self.reward_M2 = 0.0
 
     @abstractmethod
     def make_experience(self, input_ids: torch.Tensor, **generate_kwargs) -> Experience:

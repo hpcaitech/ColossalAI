@@ -71,9 +71,12 @@ def main(args):
     if args.rm_path is not None:
         reward_model.load_state_dict(state_dict)
 
-    if args.strategy != 'colossalai_gemini':
-        initial_model.to(torch.float16).to(torch.cuda.current_device())
-        reward_model.to(torch.float16).to(torch.cuda.current_device())
+    # if args.strategy != 'colossalai_gemini':
+    #     initial_model.to(torch.float16).to(torch.cuda.current_device())
+    #     reward_model.to(torch.float16).to(torch.cuda.current_device())
+    
+    initial_model.to(torch.cuda.current_device())
+    reward_model.to(torch.cuda.current_device())
 
     with strategy.model_init_context():
         if args.model == 'gpt2':
@@ -106,18 +109,20 @@ def main(args):
             critic.load_state_dict(state_dict)
             del state_dict
 
-    if args.strategy != 'colossalai_gemini':
-        critic.to(torch.float16).to(torch.cuda.current_device())
-        actor.to(torch.float16).to(torch.cuda.current_device())
+    # if args.strategy != 'colossalai_gemini':
+    #     critic.to(torch.float16).to(torch.cuda.current_device())
+    #     actor.to(torch.float16).to(torch.cuda.current_device())
 
+    critic.to(torch.cuda.current_device())
+    actor.to(torch.cuda.current_device())
 
     # configure optimizer
     if args.strategy.startswith('colossalai'):
         actor_optim = HybridAdam(actor.parameters(), lr=1e-5)
         critic_optim = HybridAdam(critic.parameters(), lr=1e-5)
     else:
-        actor_optim = Adam(actor.parameters(), lr=1e-7)
-        critic_optim = Adam(critic.parameters(), lr=1e-7)
+        actor_optim = Adam(actor.parameters(), lr=1e-5)
+        critic_optim = Adam(critic.parameters(), lr=1e-5)
 
     # configure tokenizer
     if args.model == 'gpt2':

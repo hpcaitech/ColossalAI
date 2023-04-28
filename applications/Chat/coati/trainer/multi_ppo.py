@@ -53,7 +53,7 @@ class MPPOTrainer(Trainer):
                  actor_optim: Optimizer,
                  critic_optim: Optimizer,
                  kl_coef: float = 0.1,
-                 ptx_coef: float = 0.9,
+                 ptx_coef: float = 0.5,
                  train_batch_size: int = 8,
                  buffer_limit: int = 0,
                  buffer_cpu_offload: bool = True,
@@ -92,7 +92,6 @@ class MPPOTrainer(Trainer):
         num_actions = experience.action_mask.size(1)
         action_logits = self.actor.model(experience.sequences)['logits'][:, -1]
         action_log_probs = F.log_softmax(action_logits, dim=-1)
-
         actor_loss = self.actor_loss_fn(action_log_probs,
                                         experience.action_log_probs,
                                         experience.advantages)
@@ -105,8 +104,12 @@ class MPPOTrainer(Trainer):
             ptx_log_probs = self.actor.get_base_model()(ptx, attention_mask=attention_mask)['logits'][..., :-1, :]
             ptx_loss = self.ptx_loss_fn(ptx_log_probs.view(-1, ptx_log_probs.size(-1)), label.view(-1))
             actor_loss = ptx_loss * self.ptx_coef + actor_loss * (1 - self.ptx_coef)
-
-        self.strategy.backward(actor_loss, self.actor, self.actor_optim)
+        
+        self.strategy.backward(actor_loss, self.actor.model, self.actor_optim)
+        
+        # for name, param in self.actor.named_parameters():
+        #     print(name, param.grad)
+        
         self.strategy.optimizer_step(self.actor_optim)
         self.actor_optim.zero_grad()
 
@@ -122,7 +125,7 @@ class MPPOTrainer(Trainer):
         self.strategy.optimizer_step(self.critic_optim)
         self.critic_optim.zero_grad()
 
-        return {'reward': experience.reward.mean().item()}
+        return {'returns': experience.reward.mean().item()}
     
     def save_model(self, path: str, only_rank0: bool = False, tokenizer: Optional[PreTrainedTokenizerBase] = None) -> None:
         self.strategy.save_model(model=self.actor, path=path, only_rank0=only_rank0, tokenizer=tokenizer)

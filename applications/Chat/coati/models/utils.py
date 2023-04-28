@@ -24,7 +24,7 @@ def compute_approx_kl(log_probs: torch.Tensor,
     # if action_mask is not None:
     #     approx_kl = masked_mean(approx_kl, action_mask, dim=1)
     #     return approx_kl
-    approx_kl = approx_kl.sum(dim=-1)
+    approx_kl = approx_kl.mean(dim=-1)
     return approx_kl
 
 
