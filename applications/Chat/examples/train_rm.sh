@@ -18,7 +18,7 @@ set_n_least_used_CUDA_VISIBLE_DEVICES 2
 torchrun --standalone --nproc_per_node=2 train_reward_model.py \
    --pretrain  <your pretrain path> \
    --model 'bloom' \
-   --strategy colossalai_zero2 \
+   --strategy colossalai_gemini \
    --loss_fn 'log_sig'\
    --save_path <your model saving path>\
    --dataset 'Anthropic/hh-rlhf'\
