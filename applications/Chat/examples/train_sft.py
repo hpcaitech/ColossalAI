@@ -176,7 +176,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--strategy',
                         choices=['naive', 'ddp', 'colossalai_gemini', 'colossalai_zero2', 'colossalai_zero2_cpu'],
-                        default='naive')
+                        default='colossalai_zero2')
     parser.add_argument('--model', choices=['gpt2', 'bloom', 'opt', 'llama'], default='bloom')
     parser.add_argument('--pretrain', type=str, default=None)
     parser.add_argument('--dataset', type=str, default=None)
