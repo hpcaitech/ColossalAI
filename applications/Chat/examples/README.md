@@ -92,7 +92,7 @@ You can also use the following cmd to start training a reward model.
 torchrun --standalone --nproc_per_node=4 train_reward_model.py \
     --pretrain "/path/to/LLaMa-7B/" \
     --model 'llama' \
-    --strategy colossalai_gemini \
+    --strategy colossalai_zero2 \
     --loss_fn 'log_exp'\
     --save_path 'rmstatic.pt' \
 ```
