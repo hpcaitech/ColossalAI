@@ -4,7 +4,7 @@ Colossal-Auto simplifies the process of deploying large-scale machine learning m
 
 ### 1. Basic usage
 
-Colossal-Auto can be used to find a hybrid SPMD parallel strategy includes data, tensor(i.e., 1D, 2D, sequencial) for each operation. You can follow the [GPT example](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/gpt/experiments/auto_parallel).
+Colossal-Auto can be used to find a hybrid SPMD parallel strategy includes data, tensor(i.e., 1D, 2D, sequential) for each operation. You can follow the [GPT example](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/gpt/experiments/auto_parallel).
 Detailed instructions can be found in its `README.md`.
 
 ### 2. Integration with activation checkpoint

@@ -14,7 +14,7 @@ NAN = 'nan'
 
 class DimSpec:
     '''
-    Sharding spec for single dimension of the sharded tensor decribe the sharding dimension of
+    Sharding spec for single dimension of the sharded tensor describe the sharding dimension of
     logical device mesh and give a method to compute the difference between them.
     This class is used internally in ShardingSpec.
 
@@ -143,7 +143,7 @@ class ShardingSpec:
 
     Argument:
         dim_partition_dict(Dict[int, List[int]], optional): The key is the dimension of tensor to be sharded,
-            and the value of the key decribe which logical axis will be sharded in that dimension.
+            and the value of the key describe which logical axis will be sharded in that dimension.
         sharding_sequence(List[DimSpec], optional): A straight view of ShardingSpec looks like [R, R, S0, S1].
     '''
 

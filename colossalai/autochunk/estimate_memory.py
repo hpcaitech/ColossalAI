@@ -153,7 +153,7 @@ class EstimateMemory(object):
 
         Returns:
             act_memory_peak_log (List): peak memory of every node
-            act_memory_after_node_log (List): memory after excuting every node
+            act_memory_after_node_log (List): memory after executing every node
             active_node_list_log (List): active nodes of every node. active nodes refer to
                 nodes generated but not deleted.
         """

@@ -192,7 +192,7 @@ class ShardedModelV2(nn.Module):
 
     def dump_memory_stats(self, filename: Optional[str] = 'dump_mem_stats.log') -> None:
         """
-        dummy memory tracer collected infomation to a file.
+        dummy memory tracer collected information to a file.
         try:
             # forward: model(inputs)
             # backward: optimizer.backward()
@@ -201,7 +201,7 @@ class ShardedModelV2(nn.Module):
             exit(0)
         """
         if self._use_memory_tracer:
-            self.logger.error(f'dump memort tracer collected infomation to a {filename}', ranks=[0])
+            self.logger.error(f'dump memort tracer collected information to a {filename}', ranks=[0])
             if gpc.get_global_rank() == 0:
                 with open(filename, 'w+') as f:
                     f.write(f'cuda reserved {torch.cuda.memory_reserved(get_current_device()) / 1e9} GB\n')
@@ -293,7 +293,7 @@ class ShardedModelV2(nn.Module):
             if not p.requires_grad:
                 continue
             # Leave the gradient accumulation state (_require_backward_grad_sync) as-is if not synchronizing this pass.
-            # NOTE() (no-sync)/sync pass: (not conduct)/conduct gradient allreducing between process group.
+            # NOTE() (no-sync)/sync pass: (not conduct)/conduct gradient all reducing between process group.
             # If _require_backward_grad_sync is True,
             # p.grad remains the accumulated unsharded gradient from prior no-sync passes.
             # We also allows to interleave no-sync pass with sync passes, if desired.
@@ -385,7 +385,7 @@ class ShardedModelV2(nn.Module):
             param.colo_attr.grad_payload_reset(grad.data)
             # release the memory of param
             # we set a false None for parameter's payload
-            # so we can get paramter's device and dtype later in optimizer
+            # so we can get parameter's device and dtype later in optimizer
             param.colo_attr.data_payload_reset(torch.empty(0, device=grad.device, dtype=grad.dtype))
 
             if param.colo_attr.is_replicated:

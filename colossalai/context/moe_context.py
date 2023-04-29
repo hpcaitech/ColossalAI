@@ -64,7 +64,7 @@ class MoeContext(metaclass=SingletonMeta):
         from colossalai.core import global_context as gpc
         self.max_ep_size = gpc.config.get('max_ep_size', self.world_size)
         assert self.world_size % self.max_ep_size == 0, \
-            "Maximum epxert parallel size must be a factor of the number of GPUs"
+            "Maximum expert parallel size must be a factor of the number of GPUs"
         self.min_dp_size = self.world_size // self.max_ep_size
 
         # Enabling kernel optimization may raise error in some cases

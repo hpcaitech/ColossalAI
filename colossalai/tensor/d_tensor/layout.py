@@ -14,7 +14,7 @@ class Layout:
     """Layout of a tensor.
 
     Attributes:
-        device_mesh: the device mesh to store the tensor distributedly.
+        device_mesh: the device mesh to store the tensor distributed.
         device_type: the type of the device mesh, e.g. 'cpu' or 'cuda'.
         sharding_spec: the sharding specification to describe how the tensor is sharded.
         entire_shape: the entire shape of the global tensor.

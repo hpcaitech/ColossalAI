@@ -13,7 +13,7 @@ from colossalai.zero.legacy.init_ctx import no_shard_zero_decrator
 
 
 class MoeExperts(nn.Module):
-    """Basic class for experts in MoE. It stores what kind of communication expersts use
+    """Basic class for experts in MoE. It stores what kind of communication experts use
     to exchange tokens, how many experts in a single GPU and parallel information such as
     expert parallel size, data parallel size and their distributed communication groups.
     """
@@ -24,7 +24,7 @@ class MoeExperts(nn.Module):
             "This kind of communication has not been implemented yet.\n Please use Experts build function."
         self.comm_name = comm_name
         self.num_total_experts = num_experts
-        # Get the configuration of experts' deployment and parallel information from moe contex
+        # Get the configuration of experts' deployment and parallel information from moe context
         self.num_local_experts, self.dist_info = MOE_CONTEXT.get_info(num_experts)
 
 
@@ -32,7 +32,7 @@ class MoeExperts(nn.Module):
 class Experts(MoeExperts):
     """A wrapper class to create experts. It will create E experts across the
     moe model parallel group, where E is the number of experts. Every expert
-    is a instence of the class, 'expert' in initialization parameters.
+    is a instance of the class, 'expert' in initialization parameters.
 
     Args:
         expert_cls (:class:`torch.nn.Module`): The class of all experts
@@ -146,15 +146,15 @@ class FFNExperts(MoeExperts):
 
 class TPExperts(MoeExperts):
     """Use tensor parallelism to split each expert evenly, which can deploy experts in
-    case that the number of experts can't be divied by maximum expert parallel size or
-    maximum expert parallel size can't be divied by the number of experts.
+    case that the number of experts can't be divide by maximum expert parallel size or
+    maximum expert parallel size can't be divide by the number of experts.
     """
 
     def __init__(self, num_experts: int, d_model: int, d_ff: int, activation=None, drop_rate: float = 0):
         super().__init__("all_gather", MOE_CONTEXT.max_ep_size)
 
         assert d_ff % MOE_CONTEXT.max_ep_size == 0, \
-            "d_ff should be divied by maximum expert parallel size"
+            "d_ff should be divide by maximum expert parallel size"
 
         p_ff = d_ff // MOE_CONTEXT.max_ep_size
 

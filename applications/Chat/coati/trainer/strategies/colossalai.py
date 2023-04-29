@@ -5,10 +5,8 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 import torch.optim as optim
-from coati.models.base import LM, Actor, RewardModel
-from coati.models.lora import LoraLinear
+from coati.models.base import get_base_model
 from torch.optim import Optimizer
-from transformers.modeling_utils import PreTrainedModel
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
 import colossalai
@@ -17,9 +15,7 @@ from colossalai.nn.optimizer import CPUAdam, HybridAdam
 from colossalai.tensor import ProcessGroup, ShardSpec
 from colossalai.utils import get_current_device
 from colossalai.zero import ColoInitContext, ZeroDDP, zero_model_wrapper, zero_optim_wrapper
-from colossalai.zero.gemini.utils import get_static_torch_model
 
-from .base import Strategy
 from .ddp import DDPStrategy
 
 logger = get_dist_logger(__name__)
@@ -67,6 +63,7 @@ class ColossalAIStrategy(DDPStrategy):
             placement_policy: str = 'cuda',
             pin_memory: bool = True,    # only for stage 3
             force_outputs_fp32: bool = False,    # only for stage 3
+            scatter_after_inference: bool = False,    # only for stage 3
             search_range_mb: int = 32,    # only for stage 3
             hidden_dim: Optional[int] = None,    # only for stage 3
             min_chunk_size_mb: float = 32,    # only for stage 3
@@ -103,7 +100,8 @@ class ColossalAIStrategy(DDPStrategy):
                                   strict_ddp_mode=shard_init,
                                   search_range_mb=search_range_mb,
                                   hidden_dim=hidden_dim,
-                                  min_chunk_size_mb=min_chunk_size_mb)
+                                  min_chunk_size_mb=min_chunk_size_mb,
+                                  scatter_after_inference=scatter_after_inference)
         if stage == 3:
             self.zero_optim_config = dict(gpu_margin_mem_ratio=gpu_margin_mem_ratio)
         else:
@@ -139,7 +137,7 @@ class ColossalAIStrategy(DDPStrategy):
         model = zero_model_wrapper(model, zero_stage=self.stage, gemini_config=self.gemini_config)
 
         if self.stage != 3 and self.precision == 'fp16':
-            model = model.half()
+            model = model.half().cuda()
         return model
 
     def setup_optimizer(self, optimizer: optim.Optimizer, model: nn.Module) -> optim.Optimizer:
@@ -152,61 +150,39 @@ class ColossalAIStrategy(DDPStrategy):
     def optimizer_step(self, optimizer: optim.Optimizer, **kwargs) -> None:
         optimizer.step()
 
-    @staticmethod
-    def _unwrap_actor(actor: Actor) -> nn.Module:
-        model: Union[nn.Module, ZeroDDP] = Strategy._unwrap_actor(actor)
-        if isinstance(model, ZeroDDP):
-            return model.module
-        return model
-
-    def _unwrap_model(self, model: Union[nn.Module, ZeroDDP]) -> nn.Module:
-        if isinstance(model, ZeroDDP) and self.stage == 3:
-            logger.info(f"model type: {type(model)}, get static torch model")
-            model = get_static_torch_model(model)
-            logger.info(f"unwrapped_model type: {type(model)}")
-
-        return super()._unwrap_model(model)
-
-    def save_model(self,
-                   model: nn.Module,
-                   path: str,
-                   only_rank0: bool = True,
-                   tokenizer: Optional[PreTrainedTokenizerBase] = None) -> None:
-
-        if only_rank0 and dist.get_rank() != 0:
-            return None
-        unwrapped_model = self._unwrap_model(model)
-        # TODO : better way to get torch model from gemini model
-        # to get torch model from gemini model
-
-        for module in unwrapped_model.modules():
-            if isinstance(module, LoraLinear):
-                module.merge_weights = True
-                module.eval()
-        if isinstance(unwrapped_model, RewardModel):
-            state_dict = unwrapped_model.state_dict()
-            if only_rank0 and dist.get_rank() != 0:
-                return
-            torch.save(state_dict, path)
+    def save_model(self, model: nn.Module, path: str, only_rank0: bool = True) -> None:
+        if only_rank0 and dist.get_rank() != 0 and self.stage != 3:
+            return
+        base_model = get_base_model(model)
+        if self.stage == 3:
+            assert isinstance(base_model, ZeroDDP)
+            # for stage 3, state_dict() method should be called on every rank
+            state_dict = base_model.state_dict(only_rank_0=only_rank0)
         else:
-            try:
-                if isinstance(unwrapped_model, LM):
-                    unwrapped_model = unwrapped_model.model
-                logger.info(f'Saving model to {path}', ranks=[0])
-                unwrapped_model.save_pretrained(path)
-                logger.info(f'Model saved to {path} Successfully', ranks=[0])
-                if tokenizer is not None:
-                    logger.info(f'Saving tokenizer to {path}', ranks=[0])
-                    tokenizer.save_pretrained(path)
-                    logger.info(f'Tokenizer saved to {path} Successfully', ranks=[0])
-            except AttributeError:
-                state_dict = unwrapped_model.state_dict()
-                if only_rank0 and dist.get_rank() != 0:
-                    return
-                torch.save(state_dict, path)
+            # only_rank0 is false or rank == 0
+            state_dict = base_model.state_dict()
+        if only_rank0 and dist.get_rank() != 0:
+            return
+        torch.save(state_dict, path)
 
     def save_optimizer(self, optimizer: Optimizer, path: str, only_rank0: bool = False) -> None:
         if only_rank0:
             raise RuntimeError(
                 f'Optimizer states are sharded when using ColossalAIStrategy. Only rank0 is not supported.')
         torch.save(optimizer.state_dict(), path)
+
+    def unwrap_model(self, model: nn.Module) -> nn.Module:
+        base_model: Union[nn.Module, ZeroDDP] = get_base_model(model)
+        if self.stage == 3:
+            assert isinstance(base_model, ZeroDDP)
+            return base_model.module
+        return base_model
+
+    def save_pretrained(self,
+                        model: nn.Module,
+                        path: str,
+                        only_rank0: bool = True,
+                        tokenizer: Optional[PreTrainedTokenizerBase] = None) -> None:
+        if self.stage == 3:
+            raise RuntimeError('ColossalAI strategy with stage-3 does not support save_pretrained() now')
+        super().save_pretrained(model, path, only_rank0, tokenizer)
