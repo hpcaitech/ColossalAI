@@ -163,7 +163,7 @@ def main():
     else:
         init_dev = get_current_device()
 
-    # shard init prameters
+    # shard init parameters
     if args.shardinit:
         logger.info("Sharding initialization !", ranks=[0])
     else:
@@ -192,7 +192,7 @@ def main():
                                                    config=config,
                                                    local_files_only=False)
 
-    # enable graident checkpointing
+    # enable gradient checkpointing
     model.gradient_checkpointing_enable()
 
     numel = sum([p.numel() for p in model.parameters()])

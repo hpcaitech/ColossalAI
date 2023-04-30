@@ -57,7 +57,7 @@ It's compatible with all parallel methods in ColossalAI.
 
 Let's start from two simple examples -- training GPT with different methods. These examples relies on `transformers`.
 
-We should install denpendencies first:
+We should install dependencies first:
 
 ```shell
 pip install psutil transformers
@@ -99,7 +99,7 @@ class GPTLMLoss(nn.Module):
                             shift_labels.view(-1))
 ```
 
-And we define some utility functions, which generates random data, computes the number of paramters of a model and get memory usage of current process:
+And we define some utility functions, which generates random data, computes the number of parameters of a model and get memory usage of current process:
 
 ```python
 def get_data(batch_size: int, seq_len: int,
@@ -251,7 +251,7 @@ Time: 3.691 s
 Mem usage: 5298.344 MB
 ```
 
-NVME offload saves about 294 MB memory. Note that enabling `pin_memory` of Gemini can accelerate training but increase memory usage. So this result also meets our expectation. If we disable `pin_memory`, we can aslo observe a memory usage drop about 900 MB.
+NVME offload saves about 294 MB memory. Note that enabling `pin_memory` of Gemini can accelerate training but increase memory usage. So this result also meets our expectation. If we disable `pin_memory`, we can also observe a memory usage drop about 900 MB.
 
 ## API Reference
 

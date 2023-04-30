@@ -18,7 +18,7 @@ def all_gather_simulator(target_pair):
 
     Argument:
         target_pair(Tuple[int, List[int]]): The first element is the dimension of tensor to be sharded,
-        and the second element decribes which logical axis will be sharded in that dimension.
+        and the second element describes which logical axis will be sharded in that dimension.
     '''
     _, shard_list = target_pair
     new_shard_list = shard_list[:-1]
@@ -36,7 +36,7 @@ def all_to_all_simulator(f_target_pair, b_target_pair):
     Therefore, if the behind shard_list is not None, we just extend it to the front shard_list.
     Argument:
         target_pair(Tuple[int, List[int]]): The first element is the dimension of tensor to be sharded,
-        and the second element decribes which logical axis will be sharded in that dimension.
+        and the second element describes which logical axis will be sharded in that dimension.
     e.g.:
         all-to-all(S0, S1) -> [S01, R]
         all-to-all(S0, R) -> [R, S0]
@@ -46,7 +46,7 @@ def all_to_all_simulator(f_target_pair, b_target_pair):
 
     Argument:
         target_pair(Tuple[int, List[int]]): The first element is the dimension of tensor to be sharded,
-        and the second element decribes which logical axis will be sharded in that dimension.
+        and the second element describes which logical axis will be sharded in that dimension.
     '''
     _, f_shard_list = f_target_pair
     _, b_shard_list = b_target_pair

@@ -17,10 +17,10 @@ def parameterize(argument: str, values: List[Any]) -> Callable:
     we want to avoid the number of distributed network initialization, we need to have
     this extra decorator on the function launched by torch.multiprocessing.
 
-    If a function is wrapped with this wrapper, non-paramterized arguments must be keyword arguments,
-    positioanl arguments are not allowed.
+    If a function is wrapped with this wrapper, non-parametrized arguments must be keyword arguments,
+    positional arguments are not allowed.
 
-    Usgae::
+    Usage::
 
         # Example 1:
         @parameterize('person', ['xavier', 'davis'])
@@ -33,7 +33,7 @@ def parameterize(argument: str, values: List[Any]) -> Callable:
         # > xavier: hello
         # > davis: hello
 
-        # Exampel 2:
+        # Example 2:
         @parameterize('person', ['xavier', 'davis'])
         @parameterize('msg', ['hello', 'bye', 'stop'])
         def say_something(person, msg):
@@ -110,7 +110,7 @@ def rerun_on_exception(exception_type: Exception = Exception, pattern: str = Non
             If the pattern is not None and matches the exception message,
             the exception will be detected for rerun
         max_try (int, Optional): Maximum reruns for this function. The default value is 5.
-            If max_try is None, it will rerun foreven if exception keeps occurings
+            If max_try is None, it will rerun forever if exception keeps occurring
     """
 
     def _match_lines(lines, pattern):
@@ -144,7 +144,7 @@ def rerun_on_exception(exception_type: Exception = Exception, pattern: str = Non
 
         # Override signature
         # otherwise pytest.mark.parameterize will raise the following error:
-        # function does not use argumetn xxx
+        # function does not use argument xxx
         sig = signature(func)
         _run_until_success.__signature__ = sig
 
@@ -231,7 +231,7 @@ def spawn(func, nprocs=1, **kwargs):
     This function is used to spawn processes for testing.
 
     Usage:
-        # must contians arguments rank, world_size, port
+        # must contains arguments rank, world_size, port
         def do_something(rank, world_size, port):
             ...
 

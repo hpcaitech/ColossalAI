@@ -479,7 +479,7 @@ class TraceFlow(object):
         # check index source align
         if not self.check_index_source(start_dim, start_node, start_idx, end_dim, end_node):
             return False
-        # check index copmute
+        # check index compute
         if not self.check_index_compute(start_idx, end_dim, end_node, end_idx):
             return False
         return True
