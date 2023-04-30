@@ -6,18 +6,18 @@ Author: Shenggui Li, Siqi Mai
 
 With the development of deep learning model size, it is important to shift to a new training paradigm. The traditional training method with no parallelism and optimization became a thing of the past and new training methods are the key to make training large-scale models efficient and cost-effective.
 
-Colossal-AI is designed to be a unfied system to provide an integrated set of training skills and utilities to the user. You can find the common training utilities such as mixed precision training and gradient accumulation. Besides, we provide an array of parallelism including data, tensor and pipeline parallelism. We optimize tensor parallelism with different multi-dimensional distributed matrix-matrix multiplication algorithm. We also provided different pipeline parallelism methods to allow the user to scale their model across nodes efficiently. More advanced features such as offloading can be found in this tutorial documentation in detail as well.
+Colossal-AI is designed to be a unified system to provide an integrated set of training skills and utilities to the user. You can find the common training utilities such as mixed precision training and gradient accumulation. Besides, we provide an array of parallelism including data, tensor and pipeline parallelism. We optimize tensor parallelism with different multi-dimensional distributed matrix-matrix multiplication algorithm. We also provided different pipeline parallelism methods to allow the user to scale their model across nodes efficiently. More advanced features such as offloading can be found in this tutorial documentation in detail as well.
 
 ## General Usage
 
-We aim to make Colossal-AI easy to use and non-instrusive to user code. There is a simple general workflow if you want to use Colossal-AI.
+We aim to make Colossal-AI easy to use and non-intrusive to user code. There is a simple general workflow if you want to use Colossal-AI.
 
 <figure style={{textAlign: "center"}}>
 <img src="https://s2.loli.net/2022/01/28/ZK7ICWzbMsVuJof.png"/>
 <figcaption>Workflow</figcaption>
 </figure>
 
-1. Prepare a configiguration file where specifies the features you want to use and your parameters.
+1. Prepare a configuration file where specifies the features you want to use and your parameters.
 2. Initialize distributed backend with `colossalai.launch`
 3. Inject the training features into your training components (e.g. model, optimizer) with `colossalai.initialize`.
 4. Run training and testing

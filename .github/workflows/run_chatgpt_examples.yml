@@ -13,6 +13,10 @@ on:
 jobs:
   tests:
     name: Run ChatGPT examples
+    if: |
+      github.event.pull_request.draft == false &&
+      github.base_ref == 'main' &&
+      github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
     runs-on: [self-hosted, gpu]
     container:
       image: hpcaitech/pytorch-cuda:1.12.0-11.3.0

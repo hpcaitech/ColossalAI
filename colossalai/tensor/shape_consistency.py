@@ -73,7 +73,7 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
                                 orig_cost_dict: Dict[str, float]) -> Dict[ShardingSpec, float]:
         '''
         Get all valid sharding specs from source_spec with single all-gather operation, and
-        accumulate commucation cost on origin cost which will finally be used in auto sharding solver.
+        accumulate communication cost on origin cost which will finally be used in auto sharding solver.
         For the all-gather operation, we just care about the S dimension.
 
         Argument:
@@ -145,7 +145,7 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
                                 orig_cost_dict: Dict[str, float]) -> Dict[ShardingSpec, float]:
         '''
         Get all valid sharding specs from source_spec with single all-to-all operation, and
-        accumulate commucation cost on origin cost which will finally be used in auto sharding solver.
+        accumulate communication cost on origin cost which will finally be used in auto sharding solver.
         For the all-to-all operation, we just care about the pairs containing S dimension.
 
         Argument:

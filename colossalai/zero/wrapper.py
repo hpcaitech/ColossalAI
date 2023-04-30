@@ -26,7 +26,7 @@ def zero_model_wrapper(model: nn.Module,
         zero_stage (int, optional): The stage of ZeRO DDP. You can find more information in ZeRO's paper.
             https://arxiv.org/abs/1910.02054
         gemini_config (dict, optional): The configuration dictionary of `GeminiDDP`. `GeminiDDP` is enabled
-            when the stage is set to 3. You can set the arguemnts of `GeminiDDP` in the gemini_config.
+            when the stage is set to 3. You can set the arguments of `GeminiDDP` in the gemini_config.
             Here is an example where we set the device of the model, the placement policy of Gemini, and the
             size of hidden dimension to help Gemini find out a unified chunk size.
 
@@ -78,7 +78,7 @@ def zero_optim_wrapper(model: nn.Module,
         max_norm (float, optional): max_norm used for `clip_grad_norm`. You should notice that you shall not do
             clip_grad_norm by yourself when using ZeRO DDP. The ZeRO optimizer will take care of clip_grad_norm.
         norm_type (float, optional): norm_type used for `clip_grad_norm`.
-        optim_config (dict, optinoal): The configuration used for the ZeRO optimizer.
+        optim_config (dict, optional): The configuration used for the ZeRO optimizer.
             Example:
 
                 >>> zero2_config = dict(reduce_bucket_size=12 * 1024 * 1024, overlap_communication=True)

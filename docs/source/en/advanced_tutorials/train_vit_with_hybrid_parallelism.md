@@ -12,7 +12,7 @@ Author: Yuxuan Lou
 
 ## Introduction
 
-In this example for ViT model, Colossal-AI provides three different parallelism techniques which acclerate model training: data parallelism, pipeline parallelism and tensor parallelism.
+In this example for ViT model, Colossal-AI provides three different parallelism techniques which accelerate model training: data parallelism, pipeline parallelism and tensor parallelism.
 We will show you how to train ViT on CIFAR-10 dataset with these parallelism techniques. To run this example, you will need 2-4 GPUs.
 
 
@@ -31,7 +31,7 @@ pip install colossalai
 
 
 ## Data Parallelism
-Data parallism is one basic way to accelerate model training process. You can apply data parallism to training by only two steps:
+Data parallism is one basic way to accelerate model training process. You can apply data parallelism to training by only two steps:
 1. Define a configuration file
 2. Change a few lines of code in train script
 
@@ -108,7 +108,7 @@ disable_existing_loggers()
 logger = get_dist_logger()
 ```
 
-After initialization, you can acess the variables in the config file by using `colossalai.core.global_context`.
+After initialization, you can access the variables in the config file by using `colossalai.core.global_context`.
 
 ```python
 #access parameters
@@ -162,7 +162,7 @@ optimizer = colossalai.nn.Lamb(model.parameters(), lr=1.8e-2, weight_decay=0.1)
 # build loss
 criterion = torch.nn.CrossEntropyLoss()
 
-# lr_scheduelr
+# lr_scheduler
 lr_scheduler = LinearWarmupLR(optimizer, warmup_steps=50, total_steps=gpc.config.NUM_EPOCHS)
 ```
 
@@ -230,10 +230,10 @@ torchrun --standalone --nproc_per_node <NUM_GPUs>  train_dp.py --config ./config
 
 
 ## Pipeline Parallelism
-Aside from data parallelism, Colossal-AI also support pipleline parallelism. In specific, Colossal-AI uses 1F1B pipeline introduced by NVIDIA. For more details, you can view the related [documents](https://www.colossalai.org/tutorials/features/pipeline_parallel).
+Aside from data parallelism, Colossal-AI also support pipeline parallelism. In specific, Colossal-AI uses 1F1B pipeline introduced by NVIDIA. For more details, you can view the related [documents](https://www.colossalai.org/tutorials/features/pipeline_parallel).
 
 ### Define your configuration file(`hybrid_parallel/configs/vit_pipeline.py`)
-To apply pipleline parallel on the data parallel basis, you only need to add a **parallel dict**
+To apply pipeline parallel on the data parallel basis, you only need to add a **parallel dict**
 ```python
 from colossalai.amp import AMP_TYPE
 
@@ -250,7 +250,7 @@ clip_grad_norm = 1.0
 
 Other configs：
 ```python
-# hyperparameters
+# hyper parameters
 # BATCH_SIZE is as per GPU
 # global batch size = BATCH_SIZE x data parallel size
 BATCH_SIZE = 256
@@ -276,7 +276,7 @@ Colossal-AI provides two methods to build a pipeline model from the existing mod
 - `colossalai.builder.build_pipeline_model_from_cfg`
 - `colossalai.builder.build_pipeline_model`
 
-Besides, you can also build a pipeline model from scrath with Colossal-AI.
+Besides, you can also build a pipeline model from scratch with Colossal-AI.
 ```python
 import math
 from typing import Callable
@@ -521,7 +521,7 @@ def build_cifar(batch_size):
     return train_dataloader, test_dataloader
 
 
-# craete dataloaders
+# create dataloaders
 train_dataloader , test_dataloader = build_cifar()
 
 # create loss function
@@ -539,7 +539,7 @@ lr_scheduler = CosineAnnealingWarmupLR(optimizer=optimizer,
 #### Start Colossal-AI engine
 
 ```python
-# intiailize
+# initialize
 engine, train_dataloader, test_dataloader, _ = colossalai.initialize(model=model,
                                                                      optimizer=optimizer,
                                                                      criterion=criterion,
@@ -615,7 +615,7 @@ TENSOR_SHAPE = (BATCH_SIZE // NUM_MICRO_BATCHES, SEQ_LENGTH, HIDDEN_SIZE)
 
 Ohter configs:
 ```python
-# hyperparameters
+# hyper parameters
 # BATCH_SIZE is as per GPU
 # global batch size = BATCH_SIZE x data parallel size
 BATCH_SIZE = 256
