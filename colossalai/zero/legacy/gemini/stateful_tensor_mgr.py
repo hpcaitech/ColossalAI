@@ -53,7 +53,7 @@ class StatefulTensorMgr(object):
         self._evict_time = 0
 
     def adjust_layout(self) -> None:
-        """ Adjust the layout of statefuil tensor according to the information provided
+        """ Adjust the layout of stateful tensor according to the information provided
         by mem_stats_collector, which should belongs to a Sharded Model.
         """
         # find stateful tensor in state COMPUTE

@@ -111,7 +111,7 @@ class Region:
         Copy data slice to the memory space indexed by the input tensor in the region.
 
         Args:
-            param (torch.nn.Parameter): the param used to retrive meta information
+            param (torch.nn.Parameter): the param used to retrieve meta information
             data_slice (torch.Tensor): the tensor to be copied to the region
         """
 

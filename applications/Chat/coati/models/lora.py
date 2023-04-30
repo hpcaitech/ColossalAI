@@ -106,6 +106,23 @@ def convert_to_lora_recursively(module: nn.Module, lora_rank: int) -> None:
             convert_to_lora_recursively(child, lora_rank)
 
 
+def convert_to_lora_module(module: nn.Module, lora_rank: int, lora_train_bias: str = 'none') -> nn.Module:
+    """Convert a torch.nn.Module to a LoRA module.
+
+    Args:
+        module (nn.Module): The module to convert.
+        lora_rank (int): LoRA rank.
+
+    Returns:
+        nn.Module: The converted module.
+    """
+    if lora_rank <= 0:
+        return module
+    convert_to_lora_recursively(module, lora_rank)
+    lora.mark_only_lora_as_trainable(module, lora_train_bias)
+    return module
+
+
 class LoRAModule(nn.Module):
     """A LoRA module base class. All derived classes should call `convert_to_lora()` at the bottom of `__init__()`.
     This class will convert all torch.nn.Linear layer to LoraLinear layer.
@@ -123,7 +140,4 @@ class LoRAModule(nn.Module):
         self.lora_train_bias = lora_train_bias
 
     def convert_to_lora(self) -> None:
-        if self.lora_rank <= 0:
-            return
-        convert_to_lora_recursively(self, self.lora_rank)
-        lora.mark_only_lora_as_trainable(self, self.lora_train_bias)
+        convert_to_lora_module(self, self.lora_rank, self.lora_train_bias)

@@ -67,8 +67,8 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         growth_interval (float, optional): growth_interval used by DynamicGradScaler. Defaults to 1000.
         hysteresis (float, optional): hysteresis used by DynamicGradScaler. Defaults to 2.
         max_scale (int, optional): max_scale used by DynamicGradScaler. Defaults to 2**32.
-        dp_process_group (Optional[ProcessGroup], optional): data paralle process group. Defaults to None.
-        mp_process_group (Optional[ProcessGroup], optional): model paralle process group. Defaults to None.
+        dp_process_group (Optional[ProcessGroup], optional): data parallel process group. Defaults to None.
+        mp_process_group (Optional[ProcessGroup], optional): model parallel process group. Defaults to None.
 
     .. _PatrickStar\: Parallel Training of Pre-trained Models via Chunk-based Memory Management:
         https://arxiv.org/abs/2108.05818
@@ -274,7 +274,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                 assert hasattr(p, 'colo_attr'), 'The parameter must be wrapped with ShardedParam'
                 shard_flag = not p.colo_attr.sharded_data_tensor.is_sharded and p.colo_attr.is_replicated
                 if shard_flag:
-                    # we always shard replicated paramters
+                    # we always shard replicated parameters
                     self.shard_strategy.shard([p.colo_attr.sharded_data_tensor], self.dp_process_group)
                 self.master_params[p] = StatefulTensor(cast_tensor_to_fp32(p.colo_attr.data_payload.to(self.device)))
                 if shard_flag:
@@ -312,7 +312,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                 # If reuse_fp16_shard, grad fp16 which wasn't be offloaded may be evicted to CPU
                 if not p.colo_attr.offload_grad:
                     colo_model_data_tensor_move_inline(p.colo_attr.saved_grad, torch.cuda.current_device())
-                # FIXME(ver217): p.data here is an empty tensor on CUDA and has no useful infomation
+                # FIXME(ver217): p.data here is an empty tensor on CUDA and has no useful information
                 # If we change p.grad directly
                 # it may raise error because of different shape/dtype/device of p.data and p.grad
                 # We just set p.data = p.colo_attr.saved_grad.payload here
@@ -333,7 +333,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
 
     def _copy_master_model_to_model_fp16(self):
         # Copy master param data (fp32) to payload of colo_attr (fp16)
-        # TODO() improve efficiency by gathering tensors into a chunk and transfering
+        # TODO() improve efficiency by gathering tensors into a chunk and transferring
         # a chunk.
         for group in self.optim.param_groups:
             for p in group['params']:
@@ -350,7 +350,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
 
         p.data = self.master_params[p].payload
 
-        # we need to allocate new memory for keep_not_shard paramters
+        # we need to allocate new memory for keep_not_shard parameters
         # in order to use copy, otherwise, the sizes of tensor is not compatible
         if p.colo_attr.data_payload.numel() != p.data.numel():
             p.colo_attr.data_payload_reset(

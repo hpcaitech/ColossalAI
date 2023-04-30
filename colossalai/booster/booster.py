@@ -20,7 +20,7 @@ __all__ = ['Booster']
 class Booster:
     """
     Booster is a high-level API for training neural networks. It provides a unified interface for
-    training with different precisio, accelerator, and plugin.
+    training with different precision, accelerator, and plugin.
 
     Examples:
         >>> colossalai.launch(...)

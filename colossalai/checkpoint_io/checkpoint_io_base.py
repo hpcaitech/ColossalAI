@@ -71,7 +71,7 @@ class CheckpointIO(ABC):
 
         Args:
             model (nn.Module): model to be loaded.
-            checkpoint (str): checkpoint path. This value is made compatiblity with the model checkpoints in the
+            checkpoint (str): checkpoint path. This value is made compatibility with the model checkpoints in the
                         mainstream model zoos such as Hugging Face and TIMM. The checkpoint path can be:
                         1. a file path, e.g. 'model.pt'
                         2. a path to a json file which defines the index to the sharded checkpoint
@@ -127,7 +127,7 @@ class CheckpointIO(ABC):
                 1. a file path, e.g. 'model.pt'
                 2. a directory path to save the sharded checkpoint, e.g. './checkpoints/' when shard = True.
             shard (bool): whether to shard the checkpoint. Default: False. If set to True, the checkpoint will be sharded into
-                multiple files. The model shards will be specificed by a `model.index.json` file. When shard = True, please ensure
+                multiple files. The model shards will be specified by a `model.index.json` file. When shard = True, please ensure
                 that the checkpoint path is a directory path instead of a file path.
             gather_dtensor (bool): whether to gather the distributed tensor to the first device. Default: True.
             variant (str): If specified, weights are saved in the format pytorch_model.<variant>.bin. Default: None.
@@ -149,7 +149,7 @@ class CheckpointIO(ABC):
 
         Args:
             optimizer (Optimizer): optimizer to be loaded.
-            checkpoint (str): checkpoint path. This value is made compatiblity with the model checkpoints in the
+            checkpoint (str): checkpoint path. This value is made compatibility with the model checkpoints in the
         """
         index_file_exists, index_file_path = has_index_file(checkpoint)
 
@@ -180,7 +180,7 @@ class CheckpointIO(ABC):
                 2. a path to a json file which defines the index to the sharded checkpoint for the optimizer
                 3. a path to a folder containing a unique .index.json file for sharded checkpoint
             shard (bool): whether to shard the checkpoint. Default: False. If set to True, the checkpoint will be sharded into
-                multiple files. The optimizer shards will be specificed by a `optimizer.index.json` file.
+                multiple files. The optimizer shards will be specified by a `optimizer.index.json` file.
             gather_dtensor (bool): whether to gather the distributed tensor to the first device. Default: True.
             prefix (str): prefix for the optimizer checkpoint when shard = True. Default: None.
             size_per_shard (int): size per shard in MB. Default: 1024. This value is only used when shard is set to True.
