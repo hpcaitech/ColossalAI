@@ -3,7 +3,6 @@ import pytest
 import torch
 from torch.optim import Adam
 from torchvision.models import resnet18
-import pathlib
 
 from colossalai.checkpoint_io import GeneralCheckpointIO
 from colossalai.booster.plugin.gemini_plugin import GeminiCheckpointIO
@@ -116,15 +115,6 @@ def hf_load_colossalai_checkpoint(placement_policy, model_name, use_safetensors:
     from transformers import BertTokenizer, BertModel, BertForMaskedLM, BertConfig, BertForSequenceClassification
 
     model_ckpt_dir = tempfile.TemporaryDirectory()
-    # class model_ckpt_dir:
-    #     name = pathlib.Path("/home/lcjmy/code/ColossalAI/tests/test_checkpoint_io/b")
-    #     if use_safetensors == True:
-    #         name = pathlib.Path("/home/lcjmy/code/ColossalAI/tests/test_checkpoint_io/b")
-    #     name.mkdir(parents=True, exist_ok=True)
-    #     @classmethod
-    #     def cleanup(cls):
-    #         pass
-
     get_components_func = non_distributed_component_funcs.get_callable(model_name)
     model_builder, *_ = get_components_func()
 
@@ -140,8 +130,8 @@ def hf_load_colossalai_checkpoint(placement_policy, model_name, use_safetensors:
     ckpt_io = GeminiCheckpointIO()
     if ckpt_io.coordinator.is_master():
         model_size = sum(p.numel() * p.element_size() for p in bert_model.parameters()) / 1024**2
-        ckpt_io.save_model(bert_model, model_ckpt_dir.name, True, True, "", (model_size / 3), use_safetensors=False)
-        new_bert_model = BertForSequenceClassification.from_pretrained(pathlib.Path(model_ckpt_dir.name))
+        ckpt_io.save_model(bert_model, model_ckpt_dir.name, True, True, "", (model_size / 3), use_safetensors=use_safetensors)
+        new_bert_model = BertForSequenceClassification.from_pretrained(model_ckpt_dir.name)
         recursive_check(bert_model.state_dict(only_rank_0=True, dtype=torch.float32), new_bert_model.state_dict())
     
     model_ckpt_dir.cleanup()
@@ -189,7 +179,7 @@ def exam_state_dict(placement_policy, model_name: str, use_safetensors: bool):
 def run_dist(rank, world_size, port):
     config = {}
     colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    # exam_state_dict()
+    exam_state_dict()
     hf_load_colossalai_checkpoint()
 
 

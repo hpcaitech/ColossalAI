@@ -21,7 +21,7 @@ from .chunk import Chunk, ChunkManager, TensorState, init_chunk_manager
 from .gemini_hook import GeminiZeROHook
 from .gemini_mgr import GeminiManager
 from .memory_tracer import MemStats, OrderedParamGenerator
-from .utils import get_temp_total_chunk_on_cuda, get_static_torch_model
+from .utils import get_temp_total_chunk_on_cuda
 
 try:
     from torch.nn.modules.module import _EXTRA_STATE_KEY_SUFFIX, _IncompatibleKeys
@@ -111,8 +111,6 @@ class ZeroDDP(ColoDDP):
                 if remove_duplicate:
                     memo.add(module)
                 self_non_persistent_set = set(map(lambda key: prefix + ('.' if prefix else '') + key, module._non_persistent_buffers_set))
-                # non_persistent_buffers_set.extend(sub_set)
-                # set.union(non_persistent_buffers_set, self_non_persistent_set)
                 for name, sub_module in module._modules.items():
                     if sub_module is None:
                         continue

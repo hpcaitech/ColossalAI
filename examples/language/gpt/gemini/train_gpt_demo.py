@@ -347,8 +347,6 @@ def main():
     median_index = ((NUM_STEPS - WARMUP_STEPS) >> 1) + WARMUP_STEPS
     logger.info(f"Median TFLOPS is {tflops_list[median_index]:.3f}")
     torch.cuda.synchronize()
-    model_to_save = get_static_torch_model(model, dtype=torch.half, only_rank_0=True)
-    model_to_save.model.save_pretrained('./tmp')
 
 
 if __name__ == '__main__':
