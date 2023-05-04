@@ -199,15 +199,9 @@ class PPOTrainer(Trainer):
 
         return {'reward': experience.reward.mean().item()}
 
-    def save_model(self,
-                   path: str,
-                   only_rank0: bool = False,
-                   tokenizer: Optional[PreTrainedTokenizerBase] = None) -> None:
-        self.strategy.save_model(model=self.actor, path=path, only_rank0=only_rank0, tokenizer=tokenizer)
-
 
 def _set_default_generate_kwargs(strategy: Strategy, generate_kwargs: dict, actor: Actor) -> None:
-    origin_model = strategy._unwrap_actor(actor)
+    origin_model = strategy.unwrap_model(actor)
     new_kwargs = {**generate_kwargs}
     # use huggingface models method directly
     if 'prepare_inputs_fn' not in generate_kwargs and hasattr(origin_model, 'prepare_inputs_for_generation'):

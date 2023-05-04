@@ -194,7 +194,7 @@ def main(args):
                 update_timesteps=args.update_timesteps)
 
     # save model checkpoint after fitting
-    trainer.save_model(args.save_path, only_rank0=True, tokenizer=tokenizer)
+    strategy.save_model(actor, args.save_path, only_rank0=True)
     # save optimizer checkpoint on all ranks
     if args.need_optim_ckpt:
         strategy.save_optimizer(actor_optim,
@@ -208,7 +208,7 @@ if __name__ == '__main__':
     parser.add_argument('--pretrain_dataset', type=str, default=None, help='path to the pretrained dataset')
     parser.add_argument('--strategy',
                         choices=['naive', 'ddp', 'colossalai_gemini', 'colossalai_zero2'],
-                        default='naive',
+                        default='colossalai_zero2',
                         help='strategy to use')
     parser.add_argument('--model', default='gpt2', choices=['gpt2', 'bloom', 'opt', 'llama', 'roberta'])
     parser.add_argument('--pretrain', type=str, default=None)
