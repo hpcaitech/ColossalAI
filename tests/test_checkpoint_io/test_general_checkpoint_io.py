@@ -109,22 +109,43 @@ def test_sharded_checkpoint(use_safetensors: bool):
     recursive_check(model.state_dict(), new_model.state_dict())
     recursive_check(optimizer.state_dict(), new_optimizer.state_dict())
 
+@parameterize('placement_policy', ['cuda', 'cpu'])
+@parameterize('model_name', ['bert'])
+@parameterize('use_safetensors', [True, False])
+def hf_load_colossalai_checkpoint(placement_policy, model_name, use_safetensors: bool):
+    from transformers import BertTokenizer, BertModel, BertForMaskedLM, BertConfig, BertForSequenceClassification
 
-@pytest.mark.parametrize('use_safetensors', [True, False])
-def test_hf_load_colossalai_checkpoint(use_safetensors: bool):
-    from transformers import BertTokenizer, BertModel, BertForMaskedLM, BertConfig
-
-    ckpt_io = GeneralCheckpointIO()
-    bert_model = BertModel.from_pretrained('bert-base-chinese')
     model_ckpt_dir = tempfile.TemporaryDirectory()
+    # class model_ckpt_dir:
+    #     name = pathlib.Path("/home/lcjmy/code/ColossalAI/tests/test_checkpoint_io/b")
+    #     if use_safetensors == True:
+    #         name = pathlib.Path("/home/lcjmy/code/ColossalAI/tests/test_checkpoint_io/b")
+    #     name.mkdir(parents=True, exist_ok=True)
+    #     @classmethod
+    #     def cleanup(cls):
+    #         pass
+
+    get_components_func = non_distributed_component_funcs.get_callable(model_name)
+    model_builder, *_ = get_components_func()
+
+    with ColoInitContext(device=get_current_device()):
+        bert_model = model_builder()
     bert_model.config.save_pretrained(save_directory=model_ckpt_dir.name)
-    ckpt_io.save_model(bert_model, model_ckpt_dir.name, True, True, "", 10, use_safetensors=False)
+    config_dict, *_ = search_chunk_configuration(bert_model, search_range_mb=1, search_interval_byte=100)
+    chunk_manager = ChunkManager(config_dict)
+    gemini_manager = GeminiManager(placement_policy, chunk_manager)
+    bert_model = ZeroDDP(bert_model, gemini_manager)
+    bert_model.train()
 
-    new_bert_config = bert_model.config
-    new_bert_model = BertModel(config=new_bert_config)
-    new_bert_model = BertModel.from_pretrained(model_ckpt_dir.name) 
-
-    recursive_check(bert_model.state_dict(), new_bert_model.state_dict())
+    ckpt_io = GeminiCheckpointIO()
+    if ckpt_io.coordinator.is_master():
+        model_size = sum(p.numel() * p.element_size() for p in bert_model.parameters()) / 1024**2
+        ckpt_io.save_model(bert_model, model_ckpt_dir.name, True, True, "", (model_size / 3), use_safetensors=False)
+        new_bert_model = BertForSequenceClassification.from_pretrained(pathlib.Path(model_ckpt_dir.name))
+        recursive_check(bert_model.state_dict(only_rank_0=True, dtype=torch.float32), new_bert_model.state_dict())
+    
+    model_ckpt_dir.cleanup()
+        
 
 
 @parameterize('placement_policy', ['cuda', 'cpu'])
@@ -149,10 +170,9 @@ def exam_state_dict(placement_policy, model_name: str, use_safetensors: bool):
     new_gemini_manager = GeminiManager(placement_policy, new_chunk_manager)
     new_model = ZeroDDP(new_model, new_gemini_manager)
 
-
     model_ckpt_dir = tempfile.TemporaryDirectory()
-    ckpt_io = GeminiCheckpointIO()
 
+    ckpt_io = GeminiCheckpointIO()
     model_size = sum(p.numel() * p.element_size() for p in model.parameters()) / 1024**2
     ckpt_io.save_model(model, model_ckpt_dir.name, True, True, "epoch", (model_size / 3), use_safetensors=use_safetensors)
 
@@ -169,7 +189,8 @@ def exam_state_dict(placement_policy, model_name: str, use_safetensors: bool):
 def run_dist(rank, world_size, port):
     config = {}
     colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    exam_state_dict()
+    # exam_state_dict()
+    hf_load_colossalai_checkpoint()
 
 
 @pytest.mark.dist
@@ -191,10 +212,14 @@ def recursive_check(d1, d2):
         elif isinstance(v, list):
             for i in range(len(v)):
                 if isinstance(v[i], torch.Tensor):
+                    v[i] = v[i].to("cpu")
+                    d2[k][i] = d2[k][i].to("cpu")
                     assert torch.equal(v[i], d2[k][i])
                 else:
                     assert v[i] == d2[k][i]
         elif isinstance(v, torch.Tensor):
+            v = v.to("cpu")
+            d2[k] = d2[k].to("cpu")
             assert torch.equal(v, d2[k])
         else:
             assert v == d2[k]

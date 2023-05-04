@@ -1,7 +1,7 @@
 import itertools
 from collections import OrderedDict
 from functools import partial
-from typing import Dict, Iterator, List, Optional, Union, Tuple
+from typing import Dict, Iterator, List, Optional, Union, Tuple, Set
 
 import torch
 import torch.distributed as dist
@@ -21,7 +21,7 @@ from .chunk import Chunk, ChunkManager, TensorState, init_chunk_manager
 from .gemini_hook import GeminiZeROHook
 from .gemini_mgr import GeminiManager
 from .memory_tracer import MemStats, OrderedParamGenerator
-from .utils import get_temp_total_chunk_on_cuda
+from .utils import get_temp_total_chunk_on_cuda, get_static_torch_model
 
 try:
     from torch.nn.modules.module import _EXTRA_STATE_KEY_SUFFIX, _IncompatibleKeys
@@ -92,7 +92,35 @@ class ZeroDDP(ColoDDP):
                 param_name = m_name + '.' + p_name if m_name else p_name
                 self.name2param[param_name] = p_var
         super().__init__(module, process_group=ColoProcessGroup())
+        self._non_persistent_buffers_set=self._get_non_persistent_buffers_set(module)
         self._cast_buffers()
+
+    def _get_non_persistent_buffers_set(self, module, memo: Optional[Set[nn.Module]] = None, prefix: str = '', remove_duplicate: bool = True):
+
+            r"""
+            Args:
+                memo: a memo to store the set of modules already added to the result
+                prefix: a prefix that will be added to the name of the module
+                remove_duplicate: whether to remove the duplicated module instances in the result
+                    or not
+            """
+
+            if memo is None:
+                memo = set()
+            if module not in memo:
+                if remove_duplicate:
+                    memo.add(module)
+                self_non_persistent_set = set(map(lambda key: prefix + ('.' if prefix else '') + key, module._non_persistent_buffers_set))
+                # non_persistent_buffers_set.extend(sub_set)
+                # set.union(non_persistent_buffers_set, self_non_persistent_set)
+                for name, sub_module in module._modules.items():
+                    if sub_module is None:
+                        continue
+                    submodule_prefix = prefix + ('.' if prefix else '') + name
+                    child_self_non_persistent_set = self._get_non_persistent_buffers_set(sub_module, memo, submodule_prefix, remove_duplicate)
+                    self_non_persistent_set = set.union(self_non_persistent_set, child_self_non_persistent_set)
+            return self_non_persistent_set
+    
 
     def _post_forward(self):
         """This function is only triggered for inference.

@@ -1,4 +1,5 @@
 from pathlib import Path
+from functools import reduce
 
 import torch.nn as nn
 from torch.optim import Optimizer
@@ -133,14 +134,7 @@ class GeneralCheckpointIO(CheckpointIO):
             gc.collect()
 
         if strict:
-            def intersection(ll):
-                if len(ll) == 1:
-                    return set(ll[0])
-                if len(ll) == 2:
-                    return set(ll[0]) & set(ll[1])
-                n = len(ll)
-                return intersection(ll[:n//2]) & intersection(ll[n//2:])
-            remian_keys = intersection(missing_keys)
+            remian_keys = reduce(lambda a, b: a & b, map(set, missing_keys))
             if len(remian_keys) > 0:
                 error_msgs = 'Missing key(s) in state_dict: {}. '.format(
                             ', '.join('"{}"'.format(k) for k in missing_keys))

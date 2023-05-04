@@ -9,6 +9,7 @@ from commons.model_zoo import model_builder
 from commons.utils import get_data, get_profile_context, get_tflops, get_time_stamp
 from packaging import version
 from torch.nn.parallel import DistributedDataParallel as DDP
+from colossalai.zero.gemini.utils import get_static_torch_model
 
 import colossalai
 from colossalai.logging import disable_existing_loggers, get_dist_logger
@@ -346,6 +347,8 @@ def main():
     median_index = ((NUM_STEPS - WARMUP_STEPS) >> 1) + WARMUP_STEPS
     logger.info(f"Median TFLOPS is {tflops_list[median_index]:.3f}")
     torch.cuda.synchronize()
+    model_to_save = get_static_torch_model(model, dtype=torch.half, only_rank_0=True)
+    model_to_save.model.save_pretrained('./tmp')
 
 
 if __name__ == '__main__':
