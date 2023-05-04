@@ -3,7 +3,6 @@ from pathlib import Path
 from typing import Any, List, Union
 import os
 import json
-import logging
 
 from .utils import is_dtensor_checkpoint
 

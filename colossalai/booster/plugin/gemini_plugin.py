@@ -25,9 +25,7 @@ from colossalai.zero.gemini.memory_tracer import MemStats
 
 from colossalai.checkpoint_io.utils import (
     get_base_filenames,
-    get_shard_filename,
-    is_safetensors_available,
-    load_shard_state_dict
+    get_shard_filename
     )
 
 from colossalai.checkpoint_io import CheckpointIndexFile

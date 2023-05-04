@@ -5,9 +5,6 @@ import torch.nn as nn
 from typing import List, Mapping, OrderedDict, Optional, Tuple, Iterator
 from colossalai.tensor.d_tensor.d_tensor import DTensor
 import re
-import os
-import json
-import logging
 
 SAFE_WEIGHTS_NAME = "model.safetensors"
 WEIGHTS_NAME = "pytorch_model.bin"

@@ -5,10 +5,8 @@ import torch.nn as nn
 from torch.optim import Optimizer
 import logging
 import os
-import json
 import gc
 from typing import Optional, Iterator, OrderedDict, Tuple
-import itertools
 
 from .checkpoint_io_base import CheckpointIO
 from .index_file import CheckpointIndexFile
