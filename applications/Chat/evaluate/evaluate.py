@@ -130,7 +130,7 @@ def evaluate(args):
             assert answer1_jsons[i]['id'] == answer2_jsons[i]['id']
             answer_id = answer1_jsons[i]['id']
 
-            ques = answer1_jsons[i]['instruction'] if answer1_jsons[i]['input'] == "" else answer1_jsons[i]['instuction'] + \
+            ques = answer1_jsons[i]['instruction'] if answer1_jsons[i]['input'] == "" else answer1_jsons[i]['instruction'] + \
                 " " + answer1_jsons[i]['input']
             cat = answer1_jsons[i]['category']
             ans1 = answer1_jsons[i]['output']
