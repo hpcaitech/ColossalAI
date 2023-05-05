@@ -107,6 +107,7 @@ class ZeroDDP(ColoDDP):
 
             if memo is None:
                 memo = set()
+            self_non_persistent_set = set()
             if module not in memo:
                 if remove_duplicate:
                     memo.add(module)
