@@ -132,8 +132,8 @@ class GeneralCheckpointIO(CheckpointIO):
             gc.collect()
 
         if strict:
-            remian_keys = reduce(lambda a, b: a & b, map(set, missing_keys))
-            if len(remian_keys) > 0:
+            remain_keys = reduce(lambda a, b: a & b, map(set, missing_keys))
+            if len(remain_keys) > 0:
                 error_msgs = 'Missing key(s) in state_dict: {}. '.format(
                             ', '.join('"{}"'.format(k) for k in missing_keys))
                 raise RuntimeError('Error(s) in loading state_dict for {}:\n\t{}'.format(
