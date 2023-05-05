@@ -116,8 +116,8 @@ class ZeroDDP(ColoDDP):
                     if sub_module is None:
                         continue
                     submodule_prefix = prefix + ('.' if prefix else '') + name
-                    child_self_non_persistent_set = self._get_non_persistent_buffers_set(sub_module, memo, submodule_prefix, remove_duplicate)
-                    self_non_persistent_set = set.union(self_non_persistent_set, child_self_non_persistent_set)
+                    child_non_persistent_set = self._get_non_persistent_buffers_set(sub_module, memo, submodule_prefix, remove_duplicate)
+                    self_non_persistent_set = set.union(self_non_persistent_set, child_non_persistent_set)
             return self_non_persistent_set
     
 
