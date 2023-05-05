@@ -110,7 +110,7 @@ def get_pytorch_version() -> List[int]:
     torch_version = torch.__version__.split('+')[0]
     TORCH_MAJOR = int(torch_version.split('.')[0])
     TORCH_MINOR = int(torch_version.split('.')[1])
-    TORCH_PATCH = int(torch_version.split('.')[2])
+    TORCH_PATCH = int(torch_version.split('.')[2], 16)
     return TORCH_MAJOR, TORCH_MINOR, TORCH_PATCH
 
 

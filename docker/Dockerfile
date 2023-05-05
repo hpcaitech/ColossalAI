@@ -8,9 +8,13 @@ LABEL org.opencontainers.image.base.name = "docker.io/library/hpcaitech/cuda-con
 # install torch
 RUN conda install pytorch==1.12.1 torchvision==0.13.1 torchaudio==0.12.1 cudatoolkit=11.3 -c pytorch
 
+# install ninja
+RUN apt-get install -y --no-install-recommends ninja-build
+
 # install apex
 RUN git clone https://github.com/NVIDIA/apex && \
     cd apex && \
+    git checkout 91fcaa && \
     pip install packaging && \
     pip install -v --disable-pip-version-check --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" --global-option="--fast_layer_norm" ./
 
