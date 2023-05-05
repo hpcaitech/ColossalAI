@@ -20,7 +20,7 @@ def run_dist(rank, world_size, port):
     # need to configure cudnn deterministic so that
     # randomness of convolution layers will be disabled
     zero_config = dict(model_config=dict(shard_strategy=TensorShardStrategy()))
-    colossalai.launch(config=dict(zero=zero_config, cudnn_determinstic=True, cudnn_benchmark=False),
+    colossalai.launch(config=dict(zero=zero_config, cudnn_deterministic=True, cudnn_benchmark=False),
                       rank=rank,
                       world_size=world_size,
                       host='localhost',
