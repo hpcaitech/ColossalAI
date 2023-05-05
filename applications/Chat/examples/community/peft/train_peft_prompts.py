@@ -8,16 +8,16 @@ from coati.models.bloom import BLOOMRM, BLOOMCritic
 from coati.models.gpt import GPTRM, GPTActor, GPTCritic
 from coati.models.llama import LlamaActor, LlamaCritic, LlamaRM
 from coati.models.opt import OPTRM, OPTActor, OPTCritic
-from coati.trainer import PPOTrainer
+from trainer import PPOTrainer
 from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
 from coati.utils import prepare_llama_tokenizer_and_embedding
 from easy_dataset import EasyPromptsDataset, EasySupervisedDataset
-from easy_models import BLOOMActor
+from easy_models import BLOOMActor,ChatGlmActor,ChatGLMRM,ChatGLMCritic
 from peft import PeftModel
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
-from transformers import AutoTokenizer, BloomTokenizerFast, GPT2Tokenizer, LlamaTokenizer
+from transformers import AutoTokenizer, BloomTokenizerFast
 
 from colossalai.nn.optimizer import HybridAdam
 
@@ -35,73 +35,76 @@ def main(args):
     else:
         raise ValueError(f'Unsupported strategy "{args.strategy}"')
 
-    if args.rm_path is not None:
-        state_dict = torch.load(args.rm_path, map_location='cpu')
 
     # configure model
     if args.model == 'bloom':
         # initial_model = BLOOMActor(pretrained=args.pretrain)
         print('Using peft lora to load Bloom model as inital_model')
         initial_model = BLOOMActor(pretrained=args.pretrain, lora_path=args.sft_lora_path)
+        #first offload the model to cpu and half precision
+        initial_model = initial_model.half().cpu()
         print('Using peft lora to load Bloom model as initial_model (Done)')
+    elif args.model == 'chatglm':
+        initial_model = ChatGlmActor(pretrained=args.pretrain, lora_path=args.sft_lora_path)
+        initial_model = initial_model.half().cpu()
     else:
         raise ValueError(f'Unsupported actor model "{args.model}"')
+    
+    #print current cuda memory usage
+    print(f'Step 0. load initial model. Current cuda memory usage: {torch.cuda.memory_allocated()/1024/1024} MB')
 
-    if args.rm_model == None:
-        rm_model_name = args.model
-    else:
-        rm_model_name = args.rm_model
-
-    if rm_model_name == 'gpt2':
-        reward_model = GPTRM(pretrained=args.rm_pretrain)
-    elif rm_model_name == 'bloom':
-        print("load bloom reward model ", args.rm_pretrain)
-        reward_model = BLOOMRM(pretrained=args.rm_pretrain)
-    elif rm_model_name == 'opt':
-        reward_model = OPTRM(pretrained=args.rm_pretrain)
-    elif rm_model_name == 'llama':
-        reward_model = LlamaRM(pretrained=args.rm_pretrain)
+    #we must make rm_model the same as model because in PPO stage, the Actor's output ids must be the from the same tokenizer that reward model has
+    #TODO:: I'll change the bloom model to the same implementation as ChatGLMM later
+    rm_model_name = args.model
+    if rm_model_name == 'bloom':
+        print("load bloom reward model ", args.pretrain)
+        reward_model = BLOOMRM(pretrained=args.pretrain)
+        #first offload the model to cpu and half precision
+        reward_model = reward_model.half().cpu()
+        print("load bloom reward model (Done) ")
+    elif rm_model_name == 'chatglm':
+        print("load chatglm reward model ", args.pretrain," with lora path ",args.rm_lora_path)
+        reward_model = ChatGLMRM(pretrained=args.pretrain,lora_path=args.rm_lora_path)
+        #first offload the model to cpu and half precision
+        reward_model = reward_model.half().cpu()
     else:
         raise ValueError(f'Unsupported reward model "{rm_model_name}"')
+    #print current cuda memory usage
+    print(f'Step 1. load reward model. Current cuda memory usage: {torch.cuda.memory_allocated()/1024/1024} MB')
 
-    if args.rm_path is not None:
-        print('Loading reward model from', args.rm_path)
-        reward_model.load_state_dict(state_dict)
-
-    if args.strategy != 'colossalai_gemini':
-        initial_model.to(torch.float16).to(torch.cuda.current_device())
-        reward_model.to(torch.float16).to(torch.cuda.current_device())
 
     with strategy.model_init_context():
         if args.model == 'bloom':
             # actor = BLOOMActor(pretrained=args.pretrain, lora_rank=args.lora_rank)
             print('Using peft lora to load Bloom model as Actor')
             actor = BLOOMActor(pretrained=args.pretrain, lora_path=args.sft_lora_path)
+            #first offload the model to cpu and half precision
+            actor = actor.half().cpu()
             print('Using peft lora to load Bloom model as Actor (Done)')
+        elif args.model == 'chatglm':
+            print(f'load glm actor model from {args.pretrain} with loar path {args.sft_lora_path}')
+            actor = ChatGlmActor(pretrained=args.pretrain, lora_path=args.sft_lora_path)
+            actor = initial_model.half().cpu()
         else:
             raise ValueError(f'Unsupported actor model "{args.model}"')
-
-        if rm_model_name == 'gpt2':
-            critic = GPTCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank, use_action_mask=True)
-        elif rm_model_name == 'bloom':
+        #print current cuda memory usage
+        print(f'Step 2. actor model is loaded. Current cuda memory usage: {torch.cuda.memory_allocated()/1024/1024} MB')
+        if rm_model_name == 'bloom':
             print("load bloom critic ", args.rm_pretrain, " lora_rank ", args.lora_rank, " use_action_mask ", True)
-            critic = BLOOMCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank, use_action_mask=True)
+            critic = BLOOMCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank, use_action_mask=False)
+            #first offload the model to cpu and half precision
+            critic = critic.half().cpu()
             print("load bloom critic (Done) ")
-        elif rm_model_name == 'opt':
-            critic = OPTCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank, use_action_mask=True)
-        elif rm_model_name == 'llama':
-            critic = LlamaCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank, use_action_mask=True)
+        elif rm_model_name == 'chatglm':
+            print("load chatglm critic ", args.pretrain," with lora path ",args.rm_lora_path)
+            critic = ChatGLMCritic(pretrained=args.pretrain,lora_path=args.rm_lora_path)
+            #first offload the model to cpu and half precision
+            critic = critic.half().cpu()
         else:
             raise ValueError(f'Unsupported reward model "{rm_model_name}"')
+        #print current cuda memory usage
+        print(f'Step 3. critic model is loaded. Current cuda memory usage: {torch.cuda.memory_allocated()/1024/1024} MB')
 
-        if args.rm_path is not None:
-            print('Loading reward model from', args.rm_path)
-            critic.load_state_dict(state_dict)
-            del state_dict
-
-    if args.strategy != 'colossalai_gemini':
-        critic.to(torch.float16).to(torch.cuda.current_device())
-        actor.to(torch.float16).to(torch.cuda.current_device())
 
     # configure optimizer
     if args.strategy.startswith('colossalai'):
@@ -112,22 +115,15 @@ def main(args):
         critic_optim = Adam(critic.parameters(), lr=1e-7)
 
     # configure tokenizer
-    if args.model == 'gpt2':
-        tokenizer = GPT2Tokenizer.from_pretrained(args.rm_pretrain)
-    elif args.model == 'bloom':
-        tokenizer = BloomTokenizerFast.from_pretrained(args.rm_pretrain)
-    elif args.model == 'opt':
-        tokenizer = AutoTokenizer.from_pretrained(args.rm_pretrain)
-    elif args.model == 'llama':
-        tokenizer = LlamaTokenizer.from_pretrained(args.pretrain)
-        tokenizer.eos_token = '<\s>'
+    if args.model == 'bloom':
+        tokenizer = BloomTokenizerFast.from_pretrained(args.pretrain)
+    elif args.model == 'chatglm':
+        tokenizer = AutoTokenizer.from_pretrained(args.pretrain, trust_remote_code=True)
     else:
         raise ValueError(f'Unsupported model "{args.model}"')
+    
 
-    if args.model == 'llama':
-        tokenizer = prepare_llama_tokenizer_and_embedding(tokenizer, actor)
-    else:
-        tokenizer.pad_token = tokenizer.eos_token
+
 
     data_collator = DataCollatorForSupervisedDataset(tokenizer=tokenizer)
 
@@ -175,12 +171,12 @@ def main(args):
         train_batch_size=args.train_batch_size,
         experience_batch_size=args.experience_batch_size,
         tokenizer=tokenize_fn,
-        max_length=512,
+        max_length=256,
         do_sample=True,
         temperature=1.0,
         top_k=50,
         pad_token_id=tokenizer.pad_token_id,
-        eos_token_id=tokenizer.eos_token_id,
+        eos_token_id=tokenizer.eos_token_id
     )
 
     trainer.fit(prompt_dataloader=prompt_dataloader,
@@ -206,21 +202,19 @@ if __name__ == '__main__':
                         choices=['naive', 'ddp', 'colossalai_gemini', 'colossalai_zero2'],
                         default='naive',
                         help='strategy to use')
-    parser.add_argument('--model', default='gpt2', choices=['gpt2', 'bloom', 'opt', 'llama'])
+    parser.add_argument('--model', default='gpt2', choices=['bloom', 'chatglm'])
     parser.add_argument('--pretrain', type=str, default=None)
     parser.add_argument('--sft_lora_path', type=str, default=None)
-    parser.add_argument('--rm_model', default=None, choices=['gpt2', 'bloom', 'opt', 'llama'])
-    parser.add_argument('--rm_path', type=str, default=None)
-    parser.add_argument('--rm_pretrain', type=str, default=None)
+    parser.add_argument('--rm_lora_path', type=str, default=None)
     parser.add_argument('--save_path', type=str, default='actor_checkpoint_prompts')
     parser.add_argument('--need_optim_ckpt', type=bool, default=False)
     parser.add_argument('--num_episodes', type=int, default=10)
     parser.add_argument('--max_timesteps', type=int, default=10)
-    parser.add_argument('--update_timesteps', type=int, default=10)
+    parser.add_argument('--update_timesteps', type=int, default=2)
     parser.add_argument('--max_epochs', type=int, default=5)
     parser.add_argument('--train_batch_size', type=int, default=2)
     parser.add_argument('--ptx_batch_size', type=int, default=1)
-    parser.add_argument('--experience_batch_size', type=int, default=8)
+    parser.add_argument('--experience_batch_size', type=int, default=2)
     parser.add_argument('--lora_rank', type=int, default=0, help="low-rank adaptation matrices rank")
     parser.add_argument('--kl_coef', type=float, default=0.1)
     parser.add_argument('--ptx_coef', type=float, default=0.9)
