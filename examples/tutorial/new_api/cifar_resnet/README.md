@@ -15,6 +15,11 @@ This example provides a training script and an evaluation script. The training s
   - `-e`, `--epoch`: select the epoch to evaluate
   - `-c`, `--checkpoint`: the folder where checkpoints are found
 
+### Install requirements
+
+```bash
+pip install -r requirements.txt
+```
 
 ### Train
 

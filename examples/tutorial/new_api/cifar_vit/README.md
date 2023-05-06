@@ -11,6 +11,11 @@ This example provides a training script, which provides an example of training V
   - `-i`, `--interval`: Epoch interval to save checkpoints. Defaults to `5`. If set to `0`, no checkpoint will be saved.
   - `--target_acc`: Target accuracy. Raise exception if not reached. Defaults to `None`.
 
+### Install requirements
+
+```bash
+pip install -r requirements.txt
+```
 
 ### Train
 
