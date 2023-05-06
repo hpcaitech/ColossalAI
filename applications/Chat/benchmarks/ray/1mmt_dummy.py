@@ -46,13 +46,13 @@ def main(args):
 
     # maker_env_info
     maker_port = str(get_free_port())
-    env_info_makers = [{
+    env_info_maker = {
         'local_rank': '0',
-        'rank': str(rank),
-        'world_size': str(args.num_makers),
+        'rank': '0',
+        'world_size': '1',
         'master_port': maker_port,
         'master_addr': master_addr
-    } for rank in range(args.num_makers)]
+    }
 
     # configure tokenizer
     tokenizer = AutoTokenizer.from_pretrained(args.pretrain)
@@ -63,7 +63,8 @@ def main(args):
         critic_cfg = AutoConfig.from_pretrained(args.critic_pretrain)
         actor = get_actor_from_args(args.model, config=actor_cfg).requires_grad_(False).half().cuda()
         critic = get_critic_from_args(args.critic_model, config=critic_cfg).requires_grad_(False).half().cuda()
-        reward_model = get_reward_model_from_args(args.critic_model, config=critic_cfg).requires_grad_(False).half().cuda()
+        reward_model = get_reward_model_from_args(args.critic_model,
+                                                  config=critic_cfg).requires_grad_(False).half().cuda()
         if args.initial_model_quant_ckpt is not None and args.model == 'llama':
             # quantize initial model
             with low_resource_init(), no_init_weights():
@@ -75,30 +76,24 @@ def main(args):
         return actor, critic, reward_model, initial_model
 
     # configure Experience Maker
-    experience_holder_refs = [
-        ExperienceMakerHolder.options(name=f"maker{i}", num_gpus=1, max_concurrency=2).remote(
-            detached_trainer_name_list=[
-                f'trainer{x}'
-                for x in get_receivers_per_sender(i, args.num_makers, args.num_trainers, allow_idle_sender=False)
-            ],
-            strategy_fn=partial(get_strategy_from_args, args.maker_strategy),
-            model_fn=model_fn,
-            env_info=env_info_maker,
-            kl_coef=0.1,
-            debug=args.debug,
+    experience_holder_ref = ExperienceMakerHolder.options(name="maker0", num_gpus=1, max_concurrency=2).remote(
+        detached_trainer_name_list=[f'trainer{i}' for i in range(args.num_trainers)],
+        strategy_fn=partial(get_strategy_from_args, args.maker_strategy),
+        model_fn=model_fn,
+        env_info=env_info_maker,
+        kl_coef=0.1,
+        debug=args.debug,
     # sync_models_from_trainers=True,
     # generation kwargs:
-            max_length=512,
-            do_sample=True,
-            temperature=1.0,
-            top_k=50,
-            pad_token_id=tokenizer.pad_token_id,
-            eos_token_id=tokenizer.eos_token_id,
-            eval_performance=True,
-            use_cache=True,
-        )
-        for i, env_info_maker in enumerate(env_info_makers)
-    ]
+        max_length=512,
+        do_sample=True,
+        temperature=1.0,
+        top_k=50,
+        pad_token_id=tokenizer.pad_token_id,
+        eos_token_id=tokenizer.eos_token_id,
+        eval_performance=True,
+        use_cache=True,
+    )
 
     def trainer_model_fn():
         actor = get_actor_from_args(args.model, config=AutoConfig.from_pretrained(args.pretrain)).half().cuda()
@@ -110,8 +105,7 @@ def main(args):
     trainer_refs = [
         DetachedPPOTrainer.options(name=f"trainer{i}", num_gpus=1, max_concurrency=2).remote(
             experience_maker_holder_name_list=[
-                f"maker{x}"
-                for x in get_receivers_per_sender(i, args.num_trainers, args.num_makers, allow_idle_sender=True)
+                f'maker{x}' for x in get_receivers_per_sender(i, args.num_trainers, 1, allow_idle_sender=True)
             ],
             strategy_fn=partial(get_strategy_from_args, args.trainer_strategy),
             model_fn=trainer_model_fn,
@@ -120,8 +114,7 @@ def main(args):
             buffer_limit=16,
             eval_performance=True,
             debug=args.debug,
-        )
-        for i, env_info_trainer in enumerate(env_info_trainers)
+        ) for i, env_info_trainer in enumerate(env_info_trainers)
     ]
 
     dataset_size = args.experience_batch_size * 4
@@ -144,13 +137,11 @@ def main(args):
 
     wait_tasks = []
 
-    for experience_holder_ref in experience_holder_refs:
-        wait_tasks.append(
-            experience_holder_ref.workingloop.remote(partial(build_dataloader, dataset_size),
-                                                     num_steps=args.experience_steps))
+    wait_tasks.append(
+        experience_holder_ref.workingloop.remote(partial(build_dataloader, dataset_size),
+                                                 num_steps=args.experience_steps))
 
-    total_steps = args.experience_batch_size * args.experience_steps * \
-        args.num_makers // (args.num_trainers * args.train_batch_size)
+    total_steps = args.experience_batch_size * args.experience_steps // (args.num_trainers * args.train_batch_size)
     for trainer_ref in trainer_refs:
         wait_tasks.append(trainer_ref.fit.remote(total_steps, args.update_steps, args.train_epochs))
 
@@ -159,7 +150,6 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--num_makers', type=int, default=1)
     parser.add_argument('--num_trainers', type=int, default=1)
     parser.add_argument('--trainer_strategy',
                         choices=[
