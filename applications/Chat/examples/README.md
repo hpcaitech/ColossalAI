@@ -24,7 +24,6 @@
     - [LLaMA](#llama)
   - [Add your own models](#add-your-own-models)
     - [Actor model](#actor-model)
-    - [LM model](#lm-model)
     - [Reward model](#reward-model)
     - [Critic model](#critic-model)
 
@@ -150,7 +149,7 @@ torchrun --standalone --nproc_per_node=4 train_prompts.py \
          --strategy colossalai_zero2 \
          --prompt_dataset /path/to/your/prompt_dataset \
          --pretrain_dataset /path/to/your/pretrain_dataset \
-         --rm_pretrain /your/pretrain/rm/defination \
+         --rm_pretrain /your/pretrain/rm/definition \
          --rm_path /your/rm/model/path
 ```
 

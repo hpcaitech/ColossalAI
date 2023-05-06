@@ -1,36 +1,25 @@
-import random
-import warnings
-from typing import Callable, List, Optional, Tuple, Union
-from pathlib import Path
-import os
 import logging
+import os
+import warnings
+from pathlib import Path
+from typing import Callable, List, Optional, Tuple, Union
 
-import numpy as np
 import torch
-import torch.distributed as dist
 import torch.nn as nn
 from torch import Tensor
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch.utils.data import DataLoader
-from torch.utils.data.distributed import DistributedSampler
 
-from colossalai.checkpoint_io import CheckpointIO, GeneralCheckpointIO
-from colossalai.checkpoint_io.utils import save_state_dict
+from colossalai.checkpoint_io import CheckpointIndexFile, CheckpointIO, GeneralCheckpointIO
+from colossalai.checkpoint_io.utils import get_base_filenames, get_shard_filename, save_state_dict
 from colossalai.cluster import DistCoordinator
 from colossalai.interface import ModelWrapper, OptimizerWrapper
 from colossalai.utils import get_current_device
 from colossalai.zero import GeminiDDP, zero_model_wrapper, zero_optim_wrapper
 from colossalai.zero.gemini.memory_tracer import MemStats
 
-from colossalai.checkpoint_io.utils import (
-    get_base_filenames,
-    get_shard_filename
-    )
-
-from colossalai.checkpoint_io import CheckpointIndexFile
-
-from .plugin_base import Plugin
+from .dp_plugin_base import DPPluginBase
 
 __all__ = ['GeminiPlugin']
 
@@ -72,7 +61,13 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
         if self.coordinator.is_master():
             super().save_lr_scheduler(lr_scheduler, checkpoint)
 
-    def save_sharded_model(self, model: GeminiDDP, checkpoint_path: str, gather_dtensor: bool = False, variant: Optional[str] = None, max_shard_size: int = 1024, use_safetensors: bool = False):
+    def save_sharded_model(self,
+                           model: GeminiDDP,
+                           checkpoint_path: str,
+                           gather_dtensor: bool = False,
+                           variant: Optional[str] = None,
+                           max_shard_size: int = 1024,
+                           use_safetensors: bool = False):
         """
         Save sharded model
         """
@@ -88,24 +83,26 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
             total_size = total_size + shard_pair[1]
             for key in shard.keys():
                 index_file.append_weight_map(key, shard_file)
-            
+
             checkpoint_file_path = os.path.join(checkpoint_path, shard_file)
             save_state_dict(shard, checkpoint_file_path, use_safetensors)
-        
+
         index_file.append_meta_data("total_size", total_size)
         index_file.write_index_file(save_index_file)
-        logging.info(
-            f"The model is going to be split to checkpoint shards. "
-            f"You can find where each parameters has been saved in the "
-            f"index located at {save_index_file}."
-        )
+        logging.info(f"The model is going to be split to checkpoint shards. "
+                     f"You can find where each parameters has been saved in the "
+                     f"index located at {save_index_file}.")
 
-
-    def load_sharded_model(self, model: GeminiDDP, checkpoint_index_file: Path, strict: bool = False, use_safetensors: bool = False):
+    def load_sharded_model(self,
+                           model: GeminiDDP,
+                           checkpoint_index_file: Path,
+                           strict: bool = False,
+                           use_safetensors: bool = False):
         """
         load shard model, load model from multiple files
         """
         return super().load_sharded_model(model, checkpoint_index_file, strict, use_safetensors, load_sub_module=False)
+
 
 class GeminiModel(ModelWrapper):
 
@@ -148,7 +145,7 @@ class GeminiOptimizer(OptimizerWrapper):
         raise NotImplementedError('Gemini does not support clip_grad_by_value')
 
 
-class GeminiPlugin(Plugin):
+class GeminiPlugin(DPPluginBase):
     """
     Plugin for Gemini.
 
@@ -217,11 +214,7 @@ class GeminiPlugin(Plugin):
         norm_type: float = 2.0,
         verbose: bool = False,
     ) -> None:
-
-        assert dist.is_initialized(
-        ), 'torch.distributed is not initialized, please use colossalai.launch to create the distributed environment'
-        self.rank = dist.get_rank()
-        self.world_size = dist.get_world_size()
+        super().__init__()
         self.gemini_config = dict(
             device=(device or get_current_device()),
             placement_policy=placement_policy,
@@ -259,57 +252,6 @@ class GeminiPlugin(Plugin):
 
     def supported_devices(self) -> List[str]:
         return ['cuda']
-
-    def prepare_train_dataloader(self,
-                                 dataset,
-                                 batch_size,
-                                 shuffle=False,
-                                 seed=1024,
-                                 drop_last=False,
-                                 pin_memory=False,
-                                 num_workers=0,
-                                 **kwargs):
-        r"""
-        Prepare a dataloader for distributed training. The dataloader will be wrapped by
-        `torch.utils.data.DataLoader` and `torch.utils.data.DistributedSampler`.
-
-        Note:
-            1. Evaluation datasets should not be passed to this function.
-
-        Args:
-            dataset (`torch.utils.data.Dataset`): The dataset to be loaded.
-            shuffle (bool, optional): Whether to shuffle the dataset. Defaults to False.
-            seed (int, optional): Random worker seed for sampling, defaults to 1024.
-            add_sampler: Whether to add ``DistributedDataParallelSampler`` to the dataset. Defaults to True.
-            drop_last (bool, optional): Set to True to drop the last incomplete batch, if the dataset size
-                is not divisible by the batch size. If False and the size of dataset is not divisible by
-                the batch size, then the last batch will be smaller, defaults to False.
-            pin_memory (bool, optional): Whether to pin memory address in CPU memory. Defaults to False.
-            num_workers (int, optional): Number of worker threads for this dataloader. Defaults to 0.
-            kwargs (dict): optional parameters for ``torch.utils.data.DataLoader``, more details could be found in
-                    `DataLoader <https://pytorch.org/docs/stable/_modules/torch/utils/data/dataloader.html#DataLoader>`_.
-
-        Returns:
-            :class:`torch.utils.data.DataLoader`: A DataLoader used for training or testing.
-        """
-        _kwargs = kwargs.copy()
-        sampler = DistributedSampler(dataset, num_replicas=self.world_size, rank=self.rank, shuffle=shuffle)
-
-        # Deterministic dataloader
-        def seed_worker(worker_id):
-            worker_seed = seed
-            np.random.seed(worker_seed)
-            torch.manual_seed(worker_seed)
-            random.seed(worker_seed)
-
-        return DataLoader(dataset,
-                          batch_size=batch_size,
-                          sampler=sampler,
-                          worker_init_fn=seed_worker,
-                          drop_last=drop_last,
-                          pin_memory=pin_memory,
-                          num_workers=num_workers,
-                          **_kwargs)
 
     def configure(
         self,

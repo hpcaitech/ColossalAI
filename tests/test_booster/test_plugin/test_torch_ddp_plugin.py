@@ -44,57 +44,9 @@ def check_torch_ddp_plugin():
         torch.cuda.empty_cache()
 
 
-def check_dataloader_sharding():
-    plugin = TorchDDPPlugin()
-
-    # create a custom dasetset with 0 to 10
-    dataset = torch.utils.data.TensorDataset(torch.arange(0, 10))
-    train_dataloader = plugin.prepare_train_dataloader(dataset, batch_size=2)
-
-    # get the first batch of data
-    batch = next(iter(train_dataloader))[0].cuda()
-    is_rank_0 = dist.get_rank() == 0
-
-    if is_rank_0:
-        batch_to_compare = batch.clone()
-    else:
-        batch_to_compare = batch
-    # pass to the rank 1 value to rank 0
-    dist.broadcast(batch_to_compare, src=1)
-
-    # compare on rank 0
-    if is_rank_0:
-        assert not torch.equal(batch,
-                               batch_to_compare), 'Same number was found across ranks but expected it to be different'
-
-
-def check_checkpoint_save_and_load():
-    model_fn, data_gen_fn, output_transform_fn, _ = model_zoo['timm_resnet']
-
-    plugin = TorchDDPPlugin()
-    booster = Booster(plugin=plugin)
-
-    model = model_fn()
-    optimizer = SGD(model.parameters(), lr=1e-3)
-    criterion = lambda x: x.mean()
-    data = data_gen_fn()
-
-    data = {k: v.to('cuda') if torch.is_tensor(v) or 'Tensor' in v.__class__.__name__ else v for k, v in data.items()}
-
-    model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
-
-    output = model(**data)
-    output = output_transform_fn(output)
-    output_key = list(output.keys())[0]
-    loss = criterion(output[output_key])
-
-    booster.backward(loss, optimizer)
-
-
 def run_dist(rank, world_size, port):
     # init dist env
     colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host='localhost')
-    check_dataloader_sharding()
     check_torch_ddp_plugin()
 
 
