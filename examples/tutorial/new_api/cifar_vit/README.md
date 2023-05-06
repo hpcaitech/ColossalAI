@@ -5,7 +5,7 @@
 This example provides a training script, which provides an example of training ViT on CIFAR10 dataset from scratch.
 
 - Training Arguments
-  - `-p`, `--plugin`: Plugin to use. Choices: `torch_ddp`, `torch_ddp_fp16`, `gemini`, `low_level_zero`. Defaults to `torch_ddp`.
+  - `-p`, `--plugin`: Plugin to use. Choices: `torch_ddp`, `torch_ddp_fp16`, `low_level_zero`. Defaults to `torch_ddp`.
   - `-r`, `--resume`: Resume from checkpoint file path. Defaults to `-1`, which means not resuming.
   - `-c`, `--checkpoint`: The folder to save checkpoints. Defaults to `./checkpoint`.
   - `-i`, `--interval`: Epoch interval to save checkpoints. Defaults to `5`. If set to `0`, no checkpoint will be saved.
