@@ -78,6 +78,8 @@ def main(args):
         strategy = ColossalAIStrategy(stage=3, placement_policy='cuda', initial_scale=2**5)
     elif args.strategy == 'colossalai_gemini_cpu':
         strategy = ColossalAIStrategy(stage=3, placement_policy='cpu', initial_scale=2**5)
+    elif args.strategy == 'colossalai_gemini_reshard':
+        strategy = ColossalAIStrategy(stage=3, placement_policy='cuda_reshard', initial_scale=2**5)
     else:
         raise ValueError(f'Unsupported strategy "{args.strategy}"')
 
@@ -173,9 +175,10 @@ if __name__ == '__main__':
     parser.add_argument('--strategy',
                         choices=[
                             'colossalai_gemini',
+                            'colossalai_gemini_reshard',
                             'colossalai_gemini_cpu',
                         ],
-                        default='colossalai_gemini')
+                        default='colossalai_gemini_reshard')
     parser.add_argument('--num_episodes', type=int, default=3)
     parser.add_argument('--max_timesteps', type=int, default=1)
     parser.add_argument('--update_timesteps', type=int, default=1)

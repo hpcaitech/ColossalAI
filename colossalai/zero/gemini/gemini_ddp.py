@@ -88,7 +88,7 @@ class ZeroDDP(ColoDDP):
 
         self._init_chunks(param_order=param_order,
                           strict_ddp_mode=strict_ddp_mode,
-                          cpu_offload=self.gemini_manager.policy_name != 'cuda',
+                          cpu_offload=not self.gemini_manager.policy_name.startswith('cuda'),
                           pin_memory=pin_memory)
 
         for name, param in module.named_parameters():

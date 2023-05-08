@@ -81,7 +81,7 @@ class ColossalAIStrategy(DDPStrategy):
             max_norm: float = 0.0,
             norm_type: float = 2.0) -> None:
         super().__init__(seed)
-        assert placement_policy in ('cpu', 'cuda'), f'Unsupported placement policy "{placement_policy}"'
+        assert placement_policy in ('cpu', 'cuda', 'cuda_reshard'), f'Unsupported placement policy "{placement_policy}"'
         assert precision in ('fp32', 'fp16'), f'Unsupported precision "{precision}"'
         self.stage = stage
         # TODO(ver217): support shard_init when using from_pretrained()
