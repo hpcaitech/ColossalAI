@@ -88,8 +88,8 @@ def main(args):
     model_config = get_gpt_config(args.model)
     critic_config = get_gpt_config(args.critic_model)
     with strategy.model_init_context():
-        actor = OPTActor(config=model_config, lora_rank=args.lora_rank)
-        critic = OPTCritic(config=critic_config, lora_rank=args.lora_rank)
+        actor = OPTActor(config=model_config, lora_rank=args.lora_rank, checkpoint=args.grad_checkpoint)
+        critic = OPTCritic(config=critic_config, lora_rank=args.lora_rank, checkpoint=args.grad_checkpoint)
 
         initial_model = deepcopy(actor)
         reward_model = RewardModel(deepcopy(critic.model), deepcopy(critic.value_head))
@@ -186,5 +186,6 @@ if __name__ == '__main__':
     parser.add_argument('--cuda_mem_frac', type=float, default=1.0)
     parser.add_argument('--offload_inference_models', action='store_true', default=False)
     parser.add_argument('--use_kernels', action='store_true', default=False)
+    parser.add_argument('--grad_checkpoint', default=False, action='store_true')
     args = parser.parse_args()
     main(args)
