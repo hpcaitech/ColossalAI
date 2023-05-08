@@ -86,7 +86,7 @@ def train(args):
 
         if args.strategy == 'colossalai_gemini':
             # this is a hack to deal with the resized embedding
-            # to make sure all parameters are ColoParameter for Colossal-AI Gemini Compatiblity
+            # to make sure all parameters are ColoParameter for Colossal-AI Gemini Compatibility
             for name, param in model.named_parameters():
                 if not isinstance(param, ColoParameter):
                     sub_module_name = '.'.join(name.split('.')[:-1])

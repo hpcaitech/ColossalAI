@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 def get_answer(question: str, max_tokens: int):
     answer = question
-    prompt = question['instruction'] if question['input'] == "" else question['instuction'] + \
+    prompt = question['instruction'] if question['input'] == "" else question['instruction'] + \
             " " + question['input']
     for _ in range(MAX_API_RETRY):
         try:
