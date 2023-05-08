@@ -5,7 +5,6 @@ import torch.distributed as dist
 import torch.nn as nn
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim import SGD
-from torch.utils.data import TensorDataset
 
 import colossalai
 from colossalai.booster import Booster
