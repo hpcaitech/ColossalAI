@@ -14,6 +14,7 @@ from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import CPUAdam, HybridAdam
 from colossalai.tensor import ProcessGroup, ShardSpec
 from colossalai.utils import get_current_device
+from colossalai.utils.model.experimental import LazyInitContext
 from colossalai.zero import ColoInitContext, ZeroDDP, zero_model_wrapper, zero_optim_wrapper
 
 from .ddp import DDPStrategy
@@ -123,13 +124,7 @@ class ColossalAIStrategy(DDPStrategy):
 
     def model_init_context(self):
         if self.stage == 3:
-            world_size = dist.get_world_size()
-            shard_pg = ProcessGroup(tp_degree=world_size) if self.shard_init else None
-            default_dist_spec = ShardSpec([-1], [world_size]) if self.shard_init else None
-            return ColoInitContext(device=get_current_device(),
-                                   dtype=torch.half,
-                                   default_pg=shard_pg,
-                                   default_dist_spec=default_dist_spec)
+            return LazyInitContext()
         return super().model_init_context()
 
     def setup_model(self, model: nn.Module) -> nn.Module:
