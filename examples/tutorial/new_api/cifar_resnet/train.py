@@ -28,7 +28,7 @@ LEARNING_RATE = 1e-3
 
 
 def build_dataloader(batch_size: int, coordinator: DistCoordinator, plugin: DPPluginBase):
-    # trainsform
+    # transform
     transform_train = transforms.Compose(
         [transforms.Pad(4),
          transforms.RandomHorizontalFlip(),
