@@ -4,7 +4,7 @@ from typing import Callable, List, Tuple, Union
 import torch.nn as nn
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 
 from colossalai.checkpoint_io import CheckpointIO
 from colossalai.interface import OptimizerWrapper
@@ -57,5 +57,20 @@ class Plugin(ABC):
     def get_checkpoint_io(self) -> CheckpointIO:
         """
         Get checkpoint io object for this plugin, only invoked when control_checkpoint_io is True.
+        """
+        pass
+
+    @abstractmethod
+    def prepare_dataloader(self,
+                           dataset: Dataset,
+                           batch_size: int,
+                           shuffle: bool = False,
+                           seed: int = 1024,
+                           drop_last: bool = False,
+                           pin_memory: bool = False,
+                           num_workers: int = 0,
+                           **kwargs):
+        """Prepare a dataloader for distributed training. The dataloader will be wrapped by
+        `torch.utils.data.DataLoader`
         """
         pass
