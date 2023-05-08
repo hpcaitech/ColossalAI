@@ -20,21 +20,19 @@ class DPPluginBase(Plugin):
         self.rank = dist.get_rank()
         self.world_size = dist.get_world_size()
 
-    def prepare_train_dataloader(self,
-                                 dataset,
-                                 batch_size,
-                                 shuffle=False,
-                                 seed=1024,
-                                 drop_last=False,
-                                 pin_memory=False,
-                                 num_workers=0,
-                                 **kwargs):
+    def prepare_dataloader(self,
+                           dataset,
+                           batch_size,
+                           shuffle=False,
+                           seed=1024,
+                           drop_last=False,
+                           pin_memory=False,
+                           num_workers=0,
+                           **kwargs):
         r"""
         Prepare a dataloader for distributed training. The dataloader will be wrapped by
         `torch.utils.data.DataLoader` and `torch.utils.data.DistributedSampler`.
 
-        Note:
-            1. Evaluation datasets should not be passed to this function.
 
         Args:
             dataset (`torch.utils.data.Dataset`): The dataset to be loaded.
