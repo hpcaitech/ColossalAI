@@ -2,7 +2,7 @@ import itertools
 from collections import OrderedDict
 from contextlib import nullcontext
 from functools import partial
-from typing import Dict, Iterator, List, Optional, Union, Tuple, Set
+from typing import Dict, Iterator, List, Optional, Set, Tuple, Union
 
 import torch
 import torch.distributed as dist
@@ -22,6 +22,7 @@ from .chunk import Chunk, ChunkManager, TensorState, init_chunk_manager
 from .gemini_hook import GeminiZeROHook
 from .gemini_mgr import GeminiManager
 from .memory_tracer import MemStats, OrderedParamGenerator
+from .placement_policy import CUDAPlacementPolicy
 from .utils import get_temp_total_chunk_on_cuda
 
 try:
@@ -59,7 +60,7 @@ class ZeroDDP(ColoDDP):
                  pin_memory: bool = False,
                  force_outputs_fp32: bool = False,
                  strict_ddp_mode: bool = False,
-                 scatter_after_inference: bool = True) -> None:
+                 scatter_after_inference: bool = False) -> None:
         self.gemini_manager = gemini_manager
         self.chunk_manager: ChunkManager = gemini_manager.chunk_manager
         self.force_outputs_fp32 = force_outputs_fp32
@@ -71,6 +72,7 @@ class ZeroDDP(ColoDDP):
         self.param2name: Dict[nn.Parameter, str] = dict()
         self.name2param: Dict[str, nn.Parameter] = dict()
         self.scatter_after_inference = scatter_after_inference
+        self.prefetch_before_inference = isinstance(gemini_manager._placement_policy, CUDAPlacementPolicy)
 
         self._logger = get_dist_logger()
 
@@ -96,34 +98,38 @@ class ZeroDDP(ColoDDP):
                 param_name = m_name + '.' + p_name if m_name else p_name
                 self.name2param[param_name] = p_var
         super().__init__(module, process_group=ColoProcessGroup())
-        self._non_persistent_buffers_set=self._get_non_persistent_buffers_set(module)
+        self._non_persistent_buffers_set = self._get_non_persistent_buffers_set(module)
         self._cast_buffers()
 
-    def _get_non_persistent_buffers_set(self, module, memo: Optional[Set[nn.Module]] = None, prefix: str = '', remove_duplicate: bool = True):
+    def _get_non_persistent_buffers_set(self,
+                                        module,
+                                        memo: Optional[Set[nn.Module]] = None,
+                                        prefix: str = '',
+                                        remove_duplicate: bool = True):
+        r"""
+        Args:
+            memo: a memo to store the set of modules already added to the result
+            prefix: a prefix that will be added to the name of the module
+            remove_duplicate: whether to remove the duplicated module instances in the result
+                or not
+        """
 
-            r"""
-            Args:
-                memo: a memo to store the set of modules already added to the result
-                prefix: a prefix that will be added to the name of the module
-                remove_duplicate: whether to remove the duplicated module instances in the result
-                    or not
-            """
-
-            if memo is None:
-                memo = set()
-            self_non_persistent_set = set()
-            if module not in memo:
-                if remove_duplicate:
-                    memo.add(module)
-                self_non_persistent_set = set(map(lambda key: prefix + ('.' if prefix else '') + key, module._non_persistent_buffers_set))
-                for name, sub_module in module._modules.items():
-                    if sub_module is None:
-                        continue
-                    submodule_prefix = prefix + ('.' if prefix else '') + name
-                    child_non_persistent_set = self._get_non_persistent_buffers_set(sub_module, memo, submodule_prefix, remove_duplicate)
-                    self_non_persistent_set = set.union(self_non_persistent_set, child_non_persistent_set)
-            return self_non_persistent_set
-    
+        if memo is None:
+            memo = set()
+        self_non_persistent_set = set()
+        if module not in memo:
+            if remove_duplicate:
+                memo.add(module)
+            self_non_persistent_set = set(
+                map(lambda key: prefix + ('.' if prefix else '') + key, module._non_persistent_buffers_set))
+            for name, sub_module in module._modules.items():
+                if sub_module is None:
+                    continue
+                submodule_prefix = prefix + ('.' if prefix else '') + name
+                child_non_persistent_set = self._get_non_persistent_buffers_set(sub_module, memo, submodule_prefix,
+                                                                                remove_duplicate)
+                self_non_persistent_set = set.union(self_non_persistent_set, child_non_persistent_set)
+        return self_non_persistent_set
 
     def _post_forward(self):
         """This function is only triggered for inference.
@@ -164,7 +170,7 @@ class ZeroDDP(ColoDDP):
         """This function is only triggered for inference.
         """
         fwd_ctx = ColoParamOpHookManager.use_hooks(self.param_op_hook)
-        if not self.scatter_after_inference:
+        if self.prefetch_before_inference:
             # gather all chunks
             for chunk in self.chunk_manager.get_chunks(self.fp16_params):
                 self.chunk_manager.access_chunk(chunk)

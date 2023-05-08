@@ -7,6 +7,7 @@ import torch
 
 from colossalai.utils import get_current_device
 from colossalai.utils.memory import colo_device_memory_capacity
+from colossalai.zero.gemini.chunk import Chunk
 
 from .chunk import Chunk, ChunkManager
 from .memory_tracer import ChunkMemStatsCollector
@@ -61,6 +62,15 @@ class CUDAPlacementPolicy(PlacementPolicy):
     @staticmethod
     def get_default_device() -> torch.device:
         return get_current_device()
+
+
+class CUDAReshardPlacementPolicy(CUDAPlacementPolicy):
+
+    def evict_tensors(self, can_evict_chunks: List[Chunk], **kwargs) -> Tuple[int, float]:
+        start = time()
+        for chunk in can_evict_chunks:
+            self.chunk_manager.release_chunk(chunk)
+        return 0, time() - start
 
 
 class AutoPlacementPolicy(PlacementPolicy):
@@ -227,7 +237,8 @@ class PlacementPolicyFactory:
         'cpu': CPUPlacementPolicy,
         'cuda': CUDAPlacementPolicy,
         'auto': AutoPlacementPolicy,
-        'const': ConstPlacementPolicy
+        'const': ConstPlacementPolicy,
+        'cuda_reshard': CUDAReshardPlacementPolicy,
     }
 
     @staticmethod

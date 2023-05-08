@@ -12,6 +12,7 @@ from coati.trainer.strategies import ColossalAIStrategy, Strategy
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from transformers import AutoTokenizer
+from transformers.modeling_utils import no_init_weights
 from transformers.models.opt.configuration_opt import OPTConfig
 
 from colossalai.nn.optimizer import HybridAdam
@@ -74,12 +75,9 @@ def get_gpt_config(model_name: str) -> OPTConfig:
 
 def main(args):
     if args.strategy == 'colossalai_gemini':
-        strategy = ColossalAIStrategy(stage=3,
-                                      placement_policy='cuda',
-                                      initial_scale=2**5,
-                                      scatter_after_inference=True)
+        strategy = ColossalAIStrategy(stage=3, placement_policy='cuda', initial_scale=2**5)
     elif args.strategy == 'colossalai_gemini_cpu':
-        strategy = ColossalAIStrategy(stage=3, placement_policy='cpu', initial_scale=2**5, scatter_after_inference=True)
+        strategy = ColossalAIStrategy(stage=3, placement_policy='cpu', initial_scale=2**5)
     else:
         raise ValueError(f'Unsupported strategy "{args.strategy}"')
 
@@ -87,9 +85,11 @@ def main(args):
 
     model_config = get_gpt_config(args.model)
     critic_config = get_gpt_config(args.critic_model)
-    with strategy.model_init_context():
+    with strategy.model_init_context(), no_init_weights():
         actor = OPTActor(config=model_config, lora_rank=args.lora_rank, checkpoint=args.grad_checkpoint)
+        actor.model.tie_weights()
         critic = OPTCritic(config=critic_config, lora_rank=args.lora_rank, checkpoint=args.grad_checkpoint)
+        critic.model.tie_weights()
 
         initial_model = deepcopy(actor)
         reward_model = RewardModel(deepcopy(critic.model), deepcopy(critic.value_head))
