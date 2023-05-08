@@ -188,7 +188,13 @@ if __name__ == '__main__':
     parser.add_argument('--lora_rank', type=int, default=0)
     parser.add_argument('--cuda_mem_frac', type=float, default=1.0)
     parser.add_argument('--offload_inference_models', action='store_true', default=False)
-    parser.add_argument('--use_kernels', action='store_true', default=False)
-    parser.add_argument('--grad_checkpoint', default=False, action='store_true')
+    parser.add_argument('--use_kernels',
+                        action='store_true',
+                        default=False,
+                        help='This uses xformers kernels, which can save memory and accelerate training.')
+    parser.add_argument('--grad_checkpoint',
+                        default=False,
+                        action='store_true',
+                        help='This uses gradient checkpointing, which can save memory and slow down training.')
     args = parser.parse_args()
     main(args)
