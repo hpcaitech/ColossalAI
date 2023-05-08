@@ -66,7 +66,7 @@ def check_torch_ddp_no_sync():
     optimizer = SGD(model.parameters(), lr=1e-3)
     # create a custom dasetset with 0 to 10
     dataset = torch.arange(0, 10)
-    train_dataloader = plugin.prepare_train_dataloader(dataset, batch_size=2)
+    train_dataloader = plugin.prepare_dataloader(dataset, batch_size=2)
     model, optimizer, criterion, train_dataloader, _ = booster.boost(model,
                                                                      optimizer,
                                                                      criterion,
