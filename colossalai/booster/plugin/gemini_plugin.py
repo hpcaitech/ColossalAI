@@ -156,7 +156,7 @@ class GeminiPlugin(DPPluginBase):
         >>> model, train_dataset, optimizer, criterion = ...
         >>> plugin = GeminiPlugin()
 
-        >>> train_dataloader = plugin.prepare_train_dataloader(train_dataset, batch_size=8)
+        >>> train_dataloader = plugin.prepare_dataloader(train_dataset, batch_size=8)
         >>> booster = Booster(plugin=plugin)
         >>> model, optimizer, train_dataloader, criterion = booster.boost(model, optimizer, train_dataloader, criterion)
 
