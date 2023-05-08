@@ -124,3 +124,5 @@ torchrun --standalone --nproc_per_node=2 ${BASE}/train_prompts.py --prompt_datas
 rm -rf ${BASE}/rm_ckpt_gpt.pt
 
 rm -rf ${BASE}/actor_checkpoint_prompts.pt
+
+cd ray && bash test_ci.sh && cd ..
