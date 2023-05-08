@@ -86,7 +86,7 @@ class ZeroOptimizer(ColossalaiOptimizer):
         self.clipping_flag = clipping_norm > 0.0
         self.max_norm = clipping_norm
         self.verbose = verbose
-        self.untested_optim_flag = True if type(optim) not in _AVAIL_OPTIM_LIST else False
+        self.untested_optim_flag = type(optim) not in _AVAIL_OPTIM_LIST
         if self.untested_optim_flag:
             assert allow_untested_optimizer, "You should set `allow_untested_optimizer` to True if you want to use "\
                 "an untested optimizer."
