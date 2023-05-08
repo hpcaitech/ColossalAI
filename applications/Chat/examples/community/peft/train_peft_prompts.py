@@ -41,7 +41,7 @@ def main(args):
     # configure model
     if args.model == 'bloom':
         # initial_model = BLOOMActor(pretrained=args.pretrain)
-        print('Using peft lora to load Bloom model as inital_model')
+        print('Using peft lora to load Bloom model as initial_model')
         initial_model = BLOOMActor(pretrained=args.pretrain, lora_path=args.sft_lora_path)
         print('Using peft lora to load Bloom model as initial_model (Done)')
     else:

@@ -24,7 +24,6 @@
     - [LLaMA](#llama)
   - [Add your own models](#add-your-own-models)
     - [Actor model](#actor-model)
-    - [LM model](#lm-model)
     - [Reward model](#reward-model)
     - [Critic model](#critic-model)
 
@@ -150,11 +149,11 @@ torchrun --standalone --nproc_per_node=4 train_prompts.py \
          --strategy colossalai_zero2 \
          --prompt_dataset /path/to/your/prompt_dataset \
          --pretrain_dataset /path/to/your/pretrain_dataset \
-         --rm_pretrain /your/pretrain/rm/defination \
+         --rm_pretrain /your/pretrain/rm/definition \
          --rm_path /your/rm/model/path
 ```
 
-Prompt dataset: the instruction dataset mentioned in the above figure which includes the instructions, e.g. you can use [seed_prompts_ch.jsonl](https://github.com/XueFuzhao/InstructionWild/blob/main/data/seed_prompts_ch.jsonl) or [seed_prompts_en.jsonl](https://github.com/XueFuzhao/InstructionWild/blob/main/data/seed_prompts_en.jsonl) in InstructionWild.
+Prompt dataset: the instruction dataset mentioned in the above figure which includes the instructions, e.g. you can use the [script](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat/examples/example_data_reformat.py) to reformat [seed_prompts_ch.jsonl](https://github.com/XueFuzhao/InstructionWild/blob/main/data/seed_prompts_ch.jsonl) or [seed_prompts_en.jsonl](https://github.com/XueFuzhao/InstructionWild/blob/main/data/seed_prompts_en.jsonl) in InstructionWild.  
 Pretrain dataset: the pretrain dataset including the instruction and corresponding response, e.g. you can use the [InstructWild Data](https://github.com/XueFuzhao/InstructionWild/tree/main/data) in stage 1 supervised instructs tuning.
 
 ### Arg List
@@ -233,7 +232,7 @@ If you want to support your own model in Coati, please refer the pull request fo
 You should complete the implementation of four model classes, including Reward model, Critic model, LM model, Actor model
 
 here are some example code for a NewModel named `Coati`.
-if it is supported in huggingaface [transformers](https://github.com/huggingface/transformers), you can load it by `from_pretrained`, o
+if it is supported in huggingface [transformers](https://github.com/huggingface/transformers), you can load it by `from_pretrained`, o
 r you can build your own model by yourself.
 
 ### Actor model

@@ -101,6 +101,11 @@ def main(args):
         initial_model = deepcopy(actor).cuda().half()
         reward_model = RewardModel(deepcopy(critic.model), deepcopy(critic.value_head)).cuda().half()
 
+    if args.use_kernels:
+        from coati.kernels import convert_to_xformer_model
+        actor, critic, initial_model, reward_model = map(convert_to_xformer_model,
+                                                         (actor, critic, initial_model, reward_model))
+
     actor_numel = get_model_numel(actor, strategy)
     critic_numel = get_model_numel(critic, strategy)
     initial_model_numel = get_model_numel(initial_model, strategy)
@@ -184,5 +189,6 @@ if __name__ == '__main__':
     parser.add_argument('--lora_rank', type=int, default=0)
     parser.add_argument('--cuda_mem_frac', type=float, default=1.0)
     parser.add_argument('--offload_inference_models', action='store_true', default=False)
+    parser.add_argument('--use_kernels', action='store_true', default=False)
     args = parser.parse_args()
     main(args)
