@@ -55,7 +55,7 @@ def check_dataloader_sharding():
 
     # create a custom dasetset with 0 to 10
     dataset = TensorDataset(torch.arange(0, 10))
-    train_dataloader = plugin.prepare_train_dataloader(dataset, batch_size=2)
+    train_dataloader = plugin.prepare_dataloader(dataset, batch_size=2)
 
     # get the first batch of data
     batch = next(iter(train_dataloader))[0].cuda()
