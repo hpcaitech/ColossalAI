@@ -1,5 +1,5 @@
 import warnings
-from typing import Callable, List, Optional, Tuple, Union
+from typing import Callable, Iterator, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -197,3 +197,6 @@ class LowLevelZeroPlugin(DPPluginBase):
 
     def get_checkpoint_io(self) -> CheckpointIO:
         return LowLevelZeroCheckpointIO()
+
+    def no_sync(self, model: nn.Module) -> Iterator[None]:
+        raise NotImplementedError
