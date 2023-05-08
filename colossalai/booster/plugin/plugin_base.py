@@ -67,6 +67,7 @@ class Plugin(ABC):
         """
         pass
 
+    @abstractmethod
     def prepare_dataloader(self,
                            dataset: Dataset,
                            batch_size: int,
