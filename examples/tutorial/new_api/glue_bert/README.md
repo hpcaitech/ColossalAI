@@ -10,6 +10,12 @@ This example provides a training script, which provides an example of finetuning
   - `--target_f1`: Target f1 score. Raise exception if not reached. Defaults to `None`.
 
 
+### Install requirements
+
+```bash
+pip install -r requirements.txt
+```
+
 ### Train
 
 ```bash
