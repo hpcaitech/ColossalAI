@@ -1,4 +1,4 @@
-from typing import Callable, List, Tuple, Union
+from typing import Callable, Iterator, List, Tuple, Union
 
 import torch
 import torch.distributed as dist
@@ -47,6 +47,9 @@ class DPPluginWrapper(DPPluginBase):
         pass
 
     def supported_precisions(self) -> List[str]:
+        pass
+
+    def no_sync(self, model: nn.Module) -> Iterator[None]:
         pass
 
 
