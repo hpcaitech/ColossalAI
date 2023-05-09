@@ -9,7 +9,13 @@ from colossalai.booster import Booster
 from colossalai.booster.plugin import LowLevelZeroPlugin
 from colossalai.booster.plugin.low_level_zero_plugin import LowLevelZeroCheckpointIO
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.testing import clear_cache_before_run, parameterize, recursive_check, rerun_if_address_is_in_use, spawn
+from colossalai.testing import (
+    check_state_dict_equal,
+    clear_cache_before_run,
+    parameterize,
+    rerun_if_address_is_in_use,
+    spawn,
+)
 
 
 @clear_cache_before_run()
@@ -38,7 +44,7 @@ def check_low_level_zero_checkpointIO(stage: int):
         new_optimizer = HybridAdam((new_model.parameters()), lr=0.001)
         _, new_optimizer, _, _, _ = booster.boost(new_model, new_optimizer)
         ckpt_io.load_optimizer(new_optimizer, optimizer_ckpt_tempfile.name)
-        recursive_check(optimizer.state_dict(), new_optimizer.state_dict())
+        check_state_dict_equal(optimizer.state_dict(), new_optimizer.state_dict(), False)
 
 
 def run_dist(rank, world_size, port):

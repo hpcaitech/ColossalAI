@@ -7,7 +7,7 @@ from torchvision.models import resnet18
 
 from colossalai.booster.plugin.gemini_plugin import GeminiCheckpointIO
 from colossalai.checkpoint_io import GeneralCheckpointIO
-from colossalai.testing import clear_cache_before_run, parameterize, recursive_check
+from colossalai.testing import check_state_dict_equal, clear_cache_before_run, parameterize
 
 # ========
 # Note:
@@ -55,8 +55,8 @@ def test_unsharded_checkpoint(use_safetensors: bool):
     ckpt_io.load_optimizer(new_optimizer, optimizer_ckpt_tempfile.name)
 
     # check for model and optimizer state dict recursively
-    recursive_check(model.state_dict(), new_model.state_dict())
-    recursive_check(optimizer.state_dict(), new_optimizer.state_dict())
+    check_state_dict_equal(model.state_dict(), new_model.state_dict())
+    check_state_dict_equal(optimizer.state_dict(), new_optimizer.state_dict())
 
 
 @pytest.mark.parametrize('use_safetensors', [True, False])
@@ -98,5 +98,5 @@ def test_sharded_checkpoint(use_safetensors: bool):
     ckpt_io.load_optimizer(new_optimizer, optimizer_ckpt_tempfile.name)
 
     # check for model and optimizer state dict recursively
-    recursive_check(model.state_dict(), new_model.state_dict())
-    recursive_check(optimizer.state_dict(), new_optimizer.state_dict())
+    check_state_dict_equal(model.state_dict(), new_model.state_dict())
+    check_state_dict_equal(optimizer.state_dict(), new_optimizer.state_dict())

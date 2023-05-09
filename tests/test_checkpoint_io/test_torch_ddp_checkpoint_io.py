@@ -10,7 +10,7 @@ from colossalai.booster import Booster
 from colossalai.booster.plugin import TorchDDPPlugin
 from colossalai.booster.plugin.torch_ddp_plugin import TorchDDPCheckpointIO
 from colossalai.interface import OptimizerWrapper
-from colossalai.testing import recursive_check, rerun_if_address_is_in_use, spawn
+from colossalai.testing import check_state_dict_equal, rerun_if_address_is_in_use, spawn
 
 
 def check_torch_ddp_checkpointIO():
@@ -47,10 +47,10 @@ def check_torch_ddp_checkpointIO():
         _, new_optimizer, _, _, new_scheduler = booster.boost(new_model, new_optimizer, lr_scheduler=new_scheduler)
 
         ckpt_io.load_optimizer(new_optimizer, optimizer_ckpt_tempfile.name)
-        recursive_check(optimizer.state_dict(), new_optimizer.state_dict())
+        check_state_dict_equal(optimizer.state_dict(), new_optimizer.state_dict(), False)
 
         ckpt_io.load_lr_scheduler(new_scheduler, lr_scheduler_ckpt_tempfile.name)
-        recursive_check(scheduler.state_dict(), new_scheduler.state_dict())
+        check_state_dict_equal(scheduler.state_dict(), new_scheduler.state_dict(), False)
 
 
 def run_dist(rank, world_size, port):

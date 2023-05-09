@@ -5,7 +5,7 @@ import torch
 
 import colossalai
 from colossalai.booster.plugin.gemini_plugin import GeminiCheckpointIO
-from colossalai.testing import parameterize, recursive_check, rerun_if_address_is_in_use, spawn
+from colossalai.testing import check_state_dict_equal, parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.utils.cuda import get_current_device
 from colossalai.zero import ColoInitContext, ZeroDDP
 from colossalai.zero.gemini.chunk import ChunkManager, search_chunk_configuration
@@ -41,7 +41,8 @@ def exam_state_dict_with_origin(placement_policy, model_name, use_safetensors: b
                            '', (model_size / 3),
                            use_safetensors=use_safetensors)
         new_bert_model = BertForSequenceClassification.from_pretrained(model_ckpt_dir.name)
-        recursive_check(bert_model.state_dict(only_rank_0=True, dtype=(torch.float32)), new_bert_model.state_dict())
+        check_state_dict_equal(bert_model.state_dict(only_rank_0=True, dtype=(torch.float32)),
+                               new_bert_model.state_dict(), False)
     model_ckpt_dir.cleanup()
 
 
@@ -79,7 +80,7 @@ def exam_state_dict(placement_policy, model_name: str, use_safetensors: bool):
         ckpt_io.load_model(new_model, (model_ckpt_dir.name), strict=True)
         model_dict = model.state_dict(only_rank_0=True)
         new_model_dict = new_model.state_dict(only_rank_0=True)
-        recursive_check(model_dict, new_model_dict)
+        check_state_dict_equal(model_dict, new_model_dict, False)
     model_ckpt_dir.cleanup()
 
 

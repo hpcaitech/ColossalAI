@@ -4,7 +4,7 @@ from .comparison import (
     assert_equal,
     assert_equal_in_group,
     assert_not_equal,
-    recursive_check,
+    check_state_dict_equal,
 )
 from .pytest_wrapper import run_on_environment_flag
 from .utils import (
@@ -20,5 +20,5 @@ from .utils import (
 __all__ = [
     'assert_equal', 'assert_not_equal', 'assert_close', 'assert_close_loose', 'assert_equal_in_group', 'parameterize',
     'rerun_on_exception', 'rerun_if_address_is_in_use', 'skip_if_not_enough_gpus', 'free_port', 'spawn',
-    'clear_cache_before_run', 'run_on_environment_flag', 'recursive_check'
+    'clear_cache_before_run', 'run_on_environment_flag', 'check_state_dict_equal'
 ]
