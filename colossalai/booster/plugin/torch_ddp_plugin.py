@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 from typing import Callable, List, Tuple, Union
 
 import torch.nn as nn
@@ -114,6 +115,9 @@ class TorchDDPPlugin(DPPluginBase):
 
     def supported_devices(self) -> List[str]:
         return ['cuda']
+
+    def no_sync(self, model) -> contextmanager:
+        return model.no_sync()
 
     def configure(
         self,

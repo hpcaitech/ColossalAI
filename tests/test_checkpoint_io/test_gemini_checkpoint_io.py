@@ -18,6 +18,7 @@ from tests.components_to_test.registry import non_distributed_component_funcs
 @parameterize('use_safetensors', [True, False])
 def exam_state_dict_with_origin(placement_policy, model_name, use_safetensors: bool):
     from transformers import BertForSequenceClassification
+
     model_ckpt_dir = tempfile.TemporaryDirectory()
     get_components_func = non_distributed_component_funcs.get_callable(model_name)
     model_builder, *_ = get_components_func()
