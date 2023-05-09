@@ -116,9 +116,6 @@ class TorchDDPPlugin(DPPluginBase):
     def supported_devices(self) -> List[str]:
         return ['cuda']
 
-    def no_sync(self, model) -> contextmanager:
-        return model.no_sync()
-
     def configure(
         self,
         model: nn.Module,
