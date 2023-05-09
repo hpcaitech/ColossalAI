@@ -72,7 +72,7 @@ class ZeroDDP(ColoDDP):
         self.param2name: Dict[nn.Parameter, str] = dict()
         self.name2param: Dict[str, nn.Parameter] = dict()
         self.scatter_after_inference = scatter_after_inference
-        self.prefetch_before_inference = isinstance(gemini_manager._placement_policy, CUDAPlacementPolicy)
+        self.prefetch_before_inference = type(gemini_manager._placement_policy) is CUDAPlacementPolicy
 
         self._logger = get_dist_logger()
 
