@@ -7,7 +7,7 @@ from torchvision.models import resnet18
 
 from colossalai.booster.plugin.gemini_plugin import GeminiCheckpointIO
 from colossalai.checkpoint_io import GeneralCheckpointIO
-from colossalai.testing import clear_cache_before_run, parameterize
+from colossalai.testing import clear_cache_before_run, parameterize, recursive_check
 
 # ========
 # Note:
@@ -100,28 +100,3 @@ def test_sharded_checkpoint(use_safetensors: bool):
     # check for model and optimizer state dict recursively
     recursive_check(model.state_dict(), new_model.state_dict())
     recursive_check(optimizer.state_dict(), new_optimizer.state_dict())
-
-
-# do recursive check for the optimizer state dict
-# if the value is a dict, compare its values
-# if the value is a list, comapre all elements one-by-one
-# if the value is a torch.Tensor, use torch.equal
-# otherwise use assertEqual
-def recursive_check(d1, d2):
-    for k, v in d1.items():
-        if isinstance(v, dict):
-            recursive_check(v, d2[k])
-        elif isinstance(v, list):
-            for i in range(len(v)):
-                if isinstance(v[i], torch.Tensor):
-                    v[i] = v[i].to("cpu")
-                    d2[k][i] = d2[k][i].to("cpu")
-                    assert torch.equal(v[i], d2[k][i])
-                else:
-                    assert v[i] == d2[k][i]
-        elif isinstance(v, torch.Tensor):
-            v = v.to("cpu")
-            d2[k] = d2[k].to("cpu")
-            assert torch.equal(v, d2[k])
-        else:
-            assert v == d2[k]

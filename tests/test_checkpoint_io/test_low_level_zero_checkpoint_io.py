@@ -9,7 +9,7 @@ from colossalai.booster import Booster
 from colossalai.booster.plugin import LowLevelZeroPlugin
 from colossalai.booster.plugin.low_level_zero_plugin import LowLevelZeroCheckpointIO
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
+from colossalai.testing import clear_cache_before_run, parameterize, recursive_check, rerun_if_address_is_in_use, spawn
 
 
 @clear_cache_before_run()
@@ -49,26 +49,3 @@ def run_dist(rank, world_size, port):
 @rerun_if_address_is_in_use()
 def test_low_level_zero_checkpointIO():
     spawn(run_dist, 2)
-
-
-def recursive_check(d1, d2):
-    for k, v in d1.items():
-        if isinstance(v, dict):
-            recursive_check(v, d2[k])
-        elif isinstance(v, list):
-            for i in range(len(v)):
-                if isinstance(v[i], torch.Tensor):
-                    v[i] = v[i].to('cpu')
-                    d2[k][i] = d2[k][i].to('cpu')
-                    if not torch.equal(v[i], d2[k][i]):
-                        raise AssertionError
-                elif v[i] != d2[k][i]:
-                    assert v[i] == d2[k][i]
-
-        elif isinstance(v, torch.Tensor):
-            v = v.to('cpu')
-            d2[k] = d2[k].to('cpu')
-            if not torch.equal(v, d2[k]):
-                raise AssertionError
-        elif not v == d2[k]:
-            raise AssertionError

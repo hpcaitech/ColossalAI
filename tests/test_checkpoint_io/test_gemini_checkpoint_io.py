@@ -5,7 +5,7 @@ import torch
 
 import colossalai
 from colossalai.booster.plugin.gemini_plugin import GeminiCheckpointIO
-from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
+from colossalai.testing import parameterize, recursive_check, rerun_if_address_is_in_use, spawn
 from colossalai.utils.cuda import get_current_device
 from colossalai.zero import ColoInitContext, ZeroDDP
 from colossalai.zero.gemini.chunk import ChunkManager, search_chunk_configuration
@@ -95,25 +95,3 @@ def run_dist(rank, world_size, port):
 @rerun_if_address_is_in_use()
 def test_gemini_ckpIO(world_size):
     spawn(run_dist, world_size)
-
-
-def recursive_check(d1, d2):
-    for k, v in d1.items():
-        if isinstance(v, dict):
-            recursive_check(v, d2[k])
-        elif isinstance(v, list):
-            for i in range(len(v)):
-                if isinstance(v[i], torch.Tensor):
-                    v[i] = v[i].to('cpu')
-                    d2[k][i] = d2[k][i].to('cpu')
-                    if not torch.equal(v[i], d2[k][i]):
-                        raise AssertionError
-                elif not v[i] == d2[k][i]:
-                    raise AssertionError
-
-        elif isinstance(v, torch.Tensor):
-            v = v.to('cpu')
-            d2[k] = d2[k].to('cpu')
-            assert torch.equal(v, d2[k])
-        elif not v == d2[k]:
-            raise AssertionError
