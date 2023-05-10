@@ -3,10 +3,13 @@ from typing import Any, Callable, Optional, Tuple
 
 import numpy as np
 import torch
+from packaging import version
 
 from colossalai.tensor.d_tensor.layout_converter import to_global
 from colossalai.utils.model.experimental import LazyInitContext, LazyTensor, _MyTensor
 from tests.kit.model_zoo.registry import ModelAttribute
+
+SUPPORT_LAZY = version.parse(torch.__version__) >= version.parse('1.12.0')
 
 # model_fn, data_gen_fn, output_transform_fn, model_attr
 TestingEntry = Tuple[Callable[[], torch.nn.Module], Callable[[], dict], Callable[[], dict], Optional[ModelAttribute]]
