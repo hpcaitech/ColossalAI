@@ -30,6 +30,8 @@ def get_data(shape: tuple) -> Tuple[List, List]:
     return meta_args, concrete_args, sequence
 
 
+@pytest.mark.skip("full op is not implemented now")
+# FIXME(ver217, oahzxl): implement full op
 @pytest.mark.skipif(
     not (AUTOCHUNK_AVAILABLE and HAS_REPO),
     reason="torch version is lower than 1.12.0",
