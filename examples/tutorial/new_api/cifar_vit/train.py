@@ -63,14 +63,8 @@ def build_dataloader(batch_size: int, coordinator: DistCoordinator, plugin: DPPl
                                                     download=True)
 
     # Data loader
-    train_dataloader = plugin.prepare_train_dataloader(train_dataset,
-                                                       batch_size=batch_size,
-                                                       shuffle=True,
-                                                       drop_last=True)
-    test_dataloader = plugin.prepare_train_dataloader(test_dataset,
-                                                      batch_size=batch_size,
-                                                      shuffle=False,
-                                                      drop_last=False)
+    train_dataloader = plugin.prepare_dataloader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
+    test_dataloader = plugin.prepare_dataloader(test_dataset, batch_size=batch_size, shuffle=False, drop_last=False)
     return train_dataloader, test_dataloader
 
 

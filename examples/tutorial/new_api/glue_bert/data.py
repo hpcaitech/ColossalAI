@@ -84,26 +84,26 @@ class GLUEDataBuilder:
         AutoTokenizer.from_pretrained(self.model_name_or_path, use_fast=True)
 
     def train_dataloader(self):
-        return self.plugin.prepare_train_dataloader(self.dataset["train"],
-                                                    batch_size=self.train_batch_size,
-                                                    shuffle=True,
-                                                    drop_last=True)
+        return self.plugin.prepare_dataloader(self.dataset["train"],
+                                              batch_size=self.train_batch_size,
+                                              shuffle=True,
+                                              drop_last=True)
 
     def val_dataloader(self):
         if len(self.eval_splits) == 1:
-            return self.plugin.prepare_train_dataloader(self.dataset["validation"], batch_size=self.eval_batch_size)
+            return self.plugin.prepare_dataloader(self.dataset["validation"], batch_size=self.eval_batch_size)
         elif len(self.eval_splits) > 1:
             return [
-                self.plugin.prepare_train_dataloader(self.dataset[x], batch_size=self.eval_batch_size)
+                self.plugin.prepare_dataloader(self.dataset[x], batch_size=self.eval_batch_size)
                 for x in self.eval_splits
             ]
 
     def test_dataloader(self):
         if len(self.eval_splits) == 1:
-            return self.plugin.prepare_train_dataloader(self.dataset["test"], batch_size=self.eval_batch_size)
+            return self.plugin.prepare_dataloader(self.dataset["test"], batch_size=self.eval_batch_size)
         elif len(self.eval_splits) > 1:
             return [
-                self.plugin.prepare_train_dataloader(self.dataset[x], batch_size=self.eval_batch_size)
+                self.plugin.prepare_dataloader(self.dataset[x], batch_size=self.eval_batch_size)
                 for x in self.eval_splits
             ]
 

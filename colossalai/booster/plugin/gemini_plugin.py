@@ -2,7 +2,7 @@ import logging
 import os
 import warnings
 from pathlib import Path
-from typing import Callable, List, Optional, Tuple, Union
+from typing import Callable, Iterator, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -156,7 +156,7 @@ class GeminiPlugin(DPPluginBase):
         >>> model, train_dataset, optimizer, criterion = ...
         >>> plugin = GeminiPlugin()
 
-        >>> train_dataloader = plugin.prepare_train_dataloader(train_dataset, batch_size=8)
+        >>> train_dataloader = plugin.prepare_dataloader(train_dataset, batch_size=8)
         >>> booster = Booster(plugin=plugin)
         >>> model, optimizer, train_dataloader, criterion = booster.boost(model, optimizer, train_dataloader, criterion)
 
@@ -286,3 +286,6 @@ class GeminiPlugin(DPPluginBase):
 
     def get_checkpoint_io(self) -> CheckpointIO:
         return GeminiCheckpointIO()
+
+    def no_sync(self, model: nn.Module) -> Iterator[None]:
+        raise NotImplementedError

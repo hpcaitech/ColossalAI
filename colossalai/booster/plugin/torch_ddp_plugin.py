@@ -1,4 +1,4 @@
-from typing import Callable, List, Tuple, Union
+from typing import Callable, Iterator, List, Tuple, Union
 
 import torch.nn as nn
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -72,7 +72,7 @@ class TorchDDPPlugin(DPPluginBase):
         >>> model, train_dataset, optimizer, criterion = ...
         >>> plugin = TorchDDPPlugin()
 
-        >>> train_dataloader = plugin.prepare_train_dataloader(train_dataset, batch_size=8)
+        >>> train_dataloader = plugin.prepare_dataloader(train_dataset, batch_size=8)
         >>> booster = Booster(plugin=plugin)
         >>> model, optimizer, train_dataloader, criterion = booster.boost(model, optimizer, train_dataloader, criterion)
 
@@ -142,3 +142,7 @@ class TorchDDPPlugin(DPPluginBase):
 
     def get_checkpoint_io(self) -> CheckpointIO:
         return TorchDDPCheckpointIO()
+
+    def no_sync(self, model: nn.Module) -> Iterator[None]:
+        assert isinstance(model, TorchDDPModel), 'Model is not boosted by TorchDDPPlugin.'
+        return model.module.no_sync()
