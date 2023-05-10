@@ -13,6 +13,7 @@ from colossalai.nn.optimizer import HybridAdam
 
 from .callbacks import TrainerCallback, TrainerPerformanceEvaluator
 from .detached_trainer_base import DetachedTrainer
+from .lora_constructor import LoRAConstructor
 from .utils import (
     get_actor_from_args,
     get_critic_from_args,
@@ -67,6 +68,7 @@ class DetachedPPOTrainer(DetachedTrainer):
         callbacks: List[TrainerCallback] = [],
         eval_performance: bool = False,
         debug: bool = False,
+        update_lora_weights: bool = False,
     ) -> None:
         # set environment variables
         if env_info:
@@ -106,6 +108,8 @@ class DetachedPPOTrainer(DetachedTrainer):
         if self._debug:
             print(f'[trainer{get_rank()}] will send state dict to {experience_maker_holder_name_list}')
 
+        self._update_lora_weights = update_lora_weights
+        
     @ray.method(concurrency_group="model_io")
     @torch.no_grad()
     def _update_remote_makers(self, fully_update: bool = False, **config):
@@ -121,16 +125,18 @@ class DetachedPPOTrainer(DetachedTrainer):
         # sending loop
         tasks = []
 
-        for state_dict_shard in self._get_model_state_dict_shard(self.actor, **config):
+        for state_dict_shard in self._get_model_state_dict_shard(self.actor, fully_update = fully_update, **config):
             for target_holder in self.target_holder_list:
                 tasks.append(
                     target_holder.update_experience_maker.remote(new_actor_state_dict=state_dict_shard,
+                                                                 new_actor_lora_config_dict=self._get_model_lora_config_dict(self.actor),
                                                                  fully_update=fully_update))
         # sending loop
-        for state_dict_shard in self._get_model_state_dict_shard(self.critic, **config):
+        for state_dict_shard in self._get_model_state_dict_shard(self.critic, fully_update = fully_update, **config):
             for target_holder in self.target_holder_list:
                 tasks.append(
                     target_holder.update_experience_maker.remote(new_critic_state_dict=state_dict_shard,
+                                                                 new_critic_lora_config_dict=self._get_model_lora_config_dict(self.critic),
                                                                  fully_update=fully_update))
         ray.get(tasks)
         # mark end
@@ -177,10 +183,16 @@ class DetachedPPOTrainer(DetachedTrainer):
     def strategy_save_critic_optim(self, path: str, only_rank0: bool = False) -> None:
         self.strategy.save_optimizer(self.critic_optim, path, only_rank0)
 
-    def _get_model_state_dict_shard(self, model: torch.nn.Module, **config):
-        # try:
-        #     self.strategy.merge_lora_weight(model)
-        # except AttributeError:
-        #     pass
+    def _get_model_state_dict_shard(self, model: torch.nn.Module, fully_update = False, **config):
         for state_dict in self.strategy.get_model_state_dict_shard(model, **config):
-            yield state_dict_to(state_dict)
+            if not self._update_lora_weights or fully_update:
+                yield state_dict_to(state_dict)
+            else:
+                state_dict_lora, _ = LoRAConstructor.filter_state_dict_lora(state_dict)
+                yield state_dict_to(state_dict_lora)
+
+    def _get_model_lora_config_dict(self, model: torch.nn.Module):
+        if not self._update_lora_weights:
+            return None
+        unwrapped_model = self.strategy.unwrap_model(model)
+        return LoRAConstructor.extract_lora_config(unwrapped_model)

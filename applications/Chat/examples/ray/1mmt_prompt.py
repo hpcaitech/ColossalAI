@@ -73,6 +73,7 @@ def main(args):
             buffer_limit=16,
             eval_performance=True,
             debug=args.debug,
+            update_lora_weights = not (args.lora_rank == 0),
         ) for i, env_info_trainer in enumerate(env_info_trainers)
     ]
     
@@ -100,6 +101,7 @@ def main(args):
         experience_batch_size=args.experience_batch_size,
         kl_coef=0.1,
         debug=args.debug,
+        update_lora_weights = not (args.lora_rank == 0),
     # sync_models_from_trainers=True,
     # generation kwargs:
         max_length=512,

@@ -19,8 +19,13 @@ from torch import Tensor
 from tqdm import tqdm
 
 from .callbacks import ExperienceMakerPerformanceEvaluator, MakerCallback
-from .utils import get_model_numel, get_rank, get_world_size, is_rank_0, set_dist_env
-
+from .utils import (get_model_numel, 
+                    get_rank, 
+                    get_world_size, 
+                    is_rank_0, 
+                    set_dist_env,
+                    state_dict_to)
+from .lora_constructor import LoRAConstructor
 
 @ray.remote(concurrency_groups={"experience_io": 1, "model_io": 1, "compute": 1})
 class ExperienceMakerHolder:
@@ -45,6 +50,7 @@ class ExperienceMakerHolder:
             callbacks: List[MakerCallback] = [],
             eval_performance: bool = False,
             debug: bool = False,
+            update_lora_weights: bool = False,
             **generate_kwargs):
         # set environment variables
         if env_info:
@@ -77,6 +83,11 @@ class ExperienceMakerHolder:
         self._is_fully_initialized = not sync_models_from_trainers
 
         self._debug = debug
+        self._update_lora_weights = update_lora_weights
+        if self._update_lora_weights:
+            self.actor_lora_constructor = LoRAConstructor()
+            self.critic_lora_constructor = LoRAConstructor()
+
         self.target_auto_balance = False
 
         self._target_idx = 0
@@ -166,7 +177,9 @@ class ExperienceMakerHolder:
     @ray.method(concurrency_group="model_io")
     def update_experience_maker(self,
                                 new_actor_state_dict: Dict[str, Any] = None,
+                                new_actor_lora_config_dict: Dict[str, Any] = None,
                                 new_critic_state_dict: Dict[str, Any] = None,
+                                new_critic_lora_config_dict: Dict[str, Any] = None,
                                 fully_update: bool = False,
                                 chunk_start: bool = None,
                                 chunk_end: bool = None):
@@ -188,10 +201,19 @@ class ExperienceMakerHolder:
 
         with torch.no_grad():
             if new_actor_state_dict is not None:
-                self.experience_maker.actor.model.load_state_dict(new_actor_state_dict, strict=False)
+                if not self._update_lora_weights or fully_update:
+                    self.experience_maker.actor.model.load_state_dict(new_actor_state_dict, strict=False)
+                else:
+                    new_actor_state_dict = state_dict_to(new_actor_state_dict, device=torch.cuda.current_device())
+                    state_dict_increasae = self.actor_lora_constructor.reconstruct_increase(new_actor_state_dict, new_actor_lora_config_dict)
+                    self.actor_lora_constructor.load_state_dict_increase(self.experience_maker.actor.model, state_dict_increasae)
             if new_critic_state_dict is not None:
-                self.experience_maker.critic.load_state_dict(new_critic_state_dict, strict=False)
-
+                if not self._update_lora_weights or fully_update:
+                    self.experience_maker.critic.load_state_dict(new_critic_state_dict, strict=False)
+                else:
+                    new_critic_state_dict = state_dict_to(new_critic_state_dict, device=torch.cuda.current_device())
+                    state_dict_increasae = self.critic_lora_constructor.reconstruct_increase(new_critic_state_dict, new_critic_lora_config_dict)
+                    self.critic_lora_constructor.load_state_dict_increase(self.experience_maker.critic, state_dict_increasae)
 
         # the lock must be released after both actor and critic being updated
         if chunk_end:

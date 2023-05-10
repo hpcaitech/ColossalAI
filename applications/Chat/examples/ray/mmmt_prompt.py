@@ -20,7 +20,6 @@ from torch.utils.data import DataLoader
 from transformers import AutoConfig, AutoTokenizer
 from transformers.modeling_utils import no_init_weights
 
-
 def get_free_port():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(('', 0))
@@ -86,6 +85,7 @@ def main(args):
             env_info=env_info_maker,
             kl_coef=0.1,
             debug=args.debug,
+            update_lora_weights = not (args.lora_rank == 0),
     # sync_models_from_trainers=True,
     # generation kwargs:
             max_length=512,
@@ -119,6 +119,7 @@ def main(args):
             buffer_limit=16,
             eval_performance=True,
             debug=args.debug,
+            update_lora_weights = not (args.lora_rank == 0),
         )
         for i, env_info_trainer in enumerate(env_info_trainers)
     ]
@@ -156,6 +157,7 @@ def main(args):
     for trainer_ref in trainer_refs:
         wait_tasks.append(trainer_ref.fit.remote(total_steps, args.update_steps, args.train_epochs))
 
+
     ray.get(wait_tasks)
 
 
@@ -187,5 +189,6 @@ if __name__ == '__main__':
     parser.add_argument('--quant_group_size', type=int, default=128)
     parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
+        
     ray.init(namespace=os.environ["RAY_NAMESPACE"])
     main(args)
