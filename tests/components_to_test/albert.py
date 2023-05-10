@@ -28,7 +28,7 @@ def get_training_components():
         print('building AlbertForSequenceClassification model')
 
         # adapting huggingface BertForSequenceClassification for single unitest calling interface
-        class ModelAaptor(AlbertForSequenceClassification):
+        class ModelAdaptor(AlbertForSequenceClassification):
 
             def forward(self, input_ids, labels):
                 """
@@ -37,23 +37,23 @@ def get_training_components():
                 """
                 return super().forward(input_ids=input_ids, labels=labels)[0]
 
-        model = ModelAaptor(config)
+        model = ModelAdaptor(config)
         # if checkpoint and version.parse(transformers.__version__) >= version.parse("4.11.0"):
         #     model.gradient_checkpointing_enable()
 
         return model
 
-    is_distrbuted = torch.distributed.is_initialized()
+    is_distributed = torch.distributed.is_initialized()
     trainloader = get_bert_data_loader(n_class=vocab_size,
                                        batch_size=2,
                                        total_samples=10000,
                                        sequence_length=sequence_length,
-                                       is_distrbuted=is_distrbuted)
+                                       is_distributed=is_distributed)
     testloader = get_bert_data_loader(n_class=vocab_size,
                                       batch_size=2,
                                       total_samples=10000,
                                       sequence_length=sequence_length,
-                                      is_distrbuted=is_distrbuted)
+                                      is_distributed=is_distributed)
 
     criterion = None
     return bert_model_builder, trainloader, testloader, torch.optim.Adam, criterion
