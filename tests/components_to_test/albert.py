@@ -27,7 +27,7 @@ def get_training_components():
                               attention_probs_dropout_prob=0.)
         print('building AlbertForSequenceClassification model')
 
-        # adapting huggingface BertForSequenceClassification for single unitest calling interface
+        # adapting huggingface BertForSequenceClassification for single unittest calling interface
         class ModelAdaptor(AlbertForSequenceClassification):
 
             def forward(self, input_ids, labels):
