@@ -1,52 +1,38 @@
-# Setup
+# Reading Roadmap
 
-Requirements:
-- PyTorch >= 1.11 (PyTorch 2.x in progress)
-- Python >= 3.7
-- CUDA >= 11.0
-- [NVIDIA GPU Compute Capability](https://developer.nvidia.com/cuda-gpus) >= 7.0 (V100/RTX20 and higher)
-- Linux OS
+Colossal-AI provides a collection of parallel training components for you. We aim to support you with your development
+of distributed deep learning models just like how you write single-GPU deep learning models. ColossalAI provides easy-to-use
+APIs to help you kickstart your training process. To better how ColossalAI works, we recommend you to read this documentation
+in the following order.
 
-If you encounter any problem about installation, you may want to raise an [issue](https://github.com/hpcaitech/ColossalAI/issues/new/choose) in this repository.
+- If you are not familiar with distributed system or have never used Colossal-AI, you should first jump into the `Concepts`
+section to get a sense of what we are trying to achieve. This section can provide you with some background knowledge on
+distributed training as well.
+- Next, you can follow the `basics` tutorials. This section will cover the details about how to use Colossal-AI.
+- Afterwards, you can try out the features provided in Colossal-AI by reading `features` section. We will provide a codebase for each tutorial. These tutorials will cover the
+basic usage of Colossal-AI to realize simple functions such as data parallel and mixed precision training.
+- Lastly, if you wish to apply more complicated techniques such as how to run hybrid parallel on GPT-3,  the
+`advanced tutorials` section is the place to go!
 
+**We always welcome suggestions and discussions from the community, and we would be more than willing to help you if you
+encounter any issue. You can raise an [issue](https://github.com/hpcaitech/ColossalAI/issues) here or create a discussion
+topic in the [forum](https://github.com/hpcaitech/ColossalAI/discussions).**
+# Reading Roadmap
 
-## Download From PyPI
+Colossal-AI provides a collection of parallel training components for you. We aim to support you with your development
+of distributed deep learning models just like how you write single-GPU deep learning models. ColossalAI provides easy-to-use
+APIs to help you kickstart your training process. To better how ColossalAI works, we recommend you to read this documentation
+in the following order.
 
-You can install Colossal-AI with
+- If you are not familiar with distributed system or have never used Colossal-AI, you should first jump into the `Concepts`
+section to get a sense of what we are trying to achieve. This section can provide you with some background knowledge on
+distributed training as well.
+- Next, you can follow the `basics` tutorials. This section will cover the details about how to use Colossal-AI.
+- Afterwards, you can try out the features provided in Colossal-AI by reading `features` section. We will provide a codebase for each tutorial. These tutorials will cover the
+basic usage of Colossal-AI to realize simple functions such as data parallel and mixed precision training.
+- Lastly, if you wish to apply more complicated techniques such as how to run hybrid parallel on GPT-3,  the
+`advanced tutorials` section is the place to go!
 
-```shell
-pip install colossalai
-```
-
-**Note: only Linux is supported for now**
-
-If you want to build PyTorch extensions during installation, you can use the command below. Otherwise, the PyTorch extensions will be built during runtime.
-
-```shell
-CUDA_EXT=1 pip install colossalai
-```
-
-
-## Download From Source
-
-> The version of Colossal-AI will be in line with the main branch of the repository. Feel free to raise an issue if you encounter any problem. :)
-
-```shell
-git clone https://github.com/hpcaitech/ColossalAI.git
-cd ColossalAI
-
-# install dependency
-pip install -r requirements/requirements.txt
-
-# install colossalai
-CUDA_EXT=1 pip install .
-```
-
-If you don't want to install and enable CUDA kernel fusion (compulsory installation when using fused optimizer), just don't specify the `CUDA_EXT`:
-
-```shell
-pip install .
-```
-
-
-<!-- doc-test-command: echo "installation.md does not need test" -->
+**We always welcome suggestions and discussions from the community, and we would be more than willing to help you if you
+encounter any issue. You can raise an [issue](https://github.com/hpcaitech/ColossalAI/issues) here or create a discussion
+topic in the [forum](https://github.com/hpcaitech/ColossalAI/discussions).**
