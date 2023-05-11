@@ -18,7 +18,7 @@ def set_seed(seed: int) -> None:
     torch.manual_seed(seed)
 
 
-def assert_model_eqaual(m1: torch.nn.Module, m2: torch.nn.Module) -> None:
+def assert_model_equal(m1: torch.nn.Module, m2: torch.nn.Module) -> None:
     s1 = m1.state_dict()
     s2 = m2.state_dict()
 
@@ -63,7 +63,7 @@ def check_lazy_init(entry: TestingEntry, seed: int = 42, verbose: bool = False, 
     with ctx:
         deferred_model = model_fn()
     deferred_model = ctx.materialize(deferred_model, verbose=verbose)
-    assert_model_eqaual(model, deferred_model)
+    assert_model_equal(model, deferred_model)
     if check_forward:
         assert_forward_equal(model, deferred_model, data_gen_fn, output_transform_fn)
     if verbose:

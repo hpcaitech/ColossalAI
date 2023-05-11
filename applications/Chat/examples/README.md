@@ -24,7 +24,6 @@
     - [LLaMA](#llama)
   - [Add your own models](#add-your-own-models)
     - [Actor model](#actor-model)
-    - [LM model](#lm-model)
     - [Reward model](#reward-model)
     - [Critic model](#critic-model)
 
@@ -62,13 +61,14 @@ torchrun --standalone --nproc_per_node=4 train_sft.py \
     --save_path  /path/to/Coati-7B \
     --dataset /path/to/data.json \
     --batch_size 4 \
-    --accimulation_steps 8 \
+    --accumulation_steps 8 \
     --lr 2e-5 \
     --max_datasets_size 512 \
     --max_epochs 1 \
+    --grad_checkpoint
 ```
 ### Arg List
-- --strategy:          the strategy using for training, choices=['naive', 'ddp', 'colossalai_gemini', 'colossalai_zero2'], default='naive'
+- --strategy:          the strategy using for training, choices=['naive', 'ddp', 'colossalai_gemini', 'colossalai_zero2'], default='colossalai_zero2'
 - --model:             model type, choices=['gpt2', 'bloom', 'opt', 'llama'], default='bloom'
 - --pretrain:          pretrain model, type=str, default=None
 - --max_datasets_size: the max size of dataset, type=int, default=None
@@ -78,6 +78,7 @@ torchrun --standalone --nproc_per_node=4 train_sft.py \
 - --batch_size:        batch size while training, type=int, default=4
 - --lora_rank:         low-rank adaptation matrices rank, type=int, default=0
 - --log_interval:      how many steps to log, type=int, default=100
+- --grad_checkpoint:   enable gradient checkpointing, type=bool, default=False
 
 ## Stage2 - Training reward model
 
@@ -115,7 +116,7 @@ Model performance in [Anthropics paper](https://arxiv.org/abs/2204.05862):
 <div align=left>We also train the reward model based on LLaMA-7B, which reaches the ACC of 72.06% after 1 epoch, performing almost the same as Anthropic's best RM.
 
 ### Arg List
-- --strategy:          the strategy using for training, choices=['naive', 'ddp', 'colossalai_gemini', 'colossalai_zero2'], default='naive'
+- --strategy:          the strategy using for training, choices=['naive', 'ddp', 'colossalai_gemini', 'colossalai_zero2'], default='colossalai_zero2'
 - --model:             model type, choices=['gpt2', 'bloom', 'opt', 'llama'], default='bloom'
 - --pretrain:          pretrain model, type=str, default=None
 - --model_path:        the path of rm model(if continue to train), type=str, default=None
@@ -146,20 +147,24 @@ torchrun --standalone --nproc_per_node=4 train_prompts.py \
          --pretrain "/path/to/LLaMa-7B/" \
          --model 'llama' \
          --strategy colossalai_zero2 \
-         --prompt_path /path/to/your/prompt_dataset \
+         --prompt_dataset /path/to/your/prompt_dataset \
          --pretrain_dataset /path/to/your/pretrain_dataset \
-         --rm_pretrain /your/pretrain/rm/defination \
+         --rm_pretrain /your/pretrain/rm/definition \
          --rm_path /your/rm/model/path
 ```
+
+Prompt dataset: the instruction dataset mentioned in the above figure which includes the instructions, e.g. you can use the [script](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat/examples/example_data_reformat.py) to reformat [seed_prompts_ch.jsonl](https://github.com/XueFuzhao/InstructionWild/blob/main/data/seed_prompts_ch.jsonl) or [seed_prompts_en.jsonl](https://github.com/XueFuzhao/InstructionWild/blob/main/data/seed_prompts_en.jsonl) in InstructionWild.  
+Pretrain dataset: the pretrain dataset including the instruction and corresponding response, e.g. you can use the [InstructWild Data](https://github.com/XueFuzhao/InstructionWild/tree/main/data) in stage 1 supervised instructs tuning.
+
 ### Arg List
-- --strategy:          the strategy using for training, choices=['naive', 'ddp', 'colossalai_gemini', 'colossalai_zero2'], default='naive'
+- --strategy:          the strategy using for training, choices=['naive', 'ddp', 'colossalai_gemini', 'colossalai_zero2'], default='colossalai_zero2'
 - --model:             model type of actor, choices=['gpt2', 'bloom', 'opt', 'llama'], default='bloom'
 - --pretrain:          pretrain model, type=str, default=None
 - --rm_model:          reward model type, type=str, choices=['gpt2', 'bloom', 'opt', 'llama'], default=None
 - --rm_pretrain:       pretrain model for reward model, type=str, default=None
 - --rm_path:           the path of rm model, type=str, default=None
 - --save_path:         path to save the model, type=str, default='output'
-- --prompt_path:       path of the prompt dataset, type=str, default=None
+- --prompt_dataset:       path of the prompt dataset, type=str, default=None
 - --pretrain_dataset:  path of the ptx dataset, type=str, default=None
 - --need_optim_ckpt:   whether to save optim ckpt, type=bool, default=False
 - --num_episodes:      num of episodes for training, type=int, default=10
@@ -227,7 +232,7 @@ If you want to support your own model in Coati, please refer the pull request fo
 You should complete the implementation of four model classes, including Reward model, Critic model, LM model, Actor model
 
 here are some example code for a NewModel named `Coati`.
-if it is supported in huggingaface [transformers](https://github.com/huggingface/transformers), you can load it by `from_pretrained`, o
+if it is supported in huggingface [transformers](https://github.com/huggingface/transformers), you can load it by `from_pretrained`, o
 r you can build your own model by yourself.
 
 ### Actor model
@@ -250,29 +255,6 @@ class CoatiActor(Actor):
         super().__init__(model, lora_rank, lora_train_bias)
 ```
 
-### LM model
-
-```
-from ..base import LM
-from transformers.models.coati import CoatiModel
-
-class GPTLM(LM):
-
-    def __init__(self,
-                 pretrained: Optional[str] = None,
-                 checkpoint: bool = False,
-                 lora_rank: int = 0,
-                 lora_train_bias: str = 'none') -> None:
-        if pretrained is not None:
-            model = CoatiModel.from_pretrained(pretrained)
-        else:
-            model = build_model() # load your own model if it is not support in transformers
-
-        super().__init__(model, lora_rank, lora_train_bias)
-
-    def forward(self, input_ids, attention_mask=None, labels=None, **kwargs):
-        return self.model(input_ids, attention_mask=attention_mask, labels=labels, **kwargs)
-```
 ### Reward model
 ```
 from ..base import RewardModel
