@@ -21,7 +21,7 @@ def calculate_tensor_size(tensor: torch.Tensor) -> float:
     If so, a new shard should be created.
 
     Args:
-        tenosr (torch.Tensor): the tensor to calculate size for.
+        tensor (torch.Tensor): the tensor to calculate size for.
 
     Returns:
         float: size of the tensor in MB.
