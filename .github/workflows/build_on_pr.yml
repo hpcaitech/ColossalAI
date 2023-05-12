@@ -122,7 +122,9 @@ jobs:
 
       - name: Restore Testmon Cache
         run: |
-          [ -d /github/home/testmon_cache ] && [ ! -z "$(ls -A /github/home/testmon_cache)" ] && cp -p -r /github/home/testmon_cache/* /__w/ColossalAI/ColossalAI/
+          if [ -d /github/home/testmon_cache ]; then
+            [ ! -z "$(ls -A /github/home/testmon_cache)" ] && cp -p -r /github/home/testmon_cache/* /__w/ColossalAI/ColossalAI/
+          fi
 
       - name: Execute Unit Testing
         if: needs.detect.outputs.anyLibraryFileChanged == 'true'
