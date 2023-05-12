@@ -1,7 +1,7 @@
 diffusers
 fbgemm-gpu==0.2.0
 pytest
-pytest-cov
+git+https://github.com/hpcaitech/pytest-testmon
 torchvision
 transformers
 timm
