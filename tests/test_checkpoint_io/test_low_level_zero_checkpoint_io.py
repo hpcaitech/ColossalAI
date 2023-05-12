@@ -39,10 +39,10 @@ def check_low_level_zero_checkpointIO(stage: int):
     ckpt_io = LowLevelZeroCheckpointIO()
     ckpt_io.save_optimizer(optimizer, optimizer_ckpt_tempfile.name)
 
+    new_model = resnet18()
+    new_optimizer = HybridAdam((new_model.parameters()), lr=0.001)
+    _, new_optimizer, _, _, _ = booster.boost(new_model, new_optimizer)
     if ckpt_io.coordinator.is_master():
-        new_model = resnet18()
-        new_optimizer = HybridAdam((new_model.parameters()), lr=0.001)
-        _, new_optimizer, _, _, _ = booster.boost(new_model, new_optimizer)
         ckpt_io.load_optimizer(new_optimizer, optimizer_ckpt_tempfile.name)
         check_state_dict_equal(optimizer.state_dict(), new_optimizer.state_dict(), False)
 
