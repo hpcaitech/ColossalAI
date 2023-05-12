@@ -3,7 +3,7 @@
 import torch
 import torch.nn as nn
 import colossalai.nn as col_nn
-from typing import Any, Dict, List, Type
+from typing import Any, Dict, List, Type, Tuple
 from transformers import AutoConfig
 from dataclasses import dataclass
 
@@ -29,7 +29,7 @@ class Policy():
     """
     def __init__(
             self,
-            inject_layer: nn.Module
+            replace_layer: nn.Module
             ) -> None:
         """
         Init the policy class
@@ -37,10 +37,10 @@ class Policy():
         Args:
             inject_layer: Layer the policy will apply to
         """
-        self.inject_layer = inject_layer
+        self.replace_layer = replace_layer
 
     @staticmethod
-    def argument_policy(config, dist_setting: int) -> Dict:
+    def argument_policy(config, dist_setting: int) -> Dict[nn.Module, Dict]:
         """
         Return the argument and its value need to be modified
 
@@ -49,21 +49,26 @@ class Policy():
             dist_setting: The setting of distributed model
         
         Return:
-            Dict for the modify policy
+            Dict for the modify policy,
+            {
+                origin_layer1 (nn.Module): {argument1: value1, argument2: value2 ...},
+                origin_layer2 (nn.Module): {argument1: value1, argument2: value2 ...},
+                ...
+            }
 
         """
         return {}
     
 
     @staticmethod
-    def inject_policy() -> Dict[nn.Module, nn.Module]:
+    def inject_policy() -> Tuple[nn.Module, nn.Module]:
         """
         Return the dict for the inject model 
 
         Return:
             The injected model, key is the original model and value is the new shardmodel
         """
-        return {}
+        return ()
     
     @staticmethod
     def attn_in() -> List:
