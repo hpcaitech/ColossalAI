@@ -59,7 +59,7 @@ The Coati package provides a unified large language model framework that has imp
    Image source: https://openai.com/blog/chatgpt
 </div>
 
-**As Colossa-AI is undergoing some major updates, this project will be actively maintained to stay in line with the Colossal-AI project.**
+**As Colossal-AI is undergoing some major updates, this project will be actively maintained to stay in line with the Colossal-AI project.**
 
 
 More details can be found in the latest news.

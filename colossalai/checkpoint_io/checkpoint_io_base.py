@@ -86,7 +86,7 @@ class CheckpointIO(ABC):
         # the existence of index file means it is a sharded checkpoint
         ckpt_path = Path(checkpoint)
         index_file_exists, index_file_path = has_index_file(checkpoint)
-
+        
         # return the origin model instead of the unwrapped model
         origin_model = model
 

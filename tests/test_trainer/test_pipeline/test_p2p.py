@@ -90,7 +90,7 @@ def run_check(rank, world_size, port):
     prev_rank = gpc.get_prev_global_rank(ParallelMode.PIPELINE)
     next_rank = gpc.get_next_global_rank(ParallelMode.PIPELINE)
     logger.info('Rank {0}: prev rank {1}, next rank {2}'.format(rank, prev_rank, next_rank))
-    logger.info('Distributed environment is initialzied.')
+    logger.info('Distributed environment is initialized.')
 
     check_comm(world_size, rank, prev_rank, next_rank, logger)
     gpc.destroy()

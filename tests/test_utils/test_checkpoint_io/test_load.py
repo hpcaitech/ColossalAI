@@ -23,7 +23,7 @@ def check_model_state_dict(a: Dict[str, Tensor], b: Dict[str, Tensor]) -> None:
         assert torch.equal(v, b[k])
 
 
-def check_optim_state_dict(a: dict, b: dict, ignore_param_gruops: bool = False) -> None:
+def check_optim_state_dict(a: dict, b: dict, ignore_param_groups: bool = False) -> None:
     assert set(a['state'].keys()) == set(b['state'].keys())
     for k, state in a['state'].items():
         b_state = b['state'][k]
@@ -32,7 +32,7 @@ def check_optim_state_dict(a: dict, b: dict, ignore_param_gruops: bool = False) 
                 assert torch.equal(v1, v2)
             else:
                 assert v1 == v2
-    if not ignore_param_gruops:
+    if not ignore_param_groups:
         assert a['param_groups'] == b['param_groups']
 
 
@@ -129,23 +129,23 @@ def launch_dist(fn, world_size: int):
 
 
 def save_dist(dir_name: str, zero: bool):
-    model, optmizer = prepare_model_optim(shard=True, zero=zero)
-    reset_model_optim(model, optmizer)
+    model, optimizer = prepare_model_optim(shard=True, zero=zero)
+    reset_model_optim(model, optimizer)
     world_size = dist.get_world_size()
     rank = dist.get_rank()
-    save(dir_name, model, optmizer, dist_meta=get_dist_metas(world_size, zero)[rank])
+    save(dir_name, model, optimizer, dist_meta=get_dist_metas(world_size, zero)[rank])
 
 
 def load_and_check_dist(dir_name: str):
     world_size = dist.get_world_size()
-    model, optmizer = prepare_model_optim(shard=True)
-    reset_model_optim(model, optmizer)
+    model, optimizer = prepare_model_optim(shard=True)
+    reset_model_optim(model, optimizer)
     model_state_dict = deepcopy(model.state_dict())
-    optimizer_state_dict = deepcopy(optmizer.state_dict())
-    reset_model_optim(model, optmizer, 1)
-    load(dir_name, model, optmizer, get_redist_meta(world_size), get_dist_metas(world_size))
+    optimizer_state_dict = deepcopy(optimizer.state_dict())
+    reset_model_optim(model, optimizer, 1)
+    load(dir_name, model, optimizer, get_redist_meta(world_size), get_dist_metas(world_size))
     check_model_state_dict(model_state_dict, model.state_dict())
-    check_optim_state_dict(optimizer_state_dict, optmizer.state_dict())
+    check_optim_state_dict(optimizer_state_dict, optimizer.state_dict())
 
 
 @pytest.mark.dist
