@@ -1,4 +1,4 @@
-from typing import Callable, List, Tuple, Union
+from typing import Callable, Iterator, List, Tuple, Union
 
 import torch.nn as nn
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -142,3 +142,7 @@ class TorchDDPPlugin(DPPluginBase):
 
     def get_checkpoint_io(self) -> CheckpointIO:
         return TorchDDPCheckpointIO()
+
+    def no_sync(self, model: nn.Module) -> Iterator[None]:
+        assert isinstance(model, TorchDDPModel), 'Model is not boosted by TorchDDPPlugin.'
+        return model.module.no_sync()
