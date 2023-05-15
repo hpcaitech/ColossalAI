@@ -21,7 +21,7 @@ _mixed_precision_mapping = {
 }
 
 
-def mixed_precision_factory(mixed_precision_type: str, mixed_precision_config: Config) -> MixedPrecision:
+def mixed_precision_factory(mixed_precision_type: str) -> MixedPrecision:
     """
     Factory method to create mixed precision object
 
@@ -30,7 +30,7 @@ def mixed_precision_factory(mixed_precision_type: str, mixed_precision_config: C
     """
 
     if mixed_precision_type in _mixed_precision_mapping:
-        return _mixed_precision_mapping[mixed_precision_type](mixed_precision_config)
+        return _mixed_precision_mapping[mixed_precision_type]()
     else:
         raise ValueError(
             f'Mixed precision type {mixed_precision_type} is not supported, support types include {list(_mixed_precision_mapping.keys())}'
