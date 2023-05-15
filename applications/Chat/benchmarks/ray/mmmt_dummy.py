@@ -185,5 +185,5 @@ if __name__ == '__main__':
     parser.add_argument('--quant_group_size', type=int, default=128)
     parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
-    ray.init(namespace=os.environ["RAY_NAMESPACE"], runtime_env={"env_vars": os.environ})
+    ray.init(namespace=os.environ["RAY_NAMESPACE"], runtime_env={"env_vars": dict(os.environ)})
     main(args)
