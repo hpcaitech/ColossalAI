@@ -1,13 +1,13 @@
-# Auto Mixed Precision Training(antiquated)
+# Auto Mixed Precision Training(latest)
 
 Author: Chuanrui Wang, Shenggui Li, Yongbin Li
 
 **Prerequisite**
 - [Define Your Configuration](../basics/define_your_config.md)
-- [Use Engine and Trainer in Training](../basics/engine_trainer.md)
+- [Train With Booster](../basics/define_your_config.md) # todo, change the link
 
 **Example Code**
-- [ColossalAI-Examples AMP](https://github.com/hpcaitech/ColossalAI-Examples/tree/main/features/amp)
+- [AMP train examples](ColossalAI/examples/tutorial/feathures/amp_with_booster/README.md)
 
 **Related Paper**
 - [Accelerating Scientific Computations with Mixed Precision Algorithms](https://arxiv.org/abs/0808.2794)
@@ -66,63 +66,45 @@ However, there are other operations, like reductions, which require the dynamic 
 
 ## AMP in Colossal-AI
 
-We supported three AMP training methods and allowed the user to train with AMP with no code. You can just simply add `fp16`
-configuration in your configuration file to use AMP.
+We supported three AMP training methods and allowed the user to train with AMP with no code. If you want to train with amp, just assign `mixed_precision` when you instantiate the `Booster`. Now booster can train with torch amp, the other two(apex amp, naive amp) are still stared by `colossalai.initiate`, if needed, please refer to [this](ColossalAI/docs/source/en/features/mixed_precision_training.md);Next we will support `bf16`, `fp8`.
 
-
+### start with booster
+instantiate `Booster` with `mixed_precision="fp16"`, then you can train with torch amp.
 ```python
-from colossalai.amp import AMP_TYPE
-
-# use Torch AMP
-fp16=dict(
-    mode = AMP_TYPE.TORCH
-)
-
-# use naive AMP
-fp16=dict(
-    mode = AMP_TYPE.NAIVE
-)
-
-# use NVIDIA Apex AMP
-fp16=dict(
-    mode = AMP_TYPE.APEX
-)
-
+"""
+    Mapping:
+    'fp16': torch amp
+    'fp16_apex': apex amp,
+    'bf16': bf16,
+    'fp8': fp8,
+    'fp16_naive': naive amp
+"""
+from colossalai import Booster
+booster = Booster(mixed_precision='fp16',...)
 ```
-
-> These are the minimum configuration, full configuration are stated in the section later
-
-### AMP Modularity
-
-AMP module is designed to be completely modular and can be used independently.
-If you wish to only use AMP in your code base without `colossalai.initialize`,
-you can use `colossalai.amp.convert_to_amp`.
-
+or you can instantiate a `FP16TorchMixedPrecision` object, such as:
 ```python
-from colossalai.amp import AMP_TYPE
-
-# example of using torch amp
-model, optimizer, criterion = colossalai.amp.convert_to_amp(model,
-                                                            optimizer,
-                                                            criterion,
-                                                            AMP_TYPE.TORCH)
+from colossalai.mixed_precision import FP16TorchMixedPrecision
+mixed_precision = FP16TorchMixedPrecision(
+    init_scale=2.**16,
+    growth_factor=2.0,
+    backoff_factor=0.5,
+    growth_interval=2000)
+booster = Booster(mixed_precision=mixed_precision,...)
 ```
+The same goes for other types of amps.
+
 
 ### Torch AMP Configuration
 
 ```python
-from colossalai.amp import AMP_TYPE
+from colossalai.mixed_precision import FP16TorchMixedPrecision
 
-fp16=dict(
-    mode=AMP_TYPE.TORCH,
-
-    # below are default values for grad scaler
+mixed_precision = FP16TorchMixedPrecision(
     init_scale=2.**16,
     growth_factor=2.0,
     backoff_factor=0.5,
-    growth_interval=2000,
-    enabled=True
-)
+    growth_interval=2000)
 ```
 
 With optional arguments:
@@ -141,13 +123,8 @@ For example, O2 level (optimization level 2) will keep batch normalization in fp
 If you look for more details, please refer to [Apex Documentation](https://nvidia.github.io/apex/).
 
 ```python
-from colossalai.amp import AMP_TYPE
-
-fp16 = dict(
-    mode=AMP_TYPE.APEX,
-
-    # below are the default values
-    enabled=True,
+from colossalai.mixed_precision import FP16ApexMixedPrecision
+mixed_precision = FP16ApexMixedPrecision(
     opt_level='O1',
     cast_model_type=None,
     patch_torch_functions=None,
@@ -159,7 +136,7 @@ fp16 = dict(
     verbosity=1,
     min_loss_scale=None,
     max_loss_scale=16777216.0
-)
+    )
 ```
 
 Parameters:
@@ -199,12 +176,9 @@ This AMP mode will cast all operations into fp16.
 The following code block shows the `config.py` file for this mode.
 
 ```python
-from colossalai.amp import AMP_TYPE
+from colossalai.mixed_precision import FP16NaiveMixedPrecision
 
-fp16 = dict(
-    mode=AMP_TYPE.NAIVE,
-
-    # below are the default values
+mixed_precision = FP16ApexMixedPrecision(
     log_num_zeros_in_grad=False,
     initial_scale=2 ** 32,
     min_scale=1,
@@ -212,7 +186,7 @@ fp16 = dict(
     backoff_factor=0.5,
     growth_interval=1000,
     hysteresis=2
-)
+    )
 ```
 
 The default parameters of Naive AMP:
@@ -232,31 +206,22 @@ Otherwise, try smaller models or checkout more parallelization training techniqu
 
 ## Hands-on Practice
 
-We provide a [runnable example](https://github.com/hpcaitech/ColossalAI-Examples/tree/main/features/amp) which demonstrates
+We provide a [runnable example](ColossalAI/examples/tutorial/feathures/amp_with_booster/README.md) which demonstrates
 the use of AMP with Colossal-AI. In this practice, we will use Torch AMP as an example, but do note that config files are provided for all AMP modes.
 
 ### Step 1. Create a config file
 
-Create a `config.py` and add the `fp16` configuration.
-
+Create a `config.py`.
 ```python
-# in config.py
-from colossalai.amp import AMP_TYPE
-
+# Base
 BATCH_SIZE = 128
 DROP_RATE = 0.1
-NUM_EPOCHS = 300
-
-fp16 = dict(
-    mode=AMP_TYPE.TORCH,
-)
-
-clip_grad_norm = 1.0
+NUM_EPOCHS = 2
 ```
 
-### Step 2. Import libraries in train_with_engine.py
+### Step 2. Import libraries in train.py
 
-Create a `train_with_engine.py` and import the necessary dependencies. Remember to install `scipy` and `timm` by running
+Create a `train.py` and import the necessary dependencies. Remember to install `scipy` and `timm` by running
 `pip install timm scipy`.
 
 ```python
@@ -332,17 +297,26 @@ to a path on your machine. Data will be automatically downloaded to the root pat
 
 ### Step 5. Inject AMP Feature
 
-Call `colossalai.initialize` to convert the training components to be running with FP16.
+create a `MixedPrecision` and `TorchDDPPlugin` object, call `colossalai.boost` convert the training components to be running with FP16.
 
 ```python
-engine, train_dataloader, _, _ = colossalai.initialize(
-        model, optimizer, criterion, train_dataloader,
-    )
+from colossalai.mixed_precision import FP16TorchMixedPrecision
+mixed_precision = FP16TorchMixedPrecision(
+    init_scale=2.**16,
+    growth_factor=2.0,
+    backoff_factor=0.5,
+    growth_interval=2000)
+plugin = TorchDDPPlugin()
+```
+
+```python
+booster = Booster(mixed_precision=mixed_precision,...)
+model, optimizer, criterion, dataloader, lr_scheduler = booster.boost(model, optimizer, criterion, dataloader, lr_scheduler)
 ```
 
 ### Step 6. Train with Engine
 
-Use engine in a normal training loops.
+Use booster in a normal training loops.
 
 ```python
 engine.train()
@@ -350,11 +324,11 @@ for epoch in range(gpc.config.NUM_EPOCHS):
     for img, label in enumerate(train_dataloader):
         img = img.cuda()
         label = label.cuda()
-        engine.zero_grad()
-        output = engine(img)
-        loss = engine.criterion(output, label)
-        engine.backward(loss)
-        engine.step()
+        optimizer.zero_grad()
+        output = model(img)
+        loss = criterion(output, label)
+        booster.backward(loss, optimizer)
+        optimizer.step()
         lr_scheduler.step()
 ```
 
@@ -363,5 +337,6 @@ for epoch in range(gpc.config.NUM_EPOCHS):
 Use the following command to start the training scripts. You can change `--nproc_per_node` to use a different number of GPUs.
 
 ```python
-python -m torch.distributed.launch --nproc_per_node 4 --master_addr localhost --master_port 29500 train_with_engine.py --config config/config_AMP_torch.py
+python -m torch.distributed.launch --nproc_per_node 4 --master_addr localhost --master_port 29500 train.py --config config/config.py
 ```
+<!-- doc-test-command: torchrun --standalone --nproc_per_node=1 mixed_precision_training_with_booster.py  -->

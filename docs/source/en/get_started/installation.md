@@ -39,13 +39,13 @@ cd ColossalAI
 pip install -r requirements/requirements.txt
 
 # install colossalai
-pip install .
+CUDA_EXT=1 pip install .
 ```
 
-If you don't want to install and enable CUDA kernel fusion (compulsory installation when using fused optimizer):
+If you don't want to install and enable CUDA kernel fusion (compulsory installation when using fused optimizer), just don't specify the `CUDA_EXT`:
 
 ```shell
-CUDA_EXT=1 pip install .
+pip install .
 ```
 
 
