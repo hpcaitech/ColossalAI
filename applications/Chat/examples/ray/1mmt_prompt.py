@@ -14,12 +14,12 @@ from coati.ray.utils import (
     get_critic_from_args,
     get_reward_model_from_args,
     get_strategy_from_args,
-    get_tokenizer_from_args
+    get_tokenizer_from_args,
 )
-
 from torch.utils.data import DataLoader
 from transformers import AutoConfig
 from transformers.modeling_utils import no_init_weights
+
 
 def get_free_port():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -31,7 +31,8 @@ def get_local_ip():
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
         s.connect(('8.8.8.8', 80))
         return s.getsockname()[0]
-    
+
+
 def main(args):
     master_addr = str(get_local_ip())
     # trainer_env_info
@@ -73,25 +74,25 @@ def main(args):
             buffer_limit=16,
             eval_performance=True,
             debug=args.debug,
-            update_lora_weights = not (args.lora_rank == 0),
+            update_lora_weights=not (args.lora_rank == 0),
         ) for i, env_info_trainer in enumerate(env_info_trainers)
     ]
-    
+
     def model_fn():
         actor = get_actor_from_args(args.model, args.pretrain).requires_grad_(False).half().cuda()
         critic = get_critic_from_args(args.model, args.critic_pretrain).requires_grad_(False).half().cuda()
         reward_model = get_reward_model_from_args(args.model, args.critic_pretrain).requires_grad_(False).half().cuda()
         if args.initial_model_quant_ckpt is not None and args.model == 'llama':
-           # quantize initial model
-           actor_cfg = AutoConfig.from_pretrained(args.pretrain)
-           with low_resource_init(), no_init_weights():
-               initial_model = get_actor_from_args(args.model, config=actor_cfg)
-           initial_model.model = llama_load_quant(initial_model.model, args.initial_model_quant_ckpt, args.quant_bits,
-                                                  args.quant_group_size).cuda().requires_grad_(False)
+            # quantize initial model
+            actor_cfg = AutoConfig.from_pretrained(args.pretrain)
+            with low_resource_init(), no_init_weights():
+                initial_model = get_actor_from_args(args.model, config=actor_cfg)
+            initial_model.model = llama_load_quant(initial_model.model, args.initial_model_quant_ckpt, args.quant_bits,
+                                                   args.quant_group_size).cuda().requires_grad_(False)
         else:
             initial_model = get_actor_from_args(args.model, args.pretrain).requires_grad_(False).half().cuda()
         return actor, critic, reward_model, initial_model
-    
+
     # configure Experience Maker
     experience_holder_ref = ExperienceMakerHolder.options(name="maker1", num_gpus=1, max_concurrency=2).remote(
         detached_trainer_name_list=[f'trainer{i}' for i in range(args.num_trainers)],
@@ -101,7 +102,7 @@ def main(args):
         experience_batch_size=args.experience_batch_size,
         kl_coef=0.1,
         debug=args.debug,
-        update_lora_weights = not (args.lora_rank == 0),
+        update_lora_weights=not (args.lora_rank == 0),
     # sync_models_from_trainers=True,
     # generation kwargs:
         max_length=512,
@@ -114,40 +115,31 @@ def main(args):
         use_cache=True,
     )
 
-
-    
     # uncomment this function if sync_models_from_trainers is True
     # ray.get([
     #     trainer_ref.sync_models_to_remote_makers.remote()
     #     for trainer_ref in trainer_refs
     # ])
-    
+
     wait_tasks = []
-    
+
     total_steps = args.experience_batch_size * args.experience_steps // (args.num_trainers * args.train_batch_size)
     for trainer_ref in trainer_refs:
-        wait_tasks.append(
-            trainer_ref.fit.remote(total_steps, args.update_steps, args.train_epochs))
+        wait_tasks.append(trainer_ref.fit.remote(total_steps, args.update_steps, args.train_epochs))
 
-    
     dataset_size = args.experience_batch_size * 4
 
     def build_dataloader():
+
         def tokenize_fn(texts):
             batch = tokenizer(texts, return_tensors='pt', max_length=96, padding='max_length', truncation=True)
             return {k: v.cuda() for k, v in batch.items()}
 
         dataset = pd.read_csv(args.prompt_path)['prompt']
-        dataloader = DataLoader(dataset=dataset,
-                   batch_size=dataset_size,
-                   shuffle=True,
-                   collate_fn=tokenize_fn
-                   )
+        dataloader = DataLoader(dataset=dataset, batch_size=dataset_size, shuffle=True, collate_fn=tokenize_fn)
         return dataloader
 
-
-    wait_tasks.append(experience_holder_ref.workingloop.remote(build_dataloader, 
-                                                               num_steps=args.experience_steps))
+    wait_tasks.append(experience_holder_ref.workingloop.remote(build_dataloader, num_steps=args.experience_steps))
 
     ray.get(wait_tasks)
 
@@ -179,5 +171,5 @@ if __name__ == '__main__':
     parser.add_argument('--quant_group_size', type=int, default=128)
     parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
-    ray.init(namespace=os.environ["RAY_NAMESPACE"])
+    ray.init(namespace=os.environ["RAY_NAMESPACE"], runtime_env={"env_vars": os.environ})
     main(args)

@@ -3,9 +3,9 @@ import os
 import socket
 from functools import partial
 
+import pandas as pd
 import ray
 import torch
-import pandas as pd
 from coati.quant import llama_load_quant, low_resource_init
 from coati.ray.detached_trainer_ppo import DetachedPPOTrainer
 from coati.ray.experience_maker_holder import ExperienceMakerHolder
@@ -19,6 +19,7 @@ from coati.ray.utils import (
 from torch.utils.data import DataLoader
 from transformers import AutoConfig, AutoTokenizer
 from transformers.modeling_utils import no_init_weights
+
 
 def get_free_port():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -85,7 +86,7 @@ def main(args):
             env_info=env_info_maker,
             kl_coef=0.1,
             debug=args.debug,
-            update_lora_weights = not (args.lora_rank == 0),
+            update_lora_weights=not (args.lora_rank == 0),
     # sync_models_from_trainers=True,
     # generation kwargs:
             max_length=512,
@@ -119,24 +120,21 @@ def main(args):
             buffer_limit=16,
             eval_performance=True,
             debug=args.debug,
-            update_lora_weights = not (args.lora_rank == 0),
+            update_lora_weights=not (args.lora_rank == 0),
         )
         for i, env_info_trainer in enumerate(env_info_trainers)
     ]
 
     dataset_size = args.experience_batch_size * 4
-    
+
     def build_dataloader():
+
         def tokenize_fn(texts):
             batch = tokenizer(texts, return_tensors='pt', max_length=96, padding='max_length', truncation=True)
             return {k: v.cuda() for k, v in batch.items()}
 
         dataset = pd.read_csv(args.prompt_path)['prompt']
-        dataloader = DataLoader(dataset=dataset,
-                   batch_size=dataset_size,
-                   shuffle=True,
-                   collate_fn=tokenize_fn
-                   )
+        dataloader = DataLoader(dataset=dataset, batch_size=dataset_size, shuffle=True, collate_fn=tokenize_fn)
         return dataloader
 
     # uncomment this function if sync_models_from_trainers is True
@@ -148,15 +146,12 @@ def main(args):
     wait_tasks = []
 
     for experience_holder_ref in experience_holder_refs:
-        wait_tasks.append(
-            experience_holder_ref.workingloop.remote(build_dataloader, 
-                                                     num_steps=args.experience_steps))
+        wait_tasks.append(experience_holder_ref.workingloop.remote(build_dataloader, num_steps=args.experience_steps))
 
     total_steps = args.experience_batch_size * args.experience_steps * \
         args.num_makers // (args.num_trainers * args.train_batch_size)
     for trainer_ref in trainer_refs:
         wait_tasks.append(trainer_ref.fit.remote(total_steps, args.update_steps, args.train_epochs))
-
 
     ray.get(wait_tasks)
 
@@ -189,6 +184,6 @@ if __name__ == '__main__':
     parser.add_argument('--quant_group_size', type=int, default=128)
     parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
-        
-    ray.init(namespace=os.environ["RAY_NAMESPACE"])
+
+    ray.init(namespace=os.environ["RAY_NAMESPACE"], runtime_env={"env_vars": os.environ})
     main(args)
