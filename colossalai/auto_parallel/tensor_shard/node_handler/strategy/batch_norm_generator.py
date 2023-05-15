@@ -24,7 +24,7 @@ class BatchNormStrategyGenerator(StrategyGenerator):
     To keep the math consistency, there are two way to do BatchNorm if the input
     shards on batch dimension:
     1. We gather the input partitions through batch dimension, then do the normal BatchNorm.
-    2. We do the SyncBatchNorm on the each input partition seperately, the SyncBN op will help
+    2. We do the SyncBatchNorm on the each input partition separately, the SyncBN op will help
        us to keep the computing correctness.
     In this generator, both methods will be considered.
     """
@@ -212,7 +212,7 @@ class BatchNormStrategyGenerator(StrategyGenerator):
 
         # set communication action
         # For SyncBN case, we don't need to do communication for weight and bias.
-        # TODO: the communication happens interally at SyncBN operation. We need to replace the BN operation
+        # TODO: the communication happens internally at SyncBN operation. We need to replace the BN operation
         # to SyncBN operation instead of inserting a communication node.
         output_comm_action = self.get_communication_action(
             sharding_spec=sharding_spec_mapping["output"],
@@ -250,7 +250,7 @@ class BatchNormStrategyGenerator(StrategyGenerator):
 
         # set communication action
         # For SyncBN case, we don't need to do communication for gradients of weight and bias.
-        # TODO: the communication happens interally at SyncBN operation. We need to replace the BN operation
+        # TODO: the communication happens internally at SyncBN operation. We need to replace the BN operation
         # to SyncBN operation instead of inserting a communication node.
         output_comm_action = self.get_communication_action(
             sharding_spec=sharding_spec_mapping["output"],
@@ -298,7 +298,7 @@ class BatchNormStrategyGenerator(StrategyGenerator):
 
         # set communication action
         # For SyncBN case, we don't need to do communication for gradients of weight and bias.
-        # TODO: the communication happens interally at SyncBN operation. We need to replace the BN operation
+        # TODO: the communication happens internally at SyncBN operation. We need to replace the BN operation
         # to SyncBN operation instead of inserting a communication node.
         output_comm_action = self.get_communication_action(
             sharding_spec=sharding_spec_mapping["output"],
