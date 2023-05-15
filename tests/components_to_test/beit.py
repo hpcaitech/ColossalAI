@@ -27,7 +27,7 @@ class DummyDataLoader(DummyDataGenerator):
 @non_distributed_component_funcs.register(name='beit')
 def get_training_components():
 
-    def model_buider(checkpoint=False):
+    def model_builder(checkpoint=False):
         model = Beit(img_size=DummyDataLoader.img_size,
                      num_classes=DummyDataLoader.num_class,
                      embed_dim=32,
@@ -39,4 +39,4 @@ def get_training_components():
     testloader = DummyDataLoader()
 
     criterion = torch.nn.CrossEntropyLoss()
-    return model_buider, trainloader, testloader, torch.optim.Adam, criterion
+    return model_builder, trainloader, testloader, torch.optim.Adam, criterion

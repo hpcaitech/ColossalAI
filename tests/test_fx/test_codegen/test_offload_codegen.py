@@ -56,7 +56,7 @@ def _test_fwd_and_bwd(model: torch.nn.Module, gm: ColoGraphModule, data: torch.T
     fx_out = gm(data)
     assert torch.equal(non_fx_out, fx_out), "fx_out doesn't comply with original output"
 
-    # test barckward
+    # test backward
     loss0 = non_fx_out.sum()
     loss0.backward()
     loss1 = fx_out.sum()
@@ -65,7 +65,7 @@ def _test_fwd_and_bwd(model: torch.nn.Module, gm: ColoGraphModule, data: torch.T
 
 
 def _run_offload_codegen(rank, world_size, port):
-    # launch colossalai to make sure we could execute colossalai.utils.checkpoint currectly
+    # launch colossalai to make sure we could execute colossalai.utils.checkpoint currently
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
 
     # build model and input
@@ -120,7 +120,7 @@ def test_act_ckpt_codegen():
 
 
 def _run_offload_codegen_torch11(rank, world_size, port):
-    # launch colossalai to make sure we could execute colossalai.utils.checkpoint currectly
+    # launch colossalai to make sure we could execute colossalai.utils.checkpoint currently
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
 
     # build model and input
