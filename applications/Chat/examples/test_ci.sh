@@ -125,4 +125,4 @@ rm -rf ${BASE}/rm_ckpt_gpt.pt
 
 rm -rf ${BASE}/actor_checkpoint_prompts.pt
 
-cd ray && bash test_ci.sh && cd ..
+cd ${BASE}/ray && bash test_ci.sh && cd ${BASE}
