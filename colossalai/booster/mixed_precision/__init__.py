@@ -1,5 +1,3 @@
-from colossalai.context import Config
-
 from .bf16 import BF16MixedPrecision
 from .fp8 import FP8MixedPrecision
 from .fp16_apex import FP16ApexMixedPrecision
@@ -15,7 +13,7 @@ __all__ = [
 _mixed_precision_mapping = {
     'fp16': FP16TorchMixedPrecision,
     'fp16_apex': FP16ApexMixedPrecision,
-    'fp16_Naive': FP16NaiveMixedPrecision,
+    'fp16_naive': FP16NaiveMixedPrecision,
     'bf16': BF16MixedPrecision,
     'fp8': FP8MixedPrecision
 }

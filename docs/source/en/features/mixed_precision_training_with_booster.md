@@ -314,7 +314,7 @@ booster = Booster(mixed_precision=mixed_precision,...)
 model, optimizer, criterion, dataloader, lr_scheduler = booster.boost(model, optimizer, criterion, dataloader, lr_scheduler)
 ```
 
-### Step 6. Train with Engine
+### Step 6. Train with Booster
 
 Use booster in a normal training loops.
 
