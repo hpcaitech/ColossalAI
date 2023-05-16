@@ -53,12 +53,10 @@ jobs:
           git branch -avv
           git config --list
           git checkout -b main
-          git config --list
           git branch -u origin/main
-          git config --list
           git branch -avv
-          git checkout dev/chat-lazyinit
-          git config --list
+          git config user.name 'github-actions'
+          git config user.email 'github-actions@github.com'
 
 
       - name: Build docs
