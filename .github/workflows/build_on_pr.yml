@@ -2,7 +2,18 @@ name: Build on PR
 
 on:
   pull_request:
-    types: [synchronize, labeled]
+    types: [synchronize, opened, reopened]
+    paths:
+      - '.github/workflows/build_on_pr.yml' # run command & env variables change
+      - 'colossalai/**' # source code change
+      - '!colossalai/**.md' # ignore doc change
+      - 'op_builder/**' # cuda extension change
+      - '!op_builder/**.md' # ignore doc change
+      - 'requirements/**' # requirements change
+      - 'tests/**' # test change
+      - '!tests/**.md' # ignore doc change
+      - 'pytest.ini' # test config change
+      - 'setup.py' # install command change
 
 jobs:
   detect:
@@ -10,8 +21,7 @@ jobs:
     if: |
       github.event.pull_request.draft == false &&
       github.base_ref == 'main' &&
-      github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' &&
-      contains( github.event.pull_request.labels.*.name, 'Run Build and Test')
+      github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
     outputs:
       changedExtenisonFiles: ${{ steps.find-extension-change.outputs.all_changed_files }}
       anyExtensionFileChanged: ${{ steps.find-extension-change.outputs.any_changed }}
