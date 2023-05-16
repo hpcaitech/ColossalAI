@@ -51,13 +51,10 @@ jobs:
         run: |
           cd ColossalAI
           git branch -avv
-          curBranch=$(git rev-parse --abbrev-ref HEAD)
-          echo $curBranch
-          git checkout main
-          git pull
-          git diff
-          git merge $curBranch             # fast-forward master up to the merge
-          git diff
+          git checkout -b main
+          git branch -u origin/main
+          git branch -avv
+
 
       - name: Build docs
         run: |
