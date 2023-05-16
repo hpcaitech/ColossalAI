@@ -18,12 +18,12 @@ class BertPolicy(Policy):
                 "attention.self.num_attention_heads": config.num_attention_heads // world_size,
                 "crossattention.self.num_attention_heads": config.num_attention_heads // world_size,
             },
-            BertEmbeddings: {
-                # 1. shard vocab size
-                "word_embeddings.num_embeddings": config.vocab_size // world_size,
-                # 2. add the size of the sliced embedding layer excluding the last slice
-                "word_embeddings.dim_size": (config.vocab_size+world_size-1) // world_size,
-            }
+            # BertEmbeddings: {
+            #     # 1. shard vocab size
+            #     "word_embeddings.num_embeddings": config.vocab_size // world_size,
+            #     # 2. add the size of the sliced embedding layer excluding the last slice
+            #     "word_embeddings.dim_size": (config.vocab_size+world_size-1) // world_size,
+            # }
         }
 
     @staticmethod

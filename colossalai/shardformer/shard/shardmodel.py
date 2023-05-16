@@ -5,26 +5,12 @@ import transformers
 import torch.distributed as dist
 from dataclasses import dataclass
 from contextlib import suppress
+
+from colossalai.tensor.d_tensor.layout import Layout
 from ..policies.basepolicy import Policy
 from .sharder import ModelSharder
-from colossalai.tensor.d_tensor.layout import Layout
+from .shardconfig import ShardConfig
 
-
-@dataclass
-class ShardConfig:
-    """
-    The config for sharding the huggingface model for test
-    """
-    fp16: bool
-    num_gpus: int
-    rank: int
-    backend="nccl"
-    verbose: str = 'simple'
-    seed: int = None
-    require_grad: bool = False
-    master_addr: str = "127.0.0.1"
-    master_port: int = 29500
-    
 
 class ShardModel():
     """
@@ -39,18 +25,18 @@ class ShardModel():
     def __init__(
             self,
             model: nn.Module,
-            dist_config: ShardConfig, # TODO
+            shard_config: ShardConfig = None, # TODO
             custom_policy: Policy = None,
         ) -> None:
         self.model = model
-        self.dist_config = dist_config
+        self.shard_config = shard_config
         self.policy = custom_policy
         # self.layout=,  # TODO
 
         sharder=ModelSharder(
             model=self.model,
             policy=self.policy,
-            dist_config=self.dist_config,
+            shard_config=self.shard_config,
         )
         sharder.shard()
 
