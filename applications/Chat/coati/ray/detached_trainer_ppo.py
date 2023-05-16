@@ -70,6 +70,9 @@ class DetachedPPOTrainer(DetachedTrainer):
         debug: bool = False,
         update_lora_weights: bool = False,
     ) -> None:
+        # TODO(ver217): remove debug info
+        import os
+        print(os.environ)
         # set environment variables
         if env_info:
             set_dist_env(env_info=env_info)
@@ -109,7 +112,7 @@ class DetachedPPOTrainer(DetachedTrainer):
             print(f'[trainer{get_rank()}] will send state dict to {experience_maker_holder_name_list}')
 
         self._update_lora_weights = update_lora_weights
-        
+
     @ray.method(concurrency_group="model_io")
     @torch.no_grad()
     def _update_remote_makers(self, fully_update: bool = False, **config):
@@ -125,19 +128,21 @@ class DetachedPPOTrainer(DetachedTrainer):
         # sending loop
         tasks = []
 
-        for state_dict_shard in self._get_model_state_dict_shard(self.actor, fully_update = fully_update, **config):
+        for state_dict_shard in self._get_model_state_dict_shard(self.actor, fully_update=fully_update, **config):
             for target_holder in self.target_holder_list:
                 tasks.append(
-                    target_holder.update_experience_maker.remote(new_actor_state_dict=state_dict_shard,
-                                                                 new_actor_lora_config_dict=self._get_model_lora_config_dict(self.actor),
-                                                                 fully_update=fully_update))
+                    target_holder.update_experience_maker.remote(
+                        new_actor_state_dict=state_dict_shard,
+                        new_actor_lora_config_dict=self._get_model_lora_config_dict(self.actor),
+                        fully_update=fully_update))
         # sending loop
-        for state_dict_shard in self._get_model_state_dict_shard(self.critic, fully_update = fully_update, **config):
+        for state_dict_shard in self._get_model_state_dict_shard(self.critic, fully_update=fully_update, **config):
             for target_holder in self.target_holder_list:
                 tasks.append(
-                    target_holder.update_experience_maker.remote(new_critic_state_dict=state_dict_shard,
-                                                                 new_critic_lora_config_dict=self._get_model_lora_config_dict(self.critic),
-                                                                 fully_update=fully_update))
+                    target_holder.update_experience_maker.remote(
+                        new_critic_state_dict=state_dict_shard,
+                        new_critic_lora_config_dict=self._get_model_lora_config_dict(self.critic),
+                        fully_update=fully_update))
         ray.get(tasks)
         # mark end
         for target_holder in self.target_holder_list:
@@ -183,7 +188,7 @@ class DetachedPPOTrainer(DetachedTrainer):
     def strategy_save_critic_optim(self, path: str, only_rank0: bool = False) -> None:
         self.strategy.save_optimizer(self.critic_optim, path, only_rank0)
 
-    def _get_model_state_dict_shard(self, model: torch.nn.Module, fully_update = False, **config):
+    def _get_model_state_dict_shard(self, model: torch.nn.Module, fully_update=False, **config):
         for state_dict in self.strategy.get_model_state_dict_shard(model, **config):
             if not self._update_lora_weights or fully_update:
                 yield state_dict_to(state_dict)
