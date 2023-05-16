@@ -50,14 +50,13 @@ jobs:
       - name: Make the merged branch main
         run: |
           cd ColossalAI
-          echo $GITHUB_REF
           git branch -avv
-          cat docs/source/zh-Hans/features/1D_tensor_parallel.md
           curBranch=$(git rev-parse --abbrev-ref HEAD)
           echo $curBranch
           git checkout main
+          git diff
           git merge $curBranch             # fast-forward master up to the merge
-          cat docs/source/zh-Hans/features/1D_tensor_parallel.md
+          git diff
 
       - name: Build docs
         run: |
