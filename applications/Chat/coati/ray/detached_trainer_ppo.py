@@ -70,9 +70,6 @@ class DetachedPPOTrainer(DetachedTrainer):
         debug: bool = False,
         update_lora_weights: bool = False,
     ) -> None:
-        # TODO(ver217): remove debug info
-        import os
-        print(os.environ)
         # set environment variables
         if env_info:
             set_dist_env(env_info=env_info)

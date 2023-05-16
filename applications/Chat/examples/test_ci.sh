@@ -125,4 +125,5 @@ rm -rf ${BASE}/rm_ckpt_gpt.pt
 
 rm -rf ${BASE}/actor_checkpoint_prompts.pt
 
-cd ${BASE}/ray && bash test_ci.sh && cd ${BASE}
+# 3080 doesn't support P2P, skip this test
+# cd ${BASE}/ray && bash test_ci.sh && cd ${BASE}

@@ -54,4 +54,3 @@ jobs:
           SFT_DATASET: /data/scratch/github_actions/chat/data.json
           PROMPT_PATH: /data/scratch/github_actions/chat/prompts_en.jsonl
           PRETRAIN_DATASET: /data/scratch/github_actions/chat/alpaca_data.json
-          NCCL_DEBUG: INFO
