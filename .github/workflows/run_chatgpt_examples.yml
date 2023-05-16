@@ -20,7 +20,7 @@ jobs:
     runs-on: [self-hosted, gpu]
     container:
       image: hpcaitech/pytorch-cuda:1.12.0-11.3.0
-      options: --gpus all --rm -v /data/scratch/github_actions/chat:/data/scratch/github_actions/chat
+      options: --gpus all --rm -v /data/scratch/github_actions/chat:/data/scratch/github_actions/chat --shm-size=10.24gb
     timeout-minutes: 30
     defaults:
       run:
