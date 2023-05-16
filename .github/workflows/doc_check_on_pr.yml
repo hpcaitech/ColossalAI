@@ -54,6 +54,7 @@ jobs:
           curBranch=$(git rev-parse --abbrev-ref HEAD)
           echo $curBranch
           git checkout main
+          git pull
           git diff
           git merge $curBranch             # fast-forward master up to the merge
           git diff
