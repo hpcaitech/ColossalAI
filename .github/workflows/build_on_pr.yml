@@ -76,6 +76,7 @@ jobs:
   build:
     name: Build and Test Colossal-AI
     needs: detect
+    if: needs.detect.outputs.anyLibraryFileChanged == 'true'
     runs-on: [self-hosted, gpu]
     container:
       image: hpcaitech/pytorch-cuda:1.12.0-11.3.0
@@ -120,7 +121,6 @@ jobs:
           [ ! -z "$(ls -A /github/home/cuda_ext_cache/)" ] && cp -p -r /github/home/cuda_ext_cache/* /__w/ColossalAI/ColossalAI/
 
       - name: Install Colossal-AI
-        if: needs.detect.outputs.anyLibraryFileChanged == 'true'
         run: |
           CUDA_EXT=1 pip install -v -e .
           pip install -r requirements/requirements-test.txt
@@ -137,7 +137,6 @@ jobs:
           fi
 
       - name: Execute Unit Testing
-        if: needs.detect.outputs.anyLibraryFileChanged == 'true'
         run: |
           CURL_CA_BUNDLE="" PYTHONPATH=$PWD pytest --testmon --testmon-cov=. tests/
         env:
