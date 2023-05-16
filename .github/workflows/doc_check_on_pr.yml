@@ -51,9 +51,14 @@ jobs:
         run: |
           cd ColossalAI
           git branch -avv
+          git config --list
           git checkout -b main
+          git config --list
           git branch -u origin/main
+          git config --list
           git branch -avv
+          git checkout dev/chat-lazyinit
+          git config --list
 
 
       - name: Build docs
