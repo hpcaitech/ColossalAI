@@ -40,12 +40,12 @@ def check_torch_ddp_checkpointIO():
     ckpt_io.save_optimizer(optimizer, optimizer_ckpt_tempfile.name)
     ckpt_io.save_lr_scheduler(scheduler, lr_scheduler_ckpt_tempfile.name)
 
-    if ckpt_io.coordinator.is_master():
-        new_model = resnet18()
-        new_optimizer = SGD((new_model.parameters()), lr=0.001)
-        new_scheduler = torch.optim.lr_scheduler.StepLR(new_optimizer, step_size=1, gamma=0.1)
-        _, new_optimizer, _, _, new_scheduler = booster.boost(new_model, new_optimizer, lr_scheduler=new_scheduler)
+    new_model = resnet18()
+    new_optimizer = SGD((new_model.parameters()), lr=0.001)
+    new_scheduler = torch.optim.lr_scheduler.StepLR(new_optimizer, step_size=1, gamma=0.1)
+    _, new_optimizer, _, _, new_scheduler = booster.boost(new_model, new_optimizer, lr_scheduler=new_scheduler)
 
+    if ckpt_io.coordinator.is_master():
         ckpt_io.load_optimizer(new_optimizer, optimizer_ckpt_tempfile.name)
         check_state_dict_equal(optimizer.state_dict(), new_optimizer.state_dict(), False)
 
