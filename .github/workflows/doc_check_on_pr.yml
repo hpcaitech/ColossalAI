@@ -50,11 +50,8 @@ jobs:
       - name: Make the merged branch main
         run: |
           cd ColossalAI
-          git branch -avv
-          git config --list
           git checkout -b main
           git branch -u origin/main
-          git branch -avv
           git config user.name 'github-actions'
           git config user.email 'github-actions@github.com'
 
