@@ -63,7 +63,7 @@ However, there are other operations, like reductions, which require the dynamic 
 
 ## AMP in Colossal-AI
 
-We supported three AMP training methods and allowed the user to train with AMP with no code. If you want to train with amp, just assign `mixed_precision` with `fp16` when you instantiate the `Booster`. Now booster support torch amp, the other two(apex amp, naive amp) are still stared by `colossalai.initiate`, if needed, please refer to [this](ColossalAI/docs/source/en/features/mixed_precision_training.md). Next we will support `bf16`, `fp8`.
+We supported three AMP training methods and allowed the user to train with AMP with no code. If you want to train with amp, just assign `mixed_precision` with `fp16` when you instantiate the `Booster`. Now booster support torch amp, the other two(apex amp, naive amp) are still stared by `colossalai.initiate`, if needed, please refer to [this](./mixed_precision_training.md). Next we will support `bf16`, `fp8`.
 
 ### start with booster
 instantiate `Booster` with `mixed_precision="fp16"`, then you can train with torch amp.
