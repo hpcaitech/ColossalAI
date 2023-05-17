@@ -23,7 +23,7 @@
 ```math
 \left[\begin{matrix} B_1 \\ B_2 \end{matrix} \right]
 ```
-这就是所谓的行并行方式.<br>
+这就是所谓的行并行方式.
 
 为了计算
 ```math
