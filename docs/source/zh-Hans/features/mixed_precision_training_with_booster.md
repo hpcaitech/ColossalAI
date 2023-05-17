@@ -183,8 +183,7 @@ Naive AMP 的默认参数:
 
 ## 实例
 
-我们提供了一个 [运行实例](ColossalAI/examples/tutorial/feathures/amp_with_booster/README.md)
-展现如何在 Colossal-AI 使用 AMP。在该例程中，我们使用 Torch AMP, 但提供的配置文件也适用于所有 AMP 模式.
+下面我们将展现如何在 Colossal-AI 使用 AMP。在该例程中，我们使用 Torch AMP, 但提供的配置文件也适用于所有 AMP 模式.
 
 ### 步骤 1. 创建配置文件
 创建一个`config.py`文件。

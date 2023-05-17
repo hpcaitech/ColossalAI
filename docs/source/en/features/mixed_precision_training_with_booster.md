@@ -203,8 +203,7 @@ Otherwise, try smaller models or checkout more parallelization training techniqu
 
 ## Hands-on Practice
 
-We provide a [runnable example](ColossalAI/examples/tutorial/feathures/amp_with_booster/README.md) which demonstrates
-the use of AMP with Colossal-AI. In this practice, we will use Torch AMP as an example, but do note that config files are provided for all AMP modes.
+Now we will introduce the use of AMP with Colossal-AI. In this practice, we will use Torch AMP as an example, but do note that config files are provided for all AMP modes.
 
 ### Step 1. Create a config file
 
