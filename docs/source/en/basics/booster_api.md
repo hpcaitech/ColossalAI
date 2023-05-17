@@ -1,8 +1,12 @@
 # Booster API
+author: Mingyan Jiang
 
 **Prerequisite:**
 - [Distributed Training](../concepts/distributed_training.md)
 - [Colossal-AI Overview](../concepts/colossalai_overview.md)
+
+**Example Code**
+- [Train with Booster](../../../../examples/tutorial/new_api/cifar_resnet/README.md)
 
 ## Introduction
 In our new design, `colossalai.booster` replaces the role of `colossalai.initialize` to inject features into your training components (e.g. model, optimizer, dataloader) seamlessly. With these new APIs, user can integrate their model with our parallelism features more friendly. Also calling `colossalai.booster` is the standard procedure before you run into your training loops. In the sections below, I will cover how `colossalai.booster` works and what we should take note of.
@@ -78,8 +82,6 @@ def train():
     new_model = resnet18()
     booster.load_model(new_model, save_path)
 ```
-
-if you want to run a example, [click here](../../../../examples/tutorial/new_api/cifar_resnet/README.md)
 
 [more design detailers](https://github.com/hpcaitech/ColossalAI/discussions/3046)
 
