@@ -57,7 +57,8 @@
           ]
         },
         "features/pipeline_parallel",
-        "features/nvme_offload"
+        "features/nvme_offload",
+        "features/cluster_utils"
       ]
     },
     {
