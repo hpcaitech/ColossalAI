@@ -275,7 +275,7 @@ colossalai.launch_from_torch(config=args.config)
 ```
 
 ### 步骤 5. 插入 AMP
-创建一个MixedPrecision对象及torch DDP plugin（如果需要），调用 `colossalai.boost` 将所有训练组件转为为FP16模式.
+创建一个MixedPrecision对象（如果需要）及torch DDP plugin，调用 `colossalai.boost` 将所有训练组件转为为FP16模式.
 
 ```python
 plugin = TorchDDPPlugin()
