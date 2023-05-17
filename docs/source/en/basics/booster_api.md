@@ -23,7 +23,7 @@ Plugin is an important component that manages parallel configuration (eg: The ge
 ### API of booster
 
 
-{{ autodoc:colossalai.booster.Booster.__init__ }}
+{{ autodoc:colossalai.booster.Booster }}
 
 {{ autodoc:colossalai.booster.Booster.boost }}
 

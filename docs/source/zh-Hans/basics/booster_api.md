@@ -22,7 +22,7 @@ Plugin是管理并行配置的重要组件（eg：gemini插件封装了gemini加
 
 ### Booster接口
 
-{{ autodoc:colossalai.booster.Booster.__init__ }}
+{{ autodoc:colossalai.booster.Booster }}
 
 {{ autodoc:colossalai.booster.Booster.boost }}
 
