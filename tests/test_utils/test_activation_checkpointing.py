@@ -51,7 +51,7 @@ def test_activation_checkpointing(cpu_offload, use_reentrant):
     # other tests might affect this test
     reset_seeds()
 
-    # We put initilization here to avoid change cuda rng state below
+    # We put initialization here to avoid change cuda rng state below
     inputs = torch.rand(2, 2, requires_grad=True, device='cuda')
     weight = torch.rand(2, 4, requires_grad=True, device='cuda')
 

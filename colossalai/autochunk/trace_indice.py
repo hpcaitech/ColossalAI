@@ -18,7 +18,7 @@ class TraceIndice(object):
         dim(x1)=dim(x2)=dim(x3)=[a, b, c]
     This class will record every node's dims' indice, compute and source.
 
-    Attibutes:
+    Attributes:
         node_list (List)
         indice_trace_list (List): [{"indice": [...], "compute": [...], "source": [...]}, {...}]
         indice_view_list (Dict): not used for now

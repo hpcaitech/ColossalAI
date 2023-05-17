@@ -41,7 +41,7 @@ def run_routing(rank, world_size, port, rs=2, hidden_size=128, data_type=torch.f
     if data_type == torch.float16:
         layer = layer.half()
 
-    # use matrix multiplication instead of COL_MOE_KERNL in MOE dispatch and combine
+    # use matrix multiplication instead of COL_MOE_KERNEL in MOE dispatch and combine
     layer.use_kernel = False
     old_out, _ = layer(tokens)
     ech = old_out.shape
@@ -57,7 +57,7 @@ def run_routing(rank, world_size, port, rs=2, hidden_size=128, data_type=torch.f
     layer.gate_weight.grad.zero_()
 
     layer.use_kernel = True
-    new_out, _ = layer(tokens)    # get ouputs through colossal kernel
+    new_out, _ = layer(tokens)    # get outputs through colossal kernel
 
     if data_type == torch.float32:
         check_equal(old_out, new_out)
