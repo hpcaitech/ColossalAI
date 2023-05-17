@@ -1,5 +1,6 @@
 # booster 使用
-作者: Mingyan Jiang
+作者: [Mingyan Jiang](https://github.com/jiangmingyan)
+
 **预备知识:**
 - [分布式训练](../concepts/distributed_training.md)
 - [Colossal-AI 总览](../concepts/colossalai_overview.md)

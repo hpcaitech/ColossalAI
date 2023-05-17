@@ -1,5 +1,5 @@
 # Booster API
-author: Mingyan Jiang
+Author: [Mingyan Jiang](https://github.com/jiangmingyan)
 
 **Prerequisite:**
 - [Distributed Training](../concepts/distributed_training.md)
