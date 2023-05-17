@@ -28,7 +28,7 @@ CUDA_EXT=1 pip install colossalai
 
 ## 从源安装
 
-> 此文档将与版本库的主分支保持一致。如果您遇到任何问题，欢迎给我们提 issue :)
+> 此文档将与版本库的主分支保持一致。如果您遇到任何问题，欢迎给我们提 issue。
 
 ```shell
 git clone https://github.com/hpcaitech/ColossalAI.git
