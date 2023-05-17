@@ -12,8 +12,8 @@
 在我们的新设计中， `colossalai.booster` 代替 `colossalai.initialize` 将特征(例如，模型、优化器、数据加载器）无缝注入您的训练组件中。 使用booster API, 您可以更友好地将我们的并行策略整合到待训练模型中. 调用 `colossalai.booster` 是您进入训练循环前的基本操作。
 在下面的章节中，我们将介绍 `colossalai.booster` 是如何工作的以及使用时我们要注意的细节。
 
-### Plugin
-Plugin是管理并行配置的重要组件（eg：gemini插件封装了gemini加速方案）。目前支持的插件如下：
+### Booster插件
+Booster插件是管理并行配置的重要组件（eg：gemini插件封装了gemini加速方案）。目前支持的插件如下：
 
 ***GeminiPlugin:*** GeminiPlugin插件封装了 gemini 加速解决方案，即基于块内存管理的 ZeRO优化方案。
 
