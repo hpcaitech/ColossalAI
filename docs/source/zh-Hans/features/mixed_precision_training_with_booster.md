@@ -57,7 +57,7 @@ AMP 代表自动混合精度训练。
 
 ## Colossal-AI 中的 AMP
 
-我们支持三种 AMP 训练方法，并允许用户在没有改变代码的情况下使用 AMP 进行训练。booster支持amp特性注入，如果您要使用混合精度训练，则在创建booster实例时指定`mixed_precision`参数，我们现已支持torch amp，apex amp, naive amp（现已移植torch amp至booster，apex amp, naive amp仍由`colossalai.initialize`方式启动，如您需使用，请[参考](./mixed_precision_training.md)）;后续将会拓展`bf16`,`pf8`的混合精度训练.
+我们支持三种 AMP 训练方法，并允许用户在没有改变代码的情况下使用 AMP 进行训练。booster支持amp特性注入，如果您要使用混合精度训练，则在创建booster实例时指定`mixed_precision`参数，我们现已支持torch amp，apex amp, naive amp（现已移植torch amp至booster，apex amp, naive amp仍由`colossalai.initialize`方式启动，如您需使用，请[参考](./mixed_precision_training.md）;后续将会拓展`bf16`,`pf8`的混合精度训练.
 
 #### booster启动方式
 您可以在创建booster实例时，指定`mixed_precision="fp16"`即使用torch amp。
@@ -154,7 +154,7 @@ cast_model_type, patch_torch_functions, keep_batchnorm_fp32, master_weights, los
 
 ### Naive AMP 配置
 
-在 Naive AMP 模式中, 我们实现了混合精度训练，同时保持了与复杂张量和流水并行的兼容性。该 AMP 模式将所有操作转为 FP16 。下列代码块展示了该模式的booster启动方式。Naive AMP暂未迁移至booster，如果您需要使用该amp，请到该[页面](ColossalAI/docs/source/zh-Hans/features/mixed_precision_training.md)中查看。
+在 Naive AMP 模式中, 我们实现了混合精度训练，同时保持了与复杂张量和流水并行的兼容性。该 AMP 模式将所有操作转为 FP16 。下列代码块展示了该模式的booster启动方式。
 
 ```python
 from colossalai.mixed_precision import FP16NaiveMixedPrecision
