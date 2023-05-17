@@ -40,8 +40,7 @@ odd_cases = [
 
 
 @pytest.mark.skipif(version.parse(torch.__version__) < version.parse('1.12.0'), reason='torch version < 12')
-@clear_cache_before_run()
-@parameterize('func, args, kwargs', odd_cases)
+@pytest.mark.parametrize('func, args, kwargs', odd_cases)
 def test_flop_count_function(func, args, kwargs):
     rs_fwd, rs_bwd = flop_count(func, *args, **kwargs, verbose=True)
     assert rs_fwd > 0, f'fwd flop count of {func.__name__} is {rs_fwd}'
