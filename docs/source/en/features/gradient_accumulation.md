@@ -4,10 +4,10 @@ Author: Shenggui Li, Yongbin Li
 
 **Prerequisite**
 - [Define Your Configuration](../basics/define_your_config.md)
-- [Use Engine and Trainer in Training](../basics/engine_trainer.md)
+- [Booster Training](#todo) change the link
 
 **Example Code**
-- [ColossalAI-Examples Gradient Accumulation](https://github.com/hpcaitech/ColossalAI-Examples/tree/main/features/gradient_accumulation)
+- [ColossalAI-Examples Gradient Accumulation](ColossalAI/examples/tutorial/feathures/gradient_accumulation/README.md)
 
 ## Introduction
 
@@ -18,8 +18,7 @@ and only update the parameters in the preset iteration.
 
 ## Usage
 
-It is simple to use gradient accumulation in Colossal-AI. Just add this following configuration into your config file.
-The integer represents the number of iterations to accumulate gradients.
+It is simple to use gradient accumulation in Colossal-AI. Just call `booster.no_sync()` which returns a context manager. It accumulate gradients without synchronization meanwhile you should not update the gradients. Add this following configuration into your config file. The integer represents the number of iterations to accumulate gradients.
 
 ```python
 gradient_accumulation = <int>
@@ -27,11 +26,11 @@ gradient_accumulation = <int>
 
 ## Hands-on Practice
 
-We provide a [runnable example](https://github.com/hpcaitech/ColossalAI-Examples/tree/main/features/gradient_accumulation)
+We provide a [runnable example](ColossalAI/examples/tutorial/feathures/gradient_accumulation/README.md)
 to demonstrate gradient accumulation. In this example, we set the gradient accumulation size to be 4. You can run the script using this command:
 
 ```shell
-python -m torch.distributed.launch --nproc_per_node 1 --master_addr localhost --master_port 29500  run_resnet_cifar10_with_engine.py
+python -m torch.distributed.launch --nproc_per_node 1 --master_addr localhost --master_port 29500  train.py
 ```
 
 You will see output similar to the text below. This shows gradient is indeed accumulated as the parameter is not updated

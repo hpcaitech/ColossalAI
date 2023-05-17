@@ -4,10 +4,10 @@
 
 **前置教程**
 - [定义配置文件](../basics/define_your_config.md)
-- [在训练中使用Engine和Trainer](../basics/engine_trainer.md)
+- [booster使用](../basics/engine_trainer.md) #todo 更新链接
 
 **示例代码**
-- [ColossalAI-Examples Gradient Clipping](https://github.com/hpcaitech/ColossalAI-Examples/tree/main/features/gradient_clipping)
+- [ColossalAI-Examples Gradient Clipping](ColossalAI/examples/tutorial/feathures/gradient_clipping/README.md)
 
 **相关论文**
 - [On the difficulty of training Recurrent Neural Networks](https://arxiv.org/abs/1211.5063)
@@ -35,7 +35,7 @@
 不用担心它，因为 Colossal-AI 已经为你处理好。
 
 ### 使用
-要使用梯度裁剪，只需在配置文件中添加梯度裁剪范数即可。
+要使用梯度裁剪，只需booster之后，调用optimizer的`clip_grad_by_norm`或者`clip_grad_by_value`函数即可进行梯度裁剪。config.py中可配置max_norm。
 
 ```python
 clip_grad_norm = 1.0
@@ -43,7 +43,7 @@ clip_grad_norm = 1.0
 
 ### 实例
 
-我们提供了一个展现梯度裁剪的[运行实例](https://github.com/hpcaitech/ColossalAI-Examples/tree/main/features/gradient_clipping)
+我们提供了一个展现梯度裁剪的[运行实例](ColossalAI/examples/tutorial/feathures/gradient_clipping/README.md)
 。在本例中，我们将梯度裁剪范数设置为1.0，你可以使用以下命令运行脚本：
 
 ```shell

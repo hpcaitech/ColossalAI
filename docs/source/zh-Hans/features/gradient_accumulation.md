@@ -4,10 +4,10 @@
 
 **前置教程**
 - [定义配置文件](../basics/define_your_config.md)
-- [在训练中使用Engine和Trainer](../basics/engine_trainer.md)
+- [训练中使用Booster](../basics/engine_trainer.md) # todo 待更新链接。
 
 **示例代码**
-- [ColossalAI-Examples Gradient Accumulation](https://github.com/hpcaitech/ColossalAI-Examples/tree/main/features/gradient_accumulation)
+- [ColossalAI-Examples Gradient Accumulation](ColossalAI/examples/tutorial/feathures/gradient_accumulation/README.md)
 
 ## 引言
 
@@ -15,7 +15,7 @@
 
 ## 使用
 
-在 Colossal-AI 中使用梯度累积非常简单，仅需将下列配置添加进 config 文件。其中，整数值代表期望梯度累积的次数。
+在 Colossal-AI 中使用梯度累积非常简单，booster提供no_sync返回一个文件管理器，在该文件管理器下取消同步并且不更新梯度，则可以进行梯度累积， 在config.py中gradient_accumulation=4，表示进行梯度累积次数为4。
 
 ```python
 gradient_accumulation = <int>
@@ -23,11 +23,11 @@ gradient_accumulation = <int>
 
 ## 实例
 
-我们提供了一个 [运行实例](https://github.com/hpcaitech/ColossalAI-Examples/tree/main/features/gradient_accumulation)
+我们提供了一个 [运行实例](ColossalAI/examples/tutorial/feathures/gradient_accumulation/README.md)
 来展现梯度累积。在这个例子中，梯度累积次数被设置为4，你可以通过一下命令启动脚本
 
 ```shell
-python -m torch.distributed.launch --nproc_per_node 1 --master_addr localhost --master_port 29500  run_resnet_cifar10_with_engine.py
+python -m torch.distributed.launch --nproc_per_node 1 --master_addr localhost --master_port 29500  train.py
 ```
 
 你将会看到类似下方的文本输出。这展现了梯度虽然在前3个迭代中被计算，但直到最后一次迭代，参数才被更新。

@@ -4,10 +4,10 @@ Author: Boxiang Wang, Haichen Huang, Yongbin Li
 
 **Prerequisite**
 - [Define Your Configuration](../basics/define_your_config.md)
-- [Use Engine and Trainer in Training](../basics/engine_trainer.md)
+- [Use Engine and Trainer in Training](../basics/engine_trainer.md) #todo change the link
 
 **Example Code**
-- [ColossalAI-Examples Gradient Clipping](https://github.com/hpcaitech/ColossalAI-Examples/tree/main/features/gradient_clipping)
+- [ColossalAI-Examples Gradient Clipping](ColossalAI/examples/tutorial/feathures/gradient_clipping/README.md)
 
 **Related Paper**
 - [On the difficulty of training Recurrent Neural Networks](https://arxiv.org/abs/1211.5063)
@@ -47,14 +47,14 @@ But it is a good example about the difficulty to unify all communication in grad
 Do not worry about it, since Colossal-AI have handled it for you.
 
 ### Usage
-To use gradient clipping, you can just simply add gradient clipping norm in your configuration file.
+To use gradient clipping, you can just add the following code to your configuration file, and call `clip_grad_by_norm` or `clip_grad_by_value` method of optimizer which after boost if it support clip gradients. you can define `max_norm` in config.py.
 ```python
 clip_grad_norm = 1.0
 ```
 
 ### Hands-On Practice
 
-We provide a [runnable example](https://github.com/hpcaitech/ColossalAI-Examples/tree/main/features/gradient_clipping)
+We provide a [runnable example](ColossalAI/examples/tutorial/feathures/gradient_clipping/README.md)
 to demonstrate gradient clipping. In this example, we set the gradient clipping vector norm to be 1.0. You can run the script using this command:
 
 ```shell

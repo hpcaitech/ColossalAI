@@ -21,8 +21,7 @@ In this tutorial, we will cover how to define your configuration file.
 ## Configuration Definition
 
 In a configuration file, there are two types of variables. One serves as feature specification and the other serves
-as hyper-parameters. All feature-related variables are reserved keywords. For example, if you want to use mixed precision
-training, you need to use the variable name `fp16` in the config file and follow a pre-defined format.
+as hyper-parameters. All feature-related variables are reserved keywords. For example, if you want to use 1D tensor parallelism, you need to use the variable name `parallel` in the config file and follow a pre-defined format.
 
 ### Feature Specification
 
@@ -34,14 +33,13 @@ To illustrate the use of config file, we use mixed precision training as an exam
 follow the steps below.
 
 1. create a configuration file (e.g. `config.py`, the file name can be anything)
-2. define the mixed precision configuration in the config file. For example, in order to use mixed precision training
-natively provided by PyTorch, you can just write these lines of code below into your config file.
+2. define the mixed precision configuration in the config file. For example, in order to use 1D tensor parallel, you can just write these lines of code below into your config file.
 
    ```python
-   from colossalai.amp import AMP_TYPE
-
-   fp16 = dict(
-     mode=AMP_TYPE.TORCH
+   parallel = dict(
+      data=1,
+      pipeline=1,
+      tensor=dict(size=2, mode='1d'),
    )
    ```
 
@@ -54,7 +52,7 @@ the current directory.
    colossalai.launch(config='./config.py', ...)
    ```
 
-In this way, Colossal-AI knows what features you want to use and will inject this feature during `colossalai.initialize`.
+In this way, Colossal-AI knows what features you want to use and will inject this feature.
 
 ### Global Hyper-parameters
 
