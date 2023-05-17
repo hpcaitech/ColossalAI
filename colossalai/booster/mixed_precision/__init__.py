@@ -1,6 +1,7 @@
 from .bf16 import BF16MixedPrecision
 from .fp8 import FP8MixedPrecision
 from .fp16_apex import FP16ApexMixedPrecision
+from .fp16_naive import FP16NaiveMixedPrecision
 from .fp16_torch import FP16TorchMixedPrecision
 from .mixed_precision_base import MixedPrecision
 
@@ -12,6 +13,7 @@ __all__ = [
 _mixed_precision_mapping = {
     'fp16': FP16TorchMixedPrecision,
     'fp16_apex': FP16ApexMixedPrecision,
+    'fp16_naive': FP16NaiveMixedPrecision,
     'bf16': BF16MixedPrecision,
     'fp8': FP8MixedPrecision
 }
