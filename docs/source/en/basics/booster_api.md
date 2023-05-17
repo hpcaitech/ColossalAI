@@ -39,7 +39,7 @@ Plugin is an important component that manages parallel configuration (eg: The ge
 
 {{ autodoc:colossalai.booster.Booster.load_lr_scheduler }}
 
-## usage
+## Usage
 In a typical workflow, you need to launch distributed environment at the beginning of training script and create objects needed (such as models, optimizers, loss function, data loaders etc.) firstly, then call `colossalai.booster` to inject features into these objects, After that, you can use our booster API and these returned objects to continue the rest of your training processes.
 
 A pseudo-code example is like below:

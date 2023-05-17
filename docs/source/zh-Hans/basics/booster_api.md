@@ -17,7 +17,7 @@ Plugin是管理并行配置的重要组件（eg：gemini插件封装了gemini加
 
 ***LowLevelZeroPlugin:*** LowLevelZeroPlugin插件封装了零冗余优化器的 1/2 阶段。阶段 1：跨数据并行工作器/GPU 的分片优化器状态。阶段 2：分片优化器状态 + 跨数据并行工作者/GPU 的梯度。
 
-### API of booster
+### Booster接口
 
 {{ autodoc:colossalai.booster.Booster.__init__ }}
 
@@ -39,7 +39,7 @@ Plugin是管理并行配置的重要组件（eg：gemini插件封装了gemini加
 
 {{ autodoc:colossalai.booster.Booster.load_lr_scheduler }}
 
-## usage
+## 使用方法及示例
 
 在使用colossalai训练时，首先需要在训练脚本的开头启动分布式环境，并创建需要使用的模型、优化器、损失函数、数据加载器等对象等。之后，调用`colossalai.booster` 将特征注入到这些对象中，您就可以使用我们的booster API去进行您接下来的训练流程。
 
