@@ -19,7 +19,7 @@ Plugin是管理并行配置的重要组件（eg：gemini插件封装了gemini加
 
 ***TorchDDPPlugin:*** TorchDDPPlugin插件封装了DDP加速方案，实现了模型级别的数据并行，可以跨多机运行。
 
-***LowLevelZeroPlugin:*** LowLevelZeroPlugin插件封装了零冗余优化器的 1/2 阶段。阶段 1：切分优化器参数，分发到各并发进程或并发GPU上。阶段 2：切分优化器参数及梯度到各并发进程或并发GPU上。
+***LowLevelZeroPlugin:*** LowLevelZeroPlugin插件封装了零冗余优化器的 1/2 阶段。阶段 1：切分优化器参数，分发到各并发进程或并发GPU上。阶段 2：切分优化器参数及梯度，分发到各并发进程或并发GPU上。
 
 ### Booster接口
 
