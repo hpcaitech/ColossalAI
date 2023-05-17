@@ -4,7 +4,7 @@
 
 **前置教程**
 - [定义配置文件](../basics/define_your_config.md)
-- [booster使用](../basics/define_your_config.md) # todo, 更新链接
+- [booster使用](../basics/booster_api.md)
 
 **相关论文**
 - [Accelerating Scientific Computations with Mixed Precision Algorithms](https://arxiv.org/abs/0808.2794)

@@ -4,7 +4,7 @@ Author: Chuanrui Wang, Shenggui Li, Yongbin Li
 
 **Prerequisite**
 - [Define Your Configuration](../basics/define_your_config.md)
-- [Train With Booster](../basics/define_your_config.md) # todo, change the link
+- [Train With Booster](../basics/booster_api.md)
 
 **Related Paper**
 - [Accelerating Scientific Computations with Mixed Precision Algorithms](https://arxiv.org/abs/0808.2794)
