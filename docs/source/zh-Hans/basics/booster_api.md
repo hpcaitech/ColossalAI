@@ -83,8 +83,6 @@ def train():
     booster.load_model(new_model, save_path)
 ```
 
-如果您想运行一个可执行的例子, [请点击](../../../../examples/tutorial/new_api/cifar_resnet/README.md)
-
 [更多的设计细节请参考](https://github.com/hpcaitech/ColossalAI/discussions/3046)
 
 <!-- doc-test-command: torchrun --standalone --nproc_per_node=1 booster_api.py  -->
