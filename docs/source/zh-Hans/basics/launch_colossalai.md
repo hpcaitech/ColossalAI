@@ -93,21 +93,12 @@ PyTorch自带的启动器需要在每个节点上都启动命令才能启动多�
 首先，我们需要在代码里指定我们的启动方式。由于这个启动器是PyTorch启动器的封装，那么我们自然而然应该使用`colossalai.launch_from_torch`。
 分布式环境所需的参数，如 rank, world size, host 和 port 都是由 PyTorch 启动器设置的，可以直接从环境变量中读取。
 
-config.py
-```python
-BATCH_SIZE = 512
-LEARNING_RATE = 3e-3
-WEIGHT_DECAY = 0.3
-NUM_EPOCHS = 2
-```
-train.py
 ```python
 import colossalai
 
 colossalai.launch_from_torch(
-    config="./config.py",
+    config=<CONFIG>,
 )
-...
 ```
 
 接下来，我们可以轻松地在终端使用`colossalai run`来启动训练。下面的命令可以在当前机器上启动一个4卡的训练任务。

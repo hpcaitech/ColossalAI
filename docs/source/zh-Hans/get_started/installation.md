@@ -38,13 +38,13 @@ cd ColossalAI
 pip install -r requirements/requirements.txt
 
 # install colossalai
-CUDA_EXT=1 pip install .
+pip install .
 ```
 
-如果您不想安装和启用 CUDA 内核融合（使用融合优化器时强制安装）您可以不添加`CUDA_EXT=1`：
+如果您不想安装和启用 CUDA 内核融合（使用融合优化器时强制安装）：
 
 ```shell
-pip install .
+NO_CUDA_EXT=1 pip install .
 ```
 
 <!-- doc-test-command: echo "installation.md does not need test" -->
