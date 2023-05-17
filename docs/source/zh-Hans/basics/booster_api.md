@@ -5,7 +5,7 @@
 - [Colossal-AI 总览](../concepts/colossalai_overview.md)
 
 **示例代码**
-- [使用booster训练](../../../../examples/tutorial/new_api/cifar_resnet/README.md)
+- [使用booster训练](/examples/tutorial/new_api/cifar_resnet/README.md)
 
 ## 简介
 在我们的新设计中， `colossalai.booster` 代替 `colossalai.initialize` 将特征(例如，模型、优化器、数据加载器）无缝注入您的训练组件中。 使用booster API, 您可以更友好地将我们的并行策略整合到待训练模型中. 调用 `colossalai.booster` 是您进入训练循环前的基本操作。
