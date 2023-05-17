@@ -8,17 +8,19 @@
 - [使用booster训练](../../../../examples/tutorial/new_api/cifar_resnet/README.md)
 
 ## 简介
-在我们的新设计中， `colossalai.booster` 代替 `colossalai.initialize` 将特征(例如，模型、优化器、数据加载器）无缝注入您的训练组件中。 使用booster API, 您可以更友好的将我们的并行策略整合到模型中. 调用 `colossalai.booster` 是您进入训练循环前的基本操作。
+在我们的新设计中， `colossalai.booster` 代替 `colossalai.initialize` 将特征(例如，模型、优化器、数据加载器）无缝注入您的训练组件中。 使用booster API, 您可以更友好地将我们的并行策略整合到模型中. 调用 `colossalai.booster` 是您进入训练循环前的基本操作。
 在下面的章节中，我们将介绍 `colossalai.booster` 是如何工作的以及使用中我们要注意的细节。
 
 ### Plugin
 Plugin是管理并行配置的重要组件（eg：gemini插件封装了gemini加速方案）。目前支持的插件如下：
 
-***GeminiPlugin:*** GeminiPlugin插件封装了 gemini 加速解决方案，即具有基于块的内存管理的 ZeRO优化方案。
+***GeminiPlugin:*** GeminiPlugin插件封装了 gemini 加速解决方案，即具有基于块内存管理的 ZeRO优化方案。
 
-***TorchDDPPlugin:*** TorchDDPPlugin插件封装了DDP加速方案，实现了模块级别的数据并行，可以跨多机运行。
+***TorchDDPPlugin:*** TorchDDPPlugin插件封装了DDP加速方案，实现了模型级别的数据并行，可以跨多机运行。
 
-***LowLevelZeroPlugin:*** LowLevelZeroPlugin插件封装了零冗余优化器的 1/2 阶段。阶段 1：跨数据并行工作器/GPU 的分片优化器状态。阶段 2：分片优化器状态 + 跨数据并行工作者/GPU 的梯度。
+***LowLevelZeroPlugin:*** LowLevelZeroPlugin插件封装了零冗余优化器的 1/2 阶段。阶段 1：切分优化器参数，分发到各并发进程或并发GPU上。阶段 2：切分优化器参数及梯度到各并发进程或并发GPU上。
+
+***LowLevelZeroPlugin:*** This plugin wraps the 1/2 stage of Zero Redundancy Optimizer. Stage 1 : Shards optimizer states across data parallel workers/GPUs. Stage 2 : Shards optimizer states + gradients across data parallel workers/GPUs.
 
 ### Booster接口
 
@@ -44,7 +46,7 @@ Plugin是管理并行配置的重要组件（eg：gemini插件封装了gemini加
 
 ## 使用方法及示例
 
-在使用colossalai训练时，首先需要在训练脚本的开头启动分布式环境，并创建需要使用的模型、优化器、损失函数、数据加载器等对象等。之后，调用`colossalai.booster` 将特征注入到这些对象中，您就可以使用我们的booster API去进行您接下来的训练流程。
+在使用colossalai训练时，首先需要在训练脚本的开头启动分布式环境，并创建需要使用的模型、优化器、损失函数、数据加载器等对象。之后，调用`colossalai.booster` 将特征注入到这些对象中，您就可以使用我们的booster API去进行您接下来的训练流程。
 
 以下是一个伪代码示例，将展示如何使用我们的booster API进行模型训练:
 
