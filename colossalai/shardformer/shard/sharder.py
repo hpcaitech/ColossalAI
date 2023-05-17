@@ -1,5 +1,6 @@
+import torch
 import torch.nn as nn
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Type, Union
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Type, Union, Callable
 from .shardconfig import ShardConfig
 from dataclasses import dataclass
 from ..policies.basepolicy import Policy, Layer
@@ -44,7 +45,8 @@ class ModelSharder(object):
         """
         Replace the model to policy defined model
         Mainly modify the forward and backward to fit distributed model
-        e.g.:
+        
+        e.g.
             BertForMaskedLM.forward -> BertForMaskedLM_.forward
         """
         inject_methods = ["forward"]
@@ -78,17 +80,19 @@ class ModelSharder(object):
         """
         argument_policies = policy_cls.argument_policy(self.model_config, 2)
         for argument_policy in argument_policies.items():
+            print(argument_policy)
             origin_layer_cls = argument_policy[0]
-            attr_dict = argument_policy[1]
-            self.reverse_replace_layer(model, origin_layer_cls, attr_dict, policy_cls)
+            attr_dict = argument_policy[1].attr_dict
+            param_funcs = argument_policy[1].param_funcs
+            self.reverse_replace_layer(model, origin_layer_cls, attr_dict, param_funcs)
 
 
     def reverse_replace_layer(
             self,
             layer: nn.Module,
             origin_cls: nn.Module,
-            attr_dict: Dict,
-            policy_cls: Policy,
+            attr_dict: Dict[str, Any],
+            param_funcs: List[Callable],
         ) -> None:
         """
         Reverse the replace layer operation
@@ -106,147 +110,97 @@ class ModelSharder(object):
                     setattr_(child, k, v, ignore=True)
                 # print(f"Sharding {name} layer", replac_layer.attention.self.__dict__)
                 # setattr_(layer, name, self.shard_one_layer(child, policy_cls))
-                self.shard_one_layer(child, policy_cls)
+                self.shard_one_layer(child, param_funcs)
                 continue
 
-            self.reverse_replace_layer(child, origin_cls, attr_dict, policy_cls)
+            self.reverse_replace_layer(child, origin_cls, attr_dict, param_funcs)
         return layer
 
 
-    def shard_layer(self, policy_obj: Policy) -> nn.Module:
+    def shard_one_layer(self, org_layer: nn.Module, param_funcs: List[Callable]) -> None:
         """
-        Shard the layer's weight and bias according to the policy
-        
+        Shard one layer according to the policy, the layer should be the same class as the key in policy's argument_policy return dict
+
         Args:
-            policy
-        
-        Returns:
-            The sharded layer: nn.Module
-        """
-        attn_inw, attn_inb, attn_inw_attr, attn_inb_attr = self.preprocess(
-            policy.attn_in(),
-            policy,
-        )
+            org_layer: The origin layer object to shard
+            param_funcs: The function list to get shard information in policy class
 
-        attn_outw, attn_outb, attn_outw_attr, attn_outb_attr = self.preprocess(
-            policy.attn_out(),
-            policy,
-        )
-        mlp_inw, mlp_inb, mlp_inw_attr, mlp_inb_attr = self.preprocess(
-            policy.mlp_in(),
-            policy,
-        )
-        mlp_outw, mlp_outb, mlp_outw_attr, mlp_outb_attr = self.preprocess(
-            policy.mlp_out(),
-            policy,
-        )
-        emd_w, emd_b, emd_w_attr, emd_b_attr = self.preprocess(
-            policy.embedding(),
-            policy,
-        )
-        unemd_w, unemd_b, unemd_w_attr, unemd_b_attr = self.preprocess(
-            policy.unembedding(),
-            policy,
-        )
-
-        policy = self.set_parameters(
-            policy,
-            attn_inw,
-            attn_inb,
-            *self.slicer.column_slice(
-                (attn_inw, attn_inb),
-                (attn_inw_attr, attn_inb_attr),
-            ),
-        )
-
-        policy = self.set_parameters(
-            policy,
-            attn_outw,
-            attn_outb,
-            *self.slicer.row_slice(
-                (attn_outw, attn_outb),
-                (attn_outw_attr, attn_outb_attr),
-            ),
-        )
-
-        policy = self.set_parameters(
-            policy,
-            mlp_inw,
-            mlp_inb,
-            *self.slicer.column_slice(
-                (mlp_inw, mlp_inb),
-                (mlp_inw_attr, mlp_inb_attr),
-            ),
-        )
-
-        policy = self.set_parameters(
-            policy,
-            mlp_outw,
-            mlp_outb,
-            *self.slicer.row_slice(
-                (mlp_outw, mlp_outb),
-                (mlp_outw_attr, mlp_outb_attr),
-            ),
-        )
-
-        policy = self.set_parameters(
-            policy,
-            emd_w,
-            emd_b,
-            *self.slicer.column_slice(
-                (emd_w, emd_b),
-                (emd_w_attr, emd_b_attr),
-            ),
-        )
-
-        policy = self.set_parameters(
-            policy,
-            unemd_w,
-            unemd_b,
-            *self.slicer.column_slice(
-                (unemd_w, unemd_b),
-                (unemd_w_attr, unemd_b_attr),
-            ),
-        )
-
-        return policy_obj.replace_layer
-
-    def shard_one_layer(self, org_layer: nn.Module, policy: Policy):
-        """
-        Shard one layer
         """
         # print(org_layer)
-        attn_in = policy.attn_in()
-        for layer in attn_in:
-            weight = None
-            bias = None
-            weight_attr = layer.weight
-            bias_attr = layer.bias
-            replace_layer_cls = layer.replace_layer
-            ignore = layer.ignore
+        for func in param_funcs:
+            param_attrs = func()
+            for layer in param_attrs:
+                weight = None
+                bias = None
+                weight_attr = layer.weight
+                bias_attr = layer.bias
+                replace_layer_cls = layer.replace_layer
+                ignore = layer.ignore
 
-            if weight_attr is not None:
-                if hasattr_(org_layer, weight_attr):
-                    weight = getattr_(org_layer, weight_attr)
-                elif not ignore:
-                    raise ValueError(f"Layer {org_layer.__class__.__qualname__} has no attribute {weight_attr}")
+                if weight_attr is not None:
+                    if hasattr_(org_layer, weight_attr):
+                        weight = getattr_(org_layer, weight_attr)
+                    elif not ignore:
+                        raise ValueError(f"Layer {org_layer.__class__.__qualname__} has no attribute {weight_attr}")
 
-            if bias_attr is not None:
-                if hasattr_(org_layer, bias_attr):
-                    bias = getattr_(org_layer, bias_attr)
-                elif not ignore:
-                    raise ValueError(f"Layer {org_layer.__class__.__qualname__} has no attribute {bias_attr}")
+                if bias_attr is not None:
+                    if hasattr_(org_layer, bias_attr):
+                        bias = getattr_(org_layer, bias_attr)
+                    elif not ignore:
+                        raise ValueError(f"Layer {org_layer.__class__.__qualname__} has no attribute {bias_attr}")
 
-            # dont have the attribute in policy 
-            if weight is None and bias is None and ignore:
-                continue
+                # dont have the attribute in policy, and ignore is true
+                if weight is None and bias is None and ignore:
+                    continue
 
-            # set the sliced weight and bias to the new nn_col layer
-            assert weight is not None or bias is not None
-            weight, bias = self.slicer.slice_weight_bias(weight, bias, 0)
-            replece_layer = replace_layer_cls(weight.shape[0], weight.shape[1], bias=True)
-            # print(replece_layer)
-            # replece_layer.weight = nn.Parameter(weight)
-            # replece_layer.bias = nn.Parameter(bias)
-            setattr_(org_layer, weight_attr[:weight_attr.rfind(".")], replece_layer, ignore=ignore)
-    
+                # set the sliced weight and bias to the new nn_col layer
+                assert weight is not None or bias is not None
+                layer_attr = (lambda x: x[:x.rfind(".")])(weight_attr or bias_attr)
+
+                weight, bias = self.slicer.slice_weight_bias(weight, bias, 0)
+                
+                # create new object to replace the origin layer
+                # TODO: col_nn
+                if replace_layer_cls is not None:
+                    replece_layer = replace_layer_cls(weight.shape[0], weight.shape[1], bias=True)
+                    # print(replece_layer)
+                    # replece_layer.weight = nn.Parameter(weight)
+                    # replece_layer.bias = nn.Parameter(bias)
+                    setattr_(org_layer, layer_attr, replece_layer, ignore=ignore)
+                # do not replace the layer object, just replace the weight and bias
+                else:
+                    self.set_param(org_layer, layer_attr, weight, bias)
+
+
+    def set_param(self, layer: Any, layer_attr: str, weight: torch.Tensor, bias: torch.Tensor = None) -> None:
+        """
+        Reset the weight and bias of the layer object
+
+        Args:
+            layer: The layer object
+            layer_attr: The attribute name of the layer
+            weight: The weight of the layer
+            bias: The bias of the layer
+        """
+        assert weight is not None or bias is not None
+        if weight is not None:
+            setattr_(layer, layer_attr+".weight", nn.Parameter(weight))
+            self.set_layer_size(layer, layer_attr, weight.shape)
+        if bias is not None:
+            setattr_(layer, layer_attr+".bias", nn.Parameter(bias))
+
+
+    def set_layer_size(self, layer: nn.Module, layer_attr: str, size: torch.Size) -> None:
+        """
+        Set the layer attribute
+
+        Args:
+            layer: The layer object
+            layer_attr: The attribute name of the layer
+            size: Torch.size
+        """
+        attrs = ["out_features", "is_features"]
+        for i, attr in enumerate(attrs):
+            print(layer, f"{layer_attr}.{attr}")
+            if hasattr_(layer, f"{layer_attr}.{attr}"):
+                setattr_(layer, f"{layer_attr}.{attr}", size[i])    

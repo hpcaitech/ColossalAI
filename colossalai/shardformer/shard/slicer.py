@@ -21,8 +21,10 @@ class Slicer():
         bias: torch.Tensor,
         dim: int,
     ) -> Tuple[torch.Tensor,torch.Tensor]:
-        weight = self.slice_tensor(weight, dim, False)
-        bias = self.slice_tensor(bias, dim, True)
+        if weight is not None:
+            weight = self.slice_tensor(weight, dim, False)
+        if bias is not None:
+            bias = self.slice_tensor(bias, dim, True)
         return weight, bias
 
     def slice_tensor(

@@ -3,9 +3,14 @@
 import torch
 import torch.nn as nn
 import colossalai.nn as col_nn
-from typing import Any, Dict, List, Type, Tuple
+from typing import Any, Dict, List, Type, Tuple, Callable
 from transformers import AutoConfig
 from dataclasses import dataclass
+
+@dataclass
+class Argument:
+    attr_dict : Dict[str, Any]
+    param_funcs : List[Callable]
 
 @dataclass
 class Layer:
@@ -18,41 +23,51 @@ class Layer:
         replace_layer: The layer to replace the original layer
         ignore: Whether to ignore this layer if it is not in the model
     """
-    weight: str
-    bias: str
-    replace_layer: Any
+    weight: str = None
+    bias: str = None
+    replace_layer: Any = None
     ignore: bool = False
 
 class Policy():
     """
     The base class for all the policies
     """
-    def __init__(
-            self,
-            replace_layer: nn.Module
-            ) -> None:
-        """
-        Init the policy class
-        
-        Args:
-            inject_layer: Layer the policy will apply to
-        """
-        self.replace_layer = replace_layer
-
     @staticmethod
-    def argument_policy(config, dist_setting: int) -> Dict[nn.Module, Dict]:
+    def argument_policy(model_config, shard_config: int) -> Dict[nn.Module,Argument]:
         """
-        Return the argument and its value need to be modified
+        Return a dict, the key is layer will be modified and the value is the Argument class with param setting and param functions
 
         Args:
-            config: The config of transformer model
-            dist_setting: The setting of distributed model
+            model_config: The config of transformer model
+            shard_setting: The config of distributed model
         
         Return:
             Dict for the modify policy,
             {
-                origin_layer1 (nn.Module): {argument1: value1, argument2: value2 ...},
-                origin_layer2 (nn.Module): {argument1: value1, argument2: value2 ...},
+                origin layer class1 (nn.Module): Argument(
+                    attr_dict = {
+                        argument1: value1,
+                        argument2: value2,
+                        ...
+                    },
+                    param_funcs = [
+                        staticmethod1,
+                        staticmethod2,
+                        ...
+                    ]
+                ),
+                origin layer class2 (nn.Module): Argument(
+                    attr_dict = {
+                        argument1: value1,
+                        argument2: value2,
+                        ...
+                    },
+                    param_funcs = [
+                        staticmethod1,
+                        staticmethod2,
+                        ...
+                    ]
+                ),
                 ...
             }
 
