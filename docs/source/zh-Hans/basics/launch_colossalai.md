@@ -74,7 +74,7 @@ import colossalai
 args = colossalai.get_default_parser().parse_args()
 
 # launch distributed environment
-colossalai.launch(config=<CONFIG>,
+colossalai.launch(config=args.config,
                   rank=args.rank,
                   world_size=args.world_size,
                   host=args.host,
