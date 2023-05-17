@@ -20,8 +20,6 @@ Plugin是管理并行配置的重要组件（eg：gemini插件封装了gemini加
 
 ***LowLevelZeroPlugin:*** LowLevelZeroPlugin插件封装了零冗余优化器的 1/2 阶段。阶段 1：切分优化器参数，分发到各并发进程或并发GPU上。阶段 2：切分优化器参数及梯度到各并发进程或并发GPU上。
 
-***LowLevelZeroPlugin:*** This plugin wraps the 1/2 stage of Zero Redundancy Optimizer. Stage 1 : Shards optimizer states across data parallel workers/GPUs. Stage 2 : Shards optimizer states + gradients across data parallel workers/GPUs.
-
 ### Booster接口
 
 {{ autodoc:colossalai.booster.Booster.__init__ }}
