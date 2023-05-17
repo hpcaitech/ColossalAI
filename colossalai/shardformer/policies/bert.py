@@ -1,6 +1,6 @@
 from typing import Dict, List, Tuple, Type, Any, Callable
 import torch.nn as nn
-from .basepolicy import Policy, Layer, Argument
+from .basepolicy import Policy, Layer, Argument, Col_Layer, Row_Layer
 import colossalai.nn as col_nn
 from transformers.models.bert.modeling_bert import BertLayer, BertEmbeddings
 from dataclasses import dataclass
@@ -23,14 +23,14 @@ class BertPolicy(Policy):
                 param_funcs = [
                     BertPolicy.attn_in,
                     BertPolicy.attn_out,
-                    # BertPolicy.mlp_in,
-                    # BertPolicy.mlp_out
+                    BertPolicy.mlp_in,
+                    BertPolicy.mlp_out
                 ]
             ), 
             BertEmbeddings: Argument(
                 attr_dict = {
                     # 1. shard vocab size
-                    "word_embeddings.num_embeddings": config.vocab_size // world_size,
+                    # "word_embeddings.num_embeddings": config.vocab_size // world_size,
                     # 2. add the size of the sliced embedding layer excluding the last slice
                     "word_embeddings.dim_size": (config.vocab_size+world_size-1) // world_size,
                 },
@@ -44,7 +44,7 @@ class BertPolicy(Policy):
     @staticmethod
     def attn_in() -> List:
         return [
-            Layer(
+            Col_Layer(
                 weight="attention.self.query.weight",
                 bias="attention.self.query.bias",
                 replace_layer=col_nn.Linear,
@@ -99,20 +99,20 @@ class BertPolicy(Policy):
     @staticmethod
     def mlp_in() -> List:
         return [
-             Layer(
+             Col_Layer(
                 weight="intermediate.dense.weight",
                 bias="intermediate.dense.bias",
-                replace_layer=col_nn.Linear,
+                # replace_layer=col_nn.Linear,
             ),
         ]
     
     @staticmethod
     def mlp_out() -> List:
         return [
-             Layer(
+             Row_Layer(
                 weight="output.dense.weight",
                 bias="output.dense.bias",
-                replace_layer=col_nn.Linear,
+                # replace_layer=col_nn.Linear,
             ),
         ]
 

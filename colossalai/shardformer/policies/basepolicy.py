@@ -28,6 +28,23 @@ class Layer:
     replace_layer: Any = None
     ignore: bool = False
 
+
+@dataclass
+class Col_Layer(Layer):
+    """
+    Class for col shard layer in MegatronLM
+    """
+    pass
+
+
+@dataclass
+class Row_Layer(Layer):
+    """
+    Class for col shard layer in MegatronLM
+    """
+    pass
+
+
 class Policy():
     """
     The base class for all the policies

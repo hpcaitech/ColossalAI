@@ -6,9 +6,10 @@ class ShardConfig:
     """
     The config for sharding the huggingface model for test
     """
-    fp16: bool
-    num_gpus: int
     rank: int
+    fp16: bool = True
+    num_gpus: int = 2
+    world_size: int = 2
     backend="nccl"
     verbose: str = 'simple'
     seed: int = None

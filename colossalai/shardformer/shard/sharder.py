@@ -80,7 +80,6 @@ class ModelSharder(object):
         """
         argument_policies = policy_cls.argument_policy(self.model_config, 2)
         for argument_policy in argument_policies.items():
-            print(argument_policy)
             origin_layer_cls = argument_policy[0]
             attr_dict = argument_policy[1].attr_dict
             param_funcs = argument_policy[1].param_funcs
@@ -128,14 +127,14 @@ class ModelSharder(object):
         """
         # print(org_layer)
         for func in param_funcs:
-            param_attrs = func()
-            for layer in param_attrs:
+            policy_layers = func()
+            for policy_layer in policy_layers:
                 weight = None
                 bias = None
-                weight_attr = layer.weight
-                bias_attr = layer.bias
-                replace_layer_cls = layer.replace_layer
-                ignore = layer.ignore
+                weight_attr = policy_layer.weight
+                bias_attr = policy_layer.bias
+                replace_layer_cls = policy_layer.replace_layer
+                ignore = policy_layer.ignore
 
                 if weight_attr is not None:
                     if hasattr_(org_layer, weight_attr):
@@ -157,7 +156,7 @@ class ModelSharder(object):
                 assert weight is not None or bias is not None
                 layer_attr = (lambda x: x[:x.rfind(".")])(weight_attr or bias_attr)
 
-                weight, bias = self.slicer.slice_weight_bias(weight, bias, 0)
+                weight, bias = self.slicer.slice_weight_bias(weight, bias, policy_layer.__class__)
                 
                 # create new object to replace the origin layer
                 # TODO: col_nn
@@ -199,8 +198,7 @@ class ModelSharder(object):
             layer_attr: The attribute name of the layer
             size: Torch.size
         """
-        attrs = ["out_features", "is_features"]
+        attrs = ["out_features", "in_features"]
         for i, attr in enumerate(attrs):
-            print(layer, f"{layer_attr}.{attr}")
             if hasattr_(layer, f"{layer_attr}.{attr}"):
                 setattr_(layer, f"{layer_attr}.{attr}", size[i])    
