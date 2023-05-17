@@ -6,9 +6,6 @@
 - [定义配置文件](../basics/define_your_config.md)
 - [booster使用](../basics/define_your_config.md) # todo, 更新链接
 
-**示例代码**
-- [自动混合精度训练示例](ColossalAI/examples/tutorial/feathures/amp_with_booster/README.md)
-
 **相关论文**
 - [Accelerating Scientific Computations with Mixed Precision Algorithms](https://arxiv.org/abs/0808.2794)
 

@@ -6,9 +6,6 @@ Author: Chuanrui Wang, Shenggui Li, Yongbin Li
 - [Define Your Configuration](../basics/define_your_config.md)
 - [Train With Booster](../basics/define_your_config.md) # todo, change the link
 
-**Example Code**
-- [AMP train examples](ColossalAI/examples/tutorial/feathures/amp_with_booster/README.md)
-
 **Related Paper**
 - [Accelerating Scientific Computations with Mixed Precision Algorithms](https://arxiv.org/abs/0808.2794)
 
