@@ -12,7 +12,7 @@ from .sharder import ModelSharder
 from .shardconfig import ShardConfig
 
 
-class ShardModel():
+class ShardModel(object):
     """
     The class for sharding the huggingface model, self.model is the sharded model
     Just creat a new ShardModel object to shard huggingface model

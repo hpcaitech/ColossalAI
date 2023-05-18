@@ -48,6 +48,16 @@ class Row_Layer(Layer):
 class Policy():
     """
     The base class for all the policies
+    For each different model, it should have a different policy class, like BertPolicy for Bert Model 
+    or OPTPolicy for OPT model. 
+    AutoPolicy:
+        shardformer already defined some policies for huggingface model, just set custom_policy = None
+        to use the auto policy. In shardformer autopolicy, we define a base policy for one type model,
+        like BertPolicy, and for each different Bert modle in huggingface like, BertForMaskedLM, 
+        BertForSequenceClassification, etc., for each different Bert model we difine different policy class
+        and overwrite the method inject_policy
+    
+    CustomPolicy:
     """
     @staticmethod
     def argument_policy(model_config, shard_config: int) -> Dict[nn.Module,Argument]:
@@ -89,7 +99,7 @@ class Policy():
             }
 
         """
-        return {}
+        raise NotImplementedError
     
 
     @staticmethod
@@ -102,6 +112,7 @@ class Policy():
         """
         return ()
     
+
     @staticmethod
     def attn_in() -> List:
         """
@@ -110,7 +121,8 @@ class Policy():
         Returns:
             List[Layer]: List of layer object, each layer is the new 
         """
-        return []
+        return NotImplementedError
+
 
     @staticmethod
     def attn_out() -> List:
@@ -120,7 +132,8 @@ class Policy():
         Returns:
             List[Layer]: List of layer object
         """
-        return []
+        return NotImplementedError
+
 
     @staticmethod
     def mlp_in() -> List:
@@ -130,7 +143,8 @@ class Policy():
         Returns:
             List[Layer]: List of layer object
         """
-        return []
+        return NotImplementedError
+        
 
     @staticmethod
     def mlp_out() -> List:
@@ -140,7 +154,8 @@ class Policy():
         Returns:
             List[Layer]: List of layer object
         """
-        return []
+        return NotImplementedError
+        
     
     @staticmethod
     def embedding()->List:
@@ -151,7 +166,8 @@ class Policy():
         Return:
             List[Layer]: List of layer object
         """
-        return []
+        return NotImplementedError
+        
     
     @staticmethod
     def unembedding()->List:
@@ -162,17 +178,4 @@ class Policy():
         Return:
             List[Layer]: List of layer object
         """
-        return []
-
-
-    # @staticmethod
-    # def original_layer_class() -> Type[nn.Module]:
-    #     """
-    #     Class to apply the policy to
-    #     e.g. BertLayer, GPT2Block, BartEncoderLayer, ...
-
-    #     Returns:
-    #         Type[nn.Module]: original layer class
-    #     """
-    #     raise NotImplementedError
-
+        return NotImplementedError

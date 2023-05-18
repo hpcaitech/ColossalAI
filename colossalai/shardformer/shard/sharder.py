@@ -33,14 +33,13 @@ class ModelSharder(object):
 
 
     def shard(self) -> None:
-        self.inject_model(self.model, self.policy)
-        self.replace_layer(self.model, self.policy)
+        self.inject_model(self.model)
+        self.replace_layer(self.model)
   
         
     def inject_model(
             self,
             model: nn.Module,
-            policy_cls: Policy
         ) -> None:
         """
         Replace the model to policy defined model
@@ -49,19 +48,18 @@ class ModelSharder(object):
         e.g.
             BertForMaskedLM.forward -> BertForMaskedLM_.forward
         """
-        inject_methods = ["forward"]
-        inject_policy = policy_cls.inject_policy()
+        inject_policy = self.policy.inject_policy()
 
         org_model_cls = inject_policy[0]
         shard_model_cls = inject_policy[1]
 
         if model.__class__ == org_model_cls:
-            for inject_method in inject_methods:
-                if hasattr(model, inject_method):
+            for key in shard_model_cls.__dict__.keys():
+                if hasattr(model.__class__, key):
                     setattr(
-                        model,
-                        inject_method,
-                        getattr(shard_model_cls,inject_method),
+                        model.__class__,
+                        key,
+                        getattr(shard_model_cls,key),
                     )
         else:
             raise NotImplementedError(f"{model.__class__} is not implemented so far")
@@ -70,7 +68,6 @@ class ModelSharder(object):
     def replace_layer(
             self,
             model: nn.Module,
-            policy_cls: Policy
         ) -> None:
         """
         Replace the layer according to the policy, and replace the layer one by one
@@ -78,7 +75,7 @@ class ModelSharder(object):
         Args:
             layer: The layer to shard
         """
-        argument_policies = policy_cls.argument_policy(self.model_config, 2)
+        argument_policies = self.policy.argument_policy(self.model_config, self.shard_config.world_size)
         for argument_policy in argument_policies.items():
             origin_layer_cls = argument_policy[0]
             attr_dict = argument_policy[1].attr_dict
@@ -116,7 +113,11 @@ class ModelSharder(object):
         return layer
 
 
-    def shard_one_layer(self, org_layer: nn.Module, param_funcs: List[Callable]) -> None:
+    def shard_one_layer(
+            self, 
+            org_layer: nn.Module, 
+            param_funcs: List[Callable]
+        ) -> None:
         """
         Shard one layer according to the policy, the layer should be the same class as the key in policy's argument_policy return dict
 
@@ -156,13 +157,14 @@ class ModelSharder(object):
                 assert weight is not None or bias is not None
                 layer_attr = (lambda x: x[:x.rfind(".")])(weight_attr or bias_attr)
 
+                print(weight.shape)
                 weight, bias = self.slicer.slice_weight_bias(weight, bias, policy_layer.__class__)
                 
                 # create new object to replace the origin layer
                 # TODO: col_nn
                 if replace_layer_cls is not None:
-                    replece_layer = replace_layer_cls(weight.shape[0], weight.shape[1], bias=True)
-                    # print(replece_layer)
+                    print(weight.shape)
+                    replece_layer = replace_layer_cls(weight.shape[1], weight.shape[0], bias=True)
                     # replece_layer.weight = nn.Parameter(weight)
                     # replece_layer.bias = nn.Parameter(bias)
                     setattr_(org_layer, layer_attr, replece_layer, ignore=ignore)
@@ -171,7 +173,13 @@ class ModelSharder(object):
                     self.set_param(org_layer, layer_attr, weight, bias)
 
 
-    def set_param(self, layer: Any, layer_attr: str, weight: torch.Tensor, bias: torch.Tensor = None) -> None:
+    def set_param(
+            self, 
+            layer: Any, 
+            layer_attr: str, 
+            weight: torch.Tensor, 
+            bias: torch.Tensor = None
+        ) -> None:
         """
         Reset the weight and bias of the layer object
 
@@ -198,6 +206,7 @@ class ModelSharder(object):
             layer_attr: The attribute name of the layer
             size: Torch.size
         """
+        # Tensor.shape[0] -> out_features, Tensor.shape[1] -> in_features
         attrs = ["out_features", "in_features"]
         for i, attr in enumerate(attrs):
             if hasattr_(layer, f"{layer_attr}.{attr}"):

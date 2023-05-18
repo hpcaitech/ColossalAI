@@ -103,7 +103,7 @@ class Slicer():
             tensor: The tensor to slice
         """
         delta = (tensor.shape[0] + self.shardconfig.world_size - 1) // self.shardconfig.world_size
-        down_idx = (self.shardconfig.rank - 1) * delta
+        down_idx = self.shardconfig.rank * delta
         up_idx = down_idx + delta
         return tensor[down_idx:up_idx,:]
 
@@ -119,6 +119,6 @@ class Slicer():
             tensor: The tensor to slice
         """
         delta = (tensor.shape[1] + self.shardconfig.world_size - 1) // self.shardconfig.world_size
-        down_idx = (self.shardconfig.rank - 1) * delta
+        down_idx = self.shardconfig.rank * delta
         up_idx = down_idx + delta
         return tensor[:,down_idx:up_idx]
