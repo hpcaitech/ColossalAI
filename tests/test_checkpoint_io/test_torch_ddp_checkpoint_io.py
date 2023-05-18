@@ -1,3 +1,4 @@
+import os
 import tempfile
 
 import torch
@@ -8,12 +9,13 @@ from torchvision.models import resnet18
 import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin import TorchDDPPlugin
-from colossalai.booster.plugin.torch_ddp_plugin import TorchDDPCheckpointIO
+from colossalai.cluster import DistCoordinator
 from colossalai.interface import OptimizerWrapper
-from colossalai.testing import check_state_dict_equal, rerun_if_address_is_in_use, spawn
+from colossalai.testing import check_state_dict_equal, parameterize, rerun_if_address_is_in_use, spawn
 
 
-def check_torch_ddp_checkpointIO():
+@parameterize('shard', [True, False])
+def check_torch_ddp_checkpointIO(shard: bool):
     plugin = TorchDDPPlugin()
     booster = Booster(plugin=plugin)
     model = resnet18()
@@ -34,23 +36,38 @@ def check_torch_ddp_checkpointIO():
     optimizer.step()
     scheduler.step()
 
-    optimizer_ckpt_tempfile = tempfile.NamedTemporaryFile()
-    lr_scheduler_ckpt_tempfile = tempfile.NamedTemporaryFile()
-    ckpt_io = TorchDDPCheckpointIO()
-    ckpt_io.save_optimizer(optimizer, optimizer_ckpt_tempfile.name)
-    ckpt_io.save_lr_scheduler(scheduler, lr_scheduler_ckpt_tempfile.name)
+    coordinator = DistCoordinator()
 
-    new_model = resnet18()
-    new_optimizer = SGD((new_model.parameters()), lr=0.001)
-    new_scheduler = torch.optim.lr_scheduler.StepLR(new_optimizer, step_size=1, gamma=0.1)
-    _, new_optimizer, _, _, new_scheduler = booster.boost(new_model, new_optimizer, lr_scheduler=new_scheduler)
+    with tempfile.TemporaryDirectory() as tempdir:
+        model_ckpt_path = f"{tempdir}/model"
+        optimizer_ckpt_path = f"{tempdir}/optimizer"
+        lr_scheduler_ckpt_path = f"{tempdir}/lr_scheduler"
+        booster.save_model(model, model_ckpt_path, shard=shard)
+        if not shard:
+            # TODO(ver217): optimizer checkpointing is not supported for sharded checkpoint
+            booster.save_optimizer(optimizer, optimizer_ckpt_path)
+            booster.save_lr_scheduler(scheduler, lr_scheduler_ckpt_path)
 
-    if ckpt_io.coordinator.is_master():
-        ckpt_io.load_optimizer(new_optimizer, optimizer_ckpt_tempfile.name)
-        check_state_dict_equal(optimizer.state_dict(), new_optimizer.state_dict(), False)
+        new_model = resnet18()
+        new_optimizer = SGD((new_model.parameters()), lr=0.001)
+        new_scheduler = torch.optim.lr_scheduler.StepLR(new_optimizer, step_size=1, gamma=0.1)
+        new_model, new_optimizer, _, _, new_scheduler = booster.boost(new_model,
+                                                                      new_optimizer,
+                                                                      lr_scheduler=new_scheduler)
 
-        ckpt_io.load_lr_scheduler(new_scheduler, lr_scheduler_ckpt_tempfile.name)
-        check_state_dict_equal(scheduler.state_dict(), new_scheduler.state_dict(), False)
+        if coordinator.is_master():
+            booster.load_model(new_model, model_ckpt_path)
+            check_state_dict_equal(model.state_dict(), new_model.state_dict(), False)
+
+            if not shard:
+                booster.load_optimizer(new_optimizer, optimizer_ckpt_path)
+                check_state_dict_equal(optimizer.state_dict(), new_optimizer.state_dict(), False)
+                booster.load_lr_scheduler(new_scheduler, lr_scheduler_ckpt_path)
+                check_state_dict_equal(scheduler.state_dict(), new_scheduler.state_dict(), False)
+        else:
+            assert not os.path.exists(model_ckpt_path)
+            assert not os.path.exists(optimizer_ckpt_path)
+            assert not os.path.exists(lr_scheduler_ckpt_path)
 
 
 def run_dist(rank, world_size, port):
