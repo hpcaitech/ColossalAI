@@ -1,6 +1,6 @@
 # Gradient Accumulation(latest)
 
-Author: Shenggui Li, Yongbin Li
+Author: [Mingyan Jiang](https://github.com/jiangmingyan)
 
 **Prerequisite**
 - [Define Your Configuration](../basics/define_your_config.md)

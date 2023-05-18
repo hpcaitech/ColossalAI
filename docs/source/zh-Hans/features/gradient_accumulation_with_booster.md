@@ -1,6 +1,6 @@
 # 梯度累积
 
-作者: Shenggui Li, Yongbin Li
+作者: [Mingyan Jiang](https://github.com/jiangmingyan)
 
 **前置教程**
 - [定义配置文件](../basics/define_your_config.md)
