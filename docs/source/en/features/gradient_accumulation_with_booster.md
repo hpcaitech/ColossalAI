@@ -8,9 +8,7 @@ Author: [Mingyan Jiang](https://github.com/jiangmingyan)
 
 ## Introduction
 
-Gradient accumulation is a common way to enlarge your batch size for training.
-When training large-scale models, memory can easily become the bottleneck and the batch size can be very small, (e.g. 2), leading to unsatisfactory convergence. Gradient accumulation works by adding up the gradients calculated in multiple iterations,
-and only update the parameters in the preset iteration.
+Gradient accumulation is a common way to enlarge your batch size for training. When training large-scale models, memory can easily become the bottleneck and the batch size can be very small, (e.g. 2), leading to unsatisfactory convergence. Gradient accumulation works by adding up the gradients calculated in multiple iterations, and only update the parameters in the preset iteration.
 
 ## Usage
 
@@ -20,7 +18,7 @@ It is simple to use gradient accumulation in Colossal-AI. Just call `booster.no_
 
 We Now demonstrate gradient accumulation. In this example, we let the gradient accumulation size to be 4.
 
-### Step 2. Import libraries in train.py
+### Step 1. Import libraries in train.py
 Create a `train.py` and import the necessary dependencies. The version of `torch` should not be lower than 1.8.1.
 
 ```python
@@ -41,7 +39,6 @@ from colossalai.logging import get_dist_logger
 ```
 
 ### Step 2. Initialize Distributed Environment
-
 We then need to initialize distributed environment. For demo purpose, we uses `launch_from_torch`. You can refer to [Launch Colossal-AI](../basics/launch_colossalai.md) for other initialization methods.
 
 ```python
@@ -50,11 +47,9 @@ parser = colossalai.get_default_parser()
 args = parser.parse_args()
 # launch from torch
 colossalai.launch_from_torch(config=dict())
-
 ```
 
 ### Step 3. Create training components
-
 Build your model, optimizer, loss function, lr scheduler and dataloaders. Note that the root path of the dataset is obtained from the environment variable `DATA`. You may `export DATA=/path/to/data` or change `Path(os.environ['DATA'])` to a path on your machine. Data will be automatically downloaded to the root path.
 
 ```python

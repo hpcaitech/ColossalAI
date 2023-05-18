@@ -6,37 +6,20 @@
 - [定义配置文件](../basics/define_your_config.md)
 - [训练中使用Booster](../basics/engine_trainer.md) # todo 待更新链接。
 
-**示例代码**
-- [ColossalAI-Examples Gradient Accumulation](ColossalAI/examples/tutorial/feathures/gradient_accumulation/README.md)
-
 ## 引言
 
 梯度累积是一种常见的增大训练 batch size 的方式。 在训练大模型时，内存经常会成为瓶颈，并且 batch size 通常会很小（如2），这导致收敛性无法保证。梯度累积将多次迭代的梯度累加，并仅在达到预设迭代次数时更新参数。
 
 ## 使用
 
-在 Colossal-AI 中使用梯度累积非常简单，booster提供no_sync返回一个文件管理器，在该文件管理器下取消同步并且不更新梯度，则可以进行梯度累积， 在config.py中gradient_accumulation=4，表示进行梯度累积次数为4。
-
-```python
-gradient_accumulation = <int>
-```
+在 Colossal-AI 中使用梯度累积非常简单，booster提供no_sync返回一个文件管理器，在该文件管理器下取消同步并且累积梯度， 在本示例中，gradient_accumulation=4，表示进行梯度累积次数为4。
 
 ## 实例
 
 我们提供了一个 [运行实例](ColossalAI/examples/tutorial/feathures/gradient_accumulation/README.md)
 来展现梯度累积。在这个例子中，梯度累积次数被设置为4，你可以通过一下命令启动脚本。
 
-### 步骤 1. 创建配置文件
-
-Create a `config.py`.
-```python
-BATCH_SIZE = 128
-NUM_EPOCHS = 200
-
-gradient_accumulation = 4
-```
-
-### 步骤 2. 在 train.py 导入相关库
+### 步骤 1. 在 train.py 导入相关库
 创建train.py并导入必要依赖。 `torch` 的版本应不低于1.8.1。
 
 ```python
@@ -55,10 +38,9 @@ from colossalai.booster.plugin import TorchDDPPlugin
 from colossalai.logging import get_dist_logger
 ```
 
-### 步骤 3. 初始化分布式环境
+### 步骤 2. 初始化分布式环境
 
-我们需要初始化分布式环境。为了快速演示，我们使用`launch_from_torch`。你可以参考 [Launch Colossal-AI](../basics/launch_colossalai.md)
-使用其他初始化方法。
+我们需要初始化分布式环境。为了快速演示，我们使用`launch_from_torch`。你可以参考 [Launch Colossal-AI](../basics/launch_colossalai.md)使用其他初始化方法。
 
 ```python
 # initialize distributed setting
@@ -93,13 +75,6 @@ colossalai.launch_from_torch(config=dict())
                                     transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010]),
                                 ]))
 
-    # train_dataloader = get_dataloader(
-    #     dataset=train_dataset,
-    #     shuffle=True,
-    #     batch_size=gpc.config.BATCH_SIZE,
-    #     pin_memory=True,
-    # )
-
     # build criterion
     criterion = torch.nn.CrossEntropyLoss()
 
@@ -121,7 +96,7 @@ colossalai.launch_from_torch(config=dict())
 ```
 
 ### 步骤 6. 使用booster训练
-使用booster构建一个普通的训练循环。 验证梯度累积. `param_by_iter` 记录分布训练的信息。
+使用booster构建一个普通的训练循环，验证梯度累积。 `param_by_iter` 记录分布训练的信息。
 ```python
 for idx, (img, label) in enumerate(train_dataloader):
         sync_context = booster.no_sync(model)
