@@ -52,7 +52,7 @@ colossalai.launch_from_torch(config=dict())
 
 ```
 
-### 步骤 4. 创建训练组件
+### 步骤 3. 创建训练组件
 
 构建你的模型、优化器、损失函数、学习率调整器和数据加载器。注意数据集的路径从环境变量`DATA`获得。你可以通过 `export DATA=/path/to/data` 或 `Path(os.environ['DATA'])`，在你的机器上设置路径。数据将会被自动下载到该路径。
 
@@ -82,7 +82,7 @@ colossalai.launch_from_torch(config=dict())
     optimizer = torch.optim.SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=5e-4)
 ```
 
-### 步骤 5. 注入特性
+### 步骤 4. 注入特性
 创建一个`TorchDDPPlugin`对象，并作为参实例化`Booster`, 调用booster注入特性.
 
 ```python
@@ -95,7 +95,7 @@ colossalai.launch_from_torch(config=dict())
                                                                      dataloader=train_dataloader)
 ```
 
-### 步骤 6. 使用booster训练
+### 步骤 5. 使用booster训练
 使用booster构建一个普通的训练循环，验证梯度累积。 `param_by_iter` 记录分布训练的信息。
 ```python
 for idx, (img, label) in enumerate(train_dataloader):
@@ -129,7 +129,7 @@ for idx, (img, label) in enumerate(train_dataloader):
 
 ```
 
-### 步骤 7. 启动训练脚本
+### 步骤 6. 启动训练脚本
 为了验证梯度累积，我们可以只检查参数值的变化。当设置梯度累加时，仅在最后一步更新参数。您可以使用以下命令运行脚本：
 ```shell
 colossalai run --nproc_per_node 1 train.py --config config.py
