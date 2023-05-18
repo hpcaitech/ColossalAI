@@ -11,7 +11,7 @@ from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from tests.kit.model_zoo import model_zoo
 
 # These models are not compatible with AMP
-_AMP_ERR_MODELS = ['timm_convit', 'dlrm', 'deepfm_interactionarch', 'deepfm_simpledeepfmnn`']
+_AMP_ERR_MODELS = ['timm_convit', 'dlrm', 'deepfm_interactionarch', 'deepfm_simpledeepfmnn']
 # These models have no parameters
 _LOW_LEVEL_ZERO_ERR_MODELS = ['dlrm_interactionarch']
 # These models will get stuck
