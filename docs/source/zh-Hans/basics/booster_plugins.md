@@ -43,19 +43,19 @@ Zero-2 不支持局部梯度累积。如果您坚持使用，虽然可以积累�
 
 兼容性问题将在未来修复。
 
-### Gemini Plugin
+### Gemini 插件
 
 这个插件实现了基于Chunk内存管理和异构内存管理的 Zero-3。它可以训练大型模型而不会损失太多速度。它也不支持局部梯度累积。更多详细信息，请参阅 [Gemini 文档](../features/zero_with_chunk.md).
 
 {{ autodoc:colossalai.booster.plugin.GeminiPlugin }}
 
-### Torch DDP Plugin
+### Torch DDP 插件
 
 更多详细信息，请参阅 [Pytorch 文档](https://pytorch.org/docs/main/generated/torch.nn.parallel.DistributedDataParallel.html#torch.nn.parallel.DistributedDataParallel).
 
 {{ autodoc:colossalai.booster.plugin.TorchDDPPlugin }}
 
-### Torch FSDP Plugin
+### Torch FSDP 插件
 
 > ⚠ 如果 torch 版本低于 1.12.0，此插件将不可用。
 
