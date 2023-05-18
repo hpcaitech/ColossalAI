@@ -45,6 +45,7 @@ from pathlib import Path
 
 import torch
 from torchvision import transforms
+from titans.utils import barrier_context
 from torchvision.datasets import CIFAR10
 from torchvision.models import resnet18
 
@@ -82,14 +83,15 @@ colossalai.launch_from_torch(config=dict())
     model = resnet18(num_classes=10)
 
     # build dataloaders
-    train_dataset = CIFAR10(root=Path(os.environ.get('DATA', './data')),
-                            download=True,
-                            transform=transforms.Compose([
-                                transforms.RandomCrop(size=32, padding=4),
-                                transforms.RandomHorizontalFlip(),
-                                transforms.ToTensor(),
-                                transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010]),
-                            ]))
+    with barrier_context:
+        train_dataset = CIFAR10(root=Path(os.environ.get('DATA', './data')),
+                                download=True,
+                                transform=transforms.Compose([
+                                    transforms.RandomCrop(size=32, padding=4),
+                                    transforms.RandomHorizontalFlip(),
+                                    transforms.ToTensor(),
+                                    transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010]),
+                                ]))
 
     # train_dataloader = get_dataloader(
     #     dataset=train_dataset,

@@ -29,6 +29,7 @@ from pathlib import Path
 
 import torch
 from torchvision import transforms
+from titans.utils import barrier_context
 from torchvision.datasets import CIFAR10
 from torchvision.models import resnet18
 from torch.utils.data import DataLoader
@@ -65,14 +66,15 @@ Build your model, optimizer, loss function, lr scheduler and dataloaders. Note t
     model = resnet18(num_classes=10)
 
     # build dataloaders
-    train_dataset = CIFAR10(root=Path(os.environ.get('DATA', './data')),
-                            download=True,
-                            transform=transforms.Compose([
-                                transforms.RandomCrop(size=32, padding=4),
-                                transforms.RandomHorizontalFlip(),
-                                transforms.ToTensor(),
-                                transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010]),
-                            ]))
+    with barrier_context:
+        train_dataset = CIFAR10(root=Path(os.environ.get('DATA', './data')),
+                                download=True,
+                                transform=transforms.Compose([
+                                    transforms.RandomCrop(size=32, padding=4),
+                                    transforms.RandomHorizontalFlip(),
+                                    transforms.ToTensor(),
+                                    transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010]),
+                                ]))
 
     # build criterion
     criterion = torch.nn.CrossEntropyLoss()
