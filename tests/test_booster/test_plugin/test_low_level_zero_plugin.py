@@ -63,7 +63,6 @@ def check_low_level_zero_plugin(stage: int, early_stop: bool = True):
 
     for name, (model_fn, data_gen_fn, output_transform_fn, _) in model_zoo.items():
         # FIXME(ver217): fix these models
-        print(f'\n{name}\n')
         if name in ignore_models:
             skipped_models.append(name)
             continue
