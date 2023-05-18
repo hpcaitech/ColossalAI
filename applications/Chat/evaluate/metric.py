@@ -1,9 +1,9 @@
-from nltk.translate.bleu_score import sentence_bleu
 import statistics
 
 import jieba
 from bert_score import score
 from rouge_chinese import Rouge as Rouge_cn
+from nltk.translate.bleu_score import sentence_bleu
 from sklearn.metrics import precision_score, recall_score, f1_score
 
 
