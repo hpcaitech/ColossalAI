@@ -87,7 +87,7 @@ booster = Booster(mixed_precision=mixed_precision,...)
 
 ### Torch AMP 配置
 
-{{ autodoc:colossalai.mixed_precision.FP16NaiveMixedPrecision }}
+{{ autodoc:colossalai.booster.mixed_precision.FP16NaiveMixedPrecision }}
 
 可选参数:
 - init_scale(float, optional, default=2.**16): 初始缩放因子；
@@ -102,7 +102,7 @@ booster = Booster(mixed_precision=mixed_precision,...)
 
 如果你想了解更多细节，请参考 [Apex Documentation](https://nvidia.github.io/apex/)。
 
-{{ autodoc:colossalai.mixed_precision.FP16ApexMixedPrecision }}
+{{ autodoc:colossalai.booster.mixed_precision.FP16ApexMixedPrecision }}
 
 参数:
 
@@ -133,7 +133,7 @@ cast_model_type, patch_torch_functions, keep_batchnorm_fp32, master_weights, los
 
 在 Naive AMP 模式中, 我们实现了混合精度训练，同时保持了与复杂张量和流水并行的兼容性。该 AMP 模式将所有操作转为 FP16 。下列代码块展示了该模式的booster启动方式。
 
-{{ autodoc:colossalai.mixed_precision.FP16NaiveMixedPrecision }}
+{{ autodoc:colossalai.booster.mixed_precision.FP16NaiveMixedPrecision }}
 
 Naive AMP 的默认参数:
 - log_num_zeros_in_grad(bool): 返回0值梯度的个数.

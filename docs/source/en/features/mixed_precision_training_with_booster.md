@@ -94,7 +94,7 @@ The same goes for other types of amps.
 
 ### Torch AMP Configuration
 
-{{ autodoc:colossalai.mixed_precision.FP16TorchMixedPrecision }}
+{{ autodoc:colossalai.booster.mixed_precision.FP16TorchMixedPrecision }}
 
 With optional arguments:
 - init_scale(float, optional, default=2.**16): Initial scale factor
@@ -111,7 +111,7 @@ For example, O2 level (optimization level 2) will keep batch normalization in fp
 
 If you look for more details, please refer to [Apex Documentation](https://nvidia.github.io/apex/).
 
-{{ autodoc:colossalai.mixed_precision.FP16ApexMixedPrecision }}
+{{ autodoc:colossalai.booster.mixed_precision.FP16ApexMixedPrecision }}
 
 Parameters:
 - enabled(bool, optional, default=True): If False, renders all AMP calls no-ops, so your script should run as if Amp were not present.
@@ -149,7 +149,7 @@ In Naive AMP mode, we achieved mixed precision training while maintaining compat
 This AMP mode will cast all operations into fp16.
 The following code block shows the `config.py` file for this mode.
 
-{{ autodoc:colossalai.mixed_precision.FP16NaiveMixedPrecision }}
+{{ autodoc:colossalai.booster.mixed_precision.FP16NaiveMixedPrecision }}
 
 The default parameters of Naive AMP:
 - log_num_zeros_in_grad(bool): return number of zeros in the gradients.
