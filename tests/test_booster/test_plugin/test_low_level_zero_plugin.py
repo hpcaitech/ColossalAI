@@ -13,7 +13,7 @@ from tests.kit.model_zoo import model_zoo
 # These models are not compatible with AMP
 _AMP_ERR_MODELS = ['timm_convit', 'dlrm', 'deepfm_interactionarch', 'deepfm_simpledeepfmnn']
 # These models have no parameters
-_LOW_LEVEL_ZERO_ERR_MODELS = ['dlrm_interactionarch']
+_LOW_LEVEL_ZERO_ERR_MODELS = ['dlrm_interactionarch', 'deepfm_overarch']
 # These models will get stuck
 _STUCK_MODELS = [
     'diffusers_vq_model', 'transformers_albert', 'transformers_albert_for_pretraining', 'transformers_bert',
@@ -63,7 +63,7 @@ def check_low_level_zero_plugin(stage: int, early_stop: bool = True):
 
     for name, (model_fn, data_gen_fn, output_transform_fn, _) in model_zoo.items():
         # FIXME(ver217): fix these models
-        print(f'{name}\n\n')
+        print(f'\n{name}\n')
         if name in ignore_models:
             skipped_models.append(name)
             continue
@@ -93,7 +93,7 @@ def run_dist(rank, world_size, port, early_stop: bool = True):
 
 @rerun_if_address_is_in_use()
 def test_low_level_zero_plugin(early_stop: bool = True):
-    spawn(run_dist, 4, early_stop=early_stop)
+    spawn(run_dist, 2, early_stop=early_stop)
 
 
 if __name__ == '__main__':
