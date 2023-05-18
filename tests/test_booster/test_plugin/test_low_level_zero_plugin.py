@@ -93,7 +93,7 @@ def run_dist(rank, world_size, port, early_stop: bool = True):
 
 @rerun_if_address_is_in_use()
 def test_low_level_zero_plugin(early_stop: bool = True):
-    spawn(run_dist, 2, early_stop=early_stop)
+    spawn(run_dist, 4, early_stop=early_stop)
 
 
 if __name__ == '__main__':
