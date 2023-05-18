@@ -1,4 +1,4 @@
-# Auto Mixed Precision Training(latest)
+# Auto Mixed Precision Training (latest)
 
 Author: Chuanrui Wang, Shenggui Li, Yongbin Li
 
@@ -32,7 +32,7 @@ Among these methods, apex AMP is not compatible with tensor parallelism.
 This is because that tensors are split across devices in tensor parallelism, thus, it is required to communicate among different processes to check if inf or nan occurs in the whole model weights.
 We modified the torch amp implementation so that it is compatible with tensor parallelism now.
 
-> ❌️ fp16 and zero configuration are not compatible
+> ❌️ fp16 and zero are not compatible
 >
 > ⚠️ Pipeline only support naive AMP currently
 
@@ -65,7 +65,7 @@ However, there are other operations, like reductions, which require the dynamic 
 
 We supported three AMP training methods and allowed the user to train with AMP with no code. If you want to train with amp, just assign `mixed_precision` with `fp16` when you instantiate the `Booster`. Now booster support torch amp, the other two(apex amp, naive amp) are still stared by `colossalai.initiate`, if needed, please refer to [this](./mixed_precision_training.md). Next we will support `bf16`, `fp8`.
 
-### start with booster
+### Start with Booster
 instantiate `Booster` with `mixed_precision="fp16"`, then you can train with torch amp.
 ```python
 """
@@ -94,15 +94,7 @@ The same goes for other types of amps.
 
 ### Torch AMP Configuration
 
-```python
-from colossalai.mixed_precision import FP16TorchMixedPrecision
-
-mixed_precision = FP16TorchMixedPrecision(
-    init_scale=2.**16,
-    growth_factor=2.0,
-    backoff_factor=0.5,
-    growth_interval=2000)
-```
+{{ autodoc:colossalai.mixed_precision.FP16TorchMixedPrecision }}
 
 With optional arguments:
 - init_scale(float, optional, default=2.**16): Initial scale factor
@@ -119,22 +111,7 @@ For example, O2 level (optimization level 2) will keep batch normalization in fp
 
 If you look for more details, please refer to [Apex Documentation](https://nvidia.github.io/apex/).
 
-```python
-from colossalai.mixed_precision import FP16ApexMixedPrecision
-mixed_precision = FP16ApexMixedPrecision(
-    opt_level='O1',
-    cast_model_type=None,
-    patch_torch_functions=None,
-    keep_batchnorm_fp32=None,
-    master_weights=None,
-    loss_scale=None,
-    cast_model_outputs=None,
-    num_losses=1,
-    verbosity=1,
-    min_loss_scale=None,
-    max_loss_scale=16777216.0
-    )
-```
+{{ autodoc:colossalai.mixed_precision.FP16ApexMixedPrecision }}
 
 Parameters:
 - enabled(bool, optional, default=True): If False, renders all AMP calls no-ops, so your script should run as if Amp were not present.
@@ -172,19 +149,7 @@ In Naive AMP mode, we achieved mixed precision training while maintaining compat
 This AMP mode will cast all operations into fp16.
 The following code block shows the `config.py` file for this mode.
 
-```python
-from colossalai.mixed_precision import FP16NaiveMixedPrecision
-
-mixed_precision = FP16ApexMixedPrecision(
-    log_num_zeros_in_grad=False,
-    initial_scale=2 ** 32,
-    min_scale=1,
-    growth_factor=2,
-    backoff_factor=0.5,
-    growth_interval=1000,
-    hysteresis=2
-    )
-```
+{{ autodoc:colossalai.mixed_precision.FP16NaiveMixedPrecision }}
 
 The default parameters of Naive AMP:
 - log_num_zeros_in_grad(bool): return number of zeros in the gradients.

@@ -28,7 +28,7 @@ AMP 代表自动混合精度训练。
 
 前两个依赖于 PyTorch (1.6及以上) 和 NVIDIA Apex 的原始实现。最后一种方法类似 Apex O2。在这些方法中，Apex-AMP 与张量并行不兼容。这是因为张量是以张量并行的方式在设备之间拆分的，因此，需要在不同的进程之间进行通信，以检查整个模型权重中是否出现inf或nan。我们修改了torch amp实现，使其现在与张量并行兼容。
 
-> ❌️ fp16与ZeRO配置不兼容
+> ❌️ fp16与ZeRO不兼容
 >
 > ⚠️ 流水并行目前仅支持naive amp
 
@@ -87,15 +87,7 @@ booster = Booster(mixed_precision=mixed_precision,...)
 
 ### Torch AMP 配置
 
-```python
-from colossalai.mixed_precision import FP16TorchMixedPrecision
-
-mixed_precision = FP16TorchMixedPrecision(
-    init_scale=2.**16,
-    growth_factor=2.0,
-    backoff_factor=0.5,
-    growth_interval=2000)
-```
+{{ autodoc:colossalai.mixed_precision.FP16NaiveMixedPrecision }}
 
 可选参数:
 - init_scale(float, optional, default=2.**16): 初始缩放因子；
@@ -110,22 +102,7 @@ mixed_precision = FP16TorchMixedPrecision(
 
 如果你想了解更多细节，请参考 [Apex Documentation](https://nvidia.github.io/apex/)。
 
-```python
-from colossalai.mixed_precision import FP16ApexMixedPrecision
-mixed_precision = FP16ApexMixedPrecision(
-    opt_level='O1',
-    cast_model_type=None,
-    patch_torch_functions=None,
-    keep_batchnorm_fp32=None,
-    master_weights=None,
-    loss_scale=None,
-    cast_model_outputs=None,
-    num_losses=1,
-    verbosity=1,
-    min_loss_scale=None,
-    max_loss_scale=16777216.0
-    )
-```
+{{ autodoc:colossalai.mixed_precision.FP16ApexMixedPrecision }}
 
 参数:
 
@@ -156,19 +133,7 @@ cast_model_type, patch_torch_functions, keep_batchnorm_fp32, master_weights, los
 
 在 Naive AMP 模式中, 我们实现了混合精度训练，同时保持了与复杂张量和流水并行的兼容性。该 AMP 模式将所有操作转为 FP16 。下列代码块展示了该模式的booster启动方式。
 
-```python
-from colossalai.mixed_precision import FP16NaiveMixedPrecision
-
-mixed_precision = FP16ApexMixedPrecision(
-    log_num_zeros_in_grad=False,
-    initial_scale=2 ** 32,
-    min_scale=1,
-    growth_factor=2,
-    backoff_factor=0.5,
-    growth_interval=1000,
-    hysteresis=2
-    )
-```
+{{ autodoc:colossalai.mixed_precision.FP16NaiveMixedPrecision }}
 
 Naive AMP 的默认参数:
 - log_num_zeros_in_grad(bool): 返回0值梯度的个数.
