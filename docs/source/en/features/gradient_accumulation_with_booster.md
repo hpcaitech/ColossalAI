@@ -27,7 +27,6 @@ from pathlib import Path
 
 import torch
 from torchvision import transforms
-from titans.utils import barrier_context
 from torchvision.datasets import CIFAR10
 from torchvision.models import resnet18
 from torch.utils.data import DataLoader
@@ -36,6 +35,7 @@ import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin import TorchDDPPlugin
 from colossalai.logging import get_dist_logger
+from colossalai.cluster.dist_coordinator import priority_execution
 ```
 
 ### Step 2. Initialize Distributed Environment
@@ -61,7 +61,7 @@ Build your model, optimizer, loss function, lr scheduler and dataloaders. Note t
     model = resnet18(num_classes=10)
 
     # build dataloaders
-    with barrier_context:
+    with priority_execution():
         train_dataset = CIFAR10(root=Path(os.environ.get('DATA', './data')),
                                 download=True,
                                 transform=transforms.Compose([

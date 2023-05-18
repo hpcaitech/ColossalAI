@@ -12,12 +12,11 @@
 
 ## 使用
 
-在 Colossal-AI 中使用梯度累积非常简单，booster提供no_sync返回一个文件管理器，在该文件管理器下取消同步并且累积梯度， 在本示例中，gradient_accumulation=4，表示进行梯度累积次数为4。
+在 Colossal-AI 中使用梯度累积非常简单，booster提供no_sync返回一个文件管理器，在该文件管理器下取消同步并且累积梯度。
 
 ## 实例
 
-我们提供了一个 [运行实例](ColossalAI/examples/tutorial/feathures/gradient_accumulation/README.md)
-来展现梯度累积。在这个例子中，梯度累积次数被设置为4，你可以通过一下命令启动脚本。
+我们将介绍如何使用梯度累积。在这个例子中，梯度累积次数被设置为4。
 
 ### 步骤 1. 在 train.py 导入相关库
 创建train.py并导入必要依赖。 `torch` 的版本应不低于1.8.1。
@@ -28,7 +27,6 @@ from pathlib import Path
 
 import torch
 from torchvision import transforms
-from titans.utils import barrier_context
 from torchvision.datasets import CIFAR10
 from torchvision.models import resnet18
 
@@ -36,6 +34,7 @@ import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin import TorchDDPPlugin
 from colossalai.logging import get_dist_logger
+from colossalai.cluster.dist_coordinator import priority_execution
 ```
 
 ### 步骤 2. 初始化分布式环境
@@ -65,7 +64,7 @@ colossalai.launch_from_torch(config=dict())
     model = resnet18(num_classes=10)
 
     # build dataloaders
-    with barrier_context:
+    with priority_execution():
         train_dataset = CIFAR10(root=Path(os.environ.get('DATA', './data')),
                                 download=True,
                                 transform=transforms.Compose([
