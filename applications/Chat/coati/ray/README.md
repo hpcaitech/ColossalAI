@@ -2,7 +2,7 @@
 
 ## Detach Experience Makers and Trainers
 
-    We can completely separate the trainers and makers.
+We can completely separate the trainers and makers.
 
 <p align="center">
 <img src="https://github.com/hpcaitech/public_assets/blob/main/applications/chat/basic_structure.png?raw=true" width=600/>
@@ -138,7 +138,7 @@ We can deploy different strategies to makers and trainers. Here are some notions
 <img src="https://github.com/hpcaitech/public_assets/blob/main/applications/chat/2m1t.png?raw=true" width=600/>
 </p>
 
-### 2 Makers 2 Trainer2
+### 2 Makers 2 Trainer
 <p align="center">
 <img src="https://github.com/hpcaitech/public_assets/blob/main/applications/chat/2m2t.png?raw=true" width=600/>
 </p>
