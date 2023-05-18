@@ -205,17 +205,7 @@ Otherwise, try smaller models or checkout more parallelization training techniqu
 
 Now we will introduce the use of AMP with Colossal-AI. In this practice, we will use Torch AMP as an example, but do note that config files are provided for all AMP modes.
 
-### Step 1. Create a config file
-
-Create a `config.py`.
-```python
-# Base
-BATCH_SIZE = 128
-DROP_RATE = 0.1
-NUM_EPOCHS = 2
-```
-
-### Step 2. Import libraries in train.py
+### Step 1. Import libraries in train.py
 
 Create a `train.py` and import the necessary dependencies. Remember to install `scipy` and `timm` by running
 `pip install timm scipy`.
@@ -232,15 +222,11 @@ from torchvision import datasets, transforms
 import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin import TorchDDPPlugin
-from colossalai.core import global_context as gpc
 from colossalai.logging import get_dist_logger
 from colossalai.nn.lr_scheduler import LinearWarmupLR
-from colossalai.trainer import Trainer, hooks
-from colossalai.utils import MultiTimer, get_dataloader
-
 ```
 
-### Step 3. Initialize Distributed Environment
+### Step 2. Initialize Distributed Environment
 
 We then need to initialize distributed environment. For demo purpose, we uses `launch_from_torch`. You can refer to [Launch Colossal-AI](../basics/launch_colossalai.md)
 for other initialization methods.
@@ -251,17 +237,21 @@ parser = colossalai.get_default_parser()
 args = parser.parse_args()
 
 # launch from torch
-colossalai.launch_from_torch(config=args.config)
+colossalai.launch_from_torch(config=dict())
 
 ```
 
-### Step 4. Create training components
+### Step 3. Create training components
 
 Build your model, optimizer, loss function, lr scheduler and dataloaders. Note that the root path of the dataset is
 obtained from the environment variable `DATA`. You may `export DATA=/path/to/data` or change `Path(os.environ['DATA'])`
 to a path on your machine. Data will be automatically downloaded to the root path.
 
 ```python
+# define the constants
+NUM_EPOCHS = 2
+BATCH_SIZE = 128
+
 # build model
 model = vit_base_patch16_224(drop_rate=0.1)
 
@@ -279,13 +269,6 @@ train_dataset = datasets.Caltech101(
                                 [0.5, 0.5, 0.5])
     ]))
 
-train_dataloader = get_dataloader(dataset=train_dataset,
-                                    shuffle=True,
-                                    batch_size=gpc.config.BATCH_SIZE,
-                                    num_workers=1,
-                                    pin_memory=True,
-                                    )
-
 # build optimizer
 optimizer = torch.optim.SGD(model.parameters(), lr=1e-2, weight_decay=0.1)
 
@@ -296,29 +279,30 @@ criterion = torch.nn.CrossEntropyLoss()
 lr_scheduler = LinearWarmupLR(optimizer, warmup_steps=50, total_steps=gpc.config.NUM_EPOCHS)
 ```
 
-### Step 5. Inject AMP Feature
+### Step 4. Inject AMP Feature
 
 create a `MixedPrecision`(if needed) and `TorchDDPPlugin` object, call `colossalai.boost` convert the training components to be running with FP16.
 
 ```python
 plugin = TorchDDPPlugin()
+train_dataloader = plugin.prepare_dataloader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
 booster = Booster(mixed_precision='fp16', plugin=plugin)
 
 # if you need to customize the config, do like this
-from colossalai.mixed_precision import FP16TorchMixedPrecision
-mixed_precision = FP16TorchMixedPrecision(
-    init_scale=2.**16,
-    growth_factor=2.0,
-    backoff_factor=0.5,
-    growth_interval=2000)
-plugin = TorchDDPPlugin()
-booster = Booster(mixed_precision=mixed_precision, plugin=plugin)
+# >>> from colossalai.mixed_precision import FP16TorchMixedPrecision
+# >>> mixed_precision = FP16TorchMixedPrecision(
+# >>>     init_scale=2.**16,
+# >>>     growth_factor=2.0,
+# >>>     backoff_factor=0.5,
+# >>>     growth_interval=2000)
+# >>> plugin = TorchDDPPlugin()
+# >>> booster = Booster(mixed_precision=mixed_precision, plugin=plugin)
 
 # boost model, optimizer, criterion, dataloader, lr_scheduler
 model, optimizer, criterion, dataloader, lr_scheduler = booster.boost(model, optimizer, criterion, dataloader, lr_scheduler)
 ```
 
-### Step 6. Train with Booster
+### Step 5. Train with Booster
 
 Use booster in a normal training loops.
 
@@ -337,7 +321,7 @@ for epoch in range(gpc.config.NUM_EPOCHS):
     lr_scheduler.step()
 ```
 
-### Step 7. Invoke Training Scripts
+### Step 6. Invoke Training Scripts
 
 Use the following command to start the training scripts. You can change `--nproc_per_node` to use a different number of GPUs.
 

@@ -185,16 +185,7 @@ Naive AMP 的默认参数:
 
 下面我们将展现如何在 Colossal-AI 使用 AMP。在该例程中，我们使用 Torch AMP, 但提供的配置文件也适用于所有 AMP 模式.
 
-### 步骤 1. 创建配置文件
-创建一个`config.py`文件。
-```python
-# Base
-BATCH_SIZE = 128
-DROP_RATE = 0.1
-NUM_EPOCHS = 2
-```
-
-### 步骤 2. 在 train.py 导入相关库
+### 步骤 1. 在 train.py 导入相关库
 
 创建`train.py`并导入必要依赖. 请记得通过命令`pip install timm scipy`安装`scipy`和`timm`。
 
@@ -210,15 +201,11 @@ from torchvision import datasets, transforms
 import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin import TorchDDPPlugin
-from colossalai.core import global_context as gpc
 from colossalai.logging import get_dist_logger
 from colossalai.nn.lr_scheduler import LinearWarmupLR
-from colossalai.trainer import Trainer, hooks
-from colossalai.utils import MultiTimer, get_dataloader
-
 ```
 
-### 步骤 3. 初始化分布式环境
+### 步骤 2. 初始化分布式环境
 
 我们需要初始化分布式环境。为了快速演示，我们使用`launch_from_torch`。你可以参考 [Launch Colossal-AI](../basics/launch_colossalai.md)
 使用其他初始化方法。
@@ -229,17 +216,20 @@ parser = colossalai.get_default_parser()
 args = parser.parse_args()
 
 # launch from torch
-colossalai.launch_from_torch(config=args.config)
+colossalai.launch_from_torch(config=dict())
 
 ```
 
-### 步骤 4. 创建训练组件
+### 步骤 3. 创建训练组件
 
 构建你的模型、优化器、损失函数、学习率调整器和数据加载器。注意数据集的路径从环境变量`DATA`获得。你可以通过 `export DATA=/path/to/data` 或 `Path(os.environ['DATA'])`
 在你的机器上设置路径。数据将会被自动下载到该路径。
 
 ```python
-# build model
+    # define the constants
+    NUM_EPOCHS = 2
+    BATCH_SIZE = 128
+    # build model
     model = vit_base_patch16_224(drop_rate=0.1)
 
     # build dataloader
@@ -256,13 +246,6 @@ colossalai.launch_from_torch(config=args.config)
                                  [0.5, 0.5, 0.5])
         ]))
 
-    train_dataloader = get_dataloader(dataset=train_dataset,
-                                      shuffle=True,
-                                      batch_size=gpc.config.BATCH_SIZE,
-                                      num_workers=1,
-                                      pin_memory=True,
-                                      )
-
     # build optimizer
     optimizer = torch.optim.SGD(model.parameters(), lr=1e-2, weight_decay=0.1)
 
@@ -273,28 +256,29 @@ colossalai.launch_from_torch(config=args.config)
     lr_scheduler = LinearWarmupLR(optimizer, warmup_steps=50, total_steps=gpc.config.NUM_EPOCHS)
 ```
 
-### 步骤 5. 插入 AMP
+### 步骤 4. 插入 AMP
 创建一个MixedPrecision对象（如果需要）及torch DDP plugin，调用 `colossalai.boost` 将所有训练组件转为为FP16模式.
 
 ```python
 plugin = TorchDDPPlugin()
+train_dataloader = plugin.prepare_dataloader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
 booster = Booster(mixed_precision='fp16', plugin=plugin)
 
 # if you need to customize the config, do like this
-from colossalai.mixed_precision import FP16TorchMixedPrecision
-mixed_precision = FP16TorchMixedPrecision(
-    init_scale=2.**16,
-    growth_factor=2.0,
-    backoff_factor=0.5,
-    growth_interval=2000)
-plugin = TorchDDPPlugin()
-booster = Booster(mixed_precision=mixed_precision, plugin=plugin)
+# >>> from colossalai.mixed_precision import FP16TorchMixedPrecision
+# >>> mixed_precision = FP16TorchMixedPrecision(
+# >>>     init_scale=2.**16,
+# >>>     growth_factor=2.0,
+# >>>     backoff_factor=0.5,
+# >>>     growth_interval=2000)
+# >>> plugin = TorchDDPPlugin()
+# >>> booster = Booster(mixed_precision=mixed_precision, plugin=plugin)
 
 # boost model, optimizer, criterion, dataloader, lr_scheduler
 model, optimizer, criterion, dataloader, lr_scheduler = booster.boost(model, optimizer, criterion, dataloader, lr_scheduler)
 ```
 
-### 步骤 6. 使用 booster 训练
+### 步骤 5. 使用 booster 训练
 
 使用booster构建一个普通的训练循环。
 
@@ -312,7 +296,7 @@ for epoch in range(gpc.config.NUM_EPOCHS):
     lr_scheduler.step()
 ```
 
-### 步骤 7. 启动训练脚本
+### 步骤 6. 启动训练脚本
 
 使用下列命令启动训练脚本，你可以改变 `--nproc_per_node` 以使用不同数量的 GPU。
 
