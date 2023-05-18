@@ -9,7 +9,7 @@ Author: Zhengda Bian, Yongbin Li
 - [2D Tensor Parallelism](./2D_tensor_parallel.md)
 
 **Example Code**
-- [ColossalAI-Examples - 3D Tensor Parallelism](https://github.com/hpcaitech/ColossalAI-Examples/tree/main/features/tensor_parallel/tensor_parallel_3d.py)
+- [ColossalAI-Examples - 3D Tensor Parallelism](https://github.com/hpcaitech/ColossalAI-Examples/blob/main/features/tensor_parallel/README.md)
 
 **Related Paper**
 - [Maximizing Parallelism in Distributed Training for Huge Neural Networks](https://arxiv.org/pdf/2105.14450.pdf)
