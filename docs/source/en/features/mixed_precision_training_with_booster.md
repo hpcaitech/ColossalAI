@@ -50,9 +50,7 @@ In this tutorial we will cover:
 
 Automatic Mixed Precision training is a mixture of FP16 and FP32 training.
 
-Half-precision float point format (FP16) has lower arithmetic complexity and higher compute efficiency.
-Besides, fp16 requires half of the storage needed by fp32 and saves memory & network bandwidth, which makes more memory
-available for large batch size and model size.
+Half-precision float point format (FP16) has lower arithmetic complexity and higher compute efficiency. Besides, fp16 requires half of the storage needed by fp32 and saves memory & network bandwidth, which makes more memory available for large batch size and model size.
 
 However, there are other operations, like reductions, which require the dynamic range of fp32 to avoid numeric overflow/underflow. That's the reason why we introduce automatic mixed precision, attempting to match each operation to its appropriate data type, which can reduce the memory footprint and augment training efficiency.
 
@@ -63,7 +61,7 @@ However, there are other operations, like reductions, which require the dynamic 
 
 ## AMP in Colossal-AI
 
-We supported three AMP training methods and allowed the user to train with AMP with no code. If you want to train with amp, just assign `mixed_precision` with `fp16` when you instantiate the `Booster`. Now booster support torch amp, the other two(apex amp, naive amp) are still stared by `colossalai.initiate`, if needed, please refer to [this](./mixed_precision_training.md). Next we will support `bf16`, `fp8`.
+We supported three AMP training methods and allowed the user to train with AMP with no code. If you want to train with amp, just assign `mixed_precision` with `fp16` when you instantiate the `Booster`. Now booster support torch amp, the other two(apex amp, naive amp) are still stared by `colossalai.initialize`, if needed, please refer to [this](./mixed_precision_training.md). Next we will support `bf16`, `fp8`.
 
 ### Start with Booster
 instantiate `Booster` with `mixed_precision="fp16"`, then you can train with torch amp.
@@ -160,7 +158,7 @@ The default parameters of Naive AMP:
 - max_scale(int): maximum loss scale allowed
 - verbose(bool): if set to `True`, will print debug info
 
-When using `colossalai.initialize`, you are required to first instantiate a model, an optimizer and a criterion.
+When using `colossalai.booster`, you are required to first instantiate a model, an optimizer and a criterion.
 The output model is converted to AMP model of smaller memory consumption.
 If your input model is already too large to fit in a GPU, please instantiate your model weights in `dtype=torch.float16`.
 Otherwise, try smaller models or checkout more parallelization training techniques!
