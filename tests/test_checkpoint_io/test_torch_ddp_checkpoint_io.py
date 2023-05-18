@@ -1,7 +1,7 @@
-import os
 import tempfile
 
 import torch
+import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim import SGD
 from torchvision.models import resnet18
@@ -9,7 +9,6 @@ from torchvision.models import resnet18
 import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin import TorchDDPPlugin
-from colossalai.cluster import DistCoordinator
 from colossalai.interface import OptimizerWrapper
 from colossalai.testing import check_state_dict_equal, parameterize, rerun_if_address_is_in_use, spawn
 
@@ -36,9 +35,11 @@ def check_torch_ddp_checkpointIO(shard: bool):
     optimizer.step()
     scheduler.step()
 
-    coordinator = DistCoordinator()
-
     with tempfile.TemporaryDirectory() as tempdir:
+        obj = [tempdir]
+        dist.broadcast_object_list(obj, src=0)
+        tempdir = obj[0]    # use the same directory on all ranks
+
         model_ckpt_path = f"{tempdir}/model"
         optimizer_ckpt_path = f"{tempdir}/optimizer"
         lr_scheduler_ckpt_path = f"{tempdir}/lr_scheduler"
@@ -47,6 +48,7 @@ def check_torch_ddp_checkpointIO(shard: bool):
             # TODO(ver217): optimizer checkpointing is not supported for sharded checkpoint
             booster.save_optimizer(optimizer, optimizer_ckpt_path)
             booster.save_lr_scheduler(scheduler, lr_scheduler_ckpt_path)
+        dist.barrier()
 
         new_model = resnet18()
         new_optimizer = SGD((new_model.parameters()), lr=0.001)
@@ -55,19 +57,16 @@ def check_torch_ddp_checkpointIO(shard: bool):
                                                                       new_optimizer,
                                                                       lr_scheduler=new_scheduler)
 
-        if coordinator.is_master():
-            booster.load_model(new_model, model_ckpt_path)
-            check_state_dict_equal(model.state_dict(), new_model.state_dict(), False)
+        booster.load_model(new_model, model_ckpt_path)
+        check_state_dict_equal(model.state_dict(), new_model.state_dict(), False)
 
-            if not shard:
-                booster.load_optimizer(new_optimizer, optimizer_ckpt_path)
-                check_state_dict_equal(optimizer.state_dict(), new_optimizer.state_dict(), False)
-                booster.load_lr_scheduler(new_scheduler, lr_scheduler_ckpt_path)
-                check_state_dict_equal(scheduler.state_dict(), new_scheduler.state_dict(), False)
-        else:
-            assert not os.path.exists(model_ckpt_path)
-            assert not os.path.exists(optimizer_ckpt_path)
-            assert not os.path.exists(lr_scheduler_ckpt_path)
+        if not shard:
+            booster.load_optimizer(new_optimizer, optimizer_ckpt_path)
+            check_state_dict_equal(optimizer.state_dict(), new_optimizer.state_dict(), False)
+            booster.load_lr_scheduler(new_scheduler, lr_scheduler_ckpt_path)
+            check_state_dict_equal(scheduler.state_dict(), new_scheduler.state_dict(), False)
+
+        dist.barrier()
 
 
 def run_dist(rank, world_size, port):
