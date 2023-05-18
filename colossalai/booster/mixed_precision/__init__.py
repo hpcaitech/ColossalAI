@@ -7,7 +7,7 @@ from .mixed_precision_base import MixedPrecision
 
 __all__ = [
     'MixedPrecision', 'mixed_precision_factory', 'FP16_Apex_MixedPrecision', 'FP16_Torch_MixedPrecision',
-    'FP32_MixedPrecision', 'BF16_MixedPrecision', 'FP8_MixedPrecision'
+    'FP32_MixedPrecision', 'BF16_MixedPrecision', 'FP8_MixedPrecision', 'FP16NaiveMixedPrecision'
 ]
 
 _mixed_precision_mapping = {
