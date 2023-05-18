@@ -16,7 +16,7 @@ It is simple to use gradient accumulation in Colossal-AI. Just call `booster.no_
 
 ## Hands-on Practice
 
-We Now demonstrate gradient accumulation. In this example, we let the gradient accumulation size to be 4.
+We now demonstrate gradient accumulation. In this example, we let the gradient accumulation size to be 4.
 
 ### Step 1. Import libraries in train.py
 Create a `train.py` and import the necessary dependencies. The version of `torch` should not be lower than 1.8.1.
