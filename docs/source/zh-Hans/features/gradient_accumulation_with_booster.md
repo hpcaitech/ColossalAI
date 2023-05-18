@@ -1,4 +1,4 @@
-# 梯度累积
+# 梯度累积 (最新)
 
 作者: [Mingyan Jiang](https://github.com/jiangmingyan)
 

@@ -1,4 +1,4 @@
-# Gradient Accumulation(outdated)
+# Gradient Accumulation (outdated)
 
 Author: Shenggui Li, Yongbin Li
 

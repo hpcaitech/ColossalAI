@@ -1,4 +1,4 @@
-# Gradient Accumulation(latest)
+# Gradient Accumulation (latest)
 
 Author: [Mingyan Jiang](https://github.com/jiangmingyan)
 
