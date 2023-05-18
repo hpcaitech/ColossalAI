@@ -1,4 +1,4 @@
-# 梯度累积
+# 梯度累积(旧版本)
 
 作者: Shenggui Li, Yongbin Li
 
