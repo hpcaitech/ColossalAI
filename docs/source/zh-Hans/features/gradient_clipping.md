@@ -1,4 +1,4 @@
-# 梯度裁剪
+# 梯度裁剪 （旧版本）
 
 作者: Boxiang Wang, Haichen Huang, Yongbin Li
 
