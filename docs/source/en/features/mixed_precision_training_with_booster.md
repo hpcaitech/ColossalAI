@@ -270,7 +270,7 @@ model, optimizer, criterion, dataloader, lr_scheduler = booster.boost(model, opt
 Use booster in a normal training loops.
 
 ```python
-engine.train()
+model.train()
 for epoch in range(NUM_EPOCHS):
     for img, label in enumerate(train_dataloader):
         img = img.cuda()

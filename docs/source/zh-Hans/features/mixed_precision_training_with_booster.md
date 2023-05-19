@@ -248,7 +248,7 @@ model, optimizer, criterion, dataloader, lr_scheduler = booster.boost(model, opt
 使用booster构建一个普通的训练循环。
 
 ```python
-engine.train()
+model.train()
 for epoch in range(NUM_EPOCHS):
     for img, label in enumerate(train_dataloader):
         img = img.cuda()
