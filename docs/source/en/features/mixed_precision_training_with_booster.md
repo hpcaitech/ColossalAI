@@ -239,7 +239,7 @@ optimizer = torch.optim.SGD(model.parameters(), lr=1e-2, weight_decay=0.1)
 criterion = torch.nn.CrossEntropyLoss()
 
 # lr_scheduler
-lr_scheduler = LinearWarmupLR(optimizer, warmup_steps=50, total_steps=gpc.config.NUM_EPOCHS)
+lr_scheduler = LinearWarmupLR(optimizer, warmup_steps=50, total_steps=NUM_EPOCHS)
 ```
 
 ### Step 4. Inject AMP Feature
@@ -271,7 +271,7 @@ Use booster in a normal training loops.
 
 ```python
 engine.train()
-for epoch in range(gpc.config.NUM_EPOCHS):
+for epoch in range(NUM_EPOCHS):
     for img, label in enumerate(train_dataloader):
         img = img.cuda()
         label = label.cuda()

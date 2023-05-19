@@ -218,7 +218,7 @@ colossalai.launch_from_torch(config=dict())
     criterion = torch.nn.CrossEntropyLoss()
 
     # lr_scheduelr
-    lr_scheduler = LinearWarmupLR(optimizer, warmup_steps=50, total_steps=gpc.config.NUM_EPOCHS)
+    lr_scheduler = LinearWarmupLR(optimizer, warmup_steps=50, total_steps=NUM_EPOCHS)
 ```
 
 ### 步骤 4. 插入 AMP
@@ -249,7 +249,7 @@ model, optimizer, criterion, dataloader, lr_scheduler = booster.boost(model, opt
 
 ```python
 engine.train()
-for epoch in range(gpc.config.NUM_EPOCHS):
+for epoch in range(NUM_EPOCHS):
     for img, label in enumerate(train_dataloader):
         img = img.cuda()
         label = label.cuda()

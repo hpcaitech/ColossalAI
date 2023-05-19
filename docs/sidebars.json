@@ -41,11 +41,11 @@
       "collapsed": true,
       "items": [
         "features/mixed_precision_training",
+        "features/mixed_precision_training_with_booster",
         "features/gradient_accumulation",
         "features/gradient_clipping",
         "features/gradient_handler",
         "features/zero_with_chunk",
-        "features/mixed_precision_training_with_booster",
         {
           "type": "category",
           "label": "Tensor Parallel",
