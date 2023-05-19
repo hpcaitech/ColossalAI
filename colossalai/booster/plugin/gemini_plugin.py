@@ -52,7 +52,15 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
         Save optimizer to checkpoint but only on master process.
         """
         # TODO(ver217): optimizer state dict is sharded
+        warnings.warn('GeminiPlugin does not support save full optimizer checkpoint now. Save it on every process.')
+        checkpoint = f'{checkpoint}.rank{self.coordinator.rank}'
         super().save_unsharded_optimizer(optimizer, checkpoint, gather_dtensor)
+
+    def load_optimizer(self, optimizer: Optimizer, checkpoint: str):
+        warnings.warn(
+            'GeminiPlugin can only load optimizer checkpoint saved by itself with the same number of processes.')
+        checkpoint = f'{checkpoint}.rank{self.coordinator.rank}'
+        super().load_optimizer(optimizer, checkpoint)
 
     def save_lr_scheduler(self, lr_scheduler: LRScheduler, checkpoint: str):
         """
