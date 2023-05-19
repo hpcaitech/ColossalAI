@@ -126,9 +126,9 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
    </a>
 </div>
 
-[ColossalChat](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat): 完整RLHF流程0门槛克隆 [ChatGPT](https://openai.com/blog/chatgpt/) 
-[[代码]](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat) 
-[[博客]](https://medium.com/@yangyou_berkeley/colossalchat-an-open-source-solution-for-cloning-chatgpt-with-a-complete-rlhf-pipeline-5edf08fb538b) 
+[ColossalChat](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat): 完整RLHF流程0门槛克隆 [ChatGPT](https://openai.com/blog/chatgpt/)
+[[代码]](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat)
+[[博客]](https://medium.com/@yangyou_berkeley/colossalchat-an-open-source-solution-for-cloning-chatgpt-with-a-complete-rlhf-pipeline-5edf08fb538b)
 [[在线样例]](https://www.youtube.com/watch?v=HcTiHzApHm0)
 [[教程]](https://www.youtube.com/watch?v=-qFBZFmOJfg)
 
