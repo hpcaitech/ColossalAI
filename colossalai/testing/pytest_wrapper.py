@@ -33,7 +33,7 @@ def run_on_environment_flag(name: str):
     assert isinstance(name, str)
     flag = os.environ.get(name.upper(), '0')
 
-    reason = f'Environment varialbe {name} is {flag}'
+    reason = f'Environment variable {name} is {flag}'
     if flag == '1':
         return pytest.mark.skipif(False, reason=reason)
     else:
