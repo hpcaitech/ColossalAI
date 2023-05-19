@@ -16,4 +16,3 @@ bert-score
 rouge_chinese
 scikit-metrics
 nltk
-
