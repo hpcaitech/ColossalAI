@@ -98,7 +98,7 @@ Build your model, optimizer, loss function, lr scheduler and dataloaders. Note t
 ```
 ### Step 4. Inject Gradient Clipping Feature
 
-Create a `TorchDDPPlugin` object and instantiate `Booster` with it, and get a data loader from plugin, then boost all training components.
+Create a `TorchDDPPlugin` object and `Booster` object, get a data loader from plugin, then boost all training components.
 ```python
     plugin = TorchDDPPlugin()
     booster = Booster(mixed_precision='fp16', plugin=plugin)
