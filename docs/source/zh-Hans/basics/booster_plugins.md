@@ -66,3 +66,5 @@ Zero-2 不支持局部梯度累积。如果您坚持使用，虽然可以积累�
 更多详细信息，请参阅 [Pytorch 文档](https://pytorch.org/docs/main/fsdp.html).
 
 {{ autodoc:colossalai.booster.plugin.TorchFSDPPlugin }}
+
+<!-- doc-test-command: echo  -->

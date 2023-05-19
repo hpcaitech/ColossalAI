@@ -66,3 +66,5 @@ More details can be found in [Pytorch Docs](https://pytorch.org/docs/main/genera
 More details can be found in [Pytorch Docs](https://pytorch.org/docs/main/fsdp.html).
 
 {{ autodoc:colossalai.booster.plugin.TorchFSDPPlugin }}
+
+<!-- doc-test-command: echo  -->
