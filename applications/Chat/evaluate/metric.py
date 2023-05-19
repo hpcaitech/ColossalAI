@@ -2,39 +2,33 @@ import statistics
 
 import jieba
 from bert_score import score
-from rouge_chinese import Rouge as Rouge_cn
 from nltk.translate.bleu_score import sentence_bleu
-from sklearn.metrics import precision_score, recall_score, f1_score
+from rouge_chinese import Rouge as Rouge_cn
+from sklearn.metrics import f1_score, precision_score, recall_score
 
 
 def bleu_score(preds: list, targets: list) -> dict:
     """Calculate BLEU Score Metric
 
-    The calculation includes BLEU-1 for unigram, BLEU-2 for bigram, 
+    The calculation includes BLEU-1 for unigram, BLEU-2 for bigram,
     BLEU-3 for trigram and BLEU-4 for 4-gram. Unigram evaluates the
-    accuracy in word level, other n-gram evaluate the fluency in 
+    accuracy in word level, other n-gram evaluate the fluency in
     sentence level.
     """
     bleu_scores = {"bleu1": 0, "bleu2": 0, "bleu3": 0, "bleu4": 0}
-    cumulative_bleu = [0]*4
-    weights = [
-        (1./1., 0., 0., 0.),
-        (1./2., 1./2., 0., 0.),
-        (1./3., 1./3., 1./3., 0.),
-        (1./4., 1./4., 1./4., 1./4.)
-     ]
+    cumulative_bleu = [0] * 4
+    weights = [(1. / 1., 0., 0., 0.), (1. / 2., 1. / 2., 0., 0.), (1. / 3., 1. / 3., 1. / 3., 0.),
+               (1. / 4., 1. / 4., 1. / 4., 1. / 4.)]
 
     for pred, target in zip(preds, targets):
         pred_list = (' '.join(jieba.cut(pred))).split()
         target_list = [(' '.join(jieba.cut(target))).split()]
 
-        bleu = sentence_bleu(target_list, pred_list, weights = weights)
-        cumulative_bleu = [a+b for a, b in zip(cumulative_bleu, bleu)]
+        bleu = sentence_bleu(target_list, pred_list, weights=weights)
+        cumulative_bleu = [a + b for a, b in zip(cumulative_bleu, bleu)]
 
-    bleu_scores["bleu1"] = cumulative_bleu[0]/len(preds)
-    bleu_scores["bleu2"] = cumulative_bleu[1]/len(preds)
-    bleu_scores["bleu3"] = cumulative_bleu[2]/len(preds)
-    bleu_scores["bleu4"] = cumulative_bleu[3]/len(preds)
+    for i in range(len(cumulative_bleu)):
+        bleu_scores[f"bleu{i+1}"] = cumulative_bleu[i] / len(preds)
 
     return bleu_scores
 
@@ -43,7 +37,7 @@ def rouge_cn_score(preds: list, targets: list) -> dict:
     """Calculate Chinese ROUGE Score Metric
 
     The calculation includes ROUGE-1 for unigram, ROUGE-2 for bigram
-    and ROUGE-L. ROUGE-N evaluates the number of matching n-grams between 
+    and ROUGE-L. ROUGE-N evaluates the number of matching n-grams between
     the preds and targets. ROUGE-L measures the number of matching
     longest common subsequence (LCS) between preds and targets.
     """
@@ -60,9 +54,9 @@ def rouge_cn_score(preds: list, targets: list) -> dict:
     rouge_cn = Rouge_cn()
     rouge_avg = rouge_cn.get_scores(all_preds, all_targets, avg=True)
 
-    rouge_scores["rouge1"] = rouge_avg["rouge-1"]
-    rouge_scores["rouge2"] = rouge_avg["rouge-2"]
-    rouge_scores["rougeL"] = rouge_avg["rouge-l"]
+    rouge_scores["rouge1"] = rouge_avg["rouge-1"]["f"]
+    rouge_scores["rouge2"] = rouge_avg["rouge-2"]["f"]
+    rouge_scores["rougeL"] = rouge_avg["rouge-l"]["f"]
 
     return rouge_scores
 
@@ -83,7 +77,7 @@ def distinct_score(preds: list) -> dict:
         unique_segs = set(pred_seg_list)
         count_unique_chars = len(unique_segs)
 
-        cumulative_distinct.append(count_unique_chars/count_segs)
+        cumulative_distinct.append(count_unique_chars / count_segs)
 
     distinct_score["distinct"] = statistics.mean(cumulative_distinct)
 
@@ -93,22 +87,20 @@ def distinct_score(preds: list) -> dict:
 def bert_score(preds: list, targets: list) -> dict:
     """Calculate BERTScore Metric
 
-    The BERTScore evaluates the semantic similarity between 
+    The BERTScore evaluates the semantic similarity between
     tokens of preds and targets with BERT.
     """
-    bert_score = {"precision": 0, "recall": 0, "f1_score": 0}
+    bert_score = {"bert_score": 0}
     pred_list = []
     target_list = []
 
     for pred, target in zip(preds, targets):
         pred_list.append(' '.join(jieba.cut(pred)))
         target_list.append(' '.join(jieba.cut(target)))
-    
-    P, R, F = score(pred_list, target_list, lang="zh", verbose=True)
 
-    bert_score["precision"] = P.mean().item()
-    bert_score["recall"] = R.mean().item()
-    bert_score["f1_score"] = F.mean().item()
+    _, _, F = score(pred_list, target_list, lang="zh", verbose=True)
+
+    bert_score["bert_score"] = F.mean().item()
 
     return bert_score
 
@@ -116,9 +108,9 @@ def bert_score(preds: list, targets: list) -> dict:
 def calculate_precision_recall_f1(preds: list, targets: list) -> dict:
     """Precision, Recall and F1-Score Calculation
 
-    The calculation of precision, recall and f1-score is realized by counting 
+    The calculation of precision, recall and f1-score is realized by counting
     the number f overlaps between the preds and target. The comparison length
-    limited by the shorter one of preds and targets. This design is mainly 
+    limited by the shorter one of preds and targets. This design is mainly
     considered for classifiction and extraction categories.
     """
     precision_recall_f1 = {"precision": 0, "recall": 0, "f1_score": 0}
@@ -145,7 +137,7 @@ def calculate_precision_recall_f1(preds: list, targets: list) -> dict:
 
 
 def precision(preds: list, targets: list) -> dict:
-    """Calculate Precision Metric 
+    """Calculate Precision Metric
     (design for classifiction and extraction categories)
 
     Calculating precision by counting the number of overlaps between the preds and target.
@@ -156,7 +148,7 @@ def precision(preds: list, targets: list) -> dict:
 
 
 def recall(preds: list, targets: list) -> dict:
-    """Calculate Recall Metric 
+    """Calculate Recall Metric
     (design for classifiction and extraction categories)
 
     Calculating recall by counting the number of overlaps between the preds and target.
@@ -167,7 +159,7 @@ def recall(preds: list, targets: list) -> dict:
 
 
 def F1_score(preds: list, targets: list) -> dict:
-    """Calculate F1-score Metric 
+    """Calculate F1-score Metric
     (design for classifiction and extraction categories)
 
     Calculating f1-score by counting the number of overlaps between the preds and target.
