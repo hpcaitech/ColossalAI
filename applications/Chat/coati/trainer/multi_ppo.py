@@ -53,7 +53,7 @@ class MPPOTrainer(Trainer):
                  actor_optim: Optimizer,
                  critic_optim: Optimizer,
                  kl_coef: float = 0.1,
-                 ptx_coef: float = 0.5,
+                 ptx_coef: float = 0.4,
                  train_batch_size: int = 8,
                  buffer_limit: int = 0,
                  buffer_cpu_offload: bool = True,

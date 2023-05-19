@@ -121,8 +121,8 @@ def main(args):
         actor_optim = HybridAdam(actor.parameters(), lr=1e-5)
         critic_optim = HybridAdam(critic.parameters(), lr=1e-5)
     else:
-        actor_optim = Adam(actor.parameters(), lr=1e-5)
-        critic_optim = Adam(critic.parameters(), lr=1e-5)
+        actor_optim = Adam(actor.parameters(), lr=7e-6)
+        critic_optim = Adam(critic.parameters(), lr=7e-6)
 
     # configure tokenizer
     if args.model == 'gpt2':
@@ -156,7 +156,7 @@ def main(args):
                                    sampler=prompt_sampler,
                                    batch_size=args.experience_batch_size)
 
-    pretrain_dataset = SupervisedDataset(tokenizer=tokenizer, data_path=args.pretrain_dataset, max_datasets_size=16384)
+    pretrain_dataset = SupervisedDataset(tokenizer=tokenizer, data_path=args.pretrain_dataset)
     if dist.is_initialized() and dist.get_world_size() > 1:
         pretrain_sampler = DistributedSampler(pretrain_dataset, shuffle=True, seed=42, drop_last=True)
     else:
@@ -191,7 +191,7 @@ def main(args):
         train_batch_size=args.train_batch_size,
         experience_batch_size=args.experience_batch_size,
         tokenizer=tokenize_fn,
-        max_length=512,
+        max_length=256,
         do_sample=True,
         temperature=1.0,
         top_k=50,
@@ -238,6 +238,6 @@ if __name__ == '__main__':
     parser.add_argument('--experience_batch_size', type=int, default=4)
     parser.add_argument('--lora_rank', type=int, default=0, help="low-rank adaptation matrices rank")
     parser.add_argument('--kl_coef', type=float, default=0.1)
-    parser.add_argument('--ptx_coef', type=float, default=0.9)
+    parser.add_argument('--ptx_coef', type=float, default=0.5)
     args = parser.parse_args()
     main(args)

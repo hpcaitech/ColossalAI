@@ -44,16 +44,16 @@ class ActorCritic(nn.Module):
         
         return sequences, values, attention_mask, action_mask
 
-    def forward(self,
-                sequences: torch.LongTensor,
-                num_actions: int,
-                attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
-        """Returns action log probs
-        """
-        output = self.model(sequences, attention_mask=attention_mask)
-        logits = output['logits']
-        log_probs = log_probs_from_logits(logits[:, :-1, :], sequences[:, 1:])
-        return log_probs[:, -num_actions:]
+    # def forward(self,
+    #             sequences: torch.LongTensor,
+    #             num_actions: int,
+    #             attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+    #     """Returns action log probs
+    #     """
+    #     output = self.actor.model(sequences, attention_mask=attention_mask)
+    #     logits = output['logits']
+    #     log_probs = log_probs_from_logits(logits[:, :-1, :], sequences[:, 1:])
+    #     return log_probs[:, -num_actions:]
 
-    def get_base_model(self):
-        return self.model
+    # def get_base_model(self):
+    #     return self.model

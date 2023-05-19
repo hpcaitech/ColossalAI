@@ -21,8 +21,8 @@ class MultiStepExperienceMaker(ExperienceMaker):
         self.buffer = []
         
         self.gamma = 1
-        self.lamda = 0.1
-        self.kl_coef = 0.9
+        self.lamda = 0.25
+        self.kl_coef = 1/128
         in_len = input_ids.size(1)
         
         # generate the sequence and get value at the same time
@@ -34,12 +34,12 @@ class MultiStepExperienceMaker(ExperienceMaker):
         base_action_logits = self.initial_model.model(sequences)['logits']
         
         action_log_probs = F.log_softmax(action_logits, dim=-1)
+        base_log_probs = F.log_softmax(base_action_logits, dim=-1)
         
         # compute kl_div
-        kl_list = compute_approx_kl(action_logits, base_action_logits)
+        kl_list = compute_approx_kl(action_log_probs, base_log_probs)
         # clip kl
         kl_list = torch.clamp(kl_list, max=10, min=1e-4)
-        
         
         # add eos token to the end of sequence and compute reward
         eos_tensor = torch.tensor([self.eos_token_id], device=input_ids.device).repeat(input_ids.size(0), 1)
@@ -60,10 +60,10 @@ class MultiStepExperienceMaker(ExperienceMaker):
         
         std = self.reward_M2 / (self.reward_count - 1)
         rewards = (rewards - self.reward_mean)/std
-       
-    
-    
+        
         print('rewards: ', rewards)
+        rewards = rewards * (1 - self.kl_coef)
+        
         # get action mask
         action_mask = action_mask[:, in_len:]
         kl_list = kl_list[:, in_len:]
