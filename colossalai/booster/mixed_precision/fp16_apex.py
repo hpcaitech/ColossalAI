@@ -5,7 +5,7 @@ from .mixed_precision_base import MixedPrecision
 
 class FP16ApexMixedPrecision(MixedPrecision):
     """
-    Precision for mixed precision training in FP16 using PyTorch AMP.
+    Precision for mixed precision training in FP16 using apex AMP.
 
     Args:
         opt_level(str, optional, default="O1" ): Pure or mixed precision optimization level. Accepted values are “O0”, “O1”, “O2”, and “O3”, explained in detail above Apex AMP Documentation.
