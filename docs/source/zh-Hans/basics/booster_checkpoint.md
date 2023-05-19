@@ -44,3 +44,5 @@
 ## Checkpoint 设计
 
 有关 Checkpoint 设计的更多详细信息，请参见我们的讨论 [A Unified Checkpoint System Design](https://github.com/hpcaitech/ColossalAI/discussions/3339).
+
+<!-- doc-test-command: echo  -->
