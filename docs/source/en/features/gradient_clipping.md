@@ -1,4 +1,4 @@
-# Gradient Clipping (outdated)
+# Gradient Clipping (Outdated)
 
 Author: Boxiang Wang, Haichen Huang, Yongbin Li
 
