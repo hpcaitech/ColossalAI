@@ -1,10 +1,9 @@
-import tempfile
-
 import torch
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim import SGD
 from torchvision.models import resnet18
+from utils import shared_tempdir
 
 import colossalai
 from colossalai.booster import Booster
@@ -35,11 +34,7 @@ def check_torch_ddp_checkpointIO(shard: bool):
     optimizer.step()
     scheduler.step()
 
-    with tempfile.TemporaryDirectory() as tempdir:
-        obj = [tempdir]
-        dist.broadcast_object_list(obj, src=0)
-        tempdir = obj[0]    # use the same directory on all ranks
-
+    with shared_tempdir() as tempdir:
         model_ckpt_path = f"{tempdir}/model"
         optimizer_ckpt_path = f"{tempdir}/optimizer"
         lr_scheduler_ckpt_path = f"{tempdir}/lr_scheduler"
@@ -65,8 +60,6 @@ def check_torch_ddp_checkpointIO(shard: bool):
             check_state_dict_equal(optimizer.state_dict(), new_optimizer.state_dict(), False)
             booster.load_lr_scheduler(new_scheduler, lr_scheduler_ckpt_path)
             check_state_dict_equal(scheduler.state_dict(), new_scheduler.state_dict(), False)
-
-        dist.barrier()
 
 
 def run_dist(rank, world_size, port):
