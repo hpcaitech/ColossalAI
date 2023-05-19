@@ -32,7 +32,7 @@
 不用担心它，因为 Colossal-AI 已经为你处理好。
 
 ### 使用
-要使用梯度裁剪，只需booster之后，调用optimizer的`clip_grad_by_norm`或者`clip_grad_by_value`函数即可进行梯度裁剪。
+要使用梯度裁剪，只需在使用booster注入特性之后，调用optimizer的`clip_grad_by_norm`或者`clip_grad_by_value`函数即可进行梯度裁剪。
 
 ### 实例
 
@@ -65,7 +65,6 @@ from colossalai.nn.lr_scheduler import CosineAnnealingLR
     colossalai.launch_from_torch(config=dict())
     logger = get_dist_logger()
 ```
-
 
 ### 步骤 3. 创建训练组件
 
