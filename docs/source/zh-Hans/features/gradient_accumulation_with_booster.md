@@ -56,52 +56,52 @@ colossalai.launch_from_torch(config=dict())
 构建你的模型、优化器、损失函数、学习率调整器和数据加载器。注意数据集的路径从环境变量`DATA`获得。你可以通过 `export DATA=/path/to/data` 或 `Path(os.environ['DATA'])`，在你的机器上设置路径。数据将会被自动下载到该路径。
 
 ```python
-    # define the training hyperparameters
-    BATCH_SIZE = 128
-    GRADIENT_ACCUMULATION = 4
+# define the training hyperparameters
+BATCH_SIZE = 128
+GRADIENT_ACCUMULATION = 4
 
-    # build resnet
-    model = resnet18(num_classes=10)
+# build resnet
+model = resnet18(num_classes=10)
 
-    # build dataloaders
-    with priority_execution():
-        train_dataset = CIFAR10(root=Path(os.environ.get('DATA', './data')),
-                                download=True,
-                                transform=transforms.Compose([
-                                    transforms.RandomCrop(size=32, padding=4),
-                                    transforms.RandomHorizontalFlip(),
-                                    transforms.ToTensor(),
-                                    transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010]),
-                                ]))
+# build dataloaders
+with priority_execution():
+    train_dataset = CIFAR10(root=Path(os.environ.get('DATA', './data')),
+                            download=True,
+                            transform=transforms.Compose([
+                                transforms.RandomCrop(size=32, padding=4),
+                                transforms.RandomHorizontalFlip(),
+                                transforms.ToTensor(),
+                                transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010]),
+                            ]))
 
-    # build criterion
-    criterion = torch.nn.CrossEntropyLoss()
+# build criterion
+criterion = torch.nn.CrossEntropyLoss()
 
-    # optimizer
-    optimizer = torch.optim.SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=5e-4)
+# optimizer
+optimizer = torch.optim.SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=5e-4)
 ```
 
 ### 步骤 4. 注入特性
 创建一个`TorchDDPPlugin`对象，并作为参实例化`Booster`， 调用`booster.boost`注入特性。
 
 ```python
-    plugin = TorchDDPPlugin()
-    booster = Booster(plugin=plugin)
-    train_dataloader = plugin.prepare_dataloader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
-    model, optimizer, criterion, train_dataloader, _ = booster.boost(model=model,
-                                                                     optimizer=optimizer,
-                                                                     criterion=criterion,
-                                                                     dataloader=train_dataloader)
+plugin = TorchDDPPlugin()
+booster = Booster(plugin=plugin)
+train_dataloader = plugin.prepare_dataloader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
+model, optimizer, criterion, train_dataloader, _ = booster.boost(model=model,
+                                                                    optimizer=optimizer,
+                                                                    criterion=criterion,
+                                                                    dataloader=train_dataloader)
 ```
 
 ### 步骤 5. 使用booster训练
 使用booster构建一个普通的训练循环，验证梯度累积。 `param_by_iter` 记录分布训练的信息。
 ```python
+optimizer.zero_grad()
 for idx, (img, label) in enumerate(train_dataloader):
         sync_context = booster.no_sync(model)
         img = img.cuda()
         label = label.cuda()
-        model.zero_grad()
         if idx % (GRADIENT_ACCUMULATION - 1) != 0:
             with sync_context:
                 output = model(img)
@@ -112,7 +112,7 @@ for idx, (img, label) in enumerate(train_dataloader):
             train_loss = criterion(output, label)
             booster.backward(train_loss, optimizer)
             optimizer.step()
-            model.zero_grad()
+            optimizer.zero_grad()
 
         ele_1st = next(model.parameters()).flatten()[0]
         param_by_iter.append(str(ele_1st.item()))

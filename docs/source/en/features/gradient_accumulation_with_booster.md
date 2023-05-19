@@ -12,7 +12,7 @@ Gradient accumulation is a common way to enlarge your batch size for training. W
 
 ## Usage
 
-It is simple to use gradient accumulation in Colossal-AI. Just call `booster.no_sync()` which returns a context manager. It accumulate gradients without synchronization, meanwhile you should not update the gradients.
+It is simple to use gradient accumulation in Colossal-AI. Just call `booster.no_sync()` which returns a context manager. It accumulate gradients without synchronization, meanwhile you should not update the weights.
 
 ## Hands-on Practice
 
@@ -53,52 +53,52 @@ colossalai.launch_from_torch(config=dict())
 Build your model, optimizer, loss function, lr scheduler and dataloaders. Note that the root path of the dataset is obtained from the environment variable `DATA`. You may `export DATA=/path/to/data` or change `Path(os.environ['DATA'])` to a path on your machine. Data will be automatically downloaded to the root path.
 
 ```python
-    # define the training hyperparameters
-    BATCH_SIZE = 128
-    GRADIENT_ACCUMULATION = 4
+# define the training hyperparameters
+BATCH_SIZE = 128
+GRADIENT_ACCUMULATION = 4
 
-    # build resnet
-    model = resnet18(num_classes=10)
+# build resnet
+model = resnet18(num_classes=10)
 
-    # build dataloaders
-    with priority_execution():
-        train_dataset = CIFAR10(root=Path(os.environ.get('DATA', './data')),
-                                download=True,
-                                transform=transforms.Compose([
-                                    transforms.RandomCrop(size=32, padding=4),
-                                    transforms.RandomHorizontalFlip(),
-                                    transforms.ToTensor(),
-                                    transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010]),
-                                ]))
+# build dataloaders
+with priority_execution():
+    train_dataset = CIFAR10(root=Path(os.environ.get('DATA', './data')),
+                            download=True,
+                            transform=transforms.Compose([
+                                transforms.RandomCrop(size=32, padding=4),
+                                transforms.RandomHorizontalFlip(),
+                                transforms.ToTensor(),
+                                transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010]),
+                            ]))
 
-    # build criterion
-    criterion = torch.nn.CrossEntropyLoss()
+# build criterion
+criterion = torch.nn.CrossEntropyLoss()
 
-    # optimizer
-    optimizer = torch.optim.SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=5e-4)
+# optimizer
+optimizer = torch.optim.SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=5e-4)
 ```
 
 ### Step 4. Inject Feature
 Create a `TorchDDPPlugin` object to instantiate a `Booster`, and boost these training components.
 
 ```python
-    plugin = TorchDDPPlugin()
-    booster = Booster(plugin=plugin)
-    train_dataloader = plugin.prepare_dataloader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
-    model, optimizer, criterion, train_dataloader, _ = booster.boost(model=model,
-                                                                     optimizer=optimizer,
-                                                                     criterion=criterion,
-                                                                     dataloader=train_dataloader)
+plugin = TorchDDPPlugin()
+booster = Booster(plugin=plugin)
+train_dataloader = plugin.prepare_dataloader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
+model, optimizer, criterion, train_dataloader, _ = booster.boost(model=model,
+                                                                    optimizer=optimizer,
+                                                                    criterion=criterion,
+                                                                    dataloader=train_dataloader)
 ```
 
 ### Step 5. Train with Booster
 Use booster in a normal training loops, and verify gradient accumulation. `param_by_iter` is to record the distributed training information.
 ```python
+model.zero_grad()
 for idx, (img, label) in enumerate(train_dataloader):
         sync_context = booster.no_sync(model)
         img = img.cuda()
         label = label.cuda()
-        model.zero_grad()
         if idx % (GRADIENT_ACCUMULATION - 1) != 0:
             with sync_context:
                 output = model(img)
