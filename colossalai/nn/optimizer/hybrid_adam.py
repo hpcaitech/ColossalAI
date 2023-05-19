@@ -13,19 +13,19 @@ from .nvme_optimizer import NVMeOptimizer
 class HybridAdam(NVMeOptimizer):
     """Implements Adam algorithm.
 
-    Supports parameters updating on both GPU and CPU, depanding on the device of paramters.
+    Supports parameters updating on both GPU and CPU, depanding on the device of parameters.
     But the parameters and gradients should on the same device:
       * Parameters on CPU and gradients on CPU is allowed.
       * Parameters on GPU and gradients on GPU is allowed.
       * Parameters on GPU and gradients on CPU is **not** allowed.
 
-    `HybriadAdam` requires CUDA extensions which can be built during installation or runtime.
+    `HybridAdam` requires CUDA extensions which can be built during installation or runtime.
 
     This version of Hybrid Adam is an hybrid of CPUAdam and FusedAdam.
 
     * For parameters updating on CPU, it uses CPUAdam.
     * For parameters updating on GPU, it uses FusedAdam.
-    * Hybird precision calculation of fp16 and fp32 is supported, eg fp32 parameters and fp16 gradients.
+    * Hybrid precision calculation of fp16 and fp32 is supported, eg fp32 parameters and fp16 gradients.
 
     :class:`colossalai.nn.optimizer.HybridAdam` may be used as a drop-in replacement for ``torch.optim.AdamW``,
     or ``torch.optim.Adam`` with ``adamw_mode=False``
@@ -131,7 +131,7 @@ class HybridAdam(NVMeOptimizer):
                     assert state['exp_avg'].device.type == 'cuda', "exp_avg should stay on cuda"
                     assert state['exp_avg_sq'].device.type == 'cuda', "exp_avg should stay on cuda"
 
-                    # record the state by gruop and update at once
+                    # record the state by group and update at once
                     g_l.append(p.grad.data)
                     p_l.append(p.data)
                     m_l.append(state['exp_avg'])
