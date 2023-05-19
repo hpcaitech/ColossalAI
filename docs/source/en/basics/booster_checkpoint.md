@@ -44,3 +44,5 @@ LR scheduler must be boosted by `colossalai.booster.Booster` before loading. `ch
 ## Checkpoint design
 
 More details about checkpoint design can be found in our discussion [A Unified Checkpoint System Design](https://github.com/hpcaitech/ColossalAI/discussions/3339).
+
+<!-- doc-test-command: echo  -->
