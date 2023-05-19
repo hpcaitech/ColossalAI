@@ -29,7 +29,11 @@ quickly deploy large AI model training and inference, reducing large AI model tr
  - Fine-tuning and Inference for OPT [[code]](https://github.com/hpcaitech/ColossalAI/tree/main/examples/tutorial/opt) [[video]](https://www.youtube.com/watch?v=jbEFNVzl67Y)
  - Optimized AlphaFold [[code]](https://github.com/hpcaitech/ColossalAI/tree/main/examples/tutorial/fastfold) [[video]](https://www.youtube.com/watch?v=-zP13LfJP7w)
  - Optimized Stable Diffusion [[code]](https://github.com/hpcaitech/ColossalAI/tree/main/examples/images/diffusion) [[video]](https://www.youtube.com/watch?v=8KHeUjjc-XQ)
-
+ - ColossalChat: Cloning ChatGPT with a Complete RLHF Pipeline 
+[[code]](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat) 
+[[blog]](https://medium.com/@yangyou_berkeley/colossalchat-an-open-source-solution-for-cloning-chatgpt-with-a-complete-rlhf-pipeline-5edf08fb538b) 
+[[demo]](https://www.youtube.com/watch?v=HcTiHzApHm0)
+[[video]](https://www.youtube.com/watch?v=-qFBZFmOJfg)
 
 ## Discussion
 
