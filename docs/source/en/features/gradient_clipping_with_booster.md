@@ -1,6 +1,6 @@
 # Gradient Clipping (latest)
 
-Author: Boxiang Wang, Haichen Huang, Yongbin Li
+Author: [Mingyan Jiang](https://github.com/jiangmingyan)
 
 **Prerequisite**
 - [Define Your Configuration](../basics/define_your_config.md)
@@ -31,14 +31,14 @@ According to the illustration below, each GPU only owns a portion of parameters 
 Do not worry about it, since Colossal-AI have handled it for you.
 
 ## Usage
-To use gradient clipping, you can just add the following code to your configuration file, and call `clip_grad_by_norm` or `clip_grad_by_value` method of optimizer which after boost if it support clip gradients.
+To use gradient clipping, you can just add the following code to your configuration file, and after boosted, you can call `clip_grad_by_norm` or `clip_grad_by_value` method of optimizer, if it support clip gradients.
 
 ## Hands-On Practice
 
-We now demonstrate gradient clipping. In this example, we set the gradient clipping vector norm to be 1.0.
+We now demonstrate how to use gradient clipping. In this example, we set the gradient clipping vector norm to be 1.0.
 
 ### step 1. Import libraries in train.py
-Create a `train_with_engine.py` and import the necessary dependencies.
+Create a `train.py` and import the necessary dependencies.
 
 ```python
 import os
@@ -69,9 +69,7 @@ for other initialization methods.
 
 ### Step 3. Create training components
 
-Build your model, optimizer, loss function, lr scheduler and dataloaders. Note that the root path of the dataset is
-obtained from the environment variable `DATA`. You may `export DATA=/path/to/data` or change `Path(os.environ['DATA'])`
-to a path on your machine. Data will be automatically downloaded to the root path.
+Build your model, optimizer, loss function, lr scheduler and dataloaders. Note that the root path of the dataset is obtained from the environment variable `DATA`. You may `export DATA=/path/to/data` or change `Path(os.environ['DATA'])` to a path on your machine. Data will be automatically downloaded to the root path.
 ```python
     # define training hyperparameters
     NUM_EPOCHS = 200
@@ -100,7 +98,7 @@ to a path on your machine. Data will be automatically downloaded to the root pat
 ```
 ### Step 4. Inject Gradient Clipping Feature
 
-create a `TorchDDPPlugin` object and instantiate `Booster` with it, then boost all training components.
+Create a `TorchDDPPlugin` object and instantiate `Booster` with it, and get a data loader from plugin, then boost all training components.
 ```python
     plugin = TorchDDPPlugin()
     booster = Booster(mixed_precision='fp16', plugin=plugin)

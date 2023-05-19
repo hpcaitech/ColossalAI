@@ -1,6 +1,6 @@
 # 梯度裁剪 (新版本)
 
-作者: Boxiang Wang, Haichen Huang, Yongbin Li
+作者: [Mingyan Jiang](https://github.com/jiangmingyan)
 
 **前置教程**
 - [定义配置文件](../basics/define_your_config.md)
@@ -32,10 +32,7 @@
 不用担心它，因为 Colossal-AI 已经为你处理好。
 
 ### 使用
-要使用梯度裁剪，只需booster之后，调用optimizer的`clip_grad_by_norm`或者`clip_grad_by_value`函数即可进行梯度裁剪。config.py中可配置max_norm。
-
-
-
+要使用梯度裁剪，只需booster之后，调用optimizer的`clip_grad_by_norm`或者`clip_grad_by_value`函数即可进行梯度裁剪。
 
 ### 实例
 
