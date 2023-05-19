@@ -26,8 +26,10 @@
       "collapsed": true,
       "items": [
         "basics/command_line_tool",
-        "basics/define_your_config",
         "basics/launch_colossalai",
+        "basics/booster_api",
+        "basics/booster_plugins",
+        "basics/define_your_config",
         "basics/initialize_features",
         "basics/engine_trainer",
         "basics/configure_parallelization",
@@ -57,7 +59,8 @@
           ]
         },
         "features/pipeline_parallel",
-        "features/nvme_offload"
+        "features/nvme_offload",
+        "features/cluster_utils"
       ]
     },
     {
