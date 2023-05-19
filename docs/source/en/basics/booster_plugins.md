@@ -43,11 +43,15 @@ We've tested compatibility on some famous models, following models may not be su
 
 Compatibility problems will be fixed in the future.
 
+> ⚠ This plugin can only load optimizer checkpoint saved by itself with the same number of processes now. This will be fixed in the future.
+
 ### Gemini Plugin
 
 This plugin implements Zero-3 with chunk-based and heterogeneous memory management. It can train large models without much loss in speed. It also does not support local gradient accumulation. More details can be found in [Gemini Doc](../features/zero_with_chunk.md).
 
 {{ autodoc:colossalai.booster.plugin.GeminiPlugin }}
+
+> ⚠ This plugin can only load optimizer checkpoint saved by itself with the same number of processes now. This will be fixed in the future.
 
 ### Torch DDP Plugin
 
@@ -62,3 +66,5 @@ More details can be found in [Pytorch Docs](https://pytorch.org/docs/main/genera
 More details can be found in [Pytorch Docs](https://pytorch.org/docs/main/fsdp.html).
 
 {{ autodoc:colossalai.booster.plugin.TorchFSDPPlugin }}
+
+<!-- doc-test-command: echo  -->

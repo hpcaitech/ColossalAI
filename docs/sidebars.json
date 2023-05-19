@@ -29,6 +29,7 @@
         "basics/launch_colossalai",
         "basics/booster_api",
         "basics/booster_plugins",
+        "basics/booster_checkpoint",
         "basics/define_your_config",
         "basics/initialize_features",
         "basics/engine_trainer",
