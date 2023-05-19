@@ -1,4 +1,4 @@
-from typing import Callable, Iterator, List, Tuple, Union
+from typing import Callable, Iterator, List, Optional, Tuple, Union
 
 import torch.nn as nn
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -49,6 +49,16 @@ class TorchDDPCheckpointIO(GeneralCheckpointIO):
         """
         if self.coordinator.is_master():
             super().save_lr_scheduler(lr_scheduler, checkpoint)
+
+    def save_sharded_model(self,
+                           model: nn.Module,
+                           checkpoint_path: str,
+                           gather_dtensor: bool = False,
+                           variant: Optional[str] = None,
+                           max_shard_size: int = 1024,
+                           use_safetensors: bool = False):
+        if self.coordinator.is_master():
+            super().save_sharded_model(model, checkpoint_path, gather_dtensor, variant, max_shard_size, use_safetensors)
 
 
 class TorchDDPModel(ModelWrapper):
