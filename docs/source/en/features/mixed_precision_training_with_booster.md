@@ -1,10 +1,10 @@
-# Auto Mixed Precision Training (latest)
+# Auto Mixed Precision Training (Latest)
 
-Author: Chuanrui Wang, Shenggui Li, Yongbin Li
+Author: [Mingyan Jiang](https://github.com/jiangmingyan)
 
 **Prerequisite**
 - [Define Your Configuration](../basics/define_your_config.md)
-- [Train With Booster](../basics/booster_api.md)
+- [Training Booster](../basics/booster_api.md)
 
 **Related Paper**
 - [Accelerating Scientific Computations with Mixed Precision Algorithms](https://arxiv.org/abs/0808.2794)

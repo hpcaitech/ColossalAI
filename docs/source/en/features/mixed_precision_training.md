@@ -1,4 +1,4 @@
-# Auto Mixed Precision Training (antiquated)
+# Auto Mixed Precision Training (Outdated)
 
 Author: Chuanrui Wang, Shenggui Li, Yongbin Li
 

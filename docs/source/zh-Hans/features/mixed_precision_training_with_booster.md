@@ -1,6 +1,6 @@
-# 自动混合精度训练 (新版本)
+# 自动混合精度训练 (最新版本)
 
-作者: Chuanrui Wang, Shenggui Li, Yongbin Li
+作者: [Mingyan Jiang](https://github.com/jiangmingyan)
 
 **前置教程**
 - [定义配置文件](../basics/define_your_config.md)
