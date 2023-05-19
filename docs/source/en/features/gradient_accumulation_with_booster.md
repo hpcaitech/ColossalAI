@@ -1,10 +1,10 @@
-# Gradient Accumulation (latest)
+# Gradient Accumulation (Latest)
 
 Author: [Mingyan Jiang](https://github.com/jiangmingyan)
 
 **Prerequisite**
 - [Define Your Configuration](../basics/define_your_config.md)
-- [Booster Training](../basics/booster_api.md)
+- [Training Booster](../basics/booster_api.md)
 
 ## Introduction
 
@@ -12,7 +12,7 @@ Gradient accumulation is a common way to enlarge your batch size for training. W
 
 ## Usage
 
-It is simple to use gradient accumulation in Colossal-AI. Just call `booster.no_sync()` which returns a context manager. It accumulate gradients without synchronization meanwhile you should not update the gradients.
+It is simple to use gradient accumulation in Colossal-AI. Just call `booster.no_sync()` which returns a context manager. It accumulate gradients without synchronization, meanwhile you should not update the gradients.
 
 ## Hands-on Practice
 
@@ -53,7 +53,7 @@ colossalai.launch_from_torch(config=dict())
 Build your model, optimizer, loss function, lr scheduler and dataloaders. Note that the root path of the dataset is obtained from the environment variable `DATA`. You may `export DATA=/path/to/data` or change `Path(os.environ['DATA'])` to a path on your machine. Data will be automatically downloaded to the root path.
 
 ```python
-    # define the constants
+    # define the training hyperparameters
     BATCH_SIZE = 128
     GRADIENT_ACCUMULATION = 4
 
@@ -79,7 +79,7 @@ Build your model, optimizer, loss function, lr scheduler and dataloaders. Note t
 ```
 
 ### Step 4. Inject Feature
-Create a `TorchDDPPlugin` object to instantiate a `Booster`, and boost these training components with booster.
+Create a `TorchDDPPlugin` object to instantiate a `Booster`, and boost these training components.
 
 ```python
     plugin = TorchDDPPlugin()
@@ -140,3 +140,5 @@ iteration 1, first 10 elements of param: tensor([-0.0208,  0.0189,  0.0234,  0.0
 iteration 2, first 10 elements of param: tensor([-0.0208,  0.0189,  0.0234,  0.0047,  0.0116, -0.0283,  0.0071, -0.0359, -0.0267, -0.0006], device='cuda:0', grad_fn=<SliceBackward0>)
 iteration 3, first 10 elements of param: tensor([-0.0141,  0.0464,  0.0507,  0.0321,  0.0356, -0.0150,  0.0172, -0.0118, 0.0222,  0.0473], device='cuda:0', grad_fn=<SliceBackward0>)
 ```
+
+<!-- doc-test-command: torchrun --standalone --nproc_per_node=1 gradient_accumulation_with_booster.py  -->

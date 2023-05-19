@@ -1,10 +1,10 @@
-# 梯度累积 (最新)
+# 梯度累积 (最新版本)
 
 作者: [Mingyan Jiang](https://github.com/jiangmingyan)
 
 **前置教程**
 - [定义配置文件](../basics/define_your_config.md)
-- [训练中使用Booster](../basics/engine_trainer.md) # todo 待更新链接。
+- [训练中使用Booster](../basics/booster_api.md)
 
 ## 引言
 
@@ -56,7 +56,7 @@ colossalai.launch_from_torch(config=dict())
 构建你的模型、优化器、损失函数、学习率调整器和数据加载器。注意数据集的路径从环境变量`DATA`获得。你可以通过 `export DATA=/path/to/data` 或 `Path(os.environ['DATA'])`，在你的机器上设置路径。数据将会被自动下载到该路径。
 
 ```python
-    # define the constant
+    # define the training hyperparameters
     BATCH_SIZE = 128
     GRADIENT_ACCUMULATION = 4
 
@@ -82,7 +82,7 @@ colossalai.launch_from_torch(config=dict())
 ```
 
 ### 步骤 4. 注入特性
-创建一个`TorchDDPPlugin`对象，并作为参实例化`Booster`, 调用booster注入特性.
+创建一个`TorchDDPPlugin`对象，并作为参实例化`Booster`， 调用`booster.boost`注入特性。
 
 ```python
     plugin = TorchDDPPlugin()
@@ -102,7 +102,7 @@ for idx, (img, label) in enumerate(train_dataloader):
         img = img.cuda()
         label = label.cuda()
         model.zero_grad()
-        if idx % (gpc.config.gradient_accumulation - 1) != 0:
+        if idx % (GRADIENT_ACCUMULATION - 1) != 0:
             with sync_context:
                 output = model(img)
                 train_loss = criterion(output, label)
@@ -117,7 +117,7 @@ for idx, (img, label) in enumerate(train_dataloader):
         ele_1st = next(model.parameters()).flatten()[0]
         param_by_iter.append(str(ele_1st.item()))
 
-        if idx != 0 and idx % (gpc.config.gradient_accumulation - 1) == 0:
+        if idx != 0 and idx % (GRADIENT_ACCUMULATION - 1) == 0:
             break
 
     for iteration, val in enumerate(param_by_iter):
@@ -142,3 +142,5 @@ iteration 1, first 10 elements of param: tensor([-0.0208,  0.0189,  0.0234,  0.0
 iteration 2, first 10 elements of param: tensor([-0.0208,  0.0189,  0.0234,  0.0047,  0.0116, -0.0283,  0.0071, -0.0359, -0.0267, -0.0006], device='cuda:0', grad_fn=<SliceBackward0>)
 iteration 3, first 10 elements of param: tensor([-0.0141,  0.0464,  0.0507,  0.0321,  0.0356, -0.0150,  0.0172, -0.0118, 0.0222,  0.0473], device='cuda:0', grad_fn=<SliceBackward0>)
 ```
+
+<!-- doc-test-command: torchrun --standalone --nproc_per_node=1 gradient_accumulation_with_booster.py  -->
