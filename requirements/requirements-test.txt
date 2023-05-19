@@ -1,12 +1,13 @@
 diffusers
 fbgemm-gpu==0.2.0
 pytest
-pytest-cov
+git+https://github.com/hpcaitech/pytest-testmon
 torchvision
 transformers
 timm
 titans
 torchaudio
+torchx-nightly==2022.6.29 # torchrec 0.2.0 requires torchx-nightly. This package is updated every day. We fix the version to a specific date to avoid breaking changes.
 torchrec==0.2.0
 contexttimer
 einops
