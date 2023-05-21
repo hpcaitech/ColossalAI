@@ -64,7 +64,7 @@ class TraceFlow(object):
             return False
         return True
 
-    def _assgin_single_node_flow(
+    def _assign_single_node_flow(
         self,
         arg_node: Node,
         start_idx: int,
@@ -177,7 +177,7 @@ class TraceFlow(object):
                     if get_node_shape(arg) is None:
                         continue
                     arg_list.append(arg)
-                    flow_flag = self._assgin_single_node_flow(
+                    flow_flag = self._assign_single_node_flow(
                         arg,
                         start_idx,
                         end_idx,
@@ -315,7 +315,7 @@ class TraceFlow(object):
         chunk_info["args"]["prepose_nodes"] = prepose_nodes
 
     def _get_non_chunk_inputs(self, chunk_info, start_idx, end_idx):
-        # we need to log input nodes to avoid deleteing them in the loop
+        # we need to log input nodes to avoid deleting them in the loop
         chunk_node_list = self.node_mgr.get_node_slice_by_idx(start_idx, end_idx + 1)
         # also need to get some prepose node's arg out of non_chunk_inputs
         for n in chunk_info["args"]["prepose_nodes"]:

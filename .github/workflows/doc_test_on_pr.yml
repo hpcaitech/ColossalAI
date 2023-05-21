@@ -86,7 +86,7 @@ jobs:
       - name: Test the Doc
         run: |
           source activate pytorch
-          for file in ${{ steps.changed-files.outputs.all_changed_files }}; do
+          for file in ${{ needs.detect-changed-doc.outputs.changed_files }}; do
             echo "Testing $file now..."
             docer test -p $file
           done

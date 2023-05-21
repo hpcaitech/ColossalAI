@@ -54,7 +54,7 @@ def size_processing(size: Union[int, torch.Size],
     return size
 
 
-def solution_annotatation_pass(gm: torch.fx.GraphModule, solution: List[int],
+def solution_annotation_pass(gm: torch.fx.GraphModule, solution: List[int],
                                strategies_constructor: StrategiesConstructor):
     """
     This method is used to stick the solution strategy to the nodes and add the information
@@ -496,7 +496,7 @@ def runtime_preparation_pass(gm: torch.fx.GraphModule,
                              device_mesh: DeviceMesh,
                              strategies_constructor: StrategiesConstructor,
                              overlap=False):
-    gm, sharding_spec_convert_dict, origin_node_sharding_spec_dict, comm_actions_dict = solution_annotatation_pass(
+    gm, sharding_spec_convert_dict, origin_node_sharding_spec_dict, comm_actions_dict = solution_annotation_pass(
         gm, solution, strategies_constructor)
     gm = size_value_converting_pass(gm, device_mesh)
     gm = node_args_converting_pass(gm, device_mesh)

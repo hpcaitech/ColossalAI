@@ -2,7 +2,18 @@ name: Build on PR
 
 on:
   pull_request:
-    types: [synchronize, labeled]
+    types: [synchronize, opened, reopened]
+    paths:
+      - '.github/workflows/build_on_pr.yml' # run command & env variables change
+      - 'colossalai/**' # source code change
+      - '!colossalai/**.md' # ignore doc change
+      - 'op_builder/**' # cuda extension change
+      - '!op_builder/**.md' # ignore doc change
+      - 'requirements/**' # requirements change
+      - 'tests/**' # test change
+      - '!tests/**.md' # ignore doc change
+      - 'pytest.ini' # test config change
+      - 'setup.py' # install command change
 
 jobs:
   detect:
@@ -10,8 +21,7 @@ jobs:
     if: |
       github.event.pull_request.draft == false &&
       github.base_ref == 'main' &&
-      github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' &&
-      contains( github.event.pull_request.labels.*.name, 'Run Build and Test')
+      github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
     outputs:
       changedExtenisonFiles: ${{ steps.find-extension-change.outputs.all_changed_files }}
       anyExtensionFileChanged: ${{ steps.find-extension-change.outputs.any_changed }}
@@ -66,6 +76,7 @@ jobs:
   build:
     name: Build and Test Colossal-AI
     needs: detect
+    if: needs.detect.outputs.anyLibraryFileChanged == 'true'
     runs-on: [self-hosted, gpu]
     container:
       image: hpcaitech/pytorch-cuda:1.12.0-11.3.0
@@ -110,7 +121,6 @@ jobs:
           [ ! -z "$(ls -A /github/home/cuda_ext_cache/)" ] && cp -p -r /github/home/cuda_ext_cache/* /__w/ColossalAI/ColossalAI/
 
       - name: Install Colossal-AI
-        if: needs.detect.outputs.anyLibraryFileChanged == 'true'
         run: |
           CUDA_EXT=1 pip install -v -e .
           pip install -r requirements/requirements-test.txt
@@ -127,7 +137,6 @@ jobs:
           fi
 
       - name: Execute Unit Testing
-        if: needs.detect.outputs.anyLibraryFileChanged == 'true'
         run: |
           CURL_CA_BUNDLE="" PYTHONPATH=$PWD pytest --testmon --testmon-cov=. tests/
         env:
