@@ -90,7 +90,7 @@ def bert_score(preds: list, targets: list) -> dict:
     The BERTScore evaluates the semantic similarity between
     tokens of preds and targets with BERT.
     """
-    bert_score = {"precision": 0, "recall": 0, "f1_score": 0}
+    bert_score = {"bert_score": 0}
     pred_list = []
     target_list = []
 
