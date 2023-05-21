@@ -54,9 +54,9 @@ def rouge_cn_score(preds: list, targets: list) -> dict:
     rouge_cn = Rouge_cn()
     rouge_avg = rouge_cn.get_scores(all_preds, all_targets, avg=True)
 
-    rouge_scores["rouge1"] = rouge_avg["rouge-1"]
-    rouge_scores["rouge2"] = rouge_avg["rouge-2"]
-    rouge_scores["rougeL"] = rouge_avg["rouge-l"]
+    rouge_scores["rouge1"] = rouge_avg["rouge-1"]["f"]
+    rouge_scores["rouge2"] = rouge_avg["rouge-2"]["f"]
+    rouge_scores["rougeL"] = rouge_avg["rouge-l"]["f"]
 
     return rouge_scores
 
@@ -98,11 +98,9 @@ def bert_score(preds: list, targets: list) -> dict:
         pred_list.append(' '.join(jieba.cut(pred)))
         target_list.append(' '.join(jieba.cut(target)))
 
-    P, R, F = score(pred_list, target_list, lang="zh", verbose=True)
+    _, _, F = score(pred_list, target_list, lang="zh", verbose=True)
 
-    bert_score["precision"] = P.mean().item()
-    bert_score["recall"] = R.mean().item()
-    bert_score["f1_score"] = F.mean().item()
+    bert_score["bert_score"] = F.mean().item()
 
     return bert_score
 
