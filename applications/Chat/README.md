@@ -67,13 +67,24 @@ More details can be found in the latest news.
 * [2023/02] [Open Source Solution Replicates ChatGPT Training Process! Ready to go with only 1.6GB GPU Memory](https://www.hpc-ai.tech/blog/colossal-ai-chatgpt)
 
 ## Online demo
-You can experience the performance of Coati7B on this page.
+<div align="center">
+   <a href="https://www.youtube.com/watch?v=HcTiHzApHm0">
+   <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/ColossalChat%20YouTube.png" width="700" />
+   </a>
+</div>
 
-[chat.colossalai.org](https://chat.colossalai.org/)
+[ColossalChat](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat): An open-source solution for cloning [ChatGPT](https://openai.com/blog/chatgpt/) with a complete RLHF pipeline. 
+[[code]](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat) 
+[[blog]](https://medium.com/@yangyou_berkeley/colossalchat-an-open-source-solution-for-cloning-chatgpt-with-a-complete-rlhf-pipeline-5edf08fb538b) 
+[[demo]](https://www.youtube.com/watch?v=HcTiHzApHm0)
+[[tutorial]](https://www.youtube.com/watch?v=-qFBZFmOJfg)
 
-Due to resource constraints, we will only provide this service from 29th Mar 2023 to 5 April 2023. However, we have provided the inference code in the [inference](./inference/) folder. The WebUI will be open-sourced soon as well.
+<p id="ColossalChat-Speed" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/ColossalChat%20Speed.jpg" width=450/>
+</p>
 
-> Warning: Due to model and dataset size limitations, Coati is just a baby model, Coati7B may output incorrect information and lack the ability for multi-turn dialogue. There is still significant room for improvement.
+> DeepSpeedChat performance comes from its blog on 2023 April 12, ColossalChat performance can be reproduced on an AWS p4d.24xlarge node with 8 A100-40G GPUs with the following command: torchrun --standalone --nproc_per_node 8 benchmark_opt_lora_dummy.py --max_timesteps 1 --update_timesteps 1 --use_kernels --strategy colossalai_zero2 --experience_batch_size 64 --train_batch_size 32
+
 ## Install
 
 ### Install the environment
@@ -112,12 +123,14 @@ Here is how we collected the data
 Stage1 is supervised instructs fine-tuning, which uses the datasets mentioned earlier to fine-tune the model.
 
 You can run the `examples/train_sft.sh` to start a supervised instructs fine-tuning.
+[[Stage1 tutorial video]](https://www.youtube.com/watch?v=-qFBZFmOJfg)
 
 ### RLHF Training Stage2 - Training reward model
 
 Stage2 trains a reward model, which obtains corresponding scores by manually ranking different outputs for the same prompt and supervises the training of the reward model
 
 You can run the `examples/train_rm.sh` to start a reward model training.
+[[Stage2 tutorial video]](https://www.youtube.com/watch?v=gMx2CApKhuo)
 
 ### RLHF Training Stage3 - Training model with reinforcement learning by human feedback
 
@@ -128,6 +141,7 @@ Stage3 uses reinforcement learning algorithm, which is the most complex part of 
 </p>
 
 You can run the `examples/train_prompts.sh` to start training PPO with human feedback.
+[[Stage3 tutorial video]](https://www.youtube.com/watch?v=Z8wwSHxPL9g)
 
 For more details, see [`examples/`](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat/examples).
 

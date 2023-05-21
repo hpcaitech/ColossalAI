@@ -47,12 +47,16 @@ jobs:
       # we use the versions in the main branch as the guide for versions to display
       # checkout will give your merged branch
       # therefore, we need to make the merged branch as the main branch
+      # there is no main branch, so it's safe to checkout the main branch from the merged branch
+      # docer will rebase the remote main branch to the merged branch, so we have to config user
       - name: Make the merged branch main
         run: |
           cd ColossalAI
-          curBranch=$(git rev-parse --abbrev-ref HEAD)
-          git checkout main
-          git merge $curBranch             # fast-forward master up to the merge
+          git checkout -b main
+          git branch -u origin/main
+          git config user.name 'github-actions'
+          git config user.email 'github-actions@github.com'
+
 
       - name: Build docs
         run: |
