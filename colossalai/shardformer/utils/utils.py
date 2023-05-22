@@ -35,13 +35,14 @@ def setattr_(obj, attr: str, value, ignore: bool=False):
             raise AttributeError(f"Object {obj} has no attribute {attr}")
     setattr(obj, attrs[-1], value)
 
-def getattr_(obj, attr: str):
+def getattr_(obj, attr: str, ignore: bool=None):
     """
     Get the object's multi sublevel attr
     
     Args:
         obj: The object to set
         attr: The multi level attr to set
+        ignore: Whether to ignore when the attr doesn't exist
     """
 
     attrs = attr.split('.')
@@ -49,5 +50,7 @@ def getattr_(obj, attr: str):
         try:
             obj = getattr(obj, a)
         except AttributeError:
+            if ignore:
+                return None
             raise AttributeError(f"Object {obj} has no attribute {attr}")
     return obj

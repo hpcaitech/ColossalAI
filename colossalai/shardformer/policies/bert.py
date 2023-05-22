@@ -2,7 +2,7 @@ from typing import Dict, List, Tuple, Type, Any, Callable
 import torch.nn as nn
 from .basepolicy import Policy, Layer, Argument, Col_Layer, Row_Layer
 import colossalai.nn as col_nn
-from transformers.models.bert.modeling_bert import BertLayer, BertEmbeddings
+from transformers.models.bert.modeling_bert import BertLayer, BertEmbeddings, BertLMPredictionHead
 from dataclasses import dataclass
 
 
@@ -36,6 +36,18 @@ class BertPolicy(Policy):
                 },
                 param_funcs = [
                     BertPolicy.embedding,
+                ],
+                binding_layers = [
+                    BertLMPredictionHead,
+                ]
+            ),
+            BertLMPredictionHead: Argument(
+                attr_dict = {
+                    # 1. shard vocab size
+                    # "word_embeddings.num_embeddings": config.vocab_size // world_size,
+                    # 2. add the size of the sliced embedding layer excluding the last slice
+                },
+                param_funcs = [
                     BertPolicy.unembedding,
                 ]
             )
@@ -47,34 +59,34 @@ class BertPolicy(Policy):
             Col_Layer(
                 weight="attention.self.query.weight",
                 bias="attention.self.query.bias",
-                replace_layer=col_nn.Linear,
+                replace_layer=col_nn.Linear1D_Col,
             ),
-            Layer(
+            Col_Layer(
                 weight="attention.self.key.weight",
                 bias="attention.self.key.bias",
-                replace_layer=col_nn.Linear,
+                replace_layer=col_nn.Linear1D_Col,
             ),
-            Layer(
+            Col_Layer(
                 weight="attention.self.value.weight",
                 bias="attention.self.value.bias",
-                replace_layer=col_nn.Linear,
+                replace_layer=col_nn.Linear1D_Col,
             ),
-            Layer(
+            Col_Layer(
                 weight="crossattention.self.query.weight",
                 bias="crossattention.self.query.bias",
-                replace_layer=col_nn.Linear,
+                replace_layer=col_nn.Linear1D_Col,
                 ignore=True,
             ),
-            Layer(
+            Col_Layer(
                 weight="crossattention.self.key.weight",
                 bias="crossattention.self.key.bias",
-                replace_layer=col_nn.Linear,
+                replace_layer=col_nn.Linear1D_Col,
                 ignore=True,
             ),
-            Layer(
+            Col_Layer(
                 weight="crossattention.self.value.weight",
                 bias="crossattention.self.value.bias",
-                replace_layer=col_nn.Linear,
+                replace_layer=col_nn.Linear1D_Col,
                 ignore=True,
             ),
 
@@ -83,15 +95,15 @@ class BertPolicy(Policy):
     @staticmethod
     def attn_out() -> List:
         return [
-            Layer(
+            Row_Layer(
                 weight="attention.output.dense.weight",
                 bias="attention.output.dense.bias",
-                # replace_layer=col_nn.Linear,
+                replace_layer=col_nn.Linear1D_Row,
             ),
-            Layer(
+            Row_Layer(
                 weight="crossattention.output.dense.weight",
                 bias="crossattention.output.dense.bias",
-                # replace_layer=col_nn.Linear,
+                replace_layer=col_nn.Linear1D_Row,
                 ignore=True,
             ),
         ]
@@ -102,33 +114,38 @@ class BertPolicy(Policy):
              Col_Layer(
                 weight="intermediate.dense.weight",
                 bias="intermediate.dense.bias",
-                # replace_layer=col_nn.Linear,
+                replace_layer=col_nn.Linear1D_Col,
             ),
         ]
     
     @staticmethod
     def mlp_out() -> List:
         return [
-             Row_Layer(
+            Row_Layer(
                 weight="output.dense.weight",
                 bias="output.dense.bias",
-                # replace_layer=col_nn.Linear,
+                replace_layer=col_nn.Linear1D_Row,
             ),
         ]
 
     @staticmethod
     def embedding() -> List:
         return [
-            Layer(
+            Col_Layer(
                 weight="word_embeddings.weight",
-                # replace=AllReduceEmbedding,
+                replace_layer=col_nn.VocabParallelEmbedding1D,
             )
         ]
     
     @staticmethod
     def unembedding() -> List:
         return [
-
+            Col_Layer(
+                weight="decoder.weight",
+                bias="decoder.bias",
+                replace_layer=col_nn.Linear1D_Col,
+                gather_output=True,
+            )
         ]
 
 from transformers import BertForMaskedLM

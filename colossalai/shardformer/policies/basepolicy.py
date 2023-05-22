@@ -5,12 +5,13 @@ import torch.nn as nn
 import colossalai.nn as col_nn
 from typing import Any, Dict, List, Type, Tuple, Callable
 from transformers import AutoConfig
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 @dataclass
 class Argument:
     attr_dict : Dict[str, Any]
     param_funcs : List[Callable]
+    binding_layers : List[nn.Module] = field(default_factory=list)
 
 @dataclass
 class Layer:
@@ -34,7 +35,7 @@ class Col_Layer(Layer):
     """
     Class for col shard layer in MegatronLM
     """
-    pass
+    gather_output: bool = False
 
 
 @dataclass

@@ -17,16 +17,19 @@ class Slicer():
         shardconfig: ShardConfig #TODO
     ) -> None:
         self.shardconfig = shardconfig
-    
 
+    
     def slice_weight_bias(
         self,
         weight: torch.Tensor,
         bias: torch.Tensor,
         policy_layer_cls: Layer,
-    ) -> Tuple[torch.Tensor,torch.Tensor]:
+    ):
         """
-        Slice the weight and bias according to the shardconfig
+        Slice the weight and bias according to policy layer cls
+        Layer -> do nothing
+        Col_Layer -> slice the weight and bias along dim 1
+        Row_Layer -> slice the weight along dim 0 and do not slice bias
 
         Args:
             weight: The weight of the layer
@@ -35,13 +38,49 @@ class Slicer():
         """
         if policy_layer_cls == Layer:
             return weight, bias
+        elif policy_layer_cls == Col_Layer:
+            weight = self.slice_tensor(weight, 1, False)
+            bias = self.slice_tensor(bias, 0, True)
+        elif policy_layer_cls == Row_Layer:
+            weight = self.slice_tensor(weight, 0, False)
+        else:
+            raise NotImplementedError(f"The policy layer class {policy_layer_cls} is not supported")
+        return weight, bias
+    
+
+    def slice_weight(
+        self,
+        weight: torch.Tensor,
+        policy_layer_cls: Layer,
+    ) -> torch.Tensor:
+        """
+        Slice the weight and bias according to the shardconfig
+
+        Args:
+            weight: The weight of the layer
+            bias: The bias of the layer
+            policy_layer_class: The class represent how to slice the tensor
+        """
         if weight is not None:
-            assert policy_layer_cls in dim_mapping, f"The policy layer class {policy_layer_cls} is not supported"
             dim = dim_mapping[policy_layer_cls]
             weight = self.slice_tensor(weight, dim, False)
+        return weight
+
+
+    def slice_bias(
+        self,
+        bias: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Slice the bias according to the shardconfig
+        
+        Args:
+            bias: The bias of the layer
+        """
+        assert bias is not None, "The bias is None"
         if bias is not None:
             bias = self.slice_tensor(bias, 1, True)
-        return weight, bias
+        return bias
 
 
     def slice_tensor(
@@ -53,6 +92,8 @@ class Slicer():
         """
         Slice tensor according to the config
         """
+        if tensor_in is None:
+            return None
         if not is_bias:
             return self.slice_2d(tensor_in, dim)
         else:
@@ -76,6 +117,7 @@ class Slicer():
         elif dim == 1:
             return self.slice_col(tensor)
 
+
     def slice_1d(
         self,
         tensor: torch.Tensor,
@@ -88,7 +130,7 @@ class Slicer():
             tensor: The tensor to slice
         """
         delta = (tensor.shape[0] + self.shardconfig.world_size - 1) // self.shardconfig.world_size
-        down_idx = (self.shardconfig.rank - 1) * delta
+        down_idx = self.shardconfig.rank * delta
         up_idx = down_idx + delta
         return tensor[down_idx:up_idx]
 
@@ -122,3 +164,4 @@ class Slicer():
         down_idx = self.shardconfig.rank * delta
         up_idx = down_idx + delta
         return tensor[:,down_idx:up_idx]
+    
