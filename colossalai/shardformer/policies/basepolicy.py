@@ -11,7 +11,6 @@ from dataclasses import dataclass, field
 class Argument:
     attr_dict : Dict[str, Any]
     param_funcs : List[Callable]
-    binding_layers : List[nn.Module] = field(default_factory=list)
 
 @dataclass
 class Layer:
@@ -113,6 +112,13 @@ class Policy():
         """
         return ()
     
+
+    @staticmethod
+    def binding_policy() -> Dict:
+        """
+        Return the dict for the binding model
+        """
+        return NotImplementedError
 
     @staticmethod
     def attn_in() -> List:

@@ -34,13 +34,13 @@ class ModelSharder(object):
         self.slicer = Slicer(shard_config)
         self.shard_config = shard_config
         self.model_config = self.model.config
-        self.binding_map = {}
 
 
     def shard(self) -> None:
         self.inject_model(self.model)
         self.replace_layer(self.model)
-  
+        self.bind_layer(self.model)
+
         
     def inject_model(
             self,
@@ -85,10 +85,7 @@ class ModelSharder(object):
             origin_layer_cls = argument_policy[0]
             attr_dict = argument_policy[1].attr_dict
             param_funcs = argument_policy[1].param_funcs
-            binding_layers = argument_policy[1].binding_layers
-            # if binding_layer is not None:
-            #     self.binding_map[origin_layer_cls] = binding_layer
-            self.reverse_replace_layer(model, origin_layer_cls, attr_dict, param_funcs, binding_layers)
+            self.reverse_replace_layer(model, origin_layer_cls, attr_dict, param_funcs)
 
 
     def reverse_replace_layer(
@@ -97,7 +94,6 @@ class ModelSharder(object):
             origin_cls: nn.Module,
             attr_dict: Dict[str, Any],
             param_funcs: List[Callable],
-            binding_layers: List[nn.Module]
         ) -> None:
         """
         Reverse the replace layer operation
@@ -115,10 +111,10 @@ class ModelSharder(object):
                     setattr_(child, k, v, ignore=True)
                 # print(f"Sharding {name} layer", replac_layer.attention.self.__dict__)
                 # setattr_(layer, name, self.shard_one_layer(child, policy_cls))
-                self.shard_one_layer(child, param_funcs, binding_layers)
+                self.shard_one_layer(child, param_funcs)
                 continue
 
-            self.reverse_replace_layer(child, origin_cls, attr_dict, param_funcs, binding_layers)
+            self.reverse_replace_layer(child, origin_cls, attr_dict, param_funcs)
         return layer
 
 
@@ -126,7 +122,6 @@ class ModelSharder(object):
             self, 
             org_layer: nn.Module, 
             param_funcs: List[Callable],
-            binding_layers: List[nn.Module]
         ) -> None:
         """
         Shard one layer according to the policy, the layer should be the same class as the key in policy's argument_policy return dict
@@ -148,7 +143,7 @@ class ModelSharder(object):
                 ignore = policy_layer.ignore
                 if policy_layer.__class__.__name__ == "Col_Layer":
                     gather_output = policy_layer.gather_output
-                    print(gather_output)
+                    # print(gather_output)
 
                 if weight_attr is not None:
                     if hasattr_(org_layer, weight_attr):
@@ -172,10 +167,7 @@ class ModelSharder(object):
 
                 # slice weight and bias
                 weight, bias = self.slicer.slice_weight_bias(weight, bias, policy_layer.__class__)
-                print(os.environ['RANK'], policy_layer.__class__, weight.shape, bias.shape if bias is not None else None)
-                # save the binding information
-                for binding_layer in binding_layers:
-                    self.binding_map[binding_layer] = dict(weight=weight, bias=bias)
+                # print(os.environ['RANK'], policy_layer.__class__, weight.shape, bias.shape if bias is not None else None)
 
                 # create new object to replace the origin layer
                 if replace_layer_cls is not None:
@@ -201,9 +193,9 @@ class ModelSharder(object):
     def set_param(
             self, 
             layer: Any, 
-            layer_attr: str = "", 
             weight: torch.Tensor = None, 
-            bias: torch.Tensor = None
+            bias: torch.Tensor = None,
+            layer_attr: str = ""
         ) -> None:
         """
         Reset the weight and bias of the layer object
@@ -235,4 +227,18 @@ class ModelSharder(object):
         attrs = ["out_features", "in_features"]
         for i, attr in enumerate(attrs):
             if hasattr_(layer, f"{layer_attr}.{attr}"):
-                setattr_(layer, f"{layer_attr}.{attr}", size[i])    
+                setattr_(layer, f"{layer_attr}.{attr}", size[i])   
+
+
+    def bind_layer(
+            self,
+            model: nn.Module
+        ) -> None:
+        binding_map = self.policy.binding_policy()
+        for k,v in binding_map.items():
+            param = getattr_(model, k)
+            param = nn.Parameter(param)
+            setattr_(model, k, param)
+            setattr_(model, v, param)
+            
+

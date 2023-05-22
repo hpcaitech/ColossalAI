@@ -36,9 +36,6 @@ class BertPolicy(Policy):
                 },
                 param_funcs = [
                     BertPolicy.embedding,
-                ],
-                binding_layers = [
-                    BertLMPredictionHead,
                 ]
             ),
             BertLMPredictionHead: Argument(
@@ -51,6 +48,12 @@ class BertPolicy(Policy):
                     BertPolicy.unembedding,
                 ]
             )
+        }
+
+    @staticmethod
+    def binding_policy() -> Dict:
+        return {
+            "bert.embeddings.word_embeddings.weight": "cls.predictions.decoder.weight",
         }
 
     @staticmethod
