@@ -38,9 +38,9 @@ AMP 代表自动混合精度训练。
 
 在本教程中，我们将介绍:
 
-1. AMP 介绍
-2. Colossal-AI 中的 AMP
-3. 练习实例
+1. [AMP 介绍](#amp-介绍)
+2. [Colossal-AI 中的 AMP](#colossal-ai-中的-amp)
+3. [练习实例](#实例)
 
 ## AMP 介绍
 

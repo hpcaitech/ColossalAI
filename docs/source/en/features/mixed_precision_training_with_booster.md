@@ -42,9 +42,9 @@ We recommend you to use torch AMP as it generally gives better accuracy than nai
 
 In this tutorial we will cover:
 
-1. AMP introduction
-2. AMP in Colossal-AI
-3. Hands-on Practice
+1. [AMP introduction](#amp-introduction)
+2. [AMP in Colossal-AI](#amp-in-colossal-ai)
+3. [Hands-on Practice](#hands-on-practice)
 
 ## AMP Introduction
 
