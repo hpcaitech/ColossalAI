@@ -65,6 +65,7 @@ We supported three AMP training methods and allowed the user to train with AMP w
 
 ### Start with Booster
 instantiate `Booster` with `mixed_precision="fp16"`, then you can train with torch amp.
+<!--- doc-test-ignore-start -->
 ```python
 """
     Mapping:
@@ -77,7 +78,9 @@ instantiate `Booster` with `mixed_precision="fp16"`, then you can train with tor
 from colossalai import Booster
 booster = Booster(mixed_precision='fp16',...)
 ```
+<!--- doc-test-ignore-end -->
 or you can create a `FP16TorchMixedPrecision` object, such as:
+<!--- doc-test-ignore-start -->
 ```python
 from colossalai.mixed_precision import FP16TorchMixedPrecision
 mixed_precision = FP16TorchMixedPrecision(
@@ -87,19 +90,13 @@ mixed_precision = FP16TorchMixedPrecision(
     growth_interval=2000)
 booster = Booster(mixed_precision=mixed_precision,...)
 ```
+<!--- doc-test-ignore-end -->
 The same goes for other types of amps.
 
 
 ### Torch AMP Configuration
 
 {{ autodoc:colossalai.booster.mixed_precision.FP16TorchMixedPrecision }}
-
-With optional arguments:
-- init_scale(float, optional, default=2.**16): Initial scale factor
-- growth_factor(float, optional, default=2.0): Factor by which the scale is multiplied during `update` if no inf/NaN gradients occur for ``growth_interval`` consecutive iterations.
-- backoff_factor(float, optional, default=0.5): Factor by which the scale is multiplied during `update` if inf/NaN gradients occur in an iteration.
-- growth_interval(int, optional, default=2000): Number of consecutive iterations without inf/NaN gradients that must occur for the scale to be multiplied by ``growth_factor``.
-- enabled(bool, optional, default=True): If ``False``, disables gradient scaling. `step` simply invokes the underlying ``optimizer.step()``, and other methods become no-ops.
 
 ### Apex AMP Configuration
 
@@ -111,36 +108,6 @@ If you look for more details, please refer to [Apex Documentation](https://nvidi
 
 {{ autodoc:colossalai.booster.mixed_precision.FP16ApexMixedPrecision }}
 
-Parameters:
-- enabled(bool, optional, default=True): If False, renders all AMP calls no-ops, so your script should run as if Amp were not present.
-
-- opt_level(str, optional, default="O1" ): Pure or mixed precision optimization level.
-Accepted values are “O0”, “O1”, “O2”, and “O3”, explained in detail above Apex AMP Documentation.
-
-- num_losses(int, optional, default=1): Option to tell AMP in advance how many losses/backward passes you plan to use.
-When used in conjunction with the loss_id argument to `amp.scale_loss`, enables Amp to use a different loss scale per
-loss/backward pass, which can improve stability. If num_losses is left to 1, Amp will still support multiple
-losses/backward passes, but use a single global loss scale for all of them.
-
-- verbosity(int, default=1): Set to 0 to suppress Amp-related output.
-
-- min_loss_scale(float, default=None): Sets a floor for the loss scale values that can be chosen by dynamic loss scaling.
-The default value of None means that no floor is imposed. If dynamic loss scaling is not used, min_loss_scale is ignored.
-
-- max_loss_scale(float, default=2.**24 ): Sets a ceiling for the loss scale values that can be chosen by dynamic loss
-scaling. If dynamic loss scaling is not used, max_loss_scale is ignored.
-
-Currently, the under-the-hood properties that govern pure or mixed precision training are the following:
-cast_model_type, patch_torch_functions, keep_batchnorm_fp32, master_weights, loss_scale.
-They are optional properties override once opt_level is determined
-
-- cast_model_type: Casts your model’s parameters and buffers to the desired type.
-- patch_torch_functions: Patch all Torch functions and Tensor methods to perform Tensor Core-friendly ops like GEMMs and convolutions in FP16, and any ops that benefit from FP32 precision in FP32.
-- keep_batchnorm_fp32: To enhance precision and enable cudnn batchnorm (which improves performance), it’s often beneficial to keep batchnorm weights in FP32 even if the rest of the model is FP16.
-- master_weights: Maintain FP32 master weights to accompany any FP16 model weights. FP32 master weights are stepped by the optimizer to enhance precision and capture small gradients.
-- loss_scale: If loss_scale is a float value, use this value as the static (fixed) loss scale. If loss_scale is the string "dynamic", adaptively adjust the loss scale over time. Dynamic loss scale adjustments are performed by Amp automatically.
-
-
 ### Naive AMP Configuration
 
 In Naive AMP mode, we achieved mixed precision training while maintaining compatibility with complex tensor and pipeline parallelism.
@@ -148,15 +115,6 @@ This AMP mode will cast all operations into fp16.
 The following code block shows the `config.py` file for this mode.
 
 {{ autodoc:colossalai.booster.mixed_precision.FP16NaiveMixedPrecision }}
-
-The default parameters of Naive AMP:
-- log_num_zeros_in_grad(bool): return number of zeros in the gradients.
-- initial_scale(int): initial scale of gradient scaler
-- growth_factor(int): the growth rate of loss scale
-- backoff_factor(float): the decrease rate of loss scale
-- hysteresis(int): delay shift in dynamic loss scaling
-- max_scale(int): maximum loss scale allowed
-- verbose(bool): if set to `True`, will print debug info
 
 When using `colossalai.booster`, you are required to first instantiate a model, an optimizer and a criterion.
 The output model is converted to AMP model of smaller memory consumption.
@@ -270,7 +228,7 @@ model, optimizer, criterion, dataloader, lr_scheduler = booster.boost(model, opt
 Use booster in a normal training loops.
 
 ```python
-engine.train()
+model.train()
 for epoch in range(NUM_EPOCHS):
     for img, label in enumerate(train_dataloader):
         img = img.cuda()
@@ -289,6 +247,6 @@ for epoch in range(NUM_EPOCHS):
 Use the following command to start the training scripts. You can change `--nproc_per_node` to use a different number of GPUs.
 
 ```python
-python -m torch.distributed.launch --nproc_per_node 4 --master_addr localhost --master_port 29500 train.py --config config/config.py
+colossalai run --nproc_per_node 1 train.py --config config/config.py
 ```
 <!-- doc-test-command: torchrun --standalone --nproc_per_node=1 mixed_precision_training_with_booster.py  -->

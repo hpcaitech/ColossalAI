@@ -61,6 +61,7 @@ AMP 代表自动混合精度训练。
 
 #### booster启动方式
 您可以在创建booster实例时，指定`mixed_precision="fp16"`即使用torch amp。
+<!--- doc-test-ignore-start -->
 ```python
 """
     初始化映射关系如下：
@@ -73,7 +74,9 @@ AMP 代表自动混合精度训练。
 from colossalai import Booster
 booster = Booster(mixed_precision='fp16',...)
 ```
+<!--- doc-test-ignore-start -->
 或者您可以自定义一个`FP16TorchMixedPrecision`对象，如
+<!--- doc-test-ignore-start -->
 ```python
 from colossalai.mixed_precision import FP16TorchMixedPrecision
 mixed_precision = FP16TorchMixedPrecision(
@@ -83,17 +86,12 @@ mixed_precision = FP16TorchMixedPrecision(
     growth_interval=2000)
 booster = Booster(mixed_precision=mixed_precision,...)
 ```
+<!--- doc-test-ignore-start -->
 其他类型的amp使用方式也是一样的。
 
 ### Torch AMP 配置
 
 {{ autodoc:colossalai.booster.mixed_precision.FP16NaiveMixedPrecision }}
-
-可选参数:
-- init_scale(float, optional, default=2.**16): 初始缩放因子；
-- growth_factor(float, optional, default=2.0): 如果在``growth_interval``连续迭代过程中没有出现 inf/NaN 梯度，则在`update`中乘以比例系数；
-- backoff_factor(float, optional, default=0.5): 如果在迭代中出现 inf/NaN 梯度，则在`update`中乘以比例系数；
-- growth_interval(int, optional, default=2000): 在指定次数的连续迭代中，若没有出现 inf/NaN 梯度，则乘以``growth_factor``.
 
 ### Apex AMP 配置
 
@@ -104,45 +102,11 @@ booster = Booster(mixed_precision=mixed_precision,...)
 
 {{ autodoc:colossalai.booster.mixed_precision.FP16ApexMixedPrecision }}
 
-参数:
-
-- opt_level(str, optional, default="O1" ): 纯精度或混合精度优化水平。可选值 “O0”, “O1”, “O2”, and “O3”, 详细解释见上方 Apex AMP 文档。
-
-- num_losses(int, optional, default=1): 选择提前告知 AMP 您计划使用多少次损失/反向计算。
-当`amp.scale_loss`与 loss_id 参数一起使用时，使 AMP 在每次损失/反向计算时使用不同的损失比例，这可以提高稳定性。如果 num_losses 被设置为1，AMP 仍支持多次损失/反向计算，但对他们都使用同一个全局损失比例。
-
-- verbosity(int, default=1): 设置为0抑制 AMP 相关输出。
-
-- min_loss_scale(float, default=None): 为可通过动态损耗比例选择的损耗比例值设置下限。
-默认值“None”意味着不设置任何下限。如果不使用动态损耗比例，则忽略 min_loss_scale 。
-
-- max_loss_scale(float, default=2.**24 ): 为可通过动态损耗比例选择的损耗比例值设置上限。如果不使用动态损耗比例，则 max_loss_scale 被忽略.
-
-目前，管理纯精度或混合精度训练的幕后属性有以下几种:
-cast_model_type, patch_torch_functions, keep_batchnorm_fp32, master_weights, loss_scale.
-一旦 opt_level 被确定，它们是可选的可覆盖属性
-
-- cast_model_type: 将模型的参数和缓冲区强制转换为所需的类型。
-- patch_torch_functions: 补全所有的 Torch 函数和张量方法，以便在FP16中执行张量核心友好的操作，如 GEMMs 和卷积，以及在 FP32 中执行任何受益于 FP32 精度的操作。
-- keep_batchnorm_fp32: 为了提高精度并启用 cudnn batchnorm (这会提高性能),在 FP32 中保留 batchnorm 权重通常是有益的，即使模型的其余部分是 FP16。
-- master_weights: 保持 FP32 主权重以配合任何 FP16 模型权重。 FP32 主权重由优化器分级，以提高精度和捕捉小梯度。
-- loss_scale: 如果 loss_scale 是一个浮点数，则使用这个值作为静态（固定）的损失比例。如果 loss_scale 是字符串 "dynamic"，则随着时间的推移自适应地调整损失比例。动态损失比例调整由 AMP 自动执行。
-
-
 ### Naive AMP 配置
 
 在 Naive AMP 模式中, 我们实现了混合精度训练，同时保持了与复杂张量和流水并行的兼容性。该 AMP 模式将所有操作转为 FP16 。下列代码块展示了该模式的booster启动方式。
 
 {{ autodoc:colossalai.booster.mixed_precision.FP16NaiveMixedPrecision }}
-
-Naive AMP 的默认参数:
-- log_num_zeros_in_grad(bool): 返回0值梯度的个数.
-- initial_scale(int): gradient scaler 的初始值
-- growth_factor(int): loss scale 的增长率
-- backoff_factor(float): loss scale 的下降率
-- hysterisis(int): 动态 loss scaling 的延迟偏移
-- max_scale(int): loss scale 的最大允许值
-- verbose(bool): 如果被设为`True`,将打印调试信息
 
 当使用`colossalai.booster`时, 首先需要实例化一个模型、一个优化器和一个标准。将输出模型转换为内存消耗较小的 AMP 模型。如果您的输入模型已经太大，无法放置在 GPU 中，请使用`dtype=torch.float16`实例化你的模型。或者请尝试更小的模型，或尝试更多的并行化训练技术！
 
@@ -248,7 +212,7 @@ model, optimizer, criterion, dataloader, lr_scheduler = booster.boost(model, opt
 使用booster构建一个普通的训练循环。
 
 ```python
-engine.train()
+model.train()
 for epoch in range(NUM_EPOCHS):
     for img, label in enumerate(train_dataloader):
         img = img.cuda()
@@ -266,6 +230,6 @@ for epoch in range(NUM_EPOCHS):
 使用下列命令启动训练脚本，你可以改变 `--nproc_per_node` 以使用不同数量的 GPU。
 
 ```python
-python -m torch.distributed.launch --nproc_per_node 4 --master_addr localhost --master_port 29500 train.py --config config/config.py
+colossalai run --nproc_per_node 1 train.py --config config/config.py
 ```
 <!-- doc-test-command: torchrun --standalone --nproc_per_node=1 mixed_precision_training_with_booster.py  -->
