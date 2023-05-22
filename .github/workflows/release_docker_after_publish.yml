@@ -1,4 +1,4 @@
-name: Publish Docker Image to DockerHub after Release
+name: Publish Docker Image to DockerHub after Publish
 
 on:
   workflow_dispatch:
