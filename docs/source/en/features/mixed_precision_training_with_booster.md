@@ -112,7 +112,7 @@ If you look for more details, please refer to [Apex Documentation](https://nvidi
 
 In Naive AMP mode, we achieved mixed precision training while maintaining compatibility with complex tensor and pipeline parallelism.
 This AMP mode will cast all operations into fp16.
-The following code block shows the `config.py` file for this mode.
+The following code block shows the mixed precision api for this mode.
 
 {{ autodoc:colossalai.booster.mixed_precision.FP16NaiveMixedPrecision }}
 
