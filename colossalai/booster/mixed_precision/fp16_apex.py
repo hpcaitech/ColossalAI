@@ -21,30 +21,18 @@ class FP16ApexMixedPrecision(MixedPrecision):
         verbosity(int, default=1): Set to 0 to suppress Amp-related output.
         min_loss_scale(float, default=None): Sets a floor for the loss scale values that can be chosen by dynamic loss scaling. The default value of None means that no floor is imposed. If dynamic loss scaling is not used, min_loss_scale is ignored.
         max_loss_scale(float, default=2.**24 ): Sets a ceiling for the loss scale values that can be chosen by dynamic loss scaling. If dynamic loss scaling is not used, max_loss_scale is ignored.
-
-
-        **kwargs:Currently, the under-the-hood properties that govern pure or mixed precision training are the following:
-            cast_model_type, patch_torch_functions, keep_batchnorm_fp32, master_weights, loss_scale.
-            cast_model_type: Casts your model’s parameters and buffers to the desired type.
-            patch_torch_functions: Patch all Torch functions and Tensor methods to perform Tensor Core-friendly ops like GEMMs and convolutions in FP16, and any ops that benefit from FP32 precision in FP32.
-            keep_batchnorm_fp32: To enhance precision and enable cudnn batchnorm (which improves performance), it’s often beneficial to keep batchnorm weights in FP32 even if the rest of the model is FP16.
-            master_weights: Maintain FP32 master weights to accompany any FP16 model weights. FP32 master weights are stepped by the optimizer to enhance precision and capture small gradients.
-            loss_scale: If loss_scale is a float value, use this value as the static (fixed) loss scale. If loss_scale is the string "dynamic", adaptively adjust the loss scale over time. Dynamic loss scale adjustments are performed by Amp automatically.
     """
 
-    def __init__(
-        self,
-        opt_level: Optional[str] = "O1",
-        cast_model_type: torch.dtype = None,
-        patch_torch_functions: bool = None,
-        keep_batchnorm_fp32: Union[bool, str] = None,
-        master_weights: bool = None,
-        loss_scale: Union[float, str] = None,
-        cast_model_outputs: Any = None,
-        num_losses: Optional[int] = 1,
-        verbosity: int = 1,
-        min_loss_scale: float = None,
-        max_loss_scale: float = 2.**24,
-        **kwargs,
-    ) -> None:
+    def __init__(self,
+                 opt_level: Optional[str] = "O1",
+                 cast_model_type: torch.dtype = None,
+                 patch_torch_functions: bool = None,
+                 keep_batchnorm_fp32: Union[bool, str] = None,
+                 master_weights: bool = None,
+                 loss_scale: Union[float, str] = None,
+                 cast_model_outputs: Any = None,
+                 num_losses: Optional[int] = 1,
+                 verbosity: int = 1,
+                 min_loss_scale: float = None,
+                 max_loss_scale: float = 2.**24) -> None:
         pass
