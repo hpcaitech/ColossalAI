@@ -62,73 +62,73 @@ from colossalai.nn.lr_scheduler import CosineAnnealingLR
 我们需要初始化分布式环境. 为了快速演示，我们使用`launch_from_torch`. 您可以参考 [Launch Colossal-AI](../basics/launch_colossalai.md)
 
 ```python
-    colossalai.launch_from_torch(config=dict())
-    logger = get_dist_logger()
+colossalai.launch_from_torch(config=dict())
+logger = get_dist_logger()
 ```
 
 ### 步骤 3. 创建训练组件
 
 构建你的模型、优化器、损失函数、学习率调整器和数据加载器。注意数据集的路径从环境变量`DATA`获得。你可以通过 `export DATA=/path/to/data` 或 `Path(os.environ['DATA'])`在你的机器上设置路径。数据将会被自动下载到该路径。
 ```python
-    # define training hyperparameters
-    NUM_EPOCHS = 200
-    BATCH_SIZE = 128
-    GRADIENT_CLIPPING = 0.1
-    # build resnet
-    model = resnet34(num_classes=10)
-    # build dataloaders
-    train_dataset = CIFAR10(root=Path(os.environ.get('DATA', './data')),
-                            download=True,
-                            transform=transforms.Compose([
-                                transforms.RandomCrop(size=32, padding=4),
-                                transforms.RandomHorizontalFlip(),
-                                transforms.ToTensor(),
-                                transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010]),
-                            ]))
-    # build criterion
-    criterion = torch.nn.CrossEntropyLoss()
+# define training hyperparameters
+NUM_EPOCHS = 200
+BATCH_SIZE = 128
+GRADIENT_CLIPPING = 0.1
+# build resnet
+model = resnet34(num_classes=10)
+# build dataloaders
+train_dataset = CIFAR10(root=Path(os.environ.get('DATA', './data')),
+                        download=True,
+                        transform=transforms.Compose([
+                            transforms.RandomCrop(size=32, padding=4),
+                            transforms.RandomHorizontalFlip(),
+                            transforms.ToTensor(),
+                            transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010]),
+                        ]))
+# build criterion
+criterion = torch.nn.CrossEntropyLoss()
 
-    # optimizer
-    optimizer = torch.optim.SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=5e-4)
+# optimizer
+optimizer = torch.optim.SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=5e-4)
 
-    # lr_scheduler
-    lr_scheduler = CosineAnnealingLR(optimizer, total_steps=NUM_EPOCHS)
+# lr_scheduler
+lr_scheduler = CosineAnnealingLR(optimizer, total_steps=NUM_EPOCHS)
 
 ```
 ### 步骤 4. 注入梯度裁剪特性
 
 创建`TorchDDPPlugin`对象并初始化`Booster`, 使用booster注入相关特性。
 ```python
-    plugin = TorchDDPPlugin()
-    booster = Booster(plugin=plugin)
-    train_dataloader = plugin.prepare_dataloader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
-    model, optimizer, criterion, train_dataloader, lr_scheduler = booster.boost(model,optimizer, criterion,train_dataloader, lr_scheduler)
+plugin = TorchDDPPlugin()
+booster = Booster(plugin=plugin)
+train_dataloader = plugin.prepare_dataloader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
+model, optimizer, criterion, train_dataloader, lr_scheduler = booster.boost(model,optimizer, criterion,train_dataloader, lr_scheduler)
 
 ```
 
 ### 步骤 5. 使用booster训练
 使用booster进行训练。
 ```python
-    # verify gradient clipping
-    model.train()
-    for idx, (img, label) in enumerate(train_dataloader):
-        img = img.cuda()
-        label = label.cuda()
+# verify gradient clipping
+model.train()
+for idx, (img, label) in enumerate(train_dataloader):
+    img = img.cuda()
+    label = label.cuda()
 
-        model.zero_grad()
-        output = model(img)
-        train_loss = criterion(output, label)
-        booster.backward(train_loss, optimizer)
-        optimizer.clip_grad_by_norm(max_norm=GRADIENT_CLIPPING)
-        optimizer.step()
-        lr_scheduler.step()
+    model.zero_grad()
+    output = model(img)
+    train_loss = criterion(output, label)
+    booster.backward(train_loss, optimizer)
+    optimizer.clip_grad_by_norm(max_norm=GRADIENT_CLIPPING)
+    optimizer.step()
+    lr_scheduler.step()
 
-        ele_1st = next(model.parameters()).flatten()[0]
-        logger.info(f'iteration {idx}, loss: {train_loss}, 1st element of parameters: {ele_1st.item()}')
+    ele_1st = next(model.parameters()).flatten()[0]
+    logger.info(f'iteration {idx}, loss: {train_loss}, 1st element of parameters: {ele_1st.item()}')
 
-        # only run for 4 iterations
-        if idx == 3:
-            break
+    # only run for 4 iterations
+    if idx == 3:
+        break
 ```
 
 ### 步骤 6. 启动训练脚本

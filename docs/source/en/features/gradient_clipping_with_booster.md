@@ -62,8 +62,8 @@ We then need to initialize distributed environment. For demo purpose, we uses `l
 for other initialization methods.
 
 ```python
-    colossalai.launch_from_torch(config=dict())
-    logger = get_dist_logger()
+colossalai.launch_from_torch(config=dict())
+logger = get_dist_logger()
 ```
 
 
@@ -71,65 +71,65 @@ for other initialization methods.
 
 Build your model, optimizer, loss function, lr scheduler and dataloaders. Note that the root path of the dataset is obtained from the environment variable `DATA`. You may `export DATA=/path/to/data` or change `Path(os.environ['DATA'])` to a path on your machine. Data will be automatically downloaded to the root path.
 ```python
-    # define training hyperparameters
-    NUM_EPOCHS = 200
-    BATCH_SIZE = 128
-    GRADIENT_CLIPPING = 0.1
-    # build resnet
-    model = resnet34(num_classes=10)
-    # build dataloaders
-    train_dataset = CIFAR10(root=Path(os.environ.get('DATA', './data')),
-                            download=True,
-                            transform=transforms.Compose([
-                                transforms.RandomCrop(size=32, padding=4),
-                                transforms.RandomHorizontalFlip(),
-                                transforms.ToTensor(),
-                                transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010]),
-                            ]))
-    # build criterion
-    criterion = torch.nn.CrossEntropyLoss()
+# define training hyperparameters
+NUM_EPOCHS = 200
+BATCH_SIZE = 128
+GRADIENT_CLIPPING = 0.1
+# build resnetå
+model = resnet34(num_classes=10)
+# build dataloaders
+train_dataset = CIFAR10(root=Path(os.environ.get('DATA', './data')),
+                        download=True,
+                        transform=transforms.Compose([
+                            transforms.RandomCrop(size=32, padding=4),
+                            transforms.RandomHorizontalFlip(),
+                            transforms.ToTensor(),
+                            transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010]),
+                        ]))
+# build criterion
+criterion = torch.nn.CrossEntropyLoss()
 
-    # optimizer
-    optimizer = torch.optim.SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=5e-4)
+# optimizer
+optimizer = torch.optim.SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=5e-4)
 
-    # lr_scheduler
-    lr_scheduler = CosineAnnealingLR(optimizer, total_steps=NUM_EPOCHS)
+# lr_scheduler
+lr_scheduler = CosineAnnealingLR(optimizer, total_steps=NUM_EPOCHS)
 
 ```
 ### Step 4. Inject Gradient Clipping Feature
 
 Create a `TorchDDPPlugin` object and `Booster` object, get a data loader from plugin, then boost all training components.
 ```python
-    plugin = TorchDDPPlugin()
-    booster = Booster(mixed_precision='fp16', plugin=plugin)
-    train_dataloader = plugin.prepare_dataloader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
-    model, optimizer, criterion, train_dataloader, lr_scheduler = booster.boost(model,optimizer, criterion,train_dataloader, lr_scheduler)
+plugin = TorchDDPPlugin()
+booster = Booster(mixed_precision='fp16', plugin=plugin)
+train_dataloader = plugin.prepare_dataloader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
+model, optimizer, criterion, train_dataloader, lr_scheduler = booster.boost(model,optimizer, criterion,train_dataloader, lr_scheduler)
 
 ```
 
 ### Step 5. Train with Booster
 Use booster in a normal training loops.
 ```python
-    # verify gradient clipping
-    model.train()
-    for idx, (img, label) in enumerate(train_dataloader):
-        img = img.cuda()
-        label = label.cuda()
+# verify gradient clipping
+model.train()
+for idx, (img, label) in enumerate(train_dataloader):
+    img = img.cuda()
+    label = label.cuda()
 
-        model.zero_grad()
-        output = model(img)
-        train_loss = criterion(output, label)
-        booster.backward(train_loss, optimizer)
-        optimizer.clip_grad_by_norm(max_norm=GRADIENT_CLIPPING)
-        optimizer.step()
-        lr_scheduler.step()
+    model.zero_grad()
+    output = model(img)
+    train_loss = criterion(output, label)
+    booster.backward(train_loss, optimizer)
+    optimizer.clip_grad_by_norm(max_norm=GRADIENT_CLIPPING)
+    optimizer.step()
+    lr_scheduler.step()
 
-        ele_1st = next(model.parameters()).flatten()[0]
-        logger.info(f'iteration {idx}, loss: {train_loss}, 1st element of parameters: {ele_1st.item()}')
+    ele_1st = next(model.parameters()).flatten()[0]
+    logger.info(f'iteration {idx}, loss: {train_loss}, 1st element of parameters: {ele_1st.item()}')
 
-        # only run for 4 iterations
-        if idx == 3:
-            break
+    # only run for 4 iterations
+    if idx == 3:
+        break
 ```
 
 ### Step 6. Invoke Training Scripts
