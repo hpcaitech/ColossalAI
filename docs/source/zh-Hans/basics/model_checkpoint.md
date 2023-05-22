@@ -1,6 +1,8 @@
-# 模型检查点
+# 模型Checkpoint
 
 作者 : Guangyang Lu
+
+> ⚠️ 此页面上的信息已经过时并将被废弃。请在[Booster Checkpoint](../basics/booster_checkpoint.md)页面查阅更新。
 
 **预备知识:**
 - [Launch Colossal-AI](./launch_colossalai.md)
@@ -13,9 +15,9 @@
 
 ## 简介
 
-本教程将介绍如何保存和加载模型检查点。
+本教程将介绍如何保存和加载模型Checkpoint。
 
-为了充分利用Colossal-AI的强大并行策略，我们需要修改模型和张量，可以直接使用 `torch.save` 或者 `torch.load` 保存或加载模型检查点。在Colossal-AI中，我们提供了应用程序接口实现上述同样的效果。
+为了充分利用Colossal-AI的强大并行策略，我们需要修改模型和张量，可以直接使用 `torch.save` 或者 `torch.load` 保存或加载模型Checkpoint。在Colossal-AI中，我们提供了应用程序接口实现上述同样的效果。
 
 但是，在加载时，你不需要使用与存储相同的保存策略。
 
@@ -24,7 +26,7 @@
 ### 保存
 
 有两种方法可以使用Colossal-AI训练模型，即使用engine或使用trainer。
-**注意我们只保存 `state_dict`.** 因此，在加载检查点时，需要首先定义模型。
+**注意我们只保存 `state_dict`.** 因此，在加载Checkpoint时，需要首先定义模型。
 
 #### 同 engine 保存
 
