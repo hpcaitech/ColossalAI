@@ -124,7 +124,7 @@ Otherwise, try smaller models or checkout more parallelization training techniqu
 
 ## Hands-on Practice
 
-Now we will introduce the use of AMP with Colossal-AI. In this practice, we will use Torch AMP as an example, but do note that config files are provided for all AMP modes.
+Now we will introduce the use of AMP with Colossal-AI. In this practice, we will use Torch AMP as an example.
 
 ### Step 1. Import libraries in train.py
 

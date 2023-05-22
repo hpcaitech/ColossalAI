@@ -112,7 +112,7 @@ booster = Booster(mixed_precision=mixed_precision,...)
 
 ## 实例
 
-下面我们将展现如何在 Colossal-AI 使用 AMP。在该例程中，我们使用 Torch AMP, 但提供的配置文件也适用于所有 AMP 模式.
+下面我们将展现如何在 Colossal-AI 使用 AMP。在该例程中，我们使用 Torch AMP.
 
 ### 步骤 1. 在 train.py 导入相关库
 
