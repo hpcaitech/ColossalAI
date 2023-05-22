@@ -17,14 +17,8 @@ def main(args):
                 metrics_all[metric_type]=metrics
             metrics_per_category[category]=metrics_all
 
-        answers = {}
-        targets = {}
-
-        with open(args.target_file, 'r', encoding='utf-8') as f1:
-            targets = json.load(f1)
-
-        with open(args.predict_file, 'r', encoding='utf-8') as f2:
-            answers = json.load(f2)
+        targets = jload(args.target_file)
+        answers = jload(args.predict_file)
             
         # initialize evaluator
         evaluator = Evaluator(metrics_per_category)
