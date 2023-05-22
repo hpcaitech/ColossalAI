@@ -1,4 +1,5 @@
 import pandas as pd
+from typing import Dict, List
 
 import metrics as metrics
 
@@ -12,13 +13,13 @@ class Evaluator(object):
         self.params = params
         self.stats = dict()
     
-    def battle(self, answers1: dict, answers2: dict) -> None:
+    def battle(self, answers1: List[Dict], answers2: List[Dict]) -> None:
         """
         Comparison between two models using GPT-4 as the reviewer.
         """
         pass
 
-    def evaluate(self, answers: dict, targets: dict) -> None:
+    def evaluate(self, answers: List[Dict], targets: List[Dict]) -> None:
         """
         A comprehensive evaluation of the answers from the model.
         The function evaluates the model's performance from different perspectives 
