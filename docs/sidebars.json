@@ -45,6 +45,7 @@
       "items": [
         "features/mixed_precision_training",
         "features/gradient_accumulation",
+        "features/gradient_clipping_with_booster",
         "features/gradient_clipping",
         "features/gradient_handler",
         "features/zero_with_chunk",
