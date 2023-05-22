@@ -94,7 +94,7 @@ model, optimizer, criterion, train_dataloader, _ = booster.boost(model=model,
 ### Step 5. Train with Booster
 Use booster in a normal training loops, and verify gradient accumulation. `param_by_iter` is to record the distributed training information.
 ```python
-model.zero_grad()
+optimizer.zero_grad()
 for idx, (img, label) in enumerate(train_dataloader):
         sync_context = booster.no_sync(model)
         img = img.cuda()
@@ -109,7 +109,7 @@ for idx, (img, label) in enumerate(train_dataloader):
             train_loss = criterion(output, label)
             booster.backward(train_loss, optimizer)
             optimizer.step()
-            model.zero_grad()
+            optimizer.zero_grad()
 
         ele_1st = next(model.parameters()).flatten()[0]
         param_by_iter.append(str(ele_1st.item()))
