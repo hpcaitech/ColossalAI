@@ -155,34 +155,34 @@ colossalai.launch_from_torch(config=dict())
 在你的机器上设置路径。数据将会被自动下载到该路径。
 
 ```python
-    # define the constants
-    NUM_EPOCHS = 2
-    BATCH_SIZE = 128
-    # build model
-    model = vit_base_patch16_224(drop_rate=0.1)
+# define the constants
+NUM_EPOCHS = 2
+BATCH_SIZE = 128
+# build model
+model = vit_base_patch16_224(drop_rate=0.1)
 
-    # build dataloader
-    train_dataset = datasets.Caltech101(
-        root=Path(os.environ['DATA']),
-        download=True,
-        transform=transforms.Compose([
-            transforms.Resize(256),
-            transforms.RandomResizedCrop(224),
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            Gray2RGB(),
-            transforms.Normalize([0.5, 0.5, 0.5],
-                                 [0.5, 0.5, 0.5])
-        ]))
+# build dataloader
+train_dataset = datasets.Caltech101(
+    root=Path(os.environ['DATA']),
+    download=True,
+    transform=transforms.Compose([
+        transforms.Resize(256),
+        transforms.RandomResizedCrop(224),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        Gray2RGB(),
+        transforms.Normalize([0.5, 0.5, 0.5],
+                                [0.5, 0.5, 0.5])
+    ]))
 
-    # build optimizer
-    optimizer = torch.optim.SGD(model.parameters(), lr=1e-2, weight_decay=0.1)
+# build optimizer
+optimizer = torch.optim.SGD(model.parameters(), lr=1e-2, weight_decay=0.1)
 
-    # build loss
-    criterion = torch.nn.CrossEntropyLoss()
+# build loss
+criterion = torch.nn.CrossEntropyLoss()
 
-    # lr_scheduelr
-    lr_scheduler = LinearWarmupLR(optimizer, warmup_steps=50, total_steps=NUM_EPOCHS)
+# lr_scheduelr
+lr_scheduler = LinearWarmupLR(optimizer, warmup_steps=50, total_steps=NUM_EPOCHS)
 ```
 
 ### 步骤 4. 插入 AMP
