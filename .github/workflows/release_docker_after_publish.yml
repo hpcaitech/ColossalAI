@@ -1,12 +1,9 @@
-name: Publish Docker Image to DockerHub after Merge
+name: Publish Docker Image to DockerHub after Publish
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - 'version.txt'
-    types:
-      - closed
+  release:
+    types: [published]
 
 jobs:
   release:
@@ -26,7 +23,7 @@ jobs:
         run: |
           version=$(cat version.txt)
           tag=hpcaitech/colossalai:$version
-	  docker build --build-arg http_proxy=http://172.17.0.1:7890 --build-arg https_proxy=http://172.17.0.1:7890 --build-arg VERSION=v${version} -t $tag ./docker
+          docker build --build-arg http_proxy=http://172.17.0.1:7890 --build-arg https_proxy=http://172.17.0.1:7890 --build-arg VERSION=v${version} -t $tag ./docker
           echo "tag=${tag}" >> $GITHUB_OUTPUT
 
       - name: Log in to Docker Hub
@@ -50,7 +47,7 @@ jobs:
 
       - uses: actions/setup-python@v2
         with:
-          python-version: '3.8.14'
+          python-version: "3.8.14"
 
       - name: Install requests
         run: pip install requests
