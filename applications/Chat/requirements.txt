@@ -11,3 +11,8 @@ sse_starlette
 wandb
 sentencepiece
 gpustat
+jieba
+bert-score
+rouge_chinese
+scikit-metrics
+nltk
