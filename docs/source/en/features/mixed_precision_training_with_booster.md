@@ -202,7 +202,7 @@ lr_scheduler = LinearWarmupLR(optimizer, warmup_steps=50, total_steps=NUM_EPOCHS
 
 ### Step 4. Inject AMP Feature
 
-create a `MixedPrecision`(if needed) and `TorchDDPPlugin` object, call `colossalai.boost` convert the training components to be running with FP16.
+Create a `MixedPrecision`(if needed) and `TorchDDPPlugin` object, call `colossalai.boost` convert the training components to be running with FP16.
 
 ```python
 plugin = TorchDDPPlugin()
