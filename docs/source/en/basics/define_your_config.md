@@ -78,4 +78,4 @@ colossalai.launch(config='./config.py', ...)
 print(gpc.config.BATCH_SIZE)
 
 ```
-<!-- doc-test-command: echo "installation.md does not need test" -->
+<!-- doc-test-command: echo "define_your_config.md does not need test" -->
