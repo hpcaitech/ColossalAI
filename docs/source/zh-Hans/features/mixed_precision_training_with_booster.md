@@ -186,7 +186,7 @@ lr_scheduler = LinearWarmupLR(optimizer, warmup_steps=50, total_steps=NUM_EPOCHS
 ```
 
 ### 步骤 4. 插入 AMP
-创建一个MixedPrecision对象（如果需要）及torch DDP plugin，调用 `colossalai.boost` 将所有训练组件转为为FP16模式.
+创建一个MixedPrecision对象（如果需要）及torchDDPPlugin对象，调用 `colossalai.boost` 将所有训练组件转为为FP16模式.
 
 ```python
 plugin = TorchDDPPlugin()
