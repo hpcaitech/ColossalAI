@@ -74,7 +74,7 @@ AMP 代表自动混合精度训练。
 from colossalai import Booster
 booster = Booster(mixed_precision='fp16',...)
 ```
-<!--- doc-test-ignore-start -->
+<!--- doc-test-ignore-end -->
 或者您可以自定义一个`FP16TorchMixedPrecision`对象，如
 <!--- doc-test-ignore-start -->
 ```python
@@ -86,7 +86,7 @@ mixed_precision = FP16TorchMixedPrecision(
     growth_interval=2000)
 booster = Booster(mixed_precision=mixed_precision,...)
 ```
-<!--- doc-test-ignore-start -->
+<!--- doc-test-ignore-end -->
 其他类型的amp使用方式也是一样的。
 
 ### Torch AMP 配置
