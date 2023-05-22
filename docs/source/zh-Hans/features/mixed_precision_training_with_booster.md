@@ -91,7 +91,7 @@ booster = Booster(mixed_precision=mixed_precision,...)
 
 ### Torch AMP 配置
 
-{{ autodoc:colossalai.booster.mixed_precision.FP16NaiveMixedPrecision }}
+{{ autodoc:colossalai.booster.mixed_precision.FP16TorchMixedPrecision }}
 
 ### Apex AMP 配置
 
