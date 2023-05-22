@@ -40,8 +40,8 @@
       "label": "Features",
       "collapsed": true,
       "items": [
-        "features/mixed_precision_training",
         "features/mixed_precision_training_with_booster",
+        "features/mixed_precision_training",
         "features/gradient_accumulation",
         "features/gradient_clipping",
         "features/gradient_handler",
