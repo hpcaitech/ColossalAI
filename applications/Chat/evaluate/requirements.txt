@@ -1,0 +1,10 @@
+jieba
+bert-score
+rouge_chinese
+scikit-metrics
+nltk
+openai
+seaborn
+pandas
+matplotlib
+numpy
