@@ -85,7 +85,7 @@ def classify_params_by_dp_degree(param_order: OrderedParamGenerator,
     Classify the parameters by their dp degree
 
     Args:
-        param_order (OrderedParamGenerator): the order of param be visied
+        param_order (OrderedParamGenerator): the order of param be vised
         strict_ddp_flag (bool, optional): whether to enable the strict ddp mode. Defaults to False.
 
     Returns:

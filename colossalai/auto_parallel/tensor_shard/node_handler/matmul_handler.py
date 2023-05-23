@@ -48,8 +48,8 @@ def get_matmul_type(input_dim: int, other_dim: int):
     Determine which type of matmul operation should be executed for the given tensor dimensions.
 
     Args:
-        input_dim (int): the number of dimensions for the input tenosr
-        other_dim (int): the number of dimensions for the other tenosr
+        input_dim (int): the number of dimensions for the input tensor
+        other_dim (int): the number of dimensions for the other tensor
     """
     if input_dim == 1 and other_dim == 1:
         matmul_type = MatMulType.DOT
@@ -268,13 +268,13 @@ class Viewer(BmmTransform):
             dim_partition_dict = sharding_spec.dim_partition_dict
             entire_shape = sharding_spec.entire_shape
 
-            # upddate the dimension index for the matrix dimensions
+            # update the dimension index for the matrix dimensions
             if 2 in dim_partition_dict:
                 dim_partition_dict[len(self.batch_dims_before_view) + 1] = dim_partition_dict.pop(2)
             if 1 in dim_partition_dict:
                 dim_partition_dict[len(self.batch_dims_before_view)] = dim_partition_dict.pop(1)
 
-            # map the logical batch dim to phyiscal batch dim
+            # map the logical batch dim to physical batch dim
             if 0 in dim_partition_dict:
                 batch_dim_shard = dim_partition_dict.pop(0)
                 dim_partition_dict[physical_batch_dim] = batch_dim_shard
@@ -414,7 +414,7 @@ class MatMulHandler(MetaInfoNodeHandler):
 
     def _get_logical_shape_for_mm(self):
         """
-        We need to handle the input tensor for a matrix-matrix multiplcation as the input
+        We need to handle the input tensor for a matrix-matrix multiplication as the input
         tensor can be a 1D or 2D tensor. If it is a 1D tensor, 1 will be prepended to its shape
         (e.g. [4] -> [1, 4]).
         """
