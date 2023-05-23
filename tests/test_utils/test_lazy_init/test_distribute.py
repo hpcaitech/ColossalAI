@@ -15,9 +15,9 @@ try:
     from colossalai.utils.model.experimental import LazyInitContext, LazyTensor, _MyTensor
 except:
     pass
-from tests.kit.model_zoo import model_zoo
+from utils import SUPPORT_LAZY, assert_dist_model_equal, set_seed
 
-from .utils import SUPPORT_LAZY, assert_dist_model_equal, set_seed
+from tests.kit.model_zoo import model_zoo
 
 
 def find_shard_dim(shape: torch.Size) -> Optional[int]:
