@@ -55,28 +55,25 @@ def train(model: nn.Module, num_epoch: int=2):
     model.to("cuda")
     model.train()
     for epoch in range(num_epoch):
+        progress_bar.set_description(f"epoch: {epoch}")
+
         for batch in train_dataloader:
             optimizer.zero_grad()
             batch = {k: v.to('cuda') for k, v in batch.items()}
             outputs = model(**batch)
             loss = outputs.loss
-            print(loss)
-            # loss = criterion(outputs.logits, batch["labels"])
             loss.backward()
             optimizer.step()
             progress_bar.update(1)
-            progress_bar.set_description(f"loss: {loss.item()}")
-        print(f"Rank {os.environ['RANK']} Epoch:{epoch} Train Loss:{loss:.4f}")        
+        print(f"\nRank:{os.environ['RANK']} Epoch:{epoch} Train Loss:{loss:.4f}")        
         
-        for batch in eval_dataloader:
-            batch = {k: v.to('cuda') for k, v in batch.items()}
-            outputs = model(**batch)
-            loss = outputs['loss']
-            # loss = criterion(outputs.logits, batch["input_ids"])
-        print(f"Rank {os.environ['RANK']} Epoch:{epoch} Test Loss:{loss:.4f}")        
+        # for batch in eval_dataloader:
+        #     batch = {k: v.to('cuda') for k, v in batch.items()}
+        #     outputs = model(**batch)
+        #     loss = outputs['loss']
+        #     # loss = criterion(outputs.logits, batch["input_ids"])
+        # print(f"\nRank {os.environ['RANK']} Epoch:{epoch} Test Loss:{loss:.4f}")        
         
-
-
 
 if __name__ == "__main__":
     args = get_args()

@@ -23,7 +23,7 @@ class BertForMaskedLM_(BertForMaskedLM):
         return_dict=None,
         **kwargs,
     ):
-        print("[Inject OK] Injected forward method")
+        # print("[Inject OK] Injected forward method")
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         outputs = self.bert(
