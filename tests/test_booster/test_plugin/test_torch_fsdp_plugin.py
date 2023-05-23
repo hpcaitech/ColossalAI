@@ -1,10 +1,6 @@
-from contextlib import nullcontext
-
 import pytest
 import torch
-import torch.distributed as dist
 from packaging import version
-from torch import nn
 from torch.optim import SGD
 
 import colossalai
@@ -19,6 +15,7 @@ from colossalai.testing import rerun_if_address_is_in_use, spawn
 from tests.kit.model_zoo import model_zoo
 
 
+# test baisc fsdp function
 def run_fn(model_fn, data_gen_fn, output_transform_fn):
     plugin = TorchFSDPPlugin()
     booster = Booster(plugin=plugin)
