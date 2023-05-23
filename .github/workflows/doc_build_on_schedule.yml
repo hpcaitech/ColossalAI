@@ -1,18 +1,16 @@
-name: Build Documentation After Merge
+name: Build Documentation On Schedule & After Release
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - "version.txt"
-      - "docs/**"
-    branches:
-      - "main"
+  schedule:
+    - cron: "0 12 * * *" # build doc every day at 8pm Singapore time (12pm UTC time)
+  release:
+    types: [published]
 
 jobs:
   build-doc:
     name: Trigger Documentation Build Workflow
-    if: ( github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true ) && github.repository == 'hpcaitech/ColossalAI'
+    if: github.repository == 'hpcaitech/ColossalAI'
     runs-on: ubuntu-latest
     steps:
       - name: trigger workflow in ColossalAI-Documentation
