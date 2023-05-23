@@ -2,12 +2,12 @@ name: Build Documentation After Merge
 
 on:
   workflow_dispatch:
-  pull_request:
+  push:
     paths:
-      - 'version.txt'
-      - 'docs/**'
-    types:
-      - closed
+      - "version.txt"
+      - "docs/**"
+    branches:
+      - "main"
 
 jobs:
   build-doc:
