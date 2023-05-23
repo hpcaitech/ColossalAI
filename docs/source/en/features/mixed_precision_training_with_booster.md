@@ -238,7 +238,6 @@ for epoch in range(NUM_EPOCHS):
         loss = criterion(output, label)
         booster.backward(loss, optimizer)
         optimizer.step()
-        lr_scheduler.step()
     lr_scheduler.step()
 ```
 
