@@ -14,7 +14,7 @@
       - [Compatibility Test on Dispatch](#compatibility-test-on-dispatch)
     - [Release](#release)
     - [User Friendliness](#user-friendliness)
-    - [Commmunity](#commmunity)
+    - [Community](#community)
   - [Configuration](#configuration)
   - [Progress Log](#progress-log)
 
@@ -97,7 +97,7 @@ This workflow is triggered by manually dispatching the workflow. It has the foll
 | `Synchronize submodule` | `submodule.yml`         | This workflow will check if any git submodule is updated. If so, it will create a PR to update the submodule pointers.                 |
 | `Close inactive issues` | `close_inactive.yml`    | This workflow will close issues which are stale for 14 days.                                                                           |
 
-### Commmunity
+### Community
 
 | Workflow Name                                | File name                        | Description                                                                      |
 | -------------------------------------------- | -------------------------------- | -------------------------------------------------------------------------------- |

@@ -230,7 +230,7 @@ def split_module_for_gpt2_test(
                     use_partition.partitions_dependent_on.setdefault(def_partition_name)
 
     node_process_list = list(m.graph.nodes)
-    # split nodes into parititons
+    # split nodes into partitions
     while node_process_list:
         node = node_process_list.pop(0)
         orig_nodes[node.name] = node
@@ -277,7 +277,7 @@ def split_module_for_gpt2_test(
     if len(sorted_partitions) != len(partitions):
         raise RuntimeError("cycle exists between partitions!")
 
-    # add placeholders to parititons
+    # add placeholders to partitions
     for partition_name in sorted_partitions:
         partition = partitions[partition_name]
         for input in partition.inputs:
