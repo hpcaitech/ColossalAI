@@ -246,6 +246,6 @@ for epoch in range(NUM_EPOCHS):
 Use the following command to start the training scripts. You can change `--nproc_per_node` to use a different number of GPUs.
 
 ```shell
-colossalai run --nproc_per_node 1 train.py --config config/config.py
+colossalai run --nproc_per_node 1 train.py
 ```
 <!-- doc-test-command: torchrun --standalone --nproc_per_node=1 mixed_precision_training_with_booster.py  -->

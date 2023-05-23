@@ -230,6 +230,6 @@ for epoch in range(NUM_EPOCHS):
 使用下列命令启动训练脚本，你可以改变 `--nproc_per_node` 以使用不同数量的 GPU。
 
 ```shell
-colossalai run --nproc_per_node 1 train.py --config config/config.py
+colossalai run --nproc_per_node 1 train.py
 ```
 <!-- doc-test-command: torchrun --standalone --nproc_per_node=1 mixed_precision_training_with_booster.py  -->
