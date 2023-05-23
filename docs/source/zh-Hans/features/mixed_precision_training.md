@@ -339,7 +339,7 @@ for epoch in range(gpc.config.NUM_EPOCHS):
 
 使用下列命令启动训练脚本，你可以改变 `--nproc_per_node` 以使用不同数量的 GPU。
 
-```python
+```shell
 python -m torch.distributed.launch --nproc_per_node 4 --master_addr localhost --master_port 29500 train_with_engine.py --config config/config_AMP_torch.py
 ```
 <!-- doc-test-command: torchrun --standalone --nproc_per_node=1 mixed_precision_training.py  -->

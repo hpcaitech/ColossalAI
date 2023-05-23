@@ -2,6 +2,8 @@
 
 作者: Guangyang Lu, Shenggui Li, Siqi Mai
 
+- > ⚠️ 此页面上的信息已经过时并将被废弃。请在[Booster API](../basics/booster_api.md)页面查阅更新。
+
 **预备知识:**
 - [分布式训练](../concepts/distributed_training.md)
 - [Colossal-AI 总览](../concepts/colossalai_overview.md)
