@@ -2,6 +2,8 @@
 
 Author: [Jiarui Fang](https://github.com/feifeibear), [Hongxin Liu](https://github.com/ver217) and [Haichen Huang](https://github.com/1SAA)
 
+> ⚠️ 此页面上的信息已经过时并将被废弃。
+
 **Prerequisite:**
 - [Colossal-AI Overview](../concepts/colossalai_overview.md)
 - [Distributed Training](../concepts/distributed_training.md)

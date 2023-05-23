@@ -29,6 +29,7 @@
         "basics/launch_colossalai",
         "basics/booster_api",
         "basics/booster_plugins",
+        "basics/booster_checkpoint",
         "basics/define_your_config",
         "basics/initialize_features",
         "basics/engine_trainer",
@@ -43,7 +44,9 @@
       "collapsed": true,
       "items": [
         "features/mixed_precision_training",
+        "features/gradient_accumulation_with_booster",
         "features/gradient_accumulation",
+        "features/gradient_clipping_with_booster",
         "features/gradient_clipping",
         "features/gradient_handler",
         "features/zero_with_chunk",

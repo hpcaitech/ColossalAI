@@ -2,6 +2,8 @@
 
 作者: Shenggui Li, Siqi Mai
 
+> ⚠️ 此页面上的信息已经过时并将被废弃。请在[Booster插件](../basics/booster_plugins.md)页面查阅更新。
+
 **预备知识:**
 - [分布式训练](../concepts/distributed_training.md)
 - [并行技术](../concepts/paradigms_of_parallelism.md)
