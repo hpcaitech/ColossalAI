@@ -1,4 +1,4 @@
-# Auto Mixed Precision Training
+# Auto Mixed Precision Training (Outdated)
 
 Author: Chuanrui Wang, Shenggui Li, Yongbin Li
 
@@ -365,3 +365,4 @@ Use the following command to start the training scripts. You can change `--nproc
 ```python
 python -m torch.distributed.launch --nproc_per_node 4 --master_addr localhost --master_port 29500 train_with_engine.py --config config/config_AMP_torch.py
 ```
+<!-- doc-test-command: torchrun --standalone --nproc_per_node=1 mixed_precision_training.py  -->
