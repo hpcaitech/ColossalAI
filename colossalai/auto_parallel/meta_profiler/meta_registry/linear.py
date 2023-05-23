@@ -325,7 +325,7 @@ def matmul_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleItem, L
         else:
             _is_batch_dims_same = False
 
-        # retireve dimensions
+        # retrieve dimensions
         input_dim_00 = input_tensors[0].shape[-2]
         input_dim_01 = input_tensors[0].shape[-1]
         input_dim_10 = input_tensors[1].shape[-2]

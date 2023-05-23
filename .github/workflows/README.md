@@ -43,7 +43,7 @@ I will provide the details of each workflow below.
 
 | Workflow Name          | File name                  | Description                                                                                                                                       |
 | ---------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Build on PR`          | `build_on_pr.yml`          | This workflow is triggered when the label `Run build and Test` is assigned to a PR. It will run all the unit tests in the repository with 4 GPUs. |
+| `Build on PR`          | `build_on_pr.yml`          | This workflow is triggered when a PR changes essential files. It will run all the unit tests in the repository with 4 GPUs. |
 | `Build on Schedule`    | `build_on_schedule.yml`    | This workflow will run the unit tests everyday with 8 GPUs. The result is sent to Lark.                                                           |
 | `Report test coverage` | `report_test_coverage.yml` | This PR will put up a comment to report the test coverage results when `Build` is done.                                                           |
 

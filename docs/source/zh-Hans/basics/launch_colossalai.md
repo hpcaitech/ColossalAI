@@ -91,7 +91,6 @@ PyTorch自带的启动器需要在每个节点上都启动命令才能启动多�
 首先，我们需要在代码里指定我们的启动方式。由于这个启动器是PyTorch启动器的封装，那么我们自然而然应该使用`colossalai.launch_from_torch`。
 分布式环境所需的参数，如 rank, world size, host 和 port 都是由 PyTorch 启动器设置的，可以直接从环境变量中读取。
 
-
 config.py
 ```python
 BATCH_SIZE = 512

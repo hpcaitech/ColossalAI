@@ -1,4 +1,4 @@
-from typing import Callable, List, Tuple, Union
+from typing import Callable, Iterator, List, Tuple, Union
 
 import torch
 import torch.distributed as dist
@@ -49,11 +49,14 @@ class DPPluginWrapper(DPPluginBase):
     def supported_precisions(self) -> List[str]:
         pass
 
+    def no_sync(self, model: nn.Module) -> Iterator[None]:
+        pass
+
 
 def check_dataloader_sharding():
     plugin = DPPluginWrapper()
 
-    # create a custom dasetset with 0 to 10
+    # create a custom dataset with 0 to 10
     dataset = TensorDataset(torch.arange(0, 10))
     train_dataloader = plugin.prepare_dataloader(dataset, batch_size=2)
 

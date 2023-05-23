@@ -29,7 +29,7 @@ CUDA_EXT=1 pip install colossalai
 
 ## Download From Source
 
-> The version of Colossal-AI will be in line with the main branch of the repository. Feel free to raise an issue if you encounter any problem. :)
+> The version of Colossal-AI will be in line with the main branch of the repository. Feel free to raise an issue if you encounter any problem.
 
 ```shell
 git clone https://github.com/hpcaitech/ColossalAI.git

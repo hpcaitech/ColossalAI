@@ -15,7 +15,8 @@ RUN git clone https://github.com/NVIDIA/apex && \
     pip install -v --disable-pip-version-check --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" --global-option="--fast_layer_norm" ./
 
 # install colossalai
-RUN git clone https://github.com/hpcaitech/ColossalAI.git \
+ARG VERSION=1
+RUN git clone -b ${VERSION} https://github.com/hpcaitech/ColossalAI.git \
     && cd ./ColossalAI \
     && CUDA_EXT=1 pip install -v --no-cache-dir .
 

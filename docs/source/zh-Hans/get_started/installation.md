@@ -28,7 +28,7 @@ CUDA_EXT=1 pip install colossalai
 
 ## 从源安装
 
-> 此文档将与版本库的主分支保持一致。如果您遇到任何问题，欢迎给我们提 issue :)
+> 此文档将与版本库的主分支保持一致。如果您遇到任何问题，欢迎给我们提 issue。
 
 ```shell
 git clone https://github.com/hpcaitech/ColossalAI.git
@@ -41,7 +41,7 @@ pip install -r requirements/requirements.txt
 CUDA_EXT=1 pip install .
 ```
 
-如果您不想安装和启用 CUDA 内核融合（使用融合优化器时强制安装）您可以不添加`CUDA_EXT=1`：
+如果您不想安装和启用 CUDA 内核融合（使用融合优化器时强制安装），您可以不添加`CUDA_EXT=1`：
 
 ```shell
 pip install .

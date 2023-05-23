@@ -13,7 +13,7 @@ def get_bert_data_loader(
         total_samples,
         sequence_length,
         device=torch.device('cpu:0'),
-        is_distrbuted=False,
+        is_distributed=False,
 ):
     train_data = torch.randint(
         low=0,
@@ -24,7 +24,7 @@ def get_bert_data_loader(
     )
     train_label = torch.randint(low=0, high=2, size=(total_samples,), device=device, dtype=torch.long)
     train_dataset = torch.utils.data.TensorDataset(train_data, train_label)
-    if is_distrbuted:
+    if is_distributed:
         sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
     else:
         sampler = SequentialSampler(train_dataset)
@@ -52,8 +52,8 @@ def get_training_components():
                             attention_probs_dropout_prob=0.)
         print('building BertForSequenceClassification model')
 
-        # adapting huggingface BertForSequenceClassification for single unitest calling interface
-        class ModelAaptor(BertForSequenceClassification):
+        # adapting huggingface BertForSequenceClassification for single unittest calling interface
+        class ModelAdaptor(BertForSequenceClassification):
 
             def forward(self, input_ids, labels):
                 """
@@ -62,23 +62,23 @@ def get_training_components():
                 """
                 return super().forward(input_ids=input_ids, labels=labels)[0]
 
-        model = ModelAaptor(config)
+        model = ModelAdaptor(config)
         if checkpoint and version.parse(transformers.__version__) >= version.parse("4.11.0"):
             model.gradient_checkpointing_enable()
 
         return model
 
-    is_distrbuted = torch.distributed.is_initialized()
+    is_distributed = torch.distributed.is_initialized()
     trainloader = get_bert_data_loader(n_class=vocab_size,
                                        batch_size=2,
                                        total_samples=10000,
                                        sequence_length=sequence_length,
-                                       is_distrbuted=is_distrbuted)
+                                       is_distributed=is_distributed)
     testloader = get_bert_data_loader(n_class=vocab_size,
                                       batch_size=2,
                                       total_samples=10000,
                                       sequence_length=sequence_length,
-                                      is_distrbuted=is_distrbuted)
+                                      is_distributed=is_distributed)
 
     criterion = None
     return bert_model_builder, trainloader, testloader, torch.optim.Adam, criterion
