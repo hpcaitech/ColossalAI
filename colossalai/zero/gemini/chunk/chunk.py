@@ -77,7 +77,6 @@ class Chunk:
             keep_gathered (bool): optional, if True, this chunk is always gathered in CUDA memory
             pin_memory (bool): optional, if True, this chunk always has a shard copied in pinned CPU memory
         """
-        # chunk的个数
         self.count_id = Chunk._total_number
         Chunk._total_number += 1
 
@@ -215,7 +214,6 @@ class Chunk:
 
     @property
     def can_release(self) -> bool:
-        # 如果是gathered的状态，或者chunk所包含的tensor全部都是hold状态则，不可释放
         if self.keep_gathered:
             return False
         else:
@@ -224,12 +222,10 @@ class Chunk:
 
     @property
     def can_reduce(self):
-        # chunk中所有tensor都是bwd
         return self.tensor_state_cnter[TensorState.READY_FOR_REDUCE] == self.num_tensors
 
     @property
     def has_inf_or_nan(self) -> bool:
-        # 判断是否有inf或者nan的值
         """Check if the chunk has inf or nan values on CUDA.
         """
         if self.is_gathered:
