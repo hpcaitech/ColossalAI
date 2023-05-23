@@ -1,6 +1,5 @@
 import concurrent.futures
 import os
-import random
 import re
 import time
 from copy import deepcopy
@@ -124,8 +123,8 @@ def battle(answer1: List[Dict], answer2: List[Dict], prompt_dict: Dict[str, Any]
             assert answer1[i]["id"] == answer2[i]["id"]
             answer_id = answer1[i]["id"]
 
-            ques = (answer1[i]["instruction"] if answer1[i]["input"] == "" else answer1[i]["instuction"] + " " +
-                    answer1[i]["input"])
+            ques = answer1[i]["instruction"] if answer1[i][
+                "input"] == "" else answer1[i]["instruction"] + " " + answer1[i]["input"]
             cat = answer1[i]["category"]
             ans1 = answer1[i]["output"]
             ans2 = answer2[i]["output"]
@@ -234,13 +233,17 @@ def save_battle_results(evaluations: List[Dict], name1: str, name2: str, save_pa
     print(f"Model {name2} average score: {ans2_score/(len(evaluations)-invalid_count):.2f}")
 
 
-def get_gpt35_evaluation(prompt: Dict[str, Any], inst: Dict[str, Any], max_tokens: int = 2048) -> Dict[str, Any]:
+def get_gpt35_evaluation(prompt: Dict[str, Any],
+                         inst: Dict[str, Any],
+                         metrics: List[str],
+                         max_tokens: int = 2048) -> Dict[str, Any]:
     """
     Use GPT-3.5 to evaluate one model answer.
 
     Args:
         prompt: a dictionary including prompt template, CoT and metrics.
         inst: the instruction that is needed to be evaluated.
+        metrics: the metrics for evaluation.
         max_tokens: the maximum number of tokens to generate in the completion.
 
     Returns:
@@ -251,10 +254,13 @@ def get_gpt35_evaluation(prompt: Dict[str, Any], inst: Dict[str, Any], max_token
 
     question = (inst["instruction"] if inst["input"] == "" else inst["instruction"] + " " + inst["input"])
     answer = inst["output"]
-    metrics = prompt["metrics"]
     inst["evaluation"] = {}
 
-    for metric in metrics.keys():
+    for metric in metrics:
+        if prompt["metrics"].get(metric, None) is None:
+            raise Exception(
+                f"Unsupported metric {metric} for category {inst['category']}! You should add this metric in the prompt file!"
+            )
         for i in range(MAX_API_RETRY):
             try:
                 response = openai.Completion.create(
@@ -282,88 +288,48 @@ def get_gpt35_evaluation(prompt: Dict[str, Any], inst: Dict[str, Any], max_token
 
 def gpt35_evaluate(
     answers: List[Dict],
-    prompts: List[Dict],
-    model_name: str,
-    save_path: str,
+    prompt: Dict[str, Any],
+    metrics: List[str],
+    category: str,
 ) -> List[Dict]:
     """
     Use GPT-3.5 to evaluate model answers and save evaluation results.
 
     Args:
         answers: model answers.
-        prompts: prompts for all categories.
-        model_name: name of the model.
-        save_path: path to save GPT-3.5 evaluations.
+        prompt: prompt for GPT-3.5 evaluation.
+        metrics: metrics for GPT-3.5 evaluation.
+        category: the category of the model answers for evaluation.
 
     Returns:
-        All the evaluations of the given answers.
+        Evaluations of the given answers.
     """
 
-    prompt_per_category = {prompt["category"]: prompt for prompt in prompts}
+    print(f"The number of instances of category {category}'s is {len(answers)}.")
 
-    data_per_category = {}
-    for answer in answers:
-        category = answer["category"]
+    evaluations = []
 
-        if answer["category"] in data_per_category.keys():
-            data_per_category[category].append(answer)
-        else:
-            data_per_category[category] = [answer]
+    metrics_str = ", ".join(x for x in metrics)
+    print(f"Category {category}'s metrics are {metrics_str}.")
 
-    categories_str = ", ".join(x for x in list(data_per_category.keys()))
-    print(f"The evaluated categories are {categories_str}.")
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+        futures = []
+        for inst in answers:
+            future = executor.submit(get_gpt35_evaluation, prompt, inst, metrics, 1)
+            futures.append(future)
 
-    if not os.path.exists(save_path):
-        os.makedirs(save_path)
+        for future in tqdm.tqdm(
+                concurrent.futures.as_completed(futures),
+                desc=f"{category}: ",
+                total=len(futures),
+        ):
+            evaluations.append(future.result())
 
-    all_evaluations = []
+    evaluations.sort(key=lambda x: x["id"])
 
-    for category, data in data_per_category.items():
-        if prompt_per_category.get(category) == None:
-            print(f"No metrics for category {category}! Use category general now.")
-            prompt_per_category[category] = prompt_per_category["general"]
+    print(f"{category} done.")
 
-        if os.path.exists(os.path.join(save_path, model_name, f"{category}_evaluation_results.json")):
-            print(
-                f"The evaluation file for category {category} already exists. You are now re-evaluating category {category}!"
-            )
-
-        print(f"The number of instances of category {category}'s is {len(data)}.")
-
-        evaluations = []
-
-        metrics_str = ", ".join(x for x in list(prompt_per_category[category]["metrics"].keys()))
-        print(f"Category {category}'s metrics are {metrics_str}.")
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-            futures = []
-            for inst in data:
-                future = executor.submit(get_gpt35_evaluation, prompt_per_category[category], inst, 1)
-                futures.append(future)
-
-            for future in tqdm.tqdm(
-                    concurrent.futures.as_completed(futures),
-                    desc=f"{category}: ",
-                    total=len(futures),
-            ):
-                evaluations.append(future.result())
-
-        evaluations.sort(key=lambda x: x["id"])
-
-        jdump(
-            evaluations,
-            os.path.join(save_path, model_name, f"{category}_evaluation_results.json"),
-        )
-        print(f"{category} done.")
-
-        all_evaluations.extend(evaluations)
-
-    jdump(
-        all_evaluations,
-        os.path.join(save_path, f"{model_name}_evaluation_results.json"),
-    )
-
-    return all_evaluations
+    return evaluations
 
 
 def calculate_scores_form_logprobs(logprobs: Dict[str, Any]) -> float:
@@ -458,7 +424,7 @@ def analyze_gpt35_evaluation_statistics(statistics_path: str, save_path: str) ->
     """
 
     if not os.path.exists(statistics_path):
-        raise Exception("The given directory doesn't exist! No statistics found!")
+        raise Exception(f'The given directory "{statistics_path}" doesn\'t exist! No statistics found!')
 
     all_statistics = {}
 
@@ -468,7 +434,7 @@ def analyze_gpt35_evaluation_statistics(statistics_path: str, save_path: str) ->
             all_statistics[model_name] = jload(os.path.join(statistics_path, file_name))
 
     if len(list(all_statistics.keys())) == 0:
-        raise Exception("There are no statistics in the given directory!")
+        raise Exception(f'There are no statistics in the given directory "{statistics_path}"!')
 
     frame_all = {
         "model": [],
