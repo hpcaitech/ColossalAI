@@ -15,7 +15,7 @@ try:
     from colossalai.utils.model.experimental import LazyInitContext, LazyTensor, _MyTensor
 except:
     pass
-from utils import SUPPORT_LAZY, assert_dist_model_equal, set_seed
+from lazy_init_utils import SUPPORT_LAZY, assert_dist_model_equal, set_seed
 
 from tests.kit.model_zoo import model_zoo
 
