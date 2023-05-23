@@ -22,6 +22,7 @@ class Booster:
     Booster is a high-level API for training neural networks. It provides a unified interface for
     training with different precision, accelerator, and plugin.
 
+
     Examples:
         ```python
         colossalai.launch(...)
