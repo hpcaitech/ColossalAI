@@ -2,8 +2,6 @@
 
 作者: Guangyang Lu, Shenggui Li, Siqi Mai
 
-> ⚠️ 此页面上的信息已经过时并将被废弃。请在[Booster API](../basics/booster_api.md)页面查阅更新。
-
 **预备知识:**
 - [分布式训练](../concepts/distributed_training.md)
 - [Colossal-AI 总览](../concepts/colossalai_overview.md)
@@ -20,7 +18,7 @@
 
 ## 配置定义
 
-在一个配置文件中，有两种类型的变量。一种是作为特征说明，另一种是作为超参数。所有与特征相关的变量都是保留关键字。例如，如果您想使用混合精度训练，需要在 config 文件中使用变量名`fp16`，并遵循预先定义的格式。
+在一个配置文件中，有两种类型的变量。一种是作为特征说明，另一种是作为超参数。所有与特征相关的变量都是保留关键字。例如，如果您想使用`1D`张量并行，需要在 config 文件中使用变量名`fp16`，并遵循预先定义的格式。
 
 ### 功能配置
 
@@ -29,13 +27,13 @@ Colossal-AI 提供了一系列的功能来加快训练速度。每个功能都�
 为了说明配置文件的使用，我们在这里使用混合精度训练作为例子。您需要遵循以下步骤。
 
 1. 创建一个配置文件（例如 `config.py`，您可以指定任意的文件名）。
-2. 在配置文件中定义混合精度的配置。例如，为了使用 PyTorch 提供的原始混合精度训练，您只需将下面这几行代码写入您的配置文件中。
+2. 在配置文件中定义混合并行的配置。例如，为了使用`1D`张量并行，您只需将下面这几行代码写入您的配置文件中。
 
-   ```python
-   from colossalai.amp import AMP_TYPE
-
-   fp16 = dict(
-     mode=AMP_TYPE.TORCH
+    ```python
+   parallel = dict(
+      data=1,
+      pipeline=1,
+      tensor=dict(size=2, mode='1d'),
    )
    ```
 
@@ -47,7 +45,7 @@ Colossal-AI 提供了一系列的功能来加快训练速度。每个功能都�
    colossalai.launch(config='./config.py', ...)
    ```
 
-这样，Colossal-AI 便知道您想使用什么功能，并会在 `colossalai.initialize` 期间注入您所需要的功能。
+这样，Colossal-AI 便知道您想使用什么功能，并注入您所需要的功能。
 
 ### 全局超参数
 
@@ -71,3 +69,4 @@ colossalai.launch(config='./config.py', ...)
 print(gpc.config.BATCH_SIZE)
 
 ```
+<!-- doc-test-command: echo "define_your_config.md does not need test" -->

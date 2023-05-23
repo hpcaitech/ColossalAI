@@ -1,4 +1,4 @@
-# 自动混合精度训练 (AMP)
+# 自动混合精度训练 (旧版本)
 
 作者: Chuanrui Wang, Shenggui Li, Yongbin Li
 
@@ -342,3 +342,4 @@ for epoch in range(gpc.config.NUM_EPOCHS):
 ```python
 python -m torch.distributed.launch --nproc_per_node 4 --master_addr localhost --master_port 29500 train_with_engine.py --config config/config_AMP_torch.py
 ```
+<!-- doc-test-command: torchrun --standalone --nproc_per_node=1 mixed_precision_training.py  -->

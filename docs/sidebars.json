@@ -26,11 +26,8 @@
       "collapsed": true,
       "items": [
         "basics/command_line_tool",
-        "basics/launch_colossalai",
-        "basics/booster_api",
-        "basics/booster_plugins",
-        "basics/booster_checkpoint",
         "basics/define_your_config",
+        "basics/launch_colossalai",
         "basics/initialize_features",
         "basics/engine_trainer",
         "basics/configure_parallelization",
@@ -43,10 +40,9 @@
       "label": "Features",
       "collapsed": true,
       "items": [
+        "features/mixed_precision_training_with_booster",
         "features/mixed_precision_training",
-        "features/gradient_accumulation_with_booster",
         "features/gradient_accumulation",
-        "features/gradient_clipping_with_booster",
         "features/gradient_clipping",
         "features/gradient_handler",
         "features/zero_with_chunk",
@@ -62,8 +58,7 @@
           ]
         },
         "features/pipeline_parallel",
-        "features/nvme_offload",
-        "features/cluster_utils"
+        "features/nvme_offload"
       ]
     },
     {
