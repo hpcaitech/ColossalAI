@@ -1,7 +1,8 @@
 import pytest
-from utils import SUPPORT_LAZY, check_lazy_init
 
 from tests.kit.model_zoo import model_zoo
+
+from .utils import SUPPORT_LAZY, check_lazy_init
 
 
 @pytest.mark.skipif(not SUPPORT_LAZY, reason='requires torch >= 1.12.0')
