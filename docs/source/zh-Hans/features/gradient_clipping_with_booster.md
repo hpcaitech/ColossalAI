@@ -135,6 +135,6 @@ for idx, (img, label) in enumerate(train_dataloader):
 你可以使用以下命令运行脚本：
 
 ```shell
-colossalai run --nproc_per_node 1 train.py --config config/config.py
+colossalai run --nproc_per_node 1 train.py
 ```
 <!-- doc-test-command: torchrun --standalone --nproc_per_node=1 gradient_clipping_with_booster.py  -->

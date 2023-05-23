@@ -128,7 +128,7 @@ for idx, (img, label) in enumerate(train_dataloader):
 ### Step 6. Invoke Training Scripts
 To verify gradient accumulation, we can just check the change of parameter values. When gradient accumulation is set, parameters are only updated in the last step. You can run the script using this command:
 ```shell
-colossalai run --nproc_per_node 1 train.py --config config.py
+colossalai run --nproc_per_node 1 train.py
 ```
 
 You will see output similar to the text below. This shows gradient is indeed accumulated as the parameter is not updated
