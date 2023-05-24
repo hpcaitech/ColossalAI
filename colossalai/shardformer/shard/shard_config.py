@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+__all__ = ['ShardConfig']
+
 
 @dataclass
 class ShardConfig:

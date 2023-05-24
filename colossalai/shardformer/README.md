@@ -18,7 +18,7 @@
 The sample API usage is given below:
 
 ``` python
-from colossalai.shardformer.shard.shardmodel import ShardModel
+from colossalai.shardformer import shard_model
 from transformers import BertForMaskedLM
 
 # create huggingface model as normal
@@ -26,11 +26,11 @@ model = BertForMaskedLM.from_pretrained("bert-base-uncased")
 
 # make the huggingface model paralleled to ShardModel
 # auto policy:
-shardmodel = ShardModel(model).model
+sharded_model = shard_model(model)
 
 # custom policy:
 from xxx import <POLICYCLASS>
-shardmodel = ShardModel(model, <POLICYCLASS>).model
+sharded_model = shard_model(model, <POLICYCLASS>)
 
 # do angthing as normal
 ...
