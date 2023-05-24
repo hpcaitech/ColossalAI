@@ -3,36 +3,8 @@ import math
 from .utils import to_divide
 
 
-class LinkedSet(object):
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.fifo_dict = dict()
-
-    def __len__(self) -> int:
-        return len(self.fifo_dict)
-
-    def __contains__(self, x: int) -> bool:
-        return x in self.fifo_dict
-
-    def full(self, n: int):
-        return len(self.fifo_dict) >= n
-
-    def push(self, x: int):
-        assert x not in self.fifo_dict
-        self.fifo_dict[x] = True
-
-    def pop_value(self, x: int):
-        assert x in self.fifo_dict
-        self.fifo_dict.pop(x)
-
-    def pop_left(self):
-        x = next(iter(self.fifo_dict))
-        self.fifo_dict.pop(x)
-
-
 def calc_move_times(param_per_step: list, param_to_chunk: dict, n_blocks: int):
-    from colossalai.elixir.c_utils import move_count
+    from colossalai.elixir.simulator import move_count
     chunk_per_step = list()
 
     for param_set in param_per_step:
