@@ -102,23 +102,23 @@ def get_model_size(model: nn.Module):
 
 
 # Gemini + ZeRO DDP
-def gemini_zero_dpp(model: torch.nn.Module, pg: ProcessGroup, placememt_policy: str = "auto"):
+def gemini_zero_dpp(model: torch.nn.Module, pg: ProcessGroup, placement_policy: str = "auto"):
     cai_version = colossalai.__version__
     if version.parse(cai_version) > version.parse("0.1.10"):
         from colossalai.nn.parallel import GeminiDDP
         model = GeminiDDP(model,
                           device=get_current_device(),
-                          placement_policy=placememt_policy,
+                          placement_policy=placement_policy,
                           pin_memory=True,
                           search_range_mb=32)
     elif version.parse(cai_version) <= version.parse("0.1.10") and version.parse(cai_version) >= version.parse("0.1.9"):
         from colossalai.gemini import ChunkManager, GeminiManager
         chunk_size = ChunkManager.search_chunk_size(model, 64 * 1024**2, 32)
-        gemini_manager = GeminiManager(placememt_policy, chunk_manager)
+        gemini_manager = GeminiManager(placement_policy, chunk_manager)
         chunk_manager = ChunkManager(chunk_size,
                                      pg,
                                      enable_distributed_storage=True,
-                                     init_device=GeminiManager.get_default_device(placememt_policy))
+                                     init_device=GeminiManager.get_default_device(placement_policy))
         model = ZeroDDP(model, gemini_manager)
     else:
         raise NotImplemented(f"CAI version {cai_version} is not supported")

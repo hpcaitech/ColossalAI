@@ -340,12 +340,12 @@ def get_full_repo_name(model_id: str, organization: Optional[str] = None, token:
 
 
 # Gemini + ZeRO DDP
-def gemini_zero_dpp(model: torch.nn.Module, placememt_policy: str = "auto"):
+def gemini_zero_dpp(model: torch.nn.Module, placement_policy: str = "auto"):
     from colossalai.nn.parallel import GeminiDDP
 
     model = GeminiDDP(model,
                       device=get_current_device(),
-                      placement_policy=placememt_policy,
+                      placement_policy=placement_policy,
                       pin_memory=True,
                       search_range_mb=64)
     return model
