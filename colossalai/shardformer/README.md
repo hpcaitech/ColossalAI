@@ -1,11 +1,22 @@
-## ShardFormer
+# ⚡️ ShardFormer
 
-### Intro
-Make the model in huggingface.co can be paralleled and can be used with colossalai according to custom policy.
+## 📚 Table of Contents
 
-### Quick start
-1. Usage
-- Use
+- [⚡️ ShardFormer](#️-shardformer)
+  - [📚 Table of Contents](#-table-of-contents)
+  - [🔗 Introduction](#-introduction)
+  - [🔨 Usage](#-usage)
+  - [🔮 Simple example](#-simple-example)
+  - [💡 Policy](#-policy)
+
+## 🔗 Introduction
+
+**Shardformer** is a module that automatically parallelizes the mainstream models in libraries such as HuggingFace and TIMM. This module aims to make parallelization hassle-free for users who are not from the system background.
+
+## 🔨 Usage
+
+The sample API usage is given below:
+
 ``` python
 from colossalai.shardformer.shard.shardmodel import ShardModel
 from transformers import BertForMaskedLM
@@ -21,23 +32,33 @@ shardmodel = ShardModel(model).model
 from xxx import <POLICYCLASS>
 shardmodel = ShardModel(model, <POLICYCLASS>).model
 
-
 # do angthing as normal
 ...
 ```
-- Policy
 
-If you wanna parallel the model in custom way, just overwrite the policy class for the huggingface model.
+## 🔮 Simple example
+
+``` shell
+# inference
+colossalai run --nproc_per_node 2 --master_port 29500 test.py --config config.py --mode inference
+# train
+colossalai run --nproc_per_node 2 --master_port 29500 test.py --config config.py --mode train
+```
+
+
+## 💡 Policy
+
+If you wanna parallel the model in a custom way, just overwrite the policy class for the Hugging Face model.
 
 You should do:
 
 1. Inherit Policy class
 2. Overwrite argument_policy method
-    - In this method you need to list which layers class you wanna modify and the attributes and parameters in those layers.
-3. Overwrite inject_policy method [Optional]
+    - In this method, you need to list which layers class you wanna modify and the attributes and parameters in those layers.
+3. Overwrite inject_policy method (Optional)
     - If you need to modify the forward or backward progress.
 4. Overwrite or add the param recording functions
-    - These function use suffix to record the path of weight or bias for the layer.
+    - These functions use a suffix to record the path of weight or bias for the layer.
 5. Overwrite binding
 
 More details can be found in shardformer/policies/basepolicy.py
@@ -166,12 +187,4 @@ CustomPolicy(Policy):
         """
         return NotImplementedError
 
-```
-
-2. Simple example
-``` shell
-# inference
-colossalai run --nproc_per_node 2 --master_port 29500 test.py --config config.py --mode inference
-# train
-colossalai run --nproc_per_node 2 --master_port 29500 test.py --config config.py --mode train
 ```
