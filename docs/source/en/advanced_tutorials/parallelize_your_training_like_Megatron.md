@@ -175,11 +175,11 @@ In this way, users can train their models as usual.
 In our latest example, a Gemini + ZeRO DDP model is also defined to reduce overhead and improve efficiency.For the details of this part, please refer to [ZeRO](../features/zero_with_chunk.md). You can combine these two parts to understand our entire training process:
 
 ```python
-def gemini_zero_dpp(model: torch.nn.Module, pg: ProcessGroup, placememt_policy: str = "auto"):
+def gemini_zero_dpp(model: torch.nn.Module, pg: ProcessGroup, placement_policy: str = "auto"):
     from colossalai.nn.parallel import GeminiDDP
     model = GeminiDDP(model,
                         device=get_current_device(),
-                        placement_policy=placememt_policy,
+                        placement_policy=placement_policy,
                         pin_memory=True,
                         search_range_mb=32)
     return model
