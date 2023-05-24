@@ -56,7 +56,7 @@ follow the steps below to create a new distributed initialization.
                     world_size: int,
                     config: Config,
                     data_parallel_size: int,
-                    pipeline_parlalel_size: int,
+                    pipeline_parallel_size: int,
                     tensor_parallel_size: int,
                     arg1,
                     arg2):
