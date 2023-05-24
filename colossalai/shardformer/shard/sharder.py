@@ -1,20 +1,15 @@
-import os
-from dataclasses import dataclass
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Type, Union
+from typing import Any, Callable, Dict, List
 
 import torch
 import torch.nn as nn
 
-import colossalai.nn as col_nn
-from colossalai.logging import get_dist_logger
-
 from ..policies.autopolicy import get_autopolicy
-from ..policies.basepolicy import Layer, Policy
+from ..policies.basepolicy import Policy
 from ..utils.utils import getattr_, hasattr_, setattr_
-from .shardconfig import ShardConfig
+from .shard_config import ShardConfig
 from .slicer import Slicer
 
-logger = get_dist_logger()
+__all__ = ['ModelSharder', 'shard_model']
 
 
 class ModelSharder(object):
@@ -245,3 +240,17 @@ class ModelSharder(object):
             param = nn.Parameter(param)
             setattr_(model, k, param)
             setattr_(model, v, param)
+
+
+def shard_model(model: nn.Module, shard_config: ShardConfig = None, policy: Policy = None):
+    r"""
+    The function is used to shard the PyTorch model.
+
+    Args:
+        model (`torch.nn.Model`): the origin huggingface model
+        shard_config (`ShardConfig`): the config for distribute information
+        policy (`Policy`): the custom policy for sharding
+    """
+    sharder = ModelSharder(model=model, shard_config=shard_config, policy=policy)
+    sharder.shard()
+    return model
