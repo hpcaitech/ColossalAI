@@ -1,12 +1,7 @@
-import os
-from dataclasses import dataclass
-from typing import Dict, Tuple
-
 import torch
-import torch.distributed as dist
 
 from ..policies.basepolicy import Col_Layer, Layer, Row_Layer
-from .shardconfig import ShardConfig
+from .shard_config import ShardConfig
 
 dim_mapping = {Col_Layer: 1, Row_Layer: 0}
 
