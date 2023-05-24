@@ -2,10 +2,6 @@ import io
 import json
 import os
 
-import torch.distributed as dist
-
-def is_rank_0() -> bool:
-    return not dist.is_initialized() or dist.get_rank() == 0
 
 def _make_w_io_base(f, mode: str):
     if not isinstance(f, io.IOBase):
@@ -15,10 +11,12 @@ def _make_w_io_base(f, mode: str):
         f = open(f, mode=mode)
     return f
 
+
 def _make_r_io_base(f, mode: str):
     if not isinstance(f, io.IOBase):
         f = open(f, mode=mode)
     return f
+
 
 def jdump(obj, f, mode="w", indent=4, default=str):
     """Dump a str or dictionary to a file in json format.
@@ -38,6 +36,7 @@ def jdump(obj, f, mode="w", indent=4, default=str):
         raise ValueError(f"Unexpected type: {type(obj)}")
     f.close()
 
+
 def jload(f, mode="r"):
     """Load a .json file into a dictionary."""
     f = _make_r_io_base(f, mode)
@@ -45,9 +44,19 @@ def jload(f, mode="r"):
     f.close()
     return jdict
 
+
 def get_json_list(file_path):
     with open(file_path, 'r') as f:
         json_list = []
         for line in f:
             json_list.append(json.loads(line))
         return json_list
+
+
+def get_data_per_category(data, categories):
+    data_per_category = {category: [] for category in categories}
+    for item in data:
+        category = item["category"]
+        data_per_category[category].append(item)
+
+    return data_per_category
