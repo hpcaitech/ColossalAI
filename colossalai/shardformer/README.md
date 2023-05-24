@@ -30,7 +30,7 @@ sharded_model = shard_model(model)
 
 # custom policy:
 from xxx import <POLICYCLASS>
-sharded_model = shard_model(model, <POLICYCLASS>).model
+sharded_model = shard_model(model, <POLICYCLASS>)
 
 # do angthing as normal
 ...
