@@ -3,9 +3,9 @@ from typing import Callable, Iterable, Iterator, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
+import warnings
 from packaging import version
 from torch.distributed import ProcessGroup
-
 
 if version.parse(torch.__version__) >= version.parse('1.12.0'):
     from torch.distributed.fsdp import FullStateDictConfig
@@ -202,6 +202,11 @@ class TorchFSDPPlugin(DPPluginBase):
 
         # wrap the model with PyTorch FSDP
         fsdp_model = TorchFSDPModel(model, device_id=torch.cuda.current_device(), **self.fsdp_kwargs)
+
+        if len(optimizer.param_groups) > 1:
+            warnings.warn(
+                'TorchFSDPPlugin does not support optimizer that use multi param groups. The results may not be as expected if used.'
+            )
         optimizer.__init__(fsdp_model.parameters(), **optimizer.defaults)
 
         if not isinstance(optimizer, FSDPOptimizerWrapper):
