@@ -1,12 +1,14 @@
+from typing import Any, Dict, List, Type
+
 import torch
 import torch.nn as nn
 from torch.nn import CrossEntropyLoss
-from typing import Any, Dict, List, Type
-
-
 from transformers import BertForMaskedLM
 from transformers.models.bert.modeling_bert import MaskedLMOutput
+
+
 class BertForMaskedLM_(BertForMaskedLM):
+
     def forward(
         self,
         input_ids=None,
@@ -23,7 +25,7 @@ class BertForMaskedLM_(BertForMaskedLM):
         return_dict=None,
         **kwargs,
     ):
-        print("[Inject OK] Injected forward method")
+        # print("[Inject OK] Injected forward method")
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         outputs = self.bert(
@@ -46,9 +48,9 @@ class BertForMaskedLM_(BertForMaskedLM):
         masked_lm_loss = None
 
         # if input_ids is not None:
-        #     masked_lm_loss = applyDistCrossEntropy(prediction_scores, input_ids, self.config.vocab_size) 
+        #     masked_lm_loss = applyDistCrossEntropy(prediction_scores, input_ids, self.config.vocab_size)
         if labels is not None:
-            loss_fct = CrossEntropyLoss()  # -100 index = padding token
+            loss_fct = CrossEntropyLoss()    # -100 index = padding token
             masked_lm_loss = loss_fct(prediction_scores.view(-1, self.config.vocab_size), labels.view(-1))
 
         if not return_dict:
