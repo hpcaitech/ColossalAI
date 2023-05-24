@@ -62,6 +62,7 @@ Zero-2 不支持局部梯度累积。如果您坚持使用，虽然可以积累�
 ### Torch FSDP 插件
 
 > ⚠ 如果 torch 版本低于 1.12.0，此插件将不可用。
+> ⚠ 该插件现在还不支持保存/加载分片的模型 checkpoint。
 
 更多详细信息，请参阅 [Pytorch 文档](https://pytorch.org/docs/main/fsdp.html).
 

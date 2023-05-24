@@ -131,7 +131,7 @@ for idx, (img, label) in enumerate(train_dataloader):
 ### 步骤 6. 启动训练脚本
 为了验证梯度累积，我们可以只检查参数值的变化。当设置梯度累加时，仅在最后一步更新参数。您可以使用以下命令运行脚本：
 ```shell
-colossalai run --nproc_per_node 1 train.py --config config.py
+colossalai run --nproc_per_node 1 train.py
 ```
 
 你将会看到类似下方的文本输出。这展现了梯度虽然在前3个迭代中被计算，但直到最后一次迭代，参数才被更新。
