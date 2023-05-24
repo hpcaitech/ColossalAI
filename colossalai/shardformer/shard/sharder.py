@@ -48,7 +48,7 @@ class ModelSharder(object):
         self,
         model: nn.Module,
     ) -> None:
-        """
+        r"""
         Replace the model to policy defined model
         Mainly modify the forward and backward to fit distributed model
 
@@ -76,7 +76,7 @@ class ModelSharder(object):
         self,
         model: nn.Module,
     ) -> None:
-        """
+        r"""
         Replace the layer according to the policy, and replace the layer one by one
 
         Args:
@@ -96,7 +96,7 @@ class ModelSharder(object):
         attr_dict: Dict[str, Any],
         param_funcs: List[Callable],
     ) -> None:
-        """
+        r"""
         Reverse the replace layer operation
 
         Args:
@@ -123,7 +123,7 @@ class ModelSharder(object):
         org_layer: nn.Module,
         param_funcs: List[Callable],
     ) -> None:
-        """
+        r"""
         Shard one layer according to the policy, the layer should be the same class as the key in policy's argument_policy return dict
 
         Args:
@@ -201,7 +201,7 @@ class ModelSharder(object):
                   weight: torch.Tensor = None,
                   bias: torch.Tensor = None,
                   layer_attr: str = "") -> None:
-        """
+        r"""
         Reset the weight and bias of the layer object
 
         Args:
@@ -218,7 +218,7 @@ class ModelSharder(object):
             setattr_(layer, "bias" if layer_attr == "" else layer_attr + ".bias", nn.Parameter(bias.contiguous()))
 
     def set_layer_size(self, layer: nn.Module, layer_attr: str, size: torch.Size) -> None:
-        """
+        r"""
         Set the layer attribute
 
         Args:
@@ -233,7 +233,7 @@ class ModelSharder(object):
                 setattr_(layer, f"{layer_attr}.{attr}", size[i])
 
     def bind_layer(self, model: nn.Module) -> None:
-        """
+        r"""
         Bind the layer according to the binding policy
 
         Args:

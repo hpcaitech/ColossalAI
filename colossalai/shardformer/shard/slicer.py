@@ -73,7 +73,7 @@ class Slicer():
         tensor: torch.Tensor,
         dim: int,
     ) -> torch.Tensor:
-        """
+        r"""
         Slice the 2D tensor
 
         Args:
