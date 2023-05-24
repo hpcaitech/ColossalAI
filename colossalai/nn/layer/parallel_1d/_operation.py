@@ -1,5 +1,6 @@
 import torch
 import torch.distributed as dist
+
 from colossalai.core import global_context as gpc
 
 try:
@@ -72,6 +73,7 @@ class LinearWithAsyncCommunication(torch.autograd.Function):
         total_input = input
         grad_input = grad_output.matmul(weight)
 
+        grad_output = grad_output.contiguous()
         # Convert the tensor shapes to 2D for execution compatibility
         grad_output = grad_output.view(grad_output.shape[0] * grad_output.shape[1], grad_output.shape[2])
         total_input = total_input.view(total_input.shape[0] * total_input.shape[1], total_input.shape[2])

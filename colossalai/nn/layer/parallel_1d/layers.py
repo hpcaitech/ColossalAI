@@ -469,7 +469,8 @@ class Linear1D_Col(ParallelLayer):
         if skip_bias_add and not bias:
             raise ValueError('cannot skip bias addition if bias is None')
 
-        self.out_features_per_partition = divide(out_features, gpc.tensor_parallel_size)
+        # self.out_features_per_partition = divide(out_features*2, gpc.tensor_parallel_size)
+        self.out_features_per_partition = out_features
 
         # Parameters.
         # Initialize weight.
@@ -612,7 +613,8 @@ class Linear1D_Row(ParallelLayer):
             raise ValueError('cannot skip bias addition if bias is None')
 
         # Divide the weight matrix along the last dimension.
-        self.input_size_per_partition = divide(in_features, gpc.tensor_parallel_size)
+        # self.input_size_per_partition = divide(in_features*2, gpc.tensor_parallel_size)
+        self.input_size_per_partition = in_features
 
         # Parameters.
         # Initialize weight.
@@ -884,7 +886,8 @@ class VocabParallelEmbedding1D(ParallelLayer):
 
         tensor_parallel_size = gpc.get_world_size(ParallelMode.PARALLEL_1D)
         tensor_parallel_rank = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
-        self.num_embeddings_per_partition = divide(num_embeddings, tensor_parallel_size)
+        # self.num_embeddings_per_partition = divide(num_embeddings, tensor_parallel_size)
+        self.num_embeddings_per_partition = num_embeddings
         self.vocab_start_index = tensor_parallel_rank * self.num_embeddings_per_partition
         self.vocab_end_index = self.vocab_start_index + self.num_embeddings_per_partition
 
