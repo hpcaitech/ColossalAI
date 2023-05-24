@@ -142,9 +142,13 @@ class ShardingSpec:
     [R, R, S0, S1], which means
 
     Argument:
-        dim_partition_dict(Dict[int, List[int]], optional): The key is the dimension of tensor to be sharded,
-            and the value of the key describe which logical axis will be sharded in that dimension.
-        sharding_sequence(List[DimSpec], optional): A straight view of ShardingSpec looks like [R, R, S0, S1].
+        dim_size (int): The number of dimensions of the tensor to be sharded.
+        dim_partition_dict (Dict[int, List[int]], optional): The key is the dimension of tensor to be sharded,
+            and the value of the key describe which logical axis will be sharded in that dimension. Defaults to None.
+            E.g. {0: [0, 1]} means the first dimension of the tensor will be sharded in logical axis 0 and 1.
+        sharding_sequence (List[DimSpec], optional): A straight view of ShardingSpec looks like [R, R, S0, S1].
+            Generally, users should specify either dim_partition_dict or sharding_sequence.
+            If both are given, users must ensure that they are consistent with each other. Defaults to None.
     '''
 
     def __init__(self,
