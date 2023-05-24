@@ -9,7 +9,6 @@
         "practicality",
         "correctness"
       ],
-      "GPT-4": [],
       "Metrics": [
         "Distinct"
       ]
@@ -22,7 +21,6 @@
         "engagingness",
         "reasonableness"
       ],
-      "GPT-4": [],
       "Metrics": [
         "Distinct"
       ]
@@ -33,7 +31,6 @@
         "relevance",
         "correctness"
       ],
-      "GPT-4": [],
       "Metrics": [
         "Precision",
         "Recall",
@@ -46,7 +43,6 @@
         "relevance",
         "correctness"
       ],
-      "GPT-4": [],
       "Metrics": [
         "BLEU",
         "ROUGE",
@@ -59,7 +55,6 @@
         "relevance",
         "correctness"
       ],
-      "GPT-4": [],
       "Metrics": [
         "Precision",
         "Recall",
@@ -72,7 +67,6 @@
         "relevance",
         "diversity"
       ],
-      "GPT-4": [],
       "Metrics": [
         "BLEU",
         "ROUGE",
@@ -85,7 +79,6 @@
         "relevance",
         "correctness"
       ],
-      "GPT-4": [],
       "Metrics": [
         "Distinct"
       ]
@@ -96,7 +89,6 @@
         "relevance",
         "correctness"
       ],
-      "GPT-4": [],
       "Metrics": [
         "BLEU",
         "ROUGE",
@@ -110,7 +102,6 @@
         "fidelity",
         "creativity"
       ],
-      "GPT-4": [],
       "Metrics": [
         "Distinct"
       ]
@@ -122,7 +113,6 @@
         "correctness",
         "conciseness"
       ],
-      "GPT-4": [],
       "Metrics": [
         "BLEU",
         "ROUGE",
