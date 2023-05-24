@@ -67,7 +67,7 @@ Given $P=q \times q \times q$ processors, we present the theoretical computation
 
 ## Usage
 
-To enable 3D tensor parallelism for our model, e.g. on 8 GPUs, we need to configure the parallism setting as below.
+To enable 3D tensor parallelism for our model, e.g. on 8 GPUs, we need to configure the parallelism setting as below.
 ```python
 CONFIG = dict(parallel=dict(
     data=1,

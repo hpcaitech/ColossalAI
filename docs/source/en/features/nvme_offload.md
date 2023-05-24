@@ -53,7 +53,7 @@ It's compatible with all parallel methods in ColossalAI.
 
 > ⚠ It only offloads optimizer states on CPU. This means it only affects CPU training or Zero/Gemini with offloading.
 
-## Exampls
+## Examples
 
 Let's start from two simple examples -- training GPT with different methods. These examples relies on `transformers`.
 

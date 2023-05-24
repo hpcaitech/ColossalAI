@@ -98,7 +98,7 @@ Lastly, if you want to skip some code, you just need to add the following annota
 <!--- doc-test-ignore-end -->
 ```
 
-If you have any dependency required, please add it to `requriements-doc-test.txt` for pip and `conda-doc-test-deps.yml` for Conda.
+If you have any dependency required, please add it to `requirements-doc-test.txt` for pip and `conda-doc-test-deps.yml` for Conda.
 
 
 ### 💉 Auto Documentation

@@ -52,7 +52,7 @@ An instance of class [ComputeSpec](https://colossalai.readthedocs.io/en/latest/c
 
 ## Example
 
-Let's see an example. A ColoTensor is initialized and sharded on 8 GPUs using tp_degree=4, dp_dgree=2. And then the tensor is sharded along the last dim among the TP process groups. Finally, we reshard it along the first dim (0 dim) among the TP process groups. We encourage users to run the code and observe the shape of each tensor.
+Let's see an example. A ColoTensor is initialized and sharded on 8 GPUs using tp_degree=4, dp_degree=2. And then the tensor is sharded along the last dim among the TP process groups. Finally, we reshard it along the first dim (0 dim) among the TP process groups. We encourage users to run the code and observe the shape of each tensor.
 
 
 ```python

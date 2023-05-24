@@ -122,7 +122,7 @@ Inside the initialization of Experts, the local expert number of each GPU will b
 
 
 ## Train Your Model
-Do not to forget to use `colossalai.initialize` function in `colosalai` to add gradient handler for the engine.
+Do not to forget to use `colossalai.initialize` function in `colossalai` to add gradient handler for the engine.
 We handle the back-propagation of MoE models for you.
 In `colossalai.initialize`, we will automatically create a `MoeGradientHandler` object to process gradients.
 You can find more information about the handler `MoeGradientHandler` in colossal directory.

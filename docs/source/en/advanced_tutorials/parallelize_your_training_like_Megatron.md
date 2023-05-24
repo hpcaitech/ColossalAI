@@ -69,7 +69,7 @@ After the forward operation of the embedding module, each word in all sequences 
 <figcaption>The embedding module</figcaption>
 </figure>
 
-Each transformer layer contains two blocks. The self-attention operation is called in the first block and a two-layer percepton is located in the second block.
+Each transformer layer contains two blocks. The self-attention operation is called in the first block and a two-layer perception is located in the second block.
 
 <figure style={{textAlign: "center"}}>
 <img src="https://s2.loli.net/2022/08/17/LAVzDlpRcj4dYeb.png"/>
