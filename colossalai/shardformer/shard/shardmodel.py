@@ -1,45 +1,47 @@
 import os
+from contextlib import suppress
+from dataclasses import dataclass
+
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 import transformers
-import torch.distributed as dist
-from dataclasses import dataclass
-from contextlib import suppress
 
 from colossalai.tensor.d_tensor.layout import Layout
+
 from ..policies.basepolicy import Policy
-from .sharder import ModelSharder
 from .shardconfig import ShardConfig
+from .sharder import ModelSharder
 
 
 class ShardModel(object):
-    """
-    The class for sharding the huggingface model, self.model is the sharded model
+    r"""
+    The class for sharding the huggingface model, ''self.model'' is the sharded model
     Just creat a new ShardModel object to shard huggingface model
 
     Args:
-        model: the origin huggingface model
-        dist_config: the config for distribute information
-        custom_policy: the custom policy for sharding
+        model (:class:`torch.nn.Model`): the origin huggingface model
+        dist_config (:class:`ShardConfig`): the config for distribute information
+        custom_policy (:class:`Policy`): the custom policy for sharding
     """
+
     def __init__(
-            self,
-            model: nn.Module,
-            shard_config: ShardConfig = None, # TODO
-            custom_policy: Policy = None,
-        ) -> None:
+        self,
+        model: nn.Module,
+        shard_config: ShardConfig = None,    # TODO
+        custom_policy: Policy = None,
+    ) -> None:
         self.model = model
         self.shard_config = shard_config
         self.policy = custom_policy
         # self.layout=,  # TODO
 
-        sharder=ModelSharder(
+        sharder = ModelSharder(
             model=self.model,
             policy=self.policy,
             shard_config=self.shard_config,
         )
         sharder.shard()
-
 
     def set_environ(self) -> None:
         os.environ["TOKENIZERS_PARALLELISM"] = "true"
