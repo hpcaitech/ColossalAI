@@ -10,7 +10,7 @@ class ShardConfig:
     fp16: bool = True
     num_gpus: int = 2
     world_size: int = 2
-    backend="nccl"
+    backend = "nccl"
     verbose: str = 'simple'
     seed: int = None
     require_grad: bool = False
