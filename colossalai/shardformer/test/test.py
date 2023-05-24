@@ -1,5 +1,3 @@
-import argparse
-import inspect
 import os
 
 import torch
@@ -7,12 +5,10 @@ import torch.nn as nn
 from datasets import load_dataset
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
-from transformers import AutoTokenizer, BertForMaskedLM, DataCollatorForLanguageModeling, Trainer, TrainingArguments
+from transformers import AutoTokenizer, BertForMaskedLM, DataCollatorForLanguageModeling
 
 import colossalai
-from colossalai.logging import get_dist_logger
-from colossalai.shardformer.shard.shardconfig import ShardConfig
-from colossalai.shardformer.shard.shardmodel import ShardModel
+from colossalai.shardformer.shard import ShardConfig, shard_model
 from colossalai.utils import get_current_device, print_rank_0
 
 os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
@@ -93,8 +89,9 @@ if __name__ == "__main__":
         rank=int(str(get_current_device()).split(':')[-1]),
         world_size=int(os.environ['WORLD_SIZE']),
     )
-    shardmodel = ShardModel(model, shard_config)
+    sharded_model = shard_model(model, shard_config)
+
     if args.mode == "train":
-        train(shardmodel.model)
+        train(sharded_model)
     elif args.mode == "inference":
-        inference(shardmodel.model)
+        inference(sharded_model)
