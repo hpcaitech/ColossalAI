@@ -366,8 +366,8 @@ class TraceFlow(object):
         # find non chunk inputs
         chunk_info = self._get_non_chunk_inputs(chunk_info, start_idx, end_idx)
 
-        # reassgin reshape size, some size may have changed due to chunk
-        chunk_info = self._reassgin_reshape_size(chunk_info)
+        # reassign reshape size, some size may have changed due to chunk
+        chunk_info = self._reassign_reshape_size(chunk_info)
 
         return chunk_info
 
@@ -428,10 +428,10 @@ class TraceFlow(object):
         chunk_info["outputs_dim"].append(output_dim)
         return True
 
-    def _reassgin_reshape_size(self, chunk_info):
+    def _reassign_reshape_size(self, chunk_info):
         """
         Some shape args in reshape may have changed due to chunk
-        reassgin those changed shape
+        reassign those changed shape
         """
         chunk_region = chunk_info["region"]
         reshape_size = {}

@@ -397,7 +397,7 @@ class TraceIndice(object):
         input_node = node.args[0]
         assert len(get_node_shape(input_node)) == 4
 
-        # assgin index
+        # assign index
         self._assign_indice_as_input(node, node_idx, input_node)
         self._del_dim(node_idx, 1)
         self._add_dim(node_idx, 1)
@@ -415,7 +415,7 @@ class TraceIndice(object):
         assert node.kwargs['size'] is None
         assert len(get_node_shape(node)) == 4
 
-        # assgin index
+        # assign index
         self._assign_indice_as_input(node, node_idx)
         self._mark_computation(node, node_idx, [-1, -2])
 
