@@ -362,6 +362,22 @@ If you want to install and enable CUDA kernel fusion (compulsory installation wh
 CUDA_EXT=1 pip install .
 ```
 
+For Users with CUDA 10.2, you can still build ColossalAI from source. However, you need to manually download the cub library and copy it to the corresponding directory.
+
+```bash
+# clone the repository
+git clone https://github.com/hpcaitech/ColossalAI.git
+cd ColossalAI
+
+# download the cub library
+wget https://github.com/NVIDIA/cub/archive/refs/tags/1.8.0.zip
+unzip 1.8.0.zip
+cp -r cub-1.8.0/cub/ colossalai/kernel/cuda_native/csrc/kernels/include/
+
+# install
+CUDA_EXT=1 pip install .
+```
+
 <p align="right">(<a href="#top">back to top</a>)</p>
 
 ## Use Docker
