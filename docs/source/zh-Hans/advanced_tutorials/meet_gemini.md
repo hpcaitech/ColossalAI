@@ -8,21 +8,21 @@
 
 ## 用法
 
-目前Gemini支持和ZeRO并行方式兼容，它的使用方法很简单，在训练策略的配置文件里设置zero的model_config属性tensor_placement_policy='auto'
+目前Gemini支持和ZeRO并行方式兼容，它的使用方法很简单：使用booster将`GeminiPlugin`注入训练组件中。更多细节请参考[booster使用](../basics/booster_api.md)。
 
-```
-zero = dict(
-    model_config=dict(
-        reduce_scatter_bucket_size_mb=25,
-        fp32_reduce_scatter=False,
-        gradient_predivide_factor=1.0,
-        tensor_placement_policy="auto",
-        shard_strategy=TensorShardStrategy(),
-        ...
-    ),
-    optimizer_config=dict(
-        ...
-    )
+```python
+from torchvision.models import resnet18
+from colossalai.booster import Booster
+from colossalai.zero import ColoInitContext
+from colossalai.booster.plugin import GeminiPlugin
+plugin = GeminiPlugin(placement_policy='cuda', strict_ddp_mode=True, max_norm=1.0, initial_scale=2**5)
+booster = Booster(plugin=plugin)
+ctx = ColoInitContext()
+with ctx:
+    model = resnet18()
+optimizer = HybridAdam(model.parameters(), lr=1e-3)
+criterion = lambda x: x.mean()
+model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
 )
 ```
 

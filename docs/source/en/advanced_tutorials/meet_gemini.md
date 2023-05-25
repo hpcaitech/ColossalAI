@@ -9,16 +9,21 @@ When you only have a few GPUs for large model training tasks, **heterogeneous tr
 
 ## Usage
 
-At present, Gemini supports compatibility with ZeRO parallel mode, and it is really simple to use Gemini. Set attribute of zero model_config, i.e., tensor_placement_policy='auto'.
+At present, Gemini supports compatibility with ZeRO parallel mode, and it is really simple to use Gemini: Inject feathures with `booster`. More instructions please refer to [usage of booster]((../basics/booster_api.md).
 
-```
-zero = dict(
-    model_config=dict(
-        tensor_placement_policy='auto',
-        shard_strategy=BucketTensorShardStrategy()
-    ),
-    optimizer_config=dict(
-    ...)
+```python
+from torchvision.models import resnet18
+from colossalai.booster import Booster
+from colossalai.zero import ColoInitContext
+from colossalai.booster.plugin import GeminiPlugin
+plugin = GeminiPlugin(placement_policy='cuda', strict_ddp_mode=True, max_norm=1.0, initial_scale=2**5)
+booster = Booster(plugin=plugin)
+ctx = ColoInitContext()
+with ctx:
+    model = resnet18()
+optimizer = HybridAdam(model.parameters(), lr=1e-3)
+criterion = lambda x: x.mean()
+model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
 )
 ```
 
