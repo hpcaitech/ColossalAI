@@ -116,21 +116,21 @@ class DimSpec:
 
     def dim_diff(self, other):
         '''
-        The difference between two _DimSpec.
+        The difference between two DimSpec.
 
         Argument:
-            other(_DimSpec): the dim spec to compare with.
+            other(DimSpec): the dim spec to compare with.
 
         Return:
             difference(int): the difference between two _DimSpec.
 
         Example:
-            dim_spec = _DimSpec([0])
-            other_dim_spec = _DimSpec([0, 1])
+            ```python
+            dim_spec = DimSpec([0])
+            other_dim_spec = DimSpec([0, 1])
             print(dim_spec.difference(other_dim_spec))
-
-        Output:
-            5
+            # output: 5
+            ```
         '''
         difference = self.difference_dict[(str(self), str(other))]
         return difference
@@ -212,6 +212,7 @@ class ShardingSpec:
         pair of sharding sequence.
 
         Example:
+            ```python
             dim_partition_dict = {0: [0, 1]}
             # DistSpec:
             #     shard_sequence: S01,R,R
@@ -223,10 +224,8 @@ class ShardingSpec:
             #     device_mesh_shape: (4, 4)
             sharding_spec_to_compare = ShardingSpec(device_mesh, entire_shape, dim_partition_dict_to_compare)
             print(sharding_spec.sharding_sequence_difference(sharding_spec_to_compare))
-
-        Output:
-            25
-
+            # output: 25
+            ```
         Argument:
             other(ShardingSpec): The ShardingSpec to compared with.
 
