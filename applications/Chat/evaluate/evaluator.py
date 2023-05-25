@@ -119,7 +119,7 @@ class Evaluator(object):
             jdump(all_evaluations,
                   os.path.join(evaluation_results_save_path, f"{model_name_list[0]}_evaluation_results.json"))
 
-            # Start to calculate scores and save statictics.
+            # Start to calculate scores and save statistics.
             evaluation_statistics_save_path = os.path.join(base_save_path, "evaluation_statistics")
             gpt_evaluate.save_gpt35_evaluation_statistics(model_name_list[0], all_evaluations,
                                                           evaluation_statistics_save_path)

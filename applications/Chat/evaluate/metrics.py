@@ -111,7 +111,7 @@ def calculate_precision_recall_f1(preds: list, targets: list) -> dict:
     The calculation of precision, recall and f1-score is realized by counting
     the number f overlaps between the preds and target. The comparison length
     limited by the shorter one of preds and targets. This design is mainly
-    considered for classifiction and extraction categories.
+    considered for classification and extraction categories.
     """
     precision_recall_f1 = {"precision": 0, "recall": 0, "f1_score": 0}
     precision_scores = []
@@ -138,7 +138,7 @@ def calculate_precision_recall_f1(preds: list, targets: list) -> dict:
 
 def precision(preds: list, targets: list) -> dict:
     """Calculate Precision Metric
-    (design for classifiction and extraction categories)
+    (design for classification and extraction categories)
 
     Calculating precision by counting the number of overlaps between the preds and target.
     """
@@ -149,7 +149,7 @@ def precision(preds: list, targets: list) -> dict:
 
 def recall(preds: list, targets: list) -> dict:
     """Calculate Recall Metric
-    (design for classifiction and extraction categories)
+    (design for classification and extraction categories)
 
     Calculating recall by counting the number of overlaps between the preds and target.
     """
@@ -160,7 +160,7 @@ def recall(preds: list, targets: list) -> dict:
 
 def F1_score(preds: list, targets: list) -> dict:
     """Calculate F1-score Metric
-    (design for classifiction and extraction categories)
+    (design for classification and extraction categories)
 
     Calculating f1-score by counting the number of overlaps between the preds and target.
     """
