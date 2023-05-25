@@ -17,7 +17,7 @@ class NormalPoolStrategyGenerator(StrategyGenerator):
     """
     NormalPoolStrategyGenerator is a generic class to generate strategies for pool operation like MaxPoolxd.
     The reason we call this normal pool is AvgPoolxd and MaxPoolxd are taking the kernel size element from image,
-    and reduce them depening on the operation type.
+    and reduce them depending on the operation type.
     """
 
     def validate(self) -> bool:
@@ -35,9 +35,9 @@ class NormalPoolStrategyGenerator(StrategyGenerator):
         '''
         Compute the computation cost per device with this specific strategy.
 
-        Note: compute_cost need to be devided by TFLOPS, now it just shows the computation size.
+        Note: compute_cost need to be divided by TFLOPS, now it just shows the computation size.
         '''
-        # TODO: compute_cost need to be devided by TFLOPS, now it just shows the computation size.
+        # TODO: compute_cost need to be divided by TFLOPS, now it just shows the computation size.
         # 1D: (Lout) * N * C * kernel
         # 2D: (H * W) * N * Cout * Cin * kernel
         # 3D: (H * W  * D) * N * Cout * Cin * kernel

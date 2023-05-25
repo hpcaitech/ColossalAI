@@ -136,7 +136,7 @@ jobs:
       - name: Restore Testmon Cache
         run: |
           if [ -d /github/home/testmon_cache ]; then
-            [ ! -z "$(ls -A /github/home/testmon_cache)" ] && cp -p -r /github/home/testmon_cache/.testmondata /__w/ColossalAI/ColossalAI/
+            [ ! -z "$(ls -A /github/home/testmon_cache)" ] && cp -p -r /github/home/testmon_cache/.testmondata* /__w/ColossalAI/ColossalAI/
           fi
 
       - name: Execute Unit Testing
@@ -150,7 +150,7 @@ jobs:
       - name: Store Testmon Cache
         run: |
           [ -d /github/home/testmon_cache ] || mkdir /github/home/testmon_cache
-          cp -p -r /__w/ColossalAI/ColossalAI/.testmondata /github/home/testmon_cache/
+          cp -p -r /__w/ColossalAI/ColossalAI/.testmondata* /github/home/testmon_cache/
 
       - name: Collate artifact
         env:

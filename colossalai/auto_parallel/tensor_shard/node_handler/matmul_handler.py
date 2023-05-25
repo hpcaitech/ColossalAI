@@ -206,7 +206,7 @@ class Broadcaster(BmmTransform):
                     # e.g. [1, 2, 4] x [4, 4, 8] -> [4, 2, 8]
                     # the dim 0 of [1, 2, 4] is multiplied to 4
                     tensor_shape[dim_idx] = 1
-                elif broadcast_type == BroadcastType.PADDDING:
+                elif broadcast_type == BroadcastType.PADDING:
                     # if the dim is padded
                     # we remove its sharding
                     tensor_shape[dim_idx] = None

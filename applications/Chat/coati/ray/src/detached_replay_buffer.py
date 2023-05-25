@@ -34,7 +34,7 @@ class DetachedReplayBuffer:
         '''
         Workers in the same tp group share this buffer and need same sample for one step.
             Therefore a held_sample should be returned tp_world_size times before it could be dropped.
-            worker_state records wheter a worker got the held_sample
+            worker_state records whether a worker got the held_sample
         '''
         self.tp_world_size = tp_world_size
         self.worker_state = [False] * self.tp_world_size

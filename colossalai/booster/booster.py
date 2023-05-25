@@ -196,7 +196,7 @@ class Booster:
                 If true, the checkpoint will be a folder. Otherwise, it will be a single file. Defaults to False.
             size_per_shard (int, optional): Maximum size of checkpoint shard file in MB. This is useful only when ``shard=True``. Defaults to 1024.
         """
-        self.checkpoint_io.save_model(model, checkpoint, prefix, shard, size_per_shard)
+        self.checkpoint_io.save_model(model, checkpoint=checkpoint, shard=shard, size_per_shard=size_per_shard)
 
     def load_optimizer(self, optimizer: Optimizer, checkpoint: str):
         """Load optimizer from checkpoint.
