@@ -8,7 +8,7 @@
 
 ## 用法
 
-目前Gemini支持和ZeRO并行方式兼容，它的使用方法很简单：使用booster将`GeminiPlugin`中的特性注入到训练组件中。更多细节请参考[booster使用](../basics/booster_api.md)。
+目前Gemini支持和ZeRO并行方式兼容，它的使用方法很简单：使用booster将`GeminiPlugin`中的特性注入到训练组件中。更多`booster`介绍请参考[booster使用](../basics/booster_api.md)。
 
 ```python
 from torchvision.models import resnet18
