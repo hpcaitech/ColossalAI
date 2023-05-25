@@ -1,4 +1,4 @@
-from typing import Dict, Optional
+from typing import Dict, List, Optional, Set
 
 import torch
 import torch.distributed as dist
@@ -10,16 +10,21 @@ from .states import TensorState
 
 
 class ChunkGroup(object):
+    """ChunkGroup manages chunks and their memory pool.
+
+    args:
+        rcache: A memory pool to instantiate chunks.
+    """
 
     def __init__(self, rcache: MemoryPool) -> None:
         super().__init__()
         self.rcache = rcache
-        self.fused_chunks: set[Chunk] = set()
-        self.float_chunks: set[Chunk] = set()
+        self.fused_chunks: Set[Chunk] = set()
+        self.float_chunks: Set[Chunk] = set()
         self.ten_to_chunk: Dict[torch.Tensor, Chunk] = dict()
 
-        self.accessed_fused_chunks: set[Chunk] = set()
-        self.accessed_float_chunks: set[Chunk] = set()
+        self.accessed_fused_chunks: Set[Chunk] = set()
+        self.accessed_float_chunks: Set[Chunk] = set()
 
     def __add_to_accset(self, chunk: Chunk):
         if chunk.rcache_fused:
@@ -90,7 +95,7 @@ class ChunkGroup(object):
         return True
 
     def allocate_chunk(self,
-                       tensor_list: list[torch.Tensor],
+                       tensor_list: List[torch.Tensor],
                        chunk_size: int,
                        chunk_dtype: torch.dtype,
                        process_group: ProcessGroup,
@@ -104,7 +109,7 @@ class ChunkGroup(object):
 
         return chunk
 
-    def tensors_to_chunks(self, tensor_list: list[torch.Tensor]) -> list[Chunk]:
+    def tensors_to_chunks(self, tensor_list: List[torch.Tensor]) -> List[Chunk]:
         chunk_list = list()
         for tensor in tensor_list:
             chunk = self.ten_to_chunk.get(tensor)

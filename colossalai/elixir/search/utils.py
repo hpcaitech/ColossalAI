@@ -1,3 +1,5 @@
+from typing import List, Set
+
 import torch
 import torch.nn as nn
 
@@ -21,7 +23,7 @@ def to_meta_tensor(t: torch.Tensor, dtype: torch.dtype = None) -> torch.Tensor:
     return meta_t
 
 
-def get_multi_used_params(m: nn.Module) -> set[torch.Tensor]:
+def get_multi_used_params(m: nn.Module) -> Set[torch.Tensor]:
     multi_used_set = set()
     visit = dict()
     for module in m.modules():
@@ -33,7 +35,7 @@ def get_multi_used_params(m: nn.Module) -> set[torch.Tensor]:
     return multi_used_set
 
 
-def find_minimum_waste_size(numel_group_list: list[list[int]], min_range: int, max_range: int, interval: int):
+def find_minimum_waste_size(numel_group_list: List[List[int]], min_range: int, max_range: int, interval: int):
 
     max_per_group = list()
     for n_list in numel_group_list:
@@ -44,7 +46,7 @@ def find_minimum_waste_size(numel_group_list: list[list[int]], min_range: int, m
     best_size = test_size
     min_waste = float('+inf')
 
-    def calc_waste(numel_list: list[int], block_size: int):
+    def calc_waste(numel_list: List[int], block_size: int):
         acc = 0
         left = 0
         for s in numel_list:

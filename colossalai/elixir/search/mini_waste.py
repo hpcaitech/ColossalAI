@@ -15,6 +15,17 @@ dtype_to_es = {torch.float16: 2, torch.float32: 4, torch.float64: 8}
 
 
 class SearchMiniWaste(SearchBase):
+    """Search the best chunk size to minimize the waste of memory.
+
+    args:
+        module: the module to be searched
+        default_group_size: the default group size of communications
+        dtype: the data type of the parameters
+        prefetch: whether to prefetch the parameters
+        verbose: whether to print the search details
+        inp: a dictionary, the example input of the model
+        step_fn: the example step function of training
+    """
 
     def __init__(self,
                  module: nn.Module,

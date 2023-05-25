@@ -1,12 +1,14 @@
 from copy import deepcopy
 
+import pytest
 from torch.testing import assert_close
 
-from colossalai.elixir.kernels.attn_wrapper import wrap_attention
 from tests.test_elixir.utils import TEST_MODELS, to_cuda
 
 
 def exam_one_model(model_fn, data_fn):
+    from colossalai.elixir.kernels.attn_wrapper import wrap_attention
+
     torch_model = model_fn().cuda()
     test_model = deepcopy(torch_model)
     test_model = wrap_attention(test_model)
@@ -23,6 +25,7 @@ def exam_one_model(model_fn, data_fn):
         assert_close(p_torch.grad, p_test.grad)
 
 
+@pytest.mark.skip(reason="Need to install xformers")
 def test_gpt_atten_kernel():
     exam_one_model(*TEST_MODELS.get('gpt2_micro'))
     exam_one_model(*TEST_MODELS.get('opt_micro'))

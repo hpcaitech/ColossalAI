@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import List, Optional
 
 import torch
 
@@ -7,6 +7,15 @@ from .scheduler import ChunkScheduler
 
 
 class ChunkFetcher(object):
+    """ChunkFetcher is responsible for fetching and reducing chunks during training.
+    Any operations on chunks should be done through ChunkFetcher.
+
+    args:
+        scheduler: A ChunkScheduler to schedule evictable chunks.
+        group: A ChunkGroup to manage chunks.
+        overlap: Whether to overlap communications.
+        reduce_always_fp32: Whether to reduce gradients in FP32.
+    """
 
     def __init__(self,
                  scheduler: ChunkScheduler,
@@ -46,7 +55,7 @@ class ChunkFetcher(object):
 
         self.scheduler.clear()
 
-    def trans_to_compute(self, tensors: list[torch.Tensor]):
+    def trans_to_compute(self, tensors: List[torch.Tensor]):
         # update tensor states
         for t in tensors:
             self.group.tensor_trans_state(t, TensorState.COMPUTE)
@@ -56,7 +65,7 @@ class ChunkFetcher(object):
             self.scheduler.remove(chunk)
         return chunks
 
-    def trans_to_hold(self, tensors: list[torch.Tensor], phase: str):
+    def trans_to_hold(self, tensors: List[torch.Tensor], phase: str):
         assert phase in ('f', 'b')
         next_state = TensorState.HOLD if phase == 'f' else TensorState.HOLD_AFTER_BWD
         # update tensor states
@@ -71,17 +80,17 @@ class ChunkFetcher(object):
     def get_one_chunk(self, tensor: torch.Tensor) -> Chunk:
         return self.group.ten_to_chunk.get(tensor)
 
-    def get_chunks(self, tensors: list[torch.Tensor]) -> list[Chunk]:
+    def get_chunks(self, tensors: List[torch.Tensor]) -> List[Chunk]:
         return self.group.tensors_to_chunks(tensors)
 
     def is_in_fused(self, tensor: torch.Tensor):
         chunk = self.get_one_chunk(tensor)
         return chunk.rcache_fused
 
-    def filter_chunks(self, chunks: list[Chunk]):
+    def filter_chunks(self, chunks: List[Chunk]):
         return list(filter(lambda c: not self.group.is_accessed(c), chunks))
 
-    def fetch_chunks(self, chunks: list[Chunk]):
+    def fetch_chunks(self, chunks: List[Chunk]):
         # make step + 1
         self.step()
 
@@ -152,7 +161,7 @@ class ChunkFetcher(object):
                 self.reduced_chunk = chunk
                 self.reduced_block = self.group.reduce_chunk(chunk, always_fp32=self.reduce_always_fp32, sync=False)
 
-    def prefetch(self, chunks: list[Chunk]):
+    def prefetch(self, chunks: List[Chunk]):
         next_chunk = self.scheduler.get_next_chunk(chunks)
         self.predict_next_chunk = next_chunk
 

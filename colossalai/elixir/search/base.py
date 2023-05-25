@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from functools import partial
-from typing import Tuple
+from typing import List, Tuple
 
 import torch
 import torch.nn as nn
@@ -84,7 +84,7 @@ class SearchBase(ABC):
         """
         pass
 
-    def generate_chunk_plans(self, private_group, publick_groups) -> list[ChunkPlan]:
+    def generate_chunk_plans(self, private_group, publick_groups) -> List[ChunkPlan]:
         plans = list()
         for param in private_group:
             chunk_size = self.private_truncate(param)
@@ -114,7 +114,7 @@ class SearchBase(ABC):
 
         return plans
 
-    def allocate_chunk_group(self, chunk_plans: list[ChunkPlan]) -> ChunkGroup:
+    def allocate_chunk_group(self, chunk_plans: List[ChunkPlan]) -> ChunkGroup:
         block_require_list = list()
         for plan in chunk_plans:
             kwargs = plan.kwargs

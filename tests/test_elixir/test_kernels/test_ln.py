@@ -48,6 +48,7 @@ def run_dist(rank, world_size):
 
 @pytest.mark.dist
 @pytest.mark.parametrize('world_size', [1])
+@pytest.mark.skip(reason='need to install apex')
 def test_fused_layernorm(world_size):
     run_func = partial(run_dist, world_size=world_size)
     torch.multiprocessing.spawn(run_func, nprocs=world_size)

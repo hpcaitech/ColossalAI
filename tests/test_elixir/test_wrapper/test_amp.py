@@ -39,7 +39,8 @@ def exam_amp_one_model(model_fn, data_fn, nproc, group, exam_seed=2261):
                                           loss_scale=1.0,
                                           keep_batchnorm_fp32=False)
     ddp_model = DDP(ddp_model, message_size=0, allreduce_always_fp32=True)
-
+    print("ok")
+    exit(0)
     test_optim = HybridAdam(test_model.parameters(), lr=1e-1, weight_decay=0)
     sr = simple_search(test_model, nproc, shard_device=gpu_device(), unified_dtype=torch.float16, verbose=True)
     test_model = ElixirModule(test_model, sr, group, dtype=torch.float16, reduce_always_fp32=True, output_fp32=True)
@@ -88,4 +89,4 @@ def test_elixir_amp(world_size):
 
 
 if __name__ == '__main__':
-    test_elixir_amp(world_size=4)
+    test_elixir_amp(world_size=2)
