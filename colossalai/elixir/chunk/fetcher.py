@@ -40,10 +40,14 @@ class ChunkFetcher(object):
         self.reduce_stream = torch.cuda.Stream()
 
     def reset(self):
+        """Reset the fetcher to the initial state.
+        Users should call this function before training."""
         self.scheduler.reset()
         self.current_step = -1
 
     def clear(self):
+        """Clear the fetcher.
+        Users should call this function after training."""
         if self.overlap_flag:
             torch.cuda.synchronize()
             self.predict_next_chunk = None
@@ -56,6 +60,8 @@ class ChunkFetcher(object):
         self.scheduler.clear()
 
     def trans_to_compute(self, tensors: List[torch.Tensor]):
+        """Transform tensors to COMPUTE state.
+        This function should be called before the compute operators."""
         # update tensor states
         for t in tensors:
             self.group.tensor_trans_state(t, TensorState.COMPUTE)
@@ -66,6 +72,8 @@ class ChunkFetcher(object):
         return chunks
 
     def trans_to_hold(self, tensors: List[torch.Tensor], phase: str):
+        """Transform tensors to HOLD state.
+        This function should be called after the compute operators."""
         assert phase in ('f', 'b')
         next_state = TensorState.HOLD if phase == 'f' else TensorState.HOLD_AFTER_BWD
         # update tensor states
@@ -78,19 +86,25 @@ class ChunkFetcher(object):
                 self.scheduler.add(chunk)
 
     def get_one_chunk(self, tensor: torch.Tensor) -> Chunk:
+        """Get the chunk of the given tensor."""
         return self.group.ten_to_chunk.get(tensor)
 
     def get_chunks(self, tensors: List[torch.Tensor]) -> List[Chunk]:
+        """Get the chunks of the given tensors."""
         return self.group.tensors_to_chunks(tensors)
 
     def is_in_fused(self, tensor: torch.Tensor):
+        """Check whether the given tensor is in a fused chunk."""
         chunk = self.get_one_chunk(tensor)
         return chunk.rcache_fused
 
     def filter_chunks(self, chunks: List[Chunk]):
+        """Filter the accessed chunks, since they are already on the rCache."""
         return list(filter(lambda c: not self.group.is_accessed(c), chunks))
 
     def fetch_chunks(self, chunks: List[Chunk]):
+        """Fetch chunks needed for this compute operator.
+        The chunks should be in the COMPUTE state first."""
         # make step + 1
         self.step()
 
@@ -140,6 +154,7 @@ class ChunkFetcher(object):
             self.group.rcache.free_public_block(self.reduced_block)
 
     def reduce_chunk(self, chunk: Chunk):
+        """Reduce and scatter the given gradient chunk."""
         if not chunk.reduce_check:
             return False
 
@@ -162,6 +177,7 @@ class ChunkFetcher(object):
                 self.reduced_block = self.group.reduce_chunk(chunk, always_fp32=self.reduce_always_fp32, sync=False)
 
     def prefetch(self, chunks: List[Chunk]):
+        """Prefetch the next used chunk."""
         next_chunk = self.scheduler.get_next_chunk(chunks)
         self.predict_next_chunk = next_chunk
 
@@ -189,5 +205,6 @@ class ChunkFetcher(object):
             self.group.access_chunk(next_chunk)
 
     def step(self):
+        """Update the scheduler."""
         self.scheduler.step()
         self.current_step += 1
