@@ -50,8 +50,6 @@ model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
 
 ColossalAI设计了Gemini，就像双子星一样，它管理CPU和GPU二者内存空间。它可以让张量在训练过程中动态分布在CPU-GPU的存储空间内，从而让模型训练突破GPU的内存墙。内存管理器由两部分组成，分别是MemStatsCollector(MSC)和StatefuleTensorMgr(STM)。
 
-<!-- doc-test-command: torchrun --standalone --nproc_per_node=1 meet_gemini.py  -->
-
 
 我们利用了深度学习网络训练过程的迭代特性。我们将迭代分为warmup和non-warmup两个阶段，开始时的一个或若干迭代步属于预热阶段，其余的迭代步属于正式阶段。在warmup阶段我们为MSC收集信息，而在non-warmup阶段STM入去MSC收集的信息来移动tensor，以达到最小化CPU-GPU数据移动volume的目的。
 
@@ -96,3 +94,5 @@ MSC的重要职责是在调整tensor layout位置，比如在上图S2时刻，�
 
 在non-warmup阶段，我们需要利用预热阶段采集的非模型数据内存信息，预留出下一个Period在计算设备上需要的峰值内存，这需要我们移动出一些模型张量。
 为了避免频繁在CPU-GPU换入换出相同的tensor，引起类似[cache thrashing](https://en.wikipedia.org/wiki/Thrashing_(computer_science))的现象。我们利用DNN训练迭代特性，设计了OPT cache换出策略。具体来说，在warmup阶段，我们记录每个tensor被计算设备需要的采样时刻。如果我们需要驱逐一些HOLD tensor，那么我们选择在本设备上最晚被需要的tensor作为受害者。
+
+<!-- doc-test-command: torchrun --standalone --nproc_per_node=1 meet_gemini.py  -->
