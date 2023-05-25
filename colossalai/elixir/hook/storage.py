@@ -6,6 +6,12 @@ from colossalai.elixir.cuda import gpu_device
 
 class BufferStore(object):
     """A place to store parameters temporarily when computing.
+    Parameters should be stored into the buffer before computaions.
+
+    args:
+        buffer_size: The size of the buffer.
+        buffer_dtype: The dtype of the buffer.
+        device_str: The device to store the buffer.
     """
 
     def __init__(self, buffer_size: torch.Tensor, buffer_dtype: torch.dtype, device_str: str = 'cuda') -> None:

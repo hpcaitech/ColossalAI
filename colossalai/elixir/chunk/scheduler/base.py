@@ -5,6 +5,10 @@ from colossalai.elixir.chunk.core import Chunk
 
 
 class ChunkScheduler(ABC):
+    """The base class of all chunk schedulers.
+    A chunk scherduler stores all releasable chunks.
+    It provides APIs to add, remove, display releasable chunks.
+    """
 
     def __init__(self) -> None:
         super().__init__()

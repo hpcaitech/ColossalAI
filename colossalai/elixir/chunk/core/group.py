@@ -10,7 +10,10 @@ from .states import TensorState
 
 
 class ChunkGroup(object):
-    """ChunkGroup manages chunks and their memory pool.
+    """ChunkGroup manages a group of chunks and their memory pool.
+    Commonly, one model has one chunk group.
+    It supports chunk allocation, chunk access, and chunk release.
+    ChunkGroup is responsible for the memory management before its APIs.
 
     args:
         rcache: A memory pool to instantiate chunks.

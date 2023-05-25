@@ -12,6 +12,15 @@ class BlockRequire(NamedTuple):
 
 
 class TensorBlock(ABC):
+    """TensorBlock is the memory unit of memory pool.
+    It is a continuous memory block used to store tensors.
+    Each chunk needs a corresponding TensorBlock to store its data during training.
+
+    args:
+        numel: the number of elements in the block
+        dtype: the data type of the block
+        device_type: the device type of the block
+    """
     total_count: int = 0
 
     def __init__(self, numel: int, dtype: torch.dtype, device_type: str) -> None:
@@ -45,6 +54,9 @@ class TensorBlock(ABC):
 
 
 class PublicBlock(TensorBlock):
+    """Public blocks have the same length.
+    Chunks of the same length can share the same public block.
+    """
 
     def __init__(self, numel: int, dtype: torch.dtype, device_type: str) -> None:
         super().__init__(numel, dtype, device_type)
@@ -55,6 +67,9 @@ class PublicBlock(TensorBlock):
 
 
 class PrivateBlock(TensorBlock):
+    """Private blocks may have different lengths.
+    Each private chunk should use its own private block.
+    """
 
     def __init__(self, numel: int, dtype: torch.dtype, device_type: str) -> None:
         super().__init__(numel, dtype, device_type)
@@ -65,6 +80,13 @@ class PrivateBlock(TensorBlock):
 
 
 class MemoryPool(object):
+    """A memory pool consists of public blocks and private blocks.
+    rCache uses memory pool to manage memory bolcks.
+    Users should allocate memory blocks before using it.
+
+    args:
+        device_type: the device type of the memory pool
+    """
 
     def __init__(self, device_type: str) -> None:
         self.device_type: str = device_type

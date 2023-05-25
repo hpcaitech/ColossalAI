@@ -13,6 +13,9 @@ from .storage import BufferStore
 
 
 class HookParam(OutplaceTensor, nn.Parameter):
+    """HookParam is a special type of tensor that is used to triggered hooks on parameters.
+    HookParam adds chunk fetching before torch functions.
+    """
     pre_fwd_func = None
     post_fwd_func = None
     use_fused_kernel = False

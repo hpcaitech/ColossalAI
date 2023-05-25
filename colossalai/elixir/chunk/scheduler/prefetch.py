@@ -8,6 +8,9 @@ from .base import Chunk, ChunkScheduler
 
 
 class PrefetchScheduler(ChunkScheduler):
+    """The prefetch chunk scheduler.
+    Its top functions gives the furthest used chunk.
+    """
 
     def __init__(self, chunk_called_per_step: List[Iterable[Chunk]]) -> None:
         super().__init__()

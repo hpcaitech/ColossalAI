@@ -4,6 +4,9 @@ from .base import Chunk, ChunkScheduler
 
 
 class FIFOScheduler(ChunkScheduler):
+    """The FIFO chunk scheduler.
+    It stores all releasable chunks in a FIFO queue.
+    """
 
     def __init__(self) -> None:
         super().__init__()

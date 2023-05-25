@@ -10,6 +10,18 @@ from .utils import get_multi_used_params, to_divide
 
 
 class SearchSimple(SearchBase):
+    """The simple search algorithm used for unit tests.
+    Developers can specify the number of chunks used.
+
+    args:
+        module: the module to be searched
+        default_group_size: the default group size of communications
+        dtype: the data type of the parameters
+        prefetch: whether to prefetch the chunks
+        verbose: whether to print the search process
+        inp: the example input of the model
+        step_fn: the example step function of training
+    """
 
     def __init__(self,
                  module: nn.Module,
