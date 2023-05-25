@@ -1,11 +1,13 @@
 import math
 
+import pytest
 import torch
-import torch.nn as nn
-from numpy import dtype
 
-from colossalai.testing import clear_cache_before_run, parameterize
 from colossalai.utils import multi_tensor_applier
+
+_ALLOWED_P_G_TYPES = [(torch.float, torch.half), (torch.float, torch.float), (torch.half, torch.float),
+                      (torch.half, torch.half), (torch.bfloat16, torch.float), (torch.float, torch.bfloat16),
+                      (torch.bfloat16, torch.bfloat16)]
 
 
 def torch_adam_update(
@@ -41,11 +43,9 @@ def torch_adam_update(
     param.addcdiv_(exp_avg, denom, value=-step_size)
 
 
-@clear_cache_before_run()
-@parameterize('adamw', [False, True])
-@parameterize('step', [1, 2])
-@parameterize('p_dtype', [torch.float, torch.half])
-@parameterize('g_dtype', [torch.float, torch.half])
+@pytest.mark.parametrize('adamw', [False, True])
+@pytest.mark.parametrize('step', [1, 2])
+@pytest.mark.parametrize('p_dtype, g_dtype', _ALLOWED_P_G_TYPES)
 def test_adam(adamw, step, p_dtype, g_dtype):
     from colossalai.kernel.op_builder import FusedOptimBuilder
     fused_optim = FusedOptimBuilder().load()

@@ -1,10 +1,12 @@
+from copy import deepcopy
+
+import pytest
 import torch
 import torch.nn as nn
 from torch.optim import AdamW
 from torch.optim.adam import Adam
 
 from colossalai.nn.optimizer.fused_adam import FusedAdam
-from colossalai.testing import clear_cache_before_run, parameterize
 
 
 class FC(nn.Module):
@@ -17,48 +19,55 @@ class FC(nn.Module):
         return self.fc(x)
 
 
-@clear_cache_before_run()
-@parameterize('adamw', [False, True])
-@parameterize('p_dtype', [torch.float, torch.half])
-@parameterize('g_dtype', [torch.float, torch.half])
-def test_adam(adamw, p_dtype, g_dtype):
-    model = FC().cuda().to(p_dtype)
-    state = model.state_dict()
-    model_copy = FC().cuda().to(p_dtype)
-    model_copy.load_state_dict(state.copy())
-
-    if adamw:
-        optim = FusedAdam(model.parameters(), lr=1e-3, adamw_mode=True)
-        torch_optim = AdamW(model_copy.parameters(), lr=1e-3)
+@pytest.mark.parametrize('adamw', [False, True])
+@pytest.mark.parametrize('running_p_dtype', [torch.float, torch.half, torch.bfloat16])
+@pytest.mark.parametrize('fp32_master_weights', [False, True])
+def test_adam(adamw, running_p_dtype, fp32_master_weights):
+    # baseline is fure fp32 torch adam
+    # g_type is the same as running_p_dtype
+    if running_p_dtype is torch.float and not fp32_master_weights:
+        # pure fp32 must have fp32 weights
+        return
+    if not fp32_master_weights or running_p_dtype is torch.bfloat16:
+        # pure low precision or bf16, high tolerance
+        atol = 4e-3
+        rtol = 4e-3
     else:
-        optim = FusedAdam(model.parameters(), lr=1e-3)
-        torch_optim = Adam(model_copy.parameters(), lr=1e-3)
+        # fp32 master weights, low tolerance
+        atol = 2e-3
+        rtol = 2e-3
+    torch_model = FC().cuda()
+    model = deepcopy(torch_model).to(running_p_dtype)
 
-    data = torch.rand(1024, 64).cuda().to(p_dtype)
-    data_copy = data.clone()
-    label = torch.rand(1024, 64).cuda().to(p_dtype)
+    torch_optim_cls = AdamW if adamw else Adam
+    torch_optim = torch_optim_cls(torch_model.parameters(), lr=1e-3)
+    optim = FusedAdam(model.parameters(), lr=1e-3, adamw_mode=adamw)
 
-    for d, l in zip(data, label):
+    data = torch.rand(10, 64).cuda()
+    label = torch.rand(10, 64).cuda()
+
+    for d, l in zip(data.to(running_p_dtype), label.to(running_p_dtype)):
         y = model(d)
         loss = ((l - y)**2).sum()
         optim.zero_grad()
         loss.backward()
-        if p_dtype != g_dtype:
-            for i in range(len(optim.param_groups[0]['params'])):
-                optim.param_groups[0]['params'][i].grad.data = optim.param_groups[0]['params'][i].grad.data.to(g_dtype)
+        if fp32_master_weights:
+            for p in model.parameters():
+                p.data = p.data.float()
         optim.step()
+        if fp32_master_weights:
+            for p in model.parameters():
+                p.data = p.data.to(running_p_dtype)
 
-    for d, l in zip(data_copy, label):
-        y = model_copy(d)
+    for d, l in zip(data, label):
+        y = torch_model(d)
         loss = ((l - y)**2).sum()
         torch_optim.zero_grad()
         loss.backward()
         torch_optim.step()
 
-    assert len(optim.param_groups[0]['params']) == len(torch_optim.param_groups[0]['params'])
-
-    for i in range(len(optim.param_groups[0]['params'])):
-        if torch.isnan(optim.param_groups[0]['params'][i]).any() \
-           or torch.isnan(torch_optim.param_groups[0]['params'][i]).any():
+    for p, torch_p in zip(model.parameters(), torch_model.parameters()):
+        if torch.isnan(p).any() or torch.isnan(torch_p).any():
             continue
-        assert torch.allclose(optim.param_groups[0]['params'][i], torch_optim.param_groups[0]['params'][i], 2e-3, 2e-3)
+        fp32_p = p.float()
+        assert torch.allclose(fp32_p, torch_p, atol=atol, rtol=rtol)
