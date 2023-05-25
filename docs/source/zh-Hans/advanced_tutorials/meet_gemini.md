@@ -50,6 +50,8 @@ model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
 
 ColossalAI设计了Gemini，就像双子星一样，它管理CPU和GPU二者内存空间。它可以让张量在训练过程中动态分布在CPU-GPU的存储空间内，从而让模型训练突破GPU的内存墙。内存管理器由两部分组成，分别是MemStatsCollector(MSC)和StatefuleTensorMgr(STM)。
 
+<!-- doc-test-command: torchrun --standalone --nproc_per_node=1 meet_gemini.py  -->
+
 
 我们利用了深度学习网络训练过程的迭代特性。我们将迭代分为warmup和non-warmup两个阶段，开始时的一个或若干迭代步属于预热阶段，其余的迭代步属于正式阶段。在warmup阶段我们为MSC收集信息，而在non-warmup阶段STM入去MSC收集的信息来移动tensor，以达到最小化CPU-GPU数据移动volume的目的。
 
