@@ -7,6 +7,7 @@ import torch.distributed as dist
 
 from colossalai.elixir.chunk import BlockRequire, ChunkGroup, MemoryPool, TensorState
 from colossalai.elixir.utils import init_distributed
+from colossalai.testing import run_on_environment_flag
 
 
 def exam_chunk_group_functions(nproc, group):
@@ -87,6 +88,7 @@ def run_dist(rank, world_size):
 
 @pytest.mark.dist
 @pytest.mark.parametrize('world_size', [1, 2, 4])
+@run_on_environment_flag('ELX')
 def test_chunk_group(world_size):
     run_func = partial(run_dist, world_size=world_size)
     torch.multiprocessing.spawn(run_func, nprocs=world_size)

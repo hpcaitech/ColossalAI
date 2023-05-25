@@ -1,8 +1,10 @@
 import torch
 
 from colossalai.elixir.chunk import BlockRequire, MemoryPool, PrivateBlock, PublicBlock
+from colossalai.testing import run_on_environment_flag
 
 
+@run_on_environment_flag('ELX')
 def test_block():
     b = PublicBlock(123, torch.float16, 'cuda')
     payload_b = b.payload
@@ -23,6 +25,7 @@ def test_block():
     print('test_block: ok')
 
 
+@run_on_environment_flag('ELX')
 def test_memory_pool():
     mp = MemoryPool(device_type='cuda')
     private_list = [BlockRequire(5, torch.float), BlockRequire(81, torch.float16)]

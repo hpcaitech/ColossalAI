@@ -1,7 +1,9 @@
 from colossalai.elixir.tracer.param_tracer import generate_tf_order
+from colossalai.testing import run_on_environment_flag
 from tests.test_elixir.utils import TEST_MODELS
 
 
+@run_on_environment_flag('ELX')
 def test_tf_forward_backward():
     model_fn, data_fn = TEST_MODELS.get('gpt2_micro')
     model = model_fn()

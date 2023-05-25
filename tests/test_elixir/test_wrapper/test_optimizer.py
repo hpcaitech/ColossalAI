@@ -13,6 +13,7 @@ from colossalai.elixir.search import simple_search
 from colossalai.elixir.utils import init_distributed, seed_all
 from colossalai.elixir.wrapper import ElixirModule, ElixirOptimizer
 from colossalai.nn.optimizer import HybridAdam
+from colossalai.testing import run_on_environment_flag
 from tests.test_elixir.utils import TEST_MODELS, allclose, assert_dict_values, to_cuda
 
 
@@ -66,6 +67,7 @@ def run_dist(rank, world_size):
 
 @pytest.mark.dist
 @pytest.mark.parametrize('world_size', [1, 2, 4])
+@run_on_environment_flag('ELX')
 def test_elixir_optimizer(world_size):
     run_func = partial(run_dist, world_size=world_size)
     torch.multiprocessing.spawn(run_func, nprocs=world_size)

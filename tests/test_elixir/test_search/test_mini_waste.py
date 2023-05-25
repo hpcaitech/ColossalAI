@@ -4,6 +4,7 @@ import torch
 
 from colossalai.elixir.cuda import gpu_device
 from colossalai.elixir.search import minimum_waste_search
+from colossalai.testing import run_on_environment_flag
 from tests.test_elixir.utils import TEST_MODELS
 
 
@@ -11,6 +12,7 @@ def step_fn(model, inp):
     model(**inp).backward()
 
 
+@run_on_environment_flag('ELX')
 def test_mini_waste_search():
     model_fn, data_fn = TEST_MODELS.get('gpt2_small')
     model = model_fn()

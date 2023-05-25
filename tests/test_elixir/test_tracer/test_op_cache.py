@@ -4,6 +4,7 @@ import torch
 from colossalai.elixir.tracer.memory_tracer import MTensor
 from colossalai.elixir.tracer.memory_tracer.op_cache import addmm_cache, bmm_cache, mm_cache
 from colossalai.elixir.tracer.utils import get_cuda_allocated, get_cuda_max_allocated
+from colossalai.testing import run_on_environment_flag
 
 
 def op_mm(x, y):
@@ -22,6 +23,7 @@ def op_bmm(x, y):
 
 
 @pytest.mark.parametrize('dtype', [torch.float, torch.float16, torch.bfloat16])
+@run_on_environment_flag('ELX')
 def test_mm(dtype, size0=(4, 256), size1=(256, 1024)):
     torch.cuda.reset_peak_memory_stats()
     assert get_cuda_allocated() == 0
@@ -59,6 +61,7 @@ def test_mm(dtype, size0=(4, 256), size1=(256, 1024)):
 
 
 @pytest.mark.parametrize('dtype', [torch.float, torch.float16, torch.bfloat16])
+@run_on_environment_flag('ELX')
 def test_addmm(dtype, size0=(4, 16), size1=(16, 64)):
     torch.cuda.reset_peak_memory_stats()
     assert get_cuda_allocated() == 0
@@ -99,6 +102,7 @@ def test_addmm(dtype, size0=(4, 16), size1=(16, 64)):
 
 
 @pytest.mark.parametrize('dtype', [torch.float, torch.float16, torch.bfloat16])
+@run_on_environment_flag('ELX')
 def test_bmm(dtype, size0=(10, 4, 15), size1=(10, 15, 64)):
     torch.cuda.reset_peak_memory_stats()
     assert get_cuda_allocated() == 0

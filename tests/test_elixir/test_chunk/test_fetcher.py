@@ -10,6 +10,7 @@ from torch.testing import assert_close
 
 from colossalai.elixir.chunk import ChunkGroup
 from colossalai.elixir.utils import init_distributed, seed_all
+from colossalai.testing import run_on_environment_flag
 from tests.test_elixir.test_chunk.fetcher_utils import hook_transform
 from tests.test_elixir.utils import TEST_MODELS, to_cuda
 
@@ -60,6 +61,7 @@ def run_dist(rank, world_size):
 
 @pytest.mark.dist
 @pytest.mark.parametrize('world_size', [1, 2, 4])
+@run_on_environment_flag('ELX')
 def test_chunk_fetcher(world_size):
     run_func = partial(run_dist, world_size=world_size)
     torch.multiprocessing.spawn(run_func, nprocs=world_size)

@@ -1,9 +1,11 @@
 import pytest
 import torch
 
+from colossalai.testing import run_on_environment_flag
 from tests.test_elixir.utils import to_cuda
 
 
+@run_on_environment_flag('ELX')
 def test_registry():
     from tests.test_elixir.utils.registry import TEST_MODELS
     for name, model_tuple in TEST_MODELS:

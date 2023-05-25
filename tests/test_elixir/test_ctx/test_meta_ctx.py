@@ -1,7 +1,9 @@
 from colossalai.elixir.ctx import MetaContext
+from colossalai.testing import run_on_environment_flag
 from tests.test_elixir.utils import TEST_MODELS
 
 
+@run_on_environment_flag('ELX')
 def test_meta_context():
     builder, *_ = TEST_MODELS.get('resnet')
     with MetaContext():

@@ -2,6 +2,7 @@ import pytest
 import torch
 
 from colossalai.elixir.tracer.memory_tracer import cuda_memory_profiling
+from colossalai.testing import run_on_environment_flag
 from tests.test_elixir.utils import TEST_MODELS, to_cuda
 
 
@@ -33,6 +34,7 @@ def try_one_model(model_fn, data_fn):
     print('Check is ok.')
 
 
+@run_on_environment_flag('ELX')
 def test_cuda_profiler():
     model_list = ['resnet', 'gpt2_micro']
     for name in model_list:
