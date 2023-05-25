@@ -1,4 +1,4 @@
-from functools import cache
+import functools
 
 import torch
 from torch.cuda._utils import _get_device_index
@@ -6,7 +6,7 @@ from torch.cuda._utils import _get_device_index
 elixir_cuda_fraction = dict()
 
 
-@cache
+@functools.lru_cache()
 def gpu_device():
     return torch.device(torch.cuda.current_device())
 
