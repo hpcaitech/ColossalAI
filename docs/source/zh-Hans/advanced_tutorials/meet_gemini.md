@@ -8,21 +8,21 @@
 
 ## 用法
 
-目前Gemini支持和ZeRO并行方式兼容，它的使用方法很简单，在训练策略的配置文件里设置zero的model_config属性tensor_placement_policy='auto'
+目前Gemini支持和ZeRO并行方式兼容，它的使用方法很简单：使用booster将`GeminiPlugin`中的特性注入到训练组件中。更多`booster`介绍请参考[booster使用](../basics/booster_api.md)。
 
-```
-zero = dict(
-    model_config=dict(
-        reduce_scatter_bucket_size_mb=25,
-        fp32_reduce_scatter=False,
-        gradient_predivide_factor=1.0,
-        tensor_placement_policy="auto",
-        shard_strategy=TensorShardStrategy(),
-        ...
-    ),
-    optimizer_config=dict(
-        ...
-    )
+```python
+from torchvision.models import resnet18
+from colossalai.booster import Booster
+from colossalai.zero import ColoInitContext
+from colossalai.booster.plugin import GeminiPlugin
+plugin = GeminiPlugin(placement_policy='cuda', strict_ddp_mode=True, max_norm=1.0, initial_scale=2**5)
+booster = Booster(plugin=plugin)
+ctx = ColoInitContext()
+with ctx:
+    model = resnet18()
+optimizer = HybridAdam(model.parameters(), lr=1e-3)
+criterion = lambda x: x.mean()
+model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
 )
 ```
 
@@ -94,3 +94,5 @@ MSC的重要职责是在调整tensor layout位置，比如在上图S2时刻，�
 
 在non-warmup阶段，我们需要利用预热阶段采集的非模型数据内存信息，预留出下一个Period在计算设备上需要的峰值内存，这需要我们移动出一些模型张量。
 为了避免频繁在CPU-GPU换入换出相同的tensor，引起类似[cache thrashing](https://en.wikipedia.org/wiki/Thrashing_(computer_science))的现象。我们利用DNN训练迭代特性，设计了OPT cache换出策略。具体来说，在warmup阶段，我们记录每个tensor被计算设备需要的采样时刻。如果我们需要驱逐一些HOLD tensor，那么我们选择在本设备上最晚被需要的tensor作为受害者。
+
+<!-- doc-test-command: torchrun --standalone --nproc_per_node=1 meet_gemini.py  -->
