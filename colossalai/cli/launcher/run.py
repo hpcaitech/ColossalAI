@@ -298,7 +298,7 @@ def launch_multi_processes(args: Config) -> None:
     # receive the stop status
     msg_from_node = runner.recv_from_all()
 
-    # printe node status
+    # print node status
     click.echo("\n====== Stopping All Nodes =====")
     for hostname, msg in msg_from_node.items():
         click.echo(f"{hostname}: {msg}")
