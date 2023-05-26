@@ -192,7 +192,7 @@ def get_data(batch_size, seq_len, vocab_size):
     return input_ids, attention_mask
 ```
 
-Finally, we define a model which uses Gemini + ZeRO DDP and our training loop, As we pre-train GPT in this example, we just use a simple language model loss.:
+Finally, we define a model which uses Gemini + ZeRO DDP and define our training loop, As we pre-train GPT in this example, we just use a simple language model loss.:
 
 ```python
 from torch.optim import Adam
