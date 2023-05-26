@@ -94,10 +94,11 @@ class Slicer():
         Returns:
             :class:`torch.Tensor`: The sliced tensor
         """
-        delta = (tensor.shape[0] + self.shardconfig.world_size - 1) // self.shardconfig.world_size
-        down_idx = self.shardconfig.rank * delta
-        up_idx = down_idx + delta
-        return tensor[down_idx:up_idx].contiguous()
+        return tensor.chunk(self.shardconfig.world_size, dim=0)[self.shardconfig.rank].contiguous()
+        # delta = (tensor.shape[0] + self.shardconfig.world_size - 1) // self.shardconfig.world_size
+        # down_idx = self.shardconfig.rank * delta
+        # up_idx = down_idx + delta
+        # return tensor[down_idx:up_idx].contiguous()
 
     def slice_col(
         self,
@@ -113,10 +114,11 @@ class Slicer():
             :class:`torch.Tensor`: The sliced tensor
 
         """
-        delta = (tensor.shape[0] + self.shardconfig.world_size - 1) // self.shardconfig.world_size
-        down_idx = self.shardconfig.rank * delta
-        up_idx = down_idx + delta
-        return tensor[down_idx:up_idx, :].contiguous()
+        return tensor.chunk(self.shardconfig.world_size, dim=0)[self.shardconfig.rank].contiguous()
+        # delta = (tensor.shape[0] + self.shardconfig.world_size - 1) // self.shardconfig.world_size
+        # down_idx = self.shardconfig.rank * delta
+        # up_idx = down_idx + delta
+        # return tensor[down_idx:up_idx, :].contiguous()
 
     def slice_row(
         self,
@@ -131,7 +133,8 @@ class Slicer():
         Returns:
             :class:`torch.Tensor`: The sliced tensor
         """
-        delta = (tensor.shape[1] + self.shardconfig.world_size - 1) // self.shardconfig.world_size
-        down_idx = self.shardconfig.rank * delta
-        up_idx = down_idx + delta
-        return tensor[:, down_idx:up_idx].contiguous()
+        return tensor.chunk(self.shardconfig.world_size, dim=1)[self.shardconfig.rank].contiguous()
+        # delta = (tensor.shape[1] + self.shardconfig.world_size - 1) // self.shardconfig.world_size
+        # down_idx = self.shardconfig.rank * delta
+        # up_idx = down_idx + delta
+        # return tensor[:, down_idx:up_idx].contiguous()
