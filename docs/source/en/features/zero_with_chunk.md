@@ -192,7 +192,7 @@ def get_data(batch_size, seq_len, vocab_size):
     return input_ids, attention_mask
 ```
 
-Finally, we define a model which uses Gemini + ZeRO DDP and define our training loop, As we pre-train GPT in this example, we just use a simple language model loss.:
+Finally, we define a model which uses Gemini + ZeRO DDP and define our training loop, As we pre-train GPT in this example, we just use a simple language model loss:
 
 ```python
 from torch.optim import Adam
@@ -224,7 +224,7 @@ def main():
     tensor_parallelize(model, pg)
 
     # Gemini + ZeRO DP, Note it must be used after TP
-    plugin = GeminiPlugin(placement_policy='cuda',      strict_ddp_mode=True, max_norm=1.0, initial_scale=2**5)
+    plugin = GeminiPlugin(placement_policy='cuda', strict_ddp_mode=True, max_norm=1.0, initial_scale=2**5)
     booster = Booster(plugin=plugin)
     model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
 
