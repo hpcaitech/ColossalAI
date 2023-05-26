@@ -93,7 +93,6 @@ class CPUAdam(NVMeOptimizer):
                           bias_correction1,
                           bias_correction2,
                           use_adamw=False):
-        # FIXME(ver217): remove the below line when replace torch adam with fused adam
         grad = grad.float()
 
         if weight_decay != 0:
@@ -147,9 +146,17 @@ class CPUAdam(NVMeOptimizer):
                     assert state['exp_avg'].device.type == 'cpu', "exp_avg should stay on cpu"
                     assert state['exp_avg_sq'].device.type == 'cpu', "exp_avg should stay on cpu"
                     self._pre_update(p, 'exp_avg', 'exp_avg_sq')
-                    self.cpu_adam_op.step(state['step'], group['lr'], beta1, beta2, group['eps'], group['weight_decay'],
-                                          group['bias_correction'], p.data, p.grad.data, state['exp_avg'],
-                                          state['exp_avg_sq'], div_scale)
+                    if p.grad.dtype is torch.bfloat16:
+                        # cpu adam kernel does not support bf16 now
+                        bias_correction1 = 1 - beta1**state['step']
+                        bias_correction2 = 1 - beta2**state['step']
+                        self.torch_adam_update(p.data, p.grad.data, state['exp_avg'], state['exp_avg_sq'], group['lr'],
+                                               beta1, beta2, group['eps'], group['weight_decay'], bias_correction1,
+                                               bias_correction2, self.adamw_mode)
+                    else:
+                        self.cpu_adam_op.step(state['step'], group['lr'], beta1, beta2, group['eps'],
+                                              group['weight_decay'], group['bias_correction'], p.data, p.grad.data,
+                                              state['exp_avg'], state['exp_avg_sq'], div_scale)
                     self._post_update(p, 'exp_avg', 'exp_avg_sq')
                 elif target_device.type == 'cuda':
                     assert div_scale == -1, "div_scale should remain default"
