@@ -27,7 +27,7 @@ model = ElixirModule(model, sr, world_group)
 optimizer = ElixirOptimizer(model, optimizer)
 ```
 
-Here is an advanced example for performance, which is used in our [benchmarkhere](https://github.com/hpcaitech/Elixir/blob/main/example/common/elx.py).
+Here is an advanced example for performance, which is used in our [benchmark](https://github.com/hpcaitech/Elixir/blob/main/example/common/elx.py).
 
 ```python
 import torch
