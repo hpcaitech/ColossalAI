@@ -52,7 +52,15 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
         Save optimizer to checkpoint but only on master process.
         """
         # TODO(ver217): optimizer state dict is sharded
+        warnings.warn('GeminiPlugin does not support save full optimizer checkpoint now. Save it on every process.')
+        checkpoint = f'{checkpoint}.rank{self.coordinator.rank}'
         super().save_unsharded_optimizer(optimizer, checkpoint, gather_dtensor)
+
+    def load_optimizer(self, optimizer: Optimizer, checkpoint: str):
+        warnings.warn(
+            'GeminiPlugin can only load optimizer checkpoint saved by itself with the same number of processes.')
+        checkpoint = f'{checkpoint}.rank{self.coordinator.rank}'
+        super().load_optimizer(optimizer, checkpoint)
 
     def save_lr_scheduler(self, lr_scheduler: LRScheduler, checkpoint: str):
         """
@@ -171,7 +179,7 @@ class GeminiPlugin(DPPluginBase):
             Users can provide this argument to speed up searching.
             If users do not know this argument before training, it is ok. We will use a default value 1024.
         min_chunk_size_mb (float, optional): the minimum chunk size in MegaByte.
-            If the aggregate size of parameters is still samller than the minimum chunk size,
+            If the aggregate size of parameters is still smaller than the minimum chunk size,
             all parameters will be compacted into one small chunk.
         memstats (MemStats, optional) the memory statistics collector by a runtime memory tracer.
         gpu_margin_mem_ratio (float, optional): The ratio of GPU remaining memory (after the first forward-backward)

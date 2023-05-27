@@ -22,7 +22,7 @@ from .utils import is_rank_0, get_strategy_from_args, set_dist_env
 class ExperienceMakerHolder:
     '''
     Args:
-        detached_trainer_name_list: str list to get ray actor handleskkk
+        detached_trainer_name_list: str list to get ray actor handles
         strategy: 
         experience_batch_size: batch size of generated experience
         kl_coef: the coefficient of kl divergence loss

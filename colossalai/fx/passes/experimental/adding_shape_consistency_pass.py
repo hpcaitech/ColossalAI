@@ -16,7 +16,7 @@ def apply(*args, **kwargs):
     return shape_consistency_manager.apply(*args, **kwargs)
 
 
-def solution_annotatation_pass(gm: torch.fx.GraphModule, solution: List[int], device_mesh):
+def solution_annotation_pass(gm: torch.fx.GraphModule, solution: List[int], device_mesh):
     mod_graph = gm.graph
     nodes = tuple(mod_graph.nodes)
 

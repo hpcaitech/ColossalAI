@@ -8,21 +8,21 @@
 
 ## 用法
 
-目前Gemini支持和ZeRO并行方式兼容，它的使用方法很简单，在训练策略的配置文件里设置zero的model_config属性tensor_placement_policy='auto'
+目前Gemini支持和ZeRO并行方式兼容，它的使用方法很简单：使用booster将`GeminiPlugin`中的特性注入到训练组件中。更多`booster`介绍请参考[booster使用](../basics/booster_api.md)。
 
-```
-zero = dict(
-    model_config=dict(
-        reduce_scatter_bucket_size_mb=25,
-        fp32_reduce_scatter=False,
-        gradient_predivide_factor=1.0,
-        tensor_placement_policy="auto",
-        shard_strategy=TensorShardStrategy(),
-        ...
-    ),
-    optimizer_config=dict(
-        ...
-    )
+```python
+from torchvision.models import resnet18
+from colossalai.booster import Booster
+from colossalai.zero import ColoInitContext
+from colossalai.booster.plugin import GeminiPlugin
+plugin = GeminiPlugin(placement_policy='cuda', strict_ddp_mode=True, max_norm=1.0, initial_scale=2**5)
+booster = Booster(plugin=plugin)
+ctx = ColoInitContext()
+with ctx:
+    model = resnet18()
+optimizer = HybridAdam(model.parameters(), lr=1e-3)
+criterion = lambda x: x.mean()
+model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
 )
 ```
 
@@ -48,7 +48,7 @@ zero = dict(
 </figure>
 
 
-ColossalAI设计了Gemini，就像双子星一样，它管理CPU和GPU二者内存空间。它可以让张量在训练过程中动态分布在CPU-GPU的存储空间内，从而让模型训练突破GPU的内存墙。内存管理器由两部分组成，分别是MemStatsCollector(MSC)和StatefuleTensorMgr(STM)。
+ColossalAI设计了Gemini，就像双子星一样，它管理CPU和GPU二者内存空间。它可以让张量在训练过程中动态分布在CPU-GPU的存储空间内，从而让模型训练突破GPU的内存墙。内存管理器由两部分组成，分别是MemStatsCollector(MSC)和StatefulTensorMgr(STM)。
 
 
 我们利用了深度学习网络训练过程的迭代特性。我们将迭代分为warmup和non-warmup两个阶段，开始时的一个或若干迭代步属于预热阶段，其余的迭代步属于正式阶段。在warmup阶段我们为MSC收集信息，而在non-warmup阶段STM入去MSC收集的信息来移动tensor，以达到最小化CPU-GPU数据移动volume的目的。
@@ -75,7 +75,7 @@ STM管理所有model data tensor的信息。在模型的构造过程中，Coloss
 
 我们在算子的开始和结束计算时，触发内存采样操作，我们称这个时间点为**采样时刻（sampling moment)**，两个采样时刻之间的时间我们称为**period**。计算过程是一个黑盒，由于可能分配临时buffer，内存使用情况很复杂。但是，我们可以较准确的获取period的系统最大内存使用。非模型数据的使用可以通过两个统计时刻之间系统最大内存使用-模型内存使用获得。
 
-我们如何设计采样时刻呢。我们选择preOp的model data layout adjust之前。如下图所示。我们采样获得上一个period的system memory used，和下一个period的model data memoy used。并行策略会给MSC的工作造成障碍。如图所示，比如对于ZeRO或者Tensor Parallel，由于Op计算前需要gather模型数据，会带来额外的内存需求。因此，我们要求在模型数据变化前进行采样系统内存，这样在一个period内，MSC会把preOp的模型变化内存捕捉。比如在period 2-3内，我们考虑的tensor gather和shard带来的内存变化。
+我们如何设计采样时刻呢。我们选择preOp的model data layout adjust之前。如下图所示。我们采样获得上一个period的system memory used，和下一个period的model data memory used。并行策略会给MSC的工作造成障碍。如图所示，比如对于ZeRO或者Tensor Parallel，由于Op计算前需要gather模型数据，会带来额外的内存需求。因此，我们要求在模型数据变化前进行采样系统内存，这样在一个period内，MSC会把preOp的模型变化内存捕捉。比如在period 2-3内，我们考虑的tensor gather和shard带来的内存变化。
 尽管可以将采样时刻放在其他位置，比如排除gather buffer的变动新信息，但是会给造成麻烦。不同并行方式Op的实现有差异，比如对于Linear Op，Tensor Parallel中gather buffer的分配在Op中。而对于ZeRO，gather buffer的分配是在PreOp中。将放在PreOp开始时采样有利于将两种情况统一。
 
 
@@ -94,3 +94,5 @@ MSC的重要职责是在调整tensor layout位置，比如在上图S2时刻，�
 
 在non-warmup阶段，我们需要利用预热阶段采集的非模型数据内存信息，预留出下一个Period在计算设备上需要的峰值内存，这需要我们移动出一些模型张量。
 为了避免频繁在CPU-GPU换入换出相同的tensor，引起类似[cache thrashing](https://en.wikipedia.org/wiki/Thrashing_(computer_science))的现象。我们利用DNN训练迭代特性，设计了OPT cache换出策略。具体来说，在warmup阶段，我们记录每个tensor被计算设备需要的采样时刻。如果我们需要驱逐一些HOLD tensor，那么我们选择在本设备上最晚被需要的tensor作为受害者。
+
+<!-- doc-test-command: torchrun --standalone --nproc_per_node=1 meet_gemini.py  -->

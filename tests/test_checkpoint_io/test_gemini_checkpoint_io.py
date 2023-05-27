@@ -1,87 +1,95 @@
-import tempfile
+import os
 
 import pytest
 import torch
+import torch.distributed as dist
+from utils import shared_tempdir
 
 import colossalai
+from colossalai.booster import Booster
+from colossalai.booster.plugin import GeminiPlugin
 from colossalai.booster.plugin.gemini_plugin import GeminiCheckpointIO
+from colossalai.nn.optimizer import HybridAdam
 from colossalai.testing import check_state_dict_equal, parameterize, rerun_if_address_is_in_use, spawn
-from colossalai.utils.cuda import get_current_device
-from colossalai.zero import ColoInitContext, ZeroDDP
+from colossalai.zero import ZeroDDP
 from colossalai.zero.gemini.chunk import ChunkManager, search_chunk_configuration
 from colossalai.zero.gemini.gemini_mgr import GeminiManager
-from tests.components_to_test.registry import non_distributed_component_funcs
+from tests.kit.model_zoo import model_zoo
 
 
 @parameterize('placement_policy', ['cuda', 'cpu'])
-@parameterize('model_name', ['bert'])
-@parameterize('use_safetensors', [True, False])
+@parameterize('model_name', ['transformers_bert_for_sequence_classification'])
+@parameterize('use_safetensors', [False, True])
 def exam_state_dict_with_origin(placement_policy, model_name, use_safetensors: bool):
     from transformers import BertForSequenceClassification
+    (model_fn, data_gen_fn, output_transform_fn, _) = next(iter(model_zoo.get_sub_registry(model_name).values()))
+    bert_model = model_fn()
 
-    model_ckpt_dir = tempfile.TemporaryDirectory()
-    get_components_func = non_distributed_component_funcs.get_callable(model_name)
-    model_builder, *_ = get_components_func()
-    with ColoInitContext(device=(get_current_device())):
-        bert_model = model_builder()
-    bert_model.config.save_pretrained(save_directory=(model_ckpt_dir.name))
+    with shared_tempdir() as tempdir:
+        pretrained_path = os.path.join(tempdir, 'pretrained')
+        bert_model.config.save_pretrained(save_directory=pretrained_path)
 
-    config_dict, *_ = search_chunk_configuration(bert_model, search_range_mb=1, search_interval_byte=100)
-    chunk_manager = ChunkManager(config_dict)
-    gemini_manager = GeminiManager(placement_policy, chunk_manager)
-    bert_model = ZeroDDP(bert_model, gemini_manager)
-    bert_model.train()
+        # TODO(ver217): use boost api
+        config_dict, *_ = search_chunk_configuration(bert_model, search_range_mb=1, search_interval_byte=100)
+        chunk_manager = ChunkManager(config_dict)
+        gemini_manager = GeminiManager(placement_policy, chunk_manager)
+        bert_model = ZeroDDP(bert_model, gemini_manager)
+        bert_model.train()
 
-    ckpt_io = GeminiCheckpointIO()
-    if ckpt_io.coordinator.is_master():
+        ckpt_io = GeminiCheckpointIO()
         model_size = sum(p.numel() * p.element_size() for p in bert_model.parameters()) / 1024**2
-        ckpt_io.save_model(bert_model, (model_ckpt_dir.name),
+        ckpt_io.save_model(bert_model, (pretrained_path),
                            True,
                            True,
                            '', (model_size / 3),
                            use_safetensors=use_safetensors)
-        new_bert_model = BertForSequenceClassification.from_pretrained(model_ckpt_dir.name)
-        check_state_dict_equal(bert_model.state_dict(only_rank_0=True, dtype=(torch.float32)),
+        dist.barrier()
+        new_bert_model = BertForSequenceClassification.from_pretrained(pretrained_path)
+        check_state_dict_equal(bert_model.state_dict(only_rank_0=False, dtype=torch.float32),
                                new_bert_model.state_dict(), False)
-    model_ckpt_dir.cleanup()
 
 
 @parameterize('placement_policy', ['cuda', 'cpu'])
-@parameterize('model_name', ['gpt2', 'bert'])
-@parameterize('use_safetensors', [True, False])
-def exam_state_dict(placement_policy, model_name: str, use_safetensors: bool):
-    get_components_func = non_distributed_component_funcs.get_callable(model_name)
-    model_builder, *_ = get_components_func()
-    with ColoInitContext(device=(get_current_device())):
-        model = model_builder()
-        new_model = model_builder()
-    config_dict, *_ = search_chunk_configuration(model, search_range_mb=1, search_interval_byte=100)
-    chunk_manager = ChunkManager(config_dict)
-    gemini_manager = GeminiManager(placement_policy, chunk_manager)
-    model = ZeroDDP(model, gemini_manager)
+@parameterize('shard', [True, False])
+@parameterize('model_name', ['transformers_gpt'])
+def exam_state_dict(placement_policy, shard: bool, model_name: str):
+    (model_fn, data_gen_fn, output_transform_fn, _) = next(iter(model_zoo.get_sub_registry(model_name).values()))
+    criterion = lambda x: x.mean()
+    plugin = GeminiPlugin(placement_policy=placement_policy)
+    booster = Booster(plugin=plugin)
 
-    model.train()
-    #new model
-    new_config_dict, *_ = search_chunk_configuration(new_model, search_range_mb=1, search_interval_byte=100)
-    new_chunk_manager = ChunkManager(new_config_dict)
-    new_gemini_manager = GeminiManager(placement_policy, new_chunk_manager)
-    new_model = ZeroDDP(new_model, new_gemini_manager)
+    model = model_fn()
+    new_model = model_fn()
+    optimizer = HybridAdam(model.parameters(), lr=0.001)
+    model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
+    new_optimizer = HybridAdam(new_model.parameters(), lr=0.001)
+    new_model, new_optimizer, criterion, _, _ = booster.boost(new_model, new_optimizer, criterion)
 
-    model_ckpt_dir = tempfile.TemporaryDirectory()
-    ckpt_io = GeminiCheckpointIO()
-    model_size = sum(p.numel() * p.element_size() for p in model.parameters()) / 1024**2
-    ckpt_io.save_model(model, (model_ckpt_dir.name),
-                       True,
-                       True,
-                       'epoch', (model_size / 3),
-                       use_safetensors=use_safetensors)
+    data = data_gen_fn()
+    data = {k: v.to('cuda') if torch.is_tensor(v) or 'Tensor' in v.__class__.__name__ else v for k, v in data.items()}
+    output = model(**data)
+    output = output_transform_fn(output)
+    output_key = list(output.keys())[0]
+    loss = criterion(output[output_key])
 
-    if ckpt_io.coordinator.is_master():
-        ckpt_io.load_model(new_model, (model_ckpt_dir.name), strict=True)
-        model_dict = model.state_dict(only_rank_0=True)
-        new_model_dict = new_model.state_dict(only_rank_0=True)
-        check_state_dict_equal(model_dict, new_model_dict, False)
-    model_ckpt_dir.cleanup()
+    booster.backward(loss, optimizer)
+    optimizer.step()
+
+    with shared_tempdir() as tempdir:
+        model_ckpt_path = f"{tempdir}/model"
+        optimizer_ckpt_path = f"{tempdir}/optimizer"
+        booster.save_model(model, model_ckpt_path)
+        if not shard:
+            # TODO(ver217): optimizer checkpointing is not supported for sharded checkpoint
+            booster.save_optimizer(optimizer, optimizer_ckpt_path)
+        dist.barrier()
+
+        booster.load_model(new_model, model_ckpt_path)
+        check_state_dict_equal(model.unwrap().state_dict(only_rank_0=False),
+                               new_model.unwrap().state_dict(only_rank_0=False), False)
+        if not shard:
+            booster.load_optimizer(new_optimizer, optimizer_ckpt_path)
+            check_state_dict_equal(optimizer.state_dict(), new_optimizer.state_dict(), False)
 
 
 def run_dist(rank, world_size, port):
@@ -92,7 +100,7 @@ def run_dist(rank, world_size, port):
 
 
 @pytest.mark.dist
-@pytest.mark.parametrize('world_size', [4, 4])
+@pytest.mark.parametrize('world_size', [2])
 @rerun_if_address_is_in_use()
 def test_gemini_ckpIO(world_size):
     spawn(run_dist, world_size)

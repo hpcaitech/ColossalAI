@@ -1,0 +1,123 @@
+{
+  "language": "cn",
+  "category": {
+    "brainstorming": {
+      "GPT-3.5": [
+        "language organization",
+        "relevance",
+        "creativity",
+        "practicality",
+        "correctness"
+      ],
+      "Metrics": [
+        "Distinct"
+      ]
+    },
+    "chat": {
+      "GPT-3.5": [
+        "language organization",
+        "relevance",
+        "naturalness",
+        "engagingness",
+        "reasonableness"
+      ],
+      "Metrics": [
+        "Distinct"
+      ]
+    },
+    "classification": {
+      "GPT-3.5": [
+        "language organization",
+        "relevance",
+        "correctness"
+      ],
+      "Metrics": [
+        "Precision",
+        "Recall",
+        "F1 score"
+      ]
+    },
+    "closed_qa": {
+      "GPT-3.5": [
+        "language organization",
+        "relevance",
+        "correctness"
+      ],
+      "Metrics": [
+        "BLEU",
+        "ROUGE",
+        "BERTScore"
+      ]
+    },
+    "extraction": {
+      "GPT-3.5": [
+        "language organization",
+        "relevance",
+        "correctness"
+      ],
+      "Metrics": [
+        "Precision",
+        "Recall",
+        "F1 score"
+      ]
+    },
+    "generation": {
+      "GPT-3.5": [
+        "language organization",
+        "relevance",
+        "diversity"
+      ],
+      "Metrics": [
+        "BLEU",
+        "ROUGE",
+        "BERTScore"
+      ]
+    },
+    "open_qa": {
+      "GPT-3.5": [
+        "language organization",
+        "relevance",
+        "correctness"
+      ],
+      "Metrics": [
+        "Distinct"
+      ]
+    },
+    "rewriting": {
+      "GPT-3.5": [
+        "language organization",
+        "relevance",
+        "correctness"
+      ],
+      "Metrics": [
+        "BLEU",
+        "ROUGE",
+        "BERTScore"
+      ]
+    },
+    "roleplay": {
+      "GPT-3.5": [
+        "language organization",
+        "relevance",
+        "fidelity",
+        "creativity"
+      ],
+      "Metrics": [
+        "Distinct"
+      ]
+    },
+    "summarization": {
+      "GPT-3.5": [
+        "language organization",
+        "relevance",
+        "correctness",
+        "conciseness"
+      ],
+      "Metrics": [
+        "BLEU",
+        "ROUGE",
+        "BERTScore"
+      ]
+    }
+  }
+}

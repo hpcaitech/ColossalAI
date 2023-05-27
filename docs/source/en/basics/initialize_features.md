@@ -2,6 +2,8 @@
 
 Author: Shenggui Li, Siqi Mai
 
+> ⚠️ The information on this page is outdated and will be deprecated. Please check [Booster API](../basics/booster_api.md) for more information.
+
 **Prerequisite:**
 - [Distributed Training](../concepts/distributed_training.md)
 - [Colossal-AI Overview](../concepts/colossalai_overview.md)
