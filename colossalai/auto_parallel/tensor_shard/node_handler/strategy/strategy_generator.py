@@ -225,7 +225,7 @@ class StrategyGenerator(ABC):
                 if isinstance(meta_data, torch.Tensor):
                     element_bytes = _compute_size_in_bytes_helper(sharding_spec, meta_data)
                 else:
-                    # if meta_data is not a tensor, we count the memroy as 0
+                    # if meta_data is not a tensor, we count the memory as 0
                     element_bytes = 0
                 total_bytes += element_bytes
 
@@ -233,7 +233,7 @@ class StrategyGenerator(ABC):
             if isinstance(op_data.data, torch.Tensor):
                 total_bytes = _compute_size_in_bytes_helper(strategy.sharding_specs[op_data], op_data.data)
             else:
-                # if op_data.data is not a tensor, we count the memroy as 0
+                # if op_data.data is not a tensor, we count the memory as 0
                 total_bytes = 0
 
         return total_bytes

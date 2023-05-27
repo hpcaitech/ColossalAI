@@ -51,7 +51,7 @@ class BinaryElementwiseStrategyGenerator(StrategyGenerator):
 
         # compute fwd memory cost in bytes
         # as the elementwise ops are not memory-intensive
-        # we approximate the fwd memroy cost to be the output
+        # we approximate the fwd memory cost to be the output
         # and the backward memory cost to be grad of input and other
         input_bytes = self._compute_size_in_bytes(strategy, 'input')
         other_bytes = self._compute_size_in_bytes(strategy, 'other')

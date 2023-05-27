@@ -26,7 +26,7 @@ rpc_is_initialized = _is_current_rpc_agent_set
 class PipelineModel(torch.nn.Module):
     '''
     Actor has 2 kinds of jobs: forward and generate. 
-        better to just pipelinize the inner model
+        better to just pipeline the inner model
     '''
     def __init__(self,
                  model: torch.nn.Module,
