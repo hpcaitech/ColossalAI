@@ -224,7 +224,7 @@ def main():
     tensor_parallelize(model, pg)
 
     # Gemini + ZeRO DP, Note it must be used after TP
-    plugin = GeminiPlugin(placement_policy='cuda', strict_ddp_mode=True, max_norm=1.0, initial_scale=2**5)
+    plugin = GeminiPlugin(placement_policy='cuda', max_norm=1.0, initial_scale=2**5)
     booster = Booster(plugin=plugin)
     model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
 
