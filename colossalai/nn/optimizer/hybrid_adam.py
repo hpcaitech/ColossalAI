@@ -1,6 +1,7 @@
 from typing import Any, Optional
 
 import torch
+from torch.optim import Adam
 
 from colossalai.kernel.op_builder import FusedOptimBuilder
 from colossalai.registry import OPTIMIZERS
@@ -103,9 +104,9 @@ class HybridAdam(CPUAdam):
                     state['step'] = 0
 
                     # gradient momentums
-                    state['exp_avg'] = torch.zeros_like(p, dtype=torch.float, device=target_device)
+                    state['exp_avg'] = torch.zeros_like(p, device=target_device)
                     # gradient variances
-                    state['exp_avg_sq'] = torch.zeros_like(p, dtype=torch.float, device=target_device)
+                    state['exp_avg_sq'] = torch.zeros_like(p, device=target_device)
                     self._post_state_init(p)
 
                 state['step'] += 1
