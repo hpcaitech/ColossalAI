@@ -101,16 +101,12 @@ def check_adam_kernel(kernel: Type[AdamKernel], adamw: bool, weight_decay: float
     exp_avg = master_exp_avg.clone()
     exp_avg_sq = master_exp_avg_sq.clone()
 
-    overflow_cnt = 0
     for step in range(1, 1 + n_steps):
         torch_adam.update(step, master_p, master_g, master_exp_avg, master_exp_avg_sq)
         adam_kernel.update(step, p, g, exp_avg, exp_avg_sq)
-        if torch.isnan(p).any():
-            overflow_cnt += 1
-            continue
+        # if overflow, the weight won't be updated. so there will be no nan in p
+        assert not torch.isnan(p).any()
         assert torch.allclose(master_p, p.float(), rtol=rtol, atol=atol)
-
-    assert overflow_cnt < n_steps
 
 
 @pytest.mark.parametrize('adamw', [False, True])
