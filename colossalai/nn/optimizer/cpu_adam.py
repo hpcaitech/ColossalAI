@@ -93,7 +93,7 @@ class CPUAdam(NVMeOptimizer):
                           bias_correction1,
                           bias_correction2,
                           use_adamw=False):
-        grad = grad.float()
+        grad = grad.to(data.dtype)
 
         if weight_decay != 0:
             if use_adamw:
@@ -132,6 +132,8 @@ class CPUAdam(NVMeOptimizer):
                 if len(state) == 0:
                     state['step'] = 0
 
+                    # FIXME(ver217): CPU adam kernel only supports fp32 states now
+                    assert p.dtype is torch.float, "CPUAdam only support fp32 parameters"
                     # gradient momentums
                     state['exp_avg'] = torch.zeros_like(p, device=target_device)
                     # gradient variances
