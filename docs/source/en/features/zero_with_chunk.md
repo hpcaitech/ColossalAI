@@ -243,3 +243,5 @@ def main():
 ```
 > ⚠️ Note: If you want to use the Gemini module, please do not use the [Gradient Accumulation](../features/gradient_accumulation.md) we mentioned before。
 The complete example can be found on [Train GPT with Colossal-AI](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/gpt).
+
+<!-- doc-test-command: torchrun --standalone --nproc_per_node=1 zero_with_chunk.py  -->
