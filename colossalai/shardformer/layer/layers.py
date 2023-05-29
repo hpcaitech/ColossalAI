@@ -16,6 +16,18 @@ from colossalai.core import global_context as gpc
 from colossalai.global_variables import tensor_parallel_env as env
 from colossalai.kernel import LayerNorm
 from colossalai.nn import init as init
+from colossalai.nn.layer.base_layer import ParallelLayer
+from colossalai.nn.layer.colossalai_layer._utils import ColossalaiModule
+from colossalai.nn.layer.parallel_1d._utils import (
+    gather_forward_split_backward,
+    get_parallel_input,
+    reduce_grad,
+    reduce_input,
+    set_parallel_input,
+    split_forward_gather_backward,
+)
+from colossalai.nn.layer.utils import divide, set_tensor_parallel_attribute_by_partition
+from colossalai.nn.layer.vanilla import VanillaLayerNorm, VanillaPatchEmbedding
 from colossalai.registry import LAYERS
 from colossalai.utils.checkpointing import (
     broadcast_state_dict,
@@ -24,19 +36,7 @@ from colossalai.utils.checkpointing import (
 )
 from colossalai.utils.cuda import get_current_device
 
-from ..base_layer import ParallelLayer
-from ..colossalai_layer._utils import ColossalaiModule
-from ..utils import divide, set_tensor_parallel_attribute_by_partition
-from ..vanilla import VanillaLayerNorm, VanillaPatchEmbedding
 from ._operation import linear_with_async_comm
-from ._utils import (
-    gather_forward_split_backward,
-    get_parallel_input,
-    reduce_grad,
-    reduce_input,
-    set_parallel_input,
-    split_forward_gather_backward,
-)
 
 Fast_LN = None
 try:
@@ -46,7 +46,7 @@ except ImportError:
     pass
 
 
-@LAYERS.register_module
+# @LAYERS.register_module
 class Linear1D(ColossalaiModule):
     r"""Linear layer for 1D parallelism.
 
@@ -97,7 +97,7 @@ class Linear1D(ColossalaiModule):
         super().__init__(layer)
 
 
-@LAYERS.register_module
+# @LAYERS.register_module
 class LayerNorm1D(ColossalaiModule):
     r"""
     Layer Normalization for colossalai
@@ -152,7 +152,7 @@ class LayerNorm1D(ColossalaiModule):
             super()._save_to_state_dict(destination, prefix, keep_vars)
 
 
-@LAYERS.register_module
+# @LAYERS.register_module
 class Classifier1D(ParallelLayer):
     r"""RowLinear with given weight. Classifier of 1D parallelism.
 
@@ -288,7 +288,7 @@ class Classifier1D(ParallelLayer):
         return output
 
 
-@LAYERS.register_module
+# @LAYERS.register_module
 class VocabParallelClassifier1D(ParallelLayer):
     r"""ColLinear with given weight. Classifier of 1D parallelism.
 
@@ -423,7 +423,7 @@ class VocabParallelClassifier1D(ParallelLayer):
         return output
 
 
-@LAYERS.register_module
+# @LAYERS.register_module
 class Linear1D_Col(ParallelLayer):
     r"""Linear layer with column parallelism.
 
@@ -469,7 +469,8 @@ class Linear1D_Col(ParallelLayer):
         if skip_bias_add and not bias:
             raise ValueError('cannot skip bias addition if bias is None')
 
-        self.out_features_per_partition = divide(out_features, gpc.tensor_parallel_size)
+        # self.out_features_per_partition = divide(out_features*2, gpc.tensor_parallel_size)
+        self.out_features_per_partition = out_features
 
         # Parameters.
         # Initialize weight.
@@ -567,7 +568,7 @@ class Linear1D_Col(ParallelLayer):
             return output
 
 
-@LAYERS.register_module
+# @LAYERS.register_module
 class Linear1D_Row(ParallelLayer):
     r""" Linear layer with row parallelism
 
@@ -612,7 +613,8 @@ class Linear1D_Row(ParallelLayer):
             raise ValueError('cannot skip bias addition if bias is None')
 
         # Divide the weight matrix along the last dimension.
-        self.input_size_per_partition = divide(in_features, gpc.tensor_parallel_size)
+        # self.input_size_per_partition = divide(in_features*2, gpc.tensor_parallel_size)
+        self.input_size_per_partition = in_features
 
         # Parameters.
         # Initialize weight.
@@ -732,7 +734,7 @@ class Linear1D_Row(ParallelLayer):
             return output, self.bias
 
 
-@LAYERS.register_module
+# @LAYERS.register_module
 class Embedding1D(ParallelLayer):
     r"""Embedding for 1D parallelism.
 
@@ -836,7 +838,7 @@ class Embedding1D(ParallelLayer):
         return output
 
 
-@LAYERS.register_module
+# @LAYERS.register_module
 class VocabParallelEmbedding1D(ParallelLayer):
     r"""Embedding parallelized in the vocabulary dimension.
 
@@ -884,7 +886,8 @@ class VocabParallelEmbedding1D(ParallelLayer):
 
         tensor_parallel_size = gpc.get_world_size(ParallelMode.PARALLEL_1D)
         tensor_parallel_rank = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
-        self.num_embeddings_per_partition = divide(num_embeddings, tensor_parallel_size)
+        # self.num_embeddings_per_partition = divide(num_embeddings, tensor_parallel_size)
+        self.num_embeddings_per_partition = num_embeddings
         self.vocab_start_index = tensor_parallel_rank * self.num_embeddings_per_partition
         self.vocab_end_index = self.vocab_start_index + self.num_embeddings_per_partition
 
@@ -953,7 +956,7 @@ class VocabParallelEmbedding1D(ParallelLayer):
         return output
 
 
-@LAYERS.register_module
+# @LAYERS.register_module
 class Dropout1D(ParallelLayer):
     """Dropout layer of 1D parallelism.
 
@@ -977,7 +980,7 @@ class Dropout1D(ParallelLayer):
         return output
 
 
-@LAYERS.register_module
+# @LAYERS.register_module
 class PatchEmbedding1D(ColossalaiModule):
     """
     2D Image to Patch Embedding
