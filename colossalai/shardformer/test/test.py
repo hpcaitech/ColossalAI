@@ -9,7 +9,6 @@ from tqdm.auto import tqdm
 from transformers import AutoTokenizer, BertForMaskedLM, DataCollatorForLanguageModeling, get_scheduler
 
 import colossalai
-from colossalai.shardformer.layer.dropout import Dropout1D
 from colossalai.shardformer.shard import ShardConfig, shard_model
 from colossalai.utils import get_current_device, print_rank_0
 
@@ -92,14 +91,6 @@ def train(model: nn.Module, args, num_epoch: int = 3):
             torch.save(model.state_dict(), "./checkpoints/best_model.pth")
 
 
-def dropout(model: nn.Module, args, input: torch.Tensor() = torch.randn(5, 4)):
-    input = input.to("cuda")
-    m = Dropout1D(0.3).to("cuda")
-    for i in range(2):
-        print(f"Output: {m(input)}")
-        print(torch.randn(1))
-
-
 if __name__ == "__main__":
     args = get_args()
     model = BertForMaskedLM.from_pretrained("bert-base-uncased")
@@ -114,5 +105,5 @@ if __name__ == "__main__":
         train(sharded_model, args)
     elif args.mode == "inference":
         inference(sharded_model, args)
-    elif args.mode == 'dropout':
-        dropout(sharded_model, args)
+    else:
+        raise NotImplementedError
