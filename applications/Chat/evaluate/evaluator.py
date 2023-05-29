@@ -63,6 +63,10 @@ class Evaluator(object):
 
         # automatic evaluation
         for category in self.params:
+            if len(answers_per_category[category]) == 0:
+                print(f"Category {category} specified in your config doesn't have corresponding answers!")
+                continue
+
             category_metrics = self.params[category]["Metrics"]
             self.automatic_metric_stats[category] = {}
 
@@ -76,6 +80,10 @@ class Evaluator(object):
 
         # gpt35 evaluation
         for category in self.params:
+            if len(answers_per_category[category]) == 0:
+                print(f"Category {category} specified in your config doesn't have corresponding answers!")
+                continue
+
             category_metrics = self.params[category]["GPT-3.5"]
 
             prompt = self.gpt_evaluation_prompt.get(category, None)
