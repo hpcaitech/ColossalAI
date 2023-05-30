@@ -257,3 +257,22 @@ CustomPolicy(Policy):
   - CLASS `Slicer`:
 
     This class is used to slice tensor according to policy.
+
+
+  3. DistCrossEntropy Loss
+  - Overview
+
+    In order to reduce the communication size, caculate the crossentropy before all gather, refer to [Megatron-LM](https://github.com/NVIDIA/Megatron-LM), reduce the communication size from [batch_size * seq_length * vocab_size] to [batch_size * seq_length]. The origin loss function is:
+    $$ loss = -\log(\frac{\exp(x[class])}{\sum_i\exp(x[i])})$$
+
+    alse can be represented as:
+
+    $$ loss = \log(\sum_i\exp(x[i])) - x[class]$$
+
+  - Step
+
+    - First get the maximum logits across all the devices, make all the logist minus the maximun value to scale the value less than zero to avoid the value of exp being too large
+
+    - Get a mask to mask the logits not in the local device
+
+    - Caculate the loss according to the second formula

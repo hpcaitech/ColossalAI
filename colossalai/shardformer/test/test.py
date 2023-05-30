@@ -19,6 +19,7 @@ tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
 def get_args():
     parser = colossalai.get_default_parser()
     parser.add_argument("--mode", type=str, default='inference')
+    parser.add_argument("--save_model", action='store_true')
     return parser.parse_args()
 
 
@@ -72,7 +73,7 @@ def train(model: nn.Module, args, num_epoch: int = 3):
             loss = outputs.loss
             loss.backward()
             optimizer.step()
-            # lr_scheduler.step()
+            lr_scheduler.step()
             progress_bar.update(1)
         train_loss = loss
 
@@ -86,7 +87,7 @@ def train(model: nn.Module, args, num_epoch: int = 3):
             # loss = criterion(outputs.logits, batch["input_ids"])
         test_loss = loss / len(eval_dataloader)
         print_rank_0(f"Train Loss: {train_loss:.4f} Test Loss:{test_loss:.4f}")
-        if test_loss < best_test_loss:
+        if args.save_model and test_loss < best_test_loss:
             best_test_loss = test_loss
             torch.save(model.state_dict(), "./checkpoints/best_model.pth")
 

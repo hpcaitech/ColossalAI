@@ -23,12 +23,12 @@ def test_dist_crossentropy():
     labels_ = labels.view(-1)
     loss = F.cross_entropy(pred_, labels_)
     loss.backward()
-    print(f"normal loss:{loss:.4f}")
+    print(f"normal loss:{loss}")
 
     pred = pred.chunk(int(os.environ['WORLD_SIZE']), -1)[int(os.environ['RANK'])]
     loss = applyDistCrossEntropy(pred.to('cuda'), labels.to('cuda'))
     loss.backward()
-    print(f"dist loss:{loss:.4f}")
+    print(f"dist loss:{loss}")
 
 
 def test_dropout():

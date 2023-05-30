@@ -6,6 +6,8 @@ from torch.nn import CrossEntropyLoss
 from transformers import BertForMaskedLM
 from transformers.models.bert.modeling_bert import MaskedLMOutput
 
+from ..layer.dist_crossentropy import applyDistCrossEntropy
+
 
 class BertForMaskedLM_(BertForMaskedLM):
 
@@ -47,11 +49,11 @@ class BertForMaskedLM_(BertForMaskedLM):
 
         masked_lm_loss = None
 
-        # if input_ids is not None:
-        #     masked_lm_loss = applyDistCrossEntropy(prediction_scores, input_ids, self.config.vocab_size)
         if labels is not None:
-            loss_fct = CrossEntropyLoss()    # -100 index = padding token
-            masked_lm_loss = loss_fct(prediction_scores.view(-1, self.config.vocab_size), labels.view(-1))
+            masked_lm_loss = applyDistCrossEntropy(prediction_scores, labels)
+        # if labels is not None:
+        #     loss_fct = CrossEntropyLoss()    # -100 index = padding token
+        #     masked_lm_loss = loss_fct(prediction_scores.view(-1, self.config.vocab_size), labels.view(-1))
 
         if not return_dict:
             output = (prediction_scores,) + outputs[2:]
