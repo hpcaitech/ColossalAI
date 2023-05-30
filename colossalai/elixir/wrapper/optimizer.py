@@ -91,6 +91,10 @@ class ElixirOptimizer(colo_optim.ColossalaiOptimizer):
             # allocate memory before training
             self.__zero_step()
 
+        if self.clipping_flag:
+            for param_chunk in self.param_chunk_set:
+                param_chunk.enable_l2_norm_flag()
+
     def __zero_step(self):
         torch.cuda.empty_cache()
 

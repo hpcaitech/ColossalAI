@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Optional, Set
 
 from colossalai.elixir.chunk.core import Chunk
 
@@ -12,7 +12,7 @@ class ChunkScheduler(ABC):
 
     def __init__(self) -> None:
         super().__init__()
-        self.releasable_set: Optional[set] = None
+        self.releasable_set: Optional[Set[Chunk]] = None
         self.current_step = -1
 
     @abstractmethod

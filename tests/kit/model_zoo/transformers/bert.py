@@ -19,13 +19,18 @@ def data_gen_fn():
 
 output_transform_fn = lambda x: x
 
+
+def output_bert(x):
+    return dict(pooler_output=x.get('pooler_output'))
+
+
 config = transformers.BertConfig(hidden_size=128, num_hidden_layers=2, num_attention_heads=4, intermediate_size=256)
 
 # register the BERT variants
 model_zoo.register(name='transformers_bert',
                    model_fn=lambda: transformers.BertModel(config),
                    data_gen_fn=data_gen_fn,
-                   output_transform_fn=output_transform_fn,
+                   output_transform_fn=output_bert,
                    model_attribute=ModelAttribute(has_control_flow=True))
 model_zoo.register(name='transformers_bert_for_pretraining',
                    model_fn=lambda: transformers.BertForPreTraining(config),
