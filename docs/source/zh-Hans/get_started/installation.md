@@ -47,7 +47,7 @@ CUDA_EXT=1 pip install .
 pip install .
 ```
 
-如果您在使用CUDA 10.2，您仍然可以从源码安装ColossalA。但是您需要手动下载cub库并将其复制到相应的目录。
+如果您在使用CUDA 10.2，您仍然可以从源码安装ColossalAI。但是您需要手动下载cub库并将其复制到相应的目录。
 
 ```bash
 # clone the repository
