@@ -3,7 +3,7 @@
 Author: [Hongxiu Liu](https://github.com/ver217), [Jiarui Fang](https://github.com/feifeibear), [Zijian Ye](https://github.com/ZijianYY)
 
 **Prerequisite:**
-- [定义配置文件](../basics/define_your_config.md)
+- [Train with booster](../basics/booster_api.md)
 
 **Example Code**
 

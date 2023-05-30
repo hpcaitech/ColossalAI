@@ -1,5 +1,5 @@
-torchrun --standalone --nproc_per_node=4 train_sft.py \
-    --pretrain "/path/to/LLaMa-7B/" \
+python -m torch.distributed.run --standalone --nproc_per_node=4 train_sft.py \
+    --pretrain "path/to/LLaMa-7B/" \
     --model 'llama' \
     --strategy colossalai_zero2 \
     --log_interval 10 \
