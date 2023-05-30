@@ -14,13 +14,15 @@ class Evaluator(object):
 
     """
 
-    def __init__(self, params: Dict[str, Any], battle_prompt: Dict[str, Any], gpt_evaluation_prompt: Dict[str,
-                                                                                                          Any]) -> None:
+    def __init__(self, params: Dict[str, Any], battle_prompt: Dict[str, Any], gpt_evaluation_prompt: Dict[str, Any],
+                 gpt_model: str, language: str) -> None:
         self.params = params
         self.battle_prompt = battle_prompt
         self.gpt_evaluation_prompt = gpt_evaluation_prompt
+        self.gpt_model = gpt_model
+        self.language = language
         self.automatic_metric_stats = dict()
-        self.gpt35_evaluation_results = dict()
+        self.gpt_evaluation_results = dict()
         self.battle_results = []
 
     def battle(self, answers1: List[Dict], answers2: List[Dict]) -> None:
@@ -63,6 +65,10 @@ class Evaluator(object):
 
         # automatic evaluation
         for category in self.params:
+            if len(answers_per_category[category]) == 0:
+                print(f"Category {category} specified in your config doesn't have corresponding answers!")
+                continue
+
             category_metrics = self.params[category]["Metrics"]
             self.automatic_metric_stats[category] = {}
 
@@ -74,17 +80,21 @@ class Evaluator(object):
             for metric in category_metrics:
                 self.automatic_metric_stats[category].update(switch(metric=metric))
 
-        # gpt35 evaluation
+        # gpt evaluation
         for category in self.params:
-            category_metrics = self.params[category]["GPT-3.5"]
+            if len(answers_per_category[category]) == 0:
+                print(f"Category {category} specified in your config doesn't have corresponding answers!")
+                continue
+
+            category_metrics = self.params[category]["GPT"]
 
             prompt = self.gpt_evaluation_prompt.get(category, None)
             if prompt is None:
                 print(f"No prompt for category {category}! Use prompt for category general now.")
                 prompt = self.gpt_evaluation_prompt["general"]
 
-            self.gpt35_evaluation_results[category] = gpt_evaluate.gpt35_evaluate(answers_per_category[category],
-                                                                                  prompt, category_metrics, category)
+            self.gpt_evaluation_results[category] = gpt_evaluate.evaluate(answers_per_category[category], prompt,
+                                                                          category_metrics, category, self.gpt_model)
 
     def save(self, path: str, model_name_list: List[str]) -> None:
         """
@@ -106,10 +116,10 @@ class Evaluator(object):
 
             # Save evaluation results for GPT-3.5 evaluation metrics.
             all_evaluations = []
-            base_save_path = os.path.join(path, "gpt_evaluate", "gpt35_evaluate_results")
+            base_save_path = os.path.join(path, "gpt_evaluate", "gpt_evaluate_results")
             evaluation_results_save_path = os.path.join(base_save_path, "evaluation_results")
 
-            for category, evaluations in self.gpt35_evaluation_results.items():
+            for category, evaluations in self.gpt_evaluation_results.items():
                 jdump(
                     evaluations,
                     os.path.join(evaluation_results_save_path, model_name_list[0],
@@ -121,10 +131,10 @@ class Evaluator(object):
 
             # Start to calculate scores and save statistics.
             evaluation_statistics_save_path = os.path.join(base_save_path, "evaluation_statistics")
-            gpt_evaluate.save_gpt35_evaluation_statistics(model_name_list[0], all_evaluations,
-                                                          evaluation_statistics_save_path)
+            gpt_evaluate.save_gpt_evaluation_statistics(model_name_list[0], all_evaluations,
+                                                        evaluation_statistics_save_path)
 
             # Save charts and csv.
             evaluation_analyses_save_path = os.path.join(base_save_path, "evaluation_analyses")
-            gpt_evaluate.analyze_gpt35_evaluation_statistics(evaluation_statistics_save_path,
-                                                             evaluation_analyses_save_path)
+            gpt_evaluate.analyze_gpt_evaluation_statistics(evaluation_statistics_save_path,
+                                                           evaluation_analyses_save_path)
