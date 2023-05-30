@@ -238,7 +238,6 @@ def main():
             tensor_parallelize(model, tp_pg)
 
         # asign running configurations
-        # gemini_config = None
         if args.distplan == "CAI_ZeRO1":
             zero_stage = 1
         elif args.distplan == "CAI_ZeRO2":
@@ -272,7 +271,6 @@ def main():
     elif args.distplan.startswith("Pytorch"):
         assert args.tp_degree == 1, "The degree of TP should be 1 for DDP examples."
         model = model_builder(args.model_type)(checkpoint=True).cuda()
-        # model = DDP(model)
         plugin = TorchDDPPlugin()
         if args.distplan.endswith("DDP"):
             optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
