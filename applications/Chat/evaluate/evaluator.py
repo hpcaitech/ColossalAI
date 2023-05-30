@@ -93,9 +93,8 @@ class Evaluator(object):
                 print(f"No prompt for category {category}! Use prompt for category general now.")
                 prompt = self.gpt_evaluation_prompt["general"]
 
-            self.gpt_evaluation_results[category] = gpt_evaluate.gpt_evaluate(answers_per_category[category], prompt,
-                                                                              category_metrics, category,
-                                                                              self.gpt_model)
+            self.gpt_evaluation_results[category] = gpt_evaluate.evaluate(answers_per_category[category], prompt,
+                                                                          category_metrics, category, self.gpt_model)
 
     def save(self, path: str, model_name_list: List[str]) -> None:
         """

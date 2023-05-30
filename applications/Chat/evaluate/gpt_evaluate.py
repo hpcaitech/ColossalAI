@@ -51,7 +51,7 @@ def get_battle_result(sys_prompt: str, user_prompt: str, id: int, max_tokens: in
         except Exception as e:
             print(e)
             time.sleep(1)
-    print(f" Evaluation {id} failed after {MAX_API_RETRY} retries.")
+    print(f"Evaluation {id} failed after {MAX_API_RETRY} retries.")
     return {"evaluation": "", "id": id}
 
 
@@ -291,6 +291,9 @@ def get_gpt_evaluation_without_logprobs(prompt: Dict[str, Any],
             except Exception as e:
                 print(e)
                 time.sleep(1)
+        if metric not in inst["evaluation"]:
+            print(f"Evaluation {inst['id']} for metric {metric} failed after {MAX_API_RETRY} retries.")
+            inst["evaluation"][metric] = {}
     return inst
 
 
@@ -345,11 +348,13 @@ def get_gpt_evaluation_with_logprobs(prompt: Dict[str, Any],
             except Exception as e:
                 print(e)
                 time.sleep(1)
+        if metric not in inst["evaluation"]:
+            print(f"Evaluation {inst['id']} for metric {metric} failed after {MAX_API_RETRY} retries.")
+            inst["evaluation"][metric] = {}
     return inst
 
 
-def gpt_evaluate(answers: List[Dict], prompt: Dict[str, Any], metrics: List[str], category: str,
-                 model: str) -> List[Dict]:
+def evaluate(answers: List[Dict], prompt: Dict[str, Any], metrics: List[str], category: str, model: str) -> List[Dict]:
     """
     Use GPT models to evaluate model answers and save evaluation results.
 
@@ -483,7 +488,10 @@ def save_gpt_evaluation_statistics(model_name: str, evaluations: List[Dict], sav
         scores = {metric: [] for metric in metrics}
         for evaluation in data:
             for metric in metrics:
-                if evaluation["evaluation"][metric]["logprobs"] is not None:
+                if evaluation["evaluation"][metric] == {}:
+                    # This means after 3 retries, the server still returns an error and we set the score to 0.
+                    scores[metric].append(0)
+                elif evaluation["evaluation"][metric]["logprobs"] is not None:
                     scores[metric].append(
                         calculate_scores_form_logprobs(evaluation["evaluation"][metric]["logprobs"][0]))
                 else:

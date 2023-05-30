@@ -24,7 +24,7 @@ The whole evaluation pipeline consists of two methods:
 
 Our evaluation pipeline examines the model's capability using 10 categories of questions. The following table introduces each category:
 
-| Evaluation Category | Description                                                  |
+| Evaluation Category | <center>Description</center>                                                  |
 | :-----------------: | :----------------------------------------------------------- |
 |    Brainstorming    | Models are asked to generate a range of creative and diverse ideas according to the question. The capability of creativity is required. |
 |        Chat         | Models are asked to continue a multi-round dialogue given the roles involved. The capability of understanding, memorizing previous rounds of the dialogue and answering according to the persona provided is required. |
@@ -40,7 +40,7 @@ Our evaluation pipeline examines the model's capability using 10 categories of q
 To better understand each evaluation category, here are some example questions provided.
 
 
-| Evaluation Category | Chinese Example                                              | English Example                                              |
+| Evaluation Category | <center>Chinese Example</center>                                              | <center>English Example</center>                                              |
 | :-----------------: | :----------------------------------------------------------- | :----------------------------------------------------------- |
 |    Brainstorming    | **Example 1:**<br/>请介绍一下人工智能的多个领域。<br/><br/>**Example 2:**<br/>请给出管理家庭财务的3个小技巧。<br/> | **Example 1:**<br/>How can I improve my memory? Any useful techniques you can suggest?<br/><br/>**Example 2:**<br/>What are some ways to increase productivity while working from home? |
 |        Chat         | **Example 1:**<br/>基于以下角色信息完成一段对话。小张是一名新手爱好者，对养鸡有浓厚的兴趣。老李是一名有丰富经验的养鸡大师。<br/>小张：您好，老李，我最近开始对养鸡感兴趣了，想请教您一些问题。 <br/>老李：你好，小张，我很乐意帮助你。你想问些什么？ <br/>小张：我想知道如何确定鸡的品种和性别？ <br/>老李：确切的品种可以通过鸡的外貌特征来确定，而性别一般是通过鸡卵的大小和形状来判断。还有什么问题吗？<br/> 小张：<br/>**Example 2:**<br/>基于以下角色信息完成一段对话。小明是一名医生，一位老年病患者想要停药，但他对病情有所忽视并有担忧；王叔叔是老年病患者的儿子，希望能够听取医生的建议。<br/>小明：你好，王叔叔，我了解你想要让你父亲停药。<br/>王叔叔：是的，我父亲已经吃了那么久的药，我担心药物对他的身体会有副作用。<br/>小明： | **Example 1:**<br/>Complete a conversation based on the following character information. Amy is a 30-year-old chef who runs her own restaurant. Jack is a food blogger who specializes in reviewing local restaurants.<br/>Amy: Hi Jack, I heard that you're a food blogger. Nice to meet you. <br/>Jack: Hi Amy, yes I am. Your restaurant has been receiving a lot of good reviews lately. <br/>Amy: Yes, we use only fresh and quality ingredients, and every dish is carefully crafted. <br/>Jack: <br/>**Example 2:**<br/>Complete a dialogue based on the following role information. A: Elementary student  B: Teacher<br/>B: Good morning, Student A. Today we're going to learn about addition and subtraction.<br/>A: Teacher, I already know this very well. Why do I need to learn it again?<br/>B: |
@@ -58,9 +58,9 @@ To better understand each evaluation category, here are some example questions p
 
 #### GPT Evaluation
 
-GPT evaluation uses GPT models  to evaluate the prediction of different models and different pre-defined evaluation metrics are applied to different categories. The following table shows the 10 pre-defined evaluation metrics in Chinese:
+GPT evaluation uses GPT models to evaluate the prediction of different models and different pre-defined evaluation metrics are applied to different categories. The following table shows the 11 pre-defined evaluation metrics in Chinese:
 
-|   Evaluation Metric   | Prompt Words                                                 | CoT(Chain-of-Thought)                                        |
+|   Evaluation Metric   | <center>Prompt Words</center>                                                 | <center>CoT(Chain-of-Thought)</center>                                        |
 | :-------------------: | :----------------------------------------------------------- | :----------------------------------------------------------- |
 | Language organization | 语言组织(1-5)：答案语言是否流畅、连贯，使用正确的语法，具有一定逻辑性，使用恰当的连接词、过渡词等等。 | 1. 阅读答案，并检查是否有语法错误、用词不当或其他显著的错误。<br/> 2.检查答案是否具有逻辑性，能够按照合理的顺序传达信息并且能够自圆其说<br/> 3. 确定答案是否与问题或主题相关，并且能够传达清晰的信息。<br/> 4. 检查答案是否连贯，是否使用适当的转换和过渡来保持句子和段落之间的连贯性。<br/> 5. 检查答案是否具有明确的结构和组织方式，使得读者可以轻松理解信息的层次和结构。<br/> 6. 根据以上因素综合评估答案的语言组织，并给出一个1到5的分数，其中5表示语言组织非常好，而1表示语言组织非常差。 |
 |       Relevance       | 切题(1-5)：答案内容是否切题，不答非所问，并且严格遵照题目要求。 | 1. 阅读题目，确定题目所问的问题是什么，以及需要回答哪些方面的问题。<br/> 2. 阅读答案，确认答案是否直接回答了题目所问的问题。<br/> 3. 检查答案是否严格遵照了题目的要求，包括答题方式、答题长度、答题格式等等。<br/> 4. 根据以上因素综合评估答案的切题程度，并给出一个1到5的分数，其中5表示答案非常切题，而1表示答案完全没有切题。 |
@@ -74,7 +74,7 @@ GPT evaluation uses GPT models  to evaluate the prediction of different models a
 |       Fidelity        | 保真度(1-5)：答案是否能够严格遵守角色的设定回答给定的请求。  | 1. 仔细阅读问题，了解角色在问题中的设定和表现，包括职业、背景、观点、性格等方面。<br/> 阅读题目的请求，确认回答请求时需要注意的细节。<br/> 3. 对比提供的回答与该角色的设定，评估回答是否能够严格遵守角色的设定。<br/> 4. 结合以上评估结果给出保真度的评分，范围从1到5分，其中1分表示回答与角色设定完全不符，5分表示回答完全符合角色设定且满足给定请求。 |
 |      Conciseness      | 简明扼要(1-5)：答案是否简明扼要，没有冗余内容。              | 1. 阅读题目，提取出材料的重点。<br/> 2. 阅读该总结，并注意其中的主要观点和信息。<br/> 3. 评估总结的长度。一个简明扼要的总结通常应该在几句话或几段文字内传达关键信息，而不是冗长的段落或文章。<br/> 4. 检查总结是否包含与主要观点无关的信息或冗余信息。<br/> 5. 确定总结涵盖了材料中的关键信息，并且没有忽略任何重要细节。<br/> 6. 给总结打出1-5的分数，其中5表示总结简明扼要，没有冗余内容，而1表示总结冗长或包含不必要的信息，难以理解或记忆。根据您的判断，打出适当的得分。 |
 
-GPT-3.5 evaluates the quality of model predictions based on the given prompt words and gives a score between 1-5.
+GPT models evaluate the quality of model predictions based on the given prompt words and gives a score between 1-5.
 
 #### Automatic Evaluation
 
@@ -86,7 +86,7 @@ There are two ways to obtain reference answers:
 
 There are 5 types of automatic evaluation metrics listed in the table below:
 
-|     Automatic Evaluation Metric     | Description                                                  |
+|     Automatic Evaluation Metric     | <center>Description</center>                                                  |
 | :---------------------------------: | :----------------------------------------------------------- |
 |               BLEU-n                | Measure the accuracy between prediction and reference.<br/> BLEU-1 (Unigram) evaluates accuracy in word level.<br/> BLEU-n (n-gram) evaluate the fluency in sentence level. |
 |                ROUGE                | ROUGE-N measures the number of matching n-grams between prediction and reference. <br/> ROUGE-L measures the number of matching longest common subsequence (LCS) between prediction and reference. |
