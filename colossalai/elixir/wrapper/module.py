@@ -1,7 +1,7 @@
 from collections import defaultdict
 from copy import copy
 from functools import partial
-from typing import Any, Iterable, Mapping
+from typing import Any, Callable, Iterable, Mapping
 
 import torch
 import torch.distributed as dist
@@ -18,9 +18,19 @@ from colossalai.elixir.tensor import OutplaceTensor
 from colossalai.utils.model.experimental import LazyTensor
 
 
-def is_leaf_module(m: nn.Module):
+def calc_module_buffer(m: nn.Module, fused_check_func: Callable) -> int:
     special_modules = [nn.MultiheadAttention]
-    return type(m) in special_modules
+    buffer_size = 0
+    if type(m) in special_modules:
+        for p in m.parameters():
+            if p.requires_grad:
+                buffer_size += p.numel()
+    else:
+        for p in m.parameters(recurse=False):
+            if p.requires_grad and not fused_check_func(p):
+                buffer_size += p.numel()
+
+    return buffer_size
 
 
 def get_param_optim_data(param_data: torch.Tensor, param_dtype: torch.dtype):
@@ -170,20 +180,18 @@ class ElixirModule(nn.Module):
     def __init_buffer_storage(self):
         buffer_size = 0
         for submodule in self.modules():
-            sum_param_size = 0
-            recurse_flag = is_leaf_module(submodule)
-            for param in submodule.parameters(recurse=recurse_flag):
-                if not param.requires_grad:
-                    continue
-                assert param.dtype == self.dtype
-                sum_param_size += param.numel()
-            buffer_size = max(buffer_size, sum_param_size)
+            sub_size = calc_module_buffer(submodule, self.fetcher.is_in_fused)
+            buffer_size = max(buffer_size, sub_size)
         self.buffer = BufferStore(buffer_size, self.dtype)
         print('module buffer', self.buffer)
 
     def _gradient_handler(self, grad: torch.Tensor, param: nn.Parameter):
         # create an empty tensor
-        fake_grad = self.buffer.empty_like(grad)
+        if param.numel() <= self.buffer.buffer_size:
+            fake_grad = self.buffer.empty_like(grad)
+        else:
+            fake_grad = torch.empty_like(grad)
+            fake_grad.storage().resize_(0)
 
         with torch._C.DisableTorchFunction():
             chunk = self.fetcher.get_one_chunk(param)

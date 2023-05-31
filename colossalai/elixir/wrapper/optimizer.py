@@ -70,6 +70,7 @@ class ElixirOptimizer(colo_optim.ColossalaiOptimizer):
         if self.clipping_flag:
             assert norm_type == 2.0, 'ElixirOptimizer only supports L2 norm now'
 
+        self.max_fake_param_size = 0
         self.__init__optimizer()
 
         # Grad scaler
@@ -90,6 +91,7 @@ class ElixirOptimizer(colo_optim.ColossalaiOptimizer):
         if init_step:
             # allocate memory before training
             self.__zero_step()
+            torch.cuda.empty_cache()
 
         if self.clipping_flag:
             for param_chunk in self.param_chunk_set:
@@ -98,10 +100,15 @@ class ElixirOptimizer(colo_optim.ColossalaiOptimizer):
     def __zero_step(self):
         torch.cuda.empty_cache()
 
-        cpu_buffer = BufferStore(self.module.buffer.buffer_size, self.module.buffer.buffer_dtype, 'cpu')
-        buffer_dict = dict(cpu=cpu_buffer, cuda=self.module.buffer)
-        for _, zero_buffer in buffer_dict.items():
-            zero_buffer.zeros()
+        compute_type = self.module.buffer.buffer_dtype
+        device_list = ['cpu', 'cuda']
+        buffer_dict = dict()
+
+        for device in device_list:
+            temp_buffer = BufferStore(self.max_fake_param_size, compute_type, device)
+            buffer_dict[device] = temp_buffer
+        for _, temp_buffer in buffer_dict.items():
+            temp_buffer.zeros()
 
         for group in self.param_groups:
             for fake_param in group['params']:
@@ -263,6 +270,7 @@ class ElixirOptimizer(colo_optim.ColossalaiOptimizer):
                 fake_param = torch.nn.Parameter(torch.empty([0], device=grad_device))
                 self.param_to_optim_chunk[fake_param] = param_chunk.paired_chunk
                 self.param_to_range[fake_param] = range_pair
+                self.max_fake_param_size = max(self.max_fake_param_size, range_pair[1] - range_pair[0])
 
                 fake_params_list.append(fake_param)
 
