@@ -211,6 +211,9 @@ class Chunk:
     def reduce_check(self):
         return self.tensor_state_cnter[TensorState.READY_FOR_REDUCE] == self.num_tensors
 
+    def enable_l2_norm_flag(self) -> None:
+        self.l2_norm_flag = True
+
     def set_overflow_flag(self, valid_tensor: torch.Tensor) -> None:
         assert not self.overflow
         self.overflow = torch.isinf(valid_tensor).any().item() | torch.isnan(valid_tensor).any().item()

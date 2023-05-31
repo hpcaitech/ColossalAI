@@ -18,6 +18,11 @@ from colossalai.elixir.tensor import OutplaceTensor
 from colossalai.utils.model.experimental import LazyTensor
 
 
+def is_leaf_module(m: nn.Module):
+    special_modules = [nn.MultiheadAttention]
+    return type(m) in special_modules
+
+
 def get_param_optim_data(param_data: torch.Tensor, param_dtype: torch.dtype):
     param_data = param_data.to(gpu_device())
     optim_data = param_data.clone() if param_data.dtype == torch.float else param_data.float()
@@ -71,6 +76,7 @@ class ElixirModule(nn.Module):
                 assert name in self.no_grad_state_dict
                 continue
             assert name in self.grad_state_dict
+            # param.debug_name = name
             param.register_hook(partial(self._gradient_handler, param=param))
             param.__class__ = HookParam
 
@@ -165,8 +171,9 @@ class ElixirModule(nn.Module):
         buffer_size = 0
         for submodule in self.modules():
             sum_param_size = 0
-            for param in submodule.parameters(recurse=False):
-                if not param.requires_grad or self.fetcher.is_in_fused(param):
+            recurse_flag = is_leaf_module(submodule)
+            for param in submodule.parameters(recurse=recurse_flag):
+                if not param.requires_grad:
                     continue
                 assert param.dtype == self.dtype
                 sum_param_size += param.numel()
