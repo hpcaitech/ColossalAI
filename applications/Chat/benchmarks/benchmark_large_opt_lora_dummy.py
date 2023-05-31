@@ -93,8 +93,9 @@ def main(args):
         critic = OPTCritic(config=critic_config, lora_rank=args.lora_rank, checkpoint=args.grad_checkpoint)
         critic.model.tie_weights()
 
-        initial_model = deepcopy(actor)
-        reward_model = RewardModel(deepcopy(critic.model), deepcopy(critic.value_head))
+        initial_model = OPTActor(config=model_config, lora_rank=args.lora_rank, checkpoint=args.grad_checkpoint)
+        reward_model = OPTCritic(config=critic_config, lora_rank=args.lora_rank, checkpoint=args.grad_checkpoint)
+        reward_model = RewardModel(reward_model.model, reward_model.value_head)
 
     if args.use_kernels:
         from coati.kernels import convert_to_xformer_model
