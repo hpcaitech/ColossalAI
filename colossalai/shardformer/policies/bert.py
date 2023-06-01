@@ -4,7 +4,7 @@ from typing import Any, Callable, Dict, List, Tuple, Type
 import torch.nn as nn
 from transformers.models.bert.modeling_bert import BertEmbeddings, BertLayer, BertLMPredictionHead
 
-import colossalai.nn as col_nn
+import colossalai.shardformer.layer.layers as col_nn
 
 from .basepolicy import Argument, Col_Layer, Layer, Policy, Row_Layer
 
@@ -142,7 +142,7 @@ class BertPolicy(Policy):
                 weight="decoder.weight",
                 bias="decoder.bias",
                 replace_layer=col_nn.Linear1D_Col,
-                gather_output=True,
+        # gather_output=True,
             )
         ]
 
