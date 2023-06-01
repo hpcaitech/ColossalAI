@@ -3,7 +3,7 @@
 Author: [Hongxiu Liu](https://github.com/ver217), [Jiarui Fang](https://github.com/feifeibear), [Zijian Ye](https://github.com/ZijianYY)
 
 **Prerequisite:**
-- [Define Your Configuration](../basics/define_your_config.md)
+- [Train with booster](../basics/booster_api.md)
 
 **Example Code**
 
@@ -97,6 +97,7 @@ For simplicity, we just use randomly generated data here.
 
 First we only need to import `GPT2LMHeadModel` from `Huggingface transformers` to define our model, which does not require users to define or modify the model, so that users can use it more conveniently.
 
+Define a GPT model:
 ```python
 class GPTLMModel(nn.Module):
 
@@ -182,34 +183,6 @@ def split_param_col_tp1d(param: ColoParameter, pg: ProcessGroup):
     split_param_single_dim_tp1d(-1, param, pg)
 ```
 
-Define a model which uses Gemini + ZeRO DDP:
-
-```python
-def gemini_zero_dpp(model: torch.nn.Module, pg: ProcessGroup, placement_policy: str = "auto"):
-    cai_version = colossalai.__version__
-    if version.parse(cai_version) > version.parse("0.1.10"):
-        from colossalai.nn.parallel import GeminiDDP
-        model = GeminiDDP(model,
-                          device=get_current_device(),
-                          placement_policy=placement_policy,
-                          pin_memory=True,
-                          search_range_mb=32)
-    elif version.parse(cai_version) <= version.parse("0.1.10") and version.parse(cai_version) >= version.parse("0.1.9"):
-        from colossalai.gemini import ChunkManager, GeminiManager
-        chunk_size = ChunkManager.search_chunk_size(model, 64 * 1024**2, 32)
-        gemini_manager = GeminiManager(placement_policy, chunk_manager)
-        chunk_manager = ChunkManager(chunk_size,
-                                     pg,
-                                     enable_distributed_storage=True,
-                                     init_device=GeminiManager.get_default_device(placement_policy))
-        model = ZeroDDP(model, gemini_manager)
-    else:
-        raise NotImplemented(f"CAI version {cai_version} is not supported")
-    return model
-```
-
-As we pre-train GPT in this example, we just use a simple language model loss.
-
 Write a function to get random inputs:
 
 ```python
@@ -219,9 +192,15 @@ def get_data(batch_size, seq_len, vocab_size):
     return input_ids, attention_mask
 ```
 
-Finally, we can define our training loop:
+Finally, we define a model which uses Gemini + ZeRO DDP and define our training loop, As we pre-train GPT in this example, we just use a simple language model loss:
 
 ```python
+from torch.optim import Adam
+
+from colossalai.booster import Booster
+from colossalai.zero import ColoInitContext
+from colossalai.booster.plugin import GeminiPlugin
+
 def main():
     args = parse_args()
     BATCH_SIZE = 8
@@ -232,22 +211,23 @@ def main():
 
     # build criterion
     criterion = GPTLMLoss()
+    optimizer = Adam(model.parameters(), lr=0.001)
 
     torch.manual_seed(123)
     default_pg = ProcessGroup(tp_degree=args.tp_degree)
-    default_dist_spec = ShardSpec([-1], [args.tp_degree]) if args.shardinit else None
+    default_dist_spec = ShardSpec([-1], [args.tp_degree])
     # build GPT model
     with ColoInitContext(device='cpu', default_dist_spec=default_dist_spec, default_pg=default_pg):
       model = gpt2_medium(checkpoint=True)
     pg = default_pg
     # Tensor Parallelism (TP)
     tensor_parallelize(model, pg)
+
     # Gemini + ZeRO DP, Note it must be used after TP
-    model = gemini_zero_dpp(model, pg, args.placement)
-    # build optimizer
-    optimizer = GeminiAdamOptimizer(model, lr=1e-3, initial_scale=2**5)
-    numel = sum([p.numel() for p in model.parameters()])
-    get_tflops_func = partial(get_tflops, numel, BATCH_SIZE, SEQ_LEN)
+    plugin = GeminiPlugin(placement_policy='cuda', max_norm=1.0, initial_scale=2**5)
+    booster = Booster(plugin=plugin)
+    model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
+
     torch.cuda.synchronize()
     model.train()
     for n in range(NUM_STEPS):
@@ -256,10 +236,12 @@ def main():
         optimizer.zero_grad()
         outputs = model(input_ids, attn_mask)
         loss = criterion(outputs, input_ids)
-        optimizer.backward(loss)
+        booster.backward(loss, optimizer)
         optimizer.step()
 
     torch.cuda.synchronize()
 ```
 > ⚠️ Note: If you want to use the Gemini module, please do not use the [Gradient Accumulation](../features/gradient_accumulation.md) we mentioned before。
 The complete example can be found on [Train GPT with Colossal-AI](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/gpt).
+
+<!-- doc-test-command: torchrun --standalone --nproc_per_node=1 zero_with_chunk.py  -->

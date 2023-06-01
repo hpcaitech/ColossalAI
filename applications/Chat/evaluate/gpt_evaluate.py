@@ -16,7 +16,7 @@ from utils import jdump, jload
 
 def get_battle_result(sys_prompt: str, user_prompt: str, id: int, max_tokens: int = 2048) -> Dict[str, Any]:
     """
-    Get evaluation from GPT-4.
+    Get battle evaluation from GPT-4.
 
     Args:
         sys_prompt: prompt for the system.
@@ -51,7 +51,7 @@ def get_battle_result(sys_prompt: str, user_prompt: str, id: int, max_tokens: in
         except Exception as e:
             print(e)
             time.sleep(1)
-    print(f" Evaluation {id} failed after {MAX_API_RETRY} retries.")
+    print(f"Evaluation {id} failed after {MAX_API_RETRY} retries.")
     return {"evaluation": "", "id": id}
 
 
@@ -233,12 +233,77 @@ def save_battle_results(evaluations: List[Dict], name1: str, name2: str, save_pa
     print(f"Model {name2} average score: {ans2_score/(len(evaluations)-invalid_count):.2f}")
 
 
-def get_gpt35_evaluation(prompt: Dict[str, Any],
-                         inst: Dict[str, Any],
-                         metrics: List[str],
-                         max_tokens: int = 2048) -> Dict[str, Any]:
+def get_gpt_evaluation_without_logprobs(prompt: Dict[str, Any],
+                                        inst: Dict[str, Any],
+                                        metrics: List[str],
+                                        model: str = "gpt-3.5-turbo",
+                                        max_tokens: int = 2048) -> Dict[str, Any]:
     """
-    Use GPT-3.5 to evaluate one model answer.
+    Use chat models(gpt-3.5-turbo or gpt-4) to evaluate one model answer.
+
+    Args:
+        prompt: a dictionary including prompt template, CoT and metrics.
+        inst: the instruction that is needed to be evaluated.
+        metrics: the metrics for evaluation.
+        model: the model used to evaluate answers.
+        max_tokens: the maximum number of tokens to generate in the chat completion.
+
+    Returns:
+        An evaluation of one answer.
+    """
+
+    MAX_API_RETRY = 3
+
+    question = (inst["instruction"] if inst["input"] == "" else inst["instruction"] + " " + inst["input"])
+    answer = inst["output"]
+    inst["evaluation"] = {}
+
+    for metric in metrics:
+        if prompt["metrics"].get(metric, None) is None:
+            raise Exception(
+                f"Unsupported metric {metric} for category {inst['category']}! You should add this metric in the prompt file!"
+            )
+        for i in range(MAX_API_RETRY):
+            try:
+                response = openai.ChatCompletion.create(
+                    model=model,
+                    messages=[
+                        {
+                            "role":
+                                "user",
+                            "content":
+                                prompt["prompt"].format(
+                                    question=question,
+                                    answer=answer,
+                                    metric=prompt["metrics"][metric],
+                                    steps=prompt["CoT"][metric],
+                                ),
+                        },
+                    ],
+                    temperature=0,
+                    max_tokens=max_tokens,
+                )
+                inst["evaluation"][metric] = {
+                    "response": response["choices"][0]["message"]["content"],
+                    "logprobs": None,
+                }
+                break
+            except Exception as e:
+                print(e)
+                time.sleep(1)
+        if metric not in inst["evaluation"]:
+            print(f"Evaluation {inst['id']} for metric {metric} failed after {MAX_API_RETRY} retries.")
+            inst["evaluation"][metric] = {}
+    return inst
+
+
+def get_gpt_evaluation_with_logprobs(prompt: Dict[str, Any],
+                                     inst: Dict[str, Any],
+                                     metrics: List[str],
+                                     max_tokens: int = 2048) -> Dict[str, Any]:
+    """
+    Use completion model(text-davinci-003) to evaluate one model answer.
+    Only completion models can return log probabilities.
 
     Args:
         prompt: a dictionary including prompt template, CoT and metrics.
@@ -283,23 +348,22 @@ def get_gpt35_evaluation(prompt: Dict[str, Any],
             except Exception as e:
                 print(e)
                 time.sleep(1)
+        if metric not in inst["evaluation"]:
+            print(f"Evaluation {inst['id']} for metric {metric} failed after {MAX_API_RETRY} retries.")
+            inst["evaluation"][metric] = {}
     return inst
 
 
-def gpt35_evaluate(
-    answers: List[Dict],
-    prompt: Dict[str, Any],
-    metrics: List[str],
-    category: str,
-) -> List[Dict]:
+def evaluate(answers: List[Dict], prompt: Dict[str, Any], metrics: List[str], category: str, model: str) -> List[Dict]:
     """
-    Use GPT-3.5 to evaluate model answers and save evaluation results.
+    Use GPT models to evaluate model answers and save evaluation results.
 
     Args:
         answers: model answers.
-        prompt: prompt for GPT-3.5 evaluation.
-        metrics: metrics for GPT-3.5 evaluation.
+        prompt: prompt for GPT evaluation.
+        metrics: metrics for GPT evaluation.
         category: the category of the model answers for evaluation.
+        model: the specific GPT model used to evaluate answers.
 
     Returns:
         Evaluations of the given answers.
@@ -315,7 +379,12 @@ def gpt35_evaluate(
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
         futures = []
         for inst in answers:
-            future = executor.submit(get_gpt35_evaluation, prompt, inst, metrics, 1)
+            # Completion models can return log probabilities.
+            if model == "text-davinci-003":
+                future = executor.submit(get_gpt_evaluation_with_logprobs, prompt, inst, metrics, 1)
+            else:
+                future = executor.submit(get_gpt_evaluation_without_logprobs, prompt, inst, metrics, model, 1)
+
             futures.append(future)
 
         for future in tqdm.tqdm(
@@ -334,20 +403,19 @@ def gpt35_evaluate(
 
 def calculate_scores_form_logprobs(logprobs: Dict[str, Any]) -> float:
     """
-    Calculate score from log probabilities returned by text-davinci-003.
-    Only openai.Completion can return logprobs.
+    Calculate the score according to log probabilities returned by text-davinci-003.
 
     Calculation formula:
         score = sum(score_i * exp(value)) where score_i is the score which corresponds to the key(predicted token) and value is its log probability.
 
     Ref: https://arxiv.org/abs/2303.16634
-    This paper proposes NLG evaluation methods using GPT-3.5(logprobs returned by openai api) and GPT-4(logprobs obtained by sampling).
+    This paper proposes NLG evaluation methods using text-davinci-003(log probabilities returned by completion models) and GPT-4(probabilities obtained by sampling).
 
     Args:
         logprobs: logprobs returned by openai.Completion.
 
     Returns:
-        Score of one answer.
+        The score of one answer.
     """
 
     # GPT-3.5 only returns score of 1 to 5.
@@ -369,7 +437,31 @@ def calculate_scores_form_logprobs(logprobs: Dict[str, Any]) -> float:
     return score
 
 
-def save_gpt35_evaluation_statistics(model_name: str, evaluations: List[Dict], save_path: str) -> None:
+def calculate_scores_form_response(response: str, evaluation: Dict[str, Any]) -> int:
+    """
+    Calculate the score from the response returned by gpt-3.5-turbo or gpt-4.
+    Different from text-davinci-003, this fuction directly calculates the score according to the plain response returned by gpt-3.5-turbo or gpt-4.
+    Although text-davinci-003 can return log probabilities, it costs ten times as much as gpt-3.5-turbo.
+
+    Args:
+        response: logprobs returned by openai.Completion.
+        evaluation: the evaluation corresponds to the question.
+
+    Returns:
+        The score of one answer.
+    """
+
+    try:
+        results = re.findall(r"\d", response)
+        if len(results) == 1:
+            return int(results[0])
+        else:
+            raise Exception(f"Invalid score pair. Got {evaluation}.")
+    except Exception as e:
+        return 0
+
+
+def save_gpt_evaluation_statistics(model_name: str, evaluations: List[Dict], save_path: str) -> None:
     """
     Generate statistics for one model.
 
@@ -396,7 +488,15 @@ def save_gpt35_evaluation_statistics(model_name: str, evaluations: List[Dict], s
         scores = {metric: [] for metric in metrics}
         for evaluation in data:
             for metric in metrics:
-                scores[metric].append(calculate_scores_form_logprobs(evaluation["evaluation"][metric]["logprobs"][0]))
+                if evaluation["evaluation"][metric] == {}:
+                    # This means after 3 retries, the server still returns an error and we set the score to 0.
+                    scores[metric].append(0)
+                elif evaluation["evaluation"][metric]["logprobs"] is not None:
+                    scores[metric].append(
+                        calculate_scores_form_logprobs(evaluation["evaluation"][metric]["logprobs"][0]))
+                else:
+                    scores[metric].append(
+                        calculate_scores_form_response(evaluation["evaluation"][metric]["response"], evaluation))
 
         statistics = {}
         for metric in metrics:
@@ -414,7 +514,7 @@ def save_gpt35_evaluation_statistics(model_name: str, evaluations: List[Dict], s
     )
 
 
-def analyze_gpt35_evaluation_statistics(statistics_path: str, save_path: str) -> None:
+def analyze_gpt_evaluation_statistics(statistics_path: str, save_path: str) -> None:
     """
     Analyze and visualize all GPT-3.5 evaluation statistics in the given directory.
 
@@ -474,7 +574,7 @@ def analyze_gpt35_evaluation_statistics(statistics_path: str, save_path: str) ->
         os.makedirs(save_path)
 
     frame_all = pd.DataFrame(frame_all)
-    frame_all.to_csv(os.path.join(save_path, "gpt35_evaluation_statistics.csv"))
+    frame_all.to_csv(os.path.join(save_path, "gpt_evaluation_statistics.csv"))
 
     for category in tqdm.tqdm(
             frame_per_category.keys(),
