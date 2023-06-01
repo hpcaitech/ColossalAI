@@ -7,8 +7,6 @@ import torch
 import torch.nn as nn
 from transformers import AutoConfig
 
-import colossalai.nn as col_nn
-
 
 @dataclass
 class Argument:
