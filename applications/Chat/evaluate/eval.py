@@ -39,7 +39,8 @@ def main(args):
                 "No prompt file for gpt evaluation provided. Please specify the prompt file for gpt evaluation!")
 
         # initialize evaluator
-        evaluator = Evaluator(metrics_per_category, battle_prompt, gpt_evaluation_prompt)
+        evaluator = Evaluator(metrics_per_category, battle_prompt, gpt_evaluation_prompt, args.gpt_model,
+                              config["language"])
         if len(args.model_name_list) == 2:
             answers1 = jload(args.answer_file_list[0])
             answers2 = jload(args.answer_file_list[1])
@@ -87,6 +88,10 @@ if __name__ == '__main__':
                         default=[],
                         required=True,
                         help='the names of at most 2 models')
+    parser.add_argument('--gpt_model',
+                        default="gpt-3.5-turbo",
+                        choices=["text-davinci-003", "gpt-3.5-turbo", "gpt-4"],
+                        help='which GPT model to use for evaluation')
     parser.add_argument('--save_path', type=str, default="results", help='path to save evaluation results')
     parser.add_argument('--openai_key', type=str, default=None, required=True, help='Your openai key')
     args = parser.parse_args()
