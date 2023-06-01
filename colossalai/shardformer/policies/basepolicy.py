@@ -1,11 +1,9 @@
 # part of code modified from https://github.com/tunib-ai/parallelformers
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Tuple, Type
 
-import torch
 import torch.nn as nn
-from transformers import AutoConfig
 
 
 @dataclass
@@ -31,11 +29,18 @@ class Layer:
         bias (str): The bias suffix of the layer
         replace_layer (:class:`colosalai.nn`): The layer to replace the original layer
         ignore (bool): Whether to ignore this layer if it is not in the model
+        reversed (bool): Whether the weight in layer is reversed, commonly the weight in `torch.nn.Linear` is [out, in],
+                        but in GPT2 `Conv1D` layer is [in, out] which is reversed.
+        n_cast (int): The number of weight will cast to, like q, k, v in attention layer, n_cast should be 3. commonly in TP, we just chunk the weight with the number of devices,
+                        but in multi-head attention, we need to chunk the weight with the number of devices * n_head, and
+                        each device should have a part of Q, K and V weight.
     """
     weight: str = None
     bias: str = None
     replace_layer: Any = None
     ignore: bool = False
+    reversed: bool = False
+    n_cast: int = None
 
 
 @dataclass
@@ -131,7 +136,7 @@ class Policy():
             (OrignModel, CustomModel)
             in `CustomModel`, we can overwrite the forward and backward process
         """
-        return ()
+        return None
 
     @staticmethod
     def binding_policy() -> Dict:
@@ -146,7 +151,7 @@ class Policy():
                 "bert.embeddings.word_embeddings.weight": "cls.predictions.decoder.weight",
             }
         """
-        return NotImplementedError
+        return None
 
     @staticmethod
     def attn_in() -> List:
@@ -209,4 +214,4 @@ class Policy():
         Return:
             List[Layer]: List of layer object
         """
-        return NotImplementedError
+        return None
