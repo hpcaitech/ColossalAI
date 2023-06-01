@@ -124,17 +124,6 @@ class ModelSharder(object):
             self.traverse_replace_layer(child, origin_cls, attr_dict, param_funcs)
         return layer
 
-        # for name, child in layer.named_children():
-        #     print(name, child.__class__, origin_cls)
-        #     if child.__class__ == origin_cls:
-        #         for k, v in attr_dict.items():
-        #             setattr_(child, k, v, ignore=True)
-        #         self.shard_one_layer(child, param_funcs)
-        #         continue
-
-        #     self.traverse_replace_layer(child, origin_cls, attr_dict, param_funcs)
-        # return layer
-
     def shard_one_layer(
         self,
         org_layer: nn.Module,
