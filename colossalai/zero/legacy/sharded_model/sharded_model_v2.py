@@ -75,6 +75,7 @@ class ShardedModelV2(nn.Module):
             In this mode, grad will be fp16. Make sure your optimizer supports mixed precision (fp32 param and fp16 grad).
             We find that PyTorch's optimizers don't support mixed precision,
             so we recommend you enable this only when using our CPUAdam with CPU offload. Defaults to False.
+        bf16 (bool, optional): Whether to use bfloat16 for param and grad. Defaults to False.
     """
 
     def __init__(self,
