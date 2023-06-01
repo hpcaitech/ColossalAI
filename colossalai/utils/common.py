@@ -324,7 +324,7 @@ def clip_grad_norm_fp32(parameters, max_norm, norm_type=2):
     norm_type = float(norm_type)
 
     # Parameters can be on CPU or CUDA
-    # If parameters are on CPU, disable CUDA kernerls
+    # If parameters are on CPU, disable CUDA kernels
 
     # Calculate norm.
     if norm_type == inf:

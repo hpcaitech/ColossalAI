@@ -206,7 +206,7 @@ def avgcompute_split_pass(gm: torch.fx.GraphModule, pp_size: int):
 
 def avgnode_split_pass(gm: torch.fx.GraphModule, pp_size: int):
     """
-    In avgnode_split_pass, simpliy split graph by node number.
+    In avgnode_split_pass, simply split graph by node number.
     """
     mod_graph = gm.graph
     avg_num_node = len(mod_graph.nodes) // pp_size

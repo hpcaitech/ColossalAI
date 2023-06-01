@@ -1,4 +1,4 @@
-# Gradient Clipping
+# Gradient Clipping (Outdated)
 
 Author: Boxiang Wang, Haichen Huang, Yongbin Li
 
@@ -60,3 +60,5 @@ to demonstrate gradient clipping. In this example, we set the gradient clipping 
 ```shell
 python -m torch.distributed.launch --nproc_per_node 1 --master_addr localhost --master_port 29500  train_with_engine.py
 ```
+
+<!-- doc-test-command: torchrun --standalone --nproc_per_node=1 gradient_clipping.py  -->

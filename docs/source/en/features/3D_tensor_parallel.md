@@ -9,7 +9,7 @@ Author: Zhengda Bian, Yongbin Li
 - [2D Tensor Parallelism](./2D_tensor_parallel.md)
 
 **Example Code**
-- [ColossalAI-Examples - 3D Tensor Parallelism](https://github.com/hpcaitech/ColossalAI-Examples/tree/main/features/tensor_parallel/tensor_parallel_3d.py)
+- [ColossalAI-Examples - 3D Tensor Parallelism](https://github.com/hpcaitech/ColossalAI-Examples/blob/main/features/tensor_parallel/README.md)
 
 **Related Paper**
 - [Maximizing Parallelism in Distributed Training for Huge Neural Networks](https://arxiv.org/pdf/2105.14450.pdf)
@@ -67,7 +67,7 @@ Given $P=q \times q \times q$ processors, we present the theoretical computation
 
 ## Usage
 
-To enable 3D tensor parallelism for our model, e.g. on 8 GPUs, we need to configure the parallism setting as below.
+To enable 3D tensor parallelism for our model, e.g. on 8 GPUs, we need to configure the parallelism setting as below.
 ```python
 CONFIG = dict(parallel=dict(
     data=1,

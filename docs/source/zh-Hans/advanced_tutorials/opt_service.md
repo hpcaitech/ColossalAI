@@ -52,7 +52,7 @@ export CHECKPOINT_DIR="your_opt_checkpoint_path"
 # the ${CONFIG_DIR} must contain a server.sh file as the entry of service
 export CONFIG_DIR="config_file_path"
 
-docker run --gpus all  --rm -it -p 8020:8020 -v ${CHECKPOINT_DIR}:/model_checkpoint -v ${CONFIG_DIR}:/config --ipc=host energonai:lastest
+docker run --gpus all  --rm -it -p 8020:8020 -v ${CHECKPOINT_DIR}:/model_checkpoint -v ${CONFIG_DIR}:/config --ipc=host energonai:latest
 ```
 
 接下来，您就可以在您的浏览器中打开 `https://[IP-ADDRESS]:8020/docs#` 进行测试。
