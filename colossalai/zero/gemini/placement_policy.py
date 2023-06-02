@@ -43,7 +43,7 @@ class CPUPlacementPolicy(PlacementPolicy):
         start = time()
         for chunk in can_evict_chunks:
             self.chunk_manager.release_chunk(chunk)
-            self.chunk_manager.move_chunk(chunk, torch.device('cpu'))
+            # self.chunk_manager.move_chunk(chunk, torch.device('cpu'))
             volume += chunk.chunk_mem
         return volume, time() - start
 

@@ -94,7 +94,9 @@ def main(args):
         critic.model.tie_weights()
 
         initial_model = BLOOMActor(config=model_config, lora_rank=args.lora_rank, checkpoint=args.grad_checkpoint)
+        initial_model.model.tie_weights()
         reward_model = BLOOMCritic(config=critic_config, lora_rank=args.lora_rank, checkpoint=args.grad_checkpoint)
+        reward_model.model.tie_weights()
         reward_model = RewardModel(reward_model.model, reward_model.value_head)
 
     if args.use_kernels:
