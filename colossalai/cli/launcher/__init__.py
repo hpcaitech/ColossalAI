@@ -28,7 +28,7 @@ from .run import launch_multi_processes
     type=str,
     default=None,
     help=
-    "Specify computing devices to NOT use during execution. Mutually exclusive with --include. Formatting is the same as --includ,"
+    "Specify computing devices to NOT use during execution. Mutually exclusive with --include. Formatting is the same as --include,"
     " only effective when used with --hostfile.")
 @click.option("--num_nodes",
               type=int,

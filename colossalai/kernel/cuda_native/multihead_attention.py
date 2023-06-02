@@ -43,7 +43,7 @@ class Config:
     attn_prob_dropout_ratio: float    # attention score dropout ratio
     hidden_dropout_ratio: float    # dropout ration before residual
     norm_first: bool    # norm_first
-    fp16: bool    # fp16 presion
+    fp16: bool    # fp16 precision
 
 
 class MultiHeadAttention1DFunc(Function):
