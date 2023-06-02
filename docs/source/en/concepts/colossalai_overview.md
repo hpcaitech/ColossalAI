@@ -34,3 +34,5 @@ The Colossal-AI system will be expanded to include more training skills, these n
 4. expansion of existing parallelism methods
 
 We welcome ideas and contribution from the community and you can post your idea for future development in our forum.
+
+<!-- doc-test-command: echo "installation.md does not need test"  -->

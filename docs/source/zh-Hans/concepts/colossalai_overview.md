@@ -34,3 +34,5 @@ Colossal-AI 系统将会进一步拓展和优化，包括但不限于:
 4. 拓展现有的并行方法
 
 **我们始终欢迎社区的建议和讨论，如果您遇到任何问题，我们将非常愿意帮助您。您可以在GitHub 提 [issue](https://github.com/hpcaitech/ColossalAI/issues) ，或在[论坛](https://github.com/hpcaitech/ColossalAI/discussions)上创建一个讨论主题。**
+
+<!-- doc-test-command: echo "installation.md does not need test"  -->
