@@ -14,9 +14,9 @@ In our new design, `colossalai.booster` replaces the role of `colossalai.initial
 ### Plugin
 Plugin is an important component that manages parallel configuration (eg: The gemini plugin encapsulates the gemini acceleration solution). Currently supported plugins are as follows:
 
-***GeminiPlugin:*** This plugin wrapps the Gemini acceleration solution, that ZeRO with chunk-based memory management.
+***GeminiPlugin:*** This plugin wraps the Gemini acceleration solution, that ZeRO with chunk-based memory management.
 
-***TorchDDPPlugin:*** This plugin wrapps the DDP acceleration solution, it implements data parallelism at the module level which can run across multiple machines.
+***TorchDDPPlugin:*** This plugin wraps the DDP acceleration solution, it implements data parallelism at the module level which can run across multiple machines.
 
 ***LowLevelZeroPlugin:*** This plugin wraps the 1/2 stage of Zero Redundancy Optimizer. Stage 1 : Shards optimizer states across data parallel workers/GPUs. Stage 2 : Shards optimizer states + gradients across data parallel workers/GPUs.
 
@@ -24,24 +24,6 @@ Plugin is an important component that manages parallel configuration (eg: The ge
 
 
 {{ autodoc:colossalai.booster.Booster }}
-
-{{ autodoc:colossalai.booster.Booster.boost }}
-
-{{ autodoc:colossalai.booster.Booster.backward }}
-
-{{ autodoc:colossalai.booster.Booster.no_sync }}
-
-{{ autodoc:colossalai.booster.Booster.save_model }}
-
-{{ autodoc:colossalai.booster.Booster.load_model }}
-
-{{ autodoc:colossalai.booster.Booster.save_optimizer }}
-
-{{ autodoc:colossalai.booster.Booster.load_optimizer }}
-
-{{ autodoc:colossalai.booster.Booster.save_lr_scheduler }}
-
-{{ autodoc:colossalai.booster.Booster.load_lr_scheduler }}
 
 ## Usage
 In a typical workflow, you should launch distributed environment at the beginning of training script and create objects needed (such as models, optimizers, loss function, data loaders etc.) firstly, then call `colossalai.booster` to inject features into these objects, After that, you can use our booster APIs and these returned objects to continue the rest of your training processes.

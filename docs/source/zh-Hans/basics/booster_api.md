@@ -25,24 +25,6 @@ Booster插件是管理并行配置的重要组件（eg：gemini插件封装了ge
 
 {{ autodoc:colossalai.booster.Booster }}
 
-{{ autodoc:colossalai.booster.Booster.boost }}
-
-{{ autodoc:colossalai.booster.Booster.backward }}
-
-{{ autodoc:colossalai.booster.Booster.no_sync }}
-
-{{ autodoc:colossalai.booster.Booster.save_model }}
-
-{{ autodoc:colossalai.booster.Booster.load_model }}
-
-{{ autodoc:colossalai.booster.Booster.save_optimizer }}
-
-{{ autodoc:colossalai.booster.Booster.load_optimizer }}
-
-{{ autodoc:colossalai.booster.Booster.save_lr_scheduler }}
-
-{{ autodoc:colossalai.booster.Booster.load_lr_scheduler }}
-
 ## 使用方法及示例
 
 在使用colossalai训练时，首先需要在训练脚本的开头启动分布式环境，并创建需要使用的模型、优化器、损失函数、数据加载器等对象。之后，调用`colossalai.booster` 将特征注入到这些对象中，您就可以使用我们的booster API去进行您接下来的训练流程。

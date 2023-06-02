@@ -23,27 +23,28 @@ class Booster:
     training with different precision, accelerator, and plugin.
 
     Examples:
-        >>> colossalai.launch(...)
-        >>> plugin = GeminiPlugin(stage=3, ...)
-        >>> booster = Booster(precision='fp16', plugin=plugin)
-        >>>
-        >>> model = GPT2()
-        >>> optimizer = Adam(model.parameters())
-        >>> dataloader = Dataloader(Dataset)
-        >>> lr_scheduler = LinearWarmupScheduler()
-        >>> criterion = GPTLMLoss()
-        >>>
-        >>> model, optimizer, lr_scheduler, dataloader = booster.boost(model, optimizer, lr_scheduler, dataloader)
-        >>>
-        >>> for epoch in range(max_epochs):
-        >>>     for input_ids, attention_mask in dataloader:
-        >>>         outputs = model(input_ids, attention_mask)
-        >>>         loss = criterion(outputs.logits, input_ids)
-        >>>         booster.backward(loss, optimizer)
-        >>>         optimizer.step()
-        >>>         lr_scheduler.step()
-        >>>         optimizer.zero_grad()
+        ```python
+        colossalai.launch(...)
+        plugin = GeminiPlugin(stage=3, ...)
+        booster = Booster(precision='fp16', plugin=plugin)
 
+        model = GPT2()
+        optimizer = Adam(model.parameters())
+        dataloader = Dataloader(Dataset)
+        lr_scheduler = LinearWarmupScheduler()
+        criterion = GPTLMLoss()
+
+        model, optimizer, lr_scheduler, dataloader = booster.boost(model, optimizer, lr_scheduler, dataloader)
+
+        for epoch in range(max_epochs):
+            for input_ids, attention_mask in dataloader:
+                outputs = model(input_ids, attention_mask)
+                loss = criterion(outputs.logits, input_ids)
+                booster.backward(loss, optimizer)
+                optimizer.step()
+                lr_scheduler.step()
+                optimizer.zero_grad()
+        ```
 
     Args:
         device (str or torch.device): The device to run the training. Default: 'cuda'.
@@ -130,6 +131,12 @@ class Booster:
         return model, optimizer, criterion, dataloader, lr_scheduler
 
     def backward(self, loss: torch.Tensor, optimizer: Optimizer) -> None:
+        """Backward pass.
+
+        Args:
+            loss (torch.Tensor): The loss to be backpropagated.
+            optimizer (Optimizer): The optimizer to be updated.
+        """
         # TODO: implement this method with plugin
         optimizer.backward(loss)
 
@@ -146,6 +153,14 @@ class Booster:
         pass
 
     def no_sync(self, model: nn.Module) -> contextmanager:
+        """Context manager to disable gradient synchronization across DP process groups.
+
+        Args:
+            model (nn.Module): The model to be disabled gradient synchronization.
+
+        Returns:
+            contextmanager: Context to disable gradient synchronization.
+        """
         assert self.plugin is not None, f'no_sync is only enabled when a plugin is provided and the plugin supports no_sync.'
         assert self.plugin.support_no_sync, f'The plugin {self.plugin.__class__.__name__} does not support no_sync.'
         return self.plugin.no_sync(model)
@@ -181,7 +196,7 @@ class Booster:
                 If true, the checkpoint will be a folder. Otherwise, it will be a single file. Defaults to False.
             size_per_shard (int, optional): Maximum size of checkpoint shard file in MB. This is useful only when ``shard=True``. Defaults to 1024.
         """
-        self.checkpoint_io.save_model(model, checkpoint, prefix, shard, size_per_shard)
+        self.checkpoint_io.save_model(model, checkpoint=checkpoint, shard=shard, size_per_shard=size_per_shard)
 
     def load_optimizer(self, optimizer: Optimizer, checkpoint: str):
         """Load optimizer from checkpoint.

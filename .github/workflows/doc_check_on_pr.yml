@@ -2,47 +2,49 @@ name: Check Documentation on PR
 
 on:
   pull_request:
+    branches:
+      - "main"
+      - "develop"
+      - "feature/**"
     paths:
-      - 'docs/**'
+      - "docs/**"
 
 jobs:
   check-i18n:
     name: Check docs in diff languages
     if: |
-        github.event.pull_request.draft == false &&
-        github.base_ref == 'main' &&
-        github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
 
       - uses: actions/setup-python@v2
         with:
-          python-version: '3.8.14'
+          python-version: "3.8.14"
 
       - run: python .github/workflows/scripts/check_doc_i18n.py -d docs/source
 
   check-doc-build:
     name: Test if the docs can be built
     if: |
-        github.event.pull_request.draft == false &&
-        github.base_ref == 'main' &&
-        github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
         with:
-          path: './ColossalAI'
+          path: "./ColossalAI"
           fetch-depth: 0
 
       - uses: actions/checkout@v2
         with:
-          path: './ColossalAI-Documentation'
-          repository: 'hpcaitech/ColossalAI-Documentation'
+          path: "./ColossalAI-Documentation"
+          repository: "hpcaitech/ColossalAI-Documentation"
 
       - uses: actions/setup-python@v2
         with:
-          python-version: '3.8.14'
+          python-version: "3.8.14"
 
       # we use the versions in the main branch as the guide for versions to display
       # checkout will give your merged branch
@@ -56,7 +58,6 @@ jobs:
           git branch -u origin/main
           git config user.name 'github-actions'
           git config user.email 'github-actions@github.com'
-
 
       - name: Build docs
         run: |

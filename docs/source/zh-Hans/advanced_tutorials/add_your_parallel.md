@@ -48,7 +48,7 @@ Colossal-AI 为用户提供了一个全局 context，使他们能够轻松地管
                     world_size: int,
                     config: Config,
                     data_parallel_size: int,
-                    pipeline_parlalel_size: int,
+                    pipeline_parallel_size: int,
                     tensor_parallel_size: int,
                     arg1,
                     arg2):

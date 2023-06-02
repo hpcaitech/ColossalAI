@@ -212,7 +212,7 @@ class NodeHandler(ABC):
         return self.strategies_vector
 
     def post_process(self, strategy: ShardingStrategy) -> Union[ShardingStrategy, List[ShardingStrategy]]:
-        # tranform the strategy generated
+        # transform the strategy generated
         # e.g. to process the sharding strategy for the transposed weights
         return strategy
 

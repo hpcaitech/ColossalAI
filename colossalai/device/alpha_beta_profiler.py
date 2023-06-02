@@ -197,7 +197,7 @@ class AlphaBetaProfiler:
             dist.broadcast_object_list(broadcast_list, src=process_group[0])
             alpha_beta_dict[process_group] = tuple(broadcast_list)
 
-        # add symmetry pair to the apha_beta_dict
+        # add symmetry pair to the alpha_beta_dict
         symmetry_ab_dict = {}
         for process_group, alpha_beta_pair in alpha_beta_dict.items():
             symmetry_process_group = (process_group[1], process_group[0])
@@ -381,7 +381,7 @@ class AlphaBetaProfiler:
         first_latency, first_bandwidth = _extract_alpha_beta(first_axis, first_axis_process_group)
         second_latency, second_bandwidth = _extract_alpha_beta(second_axis, second_axis_process_group)
         mesh_alpha = [first_latency, second_latency]
-        # The beta values have been enlarged by 1e10 times temporarilly because the computation cost
+        # The beta values have been enlarged by 1e10 times temporarily because the computation cost
         # is still estimated in the unit of TFLOPs instead of time. We will remove this factor in future.
         mesh_beta = [1e10 / first_bandwidth, 1e10 / second_bandwidth]
 

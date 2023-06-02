@@ -102,7 +102,7 @@ class ChunkManager:
         """
         if chunk in self.accessed_chunks:
             return
-        self.__sub_memroy_usage(chunk.memory_usage)
+        self.__sub_memory_usage(chunk.memory_usage)
         if chunk.device_type == 'cpu':
             chunk.shard_move(get_current_device())
         self.__add_accessed_chunk(chunk)
@@ -114,7 +114,7 @@ class ChunkManager:
         if chunk not in self.accessed_chunks:
             return
         if chunk.can_release:
-            self.__sub_memroy_usage(chunk.memory_usage)
+            self.__sub_memory_usage(chunk.memory_usage)
             self.__sub_accessed_chunk(chunk)
             self.__add_memory_usage(chunk.memory_usage)
 
@@ -123,7 +123,7 @@ class ChunkManager:
         """
         if not chunk.can_move or chunk.device_type == device.type:
             return
-        self.__sub_memroy_usage(chunk.memory_usage)
+        self.__sub_memory_usage(chunk.memory_usage)
         chunk.shard_move(device, force_copy)
         self.__add_memory_usage(chunk.memory_usage)
 
@@ -138,7 +138,7 @@ class ChunkManager:
         """
         if not chunk.can_reduce:
             return False
-        self.__sub_memroy_usage(chunk.memory_usage)
+        self.__sub_memory_usage(chunk.memory_usage)
         chunk.reduce()
         self.__sub_accessed_chunk(chunk)
         self.__add_memory_usage(chunk.memory_usage)
@@ -228,11 +228,11 @@ class ChunkManager:
         return self.chunk_groups[group_name]
 
     def __close_one_chunk(self, chunk: Chunk):
-        self.__sub_memroy_usage(chunk.memory_usage)
+        self.__sub_memory_usage(chunk.memory_usage)
         chunk.close_chunk()
         self.__add_memory_usage(chunk.memory_usage)
 
-    def __sub_memroy_usage(self, usage: Dict[str, int]):
+    def __sub_memory_usage(self, usage: Dict[str, int]):
         for k, v in usage.items():
             self.total_mem[k] -= v
 

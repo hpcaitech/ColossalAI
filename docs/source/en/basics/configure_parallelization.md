@@ -2,6 +2,8 @@
 
 Author: Shenggui Li, Siqi Mai
 
+> ⚠️ The information on this page is outdated and will be deprecated. Please check [Booster Plugins](../basics/booster_plugins.md) for more information.
+
 **Prerequisite:**
 - [Distributed Training](../concepts/distributed_training.md)
 - [Paradigms of Parallelism](../concepts/paradigms_of_parallelism.md)

@@ -1,5 +1,5 @@
 import pytest
-from utils import SUPPORT_LAZY, check_lazy_init
+from lazy_init_utils import SUPPORT_LAZY, check_lazy_init
 
 from tests.kit.model_zoo import model_zoo
 
