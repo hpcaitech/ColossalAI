@@ -1,0 +1,7 @@
+diffusers>==0.5.0
+accelerate
+torchvision
+transformers>=4.21.0
+ftfy
+tensorboard
+modelcards
