@@ -19,7 +19,7 @@ We aim to make Colossal-AI easy to use and non-intrusive to user code. There is 
 
 1. Prepare a configuration file where specifies the features you want to use and your parameters.
 2. Initialize distributed backend with `colossalai.launch`
-3. Inject the training features into your training components (e.g. model, optimizer) with `colossalai.initialize`.
+3. Inject the training features into your training components (e.g. model, optimizer) with `colossalai.booster`.
 4. Run training and testing
 
 We will cover the whole workflow in the `basic tutorials` section.
