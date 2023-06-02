@@ -295,7 +295,7 @@ class ColoTracer(Tracer):
 
                 @staticmethod
                 def forward(ctx, run_function, preserve_rng_state, *args):
-                    # signal that the current tracing occurs within activaton checkpoint part
+                    # signal that the current tracing occurs within activation checkpoint part
                     self.inside_torch_checkpoint_func = True
                     out = run_function(*args)
                     self.inside_torch_checkpoint_func = False
