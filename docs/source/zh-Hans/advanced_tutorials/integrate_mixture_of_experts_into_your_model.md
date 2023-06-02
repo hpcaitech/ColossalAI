@@ -87,7 +87,7 @@ ffn=MoeLayer(dim_model=d_model, num_experts=num_experts,
              router=shared_router, experts=shared_experts)
 ```
 
-在Experts的初始化中，会自动计算每个GPU的本地expert数量，您只需指定每个专家的类型及其在初始化时使用的参数。此外，我们提供了top1 router和top2 router，您可以在`colossalai.nn.layer.moe` 找到它们。在创建experts和router的实例时，`Moelayer`只初始化了`gate`模块，类型的更多详细信息您可以参考我们的API文档和代码。
+在Experts的初始化中，会自动计算每个GPU的本地expert数量，您只需指定每个专家的类型及其在初始化时使用的参数。此外，我们提供了`Top1Router`和`Top2Router`，您可以在`colossalai.nn.layer.moe` 找到它们。在创建experts和router的实例时，`Moelayer`只初始化了`gate`模块，类型的更多详细信息您可以参考我们的API文档和代码。
 
 ## 定义训练模型
 
