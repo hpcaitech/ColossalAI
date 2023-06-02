@@ -154,7 +154,7 @@ def get_launch_command(
         extra_launch_args = dict()
 
     torch_version = version.parse(torch.__version__)
-    assert torch_version.major >= 1
+    assert torch_version.major == 1
 
     if torch_version.minor < 9:
         cmd = [
