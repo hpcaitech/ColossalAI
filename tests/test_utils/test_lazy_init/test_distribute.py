@@ -12,7 +12,7 @@ from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.utils.common import print_rank_0
 
 try:
-    from colossalai.utils.model.experimental import LazyInitContext, LazyTensor, _MyTensor
+    from colossalai.lazy.lazy_init import LazyInitContext, LazyTensor, _MyTensor
 except:
     pass
 from lazy_init_utils import SUPPORT_LAZY, assert_dist_model_equal, set_seed
