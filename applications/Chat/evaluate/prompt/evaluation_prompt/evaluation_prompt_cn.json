@@ -1,5 +1,5 @@
-[
-  {
+{
+  "brainstorming": {
     "id": 1,
     "category": "brainstorming",
     "metrics": {
@@ -18,7 +18,7 @@
     },
     "prompt": "你是一个好助手。请你为下面“头脑风暴”问题的答案打分。\n\n问题如下：\n\n{question}\n\n答案如下：\n\n{answer}\n\n评分的指标如下：\n\n{metric}\n\n请你遵照以下的评分步骤：\n\n{steps}"
   },
-  {
+  "chat": {
     "id": 2,
     "category": "chat",
     "metrics": {
@@ -37,7 +37,7 @@
     },
     "prompt": "你是一个好助手。请你为下面的“补全对话”问题的答案打分。\n\n问题如下：\n\n{question}\n\n答案如下：\n\n{answer}\n\n评分的指标如下：\n\n{metric}\n\n请你遵照以下的评分步骤：\n\n{steps}"
   },
-  {
+  "classification": {
     "id": 3,
     "category": "classification",
     "metrics": {
@@ -52,7 +52,7 @@
     },
     "prompt": "你是一个好助手。请你为下面的“分类“问题的答案打分。\n\n问题如下：\n\n{question}\n\n答案如下：\n\n{answer}\n\n评分的指标如下：\n\n{metric}\n\n请你遵照以下的评分步骤：\n\n{steps}"
   },
-  {
+  "closed_qa": {
     "id": 4,
     "category": "closed_qa",
     "metrics": {
@@ -67,7 +67,7 @@
     },
     "prompt": "你是一个好助手。请你为下面问题的答案打分。\n\n问题如下：\n\n{question}\n\n需要你评分的答案如下：\n\n{answer}\n\n评分的指标如下：\n\n{metric}\n\n请你遵照以下的评分步骤：\n\n{steps}"
   },
-  {
+  "extraction": {
     "id": 5,
     "category": "extraction",
     "metrics": {
@@ -82,7 +82,7 @@
     },
     "prompt": "你是一个好助手。请你为下面的“提取”问题的答案打分。\n\n问题如下：\n\n{question}\n\n答案如下：\n\n{answer}\n\n评分的指标如下：\n\n{metric}\n\n请你遵照以下的评分步骤：\n\n{steps}"
   },
-  {
+  "generation": {
     "id": 6,
     "category": "generation",
     "metrics": {
@@ -97,7 +97,7 @@
     },
     "prompt": "你是一个好助手。请你为下面的“生成”问题的答案打分。\n\n问题如下：\n\n{question}\n\n答案如下：\n\n{answer}\n\n评分的指标如下：\n\n{metric}\n\n请你遵照以下的评分步骤：\n\n{steps}"
   },
-  {
+  "open_qa": {
     "id": 7,
     "category": "open_qa",
     "metrics": {
@@ -112,7 +112,7 @@
     },
     "prompt": "你是一个好助手。请你为下面的问题的答案打分。\n\n问题如下：\n\n{question}\n\n答案如下：\n\n{answer}\n\n评分的指标如下：\n\n{metric}\n\n请你遵照以下的评分步骤：\n\n{steps}"
   },
-  {
+  "rewriting": {
     "id": 8,
     "category": "rewriting",
     "metrics": {
@@ -127,7 +127,7 @@
     },
     "prompt": "你是一个好助手。请你为下面的问题的答案打分。\n\n问题如下：\n\n{question}\n\n答案如下：\n\n{answer}\n\n评分的指标如下：\n\n{metric}\n\n请你遵照以下的评分步骤：\n\n{steps}"
   },
-  {
+  "roleplay": {
     "id": 9,
     "category": "roleplay",
     "metrics": {
@@ -144,7 +144,7 @@
     },
     "prompt": "你是一个好助手。请你为下面的“角色扮演”问题的答案打分。\n\n问题如下：\n\n{question}\n\n答案如下：\n\n{answer}\n\n评分的指标如下：\n\n{metric}\n\n请你遵照以下的评分步骤：\n\n{steps}"
   },
-  {
+  "summarization": {
     "id": 10,
     "category": "summarization",
     "metrics": {
@@ -161,7 +161,7 @@
     },
     "prompt": "你是一个好助手。请你为下面的“总结”问题的答案打分。\n\n问题如下：\n\n{question}\n\n答案如下：\n\n{answer}\n\n评分的指标如下：\n\n{metric}\n\n请你遵照以下的评分步骤：\n\n{steps}"
   },
-  {
+  "general": {
     "id": 11,
     "category": "general",
     "metrics": {
@@ -176,4 +176,4 @@
     },
     "prompt": "你是一个好助手。请你为下面问题的答案打分。\n\n问题如下：\n\n{question}\n\n需要你评分的答案如下：\n\n{answer}\n\n评分的指标如下：\n\n{metric}\n\n请你遵照以下的评分步骤：\n\n{steps}"
   }
-]
+}
