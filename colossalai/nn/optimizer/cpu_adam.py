@@ -21,7 +21,7 @@ class CPUAdam(NVMeOptimizer):
 
     `CPUAdam` requires CUDA extensions which can be built during installation or runtime.
 
-    This version of CPU Adam accelates parameters updating on CPU with SIMD.
+    This version of CPU Adam accelerates parameters updating on CPU with SIMD.
     Support of AVX2 or AVX512 is required.
 
     The GPU part is implemented in an naive way.

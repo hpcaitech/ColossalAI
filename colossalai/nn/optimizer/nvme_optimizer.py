@@ -43,7 +43,7 @@ class NVMeOptimizer(torch.optim.Optimizer):
             self.offloader = None
         self.is_on_nvme: Dict[Parameter, bool] = {}
         self.offloaded_numel: int = 0
-        # As param may be not materialized here, these attributes are initalized when the first step
+        # As param may be not materialized here, these attributes are initialized when the first step
         self.total_numel: Optional[int] = None
         self.can_offload_numel: Optional[int] = None
 
