@@ -120,7 +120,7 @@ pipelinable.to_layer_list(exec_seq)
 model = pipelinable.partition(NUM_CHUNKS, gpc.pipeline_parallel_size, gpc.get_local_rank(ParallelMode.PIPELINE))
 ```
 
-我们使用`booster`训练`ResNet`:
+我们使用`Trainer`训练`ResNet`:
 ```python
 # build criterion
 criterion = nn.CrossEntropyLoss()
