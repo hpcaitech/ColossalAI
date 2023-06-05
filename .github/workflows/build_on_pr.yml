@@ -40,11 +40,11 @@ jobs:
       - name: Copy testmon cache
         run: |
           if [ -d /github/home/testmon_cache/${MAIN_BRANCH} ]; then
-            [ ! -z "$(ls -A /github/home/testmon_cache/${MAIN_BRANCH})" ] && cp -p -r /github/home/testmon_cache/${MAIN_BRANCH} /github/home/testmon_cache/${REF_BRANCH}
+            [ ! -z "$(ls -A /github/home/testmon_cache/${MAIN_BRANCH})" ] && cp -p -r /github/home/testmon_cache/${MAIN_BRANCH} "/github/home/testmon_cache/${REF_BRANCH}"
           fi
         env:
           MAIN_BRANCH: ${{ github.event.master_branch }}
-          REF_BRANCH: ${{ github.event.ref }}
+          REF_BRANCH: echo ${{ github.event.ref }} | sed "s/\// /" # replace '/' with ' '
 
   test_edit:
     name: Test edit
@@ -83,11 +83,11 @@ jobs:
     steps:
       - name: Copy testmon cache
         run: |
-          if [ -d /github/home/testmon_cache/${BASE} ]; then
-            [ ! -z "$(ls -A /github/home/testmon_cache/${BASE})" ] && mkdir /github/home/testmon_cache/_pull && cp -p -r /github/home/testmon_cache/${BASE} /github/home/testmon_cache/_pull/${PR_NUMBER}
+          if [ -d "/github/home/testmon_cache/${BASE}" ]; then
+            [ ! -z "$(ls -A "/github/home/testmon_cache/${BASE}")" ] && mkdir /github/home/testmon_cache/_pull && cp -p -r "/github/home/testmon_cache/${BASE}" /github/home/testmon_cache/_pull/${PR_NUMBER}
           fi
         env:
-          BASE: ${{ github.event.pull_request.base.ref }}
+          BASE: echo ${{ github.event.pull_request.base.ref }} | sed "s/\// /" # replace '/' with ' '
           PR_NUMBER: ${{ github.event.pull_request.head.ref }}
 
   detect:
@@ -284,10 +284,10 @@ jobs:
         if: github.event.pull_request.merged == true
         run: |
           if [ -d /github/home/testmon_cache/_pull/${PR_NUMBER} ]; then
-            [ ! -z "$(ls -A /github/home/testmon_cache/_pull/${PR_NUMBER})" ] && cp -p -r /github/home/testmon_cache/_pull/${PR_NUMBER}/.testmondata* /github/home/testmon_cache/${BASE}/
+            [ ! -z "$(ls -A /github/home/testmon_cache/_pull/${PR_NUMBER})" ] && cp -p -r /github/home/testmon_cache/_pull/${PR_NUMBER}/.testmondata* "/github/home/testmon_cache/${BASE}/"
           fi
         env:
-          BASE: ${{ github.event.pull_request.base.ref }}
+          BASE: echo ${{ github.event.pull_request.base.ref }} | sed "s/\// /" # replace '/' with ' '
           PR_NUMBER: ${{ github.event.pull_request.number }}
 
       - name: Remove testmon cache
@@ -314,6 +314,6 @@ jobs:
     steps:
       - name: Remove testmon cache
         run: |
-          rm -rf /github/home/testmon_cache/${BASE}
+          rm -rf "/github/home/testmon_cache/${BASE}"
         env:
-          BASE: ${{ github.event.ref }}
+          BASE: echo ${{ github.event.ref }} | sed "s/\// /" # replace '/' with ' '
