@@ -38,13 +38,13 @@ jobs:
         shell: bash
     steps:
       - name: Copy testmon cache
-        run: |
+        run: | # branch name may contain slash, we need to replace it with space
+          export REF_BRANCH=$(echo ${{ github.event.ref }} | sed "s/\// /")
           if [ -d /github/home/testmon_cache/${MAIN_BRANCH} ]; then
             [ ! -z "$(ls -A /github/home/testmon_cache/${MAIN_BRANCH})" ] && cp -p -r /github/home/testmon_cache/${MAIN_BRANCH} "/github/home/testmon_cache/${REF_BRANCH}"
           fi
         env:
           MAIN_BRANCH: ${{ github.event.master_branch }}
-          REF_BRANCH: echo ${{ github.event.ref }} | sed "s/\// /" # replace '/' with ' '
 
   test_edit:
     name: Test edit
@@ -82,12 +82,12 @@ jobs:
         shell: bash
     steps:
       - name: Copy testmon cache
-        run: |
+        run: | # branch name may contain slash, we need to replace it with space
+          export BASE=$(echo ${{ github.event.pull_request.base.ref }} | sed "s/\// /")
           if [ -d "/github/home/testmon_cache/${BASE}" ]; then
             [ ! -z "$(ls -A "/github/home/testmon_cache/${BASE}")" ] && mkdir /github/home/testmon_cache/_pull && cp -p -r "/github/home/testmon_cache/${BASE}" /github/home/testmon_cache/_pull/${PR_NUMBER}
           fi
         env:
-          BASE: echo ${{ github.event.pull_request.base.ref }} | sed "s/\// /" # replace '/' with ' '
           PR_NUMBER: ${{ github.event.pull_request.head.ref }}
 
   detect:
@@ -282,12 +282,12 @@ jobs:
     steps:
       - name: Store testmon cache if possible
         if: github.event.pull_request.merged == true
-        run: |
+        run: | # branch name may contain slash, we need to replace it with space
+          export BASE=$(echo ${{ github.event.pull_request.base.ref }} | sed "s/\// /")
           if [ -d /github/home/testmon_cache/_pull/${PR_NUMBER} ]; then
             [ ! -z "$(ls -A /github/home/testmon_cache/_pull/${PR_NUMBER})" ] && cp -p -r /github/home/testmon_cache/_pull/${PR_NUMBER}/.testmondata* "/github/home/testmon_cache/${BASE}/"
           fi
         env:
-          BASE: echo ${{ github.event.pull_request.base.ref }} | sed "s/\// /" # replace '/' with ' '
           PR_NUMBER: ${{ github.event.pull_request.number }}
 
       - name: Remove testmon cache
@@ -313,7 +313,6 @@ jobs:
         shell: bash
     steps:
       - name: Remove testmon cache
-        run: |
+        run: | # branch name may contain slash, we need to replace it with space
+          export BASE=$(echo ${{ github.event.ref }} | sed "s/\// /")
           rm -rf "/github/home/testmon_cache/${BASE}"
-        env:
-          BASE: echo ${{ github.event.ref }} | sed "s/\// /" # replace '/' with ' '
