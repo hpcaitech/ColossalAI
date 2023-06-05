@@ -70,7 +70,7 @@ jobs:
     name: Prepare testmon cache for PR
     if: |
       github.event_name == 'pull_request' &&
-      (github.event.action == 'opened' || github.event.action == 'reopened' || (github.event.action == 'edited' && github.event.changes.base != null)) &&
+      (github.event.action == 'opened' || github.event.action == 'reopened') &&
       github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
     runs-on: [self-hosted, gpu]
     container:
