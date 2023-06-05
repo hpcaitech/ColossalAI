@@ -1,7 +1,6 @@
 # this code is inspired by the DeepSpeed library and implemented with our own design from scratch
 import math
 import warnings
-from enum import Enum
 from typing import Any, Dict, Set, Tuple
 
 import torch
@@ -9,7 +8,7 @@ import torch.distributed as dist
 from torch.nn import Parameter
 from torch.optim import Optimizer
 
-from colossalai.amp.naive_amp.grad_scaler import DynamicGradScaler
+from colossalai.amp.naive_amp.mixed_precision_mixin import BF16MixedPrecisionMixin, FP16MixedPrecisionMixin
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import ColossalaiOptimizer, CPUAdam, FusedAdam, HybridAdam
 from colossalai.utils import disposable, get_current_device, is_ddp_ignored
@@ -22,9 +21,26 @@ __all__ = ['ZeroOptimizer', 'GeminiAdamOptimizer']
 _AVAIL_OPTIM_LIST = {FusedAdam, CPUAdam, HybridAdam}
 
 
-class OptimState(Enum):
-    SCALED = 0
-    UNSCALED = 1
+class GeminiFP16MixedPrecisionMixin(FP16MixedPrecisionMixin):
+
+    def __init__(self,
+                 module: ZeroDDP,
+                 initial_scale: float = 2**16,
+                 min_scale: float = 1,
+                 growth_factor: float = 2,
+                 backoff_factor: float = 0.5,
+                 growth_interval: int = 1000,
+                 hysteresis: int = 2,
+                 max_scale: float = 2**32) -> None:
+        super().__init__(initial_scale, min_scale, growth_factor, backoff_factor, growth_interval, hysteresis,
+                         max_scale)
+        self.module = module
+
+    def check_local_overflow(self) -> bool:
+        return self.module.overflow_counter > 0
+
+    def pre_zero_grad(self) -> None:
+        self.module.overflow_counter = 0
 
 
 class ZeroOptimizer(ColossalaiOptimizer):
@@ -79,7 +95,6 @@ class ZeroOptimizer(ColossalaiOptimizer):
         self.module = module
         self.gemini_manager = module.gemini_manager
         self.chunk_manager: ChunkManager = self.gemini_manager.chunk_manager
-        self.optim_state = OptimState.UNSCALED
         self.param_to_range: Dict[Parameter, Tuple[int, int]] = dict()
         self.param_to_chunk32: Dict[Parameter, Chunk] = dict()
         self.chunk16_set: Set[Chunk] = set()
@@ -107,15 +122,20 @@ class ZeroOptimizer(ColossalaiOptimizer):
 
         self.__init__optimizer()
 
-        # Grad scaler
-        self.grad_scaler = DynamicGradScaler(initial_scale=initial_scale,
-                                             min_scale=min_scale,
-                                             growth_factor=growth_factor,
-                                             backoff_factor=backoff_factor,
-                                             growth_interval=growth_interval,
-                                             hysteresis=hysteresis,
-                                             max_scale=max_scale)
-        self._found_overflow: torch.Tensor = torch.zeros(1, dtype=torch.int64, device=get_current_device())
+        if module.mixed_precision is torch.float16:
+            self.mix_precision_mixin = GeminiFP16MixedPrecisionMixin(module,
+                                                                     initial_scale=initial_scale,
+                                                                     min_scale=min_scale,
+                                                                     growth_factor=growth_factor,
+                                                                     backoff_factor=backoff_factor,
+                                                                     growth_interval=growth_interval,
+                                                                     hysteresis=hysteresis,
+                                                                     max_scale=max_scale)
+        elif module.mixed_precision is torch.bfloat16:
+            self.mix_precision_mixin = BF16MixedPrecisionMixin()
+        else:
+            raise RuntimeError(f"Unsupported mixed precision type: {module.mixed_precision}")
+
         self._logger = get_dist_logger()
 
         self.gpu_margin_mem_ratio: float = float(gpu_margin_mem_ratio)
@@ -151,15 +171,6 @@ class ZeroOptimizer(ColossalaiOptimizer):
         for chunk16 in self.chunk16_set:
             chunk16.optim_update()
 
-    def _check_overflow(self):
-        # clear previous overflow record
-        self._found_overflow.fill_(self.module.overflow_counter)
-
-        # all-reduce across global group
-        dist.all_reduce(self._found_overflow)
-
-        return self._found_overflow.item() > 0
-
     def _clear_global_norm(self) -> None:
         for c16 in self.chunk16_set:
             c16.l2_norm = None
@@ -190,40 +201,25 @@ class ZeroOptimizer(ColossalaiOptimizer):
         return global_norm
 
     def _get_combined_scale(self):
-        loss_scale = 1
+        div_scale = self.mix_precision_mixin.get_grad_div_scale()
 
-        if self.optim_state == OptimState.SCALED:
-            loss_scale = self.loss_scale
-            self.optim_state = OptimState.UNSCALED
-
-        combined_scale = loss_scale
         if self.clipping_flag:
             total_norm = self._calc_global_norm()
-            clip = ((total_norm / loss_scale) + 1e-6) / self.max_norm
+            clip = ((total_norm / div_scale) + 1e-6) / self.max_norm
             if clip > 1:
-                combined_scale = clip * loss_scale
+                div_scale = clip * div_scale
 
-        if combined_scale == 1:
-            return -1
-        else:
-            return combined_scale
-
-    @property
-    def loss_scale(self):
-        return self.grad_scaler.scale.item()
+        return -1 if div_scale == 1.0 else div_scale
 
     def zero_grad(self, *args, **kwargs):
-        self.module.overflow_counter = 0
+        self.mix_precision_mixin.pre_zero_grad()
         return self.optim.zero_grad(set_to_none=True)
 
     def step(self, *args, **kwargs):
         self._maybe_move_fp32_params()
         self._set_grad_ptr()
 
-        found_inf = self._check_overflow()
-        if found_inf:
-            self.optim_state = OptimState.UNSCALED    # no need to unscale grad
-            self.grad_scaler.update(found_inf)    # update gradient scaler
+        if self.mix_precision_mixin.should_skip_step():
             if self.verbose:
                 self._logger.info(f'Found overflow. Skip step')
             self._clear_global_norm()    # clear recorded norm
@@ -234,7 +230,6 @@ class ZeroOptimizer(ColossalaiOptimizer):
         # get combined scale. combined scale = loss scale * clipping norm
         # so that gradient = gradient / combined scale
         combined_scale = self._get_combined_scale()
-        self.grad_scaler.update(found_inf)
 
         ret = self.optim.step(div_scale=combined_scale, *args, **kwargs)
         self._register_states()
@@ -246,8 +241,7 @@ class ZeroOptimizer(ColossalaiOptimizer):
         raise NotImplementedError
 
     def backward(self, loss: torch.Tensor):
-        loss = self.loss_scale * loss
-        self.optim_state = OptimState.SCALED
+        loss = self.mix_precision_mixin.pre_backward(loss)
         self.module.backward(loss)
 
     def backward_by_grad(self, tensor: torch.Tensor, grad: torch.Tensor):
@@ -255,7 +249,7 @@ class ZeroOptimizer(ColossalaiOptimizer):
         # It receives the scaled grad from the previous rank
         # No need to scale the grad again
         # Need to unscale when optimizing
-        self.optim_state = OptimState.SCALED
+        grad = self.mix_precision_mixin.pre_backward_by_grad(grad)
         self.module.backward_by_grad(tensor, grad)
 
     def _maybe_move_fp32_params(self):

@@ -9,44 +9,24 @@
 - [Switch Transformers: Scaling to Trillion Parameter Models with Simple and Efficient Sparsity](https://arxiv.org/abs/2101.03961)
 - [Go Wider Instead of Deeper](https://arxiv.org/abs/2107.11817)
 
-（中文版教程将会在近期提供）
-
 ## Introduction
 
-Since the advent of Switch Transformer, the AI community has found Mixture of Experts (MoE) a useful technique to enlarge the capacity of deep learning models.
+自从`Switch Transformer`出现以来，人工智能社区发现专家混合 (MoE) 是一种扩大深度学习模型容量的有用技术。
+Colossal-AI 提供了专为MoE模型设计的并行性的早期访问版本。Colossal-AI中MoE最突出的优势就是方便。我们的目标是帮助我们的用户轻松地将MoE与模型并行性和数据并行性结合起来。
+但是，当前的实施现在有两个主要缺点。第一个缺点是它在大批量和长序列长度训练中效率低下。第二个缺点是与张量并行性不兼容。我们正在致力于系统优化，以克服训练效率问题。与张量并行的兼容性问题需要更多的适应，我们将在未来解决这个问题。
+在这里，我们将介绍如何使用具有模型并行性和数据并行性的 MoE。
 
-Colossal-AI provides an early access version of parallelism specifically designed for MoE models.
-The most prominent advantage of MoE in Colossal-AI is convenience.
-We aim to help our users to easily combine MoE with model parallelism and data parallelism.
+## 目录
+在本教程中，我们将介绍：
+1. [搭建MoE运行环境](#搭建moe运行环境)
+2. [创建MoE层](#创建moe层)
+3. [定义训练模型](#训练模型)
 
-However, the current implementation has two main drawbacks now.
-The first drawback is its poor efficiency in large batch size and long sequence length training.
-The second drawback is incompatibility with tensor parallelism.
-We are working on system optimization to overcome the training efficiency problem.
-The compatibility problem with tensor parallelism requires more adaptation, and we will tackle this issue in the future.
+我们提供[示例](https://github.com/hpcaitech/ColossalAI-Examples/tree/main/image/widenet)， 详细介绍请参考 [ColossalAI-Examples](https://github.com/hpcaitech/ColossalAI-Examples).
+该示例使用 [WideNet](https://arxiv.org/abs/2107.11817) 作为基于 MoE 的模型的示例.
 
-Here, we will introduce how to use MoE with model parallelism and data parallelism.
-
-## Table of Content
-In this tutorial we will cover:
-1. Set up MoE running environment
-2. Create MoE layer
-3. Train your model
-
-We provided the [example code](https://github.com/hpcaitech/ColossalAI-Examples/tree/main/image/widenet) for this tutorial in [ColossalAI-Examples](https://github.com/hpcaitech/ColossalAI-Examples).
-This example uses [WideNet](https://arxiv.org/abs/2107.11817) as an example of MoE-based model.
-
-
-## Set up MoE running environment
-In your project folder, create a `config.py`.
-
-This file is to specify some features you may want to use to train your model.
-In order to enable MoE, you need to add a dict called parallel and specify the value of key moe.
-You can assign a value for the key size of moe, which represents the model parallel size of experts (i.e. the number of experts in one group to parallelize training).
-
-For example, if the size is 4, 4 processes will be assigned to 4 consecutive GPUs and these 4 processes form a moe model parallel group.
-Each process on the 4 GPUs will only get a portion of experts. Increasing the model parallel size will reduce communication cost, but increase computation cost in each GPU and activation cost in memory.
-The total data parallel size is auto-detected and set as the number of GPUs by default.
+## 搭建MoE运行环境
+在您的项目文件夹中，创建`config.py`文件。在该文件中，您可以指定希望用于训练模型的一些功能。为了启用 MoE，您需要在`config.py`中定义`parallel`字段，并指定`moe`的值。`moe`表示一组moe并行化训练组的并行大小。例如，`moe`设置为4，则4个进程将分配给4个连续的GPU，这4个进程组成一个moe模型并行组。每个进程只会得到一部分专家。增加mo e并行的大小将降低通信成本，但会增加每个GPU的计算成本和内存中activation的存储成本。总的数据并行的大小是自动检测的，默认情况下设置为GPU的数量。
 
 ```python
 MOE_MODEL_PARALLEL_SIZE = ...
@@ -55,37 +35,29 @@ parallel = dict(
 )
 ```
 
-If `MOE_MODEL_PARALLEL_SIZE = E` and set the number of experts as `E` where `E` is a constant number, the process flow of forward pass of a transformer encoder in a model parallel group is shown below.
+如果`MOE_MODEL_PARALLEL_SIZE = E`，即设置专家的总数为`E`（`E`为一个常数）。在模型并行中，transformer编码器中前向部分的处理流程如下图所示。
 
 <figure style={{textAlign: "center"}}>
 <img src="https://s2.loli.net/2022/01/28/oI59QcxdteKUTks.png"/>
 <figcaption>MoE Transformer, image source: <a href="https://arxiv.org/abs/2006.16668">GShard</a></figcaption>
 </figure>
 
-Since all experts are allocated to all GPUs in a model parallel group and a GPU only owns a portion of experts,
-original data parallel groups are no longer correct for the parameters of experts during gradient handling in backward pass anymore.
-So we create a new kind of parallel group called moe data parallel group.
-The difference among different kinds of parallel group, when the configuration is set as `WORLD_SIZE=4`,
-`MOE_MODEL_PARALLEL_SIZE=2`, is shown here.
+所有专家都分配给模型并行组中的GPU，每一个GPU只拥有一部分专家，原始数据并行组在反向传递的梯度处理期间不再适用于专家参数。所以我们创建了一个新的并行组，叫做moe数据并行组。当配置设置为`WORLD_SIZE=4`，`MOE_MODEL_PARALLEL_SIZE=2`时，两个并行组的区别如下图所示。
 
 <figure style={{textAlign: "center"}}>
 <img src="https://s2.loli.net/2022/01/28/Sn8FpmQPKIiBEq2.png"/>
-<figcaption>MoE process group</figcaption>
+<figcaption>MoE并行处理</figcaption>
 </figure>
 
+至于梯度处理，我们提供了`MoeGradientHandler`来all-reduce模型的每个参数。如果您使用`colossalai.initialize`函数创建您的训练引擎，MoE梯度处理程序将自动添加到您的引擎中。否则，你应该自己处理梯度。MoE运行环境的所有参数都保存在`colossalai.global_variables.moe_env`中。您可以访问您的配置参数来检查您的设置是否正确。
 
-As for gradient handling, we provide MoeGradientHandler to all-reduce every parameter of the model.
-If you use `colossalai.initialize` function to create your training engine, the MoE gradient handler will be added to your engine automatically.
-Otherwise, you should take care of gradient by yourself.
-All parameters of MoE running environment are stored in colossalai.global_variables.moe_env.
-You can access your configuration parameters to check whether your setup is correct.
 ```python
 from colossalai.global_variables import moe_env
 ```
 
-## Create MoE layer
-You can create a MoE layer from `colossalai.nn.moe`.
-But before doing that, you should set up random seeds for all processes like this.
+## 创建MoE层
+
+您可以从`colossalai.nn.moe`创建MoE层。但在此之前，您应该为所有进程设置随机种子。
 
 ```python
 from colossalai.context.random import moe_set_seed
@@ -95,10 +67,7 @@ moe_set_seed(42)
 model = Widenet(num_experts=4, capacity_factor=1.2)
 ```
 
-`moe_set_seed` will set different seed for different processes in a moe model parallel group.
-This helps initialize parameters in experts.
-Then create an instance of experts and an instance of router.
-Here is the example in model zoo.
+`moe_set_seed` 会为一个moe模型并行组中的不同进程设置不同的种子（这有助于在专家中初始化参数），创建一个专家实例和一个路由器实例，示例如下。
 
 ```python
 from colossalai.nn.layer.moe import Experts, MoeLayer, Top2Router, NormalNoiseGenerator
@@ -118,16 +87,11 @@ ffn=MoeLayer(dim_model=d_model, num_experts=num_experts,
              router=shared_router, experts=shared_experts)
 ```
 
-Inside the initialization of Experts, the local expert number of each GPU will be calculated automatically. You just need to specify the class of each expert and its parameters used in its initialization. As for routers, we have provided top1 router and top2 router. You can find them in colossalai.nn.layer.moe. After creating the instance of experts and router, the only thing initialized in Moelayer is gate module. More definitions of each class can be found in our API document and code.
+在Experts的初始化中，会自动计算每个GPU的本地expert数量，您只需指定每个专家的类型及其在初始化时使用的参数。此外，我们提供了`Top1Router`和`Top2Router`，您可以在`colossalai.nn.layer.moe` 找到它们。在创建experts和router的实例时，`Moelayer`只初始化了`gate`模块，类型的更多详细信息您可以参考我们的API文档和代码。
 
+## 定义训练模型
 
-## Train Your Model
-Do not to forget to use `colossalai.initialize` function in `colossalai` to add gradient handler for the engine.
-We handle the back-propagation of MoE models for you.
-In `colossalai.initialize`, we will automatically create a `MoeGradientHandler` object to process gradients.
-You can find more information about the handler `MoeGradientHandler` in colossal directory.
-
-The loss criterion should be wrapped by `Moeloss` to add auxiliary loss of MoE. Example is like this.
+使用colossalai中的`colossalai.initialize`函数为引擎添加梯度处理程序以处理 MoE模型的反向传播。在 `colossalai.initialize` 中，我们会自动创建一个`MoeGradientHandler`对象来处理梯度。您可以在colossal目录中找到有关`MoeGradientHandler`的更多信息。为了添加MoE的相关损失处理，损失函数应使用`Moeloss`封装，示例如下。
 ```python
 criterion = MoeLoss(
     aux_weight=0.01,
@@ -135,6 +99,6 @@ criterion = MoeLoss(
     label_smoothing=0.1
 )
 ```
+最后，您只需使用 `colossalai` 中的`trainer`或`engine`进行训练即可。
 
-Finally, just use trainer or engine in `colossalai` to do your training.
-Otherwise, you should take care of gradient by yourself.
+<!-- doc-test-command: torchrun --standalone --nproc_per_node=1 integrate_mixture_of_experts_into_your_model.py  -->
