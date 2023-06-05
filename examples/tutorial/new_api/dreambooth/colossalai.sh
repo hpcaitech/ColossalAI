@@ -3,10 +3,10 @@ TRANSFORMERS_OFFLINE=1
 DIFFUSERS_OFFLINE=1
 
 torchrun --nproc_per_node 4 --master_port=25641 train_dreambooth_colossalai.py \
-  --pretrained_model_name_or_path="Your Pretrained Model Path"  \
-  --instance_data_dir="Your Input Pics Path" \
-  --output_dir="path-to-save-model" \
-  --instance_prompt="your_prompt" \
+  --pretrained_model_name_or_path="Path_to_your_model"  \
+  --instance_data_dir="Path_to_your_training_image" \
+  --output_dir="Path_to_your_save_dir" \
+  --instance_prompt="keli" \
   --resolution=512 \
   --plugin="gemini" \
   --train_batch_size=1 \
