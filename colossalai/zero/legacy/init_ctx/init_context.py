@@ -14,7 +14,7 @@ from colossalai.core import global_context as gpc
 from colossalai.logging import get_dist_logger
 from colossalai.utils.model.utils import InsertPostInitMethodToModuleSubClasses
 from colossalai.zero.legacy.shard_utils import BaseShardStrategy
-from colossalai.zero.legacy.sharded_model._utils import cast_tensor_to_fp16
+from colossalai.zero.legacy.sharded_model._utils import cast_tensor_to_bf16, cast_tensor_to_fp16
 from colossalai.zero.legacy.sharded_model.sharded_model_v2 import ShardedModelV2
 from colossalai.zero.legacy.sharded_param import ShardedParamV2
 
@@ -55,6 +55,7 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
         seed (int, optional): Random seed for weight initialization
         shard_param (bool, optional): Is param sharded after exiting the context. Defaults to False.
         default_dtype (torch.dtype, optional): If it's not None, parameters will be initialized as ``default_dtype`` then converted to fp16.
+        bf16 (bool, optional): If it's True, parameters will be initialized as ``torch.bfloat16``. Otherwise, parameters will be initialized as ``torch.float16``. Defaults to False.
         model_numel_tensor (torch.Tensor, optional): A tensor which will store the number of elements of model. Defaults to torch.zeros(1, dtype=torch.int).
     """
 
@@ -64,6 +65,7 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
                  seed: int = 2**10 - 1,
                  shard_param: bool = False,
                  default_dtype: Optional[torch.dtype] = None,
+                 bf16: bool = False,
                  model_numel_tensor: torch.Tensor = torch.zeros(1, dtype=torch.long)):
 
         super().__init__(default_dtype=default_dtype)
@@ -71,6 +73,7 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
         self.param_list = []
         self.model_numel_tensor = model_numel_tensor
         self.seed = seed
+        self.bf16 = bf16
         self.dp_process_group = gpc.get_group(ParallelMode.DATA)
 
         self.config = ZeroContextConfig(target_device=target_device, is_replicated=True, shard_param=shard_param)
@@ -183,9 +186,10 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
         NOTE() The module may be passed to this function multiple times.
         """
         self.top_module = module
+        half_dtype = torch.float16 if not self.bf16 else torch.bfloat16
 
         def half_fn(t: torch.Tensor):
-            return t.half() if t.is_floating_point() else t
+            return t.to(half_dtype) if t.is_floating_point() else t
 
         for param in module.parameters(recurse=False):
             # avoid adapting a param to ShardedParam twice
@@ -226,9 +230,10 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
         # We must cast buffers
         # If we use BN, buffers may be on CPU and Float
         # We must cast them
+        cast_fn = cast_tensor_to_fp16 if not self.bf16 else cast_tensor_to_bf16
         for buffer in module.buffers(recurse=False):
             buffer.data = buffer.data.to(device=torch.cuda.current_device())
-            buffer.data = cast_tensor_to_fp16(buffer.data)
+            buffer.data = cast_fn(buffer.data)
 
 
 class ZeroContextMgr(metaclass=SingletonMeta):
