@@ -8,10 +8,10 @@ import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin
 from colossalai.fx import is_compatible_with_meta
+from colossalai.lazy.lazy_init import LazyInitContext
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.tensor.colo_parameter import ColoParameter
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
-from colossalai.utils.model.experimental import LazyInitContext
 from colossalai.zero import ColoInitContext
 from tests.kit.model_zoo import model_zoo
 
