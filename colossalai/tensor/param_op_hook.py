@@ -164,7 +164,7 @@ def _get_grad_args(*args):
     for obj in args:
         if _is_grad_tensor(obj):
             return args, None
-    # otherwise, the first arguement should be a tuple of grad tensors
+    # otherwise, the first argument should be a tuple of grad tensors
     # if there is no grad tensor, the backward of PreFwdPostBwd can't be triggered
     arg_zero = args[0]
     if not isinstance(arg_zero, tuple):

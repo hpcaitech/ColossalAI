@@ -252,7 +252,7 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
     def get_all_shard_spec(self, source_spec: ShardingSpec, orig_cost_dict):
         '''
         Get all valid sharding specs from source_spec with single shard operation, and
-        accumulate commucation cost on origin cost which will finally be used in auto sharding solver.
+        accumulate communication cost on origin cost which will finally be used in auto sharding solver.
         For the sharding operation, we just care about legal sharding dimensions.
 
         Argument:
@@ -386,7 +386,7 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
     def get_all_one_step_transform_spec(self, source_spec: ShardingSpec, orig_cost_dict) -> Dict[ShardingSpec, float]:
         '''
         Get all valid sharding specs from source_spec with one step transform, and
-        accumulate commucation cost on origin cost which will finally be used in auto sharding solver.
+        accumulate communication cost on origin cost which will finally be used in auto sharding solver.
         Note:
             all-gather will eliminate a sharding dimension, all-to-all will keep sharding dimension same as before,
             and shard will add a sharding dimension. Therefore, the result of above operations are mutual exclusive,
@@ -577,7 +577,7 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
         Step3:
             Repeat above steps until the source spec transform to target spec.
 
-        During finding the transform path, commucation cost will be accumulated, and it
+        During finding the transform path, communication cost will be accumulated, and it
         will be finally used in auto parallel solver.
 
         Additionally, to avoid repeating the path search in runtime, we cached all solved path

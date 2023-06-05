@@ -113,7 +113,7 @@ def _binary_search(weights, num):
 
 def partition_uniform(num_items, pipeline_parallel_size, num_chunks):
     assert num_items % num_chunks == 0, \
-        "Layer length should be divided by the number of chunks, otherwise parameter method is recomended"
+        "Layer length should be divided by the number of chunks, otherwise parameter method is recommended"
 
     logger = get_dist_logger()
     parts = [[] for _ in range(pipeline_parallel_size)]
