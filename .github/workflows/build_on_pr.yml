@@ -2,7 +2,7 @@ name: Build on PR
 
 on:
   pull_request:
-    types: [synchronize, opened, reopened]
+    types: [synchronize, opened, reopened, ready_for_review, closed]
     branches:
       - "main"
       - "develop"
@@ -18,11 +18,83 @@ on:
       - "!tests/**.md" # ignore doc change
       - "pytest.ini" # test config change
       - "setup.py" # install command change
+  create:
+  delete:
 
 jobs:
+  prepare_cache:
+    name: Prepare testmon cache
+    if: |
+      github.event_name == 'create' &&
+      github.event.ref_type == 'branch' &&
+      github.event.repository.full_name == 'hpcaitech/ColossalAI'
+    runs-on: [self-hosted, gpu]
+    container:
+      image: hpcaitech/pytorch-cuda:1.12.0-11.3.0
+      options: --rm
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Copy testmon cache
+        run: |
+          if [ -d /github/home/testmon_cache/${MAIN_BRANCH} ]; then
+            [ ! -z "$(ls -A /github/home/testmon_cache/${MAIN_BRANCH})" ] && cp -p -r /github/home/testmon_cache/${MAIN_BRANCH} /github/home/testmon_cache/${REF_BRANCH}
+          fi
+        env:
+          MAIN_BRANCH: ${{ github.event.master_branch }}
+          REF_BRANCH: ${{ github.event.ref }}
+
+  test_edit:
+    name: Test edit
+    if: |
+      github.event_name == 'pull_request' &&
+      github.event.action == 'edited' &&
+      github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
+    runs-on: [self-hosted, gpu]
+    container:
+      image: hpcaitech/pytorch-cuda:1.12.0-11.3.0
+      options: --rm
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Copy testmon cache
+        run: |
+          echo ${{ github.event.changes.base }}
+          echo ${{ github.event.changes.base.ref.from }}
+
+  prepare_cache_for_pr:
+    name: Prepare testmon cache for PR
+    if: |
+      github.event_name == 'pull_request' &&
+      (github.event.action == 'opened' || github.event.action == 'reopened' || (github.event.action == 'edited' && github.event.changes.base != null)) &&
+      github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
+    runs-on: [self-hosted, gpu]
+    container:
+      image: hpcaitech/pytorch-cuda:1.12.0-11.3.0
+      options: --rm
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Copy testmon cache
+        run: |
+          if [ -d /github/home/testmon_cache/${BASE} ]; then
+            [ ! -z "$(ls -A /github/home/testmon_cache/${BASE})" ] && mkdir /github/home/testmon_cache/_pull && cp -p -r /github/home/testmon_cache/${BASE} /github/home/testmon_cache/_pull/${PR_NUMBER}
+          fi
+        env:
+          BASE: ${{ github.event.pull_request.base.ref }}
+          PR_NUMBER: ${{ github.event.pull_request.head.ref }}
+
   detect:
     name: Detect file change
     if: |
+      github.event_name == 'pull_request' &&
+      (github.event.action == 'synchronize' || github.event.action == 'opened' || github.event.action == 'reopened' || github.event.action == 'ready_for_review') &&
       github.event.pull_request.draft == false &&
       github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
     outputs:
@@ -135,9 +207,11 @@ jobs:
 
       - name: Restore Testmon Cache
         run: |
-          if [ -d /github/home/testmon_cache ]; then
-            [ ! -z "$(ls -A /github/home/testmon_cache)" ] && cp -p -r /github/home/testmon_cache/.testmondata* /__w/ColossalAI/ColossalAI/
+          if [ -d /github/home/testmon_cache/_pull/${PR_NUMBER} ]; then
+            [ ! -z "$(ls -A /github/home/testmon_cache/_pull/${PR_NUMBER})" ] && cp -p -r /github/home/testmon_cache/_pull/${PR_NUMBER}/.testmondata* /__w/ColossalAI/ColossalAI/
           fi
+        env:
+          PR_NUMBER: ${{ github.event.number }}
 
       - name: Execute Unit Testing
         run: |
@@ -149,8 +223,10 @@ jobs:
 
       - name: Store Testmon Cache
         run: |
-          [ -d /github/home/testmon_cache ] || mkdir /github/home/testmon_cache
-          cp -p -r /__w/ColossalAI/ColossalAI/.testmondata* /github/home/testmon_cache/
+          mkdir -p /github/home/testmon_cache/_pull/${PR_NUMBER}
+          cp -p -r /__w/ColossalAI/ColossalAI/.testmondata* /github/home/testmon_cache/_pull/${PR_NUMBER}/
+        env:
+          PR_NUMBER: ${{ github.event.number }}
 
       - name: Collate artifact
         env:
@@ -188,3 +264,56 @@ jobs:
         with:
           name: report
           path: report/
+
+  store_cache:
+    name: Store testmon cache for PR
+    if: |
+      github.event_name == 'pull_request' &&
+      github.event.action == 'closed' &&
+      github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
+    runs-on: [self-hosted, gpu]
+    container:
+      image: hpcaitech/pytorch-cuda:1.12.0-11.3.0
+      options: --rm
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Store testmon cache if possible
+        if: github.event.pull_request.merged == true
+        run: |
+          if [ -d /github/home/testmon_cache/_pull/${PR_NUMBER} ]; then
+            [ ! -z "$(ls -A /github/home/testmon_cache/_pull/${PR_NUMBER})" ] && cp -p -r /github/home/testmon_cache/_pull/${PR_NUMBER}/.testmondata* /github/home/testmon_cache/${BASE}/
+          fi
+        env:
+          BASE: ${{ github.event.pull_request.base.ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+
+      - name: Remove testmon cache
+        if: github.event.pull_request.merged != true
+        run: |
+          rm -rf /github/home/testmon_cache/_pull/${PR_NUMBER}
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+
+  remove_cache:
+    name: Remove testmon cache
+    if: |
+      github.event_name == 'delete' &&
+      github.event.ref_type == 'branch' &&
+      github.event.repository.full_name == 'hpcaitech/ColossalAI'
+    runs-on: [self-hosted, gpu]
+    container:
+      image: hpcaitech/pytorch-cuda:1.12.0-11.3.0
+      options: --rm
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Remove testmon cache
+        run: |
+          rm -rf /github/home/testmon_cache/${BASE}
+        env:
+          BASE: ${{ github.event.ref }}
