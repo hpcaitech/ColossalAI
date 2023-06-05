@@ -50,7 +50,6 @@ jobs:
     name: Test edit
     if: |
       github.event_name == 'pull_request' &&
-      github.event.action == 'edited' &&
       github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
     runs-on: [self-hosted, gpu]
     container:
@@ -63,6 +62,7 @@ jobs:
     steps:
       - name: Copy testmon cache
         run: |
+          echi ${{ github.event.action }}
           echo ${{ github.event.changes.base }}
           echo ${{ github.event.changes.base.ref.from }}
 
