@@ -4,7 +4,7 @@ from typing import Any, Dict, List
 import gpt_evaluate
 import metrics
 import pandas as pd
-from utils import get_data_per_category, jdump
+from utils import analyze_automatic_results, get_data_per_category, save_automatic_results
 
 
 class Evaluator(object):
@@ -42,21 +42,21 @@ class Evaluator(object):
 
         """
 
-        def switch(metric):
+        def switch(metric, language):
             if metric == "BLEU":
-                return metrics.bleu_score(preds=predicts_list, targets=targets_list)
+                return metrics.bleu_score(preds=predicts_list, targets=targets_list, language=language)
             elif metric == "ROUGE":
-                return metrics.rouge_cn_score(preds=predicts_list, targets=targets_list)
+                return metrics.rouge_score(preds=predicts_list, targets=targets_list, language=language)
             elif (metric == "Distinct"):
-                return metrics.distinct_score(preds=predicts_list)
+                return metrics.distinct_score(preds=predicts_list, language=language)
             elif (metric == "BERTScore"):
-                return metrics.bert_score(preds=predicts_list, targets=targets_list)
+                return metrics.bert_score(preds=predicts_list, targets=targets_list, language=language)
             elif (metric == "Precision"):
-                return metrics.precision(preds=predicts_list, targets=targets_list)
+                return metrics.precision(preds=predicts_list, targets=targets_list, language=language)
             elif (metric == "Recall"):
-                return metrics.recall(preds=predicts_list, targets=targets_list)
+                return metrics.recall(preds=predicts_list, targets=targets_list, language=language)
             elif (metric == "F1 score"):
-                return metrics.F1_score(preds=predicts_list, targets=targets_list)
+                return metrics.F1_score(preds=predicts_list, targets=targets_list, language=language)
             else:
                 raise ValueError(f"Unexpected metric")
 
@@ -78,7 +78,7 @@ class Evaluator(object):
             predicts_list = [answer["output"] for answer in answers_per_category[category]]
 
             for metric in category_metrics:
-                self.automatic_metric_stats[category].update(switch(metric=metric))
+                self.automatic_metric_stats[category].update(switch(metric=metric, language=self.language))
 
         # gpt evaluation
         for category in self.params:
@@ -106,35 +106,29 @@ class Evaluator(object):
             save_path = os.path.join(path, "gpt_evaluate", "battle_results")
             gpt_evaluate.save_battle_results(self.battle_results, model_name_list[0], model_name_list[1], save_path)
         else:
-            # save evaluation results for automatic metrics
-            automatic_df = pd.DataFrame(self.automatic_metric_stats)
+            # Save evaluation results for automatic metrics
+            automatic_base_save_path = os.path.join(path, "automatic_results")
+            automatic_results_save_path = os.path.join(automatic_base_save_path, "evaluation_results")
 
-            automatic_results_save_path = os.path.join(path, "automatic_results")
-            if not os.path.exists(automatic_results_save_path):
-                os.makedirs(automatic_results_save_path)
-            automatic_df.to_csv(os.path.join(automatic_results_save_path, f"{model_name_list[0]}.csv"), index=True)
-
-            # Save evaluation results for GPT-3.5 evaluation metrics.
-            all_evaluations = []
-            base_save_path = os.path.join(path, "gpt_evaluate", "gpt_evaluate_results")
-            evaluation_results_save_path = os.path.join(base_save_path, "evaluation_results")
-
-            for category, evaluations in self.gpt_evaluation_results.items():
-                jdump(
-                    evaluations,
-                    os.path.join(evaluation_results_save_path, model_name_list[0],
-                                 f"{category}_evaluation_results.json"))
-                all_evaluations.extend(evaluations)
-
-            jdump(all_evaluations,
-                  os.path.join(evaluation_results_save_path, f"{model_name_list[0]}_evaluation_results.json"))
-
-            # Start to calculate scores and save statistics.
-            evaluation_statistics_save_path = os.path.join(base_save_path, "evaluation_statistics")
-            gpt_evaluate.save_gpt_evaluation_statistics(model_name_list[0], all_evaluations,
-                                                        evaluation_statistics_save_path)
+            save_automatic_results(model_name_list[0], self.automatic_metric_stats, automatic_results_save_path)
 
             # Save charts and csv.
-            evaluation_analyses_save_path = os.path.join(base_save_path, "evaluation_analyses")
-            gpt_evaluate.analyze_gpt_evaluation_statistics(evaluation_statistics_save_path,
-                                                           evaluation_analyses_save_path)
+            automatic_analyses_save_path = os.path.join(automatic_base_save_path, "evaluation_analyses")
+            analyze_automatic_results(automatic_results_save_path, automatic_analyses_save_path)
+
+            # Save evaluation results for GPT evaluation metrics.
+            gpt_base_save_path = os.path.join(path, "gpt_evaluate", "gpt_evaluate_results")
+            gpt_evaluation_results_save_path = os.path.join(gpt_base_save_path, "evaluation_results")
+
+            all_evaluations = gpt_evaluate.save_gpt_evaluation_results(model_name_list[0], self.gpt_evaluation_results,
+                                                                       gpt_evaluation_results_save_path)
+
+            # Start to calculate scores and save statistics.
+            gpt_evaluation_statistics_save_path = os.path.join(gpt_base_save_path, "evaluation_statistics")
+            gpt_evaluate.save_gpt_evaluation_statistics(model_name_list[0], all_evaluations,
+                                                        gpt_evaluation_statistics_save_path)
+
+            # Save charts and csv.
+            gpt_evaluation_analyses_save_path = os.path.join(gpt_base_save_path, "evaluation_analyses")
+            gpt_evaluate.analyze_gpt_evaluation_statistics(gpt_evaluation_statistics_save_path,
+                                                           gpt_evaluation_analyses_save_path)

@@ -14,7 +14,7 @@ def main(args):
     # load config
     config = jload(args.config_file)
 
-    if config["language"] == "cn":
+    if config["language"] in ["cn", "en"]:
         # get metric settings for all categories
         metrics_per_category = {}
         for category in config["category"].keys():
