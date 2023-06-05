@@ -25,11 +25,11 @@ class Booster:
     Examples:
         ```python
         colossalai.launch(...)
-        plugin = GeminiPlugin(stage=3, ...)
+        plugin = GeminiPlugin(...)
         booster = Booster(precision='fp16', plugin=plugin)
 
         model = GPT2()
-        optimizer = Adam(model.parameters())
+        optimizer = HybridAdam(model.parameters())
         dataloader = Dataloader(Dataset)
         lr_scheduler = LinearWarmupScheduler()
         criterion = GPTLMLoss()

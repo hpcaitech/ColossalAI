@@ -195,7 +195,7 @@ def get_data(batch_size, seq_len, vocab_size):
 Finally, we define a model which uses Gemini + ZeRO DDP and define our training loop, As we pre-train GPT in this example, we just use a simple language model loss:
 
 ```python
-from torch.optim import Adam
+from colossalai.nn.optimizer import HybridAdam
 
 from colossalai.booster import Booster
 from colossalai.zero import ColoInitContext
@@ -211,7 +211,7 @@ def main():
 
     # build criterion
     criterion = GPTLMLoss()
-    optimizer = Adam(model.parameters(), lr=0.001)
+    optimizer = HybridAdam(model.parameters(), lr=0.001)
 
     torch.manual_seed(123)
     default_pg = ProcessGroup(tp_degree=args.tp_degree)
