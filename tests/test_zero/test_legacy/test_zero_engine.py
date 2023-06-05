@@ -16,7 +16,11 @@ from colossalai.zero.low_level._utils import has_inf_or_nan
 from tests.components_to_test.registry import non_distributed_component_funcs
 
 
-def run_dist(rank, world_size, port, parallel_config):
+def run_dist(rank, world_size, port, parallel_config, bf16):
+    is_mp_config = parallel_config == MP_PARALLEL_CONFIG
+    is_zero_config = parallel_config == ZERO_PARALLEL_CONFIG
+    if bf16:
+        parallel_config['zero']['model_config']['bf16'] = True
     colossalai.launch(config=parallel_config,
                       rank=rank,
                       world_size=world_size,
@@ -30,7 +34,8 @@ def run_dist(rank, world_size, port, parallel_config):
         model_builder, train_dataloader, _, optimizer_class, criterion = get_components_func()
         with ZeroInitContext(target_device=torch.cuda.current_device(),
                              shard_strategy=gpc.config.zero.model_config.shard_strategy,
-                             shard_param=True):
+                             shard_param=True,
+                             bf16=bf16):
             colo_model = model_builder(checkpoint=True)
 
         colo_optimizer = optimizer_class(colo_model.parameters(), lr=1e-3)
@@ -38,7 +43,8 @@ def run_dist(rank, world_size, port, parallel_config):
                                                                optimizer=colo_optimizer,
                                                                criterion=criterion,
                                                                train_dataloader=train_dataloader)
-        torch_model = model_builder(checkpoint=True).half()
+        dtype = torch.bfloat16 if bf16 else torch.float16
+        torch_model = model_builder(checkpoint=True).to(dtype)
         col_model_deepcopy(engine.model, torch_model)
         torch_model = torch_model.cuda().float()
 
@@ -80,9 +86,9 @@ def run_dist(rank, world_size, port, parallel_config):
             torch_optimizer.step()
             i += 1
 
-        if parallel_config == MP_PARALLEL_CONFIG:
+        if is_mp_config:
             check_params(torch_model, colo_model, loose=True)
-        elif parallel_config == ZERO_PARALLEL_CONFIG:
+        elif is_zero_config:
             check_sharded_model_params(torch_model, colo_model, loose=True)
 
 
@@ -97,9 +103,10 @@ def test_mp_engine(world_size):
 
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [1, 2])
+@pytest.mark.parametrize("bf16", [True, False])
 @rerun_if_address_is_in_use()
-def test_zero_engine(world_size):
-    spawn(run_dist, world_size, parallel_config=ZERO_PARALLEL_CONFIG)
+def test_zero_engine(world_size, bf16):
+    spawn(run_dist, world_size, parallel_config=ZERO_PARALLEL_CONFIG, bf16=bf16)
 
 
 if __name__ == '__main__':

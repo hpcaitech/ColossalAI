@@ -114,7 +114,7 @@ class MultiNodeRunner:
         Receive messages from all hosts
 
         Returns:
-            msg_from_node (dict): a dictionry which contains messages from each node
+            msg_from_node (dict): a dictionary which contains messages from each node
         """
 
         msg_from_node = dict()

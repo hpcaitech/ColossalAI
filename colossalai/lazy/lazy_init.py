@@ -350,7 +350,14 @@ class LazyTensor(torch.Tensor):
                 copied.requires_grad_()
             return copied
 
-        target = LazyTensor(factory_fn, meta_data=self._meta_data)
+        if self._materialized_data is not None:
+            # self is early materialized
+            copied = self._materialized_data.detach().clone()
+            if self.requires_grad:
+                copied.requires_grad_()
+            target = LazyTensor(lambda: None, concrete_data=copied)
+        else:
+            target = LazyTensor(factory_fn, meta_data=self._meta_data)
 
         memo[id(self)] = target
         return target

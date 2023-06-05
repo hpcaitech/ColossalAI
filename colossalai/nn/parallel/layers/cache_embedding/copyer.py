@@ -17,7 +17,7 @@ class LimitBuffIndexCopyer(object):
     def index_copy(self, dim: int, src_index: LongTensor, tgt_index: LongTensor, src: torch.Tensor, tgt: torch.Tensor):
         """copy 
         src tensor[src_index] -(index_select)-> tmp -(index_copy_)-> tgt tensor [tgt_index]
-        The valid rows in the src tensor are continous, while rows in tgt tensor is scattered.
+        The valid rows in the src tensor are continuous, while rows in tgt tensor is scattered.
 
         Args:
             dim (int):  dimension along which to index

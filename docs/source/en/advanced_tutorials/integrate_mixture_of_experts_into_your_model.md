@@ -137,3 +137,4 @@ criterion = MoeLoss(
 
 Finally, just use trainer or engine in `colossalai` to do your training.
 Otherwise, you should take care of gradient by yourself.
+<!-- doc-test-command: torchrun --standalone --nproc_per_node=1 integrate_mixture_of_experts_into_your_model.py  -->

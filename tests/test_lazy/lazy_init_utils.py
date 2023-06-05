@@ -1,12 +1,13 @@
 import random
+from copy import deepcopy
 from typing import Any, Callable, Optional, Tuple
 
 import numpy as np
 import torch
 from packaging import version
 
+from colossalai.lazy.lazy_init import LazyInitContext, LazyTensor, _MyTensor
 from colossalai.tensor.d_tensor.layout_converter import to_global
-from colossalai.utils.model.experimental import LazyInitContext, LazyTensor, _MyTensor
 from tests.kit.model_zoo.registry import ModelAttribute
 
 SUPPORT_LAZY = version.parse(torch.__version__) >= version.parse('1.12.0')
@@ -30,6 +31,9 @@ def assert_model_equal(m1: torch.nn.Module, m2: torch.nn.Module) -> None:
     for (n1, t1), (n2, t2) in zip(s1.items(), s2.items()):
         assert n1 == n2
         assert torch.equal(t1, t2), f'{n1} {t1} vs {t2}'
+
+    for p1, p2 in zip(m1.parameters(), m2.parameters()):
+        assert p1.requires_grad == p2.requires_grad
 
 
 def assert_forward_equal(m1: torch.nn.Module, m2: torch.nn.Module, data_gen_fn: Callable[[], dict],
@@ -65,10 +69,14 @@ def check_lazy_init(entry: TestingEntry, seed: int = 42, verbose: bool = False, 
     ctx = LazyInitContext()
     with ctx:
         deferred_model = model_fn()
+        copied_deferred_model = deepcopy(deferred_model)
     deferred_model = ctx.materialize(deferred_model, verbose=verbose)
+    copied_deferred_model = ctx.materialize(copied_deferred_model, verbose=verbose)
     assert_model_equal(model, deferred_model)
+    assert_model_equal(deferred_model, copied_deferred_model)
     if check_forward:
         assert_forward_equal(model, deferred_model, data_gen_fn, output_transform_fn)
+        assert_forward_equal(deferred_model, copied_deferred_model, data_gen_fn, output_transform_fn)
     if verbose:
         print(f'{model.__class__.__name__} pass')
 

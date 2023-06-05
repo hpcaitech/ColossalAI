@@ -461,6 +461,27 @@ def calculate_scores_form_response(response: str, evaluation: Dict[str, Any]) ->
         return 0
 
 
+def save_gpt_evaluation_results(model_name: str, gpt_evaluation_results: Dict[str, Any],
+                                save_path: str) -> Dict[str, Any]:
+    """
+    Save evaluation results for different categories for one model.
+
+    Args:
+        model_name: name of the model for saving evaluation results.
+        gpt_evaluation_results: evaluations results for all of the model answers.
+        save_path: path to save GPT evaluation statistics.
+    """
+
+    all_evaluations = []
+    for category, evaluations in gpt_evaluation_results.items():
+        jdump(evaluations, os.path.join(save_path, model_name, f"{category}_evaluation_results.json"))
+        all_evaluations.extend(evaluations)
+
+    jdump(all_evaluations, os.path.join(save_path, f"{model_name}_evaluation_results.json"))
+
+    return all_evaluations
+
+
 def save_gpt_evaluation_statistics(model_name: str, evaluations: List[Dict], save_path: str) -> None:
     """
     Generate statistics for one model.
@@ -468,7 +489,7 @@ def save_gpt_evaluation_statistics(model_name: str, evaluations: List[Dict], sav
     Args:
         model_name: name of the model for saving statistics.
         evaluations: evaluations for all of the model answers.
-        save_path: path to save GPT-3.5 evaluation statistics.
+        save_path: path to save GPT evaluation statistics.
     """
 
     if not os.path.exists(save_path):
@@ -516,7 +537,7 @@ def save_gpt_evaluation_statistics(model_name: str, evaluations: List[Dict], sav
 
 def analyze_gpt_evaluation_statistics(statistics_path: str, save_path: str) -> None:
     """
-    Analyze and visualize all GPT-3.5 evaluation statistics in the given directory.
+    Analyze and visualize all GPT evaluation statistics in the given directory.
 
     Args:
         statistics_path: path to all the models' statistics.
@@ -594,3 +615,5 @@ def analyze_gpt_evaluation_statistics(statistics_path: str, save_path: str) -> N
 
         figure = fig.get_figure()
         figure.savefig(os.path.join(save_path, f"{category}.png"), dpi=400)
+
+        plt.close()

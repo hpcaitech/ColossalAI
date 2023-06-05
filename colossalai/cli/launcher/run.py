@@ -154,7 +154,7 @@ def get_launch_command(
         extra_launch_args = dict()
 
     torch_version = version.parse(torch.__version__)
-    assert torch_version.major == 1
+    assert torch_version.major >= 1
 
     if torch_version.minor < 9:
         cmd = [
@@ -298,7 +298,7 @@ def launch_multi_processes(args: Config) -> None:
     # receive the stop status
     msg_from_node = runner.recv_from_all()
 
-    # printe node status
+    # print node status
     click.echo("\n====== Stopping All Nodes =====")
     for hostname, msg in msg_from_node.items():
         click.echo(f"{hostname}: {msg}")

@@ -197,7 +197,7 @@ class AlphaBetaProfiler:
             dist.broadcast_object_list(broadcast_list, src=process_group[0])
             alpha_beta_dict[process_group] = tuple(broadcast_list)
 
-        # add symmetry pair to the apha_beta_dict
+        # add symmetry pair to the alpha_beta_dict
         symmetry_ab_dict = {}
         for process_group, alpha_beta_pair in alpha_beta_dict.items():
             symmetry_process_group = (process_group[1], process_group[0])
