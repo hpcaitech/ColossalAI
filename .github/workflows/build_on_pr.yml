@@ -46,33 +46,11 @@ jobs:
         env:
           MAIN_BRANCH: ${{ github.event.master_branch }}
 
-  test_edit:
-    name: Test edit
-    if: |
-      github.event_name == 'pull_request' &&
-      github.event.action == 'edited' &&
-      github.event.changes.base != null &&
-      github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
-    runs-on: [self-hosted, gpu]
-    container:
-      image: hpcaitech/pytorch-cuda:1.12.0-11.3.0
-      options: --rm
-    timeout-minutes: 5
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - name: Copy testmon cache
-        run: |
-          echo ${{ github.event.action }}
-          echo ${{ github.event.changes.base }}
-          echo ${{ github.event.changes.base.ref.from }}
-
   prepare_cache_for_pr:
     name: Prepare testmon cache for PR
     if: |
       github.event_name == 'pull_request' &&
-      (github.event.action == 'opened' || github.event.action == 'reopened') &&
+      (github.event.action == 'opened' || github.event.action == 'reopened' || (github.event.action == 'edited' && github.event.changes.base != null)) &&
       github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
     runs-on: [self-hosted, gpu]
     container:
