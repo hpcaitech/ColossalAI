@@ -134,8 +134,8 @@ class FusedAdam(torch.optim.Optimizer):
                     # Exponential moving average of squared gradient values
                     state['exp_avg_sq'] = torch.zeros_like(p)
 
-                if p.dtype not in [torch.float16, torch.float32]:
-                    raise RuntimeError('FusedAdam only support fp16 and fp32.')
+                if p.dtype not in [torch.float16, torch.float32, torch.bfloat16]:
+                    raise RuntimeError('FusedAdam only support fp16, fp32 and bf16.')
 
                 g_l.append(p.grad.data)
                 p_l.append(p.data)
