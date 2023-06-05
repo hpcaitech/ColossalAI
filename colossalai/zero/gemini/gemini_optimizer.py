@@ -55,6 +55,7 @@ class ZeroOptimizer(ColossalaiOptimizer):
         norm_type (float, optional): The type of norm used for gradient clipping. Currently, only L2-norm (norm_type=2.0)
             is supported in ZeroOptimizer. Defaults to 2.0.
         verbose (bool, optional): Whether to print verbose information, including grad overflow info. Defaults to False.
+        allow_untested_optimizer (bool, optional): Whether to allow using untested optimizer. Defaults to True.
     """
 
     def __init__(self,
@@ -71,11 +72,10 @@ class ZeroOptimizer(ColossalaiOptimizer):
                  clipping_norm: float = 0.0,
                  norm_type: float = 2.0,
                  verbose: bool = False,
+                 allow_untested_optimizer: bool = True,
                  **defaults: Any):
         super().__init__(optim)
         assert isinstance(module, ZeroDDP)
-        assert type(optim) in _AVAIL_OPTIM_LIST, "You should use an optimizer in the available list:\n" \
-            f"{_AVAIL_OPTIM_LIST}"
         self.module = module
         self.gemini_manager = module.gemini_manager
         self.chunk_manager: ChunkManager = self.gemini_manager.chunk_manager
@@ -86,6 +86,12 @@ class ZeroOptimizer(ColossalaiOptimizer):
         self.clipping_flag = clipping_norm > 0.0
         self.max_norm = clipping_norm
         self.verbose = verbose
+        self.untested_optim_flag = type(optim) not in _AVAIL_OPTIM_LIST
+        if self.untested_optim_flag:
+            assert allow_untested_optimizer, "You should set `allow_untested_optimizer` to True if you want to use "\
+                "an untested optimizer."
+        else:
+            warnings.warn(f"Using untested optimizer {type(optim)}")
 
         if self.clipping_flag:
             assert norm_type == 2.0, "ZeroOptimizer only supports L2 norm now"
@@ -137,9 +143,8 @@ class ZeroOptimizer(ColossalaiOptimizer):
                 begin, end = self.param_to_range[fake_param]
                 chunk16 = chunk32.paired_chunk
 
-                fake_param.data = chunk16.payload[begin:end]
-                fake_param.grad = fake_param.data
                 fake_param.data = chunk32.payload[begin:end]
+                fake_param.grad = chunk16.payload[begin:end].to(chunk32.dtype)
 
     def _update_fp16_params(self):
         none_tensor = torch.empty([0])
@@ -235,8 +240,10 @@ class ZeroOptimizer(ColossalaiOptimizer):
         # so that gradient = gradient / combined scale
         combined_scale = self._get_combined_scale()
         self.grad_scaler.update(found_inf)
-
-        ret = self.optim.step(div_scale=combined_scale, *args, **kwargs)
+        if self.untested_optim_flag:
+            ret = self.optim.step(*args, **kwargs)
+        else:
+            ret = self.optim.step(div_scale=combined_scale, *args, **kwargs)
         self._register_states()
         self.zero_grad()
         self._update_fp16_params()
