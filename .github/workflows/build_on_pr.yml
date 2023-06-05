@@ -62,7 +62,7 @@ jobs:
     steps:
       - name: Copy testmon cache
         run: |
-          echi ${{ github.event.action }}
+          echo ${{ github.event.action }}
           echo ${{ github.event.changes.base }}
           echo ${{ github.event.changes.base.ref.from }}
 
