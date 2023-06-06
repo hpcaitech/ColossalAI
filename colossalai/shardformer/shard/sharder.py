@@ -93,7 +93,6 @@ class ModelSharder(object):
             model (:class:`torch.nn.Module`): The layer to shard
         """
         argument_policies = self.policy.argument_policy(self.model_config, self.shard_config.world_size)
-        print(argument_policies)
         for argument_policy in argument_policies.items():
             origin_layer_cls = argument_policy[0]
             attr_dict = argument_policy[1].attr_dict

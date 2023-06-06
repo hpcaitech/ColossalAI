@@ -3,7 +3,7 @@ from typing import Any, Callable, Dict, List, Tuple, Type
 import torch.nn as nn
 from transformers.models.gpt2.modeling_gpt2 import GPT2Block, GPT2Model
 
-import colossalai.nn as col_nn
+import colossalai.shardformer.layer.layers as col_nn
 
 from .basepolicy import Argument, Col_Layer, Layer, Policy, Row_Layer
 
