@@ -43,9 +43,17 @@ I will provide the details of each workflow below.
 
 | Workflow Name          | File name                  | Description                                                                                                                                       |
 | ---------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Build on PR`          | `build_on_pr.yml`          | This workflow is triggered when a PR changes essential files. It will run all the unit tests in the repository with 4 GPUs. |
+| `Build on PR`          | `build_on_pr.yml`          | This workflow is triggered when a PR changes essential files and a branch is created/deleted. It will run all the unit tests in the repository with 4 GPUs. |
 | `Build on Schedule`    | `build_on_schedule.yml`    | This workflow will run the unit tests everyday with 8 GPUs. The result is sent to Lark.                                                           |
 | `Report test coverage` | `report_test_coverage.yml` | This PR will put up a comment to report the test coverage results when `Build` is done.                                                           |
+
+To reduce the average time of the unit test on PR, `Build on PR` workflow manages testmon cache.
+
+1. When creating a new branch, it copies `cache/main/.testmondata*` to `cache/<branch>/`.
+2. When creating a new PR or change the base branch of a PR, it copies `cache/<base_ref>/.testmondata*` to `cache/_pull/<pr_number>/`.
+3. When running unit tests for each PR, it restores testmon cache from `cache/_pull/<pr_number>/`. After the test, it stores the cache back to `cache/_pull/<pr_number>/`.
+4. When a PR is closed, if it's merged, it copies `cache/_pull/<pr_number>/.testmondata*` to `cache/<base_ref>/`. Otherwise, it just removes `cache/_pull/<pr_number>`.
+5. When a branch is deleted, it removes `cache/<ref>`.
 
 ### Example Test
 
