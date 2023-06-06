@@ -36,7 +36,7 @@ def get_cuda_version_in_pytorch() -> List[int]:
         torch_cuda_minor = torch.version.cuda.split(".")[1]
     except:
         raise ValueError(
-            "[extension] Cannot retrive the CUDA version in the PyTorch binary given by torch.version.cuda")
+            "[extension] Cannot retrieve the CUDA version in the PyTorch binary given by torch.version.cuda")
     return torch_cuda_major, torch_cuda_minor
 
 
@@ -110,7 +110,7 @@ def get_pytorch_version() -> List[int]:
     torch_version = torch.__version__.split('+')[0]
     TORCH_MAJOR = int(torch_version.split('.')[0])
     TORCH_MINOR = int(torch_version.split('.')[1])
-    TORCH_PATCH = int(torch_version.split('.')[2])
+    TORCH_PATCH = int(torch_version.split('.')[2], 16)
     return TORCH_MAJOR, TORCH_MINOR, TORCH_PATCH
 
 

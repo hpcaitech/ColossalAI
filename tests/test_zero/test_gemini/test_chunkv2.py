@@ -23,7 +23,7 @@ def add_param(param_list, param_cp_list, *args, **kwargs):
     param_cp_list.append(param.clone())
 
 
-def check_euqal(param, param_cp):
+def check_equal(param, param_cp):
     if param.device != param_cp.device:
         temp = param.data.to(param_cp.device)
     else:
@@ -57,7 +57,7 @@ def exam_chunk_basic(init_device, keep_gathered, pin_memory):
         my_chunk.append_tensor(param)
     assert my_chunk.utilized_size == 597
     for param, param_cp in zip(param_list, param_cp_list):
-        check_euqal(param, param_cp)
+        check_equal(param, param_cp)
     my_chunk.close_chunk()
 
     if keep_gathered is False:
@@ -77,7 +77,7 @@ def exam_chunk_basic(init_device, keep_gathered, pin_memory):
     my_chunk.access_chunk()
     assert my_chunk.device_type == 'cuda'
     for param, param_cp in zip(param_list, param_cp_list):
-        check_euqal(param, param_cp)
+        check_equal(param, param_cp)
 
     assert my_chunk.tensor_state_cnter[TensorState.HOLD] == 4
     my_chunk.tensor_trans_state(param_list[0], TensorState.COMPUTE)

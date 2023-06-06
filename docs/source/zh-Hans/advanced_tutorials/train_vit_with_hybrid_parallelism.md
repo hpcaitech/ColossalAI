@@ -477,7 +477,7 @@ def build_cifar(batch_size):
     return train_dataloader, test_dataloader
 
 
-# craete dataloaders
+# create dataloaders
 train_dataloader , test_dataloader = build_cifar()
 # create loss function
 criterion = CrossEntropyLoss(label_smoothing=0.1)
@@ -492,7 +492,7 @@ lr_scheduler = CosineAnnealingWarmupLR(optimizer=optimizer,
 #### 启动 Colossal-AI 引擎
 
 ```python
-# intiailize
+# initialize
 engine, train_dataloader, test_dataloader, _ = colossalai.initialize(model=model,
                                                                      optimizer=optimizer,
                                                                      criterion=criterion,

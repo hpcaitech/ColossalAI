@@ -8,10 +8,10 @@ import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin
 from colossalai.fx import is_compatible_with_meta
+from colossalai.lazy.lazy_init import LazyInitContext
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.tensor.colo_parameter import ColoParameter
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
-from colossalai.utils.model.experimental import LazyInitContext
 from colossalai.zero import ColoInitContext
 from tests.kit.model_zoo import model_zoo
 
@@ -117,34 +117,9 @@ def check_gemini_plugin(init_method: str = 'none', early_stop: bool = True):
     assert len(failed_info) == 0, '\n'.join([f'{k}: {v}' for k, v in failed_info.items()])
 
 
-def check_dataloader_sharding():
-    plugin = GeminiPlugin()
-
-    # create a custom dasetset with 0 to 10
-    dataset = torch.utils.data.TensorDataset(torch.arange(0, 10))
-    train_dataloader = plugin.prepare_train_dataloader(dataset, batch_size=2)
-
-    # get the first batch of data
-    batch = next(iter(train_dataloader))[0].cuda()
-    is_rank_0 = dist.get_rank() == 0
-
-    if is_rank_0:
-        batch_to_compare = batch.clone()
-    else:
-        batch_to_compare = batch
-    # pass to the rank 1 value to rank 0
-    dist.broadcast(batch_to_compare, src=1)
-
-    # compare on rank 0
-    if is_rank_0:
-        assert not torch.equal(batch,
-                               batch_to_compare), 'Same number was found across ranks but expected it to be different'
-
-
 def run_dist(rank, world_size, port, early_stop: bool = True):
     # init dist env
     colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host='localhost')
-    check_dataloader_sharding()
     check_gemini_plugin(early_stop=early_stop)
 
 

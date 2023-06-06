@@ -2,13 +2,14 @@ import itertools
 from collections import OrderedDict
 from contextlib import nullcontext
 from functools import partial
-from typing import Dict, Iterator, List, Optional, Union
+from typing import Dict, Iterator, List, Optional, Set, Tuple, Union
 
 import torch
 import torch.distributed as dist
 import torch.nn as nn
 
 from colossalai.checkpoint_io.utils import calculate_tensor_size
+from colossalai.lazy import LazyTensor
 from colossalai.logging import get_dist_logger
 from colossalai.nn.parallel.data_parallel import ColoDDP, _cast_float, free_storage
 from colossalai.tensor import ProcessGroup as ColoProcessGroup
@@ -16,7 +17,6 @@ from colossalai.tensor import ReplicaSpec
 from colossalai.tensor.colo_parameter import ColoParameter, ColoTensor, ColoTensorSpec
 from colossalai.tensor.param_op_hook import ColoParamOpHookManager
 from colossalai.utils import get_current_device, is_ddp_ignored
-from colossalai.utils.model.experimental import LazyTensor
 
 from .chunk import Chunk, ChunkManager, TensorState, init_chunk_manager
 from .gemini_hook import GeminiZeROHook
@@ -51,6 +51,7 @@ class ZeroDDP(ColoDDP):
         strict_ddp_mode (bool): If set to True, there is no tensor sharding, each tensor is replicated.
             Defaults to False. Users can set it to True, when they clearly know that they only need DDP.
         scatter_after_inference (bool): If set to True, the model will be scattered after inference. This will save memory but slow down the consecutive inference.
+        mixed_precision (torch.dtype): If set to torch.float16, the model will be trained in fp16. Otherwise, the model will be trained in bf16. Defaults to torch.float16.
     """
 
     def __init__(self,
@@ -59,7 +60,9 @@ class ZeroDDP(ColoDDP):
                  pin_memory: bool = False,
                  force_outputs_fp32: bool = False,
                  strict_ddp_mode: bool = False,
-                 scatter_after_inference: bool = True) -> None:
+                 scatter_after_inference: bool = True,
+                 mixed_precision: torch.dtype = torch.float16) -> None:
+        assert mixed_precision in (torch.float16, torch.bfloat16)
         self.gemini_manager = gemini_manager
         self.chunk_manager: ChunkManager = gemini_manager.chunk_manager
         self.force_outputs_fp32 = force_outputs_fp32
@@ -71,6 +74,7 @@ class ZeroDDP(ColoDDP):
         self.param2name: Dict[nn.Parameter, str] = dict()
         self.name2param: Dict[str, nn.Parameter] = dict()
         self.scatter_after_inference = scatter_after_inference
+        self.mixed_precision = mixed_precision
 
         self._logger = get_dist_logger()
 
@@ -96,7 +100,38 @@ class ZeroDDP(ColoDDP):
                 param_name = m_name + '.' + p_name if m_name else p_name
                 self.name2param[param_name] = p_var
         super().__init__(module, process_group=ColoProcessGroup())
+        self._non_persistent_buffers_set = self._get_non_persistent_buffers_set(module)
         self._cast_buffers()
+
+    def _get_non_persistent_buffers_set(self,
+                                        module,
+                                        memo: Optional[Set[nn.Module]] = None,
+                                        prefix: str = '',
+                                        remove_duplicate: bool = True):
+        r"""
+        Args:
+            memo: a memo to store the set of modules already added to the result
+            prefix: a prefix that will be added to the name of the module
+            remove_duplicate: whether to remove the duplicated module instances in the result
+                or not
+        """
+
+        if memo is None:
+            memo = set()
+        self_non_persistent_set = set()
+        if module not in memo:
+            if remove_duplicate:
+                memo.add(module)
+            self_non_persistent_set = set(
+                map(lambda key: prefix + ('.' if prefix else '') + key, module._non_persistent_buffers_set))
+            for name, sub_module in module._modules.items():
+                if sub_module is None:
+                    continue
+                submodule_prefix = prefix + ('.' if prefix else '') + name
+                child_non_persistent_set = self._get_non_persistent_buffers_set(sub_module, memo, submodule_prefix,
+                                                                                remove_duplicate)
+                self_non_persistent_set = set.union(self_non_persistent_set, child_non_persistent_set)
+        return self_non_persistent_set
 
     def _post_forward(self):
         """This function is only triggered for inference.
@@ -120,7 +155,7 @@ class ZeroDDP(ColoDDP):
             assert not self.gemini_manager.need_warmup or not self.gemini_manager.is_warmup(
             ), "You should run a completed iteration as your warmup iter"
 
-        args, kwargs = _cast_float(args, torch.half), _cast_float(kwargs, torch.half)
+        args, kwargs = _cast_float(args, self.mixed_precision), _cast_float(kwargs, self.mixed_precision)
         self.module.zero_grad(set_to_none=True)
         if not grad_flag:
             outputs = self._inference_forward(*args, **kwargs)
@@ -539,14 +574,14 @@ class ZeroDDP(ColoDDP):
 
             # move ignored parameters to CUDA
             if is_ddp_ignored(p):
-                p.data = p.data.to(device=get_current_device(), dtype=torch.float16)
+                p.data = p.data.to(device=get_current_device(), dtype=self.mixed_precision)
                 continue
 
             # create a fp32 parameter
             fp32_data = p.data.float()
             fp32_p = ColoTensor(fp32_data, spec=ColoTensorSpec(p.process_group))
             # create a fp16 parameter
-            p.data = p.data.half()
+            p.data = p.data.to(self.mixed_precision)
 
             # register the fp16 parameter and fp32 parameter in the chunk manager
             dp_world_size = p.process_group.dp_world_size()
@@ -582,7 +617,7 @@ class ZeroDDP(ColoDDP):
                 buffer.materialize()
             buffer.data = buffer.cuda()
             if torch.is_floating_point(buffer):
-                buffer.data = buffer.half()
+                buffer.data = buffer.to(self.mixed_precision)
 
     def _preprocess_param(self, p: Union[nn.Parameter, ColoParameter, 'LazyTensor']) -> None:
         """Convert parameter to ColoParameter in-place.
@@ -604,7 +639,7 @@ class ZeroDDP(ColoDDP):
                          keep_vars: bool = False,
                          max_shard_size: int = 1024,
                          only_rank_0: bool = True,
-                         dtype: torch.dtype = torch.float16) -> Iterator[OrderedDict]:
+                         dtype: torch.dtype = torch.float16) -> Iterator[Tuple[OrderedDict, int]]:
         """Returns dictionaries containing a whole state of the module one by one. The max size of dictionary shard is specified by ``max_shard_size``.
 
         Both parameters and persistent buffers (e.g. running averages) are included.
@@ -644,9 +679,9 @@ class ZeroDDP(ColoDDP):
                         gathered_param_buffer.update(self._get_chunk_to_save_data(chunk, only_rank_0, dtype))
                     gathered_param = gathered_param_buffer.pop(fp32_param)
 
-                block = sharder.append(prefix + name, gathered_param)
+                block, block_size = sharder.append(prefix + name, gathered_param)
                 if block is not None:
-                    yield block
+                    yield block, block_size
 
         del fp16_to_fp32
         del gathered_param_buffer
@@ -655,19 +690,19 @@ class ZeroDDP(ColoDDP):
         for name, buf in self.named_buffers():
             if buf is not None and name not in self._non_persistent_buffers_set:
                 buffer = buf if keep_vars else buf.detach()
-                block = sharder.append(prefix + name, buffer)
+                block, block_size = sharder.append(prefix + name, buffer)
                 if block is not None:
-                    yield block
+                    yield block, block_size
         # save extra states
         extra_state_key = prefix + _EXTRA_STATE_KEY_SUFFIX
         if getattr(self.__class__, "get_extra_state",
                    torch.nn.Module.get_extra_state) is not torch.nn.Module.get_extra_state:
             extra_state = self.get_extra_state()
-            block = sharder.append(extra_state_key, extra_state)
+            block, block_size = sharder.append(extra_state_key, extra_state)
             if block is not None:
-                yield block
+                yield block, block_size
 
-        yield sharder.current_block
+        yield sharder.current_block, sharder.current_block_size
 
 
 class _StateDictSharder:
@@ -677,16 +712,18 @@ class _StateDictSharder:
         self.current_block = OrderedDict()
         self.current_block_size = 0
 
-    def append(self, name: str, tensor: torch.Tensor) -> Optional[OrderedDict]:
+    def append(self, name: str, tensor: torch.Tensor) -> Tuple[Optional[OrderedDict], int]:
         tensor_size = calculate_tensor_size(tensor)
         ret_block = None
+        ret_block_size = 0
         if self.current_block_size + tensor_size > self.max_shard_size:
             ret_block = self.current_block
+            ret_block_size = self.current_block_size
             self.current_block = OrderedDict()
             self.current_block_size = 0
         self.current_block[name] = tensor
         self.current_block_size += tensor_size
-        return ret_block
+        return ret_block, ret_block_size
 
 
 class GeminiDDP(ZeroDDP):
@@ -703,6 +740,7 @@ class GeminiDDP(ZeroDDP):
                  hidden_dim: Optional[int] = None,
                  min_chunk_size_mb: float = 32,
                  memstats: Optional[MemStats] = None,
+                 mixed_precision: torch.dtype = torch.float16,
                  verbose: bool = False) -> None:
         """
         A torch.Module wrapper using ZeRO-DP and Gemini.
@@ -743,5 +781,10 @@ class GeminiDDP(ZeroDDP):
                                            strict_ddp_flag=strict_ddp_mode,
                                            verbose=verbose)
         gemini_manager = GeminiManager(placement_policy, chunk_manager, memstats)
-        super().__init__(module, gemini_manager, pin_memory, force_outputs_fp32, strict_ddp_mode,
-                         scatter_after_inference)
+        super().__init__(module,
+                         gemini_manager,
+                         pin_memory,
+                         force_outputs_fp32,
+                         strict_ddp_mode,
+                         scatter_after_inference,
+                         mixed_precision=mixed_precision)

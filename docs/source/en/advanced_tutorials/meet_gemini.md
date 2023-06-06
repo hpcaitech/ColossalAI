@@ -9,16 +9,21 @@ When you only have a few GPUs for large model training tasks, **heterogeneous tr
 
 ## Usage
 
-At present, Gemini supports compatibility with ZeRO parallel mode, and it is really simple to use Gemini. Set attribute of zero model_config, i.e., tensor_placement_policy='auto'.
+At present, Gemini supports compatibility with ZeRO parallel mode, and it is really simple to use Gemini: Inject the feathures of `GeminiPlugin` into training components with `booster`. More instructions of `booster` please refer to [**usage of booster**](../basics/booster_api.md).
 
-```
-zero = dict(
-    model_config=dict(
-        tensor_placement_policy='auto',
-        shard_strategy=BucketTensorShardStrategy()
-    ),
-    optimizer_config=dict(
-    ...)
+```python
+from torchvision.models import resnet18
+from colossalai.booster import Booster
+from colossalai.zero import ColoInitContext
+from colossalai.booster.plugin import GeminiPlugin
+plugin = GeminiPlugin(placement_policy='cuda', strict_ddp_mode=True, max_norm=1.0, initial_scale=2**5)
+booster = Booster(plugin=plugin)
+ctx = ColoInitContext()
+with ctx:
+    model = resnet18()
+optimizer = HybridAdam(model.parameters(), lr=1e-3)
+criterion = lambda x: x.mean()
+model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
 )
 ```
 
@@ -86,3 +91,5 @@ The important duty of MSC is to adjust the tensor layout position. For example, 
 In the warmup stage, since we haven't finished a complete iteration yet, we don't know actual memory occupation. At this time, we limit the upper bound of memory usage of the model data. For example, only 30% of the GPU memory can be used. This ensures that we can successfully complete the warmup state.
 
 In the non-warmup stage, we need to use the memory information of non-model data collected in the warm-up stage to reserve the peak memory required by the computing device for the next Period, which requires us to move some model tensors. In order to avoid frequent replacement of the same tensor in and out of the CPU-GPU, causing a phenomenon similar to [cache thrashing](https://en.wikipedia.org/wiki/Thrashing_(computer_science)). Using the iterative characteristics of DNN training, we design the OPT cache swap out strategy. Specifically, in the warmup stage, we record the sampling time required by each tensor computing device. If we need to expel some HOLD tensors, we will choose the latest tensor needed on this device as the victim.
+
+<!-- doc-test-command: torchrun --standalone --nproc_per_node=1 meet_gemini.py  -->

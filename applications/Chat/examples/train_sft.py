@@ -84,7 +84,7 @@ def train(args):
 
         if args.strategy == 'colossalai_gemini':
             # this is a hack to deal with the resized embedding
-            # to make sure all parameters are ColoParameter for Colossal-AI Gemini Compatiblity
+            # to make sure all parameters are ColoParameter for Colossal-AI Gemini Compatibility
             for name, param in model.named_parameters():
                 if not isinstance(param, ColoParameter):
                     sub_module_name = '.'.join(name.split('.')[:-1])
@@ -159,7 +159,7 @@ def train(args):
                          train_dataloader=train_dataloader,
                          eval_dataloader=eval_dataloader,
                          max_epochs=args.max_epochs,
-                         accimulation_steps=args.accimulation_steps)
+                         accumulation_steps=args.accumulation_steps)
 
     trainer.fit(logger=logger, use_wandb=args.use_wandb)
 
@@ -176,7 +176,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--strategy',
                         choices=['naive', 'ddp', 'colossalai_gemini', 'colossalai_zero2', 'colossalai_zero2_cpu'],
-                        default='naive')
+                        default='colossalai_zero2')
     parser.add_argument('--model', choices=['gpt2', 'bloom', 'opt', 'llama'], default='bloom')
     parser.add_argument('--pretrain', type=str, default=None)
     parser.add_argument('--dataset', type=str, default=None)
@@ -189,7 +189,7 @@ if __name__ == '__main__':
     parser.add_argument('--lora_rank', type=int, default=0, help="low-rank adaptation matrices rank")
     parser.add_argument('--log_interval', type=int, default=100, help="how many steps to log")
     parser.add_argument('--lr', type=float, default=5e-6)
-    parser.add_argument('--accimulation_steps', type=int, default=8)
+    parser.add_argument('--accumulation_steps', type=int, default=8)
     parser.add_argument('--use_wandb', default=False, action='store_true')
     parser.add_argument('--grad_checkpoint', default=False, action='store_true')
     args = parser.parse_args()

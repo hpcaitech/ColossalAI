@@ -43,7 +43,7 @@ def warmup_jit_fusion(batch_size: int,
                       seq_length: int = 512,
                       vocab_size: int = 32768,
                       dtype: torch.dtype = torch.float32):
-    """ Compilie JIT functions before the main training steps """
+    """ Compile JIT functions before the main training steps """
 
     embed = Embedding(vocab_size, hidden_size).to(get_current_device())
     linear_1 = Linear(hidden_size, hidden_size * 4, skip_bias_add=True).to(get_current_device())

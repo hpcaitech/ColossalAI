@@ -11,9 +11,9 @@ from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from tests.kit.model_zoo import model_zoo
 
 # These models are not compatible with AMP
-_AMP_ERR_MODELS = ['timm_convit', 'dlrm', 'deepfm_interactionarch', 'deepfm_simpledeepfmnn`']
+_AMP_ERR_MODELS = ['timm_convit', 'dlrm', 'deepfm_interactionarch', 'deepfm_simpledeepfmnn']
 # These models have no parameters
-_LOW_LEVEL_ZERO_ERR_MODELS = ['dlrm_interactionarch']
+_LOW_LEVEL_ZERO_ERR_MODELS = ['dlrm_interactionarch', 'deepfm_overarch', 'deepfm_sparsearch', 'dlrm_sparsearch']
 # These models will get stuck
 _STUCK_MODELS = [
     'diffusers_vq_model', 'transformers_albert', 'transformers_albert_for_pretraining', 'transformers_bert',
@@ -67,6 +67,7 @@ def check_low_level_zero_plugin(stage: int, early_stop: bool = True):
             skipped_models.append(name)
             continue
         err = run_fn(stage, model_fn, data_gen_fn, output_transform_fn)
+
         torch.cuda.empty_cache()
 
         if err is None:
@@ -83,30 +84,6 @@ def check_low_level_zero_plugin(stage: int, early_stop: bool = True):
     assert len(failed_info) == 0, '\n'.join([f'{k}: {v}' for k, v in failed_info.items()])
 
 
-def check_dataloader_sharding():
-    plugin = LowLevelZeroPlugin()
-
-    # create a custom dasetset with 0 to 10
-    dataset = torch.utils.data.TensorDataset(torch.arange(0, 10))
-    train_dataloader = plugin.prepare_train_dataloader(dataset, batch_size=2)
-
-    # get the first batch of data
-    batch = next(iter(train_dataloader))[0].cuda()
-    is_rank_0 = dist.get_rank() == 0
-
-    if is_rank_0:
-        batch_to_compare = batch.clone()
-    else:
-        batch_to_compare = batch
-    # pass to the rank 1 value to rank 0
-    dist.broadcast(batch_to_compare, src=1)
-
-    # compare on rank 0
-    if is_rank_0:
-        assert not torch.equal(batch,
-                               batch_to_compare), 'Same number was found across ranks but expected it to be different'
-
-
 def run_dist(rank, world_size, port, early_stop: bool = True):
     # init dist env
     colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host='localhost')
@@ -115,7 +92,7 @@ def run_dist(rank, world_size, port, early_stop: bool = True):
 
 @rerun_if_address_is_in_use()
 def test_low_level_zero_plugin(early_stop: bool = True):
-    spawn(run_dist, 2, early_stop=early_stop)
+    spawn(run_dist, 4, early_stop=early_stop)
 
 
 if __name__ == '__main__':

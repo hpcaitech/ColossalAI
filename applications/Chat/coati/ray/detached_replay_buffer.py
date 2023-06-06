@@ -32,7 +32,6 @@ class DetachedReplayBuffer:
         self.items = Queue(self.limit, actor_options={"num_cpus": 1})
         self.batch_collector: List[BufferItem] = []
 
-
     @torch.no_grad()
     def append(self, experience: Experience) -> None:
         '''

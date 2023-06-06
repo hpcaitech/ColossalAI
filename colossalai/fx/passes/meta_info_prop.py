@@ -31,7 +31,7 @@ class TensorMetadata(NamedTuple):
     numel: int
     is_tensor: bool
     # TODO: we can add a list of sharding spec here, and record the sharding
-    # behaviour by appending sharding spec into list.
+    # behavior by appending sharding spec into list.
 
 
 def _extract_tensor_metadata(result: torch.Tensor) -> TensorMetadata:

@@ -34,9 +34,9 @@ class LayerNormGenerator(StrategyGenerator):
         '''
         Compute the computation cost per device with this specific strategy.
 
-        Note: compute_cost need to be devided by TFLOPS, now it just shows the computation size.
+        Note: compute_cost need to be divided by TFLOPS, now it just shows the computation size.
         '''
-        # TODO: compute_cost need to be devided by TFLOPS, now it just shows the computation size.
+        # TODO: compute_cost need to be divided by TFLOPS, now it just shows the computation size.
         # TODO: a constant coefficient need to be added.
 
         sharded_input_shape = strategy.sharding_specs[self.op_data['input']].get_sharded_shape_per_device()
