@@ -130,7 +130,7 @@ class ProcessGroup:
     @property
     def has_cpu_groups(self) -> bool:
         """has_cpu_groups
-        If cpu groups have been initailized.
+        If cpu groups have been initialized.
 
         Returns:
             bool: cpu process groups have been initialized or not.

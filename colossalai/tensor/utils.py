@@ -77,7 +77,7 @@ def shard_simulator(target_pair, legal_sharding_dims):
 
     Argument:
         target_pair(Tuple[int, List[int]]): The first element is the dimension of tensor to be sharded,
-        and the second element decribes which logical axis will be sharded in that dimension.
+        and the second element describes which logical axis will be sharded in that dimension.
     '''
     _, shard_list = target_pair
     shard_list_list = []

@@ -123,7 +123,7 @@ class ChimeraWorker(WorkerBase):
         assert self.producer_stage_ids is None, f"all the producers of rank {rank} has been subscribed"
         assert self.consumer_stage_ids is None, f"all the consumers of rank {rank} has been subscribed"
 
-        # should be aranged in order, the order of the input of current forward
+        # should be arranged in order, the order of the input of current forward
         self.producer_stage_ids = []
         self.consumer_stage_ids = []
 
@@ -174,7 +174,7 @@ class ChimeraWorker(WorkerBase):
         else:
             # if it is down pipeline, create partition by origin method
             co_up_pp_worker_rref = self.pp_rank_to_worker_rref[pp_rank - stage_num]
-            # get the coresponding model state dict and wait for its init
+            # get the corresponding model state dict and wait for its init
             state_dict = co_up_pp_worker_rref.rpc_sync().get_partition_state_dict()
             super()._initialize_partition()
             self.module_partition.load_state_dict(state_dict)
@@ -228,7 +228,7 @@ class ChimeraWorker(WorkerBase):
         stage_num = self.actual_stage_num
         co_pp_rank = (pp_rank + stage_num) % (2 * stage_num)
 
-        # if currrent pp_rank is not the first to do step
+        # if current pp_rank is not the first to do step
         # wait its previous pp_rank finish step
         grads = self.get_parameter_gradients()
 
