@@ -228,11 +228,9 @@ if args.distplan == "colossalai":
 
     pg = default_pg
     tensor_parallelize(model, pg)
-    # model = gemini_zero_dpp(model, pg, args.placement)
 
     # optimizer
 
-    #optimizer = GeminiAdamOptimizer(model, lr=1e-7, initial_scale=2**5)
     optimizer = HybridAdam(model.parameters(), lr=LEARNING_RATE, initial_scale=2**5)
     model, optimizer, _, _, _ = booster.boost(model, optimizer)
 
