@@ -65,10 +65,10 @@ jobs:
         run: | # branch name may contain slash, we need to replace it with space
           export BASE=$(echo ${{ github.event.pull_request.base.ref }} | sed "s/\// /")
           if [ -d "/github/home/testmon_cache/${BASE}" ]; then
-            [ ! -z "$(ls -A "/github/home/testmon_cache/${BASE}")" ] && mkdir /github/home/testmon_cache/_pull && cp -p -r "/github/home/testmon_cache/${BASE}" /github/home/testmon_cache/_pull/${PR_NUMBER}
+            [ ! -z "$(ls -A "/github/home/testmon_cache/${BASE}")" ] && mkdir -p /github/home/testmon_cache/_pull && cp -p -r "/github/home/testmon_cache/${BASE}" /github/home/testmon_cache/_pull/${PR_NUMBER}
           fi
         env:
-          PR_NUMBER: ${{ github.event.pull_request.head.ref }}
+          PR_NUMBER: ${{ github.event.number }}
 
   detect:
     name: Detect file change
