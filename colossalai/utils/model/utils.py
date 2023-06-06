@@ -70,7 +70,7 @@ class InsertPostInitMethodToModuleSubClasses(object):
             cls.__init__ = preprocess_after(cls.__init__)
 
         # Replace .__init__() for all existing subclasses of torch.nn.Module
-        # Excution self._post_init_method after the default init function.
+        # Execution self._post_init_method after the default init function.
         substitute_init_recursively(torch.nn.modules.module.Module, _enable_class, set())
 
         # holding on to the current __init__subclass__ for exit

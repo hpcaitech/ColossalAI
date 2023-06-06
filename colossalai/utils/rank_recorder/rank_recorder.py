@@ -133,7 +133,7 @@ class Recorder:
         with open(self.export_name + '.json', 'w', encoding='utf-8') as f:
             json.dump(recoders, f, ensure_ascii=False)
 
-    def visualise_record(self):
+    def visualize_record(self):
         with open(self.export_name + '.json', 'r', encoding='utf-8') as f:
             records = json.load(f)
         records = dict(records)
@@ -171,7 +171,7 @@ class Recorder:
         if rank == 1:
             # take the base time of rank 0 as standard
             self.merge_recode()
-            self.visualise_record()
+            self.visualize_record()
 
 
 recorder = Recorder()

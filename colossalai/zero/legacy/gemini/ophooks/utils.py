@@ -88,7 +88,7 @@ def register_ophooks_recursively(module: torch.nn.Module,
                                  ophook_list: List[BaseOpHook],
                                  name: str = "",
                                  filter_fn: Optional[Callable] = None):
-    r"""Recursilvely register pre/post hooks for all submodules in the module in FWD and BWD."""
+    r"""Recursively register pre/post hooks for all submodules in the module in FWD and BWD."""
     assert isinstance(module, torch.nn.Module)
     assert isinstance(ophook_list, (list, tuple))
     assert len(ophook_list) > 0, 'expected at least 1 hook in the argument ophook_list but found 0'
@@ -103,7 +103,7 @@ def register_ophooks_recursively(module: torch.nn.Module,
     if len(list(module.parameters(recurse=False))) == 0:
         return
 
-    # return from flitered module
+    # return from filtered module
     if filter_fn is not None and filter_fn(module):
         return
 

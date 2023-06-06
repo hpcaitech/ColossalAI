@@ -77,7 +77,7 @@ def colo_model_data_tensor_move_inline(t: Union[StatefulTensor, torch.Tensor], t
     move a tensor to the target_device
     Args:
         t (Union[StatefulTensor, torch.Tensor]): the tensor be moved
-        target_device: a traget device, if type is int, it the index of cuda card.
+        target_device: a target device, if type is int, it the index of cuda card.
     """
     if not isinstance(target_device, torch.device):
         target_device = torch.device(f'cuda:{target_device}')

@@ -157,7 +157,7 @@ class ChunkManager:
         Copy data to the chunk.
 
         Args:
-            tensor (torch.Tensor): the tensor used to retrive meta information
+            tensor (torch.Tensor): the tensor used to retrieve meta information
             data (torch.Tensor): the tensor to be copied to the chunk
         """
         chunk = self.tensor_chunk_map[tensor]

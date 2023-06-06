@@ -1,5 +1,5 @@
 # Rank Recorder
-This is a useful tool to get the records of certain functions in each rank. The records of each rank will dump into a json file after the end of multiple process program. You can parse and visualise the json file easily.
+This is a useful tool to get the records of certain functions in each rank. The records of each rank will dump into a json file after the end of multiple process program. You can parse and visualize the json file easily.
 
 Before using the tool, you should ensure dist.is_initialized() return true before exit of program. 
 
@@ -20,7 +20,7 @@ with recorder(record_name, current_rank) as r:
 ```
 
 ## Example
-This is a demo to display kernel select in cuda and visualise the cost of several procedures in each rank.
+This is a demo to display kernel select in cuda and visualize the cost of several procedures in each rank.
 
 ```python
 import time

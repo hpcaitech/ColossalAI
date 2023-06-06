@@ -130,12 +130,12 @@ class PcieProfiler(BaseProfiler):
 
         append("Possible data transmission events in PCIE:")
 
-        seperation = '-' * 62
+        separation = '-' * 62
         row_format = '{:^10}' + '{:^12}' + '{:^16}' + '{:^12}' * 2
 
-        append(seperation)
+        append(separation)
         append(row_format.format('Location', 'GPU time', 'Trans volume', 'Bandwidth', 'Num of calls'))
-        append(seperation)
+        append(separation)
 
         show_list = sorted(self.ops_record.items(), key=lambda kv: -kv[1].cuda_time)
         for location, event in show_list:

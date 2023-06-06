@@ -45,7 +45,7 @@ class MemoryMonitor:
 
 class AsyncMemoryMonitor(MemoryMonitor):
     """
-    An Async Memory Monitor runing during computing. Sampling memory usage of the current GPU
+    An Async Memory Monitor running during computing. Sampling memory usage of the current GPU
     at interval of `1/(10**power)` sec.
 
     The idea comes from Runtime Memory Tracer of PatrickStar
@@ -67,7 +67,7 @@ class AsyncMemoryMonitor(MemoryMonitor):
         async_mem_monitor.save('log.pkl')
 
     Args:
-        power (int, optional): the power of time interva. Defaults to 10.
+        power (int, optional): the power of time interval. Defaults to 10.
 
     .. _PatrickStar: Parallel Training of Pre-trained Models via Chunk-based Memory Management:
         https://arxiv.org/abs/2108.05818

@@ -25,7 +25,7 @@ class ChunkMemStatsCollector(MemStatsCollector):
     # override
     def record_model_data_volume(self) -> None:
         """
-        record model data volumn on cuda and cpu.
+        record model data volume on cuda and cpu.
         """
         if self._start_flag and not self.use_outside_memstats:
             cuda_mem = self._chunk_manager.total_mem['cuda']

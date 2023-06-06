@@ -73,7 +73,7 @@ def get_static_torch_model(zero_ddp_model,
         zero_ddp_model (ZeroDDP): a zero ddp model
         device (torch.device): the device of the final torch model
         dtype (torch.dtype): the dtype of the final torch model
-        only_rank_0 (bool): if True, only rank0 has the coverted torch model
+        only_rank_0 (bool): if True, only rank0 has the converted torch model
 
     Returns:
         torch.nn.Module: a static torch model used for saving checkpoints or numeric checks
