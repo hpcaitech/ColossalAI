@@ -111,28 +111,6 @@ def get_model_size(model: nn.Module):
     return total_numel
 
 
-# Gemini + ZeRO DDP
-# def gemini_zero_dpp(model: torch.nn.Module, pg: ProcessGroup, placement_policy: str = "auto"):
-#     cai_version = colossalai.__version__
-#     if version.parse(cai_version) > version.parse("0.1.10"):
-#         from colossalai.zero.gemini.gemini_ddp import GeminiDDP
-#         model = GeminiDDP(model,
-#                           device=get_current_device(),
-#                           placement_policy=placement_policy,
-#                           pin_memory=True,
-#                           search_range_mb=32)
-#     elif version.parse(cai_version) <= version.parse("0.1.10") and version.parse(cai_version) >= version.parse("0.1.9"):
-#         from colossalai.gemini import ChunkManager, GeminiManager
-#         chunk_size = ChunkManager.search_chunk_size(model, 64 * 1024**2, 32)
-#         gemini_manager = GeminiManager(placement_policy, chunk_manager)
-#         chunk_manager = ChunkManager(chunk_size,
-#                                      pg,
-#                                      enable_distributed_storage=True,
-#                                      init_device=GeminiManager.get_default_device(placement_policy))
-#         model = ZeroDDP(model, gemini_manager)
-#     else:
-#         raise NotImplemented(f"CAI version {cai_version} is not supported")
-#     return model
 
 
 # Parameter Sharding Strategies for Tensor Parallelism
