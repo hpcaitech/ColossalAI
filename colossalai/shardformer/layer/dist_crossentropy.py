@@ -75,8 +75,8 @@ class DistCrossEntropy(Function):
 
         # calculate the loss
         # loss = log(sum(exp(x[i]))) - x[class]
-        loss = torch.log(sum_exp_logits) - pred_logits
-        loss = torch.sum(loss).div_(loss.numel())
+        loss = torch.where(target == -100, 0.0, torch.log(sum_exp_logits) - pred_logits)
+        loss = torch.sum(loss).div_(torch.sum(loss != 0.0))
 
         # caculate the softmax
         exp_logits.div_(sum_exp_logits.unsqueeze(dim=-1))

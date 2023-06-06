@@ -17,8 +17,10 @@ def get_args():
 
 def test_dist_crossentropy():
     pred = torch.randn(2, 4, 8, requires_grad=True)
-    labels = torch.randint(8, (1, 4)).repeat(2, 1)
-
+    print(pred)
+    labels = torch.randint(8, (2, 4))
+    labels[0, -1] = -100
+    print(labels)
     pred_ = pred.view(-1, 8)
     labels_ = labels.view(-1)
     loss = F.cross_entropy(pred_, labels_)
