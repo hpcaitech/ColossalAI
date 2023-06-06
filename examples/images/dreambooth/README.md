@@ -92,6 +92,29 @@ torchrun --nproc_per_node 2 train_dreambooth_colossalai.py \
   --placement="cuda"
 ```
 
+## New API
+We have modified our previous implementation of Dreambooth with our new Booster API, which offers a more flexible and efficient way to train your model. The new API is more user-friendly and easy to use. You can find the new API in `train_dreambooth_colossalai.py`. 
+We have also offer a shell script `test_ci.sh` for you to go through all our plugins for the booster.
+For more information about the booster API you can refer to https://colossalai.org/docs/basics/booster_api/.
+
+## Performance
+
+|    Strategy    | #GPU | Batch Size | GPU RAM(GB) | speedup |
+|:--------------:|:----:|:----------:|:-----------:|:-------:|
+|  Traditional   |  1   |     16     |     oom     |    \    |
+|  Traditional   |  1   |     8      |    61.81    |    1    |
+|   torch_ddp    |  4   |     16     |     oom     |    \    |
+|   torch_ddp    |  4   |     8      |    41.97    |  0.97   |
+|     gemini     |  4   |     16     |    53.29    |    \    |
+|     gemini     |  4   |     8      |    29.36    |  2.00   |
+| low_level_zero |  4   |     16     |    52.80    |    \    |
+| low_level_zero |  4   |     8      |    28.87    |  2.02   |
+
+The evaluation is performed on 4 Nvidia A100 GPUs with 80GB memory each, with GPU 0 & 1, 2 & 3 connected with NVLink.
+We finetuned the [stable-diffusion-v1-4](https://huggingface.co/stabilityai/stable-diffusion-v1-4) model with 512x512 resolution on the [Teyvat](https://huggingface.co/datasets/Fazzie/Teyvat) dataset and compared 
+the memory cost and the throughput for the plugins.
+
+
 ## Inference
 
 Once you have trained a model using above command, the inference can be done simply using the `StableDiffusionPipeline`. Make sure to include the `identifier`(e.g. `--instance_prompt="a photo of sks dog" ` in the above example) in your prompt.
