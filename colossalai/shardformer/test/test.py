@@ -6,24 +6,28 @@ import torch.nn as nn
 from datasets import load_dataset
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
-from transformers import AutoTokenizer, BertForMaskedLM, DataCollatorForLanguageModeling, get_scheduler
+from transformers import AutoTokenizer, BertForMaskedLM, DataCollatorForLanguageModeling, GPT2LMHeadModel, get_scheduler
 
 import colossalai
 from colossalai.shardformer.shard import ShardConfig, shard_model
 from colossalai.utils import get_current_device, print_rank_0
 
 os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
-tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
 
 
 def get_args():
     parser = colossalai.get_default_parser()
     parser.add_argument("--mode", type=str, default='inference')
     parser.add_argument("--save_model", action='store_true')
+    parser.add_argument("--model", type=str, default='bert-base-uncased')
     return parser.parse_args()
 
 
-def load_data():
+def load_data(args):
+    tokenizer = AutoTokenizer.from_pretrained(args.model)
+    if tokenizer.pad_token is None:
+        tokenizer.add_special_tokens({"pad_token": "[PAD]"})
+        # tokenizer.pad_token_id = 0
     datasets = load_dataset('wikitext', 'wikitext-2-raw-v1')
     # datasets=load_dataset("yelp_review_full")
     tokenized_datasets = datasets.map(
@@ -42,18 +46,23 @@ def load_data():
 
 
 def inference(model: nn.Module, args):
-    tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
+    print(model)
+    # print(model.wte.weight.shape)
+    tokenizer = AutoTokenizer.from_pretrained(args.model)
+    if tokenizer.pad_token is None:
+        tokenizer.add_special_tokens({"pad_token": "[PAD]"})
+        tokenizer.pad_token_id = 0
     token = "Hello, my dog is cute"
     inputs = tokenizer(token, return_tensors="pt")
     inputs.to("cuda")
     model.eval()
     model.to("cuda")
     outputs = model(**inputs)
-    print(outputs)
+    print(outputs[0])
 
 
 def train(model: nn.Module, args, num_epoch: int = 3):
-    train_dataloader, eval_dataloader = load_data()
+    train_dataloader, eval_dataloader = load_data(args)
     optimizer = torch.optim.AdamW(model.parameters(), lr=5e-5)
     num_training = num_epoch * len(train_dataloader)
     progress_bar = tqdm(range(num_training))
@@ -94,8 +103,13 @@ def train(model: nn.Module, args, num_epoch: int = 3):
 
 if __name__ == "__main__":
     args = get_args()
-    model = BertForMaskedLM.from_pretrained("bert-base-uncased")
     colossalai.launch_from_torch(config=args.config)
+    if args.model == 'bert-base-uncased':
+        model = BertForMaskedLM.from_pretrained("bert-base-uncased")
+    elif args.model == 'gpt2':
+        model = GPT2LMHeadModel.from_pretrained("gpt2")
+    else:
+        raise AttributeError("model not supported")
     shard_config = ShardConfig(
         rank=int(str(get_current_device()).split(':')[-1]),
         world_size=int(os.environ['WORLD_SIZE']),
