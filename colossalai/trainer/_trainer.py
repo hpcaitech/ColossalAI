@@ -31,9 +31,9 @@ class Trainer:
         >>> # Initialize your engine, train_dataloader, test_dataloader, lr_scheduler
         >>> engine, train_dataloader, _, _ = colossalai.initialize(model, optimizer, criterion)
         >>> # Beginning training progress
-        >>> timier = ...
+        >>> timer = ...
         >>> logger = ...
-        >>> trainer = Trainer(engine=engine, logger=logger, timer=timier)
+        >>> trainer = Trainer(engine=engine, logger=logger, timer=timer)
         >>> # add hooks you would like to use here.
         >>> hook_list = []
         >>> trainer.fit(
@@ -56,7 +56,7 @@ class Trainer:
         timer: MultiTimer = None,
         logger: DistributedLogger = None,
     ):
-        # training-ralated params
+        # training-related params
         self._engine = engine
         self._max_epochs = 0
         self._cur_epoch = 0
@@ -118,7 +118,7 @@ class Trainer:
         self._cur_step = epoch * self._steps_per_epoch
 
     def _call_timer(self, action: str, item: str, *args, **kwargs) -> None:
-        """Call timer funciton with a given timer name.
+        """Call timer function with a given timer name.
 
         Args:
             action (str): Function to be called on timer.
