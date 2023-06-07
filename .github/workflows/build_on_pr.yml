@@ -271,7 +271,6 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
 
       - name: Remove testmon cache
-        if: github.event.pull_request.merged != true
         run: |
           rm -rf /github/home/testmon_cache/_pull/${PR_NUMBER}
         env:
