@@ -64,6 +64,7 @@
         },
         "features/pipeline_parallel",
         "features/nvme_offload",
+        "features/lazy_init",
         "features/cluster_utils"
       ]
     },
