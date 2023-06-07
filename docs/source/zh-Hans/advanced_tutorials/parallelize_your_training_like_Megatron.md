@@ -159,11 +159,11 @@ for mn, module in model.named_modules():
 在我们最新示例中还定义了一个Gemini + ZeRO DDP 的模型从而减小开销，提升效率。这一部分的详细内容可以参考[ZeRO](../features/zero_with_chunk.md)，你可以将这两部分内容结合起来看从而理解我们整个训练流程：
 
 ```python
-def gemini_zero_dpp(model: torch.nn.Module, pg: ProcessGroup, placememt_policy: str = "auto"):
+def gemini_zero_dpp(model: torch.nn.Module, pg: ProcessGroup, placement_policy: str = "auto"):
     from colossalai.nn.parallel import GeminiDDP
     model = GeminiDDP(model,
                         device=get_current_device(),
-                        placement_policy=placememt_policy,
+                        placement_policy=placement_policy,
                         pin_memory=True,
                         search_range_mb=32)
     return model

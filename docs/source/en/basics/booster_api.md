@@ -14,9 +14,9 @@ In our new design, `colossalai.booster` replaces the role of `colossalai.initial
 ### Plugin
 Plugin is an important component that manages parallel configuration (eg: The gemini plugin encapsulates the gemini acceleration solution). Currently supported plugins are as follows:
 
-***GeminiPlugin:*** This plugin wrapps the Gemini acceleration solution, that ZeRO with chunk-based memory management.
+***GeminiPlugin:*** This plugin wraps the Gemini acceleration solution, that ZeRO with chunk-based memory management.
 
-***TorchDDPPlugin:*** This plugin wrapps the DDP acceleration solution, it implements data parallelism at the module level which can run across multiple machines.
+***TorchDDPPlugin:*** This plugin wraps the DDP acceleration solution, it implements data parallelism at the module level which can run across multiple machines.
 
 ***LowLevelZeroPlugin:*** This plugin wraps the 1/2 stage of Zero Redundancy Optimizer. Stage 1 : Shards optimizer states across data parallel workers/GPUs. Stage 2 : Shards optimizer states + gradients across data parallel workers/GPUs.
 

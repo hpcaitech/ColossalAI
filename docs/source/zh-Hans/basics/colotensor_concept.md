@@ -53,7 +53,7 @@ ColoTensor 包含额外的属性[ColoTensorSpec](https://colossalai.readthedocs.
 
 ## Example
 
-让我们看一个例子。 使用 tp_degree=4, dp_dgree=2 在 8 个 GPU 上初始化并Shard一个ColoTensor。 然后tensor被沿着 TP 进程组中的最后一个维度进行分片。 最后，我们沿着 TP 进程组中的第一个维度（dim 0）对其进行重新Shard。 我们鼓励用户运行代码并观察每个张量的形状。
+让我们看一个例子。 使用 tp_degree=4, dp_degree=2 在 8 个 GPU 上初始化并Shard一个ColoTensor。 然后tensor被沿着 TP 进程组中的最后一个维度进行分片。 最后，我们沿着 TP 进程组中的第一个维度（dim 0）对其进行重新Shard。 我们鼓励用户运行代码并观察每个张量的形状。
 
 
 ```python

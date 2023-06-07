@@ -92,7 +92,7 @@ class ColoTracer(Tracer):
             return proxy
 
         # if graph is traced for auto parallelism module, some extra node will be added during
-        # graph construction to deal with the compatability between bias addition and all reduce.
+        # graph construction to deal with the compatibility between bias addition and all reduce.
 
         # if no extra manipulation is applied, we just pass the origin arguments to create_proxy function
         # to create node on computation graph
@@ -208,7 +208,7 @@ class ColoTracer(Tracer):
             self.proxy_cls = ColoProxy
             self.tracer_type = TracerType.META
         else:
-            raise ValueError(f"Unrecognised tracer type {tracer_type}")
+            raise ValueError(f"Unrecognized tracer type {tracer_type}")
 
     def _meta_data_computing(self, kind, target, args, kwargs):
 
@@ -445,7 +445,7 @@ class ColoTracer(Tracer):
 
                 @staticmethod
                 def forward(ctx, run_function, preserve_rng_state, *args):
-                    # signal that the current tracing occurs within activaton checkpoint part
+                    # signal that the current tracing occurs within activation checkpoint part
                     self.inside_torch_checkpoint_func = True
                     out = run_function(*args)
                     self.inside_torch_checkpoint_func = False

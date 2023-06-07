@@ -155,3 +155,7 @@ colossalai/version.py
 # ignore coverage test file
 coverage.lcov
 coverage.xml
+
+# ignore testmon and coverage files
+.coverage
+.testmondata*

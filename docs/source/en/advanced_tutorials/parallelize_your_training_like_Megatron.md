@@ -69,7 +69,7 @@ After the forward operation of the embedding module, each word in all sequences 
 <figcaption>The embedding module</figcaption>
 </figure>
 
-Each transformer layer contains two blocks. The self-attention operation is called in the first block and a two-layer percepton is located in the second block.
+Each transformer layer contains two blocks. The self-attention operation is called in the first block and a two-layer perception is located in the second block.
 
 <figure style={{textAlign: "center"}}>
 <img src="https://s2.loli.net/2022/08/17/LAVzDlpRcj4dYeb.png"/>
@@ -175,11 +175,11 @@ In this way, users can train their models as usual.
 In our latest example, a Gemini + ZeRO DDP model is also defined to reduce overhead and improve efficiency.For the details of this part, please refer to [ZeRO](../features/zero_with_chunk.md). You can combine these two parts to understand our entire training process:
 
 ```python
-def gemini_zero_dpp(model: torch.nn.Module, pg: ProcessGroup, placememt_policy: str = "auto"):
+def gemini_zero_dpp(model: torch.nn.Module, pg: ProcessGroup, placement_policy: str = "auto"):
     from colossalai.nn.parallel import GeminiDDP
     model = GeminiDDP(model,
                         device=get_current_device(),
-                        placement_policy=placememt_policy,
+                        placement_policy=placement_policy,
                         pin_memory=True,
                         search_range_mb=32)
     return model

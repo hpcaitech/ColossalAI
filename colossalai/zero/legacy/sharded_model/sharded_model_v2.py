@@ -28,6 +28,7 @@ from colossalai.zero.legacy.sharded_model.reduce_scatter import ReduceScatterBuc
 
 from ._utils import (
     cast_float_arguments,
+    cast_tensor_to_bf16,
     cast_tensor_to_fp16,
     cast_tensor_to_fp32,
     chunk_and_pad,
@@ -74,6 +75,7 @@ class ShardedModelV2(nn.Module):
             In this mode, grad will be fp16. Make sure your optimizer supports mixed precision (fp32 param and fp16 grad).
             We find that PyTorch's optimizers don't support mixed precision,
             so we recommend you enable this only when using our CPUAdam with CPU offload. Defaults to False.
+        bf16 (bool, optional): Whether to use bfloat16 for param and grad. Defaults to False.
     """
 
     def __init__(self,
@@ -86,11 +88,13 @@ class ShardedModelV2(nn.Module):
                  tensor_placement_policy: str = 'cuda',
                  gradient_predivide_factor: Optional[float] = 1.0,
                  reuse_fp16_shard: bool = False,
+                 bf16: bool = False,
                  *args,
                  **kwargs):
         assert not isinstance(module, ShardedModelV2), 'Nested ShardedModelV2 is not supported.'
         super().__init__()
         self.logger = get_dist_logger()
+        self.bf16 = bf16
 
         # We force users to use ZeroInitContext
         for submodule in module.modules():
@@ -232,7 +236,8 @@ class ShardedModelV2(nn.Module):
 
     def forward(self, *args: Any, **kwargs: Any) -> torch.Tensor:
         self._pre_forward_operations(*args)
-        args, kwargs = cast_float_arguments(cast_tensor_to_fp16, *args, **kwargs)
+        cast_fn = cast_tensor_to_bf16 if self.bf16 else cast_tensor_to_fp16
+        args, kwargs = cast_float_arguments(cast_fn, *args, **kwargs)
         outputs = self.module(*args, **kwargs)
         self._post_forward_operations()
         return outputs

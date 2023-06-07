@@ -7,7 +7,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.testing import assert_close
 
 import colossalai
-from colossalai.testing import rerun_if_address_is_in_use, spawn
+from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.testing.random import seed_all
 from colossalai.zero import LowLevelZeroOptimizer
 
@@ -25,15 +25,18 @@ class MlpModel(nn.Module):
         return x
 
 
-def half_close(a, b, loose=False):
+def loose_close(a, b, dtype: torch.dtype = torch.float32):
     rtol = None
     atol = None
-    if loose:
+    if dtype is torch.float16:
         rtol = 5e-2
         atol = 5e-4
+    elif dtype is torch.bfloat16:
+        rtol = 4e-3
+        atol = 4e-3
 
-    a = a.detach().half()
-    b = b.detach().half()
+    a = a.detach().to(dtype)
+    b = b.detach().to(dtype)
 
     assert_close(a, b, rtol=rtol, atol=atol)
 
@@ -96,7 +99,8 @@ def exam_zero_1_2():
         assert torch.equal(z1p.data, z2p.data)
 
 
-def exam_zero_1_torch_ddp():
+@parameterize('dtype', [torch.float16, torch.bfloat16])
+def exam_zero_1_torch_ddp(dtype: torch.dtype):
     """
     In this test, two pairs of model and optimizers are created.
     1. zero: use sharded optimizer and fp16 parameters
@@ -109,15 +113,10 @@ def exam_zero_1_torch_ddp():
     seed_all(1453)
 
     # create models
-    zero_model = MlpModel()
-    torch_model = copy.deepcopy(zero_model)
+    torch_model = MlpModel().cuda()
+    zero_model = copy.deepcopy(torch_model).to(dtype)
 
-    zero_model = zero_model.cuda().half()
-    torch_model = DDP(torch_model.cuda(), bucket_cap_mb=0)
-    torch_model = torch_model.cuda()
-
-    # for (n, p), z1p in zip(torch_model.named_parameters(), zero_model.parameters()):
-    #    half_close(p.data, z1p.data)
+    torch_model = DDP(torch_model.cuda(), bucket_cap_mb=0).cuda()
 
     # create optimizer
     zero_optimizer = torch.optim.SGD(zero_model.parameters(), lr=1)
@@ -137,11 +136,11 @@ def exam_zero_1_torch_ddp():
     input_data = torch.rand(32, 128).cuda()
 
     # zero-dp forward
-    zero_output = zero_model(input_data.half())
+    zero_output = zero_model(input_data.to(dtype))
 
     # torch-ddp forward
     torch_output = torch_model(input_data)
-    half_close(zero_output, torch_output, loose=True)
+    loose_close(zero_output, torch_output, dtype=dtype)
 
     # zero-dp backward
     zero_optimizer.backward(zero_output.mean().float(), sync_grad=False)
@@ -151,7 +150,7 @@ def exam_zero_1_torch_ddp():
 
     # check grad
     for (n, p), z1p in zip(torch_model.named_parameters(), zero_model.parameters()):
-        half_close(p.grad, z1p.grad, loose=True)
+        loose_close(p.grad, z1p.grad, dtype=dtype)
 
     # zero-dp step
     zero_optimizer._sync_grad()
@@ -163,7 +162,7 @@ def exam_zero_1_torch_ddp():
     # check updated param
     for (n, p), z1p in zip(torch_model.named_parameters(), zero_model.parameters()):
         # print(n, torch.max(torch.abs(p.data - z1p.data)))
-        half_close(p.data, z1p.data, loose=True)
+        loose_close(p.data, z1p.data, dtype=dtype)
 
 
 def run_dist(rank, world_size, port):

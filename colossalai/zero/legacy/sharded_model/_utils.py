@@ -43,8 +43,16 @@ def cast_tensor_to_fp32(tensor: Union[torch.Tensor, StatefulTensor]) -> torch.Te
     if isinstance(tensor, StatefulTensor):
         tensor = tensor.payload
 
-    if torch.is_floating_point(tensor) and tensor.dtype is torch.float16:
+    if torch.is_floating_point(tensor) and tensor.dtype in (torch.float16, torch.bfloat16):
         return tensor.float()
+    return tensor
+
+
+def cast_tensor_to_bf16(tensor: torch.Tensor) -> torch.Tensor:
+    if isinstance(tensor, StatefulTensor):
+        tensor = tensor.payload
+    if torch.is_floating_point(tensor) and tensor.dtype is torch.float32:
+        return tensor.bfloat16()
     return tensor
 
 
