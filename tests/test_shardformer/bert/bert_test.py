@@ -25,6 +25,7 @@ def build_model(rank, world_size):
     shardconfig = ShardConfig(
         rank=rank,
         world_size=world_size,
+        gather_output=True,
     )
     sharded_model = shard_model(BertForMaskedLM.from_pretrained('bert-base-uncased', config=config),
                                 shardconfig).to('cuda')
