@@ -65,6 +65,8 @@ class ModelSharder(object):
             BertForMaskedLM.forward -> BertForMaskedLM_.forward
         """
         inject_policy = self.policy.inject_policy()
+        if inject_policy is None:
+            return
 
         if inject_policy is None:
             return
