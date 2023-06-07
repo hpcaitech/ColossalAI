@@ -261,7 +261,7 @@ def sync_param(flat_tensor, tensor_list):
     share the same memory space. This function will update the tensor list so that
     they point to the same value.
 
-    :param flat_tensor: A flat tensor obtained by calling `torch._utils._unflatten_dense_tensors` on a tensor lsit
+    :param flat_tensor: A flat tensor obtained by calling `torch._utils._unflatten_dense_tensors` on a tensor list
     :param tensor_list: A list of tensors corresponding to the flattened tensor
     :type flat_tensor: torch.Tensor
     :type tensor_list: List[torch.Tensor]
