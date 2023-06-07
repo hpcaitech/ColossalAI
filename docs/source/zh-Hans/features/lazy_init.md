@@ -3,9 +3,9 @@
 作者: Hongxin Liu
 
 **前置教程**
-- [Booster API](../basics/boolster_api.md)
-- [Booster 插件](../basics/boolster_plugins.md)
-- [Booster Checkpoint](../basics/boolster_checkpoint.md)
+- [Booster API](../basics/booster_api.md)
+- [Booster 插件](../basics/booster_plugins.md)
+- [Booster Checkpoint](../basics/booster_checkpoint.md)
 
 **相关讨论**
 - [模型的惰性初始化](https://github.com/hpcaitech/ColossalAI/discussions/3124)

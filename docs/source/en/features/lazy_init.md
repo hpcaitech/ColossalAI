@@ -3,9 +3,9 @@
 Author: Hongxin Liu
 
 **Prerequisite**
-- [Booster API](../basics/boolster_api.md)
-- [Booster Plugins](../basics/boolster_plugins.md)
-- [Booster Checkpoint](../basics/boolster_checkpoint.md)
+- [Booster API](../basics/booster_api.md)
+- [Booster Plugins](../basics/booster_plugins.md)
+- [Booster Checkpoint](../basics/booster_checkpoint.md)
 
 **Related discussion**
 - [Lazy initialization of model](https://github.com/hpcaitech/ColossalAI/discussions/3124)
