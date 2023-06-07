@@ -61,7 +61,13 @@ class LoraLinear(lora.LoRALayer, nn.Module):
         if self.merge_weights and self.merged:
             # Make sure that the weights are not merged
             if self.r > 0:
-                self.weight.data -= T(self.lora_B @ self.lora_A) * self.scaling
+                if not hasattr(self, "lora_A") or not hasattr(self, "lora_B"):
+                    # FIXME(csric): temporary fix
+                    self.lora_A = nn.Parameter(self.weight.new_empty((self.r, self.in_features)))
+                    self.lora_B = nn.Parameter(self.weight.new_empty((self.out_features, self.r)))
+                    self.reset_parameters()
+                else:
+                    self.weight.data -= T(self.lora_B @ self.lora_A) * self.scaling
             self.merged = False
 
     def eval(self):

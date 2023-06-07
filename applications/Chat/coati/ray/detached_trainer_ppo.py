@@ -1,24 +1,38 @@
-from typing import Any, Callable, Dict, List, Optional
-import torch
-from torch.optim import Adam
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
+import ray
+import torch
 from coati.experience_maker import Experience, NaiveExperienceMaker
 from coati.models.base import Actor, Critic
-from coati.models.generation_utils import update_model_kwargs_fn
 from coati.models.loss import PolicyLoss, ValueLoss
-from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy, Strategy
 from coati.trainer.callbacks import Callback
+from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy, Strategy
+from torch.optim import Adam
 
 from colossalai.nn.optimizer import HybridAdam
 
-import ray
-
-
-from .utils import is_rank_0, get_cuda_actor_critic_from_args, get_strategy_from_args, set_dist_env
+from .callbacks import TrainerCallback, TrainerPerformanceEvaluator
 from .detached_trainer_base import DetachedTrainer
+from .lora_constructor import LoRAConstructor
+from .utils import (
+    get_actor_from_args,
+    get_critic_from_args,
+    get_model_numel,
+    get_rank,
+    get_strategy_from_args,
+    is_rank_0,
+    set_dist_env,
+    state_dict_to,
+)
 
 
-@ray.remote(concurrency_groups={"buffer_length": 1, "buffer_append":1, "buffer_sample":1,"model_io": 1, "compute": 1})
+@ray.remote(concurrency_groups={
+    "buffer_length": 1,
+    "buffer_append": 1,
+    "buffer_sample": 1,
+    "model_io": 1,
+    "compute": 1
+})
 class DetachedPPOTrainer(DetachedTrainer):
     '''
         Detached Trainer for PPO algorithm
@@ -40,86 +54,102 @@ class DetachedPPOTrainer(DetachedTrainer):
         generate_kwargs (dict, optional): the kwargs to use while model generating
     '''
 
-    def __init__(self,
-                 experience_maker_holder_name_list: List[str],
-                 strategy: str,
-                 model: str,
-                 env_info: Dict[str, str] = None,
-                 pretrained: str = None,
-                 lora_rank: int = 0,
-                 train_batch_size: int = 8,
-                 buffer_limit: int = 0,
-                 buffer_cpu_offload: bool = True,
-                 eps_clip: float = 0.2,
-                 value_clip: float = 0.4,
-                 experience_batch_size: int = 8,
-                 max_epochs: int = 10,
-                 dataloader_pin_memory: bool = True,
-                 callbacks: List[Callback] = [],
-                 **generate_kwargs) -> None:
+    def __init__(
+        self,
+        experience_maker_holder_name_list: List[str],
+        strategy_fn: Callable[[], Strategy],
+        model_fn: Callable[[], Tuple[Actor, Critic]],
+        env_info: Dict[str, str] = None,
+        train_batch_size: int = 8,
+        buffer_limit: int = 0,
+        eps_clip: float = 0.2,
+        value_clip: float = 0.4,
+        dataloader_pin_memory: bool = True,
+        callbacks: List[TrainerCallback] = [],
+        eval_performance: bool = False,
+        debug: bool = False,
+        update_lora_weights: bool = False,
+    ) -> None:
         # set environment variables
         if env_info:
             set_dist_env(env_info=env_info)
         # configure strategy
-        self.strategy = get_strategy_from_args(strategy)
+        self.strategy = strategy_fn()
         # configure models, loss and optimizers
         with self.strategy.model_init_context():
-            self.actor, self.critic = get_cuda_actor_critic_from_args(model, pretrained, lora_rank)
+            self.actor, self.critic = model_fn()
 
-        if strategy != 'colossalai_gemini':
-            self.actor.to(torch.float16).to(torch.cuda.current_device())
-            self.critic.to(torch.float16).to(torch.cuda.current_device())
+        if eval_performance:
+            actor_numel = get_model_numel(self.actor)
+            critic_numel = get_model_numel(self.critic)
+            evaluator = TrainerPerformanceEvaluator(actor_numel, critic_numel)
+            callbacks = callbacks + [evaluator]
 
-        if strategy.startswith('colossalai'):
-            self.actor_optim = HybridAdam(self.actor.parameters(), lr=5e-6)
-            self.critic_optim = HybridAdam(self.critic.parameters(), lr=5e-6)
+        if isinstance(self.strategy, ColossalAIStrategy):
+            self.actor_optim = HybridAdam(self.actor.parameters(), lr=1e-7)
+            self.critic_optim = HybridAdam(self.critic.parameters(), lr=1e-7)
         else:
-            self.actor_optim = Adam(self.actor.parameters(), lr=5e-6)
-            self.critic_optim = Adam(self.critic.parameters(), lr=5e-6)
+            self.actor_optim = Adam(self.actor.parameters(), lr=1e-7)
+            self.critic_optim = Adam(self.critic.parameters(), lr=1e-7)
 
         (self.actor, self.actor_optim), (self.critic, self.critic_optim) = \
             self.strategy.prepare((self.actor, self.actor_optim), (self.critic, self.critic_optim))
-        generate_kwargs = _set_default_generate_kwargs(self.strategy, generate_kwargs, self.actor)
 
+        # configure trainer
         self.actor_loss_fn = PolicyLoss(eps_clip)
         self.critic_loss_fn = ValueLoss(value_clip)
 
         super().__init__(experience_maker_holder_name_list,
                          train_batch_size=train_batch_size,
                          buffer_limit=buffer_limit,
-                         buffer_cpu_offload=buffer_cpu_offload,
-                         experience_batch_size=experience_batch_size,
-                         max_epochs=max_epochs,
                          dataloader_pin_memory=dataloader_pin_memory,
                          callbacks=callbacks,
-                         **generate_kwargs)
+                         debug=debug)
+        if self._debug:
+            print(f'[trainer{get_rank()}] will send state dict to {experience_maker_holder_name_list}')
+
+        self._update_lora_weights = update_lora_weights
 
     @ray.method(concurrency_group="model_io")
-    def _update_remote_makers(self):
+    @torch.no_grad()
+    def _update_remote_makers(self, fully_update: bool = False, **config):
         # TODO: balance duties
-        if is_rank_0():
-            self.update_target_holder_list(self.target_holder_name_list)
+        if not fully_update:
+            config['requires_grad_only'] = True
+        self.update_target_holder_list()
+        # mark start, ensure order
+        tasks = []
+        for target_holder in self.target_holder_list:
+            tasks.append(target_holder.update_experience_maker.remote(chunk_start=True, fully_update=fully_update))
+        ray.get(tasks)
+        # sending loop
+        tasks = []
+
+        for state_dict_shard in self._get_model_state_dict_shard(self.actor, fully_update=fully_update, **config):
             for target_holder in self.target_holder_list:
-                # TODO: reduce malloc
-                with torch.no_grad():
-                    ray.get(target_holder.update_experience_maker.remote(self._get_unwrapped_actor(), self._get_unwrapped_critic()))
-                    
-    @ray.method(concurrency_group="model_io")
-    def initialize_remote_makers(self):
-        # TODO: balance duties
-        if is_rank_0():
-            self.update_target_holder_list(self.target_holder_name_list)
+                tasks.append(
+                    target_holder.update_experience_maker.remote(
+                        new_actor_state_dict=state_dict_shard,
+                        new_actor_lora_config_dict=self._get_model_lora_config_dict(self.actor),
+                        fully_update=fully_update))
+        # sending loop
+        for state_dict_shard in self._get_model_state_dict_shard(self.critic, fully_update=fully_update, **config):
             for target_holder in self.target_holder_list:
-                # TODO: reduce malloc
-                with torch.no_grad():
-                    ray.get(target_holder.initialize_experience_maker.remote(self._get_unwrapped_actor(), self._get_unwrapped_critic()))
+                tasks.append(
+                    target_holder.update_experience_maker.remote(
+                        new_critic_state_dict=state_dict_shard,
+                        new_critic_lora_config_dict=self._get_model_lora_config_dict(self.critic),
+                        fully_update=fully_update))
+        ray.get(tasks)
+        # mark end
+        for target_holder in self.target_holder_list:
+            target_holder.update_experience_maker.remote(chunk_end=True, fully_update=fully_update)
 
     @ray.method(concurrency_group="compute")
     def training_step(self, experience: Experience) -> Dict[str, float]:
         self.actor.train()
         self.critic.train()
 
-        experience.to_device(torch.cuda.current_device())
         num_actions = experience.action_mask.size(1)
         action_log_probs = self.actor(experience.sequences, num_actions, attention_mask=experience.attention_mask)
         actor_loss = self.actor_loss_fn(action_log_probs,
@@ -155,38 +185,16 @@ class DetachedPPOTrainer(DetachedTrainer):
     def strategy_save_critic_optim(self, path: str, only_rank0: bool = False) -> None:
         self.strategy.save_optimizer(self.critic_optim, path, only_rank0)
 
-    def _get_unwrapped_actor(self):
-        if False:
-            pass
-        elif isinstance(self.strategy, ColossalAIStrategy):
-            ret = Actor(self.strategy._unwrap_model(self.actor))
-            return ret
-        elif isinstance(self.strategy, DDPStrategy):
-            return Actor(self.strategy._unwrap_actor(self.actor))
-        elif isinstance(self.strategy, NaiveStrategy):
-            return self.actor
+    def _get_model_state_dict_shard(self, model: torch.nn.Module, fully_update=False, **config):
+        for state_dict in self.strategy.get_model_state_dict_shard(model, **config):
+            if not self._update_lora_weights or fully_update:
+                yield state_dict_to(state_dict)
+            else:
+                state_dict_lora, _ = LoRAConstructor.filter_state_dict_lora(state_dict)
+                yield state_dict_to(state_dict_lora)
 
-    def _get_unwrapped_critic(self):
-        if False:
-            pass
-        elif isinstance(self.strategy, ColossalAIStrategy):
-            ret = self.strategy._unwrap_model(self.critic)
-            return ret
-        elif isinstance(self.strategy, DDPStrategy):
-            return self.critic.module
-        elif isinstance(self.strategy, NaiveStrategy):
-            return self.critic
-
-
-def _set_default_generate_kwargs(strategy: Strategy, generate_kwargs: dict, actor: Actor) -> None:
-    origin_model = strategy._unwrap_actor(actor)
-    new_kwargs = {**generate_kwargs}
-    # use huggingface models method directly
-    if 'prepare_inputs_fn' not in generate_kwargs and hasattr(origin_model, 'prepare_inputs_for_generation'):
-        new_kwargs['prepare_inputs_fn'] = origin_model.prepare_inputs_for_generation
-
-    if 'update_model_kwargs_fn' not in generate_kwargs:
-        new_kwargs['update_model_kwargs_fn'] = update_model_kwargs_fn
-
-    return new_kwargs
-   
+    def _get_model_lora_config_dict(self, model: torch.nn.Module):
+        if not self._update_lora_weights:
+            return None
+        unwrapped_model = self.strategy.unwrap_model(model)
+        return LoRAConstructor.extract_lora_config(unwrapped_model)
