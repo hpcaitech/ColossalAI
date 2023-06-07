@@ -47,4 +47,20 @@ CUDA_EXT=1 pip install .
 pip install .
 ```
 
+如果您在使用CUDA 10.2，您仍然可以从源码安装ColossalAI。但是您需要手动下载cub库并将其复制到相应的目录。
+
+```bash
+# clone the repository
+git clone https://github.com/hpcaitech/ColossalAI.git
+cd ColossalAI
+
+# download the cub library
+wget https://github.com/NVIDIA/cub/archive/refs/tags/1.8.0.zip
+unzip 1.8.0.zip
+cp -r cub-1.8.0/cub/ colossalai/kernel/cuda_native/csrc/kernels/include/
+
+# install
+CUDA_EXT=1 pip install .
+```
+
 <!-- doc-test-command: echo "installation.md does not need test" -->

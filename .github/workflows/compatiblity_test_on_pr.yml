@@ -3,8 +3,8 @@ name: Compatibility Test on PR
 on:
   pull_request:
     paths:
-      - 'version.txt'
-      - '.compatibility'
+      - "version.txt"
+      - ".compatibility"
 
 jobs:
   matrix_preparation:
@@ -58,6 +58,18 @@ jobs:
       - uses: actions/checkout@v2
         with:
           ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
+      - name: Download cub for CUDA 10.2
+        run: |
+          CUDA_VERSION=$(cat $CUDA_HOME/version.txt | grep "CUDA Version" | awk '{print $NF}' | cut -d. -f1,2)
+
+          # check if it is CUDA 10.2
+          # download cub
+          if [ "$CUDA_VERSION" = "10.2" ]; then
+            wget https://github.com/NVIDIA/cub/archive/refs/tags/1.8.0.zip
+            unzip 1.8.0.zip
+            cp -r cub-1.8.0/cub/ colossalai/kernel/cuda_native/csrc/kernels/include/
+          fi
+
       - name: Install Colossal-AI
         run: |
           pip install -v --no-cache-dir .

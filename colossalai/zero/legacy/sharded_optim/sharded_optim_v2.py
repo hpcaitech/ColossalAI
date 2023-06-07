@@ -94,6 +94,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         super().__init__(optimizer)
         self.shard_strategy = sharded_model.shard_strategy
         self.model: ShardedModelV2 = sharded_model
+        self.bf16 = sharded_model.bf16
 
         self.gpu_margin_mem_ratio: float = float(gpu_margin_mem_ratio)
         assert 0.0 <= self.gpu_margin_mem_ratio <= 1.0, f'gpu_margin_mem_ratio must >=0.0 and <=1.0'
@@ -117,6 +118,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         self._found_overflow: Tensor = torch.IntTensor([0]).to(torch.cuda.current_device())
         self._logger = get_dist_logger("ShardedOptimizerV2")
         self._verbose = verbose
+        self._grad_prepared: bool = False    # this should be set to true when _prepare_grads() and reset to false when backward
 
         # Store fp32 param shards
         self._register_master_weight()
@@ -166,8 +168,10 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         self._zero_grad()
 
     def backward(self, loss: Tensor) -> None:
-        loss = self.loss_scale * loss
-        self.optim_state = OptimState.SCALED
+        if not self.bf16:
+            loss = self.loss_scale * loss
+            self.optim_state = OptimState.SCALED
+        self._grad_prepared = False
         self.model.backward(loss)
 
     def backward_by_grad(self, tensor: Tensor, grad: Tensor) -> None:
@@ -175,30 +179,33 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         # It receives the scaled grad from the previous rank
         # No need to scale the grad again
         # Need to unscale when optimizing
-        self.optim_state = OptimState.SCALED
+        if not self.bf16:
+            self.optim_state = OptimState.SCALED
+        self._grad_prepared = False
         self.model.backward_by_grad(tensor, grad)
 
     def clip_grad_norm(self, model: nn.Module, max_norm: float):
-        if self.optim_state == OptimState.SCALED:
-            self._prepare_grads()
+        self._prepare_grads()
+        if not self.bf16 and self.optim_state == OptimState.SCALED:
             self._unscale_grads()
         return super().clip_grad_norm(model, max_norm)
 
     def step(self, *args, **kwargs):
 
+        self._prepare_grads()
         # unscale grads if scaled
-        if self.optim_state == OptimState.SCALED:
-            self._prepare_grads()
+        if not self.bf16 and self.optim_state == OptimState.SCALED:
             self._unscale_grads()
 
         self._maybe_move_fp32_shards()
-        found_inf = self._check_overflow()
-        self.grad_scaler.update(found_inf)
+        if not self.bf16:
+            found_inf = self._check_overflow()
+            self.grad_scaler.update(found_inf)
 
-        if found_inf:
-            self._logger.warning('found inf during ShardedOptimV2 step')
-            self._zero_grad(recover_data=True)
-            return
+            if found_inf:
+                self._logger.warning('found inf during ShardedOptimV2 step')
+                self._zero_grad(recover_data=True)
+                return
 
         self._point_param_fp16_to_master_param()
 
@@ -304,6 +311,8 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                                 state[k] = v.cuda()
 
     def _prepare_grads(self):
+        if self._grad_prepared:
+            return
         for group in self.optim.param_groups:
             for p in group['params']:
                 if p.colo_attr.saved_grad.is_null():
@@ -320,6 +329,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                 p.grad = p.colo_attr.grad_payload
                 # Set p.data to empty tensor, in case of memory leaking
                 p.colo_attr.set_data_none()
+        self._grad_prepared = True
 
     def _point_param_fp16_to_master_param(self):
         # assign master param pointers to p.data.
@@ -357,7 +367,8 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                 torch.empty(p.data.shape, dtype=p.colo_attr.data_payload.dtype, device=p.colo_attr.data_payload.device))
 
         # TODO() optimize this line CPU (fp32) -> GPU (fp16)
-        p.colo_attr.sharded_data_tensor.payload_copy(p.half().detach())
+        half_dtype = torch.bfloat16 if self.bf16 else torch.float16
+        p.colo_attr.sharded_data_tensor.payload_copy(p.to(half_dtype).detach())
         p.colo_attr.set_data_none()
 
         if p.colo_attr.keep_not_shard and p.colo_attr.is_replicated:

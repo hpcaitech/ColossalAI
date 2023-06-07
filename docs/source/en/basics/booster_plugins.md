@@ -62,7 +62,10 @@ More details can be found in [Pytorch Docs](https://pytorch.org/docs/main/genera
 ### Torch FSDP Plugin
 
 > ⚠ This plugin is not available when torch version is lower than 1.12.0.
+
 > ⚠ This plugin does not support save/load sharded model checkpoint now.
+
+> ⚠ This plugin does not support optimizer that use multi params group.
 
 More details can be found in [Pytorch Docs](https://pytorch.org/docs/main/fsdp.html).
 

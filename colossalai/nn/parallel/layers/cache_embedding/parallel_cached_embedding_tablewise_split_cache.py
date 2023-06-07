@@ -114,7 +114,7 @@ class ParallelCachedEmbeddingBagTablewiseSpiltCache(abc.ABC, nn.Module):
 
         # get result of shape = (batch_size, (len(assigned_table_list)*embedding_dim))
         local_output = torch.cat(local_output_list, 1)
-        # then concatenate those local_output on the second demension.
+        # then concatenate those local_output on the second dimension.
         # use all_to_all
         remains = batch_size % self.world_size
         scatter_strides = [batch_size // self.world_size + int(i < remains) for i in range(self.world_size)]

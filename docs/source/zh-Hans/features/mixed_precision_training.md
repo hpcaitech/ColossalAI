@@ -203,7 +203,7 @@ Naive AMP 的默认参数:
 - initial_scale(int): gradient scaler 的初始值
 - growth_factor(int): loss scale 的增长率
 - backoff_factor(float): loss scale 的下降率
-- hysterisis(int): 动态 loss scaling 的延迟偏移
+- hysteresis(int): 动态 loss scaling 的延迟偏移
 - max_scale(int): loss scale 的最大允许值
 - verbose(bool): 如果被设为`True`,将打印调试信息
 

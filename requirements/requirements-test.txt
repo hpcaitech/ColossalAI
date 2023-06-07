@@ -1,6 +1,7 @@
 diffusers
 fbgemm-gpu==0.2.0
 pytest
+coverage==7.2.3
 git+https://github.com/hpcaitech/pytest-testmon
 torchvision
 transformers

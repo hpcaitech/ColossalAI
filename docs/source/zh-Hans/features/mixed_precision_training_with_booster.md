@@ -1,4 +1,4 @@
-# 自动混合精度训练 (最新版本)
+# 自动混合精度训练 (新版本)
 
 作者: [Mingyan Jiang](https://github.com/jiangmingyan)
 

@@ -41,7 +41,7 @@ class DimSpec:
 
     def _convert_str_to_shard_list(self, str_spec):
         '''
-        Conver str_spec into shard_list.
+        Convert str_spec into shard_list.
 
         Argument:
             str_spec(str): dim spec in str type.
@@ -58,7 +58,7 @@ class DimSpec:
 
     def build_difference_2d_dict(self):
         '''
-        Build a difference maping for 2D device mesh case. It will be used to
+        Build a difference mapping for 2D device mesh case. It will be used to
         compute the difference between DimSpec pairs.
         '''
 

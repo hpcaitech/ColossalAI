@@ -75,7 +75,7 @@ Build your model, optimizer, loss function, lr scheduler and dataloaders. Note t
 NUM_EPOCHS = 200
 BATCH_SIZE = 128
 GRADIENT_CLIPPING = 0.1
-# build resnetå
+# build resnet
 model = resnet34(num_classes=10)
 # build dataloaders
 train_dataset = CIFAR10(root=Path(os.environ.get('DATA', './data')),

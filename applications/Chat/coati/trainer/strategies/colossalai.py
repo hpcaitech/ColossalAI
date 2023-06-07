@@ -186,3 +186,15 @@ class ColossalAIStrategy(DDPStrategy):
         if self.stage == 3:
             raise RuntimeError('ColossalAI strategy with stage-3 does not support save_pretrained() now')
         super().save_pretrained(model, path, only_rank0, tokenizer)
+
+    def get_model_state_dict_shard(self, model: nn.Module, **config):
+        if self.stage != 3:
+            yield from super().get_model_state_dict_shard(model, **config)
+        else:
+            # unwrapped_model = self._unwrap_model(model)
+            # for module in unwrapped_model.modules():
+            #     if isinstance(module, LoraLinear):
+            #         module.merge_weights = True
+            #         module.eval()
+            base_model: ZeroDDP = get_base_model(model)
+            yield from base_model.state_dict_shard(max_shard_size=1024, only_rank_0=False)

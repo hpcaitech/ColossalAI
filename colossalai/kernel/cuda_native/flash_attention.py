@@ -138,7 +138,7 @@ if HAS_MEM_EFF_ATTN:
             elif attn_mask_type == AttnMaskType.causal:    # gpt style
                 attn_bias = LowerTriangularMask()
 
-            if bias is not None:    # alibi / relative position emebedding
+            if bias is not None:    # alibi / relative position embedding
                 assert allow_alibi, "flash attention with bias is not supported in this system."
                 assert attn_mask_type == AttnMaskType.causal, \
                     "attention with bias is only supported for causal attention so far."

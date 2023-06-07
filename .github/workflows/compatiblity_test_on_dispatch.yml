@@ -19,26 +19,26 @@ jobs:
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
-    - id: set-matrix
-      env:
-        TORCH_VERSIONS: ${{ inputs.torch_version }}
-        CUDA_VERSIONS: ${{ inputs.cuda_version }}
-      run: |
-        IFS=','
-        DOCKER_IMAGE=()
+      - id: set-matrix
+        env:
+          TORCH_VERSIONS: ${{ inputs.torch_version }}
+          CUDA_VERSIONS: ${{ inputs.cuda_version }}
+        run: |
+          IFS=','
+          DOCKER_IMAGE=()
 
-        for tv in $TORCH_VERSIONS
-        do
-            for cv in $CUDA_VERSIONS
-            do
-                DOCKER_IMAGE+=("\"hpcaitech/pytorch-cuda:${tv}-${cv}\"")
-            done
-        done
+          for tv in $TORCH_VERSIONS
+          do
+              for cv in $CUDA_VERSIONS
+              do
+                  DOCKER_IMAGE+=("\"hpcaitech/pytorch-cuda:${tv}-${cv}\"")
+              done
+          done
 
-        container=$( IFS=',' ; echo "${DOCKER_IMAGE[*]}" )
-        container="[${container}]"
-        echo "$container"
-        echo "::set-output name=matrix::{\"container\":$(echo "$container")}"
+          container=$( IFS=',' ; echo "${DOCKER_IMAGE[*]}" )
+          container="[${container}]"
+          echo "$container"
+          echo "::set-output name=matrix::{\"container\":$(echo "$container")}"
 
   build:
     name: Test for PyTorch Compatibility
@@ -70,6 +70,17 @@ jobs:
       - uses: actions/checkout@v2
         with:
           ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
+      - name: Download cub for CUDA 10.2
+        run: |
+          CUDA_VERSION=$(cat $CUDA_HOME/version.txt | grep "CUDA Version" | awk '{print $NF}' | cut -d. -f1,2)
+
+          # check if it is CUDA 10.2
+          # download cub
+          if [ "$CUDA_VERSION" = "10.2" ]; then
+            wget https://github.com/NVIDIA/cub/archive/refs/tags/1.8.0.zip
+            unzip 1.8.0.zip
+            cp -r cub-1.8.0/cub/ colossalai/kernel/cuda_native/csrc/kernels/include/
+          fi
       - name: Install Colossal-AI
         run: |
           pip install -r requirements/requirements.txt

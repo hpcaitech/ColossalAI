@@ -45,7 +45,7 @@ class _DimSpec:
 
     def _convert_str_to_shard_list(self, str_spec):
         '''
-        Conver str_spec into shard_list.
+        Convert str_spec into shard_list.
 
         Argument:
             str_spec(str): dim spec in str type.
@@ -62,7 +62,7 @@ class _DimSpec:
 
     def build_difference_2d_dict(self):
         '''
-        Build a difference maping for 2D device mesh case. It will be used to
+        Build a difference mapping for 2D device mesh case. It will be used to
         compute the difference between DimSpec pairs.
         '''
 
@@ -166,7 +166,7 @@ class ShardingSpec:
         device_mesh(DeviceMesh): A logical view of a physical mesh.
         entire_shape(torch.Size): The entire shape of tensor before sharded.
         dim_partition_dict(Dict[int, List[int]]， optional): The key is the dimension of tensor to be sharded,
-            and the value of the key decribe which logical axis will be sharded in that dimension.
+            and the value of the key describe which logical axis will be sharded in that dimension.
         sharding_sequence(List[_DimSpec], optional): A straight view of ShardingSpec looks like [R, R, S0, S1].
     '''
 

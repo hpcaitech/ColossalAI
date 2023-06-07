@@ -13,7 +13,7 @@ from .nvme_optimizer import NVMeOptimizer
 class CPUAdam(NVMeOptimizer):
     """Implements Adam algorithm.
 
-    Supports parameters updating on both GPU and CPU, depanding on the device of parameters.
+    Supports parameters updating on both GPU and CPU, depending on the device of parameters.
     But the parameters and gradients should on the same device:
       * Parameters on CPU and gradients on CPU is allowed.
       * Parameters on GPU and gradients on GPU is allowed.
@@ -21,7 +21,7 @@ class CPUAdam(NVMeOptimizer):
 
     `CPUAdam` requires CUDA extensions which can be built during installation or runtime.
 
-    This version of CPU Adam accelates parameters updating on CPU with SIMD.
+    This version of CPU Adam accelerates parameters updating on CPU with SIMD.
     Support of AVX2 or AVX512 is required.
 
     The GPU part is implemented in an naive way.
@@ -93,8 +93,7 @@ class CPUAdam(NVMeOptimizer):
                           bias_correction1,
                           bias_correction2,
                           use_adamw=False):
-        # FIXME(ver217): remove the below line when replace torch adam with fused adam
-        grad = grad.float()
+        grad = grad.to(data.dtype)
 
         if weight_decay != 0:
             if use_adamw:
@@ -133,10 +132,12 @@ class CPUAdam(NVMeOptimizer):
                 if len(state) == 0:
                     state['step'] = 0
 
+                    # FIXME(ver217): CPU adam kernel only supports fp32 states now
+                    assert p.dtype is torch.float, "CPUAdam only support fp32 parameters"
                     # gradient momentums
-                    state['exp_avg'] = torch.zeros_like(p, dtype=torch.float, device=target_device)
+                    state['exp_avg'] = torch.zeros_like(p, device=target_device)
                     # gradient variances
-                    state['exp_avg_sq'] = torch.zeros_like(p, dtype=torch.float, device=target_device)
+                    state['exp_avg_sq'] = torch.zeros_like(p, device=target_device)
                     self._post_state_init(p)
 
                 state['step'] += 1
@@ -147,9 +148,17 @@ class CPUAdam(NVMeOptimizer):
                     assert state['exp_avg'].device.type == 'cpu', "exp_avg should stay on cpu"
                     assert state['exp_avg_sq'].device.type == 'cpu', "exp_avg should stay on cpu"
                     self._pre_update(p, 'exp_avg', 'exp_avg_sq')
-                    self.cpu_adam_op.step(state['step'], group['lr'], beta1, beta2, group['eps'], group['weight_decay'],
-                                          group['bias_correction'], p.data, p.grad.data, state['exp_avg'],
-                                          state['exp_avg_sq'], div_scale)
+                    if p.grad.dtype is torch.bfloat16:
+                        # cpu adam kernel does not support bf16 now
+                        bias_correction1 = 1 - beta1**state['step']
+                        bias_correction2 = 1 - beta2**state['step']
+                        self.torch_adam_update(p.data, p.grad.data, state['exp_avg'], state['exp_avg_sq'], group['lr'],
+                                               beta1, beta2, group['eps'], group['weight_decay'], bias_correction1,
+                                               bias_correction2, self.adamw_mode)
+                    else:
+                        self.cpu_adam_op.step(state['step'], group['lr'], beta1, beta2, group['eps'],
+                                              group['weight_decay'], group['bias_correction'], p.data, p.grad.data,
+                                              state['exp_avg'], state['exp_avg_sq'], div_scale)
                     self._post_update(p, 'exp_avg', 'exp_avg_sq')
                 elif target_device.type == 'cuda':
                     assert div_scale == -1, "div_scale should remain default"
