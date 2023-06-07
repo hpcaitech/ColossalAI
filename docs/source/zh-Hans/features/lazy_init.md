@@ -24,24 +24,25 @@ LazyInit 基于 LazyTensor，并支持延迟模型初始化。
 
 Gemini 与惰性初始化兼容。您可以直接将它们一起使用。
 
-<!--- doc-test-ignore-start -->
 ```python
 from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin
 from colossalai.lazy import LazyInitContext
+from colossalai.nn.optimizer import HybridAdam
+from torch.nn import Linear
+import colossalai
+
+colossalai.launch_from_torch({})
 
 plugin = GeminiPlugin()
 booster = Booster(plugin=plugin)
 
 with LazyInitContext():
-    model = ...
+    model = Linear(10, 10)
 
-optimizer = ...
-dataloader = ...
-criterion = ...
-model, optimizer, train_dataloader, criterion = booster.boost(model, optimizer, train_dataloader, criterion)
+optimizer = HybridAdam(model.parameters())
+model, optimizer, *_ = booster.boost(model, optimizer)
 ```
-<!--- doc-test-ignore-end -->
 
 请注意，在使用 Gemini 时使用惰性初始化不是必需的，但建议使用。如果不使用惰性初始化，在初始化模型时可能会出现 OOM 错误。如果使用惰性初始化，则可以避免此错误。
 
@@ -66,3 +67,5 @@ booster.load_model(model, pretrained_path)
 <!--- doc-test-ignore-end -->
 
 由于 booster 同时支持 pytorch 风格的 checkpoint 和 huggingface/transformers 风格的预训练权重，上述伪代码的 `pretrained_pa​​th` 可以是 checkpoint 文件路径或预训练权重路径。请注意，它不支持从网络加载预训练权重。您应该先下载预训练的权重，然后使用本地路径。
+
+<!-- doc-test-command: torchrun --standalone --nproc_per_node=1 lazy_init.py  -->

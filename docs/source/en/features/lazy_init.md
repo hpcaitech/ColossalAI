@@ -24,24 +24,25 @@ You may use lazy initialization when using Gemini, tensor parallelism, pipeline 
 
 Gemini is compatible with lazy initialization. You can use them together directly.
 
-<!--- doc-test-ignore-start -->
 ```python
 from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin
 from colossalai.lazy import LazyInitContext
+from colossalai.nn.optimizer import HybridAdam
+from torch.nn import Linear
+import colossalai
+
+colossalai.launch_from_torch({})
 
 plugin = GeminiPlugin()
 booster = Booster(plugin=plugin)
 
 with LazyInitContext():
-    model = ...
+    model = Linear(10, 10)
 
-optimizer = ...
-dataloader = ...
-criterion = ...
-model, optimizer, train_dataloader, criterion = booster.boost(model, optimizer, train_dataloader, criterion)
+optimizer = HybridAdam(model.parameters())
+model, optimizer, *_ = booster.boost(model, optimizer)
 ```
-<!--- doc-test-ignore-end -->
 
 Note that using lazy initialization when using Gemini is not necessary but recommended. If you don't use lazy initialization, you may get OOM error when initializing the model. If you use lazy initialization, you can avoid this error.
 
@@ -66,3 +67,5 @@ booster.load_model(model, pretrained_path)
 <!--- doc-test-ignore-end -->
 
 As booster supports both pytorch-fashion checkpoint and huggingface/transformers-fashion pretrained weight, the `pretrained_path` of the above pseudo-code can be either a checkpoint file path or a pretrained weight path. Note that it does not support loading pretrained weights from network. You should download the pretrained weight first and then use a local path.
+
+<!-- doc-test-command: torchrun --standalone --nproc_per_node=1 lazy_init.py  -->
