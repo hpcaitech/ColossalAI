@@ -3,10 +3,10 @@ TRANSFORMERS_OFFLINE=1
 DIFFUSERS_OFFLINE=1
 
 torchrun --nproc_per_node 4 --standalone train_dreambooth_colossalai.py \
-  --pretrained_model_name_or_path="Path_to_your_model"  \
-  --instance_data_dir="Path_to_your_training_image" \
-  --output_dir="Path_to_your_save_dir" \
-  --instance_prompt="your prompt" \
+  --pretrained_model_name_or_path="/data/dreambooth/diffuser/stable-diffusion-v1-4"  \
+  --instance_data_dir="/data/dreambooth/Teyvat/data" \
+  --output_dir="./weight_output" \
+  --instance_prompt="a picture of a dog" \
   --resolution=512 \
   --plugin="gemini" \
   --train_batch_size=1 \
