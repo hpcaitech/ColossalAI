@@ -8,10 +8,10 @@ DIFFUSERS_OFFLINE=1
 
 for plugin in "torch_ddp" "torch_ddp_fp16" "gemini" "low_level_zero"; do
   torchrun --nproc_per_node 4 --standalone train_dreambooth_colossalai.py \
-  --pretrained_model_name_or_path="Your Pretrained Model Path"  \
-  --instance_data_dir="Your Input Pics Path" \
-  --output_dir="path-to-save-model" \
-  --instance_prompt="your prompt" \
+  --pretrained_model_name_or_path="/data/dreambooth/diffuser/stable-diffusion-v1-4"  \
+  --instance_data_dir="/data/dreambooth/Teyvat/data" \
+  --output_dir="./weight_output" \
+  --instance_prompt="a picture of a dog" \
   --resolution=512 \
   --plugin=$plugin \
   --train_batch_size=1 \
