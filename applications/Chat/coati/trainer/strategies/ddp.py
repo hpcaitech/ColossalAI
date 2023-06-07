@@ -26,19 +26,8 @@ class DDPStrategy(NaiveStrategy):
         super().__init__()
 
     def setup_distributed(self) -> None:
-        try:
-            rank = int(os.environ['RANK'])
-            local_rank = int(os.environ['LOCAL_RANK'])
-            world_size = int(os.environ['WORLD_SIZE'])
-            host = os.environ['MASTER_ADDR']
-            port = int(os.environ['MASTER_PORT'])
-        except KeyError as e:
-            raise RuntimeError(
-                f"Could not find {e} in the torch environment, visit https://www.colossalai.org/ for more information on launching with torch"
-            )
-        dist.init_process_group('nccl', init_method=f'tcp://[{host}]:{port}', world_size=world_size, rank=rank)
+        self._try_init_dist(force=True)
         self.set_seed(self.seed)
-        torch.cuda.set_device(local_rank)
 
     def set_seed(self, seed: int) -> None:
         random.seed(seed)

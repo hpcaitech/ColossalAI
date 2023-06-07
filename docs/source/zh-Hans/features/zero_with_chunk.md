@@ -197,7 +197,7 @@ def get_data(batch_size, seq_len, vocab_size):
 最后，使用booster注入 Gemini + ZeRO DDP 特性, 并定义训练循环。由于我们在这个例子中对GPT进行预训练，因此只使用了一个简单的语言模型损失函数：
 
 ```python
-from torch.optim import Adam
+from colossalai.nn.optimizer import HybridAdam
 
 from colossalai.booster import Booster
 from colossalai.zero import ColoInitContext
@@ -213,7 +213,7 @@ def main():
 
     # build criterion
     criterion = GPTLMLoss()
-    optimizer = Adam(model.parameters(), lr=0.001)
+    optimizer = HybridAdam(model.parameters(), lr=0.001)
 
     torch.manual_seed(123)
     default_pg = ProcessGroup(tp_degree=args.tp_degree)

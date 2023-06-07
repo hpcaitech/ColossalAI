@@ -130,3 +130,7 @@ class Strategy(ABC):
                         only_rank0: bool = True,
                         tokenizer: Optional[PreTrainedTokenizerBase] = None) -> None:
         pass
+
+    @abstractmethod
+    def get_model_state_dict_shard(self, model: nn.Module, **config):
+        pass
