@@ -416,7 +416,7 @@ class Chunk:
         Copy data slice to the memory space indexed by the input tensor in the chunk.
 
         Args:
-            tensor (torch.Tensor): the tensor used to retrive meta information
+            tensor (torch.Tensor): the tensor used to retrieve meta information
             data_slice (torch.Tensor): the tensor to be copied to the chunk
         """
         # sanity check
