@@ -31,13 +31,9 @@ def check_dtensor(rank, world_size, port):
 
     device_mesh = DeviceMesh(torch.Tensor([0, 1, 2, 3]), (2, 2), init_process_group=True)
     target_sharding_spec = ShardingSpec(dim_size=original_tensor.dim(), dim_partition_dict={0: [0]})
-    layout = Layout(device_mesh=device_mesh,
-                    device_type=torch.device('cuda'),
-                    sharding_spec=target_sharding_spec,
-                    entire_shape=original_tensor.shape)
-    d_tensor = DTensor(original_tensor, layout)
+    d_tensor = DTensor(original_tensor, device_mesh, target_sharding_spec)
 
-    assert d_tensor.entire_shape == original_tensor.shape
+    assert d_tensor.global_shape == original_tensor.shape
     assert d_tensor.data_type == original_tensor.dtype
 
     if rank in (0, 1):
@@ -57,12 +53,7 @@ def check_dtensor(rank, world_size, port):
         raise ValueError(f'rank {rank} is not in the device mesh')
 
     new_sharding_spec = ShardingSpec(dim_size=original_tensor.dim(), dim_partition_dict={0: [0, 1]})
-    new_layout = Layout(device_mesh=device_mesh,
-                        device_type=torch.device('cuda'),
-                        sharding_spec=new_sharding_spec,
-                        entire_shape=original_tensor.shape)
-
-    d_tensor.layout_convert(new_layout)
+    d_tensor.layout_convert(device_mesh, new_sharding_spec)
 
     if rank == 0:
         assert d_tensor.local_tensor.equal(original_tensor.narrow(0, 0, 1))
@@ -75,7 +66,7 @@ def check_dtensor(rank, world_size, port):
     else:
         raise ValueError(f'rank {rank} is not in the device mesh')
 
-    dtensor_from_local = distribute_tensor(original_tensor, new_layout)
+    dtensor_from_local = distribute_tensor(original_tensor, device_mesh, new_sharding_spec)
 
     if rank == 0:
         assert dtensor_from_local.local_tensor.equal(original_tensor.narrow(0, 0, 1))

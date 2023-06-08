@@ -1,9 +1,10 @@
-from colossalai.tensor.shape_consistency import ShapeConsistencyManager, CollectiveCommPattern
 import torch
-from colossalai.tensor.sharding_spec import _DimSpec, ShardingSpec
-from colossalai.device.device_mesh import DeviceMesh
 
-physical_mesh_id = torch.arange(0, 16).reshape(2, 8)
+from colossalai.device.device_mesh import DeviceMesh
+from colossalai.tensor.shape_consistency import CollectiveCommPattern, ShapeConsistencyManager
+from colossalai.tensor.sharding_spec import ShardingSpec, _DimSpec
+
+physical_mesh_id = torch.arange(0, 16)
 mesh_shape = (4, 4)
 # [[0, 1, 2, 3],
 #  [4, 5, 6, 7],
