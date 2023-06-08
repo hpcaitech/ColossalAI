@@ -19,6 +19,7 @@ for plugin in "gemini"; do
   --learning_rate=5e-6 \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
+  --test_run=True \
   --num_class_images=200 \
   --placement="auto" # "cuda"
 done
