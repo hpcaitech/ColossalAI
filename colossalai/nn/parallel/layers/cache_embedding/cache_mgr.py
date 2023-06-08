@@ -20,8 +20,8 @@ def _wait_for_data(t, stream: Optional[torch.cuda.streams.Stream]) -> None:
         return
     torch.cuda.current_stream().wait_stream(stream)
     # As mentioned in https://pytorch.org/docs/stable/generated/torch.Tensor.record_stream.html,
-    # PyTorch uses the "caching allocator" for memroy allocation for tensors. When a tensor is
-    # freed, its memory is likely to be reused by newly constructed tenosrs.  By default,
+    # PyTorch uses the "caching allocator" for memory allocation for tensors. When a tensor is
+    # freed, its memory is likely to be reused by newly constructed tensors.  By default,
     # this allocator traces whether a tensor is still in use by only the CUDA stream where it
     # was created.   When a tensor is used by additional CUDA streams, we need to call record_stream
     # to tell the allocator about all these streams.  Otherwise, the allocator might free the
@@ -294,7 +294,7 @@ class CachedParamMgr(torch.nn.Module):
             print(
                 f"CPU->CUDA BWD {self._cpu_to_cuda_numel * self.elem_size_in_byte / 1e6 / elapsed} MB/s {self._cpu_to_cuda_numel / 1e6} M elem"
             )
-            print(f'cpu_to_cuda_elpase {elapsed} sec')
+            print(f'cpu_to_cuda_elapse {elapsed} sec')
 
         for k, v in self._elapsed_dict.items():
             print(f'{k}: {v}')

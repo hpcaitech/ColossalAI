@@ -91,11 +91,11 @@ class Initializer_Sequence(ProcessGroupInitializer):
 
         parallel_setting = []
 
-        local_rank, group_world_size, process_group, cpu_grop, ranks_in_group, mode = \
+        local_rank, group_world_size, process_group, cpu_group, ranks_in_group, mode = \
             self._sequence_initializer.init_dist_group()
         # change mode to sequence
         mode = ParallelMode.SEQUENCE
 
-        parallel_setting.append((local_rank, group_world_size, process_group, cpu_grop, ranks_in_group, mode))
+        parallel_setting.append((local_rank, group_world_size, process_group, cpu_group, ranks_in_group, mode))
         parallel_setting.append(self._sequence_dp_initializer.init_dist_group())
         return parallel_setting

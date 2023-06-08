@@ -30,7 +30,7 @@ def generate_sharding_spec(input_: Union[Node, torch.Tensor], device_mesh: Devic
     """
 
     if isinstance(input_, Node):
-        assert hasattr(input_, '_meta_data'), f'The given node has no attribte _meta_data'
+        assert hasattr(input_, '_meta_data'), f'The given node has no attribute _meta_data'
         meta_tensor = input_._meta_data
         assert meta_tensor is not None, "The given node's _meta_data attribute is None"
         shape = meta_tensor.shape

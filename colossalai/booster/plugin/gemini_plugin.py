@@ -2,7 +2,7 @@ import logging
 import os
 import warnings
 from pathlib import Path
-from typing import Callable, List, Optional, Tuple, Union
+from typing import Callable, Iterator, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -22,6 +22,9 @@ from colossalai.zero.gemini.memory_tracer import MemStats
 from .dp_plugin_base import DPPluginBase
 
 __all__ = ['GeminiPlugin']
+
+SUPPORTED_PRECISION = ['fp16', 'bf16']
+PRECISION_STR_TO_DTYPE = {'fp16': torch.half, 'bf16': torch.bfloat16}
 
 
 class GeminiCheckpointIO(GeneralCheckpointIO):
@@ -52,7 +55,15 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
         Save optimizer to checkpoint but only on master process.
         """
         # TODO(ver217): optimizer state dict is sharded
+        warnings.warn('GeminiPlugin does not support save full optimizer checkpoint now. Save it on every process.')
+        checkpoint = f'{checkpoint}.rank{self.coordinator.rank}'
         super().save_unsharded_optimizer(optimizer, checkpoint, gather_dtensor)
+
+    def load_optimizer(self, optimizer: Optimizer, checkpoint: str):
+        warnings.warn(
+            'GeminiPlugin can only load optimizer checkpoint saved by itself with the same number of processes.')
+        checkpoint = f'{checkpoint}.rank{self.coordinator.rank}'
+        super().load_optimizer(optimizer, checkpoint)
 
     def save_lr_scheduler(self, lr_scheduler: LRScheduler, checkpoint: str):
         """
@@ -163,6 +174,7 @@ class GeminiPlugin(DPPluginBase):
     Args:
         device (torch.device): device to place the model.
         placement_policy (str, optional): "cpu", "cuda", "auto". Defaults to "cpu".
+        precision (str, optional): precision. Support 'fp16' and 'bf16'. Defaults to 'fp16'.
         pin_memory (bool, optional): use pin memory on CPU. Defaults to False.
         force_outputs_fp32 (bool, optional): force outputs are fp32. Defaults to False.
         strict_ddp_mode (bool, optional): use strict ddp mode (only use dp without other parallelism). Defaults to False.
@@ -171,7 +183,7 @@ class GeminiPlugin(DPPluginBase):
             Users can provide this argument to speed up searching.
             If users do not know this argument before training, it is ok. We will use a default value 1024.
         min_chunk_size_mb (float, optional): the minimum chunk size in MegaByte.
-            If the aggregate size of parameters is still samller than the minimum chunk size,
+            If the aggregate size of parameters is still smaller than the minimum chunk size,
             all parameters will be compacted into one small chunk.
         memstats (MemStats, optional) the memory statistics collector by a runtime memory tracer.
         gpu_margin_mem_ratio (float, optional): The ratio of GPU remaining memory (after the first forward-backward)
@@ -195,6 +207,7 @@ class GeminiPlugin(DPPluginBase):
         self,
         device: Optional[torch.device] = None,
         placement_policy: str = "cpu",
+        precision: str = "fp16",
         pin_memory: bool = False,
         force_outputs_fp32: bool = False,
         strict_ddp_mode: bool = False,
@@ -215,6 +228,7 @@ class GeminiPlugin(DPPluginBase):
         verbose: bool = False,
     ) -> None:
         super().__init__()
+        assert precision in SUPPORTED_PRECISION, f'precision {precision} is not supported'
         self.gemini_config = dict(
             device=(device or get_current_device()),
             placement_policy=placement_policy,
@@ -225,6 +239,7 @@ class GeminiPlugin(DPPluginBase):
             hidden_dim=hidden_dim,
             min_chunk_size_mb=min_chunk_size_mb,
             memstats=memstats,
+            mixed_precision=PRECISION_STR_TO_DTYPE[precision],
         )
         self.zero_optim_config = dict(gpu_margin_mem_ratio=gpu_margin_mem_ratio,)
         self.optim_kwargs = dict(initial_scale=initial_scale,
@@ -245,7 +260,7 @@ class GeminiPlugin(DPPluginBase):
         return True
 
     def supported_precisions(self) -> List[str]:
-        return ['fp16']
+        return SUPPORTED_PRECISION
 
     def control_device(self) -> bool:
         return True
@@ -286,3 +301,6 @@ class GeminiPlugin(DPPluginBase):
 
     def get_checkpoint_io(self) -> CheckpointIO:
         return GeminiCheckpointIO()
+
+    def no_sync(self, model: nn.Module) -> Iterator[None]:
+        raise NotImplementedError

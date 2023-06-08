@@ -48,7 +48,7 @@ def run_trainer(rank, world_size, port):
     pipelinable.policy = "uniform"
     model = pipelinable.partition(1, gpc.pipeline_parallel_size, gpc.get_local_rank(ParallelMode.PIPELINE))
 
-    # craete dataloaders
+    # create dataloaders
     root = Path(os.environ['DATA'])
     transform_train = transforms.Compose([
         transforms.RandomCrop(32, padding=4, pad_if_needed=True),
@@ -68,7 +68,7 @@ def run_trainer(rank, world_size, port):
     # create lr scheduler
     lr_scheduler = CosineAnnealingWarmupLR(optimizer=optimizer, total_steps=NUM_EPOCHS, warmup_steps=WARMUP_EPOCHS)
 
-    # intiailize
+    # initialize
     engine, train_dataloader, *_ = colossalai.initialize(model=model,
                                                          optimizer=optimizer,
                                                          criterion=criterion,

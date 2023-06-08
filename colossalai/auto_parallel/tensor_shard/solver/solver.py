@@ -44,7 +44,7 @@ class Solver:
             graph: The computing graph to be optimized.
             strategies_constructor: It will provide all the possible strategies for each node in the computing graph.
             cost_graph: A graph data structure to simplify the edge cost graph.
-            graph_analyser: graph_analyser will analyse the graph to obtain the variable liveness information, which will be used to generate memory constraints.
+            graph_analyser: graph_analyser will analyses the graph to obtain the variable liveness information, which will be used to generate memory constraints.
             memory_budget: Memory constraint for the solution.
             solution_numbers: If solution_numbers is larger than one, solver will us a serious of solutions based on different memory budget.
             memory_increasing_coefficient: If solution_numbers is larger than one, we will use this coefficient to generate new memory budget.

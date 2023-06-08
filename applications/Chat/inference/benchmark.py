@@ -123,7 +123,7 @@ if __name__ == "__main__":
     start = time()
     for instruction in instructions:
         print(f"Instruction: {instruction}")
-        resp, tokens = evaluate(model, tokenizer, instruction, temparature=0.2, num_beams=1)
+        resp, tokens = evaluate(model, tokenizer, instruction, temperature=0.2, num_beams=1)
         total_tokens += tokens
         print(f"Response: {resp}")
         print('\n----------------------------\n')

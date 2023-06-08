@@ -45,7 +45,7 @@ class PromptDataset(Dataset):
                 self.keyed_prompt[k].extend(tensor.to(torch.cuda.current_device()).unbind())
 
     def __len__(self):
-        return len(self.keyed_prompt)
+        return len(self.keyed_prompt["input_ids"])
 
     def __getitem__(self, i) -> Dict[str, torch.Tensor]:
         return {k: v[i] for k, v in self.keyed_prompt.items()}

@@ -16,14 +16,14 @@ In this example for ViT model, Colossal-AI provides three different parallelism 
 We will show you how to train ViT on CIFAR-10 dataset with these parallelism techniques. To run this example, you will need 2-4 GPUs.
 
 
-## Tabel of Contents
+## Table of Contents
 1. Colossal-AI installation
 2. Steps to train ViT with data parallelism
 3. Steps to train ViT with pipeline parallelism
 4. Steps to train ViT with tensor parallelism or hybrid parallelism
 
 ## Colossal-AI Installation
-You can install Colossal-AI pacakage and its dependencies with PyPI.
+You can install Colossal-AI package and its dependencies with PyPI.
 ```bash
 pip install colossalai
 ```
@@ -31,7 +31,7 @@ pip install colossalai
 
 
 ## Data Parallelism
-Data parallism is one basic way to accelerate model training process. You can apply data parallelism to training by only two steps:
+Data parallelism is one basic way to accelerate model training process. You can apply data parallelism to training by only two steps:
 1. Define a configuration file
 2. Change a few lines of code in train script
 
@@ -94,7 +94,7 @@ from torchvision import transforms
 from torchvision.datasets import CIFAR10
 ```
 
-#### Lauch Colossal-AI
+#### Launch Colossal-AI
 
 In train script,  you need to initialize the distributed environment for Colossal-AI after your config file is prepared. We call this process `launch`. In Colossal-AI, we provided several launch methods to initialize the distributed backend. In most cases, you can use `colossalai.launch` and `colossalai.get_default_parser` to pass the parameters via command line. Besides, Colossal-AI can utilize the existing launch tool provided by PyTorch as many users are familiar with by using `colossalai.launch_from_torch`. For more details, you can view the related [documents](https://www.colossalai.org/docs/basics/launch_colossalai).
 
@@ -613,7 +613,7 @@ NUM_MICRO_BATCHES = parallel['pipeline']
 TENSOR_SHAPE = (BATCH_SIZE // NUM_MICRO_BATCHES, SEQ_LENGTH, HIDDEN_SIZE)
 ```
 
-Ohter configs:
+Other configs:
 ```python
 # hyper parameters
 # BATCH_SIZE is as per GPU

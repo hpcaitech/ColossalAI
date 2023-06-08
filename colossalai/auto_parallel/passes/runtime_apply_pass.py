@@ -219,7 +219,7 @@ def _comm_spec_apply(gm: torch.fx.GraphModule):
     return gm
 
 
-def _act_annotataion_pass(gm: torch.fx.GraphModule):
+def _act_annotation_pass(gm: torch.fx.GraphModule):
     """
     This pass is used to add the act annotation to the new inserted nodes.
     """

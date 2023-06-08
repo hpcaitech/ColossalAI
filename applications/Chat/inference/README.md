@@ -75,7 +75,7 @@ E.g. you can set `export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH`.
 
 Please ensure you have downloaded HF-format model weights of LLaMA models first.
 
-Then you can follow [GPTQ-for-LLaMa](https://github.com/qwopqwop200/GPTQ-for-LLaMa). This lib provides efficient CUDA kernels and weight convertion script.
+Then you can follow [GPTQ-for-LLaMa](https://github.com/qwopqwop200/GPTQ-for-LLaMa). This lib provides efficient CUDA kernels and weight conversion script.
 
 After installing this lib, we may convert the original HF-format LLaMA model weights to 4-bit version.
 

@@ -25,7 +25,7 @@ from colossalai.utils import get_current_device
 # Prepare Hyperparameters
 # ==============================
 NUM_EPOCHS = 60
-WARMUP_EPOCSH = 5
+WARMUP_EPOCHS = 5
 LEARNING_RATE = 1e-3
 
 
@@ -37,7 +37,7 @@ def vit_cifar(**kwargs):
 
 
 def build_dataloader(batch_size: int, coordinator: DistCoordinator, plugin: DPPluginBase):
-    # trainsform
+    # transform
     transform_train = transforms.Compose([
         transforms.RandomCrop(32, padding=4),
         transforms.RandomHorizontalFlip(),
@@ -177,7 +177,7 @@ def main():
     optimizer = HybridAdam(model.parameters(), lr=LEARNING_RATE)
 
     # lr scheduler
-    lr_scheduler = LinearWarmupLR(optimizer, NUM_EPOCHS, WARMUP_EPOCSH)
+    lr_scheduler = LinearWarmupLR(optimizer, NUM_EPOCHS, WARMUP_EPOCHS)
 
     # ==============================
     # Boost with ColossalAI

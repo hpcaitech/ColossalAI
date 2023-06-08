@@ -40,7 +40,7 @@ def _gen_chunk_slice_dim(chunk_dim: int, chunk_indice_name: str, shape: List) ->
     return new_shape
 
 
-def _gen_loop_start(chunk_input: List[Node], chunk_output: List[Node], chunk_ouput_dim: int, chunk_size=2) -> str:
+def _gen_loop_start(chunk_input: List[Node], chunk_output: List[Node], chunk_output_dim: int, chunk_size=2) -> str:
     """
     Generate chunk loop start
 
@@ -52,7 +52,7 @@ def _gen_loop_start(chunk_input: List[Node], chunk_output: List[Node], chunk_oup
     Args:
         chunk_input (List[Node]): chunk input node
         chunk_output (Node): chunk output node
-        chunk_ouput_dim (int): chunk output node chunk dim
+        chunk_output_dim (int): chunk output node chunk dim
         chunk_size (int): chunk size. Defaults to 2.
 
     Returns:
@@ -74,7 +74,7 @@ def _gen_loop_start(chunk_input: List[Node], chunk_output: List[Node], chunk_oup
                                                                                       input_node.name, input_node.name)
 
     out_shape = get_node_shape(chunk_output[0])
-    chunk_shape = out_shape[chunk_ouput_dim[0]]
+    chunk_shape = out_shape[chunk_output_dim[0]]
     context += "chunk_size = %d\nfor chunk_idx in range(0, %d, chunk_size):\n" % (chunk_size, chunk_shape)
     return context
 

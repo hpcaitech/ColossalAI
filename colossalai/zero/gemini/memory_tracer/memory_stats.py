@@ -59,7 +59,7 @@ class MemStats(object):
         time step.
 
         Args:
-            param_list (List[torch.nn.Parameter]): a list of torch paramters.
+            param_list (List[torch.nn.Parameter]): a list of torch parameters.
         """
         for p in param_list:
             if p not in self._param_step_dict:

@@ -45,7 +45,7 @@ def check_ring_qk(rank, world_size):
     ring_qk = colossalai.nn.layer.parallel_sequence.RingQK.apply
     sub_a = ring_qk(sub_q, sub_k, batch_size, num_heads, sub_seq_length)
 
-    # check master and distributed attetion scores
+    # check master and distributed attention scores
     sub_master_a = a[:, rank * sub_seq_length:(rank + 1) * sub_seq_length]
     assert torch.allclose(sub_a, sub_master_a, rtol=1e-5, atol=1e-2)
 

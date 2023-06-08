@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Callable, List, Tuple, Union
+from typing import Callable, Iterator, List, Tuple, Union
 
 import torch.nn as nn
 from torch.optim import Optimizer
@@ -57,6 +57,13 @@ class Plugin(ABC):
     def get_checkpoint_io(self) -> CheckpointIO:
         """
         Get checkpoint io object for this plugin, only invoked when control_checkpoint_io is True.
+        """
+        pass
+
+    @abstractmethod
+    def no_sync(self, model: nn.Module) -> Iterator[None]:
+        """
+        Context manager to disable gradient synchronization.
         """
         pass
 

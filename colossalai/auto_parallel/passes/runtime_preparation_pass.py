@@ -54,7 +54,7 @@ def size_processing(size: Union[int, torch.Size],
     return size
 
 
-def solution_annotatation_pass(gm: torch.fx.GraphModule, solution: List[int],
+def solution_annotation_pass(gm: torch.fx.GraphModule, solution: List[int],
                                strategies_constructor: StrategiesConstructor):
     """
     This method is used to stick the solution strategy to the nodes and add the information
@@ -169,7 +169,7 @@ def size_value_converting_pass(gm: torch.fx.GraphModule, device_mesh: DeviceMesh
         This function is used to process the dependency between the size node and its users after
         inserting the size_process_node.
         '''
-        # store original node and processing node pair in node_pairs dictioanry
+        # store original node and processing node pair in node_pairs dictionary
         # It will be used to replace the original node with processing node in slice object
         node_pairs[node] = size_processing_node
         size_processing_node._meta_data = node._meta_data
@@ -388,7 +388,7 @@ def module_params_sharding_pass(gm: torch.fx.GraphModule, device_mesh: DeviceMes
     """
     mod_graph = gm.graph
     nodes = tuple(mod_graph.nodes)
-    # This stream is created for overlaping the communication and computation.
+    # This stream is created for overlapping the communication and computation.
     reduction_stream = torch.cuda.Stream()
 
     def _add_hook_for_grad_communication(node, param, name=None):
@@ -496,7 +496,7 @@ def runtime_preparation_pass(gm: torch.fx.GraphModule,
                              device_mesh: DeviceMesh,
                              strategies_constructor: StrategiesConstructor,
                              overlap=False):
-    gm, sharding_spec_convert_dict, origin_node_sharding_spec_dict, comm_actions_dict = solution_annotatation_pass(
+    gm, sharding_spec_convert_dict, origin_node_sharding_spec_dict, comm_actions_dict = solution_annotation_pass(
         gm, solution, strategies_constructor)
     gm = size_value_converting_pass(gm, device_mesh)
     gm = node_args_converting_pass(gm, device_mesh)

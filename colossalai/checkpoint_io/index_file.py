@@ -159,7 +159,7 @@ class CheckpointIndexFile:
     
     def write_index_file(self, save_index_file):
         """
-        Wriete index file.
+        Write index file.
         """
         save_index_file = os.path.join(self.root_path, save_index_file)
         index = {"metadata": self.metadata, "weight_map": self.weight_map}

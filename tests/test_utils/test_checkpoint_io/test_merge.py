@@ -68,7 +68,7 @@ def run_dist(rank, world_size, port, test_fn):
 
 
 def run_save_dist(dir_name: str, zero: bool):
-    model, optmizer = prepare_model_optim(shard=True, zero=zero)
+    model, optimizer = prepare_model_optim(shard=True, zero=zero)
     rank = dist.get_rank()
     dp_world_size = dist.get_world_size() // 2
     if not zero:
@@ -90,7 +90,7 @@ def run_save_dist(dir_name: str, zero: bool):
             'fc.bias':
                 ParamDistMeta(rank // 2, dp_world_size, 0, 1, zero_numel=1, zero_orig_shape=[1])
         }
-    save(dir_name, model, optmizer, dist_meta=dist_metas)
+    save(dir_name, model, optimizer, dist_meta=dist_metas)
 
 
 @pytest.mark.dist

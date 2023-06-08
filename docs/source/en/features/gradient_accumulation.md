@@ -1,4 +1,4 @@
-# Gradient Accumulation
+# Gradient Accumulation (Outdated)
 
 Author: Shenggui Li, Yongbin Li
 
@@ -43,3 +43,5 @@ iteration 1, first 10 elements of param: tensor([-0.0208,  0.0189,  0.0234,  0.0
 iteration 2, first 10 elements of param: tensor([-0.0208,  0.0189,  0.0234,  0.0047,  0.0116, -0.0283,  0.0071, -0.0359, -0.0267, -0.0006], device='cuda:0', grad_fn=<SliceBackward0>)
 iteration 3, first 10 elements of param: tensor([-0.0141,  0.0464,  0.0507,  0.0321,  0.0356, -0.0150,  0.0172, -0.0118, 0.0222,  0.0473], device='cuda:0', grad_fn=<SliceBackward0>)
 ```
+
+<!-- doc-test-command: torchrun --standalone --nproc_per_node=1 gradient_accumulation.py  -->

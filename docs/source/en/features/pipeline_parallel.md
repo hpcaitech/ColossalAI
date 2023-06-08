@@ -156,4 +156,4 @@ trainer.fit(train_dataloader=train_dataloader,
             display_progress=True)
 ```
 
-We use `2` pipeline stages and the batch will be splitted into `4` micro batches.
+We use `2` pipeline stages and the batch will be split into `4` micro batches.

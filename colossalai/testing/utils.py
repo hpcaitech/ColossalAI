@@ -167,10 +167,10 @@ def rerun_if_address_is_in_use():
     """
     # check version
     torch_version = version.parse(torch.__version__)
-    assert torch_version.major == 1
+    assert torch_version.major >= 1
 
     # only torch >= 1.8 has ProcessRaisedException
-    if torch_version.minor >= 8:
+    if torch_version >= version.parse("1.8.0"):
         exception = torch.multiprocessing.ProcessRaisedException
     else:
         exception = Exception

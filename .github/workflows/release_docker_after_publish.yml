@@ -1,0 +1,76 @@
+name: Publish Docker Image to DockerHub after Publish
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+jobs:
+  release:
+    name: Publish Docker Image to DockerHub
+    if: github.repository == 'hpcaitech/ColossalAI'
+    runs-on: [self-hosted, gpu]
+    container:
+      image: "hpcaitech/docker-in-docker:latest"
+      options: --gpus all --rm -v /var/run/docker.sock:/var/run/docker.sock
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Build Docker
+        id: build
+        run: |
+          version=$(cat version.txt)
+          tag=hpcaitech/colossalai:$version
+          latest=hpcaitech/colossalai:latest
+          docker build --build-arg http_proxy=http://172.17.0.1:7890 --build-arg https_proxy=http://172.17.0.1:7890 --build-arg VERSION=v${version} -t $tag ./docker
+          docker tag $tag $latest
+          echo "tag=${tag}" >> $GITHUB_OUTPUT
+          echo "latest=${latest}" >> $GITHUB_OUTPUT
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@f054a8b539a109f9f41c372932f1ae047eff08c9
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Push Docker image
+        id: docker-push
+        run: |
+          docker push ${{ steps.build.outputs.tag }}
+          docker push ${{ steps.build.outputs.latest }}
+
+  notify:
+    name: Notify Lark via webhook
+    needs: release
+    runs-on: ubuntu-latest
+    if: ${{ always() }}
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions/setup-python@v2
+        with:
+          python-version: "3.8.14"
+
+      - name: Install requests
+        run: pip install requests
+
+      - name: Notify Lark
+        id: message-preparation
+        run: |
+          url=$SERVER_URL/$REPO/actions/runs/$RUN_ID
+          if [ "$STATUS" == 'success' ]
+          then
+            msg="The Docker image for the latest release has been successfully built and pushed to DockerHub."
+          else
+            msg="Failed to build and push the Docker image for the latest release, please visit $url for details."
+          fi
+          echo $msg
+          python .github/workflows/scripts/send_message_to_lark.py -m "$msg" -u $WEBHOOK_URL
+        env:
+          SERVER_URL: ${{github.server_url }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          WEBHOOK_URL: ${{ secrets.LARK_NOTIFICATION_WEBHOOK_URL }}
+          STATUS: ${{ needs.release.result }}

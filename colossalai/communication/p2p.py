@@ -217,7 +217,7 @@ def recv_backward(output_grad_shape,
         next_rank (int, optional): The rank of the source of the tensor.
 
     Returns:
-        Union[:class:`torch.Tensor`, List[:class:`torch.Tensor`]]: The input gradient tensor or gradident tensor list.
+        Union[:class:`torch.Tensor`, List[:class:`torch.Tensor`]]: The input gradient tensor or gradient tensor list.
     """
     if gpc.is_pipeline_last_stage():
         output_tensor_grad = None

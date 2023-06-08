@@ -75,7 +75,7 @@ class NodeHandler(ABC):
                 prev_strategy.get_sharding_spec_by_name(node_name) for prev_strategy in prev_strategy_vector
             ]
 
-            # create data structrure to store costs
+            # create data structure to store costs
             if node not in resharding_costs:
                 resharding_costs[node] = []
 
@@ -212,7 +212,7 @@ class NodeHandler(ABC):
         return self.strategies_vector
 
     def post_process(self, strategy: ShardingStrategy) -> Union[ShardingStrategy, List[ShardingStrategy]]:
-        # tranform the strategy generated
+        # transform the strategy generated
         # e.g. to process the sharding strategy for the transposed weights
         return strategy
 

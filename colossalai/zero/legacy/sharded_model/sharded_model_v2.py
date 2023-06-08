@@ -28,6 +28,7 @@ from colossalai.zero.legacy.sharded_model.reduce_scatter import ReduceScatterBuc
 
 from ._utils import (
     cast_float_arguments,
+    cast_tensor_to_bf16,
     cast_tensor_to_fp16,
     cast_tensor_to_fp32,
     chunk_and_pad,
@@ -68,12 +69,13 @@ class ShardedModelV2(nn.Module):
             If it's 'auto', they are moving dynamically based on CPU and CUDA memory usage. It will utilize heterogeneous memory space evenly and well.
             Note that 'auto' policy can only work well when no other processes use CUDA during your training.
             Defaults to 'cuda'.
-        gradient_predivide_factor (Optional[float], optional): Gradient is divived by this value before reduce-scatter. Defaults to 1.0.
+        gradient_predivide_factor (Optional[float], optional): Gradient is divided by this value before reduce-scatter. Defaults to 1.0.
         reuse_fp16_shard (bool, optional): Whether to reuse fp16 shard for param and grad.
             Enabling this can reduce GPU memory usage, but you have to make sure you disable it when using gradient accumulation.
             In this mode, grad will be fp16. Make sure your optimizer supports mixed precision (fp32 param and fp16 grad).
             We find that PyTorch's optimizers don't support mixed precision,
             so we recommend you enable this only when using our CPUAdam with CPU offload. Defaults to False.
+        bf16 (bool, optional): Whether to use bfloat16 for param and grad. Defaults to False.
     """
 
     def __init__(self,
@@ -86,11 +88,13 @@ class ShardedModelV2(nn.Module):
                  tensor_placement_policy: str = 'cuda',
                  gradient_predivide_factor: Optional[float] = 1.0,
                  reuse_fp16_shard: bool = False,
+                 bf16: bool = False,
                  *args,
                  **kwargs):
         assert not isinstance(module, ShardedModelV2), 'Nested ShardedModelV2 is not supported.'
         super().__init__()
         self.logger = get_dist_logger()
+        self.bf16 = bf16
 
         # We force users to use ZeroInitContext
         for submodule in module.modules():
@@ -201,7 +205,7 @@ class ShardedModelV2(nn.Module):
             exit(0)
         """
         if self._use_memory_tracer:
-            self.logger.error(f'dump memort tracer collected information to a {filename}', ranks=[0])
+            self.logger.error(f'dump memory tracer collected information to a {filename}', ranks=[0])
             if gpc.get_global_rank() == 0:
                 with open(filename, 'w+') as f:
                     f.write(f'cuda reserved {torch.cuda.memory_reserved(get_current_device()) / 1e9} GB\n')
@@ -232,7 +236,8 @@ class ShardedModelV2(nn.Module):
 
     def forward(self, *args: Any, **kwargs: Any) -> torch.Tensor:
         self._pre_forward_operations(*args)
-        args, kwargs = cast_float_arguments(cast_tensor_to_fp16, *args, **kwargs)
+        cast_fn = cast_tensor_to_bf16 if self.bf16 else cast_tensor_to_fp16
+        args, kwargs = cast_float_arguments(cast_fn, *args, **kwargs)
         outputs = self.module(*args, **kwargs)
         self._post_forward_operations()
         return outputs
@@ -380,7 +385,7 @@ class ShardedModelV2(nn.Module):
             # make parameters point to gradient
 
             assert param.colo_attr.saved_grad.is_null(
-            ), 'Gradien accumulation is not supported when reuse_fp16_shard=True'
+            ), 'Gradient accumulation is not supported when reuse_fp16_shard=True'
 
             param.colo_attr.grad_payload_reset(grad.data)
             # release the memory of param

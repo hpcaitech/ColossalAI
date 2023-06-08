@@ -1,0 +1,123 @@
+{
+  "language": "en",
+  "category": {
+    "brainstorming": {
+      "GPT": [
+        "language organization",
+        "relevance",
+        "creativity",
+        "practicality",
+        "correctness"
+      ],
+      "Metrics": [
+        "Distinct"
+      ]
+    },
+    "chat": {
+      "GPT": [
+        "language organization",
+        "relevance",
+        "naturalness",
+        "engagingness",
+        "reasonableness"
+      ],
+      "Metrics": [
+        "Distinct"
+      ]
+    },
+    "classification": {
+      "GPT": [
+        "language organization",
+        "relevance",
+        "correctness"
+      ],
+      "Metrics": [
+        "Precision",
+        "Recall",
+        "F1 score"
+      ]
+    },
+    "closed_qa": {
+      "GPT": [
+        "language organization",
+        "relevance",
+        "correctness"
+      ],
+      "Metrics": [
+        "BLEU",
+        "ROUGE",
+        "BERTScore"
+      ]
+    },
+    "extraction": {
+      "GPT": [
+        "language organization",
+        "relevance",
+        "correctness"
+      ],
+      "Metrics": [
+        "Precision",
+        "Recall",
+        "F1 score"
+      ]
+    },
+    "generation": {
+      "GPT": [
+        "language organization",
+        "relevance",
+        "diversity"
+      ],
+      "Metrics": [
+        "BLEU",
+        "ROUGE",
+        "BERTScore"
+      ]
+    },
+    "open_qa": {
+      "GPT": [
+        "language organization",
+        "relevance",
+        "correctness"
+      ],
+      "Metrics": [
+        "Distinct"
+      ]
+    },
+    "rewriting": {
+      "GPT": [
+        "language organization",
+        "relevance",
+        "correctness"
+      ],
+      "Metrics": [
+        "BLEU",
+        "ROUGE",
+        "BERTScore"
+      ]
+    },
+    "roleplay": {
+      "GPT": [
+        "language organization",
+        "relevance",
+        "fidelity",
+        "creativity"
+      ],
+      "Metrics": [
+        "Distinct"
+      ]
+    },
+    "summarization": {
+      "GPT": [
+        "language organization",
+        "relevance",
+        "correctness",
+        "conciseness"
+      ],
+      "Metrics": [
+        "BLEU",
+        "ROUGE",
+        "BERTScore"
+      ]
+    }
+  }
+}

@@ -19,7 +19,7 @@ _unpickler = pickle.Unpickler
 
 
 def init_process_group():
-    """intialise process group by dist.new_group in the adjacent stages
+    """initialise process group by dist.new_group in the adjacent stages
 
     Args:
         None

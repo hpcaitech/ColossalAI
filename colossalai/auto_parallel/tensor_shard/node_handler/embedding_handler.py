@@ -155,7 +155,7 @@ class EmbeddingModuleHandler(ModuleHandler):
         Convert the sharding spec from the logical shape to the physical shape.
         """
         # create multiple sharding strategies for the inputs
-        # as input can be multi-dimensinal and the partition dim is only 2D,
+        # as input can be multi-dimensional and the partition dim is only 2D,
         # we need to map the partition at logical dim 0 to one of the first few dimensions of the input and output
         strategies = _convert_logical_sharding_to_physical_sharding_spec_for_embedding(strategy=strategy,
                                                                                        input_name=str(
@@ -221,7 +221,7 @@ class EmbeddingFunctionHandler(NodeHandler):
         Convert the sharding spec from the logical shape to the physical shape.
         """
         # create multiple sharding strategies for the inputs
-        # as input can be multi-dimensinal and the partition dim is only 2D,
+        # as input can be multi-dimensional and the partition dim is only 2D,
         # we need to map the partition at logical dim 0 to one of the first few dimensions of the input and output
         strategies = _convert_logical_sharding_to_physical_sharding_spec_for_embedding(strategy=strategy,
                                                                                        input_name=str(

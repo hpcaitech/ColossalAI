@@ -152,9 +152,9 @@ class PipelineSchedule(BaseSchedule):
             raise TypeError(f"Expected data to be of type torch.Tensor, list, tuple, or dict, but got {type(data)}")
 
     def load_micro_batch(self):
-        mciro_batch_data = self._get_data_slice(self.batch_data, self.microbatch_offset)
+        micro_batch_data = self._get_data_slice(self.batch_data, self.microbatch_offset)
         self.microbatch_offset += self.microbatch_size
-        return self._move_to_device(mciro_batch_data)
+        return self._move_to_device(micro_batch_data)
 
     def pre_processing(self, engine):
         from colossalai.zero.legacy import ShardedModelV2

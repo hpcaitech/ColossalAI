@@ -18,7 +18,7 @@ class TraceIndice(object):
         dim(x1)=dim(x2)=dim(x3)=[a, b, c]
     This class will record every node's dims' indice, compute and source.
 
-    Attibutes:
+    Attributes:
         node_list (List)
         indice_trace_list (List): [{"indice": [...], "compute": [...], "source": [...]}, {...}]
         indice_view_list (Dict): not used for now
@@ -397,7 +397,7 @@ class TraceIndice(object):
         input_node = node.args[0]
         assert len(get_node_shape(input_node)) == 4
 
-        # assgin index
+        # assign index
         self._assign_indice_as_input(node, node_idx, input_node)
         self._del_dim(node_idx, 1)
         self._add_dim(node_idx, 1)
@@ -415,7 +415,7 @@ class TraceIndice(object):
         assert node.kwargs['size'] is None
         assert len(get_node_shape(node)) == 4
 
-        # assgin index
+        # assign index
         self._assign_indice_as_input(node, node_idx)
         self._mark_computation(node, node_idx, [-1, -2])
 
@@ -461,7 +461,7 @@ class TraceIndice(object):
                 nodes_in.append(node_in)
                 self._inherit_more_indice_from_node_with_exclude(node_in, node)
 
-    def _assgin_no_change_indice(self, node, idx):
+    def _assign_no_change_indice(self, node, idx):
         self._assign_indice_as_input(node, idx)
         for node_in in node.args:
             if type(node_in) == type(node):
@@ -792,7 +792,7 @@ class TraceIndice(object):
             self._add_dim(node_idx, i)
         dim_from.reverse()
 
-        # inheirt indice from current node
+        # inherit indice from current node
         if len(dim_from) != 0 and len(dim_to) != 0:
             if dim_diff == 1:
                 if origin_shape[dim_from[0]] == 1:
@@ -852,7 +852,7 @@ class TraceIndice(object):
                 elif "split" == node_name:
                     self._assign_split_indice(node, idx)
                 elif any(i == node_name for i in ["to", "contiguous", "clone", "type", "float"]):
-                    self._assgin_no_change_indice(node, idx)
+                    self._assign_no_change_indice(node, idx)
                 elif "new_ones" == node_name:
                     self._assign_all_indice(node, idx)
                 elif "flatten" == node_name:
@@ -914,7 +914,7 @@ class TraceIndice(object):
                 elif "conv2d" == node_name:
                     self._assign_conv2d_indice(node, idx)
                 elif "identity" == node_name:
-                    self._assgin_no_change_indice(node, idx)
+                    self._assign_no_change_indice(node, idx)
                 elif any(n == node_name for n in ["sigmoid", "dropout", "relu", "silu", "gelu"]):
                     self._assign_elementwise_indice(node, idx)
                 else:

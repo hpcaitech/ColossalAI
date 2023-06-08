@@ -9,10 +9,10 @@ class Registry:
     def register(self, name):
         assert name not in self._registry
 
-        def _regsiter(callable_):
+        def _register(callable_):
             self._registry[name] = callable_
 
-        return _regsiter
+        return _register
 
     def get_callable(self, name: str):
         return self._registry[name]
@@ -34,6 +34,6 @@ class Registry:
 
 
 non_distributed_component_funcs = Registry()
-model_paralle_component_funcs = Registry()
+model_parallel_component_funcs = Registry()
 
-__all__ = ['non_distributed_component_funcs', 'model_paralle_component_funcs']
+__all__ = ['non_distributed_component_funcs', 'model_parallel_component_funcs']

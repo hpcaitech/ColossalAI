@@ -148,7 +148,7 @@ class MetaInfoProp:
         graph_info.fwd_tmp = buffer_tensors
         graph_info.fwd_out = output_tensors
 
-        # fetch other memory informations
+        # fetch other memory information
         memory_cost = meta_info.memory_cost
         graph_info.fwd_mem_tmp = memory_cost.fwd.temp
         graph_info.fwd_mem_out = memory_cost.fwd.activation

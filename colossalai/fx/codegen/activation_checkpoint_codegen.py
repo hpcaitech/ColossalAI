@@ -523,7 +523,7 @@ def emit_code_with_activation_checkpoint(body, ckpt_func, nodes, emit_node_func,
     # append code text to body
     for idx, node in enumerate(node_list):
         # if this is the first node of the ckpt region
-        # append the ckpt function defition
+        # append the ckpt function definition
         if idx in start_idx:
             label = start_idx.index(idx)
             ckpt_fn_def = _gen_ckpt_fn_def(label, input_vars[label])

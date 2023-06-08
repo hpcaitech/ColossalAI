@@ -48,6 +48,7 @@ The following pic shows how we collected the data.
 ## Stage1 - Supervised instructs tuning
 
 Stage1 is supervised instructs fine-tuning, which uses the datasets mentioned earlier to fine-tune the model.
+[[Stage1 tutorial video]](https://www.youtube.com/watch?v=-qFBZFmOJfg)
 
 You can run the `examples/train_sft.sh` to start a supervised instructs fine-tuning.
 
@@ -83,6 +84,7 @@ torchrun --standalone --nproc_per_node=4 train_sft.py \
 ## Stage2 - Training reward model
 
 We train a reward model in stage 2, which obtains corresponding scores by manually ranking different outputs for the same prompt and supervises the training of the reward model.
+[[Stage2 tutorial video]](https://www.youtube.com/watch?v=gMx2CApKhuo)
 
 You can run the `examples/train_rm.sh` to start a reward model training.
 
@@ -141,6 +143,7 @@ Stage3 uses reinforcement learning algorithm, which is the most complex part of 
 
 You can run the `examples/train_prompts.sh` to start PPO training.
 You can also use the cmd following to start PPO training.
+[[Stage3 tutorial video]](https://www.youtube.com/watch?v=Z8wwSHxPL9g)
 
 ```
 torchrun --standalone --nproc_per_node=4 train_prompts.py \
@@ -153,7 +156,7 @@ torchrun --standalone --nproc_per_node=4 train_prompts.py \
          --rm_path /your/rm/model/path
 ```
 
-Prompt dataset: the instruction dataset mentioned in the above figure which includes the instructions, e.g. you can use the [script](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat/examples/example_data_reformat.py) to reformat [seed_prompts_ch.jsonl](https://github.com/XueFuzhao/InstructionWild/blob/main/data/seed_prompts_ch.jsonl) or [seed_prompts_en.jsonl](https://github.com/XueFuzhao/InstructionWild/blob/main/data/seed_prompts_en.jsonl) in InstructionWild.  
+Prompt dataset: the instruction dataset mentioned in the above figure which includes the instructions, e.g. you can use the [script](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat/examples/generate_prompt_dataset.py) which samples `instinwild_en.json` or `instinwild_ch.json` in [InstructionWild](https://github.com/XueFuzhao/InstructionWild/tree/main/data#instructwild-data) to generate the prompt dataset.
 Pretrain dataset: the pretrain dataset including the instruction and corresponding response, e.g. you can use the [InstructWild Data](https://github.com/XueFuzhao/InstructionWild/tree/main/data) in stage 1 supervised instructs tuning.
 
 ### Arg List

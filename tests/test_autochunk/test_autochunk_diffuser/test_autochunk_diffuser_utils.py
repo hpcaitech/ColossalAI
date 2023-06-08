@@ -8,7 +8,6 @@ from colossalai.autochunk.autochunk_codegen import AUTOCHUNK_AVAILABLE
 from colossalai.core import global_context as gpc
 from colossalai.fx.graph_module import ColoGraphModule
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
-from colossalai.testing import free_port
 
 if AUTOCHUNK_AVAILABLE:
     from colossalai.autochunk.autochunk_codegen import AutoChunkCodeGen
@@ -93,6 +92,8 @@ def assert_codegen_run(
 
 def run_test(
     rank: int,
+    world_size: int,
+    port: int,
     model: Any,
     data: tuple,
     max_memory: int,
@@ -106,9 +107,9 @@ def run_test(
     colossalai.launch(
         config={},
         rank=rank,
-        world_size=1,
+        world_size=world_size,
         host="localhost",
-        port=free_port(),
+        port=port,
         backend="nccl",
     )
 

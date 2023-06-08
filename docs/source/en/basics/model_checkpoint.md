@@ -2,6 +2,8 @@
 
 Author : Guangyang Lu
 
+> ⚠️ The information on this page is outdated and will be deprecated. Please check [Booster Checkpoint](../basics/booster_checkpoint.md) for more information.
+
 **Prerequisite:**
 - [Launch Colossal-AI](./launch_colossalai.md)
 - [Initialize Colossal-AI](./initialize_features.md)

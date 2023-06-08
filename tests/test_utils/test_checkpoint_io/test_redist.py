@@ -125,9 +125,9 @@ def run_dist(rank, world_size, port, test_fn):
 
 
 def run_save_dist(dir_name: str, zero: bool):
-    model, optmizer = prepare_model_optim(shard=True, zero=zero)
+    model, optimizer = prepare_model_optim(shard=True, zero=zero)
     rank = dist.get_rank()
-    save(dir_name, model, optmizer, dist_meta=get_dist_metas(4, zero)[rank])
+    save(dir_name, model, optimizer, dist_meta=get_dist_metas(4, zero)[rank])
 
 
 @pytest.mark.dist

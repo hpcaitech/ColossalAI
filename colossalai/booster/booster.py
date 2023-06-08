@@ -23,27 +23,28 @@ class Booster:
     training with different precision, accelerator, and plugin.
 
     Examples:
-        >>> colossalai.launch(...)
-        >>> plugin = GeminiPlugin(stage=3, ...)
-        >>> booster = Booster(precision='fp16', plugin=plugin)
-        >>>
-        >>> model = GPT2()
-        >>> optimizer = Adam(model.parameters())
-        >>> dataloader = Dataloader(Dataset)
-        >>> lr_scheduler = LinearWarmupScheduler()
-        >>> criterion = GPTLMLoss()
-        >>>
-        >>> model, optimizer, lr_scheduler, dataloader = booster.boost(model, optimizer, lr_scheduler, dataloader)
-        >>>
-        >>> for epoch in range(max_epochs):
-        >>>     for input_ids, attention_mask in dataloader:
-        >>>         outputs = model(input_ids, attention_mask)
-        >>>         loss = criterion(outputs.logits, input_ids)
-        >>>         booster.backward(loss, optimizer)
-        >>>         optimizer.step()
-        >>>         lr_scheduler.step()
-        >>>         optimizer.zero_grad()
+        ```python
+        colossalai.launch(...)
+        plugin = GeminiPlugin(...)
+        booster = Booster(precision='fp16', plugin=plugin)
 
+        model = GPT2()
+        optimizer = HybridAdam(model.parameters())
+        dataloader = Dataloader(Dataset)
+        lr_scheduler = LinearWarmupScheduler()
+        criterion = GPTLMLoss()
+
+        model, optimizer, lr_scheduler, dataloader = booster.boost(model, optimizer, lr_scheduler, dataloader)
+
+        for epoch in range(max_epochs):
+            for input_ids, attention_mask in dataloader:
+                outputs = model(input_ids, attention_mask)
+                loss = criterion(outputs.logits, input_ids)
+                booster.backward(loss, optimizer)
+                optimizer.step()
+                lr_scheduler.step()
+                optimizer.zero_grad()
+        ```
 
     Args:
         device (str or torch.device): The device to run the training. Default: 'cuda'.
@@ -130,6 +131,12 @@ class Booster:
         return model, optimizer, criterion, dataloader, lr_scheduler
 
     def backward(self, loss: torch.Tensor, optimizer: Optimizer) -> None:
+        """Backward pass.
+
+        Args:
+            loss (torch.Tensor): The loss to be backpropagated.
+            optimizer (Optimizer): The optimizer to be updated.
+        """
         # TODO: implement this method with plugin
         optimizer.backward(loss)
 
@@ -146,11 +153,29 @@ class Booster:
         pass
 
     def no_sync(self, model: nn.Module) -> contextmanager:
+        """Context manager to disable gradient synchronization across DP process groups.
+
+        Args:
+            model (nn.Module): The model to be disabled gradient synchronization.
+
+        Returns:
+            contextmanager: Context to disable gradient synchronization.
+        """
         assert self.plugin is not None, f'no_sync is only enabled when a plugin is provided and the plugin supports no_sync.'
         assert self.plugin.support_no_sync, f'The plugin {self.plugin.__class__.__name__} does not support no_sync.'
         return self.plugin.no_sync(model)
 
     def load_model(self, model: nn.Module, checkpoint: str, strict: bool = True):
+        """Load model from checkpoint.
+
+        Args:
+            model (nn.Module): A model boosted by Booster.
+            checkpoint (str): Path to the checkpoint. It must be a local path.
+                It should be a directory path if the checkpoint is sharded. Otherwise, it should be a file path.
+            strict (bool, optional): whether to strictly enforce that the keys
+                in :attr:`state_dict` match the keys returned by this module's
+                :meth:`~torch.nn.Module.state_dict` function. Defaults to True.
+        """
         self.checkpoint_io.load_model(model, checkpoint, strict)
 
     def save_model(self,
@@ -159,16 +184,58 @@ class Booster:
                    prefix: str = None,
                    shard: bool = False,
                    size_per_shard: int = 1024):
-        self.checkpoint_io.save_model(model, checkpoint, prefix, shard, size_per_shard)
+        """Save model to checkpoint.
+
+        Args:
+            model (nn.Module): A model boosted by Booster.
+            checkpoint (str): Path to the checkpoint. It must be a local path.
+                It is a file path if ``shard=False``. Otherwise, it is a directory path.
+            prefix (str, optional): A prefix added to parameter and buffer
+                names to compose the keys in state_dict. Defaults to None.
+            shard (bool, optional): Whether to save checkpoint a sharded way.
+                If true, the checkpoint will be a folder. Otherwise, it will be a single file. Defaults to False.
+            size_per_shard (int, optional): Maximum size of checkpoint shard file in MB. This is useful only when ``shard=True``. Defaults to 1024.
+        """
+        self.checkpoint_io.save_model(model, checkpoint=checkpoint, shard=shard, size_per_shard=size_per_shard)
 
     def load_optimizer(self, optimizer: Optimizer, checkpoint: str):
+        """Load optimizer from checkpoint.
+
+        Args:
+            optimizer (Optimizer): An optimizer boosted by Booster.
+            checkpoint (str): Path to the checkpoint. It must be a local path.
+                It should be a directory path if the checkpoint is sharded. Otherwise, it should be a file path.
+        """
         self.checkpoint_io.load_optimizer(optimizer, checkpoint)
 
     def save_optimizer(self, optimizer: Optimizer, checkpoint: str, shard: bool = False, size_per_shard: int = 1024):
+        """Save optimizer to checkpoint.
+        Warning: Saving sharded optimizer checkpoint is not supported yet.
+
+        Args:
+            optimizer (Optimizer): An optimizer boosted by Booster.
+            checkpoint (str): Path to the checkpoint. It must be a local path.
+                It is a file path if ``shard=False``. Otherwise, it is a directory path.
+            shard (bool, optional): Whether to save checkpoint a sharded way.
+                If true, the checkpoint will be a folder. Otherwise, it will be a single file. Defaults to False.
+            size_per_shard (int, optional): Maximum size of checkpoint shard file in MB. This is useful only when ``shard=True``. Defaults to 1024.
+        """
         self.checkpoint_io.save_optimizer(optimizer, checkpoint, shard, size_per_shard)
 
     def save_lr_scheduler(self, lr_scheduler: LRScheduler, checkpoint: str):
+        """Save lr scheduler to checkpoint.
+
+        Args:
+            lr_scheduler (LRScheduler): A lr scheduler boosted by Booster.
+            checkpoint (str): Path to the checkpoint. It must be a local file path.
+        """
         self.checkpoint_io.save_lr_scheduler(lr_scheduler, checkpoint)
 
     def load_lr_scheduler(self, lr_scheduler: LRScheduler, checkpoint: str):
+        """Load lr scheduler from checkpoint.
+
+        Args:
+            lr_scheduler (LRScheduler): A lr scheduler boosted by Booster.
+            checkpoint (str): Path to the checkpoint. It must be a local file path.
+        """
         self.checkpoint_io.load_lr_scheduler(lr_scheduler, checkpoint)

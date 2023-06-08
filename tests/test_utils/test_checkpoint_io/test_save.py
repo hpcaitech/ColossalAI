@@ -28,7 +28,7 @@ def check_model_state_dict(a: Dict[str, Tensor], b: Dict[str, Tensor]) -> None:
         assert torch.equal(v, b[k])
 
 
-def check_optim_state_dict(a: dict, b: dict, ignore_param_gruops: bool = False) -> None:
+def check_optim_state_dict(a: dict, b: dict, ignore_param_groups: bool = False) -> None:
     assert set(a['state'].keys()) == set(b['state'].keys())
     for k, state in a['state'].items():
         b_state = b['state'][k]
@@ -37,7 +37,7 @@ def check_optim_state_dict(a: dict, b: dict, ignore_param_gruops: bool = False) 
                 assert torch.equal(v1, v2)
             else:
                 assert v1 == v2
-    if not ignore_param_gruops:
+    if not ignore_param_groups:
         assert a['param_groups'] == b['param_groups']
 
 
@@ -113,12 +113,12 @@ def run_dist(rank, world_size, port, test_fn):
 
 
 def run_save_dist(dir_name):
-    model, optmizer = prepare_model_optim()
+    model, optimizer = prepare_model_optim()
     dist_metas = {
         'fc.weight': ParamDistMeta(dist.get_rank(), dist.get_world_size(), 0, 1),
         'fc.bias': ParamDistMeta(dist.get_rank(), dist.get_world_size(), 0, 1)
     }
-    save(dir_name, model, optmizer, dist_meta=dist_metas)
+    save(dir_name, model, optimizer, dist_meta=dist_metas)
 
 
 @pytest.mark.dist

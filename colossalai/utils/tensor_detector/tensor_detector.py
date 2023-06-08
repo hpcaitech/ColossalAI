@@ -55,7 +55,7 @@ class TensorDetector():
         return self.mem_format(memory_size)
 
     def mem_format(self, real_memory_size):
-        # format the tensor memory into a reasonal magnitude
+        # format the tensor memory into a reasonable magnitude
         if real_memory_size >= 2**30:
             return str(real_memory_size / (2**30)) + ' GB'
         if real_memory_size >= 2**20:
@@ -71,7 +71,7 @@ class TensorDetector():
                 if (not self.include_cpu) and obj.device == torch.device('cpu'):
                     continue
                 self.detected.append(id(obj))
-                # skip paramters we had added in __init__ when module is an instance of nn.Module for the first epoch
+                # skip parameters we had added in __init__ when module is an instance of nn.Module for the first epoch
                 if id(obj) not in self.tensor_info:
 
                     name = type(obj).__name__
@@ -84,7 +84,7 @@ class TensorDetector():
                                     name = par_name + ' (with grad)'
                         else:
                             # with no grad attached
-                            # there will be no new paramters created during running
+                            # there will be no new parameters created during running
                             # so it must be in saved_tensor_info
                             continue
                     # we can also marked common tensors as tensor(with grad)
@@ -155,7 +155,7 @@ class TensorDetector():
             if device == torch.device('cpu'):
                 continue
             gpu_mem_alloc = self.mem_format(torch.cuda.memory_allocated(device))
-            self.info += f"Totle GPU Memery Allocated on {device} is {gpu_mem_alloc}\n"
+            self.info += f"Total GPU Memory Allocated on {device} is {gpu_mem_alloc}\n"
         self.info += LINE
         self.info += '\n\n'
         if self.show_info:

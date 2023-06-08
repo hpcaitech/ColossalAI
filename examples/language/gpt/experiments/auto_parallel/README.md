@@ -13,10 +13,10 @@ conda install pytorch==1.12.0 torchvision==0.13.0 torchaudio==0.12.0 cudatoolkit
 pip install torch==1.12.0+cu113 torchvision==0.13.0+cu113 torchaudio==0.12.0 --extra-index-url https://download.pytorch.org/whl/cu113
 ```
 
-### Install [Colossal-AI v0.2.0](https://colossalai.org/download/) From Official Website
+### Install Colossal-AI
 
 ```bash
-pip install colossalai==0.2.0+torch1.12cu11.3 -f https://release.colossalai.org
+pip install colossalai==0.2.0
 ```
 
 ### Install transformers
