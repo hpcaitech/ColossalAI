@@ -1,4 +1,5 @@
 from .cpu_adam import CPUAdamBuilder
+from .elixir_simulator import ElixirSimulatorBuilder
 from .fused_optim import FusedOptimBuilder
 from .layernorm import LayerNormBuilder
 from .moe import MOEBuilder
@@ -14,10 +15,11 @@ ALL_OPS = {
     'scaled_masked_softmax': ScaledMaskedSoftmaxBuilder,
     'scaled_upper_triangle_masked_softmax': ScaledUpperTrainglemaskedSoftmaxBuilder,
     'layernorm': LayerNormBuilder,
+    'elixir_simulator': ElixirSimulatorBuilder
 }
 
 __all__ = [
     'ALL_OPS', 'CPUAdamBuilder', 'FusedOptimBuilder', 'MultiHeadAttnBuilder', 'ScaledMaskedSoftmaxBuilder',
     'ScaledUpperTrainglemaskedSoftmaxBuilder', 'MOEBuilder', 'MultiTensorSGDBuilder', 'MultiTensorAdamBuilder',
-    'MultiTensorLambBuilder', 'MultiTensorScaleBuilder', 'MultiTensorL2NormBuilder'
+    'MultiTensorLambBuilder', 'MultiTensorScaleBuilder', 'MultiTensorL2NormBuilder', 'ElixirSimulatorBuilder'
 ]

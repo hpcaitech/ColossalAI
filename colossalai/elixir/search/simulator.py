@@ -1,10 +1,12 @@
 import math
 
+from colossalai.kernel.op_builder import ElixirSimulatorBuilder
+
 from .utils import to_divide
 
 
 def calc_move_times(param_per_step: list, param_to_chunk: dict, n_blocks: int):
-    from colossalai.elixir.simulator import move_count
+    simulator = ElixirSimulatorBuilder().load()
     chunk_per_step = list()
 
     for param_set in param_per_step:
@@ -17,7 +19,7 @@ def calc_move_times(param_per_step: list, param_to_chunk: dict, n_blocks: int):
         if len(id_set) > 0:
             chunk_per_step.append(list(id_set))
 
-    return move_count(chunk_per_step, n_blocks)
+    return simulator.move_count(chunk_per_step, n_blocks)
 
 
 def find_optimal_chunk_size(

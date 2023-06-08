@@ -16,7 +16,7 @@ from op_builder.utils import (
 
 try:
     import torch
-    from torch.utils.cpp_extension import CUDA_HOME, BuildExtension, CppExtension
+    from torch.utils.cpp_extension import CUDA_HOME, BuildExtension
     TORCH_AVAILABLE = True
 except ImportError:
     TORCH_AVAILABLE = False
@@ -30,11 +30,7 @@ BUILD_CUDA_EXT = int(os.environ.get('CUDA_EXT', '0')) == 1
 IS_NIGHTLY = int(os.environ.get('NIGHTLY', '0')) == 1
 
 # a variable to store the op builder
-ext_modules = [
-    CppExtension(name='colossalai.elixir.simulator',
-                 sources=['colossalai/elixir/simulator.cpp'],
-                 extra_compile_args=['-O3', '-DVERSION_GE_1_1', '-DVERSION_GE_1_3', '-DVERSION_GE_1_5'])
-]
+ext_modules = []
 
 # we do not support windows currently
 if sys.platform == 'win32':
