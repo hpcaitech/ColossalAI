@@ -70,7 +70,12 @@ class PPOTrainer(Trainer):
                  offload_inference_models: bool = True,
                  callbacks: List[Callback] = [],
                  **generate_kwargs) -> None:
-        experience_maker = NaiveExperienceMaker(actor, critic, reward_model, initial_model, kl_coef)
+        experience_maker = NaiveExperienceMaker(actor,
+                                                critic,
+                                                reward_model,
+                                                initial_model,
+                                                kl_coef,
+                                                offload=offload_inference_models)
         replay_buffer = NaiveReplayBuffer(train_batch_size, buffer_limit, buffer_cpu_offload)
         generate_kwargs = _set_default_generate_kwargs(strategy, generate_kwargs, actor)
         super().__init__(strategy, max_epochs, dataloader_pin_memory, callbacks, **generate_kwargs)
@@ -144,17 +149,10 @@ class PPOTrainer(Trainer):
                 time += 1
                 prompts = next(iter(self.prompt_dataloader))
                 self._on_make_experience_start()
-                if self.offload_inference_models:
-                    # TODO(ver217): this may be controlled by strategy if they are prepared by strategy
-                    self.experience_maker.initial_model.to(self.device)
-                    self.experience_maker.reward_model.to(self.device)
                 experience = self._make_experience(prompts)
                 self._on_make_experience_end(experience)
                 self.replay_buffer.append(experience)
                 if time % update_timesteps == 0:
-                    if self.offload_inference_models:
-                        self.experience_maker.initial_model.to('cpu')
-                        self.experience_maker.reward_model.to('cpu')
                     self._learn()
                     self.replay_buffer.clear()
             self._on_episode_end(episode)
@@ -165,6 +163,7 @@ class PPOTrainer(Trainer):
         self.critic.train()
         # policy loss
         num_actions = experience.action_mask.size(1)
+        self.actor.to(self.device)
         action_log_probs = self.actor(experience.sequences, num_actions, attention_mask=experience.attention_mask)
         actor_loss = self.actor_loss_fn(action_log_probs,
                                         experience.action_log_probs,
@@ -184,6 +183,10 @@ class PPOTrainer(Trainer):
         self.strategy.optimizer_step(self.actor_optim)
         self.actor_optim.zero_grad()
 
+        if self.offload_inference_models:
+            self.actor.to('cpu')
+
+        self.critic.to(self.device)
         # value loss
         values = self.critic(experience.sequences,
                              action_mask=experience.action_mask,
@@ -196,6 +199,9 @@ class PPOTrainer(Trainer):
         self.strategy.backward(critic_loss, self.critic, self.critic_optim)
         self.strategy.optimizer_step(self.critic_optim)
         self.critic_optim.zero_grad()
+
+        if self.offload_inference_models:
+            self.critic.to('cpu')
 
         return {'reward': experience.reward.mean().item()}
 
