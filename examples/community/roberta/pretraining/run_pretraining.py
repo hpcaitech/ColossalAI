@@ -78,7 +78,7 @@ def main():
                              default_pg=shard_pg):
             config, model, numel = get_model(args, logger)
 
-        # asign running configurations
+        # assign running configurations
         gemini_config = None
         if args.distplan.startswith("CAI_ZeRO"):
             optim_config = dict(reduce_bucket_size=12 * 1024 * 1024, overlap_communication=True, verbose=True)

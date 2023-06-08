@@ -97,7 +97,7 @@ def throughput_calculator(numel, args, config, iteration_time, total_iterations,
 def synchronize():
     if not torch.distributed.is_available():
         return
-    if not torch.distributed.is_intialized():
+    if not torch.distributed.is_initialized():
         return
     world_size = torch.distributed.get_world_size()
     if world_size == 1:
