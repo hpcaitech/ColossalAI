@@ -14,4 +14,4 @@ torchrun --nproc_per_node 4 --standalone train_dreambooth_colossalai.py \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
   --num_class_images=200 \
-  --placement="cuda" \
+  --placement="auto" \
