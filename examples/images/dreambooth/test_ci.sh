@@ -20,5 +20,5 @@ for plugin in "gemini"; do
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
   --num_class_images=200 \
-  --placement="cpu" # "cuda"
+  --placement="auto" # "cuda"
 done
