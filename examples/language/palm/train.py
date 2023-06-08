@@ -140,15 +140,15 @@ def tensor_parallelize(model: torch.nn.Module, pg: ProcessGroup):
                 continue
             param.set_dist_spec(ReplicaSpec())
             if 'net.0' in mn:
-                split_param_col_tp1d(param, pg)    # colmn slice
+                split_param_col_tp1d(param, pg)    # column slice
             elif 'to_q' in mn:
-                split_param_col_tp1d(param, pg)    # colmn slice
+                split_param_col_tp1d(param, pg)    # column slice
             elif 'to_kv' in mn:
                 split_param_row_tp1d(param, pg)    # row slice
             elif 'to_out' in mn:
                 split_param_row_tp1d(param, pg)    # row slice
             elif '1.1' in mn:
-                split_param_col_tp1d(param, pg)    # colmn slice
+                split_param_col_tp1d(param, pg)    # column slice
             elif '1.2' in mn:
                 split_param_row_tp1d(param, pg)    # row slice
             else:

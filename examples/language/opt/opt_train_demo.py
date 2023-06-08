@@ -38,7 +38,7 @@ def train_epoch(epoch, model, optimizer, lr_scheduler, dataloader, booster, coor
         
         for batch in pbar:
 
-            # Foward
+            # Forward
             optimizer.zero_grad()
             batch = move_to_cuda(batch, torch.cuda.current_device())
             
