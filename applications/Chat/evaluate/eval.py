@@ -40,7 +40,7 @@ def main(args):
 
         # initialize evaluator
         evaluator = Evaluator(metrics_per_category, battle_prompt, gpt_evaluation_prompt, args.gpt_model,
-                              config["language"])
+                              config["language"], config.get("path_for_UniEval", None))
         if len(args.model_name_list) == 2:
             answers1 = jload(args.answer_file_list[0])
             answers2 = jload(args.answer_file_list[1])

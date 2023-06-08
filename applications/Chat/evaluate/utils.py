@@ -199,7 +199,7 @@ def analyze_automatic_results(results_path: str, save_path: str) -> None:
 
     for metric in tqdm.tqdm(
             frame_per_metric.keys(),
-            desc=f"metric: ",
+            desc=f"automatic metrics: ",
             total=len(frame_per_metric.keys()),
     ):
         data = pd.DataFrame(frame_per_metric[metric])
