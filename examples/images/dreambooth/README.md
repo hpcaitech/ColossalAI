@@ -37,7 +37,7 @@ The `text` include the tag `Teyvat`, `Name`,`Element`, `Weapon`, `Region`, `Mode
 
 ## Training
 
-We provide the script `colossalai.sh` to run the training task with colossalai. Meanwhile, we also provided traditional training process of dreambooth, `dreambooth.sh`, for possible comparation. For instance, the script of training process for [stable-diffusion-v1-4] model can be modified into:
+We provide the script `colossalai.sh` to run the training task with colossalai. Meanwhile, we also provided traditional training process of dreambooth, `dreambooth.sh`, for possible comparison. For instance, the script of training process for [stable-diffusion-v1-4] model can be modified into:
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"

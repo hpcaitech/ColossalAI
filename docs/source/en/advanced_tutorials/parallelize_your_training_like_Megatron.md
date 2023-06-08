@@ -141,16 +141,16 @@ for mn, module in model.named_modules():
 
         if 'mlp.c_fc' in mn:
             if 'weight' in pn or 'bias' in pn:
-                split_param_col_tp1d(param, pg)  # colmn slice
+                split_param_col_tp1d(param, pg)  # column slice
                 # keep the shape of the output from c_fc
                 param.compute_spec.set_output_replicate(False)
         elif 'mlp.c_proj' in mn:
             if 'weight' in pn:
                 split_param_row_tp1d(param, pg)  # row slice
         elif 'wte' in mn or 'wpe' in mn:
-            split_param_col_tp1d(param, pg)  # colmn slice
+            split_param_col_tp1d(param, pg)  # column slice
         elif 'c_attn' in mn or 'c_proj' in mn:
-            split_param_col_tp1d(param, pg)  # colmn slice
+            split_param_col_tp1d(param, pg)  # column slice
 ```
 
 The modified model is illustrated below.
