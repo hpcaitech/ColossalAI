@@ -5,12 +5,15 @@ import torch
 import torch.distributed as dist
 from coati.experience_maker import Experience
 
+from colossalai.context import ParallelMode
+from colossalai.core import global_context as gpc
+
 from .base import Callback
 
 
 def get_world_size() -> int:
     if dist.is_initialized():
-        return dist.get_world_size()
+        return gpc.get_world_size(ParallelMode.DATA)
     return 1
 
 

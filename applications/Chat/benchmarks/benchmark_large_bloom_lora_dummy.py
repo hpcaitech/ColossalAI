@@ -8,7 +8,7 @@ from coati.models.base import RewardModel
 from coati.models.bloom import BLOOMActor, BLOOMCritic
 from coati.trainer import PPOTrainer
 from coati.trainer.callbacks import PerformanceEvaluator
-from coati.trainer.strategies import ColossalAIStrategy, Strategy
+from coati.trainer.strategies import ColossalAIStrategy, Strategy, TPZeroStrategy
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from transformers import AutoTokenizer
@@ -56,16 +56,14 @@ def print_model_numel(model_dict: dict) -> None:
 
 def get_gpt_config(model_name: str) -> BloomConfig:
     model_map = {
-        '125m': BloomConfig.from_pretrained('facebook/opt-125m'),
-        '350m': BloomConfig(hidden_size=1024, ffn_dim=4096, num_hidden_layers=24, num_attention_heads=16),
-        '700m': BloomConfig(hidden_size=1280, ffn_dim=5120, num_hidden_layers=36, num_attention_heads=20),
-        '1.3b': BloomConfig.from_pretrained('facebook/opt-1.3b'),
-        '2.7b': BloomConfig.from_pretrained('facebook/opt-2.7b'),
-        '3.5b': BloomConfig(hidden_size=3072, ffn_dim=12288, num_hidden_layers=32, num_attention_heads=32),
-        '5.5b': BloomConfig(hidden_size=3840, ffn_dim=15360, num_hidden_layers=32, num_attention_heads=32),
-        '6.7b': BloomConfig.from_pretrained('facebook/opt-6.7b'),
-        '10b': BloomConfig(hidden_size=5120, ffn_dim=20480, num_hidden_layers=32, num_attention_heads=32),
-        '13b': BloomConfig.from_pretrained('facebook/opt-13b'),
+        '350m': BloomConfig(hidden_size=1024, n_layer=24, n_head=16),
+        '560m': BloomConfig.from_pretrained('bigscience/bloom-560m'),
+        '1.1b': BloomConfig.from_pretrained('bigscience/bloom-1b1'),
+        '1.7b': BloomConfig.from_pretrained('bigscience/bloom-1b7'),
+        '3b': BloomConfig.from_pretrained('bigscience/bloom-3b'),
+        '7b': BloomConfig.from_pretrained('bigscience/bloom-7b1'),
+        '66b': BloomConfig(hidden_size=9216, n_layer=64, n_head=72),
+        '175b': BloomConfig(hidden_size=12288, n_layer=96, n_head=128),
     }
     try:
         return model_map[model_name]
@@ -80,6 +78,10 @@ def main(args):
         strategy = ColossalAIStrategy(stage=3, placement_policy='cpu', initial_scale=2**5)
     elif args.strategy == 'colossalai_gemini_reshard':
         strategy = ColossalAIStrategy(stage=3, placement_policy='cuda_reshard', initial_scale=2**5)
+    elif args.strategy == 'tp_zero2':
+        strategy = TPZeroStrategy(args.tp_size, zero_stage=2, initial_scale=2**5)
+    elif args.strategy == 'tp_zero2_cpu':
+        strategy = TPZeroStrategy(args.tp_size, zero_stage=2, initial_scale=2**5, cpu_offload=True)
     else:
         raise ValueError(f'Unsupported strategy "{args.strategy}"')
 
@@ -180,8 +182,11 @@ if __name__ == '__main__':
                             'colossalai_gemini',
                             'colossalai_gemini_reshard',
                             'colossalai_gemini_cpu',
+                            'tp_zero2',
+                            'tp_zero2_cpu',
                         ],
                         default='colossalai_gemini_reshard')
+    parser.add_argument('--tp_size', type=int, default=1)
     parser.add_argument('--num_episodes', type=int, default=3)
     parser.add_argument('--max_timesteps', type=int, default=1)
     parser.add_argument('--update_timesteps', type=int, default=1)

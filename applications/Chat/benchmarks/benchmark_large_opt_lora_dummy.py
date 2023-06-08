@@ -8,7 +8,7 @@ from coati.models.base import RewardModel
 from coati.models.opt import OPTActor, OPTCritic
 from coati.trainer import PPOTrainer
 from coati.trainer.callbacks import PerformanceEvaluator
-from coati.trainer.strategies import ColossalAIStrategy, Strategy
+from coati.trainer.strategies import ColossalAIStrategy, Strategy, TPZeroStrategy
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from transformers import AutoTokenizer
@@ -80,6 +80,10 @@ def main(args):
         strategy = ColossalAIStrategy(stage=3, placement_policy='cpu', initial_scale=2**5)
     elif args.strategy == 'colossalai_gemini_reshard':
         strategy = ColossalAIStrategy(stage=3, placement_policy='cuda_reshard', initial_scale=2**5)
+    elif args.strategy == 'tp_zero2':
+        strategy = TPZeroStrategy(args.tp_size, zero_stage=2, initial_scale=2**5)
+    elif args.strategy == 'tp_zero2_cpu':
+        strategy = TPZeroStrategy(args.tp_size, zero_stage=2, initial_scale=2**5, cpu_offload=True)
     else:
         raise ValueError(f'Unsupported strategy "{args.strategy}"')
 
@@ -180,8 +184,11 @@ if __name__ == '__main__':
                             'colossalai_gemini',
                             'colossalai_gemini_reshard',
                             'colossalai_gemini_cpu',
+                            'tp_zero2',
+                            'tp_zero2_cpu',
                         ],
                         default='colossalai_gemini_reshard')
+    parser.add_argument('--tp_size', type=int, default=1)
     parser.add_argument('--num_episodes', type=int, default=3)
     parser.add_argument('--max_timesteps', type=int, default=1)
     parser.add_argument('--update_timesteps', type=int, default=1)

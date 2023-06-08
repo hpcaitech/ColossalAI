@@ -20,9 +20,11 @@ class NaiveExperienceMaker(ExperienceMaker):
                  reward_model: Module,
                  initial_model: Actor,
                  kl_coef: float = 0.1,
-                 offload: bool = False) -> None:
+                 offload: bool = False,
+                 is_colossalai_strategy: bool = False) -> None:
         super().__init__(actor, critic, reward_model, initial_model, kl_coef)
         self.offload = offload
+        self.is_colossalai_strategy = is_colossalai_strategy
 
     @torch.no_grad()
     def make_experience(self, input_ids: torch.Tensor, **generate_kwargs) -> Experience:
@@ -31,7 +33,8 @@ class NaiveExperienceMaker(ExperienceMaker):
         self.initial_model.eval()
         self.reward_model.eval()
 
-        self.actor.to(get_current_device())
+        if not self.is_colossalai_strategy:
+            self.actor.to(get_current_device())
         sequences, attention_mask, action_mask = self.actor.generate(input_ids,
                                                                      return_action_mask=True,
                                                                      **generate_kwargs)
@@ -40,15 +43,18 @@ class NaiveExperienceMaker(ExperienceMaker):
         action_log_probs = self.actor(sequences, num_actions, attention_mask)
         if self.offload:
             self.actor.to('cpu')
-        self.initial_model.to(get_current_device())
+        if not self.is_colossalai_strategy:
+            self.initial_model.to(get_current_device())
         base_action_log_probs = self.initial_model(sequences, num_actions, attention_mask)
         if self.offload:
             self.initial_model.to('cpu')
-        self.critic.to(get_current_device())
+        if not self.is_colossalai_strategy:
+            self.critic.to(get_current_device())
         value = self.critic(sequences, action_mask, attention_mask)
         if self.offload:
             self.critic.to('cpu')
-        self.reward_model.to(get_current_device())
+        if not self.is_colossalai_strategy:
+            self.reward_model.to(get_current_device())
         r = self.reward_model(sequences, attention_mask)
         if self.offload:
             self.reward_model.to('cpu')

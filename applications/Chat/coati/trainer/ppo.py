@@ -16,7 +16,7 @@ from colossalai.utils import get_current_device
 
 from .base import Trainer
 from .callbacks import Callback
-from .strategies import Strategy
+from .strategies import ColossalAIStrategy, Strategy
 from .utils import is_rank_0, to_device
 
 
@@ -75,7 +75,8 @@ class PPOTrainer(Trainer):
                                                 reward_model,
                                                 initial_model,
                                                 kl_coef,
-                                                offload=offload_inference_models)
+                                                offload=offload_inference_models,
+                                                is_colossalai_strategy=type(strategy) is ColossalAIStrategy)
         replay_buffer = NaiveReplayBuffer(train_batch_size, buffer_limit, buffer_cpu_offload)
         generate_kwargs = _set_default_generate_kwargs(strategy, generate_kwargs, actor)
         super().__init__(strategy, max_epochs, dataloader_pin_memory, callbacks, **generate_kwargs)
@@ -163,7 +164,8 @@ class PPOTrainer(Trainer):
         self.critic.train()
         # policy loss
         num_actions = experience.action_mask.size(1)
-        self.actor.to(self.device)
+        if type(self.strategy) is not ColossalAIStrategy:
+            self.actor.to(self.device)
         action_log_probs = self.actor(experience.sequences, num_actions, attention_mask=experience.attention_mask)
         actor_loss = self.actor_loss_fn(action_log_probs,
                                         experience.action_log_probs,
@@ -186,7 +188,8 @@ class PPOTrainer(Trainer):
         if self.offload_inference_models:
             self.actor.to('cpu')
 
-        self.critic.to(self.device)
+        if type(self.strategy) is not ColossalAIStrategy:
+            self.critic.to(self.device)
         # value loss
         values = self.critic(experience.sequences,
                              action_mask=experience.action_mask,
