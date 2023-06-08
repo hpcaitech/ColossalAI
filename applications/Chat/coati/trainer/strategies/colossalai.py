@@ -10,11 +10,11 @@ from torch.optim import Optimizer
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
 import colossalai
+from colossalai.lazy import LazyInitContext
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import CPUAdam, HybridAdam
 from colossalai.tensor import ProcessGroup, ShardSpec
 from colossalai.utils import get_current_device
-from colossalai.utils.model.experimental import LazyInitContext
 from colossalai.zero import ColoInitContext, ZeroDDP, zero_model_wrapper, zero_optim_wrapper
 
 from .ddp import DDPStrategy
