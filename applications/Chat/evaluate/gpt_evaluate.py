@@ -599,7 +599,7 @@ def analyze_gpt_evaluation_statistics(statistics_path: str, save_path: str) -> N
 
     for category in tqdm.tqdm(
             frame_per_category.keys(),
-            desc=f"category: ",
+            desc=f"GPT evaluation: ",
             total=len(frame_per_category.keys()),
     ):
         data = pd.DataFrame(frame_per_category[category])

@@ -34,7 +34,8 @@
       "Metrics": [
         "Precision",
         "Recall",
-        "F1 score"
+        "F1 score",
+        "CHRF"
       ]
     },
     "closed_qa": {
@@ -46,7 +47,8 @@
       "Metrics": [
         "BLEU",
         "ROUGE",
-        "BERTScore"
+        "BERTScore",
+        "CHRF"
       ]
     },
     "extraction": {
@@ -58,7 +60,8 @@
       "Metrics": [
         "Precision",
         "Recall",
-        "F1 score"
+        "F1 score",
+        "CHRF"
       ]
     },
     "generation": {
@@ -116,7 +119,8 @@
       "Metrics": [
         "BLEU",
         "ROUGE",
-        "BERTScore"
+        "BERTScore",
+        "CHRF"
       ]
     }
   }

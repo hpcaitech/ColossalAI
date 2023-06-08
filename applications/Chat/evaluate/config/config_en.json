@@ -1,5 +1,10 @@
 {
   "language": "en",
+  "path_for_UniEval": {
+    "summarization": "path to unieval-sum",
+    "dialogue": "path to unieval-dialog",
+    "data2text": "path to unieval-sum"
+  },
   "category": {
     "brainstorming": {
       "GPT": [
@@ -11,6 +16,11 @@
       ],
       "Metrics": [
         "Distinct"
+      ],
+      "UniEval": [
+        "summarization-fluency",
+        "data2text-naturalness",
+        "data2text-informativeness"
       ]
     },
     "chat": {
@@ -23,6 +33,14 @@
       ],
       "Metrics": [
         "Distinct"
+      ],
+      "UniEval": [
+        "summarization-fluency",
+        "dialogue-naturalness",
+        "dialogue-coherence",
+        "dialogue-understandability",
+        "data2text-naturalness",
+        "data2text-informativeness"
       ]
     },
     "classification": {
@@ -34,7 +52,13 @@
       "Metrics": [
         "Precision",
         "Recall",
-        "F1 score"
+        "F1 score",
+        "CHRF"
+      ],
+      "UniEval": [
+        "summarization-fluency",
+        "data2text-naturalness",
+        "data2text-informativeness"
       ]
     },
     "closed_qa": {
@@ -46,7 +70,13 @@
       "Metrics": [
         "BLEU",
         "ROUGE",
-        "BERTScore"
+        "BERTScore",
+        "CHRF"
+      ],
+      "UniEval": [
+        "summarization-fluency",
+        "data2text-naturalness",
+        "data2text-informativeness"
       ]
     },
     "extraction": {
@@ -58,7 +88,13 @@
       "Metrics": [
         "Precision",
         "Recall",
-        "F1 score"
+        "F1 score",
+        "CHRF"
+      ],
+      "UniEval": [
+        "summarization-fluency",
+        "data2text-naturalness",
+        "data2text-informativeness"
       ]
     },
     "generation": {
@@ -71,6 +107,11 @@
         "BLEU",
         "ROUGE",
         "BERTScore"
+      ],
+      "UniEval": [
+        "summarization-fluency",
+        "data2text-naturalness",
+        "data2text-informativeness"
       ]
     },
     "open_qa": {
@@ -81,6 +122,11 @@
       ],
       "Metrics": [
         "Distinct"
+      ],
+      "UniEval": [
+        "summarization-fluency",
+        "data2text-naturalness",
+        "data2text-informativeness"
       ]
     },
     "rewriting": {
@@ -93,6 +139,11 @@
         "BLEU",
         "ROUGE",
         "BERTScore"
+      ],
+      "UniEval": [
+        "summarization-fluency",
+        "data2text-naturalness",
+        "data2text-informativeness"
       ]
     },
     "roleplay": {
@@ -104,6 +155,11 @@
       ],
       "Metrics": [
         "Distinct"
+      ],
+      "UniEval": [
+        "summarization-fluency",
+        "data2text-naturalness",
+        "data2text-informativeness"
       ]
     },
     "summarization": {
@@ -116,7 +172,16 @@
       "Metrics": [
         "BLEU",
         "ROUGE",
-        "BERTScore"
+        "BERTScore",
+        "CHRF"
+      ],
+      "UniEval": [
+        "summarization-coherence",
+        "summarization-consistency",
+        "summarization-fluency",
+        "summarization-relevance",
+        "data2text-naturalness",
+        "data2text-informativeness"
       ]
     }
   }
