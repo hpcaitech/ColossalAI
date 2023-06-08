@@ -232,7 +232,7 @@ def compute_norm(gradients, params, dp_group, mp_group, norm_type=2):
         for g, p in zip(gradients, params):
             # Pipeline parallelism may replicate parameters. Avoid multi-counting.
             tp_param_flag = False
-            if is_model_parallel_parameter(p) or (isinstance(p, ColoParameter) and not p.is_replicate()):
+            if is_model_parallel_parameter(p) or (type(p) is ColoParameter and not p.is_replicate()):
                 tp_param_flag = True
             if tp_param_flag or mp_rank == 0:
                 param_norm = g.data.double().norm(2)

@@ -255,7 +255,7 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
         for param_group in self.optim.param_groups:
             group_params = param_group['params']
             for param in group_params:
-                if isinstance(param, ColoParameter):
+                if type(param) is ColoParameter:
                     colo_flag = True
                     if colo_pg is None:
                         colo_pg = param.get_process_group()
