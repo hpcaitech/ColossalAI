@@ -145,10 +145,12 @@ class ModelSharder(object):
                 bias_attr = policy_layer.bias
                 replace_layer_cls = policy_layer.replace_layer
                 ignore = policy_layer.ignore
-                n_cast = policy_layer.n_cast
                 reversed = policy_layer.reversed
-                if policy_layer.__class__.__name__ == "Col_Layer":
-                    gather_output = policy_layer.gather_output
+                n_cast = policy_layer.n_cast
+                if policy_layer.__class__.__name__ == 'Dropout_Layer':
+                    dropout_p_attr = policy_layer.p
+                # if policy_layer.__class__.__name__ == "Col_Layer":
+                #     gather_output = policy_layer.gather_output
 
                 if weight_attr is not None:
                     if hasattr_(org_layer, weight_attr):
@@ -167,8 +169,8 @@ class ModelSharder(object):
                     continue
 
                 # set the sliced weight and bias to the new nn_col layer
-                assert weight is not None or bias is not None
-                layer_attr = (lambda x: x[:x.rfind(".")])(weight_attr or bias_attr)
+                assert weight is not None or bias is not None or dropout_p_attr is not None
+                layer_attr = (lambda x: x[:x.rfind(".")])(weight_attr or bias_attr or dropout_p_attr)
 
                 # slice weight and bias
                 weight, bias = self.slicer.slice_weight_bias(weight, bias, policy_layer.__class__, n_cast, reversed)
@@ -181,6 +183,7 @@ class ModelSharder(object):
                                                               weight.shape[0],
                                                               bias=False if bias is None else True)
                         elif replace_layer_cls.__name__ == "Linear1D_Col":
+                            gather_output = policy_layer.gather_output
                             replace_layer = replace_layer_cls(weight.shape[0],
                                                               weight.shape[1],
                                                               bias=False if bias is None else True,
@@ -192,6 +195,10 @@ class ModelSharder(object):
                                                           getattr_(org_layer, f"{layer_attr}.padding_idx", ignore=True))
                         setattr_(org_layer, layer_attr, replace_layer, ignore=ignore)
                         self.set_param(replace_layer, weight, bias)
+                    elif isinstance(getattr_(org_layer, layer_attr), nn.Dropout):
+                        p = getattr_(org_layer, dropout_p_attr, ignore=True)
+                        replace_layer = replace_layer_cls(p=p)
+                        setattr_(org_layer, layer_attr, replace_layer, ignore=ignore)
                     else:
                         raise NotImplementedError(
                             f"Replacing {getattr_(org_layer, layer_attr).__class__} is not implemented so far")

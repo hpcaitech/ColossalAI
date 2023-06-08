@@ -5,7 +5,7 @@ from transformers.models.bert.modeling_bert import BertEmbeddings, BertLayer, Be
 
 import colossalai.shardformer.layer.layers as col_nn
 
-from .basepolicy import Argument, Col_Layer, Layer, Policy, Row_Layer
+from .basepolicy import Argument, Col_Layer, Dropout_Layer, Policy, Row_Layer
 
 
 class BertPolicy(Policy):
@@ -70,6 +70,10 @@ class BertPolicy(Policy):
                 weight="attention.self.value.weight",
                 bias="attention.self.value.bias",
                 replace_layer=col_nn.Linear1D_Col,
+            ),
+            Dropout_Layer(
+                p="attention.self.dropout.p",
+                replace_layer=col_nn.Dropout1D,
             ),
             Col_Layer(
                 weight="crossattention.self.query.weight",
@@ -141,7 +145,7 @@ class BertPolicy(Policy):
                 weight="decoder.weight",
                 bias="decoder.bias",
                 replace_layer=col_nn.Linear1D_Col,
-        # gather_output=True,
+                gather_output=True,
             )
         ]
 

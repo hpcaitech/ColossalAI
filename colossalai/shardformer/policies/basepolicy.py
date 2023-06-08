@@ -62,6 +62,14 @@ class Row_Layer(Layer):
     pass
 
 
+@dataclass
+class Dropout_Layer(Layer):
+    r"""
+    Class for dropout layer in MegatronLM
+    """
+    p: int = None
+
+
 class Policy():
     r"""
     The base class for all the policies
