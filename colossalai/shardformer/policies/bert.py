@@ -40,13 +40,13 @@ class BertPolicy(Policy):
         }
 
     @staticmethod
-    def binding_policy() -> Dict:
+    def binding_policy():
         return {
             "bert.embeddings.word_embeddings.weight": "cls.predictions.decoder.weight",
         }
 
     @staticmethod
-    def attn_in() -> List:
+    def attn_in():
         return [
             Col_Layer(
                 suffix="attention.self.query",
@@ -95,7 +95,7 @@ class BertPolicy(Policy):
         ]
 
     @staticmethod
-    def attn_out() -> List:
+    def attn_out():
         return [
             Row_Layer(
                 suffix="attention.output.dense",
@@ -118,7 +118,7 @@ class BertPolicy(Policy):
         ]
 
     @staticmethod
-    def mlp_in() -> List:
+    def mlp_in():
         return [
             Col_Layer(
                 suffix="intermediate.dense",
@@ -129,7 +129,7 @@ class BertPolicy(Policy):
         ]
 
     @staticmethod
-    def mlp_out() -> List:
+    def mlp_out():
         return [
             Row_Layer(
                 suffix="output.dense",
@@ -145,7 +145,7 @@ class BertPolicy(Policy):
         ]
 
     @staticmethod
-    def embedding() -> List:
+    def embedding():
         return [Col_Layer(
             suffix="word_embeddings",
             weight="weight",
@@ -153,7 +153,7 @@ class BertPolicy(Policy):
         )]
 
     @staticmethod
-    def unembedding() -> List:
+    def unembedding():
         return [
             Col_Layer(
                 suffix="decoder",
@@ -173,7 +173,7 @@ from colossalai.shardformer.model.modeling_bert import BertForMaskedLM_
 class BertForMaskedLMPolicy(BertPolicy):
 
     @staticmethod
-    def inject_policy() -> Tuple[nn.Module, nn.Module]:
+    def inject_policy():
         # return (BertForMaskedLM, BertForMaskedLM_)
         return None
 
@@ -181,10 +181,5 @@ class BertForMaskedLMPolicy(BertPolicy):
 class BertForSequenceClassificationPolicy(BertPolicy):
 
     @staticmethod
-    def inject_policy() -> Dict:
-        return {}
-
-
-# model = BertForMaskedLM.from_pretrained("bert-base-uncased")
-# _ = BertForMaskedLMPolicy(model)
-# print(isinstance(model,list(_.inject_policy().keys())[0]))
+    def inject_policy():
+        return None

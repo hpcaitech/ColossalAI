@@ -1,7 +1,7 @@
 # part of code modified from https://github.com/tunib-ai/parallelformers
 
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Tuple, Type
+from typing import Any, Callable, Dict, List, Tuple, Union
 
 import torch.nn as nn
 
@@ -144,7 +144,7 @@ class Policy():
         raise NotImplementedError
 
     @staticmethod
-    def inject_policy() -> Tuple[nn.Module, nn.Module]:
+    def inject_policy() -> Union[Tuple[nn.Module, nn.Module], None]:
         r"""
         Return the dict for the inject model
 
@@ -157,9 +157,9 @@ class Policy():
         return None
 
     @staticmethod
-    def binding_policy() -> Dict:
+    def binding_policy() -> Union[Dict[str, str], None]:
         r"""
-        Return the dict for the binding model
+        Return the dict for the binding model, None means no need to bind
 
         Return:
             This method should return the binding relationship for some layers share the weight or bias,
@@ -172,7 +172,7 @@ class Policy():
         return None
 
     @staticmethod
-    def attn_in() -> List:
+    def attn_in() -> Union[List, None]:
         r"""
         Attention qkv layer
         In this kind of method, we should return the list of ``Layer`` object, each ``Layer`` object should be
@@ -182,52 +182,52 @@ class Policy():
         Returns:
             List[Layer]: List of layer object, each layer is the new
         """
-        return NotImplementedError
+        return None
 
     @staticmethod
-    def attn_out() -> List:
+    def attn_out() -> Union[List, None]:
         r"""
         Attention output projection layer
 
         Returns:
             List[Layer]: List of layer object
         """
-        return NotImplementedError
+        return None
 
     @staticmethod
-    def mlp_in() -> List:
+    def mlp_in() -> Union[List, None]:
         r"""
         h -> 4h mlp layer
 
         Returns:
             List[Layer]: List of layer object
         """
-        return NotImplementedError
+        return None
 
     @staticmethod
-    def mlp_out() -> List:
+    def mlp_out() -> Union[List, None]:
         r"""
         4h -> h mlp layer
 
         Returns:
             List[Layer]: List of layer object
         """
-        return NotImplementedError
+        return None
 
     @staticmethod
-    def embedding() -> List:
+    def embedding() -> Union[List, None]:
         r"""
         Partially slice the embedding layer
 
         Return:
             List[Layer]: List of layer object
         """
-        return NotImplementedError
+        return None
 
     @staticmethod
-    def unembedding() -> List:
+    def unembedding() -> Union[List, None]:
         r"""
-        Partially slice the embedding layer
+        Partially slice the embedding layer, None means there is no unembedding layer
 
         Return:
             List[Layer]: List of layer object
