@@ -25,8 +25,7 @@ class Layer:
     The layer object for the policy
 
     Args:
-        weight (str): The weight suffix of the layer
-        bias (str): The bias suffix of the layer
+        suffix: (str): the suffix of the layer.
         replace_layer (:class:`colosalai.nn`): The layer to replace the original layer
         ignore (bool): Whether to ignore this layer if it is not in the model
         reversed (bool): Whether the weight in layer is reversed, commonly the weight in `torch.nn.Linear` is [out, in],
@@ -35,8 +34,7 @@ class Layer:
                         but in multi-head attention, we need to chunk the weight with the number of devices * n_head, and
                         each device should have a part of Q, K and V weight.
     """
-    weight: str = None
-    bias: str = None
+    suffix: str = None
     replace_layer: Any = None
     ignore: bool = False
     reversed: bool = False
@@ -49,8 +47,12 @@ class Col_Layer(Layer):
     Class for col shard layer in tensor parrallel
 
     Args:
+        weight (str): The weight suffix of the layer
+        bias (str): The bias suffix of the layer
         gather_output (bool): Whether to gather the output of the layer
     """
+    weight: str = None
+    bias: str = None
     gather_output: bool = False
 
 
@@ -58,16 +60,24 @@ class Col_Layer(Layer):
 class Row_Layer(Layer):
     r"""
     Class for col shard layer in tensor parrallel
+
+    Args:
+        weight (str): The weight suffix of the layer
+        bias (str): The bias suffix of the layer
     """
-    pass
+    weight: str = None
+    bias: str = None
 
 
 @dataclass
 class Dropout_Layer(Layer):
     r"""
     Class for dropout layer in tensor parrallel
+
+    Args:
+        p (str): The dropout rate suffix of the layer
     """
-    p: int = None
+    p: str = None
 
 
 class Policy():

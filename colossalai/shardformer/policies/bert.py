@@ -28,23 +28,15 @@ class BertPolicy(Policy):
                 Argument(
                     attr_dict={
         # 1. shard vocab size
-        # "word_embeddings.num_embeddings": config.vocab_size // world_size,
-        # 2. add the size of the sliced embedding layer excluding the last slice
                         "word_embeddings.dim_size": (config.vocab_size + world_size - 1) // world_size,
                     },
                     param_funcs=[
                         BertPolicy.embedding,
                     ]),
             BertLMPredictionHead:
-                Argument(
-                    attr_dict={
-        # 1. shard vocab size
-        # "word_embeddings.num_embeddings": config.vocab_size // world_size,
-        # 2. add the size of the sliced embedding layer excluding the last slice
-                    },
-                    param_funcs=[
-                        BertPolicy.unembedding,
-                    ])
+                Argument(attr_dict={}, param_funcs=[
+                    BertPolicy.unembedding,
+                ])
         }
 
     @staticmethod
@@ -57,39 +49,46 @@ class BertPolicy(Policy):
     def attn_in() -> List:
         return [
             Col_Layer(
-                weight="attention.self.query.weight",
-                bias="attention.self.query.bias",
+                suffix="attention.self.query",
+                weight="weight",
+                bias="bias",
                 replace_layer=col_nn.Linear1D_Col,
             ),
             Col_Layer(
-                weight="attention.self.key.weight",
-                bias="attention.self.key.bias",
+                suffix="attention.self.key",
+                weight="weight",
+                bias="bias",
                 replace_layer=col_nn.Linear1D_Col,
             ),
             Col_Layer(
-                weight="attention.self.value.weight",
-                bias="attention.self.value.bias",
+                suffix="attention.self.value",
+                weight="weight",
+                bias="bias",
                 replace_layer=col_nn.Linear1D_Col,
             ),
             Dropout_Layer(
-                p="attention.self.dropout.p",
+                suffix="attention.self.dropout",
+                p="p",
                 replace_layer=col_nn.Dropout1D,
             ),
             Col_Layer(
-                weight="crossattention.self.query.weight",
-                bias="crossattention.self.query.bias",
+                suffix="crossattention.self.query",
+                weight="weight",
+                bias="bias",
                 replace_layer=col_nn.Linear1D_Col,
                 ignore=True,
             ),
             Col_Layer(
-                weight="crossattention.self.key.weight",
-                bias="crossattention.self.key.bias",
+                suffix="crossattention.self.key",
+                weight="weight",
+                bias="bias",
                 replace_layer=col_nn.Linear1D_Col,
                 ignore=True,
             ),
             Col_Layer(
-                weight="crossattention.self.value.weight",
-                bias="crossattention.self.value.bias",
+                suffix="crossattention.self.value",
+                weight="weight",
+                bias="bias",
                 replace_layer=col_nn.Linear1D_Col,
                 ignore=True,
             ),
@@ -99,17 +98,20 @@ class BertPolicy(Policy):
     def attn_out() -> List:
         return [
             Row_Layer(
-                weight="attention.output.dense.weight",
-                bias="attention.output.dense.bias",
+                suffix="attention.output.dense",
+                weight="weight",
+                bias="bias",
                 replace_layer=col_nn.Linear1D_Row,
             ),
             Dropout_Layer(
-                p="attention.output.dropout.p",
+                suffix="attention.output.dropout",
+                p="p",
                 replace_layer=col_nn.Dropout1D,
             ),
             Row_Layer(
-                weight="crossattention.output.dense.weight",
-                bias="crossattention.output.dense.bias",
+                suffix="crossattention.output.dense",
+                weight="weight",
+                bias="bias",
                 replace_layer=col_nn.Linear1D_Row,
                 ignore=True,
             ),
@@ -119,8 +121,9 @@ class BertPolicy(Policy):
     def mlp_in() -> List:
         return [
             Col_Layer(
-                weight="intermediate.dense.weight",
-                bias="intermediate.dense.bias",
+                suffix="intermediate.dense",
+                weight="weight",
+                bias="bias",
                 replace_layer=col_nn.Linear1D_Col,
             ),
         ]
@@ -129,12 +132,14 @@ class BertPolicy(Policy):
     def mlp_out() -> List:
         return [
             Row_Layer(
-                weight="output.dense.weight",
-                bias="output.dense.bias",
+                suffix="output.dense",
+                weight="weight",
+                bias="bias",
                 replace_layer=col_nn.Linear1D_Row,
             ),
             Dropout_Layer(
-                p="output.dropout.p",
+                suffix="output.dropout",
+                p="p",
                 replace_layer=col_nn.Dropout1D,
             )
         ]
@@ -142,7 +147,8 @@ class BertPolicy(Policy):
     @staticmethod
     def embedding() -> List:
         return [Col_Layer(
-            weight="word_embeddings.weight",
+            suffix="word_embeddings",
+            weight="weight",
             replace_layer=col_nn.VocabParallelEmbedding1D,
         )]
 
@@ -150,8 +156,9 @@ class BertPolicy(Policy):
     def unembedding() -> List:
         return [
             Col_Layer(
-                weight="decoder.weight",
-                bias="decoder.bias",
+                suffix="decoder",
+                weight="weight",
+                bias="bias",
                 replace_layer=col_nn.Linear1D_Col,
                 gather_output=True,
             )
