@@ -210,10 +210,58 @@ class Builder(ABC):
         """
         from torch.utils.cpp_extension import CUDAExtension
 
-        return CUDAExtension(name=self.prebuilt_import_path,
-                             sources=self.strip_empty_entries(self.sources_files()),
-                             include_dirs=self.strip_empty_entries(self.include_dirs()),
-                             extra_compile_args={
-                                 'cxx': self.strip_empty_entries(self.cxx_flags()),
-                                 'nvcc': self.strip_empty_entries(self.nvcc_flags())
-                             })
+        # return CUDAExtension(name=self.prebuilt_import_path,
+        #                      sources=self.strip_empty_entries(self.sources_files()),
+        #                      include_dirs=self.strip_empty_entries(self.include_dirs()),
+        #                      extra_compile_args={
+        #                          'cxx': self.strip_empty_entries(self.cxx_flags()),
+        #                          'nvcc': self.strip_empty_entries(self.nvcc_flags())
+        #                      })
+        return [
+            CUDAExtension(
+            name=self.prebuilt_import_path,
+            sources=self.strip_empty_entries(self.sources_files()),
+            include_dirs=self.strip_empty_entries(self.include_dirs()),
+            extra_compile_args={
+                'cxx': self.strip_empty_entries(self.cxx_flags()),
+                'nvcc': self.strip_empty_entries(self.nvcc_flags())
+                }),
+            CUDAExtension(
+            name="xformers._C_flashattention",
+            sources=[
+                os.path.join("third_party", "flash-attention", path)
+                for path in [
+                    "csrc/flash_attn/fmha_api.cpp",
+                    "csrc/flash_attn/src/fmha_fwd_hdim32.cu",
+                    "csrc/flash_attn/src/fmha_fwd_hdim64.cu",
+                    "csrc/flash_attn/src/fmha_fwd_hdim128.cu",
+                    "csrc/flash_attn/src/fmha_bwd_hdim32.cu",
+                    "csrc/flash_attn/src/fmha_bwd_hdim64.cu",
+                    "csrc/flash_attn/src/fmha_bwd_hdim128.cu",
+                    "csrc/flash_attn/src/fmha_block_fprop_fp16_kernel.sm80.cu",
+                    "csrc/flash_attn/src/fmha_block_dgrad_fp16_kernel_loop.sm80.cu",
+                ]
+            ],
+            extra_compile_args={
+                **extra_compile_args,
+                "nvcc": extra_compile_args.get("nvcc", [])
+                + [
+                    "-O3",
+                    "-std=c++17",
+                    "--expt-relaxed-constexpr",
+                    "--expt-extended-lambda",
+                    "--use_fast_math",
+                    "--ptxas-options=-v",
+                ]
+                + nvcc_archs_flags
+                + get_extra_nvcc_flags_for_build_type(),
+            },
+            include_dirs=[
+                p.absolute()
+                for p in [
+                    Path(flash_root) / "csrc" / "flash_attn",
+                    Path(flash_root) / "csrc" / "flash_attn" / "src",
+                    Path(this_dir) / "third_party" / "cutlass" / "include",
+                ]
+            ]
+        )]
