@@ -208,14 +208,6 @@ class ModelSharder(object):
                 else:
                     raise NotImplementedError(
                         f"Replacing {getattr_(org_layer, suffix).__class__} is not implemented so far")
-                # do not replace the layer object, just replace the weight and bias
-                # else:
-                #     self.set_param(org_layer, layer_attr, weight, bias)
-
-                # if policy_layer.__class__.__name__ == 'Dropout_Layer':
-                #     dropout_p_attr = policy_layer.p
-                # if policy_layer.__class__.__name__ == "Col_Layer":
-                #     gather_output = policy_layer.gather_output and self.shard_config.gather_output
 
     def set_param(self,
                   layer: Any,
