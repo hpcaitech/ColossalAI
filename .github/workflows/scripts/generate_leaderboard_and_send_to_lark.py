@@ -38,7 +38,7 @@ def plot_bar_chart(x: List[Any], y: List[Any], xlabel: str, ylabel: str, title: 
 
 def get_issue_pull_request_comments(github_token: str, since: str) -> Dict[str, int]:
     """
-    Retrive the issue/PR comments made by our members in the last 7 days.
+    Retrieve the issue/PR comments made by our members in the last 7 days.
 
     Args:
         github_token (str): GitHub access token for API calls
@@ -89,7 +89,7 @@ def get_issue_pull_request_comments(github_token: str, since: str) -> Dict[str, 
 
 def get_discussion_comments(github_token, since) -> Dict[str, int]:
     """
-    Retrive the discussion comments made by our members in the last 7 days.
+    Retrieve the discussion comments made by our members in the last 7 days.
     This is only available via the GitHub GraphQL API.
 
     Args:
@@ -194,7 +194,7 @@ def get_discussion_comments(github_token, since) -> Dict[str, int]:
 
                 discussion_updated_at = datetime.strptime(discussion['updatedAt'], "%Y-%m-%dT%H:%M:%SZ")
                 # check if the updatedAt is within the last 7 days
-                # if yes, add it to dicussion_numbers
+                # if yes, add it to discussion_numbers
                 if discussion_updated_at > since:
                     if discussion['authorAssociation'] != 'MEMBER':
                         discussion_numbers.append(discussion['number'])
@@ -207,14 +207,14 @@ def get_discussion_comments(github_token, since) -> Dict[str, int]:
             # update cursor
             cursor = edges[-1]['cursor']
 
-    # get the dicussion comments and replies made by our member
+    # get the discussion comments and replies made by our member
     user_engagement_count = {}
-    for dicussion_number in discussion_numbers:
+    for discussion_number in discussion_numbers:
         cursor = None
         num_per_request = 10
 
         while True:
-            query = _generate_comment_reply_count_for_discussion(dicussion_number, num_per_request, cursor)
+            query = _generate_comment_reply_count_for_discussion(discussion_number, num_per_request, cursor)
             data = _call_graphql_api(query)
 
             # get the comments
@@ -249,7 +249,7 @@ def get_discussion_comments(github_token, since) -> Dict[str, int]:
                             reply = reply_edge['node']
                             if reply['authorAssociation'] == 'MEMBER':
                                 # check if the updatedAt is within the last 7 days
-                                # if yes, add it to dicussion_numbers
+                                # if yes, add it to discussion_numbers
                                 reply_updated_at = datetime.strptime(reply['updatedAt'], "%Y-%m-%dT%H:%M:%SZ")
                                 if reply_updated_at > since:
                                     member_name = reply['author']['login']
