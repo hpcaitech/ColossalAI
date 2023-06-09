@@ -12,9 +12,9 @@ from colossalai.tensor.d_tensor.layout_converter import LayoutConverter
 from colossalai.tensor.d_tensor.sharding_spec import DimSpec, ShardingSpec
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 
-global_shape = torch.Size((64, 32, 16))
+entire_shape = torch.Size((64, 32, 16))
 layout_converter = LayoutConverter()
-physical_mesh_id = torch.arange(0, 4)
+physical_mesh_id = torch.arange(0, 4).reshape(2, 2)
 mesh_shape = (2, 2)
 
 
@@ -30,7 +30,10 @@ def check_one_step_transform(rank, world_size, port):
     #     shard_sequence: S0,S1,R
     #     device_mesh_shape: (2, 2)
     sharding_spec = ShardingSpec(dim_size=3, dim_partition_dict=dim_partition_dict)
-    layout = Layout(device_mesh=device_mesh, sharding_spec=sharding_spec, global_shape=global_shape)
+    layout = Layout(device_mesh=device_mesh,
+                    device_type=torch.device('cuda'),
+                    sharding_spec=sharding_spec,
+                    entire_shape=entire_shape)
 
     rst_dict = layout_converter.all_gather_transform_layouts(layout)
 
@@ -46,7 +49,10 @@ def check_one_step_transform(rank, world_size, port):
     #     shard_sequence: S0,S1,R
     #     device_mesh_shape: (4, 4)
     sharding_spec_all2all = ShardingSpec(dim_size=3, dim_partition_dict=dim_partition_dict_all2all)
-    layout_all2all = Layout(device_mesh=device_mesh, sharding_spec=sharding_spec_all2all, global_shape=global_shape)
+    layout_all2all = Layout(device_mesh=device_mesh,
+                            device_type=torch.device('cuda'),
+                            sharding_spec=sharding_spec_all2all,
+                            entire_shape=entire_shape)
 
     rst_dict_all2all = layout_converter.all_to_all_transform_layout(layout_all2all)
 
@@ -65,7 +71,10 @@ def check_one_step_transform(rank, world_size, port):
     #     shard_sequence: S0,R,R
     #     device_mesh_shape: (4, 4)
     sharding_spec_shard = ShardingSpec(dim_size=3, dim_partition_dict=dim_partition_shard)
-    shard_layout = Layout(device_mesh=device_mesh, sharding_spec=sharding_spec_shard, global_shape=global_shape)
+    shard_layout = Layout(device_mesh=device_mesh,
+                          device_type=torch.device('cuda'),
+                          sharding_spec=sharding_spec_shard,
+                          entire_shape=entire_shape)
 
     rst_dict_shard = layout_converter.shard_transform_layout(shard_layout)
 
@@ -91,13 +100,19 @@ def check_layout_converting(rank, world_size, port):
     #     shard_sequence: R,S01,R
     #     device_mesh_shape: (4, 4)
     sharding_spec_source = ShardingSpec(dim_size=3, dim_partition_dict=dim_partition_source)
-    source_layout = Layout(device_mesh=device_mesh, sharding_spec=sharding_spec_source, global_shape=global_shape)
+    source_layout = Layout(device_mesh=device_mesh,
+                           device_type=torch.device('cuda'),
+                           sharding_spec=sharding_spec_source,
+                           entire_shape=entire_shape)
 
     # DistSpec:
     #     shard_sequence: S01,R,R
     #     device_mesh_shape: (4, 4)
     sharding_spec_target = ShardingSpec(dim_size=3, dim_partition_dict=dim_partition_target)
-    target_layout = Layout(device_mesh=device_mesh, sharding_spec=sharding_spec_target, global_shape=global_shape)
+    target_layout = Layout(device_mesh=device_mesh,
+                           device_type=torch.device('cuda'),
+                           sharding_spec=sharding_spec_target,
+                           entire_shape=entire_shape)
 
     transform_path, comm_action_sequence = layout_converter.layout_converting(source_layout, target_layout)
 
@@ -144,15 +159,21 @@ def check_layout_converting_apply(rank, world_size, port):
     #     shard_sequence: R,S01,R
     #     device_mesh_shape: (4, 4)
     sharding_spec_source = ShardingSpec(dim_size=3, dim_partition_dict=dim_partition_source)
-    source_layout = Layout(device_mesh=device_mesh, sharding_spec=sharding_spec_source, global_shape=global_shape)
+    source_layout = Layout(device_mesh=device_mesh,
+                           device_type=torch.device('cuda'),
+                           sharding_spec=sharding_spec_source,
+                           entire_shape=entire_shape)
 
     # DistSpec:
     #     shard_sequence: S01,R,R
     #     device_mesh_shape: (4, 4)
     sharding_spec_target = ShardingSpec(dim_size=3, dim_partition_dict=dim_partition_target)
-    target_layout = Layout(device_mesh=device_mesh, sharding_spec=sharding_spec_target, global_shape=global_shape)
+    target_layout = Layout(device_mesh=device_mesh,
+                           device_type=torch.device('cuda'),
+                           sharding_spec=sharding_spec_target,
+                           entire_shape=entire_shape)
 
-    original_tensor = torch.rand(global_shape).cuda()
+    original_tensor = torch.rand(entire_shape).cuda()
 
     # tensor_to_apply: [R, S01, R]
     tensor_to_apply = original_tensor.narrow(1, rank * 8, 8)
