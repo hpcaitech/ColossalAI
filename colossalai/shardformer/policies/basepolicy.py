@@ -100,14 +100,14 @@ class Policy():
     """
 
     @staticmethod
-    def argument_policy(model_config, shard_config: int) -> Dict[nn.Module, Argument]:
+    def argument_policy(model_config, world_size: int) -> Dict[nn.Module, Argument]:
         r"""
         Return the dict for the modify policy, the key is the original layer class and the value is the
         argument for the modify layer
 
         Args:
             model_config (:class:`tansformer.Config`): The config of transformer model
-            shard_config (:class:`ShardConfig`): The config for sharding model
+            world_size (int)): The world size of sharding model
 
         Return:
             Dict for the modify policy,

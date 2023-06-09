@@ -33,10 +33,6 @@ class BertPolicy(Policy):
                     param_funcs=[
                         BertPolicy.embedding,
                     ]),
-            BertLMPredictionHead:
-                Argument(attr_dict={}, param_funcs=[
-                    BertPolicy.unembedding,
-                ])
         }
 
     @staticmethod
@@ -152,6 +148,30 @@ class BertPolicy(Policy):
             replace_layer=col_nn.VocabParallelEmbedding1D,
         )]
 
+
+from transformers import BertForMaskedLM
+
+from colossalai.shardformer.model.modeling_bert import BertForMaskedLM_
+
+
+class BertForMaskedLMPolicy(BertPolicy):
+
+    @staticmethod
+    def argument_policy(config, world_size):
+        base_argument = BertPolicy.argument_policy(config, world_size)
+        argument = {
+            BertLMPredictionHead: Argument(attr_dict={}, param_funcs=[
+                BertForMaskedLMPolicy.unembedding,
+            ]),
+        }
+        argument.update(base_argument)
+        return argument
+
+    @staticmethod
+    def inject_policy():
+        # return (BertForMaskedLM, BertForMaskedLM_)
+        return None
+
     @staticmethod
     def unembedding():
         return [
@@ -163,19 +183,6 @@ class BertPolicy(Policy):
                 gather_output=True,
             )
         ]
-
-
-from transformers import BertForMaskedLM
-
-from colossalai.shardformer.model.modeling_bert import BertForMaskedLM_
-
-
-class BertForMaskedLMPolicy(BertPolicy):
-
-    @staticmethod
-    def inject_policy():
-        # return (BertForMaskedLM, BertForMaskedLM_)
-        return None
 
 
 class BertForSequenceClassificationPolicy(BertPolicy):
