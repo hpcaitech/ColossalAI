@@ -3,7 +3,7 @@ $(cd `dirname $0`;pwd)
 export TRAIN_STEP=4
 
 for MODEL_TYPE in "gpt2_medium"; do
-  for DISTPLAN in "colossalai"; do
+  for DISTPLAN in "CAI_Gemini"; do
     for BATCH_SIZE in 2; do
       for GPUNUM in 1 4; do
         for TPDEGREE in 1 2; do

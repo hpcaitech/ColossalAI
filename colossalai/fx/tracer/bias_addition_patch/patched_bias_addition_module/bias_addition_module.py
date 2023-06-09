@@ -51,7 +51,7 @@ class BiasAdditionModule(ABC):
 
         For example:
             The kwargs for conv2d module is {} because the attributes like 'padding' or 'groups' are
-            considered during module initilizing. However, we need to consider those attributes as kwargs
+            considered during module initializing. However, we need to consider those attributes as kwargs
             in F.conv2d.
         """
         pass

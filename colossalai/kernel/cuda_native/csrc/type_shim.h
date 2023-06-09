@@ -171,6 +171,21 @@
     using g_scalar_t_##LEVEL = at::Half;                                       \
     using p_scalar_t_##LEVEL = at::Half;                                       \
     __VA_ARGS__;                                                               \
+  } else if (GTYPE == at::ScalarType::Float &&                                 \
+             PTYPE == at::ScalarType::BFloat16) {                              \
+    using g_scalar_t_##LEVEL = float;                                          \
+    using p_scalar_t_##LEVEL = at::BFloat16;                                   \
+    __VA_ARGS__;                                                               \
+  } else if (GTYPE == at::ScalarType::BFloat16 &&                              \
+             PTYPE == at::ScalarType::Float) {                                 \
+    using g_scalar_t_##LEVEL = at::BFloat16;                                   \
+    using p_scalar_t_##LEVEL = float;                                          \
+    __VA_ARGS__;                                                               \
+  } else if (GTYPE == at::ScalarType::BFloat16 &&                              \
+             PTYPE == at::ScalarType::BFloat16) {                              \
+    using g_scalar_t_##LEVEL = at::BFloat16;                                   \
+    using p_scalar_t_##LEVEL = at::BFloat16;                                   \
+    __VA_ARGS__;                                                               \
   } else {                                                                     \
     AT_ERROR(#NAME, "not implemented for '", toString(GTYPE), toString(PTYPE), \
              "'");                                                             \

@@ -195,7 +195,7 @@ class _Linear(nn.Module):
         keep_master_weight_for_test: This was added for testing and should be
                                      set to False. It returns the master weights
                                      used for initialization.
-        skip_bias_add: This was added to enable performance optimations where bias
+        skip_bias_add: This was added to enable performance optimizations where bias
                        can be fused with other elementwise operations. we skip
                        adding bias but instead return it.
     """

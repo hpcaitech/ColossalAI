@@ -1,4 +1,5 @@
 import warnings
+from functools import partial
 from typing import Callable, Iterator, List, Optional, Tuple, Union
 
 import torch
@@ -20,10 +21,13 @@ from .torch_ddp_plugin import TorchDDPCheckpointIO
 __all__ = ['LowLevelZeroPlugin']
 
 
-def _convert_to_fp16(x):
+def _convert_floating_point(x, dtype: torch.dtype = torch.float16):
     if isinstance(x, torch.Tensor) and torch.is_floating_point(x):
-        return x.half()
+        return x.to(dtype)
     return x
+
+
+SUPPORTED_PRECISION = ['fp16', 'bf16', 'fp32']
 
 
 class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
@@ -49,17 +53,24 @@ class LowLevelZeroModel(ModelWrapper):
 
     def __init__(self, module: nn.Module, stage: int, precision: str) -> None:
         super().__init__(module)
-        self.convert_inputs = (precision == 'fp16')
-        module = zero_model_wrapper(module, zero_stage=stage)
+        self.dtype = None
         if precision == 'fp16':
-            module = module.half()
+            self.dtype = torch.float16
+        elif precision == 'bf16':
+            self.dtype = torch.bfloat16
+        module = zero_model_wrapper(module, zero_stage=stage)
+        if self.dtype is not None:
+            module = module.to(self.dtype)
         module = module.to(get_current_device())
         self.module = module
+        self.convert_fn = None
+        if self.dtype is not None:
+            self.convert_fn = partial(_convert_floating_point, dtype=self.dtype)
 
     def forward(self, *args, **kwargs):
-        if self.convert_inputs:
-            args = tree_map(_convert_to_fp16, args)
-            kwargs = tree_map(_convert_to_fp16, kwargs)
+        if self.convert_fn is not None:
+            args = tree_map(self.convert_fn, args)
+            kwargs = tree_map(self.convert_fn, kwargs)
         return super().forward(*args, **kwargs)
 
 
@@ -110,7 +121,7 @@ class LowLevelZeroPlugin(DPPluginBase):
 
     Args:
         strage (int, optional): ZeRO stage. Defaults to 1.
-        precision (str, optional): precision. Support 'fp16' and 'fp32'. Defaults to 'fp16'.
+        precision (str, optional): precision. Support 'fp16', 'bf16' and 'fp32'. Defaults to 'fp16'.
         initial_scale (float, optional): Initial scale used by DynamicGradScaler. Defaults to 2**32.
         min_scale (float, optional): Min scale used by DynamicGradScaler. Defaults to 1.
         growth_factor (float, optional): growth_factor used by DynamicGradScaler. Defaults to 2.
@@ -149,7 +160,7 @@ class LowLevelZeroPlugin(DPPluginBase):
     ) -> None:
         super().__init__()
         assert stage in (1, 2), f'LowLevelZeroPlugin only supports stage 1/2 training'
-        assert precision in ('fp16', 'fp32'), f'LowLevelZeroPlugin only supports fp16/fp32 training'
+        assert precision in SUPPORTED_PRECISION, f'LowLevelZeroPlugin only supports {SUPPORTED_PRECISION} training'
 
         self.stage = stage
         self.precision = precision
@@ -175,7 +186,7 @@ class LowLevelZeroPlugin(DPPluginBase):
         return True
 
     def supported_precisions(self) -> List[str]:
-        return ['fp16', 'fp32']
+        return SUPPORTED_PRECISION
 
     def control_device(self) -> bool:
         return True

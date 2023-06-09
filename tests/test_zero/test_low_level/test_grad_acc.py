@@ -82,7 +82,6 @@ def exam_zero_1_2_grad_acc():
 
 def exam_zero_1_grad_acc():
     local_rank = torch.distributed.get_rank()
-    grad_scale = 32
     seed_all(2008)
 
     # create models
@@ -101,7 +100,6 @@ def exam_zero_1_grad_acc():
     # level 1 and 2 will produce exactly the same results
     zero_optimizer = LowLevelZeroOptimizer(zero_optimizer,
                                            overlap_communication=False,
-                                           initial_scale=grad_scale,
                                            reduce_bucket_size=262144,
                                            clip_grad_norm=1.0)
 
@@ -128,9 +126,8 @@ def exam_zero_1_grad_acc():
         if check_flag:
             # check grad
             for (n, p), z1p in zip(torch_model.named_parameters(), zero_model.parameters()):
-                unscale_grad = z1p.grad / grad_scale
                 # print(n, p.shape, torch.max(torch.abs(p.grad - unscale_grad)))
-                assert torch.equal(p.grad, unscale_grad)
+                assert torch.equal(p.grad, z1p.grad)
 
         zero_optimizer._sync_grad()
 

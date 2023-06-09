@@ -2,7 +2,7 @@
   "language": "cn",
   "category": {
     "brainstorming": {
-      "GPT-3.5": [
+      "GPT": [
         "language organization",
         "relevance",
         "creativity",
@@ -14,7 +14,7 @@
       ]
     },
     "chat": {
-      "GPT-3.5": [
+      "GPT": [
         "language organization",
         "relevance",
         "naturalness",
@@ -26,7 +26,7 @@
       ]
     },
     "classification": {
-      "GPT-3.5": [
+      "GPT": [
         "language organization",
         "relevance",
         "correctness"
@@ -38,7 +38,7 @@
       ]
     },
     "closed_qa": {
-      "GPT-3.5": [
+      "GPT": [
         "language organization",
         "relevance",
         "correctness"
@@ -50,7 +50,7 @@
       ]
     },
     "extraction": {
-      "GPT-3.5": [
+      "GPT": [
         "language organization",
         "relevance",
         "correctness"
@@ -62,7 +62,7 @@
       ]
     },
     "generation": {
-      "GPT-3.5": [
+      "GPT": [
         "language organization",
         "relevance",
         "diversity"
@@ -74,7 +74,7 @@
       ]
     },
     "open_qa": {
-      "GPT-3.5": [
+      "GPT": [
         "language organization",
         "relevance",
         "correctness"
@@ -84,7 +84,7 @@
       ]
     },
     "rewriting": {
-      "GPT-3.5": [
+      "GPT": [
         "language organization",
         "relevance",
         "correctness"
@@ -96,7 +96,7 @@
       ]
     },
     "roleplay": {
-      "GPT-3.5": [
+      "GPT": [
         "language organization",
         "relevance",
         "fidelity",
@@ -107,7 +107,7 @@
       ]
     },
     "summarization": {
-      "GPT-3.5": [
+      "GPT": [
         "language organization",
         "relevance",
         "correctness",
