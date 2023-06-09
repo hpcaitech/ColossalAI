@@ -19,6 +19,20 @@ def build_policies():
 
     from .bert import BertForSequenceClassificationPolicy
     auto_policy_dict[BertForSequenceClassification] = BertForSequenceClassificationPolicy
+    from transformers.models.llama.modeling_llama import LlamaModel
+
+    from .llama import LlamaPolicy
+    auto_policy_dict[LlamaModel] = LlamaPolicy
+
+    from transformers import LlamaForSequenceClassification
+
+    from .llama import LlamaForSequenceClassificationPolicy
+    auto_policy_dict[LlamaForSequenceClassification] = LlamaForSequenceClassificationPolicy
+
+    from transformers import LlamaForCausalLM
+
+    from .llama import LlamaForCausalLMPolicy
+    auto_policy_dict[LlamaForCausalLM] = LlamaForCausalLMPolicy
 
     from transformers import GPT2Model
 

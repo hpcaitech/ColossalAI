@@ -21,7 +21,7 @@ class DistCrossEntropy(Function):
         and can be rewrite as:
         loss = log(sum(exp(x[i])) - x[class]
 
-        To avoid the `nan` of log(sim(exp(x[i]))), we minus the max of x[i]
+        To avoid the `nan` of log(sum(exp(x[i]))), we minus the max of x[i]
 
         Args:
             vocab_logits (:class:`torch.Tensor`): The logits of the vocabulary, shape is
