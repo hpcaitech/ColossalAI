@@ -10,3 +10,5 @@ contexttimer
 ninja
 torch>=1.11
 safetensors
+pytest
+decorator
