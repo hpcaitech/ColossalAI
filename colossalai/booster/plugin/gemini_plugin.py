@@ -99,8 +99,11 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
             save_state_dict(shard, checkpoint_file_path, use_safetensors)
 
         index_file.append_meta_data("total_size", total_size)
-        index_file.write_index_file(save_index_file)
-        logging.info(f"The model is going to be split to checkpoint shards. "
+
+        # only save the index file on the master rank
+        if self.coordinator.is_master():
+            index_file.write_index_file(save_index_file)
+        logging.info(f"The model is split into checkpoint shards. "
                      f"You can find where each parameters has been saved in the "
                      f"index located at {save_index_file}.")
 
