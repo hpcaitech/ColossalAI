@@ -167,7 +167,8 @@ class BertForMaskedLMPolicy(BertPolicy):
 
     @staticmethod
     def inject_policy() -> Tuple[nn.Module, nn.Module]:
-        return (BertForMaskedLM, BertForMaskedLM_)
+        # return (BertForMaskedLM, BertForMaskedLM_)
+        return None
 
 
 class BertForSequenceClassificationPolicy(BertPolicy):

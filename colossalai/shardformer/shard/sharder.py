@@ -65,6 +65,8 @@ class ModelSharder(object):
             BertForMaskedLM.forward -> BertForMaskedLM_.forward
         """
         inject_policy = self.policy.inject_policy()
+        if inject_policy is None:
+            return
 
         if inject_policy is None:
             return
@@ -149,8 +151,8 @@ class ModelSharder(object):
                 n_cast = policy_layer.n_cast
                 if policy_layer.__class__.__name__ == 'Dropout_Layer':
                     dropout_p_attr = policy_layer.p
-                # if policy_layer.__class__.__name__ == "Col_Layer":
-                #     gather_output = policy_layer.gather_output
+                if policy_layer.__class__.__name__ == "Col_Layer":
+                    gather_output = policy_layer.gather_output and self.shard_config.gather_output
 
                 if weight_attr is not None:
                     if hasattr_(org_layer, weight_attr):
