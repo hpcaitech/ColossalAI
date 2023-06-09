@@ -20,7 +20,7 @@
 The sample API usage is given below:
 
 ``` python
-from colossalai.shardformer import shard_model
+from colossalai.shardformer import ShardConfig, shard_model
 from transformers import BertForMaskedLM
 
 # create huggingface model as normal
@@ -28,7 +28,12 @@ model = BertForMaskedLM.from_pretrained("bert-base-uncased")
 
 # make the huggingface model paralleled to ShardModel
 # auto policy:
-sharded_model = shard_model(model)
+shardconfig = ShardConfig(
+    rank=rank,
+    world_size=world_size,
+    gather_output=True,
+)
+sharded_model = shard_model(model, config=shardconfig)
 
 # custom policy:
 from xxx import <POLICYCLASS>
@@ -72,7 +77,7 @@ More details can be found in shardformer/policies/basepolicy.py
 ``` python
 from colossalai.shardformer.policies.basepolicy import Policy, Layer, Col_Layer, Row_Layer, Argument
 
-CustomPolicy(Policy):
+class CustomPolicy(Policy):
 @staticmethod
     def argument_policy(model_config, shard_config: int) -> Dict[nn.Module, Argument]:
         r"""
@@ -235,7 +240,7 @@ CustomPolicy(Policy):
     This class is used to specify the replacement policy for a particular layer. If `replace_layer` is None, only parameter partitioning will be performed without replacing the layer class.
 
     CLASS `Col_Layer(Layer)`:
-      - gather_output (bool): Whether to gather the output of the layer
+      - gather_output (bool): Whether the output of this layer can be gathered, like the last layer can be gathered, but most of the time, the intermediate layers of the model do not need to be gathered.
 
       This class inherited from `Layer`, representing the layer will be sliced along column.
 
