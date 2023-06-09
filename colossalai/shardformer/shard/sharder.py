@@ -65,6 +65,8 @@ class ModelSharder(object):
             BertForMaskedLM.forward -> BertForMaskedLM_.forward
         """
         inject_policy = self.policy.inject_policy()
+        if inject_policy is None:
+            return
 
         if inject_policy is None:
             return
@@ -148,7 +150,7 @@ class ModelSharder(object):
                 n_cast = policy_layer.n_cast
                 reversed = policy_layer.reversed
                 if policy_layer.__class__.__name__ == "Col_Layer":
-                    gather_output = policy_layer.gather_output
+                    gather_output = policy_layer.gather_output and self.shard_config.gather_output
 
                 if weight_attr is not None:
                     if hasattr_(org_layer, weight_attr):

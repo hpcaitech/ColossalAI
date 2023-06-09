@@ -141,7 +141,7 @@ class BertPolicy(Policy):
                 weight="decoder.weight",
                 bias="decoder.bias",
                 replace_layer=col_nn.Linear1D_Col,
-        # gather_output=True,
+                gather_output=True,
             )
         ]
 
@@ -155,7 +155,8 @@ class BertForMaskedLMPolicy(BertPolicy):
 
     @staticmethod
     def inject_policy() -> Tuple[nn.Module, nn.Module]:
-        return (BertForMaskedLM, BertForMaskedLM_)
+        # return (BertForMaskedLM, BertForMaskedLM_)
+        return None
 
 
 class BertForSequenceClassificationPolicy(BertPolicy):
