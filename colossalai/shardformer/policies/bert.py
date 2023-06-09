@@ -103,6 +103,10 @@ class BertPolicy(Policy):
                 bias="attention.output.dense.bias",
                 replace_layer=col_nn.Linear1D_Row,
             ),
+            Dropout_Layer(
+                p="attention.output.dropout.p",
+                replace_layer=col_nn.Dropout1D,
+            ),
             Row_Layer(
                 weight="crossattention.output.dense.weight",
                 bias="crossattention.output.dense.bias",
@@ -129,6 +133,10 @@ class BertPolicy(Policy):
                 bias="output.dense.bias",
                 replace_layer=col_nn.Linear1D_Row,
             ),
+            Dropout_Layer(
+                p="output.dropout.p",
+                replace_layer=col_nn.Dropout1D,
+            )
         ]
 
     @staticmethod

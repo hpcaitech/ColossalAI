@@ -46,7 +46,7 @@ class Layer:
 @dataclass
 class Col_Layer(Layer):
     r"""
-    Class for col shard layer in MegatronLM
+    Class for col shard layer in tensor parrallel
 
     Args:
         gather_output (bool): Whether to gather the output of the layer
@@ -57,7 +57,7 @@ class Col_Layer(Layer):
 @dataclass
 class Row_Layer(Layer):
     r"""
-    Class for col shard layer in MegatronLM
+    Class for col shard layer in tensor parrallel
     """
     pass
 
@@ -65,7 +65,7 @@ class Row_Layer(Layer):
 @dataclass
 class Dropout_Layer(Layer):
     r"""
-    Class for dropout layer in MegatronLM
+    Class for dropout layer in tensor parrallel
     """
     p: int = None
 
