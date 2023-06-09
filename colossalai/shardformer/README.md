@@ -20,7 +20,7 @@
 The sample API usage is given below:
 
 ``` python
-from colossalai.shardformer.shard import ShardConfig, shard_model
+from colossalai.shardformer import ShardConfig, shard_model
 from transformers import BertForMaskedLM
 
 # create huggingface model as normal
@@ -77,7 +77,7 @@ More details can be found in shardformer/policies/basepolicy.py
 ``` python
 from colossalai.shardformer.policies.basepolicy import Policy, Layer, Col_Layer, Row_Layer, Argument
 
-CustomPolicy(Policy):
+class CustomPolicy(Policy):
 @staticmethod
     def argument_policy(model_config, shard_config: int) -> Dict[nn.Module, Argument]:
         r"""
