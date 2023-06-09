@@ -1,19 +1,16 @@
-import os
-from functools import partial
-
 import pytest
 import torch
 import torch.distributed as dist
 
+import colossalai
 from colossalai.elixir.chunk import Chunk, MemoryPool
 from colossalai.elixir.chunk.scheduler import FIFOScheduler, PrefetchScheduler
-from colossalai.elixir.utils import init_distributed
-from colossalai.testing import run_on_environment_flag
+from colossalai.testing import spawn
 
 
-def exam_fifo(nproc, group):
+def exam_fifo(group):
     mp = MemoryPool('cuda')
-    mp.allocate(public_block_number=1)
+    mp.allocate_public_blocks(block_num=1)
     c0 = Chunk(mp, 1024, torch.float, group)
     c1 = Chunk(mp, 1024, torch.float, group)
     c2 = Chunk(mp, 1024, torch.float, group)
@@ -40,9 +37,8 @@ def exam_fifo(nproc, group):
     assert sdl.top() == c0
 
 
-def exam_prefetch(nproc, group):
+def exam_prefetch(group):
     mp = MemoryPool('cuda')
-    mp.allocate()
     c0 = Chunk(mp, 1024, torch.float, group)
     c1 = Chunk(mp, 1024, torch.float, group)
     c2 = Chunk(mp, 1024, torch.float, group)
@@ -108,22 +104,15 @@ def exam_prefetch(nproc, group):
     sdl.clear()
 
 
-def run_dist(rank, world_size):
-    os.environ['RANK'] = str(rank)
-    os.environ['LOCAL_RANK'] = str(rank)
-    os.environ['WORLD_SIZE'] = str(world_size)
-    os.environ['MASTER_ADDR'] = '127.0.0.1'
-    os.environ['MASTER_PORT'] = str(29512)
-    init_distributed()
-    exam_fifo(nproc=world_size, group=dist.GroupMember.WORLD)
-    exam_prefetch(nproc=world_size, group=dist.GroupMember.WORLD)
+def run_dist(rank, world_size, port):
+    colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host='localhost')
+    exam_fifo(group=dist.GroupMember.WORLD)
+    exam_prefetch(group=dist.GroupMember.WORLD)
 
 
 @pytest.mark.dist
-@run_on_environment_flag('ELX')
 def test_chunk_scheduler(world_size=1):
-    run_func = partial(run_dist, world_size=world_size)
-    torch.multiprocessing.spawn(run_func, nprocs=world_size)
+    spawn(run_dist, nprocs=world_size)
 
 
 if __name__ == '__main__':

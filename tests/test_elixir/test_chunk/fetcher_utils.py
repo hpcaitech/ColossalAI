@@ -4,7 +4,7 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 
-from colossalai.elixir.chunk import BlockRequire, ChunkFetcher, ChunkGroup, MemoryPool, TensorState
+from colossalai.elixir.chunk import BlockSpec, ChunkFetcher, ChunkGroup, MemoryPool, TensorState
 from colossalai.elixir.chunk.scheduler import FIFOScheduler
 from colossalai.elixir.hook import BufferStore, HookParam
 from colossalai.elixir.tensor import OutplaceTensor
@@ -32,13 +32,15 @@ def grad_handler(grad: torch.Tensor, param: nn.Parameter, fetcher: ChunkFetcher)
 def hook_transform(model: nn.Module, process_group: dist.ProcessGroupGloo):
     pg_size = dist.get_world_size(process_group)
 
-    private_list = list()
+    mp = MemoryPool('cuda')
+
+    # allocate private blocks
+    private_block_specs = list()
     for param in model.parameters():
         block_size = to_divide(param.numel(), pg_size)
-        private_list.append(BlockRequire(block_size, param.dtype))
+        private_block_specs.append(BlockSpec(block_size, param.dtype))
+    mp.allocate_private_blocks(private_block_specs)
 
-    mp = MemoryPool('cuda')
-    mp.allocate(private_block_list=private_list)
     cg = ChunkGroup(rcache=mp)
     # allocate chunk group
     fused_config = dict(rcache_fused=True)

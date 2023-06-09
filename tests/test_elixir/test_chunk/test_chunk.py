@@ -1,13 +1,10 @@
-import os
-from functools import partial
-
 import pytest
 import torch
 import torch.distributed as dist
 
-from colossalai.elixir.chunk import BlockRequire, Chunk, MemoryPool, TensorState
-from colossalai.elixir.utils import init_distributed
-from colossalai.testing import run_on_environment_flag
+import colossalai
+from colossalai.elixir.chunk import BlockSpec, Chunk, MemoryPool, TensorState
+from colossalai.testing import run_on_environment_flag, spawn
 
 
 def exam_chunk_functions(nproc, group):
@@ -21,7 +18,7 @@ def exam_chunk_functions(nproc, group):
     copy_d = d.clone()
 
     mp = MemoryPool('cuda')
-    mp.allocate(public_block_number=1)
+    mp.allocate_public_blocks(block_num=1)
 
     chunk = Chunk(mp, 1024, torch.float, group)
     chunk.l2_norm_flag = True
@@ -43,26 +40,31 @@ def exam_chunk_functions(nproc, group):
 
     chunk.close_chunk()
     assert chunk.is_replica is False
+
     # check function: get_cpu_copy
     cpu_copys = chunk.get_cpu_copy()
     for t_gpu, t_cpu in zip([copy_a, copy_b, copy_c, copy_d], cpu_copys):
         assert t_cpu.device.type == 'cpu'
         assert torch.equal(t_gpu.cpu(), t_cpu)
+
     # check function: access_chunk
-    block = mp.get_public_block()
+    block = mp.pop_public_block()
     chunk.access_chunk(block)
     assert chunk.is_replica
     assert chunk.scatter_check
     check_tensors()
+
     # check function: release_chunk
     chunk.optim_sync_flag = False
     block = chunk.release_chunk()
     assert block in mp.public_used_blocks
     assert chunk.is_replica is False
     assert chunk.optim_sync_flag is True
+
     # check function: access_chunk after release_chunk
     chunk.access_chunk(block)
     check_tensors()
+
     # check function: reduce_chunk
     norm = block.payload.float().norm(2)**2
     chunk.reduce_chunk()
@@ -87,9 +89,10 @@ def exam_chunk_states(nproc, group):
     d = torch.randn(4, 32, device='cuda')
     copy_d = d.clone()
 
-    private = [BlockRequire(1024, torch.float)]
     mp = MemoryPool('cuda')
-    mp.allocate(private_block_list=private)
+
+    private_block_specs = [BlockSpec(1024, torch.float)]
+    mp.allocate_private_blocks(private_block_specs)
 
     chunk = Chunk(mp, 1024, torch.float, group, rcache_fused=True)
     assert chunk.chunk_size == 1024
@@ -132,23 +135,16 @@ def exam_chunk_states(nproc, group):
     print('chunk states are ok')
 
 
-def run_dist(rank, world_size):
-    os.environ['RANK'] = str(rank)
-    os.environ['LOCAL_RANK'] = str(rank)
-    os.environ['WORLD_SIZE'] = str(world_size)
-    os.environ['MASTER_ADDR'] = '127.0.0.1'
-    os.environ['MASTER_PORT'] = str(29512)
-    init_distributed()
+def run_dist(rank, world_size, port):
+    colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host='localhost')
     exam_chunk_functions(nproc=world_size, group=dist.GroupMember.WORLD)
     exam_chunk_states(nproc=world_size, group=dist.GroupMember.WORLD)
 
 
 @pytest.mark.dist
 @pytest.mark.parametrize('world_size', [1, 2, 4])
-@run_on_environment_flag('ELX')
 def test_chunk_functions(world_size):
-    run_func = partial(run_dist, world_size=world_size)
-    torch.multiprocessing.spawn(run_func, nprocs=world_size)
+    spawn(run_dist, nprocs=world_size)
 
 
 if __name__ == '__main__':

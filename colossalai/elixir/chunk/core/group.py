@@ -129,7 +129,7 @@ class ChunkGroup(object):
         """Check whether the rcache has enough blocks to store the gathered chunk."""
         if chunk.rcache_fused:
             return True
-        return self.rcache.public_free_cnt > 0
+        return self.rcache.public_free_count > 0
 
     def access_chunk(self, chunk: Chunk) -> bool:
         """Access a chunk into rCache."""
@@ -141,7 +141,7 @@ class ChunkGroup(object):
         if chunk.rcache_fused:
             block = None
         else:
-            block = self.rcache.get_public_block()
+            block = self.rcache.pop_public_block()
         chunk.access_chunk(block)
         self.__add_to_accset(chunk)
         return True

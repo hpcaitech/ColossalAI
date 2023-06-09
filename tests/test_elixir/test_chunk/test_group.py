@@ -1,16 +1,13 @@
-import os
-from functools import partial
-
 import pytest
 import torch
 import torch.distributed as dist
 
-from colossalai.elixir.chunk import BlockRequire, ChunkGroup, MemoryPool, TensorState
-from colossalai.elixir.utils import init_distributed
-from colossalai.testing import run_on_environment_flag
+import colossalai
+from colossalai.elixir.chunk import BlockSpec, ChunkGroup, MemoryPool, TensorState
+from colossalai.testing import run_on_environment_flag, spawn
 
 
-def exam_chunk_group_functions(nproc, group):
+def exam_chunk_group_functions(group):
     a = torch.randn(3, 64, device='cuda')
     copy_a = a.clone()
     b = torch.randn(2, 32, device='cuda')
@@ -23,7 +20,9 @@ def exam_chunk_group_functions(nproc, group):
     copy_e = e.clone()
 
     mp = MemoryPool('cuda')
-    mp.allocate(public_block_size=256, public_block_number=2, private_block_list=[BlockRequire(68, torch.float)])
+    mp.allocate_public_blocks(block_num=2, block_spec=BlockSpec(numel=256, dtype=torch.float))
+    mp.allocate_private_blocks([BlockSpec(68, torch.float)])
+
     cg = ChunkGroup(rcache=mp)
     c0 = cg.allocate_chunk([a, b], 256, torch.float, group)
     c1 = cg.allocate_chunk([c], 256, torch.float, group)
@@ -76,22 +75,15 @@ def exam_chunk_group_functions(nproc, group):
     print('chunk group functions are ok')
 
 
-def run_dist(rank, world_size):
-    os.environ['RANK'] = str(rank)
-    os.environ['LOCAL_RANK'] = str(rank)
-    os.environ['WORLD_SIZE'] = str(world_size)
-    os.environ['MASTER_ADDR'] = '127.0.0.1'
-    os.environ['MASTER_PORT'] = str(29512)
-    init_distributed()
-    exam_chunk_group_functions(nproc=world_size, group=dist.GroupMember.WORLD)
+def run_dist(rank, world_size, port):
+    colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host='localhost')
+    exam_chunk_group_functions(group=dist.GroupMember.WORLD)
 
 
 @pytest.mark.dist
 @pytest.mark.parametrize('world_size', [1, 2, 4])
-@run_on_environment_flag('ELX')
 def test_chunk_group(world_size):
-    run_func = partial(run_dist, world_size=world_size)
-    torch.multiprocessing.spawn(run_func, nprocs=world_size)
+    spawn(run_dist, nprocs=world_size)
 
 
 if __name__ == '__main__':
