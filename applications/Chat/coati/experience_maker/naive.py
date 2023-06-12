@@ -1,4 +1,5 @@
 import torch
+from coati.models.generation import generate_with_actor
 from coati.models.utils import compute_reward, normalize
 
 from .base import Experience, ExperienceMaker
@@ -16,7 +17,8 @@ class NaiveExperienceMaker(ExperienceMaker):
         self.initial_model.eval()
         self.reward_model.eval()
 
-        sequences, attention_mask, action_mask = self.actor.generate(input_ids,
+        sequences, attention_mask, action_mask = generate_with_actor(self.actor,
+                                                                     input_ids,
                                                                      return_action_mask=True,
                                                                      **generate_kwargs)
         num_actions = action_mask.size(1)
