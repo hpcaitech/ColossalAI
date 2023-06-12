@@ -1,6 +1,10 @@
 import argparse
+import os
+import resource
+from contextlib import contextmanager
 from copy import deepcopy
 
+import psutil
 import torch
 import torch.distributed as dist
 import torch.nn as nn
@@ -34,6 +38,20 @@ def preprocess_batch(samples) -> dict:
 def print_rank_0(*args, **kwargs) -> None:
     if dist.get_rank() == 0:
         print(*args, **kwargs)
+
+
+def get_max_memory() -> int:
+    return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+
+
+@contextmanager
+def low_precision_init(target_dtype: torch.dtype = torch.float16):
+    dtype = torch.get_default_dtype()
+    try:
+        torch.set_default_dtype(target_dtype)
+        yield
+    finally:
+        torch.set_default_dtype(dtype)
 
 
 def print_model_numel(model_dict: dict) -> None:
@@ -89,7 +107,7 @@ def main(args):
 
     model_config = get_gpt_config(args.model)
     critic_config = get_gpt_config(args.critic_model)
-    with strategy.model_init_context(), no_init_weights():
+    with strategy.model_init_context(), no_init_weights(), low_precision_init():
         actor = BLOOMActor(config=model_config, lora_rank=args.lora_rank, checkpoint=args.grad_checkpoint)
         actor.model.tie_weights()
         critic = BLOOMCritic(config=critic_config, lora_rank=args.lora_rank, checkpoint=args.grad_checkpoint)
@@ -136,6 +154,7 @@ def main(args):
     (actor, actor_optim), (critic, critic_optim), initial_model, reward_model = strategy.prepare(
         (actor, actor_optim), (critic, critic_optim), initial_model, reward_model)
 
+    print_rank_0(f'Mem after prepare: {psutil.Process(os.getpid()).memory_full_info().rss /1024**3:.2f} GB')
     # TODO(ver217): load checkpoint here
 
     trainer = PPOTrainer(strategy,
@@ -171,6 +190,7 @@ def main(args):
                 update_timesteps=args.update_timesteps)
 
     print_rank_0(f'Peak CUDA mem: {torch.cuda.max_memory_allocated()/1024**3:.2f} GB')
+    print_rank_0(f'Peak Mem: {get_max_memory()/1024**2:.2f} GB')
 
 
 if __name__ == '__main__':
