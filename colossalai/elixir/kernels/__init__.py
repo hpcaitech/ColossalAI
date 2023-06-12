@@ -1,4 +1,3 @@
-import torch
 import torch.nn.functional as F
 
 fused_torch_functions = {F.layer_norm: F.layer_norm}
@@ -12,6 +11,3 @@ def register_fused_layer_norm():
     except:
         print('Cannot import fused layer norm, please install apex from source.')
         pass
-
-
-register_fused_layer_norm()

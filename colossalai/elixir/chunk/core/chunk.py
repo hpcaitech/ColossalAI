@@ -8,8 +8,8 @@ from torch.distributed import ProcessGroup
 from colossalai.elixir.cuda import gpu_device
 from colossalai.elixir.tensor import FakeTensor
 
-from .memory_pool import MemoryPool, PrivateBlock, PublicBlock, TensorBlock
-from .states import TensorState, ts_update_sanity_check
+from .memory_pool import MemoryPool, TensorBlock
+from .states import TensorState, validate_tensor_state_update
 
 
 class ChunkFullError(Exception):
@@ -383,7 +383,11 @@ class Chunk:
         prev_state = self.tensors_info[tensor].state
         if prev_state == tensor_state:
             return
-        if ts_update_sanity_check(prev_state, tensor_state):
+
+        # validate whether the update is legal
+        # if illegal, raise an exception
+        is_update_valid = validate_tensor_state_update(prev_state, tensor_state, raise_exception=True)
+        if is_update_valid:
             self.__update_one_tensor_info(self.tensors_info[tensor], tensor_state)
 
     def copy_tensor_to_chunk_slice(self, tensor: torch.Tensor, data_slice: torch.Tensor) -> None:

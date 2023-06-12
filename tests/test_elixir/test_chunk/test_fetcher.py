@@ -1,6 +1,4 @@
 import copy
-import os
-from functools import partial
 
 import pytest
 import torch
@@ -8,9 +6,10 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.testing import assert_close
 
+import colossalai
 from colossalai.elixir.chunk import ChunkGroup
-from colossalai.elixir.utils import init_distributed, seed_all
-from colossalai.testing import run_on_environment_flag
+from colossalai.elixir.utils import seed_all
+from colossalai.testing import run_on_environment_flag, spawn
 from tests.test_elixir.test_chunk.fetcher_utils import hook_transform
 from tests.test_elixir.utils import TEST_MODELS, to_cuda
 
@@ -25,7 +24,7 @@ def check_gradient(ddp_model, my_model, cg: ChunkGroup):
         assert_close(p0.grad.data, p1.data)
 
 
-def exam_chunk_fetcher(nproc, group):
+def exam_chunk_fetcher(group):
     model_fn, data_fn = TEST_MODELS.get('resnet')
     torch_model = model_fn().cuda()
     test_model = copy.deepcopy(torch_model)
@@ -49,23 +48,17 @@ def exam_chunk_fetcher(nproc, group):
     print('private chunk fetcher is ok')
 
 
-def run_dist(rank, world_size):
-    os.environ['RANK'] = str(rank)
-    os.environ['LOCAL_RANK'] = str(rank)
-    os.environ['WORLD_SIZE'] = str(world_size)
-    os.environ['MASTER_ADDR'] = '127.0.0.1'
-    os.environ['MASTER_PORT'] = str(29512)
-    init_distributed()
-    exam_chunk_fetcher(nproc=world_size, group=dist.GroupMember.WORLD)
+def run_dist(rank, world_size, port):
+    colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host='localhost')
+    exam_chunk_fetcher(group=dist.GroupMember.WORLD)
 
 
 @pytest.mark.dist
 @pytest.mark.parametrize('world_size', [1, 2, 4])
-@run_on_environment_flag('ELX')
 def test_chunk_fetcher(world_size):
-    run_func = partial(run_dist, world_size=world_size)
-    torch.multiprocessing.spawn(run_func, nprocs=world_size)
+    spawn(run_dist, nprocs=world_size)
 
 
 if __name__ == '__main__':
+    test_chunk_fetcher(world_size=2)
     test_chunk_fetcher(world_size=2)

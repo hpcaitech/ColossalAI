@@ -5,7 +5,7 @@ from typing import List, Tuple
 import torch
 import torch.nn as nn
 
-from colossalai.elixir.chunk import BlockRequire, ChunkGroup, MemoryPool
+from colossalai.elixir.chunk import BlockSpec, ChunkGroup, MemoryPool
 from colossalai.elixir.tracer.param_tracer import generate_tf_order
 from colossalai.elixir.tracer.utils import meta_copy
 from colossalai.elixir.utils import print_rank_0
@@ -119,7 +119,7 @@ class SearchBase(ABC):
         for plan in chunk_plans:
             kwargs = plan.kwargs
             if kwargs.get('rcache_fused', False):
-                block_require_list.append(BlockRequire(plan.chunk_size, plan.chunk_dtype))
+                block_require_list.append(BlockSpec(plan.chunk_size, plan.chunk_dtype))
 
         mp = MemoryPool('cuda')
         mp.allocate(public_dtype=self.unified_dtype,
