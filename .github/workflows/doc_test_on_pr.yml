@@ -19,6 +19,9 @@ jobs:
     outputs:
       any_changed: ${{ steps.changed-files.outputs.any_changed }}
       changed_files: ${{ steps.changed-files.outputs.all_changed_files }}
+    concurrency:
+      group: ${{ github.head_ref }}
+      cancel-in-progress: false
     name: Detect changed example files
     steps:
       - uses: actions/checkout@v3
@@ -59,6 +62,9 @@ jobs:
     defaults:
       run:
         shell: bash
+    concurrency:
+      group: ${{ github.head_ref }}
+      cancel-in-progress: false
     steps:
       - name: Checkout ColossalAI-Documentation
         uses: actions/checkout@v2
