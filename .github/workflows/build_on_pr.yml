@@ -60,6 +60,9 @@ jobs:
     defaults:
       run:
         shell: bash
+    concurrency:
+      group: ${{ github.head_ref }}
+      cancel-in-progress: false
     steps:
       - name: Copy testmon cache
         run: | # branch name may contain slash, we need to replace it with space
@@ -83,6 +86,9 @@ jobs:
       changedLibraryFiles: ${{ steps.find-lib-change.outputs.all_changed_files }}
       anyLibraryFileChanged: ${{ steps.find-lib-change.outputs.any_changed }}
     runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ github.head_ref }}
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v2
         with:
@@ -140,6 +146,9 @@ jobs:
     defaults:
       run:
         shell: bash
+    concurrency:
+      group: ${{ github.head_ref }}
+      cancel-in-progress: false
     steps:
       - name: Checkout TensorNVMe
         uses: actions/checkout@v2
