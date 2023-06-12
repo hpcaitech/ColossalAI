@@ -37,7 +37,7 @@ def setattr_(obj, attr: str, value, ignore: bool = False):
     setattr(obj, attrs[-1], value)
 
 
-def getattr_(obj, attr: str, ignore: bool = None):
+def getattr_(obj, attr: str, ignore: bool = False):
     r"""
     Get the object's multi sublevel attr
 

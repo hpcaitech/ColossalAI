@@ -1,6 +1,6 @@
 import torch
 
-from ..policies.basepolicy import Col_Layer, Layer, Row_Layer
+from ..policies.basepolicy import Col_Layer, Dropout_Layer, Layer, Row_Layer
 from .shard_config import ShardConfig
 
 dim_mapping = {Col_Layer: 0, Row_Layer: 1}
@@ -33,7 +33,7 @@ class Slicer():
             bias: (:class:`torch.nn.Module`): The bias of the layer
             policy_layer_class (:class:`Policy`): The class represent how to slice the tensor
         """
-        if policy_layer_cls == Layer:
+        if policy_layer_cls in [Layer, Dropout_Layer]:
             return weight, bias
 
         dim = dim_mapping[policy_layer_cls] if not reversed else (1 - dim_mapping[policy_layer_cls])
