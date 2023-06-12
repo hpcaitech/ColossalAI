@@ -21,8 +21,10 @@ class NaiveExperienceMaker(ExperienceMaker):
                                                                      **generate_kwargs)
         num_actions = action_mask.size(1)
 
-        action_log_probs = self.actor(sequences, num_actions, attention_mask)
-        base_action_log_probs = self.initial_model(sequences, num_actions, attention_mask)
+        actor_output = self.actor(sequences, attention_mask)
+        action_log_probs = self.actor.calc_action_log_probs(actor_output, sequences, num_actions)
+        base_model_output = self.initial_model(sequences, attention_mask)
+        base_action_log_probs = self.initial_model.calc_action_log_probs(base_model_output, sequences, num_actions)
         value = self.critic(sequences, action_mask, attention_mask)
         r = self.reward_model(sequences, attention_mask)
         reward = compute_reward(r, self.kl_coef, action_log_probs, base_action_log_probs, action_mask=action_mask)

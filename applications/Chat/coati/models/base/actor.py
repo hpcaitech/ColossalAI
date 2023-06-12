@@ -24,6 +24,25 @@ class Actor(LoRAModule):
         self.model = model
         self.convert_to_lora()
 
+    @staticmethod
+    def calc_action_log_probs(output: torch.Tensor,
+                              sequences: torch.LongTensor,
+                              num_actions: int
+                              ) -> torch.Tensor:
+        """Calculate action log probs.
+
+        Args:
+            output (torch.Tensor): Output tensor of self.forward.
+            sequences (torch.LongTensor): Input sequences.
+            num_actions (int): Number of actions.
+
+        Returns:
+            torch.Tensor: Action log probs.
+        """
+        logits = output['logits']
+        log_probs = log_probs_from_logits(logits[:, :-1, :], sequences[:, 1:])
+        return log_probs[:, -num_actions:]
+
     @torch.no_grad()
     def generate(
         self,
@@ -31,7 +50,10 @@ class Actor(LoRAModule):
         return_action_mask: bool = True,
         **kwargs
     ) -> Union[Tuple[torch.LongTensor, torch.LongTensor], Tuple[torch.LongTensor, torch.LongTensor, torch.BoolTensor]]:
-        sequences = generate(self.model, input_ids, **kwargs)
+        # generate sequences
+        sequences = generate(self, input_ids, **kwargs)
+
+        # calculate auxiliary tensors
         attention_mask = None
         pad_token_id = kwargs.get('pad_token_id', None)
         if pad_token_id is not None:
@@ -52,14 +74,17 @@ class Actor(LoRAModule):
 
     def forward(self,
                 sequences: torch.LongTensor,
-                num_actions: int,
-                attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
-        """Returns action log probs
+                attention_mask: Optional[torch.Tensor] = None,
+                **model_kwargs,  # HACK: `generate` method may pass more kwargs
+                ) -> torch.Tensor:
+        """Returns model output.
         """
-        output = self.model(sequences, attention_mask=attention_mask)
-        logits = output['logits']
-        log_probs = log_probs_from_logits(logits[:, :-1, :], sequences[:, 1:])
-        return log_probs[:, -num_actions:]
+        output = self.model(
+            sequences,
+            attention_mask=attention_mask,
+            **model_kwargs
+        )
+        return output
 
     def get_base_model(self):
         return self.model
