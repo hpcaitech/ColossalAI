@@ -54,6 +54,3 @@ class Actor(LoRAModule):
             **model_kwargs
         )
         return output
-
-    def get_base_model(self):
-        return self.model

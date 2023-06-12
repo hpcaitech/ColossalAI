@@ -176,8 +176,8 @@ class PPOTrainer(Trainer):
         if self.ptx_coef != 0:
             batch = next(iter(self.pretrain_dataloader))
             batch = to_device(batch, self.device)
-            ptx_log_probs = self.actor.get_base_model()(batch['input_ids'],
-                                                        attention_mask=batch['attention_mask'])['logits']
+            ptx_log_probs = self.actor(batch['input_ids'],
+                                       attention_mask=batch['attention_mask'])['logits']
             ptx_loss = self.ptx_loss_fn(ptx_log_probs, batch['labels'])
             actor_loss = ptx_loss * self.ptx_coef + actor_loss * (1 - self.ptx_coef)
 
