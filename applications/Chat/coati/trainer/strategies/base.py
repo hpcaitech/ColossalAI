@@ -4,7 +4,6 @@ from typing import Any, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
-from coati.models.base import Actor, get_base_model
 from coati.replay_buffer import ReplayBuffer
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
@@ -93,16 +92,15 @@ class Strategy(ABC):
 
     @staticmethod
     def unwrap_model(model: nn.Module) -> nn.Module:
-        """Get the unwrapped model from a wrapped model. Useful for getting original huggingface model.
-        For Actor, it will unwrap `actor.model`.
+        """Get the unwrapped model from a wrapped model made by Strategy.prepare.
 
         Args:
             model (nn.Module): the model to unwrap
 
         Returns:
-            nn.Module: the original model (usually a huggingface model)
+            nn.Module: the original model
         """
-        return get_base_model(model)
+        return model
 
     @abstractmethod
     def save_model(self, model: nn.Module, path: str, only_rank0: bool = True) -> None:
