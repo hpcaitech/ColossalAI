@@ -2,24 +2,18 @@ import time
 
 import torch
 import transformers
-from transformers import AutoConfig, OPTForCausalLM
-from transformers.utils.versions import require_version
+from transformers import ViTConfig, ViTForImageClassification
 import tqdm
 
 import colossalai
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.logging import disable_existing_loggers, get_dist_logger
-from colossalai.tensor import ProcessGroup, ShardSpec
 from colossalai.utils import get_current_device
-from colossalai.zero import ColoInitContext
 from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin, LowLevelZeroPlugin, TorchDDPPlugin
 from colossalai.cluster import DistCoordinator
 
 from args import parse_benchmark_args
-
-require_version("transformers>=4.20.0", "To fix: pip install -r requirements.txt")
-
 
 def format_num(num: int, bytes=False):
     """Scale bytes to its proper format, e.g. 1253656 => '1.20MB'"""
@@ -31,10 +25,10 @@ def format_num(num: int, bytes=False):
         num /= factor
 
 
-def get_data(batch_size, seq_len, vocab_size):
-    input_ids = torch.randint(0, vocab_size, (batch_size, seq_len), device=torch.cuda.current_device())
-    attention_mask = torch.ones_like(input_ids)
-    return input_ids, attention_mask
+def get_data(batch_size, num_labels, num_channels=3, height=224, width=224):
+    pixel_values = torch.randn(batch_size, num_channels, height, width, device=torch.cuda.current_device(), dtype=torch.float)
+    labels = torch.randint(0, num_labels, (batch_size, ), device=torch.cuda.current_device(), dtype=torch.int64)
+    return pixel_values, labels
 
 
 def colo_memory_cap(size_in_GB):
@@ -62,13 +56,13 @@ def main():
     else:
         transformers.utils.logging.set_verbosity_error()
     
-    # Whether to set limit of memory capacity
+    # Whether to set limit on memory capacity
     if args.mem_cap > 0:
         colo_memory_cap(args.mem_cap)
     
-    # Build OPT model
-    config = AutoConfig.from_pretrained(args.model_name_or_path)
-    model = OPTForCausalLM(config=config)
+    # Build ViT model
+    config = ViTConfig.from_pretrained(args.model_name_or_path)
+    model = ViTForImageClassification(config)
     logger.info(f"Finish loading model from {args.model_name_or_path}", ranks=[0])
 
     # Enable gradient checkpointing
@@ -82,23 +76,21 @@ def main():
         plugin = TorchDDPPlugin()
     elif args.plugin == 'gemini':
         plugin = GeminiPlugin(device=get_current_device(),
-                             placement_policy='cpu',
-                             pin_memory=True,
-                             strict_ddp_mode=True,
-                             initial_scale=2**5)
+                        placement_policy='cpu',
+                        pin_memory=True,
+                        strict_ddp_mode=True,
+                        initial_scale=2**5)
     elif args.plugin == 'low_level_zero':
         plugin = LowLevelZeroPlugin(initial_scale=2**5)
     logger.info(f"Set plugin as {args.plugin}", ranks=[0])
 
     # Set optimizer
-    optimizer = HybridAdam(model.parameters(), lr=args.learning_rate)
+    optimizer = HybridAdam(model.parameters(), lr=(args.learning_rate * world_size))
 
     # Set booster
     booster = Booster(plugin=plugin, **booster_kwargs)
     model, optimizer, _, _, _ = booster.boost(model, optimizer)
     
-    SEQ_LEN = 1024
-    VOCAB_SIZE = 50257
 
     # Start training.
     logger.info(f"Start testing", ranks=[0])
@@ -110,9 +102,9 @@ def main():
    
     for _ in range(args.max_train_steps):
 
-        input_ids, attn_mask = get_data(args.batch_size, SEQ_LEN, VOCAB_SIZE)
+        pixel_values, labels = get_data(args.batch_size, args.num_labels, 3, 224, 224)
         optimizer.zero_grad()
-        outputs = model(input_ids=input_ids, attention_mask=attn_mask, labels=input_ids, use_cache=False)
+        outputs = model(pixel_values=pixel_values, labels=labels)
         loss = outputs['loss']
         booster.backward(loss, optimizer)
         optimizer.step()
