@@ -68,21 +68,16 @@ class Strategy(ABC):
             Union[List[ModelOrModelOptimPair], ModelOrModelOptimPair]: Models or model-optimizer-pairs in the original order.
         """
 
-        def prepare_model(model: nn.Module):
-            if isinstance(model, Actor):
-                return Actor(self.setup_model(model.get_base_model()))
-            return self.setup_model(model)
-
         rets = []
         for arg in models_or_model_optim_pairs:
             if isinstance(arg, tuple):
                 assert len(arg) == 2, f'Expect (model, optimizer) pair, got a tuple with size "{len(arg)}"'
                 model, optimizer = arg
-                model = prepare_model(model)
-                optimizer = self.setup_optimizer(optimizer, get_base_model(model))
+                model = self.setup_model(model)
+                optimizer = self.setup_optimizer(optimizer, model)
                 rets.append((model, optimizer))
             elif isinstance(arg, nn.Module):
-                rets.append(prepare_model(arg))
+                rets.append(self.setup_model(model))
             else:
                 raise RuntimeError(f'Expect model or (model, optimizer) pair, got {type(arg)}')
 
