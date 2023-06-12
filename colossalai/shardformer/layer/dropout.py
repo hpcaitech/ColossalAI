@@ -1,5 +1,4 @@
 import os
-import time
 from contextlib import contextmanager
 
 import torch
@@ -14,7 +13,8 @@ class SeedManager:
 
     def __init__(self):
         original_state = torch.cuda.get_rng_state()
-        seed = int(f"{int(time.time())}{os.environ['RANK']}")
+        # TODO: unify this seed manager with the colossalai.context.random
+        seed = os.getpid()
         torch.cuda.manual_seed(int(seed))
         self.dropout_state = torch.cuda.get_rng_state()
         torch.cuda.set_rng_state(original_state)
