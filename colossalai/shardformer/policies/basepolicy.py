@@ -1,7 +1,7 @@
 # part of code modified from https://github.com/tunib-ai/parallelformers
 
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Tuple, Type
+from typing import Any, Callable, Dict, List, Tuple, Union
 
 import torch.nn as nn
 
@@ -25,8 +25,7 @@ class Layer:
     The layer object for the policy
 
     Args:
-        weight (str): The weight suffix of the layer
-        bias (str): The bias suffix of the layer
+        suffix: (str): the suffix of the layer.
         replace_layer (:class:`colosalai.nn`): The layer to replace the original layer
         ignore (bool): Whether to ignore this layer if it is not in the model
         reversed (bool): Whether the weight in layer is reversed, commonly the weight in `torch.nn.Linear` is [out, in],
@@ -35,8 +34,7 @@ class Layer:
                         but in multi-head attention, we need to chunk the weight with the number of devices * n_head, and
                         each device should have a part of Q, K and V weight.
     """
-    weight: str = None
-    bias: str = None
+    suffix: str = None
     replace_layer: Any = None
     ignore: bool = False
     reversed: bool = False
@@ -46,20 +44,40 @@ class Layer:
 @dataclass
 class Col_Layer(Layer):
     r"""
-    Class for col shard layer in MegatronLM
+    Class for col shard layer in tensor parrallel
 
     Args:
+        weight (str): The weight suffix of the layer
+        bias (str): The bias suffix of the layer
         gather_output (bool): Whether to gather the output of the layer
     """
+    weight: str = None
+    bias: str = None
     gather_output: bool = False
 
 
 @dataclass
 class Row_Layer(Layer):
     r"""
-    Class for col shard layer in MegatronLM
+    Class for col shard layer in tensor parrallel
+
+    Args:
+        weight (str): The weight suffix of the layer
+        bias (str): The bias suffix of the layer
     """
-    pass
+    weight: str = None
+    bias: str = None
+
+
+@dataclass
+class Dropout_Layer(Layer):
+    r"""
+    Class for dropout layer in tensor parrallel
+
+    Args:
+        p (str): The dropout rate suffix of the layer
+    """
+    p: str = None
 
 
 class Policy():
@@ -82,14 +100,14 @@ class Policy():
     """
 
     @staticmethod
-    def argument_policy(model_config, shard_config: int) -> Dict[nn.Module, Argument]:
+    def argument_policy(model_config, world_size: int) -> Dict[nn.Module, Argument]:
         r"""
         Return the dict for the modify policy, the key is the original layer class and the value is the
         argument for the modify layer
 
         Args:
             model_config (:class:`tansformer.Config`): The config of transformer model
-            shard_config (:class:`ShardConfig`): The config for sharding model
+            world_size (int)): The world size of sharding model
 
         Return:
             Dict for the modify policy,
@@ -126,7 +144,7 @@ class Policy():
         raise NotImplementedError
 
     @staticmethod
-    def inject_policy() -> Tuple[nn.Module, nn.Module]:
+    def inject_policy() -> Union[Tuple[nn.Module, nn.Module], None]:
         r"""
         Return the dict for the inject model
 
@@ -139,9 +157,9 @@ class Policy():
         return None
 
     @staticmethod
-    def binding_policy() -> Dict:
+    def binding_policy() -> Union[Dict[str, str], None]:
         r"""
-        Return the dict for the binding model
+        Return the dict for the binding model, None means no need to bind
 
         Return:
             This method should return the binding relationship for some layers share the weight or bias,
@@ -154,7 +172,7 @@ class Policy():
         return None
 
     @staticmethod
-    def attn_in() -> List:
+    def attn_in() -> Union[List, None]:
         r"""
         Attention qkv layer
         In this kind of method, we should return the list of ``Layer`` object, each ``Layer`` object should be
@@ -164,52 +182,52 @@ class Policy():
         Returns:
             List[Layer]: List of layer object, each layer is the new
         """
-        return NotImplementedError
+        return None
 
     @staticmethod
-    def attn_out() -> List:
+    def attn_out() -> Union[List, None]:
         r"""
         Attention output projection layer
 
         Returns:
             List[Layer]: List of layer object
         """
-        return NotImplementedError
+        return None
 
     @staticmethod
-    def mlp_in() -> List:
+    def mlp_in() -> Union[List, None]:
         r"""
         h -> 4h mlp layer
 
         Returns:
             List[Layer]: List of layer object
         """
-        return NotImplementedError
+        return None
 
     @staticmethod
-    def mlp_out() -> List:
+    def mlp_out() -> Union[List, None]:
         r"""
         4h -> h mlp layer
 
         Returns:
             List[Layer]: List of layer object
         """
-        return NotImplementedError
+        return None
 
     @staticmethod
-    def embedding() -> List:
+    def embedding() -> Union[List, None]:
         r"""
         Partially slice the embedding layer
 
         Return:
             List[Layer]: List of layer object
         """
-        return NotImplementedError
+        return None
 
     @staticmethod
-    def unembedding() -> List:
+    def unembedding() -> Union[List, None]:
         r"""
-        Partially slice the embedding layer
+        Partially slice the embedding layer, None means there is no unembedding layer
 
         Return:
             List[Layer]: List of layer object
