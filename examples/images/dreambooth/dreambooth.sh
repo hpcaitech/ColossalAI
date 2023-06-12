@@ -1,7 +1,7 @@
 python train_dreambooth.py \
-    --pretrained_model_name_or_path= ## Your Model Path  \
-    --instance_data_dir=  ## Your Training Input Pics Path \
-    --output_dir="path-to-save-model" \
+    --pretrained_model_name_or_path="/data/dreambooth/diffuser/stable-diffusion-v1-4" \
+    --instance_data_dir="/data/dreambooth/Teyvat/data" \
+    --output_dir="./weight_output" \
     --instance_prompt="a photo of a dog" \
     --resolution=512 \
     --train_batch_size=1 \

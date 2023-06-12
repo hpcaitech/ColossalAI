@@ -46,7 +46,7 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
     """A context to initialize model.
 
     1. Convert the model to fp16.
-    2. The paramaters of the module are adapted to type ShardedParameter.
+    2. The parameters of the module are adapted to type ShardedParameter.
     3. Shard the param and grad according to flags.
 
     Args:
