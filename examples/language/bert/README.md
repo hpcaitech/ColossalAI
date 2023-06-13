@@ -1,6 +1,6 @@
 ## Overview
 
-This directory includes two parts: Using the Booster API fintune Huggingface Bert and AlBert models and benchmarking Bert and AlBert models with different Booster Plugin.
+This directory includes two parts: Using the Booster API finetune Huggingface Bert and AlBert models and benchmarking Bert and AlBert models with different Booster Plugin.
 
 ## Finetune
 ```
