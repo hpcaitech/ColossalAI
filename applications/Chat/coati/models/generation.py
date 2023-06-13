@@ -57,11 +57,8 @@ def sample(model: nn.Module,
     unfinished_sequences = input_ids.new(input_ids.shape[0]).fill_(1)
 
     for _ in range(input_ids.size(1), max_length):
-        model_inputs = prepare_inputs_fn(input_ids, **model_kwargs) if prepare_inputs_fn is not None else {
-            'input_ids': input_ids
-        }
-        # HACK: consistent with the forward fn of Actor
-        model_inputs['sequences'] = model_inputs.pop('input_ids')
+        model_inputs = prepare_inputs_fn(input_ids, **model_kwargs) \
+            if prepare_inputs_fn is not None else {'input_ids': input_ids}
         outputs = model(**model_inputs)
 
         next_token_logits = outputs['logits'][:, -1, :]

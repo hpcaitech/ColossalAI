@@ -22,14 +22,14 @@ class Actor(LoRAModule):
         self.convert_to_lora()
 
     def forward(self,
-                sequences: torch.LongTensor,
+                input_ids: torch.LongTensor,
                 attention_mask: Optional[torch.Tensor] = None,
                 **model_kwargs,  # HACK: `generate` method may pass more kwargs
                 ) -> torch.Tensor:
         """Returns model output.
         """
         output = self.model(
-            sequences,
+            input_ids,
             attention_mask=attention_mask,
             **model_kwargs
         )
