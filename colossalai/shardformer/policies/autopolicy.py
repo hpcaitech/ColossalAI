@@ -10,15 +10,40 @@ def build_policies():
     """
     auto_policy_dict = {}
 
+    from transformers import BertModel
+
+    from .bert import BertModelPolicy
+    auto_policy_dict[BertModel] = BertModelPolicy
+
+    from transformers import BertForPreTraining
+
+    from .bert import BertForPretrainingPolicy
+    auto_policy_dict[BertForPreTraining] = BertForPretrainingPolicy
+
+    from transformers import BertLMHeadModel
+
+    from .bert import BertLMHeadModelPolicy
+    auto_policy_dict[BertLMHeadModel] = BertLMHeadModelPolicy
+
     from transformers import BertForMaskedLM
 
     from .bert import BertForMaskedLMPolicy
     auto_policy_dict[BertForMaskedLM] = BertForMaskedLMPolicy
 
+    from transformers import BertForNextSentencePrediction
+
+    from .bert import BertForNextSentencePredictionPolicy
+    auto_policy_dict[BertForNextSentencePrediction] = BertForNextSentencePredictionPolicy
+
     from transformers import BertForSequenceClassification
 
     from .bert import BertForSequenceClassificationPolicy
     auto_policy_dict[BertForSequenceClassification] = BertForSequenceClassificationPolicy
+
+    from transformers import BertForMultipleChoice
+
+    from .bert import BertForMultipleChoicePolicy
+    auto_policy_dict[BertForMultipleChoice] = BertForMultipleChoicePolicy
 
     from transformers import GPT2Model
 
