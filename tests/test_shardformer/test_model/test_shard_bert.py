@@ -19,7 +19,6 @@ import colossalai
 from colossalai.logging import disable_existing_loggers
 from colossalai.shardformer.shard import ShardConfig, shard_model
 from colossalai.testing import rerun_if_address_is_in_use, spawn
-from colossalai.utils import print_rank_0
 
 os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
 CONFIG = dict(parallel=dict(data=1, pipeline=1, tensor=dict(size=2, mode='1d')),)
@@ -31,7 +30,6 @@ def build_model(rank, world_size, model):
     config.hidden_dropout_prob = 0
     config.attention_probs_dropout_prob = 0
 
-    # org_model = model.from_pretrained('bert-base-uncased', config=config).to('cuda')
     org_model = model(config=config)
     org_model_forshard = copy.deepcopy(org_model)
 
