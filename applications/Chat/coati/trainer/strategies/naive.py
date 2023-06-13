@@ -1,16 +1,11 @@
 import os
-import sys
 from collections import OrderedDict
-from typing import Any, Dict, Optional
+from typing import Optional
 
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-import torch.optim as optim
 from coati.models.base import get_base_model
-from coati.replay_buffer import ReplayBuffer
-from coati.models.base import RewardModel
-from coati.models.lora import LoraLinear
 from coati.replay_buffer import ReplayBuffer
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
@@ -34,19 +29,21 @@ class NaiveStrategy(Strategy):
         Strategy for single GPU. No parallelism is used.
     """
 
-    def backward(self, loss: torch.Tensor, model: nn.Module, optimizer: optim.Optimizer, **kwargs) -> None:
-        loss.backward()
-
-    def optimizer_step(self, optimizer: optim.Optimizer, **kwargs) -> None:
-        optimizer.step()
+    def __init__(self) -> None:
+        self.plugin = None
+        super().__init__(self.plugin)
 
     def setup_distributed(self) -> None:
         self._try_init_dist(force=False)
 
+    def backward(self, loss: torch.Tensor, model: nn.Module, optimizer: Optimizer, **kwargs) -> None:
+        # HACK: torch.Adam isn't working properly within booster
+        loss.backward()
+
     def setup_model(self, model: nn.Module) -> nn.Module:
         return model
 
-    def setup_optimizer(self, optimizer: optim.Optimizer, model: nn.Module) -> optim.Optimizer:
+    def setup_optimizer(self, optimizer: Optimizer, model: nn.Module) -> Optimizer:
         return optimizer
 
     def setup_dataloader(self, replay_buffer: ReplayBuffer, pin_memory: bool = False) -> DataLoader:
@@ -57,30 +54,15 @@ class NaiveStrategy(Strategy):
                           pin_memory=pin_memory,
                           collate_fn=replay_buffer.collate_fn)
 
-    def save_model(self, model: nn.Module, path: str, only_rank0: bool = True) -> None:
-        state_dict = model.state_dict()
-        torch.save(state_dict, path)
-
-    def load_model(self, model: nn.Module, path: str, map_location: Any = None, strict: bool = True) -> None:
-        unwrapped_model = self.unwrap_model(model)
-        state_dict = torch.load(path, map_location=map_location)
-        unwrapped_model.load_state_dict(state_dict, strict=strict)
-
-    def save_optimizer(self, optimizer: Optimizer, path: str, only_rank0: bool = False) -> None:
-        torch.save(optimizer.state_dict(), path)
-
-    def load_optimizer(self, optimizer: Optimizer, path: str, map_location: Any = None) -> None:
-        state_dict = torch.load(path, map_location=map_location)
-        optimizer.load_state_dict(state_dict)
-
     def save_pretrained(self,
                         model: nn.Module,
                         path: str,
                         only_rank0: bool = True,
                         tokenizer: Optional[PreTrainedTokenizerBase] = None) -> None:
         unwrapped_model = self.unwrap_model(model)
-        assert isinstance(unwrapped_model, PreTrainedModel)
-        unwrapped_model.save_pretrained(path)
+        hf_model = get_base_model(unwrapped_model)
+        assert isinstance(hf_model, PreTrainedModel)
+        hf_model.save_pretrained(path)
         if tokenizer is not None:
             tokenizer.save_pretrained(path)
 

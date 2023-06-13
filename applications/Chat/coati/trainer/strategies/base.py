@@ -3,11 +3,15 @@ from contextlib import nullcontext
 from typing import Any, List, Optional, Tuple, Union
 
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 from coati.replay_buffer import ReplayBuffer
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
+
+from colossalai.booster import Booster
+from colossalai.booster.plugin import Plugin
 
 from .sampler import DistributedSampler
 
@@ -20,29 +24,35 @@ class Strategy(ABC):
         Base class for training strategies.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, plugin: Optional[Plugin] = None) -> None:
         super().__init__()
         self.setup_distributed()
+        self.booster = Booster(plugin=plugin)
 
-    @abstractmethod
     def backward(self, loss: torch.Tensor, model: nn.Module, optimizer: Optimizer, **kwargs) -> None:
-        pass
+        self.booster.backward(loss, optimizer)
 
-    @abstractmethod
     def optimizer_step(self, optimizer: Optimizer, **kwargs) -> None:
-        pass
+        optimizer.step()
 
     @abstractmethod
     def setup_distributed(self) -> None:
         pass
 
-    @abstractmethod
     def setup_model(self, model: nn.Module) -> nn.Module:
-        pass
+        raise NotImplementedError()
 
-    @abstractmethod
     def setup_optimizer(self, optimizer: Optimizer, model: nn.Module) -> Optimizer:
-        pass
+        raise NotImplementedError()
+
+    def setup_model_optimizer(self,
+                              model: nn.Module,
+                              optimizer: Optimizer
+                              ) -> Tuple[nn.Module, Optimizer]:
+        # NOTE: Booster.boost must take in both model and optimizer
+        model, optimizer, *_ = self.booster.boost(model=model,
+                                                  optimizer=optimizer)
+        return model, optimizer
 
     @abstractmethod
     def setup_dataloader(self, replay_buffer: ReplayBuffer, pin_memory: bool = False) -> DataLoader:
@@ -72,12 +82,10 @@ class Strategy(ABC):
         for arg in models_or_model_optim_pairs:
             if isinstance(arg, tuple):
                 assert len(arg) == 2, f'Expect (model, optimizer) pair, got a tuple with size "{len(arg)}"'
-                model, optimizer = arg
-                model = self.setup_model(model)
-                optimizer = self.setup_optimizer(optimizer, model)
+                model, optimizer = self.setup_model_optimizer(*arg)
                 rets.append((model, optimizer))
             elif isinstance(arg, nn.Module):
-                rets.append(self.setup_model(model))
+                rets.append(self.setup_model(arg))
             else:
                 raise RuntimeError(f'Expect model or (model, optimizer) pair, got {type(arg)}')
 
@@ -97,23 +105,34 @@ class Strategy(ABC):
         """
         return model
 
-    @abstractmethod
-    def save_model(self, model: nn.Module, path: str, only_rank0: bool = True) -> None:
-        pass
+    def save_model(self,
+                   model: nn.Module,
+                   path: str,
+                   only_rank0: bool = True,
+                   **kwargs
+                   ) -> None:
+        if only_rank0 and dist.get_rank() != 0:
+            return
+        self.booster.save_model(model, path, **kwargs)
 
-    @abstractmethod
-    def load_model(self, model: nn.Module, path: str, map_location: Any = None, strict: bool = True) -> None:
-        pass
+    def load_model(self, model: nn.Module, path: str, strict: bool = True) -> None:
+        self.booster.load_model(model, path, strict)
 
-    @abstractmethod
-    def save_optimizer(self, optimizer: Optimizer, path: str, only_rank0: bool = False) -> None:
-        pass
+    def save_optimizer(self,
+                       optimizer: Optimizer,
+                       path: str,
+                       only_rank0: bool = False,
+                       **kwargs
+                       ) -> None:
+        if only_rank0 and dist.get_rank() != 0:
+            return
+        self.booster.save_optimizer(optimizer, path, **kwargs)
 
-    @abstractmethod
-    def load_optimizer(self, optimizer: Optimizer, path: str, map_location: Any = None) -> None:
-        pass
+    def load_optimizer(self, optimizer: Optimizer, path: str) -> None:
+        self.booster.load_optimizer(optimizer, path)
 
     def setup_sampler(self, dataset) -> DistributedSampler:
+        # FIXME(cwher): this is only invoked in train_on_ray, not tested after adapt Boost API.
         return DistributedSampler(dataset, 1, 0)
 
     @abstractmethod
