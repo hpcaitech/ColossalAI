@@ -58,14 +58,13 @@ class NaiveStrategy(Strategy):
                           collate_fn=replay_buffer.collate_fn)
 
     def save_model(self, model: nn.Module, path: str, only_rank0: bool = True) -> None:
-        base_model = get_base_model(model)
-        state_dict = base_model.state_dict()
+        state_dict = model.state_dict()
         torch.save(state_dict, path)
 
     def load_model(self, model: nn.Module, path: str, map_location: Any = None, strict: bool = True) -> None:
-        base_model = get_base_model(model)
+        unwrapped_model = self.unwrap_model(model)
         state_dict = torch.load(path, map_location=map_location)
-        base_model.load_state_dict(state_dict, strict=strict)
+        unwrapped_model.load_state_dict(state_dict, strict=strict)
 
     def save_optimizer(self, optimizer: Optimizer, path: str, only_rank0: bool = False) -> None:
         torch.save(optimizer.state_dict(), path)

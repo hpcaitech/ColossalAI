@@ -3,8 +3,9 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import torch
 import torch.nn as nn
 from coati.experience_maker import Experience, NaiveExperienceMaker
-from coati.models.base import Actor, Critic
+from coati.models.base import Actor, Critic, get_base_model
 from coati.models.loss import GPTLMLoss, PolicyLoss, ValueLoss
+from coati.models.utils import calc_action_log_probs
 from coati.replay_buffer import NaiveReplayBuffer
 from torch import Tensor
 from torch.optim import Optimizer
@@ -165,7 +166,8 @@ class PPOTrainer(Trainer):
         self.critic.train()
         # policy loss
         num_actions = experience.action_mask.size(1)
-        action_log_probs = self.actor(experience.sequences, num_actions, attention_mask=experience.attention_mask)
+        actor_output = self.actor(experience.sequences, attention_mask=experience.attention_mask)
+        action_log_probs = calc_action_log_probs(actor_output, experience.sequences, num_actions)
         actor_loss = self.actor_loss_fn(action_log_probs,
                                         experience.action_log_probs,
                                         experience.advantages,
@@ -175,8 +177,8 @@ class PPOTrainer(Trainer):
         if self.ptx_coef != 0:
             batch = next(iter(self.pretrain_dataloader))
             batch = to_device(batch, self.device)
-            ptx_log_probs = self.actor.get_base_model()(batch['input_ids'],
-                                                        attention_mask=batch['attention_mask'])['logits']
+            ptx_log_probs = self.actor(batch['input_ids'],
+                                       attention_mask=batch['attention_mask'])['logits']
             ptx_loss = self.ptx_loss_fn(ptx_log_probs, batch['labels'])
             actor_loss = ptx_loss * self.ptx_coef + actor_loss * (1 - self.ptx_coef)
 
@@ -200,14 +202,15 @@ class PPOTrainer(Trainer):
         return {'reward': experience.reward.mean().item()}
 
 
-def _set_default_generate_kwargs(strategy: Strategy, generate_kwargs: dict, actor: Actor) -> None:
-    origin_model = strategy.unwrap_model(actor)
+def _set_default_generate_kwargs(strategy: Strategy, generate_kwargs: dict, actor: Actor) -> Dict:
+    unwrapper_model = strategy.unwrap_model(actor)
+    hf_model = get_base_model(unwrapper_model)
     new_kwargs = {**generate_kwargs}
     # use huggingface models method directly
-    if 'prepare_inputs_fn' not in generate_kwargs and hasattr(origin_model, 'prepare_inputs_for_generation'):
-        new_kwargs['prepare_inputs_fn'] = origin_model.prepare_inputs_for_generation
+    if 'prepare_inputs_fn' not in generate_kwargs and hasattr(hf_model, 'prepare_inputs_for_generation'):
+        new_kwargs['prepare_inputs_fn'] = hf_model.prepare_inputs_for_generation
 
-    if 'update_model_kwargs_fn' not in generate_kwargs and hasattr(origin_model, '_update_model_kwargs_for_generation'):
-        new_kwargs['update_model_kwargs_fn'] = origin_model._update_model_kwargs_for_generation
+    if 'update_model_kwargs_fn' not in generate_kwargs and hasattr(hf_model, '_update_model_kwargs_for_generation'):
+        new_kwargs['update_model_kwargs_fn'] = hf_model._update_model_kwargs_for_generation
 
     return new_kwargs
