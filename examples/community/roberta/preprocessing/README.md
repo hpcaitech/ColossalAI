@@ -25,10 +25,10 @@ Firstly, each file has multiple documents, and each document contains multiple s
 In this example, split 200G Corpus into 100 shard, and each shard is about 2G. The size of the shard is memory-dependent, taking into account the number of servers, the memory used by the tokenizer, and the memory used by the multi-process training to read the shard (n data parallel requires n\*shard_size memory). **To sum up, data preprocessing and model pretraining requires fighting with hardware, not just GPU.**
 
 ```python
-python sentence_split.py --input_path /orginal_corpus --output_path /shard --shard 100
+python sentence_split.py --input_path /original_corpus --output_path /shard --shard 100
 # This step takes a short time
 ```
-* `--input_path`: all original corpus, e.g., /orginal_corpus/0.json /orginal_corpus/1.json ...
+* `--input_path`: all original corpus, e.g., /original_corpus/0.json /original_corpus/1.json ...
 * `--output_path`: all shard with split sentences, e.g., /shard/0.txt, /shard/1.txt ...
 * `--shard`: Number of shard, e.g., 10, 50, or 100
 
@@ -76,7 +76,7 @@ make
 
 * `--input_path`: location of all shard with split sentences, e.g., /shard/0.txt, /shard/1.txt ...
 * `--output_path`: location of all h5 with token_id, input_mask, segment_ids and masked_lm_positions, e.g., /h5/0.h5, /h5/1.h5 ...
-* `--tokenizer_path`: tokenizer path contains huggingface tokenizer.json. Download config.json, special_tokens_map.json, vocab.txt and tokenzier.json from [hfl/chinese-roberta-wwm-ext-large](https://huggingface.co/hfl/chinese-roberta-wwm-ext-large/tree/main)
+* `--tokenizer_path`: tokenizer path contains huggingface tokenizer.json. Download config.json, special_tokens_map.json, vocab.txt and tokenizer.json from [hfl/chinese-roberta-wwm-ext-large](https://huggingface.co/hfl/chinese-roberta-wwm-ext-large/tree/main)
 * `--backend`: python or c++, **specifies c++ can obtain faster preprocess speed**
 * `--dupe_factor`: specifies how many times the preprocessor repeats to create the input from the same article/document
 * `--worker`: number of process

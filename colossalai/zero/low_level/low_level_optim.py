@@ -207,8 +207,8 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
             for param in self._working_param_groups[group_id]:
                 self._param_store.set_param_reduction_state(param, False)
 
-        # intialize communication stream for
-        # communication-compuation overlapping
+        # initialize communication stream for
+        # communication-computation overlapping
         if self._overlap_communication:
             self._comm_stream = torch.cuda.Stream()
 
@@ -269,7 +269,7 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
         params_per_rank = [[] for _ in range(self._world_size)]
         numel_per_rank = [0 for _ in range(self._world_size)]
 
-        # partititon the parameters in a greedy fashion
+        # partition the parameters in a greedy fashion
         sorted_params = sorted(param_list, key=lambda x: x.numel(), reverse=True)
         for param in sorted_params:
             # allocate this parameter to the rank with
@@ -297,7 +297,7 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
             param_group = self._working_param_groups[group_id]
             for param in param_group:
                 if param.requires_grad:
-                    # determines the reduction destionation rank
+                    # determines the reduction destination rank
                     # this is only valid for stage 2
                     # dst_rank = None means using all-reduce
                     # else using reduce

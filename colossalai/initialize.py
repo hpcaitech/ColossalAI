@@ -238,7 +238,7 @@ def initialize(model: nn.Module,
     loaded into gpc.config.
 
     Args:
-        model (:class:`torch.nn.Module` or Callbale): Your model instance or a function to build the model.
+        model (:class:`torch.nn.Module` or Callable): Your model instance or a function to build the model.
         optimizer (:class:`torch.optim.optimizer.Optimizer` or :class:`Type[torch.optim.optimizer]`):
             Your optimizer instance.
         criterion (:class:`torch.nn.modules.loss._Loss`, optional): Your criterion instance.

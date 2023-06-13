@@ -46,7 +46,7 @@ def parse_args():
                         type=int,
                         default=1,
                         help="This param makes sure that a certain task is repeated for this time steps to \
-        optimise on the back propogation speed with APEX's DistributedDataParallel")
+        optimize on the back propagation speed with APEX's DistributedDataParallel")
     parser.add_argument("--max_predictions_per_seq",
                         "--max_pred",
                         default=80,
@@ -73,12 +73,12 @@ def parse_args():
                         help="location of saving checkpoint, which contains model and optimizer")
     parser.add_argument('--seed', type=int, default=42, help="random seed for initialization")
     parser.add_argument('--vscode_debug', action='store_true', help="use vscode to debug")
-    parser.add_argument('--load_pretrain_model', default='', type=str, help="location of model's checkpoin")
+    parser.add_argument('--load_pretrain_model', default='', type=str, help="location of model's checkpoint")
     parser.add_argument(
         '--load_optimizer_lr',
         default='',
         type=str,
-        help="location of checkpoint, which contains optimerzier, learning rate, epoch, shard and global_step")
+        help="location of checkpoint, which contains optimizer, learning rate, epoch, shard and global_step")
     parser.add_argument('--resume_train', action='store_true', help="whether resume training from a early checkpoint")
     parser.add_argument('--mlm', default='bert', type=str, help="model type, bert or deberta")
     parser.add_argument('--checkpoint_activations', action='store_true', help="whether to use gradient checkpointing")
