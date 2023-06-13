@@ -5,7 +5,6 @@ import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .base.actor import Actor
 
 try:
     from transformers.generation_logits_process import (
@@ -94,7 +93,7 @@ def sample(model: nn.Module,
     return input_ids
 
 
-def generate(model: Actor,
+def generate(model: nn.Module,
              input_ids: torch.Tensor,
              max_length: int,
              num_beams: int = 1,
@@ -152,15 +151,14 @@ def generate(model: Actor,
 
 
 @torch.no_grad()
-def generate_with_actor(actor_model: Actor,
+def generate_with_actor(actor_model: nn.Module,
                         input_ids: torch.Tensor,
                         return_action_mask: bool = True,
                         **kwargs
                         ) -> Union[Tuple[torch.LongTensor, torch.LongTensor],
                                    Tuple[torch.LongTensor, torch.LongTensor, torch.BoolTensor]]:
-    assert isinstance(actor_model, Actor), \
-        "actor_model should be an instance of Actor"
-
+    """Generate token sequence with actor model. Refer to `generate` for more details.
+    """
     # generate sequences
     sequences = generate(actor_model, input_ids, **kwargs)
 

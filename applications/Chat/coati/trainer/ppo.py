@@ -5,6 +5,7 @@ import torch.nn as nn
 from coati.experience_maker import Experience, NaiveExperienceMaker
 from coati.models.base import Actor, Critic
 from coati.models.loss import GPTLMLoss, PolicyLoss, ValueLoss
+from coati.models.utils import calc_action_log_probs
 from coati.replay_buffer import NaiveReplayBuffer
 from torch import Tensor
 from torch.optim import Optimizer
@@ -166,7 +167,7 @@ class PPOTrainer(Trainer):
         # policy loss
         num_actions = experience.action_mask.size(1)
         actor_output = self.actor(experience.sequences, attention_mask=experience.attention_mask)
-        action_log_probs = self.actor.calc_action_log_probs(actor_output, experience.sequences, num_actions)
+        action_log_probs = calc_action_log_probs(actor_output, experience.sequences, num_actions)
         actor_loss = self.actor_loss_fn(action_log_probs,
                                         experience.action_log_probs,
                                         experience.advantages,

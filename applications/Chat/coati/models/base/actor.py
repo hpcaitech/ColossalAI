@@ -4,7 +4,6 @@ import torch
 import torch.nn as nn
 
 from ..lora import LoRAModule
-from ..utils import log_probs_from_logits
 
 
 class Actor(LoRAModule):
@@ -21,25 +20,6 @@ class Actor(LoRAModule):
         super().__init__(lora_rank=lora_rank, lora_train_bias=lora_train_bias)
         self.model = model
         self.convert_to_lora()
-
-    @staticmethod
-    def calc_action_log_probs(output: torch.Tensor,
-                              sequences: torch.LongTensor,
-                              num_actions: int
-                              ) -> torch.Tensor:
-        """Calculate action log probs.
-
-        Args:
-            output (torch.Tensor): Output tensor of self.forward.
-            sequences (torch.LongTensor): Input sequences.
-            num_actions (int): Number of actions.
-
-        Returns:
-            torch.Tensor: Action log probs.
-        """
-        logits = output['logits']
-        log_probs = log_probs_from_logits(logits[:, :-1, :], sequences[:, 1:])
-        return log_probs[:, -num_actions:]
 
     def forward(self,
                 sequences: torch.LongTensor,
