@@ -5,7 +5,6 @@ from typing import Optional
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-from coati.models.base import get_base_model
 from coati.replay_buffer import ReplayBuffer
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
@@ -56,9 +55,8 @@ class NaiveStrategy(Strategy):
                         only_rank0: bool = True,
                         tokenizer: Optional[PreTrainedTokenizerBase] = None) -> None:
         unwrapped_model = self.unwrap_model(model)
-        hf_model = get_base_model(unwrapped_model)
-        assert isinstance(hf_model, PreTrainedModel)
-        hf_model.save_pretrained(path)
+        assert isinstance(unwrapped_model, PreTrainedModel)
+        unwrapped_model.save_pretrained(path)
         if tokenizer is not None:
             tokenizer.save_pretrained(path)
 
