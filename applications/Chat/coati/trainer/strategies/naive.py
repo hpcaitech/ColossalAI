@@ -29,10 +29,6 @@ class NaiveStrategy(Strategy):
         Strategy for single GPU. No parallelism is used.
     """
 
-    def __init__(self) -> None:
-        self.plugin = None
-        super().__init__(self.plugin)
-
     def setup_distributed(self) -> None:
         self._try_init_dist(force=False)
 

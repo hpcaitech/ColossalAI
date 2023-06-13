@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from contextlib import nullcontext
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any, Callable, List, Optional, Tuple, Union
 
 import torch
 import torch.distributed as dist
@@ -24,10 +24,12 @@ class Strategy(ABC):
         Base class for training strategies.
     """
 
-    def __init__(self, plugin: Optional[Plugin] = None) -> None:
+    def __init__(self, plugin_initializer: Callable[..., Optional[Plugin]] = lambda: None) -> None:
         super().__init__()
         self.setup_distributed()
-        self.booster = Booster(plugin=plugin)
+        # NOTE: plugin should be initialized after distributed setup
+        self.plugin = plugin_initializer()
+        self.booster = Booster(plugin=self.plugin)
 
     def backward(self, loss: torch.Tensor, model: nn.Module, optimizer: Optimizer, **kwargs) -> None:
         self.booster.backward(loss, optimizer)
