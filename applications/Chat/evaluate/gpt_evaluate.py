@@ -13,6 +13,23 @@ import seaborn as sns
 import tqdm
 from utils import jdump, jload
 
+ref_step_template = {
+    "en":
+        "Now please compare the answer with the {adjective} answer, determine whether the answer is able to achieve the same level of {metric}.\n\n",
+    "cn":
+        "请比较答案与上面的{adjective}答案，确定答案是否可以达到与该{adjective}答案同样水平的{metric}。\n\n"
+}
+
+ref_answer_template_general = {
+    "en": "\nAn example answer with good quality is as follows:\n\n{answer}\n\n",
+    "cn": "\n一个优质的示例答案如下：\n\n{answer}\n\n"
+}
+
+ref_answer_template_correctness = {
+    "en": "\nA correct answer is as follows:\n\n{answer}\n\n",
+    "cn": "\n标准答案如下：\n\n{answer}\n\n"
+}
+
 
 def get_battle_result(sys_prompt: str, user_prompt: str, id: int, max_tokens: int = 2048) -> Dict[str, Any]:
     """
@@ -233,18 +250,125 @@ def save_battle_results(evaluations: List[Dict], name1: str, name2: str, save_pa
     print(f"Model {name2} average score: {ans2_score/(len(evaluations)-invalid_count):.2f}")
 
 
+def reference_template(metric: str, language: str, reference: Dict[str, Any]) -> str:
+    """
+    Get prompt template for GPT evaluation with reference.
+
+    Different languages have different prompt templates.
+
+    Args:
+        metric: metric used in GPT evaluation with reference.
+        language: language for the template.
+        reference: the instruction that contains target answer.
+
+    Returns:
+        Prompt template for GPT evaluation with reference.
+    """
+
+    step_to_add = ref_step_template[language]
+
+    for_the_given_answer = "{metric} (1-5) (directly give the score for the given answer):" if language == "en" else "{metric} (1-5) (直接对给定答案打分)"
+
+    # adjective is used to describe the word "answer" in the prompt.
+    adjective = "example" if language == "en" else "示例"
+    answer_to_add = ref_answer_template_general[language]
+
+    # Only for correctness, we will provide a correct answer and so the adjective for "answer" will be "correct". The prompt words will be "a correct answer".
+    # In other cases, the prompt words will be "an example answer with good quality" by default.
+    if metric.lower() == "correctness":
+        adjective = "correct" if language == "en" else "标准"
+        answer_to_add = ref_answer_template_correctness[language]
+
+    answer_to_add = answer_to_add.format(answer=reference["target"] if reference["target"] else reference["output"])
+    step_to_add = step_to_add.format(metric=metric.lower(),
+                                     adjective=adjective) + for_the_given_answer.format(metric=metric)
+
+    return answer_to_add + step_to_add
+
+
+def fill_in_message(role: str, content: str) -> Dict[str, str]:
+    """
+    Generate one formatted message to send through chat completion.
+
+    Args:
+        role: the role of the author of this message.
+        content: the contents of the message.
+
+    Returns:
+        One message to send through chat completion.
+    """
+
+    return {"role": role, "content": content}
+
+
+def multiturn_chat_completion(user_messages: List[str], model: str, max_tokens: int = 1, turns=2) -> Dict[str, Any]:
+    """
+    Do multi-turn chat completion.
+
+    When turns == 1, it is a one-turn conversation for normal GPT evaluation.
+    When turns == 2, it is a two-turn conversation which is used for GPT evaluation with reference answers.
+
+    Args:
+        user_messages: messages user wants to send.
+        model: the model used to evaluate answers.
+        max_tokens: the maximum number of tokens to generate in the chat completion.
+        turns: the number of turns for conversation.
+
+    Returns:
+        Last turn's response.
+    """
+
+    if len(user_messages) != turns:
+        raise Exception("The length of user messages should be equal to the turn number!")
+
+    assistant_responses = []
+
+    for i in range(turns):
+        messages_to_send = []
+
+        for j in range(i):
+            messages_to_send.append(fill_in_message("user", user_messages[j]))
+            messages_to_send.append(
+                fill_in_message("assistant", assistant_responses[j]["choices"][0]["message"]["content"]))
+
+        # Length of user messages == Length of assistant messages + 1
+        # Because we always expect the api to response
+        messages_to_send.append(fill_in_message("user", user_messages[i]))
+
+        response = openai.ChatCompletion.create(
+            model=model,
+            messages=messages_to_send,
+            temperature=0,
+            max_tokens=max_tokens,
+        )
+
+        # Avoid exceeding rate limits.
+        # You can comment this line if your request doesn't contain many tokens.
+        time.sleep(1)
+
+        assistant_responses.append(response)
+
+    return assistant_responses[-1]
+
+
 def get_gpt_evaluation_without_logprobs(prompt: Dict[str, Any],
                                         inst: Dict[str, Any],
                                         metrics: List[str],
+                                        language: str,
+                                        reference: Dict[str, Any] = None,
                                         model: str = "gpt-3.5-turbo",
                                         max_tokens: int = 2048) -> Dict[str, Any]:
     """
     Use chat models(gpt-3.5-turbo or gpt-4) to evaluate one model answer.
 
+    Temprature is set to 0 to make the model more deterministic.
+
     Args:
         prompt: a dictionary including prompt template, CoT and metrics.
         inst: the instruction that is needed to be evaluated.
         metrics: the metrics for evaluation.
+        language: language used to change the CoT(add one more step about comparing the given answer and reference) if reference is not None.
+        reference: the reference answer.
         model: the model used to evaluate answers.
         max_tokens: the maximum number of tokens to generate in the chat completion.
 
@@ -254,7 +378,7 @@ def get_gpt_evaluation_without_logprobs(prompt: Dict[str, Any],
 
     MAX_API_RETRY = 3
 
-    question = (inst["instruction"] if inst["input"] == "" else inst["instruction"] + " " + inst["input"])
+    question = (inst["instruction"] if inst["input"] == "" else inst["instruction"] + "\n" + inst["input"])
     answer = inst["output"]
     inst["evaluation"] = {}
 
@@ -265,28 +389,34 @@ def get_gpt_evaluation_without_logprobs(prompt: Dict[str, Any],
             )
         for i in range(MAX_API_RETRY):
             try:
-                response = openai.ChatCompletion.create(
-                    model=model,
-                    messages=[
-                        {
-                            "role":
-                                "user",
-                            "content":
-                                prompt["prompt"].format(
-                                    question=question,
-                                    answer=answer,
-                                    metric=prompt["metrics"][metric],
-                                    steps=prompt["CoT"][metric],
-                                ),
-                        },
-                    ],
-                    temperature=0,
-                    max_tokens=max_tokens,
+                prompt_reference = "" if reference is None else reference_template(metric, language, reference)
+
+                prompt_1st_round = prompt["prompt"].format(
+                    question=question,
+                    answer=answer,
+                    metric=prompt["metrics"][metric],
+                    steps=prompt["CoT"][metric],
                 )
+
+                if prompt_reference:
+                    # Do a 2-round conversation
+                    response = multiturn_chat_completion([prompt_1st_round, prompt_reference],
+                                                         model,
+                                                         max_tokens=max_tokens,
+                                                         turns=2)
+                else:
+                    response = multiturn_chat_completion([prompt_1st_round], model, max_tokens=max_tokens, turns=1)
+
                 inst["evaluation"][metric] = {
                     "response": response["choices"][0]["message"]["content"],
                     "logprobs": None,
                 }
+
+                # Prevent exceeding rate limits because we have multiple workers.
+                # But this will slow down the evaluation process.
+                # You can comment this line if your request doesn't contain many tokens.
+                time.sleep(len(metrics) * 0.5)
+
                 break
             except Exception as e:
                 print(e)
@@ -305,6 +435,8 @@ def get_gpt_evaluation_with_logprobs(prompt: Dict[str, Any],
     Use completion model(text-davinci-003) to evaluate one model answer.
     Only completion models can return log probabilities.
 
+    Temprature is set to 0 to make the model more deterministic.
+
     Args:
         prompt: a dictionary including prompt template, CoT and metrics.
         inst: the instruction that is needed to be evaluated.
@@ -317,7 +449,7 @@ def get_gpt_evaluation_with_logprobs(prompt: Dict[str, Any],
 
     MAX_API_RETRY = 3
 
-    question = (inst["instruction"] if inst["input"] == "" else inst["instruction"] + " " + inst["input"])
+    question = (inst["instruction"] if inst["input"] == "" else inst["instruction"] + "\n" + inst["input"])
     answer = inst["output"]
     inst["evaluation"] = {}
 
@@ -344,6 +476,12 @@ def get_gpt_evaluation_with_logprobs(prompt: Dict[str, Any],
                     "response": response["choices"][0]["text"],
                     "logprobs": response["choices"][0]["logprobs"]["top_logprobs"],
                 }
+
+                # Prevent exceeding rate limits because we have multiple workers.
+                # But this will slow down the evaluation process.
+                # You can comment this line if your request doesn't contain many tokens.
+                time.sleep(len(metrics) * 0.5)
+
                 break
             except Exception as e:
                 print(e)
@@ -354,7 +492,13 @@ def get_gpt_evaluation_with_logprobs(prompt: Dict[str, Any],
     return inst
 
 
-def evaluate(answers: List[Dict], prompt: Dict[str, Any], metrics: List[str], category: str, model: str) -> List[Dict]:
+def evaluate(answers: List[Dict],
+             prompt: Dict[str, Any],
+             metrics: List[str],
+             category: str,
+             model: str,
+             language: str,
+             references: List[Dict] = None) -> List[Dict]:
     """
     Use GPT models to evaluate model answers and save evaluation results.
 
@@ -364,6 +508,8 @@ def evaluate(answers: List[Dict], prompt: Dict[str, Any], metrics: List[str], ca
         metrics: metrics for GPT evaluation.
         category: the category of the model answers for evaluation.
         model: the specific GPT model used to evaluate answers.
+        language: language used in GPT evaluation
+        references: references for GPT evaluation
 
     Returns:
         Evaluations of the given answers.
@@ -378,12 +524,19 @@ def evaluate(answers: List[Dict], prompt: Dict[str, Any], metrics: List[str], ca
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
         futures = []
-        for inst in answers:
+        for idx, inst in enumerate(answers):
             # Completion models can return log probabilities.
             if model == "text-davinci-003":
                 future = executor.submit(get_gpt_evaluation_with_logprobs, prompt, inst, metrics, 1)
             else:
-                future = executor.submit(get_gpt_evaluation_without_logprobs, prompt, inst, metrics, model, 1)
+                future = executor.submit(get_gpt_evaluation_without_logprobs,
+                                         prompt,
+                                         inst,
+                                         metrics,
+                                         language,
+                                         reference=None if references is None else references[idx],
+                                         model=model,
+                                         max_tokens=1)
 
             futures.append(future)
 
