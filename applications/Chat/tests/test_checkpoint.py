@@ -60,10 +60,15 @@ def run_test_checkpoint(strategy):
         rank0_dirname = rank0_dirname[0]
 
         model_path = os.path.join(rank0_dirname, 'model.pt')
-        optim_path = os.path.join(rank0_dirname, f'optim-r{dist.get_rank()}.pt')
-
         strategy.save_model(actor, model_path, only_rank0=True)
-        strategy.save_optimizer(actor_optim, optim_path, only_rank0=False)
+
+        optim_path = os.path.join(rank0_dirname, f'optim.pt')
+        strategy.save_optimizer(actor_optim, optim_path, only_rank0=True)
+
+        # FIXME(cwher): Sharded optimizer checkpoint is not supported yet.
+        #  at "ColossalAI/colossalai/checkpoint_io/general_checkpoint_io.py", line 62
+        # optim_path = os.path.join(rank0_dirname, f'optim-r{dist.get_rank()}.pt')
+        # strategy.save_optimizer(actor_optim, optim_path, only_rank0=False)
 
         dist.barrier()
 
