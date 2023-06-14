@@ -104,18 +104,9 @@ class ColossalAIStrategy(DDPStrategy):
         if stage == 3:
             self.zero_optim_config = dict(gpu_margin_mem_ratio=gpu_margin_mem_ratio)
         else:
-            self.zero_optim_config = dict(reduce_bucket_size=reduce_bucket_size,
-                                          overlap_communication=overlap_communication,
-                                          cpu_offload=(placement_policy == 'cpu'))
-        self.optim_kwargs = dict(initial_scale=initial_scale,
-                                 growth_factor=growth_factor,
-                                 backoff_factor=backoff_factor,
-                                 growth_interval=growth_interval,
-                                 hysteresis=hysteresis,
-                                 min_scale=min_scale,
-                                 max_scale=max_scale,
-                                 max_norm=max_norm,
-                                 norm_type=norm_type)
+    def _post_init(self) -> None:
+        assert isinstance(self.plugin, (LowLevelZeroPlugin, GeminiPlugin)), \
+            f'{type(self).__name__}\'s plugin is not initialized properly.'
 
     def setup_distributed(self) -> None:
         colossalai.launch_from_torch({}, seed=self.seed)

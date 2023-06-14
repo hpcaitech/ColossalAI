@@ -28,18 +28,16 @@ class NaiveStrategy(Strategy):
         Strategy for single GPU. No parallelism is used.
     """
 
+    def _post_init(self) -> None:
+        assert self.plugin is None, \
+            f'{type(self).__name__}\'s plugin is not initialized properly.'
+
     def setup_distributed(self) -> None:
         self._try_init_dist(force=False)
 
     def backward(self, loss: torch.Tensor, model: nn.Module, optimizer: Optimizer, **kwargs) -> None:
         # HACK: torch.Adam isn't working properly within booster
         loss.backward()
-
-    def setup_model(self, model: nn.Module) -> nn.Module:
-        return model
-
-    def setup_optimizer(self, optimizer: Optimizer, model: nn.Module) -> Optimizer:
-        return optimizer
 
     def setup_dataloader(self, replay_buffer: ReplayBuffer, pin_memory: bool = False) -> DataLoader:
         return DataLoader(replay_buffer,

@@ -30,6 +30,11 @@ class Strategy(ABC):
         # NOTE: plugin should be initialized after distributed setup
         self.plugin = plugin_initializer()
         self.booster = Booster(plugin=self.plugin)
+        self._post_init()
+
+    @abstractmethod
+    def _post_init(self) -> None:
+        pass
 
     def backward(self, loss: torch.Tensor, model: nn.Module, optimizer: Optimizer, **kwargs) -> None:
         self.booster.backward(loss, optimizer)

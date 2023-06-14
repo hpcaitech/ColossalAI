@@ -22,9 +22,16 @@ class DDPStrategy(NaiveStrategy):
         Strategy for distributed training using torch.distributed.
     """
 
-    def __init__(self, seed: int = 42) -> None:
+    def __init__(self,
+                 seed: int = 42,
+                 plugin_initializer: Callable = TorchDDPPlugin
+                 ) -> None:
         self.seed = seed
-        super().__init__(plugin_initializer=TorchDDPPlugin)
+        super().__init__(plugin_initializer)
+
+    def _post_init(self) -> None:
+        assert isinstance(self.plugin, TorchDDPPlugin), \
+            f'{type(self).__name__}\'s plugin is not initialized properly.'
 
     def setup_distributed(self) -> None:
         self._try_init_dist(force=True)
