@@ -69,8 +69,8 @@ class DDPStrategy(NaiveStrategy):
         return DistributedSampler(dataset, dist.get_world_size(), dist.get_rank())
 
     def unwrap_model(self, model: nn.Module) -> nn.Module:
-        base_model: DDP = super().unwrap_model(model)
-        return base_model.module
+        assert isinstance(model, DDP)
+        return model.module
 
     def save_pretrained(self,
                         model: nn.Module,

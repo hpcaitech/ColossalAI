@@ -6,6 +6,7 @@ import pytest
 import torch
 import torch.distributed as dist
 from coati.models.gpt import GPTActor
+from coati.models.utils import calc_action_log_probs
 from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy
 from transformers.models.gpt2.configuration_gpt2 import GPT2Config
 
@@ -43,7 +44,8 @@ def run_test_checkpoint(strategy):
     def run_step():
         data = get_data(BATCH_SIZE)
         action_mask = torch.ones_like(data['attention_mask'], dtype=torch.bool)
-        action_log_probs = actor(data['input_ids'], action_mask.size(1), data['attention_mask'])
+        actor_output = actor(data['input_ids'], data['attention_mask'])
+        action_log_probs = calc_action_log_probs(actor_output, data['input_ids'], action_mask.size(1))
         loss = action_log_probs.sum()
         strategy.backward(loss, actor, actor_optim)
         strategy.optimizer_step(actor_optim)

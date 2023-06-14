@@ -5,7 +5,6 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 import torch.optim as optim
-from coati.models.base import get_base_model
 from torch.optim import Optimizer
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
@@ -153,14 +152,13 @@ class ColossalAIStrategy(DDPStrategy):
     def save_model(self, model: nn.Module, path: str, only_rank0: bool = True) -> None:
         if only_rank0 and dist.get_rank() != 0 and self.stage != 3:
             return
-        base_model = get_base_model(model)
         if self.stage == 3:
-            assert isinstance(base_model, ZeroDDP)
+            assert isinstance(model, ZeroDDP)
             # for stage 3, state_dict() method should be called on every rank
-            state_dict = base_model.state_dict(only_rank_0=only_rank0)
+            state_dict = model.state_dict(only_rank_0=only_rank0)
         else:
             # only_rank0 is false or rank == 0
-            state_dict = base_model.state_dict()
+            state_dict = model.state_dict()
         if only_rank0 and dist.get_rank() != 0:
             return
         torch.save(state_dict, path)
@@ -172,11 +170,10 @@ class ColossalAIStrategy(DDPStrategy):
         torch.save(optimizer.state_dict(), path)
 
     def unwrap_model(self, model: nn.Module) -> nn.Module:
-        base_model: Union[nn.Module, ZeroDDP] = get_base_model(model)
         if self.stage == 3:
-            assert isinstance(base_model, ZeroDDP)
-            return base_model.module
-        return base_model
+            assert isinstance(model, ZeroDDP)
+            return model.module
+        return model
 
     def save_pretrained(self,
                         model: nn.Module,
@@ -196,5 +193,5 @@ class ColossalAIStrategy(DDPStrategy):
             #     if isinstance(module, LoraLinear):
             #         module.merge_weights = True
             #         module.eval()
-            base_model: ZeroDDP = get_base_model(model)
-            yield from base_model.state_dict_shard(max_shard_size=1024, only_rank_0=False)
+            assert isinstance(model, ZeroDDP)
+            yield from model.state_dict_shard(max_shard_size=1024, only_rank_0=False)
