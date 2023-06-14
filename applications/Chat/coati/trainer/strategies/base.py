@@ -26,8 +26,9 @@ class Strategy(ABC):
 
     def __init__(self, plugin_initializer: Callable[..., Optional[Plugin]] = lambda: None) -> None:
         super().__init__()
-        self.setup_distributed()
-        # NOTE: plugin should be initialized after distributed setup
+        if not dist.is_initialized():
+            # NOTE: dist must be initialized before Booster
+            self.setup_distributed()
         self.plugin = plugin_initializer()
         self.booster = Booster(plugin=self.plugin)
         self._post_init()

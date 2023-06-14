@@ -93,6 +93,9 @@ class ColossalAIStrategy(DDPStrategy):
         self.precision = precision
         self.shard_init = shard_init
 
+        # NOTE: dist should be initialized before calling get_current_device()
+        self.setup_distributed(seed)
+
         optim_kwargs = dict(
             initial_scale=initial_scale,
             growth_factor=growth_factor,
@@ -104,7 +107,6 @@ class ColossalAIStrategy(DDPStrategy):
             max_norm=max_norm,
             norm_type=norm_type
         )
-
         if stage == 3:
             plugin_initializer = functools.partial(
                 GeminiPlugin,
@@ -143,8 +145,8 @@ class ColossalAIStrategy(DDPStrategy):
         assert isinstance(self.plugin, (LowLevelZeroPlugin, GeminiPlugin)), \
             f'{type(self).__name__}\'s plugin is not initialized properly.'
 
-    def setup_distributed(self) -> None:
-        colossalai.launch_from_torch({}, seed=self.seed)
+    def setup_distributed(self, seed: int) -> None:
+        colossalai.launch_from_torch({}, seed=seed)
 
     def model_init_context(self):
         if isinstance(self.plugin, GeminiPlugin):
