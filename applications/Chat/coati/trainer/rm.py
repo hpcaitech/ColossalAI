@@ -53,7 +53,8 @@ class RewardModelTrainer(Trainer):
         self.model = model
         self.loss_fn = loss_fn
         self.optimizer = optim
-        self.scheduler = lr_scheduler.CosineAnnealingLR(self.optimizer, self.train_dataloader.__len__() // 100)
+        # TODO(cwher):
+        # self.scheduler = lr_scheduler.CosineAnnealingLR(self.optimizer, self.train_dataloader.__len__() // 100)
 
     def eval_acc(self, dataloader):
         dist = 0
@@ -103,7 +104,7 @@ class RewardModelTrainer(Trainer):
                 self.optimizer.zero_grad()
                 cnt += 1
                 if cnt == 100:
-                    self.scheduler.step()
+                    # self.scheduler.step()
                     dist, acc = self.eval_acc(self.valid_dataloader)
                     cnt = 0
                     if is_rank_0():

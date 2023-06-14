@@ -58,10 +58,11 @@ class SFTTrainer(Trainer):
         num_update_steps_per_epoch = len(train_dataloader) // self.accumulation_steps
         max_steps = math.ceil(self.max_epochs * num_update_steps_per_epoch)
 
-        self.scheduler = get_scheduler("cosine",
-                                       self.optimizer,
-                                       num_warmup_steps=math.ceil(max_steps * 0.03),
-                                       num_training_steps=max_steps)
+        # TODO(cwher):
+        # self.scheduler = get_scheduler("cosine",
+        #                                self.optimizer,
+        #                                num_warmup_steps=math.ceil(max_steps * 0.03),
+        #                                num_training_steps=max_steps)
 
     def fit(self, logger, use_wandb: bool = False):
         if use_wandb:
@@ -97,11 +98,11 @@ class SFTTrainer(Trainer):
                 if (batch_id + 1) % self.accumulation_steps == 0:
                     self.strategy.optimizer_step(self.optimizer)
                     self.optimizer.zero_grad()
-                    self.scheduler.step()
+                    # self.scheduler.step()
                     if is_rank_0() and use_wandb:
                         wandb.log({
                             "loss": total_loss / self.accumulation_steps,
-                            "lr": self.scheduler.get_last_lr()[0],
+                            # "lr": self.scheduler.get_last_lr()[0],
                             "epoch": epoch,
                             "batch_id": batch_id
                         })
