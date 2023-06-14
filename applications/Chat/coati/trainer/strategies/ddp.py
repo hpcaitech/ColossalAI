@@ -1,5 +1,5 @@
 import random
-from typing import Optional
+from typing import Callable, Optional
 
 import numpy as np
 import torch
@@ -7,6 +7,7 @@ import torch.distributed as dist
 import torch.nn as nn
 from coati.replay_buffer import ReplayBuffer
 from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
@@ -42,9 +43,10 @@ class DDPStrategy(NaiveStrategy):
         np.random.seed(seed)
         torch.manual_seed(seed)
 
+    def backward(self, loss: torch.Tensor, model: nn.Module, optimizer: Optimizer, **kwargs) -> None:
+        self.booster.backward(loss, optimizer)
+
     def setup_dataloader(self, replay_buffer: ReplayBuffer, pin_memory: bool = False) -> DataLoader:
-        # DDP only mode, replay buffers on each rank are different.
-        assert isinstance(self.plugin, TorchDDPPlugin), "self.plugin isn't initialized properly."
         return self.plugin.prepare_dataloader(replay_buffer,
                                               batch_size=replay_buffer.sample_batch_size,
                                               shuffle=True,
@@ -58,9 +60,7 @@ class DDPStrategy(NaiveStrategy):
 
     def unwrap_model(self, model: nn.Module) -> nn.Module:
         assert isinstance(model, TorchDDPModel), "model is not wrapped by TorchDDPModel."
-        ddp_model = model.module
-        assert isinstance(ddp_model, DDP), "TorchDDPModel should wrap a DDP model."
-        return ddp_model.module
+        return model.unwrap()
 
     def save_pretrained(self,
                         model: nn.Module,

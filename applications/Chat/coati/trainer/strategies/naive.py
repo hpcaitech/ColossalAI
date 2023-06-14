@@ -36,7 +36,9 @@ class NaiveStrategy(Strategy):
         self._try_init_dist(force=False)
 
     def backward(self, loss: torch.Tensor, model: nn.Module, optimizer: Optimizer, **kwargs) -> None:
-        # HACK: torch.Adam isn't working properly within booster
+        # HACK: self.booster.backward(loss, optimizer) can't work if plugin is None,
+        #  it would run `optimizer.backward(loss)`, which is not compatible with torch.optim.Optimizer
+        assert self.plugin is None, "DO NOT call this method if plugin is not None"
         loss.backward()
 
     def setup_dataloader(self, replay_buffer: ReplayBuffer, pin_memory: bool = False) -> DataLoader:
