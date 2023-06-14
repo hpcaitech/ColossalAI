@@ -6,6 +6,8 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 import transformers
+from torch.distributed.fsdp import MixedPrecision
+
 from performance_evaluator import PerformanceEvaluator
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader, Dataset
@@ -115,11 +117,12 @@ def main():
     # Initialize Booster
     # ==============================
     if args.plugin == 'gemini':
-        plugin = GeminiPlugin()
+        plugin = GeminiPlugin(placement_policy='cuda')
     elif args.plugin == 'gemini_cpu':
         plugin = GeminiPlugin(placement_policy='cpu')
     elif args.plugin == 'fsdp':
-        plugin = TorchFSDPPlugin()
+        plugin = TorchFSDPPlugin(mixed_precision=MixedPrecision(reduce_dtype=torch.float16, param_dtype=torch.float16,
+                                                                buffer_dtype=torch.float16))
     else:
         raise ValueError(f'Unknown plugin {args.plugin}')
 
@@ -137,11 +140,16 @@ def main():
     # ==============================
     # Initialize Model and Optimizer
     # ==============================
+    if args.plugin == 'fsdp':
+        with no_init_weights():
+            model = LlamaForCausalLM(config)
+            model.tie_weights()
+    else:
+        with low_precision_init(), no_init_weights(), LazyInitContext():
+            model = LlamaForCausalLM(config)
+            model.tie_weights()
 
-    with low_precision_init(), no_init_weights(), LazyInitContext():
-        model = LlamaForCausalLM(config)
-        model.tie_weights()
-
+    print(model.dtype)
     model_numel = get_model_numel(model)
     coordinator.print_on_master(f'Model params: {format_numel_str(model_numel)}')
     performance_evaluator = PerformanceEvaluator(model_numel, args.grad_checkpoint, args.ignore_steps)
