@@ -44,8 +44,10 @@ class SFTTrainer(Trainer):
         accumulation_steps: int = 8,
         callbacks: List[Callback] = [],
     ) -> None:
-        if accumulation_steps > 1 and isinstance(strategy, ColossalAIStrategy) and strategy.stage == 3:
-            raise ValueError("Accumulation steps are not supported in stage 3 of ColossalAI")
+        if accumulation_steps > 1 and isinstance(strategy, ColossalAIStrategy):
+            from colossalai.booster.plugin import GeminiPlugin
+            assert not isinstance(strategy.plugin, GeminiPlugin), \
+                "Accumulation steps are not supported in stage 3 of ColossalAI"
         super().__init__(strategy, max_epochs, callbacks=callbacks)
         self.train_dataloader = train_dataloader
         self.eval_dataloader = eval_dataloader

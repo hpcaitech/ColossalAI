@@ -105,6 +105,8 @@ class PPOTrainer(Trainer):
     def _learn(self):
         # replay buffer may be empty at first, we should rebuild at each training
         if not self.sample_replay_buffer:
+            # HACK(cwher): according to the design of boost API, dataloader should also be boosted,
+            #  but it is impractical to adapt this pattern in RL training. Thus, I left dataloader unboosted.
             dataloader = self.strategy.setup_dataloader(self.replay_buffer, self.dataloader_pin_memory)
         if self.sample_replay_buffer:
             pbar = tqdm(range(self.max_epochs), desc='Train epoch', disable=not is_rank_0())
