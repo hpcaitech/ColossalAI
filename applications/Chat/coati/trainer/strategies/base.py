@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from contextlib import nullcontext
-from typing import Any, Callable, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.distributed as dist
@@ -15,8 +15,7 @@ from colossalai.booster.plugin import Plugin
 
 from .sampler import DistributedSampler
 
-ModelOptimPair = Tuple[nn.Module, Optimizer]
-ModelOrModelOptimPair = Union[nn.Module, ModelOptimPair]
+_BoostArgSpec = Union[nn.Module, Tuple[nn.Module, Optimizer], Dict]
 
 
 class Strategy(ABC):
@@ -47,21 +46,6 @@ class Strategy(ABC):
     def setup_distributed(self) -> None:
         pass
 
-    def setup_model(self, model: nn.Module) -> nn.Module:
-        raise NotImplementedError()
-
-    def setup_optimizer(self, optimizer: Optimizer, model: nn.Module) -> Optimizer:
-        raise NotImplementedError()
-
-    def setup_model_optimizer(self,
-                              model: nn.Module,
-                              optimizer: Optimizer
-                              ) -> Tuple[nn.Module, Optimizer]:
-        # NOTE: Booster.boost must take in both model and optimizer
-        model, optimizer, *_ = self.booster.boost(model=model,
-                                                  optimizer=optimizer)
-        return model, optimizer
-
     @abstractmethod
     def setup_dataloader(self, replay_buffer: ReplayBuffer, pin_memory: bool = False) -> DataLoader:
         pass
@@ -69,12 +53,12 @@ class Strategy(ABC):
     def model_init_context(self):
         return nullcontext()
 
-    def prepare(
-        self, *models_or_model_optim_pairs: ModelOrModelOptimPair
-    ) -> Union[List[ModelOrModelOptimPair], ModelOrModelOptimPair]:
-        """Prepare models or model-optimizer-pairs based on each strategy.
+    def prepare(self, *boost_args: _BoostArgSpec) -> Union[List[_BoostArgSpec], _BoostArgSpec]:
+        """Prepare [model | (model, optimizer) | Dict] based on each strategy.
 
         Example::
+            >>> # e.g., include lr_scheduler
+            >>> result_dict = strategy.prepare(dict(model=model, lr_scheduler=lr_scheduler))
             >>> # when fine-tuning actor and critic
             >>> (actor, actor_optim), (critic, critic_optim), reward_model, initial_model = strategy.prepare((actor, actor_optim), (critic, critic_optim), reward_model, initial_model)
             >>> # or when training reward model
@@ -83,23 +67,39 @@ class Strategy(ABC):
             >>> actor, critic = strategy.prepare(actor, critic)
 
         Returns:
-            Union[List[ModelOrModelOptimPair], ModelOrModelOptimPair]: Models or model-optimizer-pairs in the original order.
+            Union[List[_BoostArgSpec], _BoostArgSpec]: [model | (model, optimizer) | Dict] in the original order.
         """
 
         rets = []
-        for arg in models_or_model_optim_pairs:
-            if isinstance(arg, tuple):
-                assert len(arg) == 2, f'Expect (model, optimizer) pair, got a tuple with size "{len(arg)}"'
-                model, optimizer = self.setup_model_optimizer(*arg)
+        for arg in boost_args:
+            if isinstance(arg, nn.Module):
+                # HACK: directly use plugin's method to wrap model, as booster.boost must take in both model and optimizer
+                # TODO(cwher): support inference only case
+                raise NotImplementedError()
+            elif isinstance(arg, tuple):
+                try:
+                    model, optimizer = arg
+                except ValueError:
+                    raise RuntimeError(f'Expect (model, optimizer) pair, got a tuple with size "{len(arg)}"')
+                model, optimizer, *_ = self.booster.boost(model=model,
+                                                          optimizer=optimizer)
                 rets.append((model, optimizer))
-            elif isinstance(arg, nn.Module):
-                rets.append(self.setup_model(arg))
+            elif isinstance(arg, Dict):
+                model, optimizer, criterion, dataloader, lr_scheduler = self.booster.boost(**arg)
+                boost_result = dict(model=model,
+                                    optimizer=optimizer,
+                                    criterion=criterion,
+                                    dataloader=dataloader,
+                                    lr_scheduler=lr_scheduler)
+                # remove None values
+                for key in boost_result.keys():
+                    if key not in arg:
+                        boost_result.pop(key)
+                rets.append(boost_result)
             else:
-                raise RuntimeError(f'Expect model or (model, optimizer) pair, got {type(arg)}')
+                raise RuntimeError(f'Type {type(arg)} is not supported')
 
-        if len(rets) == 1:
-            return rets[0]
-        return rets
+        return rets[0] if len(rets) == 1 else rets
 
     @staticmethod
     def unwrap_model(model: nn.Module) -> nn.Module:
