@@ -30,6 +30,12 @@ pip install <options> -e .
 ### Unit Tests
 We use [PyTest](https://docs.pytest.org/en/latest/) to execute tests. You can install pytest by `pip install pytest`. As some of the tests require initialization of the distributed backend, GPUs are needed to execute these tests.
 
+To set up the environment for unit testing, first change your current directory to the root directory of your local ColossalAI repository, then run
+```bash
+pip install -r requirements/requirements-test.txt
+```
+If you encounter an error telling "Could not find a version that satisfies the requirement fbgemm-gpu==0.2.0", please downgrade your python version to 3.8 or 3.9 and try again.
+
 If you only want to run CPU tests, you can run
 
 ```bash
