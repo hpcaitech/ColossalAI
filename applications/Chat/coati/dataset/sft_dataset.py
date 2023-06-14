@@ -74,21 +74,18 @@ class SFTDataset(Dataset):
         return dict(input_ids=self.input_ids[idx], labels=self.labels[idx])
 
 
-def _tokenize_fn(strings: Sequence[str], tokenizer: transformers.PreTrainedTokenizer, max_length: int) -> Dict:
+def _tokenize_fn(strings: Sequence[str],
+                 tokenizer: transformers.PreTrainedTokenizer,
+                 max_length: int
+                 ) -> Dict[str, torch.Tensor]:
     """Tokenize a list of strings."""
-    tokenized_list = [
-        tokenizer(
-            text,
-            return_tensors="pt",
-            padding="longest",
-            max_length=max_length,
-            truncation=True,
-        ) for text in strings
-    ]
-    input_ids = labels = [tokenized.input_ids[0] for tokenized in tokenized_list]
-    input_ids_lens = labels_lens = [
-        tokenized.input_ids.ne(tokenizer.pad_token_id).sum().item() for tokenized in tokenized_list
-    ]
+    tokenized_list = tokenizer(
+        strings, return_tensors="pt", padding="longest",
+        max_length=max_length, truncation=True
+    )
+    input_ids = labels = tokenized_list["input_ids"]
+    input_ids_lens = labels_lens = \
+        tokenized_list["input_ids"].ne(tokenizer.pad_token_id).sum(dim=-1)
     return dict(
         input_ids=input_ids,
         labels=labels,
@@ -105,7 +102,10 @@ def preprocess(
 ) -> Dict:
     """Preprocess the data by tokenizing."""
     examples = [s + t for s, t in zip(sources, targets)]
-    examples_tokenized, sources_tokenized = [_tokenize_fn(strings, tokenizer, max_length) for strings in (examples, sources)]
+    examples_tokenized, sources_tokenized = [
+        _tokenize_fn(strings, tokenizer, max_length)
+        for strings in (examples, sources)
+    ]
     input_ids = examples_tokenized["input_ids"]
     labels = copy.deepcopy(input_ids)
     for label, source_len in zip(labels, sources_tokenized["input_ids_lens"]):

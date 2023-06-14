@@ -13,7 +13,7 @@ from .nvme_optimizer import NVMeOptimizer
 class CPUAdam(NVMeOptimizer):
     """Implements Adam algorithm.
 
-    Supports parameters updating on both GPU and CPU, depanding on the device of parameters.
+    Supports parameters updating on both GPU and CPU, depending on the device of parameters.
     But the parameters and gradients should on the same device:
       * Parameters on CPU and gradients on CPU is allowed.
       * Parameters on GPU and gradients on GPU is allowed.

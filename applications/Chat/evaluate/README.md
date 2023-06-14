@@ -12,12 +12,14 @@ pip install -r requirements.txt
 
 ## Evaluation Pipeline
 
-The whole evaluation pipeline consists of two methods:
+The whole evaluation pipeline consists of three methods:
 
 1. `GPT Evaluation`: evaluates model predictions using GPT models.
    * Compare the performance of two different models (battle).
    * Rate the model according to pre-defined metrics using prompting design.
+   * Rate the model according to pre-defined metrics with additional reference answer using prompting design.
 2. `Automatic Evaluation`: evaluates model predictions using automatic metrics.
+3. `UniEval`: evaluates model predictions using UniEval models(English only).
 
 ### Evaluation Category
 
@@ -65,7 +67,7 @@ GPT evaluation uses GPT models to evaluate the prediction of different models an
 |       切题<br/>(Relevance)       | 切题(1-5)：答案内容是否切题，不答非所问，并且严格遵照题目要求。</br></br>Relevance (1-5): whether the content of the answer is relevant to the topic, does not answer the wrong question, and strictly follows the requirements of the topic. | 1. 阅读题目，确定题目所问的问题是什么，以及需要回答哪些方面的问题。<br/> 2. 阅读答案，确认答案是否直接回答了题目所问的问题。<br/> 3. 检查答案是否严格遵照了题目的要求，包括答题方式、答题长度、答题格式等等。<br/> 4. 根据以上因素综合评估答案的切题程度，并给出一个1到5的分数，其中5表示答案非常切题，而1表示答案完全没有切题。</br></br>1. Read the question to determine what the question asks and what aspects of the question need to be answered.<br>2. Read the answers to make sure that they directly answer the question asked.<br>3. Check that the answer follows the requirements of the question, including the way it is answered, the length of the answer, the format of the answer, etc.<br>4. Evaluate how relevant the answer is based on the above factors and give a score of 1 to 5, where 5 means the answer is very relevant and 1 means the answer is not relevant at all. |
 |      创意性<br/>(Creativity)       | 创意性(1-5)：某些头脑风暴问题可能需要答案具有创意，提出新的思路。</br></br>Creativity (1-5): Some brainstorming questions may require answers that are creative and suggest new ideas. | 1. 仔细阅读所提供的头脑风暴问题，确保你理解问题的要点和背景。<br/> 2. 根据你的知识和经验，判断所提供的答案是否可行。如果答案不可行，则创意性评分可能会受到影响。<br/> 3. 考虑答案中是否包含新颖的想法或独特的思路。答案可能与已知的解决方案有所重叠，但仍然可以被认为是有创意的，只要它提供了新的角度或方法来解决问题。<br/> 4. 根据答案的创意性，给出一个1到5的评分。如果答案缺乏创意，则应给出一个较低的评分。如果答案具有创意并提供了新的思路，应给出一个较高的评分。</br></br>1. Read the provided brainstorming questions carefully to make sure you understand the gist and context of the questions.<br>2. Based on your knowledge and experience, determine if the answers provided are feasible. If the answer is not feasible, the creativity score may be affected.<br>3. Consider whether the answer contains novel ideas or unique thoughts. An answer may overlap with a known solution and still be considered creative, as long as it offers a new perspective or approach to the problem.<br>4. Give a score of 1 to 5 depending on the creativity of the answer. If the answer lacks creativity, a lower score should be given. If the answer is creative and provides a new idea, a higher score should be given. |
 |     实用性<br/>(Practicality)      | 实用性(1-5)：某些头脑风暴问题可能需要答案提出实用的建议或解决方法。</br></br>Practicality (1-5): Some brainstorming questions may require answers to suggest practical suggestions or solutions. | 1. 仔细阅读所提供的头脑风暴问题，确保你理解问题的要点和背景。<br/> 2. 根据你的知识和经验，判断所提供的答案是否可行。如果答案不可行，则实用性评分可能会受到影响。<br/> 3. 考虑答案中提出的建议或解决方法是否实用并可行。答案可能看起来很好，但如果无法实现或应用，则实用性评分可能会受到影响。<br/> 4. 根据答案的实用性，给出一个1到5的评分。如果答案缺乏实用性，则应给出一个较低的评分。如果答案提出了实用的建议或解决方法，并且可以很好地解决问题，则应给出一个较高的评分。</br></br>1. Read the provided brainstorming questions carefully to make sure you understand the gist and context of the questions.<br>2. Based on your knowledge and experience, determine if the answers provided are feasible. If the answer is not feasible, the practicality score may be affected.<br>3. Consider whether the suggestions or solutions presented in the answer are practical and workable. The answer may look good, but if it cannot be implemented or applied, the practicality score may be affected.<br>4. Give a score of 1 to 5 depending on the practicality of the answer. If the answer lacks practicality, a lower score should be given. If the answer makes a practical suggestion or solution and solves the problem well, a higher score should be given. |
-|      正确性<br/>(Correctness)      | 正确性(1-5)：答案应该符合常识、生活实际等等。 </br></br> Correctness (1-5): The answer should be in line with common sense, life experience, etc. | 1. 仔细阅读所提供的头脑风暴问题，确保你理解问题的要点和背景。<br/> 2. 根据你的知识和经验，判断所提供的答案是否可行。如果答案不可行，则正确性评分可能会受到影响。<br/> 3. 考虑答案中所提供的信息是否正确、符合常识、生活实际等等。如果答案中存在明显的错误或不合理之处，则正确性评分可能会受到影响。<br/> 4. 根据答案的正确性，给出一个1到5的评分。如果答案存在明显的错误或不合理之处，则应给出一个较低的评分。如果答案正确、符合常识、生活实际等等，则应给出一个较高的评分。</br></br>1. Read the provided brainstorming questions carefully to make sure you understand the gist and context of the questions.<br>2. Based on your knowledge and experience, determine if the answers provided are feasible. If the answer is not feasible, the correctness score may be affected.<br>3. Consider whether the information provided in the answer is correct, consistent with common sense, real life, etc. If there are obvious errors or implausibilities in the answer, the correctness score may be affected.<br>4. Give a score of 1 to 5 depending on the correctness of the answer. If the answer contains obvious errors or unreasonable points, a lower score should be given. A higher score should be given if the answer is correct, consistent with common sense, real life, etc. |
+|      正确性<br/>(Correctness)      | 正确性(1-5)：正确性(1-5)：答案是否正确。</br></br> Correctness (1-5): whether the answer is correct or not. | 1. 仔细阅读题目，尝试自己回答该问题。<br/>2. 检查答案的准确性。您可以使用已知的事实或研究来验证答案是否正确。如果答案是正确的，则可以将正确性得分为5分。如果答案是部分正确的，则可以给予适当的得分，例如2分、3分或4分。如果答案完全不正确，则只得1分。<br/><br/>1. Read the question carefully and try to answer the question yourself. <br/>2. Check the correctness of the answer. You can use known facts or research to verify that the answer is correct. If the answer is correct, you can give a score of 5 for correctness. If the answer is partially correct, an appropriate score, such as 2, 3, or 4, may be given. If the answer is completely incorrect, only 1 point is awarded. |
 |      自然<br/>(Naturalness)      | 自然(1-5)：答案是否自然，并且符合问题给定的身份。</br></br>Naturalness (1-5): whether the answer is natural and fits the identity given by the question. | 1. 阅读题目，确定题目提供的身份信息。<br/> 2. 检查答案内容是否符合题目给定的身份。<br/> 3. 根据以上因素，对该回答的自然性进行打分，分数从1到5，其中1表示不自然，5表示非常自然，并符合问题给定的身份。</br></br>1. Read the question and determine the identity information provided in the question.<br>2. Check whether the content of the answer matches the identity given in the question.<br>3. Based on the above factors, score the naturalness of the response on a scale from 1 to 5, where 1 means unnatural and 5 means very natural and in accordance with the identity given in the question. |
 |     参与感<br/>(Engagingness)      | 参与感(1-5)：答案是否对前面的对话内容做出了恰当的反应，是否理解对话的语境和背景。</br></br>Engagingness (1-5): whether the answer responds appropriately to the content of the preceding conversation and whether it understands the context and background of the conversation. | 1. 阅读题目，确定对话的语境和背景。<br/> 2. 检查答案是否充分理解对话的语境和背景，能否自然地融入到对话中而不显得突兀。<br/> 3. 根据以上因素，对该回答的参与感进行打分，分数从1到5，其中1表示没有参与感，5表示非常有参与感，并且恰当地理解了对话的语境和背景。</br></br>1. Read the questions to determine the context and background of the dialogue.<br>2. Check that the answer fully understands the context and background of the conversation and that it fits naturally into the conversation without seeming abrupt.<br>3. Based on the above factors, rate the response's engagement on a scale from 1 to 5, where 1 means not engaged and 5 means very engaged and appropriately understands the context and background of the conversation. |
 |    合理性<br/>(Reasonableness)     | 合理性(1-5)：答案是否能够与前面的对话内容形成逻辑上的衔接，是否符合常理，能否在这个上下文中合理存在。</br></br>Reasonableness (1-5): Whether the answer can form a logical connection with the content of the previous dialogue, whether it is consistent with common sense, and whether it can reasonably exist in this context. | 1. 阅读题目，确定对话的主题以及问题期望的回答方向。<br/> 2. 判断答案是否能够与前面的对话内容形成逻辑上的衔接，是否符合常理，能否在这个上下文中合理存在。<br/> 3. 根据以上因素，对该回答的合理性进行打分，分数从1到5，其中1表示不合理，5表示非常合理，并且能够与前面的对话内容形成逻辑上的衔接，并符合常理。</br></br>1. Read the question and determine the topic of the conversation and the direction the question expects the answer to go.<br>2. Determine whether the answer can be logically connected to the preceding conversation, whether it makes common sense, and whether it can reasonably exist in this context.<br>3. Based on the above factors, rate the reasonableness of the answer on a scale from 1 to 5, where 1 means unreasonable and 5 means very reasonable and able to form a logical connection with the preceding dialogue content and consistent with common sense. |
@@ -75,7 +77,9 @@ GPT evaluation uses GPT models to evaluate the prediction of different models an
 
 GPT models evaluate the quality of model predictions based on the given prompt words and gives a score between 1-5.
 
-> **NOTE:**  Even for the same metric, the details of its prompt words and CoT(Chain-of-Thought) can differ based on which category you want to evaluate. For example, prompt words for metric `correctness` showed here is "The answer should be in line with common sense, life experience, etc."(this is for category `brainstorming`), but for category `extraction`, prompt words can be "Answers should extract the required information accurately and should not contain any incorrect or misleading information." You can find all the prompt words and CoT(Chain-of-Thought) in `prompt/evaluation_prompt`.
+> **NOTE 1:**  Even for the same metric, the details of its prompt words and CoT(Chain-of-Thought) can differ based on which category you want to evaluate. For example, prompt words for metric `correctness` showed here is "Whether the answer is correct or not."(this is for category `classification`), but for category `extraction`, prompt words can be "Answers should extract the required information accurately and should not contain any incorrect or misleading information." You can find all the prompt words and CoT(Chain-of-Thought) in `prompt/evaluation_prompt`.
+
+> **NOTE 2:** To add customized metrics, you can refer to [FAQ](#faq).
 
 #### Automatic Evaluation
 
@@ -85,7 +89,7 @@ There are two ways to obtain reference answers:
 * For instruction coming from human-designed problems, the reference answers are generated by GPT-3.5, such as roleplay, chat.
 * For instruction related with classic NLP problems, the reference answers are collected from open-sourced dataset with target answers, such as classification, extraction, summarization.
 
-There are 5 types of automatic evaluation metrics listed in the table below:
+There are 6 types of automatic evaluation metrics listed in the table below:
 
 |     Automatic Evaluation Metric     | Description                                                  |
 | :---------------------------------: | :----------------------------------------------------------- |
@@ -94,6 +98,25 @@ There are 5 types of automatic evaluation metrics listed in the table below:
 |              Distinct               | Measure the diversity of generation text by counting the unique n-grams. |
 |              BERTScore              | Measure the semantic similarity between tokens of predictions and references with BERT. |
 | Precision<br/> Recall<br/> F1 Score | Measure the number of overlaps between prediction and reference (design for classification and extraction categories). |
+|                CHRF                 | Measure the similarity of character n-grams between prediction and reference. |
+
+#### UniEval Evaluation
+
+UniEval converts all evaluation tasks of different dimensions(metrics) into Boolean QA problems and utilize the model to answer with “Yes” or “No”. Compared with similarity-based metrics such as ROUGE and BLEU, UniEval can achieve a more comprehensive evaluation. In addition, UniEval also demonstrates its ability to transfer to unseen dimensions and tasks.
+
+In our evaluation pipeline, two pre-trained UniEval evaluators are used. One is [unieval-sum](https://huggingface.co/MingZhong/unieval-sum) and the other is [unieval-dialog](https://huggingface.co/MingZhong/unieval-dialog). The two models can be used for the 3 tasks, `summarization`, `dialogue` and `data2text`. Each task has different evaluation dimensions.
+
+| UniEval Model  | Task               | Dimension(Metric) |
+| :------------: | :----------------- | :--- |
+| unieval-sum    | summarization | coherence: whether the summary is coherent<br/>consistency: whether the claim is consistent with the given document<br/>fluency: whether the paragraph is fluent<br/>relevance: whether the summary is relevant to the reference |
+| unieval-sum | data2text | naturalness: whether the utterance is fluent<br/>informativeness: whether the utterance is informative according to the reference |
+| unieval-dialog | dialogue | naturalness: whether the response is natural in the dialogue<br/>coherence: whether the response is coherent in the dialogue history<br/>understandability: whether the response is understandable in the dialogue |
+
+> **NOTE 1:**  Task "data2text" uses the same model as task "summarization".
+
+> **NOTE 2:**  In UniEval paper, the `unieval-sum` model demonstrates the best transfer ability and so you can evaluate your customized metric with this model. Details of adding customized metrics can be found in [FAQ](#faq).
+
+> **NOTE 3:**  We consider not including all metrics provided in UniEval in our pipeline because the data structure and content of the instructions we want to evaluate are not suitable for direct use of some UniEval metrics.
 
 ## Evaluation Process
 
@@ -215,19 +238,26 @@ The following is an example of a Chinese GPT evaluation prompt. In an evaluation
 
 #### Configuration
 
-The following is an example of a Chinese config file. The configuration file can control how the pipeline evaluates the model. You need to specify GPT evaluation metrics and automatic metrics in key `GPT` and `Metrics`. You can find an example Chinese config file in `config`.
+The following is an example of a Chinese config file. The configuration file can control how the pipeline evaluates the model. You need to specify GPT evaluation metrics, automatic metrics and UniEval metrics in key `GPT`, `Metrics` and `UniEval`(English only). You can find an example English config file in `config`.
 
 ```json
 {
-    "language": "cn",
+    "language": "en",
+    "path_for_UniEval": {
+        "summarization": "path to unieval-sum model",
+        "dialogue": "path to unieval-dialog model",
+        "data2text": "path to unieval-sum model"
+    },
     "category": {
         "brainstorming": {
-            "GPT": ["relevance", "creativity", "practicality", "correctness"],
-            "Metrics": ["Distinct"]
+            "GPT": ["relevance", "creativity", "practicality", "reasonableness"],
+            "Metrics": ["Distinct"],
+            "UniEval": ["summarization-fluency", "data2text-naturalness", "data2text-informativeness"]
         },
         "chat": {
             "GPT": [ "relevance", "naturalness", "engagingness", "reasonableness"],
-            "Metrics": ["Distinct"]
+            "Metrics": ["Distinct"],
+            "UniEval": ["dialogue-naturalness", "dialogue-coherence", "dialogue-understandability"]
         }
     }
 }
@@ -235,27 +265,33 @@ The following is an example of a Chinese config file. The configuration file can
 
 `"language"`: the language used to evaluate the model capability. We only support Chinese `"cn"` for now.
 
+`"path_for_UniEval"`: path to the UniEval model.
+
 `"category"`: the category/categories needed to evaluate the model capability.
 
 `"GPT"`: the metrics you want to use for GPT evaluation.
 
 `"Metrics"`: the metrics you want to use for automatic metrics evaluation.
 
+`"UniEval"`: the metrics you want to use for UniEval metrics evaluation. The metric has to be in the `"{task}-{metric}"` format because different tasks have same metrics such as naturalness and coherence.
+
+You can remove the key such as `"Metrics"` to skip evaluating answers using its corresponding evaluation metrics.
+
 You can create your config file based on available settings listed in following table.
 
-|    "category"    |          "GPT"          |  "Metrics"  |
-| :--------------: | :---------------------: | :---------: |
-| "brainstorming"  | "language organization" |   "BLEU"    |
-|      "chat"      |       "relevance"       |   "ROUGE"   |
-| "classification" |      "creativity"       | "Distinct"  |
-|   "closed_qa"    |     "practicality"      | "BERTScore" |
-|   "extraction"   |      "correctness"      | "Precision" |
-|   "generation"   |      "naturalness"      |  "Recall"   |
-|    "open_qa"     |     "engagingness"      | "F1 score"  |
-|   "rewriting"    |    "reasonableness"     |             |
-|    "roleplay"    |       "diversity"       |             |
-| "summarization"  |       "fidelity"        |             |
-|                  |      "conciseness"      |             |
+|    "category"    |          "GPT"          |  "Metrics"  |          "UniEval"           |
+| :--------------: | :---------------------: | :---------: | :--------------------------: |
+| "brainstorming"  | "language organization" |   "BLEU"    |    "dialogue-naturalness"    |
+|      "chat"      |       "relevance"       |   "ROUGE"   |     "dialogue-coherence"     |
+| "classification" |      "creativity"       | "Distinct"  | "dialogue-understandability" |
+|   "closed_qa"    |     "practicality"      | "BERTScore" |   "data2text-naturalness"    |
+|   "extraction"   |      "correctness"      | "Precision" | "data2text-informativeness"  |
+|   "generation"   |      "naturalness"      |  "Recall"   |  "summarization-coherence"   |
+|    "open_qa"     |     "engagingness"      | "F1 score"  | "summarization-consistency"  |
+|   "rewriting"    |    "reasonableness"     |   "CHRF"    |   "summarization-fluency"    |
+|    "roleplay"    |       "diversity"       |             |  "summarization-relevance"   |
+| "summarization"  |       "fidelity"        |             |                              |
+|                  |      "conciseness"      |             |                              |
 
 > **NOTE:**  For categories which don't have standard answers such as `brainstorming`, you should avoid using automatic metrics such as `BLEU` and `ROUGE` which are based on similarity measures and you should use `Distinct` instead in your config file.
 
@@ -278,6 +314,8 @@ python eval.py \
     --openai_key "your openai key" \
 ```
 
+If you want GPT evaluation with reference, you can add an argument `--gpt_with_reference`.
+
 ## FAQ
 
 <details><summary><b>How can I add a new GPT evaluation metric?</b></summary>
@@ -290,14 +328,26 @@ For example, if you want to add a new metric `persuasiveness` into category `bra
     "id": 1,
     "category": "brainstorming",
     "metrics": {
-      "persuasiveness": "说服力(1-5)：XXX"
+      "persuasiveness": "persuasiveness(1-5)：a short description for persuasiveness"
     },
     "CoT": {
-      "persuasiveness": "XXX\n\n说服力："
+      "persuasiveness": "CoT for persuasiveness\n\npersuasiveness："
     },
-    "prompt": "你是一个好助手。请你为下面“头脑风暴”问题的答案打分。\n\n问题如下：\n\n{question}\n\n答案如下：\n\n{answer}\n\n评分的指标如下：\n\n{metric}\n\n请你遵照以下的评分步骤：\n\n{steps}"
+    "prompt": "You are a good assistant. Please rate the given answer to the \"brainstorming\" question below.\n\nThe question is as follows:\n\n{question}\n\nThe answer is as follows:\n\n{answer}\n\nThe metric for evaluation is as follows:\n\n{metric}\n\nYou should follow the following evaluation steps:\n\n{steps}"
   }
 }
+```
+
+</details>
+
+<details><summary><b>How can I add a new UniEval evaluation metric?</b></summary>
+
+For example, if you want to add a new metric `persuasiveness` into task `data2text`, you should add a Boolean QA question about the metric in function `add_question` in `unieval/utils.py`. Please do note that how effectively the model would evaluate this metric is unknown and you may need some experiments to test whether the model is capable of evaluating this metric.
+
+```python
+if task == 'data2text':
+	if dimension == 'persuasiveness':
+		cur_input = 'question: Is this a persuasive utterence </s> utterance: ' + output[i]
 ```
 
 </details>
@@ -305,8 +355,9 @@ For example, if you want to add a new metric `persuasiveness` into category `bra
 ## To Do
 
 - [x] Add evaluation for English capability
-- [ ] Support UniEval
+- [x] Support UniEval
 - [x] Support GPT-4 evaluation
+- [x] Support GPT evaluation with reference
 
 ## Citations
 
@@ -324,6 +375,15 @@ For example, if you want to add a new metric `persuasiveness` into category `bra
       author={Yang Liu and Dan Iter and Yichong Xu and Shuohang Wang and Ruochen Xu and Chenguang Zhu},
       year={2023},
       eprint={2303.16634},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL}
+}
+
+@misc{zhong2022unified,
+      title={Towards a Unified Multi-Dimensional Evaluator for Text Generation},
+      author={Ming Zhong and Yang Liu and Da Yin and Yuning Mao and Yizhu Jiao and Pengfei Liu and Chenguang Zhu and Heng Ji and Jiawei Han},
+      year={2022},
+      eprint={2210.07197},
       archivePrefix={arXiv},
       primaryClass={cs.CL}
 }
