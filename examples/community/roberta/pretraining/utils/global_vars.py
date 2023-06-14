@@ -110,7 +110,7 @@ class Timers:
         """Write timers to a tensorboard writer"""
         # currently when using add_scalars,
         # torch.utils.add_scalars makes each timer its own run, which
-        # polutes the runs list, so we just add each as a scalar
+        # pollutes the runs list, so we just add each as a scalar
         assert normalizer > 0.0
         for name in names:
             value = self.timers[name].elapsed(reset=reset) / normalizer

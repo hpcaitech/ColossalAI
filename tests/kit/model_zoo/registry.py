@@ -2,7 +2,7 @@
 from dataclasses import dataclass
 from typing import Callable
 
-__all__ = ['ModelZooRegistry', 'ModelAttributem', 'model_zoo']
+__all__ = ['ModelZooRegistry', 'ModelAttribute', 'model_zoo']
 
 
 @dataclass
@@ -37,7 +37,7 @@ class ModelZooRegistry(dict):
         >>> model_zoo = ModelZooRegistry()
         >>> model_zoo.register('resnet18', resnet18, resnet18_data_gen)
         >>> # Run the model
-        >>> data = resnresnet18_data_gen() # do not input any argument
+        >>> data = resnet18_data_gen() # do not input any argument
         >>> model = resnet18() # do not input any argument
         >>> out = model(**data)
 

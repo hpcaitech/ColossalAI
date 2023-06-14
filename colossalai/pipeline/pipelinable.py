@@ -83,7 +83,7 @@ class PipelinableContext(InsertPostInitMethodToModuleSubClasses):
         for k, v in kwargs.items():
             if isinstance(v, torch.nn.Module):
                 v = self._layer_spec_dict[id(v)]
-            # (lyl)TODO: analyse ColoTensor as well
+            # (lyl)TODO: analyze ColoTensor as well
             modified_kwargs[k] = v
 
         # keep track of the module children
@@ -117,7 +117,7 @@ class PipelinableContext(InsertPostInitMethodToModuleSubClasses):
     def to_layer_list(self, exec_seq=None):
         """
         Create a layer spec list and func list with execution sequence given by user.
-        If exec_seq is None, we will take the module initizing order as execution order.
+        If exec_seq is None, we will take the module initializing order as execution order.
         """
 
         self._exec_seq = exec_seq
@@ -177,7 +177,7 @@ class PipelinableContext(InsertPostInitMethodToModuleSubClasses):
 
     def partition(self, num_chunks, pipeline_size, rank):
         """
-        Partitioned model will be built respect to partion policy.
+        Partitioned model will be built respect to partition policy.
         The real module instance will be built in this method.
         """
         if isinstance(self._policy, str):
@@ -193,7 +193,7 @@ class PipelinableContext(InsertPostInitMethodToModuleSubClasses):
                 self.customized_parts = customized_partition(self._exec_seq)
                 assert len(self.customized_parts) == gpc.get_world_size(
                     ParallelMode.PIPELINE
-                ), f'World size is {gpc.get_world_size(ParallelMode.PIPELINE)}, but the number of partions is {len(self.customized_parts)}'
+                ), f'World size is {gpc.get_world_size(ParallelMode.PIPELINE)}, but the number of partitions is {len(self.customized_parts)}'
                 parts = self.customized_parts[rank]
             else:
                 raise ValueError("A string partition policy should be one of ['uniform', 'balanced', 'customized'].")

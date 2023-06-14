@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
-# adpated from torch.utils.data.DistributedSampler
+# adapted from torch.utils.data.DistributedSampler
 
 import math
 import random
