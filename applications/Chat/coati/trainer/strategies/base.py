@@ -119,9 +119,7 @@ class Strategy(ABC):
                    only_rank0: bool = True,
                    **kwargs
                    ) -> None:
-        if only_rank0 and dist.get_rank() != 0:
-            return
-        self.booster.save_model(model, path, **kwargs)
+        self.booster.save_model(model, path, shard=not only_rank0, **kwargs)
 
     def load_model(self, model: nn.Module, path: str, strict: bool = True) -> None:
         self.booster.load_model(model, path, strict)
@@ -132,9 +130,7 @@ class Strategy(ABC):
                        only_rank0: bool = False,
                        **kwargs
                        ) -> None:
-        if only_rank0 and dist.get_rank() != 0:
-            return
-        self.booster.save_optimizer(optimizer, path, **kwargs)
+        self.booster.save_optimizer(optimizer, path, shard=not only_rank0, **kwargs)
 
     def load_optimizer(self, optimizer: Optimizer, path: str) -> None:
         self.booster.load_optimizer(optimizer, path)
