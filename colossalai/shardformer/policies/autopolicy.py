@@ -43,6 +43,15 @@ def build_policies():
 
     from .gpt2 import GPT2LMHeadModelPolicy
     auto_policy_dict[GPT2LMHeadModel] = GPT2LMHeadModelPolicy
+    
+    from .t5 import T5ForConditionalGenerationPolicy, T5EncoderModelPolicy, T5ModelPolicy
+    from transformers import T5ForConditionalGeneration, T5EncoderModel, T5Model
+    t5 = {
+            T5ForConditionalGeneration: T5ForConditionalGenerationPolicy,
+            T5EncoderModel:  T5EncoderModelPolicy,
+            T5Model: T5ModelPolicy,
+            }
+    auto_policy_dict.update(t5)
 
     return auto_policy_dict
 

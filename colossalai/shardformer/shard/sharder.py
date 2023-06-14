@@ -5,7 +5,7 @@ import torch.nn as nn
 from transformers.pytorch_utils import Conv1D
 
 from ..policies.autopolicy import get_autopolicy
-from ..policies.basepolicy import Col_Layer, Dropout_Layer, Policy, Row_Layer
+from ..policies.basepolicy import Col_Layer, Dropout_Layer, Policy, Row_Layer, Embedding_Layer
 from ..utils.utils import getattr_, hasattr_, setattr_
 from .shard_config import ShardConfig
 from .slicer import Slicer
@@ -155,11 +155,11 @@ class ModelSharder(object):
                 assert suffix_layer is not None or ignore, f"Layer {org_layer.__class__.__qualname__} has no attribute {suffix}"
                 if suffix_layer is None and ignore:
                     continue
-                if isinstance(policy_layer, (Col_Layer, Row_Layer)):
+                if isinstance(policy_layer, (Col_Layer, Row_Layer, Embedding_Layer)):
                     weight = None
                     bias = None
                     weight_attr = suffix + '.' + policy_layer.weight if policy_layer.weight is not None else None
-                    bias_attr = suffix + '.' + policy_layer.bias if policy_layer.bias is not None else None
+                    bias_attr = suffix + '.' + policy_layer.bias if hasattr(policy_layer, 'bias') and policy_layer.bias is not None else None
 
                     if weight_attr is not None:
                         if hasattr_(org_layer, weight_attr):
@@ -188,6 +188,11 @@ class ModelSharder(object):
                         replace_layer = replace_layer_cls(weight.shape[0],
                                                           weight.shape[1],
                                                           bias=False if bias is None else True,
+                                                          gather_output=gather_output)
+                    elif replace_layer_cls.__name__ == "Embedding1D":
+                        gather_output = policy_layer.gather_output
+                        replace_layer = replace_layer_cls(weight.shape[0],
+                                                          weight.shape[1],
                                                           gather_output=gather_output)
                     elif replace_layer_cls.__name__ == "VocabParallelEmbedding1D":
                         replace_layer = replace_layer_cls(weight.shape[0], weight.shape[1],

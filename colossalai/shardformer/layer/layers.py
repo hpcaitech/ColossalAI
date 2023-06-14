@@ -770,6 +770,7 @@ class Embedding1D(ParallelLayer):
                  embedding_dim: int,
                  padding_idx: int = None,
                  dtype: torch.dtype = None,
+                 gather_output: bool = True,
                  weight_initializer: Callable = init.normal_(),
                  *args,
                  **kwargs):
@@ -782,6 +783,7 @@ class Embedding1D(ParallelLayer):
         self.padding_idx = padding_idx
         self.embed_args = args
         self.embed_kwargs = kwargs
+        self.gather_output = gather_output
 
         self.weight = Parameter(
             torch.empty((num_embeddings, embed_dim_per_partition), device=get_current_device(), dtype=dtype))
@@ -832,8 +834,10 @@ class Embedding1D(ParallelLayer):
     def forward(self, input_: Tensor) -> Tensor:
 
         output_parallel = F.embedding(input_, self.weight, self.padding_idx, *self.embed_args, **self.embed_kwargs)
-
-        output = gather_forward_split_backward(output_parallel, ParallelMode.PARALLEL_1D, dim=-1)
+        if self.gather_output:
+            output = gather_forward_split_backward(output_parallel, ParallelMode.PARALLEL_1D, dim=-1)
+        else:
+            output = output_parallel
 
         return output
 
