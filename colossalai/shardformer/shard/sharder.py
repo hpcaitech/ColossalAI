@@ -154,6 +154,7 @@ class ModelSharder(object):
             layer (:class:`torch.nn.Module`): The object of layer to shard
             param_replacement (List[Callable]): The function list to get parameter shard information in policy
         """
+        # TODO: support parameter shard
         pass
 
     def _replace_sub_module(
@@ -176,6 +177,7 @@ class ModelSharder(object):
 
             assert target_module is not None, 'target_module should not be None'
 
+            # TODO: integrate with new layer
             # replace_layer = target_module.from_native_layer(org_layer, self.pg_manager)
             replace_layer = None
             setattr_(org_layer, suffix, replace_layer)
