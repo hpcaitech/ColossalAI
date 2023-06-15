@@ -111,7 +111,7 @@ class CheckpointIndexFile:
                 return True
         return False
 
-    def get_checkpoint_fileanames(self) -> List[str]:
+    def get_checkpoint_filenames(self) -> List[str]:
         """
         Get the set of checkpoint filenames in the weight map.
 
@@ -158,6 +158,18 @@ class CheckpointIndexFile:
         Get all the weight keys.
         """
         return list(self.weight_map.keys())
+
+    def get_param_group_filename(self) -> Union[str, None]:
+        """
+        Get the file name of param_group file if this is a checkpoint for optimizer.
+        Returns:
+            str: param_group file name
+        """
+        filename = self.metadata.get("param_groups", None)
+        if filename:
+            return str(self.root_path.joinpath(filename))
+        else:
+            return None
 
     def write_index_file(self, save_index_file):
         """
