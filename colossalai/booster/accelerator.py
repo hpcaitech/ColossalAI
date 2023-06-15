@@ -6,6 +6,7 @@ __all__ = ['Accelerator']
 _supported_devices = [
     'cpu',
     'cuda',
+    'xpu',
 
     # To be supported
     # 'xpu',
@@ -39,6 +40,9 @@ class Accelerator:
             #     local_rank = EnvTable().get_local_rank()
             #     torch.cuda.set_device(torch.device(f'cuda:{local_rank}'))
             torch.cuda.set_device(torch.device('cuda'))
+            pass
+        elif self.device == 'xpu':
+            torch.xpu.set_device(torch.device('xpu'))
             pass
         else:
             raise ValueError(f"Device {self.device} is not supported yet")
