@@ -80,6 +80,18 @@ class Dropout_Layer(Layer):
     p: str = None
 
 
+@dataclass
+class Embedding_Layer(Layer):
+    r"""
+    Class for col shard layer in tensor parrallel
+
+    Args:
+        weight (str): The weight suffix of the layer
+    """
+    weight: str = None
+    gather_output: bool = True
+
+
 class Policy():
     r"""
     The base class for all the policies

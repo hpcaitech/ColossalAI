@@ -1,3 +1,22 @@
+import re
+
+
+def get_obj_list_element(obj, a):
+    re_pattern = r'\[\d+\]'
+    prog = re.compile(re_pattern)
+    result = prog.search(a)
+    if result:
+        matched_brackets = result.group()
+        matched_index = matched_brackets.replace('[', '')
+        matched_index = matched_index.replace(']', '')
+        a_ = a.replace(matched_brackets, '')
+        container_obj = getattr(obj, a_)
+        obj = container_obj[int(matched_index)]
+    else:
+        obj = getattr(obj, a)
+    return obj
+
+
 def hasattr_(obj, attr: str):
     r"""
     Check whether the object has the multi sublevel attr
@@ -9,7 +28,7 @@ def hasattr_(obj, attr: str):
     attrs = attr.split('.')
     for a in attrs:
         try:
-            obj = getattr(obj, a)
+            obj = get_obj_list_element(obj, a)
         except AttributeError:
             return False
     return True
@@ -29,7 +48,7 @@ def setattr_(obj, attr: str, value, ignore: bool = False):
     attrs = attr.split('.')
     for a in attrs[:-1]:
         try:
-            obj = getattr(obj, a)
+            obj = get_obj_list_element(obj, a)
         except AttributeError:
             if ignore:
                 return
@@ -50,7 +69,7 @@ def getattr_(obj, attr: str, ignore: bool = False):
     attrs = attr.split('.')
     for a in attrs:
         try:
-            obj = getattr(obj, a)
+            obj = get_obj_list_element(obj, a)
         except AttributeError:
             if ignore:
                 return None
