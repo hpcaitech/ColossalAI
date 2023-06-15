@@ -3,7 +3,6 @@ from contextlib import nullcontext
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import torch
-import torch.distributed as dist
 import torch.nn as nn
 from coati.replay_buffer import ReplayBuffer
 from torch.optim import Optimizer
@@ -25,9 +24,8 @@ class Strategy(ABC):
 
     def __init__(self, plugin_initializer: Callable[..., Optional[Plugin]] = lambda: None) -> None:
         super().__init__()
-        if not dist.is_initialized():
-            # NOTE: dist must be initialized before Booster
-            self.setup_distributed()
+        # NOTE: dist must be initialized before Booster
+        self.setup_distributed()
         self.plugin = plugin_initializer()
         self.booster = Booster(plugin=self.plugin)
         self._post_init()
