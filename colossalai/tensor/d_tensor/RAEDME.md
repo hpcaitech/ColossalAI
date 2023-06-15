@@ -73,7 +73,7 @@ colossalai.launch_from_torch(config={})
 
 # define your device mesh
 # assume you have 4 GPUs
-physical_mesh_id = torch.arange(0, 4).reshape(-1)
+physical_mesh_id = torch.arange(0, 4)
 mesh_shape = (2, 2)
 device_mesh = DeviceMesh(physical_mesh_id, mesh_shape, init_process_group=True)
 
