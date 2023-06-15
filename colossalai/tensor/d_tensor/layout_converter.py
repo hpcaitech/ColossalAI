@@ -304,7 +304,7 @@ class LayoutConverter(metaclass=SingletonMeta):
         process_groups_dict = source_layout.device_mesh.process_groups_dict
 
         # legal sharding dims means the mesh_id is still available to use.
-        legal_sharding_dims = [i for i in range(len(source_layout.device_mesh.mesh_shape))]
+        legal_sharding_dims = [i for i in range(len(source_layout.device_mesh.shape))]
         for dim, shard_list in source_spec.dim_partition_dict.items():
             for element in shard_list:
                 legal_sharding_dims.remove(element)
