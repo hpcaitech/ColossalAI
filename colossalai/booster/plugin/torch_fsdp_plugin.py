@@ -196,24 +196,24 @@ class TorchFSDPPlugin(DPPluginBase):
     def configure(
         self,
         model: nn.Module,
-        optimizer: Optimizer,
-        criterion: Callable = None,
-        dataloader: DataLoader = None,
-        lr_scheduler: LRScheduler = None,
-        benchmark_flag: bool = False,
-    ) -> Tuple[Union[nn.Module, OptimizerWrapper, LRScheduler, DataLoader]]:
+        optimizer: Optional[Optimizer] = None,
+        criterion: Optional[Callable] = None,
+        dataloader: Optional[DataLoader] = None,
+        lr_scheduler: Optional[LRScheduler] = None,
+    ) -> Tuple[nn.Module, OptimizerWrapper, Callable, DataLoader, LRScheduler]:
 
         # wrap the model with PyTorch FSDP
-        fsdp_model = TorchFSDPModel(model, device_id=torch.cuda.current_device(), benchmark_flag=benchmark_flag, **self.fsdp_kwargs)
+        fsdp_model = TorchFSDPModel(model, device_id=torch.cuda.current_device(), **self.fsdp_kwargs)
 
-        if len(optimizer.param_groups) > 1:
-            warnings.warn(
-                'TorchFSDPPlugin does not support optimizer that use multi param groups. The results may not be as expected if used.'
-            )
-        optimizer.__init__(fsdp_model.parameters(), **optimizer.defaults)
+        if optimizer is not None:
+            if len(optimizer.param_groups) > 1:
+                warnings.warn(
+                    'TorchFSDPPlugin does not support optimizer that use multi param groups. The results may not be as expected if used.'
+                )
+            optimizer.__init__(fsdp_model.parameters(), **optimizer.defaults)
 
-        if not isinstance(optimizer, FSDPOptimizerWrapper):
-            optimizer = FSDPOptimizerWrapper(optimizer, fsdp_model)
+            if not isinstance(optimizer, FSDPOptimizerWrapper):
+                optimizer = FSDPOptimizerWrapper(optimizer, fsdp_model)
 
         return fsdp_model, optimizer, criterion, dataloader, lr_scheduler
 

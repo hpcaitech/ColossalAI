@@ -97,11 +97,10 @@ class Booster:
     def boost(
         self,
         model: nn.Module,
-        optimizer: Optimizer,
-        criterion: Callable = None,
-        dataloader: DataLoader = None,
-        lr_scheduler: LRScheduler = None,
-        benchmark: bool = False,
+        optimizer: Optional[Optimizer] = None,
+        criterion: Optional[Callable] = None,
+        dataloader: Optional[DataLoader] = None,
+        lr_scheduler: Optional[LRScheduler] = None,
     ) -> List[Union[nn.Module, Optimizer, LRScheduler, DataLoader]]:
         """
         Boost the model, optimizer, criterion, lr_scheduler, and dataloader.
@@ -117,12 +116,8 @@ class Booster:
         # TODO(FrankLeeeee): consider multi-dataloader case
         # transform model for mixed precision
         if self.plugin:
-            if isinstance(self.plugin, TorchFSDPPlugin):
-                model, optimizer, criterion, dataloader, lr_scheduler = self.plugin.configure(
-                    model, optimizer, criterion, dataloader, lr_scheduler, benchmark_flag=benchmark)
-            else:
-                model, optimizer, criterion, dataloader, lr_scheduler = self.plugin.configure(
-                    model, optimizer, criterion, dataloader, lr_scheduler)
+            model, optimizer, criterion, dataloader, lr_scheduler = self.plugin.configure(
+                model, optimizer, criterion, dataloader, lr_scheduler)
 
         if self.plugin and not self.plugin.control_device():
             # transform model for accelerator

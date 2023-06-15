@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Callable, Iterator, List, Tuple, Union
+from typing import Callable, Iterator, List, Optional, Tuple, Union
 
 import torch.nn as nn
 from torch.optim import Optimizer
@@ -38,11 +38,11 @@ class Plugin(ABC):
     def configure(
         self,
         model: nn.Module,
-        optimizer: Optimizer,
-        criterion: Callable = None,
-        dataloader: DataLoader = None,
-        lr_scheduler: LRScheduler = None,
-    ) -> Tuple[Union[nn.Module, OptimizerWrapper, LRScheduler, DataLoader]]:
+        optimizer: Optional[Optimizer] = None,
+        criterion: Optional[Callable] = None,
+        dataloader: Optional[DataLoader] = None,
+        lr_scheduler: Optional[LRScheduler] = None,
+    ) -> Tuple[nn.Module, OptimizerWrapper, Callable, DataLoader, LRScheduler]:
         # implement this method
         pass
 
