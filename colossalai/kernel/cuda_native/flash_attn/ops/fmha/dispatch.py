@@ -7,9 +7,20 @@
 import textwrap
 from typing import List, Type, TypeVar
 
-from . import flash, triton
-from colossalai.kernel.cuda_native.common import AttentionBwOpBase, AttentionFwOpBase, Inputs
+#from . import cutlass, flash, small_k, triton
+from . import cutlass, flash, small_k
+from .common import AttentionBwOpBase, AttentionFwOpBase, Inputs
 
+
+def _is_cutlass_fwd_faster_than_flash(inp: Inputs) -> bool:
+    # For dropout, we can't mix & match kernels
+    # Unfortunately, the dropout implementation in CUTLASS
+    # backward is pretty slow for the BW, so disable it here
+    if inp.p > 0.0:
+        return False
+
+    # Large values of K
+    return max(inp.query.shape[-1], inp.value.shape[-1]) > 64
 
 
 def _is_triton_fwd_fastest(inp: Inputs) -> bool:
@@ -71,8 +82,16 @@ def _dispatch_fw(inp: Inputs) -> Type[AttentionFwOpBase]:
 
     priority_list_ops: List[Type[AttentionFwOpBase]] = [
         flash.FwOp,
-        triton.FwOp,
+        #triton.FwOp,
+        cutlass.FwOp,
+        small_k.FwOp,
     ]
+    if _is_cutlass_fwd_faster_than_flash(inp):
+        priority_list_ops.remove(cutlass.FwOp)
+        priority_list_ops.insert(0, cutlass.FwOp)
+    # if _is_triton_fwd_fastest(inp):
+    #     priority_list_ops.remove(triton.FwOp)
+    #     priority_list_ops.insert(0, triton.FwOp)
     return _run_priority_list(
         "memory_efficient_attention_forward", priority_list_ops, inp
     )

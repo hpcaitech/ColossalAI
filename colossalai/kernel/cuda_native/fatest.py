@@ -10,7 +10,8 @@ import subprocess
 import torch
 
 try:
-    from xformers.ops.fmha import memory_efficient_attention
+    #from xformers.ops.fmha import memory_efficient_attention
+    from colossalai.kernel.cuda_native.flash_attn.ops.fmha import memory_efficient_attention
     HAS_MEM_EFF_ATTN = True
     print("HAS_MEM_EFF_ATTN = True****************************")
     
@@ -23,10 +24,11 @@ if HAS_MEM_EFF_ATTN:
     from typing import Optional
     print("HAS_MEM_EFF_ATTN = True into func")
     from einops import rearrange
-    from xformers.ops.fmha import MemoryEfficientAttentionCutlassOp
-    #from colossalai.kernel.cuda_native.__init__ import MemoryEfficientAttentionCutlassOp
+    #from xformers.ops.fmha import MemoryEfficientAttentionCutlassOp
+    from colossalai.kernel.cuda_native.flash_attn.ops.fmha import MemoryEfficientAttentionCutlassOp
 
-    from xformers.ops.fmha.attn_bias import BlockDiagonalMask, LowerTriangularMask, LowerTriangularMaskWithTensorBias
+    #from xformers.ops.fmha.attn_bias import BlockDiagonalMask, LowerTriangularMask, LowerTriangularMaskWithTensorBias
+    from colossalai.kernel.cuda_native.flash_attn.ops.fmha.attn_bias import BlockDiagonalMask, LowerTriangularMask, LowerTriangularMaskWithTensorBias
 
     #from .scaled_softmax import AttnMaskType
     import enum
