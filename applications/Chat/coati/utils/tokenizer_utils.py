@@ -22,12 +22,8 @@ DEFAULT_BOS_TOKEN = "</s>"
 DEFAULT_UNK_TOKEN = "<unk>"
 
 
-def prepare_llama_tokenizer_and_embedding(
-        tokenizer: transformers.PreTrainedTokenizer,
-        model: transformers.PreTrainedModel,
-        special_tokens_dict: Dict = dict(pad_token=DEFAULT_PAD_TOKEN),
-):
-    """prepare llama tokenizer and embedding.
+def prepare_llama_tokenizer(tokenizer: transformers.PreTrainedTokenizer):
+    """prepare llama tokenizer.
 
     """
 
