@@ -97,10 +97,10 @@ class Booster:
     def boost(
         self,
         model: nn.Module,
-        optimizer: Optimizer,
-        criterion: Callable = None,
-        dataloader: DataLoader = None,
-        lr_scheduler: LRScheduler = None,
+        optimizer: Optional[Optimizer] = None,
+        criterion: Optional[Callable] = None,
+        dataloader: Optional[DataLoader] = None,
+        lr_scheduler: Optional[LRScheduler] = None,
     ) -> List[Union[nn.Module, Optimizer, LRScheduler, DataLoader]]:
         """
         Boost the model, optimizer, criterion, lr_scheduler, and dataloader.

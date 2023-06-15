@@ -138,11 +138,11 @@ class TorchDDPPlugin(DPPluginBase):
     def configure(
         self,
         model: nn.Module,
-        optimizer: Optimizer,
-        criterion: Callable = None,
-        dataloader: DataLoader = None,
-        lr_scheduler: LRScheduler = None,
-    ) -> Tuple[Union[nn.Module, OptimizerWrapper, LRScheduler, DataLoader]]:
+        optimizer: Optional[Optimizer] = None,
+        criterion: Optional[Callable] = None,
+        dataloader: Optional[DataLoader] = None,
+        lr_scheduler: Optional[LRScheduler] = None,
+    ) -> Tuple[nn.Module, OptimizerWrapper, Callable, DataLoader, LRScheduler]:
         # cast model to cuda
         model = model.cuda()
 
@@ -152,7 +152,8 @@ class TorchDDPPlugin(DPPluginBase):
         # wrap the model with PyTorch DDP
         model = TorchDDPModel(model, **self.ddp_kwargs)
 
-        if not isinstance(optimizer, OptimizerWrapper):
+        if optimizer is not None and \
+                not isinstance(optimizer, OptimizerWrapper):
             optimizer = OptimizerWrapper(optimizer)
 
         return model, optimizer, criterion, dataloader, lr_scheduler
