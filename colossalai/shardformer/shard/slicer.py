@@ -1,9 +1,9 @@
 import torch
 
-from ..policies.basepolicy import Col_Layer, Dropout_Layer, Layer, Row_Layer
+from ..policies.basepolicy import Col_Layer, Dropout_Layer, Layer, Row_Layer, Embedding_Layer
 from .shard_config import ShardConfig
 
-dim_mapping = {Col_Layer: 0, Row_Layer: 1}
+dim_mapping = {Col_Layer: 0, Row_Layer: 1, Embedding_Layer: 1}
 
 
 class Slicer():
@@ -42,6 +42,8 @@ class Slicer():
             weight = self.slice_tensor(weight, dim, False, n_cast)
             bias = self.slice_tensor(bias, 0, True, n_cast)
         elif policy_layer_cls == Row_Layer:
+            weight = self.slice_tensor(weight, dim, False, n_cast)
+        elif policy_layer_cls == Embedding_Layer:
             weight = self.slice_tensor(weight, dim, False, n_cast)
         else:
             raise NotImplementedError(f"The policy layer class {policy_layer_cls} is not supported")
