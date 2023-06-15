@@ -16,10 +16,10 @@ from typing import Dict
 
 import transformers
 
-DEFAULT_PAD_TOKEN = "[PAD]"
+DEFAULT_PAD_TOKEN = "<unk>"
 DEFAULT_EOS_TOKEN = "</s>"
 DEFAULT_BOS_TOKEN = "</s>"
-DEFAULT_UNK_TOKEN = "</s>"
+DEFAULT_UNK_TOKEN = "<unk>"
 
 
 def prepare_llama_tokenizer_and_embedding(
@@ -31,19 +31,13 @@ def prepare_llama_tokenizer_and_embedding(
 
     """
 
-    if tokenizer.pad_token is None:
-        smart_tokenizer_and_embedding_resize(
-            special_tokens_dict=dict(pad_token=DEFAULT_PAD_TOKEN),
-            tokenizer=tokenizer,
-            model=model,
-        )
-
-    tokenizer.add_special_tokens({
+    num_new_tokens = tokenizer.add_special_tokens({
         "eos_token": DEFAULT_EOS_TOKEN,
         "bos_token": DEFAULT_BOS_TOKEN,
         "unk_token": DEFAULT_UNK_TOKEN,
+        "pad_token": DEFAULT_PAD_TOKEN
     })
-
+    assert num_new_tokens == 0
     return tokenizer
 
 
