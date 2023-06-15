@@ -36,12 +36,6 @@ class BertPolicy(Policy):
         }
 
     @staticmethod
-    def binding_policy():
-        return {
-            "bert.embeddings.word_embeddings.weight": "cls.predictions.decoder.weight",
-        }
-
-    @staticmethod
     def attn_in():
         return [
             Col_Layer(
@@ -148,30 +142,6 @@ class BertPolicy(Policy):
             replace_layer=col_nn.VocabParallelEmbedding1D,
         )]
 
-
-from transformers import BertForMaskedLM
-
-from colossalai.shardformer.model.modeling_bert import BertForMaskedLM_
-
-
-class BertForMaskedLMPolicy(BertPolicy):
-
-    @staticmethod
-    def argument_policy(config, world_size):
-        base_argument = BertPolicy.argument_policy(config, world_size)
-        argument = {
-            BertLMPredictionHead: Argument(attr_dict={}, param_funcs=[
-                BertForMaskedLMPolicy.unembedding,
-            ]),
-        }
-        argument.update(base_argument)
-        return argument
-
-    @staticmethod
-    def inject_policy():
-        # return (BertForMaskedLM, BertForMaskedLM_)
-        return None
-
     @staticmethod
     def unembedding():
         return [
@@ -185,8 +155,112 @@ class BertForMaskedLMPolicy(BertPolicy):
         ]
 
 
-class BertForSequenceClassificationPolicy(BertPolicy):
+# BertModel
+class BertModelPolicy(BertPolicy):
+
+    @staticmethod
+    def argument_policy(config, world_size):
+        return BertPolicy.argument_policy(config, world_size)
+
+
+# BertForPretraining
+class BertForPretrainingPolicy(BertPolicy):
+
+    @staticmethod
+    def argument_policy(config, world_size):
+        base_argument = BertPolicy.argument_policy(config, world_size)
+        argument = {
+            BertLMPredictionHead: Argument(attr_dict={}, param_funcs=[
+                BertPolicy.unembedding,
+            ]),
+        }
+        argument.update(base_argument)
+        return argument
 
     @staticmethod
     def inject_policy():
         return None
+
+    @staticmethod
+    def binding_policy():
+        return {
+            "bert.embeddings.word_embeddings.weight": "cls.predictions.decoder.weight",
+        }
+
+
+# BertForMaskedLM
+from colossalai.shardformer.model.modeling_bert import BertForMaskedLM_
+
+
+class BertForMaskedLMPolicy(BertPolicy):
+
+    @staticmethod
+    def argument_policy(config, world_size):
+        base_argument = BertPolicy.argument_policy(config, world_size)
+        argument = {
+            BertLMPredictionHead: Argument(attr_dict={}, param_funcs=[
+                BertPolicy.unembedding,
+            ]),
+        }
+        argument.update(base_argument)
+        return argument
+
+    @staticmethod
+    def inject_policy():
+        # return (BertForMaskedLM, BertForMaskedLM_)
+        return None
+
+    @staticmethod
+    def binding_policy():
+        return {
+            "bert.embeddings.word_embeddings.weight": "cls.predictions.decoder.weight",
+        }
+
+
+# BertLMHeadModel
+class BertLMHeadModelPolicy(BertPolicy):
+
+    @staticmethod
+    def argument_policy(config, world_size):
+        base_argument = BertPolicy.argument_policy(config, world_size)
+        argument = {
+            BertLMPredictionHead: Argument(attr_dict={}, param_funcs=[
+                BertPolicy.unembedding,
+            ]),
+        }
+        argument.update(base_argument)
+        return argument
+
+    @staticmethod
+    def inject_policy():
+        return None
+
+    @staticmethod
+    def binding_policy():
+        return {
+            "bert.embeddings.word_embeddings.weight": "cls.predictions.decoder.weight",
+        }
+
+
+# BertForNextSentencePrediction
+class BertForNextSentencePredictionPolicy(BertPolicy):
+
+    @staticmethod
+    def argument_policy(config, world_size):
+        return BertPolicy.argument_policy(config, world_size)
+
+
+# BertForSequenceClassification
+class BertForSequenceClassificationPolicy(BertPolicy):
+
+    @staticmethod
+    def argument_policy(config, world_size):
+        return BertPolicy.argument_policy(config, world_size)
+
+
+# BertForMultipleChoice
+class BertForMultipleChoicePolicy(BertPolicy):
+
+    @staticmethod
+    def argument_policy(config, world_size):
+        return BertPolicy.argument_policy(config, world_size)
