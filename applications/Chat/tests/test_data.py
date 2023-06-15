@@ -33,7 +33,7 @@ def gather_and_equal(tensor: torch.Tensor) -> bool:
 
 
 def run_test_data(strategy):
-    EXPERINCE_BATCH_SIZE = 4
+    EXPERIENCE_BATCH_SIZE = 4
     SAMPLE_BATCH_SIZE = 2
 
     if strategy == 'ddp':
@@ -54,7 +54,7 @@ def run_test_data(strategy):
 
     # experience of all ranks should be the same
     for _ in range(2):
-        data = get_data(EXPERINCE_BATCH_SIZE)
+        data = get_data(EXPERIENCE_BATCH_SIZE)
         assert gather_and_equal(data['input_ids'])
         assert gather_and_equal(data['attention_mask'])
         experience = experience_maker.make_experience(**data,
