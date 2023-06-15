@@ -276,6 +276,7 @@ def shard_model(model: nn.Module, shard_config: ShardConfig = None, policy: Poli
         shard_config (`ShardConfig`): the config for distribute information
         policy (`Policy`): the custom policy for sharding
     """
+    # TODO: init shard_config automatically
     sharder = ModelSharder(model=model, shard_config=shard_config, policy=policy)
     sharder.shard()
     return model

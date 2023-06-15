@@ -13,6 +13,6 @@ class ShardConfig:
         world_size (int): The world size of the distributed process
         gather_output (bool): Whether to gather the output of the model of the last layer
     """
-    rank: int
-    world_size: int = 2
+    rank: int = None
+    world_size: int = None
     gather_output: bool = True
