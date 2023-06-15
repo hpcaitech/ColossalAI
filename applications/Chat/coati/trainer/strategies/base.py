@@ -90,9 +90,10 @@ class Strategy(ABC):
                                     dataloader=dataloader,
                                     lr_scheduler=lr_scheduler)
                 # remove None values
-                for key in boost_result.keys():
-                    if key not in arg:
-                        boost_result.pop(key)
+                boost_result = {
+                    key: value
+                    for key, value in boost_result.items() if value is not None
+                }
                 rets.append(boost_result)
             else:
                 raise RuntimeError(f'Type {type(arg)} is not supported')

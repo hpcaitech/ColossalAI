@@ -1,15 +1,13 @@
-import math
 import time
-from typing import List, Optional
+from typing import List
 
 import torch
 import torch.distributed as dist
 import wandb
 from torch.optim import Optimizer
+from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from transformers.tokenization_utils_base import PreTrainedTokenizerBase
-from transformers.trainer import get_scheduler
 
 from .base import Trainer
 from .callbacks import Callback
@@ -38,6 +36,7 @@ class SFTTrainer(Trainer):
         model,
         strategy: Strategy,
         optim: Optimizer,
+        lr_scheduler: _LRScheduler,
         train_dataloader: DataLoader,
         eval_dataloader: DataLoader = None,
         max_epochs: int = 2,
@@ -55,14 +54,8 @@ class SFTTrainer(Trainer):
         self.optimizer = optim
 
         self.accumulation_steps = accumulation_steps
-        num_update_steps_per_epoch = len(train_dataloader) // self.accumulation_steps
-        max_steps = math.ceil(self.max_epochs * num_update_steps_per_epoch)
 
-        # TODO(cwher):
-        # self.scheduler = get_scheduler("cosine",
-        #                                self.optimizer,
-        #                                num_warmup_steps=math.ceil(max_steps * 0.03),
-        #                                num_training_steps=max_steps)
+        self.scheduler = lr_scheduler
 
     def fit(self, logger, use_wandb: bool = False):
         if use_wandb:
@@ -98,11 +91,11 @@ class SFTTrainer(Trainer):
                 if (batch_id + 1) % self.accumulation_steps == 0:
                     self.strategy.optimizer_step(self.optimizer)
                     self.optimizer.zero_grad()
-                    # self.scheduler.step()
+                    self.scheduler.step()
                     if is_rank_0() and use_wandb:
                         wandb.log({
                             "loss": total_loss / self.accumulation_steps,
-                            # "lr": self.scheduler.get_last_lr()[0],
+                            "lr": self.scheduler.get_last_lr()[0],
                             "epoch": epoch,
                             "batch_id": batch_id
                         })

@@ -1,4 +1,5 @@
 import argparse
+import math
 import os
 
 import loralib as lora
@@ -19,6 +20,7 @@ from transformers.models.gpt2.modeling_gpt2 import GPT2LMHeadModel
 from transformers.models.gpt2.tokenization_gpt2 import GPT2Tokenizer
 from transformers.models.opt.configuration_opt import OPTConfig
 from transformers.models.opt.modeling_opt import OPTForCausalLM
+from transformers.trainer import get_scheduler
 
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import HybridAdam
@@ -152,10 +154,22 @@ def train(args):
     else:
         eval_dataloader = None
 
-    (model, optim) = strategy.prepare((model, optim))
+    num_update_steps_per_epoch = len(train_dataloader) // args.accumulation_steps
+    max_steps = math.ceil(args.max_epochs * num_update_steps_per_epoch)
+    lr_scheduler = get_scheduler("cosine",
+                                 optim,
+                                 num_warmup_steps=math.ceil(max_steps * 0.03),
+                                 num_training_steps=max_steps)
+    strategy_dict = strategy.prepare(
+        dict(model=model, optimizer=optim, lr_scheduler=lr_scheduler)
+    )
+    model = strategy_dict['model']
+    optim = strategy_dict['optimizer']
+    lr_scheduler = strategy_dict['lr_scheduler']
     trainer = SFTTrainer(model=model,
                          strategy=strategy,
                          optim=optim,
+                         lr_scheduler=lr_scheduler,
                          train_dataloader=train_dataloader,
                          eval_dataloader=eval_dataloader,
                          max_epochs=args.max_epochs,
