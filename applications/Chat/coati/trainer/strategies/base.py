@@ -53,6 +53,7 @@ class Strategy(ABC):
 
     def prepare(self, *boost_args: _BoostArgSpec) -> Union[List[_BoostArgSpec], _BoostArgSpec]:
         """Prepare [model | (model, optimizer) | Dict] based on each strategy.
+        NOTE: the keys of Dict must be a subset of `self.booster.boost`'s arguments.
 
         Example::
             >>> # e.g., include lr_scheduler

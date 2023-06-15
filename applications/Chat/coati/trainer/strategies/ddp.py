@@ -6,12 +6,11 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 from coati.replay_buffer import ReplayBuffer
-from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
-from colossalai.booster.plugin import TorchDDPPlugin  # This is a wrapper of torch.DDP
+from colossalai.booster.plugin import TorchDDPPlugin
 from colossalai.booster.plugin.torch_ddp_plugin import TorchDDPModel
 
 from .naive import NaiveStrategy
