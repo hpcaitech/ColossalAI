@@ -56,7 +56,7 @@ class BertPolicy(Policy):
 
     def new_model_class(self):
         # do nothing
-        return self.model
+        return None
 
     def postprocess(self):
         binding_map = {"bert.embeddings.word_embeddings.weight": "cls.predictions.decoder.weight"}

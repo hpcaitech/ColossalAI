@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Tuple, Union
+from typing import Any, Callable, Dict, List, Tuple, Type, Union
 
 import torch.nn as nn
 
@@ -109,13 +109,13 @@ class Policy(ABC):
                         ...
                     },
                     param_replacement = [
-                        staticmethod1,
-                        staticmethod2,
+                        function1,
+                        function2,
                         ...
                     ],
                     sub_module_replacement = [
-                        staticmethod1,
-                        staticmethod2,
+                        `SubModuleReplacementDescription` description1,
+                        `SubModuleReplacementDescription` description2,
                         ...
                     ]
                 ),
@@ -127,7 +127,7 @@ class Policy(ABC):
         """
 
     @abstractmethod
-    def new_model_class(self) -> Union[nn.Module, None]:
+    def new_model_class(self) -> Union[Type[nn.Module], None]:
         r"""
         Return the new model class for the new model, None means no need to modify the model class
 
