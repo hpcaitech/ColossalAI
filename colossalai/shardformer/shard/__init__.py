@@ -1,5 +1,5 @@
 from .shard_config import ShardConfig
-from .sharder import ModelSharder, shard_model
-from .slicer import Slicer
+from .sharder import ModelSharder
+from .shardformer import ShardFormer
 
-__all__ = ['ShardConfig', 'ModelSharder', 'shard_model', 'Slicer']
+__all__ = ['ShardConfig', 'ModelSharder', 'ShardFormer']
