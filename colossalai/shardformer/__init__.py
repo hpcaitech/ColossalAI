@@ -1,1 +1,1 @@
-from .shard import ShardConfig, shard_model
+from .shard import ShardConfig, ShardFormer
