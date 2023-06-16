@@ -3,6 +3,7 @@ import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Function
+from torch.distributed import ProcessGroup
 
 
 class DistCrossEntropy(Function):
@@ -14,7 +15,7 @@ class DistCrossEntropy(Function):
     """
 
     @staticmethod
-    def forward(ctx, vocab_logits: torch.Tensor, target: torch.Tensor, ignore_index: int):
+    def forward(ctx, vocab_logits: torch.Tensor, target: torch.Tensor, ignore_index: int, process_group: ProcessGroup):
         r"""
         Calculate the cross entropy loss before gather, the origin loss function is as follows:
         loss = -log(exp(x[class])/sum(exp(x[i]))
@@ -34,15 +35,15 @@ class DistCrossEntropy(Function):
         """
         # get the max
         logits_max = torch.max(vocab_logits, dim=-1)[0]
-        dist.all_reduce(logits_max, op=dist.ReduceOp.MAX)
+        dist.all_reduce(logits_max, op=dist.ReduceOp.MAX, group=process_group)
 
         # minus the max to avoid the result of sum of exp is too large and the log is nan
         vocab_logits = vocab_logits - logits_max.unsqueeze(dim=-1)
 
         # mask the target in the local device
         partition_vocab_size = vocab_logits.size()[-1]
-        rank = dist.get_rank()
-        world_size = dist.get_world_size()
+        rank = dist.get_rank(group=process_group)
+        world_size = dist.get_world_size(group=process_group)
         global_vocab_size = partition_vocab_size * world_size
 
         # [down, up) => false, other device and -100 => true
@@ -67,11 +68,11 @@ class DistCrossEntropy(Function):
         pred_logits[mask] = 0.0
 
         # allreduce the get all x(i,y)
-        dist.all_reduce(pred_logits, op=dist.ReduceOp.SUM)
+        dist.all_reduce(pred_logits, op=dist.ReduceOp.SUM, group=process_group)
         exp_logits = vocab_logits
         torch.exp(vocab_logits, out=exp_logits)
         sum_exp_logits = torch.sum(exp_logits, dim=-1)
-        dist.all_reduce(sum_exp_logits, op=dist.ReduceOp.SUM)
+        dist.all_reduce(sum_exp_logits, op=dist.ReduceOp.SUM, group=process_group)
 
         # calculate the loss
         # loss = log(sum(exp(x[i]))) - x[class]
@@ -101,5 +102,8 @@ class DistCrossEntropy(Function):
         return grad_logits, None, None
 
 
-def applyDistCrossEntropy(vocab_logits: torch.Tensor, labels: torch.Tensor, ignore_index: int = -100) -> torch.Tensor:
-    return DistCrossEntropy.apply(vocab_logits, labels, ignore_index)
+def cross_entropy_1d(vocab_logits: torch.Tensor,
+                     labels: torch.Tensor,
+                     ignore_index: int = -100,
+                     process_group: ProcessGroup = None) -> torch.Tensor:
+    return DistCrossEntropy.apply(vocab_logits, labels, ignore_index, process_group)
