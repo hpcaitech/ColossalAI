@@ -329,7 +329,11 @@ class Linear1D_Row(ParallelModule):
                 src_rank = 0
             else:
                 src_rank = dist.distributed_c10d._get_global_rank(self.process_group, 0)
+
+            origin_device = self.bias.device
+            self.bias = self.bias.cuda()
             dist.broadcast(self.bias, src=src_rank, group=self.process_group)
+            self.bias = self.bias.to(origin_device)
 
     def forward(self, input_: Tensor) -> Tensor:
         # Set up backprop all-reduce.
