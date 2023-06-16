@@ -22,6 +22,7 @@ from .common import (
     sync_model_param,
 )
 from .cuda import empty_cache, get_current_device, set_to_cuda, synchronize
+from .xpu import xpu_empty_cache, xpu_get_current_device, set_to_xpu, xpu_synchronize
 from .data_sampler import DataParallelSampler, get_dataloader
 from .memory import (
     colo_device_memory_capacity,

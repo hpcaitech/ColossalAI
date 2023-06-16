@@ -1,8 +1,10 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 import time
+import torch
 from typing import Tuple
 from .cuda import synchronize
+from .xpu import xpu_synchronize
 
 
 class Timer:
@@ -21,14 +23,20 @@ class Timer:
 
     @property
     def current_time(self) -> float:
-        synchronize()
+        if torch.cuda.is_available():
+            synchronize()
+        elif torch.xpu.is_available():
+            xpu_synchronize()
         return time.time()
 
     def start(self):
         """Firstly synchronize cuda, reset the clock and then start the timer.
         """
         self._elapsed = 0
-        synchronize()
+        if torch.cuda.is_available():
+            synchronize()
+        elif torch.xpu.is_available():
+            xpu_synchronize()
         self._start_time = time.time()
         self._started = True
 
@@ -46,7 +54,10 @@ class Timer:
         Returns:
             int: Start-stop interval.
         """
-        synchronize()
+        if torch.cuda.is_available():
+            synchronize()
+        elif torch.xpu.is_available():
+            xpu_synchronize()
         end_time = time.time()
         elapsed = end_time - self._start_time
         if keep_in_history:
