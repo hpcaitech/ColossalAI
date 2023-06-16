@@ -17,7 +17,7 @@ from colossalai.utils import get_current_device
 
 from .base import Trainer
 from .callbacks import Callback
-from .strategies import Strategy
+from .strategies import ColossalAIStrategy, Strategy
 from .utils import is_rank_0, to_device
 
 
@@ -71,6 +71,11 @@ class PPOTrainer(Trainer):
                  offload_inference_models: bool = True,
                  callbacks: List[Callback] = [],
                  **generate_kwargs) -> None:
+        if isinstance(strategy, ColossalAIStrategy):
+            from colossalai.booster.plugin import GeminiPlugin
+            assert not (isinstance(strategy.plugin, GeminiPlugin) and offload_inference_models), \
+                "GeminiPlugin is not compatible with manual model.to('cpu')"
+
         experience_maker = NaiveExperienceMaker(actor, critic, reward_model, initial_model, kl_coef)
         replay_buffer = NaiveReplayBuffer(train_batch_size, buffer_limit, buffer_cpu_offload)
         generate_kwargs = _set_default_generate_kwargs(strategy, generate_kwargs, actor)

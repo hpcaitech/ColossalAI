@@ -185,6 +185,7 @@ def main(args):
         top_k=50,
         pad_token_id=tokenizer.pad_token_id,
         eos_token_id=tokenizer.eos_token_id,
+        offload_inference_models=args.strategy != 'colossalai_gemini'
     )
 
     trainer.fit(prompt_dataloader=prompt_dataloader,
