@@ -80,7 +80,7 @@ def train(args):
     tokenizer.pad_token = tokenizer.eos_token
     max_len = args.max_len
     if args.model == 'llama':
-        tokenizer = prepare_llama_tokenizer(tokenizer, model)
+        tokenizer = prepare_llama_tokenizer(tokenizer)
 
         if args.strategy == 'colossalai_gemini':
             # this is a hack to deal with the resized embedding

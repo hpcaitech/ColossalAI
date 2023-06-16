@@ -82,7 +82,7 @@ def train(args):
         raise ValueError(f'Unsupported model "{args.model}"')
     tokenizer.pad_token = tokenizer.eos_token
     if args.model == 'llama':
-        tokenizer = prepare_llama_tokenizer(tokenizer, model)
+        tokenizer = prepare_llama_tokenizer(tokenizer)
 
         if args.strategy == 'colossalai_gemini':
             # this is a hack to deal with the resized embedding

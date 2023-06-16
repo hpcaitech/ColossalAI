@@ -133,7 +133,7 @@ def main(args):
         raise ValueError(f'Unsupported model "{args.model}"')
 
     if args.model == 'llama':
-        tokenizer = prepare_llama_tokenizer(tokenizer, actor)
+        tokenizer = prepare_llama_tokenizer(tokenizer)
     else:
         tokenizer.pad_token = tokenizer.eos_token
 
