@@ -136,5 +136,29 @@ rm -rf ${BASE}/rm_ckpt_gpt.pt
 
 rm -rf ${BASE}/actor_checkpoint_prompts.pt
 
+# FIXME: This is a hack to skip tests that are not working (tested at commit b3ab7fbabf)
+#  - gpt2-ddp: RuntimeError: one of the variables needed for gradient computation has been modified by an inplace operation
+#  - llama-*: Repository Not Found for url: https://huggingface.co/{...}/resolve/main/tokenizer.model.
+#  - roberta-*: RuntimeError: CUDA error: CUBLAS_STATUS_NOT_INITIALIZED when calling `cublasCreate(handle)`
+SKIPPED_TESTS=(
+    "gpt2-ddp"
+    "llama-naive" "llama-ddp" "llama-colossalai_gemini" "llama-colossalai_zero2"
+    "roberta-naive" "roberta-ddp" "roberta-colossalai_gemini" "roberta-colossalai_zero2"
+)
+
+for model in 'gpt2' 'bloom' 'opt' 'llama' 'roberta'; do
+    for strategy in 'naive' 'ddp' 'colossalai_gemini' 'colossalai_zero2'; do
+        if [[ " ${SKIPPED_TESTS[@]} " =~ " ${model}-${strategy} " ]]; then
+            echo "[Test]: Skipped $model-$strategy"
+            continue
+        fi
+        torchrun --standalone --nproc_per_node=2 ${BASE}/train_prompts.py \
+            --prompt_dataset $PROMPT_PATH --pretrain_dataset $PRETRAIN_DATASET \
+            --strategy $strategy --model $model \
+            --num_episodes 1 --max_timesteps 2 \
+            --update_timesteps 2 --max_epochs 1 --train_batch_size 2
+    done
+done
+
 # 3080 doesn't support P2P, skip this test
 # cd ${BASE}/ray && bash test_ci.sh && cd ${BASE}
