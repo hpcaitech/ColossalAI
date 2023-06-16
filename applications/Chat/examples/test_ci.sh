@@ -30,12 +30,10 @@ wandb init -m offline
 #  - gpt2-ddp: RuntimeError: one of the variables needed for gradient computation has been modified by an inplace operation
 #  - llama-*: Repository Not Found for url: https://huggingface.co/{...}/resolve/main/tokenizer.model.
 #  - roberta-*: RuntimeError: CUDA error: CUBLAS_STATUS_NOT_INITIALIZED when calling `cublasCreate(handle)`
-#  - *-colossalai_gemini: model.to('cpu') failed
 SKIPPED_TESTS=(
     "gpt2-ddp"
     "llama-naive" "llama-ddp" "llama-colossalai_gemini" "llama-colossalai_zero2"
     "roberta-naive" "roberta-ddp" "roberta-colossalai_gemini" "roberta-colossalai_zero2"
-    "gpt2-colossalai_gemini" "opt-colossalai_gemini"
 )
 
 # These tests are quick and do not have any dependencies
@@ -151,15 +149,14 @@ torchrun --standalone --nproc_per_node=2 ${BASE}/train_prompts.py \
     --rm_path ${BASE}/rm_ckpt_gpt.pt \
     --save_path ${BASE}/actor_checkpoint_prompts.pt
 
-# FIXME: this test would fail after commit 18fc116724
-# torchrun --standalone --nproc_per_node=2 ${BASE}/train_prompts.py \
-#     --prompt_dataset $PROMPT_PATH --pretrain_dataset $PRETRAIN_DATASET \
-#     --strategy colossalai_gemini --num_episodes 1 --max_timesteps 2 \
-#     --update_timesteps 2 --max_epochs 1 --train_batch_size 2 \
-#     --pretrain 'gpt2' --model gpt2 \
-#     --rm_pretrain 'gpt2' \
-#     --rm_path ${BASE}/rm_ckpt_gpt.pt \
-#     --save_path ${BASE}/actor_checkpoint_prompts.pt
+torchrun --standalone --nproc_per_node=2 ${BASE}/train_prompts.py \
+    --prompt_dataset $PROMPT_PATH --pretrain_dataset $PRETRAIN_DATASET \
+    --strategy colossalai_gemini --num_episodes 1 --max_timesteps 2 \
+    --update_timesteps 2 --max_epochs 1 --train_batch_size 2 \
+    --pretrain 'gpt2' --model gpt2 \
+    --rm_pretrain 'gpt2' \
+    --rm_path ${BASE}/rm_ckpt_gpt.pt \
+    --save_path ${BASE}/actor_checkpoint_prompts.pt
 rm -rf ${BASE}/rm_ckpt_gpt.pt
 
 rm -rf ${BASE}/actor_checkpoint_prompts.pt
