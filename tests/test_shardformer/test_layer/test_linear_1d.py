@@ -5,7 +5,7 @@ from torch.testing import assert_close
 
 import colossalai
 from colossalai.shardformer.layer.layers import Linear1D_Col, Linear1D_Row
-from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
+from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 
 def check_linear_1d_col():
