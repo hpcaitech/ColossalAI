@@ -72,9 +72,8 @@ class Strategy(ABC):
         rets = []
         for arg in boost_args:
             if isinstance(arg, nn.Module):
-                # HACK: directly use plugin's method to wrap model, as booster.boost must take in both model and optimizer
-                # TODO(cwher): support inference only case
-                raise NotImplementedError()
+                model, *_ = self.booster.boost(arg)
+                rets.append(model)
             elif isinstance(arg, tuple):
                 try:
                     model, optimizer = arg
