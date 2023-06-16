@@ -12,7 +12,7 @@ from coati.models.llama import LlamaLM
 from coati.models.opt import OPTLM
 from coati.trainer import SFTTrainer
 from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
-from coati.utils import prepare_llama_tokenizer_and_embedding
+from coati.utils import prepare_llama_tokenizer
 from datasets import load_dataset
 from easy_dataset import EasyDataset
 from peft import LoraConfig, PeftModel, TaskType, get_peft_model
@@ -82,7 +82,7 @@ def train(args):
         raise ValueError(f'Unsupported model "{args.model}"')
     tokenizer.pad_token = tokenizer.eos_token
     if args.model == 'llama':
-        tokenizer = prepare_llama_tokenizer_and_embedding(tokenizer, model)
+        tokenizer = prepare_llama_tokenizer(tokenizer, model)
 
         if args.strategy == 'colossalai_gemini':
             # this is a hack to deal with the resized embedding
