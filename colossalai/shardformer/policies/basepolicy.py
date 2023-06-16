@@ -75,6 +75,7 @@ class Policy(ABC):
     """
 
     def __init__(self) -> None:
+        self.shard_config = None
         self.model = None
         self.shard_config = None
 
@@ -101,6 +102,7 @@ class Policy(ABC):
         r"""
         Perform some preprocessing of the model, like reshaping the embedding layer
         """
+        pass
 
     @abstractmethod
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
@@ -135,6 +137,7 @@ class Policy(ABC):
                 ...
             }
         """
+        pass
 
     @abstractmethod
     def new_model_class(self) -> Union[Type[nn.Module], None]:
@@ -149,6 +152,7 @@ class Policy(ABC):
             return BertModel_
             ```
         """
+        pass
 
     @abstractmethod
     def postprocess(self) -> nn.Module:
@@ -156,3 +160,4 @@ class Policy(ABC):
         Perform some postprocessing of the model, like binding the weight of embedding layer with
         the classifier layer
         """
+        pass
