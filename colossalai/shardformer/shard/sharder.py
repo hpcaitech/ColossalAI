@@ -171,12 +171,13 @@ class ModelSharder(object):
         for description in sub_module_replacement:
             suffix = description.suffix
             target_module = description.target_module
-            kwargs = description.kwargs
+            kwargs = {} if description.kwargs is None else description.kwargs
 
             assert target_module is not None, 'target_module should not be None'
 
             # TODO: support different parallel mode
             native_sub_module = getattr_(org_layer, suffix)
-            replace_layer = target_module.from_native_module(native_sub_module, self.pg_manager.pg_store['tp1d'])
+            replace_layer = target_module.from_native_module(native_sub_module, self.pg_manager.pg_store['tp1d'],
+                                                             **kwargs)
 
             setattr_(org_layer, suffix, replace_layer)
