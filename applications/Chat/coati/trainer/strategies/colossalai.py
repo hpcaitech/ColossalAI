@@ -29,7 +29,7 @@ class ColossalAIStrategy(DDPStrategy):
         precision(str): The precision to use. Choose in ('fp32', 'fp16'). Stage 3 only supports fp16.
         seed(int): The seed for the random number generator.
         shard_init(bool): Whether to shard the model parameters during initialization. Only for ZeRO-3.
-            This is not compativle with `from_pretrained()`. We temporarily disable this and will support it in the future.
+            This is not compatible with `from_pretrained()`. We temporarily disable this and will support it in the future.
         placement_policy(str): The placement policy for gemini. Choose in ('cpu', 'cuda')
                           If it is “cpu”, parameters, gradients and optimizer states will be offloaded to CPU,
                           If it is “cuda”, they will not be offloaded, which means max CUDA memory will be used. It is the fastest.
@@ -39,7 +39,7 @@ class ColossalAIStrategy(DDPStrategy):
         hidden_dim(optional, int): The hidden dimension for the gemini. Only for ZeRO-3.
         min_chunk_size_mb(float): The minimum chunk size in MB. Only for ZeRO-3.
         gpu_margin_mem_ratio(float): The margin memory ratio for the GPU. Only for ZeRO-3.
-        reduce_bugket_size(int): The reduce bucket size in bytes. Only for ZeRO-1 and ZeRO-2.
+        reduce_bucket_size(int): The reduce bucket size in bytes. Only for ZeRO-1 and ZeRO-2.
         overlap_communication(bool): Whether to overlap communication and computation. Only for ZeRO-1 and ZeRO-2.
         initial_scale(float): The initial scale for the optimizer.
         growth_factor(float): The growth factor for the optimizer.
