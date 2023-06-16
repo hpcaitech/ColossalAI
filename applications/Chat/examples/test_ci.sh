@@ -41,7 +41,7 @@ SKIPPED_TESTS=(
 # These tests are quick and do not have any dependencies
 for model in 'gpt2' 'bloom' 'opt' 'llama' 'roberta'; do
     for strategy in 'naive' 'ddp' 'colossalai_gemini' 'colossalai_zero2'; do
-        if [[ " ${SKIPPED_TESTS[@]} " =~ " ${model}-${strategy} " ]]; then
+        if [[ " ${SKIPPED_TESTS[*]} " =~ " ${model}-${strategy} " ]]; then
             echo "[Test]: Skipped $model-$strategy"
             continue
         fi
