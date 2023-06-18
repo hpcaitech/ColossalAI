@@ -194,7 +194,7 @@ def calculate_global_norm_from_list(norm_list):
     return math.sqrt(total_norm)
 
 
-def compute_norm(gradients, params, dp_group, mp_group, norm_type=2):
+def compute_norm(gradients, params, dp_group, mp_group, master_working_map, norm_type=2):
     """Clips gradient norm of an iterable of parameters.
     This is adapted from torch.nn.utils.clip_grad.clip_grad_norm_ and
     added functionality to handle model parallel parameters. Note that
@@ -230,6 +230,7 @@ def compute_norm(gradients, params, dp_group, mp_group, norm_type=2):
         #    logger.info(f"Total Norm beginning {total_norm}")
 
         for g, p in zip(gradients, params):
+            p = master_working_map[id(p)]
             # Pipeline parallelism may replicate parameters. Avoid multi-counting.
             tp_param_flag = False
             if is_model_parallel_parameter(p) or (isinstance(p, ColoParameter) and not p.is_replicate()):

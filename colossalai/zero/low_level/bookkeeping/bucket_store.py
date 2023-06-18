@@ -1,3 +1,5 @@
+import torch
+from torch._utils import _flatten_dense_tensors
 from torch.distributed import ProcessGroup
 
 from .base_store import BaseStore
@@ -7,35 +9,36 @@ class BucketStore(BaseStore):
 
     def __init__(self, torch_pg: ProcessGroup):
         super().__init__(torch_pg)
-        self._params = dict()
-        self._num_elements_in_bucket = dict()
+
+        # init and reset
+        self.current_group_id = 0
 
         self.reset()
 
-    def num_elements_in_bucket(self, reduce_rank: int = None):
-        return self._num_elements_in_bucket[reduce_rank]
+    def num_elements_in_bucket(self):
+        return self._num_elements_in_bucket
 
-    def add_num_elements_in_bucket(self, num_elements, reduce_rank: int = None):
-        self._num_elements_in_bucket[reduce_rank] += num_elements
+    def add_param_grad(self, group_id, grad, padding_size):
+        self.current_group_id = group_id
+        with torch.no_grad():
+            if padding_size > 0:
+                grad = torch.nn.functional.pad(grad.view(-1), [0, padding_size])
+            else:
+                grad = grad.view(-1)
+            self._num_elements_in_bucket += grad.numel()
+            grad_list = grad.split(grad.numel() // self._world_size)
+            for rank in range(self._world_size):
+                self._grad_in_bucket[rank].append(grad_list[rank])
 
-    def add_param(self, tensor, reduce_rank: int = None):
-        self._params[reduce_rank].append(tensor)
+    def get_grad(self):
+        return self._grad_in_bucket
+
+    def flatten_grad(self):
+        for rank, grad_list in self._grad_in_bucket.items():
+            self._grad_in_bucket[rank] = _flatten_dense_tensors(grad_list)
 
     def reset(self):
-        keys = [None] + list(range(self._world_size))
-        self._params = {rank: [] for rank in keys}
-        self._num_elements_in_bucket = {rank: 0 for rank in keys}
-
-    def reset_by_rank(self, reduce_rank=None):
-        self._params[reduce_rank] = []
-        self._num_elements_in_bucket[reduce_rank] = 0
-
-    def get_grad(self, reduce_rank: int = None):
-        param_list = self.get_param(reduce_rank)
-        for param in param_list:
-            # the param must have grad for reduction
-            assert param.grad is not None, f'Parameter of size ({param.size()}) has None grad, cannot be reduced'
-        return [param.grad for param in param_list]
-
-    def get_param(self, reduce_rank: int = None):
-        return self._params[reduce_rank]
+        self._num_elements_in_bucket = 0
+        self._grad_in_bucket = dict()
+        for rank in range(self._world_size):
+            self._grad_in_bucket[rank] = []

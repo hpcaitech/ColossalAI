@@ -26,9 +26,9 @@ class GradientStore(BaseStore):
 
         self._grad_acc_objs.append(obj)
 
-    def get_averaged_gradients_by_group(self, group_id: int) -> List[Tensor]:
+    def get_averaged_gradients_by_group(self, group_id: int, rank) -> List[Tensor]:
         """
-        Return average gradients of a parameter group
+        Return a list of flatten average gradients of a parameter group
 
         :param group_id: The index of parameter group
         :type group_id: int
@@ -37,11 +37,13 @@ class GradientStore(BaseStore):
         :rtype: List[torch.Tensor]
         """
         if group_id not in self._averaged_gradients:
-            self._averaged_gradients[group_id] = []
+            self._averaged_gradients[group_id] = dict()
+        if rank not in self._averaged_gradients[group_id]:
+            self._averaged_gradients[group_id][rank] = []
 
-        return self._averaged_gradients[group_id]
+        return self._averaged_gradients[group_id][rank]
 
-    def append_average_gradient_by_group(self, group_id: int, tensor: Tensor) -> None:
+    def append_average_gradient_by_group(self, group_id: int, rank, tensor: Tensor) -> None:
         """
         Append an average gradient to the list of averaged gradients of a parameter group
 
@@ -52,10 +54,11 @@ class GradientStore(BaseStore):
 
         """
 
-        if group_id in self._averaged_gradients:
-            self._averaged_gradients[group_id].append(tensor)
-        else:
-            self._averaged_gradients[group_id] = [tensor]
+        if group_id not in self._averaged_gradients:
+            self._averaged_gradients[group_id] = dict()
+        if rank not in self._averaged_gradients[group_id]:
+            self._averaged_gradients[group_id][rank] = []
+        self._averaged_gradients[group_id][rank].append(tensor)
 
     def add_average_gradient_by_group(self, group_id: int, tensor_idx: int, tensor: Tensor) -> None:
         """
@@ -79,7 +82,7 @@ class GradientStore(BaseStore):
         :type group_id: int
         """
 
-        self._averaged_gradients[group_id] = []
+        self._averaged_gradients[group_id] = dict()
 
     def reset_all_average_gradients(self) -> None:
         """
