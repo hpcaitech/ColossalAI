@@ -280,6 +280,7 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
                 stream = torch.cuda.current_stream()
 
             with torch.cuda.stream(stream):
+                # TODO: both zero 1 and 2 do need flatten when comm
                 group_id = self._bucket_store.current_group_id
                 if not self._partition_grads:
                     for rank, grad_list in grads_in_bucket.items():
@@ -289,10 +290,14 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
                             self._grad_store.append_average_gradient_by_group(group_id, rank, grad)
 
                 else:
-                    grad = torch.zeros_like(grads_in_bucket[0])
-                    dist.reduce_scatter(grad, grads_in_bucket, group=self._dp_torch_group)
-                    # each rank would get its own grad
-                    self._grad_store.append_average_gradient_by_group(group_id, self._local_rank, grad)
+                    for i in range(len(grads_in_bucket[0])):
+                        comm_grad_list = []
+                        for rank, grad_list in grads_in_bucket.items():
+                            comm_grad_list.append(grad_list[i])
+                        grad = torch.zeros_like(comm_grad_list[0])
+                        dist.reduce_scatter(grad, comm_grad_list, group=self._dp_torch_group)
+                        self._grad_store.append_average_gradient_by_group(group_id, self._local_rank, grad)
+
                 self._bucket_store.reset()
 
     def _add_to_bucket(self, param, group_id, grad):
@@ -330,6 +335,7 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
         if self._overlap_communication:
             torch.cuda.synchronize()
 
+        self.zero_grad()
         # gradient synchronization
         # if sync_grad:
         # self._sync_grad()
@@ -409,8 +415,13 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
             # for param in self._working_param_groups[group_id]:
             master_params = self._master_param_groups_of_current_rank[group_id]
             for partition_param in master_params:
-                full_master_param = [torch.zeros_like(partition_param) for _ in range(self._world_size)]
-                dist.all_gather(full_master_param, partition_param, group=self._dp_torch_group)
+                device = partition_param.device
+                # print(device, self._local_rank)
+                # if device == "cpu":
+                #     partition_param = partition_param.to(device='cuda')
+                # print(partition_param.device, self._local_rank)
+                full_master_param = [torch.zeros_like(partition_param).cuda() for _ in range(self._world_size)]
+                dist.all_gather(full_master_param, partition_param.cuda(), group=self._dp_torch_group)
 
                 working_param = self._param_store.master_to_working_param[id(partition_param)]
 
