@@ -48,6 +48,12 @@ _POLICY_LIST = {
         PolicyLocation(file_name="llama", class_name="LlamaForSequenceClassificationPolicy"),
 
     # T5
+    "transformers.models.t5.modeling_t5.T5Model":
+        PolicyLocation(file_name="t5", class_name="T5ModelPolicy"),
+    "transformers.models.t5.modeling_t5.T5ForConditionalGeneration":
+        PolicyLocation(file_name="t5", class_name="T5ForConditionalGenerationPolicy"),
+    "transformers.models.t5.modeling_t5.T5EncoderModel":
+        PolicyLocation(file_name="t5", class_name="T5EncoderPolicy"),
 
     # GPT2
 }
