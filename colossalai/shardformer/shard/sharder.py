@@ -175,7 +175,16 @@ class ModelSharder(object):
             assert target_module is not None, 'target_module should not be None'
 
             # TODO: support different parallel mode
-            native_sub_module = getattr_(org_layer, suffix)
+            native_sub_module = getattr_(org_layer, suffix, ignore=True)
+
+            assert not isinstance(native_sub_module, target_module), \
+                f"The module with suffix {suffix} has been replaced, please check the policy"
+
+            # if it is None and we are allowed to ignore this module
+            # just skip
+            if description.ignore_if_not_exist and native_sub_module is None:
+                continue
+
             replace_layer = target_module.from_native_module(native_sub_module, self.pg_manager.pg_store['tp1d'],
                                                              **kwargs)
 

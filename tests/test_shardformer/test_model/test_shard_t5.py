@@ -1,71 +1,72 @@
 import copy
 import os
-import random
 
 import pytest
 import torch
-from transformers import AutoTokenizer, BertConfig, BertForMaskedLM, T5Config, T5ForConditionalGeneration, T5Tokenizer
+from transformers import T5Config, T5EncoderModel, T5ForConditionalGeneration, T5Model, T5Tokenizer, T5TokenizerFast
 
 import colossalai
 from colossalai.logging import disable_existing_loggers
 from colossalai.shardformer.shard import ShardConfig, ShardFormer
-from colossalai.testing import rerun_if_address_is_in_use, spawn
+from colossalai.testing import assert_hf_output_close, clear_cache_before_run, rerun_if_address_is_in_use, spawn
 
 os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
 CONFIG = dict(parallel=dict(data=1, pipeline=1, tensor=dict(size=2, mode='1d')),)
 tokenizer = T5Tokenizer.from_pretrained("t5-small")
 
 
-def build_model(rank, world_size):
-    config = T5Config.from_pretrained("t5-small")
+def build_model(world_size, model_fn):
+    config = T5Config(decoder_start_token_id=0)
     config.dropout_rate = 0
-    org_model = T5ForConditionalGeneration.from_pretrained("t5-small", config=config).to('cuda')
+    org_model = model_fn(config=config).to('cuda')
+    shard_config = ShardConfig(tensor_parallel_size=world_size)
 
-    shardconfig = ShardConfig(
-        rank=rank,
-        world_size=world_size,
-        gather_output=True,
-    )
-
-    org_model_for_shard = copy.deepcopy(org_model)
-
-    sharded_model = shard_model(org_model_for_shard, shardconfig).to('cuda')
+    # shard model
+    shard_config = ShardConfig(tensor_parallel_size=world_size)
+    model_copy = copy.deepcopy(org_model)
+    shard_former = ShardFormer(shard_config=shard_config)
+    shard_former.init_distributed()
+    sharded_model = shard_former.shard_model(model_copy)
 
     return org_model, sharded_model
 
 
-def check_forward(org_model, sharded_model):
-
-    input_ids = tokenizer("translate English to German: The house is wonderful.",
-                          return_tensors="pt").input_ids.to('cuda')
-    #orgin model
-    org_model.eval()
-    org_output = org_model.generate(input_ids)
-
-    #shard model
-    sharded_model.eval()
-    shard_output = sharded_model.generate(input_ids)
-    assert torch.allclose(
-        org_output[0], shard_output[0],
-        atol=1e-5), f"shard model output is not equal to orgin model output\n{org_out[0]}\n{shard_out[0]}"
-
-
-def check_backward(org_model, sharded_model):
+def check_forward_backward(org_model, sharded_model):
     # prepare input
     input_ids = tokenizer("translate English to German: The house is wonderful.",
                           return_tensors="pt").input_ids.to('cuda')
     labels = tokenizer("Das Haus ist wunderbar.", return_tensors="pt").input_ids.to('cuda')
 
-    #orgin model
+    # switch to train mode
     org_model.train()
-    org_loss = org_model(input_ids=input_ids, labels=labels).loss
-    org_loss.backward()
-    org_grad = org_model.encoder.block[0].layer[0].SelfAttention.q.weight.grad
-
-    #shard model
     sharded_model.train()
-    shard_loss = sharded_model(input_ids=input_ids, labels=labels).loss
+
+    if isinstance(org_model, T5ForConditionalGeneration):
+        org_output = org_model(input_ids=input_ids, labels=labels)
+        org_loss = org_output.loss
+        shard_output = sharded_model(input_ids=input_ids, labels=labels)
+        shard_loss = shard_output.loss
+    elif isinstance(org_model, T5Model):
+        decoder_input_ids = org_model._shift_right(input_ids)
+        org_output = org_model(input_ids=input_ids, decoder_input_ids=decoder_input_ids)
+        org_loss = org_output.last_hidden_state.mean()
+        shard_output = sharded_model(input_ids=input_ids, decoder_input_ids=decoder_input_ids)
+        shard_loss = shard_output.last_hidden_state.mean()
+    elif isinstance(org_model, T5EncoderModel):
+        org_output = org_model(input_ids=input_ids)
+        org_loss = org_output.last_hidden_state.mean()
+        shard_output = sharded_model(input_ids=input_ids)
+        shard_loss = shard_output.last_hidden_state.mean()
+
+    # key is sharded, so we ignore
+    assert_hf_output_close(org_output, shard_output, ignore_keys=['past_key_values'])
+
+    # do backward
+    org_loss.backward()
     shard_loss.backward()
+
+    # check grad equality
+    org_grad = org_model.encoder.block[0].layer[0].SelfAttention.q.weight.grad
     shard_grad = sharded_model.encoder.block[0].layer[0].SelfAttention.q.weight.grad
 
     shard_grad_list = [torch.zeros([*shard_grad.shape]).to('cuda') for _ in range(2)]
@@ -82,16 +83,21 @@ def check_t5(rank, world_size, port):
     disable_existing_loggers()
     colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
 
-    org_model, sharded_model = build_model(rank, world_size)
-    check_forward(org_model, sharded_model)
-    check_backward(org_model, sharded_model)
+    model_fn_list = [
+        T5Model,
+        T5ForConditionalGeneration,
+        T5EncoderModel,
+    ]
 
-    torch.cuda.empty_cache()
+    for model_fn in model_fn_list:
+        org_model, sharded_model = build_model(world_size, model_fn)
+        check_forward_backward(org_model, sharded_model)
+        torch.cuda.empty_cache()
 
 
 @pytest.mark.dist
-@pytest.mark.skip
 @rerun_if_address_is_in_use()
+@clear_cache_before_run()
 def test_t5():
     spawn(check_t5, 2)
 
