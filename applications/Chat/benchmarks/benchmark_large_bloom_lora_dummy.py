@@ -151,8 +151,9 @@ def main(args):
     tokenizer = AutoTokenizer.from_pretrained('facebook/opt-350m')
     tokenizer.pad_token = tokenizer.eos_token
 
-    (actor, actor_optim), (critic, critic_optim), initial_model, reward_model = strategy.prepare(
-        (actor, actor_optim), (critic, critic_optim), initial_model, reward_model)
+    with low_precision_init():
+        (actor, actor_optim), (critic, critic_optim), initial_model, reward_model = strategy.prepare(
+            (actor, actor_optim), (critic, critic_optim), initial_model, reward_model)
 
     print_rank_0(f'Mem after prepare: {psutil.Process(os.getpid()).memory_full_info().rss /1024**3:.2f} GB')
     # TODO(ver217): load checkpoint here
@@ -195,8 +196,8 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model', default='125m')
-    parser.add_argument('--critic_model', default='125m')
+    parser.add_argument('--model', default='350m')
+    parser.add_argument('--critic_model', default='350m')
     parser.add_argument('--strategy',
                         choices=[
                             'colossalai_gemini',
