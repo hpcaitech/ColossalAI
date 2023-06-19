@@ -117,7 +117,7 @@ def main():
     # Initialize Booster
     # ==============================
     if args.plugin == 'gemini':
-        plugin = GeminiPlugin(placement_policy='cuda')
+        plugin = GeminiPlugin(placement_policy='auto')
     elif args.plugin == 'gemini_cpu':
         plugin = GeminiPlugin(placement_policy='cpu')
     elif args.plugin == 'fsdp':
