@@ -37,11 +37,7 @@ def build_model(rank, world_size, model):
     org_model_forshard.to('cuda')
     shard_config = ShardConfig(
         tensor_parallel_size=2,
-    #    data_parallel_size=1,
-    #    pipeline_parallel_size=1,
         tensor_parallel_mode='1d',
-    #    inference_only=True,
-    #    gather_output=True
     )
     shard_former = ShardFormer(shard_config=shard_config)
     shard_former.init_distributed()
