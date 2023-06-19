@@ -20,4 +20,4 @@ export NCCL_P2P_LEVEL=0
 export OMP_NUM_THREADS=8
 export PYTHONNOUSERSITE=test
 
-srun ./zero1_7b.sh --o out1.log
+srun ./gemini_7b_auto.sh --o out1.log
