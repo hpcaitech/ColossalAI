@@ -361,7 +361,7 @@ def get_gpt_evaluation_without_logprobs(prompt: Dict[str, Any],
     """
     Use chat models(gpt-3.5-turbo or gpt-4) to evaluate one model answer.
 
-    Temprature is set to 0 to make the model more deterministic.
+    Temperature is set to 0 to make the model more deterministic.
 
     Args:
         prompt: a dictionary including prompt template, CoT and metrics.
@@ -435,7 +435,7 @@ def get_gpt_evaluation_with_logprobs(prompt: Dict[str, Any],
     Use completion model(text-davinci-003) to evaluate one model answer.
     Only completion models can return log probabilities.
 
-    Temprature is set to 0 to make the model more deterministic.
+    Temperature is set to 0 to make the model more deterministic.
 
     Args:
         prompt: a dictionary including prompt template, CoT and metrics.
@@ -593,7 +593,7 @@ def calculate_scores_form_logprobs(logprobs: Dict[str, Any]) -> float:
 def calculate_scores_form_response(response: str, evaluation: Dict[str, Any]) -> int:
     """
     Calculate the score from the response returned by gpt-3.5-turbo or gpt-4.
-    Different from text-davinci-003, this fuction directly calculates the score according to the plain response returned by gpt-3.5-turbo or gpt-4.
+    Different from text-davinci-003, this function directly calculates the score according to the plain response returned by gpt-3.5-turbo or gpt-4.
     Although text-davinci-003 can return log probabilities, it costs ten times as much as gpt-3.5-turbo.
 
     Args:
