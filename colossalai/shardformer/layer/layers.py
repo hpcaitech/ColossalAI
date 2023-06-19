@@ -469,13 +469,14 @@ class Embedding1D(ParallelModule):
                  dtype: torch.dtype = None,
                  device: torch.device = None,
                  process_group: ProcessGroup = None,
+                 gather_output: bool = True,
                  weight_initializer: Callable = init.normal_(),
                  *args,
                  **kwargs):
         super().__init__()
 
         self.num_embeddings = num_embeddings
-        self.embed_dim = embedding_dim
+        self.embedding_dim = embedding_dim
         self.process_group = process_group
         self.num_partitions = dist.get_world_size(process_group)
         self.embed_dim_per_partition = divide(embedding_dim, self.num_partitions)
@@ -499,7 +500,9 @@ class Embedding1D(ParallelModule):
 
     @staticmethod
     def from_native_module(module: nn.Embedding,
-                           process_group: Union[ProcessGroup, List[ProcessGroup]] = None) -> "Embedding1D":
+                           process_group: Union[ProcessGroup, List[ProcessGroup]] = None,
+                           *args,
+                           **kwargs) -> "Embedding1D":
         r"""
         Build a 1D parallelized Embedding from a native nn.Embedding module.
         """
@@ -527,7 +530,9 @@ class Embedding1D(ParallelModule):
                                 max_norm=max_norm,
                                 norm_type=norm_type,
                                 scale_grad_by_freq=scale_grad_by_freq,
-                                sparse=sparse)
+                                sparse=sparse,
+                                *args,
+                                **kwargs)
 
         # copy the weight
         with torch.no_grad():
@@ -537,7 +542,7 @@ class Embedding1D(ParallelModule):
         return embedding
 
     def reset_parameters(self, weight_initializer) -> None:
-        fan_in, fan_out = self.num_embeddings, self.embed_dim
+        fan_in, fan_out = self.num_embeddings, self.embedding_dim
         weight_initializer(self.weight, fan_in=fan_in, fan_out=fan_out)
         self._fill_padding_idx_with_zero()
 
@@ -548,9 +553,12 @@ class Embedding1D(ParallelModule):
 
     def forward(self, input_: Tensor) -> Tensor:
         output_parallel = F.embedding(input_, self.weight, self.padding_idx, *self.embed_args, **self.embed_kwargs)
-        output = gather_forward_split_backward(output_parallel, dim=-1, process_group=self.process_group)
 
-        return output
+        if self.gather_output:
+            output = gather_forward_split_backward(output_parallel, dim=-1, process_group=self.process_group)
+            return output
+        else:
+            return output_parallel
 
 
 class VocabParallelEmbedding1D(ParallelLayer):
@@ -595,7 +603,7 @@ class VocabParallelEmbedding1D(ParallelLayer):
                  **kwargs):
         super().__init__()
         self.num_embeddings = num_embeddings
-        self.embed_dim = embedding_dim
+        self.embedding_dim = embedding_dim
         self.padding_idx = padding_idx
         self.embed_args = args
         self.embed_kwargs = kwargs
@@ -610,7 +618,7 @@ class VocabParallelEmbedding1D(ParallelLayer):
         self.vocab_end_index = self.vocab_start_index + self.num_embeddings_per_partition
 
         self.weight = Parameter(
-            torch.empty((self.num_embeddings_per_partition, self.embed_dim), device=device, dtype=dtype))
+            torch.empty((self.num_embeddings_per_partition, self.embedding_dim), device=device, dtype=dtype))
 
         # offset the seed with randomizer index and rank
         seed = torch.random.initial_seed()
@@ -662,7 +670,7 @@ class VocabParallelEmbedding1D(ParallelLayer):
 
     def reset_parameters(self, weight_initializer) -> None:
         with seed(ParallelMode.TENSOR):
-            fan_in, fan_out = self.num_embeddings, self.embed_dim
+            fan_in, fan_out = self.num_embeddings, self.embedding_dim
             weight_initializer(self.weight, fan_in=fan_in, fan_out=fan_out)
             self._fill_padding_idx_with_zero()
 

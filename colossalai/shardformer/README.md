@@ -81,8 +81,8 @@ We will follow this roadmap to develop Shardformer:
   - [ ] Hugging Face
     - [ ] NLP
       - [x] BERT
-      - [ ] T5
-      - [ ] LlaMa
+      - [x] T5
+      - [x] LlaMa
       - [ ] GPT2
       - [ ] BLOOM
       - [ ] RoBERTa
@@ -90,7 +90,6 @@ We will follow this roadmap to develop Shardformer:
       - [ ] ERNIE
       - [ ] GPT Neo
       - [ ] GPT-J
-      - [ ] CV
     - [ ] CV
       - [ ] ViT
       - [ ] BEiT

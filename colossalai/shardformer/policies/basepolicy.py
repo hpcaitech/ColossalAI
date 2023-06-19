@@ -27,6 +27,7 @@ class SubModuleReplacementDescription:
     suffix: str
     target_module: ParallelModule
     kwargs: Dict[str, Any] = None
+    ignore_if_not_exist: bool = False
 
 
 @dataclass
