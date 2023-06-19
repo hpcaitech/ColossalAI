@@ -181,7 +181,7 @@ optimizer = torch.optim.SGD(model.parameters(), lr=1e-2, weight_decay=0.1)
 # build loss
 criterion = torch.nn.CrossEntropyLoss()
 
-# lr_scheduelr
+# lr_scheduler
 lr_scheduler = LinearWarmupLR(optimizer, warmup_steps=50, total_steps=NUM_EPOCHS)
 ```
 
