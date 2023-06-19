@@ -1,6 +1,6 @@
 #!/bin/bash -l
 #SBATCH --job-name=llama_pretrain
-#SBATCH --account=u100034 # project account
+#SBATCH --account=p200164 # project account
 #SBATCH --partition=gpu                    # partition
 #SBATCH --nodes=16                          # number of nodes
 #SBATCH --ntasks=64                         # number of tasks
