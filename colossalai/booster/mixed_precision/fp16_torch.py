@@ -115,10 +115,12 @@ class FP16TorchMixedPrecision(MixedPrecision):
 
     def configure(self,
                   model: nn.Module,
-                  optimizer: Optimizer,
-                  criterion: Callable = None) -> Tuple[nn.Module, OptimizerWrapper, Callable]:
+                  optimizer: Optional[Optimizer] = None,
+                  criterion: Optional[Callable] = None,
+                  ) -> Tuple[nn.Module, OptimizerWrapper, Callable]:
         model = TorchAMPModule(model)
-        optimizer = TorchAMPOptimizer(optimizer, **self.torch_amp_kwargs)
+        if optimizer is not None:
+            optimizer = TorchAMPOptimizer(optimizer, **self.torch_amp_kwargs)
         if criterion is not None:
             criterion = TorchAMPModule(criterion)
         return model, optimizer, criterion

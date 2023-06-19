@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
+from contextlib import contextmanager
+
 import torch.nn as nn
 
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
-from contextlib import contextmanager
 
 
 class ParallelLayer(nn.Module):

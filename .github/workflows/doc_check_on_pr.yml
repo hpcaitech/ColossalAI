@@ -16,6 +16,9 @@ jobs:
       github.event.pull_request.draft == false &&
       github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
     runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ github.head_ref }}
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v2
 
@@ -31,6 +34,9 @@ jobs:
       github.event.pull_request.draft == false &&
       github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
     runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ github.head_ref }}
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v2
         with:
