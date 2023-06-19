@@ -76,6 +76,7 @@ class Policy(ABC):
 
     def __init__(self) -> None:
         self.model = None
+        self.shard_config = None
 
     def set_model(self, model: nn.Module) -> None:
         r"""
@@ -86,14 +87,23 @@ class Policy(ABC):
         """
         self.model = model
 
+    def set_shard_config(self, shard_config: ShardConfig) -> None:
+        r"""
+        Set shard config as an attribute of the Policy object.
+
+        Args:
+            shard_config (:class:`ShardConfig`): The shard config to be perform
+        """
+        self.shard_config = shard_config
+
     @abstractmethod
-    def preprocess(self, shard_config: ShardConfig = None) -> nn.Module:
+    def preprocess(self) -> nn.Module:
         r"""
         Perform some preprocessing of the model, like reshaping the embedding layer
         """
 
     @abstractmethod
-    def module_policy(self, shard_config: ShardConfig = None) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
+    def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
         r"""
         Return the dict for the modify policy, the key is the original layer class and the value is the
         argument for the modify layer
