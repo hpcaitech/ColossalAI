@@ -50,6 +50,8 @@ _POLICY_LIST = {
     # T5
 
     # GPT2
+    "transformers.models.gpt2.modeling_gpt2.GPT2Model":
+        PolicyLocation(file_name="gpt2", class_name="GPT2ModelPolicy"),
 }
 
 
@@ -92,5 +94,4 @@ def get_autopolicy(model: nn.Module) -> Policy:
         )
     else:
         policy = import_policy(policy_location)
-    return policy()
     return policy()

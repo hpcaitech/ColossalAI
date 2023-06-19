@@ -1,7 +1,7 @@
 import torch.nn as nn
 from transformers.models.bert.modeling_bert import BertEmbeddings, BertLayer, BertLMPredictionHead
 
-import colossalai.shardformer.layer.layers as col_nn
+import colossalai.shardformer.layer as col_nn
 from colossalai.shardformer.layer.dropout import Dropout1D
 
 from ..utils import getattr_, setattr_
@@ -87,7 +87,7 @@ class BertPolicy(Policy):
 
     def new_model_class(self):
         # do nothing
-        return None
+        return self.model
 
     def postprocess(self):
         binding_map = {"bert.embeddings.word_embeddings.weight": "cls.predictions.decoder.weight"}
