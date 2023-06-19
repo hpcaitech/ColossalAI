@@ -7,7 +7,7 @@
         "relevance",
         "creativity",
         "practicality",
-        "correctness"
+        "reasonableness"
       ],
       "Metrics": [
         "Distinct"

@@ -277,7 +277,7 @@ class FactEvaluator:
         n_data = len(data)
         eval_scores = [{} for _ in range(n_data)]
 
-        # Calculate average sentence-level scores for facutal consistency
+        # Calculate average sentence-level scores for factual consistency
         src_list, output_list = [], []
         n_sents = []    # the number of sentences in the claim
         for i in range(n_data):
@@ -288,7 +288,7 @@ class FactEvaluator:
                 src_list.append(source)
                 output_list.append(system_outputs[j])
         input_list = add_question(dimension=self.dim, output=output_list, src=src_list, task=self.task)
-        sent_score = self.scorer.score(input_list, self.task, category, dim)
+        sent_score = self.scorer.score(input_list, self.task, category, self.dim)
 
         # Get average score for each sample
         start_idx = 0

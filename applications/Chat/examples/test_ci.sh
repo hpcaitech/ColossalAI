@@ -121,6 +121,14 @@ torchrun --standalone --nproc_per_node=2 ${BASE}/train_prompts.py --prompt_datas
          --rm_pretrain 'gpt2' \
          --rm_path ${BASE}/rm_ckpt_gpt.pt \
          --save_path ${BASE}/actor_checkpoint_prompts.pt
+
+torchrun --standalone --nproc_per_node=2 ${BASE}/train_prompts.py --prompt_dataset $PROMPT_PATH --pretrain_dataset $PRETRAIN_DATASET \
+         --strategy colossalai_gemini --num_episodes 1 --max_timesteps 2 \
+         --update_timesteps 2 --max_epochs 1 --train_batch_size 2 \
+         --pretrain 'gpt2' --model gpt2 \
+         --rm_pretrain 'gpt2' \
+         --rm_path ${BASE}/rm_ckpt_gpt.pt \
+         --save_path ${BASE}/actor_checkpoint_prompts.pt
 rm -rf ${BASE}/rm_ckpt_gpt.pt
 
 rm -rf ${BASE}/actor_checkpoint_prompts.pt

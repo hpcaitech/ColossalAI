@@ -35,14 +35,14 @@ class PromptDataset(Dataset):
             logger.info(f"Limiting dataset to {max_datasets_size} examples.")
             list_data_dict = list_data_dict[:max_datasets_size]
 
-        for data_dict in list_data_dict:
-            token = tokenizer(data_dict["instruction"],
-                              return_tensors='pt',
-                              max_length=max_length,
-                              padding='max_length',
-                              truncation=True)
-            for k, tensor in token.items():
-                self.keyed_prompt[k].extend(tensor.to(torch.cuda.current_device()).unbind())
+        instructions = [data_dict["instruction"] for data_dict in list_data_dict]
+        tokens = tokenizer(instructions,
+                           return_tensors='pt',
+                           max_length=max_length,
+                           padding='max_length',
+                           truncation=True)
+        for k, tensor in tokens.items():
+            self.keyed_prompt[k] = tensor.to(torch.cuda.current_device()).unbind()
 
     def __len__(self):
         return len(self.keyed_prompt["input_ids"])
