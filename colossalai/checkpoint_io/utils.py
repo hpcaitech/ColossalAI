@@ -10,7 +10,10 @@ import torch
 import torch.nn as nn
 from torch.optim import Optimizer
 
+from colossalai.interface import OptimizerWrapper
+from colossalai.nn.optimizer.nvme_optimizer import NVMeOptimizer
 from colossalai.tensor.d_tensor.d_tensor import DTensor
+from colossalai.zero.low_level import LowLevelZeroOptimizer
 
 SAFE_WEIGHTS_NAME = "model.safetensors"
 WEIGHTS_NAME = "pytorch_model.bin"
@@ -88,6 +91,13 @@ def is_safetensor_checkpoint(checkpoint_file_path: str) -> bool:
 # ======================================
 # Helper functions for saving shard file
 # ======================================
+def unwrap_optimizer(optimizer: OptimizerWrapper):
+    unwrapped_optim = optimizer.optim
+    if isinstance(unwrapped_optim, LowLevelZeroOptimizer):
+        unwrapped_optim = unwrapped_optim.optim
+    return unwrapped_optim
+
+
 def shard_model_checkpoint(state_dict: torch.Tensor, max_shard_size: int = 1024) -> Iterator[Tuple[OrderedDict, int]]:
     """
     Splits a model state dictionary in sub-checkpoints so that the final size of each sub-checkpoint does not exceed a
@@ -140,9 +150,10 @@ def shard_optimizer_checkpoint(state_dict: dict, max_shard_size: int = 1024) -> 
         isDTensor = False
         for state_tensor in state.values():
 
-            # When state_tensor is None (e.g., a SGD optimizer with momentum set to 0),
+            # When state_tensor is not of Tensor class,
+            # e.g., a SGD optimizer with momentum set to 0 can have None as state
             # The calculation of tensor size should be skipped to avoid error.
-            if state_tensor is None:
+            if not isinstance(state_tensor, torch.Tensor):
                 continue
 
             # If the states are stored as DTensors, mark isDTensor as true.

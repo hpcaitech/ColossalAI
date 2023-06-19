@@ -1,5 +1,7 @@
+import os
 import warnings
 from functools import partial
+from pathlib import Path
 from typing import Callable, Iterator, List, Optional, Tuple, Union
 
 import torch
@@ -34,19 +36,38 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
 
     def save_unsharded_optimizer(self, optimizer: Optimizer, checkpoint: str, gather_dtensor: bool):
         """
-        Save optimizer to checkpoint but only on master process.
+        For each process, save its partition of optimizer to the checkpoint it owns.
         """
         # TODO(ver217): optimizer state dict is sharded, and cannot get full state dict now
         warnings.warn(
             'LowLevelZeroPlugin does not support save full optimizer checkpoint now. Save it on every process.')
-        checkpoint = f'{checkpoint}.rank{self.coordinator.rank}'
-        GeneralCheckpointIO.save_unsharded_optimizer(self, optimizer, checkpoint, gather_dtensor)
+        Path(checkpoint).mkdir(parents=True, exist_ok=True)
+        rank_checkpoint = os.path.join(checkpoint, f'rank{self.coordinator.rank}')
+        GeneralCheckpointIO.save_unsharded_optimizer(self, optimizer, rank_checkpoint, gather_dtensor)
+
+    def save_sharded_optimizer(self,
+                               optimizer: Optimizer,
+                               checkpoint: str,
+                               gather_dtensor: bool = True,
+                               prefix: Optional[str] = None,
+                               size_per_shard: int = 1024):
+        """
+        For each process, save its partition of optimizer to the checkpoint it owns.
+        Each partition of optimizer should be sharded if exceeding the quota per shard.
+        """
+        warnings.warn(
+            'LowLevelZeroPlugin does not support save full optimizer checkpoint now. Save it on every process.')
+        Path(checkpoint).mkdir(parents=True, exist_ok=True)
+        rank_checkpoint = os.path.join(checkpoint, f'rank{self.coordinator.rank}')
+        GeneralCheckpointIO.save_sharded_optimizer(self, optimizer, rank_checkpoint, gather_dtensor, prefix,
+                                                   size_per_shard)
 
     def load_optimizer(self, optimizer: Optimizer, checkpoint: str):
         warnings.warn(
             'LowLevelZeroPlugin can only load optimizer checkpoint saved by itself with the same number of processes.')
-        checkpoint = f'{checkpoint}.rank{self.coordinator.rank}'
-        super().load_optimizer(optimizer, checkpoint)
+        Path(checkpoint).mkdir(parents=True, exist_ok=True)
+        rank_checkpoint = os.path.join(checkpoint, f'rank{self.coordinator.rank}')
+        super().load_optimizer(optimizer, rank_checkpoint)
 
 
 class LowLevelZeroModel(ModelWrapper):
@@ -208,10 +229,7 @@ class LowLevelZeroPlugin(DPPluginBase):
 
         if optimizer is not None and \
                 not isinstance(optimizer, OptimizerWrapper):
-            optimizer = LowLevelZeroOptimizer(model.unwrap(),
-                                              optimizer,
-                                              self.zero_optim_config,
-                                              self.optim_kwargs,
+            optimizer = LowLevelZeroOptimizer(model.unwrap(), optimizer, self.zero_optim_config, self.optim_kwargs,
                                               self.verbose)
 
         return model, optimizer, criterion, dataloader, lr_scheduler

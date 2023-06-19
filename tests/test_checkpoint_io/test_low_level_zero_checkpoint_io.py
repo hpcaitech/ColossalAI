@@ -17,9 +17,10 @@ from colossalai.testing import (
 
 
 @clear_cache_before_run()
-@parameterize('stage', [2])
+@parameterize('stage', [1, 2])
 @parameterize('shard', [True, False])
-def check_low_level_zero_checkpointIO(stage: int, shard: bool):
+@parameterize('size_per_shard', [16])
+def check_low_level_zero_checkpointIO(stage: int, shard: bool, size_per_shard: int):
     plugin = LowLevelZeroPlugin(stage=stage, max_norm=1.0, initial_scale=32)
     booster = Booster(plugin=plugin)
     model = resnet18()
@@ -37,10 +38,8 @@ def check_low_level_zero_checkpointIO(stage: int, shard: bool):
         model_ckpt_path = f"{tempdir}/model"
         optimizer_ckpt_path = f"{tempdir}/optimizer"
         # lr scheduler is tested in test_torch_ddp_checkpoint_io.py and low level zero does not change it, we can skip it here
-        booster.save_model(model, model_ckpt_path, shard=shard)
-        if not shard:
-            # TODO(ver217): optimizer checkpointing is not supported for sharded checkpoint
-            booster.save_optimizer(optimizer, optimizer_ckpt_path)
+        booster.save_model(model, model_ckpt_path, shard=shard, size_per_shard=size_per_shard)
+        booster.save_optimizer(optimizer, optimizer_ckpt_path, shard=shard, size_per_shard=size_per_shard)
         dist.barrier()
 
         new_model = resnet18()
@@ -49,9 +48,8 @@ def check_low_level_zero_checkpointIO(stage: int, shard: bool):
 
         booster.load_model(new_model, model_ckpt_path)
         check_state_dict_equal(model.state_dict(), new_model.state_dict(), False)
-        if not shard:
-            booster.load_optimizer(new_optimizer, optimizer_ckpt_path)
-            check_state_dict_equal(optimizer.state_dict(), new_optimizer.state_dict(), False)
+        booster.load_optimizer(new_optimizer, optimizer_ckpt_path)
+        check_state_dict_equal(optimizer.state_dict(), new_optimizer.state_dict(), False)
 
 
 def run_dist(rank, world_size, port):
