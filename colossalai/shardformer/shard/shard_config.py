@@ -18,10 +18,10 @@ class ShardConfig:
             will not calculate the loss and just return the output.
         gather_output (bool): Whether to gather the output of the model of the last layer
     """
-    data_parallel_size: int
     tensor_parallel_size: int
-
-    pipeline_parallel_size: int
+    # TODO: add support for tensor parallel
+    # pipeline_parallel_size: int
+    # data_parallel_size: int
     tensor_parallel_mode: Literal['1d', '2d', '2.5d', '3d']
     inference_only: bool = True
     gather_output: bool = True

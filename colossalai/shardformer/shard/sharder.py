@@ -40,6 +40,7 @@ class ModelSharder(object):
         Shard the model according to the policy
         """
         self.policy.set_model(self.model)
+        self.policy.set_shard_config(self.shard_config)
         self.preprocess()
         self.replace_model_class()
         self.replace_module()
@@ -57,12 +58,12 @@ class ModelSharder(object):
             self.model_config = self.model.config
 
     def preprocess(self) -> None:
-        self.model = self.policy.preprocess(self.shard_config)
+        self.model = self.policy.preprocess()
 
     def postprocess(self) -> None:
         self.model = self.policy.postprocess()
 
-    def replace_model_class(self,) -> None:
+    def replace_model_class(self) -> None:
         r"""
         Replace the model to policy defined model
         Mainly modify the forward and backward to fit distributed model
@@ -83,14 +84,14 @@ class ModelSharder(object):
                     getattr(new_model_class, key),
                 )
 
-    def replace_module(self,) -> None:
+    def replace_module(self) -> None:
         r"""
         Replace the module according to the policy, and replace the module one by one
 
         Args:
             model (:class:`torch.nn.Module`): The model to shard
         """
-        module_descriptions = self.policy.module_policy(self.shard_config)
+        module_descriptions = self.policy.module_policy()
         for module_description in module_descriptions.items():
             origin_layer_cls = module_description[0]
             attr_replacement = module_description[1].attribute_replacement
