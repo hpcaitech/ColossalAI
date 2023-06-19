@@ -716,7 +716,10 @@ class _StateDictSharder:
         tensor_size = calculate_tensor_size(tensor)
         ret_block = None
         ret_block_size = 0
-        if self.current_block_size + tensor_size > self.max_shard_size:
+
+        # before we return the current block and create a new block,
+        # we need to ensure that the current block is not empty
+        if self.current_block_size + tensor_size > self.max_shard_size and self.current_block_size > 0:
             ret_block = self.current_block
             ret_block_size = self.current_block_size
             self.current_block = OrderedDict()
