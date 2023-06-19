@@ -12,7 +12,7 @@ from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch.utils.data import DataLoader
 
 from colossalai.checkpoint_io import CheckpointIndexFile, CheckpointIO, GeneralCheckpointIO
-from colossalai.checkpoint_io.utils import get_base_filenames, get_shard_filename, save_state_dict
+from colossalai.checkpoint_io.utils import get_model_base_filenames, get_shard_filename, save_state_dict
 from colossalai.cluster import DistCoordinator
 from colossalai.interface import ModelWrapper, OptimizerWrapper
 from colossalai.utils import get_current_device
@@ -76,14 +76,14 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
                            model: GeminiDDP,
                            checkpoint_path: str,
                            gather_dtensor: bool = False,
-                           variant: Optional[str] = None,
+                           prefix: Optional[str] = None,
                            max_shard_size: int = 1024,
                            use_safetensors: bool = False):
         """
         Save sharded model
         """
         state_dict_shard = model.state_dict_shard(max_shard_size=max_shard_size, only_rank_0=True, dtype=torch.float32)
-        weights_name, save_index_file = get_base_filenames(variant, use_safetensors)
+        weights_name, save_index_file = get_model_base_filenames(prefix, use_safetensors)
         total_size = 0
         index_file = CheckpointIndexFile(checkpoint_path)
         for idx, shard_pair in enumerate(state_dict_shard):
@@ -99,8 +99,11 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
             save_state_dict(shard, checkpoint_file_path, use_safetensors)
 
         index_file.append_meta_data("total_size", total_size)
-        index_file.write_index_file(save_index_file)
-        logging.info(f"The model is going to be split to checkpoint shards. "
+
+        # only save the index file on the master rank
+        if self.coordinator.is_master():
+            index_file.write_index_file(save_index_file)
+        logging.info(f"The model is split into checkpoint shards. "
                      f"You can find where each parameters has been saved in the "
                      f"index located at {save_index_file}.")
 
@@ -271,11 +274,11 @@ class GeminiPlugin(DPPluginBase):
     def configure(
         self,
         model: nn.Module,
-        optimizer: Optimizer,
-        criterion: Callable = None,
-        dataloader: DataLoader = None,
-        lr_scheduler: LRScheduler = None,
-    ) -> Tuple[Union[nn.Module, OptimizerWrapper, LRScheduler, DataLoader]]:
+        optimizer: Optional[Optimizer] = None,
+        criterion: Optional[Callable] = None,
+        dataloader: Optional[DataLoader] = None,
+        lr_scheduler: Optional[LRScheduler] = None,
+    ) -> Tuple[nn.Module, OptimizerWrapper, Callable, DataLoader, LRScheduler]:
 
         if not isinstance(model, ModelWrapper):
             # convert model to sync bn
@@ -290,8 +293,12 @@ class GeminiPlugin(DPPluginBase):
             # wrap the model with Gemini
             model = GeminiModel(model, self.gemini_config, self.verbose)
 
-        if not isinstance(optimizer, OptimizerWrapper):
-            optimizer = GeminiOptimizer(model.unwrap(), optimizer, self.zero_optim_config, self.optim_kwargs,
+        if optimizer is not None and \
+                not isinstance(optimizer, OptimizerWrapper):
+            optimizer = GeminiOptimizer(model.unwrap(),
+                                        optimizer,
+                                        self.zero_optim_config,
+                                        self.optim_kwargs,
                                         self.verbose)
 
         return model, optimizer, criterion, dataloader, lr_scheduler
