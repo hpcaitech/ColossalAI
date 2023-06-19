@@ -16,6 +16,7 @@ rank=$SLURM_PROCID
 nprocs_per_node=4
 
 # WORLD_SIZE=$SLURM_NPROCS
+conda init bash
 conda activate llama
 
 
