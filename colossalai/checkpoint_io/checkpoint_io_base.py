@@ -103,7 +103,7 @@ class CheckpointIO(ABC):
                    checkpoint: str,
                    shard: bool = False,
                    gather_dtensor: bool = True,
-                   variant: str = None,
+                   prefix: str = None,
                    size_per_shard: int = 1024,
                    use_safetensors: bool = False):
         """
@@ -128,7 +128,7 @@ class CheckpointIO(ABC):
                 multiple files. The model shards will be specified by a `model.index.json` file. When shard = True, please ensure
                 that the checkpoint path is a directory path instead of a file path.
             gather_dtensor (bool): whether to gather the distributed tensor to the first device. Default: True.
-            variant (str): If specified, weights are saved in the format pytorch_model.<variant>.bin. Default: None.
+            prefix (str): If specified, weights are saved in the format pytorch_model.<prefix>.bin. Default: None.
             size_per_shard (int): size per shard in MB. Default: 1024. This value is only used when shard = True.
             use_safetensors (bool): whether to use safe tensors. Default: False. If set to True, the checkpoint will be saved
         """
@@ -137,17 +137,20 @@ class CheckpointIO(ABC):
             model = model.unwrap()
 
         if shard:
-            self.save_sharded_model(model, checkpoint, gather_dtensor, variant, size_per_shard, use_safetensors)
+            self.save_sharded_model(model, checkpoint, gather_dtensor, prefix, size_per_shard, use_safetensors)
         else:
             self.save_unsharded_model(model, checkpoint, gather_dtensor, use_safetensors)
 
-    def load_optimizer(self, optimizer: Optimizer, checkpoint: str):
+    def load_optimizer(self, optimizer: Optimizer, checkpoint: str, prefix: str = None, size_per_shard: int = 1024):
         """
         Load optimizer from checkpoint.
 
         Args:
             optimizer (Optimizer): optimizer to be loaded.
             checkpoint (str): checkpoint path. This value is made compatibility with the model checkpoints in the
+            prefix (str, optional): A prefix added to parameter and buffer
+                names to compose the keys in state_dict. Defaults to None.
+            size_per_shard (int, optional): Maximum size of checkpoint shard file in MB. This is useful only when ``shard=True``. Defaults to 1024.
         """
         index_file_exists, index_file_path = has_index_file(checkpoint)
 
@@ -157,7 +160,7 @@ class CheckpointIO(ABC):
 
         if index_file_exists:
             # the existence of index file means it is a sharded checkpoint
-            self.load_sharded_optimizer(optimizer, index_file_path)
+            self.load_sharded_optimizer(optimizer, index_file_path, prefix)
         else:
             self.load_unsharded_optimizer(optimizer, checkpoint)
 
@@ -218,7 +221,7 @@ class CheckpointIO(ABC):
         pass
 
     @abstractmethod
-    def save_sharded_model(self, model: nn.Module, checkpoint: str, gather_dtensor: bool, variant: Optional[str],
+    def save_sharded_model(self, model: nn.Module, checkpoint: str, gather_dtensor: bool, prefix: Optional[str],
                            size_per_shard: int, use_safetensors: bool):
         """
         Save model to sharded checkpoint.
@@ -251,7 +254,7 @@ class CheckpointIO(ABC):
     # ========================================================
 
     @abstractmethod
-    def load_sharded_optimizer(self, optimizer: Optimizer, index_file_path: str, prefix: str, size_per_shard: int):
+    def load_sharded_optimizer(self, optimizer: Optimizer, index_file_path: str, prefix: str):
         """
         Load optimizer from sharded checkpoint.
 
@@ -259,7 +262,6 @@ class CheckpointIO(ABC):
             optimizer (Optimizer): optimizer to be loaded.
             index_file_path (str): checkpoint path. It should be path to the .index.json file or a path to a directory which contains a .index.json file.
             prefix (str): prefix for the optimizer checkpoint.
-            size_per_shard (int): size per shard in MB.
         """
         pass
 

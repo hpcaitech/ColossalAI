@@ -1,9 +1,9 @@
+import warnings
 from pathlib import Path
 from typing import Callable, Iterable, Iterator, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
-import warnings
 from packaging import version
 from torch.distributed import ProcessGroup
 
@@ -69,7 +69,7 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
         full_optimizer_state = FSDP.full_optim_state_dict(fsdp_model, optim=optimizer, rank0_only=True)
         utils.save_state_dict(full_optimizer_state, checkpoint_file_path=checkpoint, use_safetensors=False)
 
-    def save_sharded_model(self, model: nn.Module, checkpoint: str, gather_dtensor: bool, variant: Optional[str],
+    def save_sharded_model(self, model: nn.Module, checkpoint: str, gather_dtensor: bool, prefix: Optional[str],
                            size_per_shard: int, use_safetensors: bool):
         """
         Save model to checkpoint but only on master process.
@@ -87,13 +87,14 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
         """
         raise NotImplementedError("Sharded model checkpoint is not supported yet.")
 
-    def save_sharded_optimizer(self, optimizer: Optimizer, checkpoint: str, gather_dtensor: bool):
+    def save_sharded_optimizer(self, optimizer: Optimizer, checkpoint: str, gather_dtensor: bool, prefix: str,
+                               size_per_shard: int):
         """
         Save optimizer to checkpoint but only on master process.
         """
         raise NotImplementedError("Sharded optimizer checkpoint is not supported yet.")
 
-    def load_sharded_optimizer(self, optimizer: Optimizer, index_file_path: str, prefix: str, size_per_shard: int):
+    def load_sharded_optimizer(self, optimizer: Optimizer, index_file_path: str, size_per_shard: int):
         """
         Load optimizer to checkpoint but only on master process.
         """
@@ -194,23 +195,24 @@ class TorchFSDPPlugin(DPPluginBase):
     def configure(
         self,
         model: nn.Module,
-        optimizer: Optimizer,
-        criterion: Callable = None,
-        dataloader: DataLoader = None,
-        lr_scheduler: LRScheduler = None,
-    ) -> Tuple[Union[nn.Module, OptimizerWrapper, LRScheduler, DataLoader]]:
+        optimizer: Optional[Optimizer] = None,
+        criterion: Optional[Callable] = None,
+        dataloader: Optional[DataLoader] = None,
+        lr_scheduler: Optional[LRScheduler] = None,
+    ) -> Tuple[nn.Module, OptimizerWrapper, Callable, DataLoader, LRScheduler]:
 
         # wrap the model with PyTorch FSDP
         fsdp_model = TorchFSDPModel(model, device_id=torch.cuda.current_device(), **self.fsdp_kwargs)
 
-        if len(optimizer.param_groups) > 1:
-            warnings.warn(
-                'TorchFSDPPlugin does not support optimizer that use multi param groups. The results may not be as expected if used.'
-            )
-        optimizer.__init__(fsdp_model.parameters(), **optimizer.defaults)
+        if optimizer is not None:
+            if len(optimizer.param_groups) > 1:
+                warnings.warn(
+                    'TorchFSDPPlugin does not support optimizer that use multi param groups. The results may not be as expected if used.'
+                )
+            optimizer.__init__(fsdp_model.parameters(), **optimizer.defaults)
 
-        if not isinstance(optimizer, FSDPOptimizerWrapper):
-            optimizer = FSDPOptimizerWrapper(optimizer, fsdp_model)
+            if not isinstance(optimizer, FSDPOptimizerWrapper):
+                optimizer = FSDPOptimizerWrapper(optimizer, fsdp_model)
 
         return fsdp_model, optimizer, criterion, dataloader, lr_scheduler
 
