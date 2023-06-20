@@ -3,16 +3,7 @@ import os
 
 import pytest
 import torch
-from transformers import (
-    AutoTokenizer,
-    BertConfig,
-    BertForMaskedLM,
-    BertForNextSentencePrediction,
-    BertForPreTraining,
-    BertForSequenceClassification,
-    BertLMHeadModel,
-    BertModel,
-)
+from transformers import AutoTokenizer, GPT2Config, GPT2Model
 
 import colossalai
 from colossalai.logging import disable_existing_loggers
@@ -25,9 +16,11 @@ tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
 
 
 def build_model(world_size, model_fn):
-    config = BertConfig()
-    config.hidden_dropout_prob = 0
-    config.attention_probs_dropout_prob = 0
+    config = GPT2Config()
+    config.attn_pdrop = 0
+    config.embd_pdrop = 0
+    config.resid_pdrop = 0
+    config.summary_first_dropout
 
     org_model = model_fn(config=config)
     org_model_forshard = copy.deepcopy(org_model)
@@ -66,21 +59,21 @@ def check_backward(org_model, sharded_model):
     tokenized_input = tokenizer(input, return_tensors='pt').to('cuda')
     labels = tokenized_input['input_ids'].clone()
     labels[labels == tokenizer.pad_token_id] = -100
-    tokenized_input['labels'] = labels
+    # tokenized_input['labels'] = labels
 
     #orgin model
     org_model.train()
     org_out = org_model(**tokenized_input)
     org_loss = org_out.loss
     org_loss.backward()
-    org_grad = org_model.bert.encoder.layer[0].attention.self.query.weight.grad
+    org_grad = org_model.h[0].attn.c_attn.weight.grad
 
     #shard model
     sharded_model.train()
     shard_out = sharded_model(**tokenized_input)
     shard_loss = shard_out.loss
     shard_loss.backward()
-    shard_grad = sharded_model.bert.encoder.layer[0].attention.self.query.weight.grad
+    shard_grad = sharded_model.h[0].attn.c_attn.weight.grad
 
     shard_grad_list = [torch.zeros([*shard_grad.shape]).to('cuda') for _ in range(2)]
     shard_grad = torch.distributed.all_gather(shard_grad_list, shard_grad)
@@ -96,16 +89,14 @@ def check_bert(rank, world_size, port):
     disable_existing_loggers()
     colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     forward_list = [
-        BertForMaskedLM,
-        BertForPreTraining,
-        BertLMHeadModel,
+        GPT2Model,
 
     # TODO: do not work yet
     # BertModel,
     # BertForSequenceClassification
     # BertForNextSentencePrediction,
     ]
-    backward_lsit = [BertForMaskedLM, BertLMHeadModel]
+    backward_lsit = []
 
     for model_fn in forward_list:
         org_model, sharded_model = build_model(world_size, model_fn)
@@ -119,9 +110,9 @@ def check_bert(rank, world_size, port):
 
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
-def test_bert():
+def test_gpt2():
     spawn(check_bert, 2)
 
 
 if __name__ == "__main__":
-    test_bert()
+    test_gpt2()
