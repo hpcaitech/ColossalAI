@@ -52,6 +52,7 @@ class LowLevelZeroFP16MixedPrecisionMixin(FP16MixedPrecisionMixin):
         for group_id in range(self.num_working_param_groups):
             for avg_grad in self.grad_store.get_averaged_gradients_by_group(group_id):
                 if avg_grad is not None and has_inf_or_nan(avg_grad):
+                    # print(avg_grad)
                     return True
         return False
 
@@ -286,7 +287,7 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
                     for rank, grad_list in grads_in_bucket.items():
                         for grad in grad_list:
                             dist.all_reduce(grad, group=self._dp_torch_group)
-
+                            grad /= self._world_size
                             self._grad_store.append_average_gradient_by_group(group_id, rank, grad)
 
                 else:
@@ -296,6 +297,7 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
                             comm_grad_list.append(grad_list[i])
                         grad = torch.zeros_like(comm_grad_list[0])
                         dist.reduce_scatter(grad, comm_grad_list, group=self._dp_torch_group)
+                        grad /= self._world_size
                         self._grad_store.append_average_gradient_by_group(group_id, self._local_rank, grad)
 
                 self._bucket_store.reset()
@@ -335,7 +337,7 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
         if self._overlap_communication:
             torch.cuda.synchronize()
 
-        self.zero_grad()
+        # self.zero_grad()
         # gradient synchronization
         # if sync_grad:
         # self._sync_grad()

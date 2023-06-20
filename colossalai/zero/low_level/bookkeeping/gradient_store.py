@@ -26,7 +26,7 @@ class GradientStore(BaseStore):
 
         self._grad_acc_objs.append(obj)
 
-    def get_averaged_gradients_by_group(self, group_id: int, rank) -> List[Tensor]:
+    def get_averaged_gradients_by_group(self, group_id: int, rank: int = None) -> List[Tensor]:
         """
         Return a list of flatten average gradients of a parameter group
 
@@ -38,6 +38,14 @@ class GradientStore(BaseStore):
         """
         if group_id not in self._averaged_gradients:
             self._averaged_gradients[group_id] = dict()
+
+        if rank is None:
+            tensor_list = []
+            for tensors in self._averaged_gradients[group_id].values():
+                for tensor in tensors:
+                    tensor_list.append(tensor)
+            return tensor_list
+
         if rank not in self._averaged_gradients[group_id]:
             self._averaged_gradients[group_id][rank] = []
 
