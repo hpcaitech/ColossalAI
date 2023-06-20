@@ -34,11 +34,17 @@ conda activate llama
 
 nodes_ip=`scontrol show hostnames $SLURM_JOB_NODELIST`
 # shellcheck disable=SC2068
-for var in ${nodes_ip[@]}
-do
-   echo "${var} slots=4 " >> nodes_ip.txt
-   echo $var
-done
+local_node=$SLURM_NODEID
+if $local_node -eq 0
+then
+   # shellcheck disable=SC2068
+   for var in ${nodes_ip[@]}
+      do
+         echo "${var} slots=4 " >> nodes_ip.txt
+         echo $var
+      done
+fi
+
 
 
 #DISTRIBUTED_ARGS="--nproc_per_node $nprocs_per_node \
