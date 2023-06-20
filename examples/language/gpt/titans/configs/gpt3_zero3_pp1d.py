@@ -1,7 +1,7 @@
 from model import GPT3_pipeline_hybrid
 
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.zero.shard_utils import TensorShardStrategy
+from colossalai.zero.legacy.shard_utils import TensorShardStrategy
 
 BATCH_SIZE = 192
 NUM_EPOCHS = 60
