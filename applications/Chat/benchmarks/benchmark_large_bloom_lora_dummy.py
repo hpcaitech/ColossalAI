@@ -35,6 +35,12 @@ def preprocess_batch(samples) -> dict:
     return {'input_ids': input_ids, 'attention_mask': attention_mask}
 
 
+def preprocess_ptx_batch(samples) -> dict:
+    batch = preprocess_batch(samples)
+    batch['labels'] = batch['input_ids']
+    return batch
+
+
 def print_rank_0(*args, **kwargs) -> None:
     if dist.get_rank() == 0:
         print(*args, **kwargs)
@@ -141,12 +147,8 @@ def main(args):
                                                  enable_grad_checkpoint=False,
                                                  ignore_episodes=1)
 
-    if args.strategy.startswith('colossalai'):
-        actor_optim = HybridAdam(actor.parameters(), lr=5e-6)
-        critic_optim = HybridAdam(critic.parameters(), lr=5e-6)
-    else:
-        actor_optim = Adam(actor.parameters(), lr=5e-6)
-        critic_optim = Adam(critic.parameters(), lr=5e-6)
+    actor_optim = HybridAdam(actor.parameters(), lr=5e-6)
+    critic_optim = HybridAdam(critic.parameters(), lr=5e-6)
 
     tokenizer = AutoTokenizer.from_pretrained('facebook/opt-350m')
     tokenizer.pad_token = tokenizer.eos_token
@@ -165,7 +167,7 @@ def main(args):
                          initial_model,
                          actor_optim,
                          critic_optim,
-                         ptx_coef=0,
+                         ptx_coef=args.ptx_coef,
                          max_epochs=args.max_epochs,
                          train_batch_size=args.train_batch_size,
                          offload_inference_models=args.offload_inference_models,
@@ -179,15 +181,20 @@ def main(args):
                          callbacks=[performance_evaluator])
 
     random_prompts = torch.randint(tokenizer.vocab_size, (1000, 256), device=torch.cuda.current_device())
+    ptx_prompts = torch.randint(tokenizer.vocab_size, (1000, 512), device=torch.cuda.current_device())
     dataloader = DataLoader(random_prompts,
                             batch_size=args.experience_batch_size,
                             shuffle=True,
                             collate_fn=preprocess_batch)
+    ptx_dataloader = DataLoader(ptx_prompts,
+                                batch_size=args.train_batch_size,
+                                shuffle=True,
+                                collate_fn=preprocess_ptx_batch)
 
     trainer.fit(dataloader,
-                None,
+                ptx_dataloader,
                 num_episodes=args.num_episodes,
-                max_timesteps=args.max_timesteps,
+                max_timesteps=args.update_timesteps,
                 update_timesteps=args.update_timesteps)
 
     print_rank_0(f'Peak CUDA mem: {torch.cuda.max_memory_allocated()/1024**3:.2f} GB')
@@ -196,9 +203,10 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model', default='350m')
-    parser.add_argument('--critic_model', default='350m')
-    parser.add_argument('--strategy',
+    parser.add_argument('-m', '--model', default='350m')
+    parser.add_argument('-c', '--critic_model', default='350m')
+    parser.add_argument('-s',
+                        '--strategy',
                         choices=[
                             'colossalai_gemini',
                             'colossalai_gemini_reshard',
@@ -207,23 +215,25 @@ if __name__ == '__main__':
                             'tp_zero2_cpu',
                         ],
                         default='colossalai_gemini_reshard')
-    parser.add_argument('--tp_size', type=int, default=1)
-    parser.add_argument('--num_episodes', type=int, default=3)
-    parser.add_argument('--max_timesteps', type=int, default=1)
-    parser.add_argument('--update_timesteps', type=int, default=1)
+    parser.add_argument('-t', '--tp_size', type=int, default=1)
+    parser.add_argument('-e', '--num_episodes', type=int, default=3)
+    parser.add_argument('-u', '--update_timesteps', type=int, default=1)
     parser.add_argument('--max_epochs', type=int, default=1)
     parser.add_argument('--train_batch_size', type=int, default=8)
     parser.add_argument('--experience_batch_size', type=int, default=8)
-    parser.add_argument('--lora_rank', type=int, default=0)
+    parser.add_argument('-l', '--lora_rank', type=int, default=0)
     parser.add_argument('--cuda_mem_frac', type=float, default=1.0)
-    parser.add_argument('--offload_inference_models', action='store_true', default=False)
-    parser.add_argument('--use_kernels',
+    parser.add_argument('-o', '--offload_inference_models', action='store_true', default=False)
+    parser.add_argument('-k',
+                        '--use_kernels',
                         action='store_true',
                         default=False,
                         help='This uses xformers kernels, which can save memory and accelerate training.')
-    parser.add_argument('--grad_checkpoint',
+    parser.add_argument('-g',
+                        '--grad_checkpoint',
                         default=False,
                         action='store_true',
                         help='This uses gradient checkpointing, which can save memory and slow down training.')
+    parser.add_argument('-p', '--ptx_coef', type=float, default=0.0)
     args = parser.parse_args()
     main(args)
