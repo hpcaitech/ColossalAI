@@ -98,6 +98,6 @@ def assert_hf_output_close(out1: Any,
             raise AssertionError(f"{track_name}: shape mismatch: {out1.shape} vs {out2.shape}")
         assert torch.allclose(
             out1, out2, atol=atol, rtol=rtol
-        ), f"{track_name}: tensor value mismatch\nvalue 1: {out1}\nvalue 2: {out2}, mean error: {torch.abs(out1 - out2).mean()}"
+        ), f"{track_name}: tensor value mismatch\nvalue 1: {out1}\nvalue 2: {out2}, \nmean error: {torch.abs(out1 - out2).mean()}"
     else:
         assert out1 == out2, f"{track_name}: value mismatch.\nout1: {out1}\nout2: {out2}"
