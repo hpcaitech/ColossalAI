@@ -167,21 +167,27 @@ class PPOTrainer(Trainer):
         num_actions = experience.action_mask.size(1)
         if type(self.strategy) is not ColossalAIStrategy:
             self.actor.to(self.device)
-        actor_output = self.actor(experience.sequences, attention_mask=experience.attention_mask)
-        action_log_probs = calc_action_log_probs(actor_output, experience.sequences, num_actions)
-        actor_loss = self.actor_loss_fn(action_log_probs,
-                                        experience.action_log_probs,
-                                        experience.advantages,
-                                        action_mask=experience.action_mask)
-
         # ptx loss
         if self.ptx_coef != 0:
             batch = next(iter(self.pretrain_dataloader))
             batch = to_device(batch, self.device)
             ptx_log_probs = self.actor(batch['input_ids'], attention_mask=batch['attention_mask'])['logits']
-            ptx_loss = self.ptx_loss_fn(ptx_log_probs, batch['labels'])
-            actor_loss = ptx_loss * self.ptx_coef + actor_loss * (1 - self.ptx_coef)
+            ptx_loss = self.ptx_loss_fn(ptx_log_probs, batch['labels']) * self.ptx_coef
+            if type(self.strategy) is not ColossalAIStrategy:
+                # gemini does not support grad accumulation
+                self.strategy.backward(ptx_loss, self.actor, self.actor_optim)
 
+        actor_output = self.actor(experience.sequences, attention_mask=experience.attention_mask)
+        action_log_probs = calc_action_log_probs(actor_output, experience.sequences, num_actions)
+        actor_loss: torch.Tensor = self.actor_loss_fn(action_log_probs,
+                                                      experience.action_log_probs,
+                                                      experience.advantages,
+                                                      action_mask=experience.action_mask)
+        if self.ptx_coef != 0:
+            actor_loss = actor_loss * (1 - self.ptx_coef)
+            if type(self.strategy) is ColossalAIStrategy:
+                # gemini does not support grad accumulation
+                actor_loss = actor_loss + ptx_loss
         self.strategy.backward(actor_loss, self.actor, self.actor_optim)
         self.strategy.optimizer_step(self.actor_optim)
         self.actor_optim.zero_grad()
