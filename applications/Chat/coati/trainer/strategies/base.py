@@ -77,7 +77,7 @@ class Strategy(ABC):
                 optimizer = self.setup_optimizer(optimizer, model)
                 rets.append((model, optimizer))
             elif isinstance(arg, nn.Module):
-                rets.append(self.setup_model(model))
+                rets.append(self.setup_model(arg))
             else:
                 raise RuntimeError(f'Expect model or (model, optimizer) pair, got {type(arg)}')
 

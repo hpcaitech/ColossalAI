@@ -79,10 +79,9 @@ class TPZeroStrategy(NaiveStrategy):
         model.to('cpu')
         return model
 
-    def unwrap_model(self, model: torch.nn.Module) -> torch.nn.Module:
-        base_model: LowLevelZeroModel = get_base_model(model)
-        assert isinstance(base_model, LowLevelZeroModel)
-        return base_model.module
+    def unwrap_model(self, model: LowLevelZeroModel) -> torch.nn.Module:
+        assert isinstance(model, LowLevelZeroModel)
+        return model.module
 
     def setup_optimizer(self, optimizer: Optimizer, model: LowLevelZeroModel) -> Optimizer:
         return LowLevelZeroOptimizer(model.unwrap(), optimizer, self.zero_optim_config, self.optim_kwargs)
