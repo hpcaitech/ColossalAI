@@ -40,7 +40,7 @@ jobs:
       - name: Copy testmon cache
         run: | # branch name may contain slash, we need to replace it with space
           export REF_BRANCH=$(echo ${{ github.event.ref }} | sed "s/\// /")
-          if [ -d /github/home/testmon_cache/${MAIN_BRANCH} ] && [ ! -z "$(ls -A /github/home/testmon_cache/${MAIN_BRANCH})" ]; then
+          if [ -d /github/home/testmon_cache/${MAIN_BRANCH} ]; then
              cp -p -r /github/home/testmon_cache/${MAIN_BRANCH} "/github/home/testmon_cache/${REF_BRANCH}"
           fi
         env:
@@ -67,8 +67,8 @@ jobs:
       - name: Copy testmon cache
         run: | # branch name may contain slash, we need to replace it with space
           export BASE=$(echo ${{ github.event.pull_request.base.ref }} | sed "s/\// /")
-          if [ -d "/github/home/testmon_cache/${BASE}" ] and [ ! -z "$(ls -A "/github/home/testmon_cache/${BASE}")" ]; then
-            mkdir -p /github/home/testmon_cache/_pull && cp -p -r "/github/home/testmon_cache/${BASE}" /github/home/testmon_cache/_pull/${PR_NUMBER}
+          if [ -d "/github/home/testmon_cache/${BASE}" ] && [ ! -z "$(ls -A "/github/home/testmon_cache/${BASE}")" ]; then
+            mkdir -p /github/home/testmon_cache/_pull/${PR_NUMBER} && cp -p -r "/github/home/testmon_cache/${BASE}"/.testmondata* /github/home/testmon_cache/_pull/${PR_NUMBER}
           fi
         env:
           PR_NUMBER: ${{ github.event.number }}
@@ -200,8 +200,8 @@ jobs:
 
       - name: Restore Testmon Cache
         run: |
-          if [ -d /github/home/testmon_cache/_pull/${PR_NUMBER} ]; then
-            [ ! -z "$(ls -A /github/home/testmon_cache/_pull/${PR_NUMBER})" ] && cp -p -r /github/home/testmon_cache/_pull/${PR_NUMBER}/.testmondata* /__w/ColossalAI/ColossalAI/
+          if [ -d /github/home/testmon_cache/_pull/${PR_NUMBER} ] && [ ! -z "$(ls -A /github/home/testmon_cache/_pull/${PR_NUMBER})" ]; then
+            cp -p -r /github/home/testmon_cache/_pull/${PR_NUMBER}/.testmondata* /__w/ColossalAI/ColossalAI/
           fi
         env:
           PR_NUMBER: ${{ github.event.number }}
