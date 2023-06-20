@@ -44,7 +44,7 @@ then
       do
          temp_ip=`host $var| grep address | awk '{print $4}'`
          echo "${temp_ip} slots=4 " >> nodes_ip.txt
-         echo temp_ip
+         echo "${temp_ip} slots=4 "
       done
 fi
 
