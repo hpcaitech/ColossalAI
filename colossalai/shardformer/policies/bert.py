@@ -288,6 +288,15 @@ class BertForTokenClassificationPolicy(BertPolicy):
         module_policy.update(addon_module)
         return module_policy
 
+    def postprocess(self):
+        binding_map = {"bert.embeddings.word_embeddings.weight": "cls.predictions.decoder.weight"}
+        for k, v in binding_map.items():
+            param = getattr_(self.model, k)
+            param = nn.Parameter(param)
+            setattr_(self.model, k, param)
+            setattr_(self.model, v, param)
+        return self.model
+
 
 # BertForNextSentencePrediction
 class BertForNextSentencePredictionPolicy(BertPolicy):
