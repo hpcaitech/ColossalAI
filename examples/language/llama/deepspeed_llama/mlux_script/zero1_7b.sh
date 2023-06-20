@@ -32,16 +32,24 @@ unset __conda_setup
 # <<< conda initialize <<<
 conda activate llama
 
+nodes_ip=`scontrol show hostnames $SLURM_JOB_NODELIST`
+# shellcheck disable=SC2068
+for var in ${nodes_ip[@]}
+do
+   echo "${var} slots=4 " >> nodes_ip.txt
+   echo $var
+done
 
-DISTRIBUTED_ARGS="--nproc_per_node $nprocs_per_node \
-                  --nnodes $SLURM_NNODES \
-                  --node_rank ${rank} \
-                  --master_addr ${MASTER_ADDR} \
-                  --master_port ${MASTER_PORT}"
+
+#DISTRIBUTED_ARGS="--nproc_per_node $nprocs_per_node \
+#                  --nnodes $SLURM_NNODES \
+#                  --node_rank ${rank} \
+#                  --master_addr ${MASTER_ADDR} \
+#                  --master_port ${MASTER_PORT}"
 
 cd ..
 
-deepspeed --num_nodes 2 \
+deepspeed --num_nodes 2 --num_gpus 8 --hostfile nodes_ip.txt \
 	ds_benchmark.py -l 512 \
 	--deepspeed --deepspeed_config zero.json
 
