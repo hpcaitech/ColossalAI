@@ -64,5 +64,5 @@ deepspeed --num_nodes 2 --num_gpus 8 --master_addr $master_addr --hostfile mlux_
 	ds_benchmark.py -l 512 \
 	--deepspeed --deepspeed_config zero.json
 
-rm nodes_ip.txt
+rm mlux_script/nodes_ip.txt
 
