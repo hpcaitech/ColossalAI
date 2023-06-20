@@ -20,6 +20,9 @@ jobs:
       matrix: ${{ steps.setup-matrix.outputs.matrix }}
       anyChanged: ${{ steps.setup-matrix.outputs.anyChanged }}
     name: Detect changed example files
+    concurrency:
+      group: ${{ github.head_ref }}
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v3
         with:
@@ -77,6 +80,9 @@ jobs:
       image: hpcaitech/pytorch-cuda:1.12.0-11.3.0
       options: --gpus all --rm -v /data/scratch/examples-data:/data/
     timeout-minutes: 10
+    concurrency:
+      group: ${{ github.head_ref }}
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v3
 

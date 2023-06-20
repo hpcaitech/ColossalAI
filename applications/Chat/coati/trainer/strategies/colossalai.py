@@ -5,7 +5,6 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 import torch.optim as optim
-from coati.models.base import get_base_model
 from torch.optim import Optimizer
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
@@ -31,7 +30,7 @@ class ColossalAIStrategy(DDPStrategy):
         precision(str): The precision to use. Choose in ('fp32', 'fp16'). Stage 3 only supports fp16.
         seed(int): The seed for the random number generator.
         shard_init(bool): Whether to shard the model parameters during initialization. Only for ZeRO-3.
-            This is not compativle with `from_pretrained()`. We temporarily disable this and will support it in the future.
+            This is not compatible with `from_pretrained()`. We temporarily disable this and will support it in the future.
         placement_policy(str): The placement policy for gemini. Choose in ('cpu', 'cuda')
                           If it is “cpu”, parameters, gradients and optimizer states will be offloaded to CPU,
                           If it is “cuda”, they will not be offloaded, which means max CUDA memory will be used. It is the fastest.
@@ -41,7 +40,7 @@ class ColossalAIStrategy(DDPStrategy):
         hidden_dim(optional, int): The hidden dimension for the gemini. Only for ZeRO-3.
         min_chunk_size_mb(float): The minimum chunk size in MB. Only for ZeRO-3.
         gpu_margin_mem_ratio(float): The margin memory ratio for the GPU. Only for ZeRO-3.
-        reduce_bugket_size(int): The reduce bucket size in bytes. Only for ZeRO-1 and ZeRO-2.
+        reduce_bucket_size(int): The reduce bucket size in bytes. Only for ZeRO-1 and ZeRO-2.
         overlap_communication(bool): Whether to overlap communication and computation. Only for ZeRO-1 and ZeRO-2.
         initial_scale(float): The initial scale for the optimizer.
         growth_factor(float): The growth factor for the optimizer.
@@ -148,14 +147,13 @@ class ColossalAIStrategy(DDPStrategy):
     def save_model(self, model: nn.Module, path: str, only_rank0: bool = True) -> None:
         if only_rank0 and dist.get_rank() != 0 and self.stage != 3:
             return
-        base_model = get_base_model(model)
         if self.stage == 3:
-            assert isinstance(base_model, ZeroDDP)
+            assert isinstance(model, ZeroDDP)
             # for stage 3, state_dict() method should be called on every rank
-            state_dict = base_model.state_dict(only_rank_0=only_rank0)
+            state_dict = model.state_dict(only_rank_0=only_rank0)
         else:
             # only_rank0 is false or rank == 0
-            state_dict = base_model.state_dict()
+            state_dict = model.state_dict()
         if only_rank0 and dist.get_rank() != 0:
             return
         torch.save(state_dict, path)
@@ -167,11 +165,10 @@ class ColossalAIStrategy(DDPStrategy):
         torch.save(optimizer.state_dict(), path)
 
     def unwrap_model(self, model: nn.Module) -> nn.Module:
-        base_model: Union[nn.Module, ZeroDDP] = get_base_model(model)
         if self.stage == 3:
-            assert isinstance(base_model, ZeroDDP)
-            return base_model.module
-        return base_model
+            assert isinstance(model, ZeroDDP)
+            return model.module
+        return model
 
     def save_pretrained(self,
                         model: nn.Module,
@@ -191,5 +188,5 @@ class ColossalAIStrategy(DDPStrategy):
             #     if isinstance(module, LoraLinear):
             #         module.merge_weights = True
             #         module.eval()
-            base_model: ZeroDDP = get_base_model(model)
-            yield from base_model.state_dict_shard(max_shard_size=1024, only_rank_0=False)
+            assert isinstance(model, ZeroDDP)
+            yield from model.state_dict_shard(max_shard_size=1024, only_rank_0=False)

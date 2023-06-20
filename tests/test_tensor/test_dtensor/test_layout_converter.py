@@ -137,7 +137,7 @@ def check_layout_converting(rank, world_size, port):
     assert comm_action_sequence[2].shard_dim == 0
     assert comm_action_sequence[2].logical_process_axis == 1
 
-    # checkout chached_spec_pairs_transform_path
+    # checkout cached_spec_pairs_transform_path
     assert layout_converter.cached_solution[('[R, S01, R]', '[S01, R, R]')][0] == transform_path
     assert layout_converter.cached_solution[('[R, S01, R]', '[S01, R, R]')][1] == comm_action_sequence
 

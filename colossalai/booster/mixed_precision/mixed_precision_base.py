@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Callable, Tuple
+from typing import Callable, Optional, Tuple
 
 import torch.nn as nn
 from torch.optim import Optimizer
@@ -15,7 +15,8 @@ class MixedPrecision(ABC):
     @abstractmethod
     def configure(self,
                   model: nn.Module,
-                  optimizer: Optimizer,
-                  criterion: Callable = None) -> Tuple[nn.Module, OptimizerWrapper, Callable]:
+                  optimizer: Optional[Optimizer] = None,
+                  criterion: Optional[Callable] = None,
+                  ) -> Tuple[nn.Module, OptimizerWrapper, Callable]:
         # TODO: implement this method
         pass
