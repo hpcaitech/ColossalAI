@@ -41,7 +41,7 @@ DISTRIBUTED_ARGS="--nproc_per_node $nprocs_per_node \
 
 cd ..
 
-deepspeed --hostfile=2_node.host\
+deepspeed --hostfile 2_node.host \
 	ds_benchmark.py -l 512 \
 	--deepspeed --deepspeed_config zero.json
 
