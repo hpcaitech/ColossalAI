@@ -52,7 +52,8 @@ def exam_state_dict_with_origin(placement_policy, model_name, use_safetensors: b
 @parameterize('placement_policy', ['cuda', 'cpu'])
 @parameterize('shard', [True, False])
 @parameterize('model_name', ['transformers_gpt'])
-def exam_state_dict(placement_policy, shard: bool, model_name: str):
+@parameterize('size_per_shard', [32])
+def exam_state_dict(placement_policy, shard: bool, model_name: str, size_per_shard: int):
     (model_fn, data_gen_fn, output_transform_fn, _) = next(iter(model_zoo.get_sub_registry(model_name).values()))
     criterion = lambda x: x.mean()
     plugin = GeminiPlugin(placement_policy=placement_policy)
@@ -78,18 +79,16 @@ def exam_state_dict(placement_policy, shard: bool, model_name: str):
     with shared_tempdir() as tempdir:
         model_ckpt_path = f"{tempdir}/model"
         optimizer_ckpt_path = f"{tempdir}/optimizer"
-        booster.save_model(model, model_ckpt_path)
-        if not shard:
-            # TODO(ver217): optimizer checkpointing is not supported for sharded checkpoint
-            booster.save_optimizer(optimizer, optimizer_ckpt_path)
+        booster.save_model(model, model_ckpt_path, shard=shard, size_per_shard=size_per_shard)
+        booster.save_optimizer(optimizer, optimizer_ckpt_path, shard=shard, size_per_shard=size_per_shard)
         dist.barrier()
 
         booster.load_model(new_model, model_ckpt_path)
         check_state_dict_equal(model.unwrap().state_dict(only_rank_0=False),
                                new_model.unwrap().state_dict(only_rank_0=False), False)
-        if not shard:
-            booster.load_optimizer(new_optimizer, optimizer_ckpt_path)
-            check_state_dict_equal(optimizer.state_dict(), new_optimizer.state_dict(), False)
+
+        booster.load_optimizer(new_optimizer, optimizer_ckpt_path)
+        check_state_dict_equal(optimizer.state_dict(), new_optimizer.state_dict(), False)
 
 
 def run_dist(rank, world_size, port):

@@ -52,17 +52,32 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
 
     def save_unsharded_optimizer(self, optimizer: Optimizer, checkpoint: str, gather_dtensor: bool):
         """
-        Save optimizer to checkpoint but only on master process.
+        For each process, save its own optimizer state to its special checkpoint(a file path).
         """
-        # TODO(ver217): optimizer state dict is sharded
         warnings.warn('GeminiPlugin does not support save full optimizer checkpoint now. Save it on every process.')
-        checkpoint = f'{checkpoint}.rank{self.coordinator.rank}'
+        Path(checkpoint).mkdir(parents=True, exist_ok=True)
+        checkpoint = os.path.join(checkpoint, f"rank{self.coordinator.rank}")
         super().save_unsharded_optimizer(optimizer, checkpoint, gather_dtensor)
 
+    def save_sharded_optimizer(self, optimizer: Optimizer, checkpoint: Path, gather_dtensor: bool, prefix: str,
+                               size_per_shard: int):
+        """
+        For each process, save its own optimizer state to its special checkpoint(a directory path).
+        Under each checkpoint folder, the optimizer state should be broken into shards within given size.
+        """
+        warnings.warn('GeminiPlugin does not support save full optimizer checkpoint now. Save it on every process.')
+        Path(checkpoint).mkdir(parents=True, exist_ok=True)
+        checkpoint = os.path.join(checkpoint, f"rank{self.coordinator.rank}")
+        super().save_sharded_optimizer(optimizer, checkpoint, gather_dtensor, prefix, size_per_shard)
+
     def load_optimizer(self, optimizer: Optimizer, checkpoint: str):
+        """
+        For each process, load its own optimizer state from its special checkpoint.
+        """
         warnings.warn(
             'GeminiPlugin can only load optimizer checkpoint saved by itself with the same number of processes.')
-        checkpoint = f'{checkpoint}.rank{self.coordinator.rank}'
+        Path(checkpoint).mkdir(parents=True, exist_ok=True)
+        checkpoint = os.path.join(checkpoint, f"rank{self.coordinator.rank}")
         super().load_optimizer(optimizer, checkpoint)
 
     def save_lr_scheduler(self, lr_scheduler: LRScheduler, checkpoint: str):
@@ -82,6 +97,12 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
         """
         Save sharded model
         """
+        if os.path.isfile(checkpoint_path):
+            logging.error(f"Provided path ({checkpoint_path}) should be a directory, not a file")
+            return
+
+        Path(checkpoint_path).mkdir(parents=True, exist_ok=True)
+
         state_dict_shard = model.state_dict_shard(max_shard_size=max_shard_size, only_rank_0=True, dtype=torch.float32)
         weights_name, save_index_file = get_model_base_filenames(prefix, use_safetensors)
         total_size = 0
@@ -219,7 +240,7 @@ class GeminiPlugin(DPPluginBase):
         min_chunk_size_mb: float = 32,
         memstats: Optional[MemStats] = None,
         gpu_margin_mem_ratio: float = 0.0,
-        initial_scale: float = 2**32,
+        initial_scale: float = 2**16,
         min_scale: float = 1,
         growth_factor: float = 2,
         backoff_factor: float = 0.5,
@@ -295,10 +316,7 @@ class GeminiPlugin(DPPluginBase):
 
         if optimizer is not None and \
                 not isinstance(optimizer, OptimizerWrapper):
-            optimizer = GeminiOptimizer(model.unwrap(),
-                                        optimizer,
-                                        self.zero_optim_config,
-                                        self.optim_kwargs,
+            optimizer = GeminiOptimizer(model.unwrap(), optimizer, self.zero_optim_config, self.optim_kwargs,
                                         self.verbose)
 
         return model, optimizer, criterion, dataloader, lr_scheduler
