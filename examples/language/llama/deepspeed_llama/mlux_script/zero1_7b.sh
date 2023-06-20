@@ -33,6 +33,8 @@ unset __conda_setup
 conda activate llama
 
 nodes_ip=`scontrol show hostnames $SLURM_JOB_NODELIST`
+master_addr=`scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1`
+echo $master_addr
 # shellcheck disable=SC2068
 local_node=$SLURM_NODEID
 echo $local_node
@@ -56,10 +58,9 @@ fi
 
 cd ..
 
-deepspeed --num_nodes 2 --num_gpus 8 --hostfile mlux_script/nodes_ip.txt \
+deepspeed --num_nodes 2 --num_gpus 8 --master_addr $master_addr --hostfile mlux_script/nodes_ip.txt \
 	ds_benchmark.py -l 512 \
 	--deepspeed --deepspeed_config zero.json
 
-
-
+rm nodes_ip.txt
 
