@@ -7,7 +7,9 @@ then
     hostid_start=$(( $hostid_start + 1 ))
 fi
 master="mel${SLURM_NODELIST:hostid_start:4}"
+echo $master
 master=`host $master| grep address | awk '{print $4}'`
+echo $master
 
 export MASTER_ADDR=$master
 export MASTER_PORT=13245
