@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 from torch.distributed import ProcessGroup
 
-from .layers import ParallelModule
+from .parallelmodule import ParallelModule
 from .utils import create_randomizer_with_offset
 
 

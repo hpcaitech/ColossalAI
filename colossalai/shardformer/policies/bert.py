@@ -90,12 +90,6 @@ class BertPolicy(Policy):
         return self.model
 
     def postprocess(self):
-        binding_map = {"bert.embeddings.word_embeddings.weight": "cls.predictions.decoder.weight"}
-        for k, v in binding_map.items():
-            param = getattr_(self.model, k)
-            param = nn.Parameter(param)
-            setattr_(self.model, k, param)
-            setattr_(self.model, v, param)
         return self.model
 
 
@@ -127,6 +121,15 @@ class BertForPretrainingPolicy(BertPolicy):
         module_policy.update(addon_module)
         return module_policy
 
+    def postprocess(self):
+        binding_map = {"bert.embeddings.word_embeddings.weight": "cls.predictions.decoder.weight"}
+        for k, v in binding_map.items():
+            param = getattr_(self.model, k)
+            param = nn.Parameter(param)
+            setattr_(self.model, k, param)
+            setattr_(self.model, v, param)
+        return self.model
+
 
 # BertForMaskedLM
 class BertForMaskedLMPolicy(BertPolicy):
@@ -149,6 +152,15 @@ class BertForMaskedLMPolicy(BertPolicy):
         module_policy.update(addon_module)
         return module_policy
 
+    def postprocess(self):
+        binding_map = {"bert.embeddings.word_embeddings.weight": "cls.predictions.decoder.weight"}
+        for k, v in binding_map.items():
+            param = getattr_(self.model, k)
+            param = nn.Parameter(param)
+            setattr_(self.model, k, param)
+            setattr_(self.model, v, param)
+        return self.model
+
 
 # BertLMHeadModel
 class BertLMHeadModelPolicy(BertPolicy):
@@ -170,6 +182,15 @@ class BertLMHeadModelPolicy(BertPolicy):
         }
         module_policy.update(addon_module)
         return module_policy
+
+    def postprocess(self):
+        binding_map = {"bert.embeddings.word_embeddings.weight": "cls.predictions.decoder.weight"}
+        for k, v in binding_map.items():
+            param = getattr_(self.model, k)
+            param = nn.Parameter(param)
+            setattr_(self.model, k, param)
+            setattr_(self.model, v, param)
+        return self.model
 
 
 # BertForNextSentencePrediction

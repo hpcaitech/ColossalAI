@@ -71,6 +71,18 @@ class GPT2Policy(Policy):
                                                     "n_cast": 1,
                                                 },
                                             ),
+                                            SubModuleReplacementDescription(
+                                                suffix="attn.attn_dropout",
+                                                target_module=col_nn.Dropout1D,
+                                            ),
+                                            SubModuleReplacementDescription(
+                                                suffix="attn.resid_dropout",
+                                                target_module=col_nn.Dropout1D,
+                                            ),
+                                            SubModuleReplacementDescription(
+                                                suffix="mlp.dropout",
+                                                target_module=col_nn.Dropout1D,
+                                            ),
                                         ])
         }
 
