@@ -35,6 +35,7 @@ conda activate llama
 nodes_ip=`scontrol show hostnames $SLURM_JOB_NODELIST`
 # shellcheck disable=SC2068
 local_node=$SLURM_NODEID
+echo $local_node
 if $local_node -eq 0
 then
    # shellcheck disable=SC2068
