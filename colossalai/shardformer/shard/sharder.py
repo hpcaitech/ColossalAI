@@ -191,9 +191,7 @@ class ModelSharder(object):
             except Exception as e:
                 raise RuntimeError(
                     f"Failed to replace {suffix} of type {native_sub_module.__class__.__qualname__}"
-                    "========== Error =========="
-                    f" with {target_module.__qualname__} with the following exception:\n{e}"
-                    "==========================="
+                    f" with {target_module.__qualname__} with the exception: {e}. "
                     "Please check your model configuration or sharding policy, you can set up an issue for us to help you as well."
                 )
 
