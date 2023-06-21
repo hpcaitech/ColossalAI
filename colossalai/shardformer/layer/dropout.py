@@ -4,8 +4,10 @@ import torch
 import torch.nn as nn
 from torch.distributed import ProcessGroup
 
-from .parallelmodule import ParallelModule
+from .parallel_module import ParallelModule
 from .utils import create_randomizer_with_offset
+
+__all__ = ['Dropout1D']
 
 
 class Dropout1D(ParallelModule, nn.Dropout):

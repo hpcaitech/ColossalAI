@@ -1,5 +1,3 @@
-import torch
-import torch.nn as nn
 from transformers import T5ForConditionalGeneration
 from transformers.models.t5.modeling_t5 import (
     T5Attention,

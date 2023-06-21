@@ -1,12 +1,7 @@
-from typing import Type, Union
-
-import torch.nn as nn
 from transformers.models.gpt2.modeling_gpt2 import GPT2Block, GPT2Model
 
 import colossalai.shardformer.layer as col_nn
-from colossalai.shardformer.layer.dropout import Dropout1D
 
-from ..utils import getattr_, setattr_
 from .basepolicy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 
