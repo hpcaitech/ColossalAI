@@ -58,7 +58,7 @@ fi
 
 cd ..
 
-deepspeed --num_nodes 2 --num_gpus 8 --master_addr ${MASTER_ADDR} --hostfile mlux_script/nodes_ip.txt \
+deepspeed --num_nodes 2 --num_gpus 4 --master_addr ${MASTER_ADDR} --hostfile mlux_script/nodes_ip.txt \
 	ds_benchmark.py -l 512 \
 	--deepspeed --deepspeed_config zero.json
 
