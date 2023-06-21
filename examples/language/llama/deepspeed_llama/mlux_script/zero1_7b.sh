@@ -57,7 +57,6 @@ fi
 #                  --master_port ${MASTER_PORT}"
 
 cd ..
-
 deepspeed --num_nodes 2 --num_gpus 4 --master_addr ${MASTER_ADDR} --master_port ${MASTER_PORT} --hostfile mlux_script/nodes_ip.txt \
 	ds_benchmark.py -l 512 \
 	--deepspeed --deepspeed_config mlux_script/zero1.json
