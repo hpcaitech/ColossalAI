@@ -6,8 +6,8 @@ import enum
 import torch
 import torch.nn as nn
 
-from colossalai.kernel.op_builder.scaled_masked_softmax import ScaledMaskedSoftmaxBuilder
-from colossalai.kernel.op_builder.scaled_upper_triangle_masked_softmax import ScaledUpperTrainglemaskedSoftmaxBuilder
+from op_builder.scaled_masked_softmax import ScaledMaskedSoftmaxBuilder
+from op_builder.scaled_upper_triangle_masked_softmax import ScaledUpperTrainglemaskedSoftmaxBuilder
 
 try:
     from colossalai._C import scaled_masked_softmax, scaled_upper_triang_masked_softmax

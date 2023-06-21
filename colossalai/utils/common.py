@@ -122,7 +122,7 @@ def _calc_l2_norm(grads):
     global fused_optim
 
     if fused_optim is None:
-        from colossalai.kernel.op_builder import FusedOptimBuilder
+        from op_builder import FusedOptimBuilder
         fused_optim = FusedOptimBuilder().load()
 
     norm = 0.0

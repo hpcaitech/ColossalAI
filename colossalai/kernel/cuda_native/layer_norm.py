@@ -9,7 +9,7 @@ from torch.cuda.amp import custom_bwd, custom_fwd
 from torch.nn import init
 from torch.nn.parameter import Parameter
 
-from colossalai.kernel.op_builder.layernorm import LayerNormBuilder
+from op_builder.layernorm import LayerNormBuilder
 
 try:
     from colossalai._C import layer_norm

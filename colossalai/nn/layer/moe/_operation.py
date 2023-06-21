@@ -17,7 +17,7 @@ def build_moe_if_not_prebuilt():
     # load moe kernel during runtime if not pre-built
     global moe
     if moe is None:
-        from colossalai.kernel.op_builder import MOEBuilder
+        from op_builder import MOEBuilder
         moe = MOEBuilder().load()
 
 
@@ -29,7 +29,7 @@ class AllGather(torch.autograd.Function):
         global moe
 
         if moe is None:
-            from colossalai.kernel.op_builder import MOEBuilder
+            from op_builder import MOEBuilder
             moe = MOEBuilder().load()
 
         if ctx is not None:

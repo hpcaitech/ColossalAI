@@ -60,7 +60,7 @@ class FusedAdamKernel(AdamKernel):
 
     def __init__(self, lr: float, beta1: float, beta2: float, eps: float, weight_decay: float, use_adamw: bool) -> None:
         super().__init__(lr, beta1, beta2, eps, weight_decay, use_adamw)
-        from colossalai.kernel.op_builder import FusedOptimBuilder
+        from op_builder import FusedOptimBuilder
         fused_optim = FusedOptimBuilder().load()
         self.fused_adam = fused_optim.multi_tensor_adam
         self.dummy_overflow_buf = torch.cuda.IntTensor([0])
@@ -75,7 +75,7 @@ class CPUAdamKernel(AdamKernel):
 
     def __init__(self, lr: float, beta1: float, beta2: float, eps: float, weight_decay: float, use_adamw: bool) -> None:
         super().__init__(lr, beta1, beta2, eps, weight_decay, use_adamw)
-        from colossalai.kernel.op_builder import CPUAdamBuilder
+        from op_builder import CPUAdamBuilder
         cpu_optim = CPUAdamBuilder().load()
 
         self.cpu_adam_op = cpu_optim.CPUAdamOptimizer(lr, beta1, beta2, eps, weight_decay, use_adamw)

@@ -79,7 +79,7 @@ class FusedSGD(Optimizer):
         self.wd_after_momentum = wd_after_momentum
 
         if multi_tensor_applier.available:
-            from colossalai.kernel.op_builder import FusedOptimBuilder
+            from op_builder import FusedOptimBuilder
             fused_optim = FusedOptimBuilder().load()
 
             # Skip buffer
