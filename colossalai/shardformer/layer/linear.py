@@ -23,15 +23,10 @@ from ._operation import (
     reduce_input,
     split_forward_gather_backward,
 )
-from .parallelmodule import ParallelModule
+from .parallel_module import ParallelModule
 from .utils import create_randomizer_with_offset
 
-Fast_LN = None
-try:
-    from apex.contrib.layer_norm.layer_norm import FastLayerNorm
-    Fast_LN = FastLayerNorm
-except ImportError:
-    pass
+__all__ = ['Linear1D_Col', 'Linear1D_Row']
 
 
 class Linear1D_Col(ParallelModule):
@@ -104,8 +99,8 @@ class Linear1D_Col(ParallelModule):
         seed = torch.random.initial_seed()
         self.randomizer = create_randomizer_with_offset(seed, process_group=self.process_group)
 
-        with self.randomizer.fork_rng(enable_cpu=True):
-            self.reset_parameters(weight_initializer, bias_initializer)
+        # init weights
+        self.reset_parameters(weight_initializer, bias_initializer)
 
     @staticmethod
     def from_native_module(module: nn.Linear, process_group: Union[ProcessGroup, List[ProcessGroup]], *args,
@@ -146,10 +141,11 @@ class Linear1D_Col(ParallelModule):
         return linear_1d
 
     def reset_parameters(self, weight_initializer, bias_initializer) -> None:
-        fan_in, fan_out = self.in_features, self.out_features
-        weight_initializer(self.weight, fan_in=fan_in, fan_out=fan_out)
-        if self.bias is not None:
-            bias_initializer(self.bias, fan_in=fan_in)
+        with self.randomizer.fork_rng(enable_cpu=True):
+            fan_in, fan_out = self.in_features, self.out_features
+            weight_initializer(self.weight, fan_in=fan_in, fan_out=fan_out)
+            if self.bias is not None:
+                bias_initializer(self.bias, fan_in=fan_in)
 
     def forward(self, input_: Tensor) -> Tuple[Tensor, Tensor]:
         assert input_.shape[-1] == self.weight.shape[-1], \

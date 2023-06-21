@@ -4,7 +4,7 @@ import torch.nn as nn
 from torch.testing import assert_close
 
 import colossalai
-from colossalai.shardformer.layer.layers import Linear1D_Col, Linear1D_Row
+from colossalai.shardformer.layer import Linear1D_Col, Linear1D_Row
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 
