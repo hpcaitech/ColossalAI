@@ -7,7 +7,7 @@
 #SBATCH --ntasks-per-node=1                # number of tasks per node
 #SBATCH --cpus-per-task=32                  # number of cores per task
 #SBATCH --gpus-per-task=4                  # number of gpu per task
-#SBATCH --time=0-02:00                     # time (DD-HH:MM)
+#SBATCH --time=0-00:60                     # time (DD-HH:MM)
 #SBATCH --qos=default
 #SBATCH --contiguous
 
