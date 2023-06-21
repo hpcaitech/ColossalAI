@@ -131,37 +131,6 @@ class BertForPretrainingPolicy(BertPolicy):
         return self.model
 
 
-# BertForMaskedLM
-class BertForMaskedLMPolicy(BertPolicy):
-
-    def __init__(self) -> None:
-        super().__init__()
-
-    def module_policy(self):
-        module_policy = super().module_policy()
-        addon_module = {
-            BertLMPredictionHead:
-                ModulePolicyDescription(attribute_replacement={},
-                                        param_replacement=[],
-                                        sub_module_replacement=[
-                                            SubModuleReplacementDescription(suffix="decoder",
-                                                                            target_module=col_nn.Linear1D_Col,
-                                                                            kwargs={"gather_output": True})
-                                        ])
-        }
-        module_policy.update(addon_module)
-        return module_policy
-
-    def postprocess(self):
-        binding_map = {"bert.embeddings.word_embeddings.weight": "cls.predictions.decoder.weight"}
-        for k, v in binding_map.items():
-            param = getattr_(self.model, k)
-            param = nn.Parameter(param)
-            setattr_(self.model, k, param)
-            setattr_(self.model, v, param)
-        return self.model
-
-
 # BertLMHeadModel
 class BertLMHeadModelPolicy(BertPolicy):
 
@@ -193,15 +162,53 @@ class BertLMHeadModelPolicy(BertPolicy):
         return self.model
 
 
-# BertForNextSentencePrediction
-class BertForNextSentencePredictionPolicy(BertPolicy):
+# BertForMaskedLM
+class BertForMaskedLMPolicy(BertPolicy):
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    def module_policy(self):
+        module_policy = super().module_policy()
+        addon_module = {
+            BertLMPredictionHead:
+                ModulePolicyDescription(attribute_replacement={},
+                                        param_replacement=[],
+                                        sub_module_replacement=[
+                                            SubModuleReplacementDescription(suffix="decoder",
+                                                                            target_module=col_nn.Linear1D_Col,
+                                                                            kwargs={"gather_output": True})
+                                        ])
+        }
+        module_policy.update(addon_module)
+        return module_policy
+
+    def postprocess(self):
+        binding_map = {"bert.embeddings.word_embeddings.weight": "cls.predictions.decoder.weight"}
+        for k, v in binding_map.items():
+            param = getattr_(self.model, k)
+            param = nn.Parameter(param)
+            setattr_(self.model, k, param)
+            setattr_(self.model, v, param)
+        return self.model
+
+
+# BertForSequenceClassification
+class BertForSequenceClassificationPolicy(BertPolicy):
 
     def __init__(self) -> None:
         super().__init__()
 
 
-# BertForSequenceClassification
-class BertForSequenceClassificationPolicy(BertPolicy):
+# BertForTokenClassification
+class BertForTokenClassificationPolicy(BertPolicy):
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+# BertForNextSentencePrediction
+class BertForNextSentencePredictionPolicy(BertPolicy):
 
     def __init__(self) -> None:
         super().__init__()
