@@ -1,5 +1,5 @@
 import argparse
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from random import randint
 
 import torch
@@ -7,6 +7,7 @@ import torch.distributed as dist
 import torch.nn as nn
 import transformers
 from performance_evaluator import PerformanceEvaluator
+from torch.distributed.fsdp.fully_sharded_data_parallel import CPUOffload, MixedPrecision
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
@@ -97,7 +98,7 @@ def main():
     parser.add_argument('-c', '--config', type=str, default='7b', help='Model configuration')
     parser.add_argument('-p',
                         '--plugin',
-                        choices=['gemini', 'gemini_cpu', 'fsdp'],
+                        choices=['gemini', 'gemini_cpu', 'fsdp', 'fsdp_cpu'],
                         default='gemini',
                         help='Choose which plugin to use')
     parser.add_argument('-b', '--batch_size', type=int, default=2, help='Batch size')
@@ -119,7 +120,13 @@ def main():
     elif args.plugin == 'gemini_cpu':
         plugin = GeminiPlugin(placement_policy='cpu')
     elif args.plugin == 'fsdp':
-        plugin = TorchFSDPPlugin()
+        plugin = TorchFSDPPlugin(mixed_precision=MixedPrecision(
+            param_dtype=torch.float16, reduce_dtype=torch.float16, buffer_dtype=torch.float16))
+    elif args.plugin == 'fsdp_cpu':
+        plugin = TorchFSDPPlugin(mixed_precision=MixedPrecision(param_dtype=torch.float16,
+                                                                reduce_dtype=torch.float16,
+                                                                buffer_dtype=torch.float16),
+                                 cpu_offload=CPUOffload(offload_params=True))
     else:
         raise ValueError(f'Unknown plugin {args.plugin}')
 
@@ -138,7 +145,9 @@ def main():
     # Initialize Model and Optimizer
     # ==============================
 
-    with low_precision_init(), no_init_weights(), LazyInitContext():
+    init_ctx = LazyInitContext() if isinstance(plugin, GeminiPlugin) else nullcontext()
+
+    with no_init_weights(), init_ctx:
         model = LlamaForCausalLM(config)
         model.tie_weights()
 
