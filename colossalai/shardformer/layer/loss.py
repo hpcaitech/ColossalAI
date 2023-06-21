@@ -1,9 +1,9 @@
 import torch
 import torch.distributed as dist
-import torch.nn as nn
-import torch.nn.functional as F
 from torch.autograd import Function
 from torch.distributed import ProcessGroup
+
+__all__ = ['DistCrossEntropy', 'cross_entropy_1d']
 
 
 class DistCrossEntropy(Function):

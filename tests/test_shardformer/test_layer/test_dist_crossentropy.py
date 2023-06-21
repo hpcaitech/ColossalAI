@@ -4,7 +4,7 @@ import torch.nn.functional as F
 
 import colossalai
 from colossalai.logging import disable_existing_loggers
-from colossalai.shardformer.layer.dist_crossentropy import applyDistCrossEntropy
+from colossalai.shardformer.layer import cross_entropy_1d
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 CONFIG = dict(parallel=dict(data=1, pipeline=1, tensor=dict(size=2, mode='1d')),)
@@ -25,7 +25,7 @@ def check_dist_crossentropy(rank, world_size, port, ignore_index):
     org_loss = F.cross_entropy(org_pred, org_labels)
 
     dist_pred = pred.chunk(world_size, -1)[rank]
-    dist_loss = applyDistCrossEntropy(dist_pred.to('cuda'), labels.to('cuda'), ignore_index=ignore_index)
+    dist_loss = cross_entropy_1d(dist_pred.to('cuda'), labels.to('cuda'), ignore_index=ignore_index)
 
     assert torch.allclose(org_loss, dist_loss,
                           atol=1e-5), f"dist cross entropy loss is not equal to orgin loss\n{org_loss}\n{dist_loss}"

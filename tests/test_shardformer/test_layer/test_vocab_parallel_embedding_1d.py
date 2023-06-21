@@ -4,7 +4,7 @@ import torch.nn as nn
 from torch.testing import assert_close
 
 import colossalai
-from colossalai.shardformer.layer.layers import VocabParallelEmbedding1D
+from colossalai.shardformer.layer import VocabParallelEmbedding1D
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 
 

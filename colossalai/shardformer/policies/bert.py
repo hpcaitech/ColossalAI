@@ -4,7 +4,7 @@ from transformers.models.bert.modeling_bert import BertEmbeddings, BertLayer, Be
 import colossalai.shardformer.layer as col_nn
 from colossalai.shardformer.layer.dropout import Dropout1D
 
-from ..utils import getattr_, setattr_
+from .._utils import getattr_, setattr_
 from .basepolicy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 
