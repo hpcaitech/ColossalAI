@@ -23,19 +23,15 @@ from ._operation import (
     reduce_input,
     split_forward_gather_backward,
 )
-from .parallelmodule import ParallelModule
+from .parallel_module import ParallelModule
 from .utils import create_randomizer_with_offset
 
-Fast_LN = None
-try:
-    from apex.contrib.layer_norm.layer_norm import FastLayerNorm
-    Fast_LN = FastLayerNorm
-except ImportError:
-    pass
+__all__ = ['LinearConv1D_Col', 'LinearConv1D_Row']
 
 
 class LinearConv1D_Col(ParallelModule):
     r"""Linear layer with column parallelism.
+    Specially created for HuggingFace's GPT2 model.
 
     The linear layer is defined as :math:`Y = XA + b`. A is parallelized along
     its second dimension as :math:`A = [A_1, ..., A_p]`. This layer is used to fit `Conv1D` layer in gpt2 of huggingface.
@@ -104,8 +100,8 @@ class LinearConv1D_Col(ParallelModule):
         seed = torch.random.initial_seed()
         self.randomizer = create_randomizer_with_offset(seed, process_group=self.process_group)
 
-        with self.randomizer.fork_rng(enable_cpu=True):
-            self.reset_parameters(weight_initializer, bias_initializer)
+        # init weights
+        self.reset_parameters(weight_initializer, bias_initializer)
 
     @staticmethod
     def from_native_module(module: nn.Linear, process_group: Union[ProcessGroup, List[ProcessGroup]], n_cast: int,
@@ -162,10 +158,11 @@ class LinearConv1D_Col(ParallelModule):
         return linear_1d
 
     def reset_parameters(self, weight_initializer, bias_initializer) -> None:
-        fan_in, fan_out = self.in_features, self.out_features
-        weight_initializer(self.weight, fan_in=fan_in, fan_out=fan_out)
-        if self.bias is not None:
-            bias_initializer(self.bias, fan_in=fan_in)
+        with self.randomizer.fork_rng(enable_cpu=True):
+            fan_in, fan_out = self.in_features, self.out_features
+            weight_initializer(self.weight, fan_in=fan_in, fan_out=fan_out)
+            if self.bias is not None:
+                bias_initializer(self.bias, fan_in=fan_in)
 
     def forward(self, input_: Tensor) -> Tuple[Tensor, Tensor]:
         assert input_.shape[-1] == self.weight.shape[-1], \
@@ -192,6 +189,7 @@ class LinearConv1D_Col(ParallelModule):
 
 class LinearConv1D_Row(ParallelModule):
     r""" Linear layer with row parallelism
+    Specially created for HuggingFace's GPT2 model.
 
     Args:
         in_features (int): size of each input sample.
@@ -260,8 +258,8 @@ class LinearConv1D_Row(ParallelModule):
         seed = torch.random.initial_seed()
         self.randomizer = create_randomizer_with_offset(seed, process_group=self.process_group)
 
-        with self.randomizer.fork_rng(enable_cpu=True):
-            self.reset_parameters(weight_initializer, bias_initializer)
+        # init weights
+        self.reset_parameters(weight_initializer, bias_initializer)
 
     @staticmethod
     def from_native_module(module: nn.Linear, process_group: Union[ProcessGroup, List[ProcessGroup]], n_cast: int,
@@ -320,20 +318,21 @@ class LinearConv1D_Row(ParallelModule):
         self.weight_list = torch.chunk(self.weight, self.stream_chunk_num, dim=0)
 
     def reset_parameters(self, weight_initializer, bias_initializer) -> None:
-        fan_in, fan_out = self.in_features, self.out_features
-        weight_initializer(self.weight, fan_in=fan_in, fan_out=fan_out)
+        with self.randomizer.fork_rng(enable_cpu=True):
+            fan_in, fan_out = self.in_features, self.out_features
+            weight_initializer(self.weight, fan_in=fan_in, fan_out=fan_out)
 
-        if self.bias is not None:
-            bias_initializer(self.bias, fan_in=fan_in)
-            if self.process_group is None:
-                src_rank = 0
-            else:
-                src_rank = dist.distributed_c10d._get_global_rank(self.process_group, 0)
+            if self.bias is not None:
+                bias_initializer(self.bias, fan_in=fan_in)
+                if self.process_group is None:
+                    src_rank = 0
+                else:
+                    src_rank = dist.distributed_c10d._get_global_rank(self.process_group, 0)
 
-            origin_device = self.bias.device
-            self.bias = self.bias.cuda()
-            dist.broadcast(self.bias, src=src_rank, group=self.process_group)
-            self.bias = self.bias.to(origin_device)
+                origin_device = self.bias.device
+                self.bias = self.bias.cuda()
+                dist.broadcast(self.bias, src=src_rank, group=self.process_group)
+                self.bias = self.bias.to(origin_device)
 
     def forward(self, input_: Tensor) -> Tensor:
         # Set up backprop all-reduce.

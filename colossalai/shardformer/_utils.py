@@ -2,6 +2,9 @@ import re
 
 
 def get_obj_list_element(obj, a):
+    r"""
+    Get the element of the list in the object
+    """
     re_pattern = r'\[\d+\]'
     prog = re.compile(re_pattern)
     result = prog.search(a)
