@@ -4,7 +4,7 @@ import torch.nn as nn
 from transformers import LlamaForCausalLM, LlamaForSequenceClassification
 from transformers.models.llama.modeling_llama import LlamaDecoderLayer, LlamaModel
 
-from colossalai.shardformer.layer.layers import Linear1D_Col, Linear1D_Row, VocabParallelEmbedding1D
+from colossalai.shardformer.layer import Linear1D_Col, Linear1D_Row, VocabParallelEmbedding1D
 
 from .basepolicy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 

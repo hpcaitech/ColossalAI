@@ -60,7 +60,7 @@ def assert_forward_equal(m1: torch.nn.Module, m2: torch.nn.Module, data_gen_fn: 
 
 
 def check_lazy_init(entry: TestingEntry, seed: int = 42, verbose: bool = False, check_forward: bool = False) -> None:
-    model_fn, data_gen_fn, output_transform_fn, model_attr = entry
+    model_fn, data_gen_fn, output_transform_fn, _, model_attr = entry
     _MyTensor._pre_op_fn = lambda *args: set_seed(seed)
     LazyTensor._pre_op_fn = lambda *args: set_seed(seed)
     ctx = LazyInitContext(tensor_cls=_MyTensor)

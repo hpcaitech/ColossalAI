@@ -1,64 +1,20 @@
-import copy
 import os
 
 import pytest
 import torch
-from transformers import T5Config, T5EncoderModel, T5ForConditionalGeneration, T5Model, T5Tokenizer, T5TokenizerFast
 
 import colossalai
 from colossalai.logging import disable_existing_loggers
-from colossalai.shardformer.shard import ShardConfig, ShardFormer
 from colossalai.testing import assert_hf_output_close, clear_cache_before_run, rerun_if_address_is_in_use, spawn
-
-os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
-CONFIG = dict(parallel=dict(data=1, pipeline=1, tensor=dict(size=2, mode='1d')),)
-tokenizer = T5Tokenizer.from_pretrained("t5-small")
+from tests.kit.model_zoo import model_zoo
+from tests.test_shardformer.test_model._utils import build_model, run_forward
 
 
-def build_model(world_size, model_fn):
-    config = T5Config(decoder_start_token_id=0)
-    config.dropout_rate = 0
-    org_model = model_fn(config=config).to('cuda')
-    shard_config = ShardConfig(tensor_parallel_size=world_size)
-
-    # shard model
-    shard_config = ShardConfig(tensor_parallel_size=world_size)
-    model_copy = copy.deepcopy(org_model)
-    shard_former = ShardFormer(shard_config=shard_config)
-    shard_former.init_distributed()
-    sharded_model = shard_former.shard_model(model_copy)
-
-    return org_model, sharded_model
-
-
-def check_forward_backward(org_model, sharded_model):
-    # prepare input
-    input_ids = tokenizer("translate English to German: The house is wonderful.",
-                          return_tensors="pt").input_ids.to('cuda')
-    labels = tokenizer("Das Haus ist wunderbar.", return_tensors="pt").input_ids.to('cuda')
-
-    # switch to train mode
-    org_model.train()
-    sharded_model.train()
-
-    if isinstance(org_model, T5ForConditionalGeneration):
-        org_output = org_model(input_ids=input_ids, labels=labels)
-        org_loss = org_output.loss
-        shard_output = sharded_model(input_ids=input_ids, labels=labels)
-        shard_loss = shard_output.loss
-    elif isinstance(org_model, T5Model):
-        decoder_input_ids = org_model._shift_right(input_ids)
-        org_output = org_model(input_ids=input_ids, decoder_input_ids=decoder_input_ids)
-        org_loss = org_output.last_hidden_state.mean()
-        shard_output = sharded_model(input_ids=input_ids, decoder_input_ids=decoder_input_ids)
-        shard_loss = shard_output.last_hidden_state.mean()
-    elif isinstance(org_model, T5EncoderModel):
-        org_output = org_model(input_ids=input_ids)
-        org_loss = org_output.last_hidden_state.mean()
-        shard_output = sharded_model(input_ids=input_ids)
-        shard_loss = shard_output.last_hidden_state.mean()
-
-    # key is sharded, so we ignore
+def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn):
+    # check forward
+    # the value "past_key_values" is sharded, so we ignore
+    org_output, org_loss, shard_output, shard_loss = run_forward(org_model, sharded_model, data_gen_fn,
+                                                                 output_transform_fn, loss_fn)
     assert_hf_output_close(org_output, shard_output, ignore_keys=['past_key_values'])
 
     # do backward
@@ -81,18 +37,15 @@ def check_forward_backward(org_model, sharded_model):
 
 def check_t5(rank, world_size, port):
     disable_existing_loggers()
-    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
 
-    model_fn_list = [
-        T5Model,
-        T5ForConditionalGeneration,
-        T5EncoderModel,
-    ]
+    sub_model_zoo = model_zoo.get_sub_registry('transformers_t5')
 
-    for model_fn in model_fn_list:
+    for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         org_model, sharded_model = build_model(world_size, model_fn)
-        check_forward_backward(org_model, sharded_model)
-        torch.cuda.empty_cache()
+        check_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn)
+
+    torch.cuda.empty_cache()
 
 
 @pytest.mark.dist

@@ -11,8 +11,7 @@ from transformers.models.t5.modeling_t5 import (
     T5Stack,
 )
 
-from colossalai.shardformer.layer.dropout import Dropout1D
-from colossalai.shardformer.layer.layers import Embedding1D, Linear1D_Col, Linear1D_Row
+from colossalai.shardformer.layer import Dropout1D, Embedding1D, Linear1D_Col, Linear1D_Row
 
 from .basepolicy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 

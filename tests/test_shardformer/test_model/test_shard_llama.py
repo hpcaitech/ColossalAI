@@ -1,64 +1,22 @@
-import copy
 import os
-import random
 
 import pytest
 import torch
-from transformers import LlamaConfig, LlamaForCausalLM, LlamaForSequenceClassification, LlamaModel, LlamaTokenizerFast
 
 import colossalai
 from colossalai.logging import disable_existing_loggers
-from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.testing import assert_hf_output_close, clear_cache_before_run, rerun_if_address_is_in_use, spawn
+from tests.kit.model_zoo import model_zoo
+from tests.test_shardformer.test_model._utils import build_model, run_forward
 
 os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
-tokenizer = LlamaTokenizerFast.from_pretrained("hf-internal-testing/llama-tokenizer")
 
 
-def build_model(world_size, model_fn):
-    # create new model
-    config = LlamaConfig(num_hidden_layers=4,
-                         hidden_size=128,
-                         intermediate_size=256,
-                         num_attention_heads=4,
-                         max_position_embeddings=128)
-    org_model = model_fn(config).cuda()
+def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn):
+    org_output, org_loss, shard_output, shard_loss = run_forward(org_model, sharded_model, data_gen_fn,
+                                                                 output_transform_fn, loss_fn)
 
-    # shard model
-    shard_config = ShardConfig(tensor_parallel_size=world_size)
-    model_copy = copy.deepcopy(org_model)
-    shard_former = ShardFormer(shard_config=shard_config)
-    shard_former.init_distributed()
-    sharded_model = shard_former.shard_model(model_copy)
-
-    return org_model, sharded_model
-
-
-def check_forward_backward(org_model, sharded_model):
-    # prepare input
-    input = 'Hello, my dog is cute'
-    tokenized_input = tokenizer(input, return_tensors='pt').to('cuda')
-    del tokenized_input["token_type_ids"]
-    del tokenized_input["attention_mask"]
-
-    # switch to train mode
-    org_model.train()
-    sharded_model.train()
-
-    if isinstance(org_model, (LlamaModel, LlamaForSequenceClassification)):
-        org_output = org_model(**tokenized_input)
-        org_loss = org_output.last_hidden_state.mean()
-        shard_output = sharded_model(**tokenized_input)
-        shard_loss = shard_output.last_hidden_state.mean()
-    elif isinstance(org_model, LlamaForCausalLM):
-        labels = tokenized_input['input_ids'].clone()
-        labels[labels == tokenizer.pad_token_id] = -100
-        tokenized_input['labels'] = labels
-        org_output = org_model(**tokenized_input)
-        org_loss = org_output.loss
-        shard_output = sharded_model(**tokenized_input)
-        shard_loss = shard_output.loss
-
+    # forward check
     assert_hf_output_close(org_output, shard_output, ignore_keys=['past_key_values'], rtol=1e-4)
 
     # run backward
@@ -66,12 +24,12 @@ def check_forward_backward(org_model, sharded_model):
     shard_loss.backward()
 
     # check grad
-    if isinstance(org_model, LlamaModel):
-        llama_model = org_model
-        shard_llama_model = sharded_model
-    else:
+    if hasattr(org_model, 'model'):
         llama_model = org_model.model
         shard_llama_model = sharded_model.model
+    else:
+        llama_model = org_model
+        shard_llama_model = sharded_model
 
     org_grad = llama_model.layers[0].self_attn.q_proj.weight.grad
     shard_grad = shard_llama_model.layers[0].self_attn.q_proj.weight.grad
@@ -89,17 +47,11 @@ def check_llama(rank, world_size, port):
     disable_existing_loggers()
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
 
-    model_list = [
-        LlamaModel,
-    # LlamaForCausalLM,
+    sub_model_zoo = model_zoo.get_sub_registry('transformers_llama')
 
-    # TODO: do not work yet
-    # LlamaForSequenceClassification
-    ]
-
-    for model_fn in model_list:
+    for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         org_model, sharded_model = build_model(world_size, model_fn)
-        check_forward_backward(org_model, sharded_model)
+        check_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn)
 
     torch.cuda.empty_cache()
 
