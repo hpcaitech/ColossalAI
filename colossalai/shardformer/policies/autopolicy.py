@@ -60,6 +60,14 @@ _POLICY_LIST = {
     # GPT2
     "transformers.models.gpt2.modeling_gpt2.GPT2Model":
         PolicyLocation(file_name="gpt2", class_name="GPT2ModelPolicy"),
+    "transformers.models.gpt2.modeling_gpt2.GPT2LMHeadModel":
+        PolicyLocation(file_name="gpt2", class_name="GPT2LMHeadModelPolicy"),
+    "transformers.models.gpt2.modeling_gpt2.GPT2DoubleHeadsModel":
+        PolicyLocation(file_name="gpt2", class_name="GPT2DoubleHeadsModelPolicy"),
+    "transformers.models.gpt2.modeling_gpt2.GPT2ForTokenClassification":
+        PolicyLocation(file_name="gpt2", class_name="GPT2ForTokenClassificationPolicy"),
+    "transformers.models.gpt2.modeling_gpt2.GPT2ForSequenceClassification":
+        PolicyLocation(file_name="gpt2", class_name="GPT2ForSequenceClassificationPolicy"),
 }
 
 

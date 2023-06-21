@@ -19,8 +19,12 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
     shard_loss.backward()
 
     # check grad equality
-    org_grad = org_model.bert.encoder.layer[0].attention.self.query.weight.grad
-    shard_grad = sharded_model.bert.encoder.layer[0].attention.self.query.weight.grad
+    if org_model.__class__.__name__ == 'BertModel':
+        org_grad = org_model.encoder.layer[0].attention.self.query.weight.grad
+        shard_grad = sharded_model.encoder.layer[0].attention.self.query.weight.grad
+    else:
+        org_grad = org_model.bert.encoder.layer[0].attention.self.query.weight.grad
+        shard_grad = sharded_model.bert.encoder.layer[0].attention.self.query.weight.grad
 
     shard_grad_list = [torch.zeros([*shard_grad.shape]).to('cuda') for _ in range(2)]
     shard_grad = torch.distributed.all_gather(shard_grad_list, shard_grad)
@@ -29,17 +33,14 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
     assert torch.allclose(org_loss, shard_loss,
                           atol=1e-5), f"shard model loss is not equal to orgin model loss\n{org_loss}\n{shard_loss}"
     assert torch.allclose(org_grad, all_shard_grad,
-                          atol=1e-5), f"shard model grad is not equal to orgin model grad\n{org_grad}\n{shard_grad}"
+                          atol=1e-5), f"shard model grad is not equal to orgin model grad\n{org_grad}\n{all_shard_grad}"
 
 
 def check_bert(rank, world_size, port):
     disable_existing_loggers()
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
 
-    # model_name = ['transformers_bert_for_pretraining', 'transformers_bert_for_masked_lm']
-    # for model in model_name:
     sub_model_zoo = model_zoo.get_sub_registry('transformers_bert')
-
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         org_model, sharded_model = build_model(world_size, model_fn)
         check_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn)
