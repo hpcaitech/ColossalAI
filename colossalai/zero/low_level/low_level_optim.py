@@ -27,6 +27,7 @@ from ._utils import (
     release_param_grad,
     split_by_dtype,
     sync_param,
+    unflatten,
 )
 from .bookkeeping import BucketStore, GradientStore, ParameterStore, TensorBucket
 
@@ -50,9 +51,8 @@ class LowLevelZeroFP16MixedPrecisionMixin(FP16MixedPrecisionMixin):
 
     def check_local_overflow(self) -> bool:
         for group_id in range(self.num_working_param_groups):
-            for avg_grad in self.grad_store.get_averaged_gradients_by_group(group_id):
+            for avg_grad in self.grad_store.get_working_grads_by_group_id(group_id):
                 if avg_grad is not None and has_inf_or_nan(avg_grad):
-                    # print(avg_grad)
                     return True
         return False
 
@@ -143,7 +143,7 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
         # ParameterStore will manage the tensor buffers used for zero
         # it will not manage the tensors used by mixed precision training
         self._param_store = ParameterStore(self._dp_torch_group)
-        self._grad_store = GradientStore(self._dp_torch_group)
+        self._grad_store = GradientStore(self._dp_torch_group, partition_grad=partition_grad)
         self._bucket_store = BucketStore(self._dp_torch_group)
 
         # iterate over the param group in the optimizer
@@ -273,8 +273,8 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
 
     def _run_reduction(self):
         if self._bucket_store.num_elements_in_bucket() > 0:
-            # self._bucket_store.flatten_grad()
             grads_in_bucket = self._bucket_store.get_grad()
+            flat_grads = self._bucket_store.get_flatten_grad()
             if self._overlap_communication:
                 stream = self._comm_stream
             else:
@@ -284,21 +284,29 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
                 # TODO: both zero 1 and 2 do need flatten when comm
                 group_id = self._bucket_store.current_group_id
                 if not self._partition_grads:
-                    for rank, grad_list in grads_in_bucket.items():
-                        for grad in grad_list:
-                            dist.all_reduce(grad, group=self._dp_torch_group)
-                            grad /= self._world_size
-                            self._grad_store.append_average_gradient_by_group(group_id, rank, grad)
+                    dist.all_reduce(flat_grads, group=self._dp_torch_group)
+                    flat_grads /= self._world_size
+                    flat_grads_list = flat_grads.split(len(flat_grads) // self._world_size)
+                    for flat_grad_rank, (rank, grad_list) in zip(flat_grads_list, grads_in_bucket.items()):
+                        updated_grad_list = unflatten(flat_grad_rank, grad_list)
+                        for old_grad, new_grad in zip(grad_list, updated_grad_list):
+                            param_id = self._bucket_store.get_param_id_of_grad(old_grad)
+                            stored_param_grad = self._grad_store.get_partitioned_gradients_by_param_id(
+                                group_id, param_id)
+                            if len(stored_param_grad) == self._world_size:
+                                self._grad_store.add_gradients_by_param_id(new_grad, rank, group_id, param_id)
+                            else:
+                                self._grad_store.append_gradients_by_param_id(new_grad, group_id, param_id)
 
                 else:
-                    for i in range(len(grads_in_bucket[0])):
-                        comm_grad_list = []
-                        for rank, grad_list in grads_in_bucket.items():
-                            comm_grad_list.append(grad_list[i])
-                        grad = torch.zeros_like(comm_grad_list[0])
-                        dist.reduce_scatter(grad, comm_grad_list, group=self._dp_torch_group)
-                        grad /= self._world_size
-                        self._grad_store.append_average_gradient_by_group(group_id, self._local_rank, grad)
+                    flat_grads_list = list(flat_grads.split(len(flat_grads) // self._world_size))
+                    recieved_grad = torch.zeros_like(flat_grads_list[0])
+                    dist.reduce_scatter(recieved_grad, flat_grads_list, group=self._dp_torch_group)
+                    recieved_grad /= self._world_size
+                    updated_grad_list = unflatten(recieved_grad, grads_in_bucket[0])
+                    for new_grad, old_grad in zip(updated_grad_list, grads_in_bucket[0]):
+                        param_id = self._bucket_store.get_param_id_of_grad(old_grad)
+                        self._grad_store.append_gradients_by_param_id(new_grad, group_id, param_id)
 
                 self._bucket_store.reset()
 
@@ -309,13 +317,12 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
         # if full, will reduce the grads already in the bucket
         # or got a grad of param from another group
         # after reduction, the bucket will be empty
-        if self._bucket_store.num_elements_in_bucket(
-        ) + param_size > self._reduce_bucket_size or group_id != self._bucket_store.current_group_id:
-
+        if self._bucket_store.num_elements_in_bucket() + param_size > self._reduce_bucket_size or \
+            group_id != self._bucket_store.current_group_id:
             self._run_reduction()
 
         padding_size = self._param_store.get_param_padding_size(param)
-        self._bucket_store.add_param_grad(group_id, grad, padding_size)
+        self._bucket_store.add_param_grad(group_id, param, grad, padding_size)
 
     ################################
     # torch.optim.Optimizer methods
@@ -326,21 +333,13 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
             loss = self.mixed_precision_mixin.pre_backward(loss)
         loss.backward(retain_graph=retain_graph)
 
-        # finish gradient reduction
-        if not self._partition_grads:
-            self._reduce_grad_stage1()
-        else:
-            # TODO: support async comm in reduce
-            self._reduce_scatter_grad_stage2()
+        self._reduce_grad(self._partition_grads)
 
         # clear reduced grads
         if self._overlap_communication:
             torch.cuda.synchronize()
 
-        # self.zero_grad()
-        # gradient synchronization
-        # if sync_grad:
-        # self._sync_grad()
+        self.zero_grad()
 
     def zero_grad(self, set_to_none=True):
         """
@@ -369,39 +368,53 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
         assert closure is None, 'closure is not supported by step()'
 
         if self.mixed_precision_mixin is not None and self.mixed_precision_mixin.should_skip_step():
-            self._grad_store.reset_all_average_gradients()
+            self._grad_store.reset_all_gradients()
             if self._verbose:
                 self._logger.info(f'Found overflow. Skip step')
             self.zero_grad()
             return
 
-        # copy the grad of working param to master param
+        # record all grads for unscale and clip
         grad_partition_groups = []
         norm_groups = []
 
-        for group_id in range(self.num_param_groups):
-            # compute norm
-            working_avg_grads = self._grad_store.get_averaged_gradients_by_group(group_id, self._local_rank)
-            master_params = self._master_param_groups_of_current_rank[group_id]
+        # sometimes not all params are 'really' working
+        # for instance, when layer drop, the dropped layer has no grad
+        # and should not be updated
+        real_working_params = dict()
+        real_master_params = dict()
 
-            norm_group = compute_norm(gradients=working_avg_grads,
-                                      params=master_params,
+        grad_index = 0 if self._partition_grads else self._local_rank
+
+        for group_id in range(self.num_param_groups):
+            master_params = self._master_param_groups_of_current_rank[group_id]
+            real_working_params[group_id] = []
+            real_master_params[group_id] = []
+            for splited_param in master_params:
+                working_param = self._param_store.master_to_working_param[id(splited_param)]
+                # if a working param requires grad and has no grad
+                # it is not 'really' working
+                # else the splited grad should be attached to the splited param
+                grads = self._grad_store.get_partitioned_gradients_by_param_id(group_id, id(working_param))
+                if len(grads) > 0:
+                    real_working_params[group_id].append(working_param)
+                    grad = grads[grad_index].to(splited_param.dtype).to(splited_param.device)
+                    splited_param.grad = grad
+                    grad_partition_groups.append(grad)
+                    real_master_params[group_id].append(splited_param)
+
+            # compute norm
+            working_grads = self._grad_store.get_working_grads_by_group_id(group_id)
+            norm_group = compute_norm(gradients=working_grads,
+                                      params=real_working_params[group_id],
                                       dp_group=self._dp_torch_group,
-                                      mp_group=self._mp_torch_group,
-                                      master_working_map=self._param_store.master_to_working_param)
+                                      mp_group=self._mp_torch_group)
             norm_groups.append(norm_group)
 
-            # create flat gradient for the flat fp32 master params
-            for param, grad in zip(master_params, working_avg_grads):
-                assert param.shape == grad.shape, \
-                    f'fp32 param and grad have different shape {param.shape} vs {grad.shape}'
+            self._grad_store.reset_grads_by_group_id(group_id)
 
-                dtype = param.dtype
-                master_grad = grad.to(dtype)
-                param.grad = master_grad.to(param.device)
-                grad_partition_groups.append(grad)
-
-            self._grad_store.reset_average_gradients_by_group(group_id)
+            # update the params in the optimizer
+            self.optim.param_groups[group_id]['params'] = real_master_params[group_id]
 
         # unscale and clip grads
         global_norm = calculate_global_norm_from_list(norm_list=norm_groups)
@@ -409,27 +422,24 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
 
         # update the parameters
         self.optim.step()
-        # release the master grad
+
+        # release the master grad, release the mem
+        for group_id in range(self.num_param_groups):
+            release_param_grad(self._master_param_groups_of_current_rank[group_id])
 
         # update working partition updated by the current rank
         for group_id in range(self.num_param_groups):
-            release_param_grad(self._master_param_groups_of_current_rank[group_id])
-            # for param in self._working_param_groups[group_id]:
-            master_params = self._master_param_groups_of_current_rank[group_id]
-            for partition_param in master_params:
-                device = partition_param.device
-                # print(device, self._local_rank)
-                # if device == "cpu":
-                #     partition_param = partition_param.to(device='cuda')
-                # print(partition_param.device, self._local_rank)
-                full_master_param = [torch.zeros_like(partition_param).cuda() for _ in range(self._world_size)]
-                dist.all_gather(full_master_param, partition_param.cuda(), group=self._dp_torch_group)
+            master_working_param = self.optim.param_groups[group_id]['params']
 
-                working_param = self._param_store.master_to_working_param[id(partition_param)]
+            for idx, splited_param in enumerate(master_working_param):
+                full_master_param = [torch.zeros_like(splited_param).cuda() for _ in range(self._world_size)]
+                dist.all_gather(full_master_param, splited_param.cuda(), group=self._dp_torch_group)
 
+                working_param = real_working_params[group_id][idx]
                 full_master_param = flatten(full_master_param)[:working_param.numel()].reshape_as(working_param)
-
                 working_param.data.copy_(full_master_param)
+
+            self.optim.param_groups[group_id]['params'] = self._master_param_groups_of_current_rank[group_id]
 
     #############################
     # Mixed Precision Utilities #
@@ -454,52 +464,15 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
     # Gradient Synchronization #
     ############################
 
-    def _sync_grad(self):
-        # update param already reduced flag
-        reduction_states = self._param_store.get_param_reduction_states()
-        for tensor, _ in reduction_states.items():
-            reduction_states[tensor] = False
-
-        # accumulate gradient
-        for group_id in range(self.num_param_groups):
-            param_group = self._param_store.get_params_by_rank_group(self._local_rank, group_id)
-
-            avg_gradients_group = self._grad_store.get_averaged_gradients_by_group(group_id)
-
-            param_idx = 0
-            for param in param_group:
-                if param.grad is not None:
-                    if len(avg_gradients_group) == param_idx:
-                        self._grad_store.append_average_gradient_by_group(group_id, param.grad)
-                    else:
-                        self._grad_store.add_average_gradient_by_group(group_id, param_idx, param.grad)
-                    param_idx += 1
-
-        # the gradients needed are stored in the avg_gradients buffer
-        # thus, can clear this
-        self.zero_grad()
-
-    def _reduce_grad_stage1(self):
-        # if not overlapping communication (no reduction hook is attached)
+    def _reduce_grad(self, partition_grad):
+        # if not overlapping communication (no reduction hook is attached) when zero1
         # we need to manually reduce these gradients
-        if not self._overlap_communication:
+        if not partition_grad and not self._overlap_communication:
             for group_id in range(len(self._working_param_groups)):
                 param_group = self._working_param_groups[group_id]
                 for param in param_group:
                     if param.grad is not None:
                         self._add_to_reduction_bucket(param)
 
-        # we need to reduce the gradients
-        # left in the communication bucket
+        # run reduction
         self._run_reduction()
-
-    def _reduce_scatter_grad_stage2(self):
-        # when partition_grads is True, reduction hooks
-        # are attached in the __init__ function, so we
-        # only need to reduce the gradients
-        # left in the communication bucket
-
-        # TODO:use reduce-scatter
-        self._run_reduction()
-        # for reduce_rank in range(self._world_size):
-        #     self._run_reduction(reduce_rank)

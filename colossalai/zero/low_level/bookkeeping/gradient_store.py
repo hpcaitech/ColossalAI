@@ -1,99 +1,44 @@
 from typing import List
 
-from torch import Tensor
+from torch._utils import _flatten_dense_tensors
 
 from .base_store import BaseStore
 
 
 class GradientStore(BaseStore):
 
-    def __init__(self, *args):
+    def __init__(self, *args, partition_grad=False):
         super().__init__(*args)
-        # bookkeeping data structures
-        self._averaged_gradients = dict()
 
-        # for backward reduction hooks
-        self._grad_acc_objs = []
+        self._grads_of_params = dict()
+        self._working_index = 0 if partition_grad else self._local_rank
 
-    def append_accumulate_grad_object(self, obj):
-        """
-        Keep :class:`AccumulateGrad` objects. If these objects are not kept, reduction hooks may not
-        be attached successfully.
+    def get_partitioned_gradients_by_param_id(self, group_id, param_id):
+        if group_id in self._grads_of_params:
+            if param_id in self._grads_of_params[group_id]:
+                return self._grads_of_params[group_id][param_id]
+        return []
 
-        :param obj: An object of :class:`AccumulateGrad` class
-        :type obj: :class:`AccumulateGrad`
-        """
+    def append_gradients_by_param_id(self, grad, group_id, param_id):
+        if group_id not in self._grads_of_params:
+            self._grads_of_params[group_id] = dict()
+        if param_id not in self._grads_of_params[group_id]:
+            self._grads_of_params[group_id][param_id] = [grad]
+        else:
+            self._grads_of_params[group_id][param_id].append(grad)
 
-        self._grad_acc_objs.append(obj)
+    def add_gradients_by_param_id(self, grad, grad_idx, group_id, param_id):
+        self._grads_of_params[group_id][param_id][grad_idx].add_(grad)
 
-    def get_averaged_gradients_by_group(self, group_id: int, rank: int = None) -> List[Tensor]:
-        """
-        Return a list of flatten average gradients of a parameter group
+    def get_working_grads_by_group_id(self, group_id):
+        grad_list = []
+        for param_grads in self._grads_of_params[group_id].values():
+            grad_list.append(param_grads[self._working_index])
 
-        :param group_id: The index of parameter group
-        :type group_id: int
+        return grad_list
 
-        :return: Return the list of averaged gradients of a parameter group. Each element is a gradient, not a parameter.
-        :rtype: List[torch.Tensor]
-        """
-        if group_id not in self._averaged_gradients:
-            self._averaged_gradients[group_id] = dict()
+    def reset_grads_by_group_id(self, group_id):
+        self._grads_of_params[group_id] = dict()
 
-        if rank is None:
-            tensor_list = []
-            for tensors in self._averaged_gradients[group_id].values():
-                for tensor in tensors:
-                    tensor_list.append(tensor)
-            return tensor_list
-
-        if rank not in self._averaged_gradients[group_id]:
-            self._averaged_gradients[group_id][rank] = []
-
-        return self._averaged_gradients[group_id][rank]
-
-    def append_average_gradient_by_group(self, group_id: int, rank, tensor: Tensor) -> None:
-        """
-        Append an average gradient to the list of averaged gradients of a parameter group
-
-        :param group_id: The index of a parameter group
-        :param tensor: A :class:`torch.Tensor` object
-        :type group_id: int
-        :type tensor: torch.Tensor
-
-        """
-
-        if group_id not in self._averaged_gradients:
-            self._averaged_gradients[group_id] = dict()
-        if rank not in self._averaged_gradients[group_id]:
-            self._averaged_gradients[group_id][rank] = []
-        self._averaged_gradients[group_id][rank].append(tensor)
-
-    def add_average_gradient_by_group(self, group_id: int, tensor_idx: int, tensor: Tensor) -> None:
-        """
-        Add an average gradient to the list of averaged gradients of a parameter group
-
-        :param group_id: The index of a parameter group
-        :param tensor_idx: The index of a tensor in the list of averaged gradients
-        :param tensor: A :class:`torch.Tensor` object
-        :type group_id: int
-        :type tensor_idx: int
-        :type tensor: torch.Tensor
-
-        """
-        self._averaged_gradients[group_id][tensor_idx].add_(tensor)
-
-    def reset_average_gradients_by_group(self, group_id: int) -> None:
-        """
-        Reset the bookkeeping data structure for averaged gradients to an empty list
-
-        :param group_id: The index of a parameter group
-        :type group_id: int
-        """
-
-        self._averaged_gradients[group_id] = dict()
-
-    def reset_all_average_gradients(self) -> None:
-        """
-        Reset the bookkeeping data structure for averaged gradients to an empty list
-        """
-        self._averaged_gradients = dict()
+    def reset_all_gradients(self):
+        self._grads_of_params = dict()
