@@ -185,7 +185,14 @@ class ModelSharder(object):
             if description.ignore_if_not_exist and native_sub_module is None:
                 continue
 
-            replace_layer = target_module.from_native_module(native_sub_module, self.pg_manager.pg_store['tp1d'],
-                                                             **kwargs)
+            try:
+                replace_layer = target_module.from_native_module(native_sub_module, self.pg_manager.pg_store['tp1d'],
+                                                                 **kwargs)
+            except Exception as e:
+                raise RuntimeError(
+                    f"Failed to replace {suffix} of type {native_sub_module.__class__.__qualname__}"
+                    f" with {target_module.__qualname__} with the exception: {e}. "
+                    "Please check your model configuration or sharding policy, you can set up an issue for us to help you as well."
+                )
 
             setattr_(org_layer, suffix, replace_layer)

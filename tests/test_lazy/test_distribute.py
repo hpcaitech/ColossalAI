@@ -78,7 +78,7 @@ def run_dist_lazy_init(subset, seed: int = 42):
         if name in ('torchaudio_wav2vec2_base', 'torchaudio_hubert_base'):
             continue
         print_rank_0(name)
-        model_fn, data_gen_fn, output_transform_fn, model_attr = entry
+        model_fn, data_gen_fn, output_transform_fn, _, model_attr = entry
         ctx = LazyInitContext(tensor_cls=_MyTensor)
         with ctx:
             model = model_fn()
