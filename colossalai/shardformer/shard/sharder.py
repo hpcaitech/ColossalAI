@@ -4,9 +4,9 @@ import torch.nn as nn
 
 from colossalai.cluster.process_group_manager import ProcessGroupManager
 
+from .._utils import getattr_, setattr_
 from ..policies.autopolicy import get_autopolicy
 from ..policies.basepolicy import Policy, SubModuleReplacementDescription
-from ..utils.utils import getattr_, setattr_
 from .shard_config import ShardConfig
 
 __all__ = ['ModelSharder', 'shard_model']

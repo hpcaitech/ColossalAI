@@ -7,15 +7,7 @@ from typing import List, Union
 import torch.nn as nn
 from torch.distributed import ProcessGroup
 
-from colossalai.global_variables import tensor_parallel_env as env
-from colossalai.nn import init as init
-
-Fast_LN = None
-try:
-    from apex.contrib.layer_norm.layer_norm import FastLayerNorm
-    Fast_LN = FastLayerNorm
-except ImportError:
-    pass
+__all__ = ['ParallelModule']
 
 
 class ParallelModule(nn.Module, ABC):

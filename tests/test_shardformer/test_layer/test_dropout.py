@@ -3,7 +3,7 @@ import torch.distributed as dist
 import torch.nn as nn
 
 import colossalai
-from colossalai.shardformer.layer.dropout import Dropout1D
+from colossalai.shardformer.layer import Dropout1D
 from colossalai.testing import assert_equal, assert_not_equal, rerun_if_address_is_in_use, spawn
 
 
