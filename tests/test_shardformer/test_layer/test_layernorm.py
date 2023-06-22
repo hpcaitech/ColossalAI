@@ -14,6 +14,10 @@ def check_layernorm_1d():
 
     assert norm1d.weight.shape == torch.Size([128])
 
+    # ensure state dict is reversibly loadable
+    norm.load_state_dict(norm1d.state_dict())
+    norm1d.load_state_dict(norm.state_dict())
+
     # check computation correctness
     x = torch.rand(4, 128).cuda()
     out = norm(x)
