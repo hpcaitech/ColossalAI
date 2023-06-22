@@ -270,7 +270,7 @@ class DeviceMesh:
         result = cls.__new__(cls)
         memo[id(self)] = result
         for k, v in self.__dict__.items():
-            if k != 'process_groups_dict':
+            if k != '_process_group_dict':
                 setattr(result, k, __import__("copy").deepcopy(v, memo))
             else:
                 # process group cannot be copied
