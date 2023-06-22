@@ -103,10 +103,15 @@ class LinearConv1D_Col(ParallelModule):
         self.reset_parameters(weight_initializer, bias_initializer)
 
     @staticmethod
-    def from_native_module(module: nn.Linear, process_group: Union[ProcessGroup, List[ProcessGroup]], n_cast: int,
+    def from_native_module(module: nn.Linear, process_group: Union[ProcessGroup, List[ProcessGroup]], n_fused: int,
                            *args, **kwargs) -> ParallelModule:
         r"""
         Convert a huggingface layer `Conv1D` in gpt2 to a parallelized linear layer.
+
+        Args:
+            module (`nn.Linear`): The module to be converted.
+            process_group (`Union[ProcessGroup, List[ProcessGroup]]`): The process group to be used for weight sharding and communication.
+            n_fused (int): The number of layers to be fused. In GPT2, Q,K,V are fused in one weight.
         """
         # get the attributes
         in_features = module.weight.shape[0]
@@ -135,20 +140,20 @@ class LinearConv1D_Col(ParallelModule):
 
             # first rearange the order of weight and bias
             world_size = dist.get_world_size(group=process_group)
-            order = torch.arange(world_size * n_cast)
+            order = torch.arange(world_size * n_fused)
             new_order = []
             for i in range(world_size):
                 new_order.append(order[i::world_size])
             new_order = torch.cat(new_order)
 
-            weight_chunks = torch.chunk(module.weight.data, world_size * n_cast, dim=1)
+            weight_chunks = torch.chunk(module.weight.data, world_size * n_fused, dim=1)
             rearanged_weight_chunks = [weight_chunks[i] for i in new_order]
             rearanged_weight = torch.cat(rearanged_weight_chunks, dim=1)
             sharded_weight = shard_colwise(rearanged_weight, process_group)
             linear_1d.weight.data.copy_(sharded_weight.T.contiguous())
 
             if bias:
-                bias_chunks = torch.chunk(module.bias.data, world_size * n_cast, dim=0)
+                bias_chunks = torch.chunk(module.bias.data, world_size * n_fused, dim=0)
                 rearanged_bias_chunks = [bias_chunks[i] for i in new_order]
                 rearanged_bias = torch.cat(rearanged_bias_chunks, dim=0)
                 sharded_bias = shard_colwise(rearanged_bias, process_group)
@@ -260,8 +265,8 @@ class LinearConv1D_Row(ParallelModule):
         self.reset_parameters(weight_initializer, bias_initializer)
 
     @staticmethod
-    def from_native_module(module: nn.Linear, process_group: Union[ProcessGroup, List[ProcessGroup]], n_cast: int,
-                           *args, **kwargs) -> ParallelModule:
+    def from_native_module(module: nn.Linear, process_group: Union[ProcessGroup, List[ProcessGroup]], *args,
+                           **kwargs) -> ParallelModule:
         r"""
         Convert a native PyTorch linear layer to a parallelized linear layer.
         """
@@ -289,26 +294,11 @@ class LinearConv1D_Row(ParallelModule):
         with torch.no_grad():
             # the weigh to the linear layer is a transpose
             # thus shard on col is equal to shard on row
-
-            # first rearange the order of weight and bias
-            world_size = dist.get_world_size(group=process_group)
-            order = torch.arange(world_size * n_cast)
-            new_order = []
-            for i in range(world_size):
-                new_order.append(order[i::world_size])
-            new_order = torch.cat(new_order)
-
-            weight_chunks = torch.chunk(module.weight.data, world_size * n_cast, dim=0)
-            rearanged_weight_chunks = [weight_chunks[i] for i in new_order]
-            rearanged_weight = torch.cat(rearanged_weight_chunks, dim=0)
-            sharded_weight = shard_rowwise(rearanged_weight, process_group)
+            sharded_weight = shard_rowwise(module.weight.data, process_group)
             linear_1d.weight.data.copy_(sharded_weight.T.contiguous())
 
             if bias:
-                bias_chunks = torch.chunk(module.bias.data, world_size * n_cast, dim=0)
-                rearanged_bias_chunks = [bias_chunks[i] for i in new_order]
-                rearanged_bias = torch.cat(rearanged_bias_chunks, dim=0)
-                linear_1d.bias.copy_(rearanged_bias.contiguous())
+                linear_1d.bias.copy_(module.bias.data)
 
         return linear_1d
 

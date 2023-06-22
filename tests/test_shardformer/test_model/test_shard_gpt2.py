@@ -42,9 +42,6 @@ def check_gpt2(rank, world_size, port):
 
     sub_model_zoo = model_zoo.get_sub_registry('transformers_gpt')
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
-        print(name)
-        # if name == 'transformers_gpt':
-        #     continue
         org_model, sharded_model = build_model(world_size, model_fn)
         check_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn)
 
