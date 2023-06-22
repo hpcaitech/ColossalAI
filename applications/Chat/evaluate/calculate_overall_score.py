@@ -89,7 +89,7 @@ if __name__ == '__main__':
     fig.set_title(f"Comparison between Different Models (Overall Performance)")
     plt.xlabel("Model Name")
     plt.ylabel("Overall Score")
-    plt.savefig(os.path.join(args.output_path, 'overall_score.png'))
+    plt.savefig(os.path.join(args.output_path, 'overall_score_%s.png'%args.language))
     
     
 
