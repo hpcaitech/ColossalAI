@@ -21,7 +21,7 @@ def check_torch_ddp_checkpointIO(shard: bool, size_per_shard: int):
     criterion = lambda x: x.mean()
     optimizer = SGD((model.parameters()), lr=0.001)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.1)
-    model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion, lr_scheduler=scheduler)
+    model, optimizer, criterion, _, _, _ = booster.boost(model, optimizer, criterion, lr_scheduler=scheduler)
 
     assert isinstance(model.module, DDP)
     assert isinstance(optimizer, OptimizerWrapper)

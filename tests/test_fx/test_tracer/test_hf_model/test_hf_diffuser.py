@@ -47,7 +47,7 @@ def test_diffusers():
 
     sub_model_zoo = model_zoo.get_sub_registry('diffusers')
 
-    for name, (model_fn, data_gen_fn, output_transform_fn, _, attribute) in sub_model_zoo.items():
+    for name, (model_fn, data_gen_fn, output_transform_fn, _, _, attribute) in sub_model_zoo.items():
         data = data_gen_fn()
         trace_and_compare(model_fn, data, output_transform_fn)
         torch.cuda.synchronize()
