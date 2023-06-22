@@ -205,4 +205,3 @@ def analyze_automatic_results(results_path: str, save_path: str) -> None:
         figure.savefig(os.path.join(save_path, f"{metric}.png"), dpi=400)
 
         plt.close()
-        
