@@ -72,17 +72,6 @@ def get_data_per_category(data, categories):
     return data_per_category
 
 
-def remove_articles(text: str) -> str:
-    """
-    Remove articles "a, an, the" in the given text.
-    It is used in evaluation of automatic metrics.
-
-    """
-
-    pattern = re.compile(r"\b(a|an|the)\b", re.UNICODE)
-    return re.sub(pattern, " ", text)
-
-
 def remove_punctuations(text: str) -> str:
     """
     Remove punctuations in the given text.
@@ -121,7 +110,7 @@ def preprocessing_text(text: str) -> str:
 
     """
 
-    return remove_redundant_space(remove_articles(remove_punctuations(text.lower())))
+    return remove_redundant_space(remove_punctuations(text.lower()))
 
 
 def save_automatic_results(model_name: str, automatic_metric_stats: Dict[str, Dict], save_path: str) -> None:
