@@ -1,12 +1,11 @@
 import operator
-from dataclasses import dataclass
 from functools import reduce
 
 import torch
 
 from colossalai.device.device_mesh import DeviceMesh
 
-from .misc import DuplicatedShardingDimensionError, LayoutException, ShardingNotDivisibleError
+from .misc import DuplicatedShardingDimensionError, ShardingNotDivisibleError
 from .sharding_spec import ShardingSpec
 
 

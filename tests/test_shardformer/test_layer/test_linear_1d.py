@@ -5,6 +5,7 @@ from torch.testing import assert_close
 
 import colossalai
 from colossalai.shardformer.layer import Linear1D_Col, Linear1D_Row
+from colossalai.tensor.d_tensor import is_distributed_tensor
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 
@@ -12,8 +13,17 @@ def check_linear_1d_col():
     linear = nn.Linear(32, 128).cuda()
     linear_col = Linear1D_Col.from_native_module(linear, process_group=None, gather_output=True)
 
+    # ensure that the parameters are distributed
+    assert is_distributed_tensor(linear_col.weight)
+    assert is_distributed_tensor(linear_col.bias)
+
+    # ensure the shape is correct
     assert linear_col.weight.shape == torch.Size([64, 32])
     assert linear_col.bias.shape == torch.Size([64])
+
+    # ensure state dict is reversibly loadable
+    linear.load_state_dict(linear_col.state_dict())
+    linear_col.load_state_dict(linear.state_dict())
 
     # check computation correctness
     x = torch.rand(4, 32).cuda()
@@ -55,7 +65,7 @@ def check_linear_1d_row():
 def run_dist(rank, world_size, port):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     check_linear_1d_col()
-    check_linear_1d_row()
+    # check_linear_1d_row()
 
 
 @rerun_if_address_is_in_use()

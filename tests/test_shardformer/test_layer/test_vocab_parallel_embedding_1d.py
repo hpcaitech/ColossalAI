@@ -14,7 +14,11 @@ def check_vocab_embedding_1d():
 
     assert dist_embedding_1d.weight.shape == torch.Size([64, 32])
     assert dist_embedding_1d.num_embeddings == 64
-    assert dist_embedding_1d.embed_dim == 32
+    assert dist_embedding_1d.embedding_dim == 32
+
+    # ensure state dict is reversibly loadable
+    embedding.load_state_dict(dist_embedding_1d.state_dict())
+    dist_embedding_1d.load_state_dict(embedding.state_dict())
 
     # check embedding correctness
     x = torch.randint(0, 128, (4, 32)).to('cuda')
