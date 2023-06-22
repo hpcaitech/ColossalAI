@@ -188,7 +188,6 @@ class LinearConv1D_Col(ParallelModule):
 
 class LinearConv1D_Row(ParallelModule):
     r""" Linear layer with row parallelism
-    Specially created for HuggingFace's GPT2 model.
 
     Args:
         in_features (int): size of each input sample.
