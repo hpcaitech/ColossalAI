@@ -336,5 +336,3 @@ class Linear1D_Row(ParallelModule):
             return output
         else:
             return output, self.bias
-            return output, self.bias
-            return output, self.bias

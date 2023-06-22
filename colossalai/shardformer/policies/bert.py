@@ -1,8 +1,14 @@
 import torch.nn as nn
-from transformers.models.bert.modeling_bert import BertEmbeddings, BertLayer, BertLMPredictionHead
+from transformers.models.bert.modeling_bert import (
+    BertEmbeddings,
+    BertForMultipleChoice,
+    BertForSequenceClassification,
+    BertForTokenClassification,
+    BertLayer,
+    BertLMPredictionHead,
+)
 
 import colossalai.shardformer.layer as col_nn
-from colossalai.shardformer.layer.dropout import Dropout1D
 
 from .._utils import getattr_, setattr_
 from .basepolicy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
@@ -54,8 +60,20 @@ class BertPolicy(Policy):
                             target_module=col_nn.Linear1D_Col,
                         ),
                         SubModuleReplacementDescription(
+                            suffix="attention.self.dropout",
+                            target_module=col_nn.Dropout1D,
+                        ),
+                        SubModuleReplacementDescription(
                             suffix="attention.output.dense",
                             target_module=col_nn.Linear1D_Row,
+                        ),
+                        SubModuleReplacementDescription(
+                            suffix="attention.output.LayerNorm",
+                            target_module=col_nn.LayerNorm1D,
+                        ),
+                        SubModuleReplacementDescription(
+                            suffix="attention.output.dropout",
+                            target_module=col_nn.Dropout1D,
                         ),
                         SubModuleReplacementDescription(
                             suffix="intermediate.dense",
@@ -66,12 +84,12 @@ class BertPolicy(Policy):
                             target_module=col_nn.Linear1D_Row,
                         ),
                         SubModuleReplacementDescription(
-                            suffix="attention.self.dropout",
-                            target_module=Dropout1D,
+                            suffix="output.LayerNorm",
+                            target_module=col_nn.LayerNorm1D,
                         ),
                         SubModuleReplacementDescription(
-                            suffix="attention.output.dropout",
-                            target_module=Dropout1D,
+                            suffix="output.dropout",
+                            target_module=col_nn.Dropout1D,
                         )
                     ]),
             BertEmbeddings:
@@ -81,6 +99,14 @@ class BertPolicy(Policy):
                                             SubModuleReplacementDescription(
                                                 suffix="word_embeddings",
                                                 target_module=col_nn.VocabParallelEmbedding1D,
+                                            ),
+                                            SubModuleReplacementDescription(
+                                                suffix="LayerNorm",
+                                                target_module=col_nn.LayerNorm1D,
+                                            ),
+                                            SubModuleReplacementDescription(
+                                                suffix="dropout",
+                                                target_module=col_nn.Dropout1D,
                                             )
                                         ])
         }
@@ -115,7 +141,11 @@ class BertForPretrainingPolicy(BertPolicy):
                                         sub_module_replacement=[
                                             SubModuleReplacementDescription(suffix="decoder",
                                                                             target_module=col_nn.Linear1D_Col,
-                                                                            kwargs={"gather_output": True})
+                                                                            kwargs={"gather_output": True}),
+                                            SubModuleReplacementDescription(
+                                                suffix="transform.LayerNorm",
+                                                target_module=col_nn.LayerNorm1D,
+                                            )
                                         ])
         }
         module_policy.update(addon_module)
@@ -146,7 +176,11 @@ class BertLMHeadModelPolicy(BertPolicy):
                                         sub_module_replacement=[
                                             SubModuleReplacementDescription(suffix="decoder",
                                                                             target_module=col_nn.Linear1D_Col,
-                                                                            kwargs={"gather_output": True})
+                                                                            kwargs={"gather_output": True}),
+                                            SubModuleReplacementDescription(
+                                                suffix="transform.LayerNorm",
+                                                target_module=col_nn.LayerNorm1D,
+                                            )
                                         ])
         }
         module_policy.update(addon_module)
@@ -177,7 +211,11 @@ class BertForMaskedLMPolicy(BertPolicy):
                                         sub_module_replacement=[
                                             SubModuleReplacementDescription(suffix="decoder",
                                                                             target_module=col_nn.Linear1D_Col,
-                                                                            kwargs={"gather_output": True})
+                                                                            kwargs={"gather_output": True}),
+                                            SubModuleReplacementDescription(
+                                                suffix="transform.LayerNorm",
+                                                target_module=col_nn.LayerNorm1D,
+                                            )
                                         ])
         }
         module_policy.update(addon_module)
@@ -199,12 +237,44 @@ class BertForSequenceClassificationPolicy(BertPolicy):
     def __init__(self) -> None:
         super().__init__()
 
+    def module_policy(self):
+        module_policy = super().module_policy()
+        addon_module = {
+            BertForSequenceClassification:
+                ModulePolicyDescription(attribute_replacement={},
+                                        param_replacement=[],
+                                        sub_module_replacement=[
+                                            SubModuleReplacementDescription(
+                                                suffix="dropout",
+                                                target_module=col_nn.Dropout1D,
+                                            )
+                                        ])
+        }
+        module_policy.update(addon_module)
+        return module_policy
+
 
 # BertForTokenClassification
 class BertForTokenClassificationPolicy(BertPolicy):
 
     def __init__(self) -> None:
         super().__init__()
+
+    def module_policy(self):
+        module_policy = super().module_policy()
+        addon_module = {
+            BertForTokenClassification:
+                ModulePolicyDescription(attribute_replacement={},
+                                        param_replacement=[],
+                                        sub_module_replacement=[
+                                            SubModuleReplacementDescription(
+                                                suffix="dropout",
+                                                target_module=col_nn.Dropout1D,
+                                            )
+                                        ])
+        }
+        module_policy.update(addon_module)
+        return module_policy
 
 
 # BertForNextSentencePrediction
@@ -219,3 +289,19 @@ class BertForMultipleChoicePolicy(BertPolicy):
 
     def __init__(self) -> None:
         super().__init__()
+
+    def module_policy(self):
+        module_policy = super().module_policy()
+        addon_module = {
+            BertForMultipleChoice:
+                ModulePolicyDescription(attribute_replacement={},
+                                        param_replacement=[],
+                                        sub_module_replacement=[
+                                            SubModuleReplacementDescription(
+                                                suffix="dropout",
+                                                target_module=col_nn.Dropout1D,
+                                            )
+                                        ])
+        }
+        module_policy.update(addon_module)
+        return module_policy
