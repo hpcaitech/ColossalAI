@@ -44,29 +44,23 @@ class GPT2Policy(Policy):
                                                 suffix="attn.c_attn",
                                                 target_module=col_nn.LinearConv1D_Col,
                                                 kwargs={
-                                                    "n_cast": 3,
+                                                    "n_fused": 3,
                                                 },
                                             ),
                                             SubModuleReplacementDescription(
                                                 suffix="attn.c_proj",
                                                 target_module=col_nn.LinearConv1D_Row,
-                                                kwargs={
-                                                    "n_cast": 1,
-                                                },
                                             ),
                                             SubModuleReplacementDescription(
                                                 suffix="mlp.c_fc",
                                                 target_module=col_nn.LinearConv1D_Col,
                                                 kwargs={
-                                                    "n_cast": 1,
+                                                    "n_fused": 1,
                                                 },
                                             ),
                                             SubModuleReplacementDescription(
                                                 suffix="mlp.c_proj",
                                                 target_module=col_nn.LinearConv1D_Row,
-                                                kwargs={
-                                                    "n_cast": 1,
-                                                },
                                             ),
                                             SubModuleReplacementDescription(
                                                 suffix="attn.attn_dropout",
