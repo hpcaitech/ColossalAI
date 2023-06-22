@@ -21,7 +21,7 @@ def _all_gather(tensor, comm_spec):
 
     tensor_list = [
         torch.zeros(tensor.shape, dtype=tensor.dtype, device=tensor.device)
-        for _ in range(comm_spec.device_mesh.mesh_shape[comm_spec.logical_process_axis])
+        for _ in range(comm_spec.device_mesh.shape[comm_spec.logical_process_axis])
     ]
     # without this contiguous operation, the all gather may get some unexpected results.
     tensor = tensor.contiguous()
@@ -125,7 +125,7 @@ def _mix_gather(tensor, comm_spec):
     process_group = "[0, 1, 2, 3, 4, 5, 6, 7]"
     tensor_list = [(0,0),(1,0),(2,0),(3,0),(4,0),(5,0),(6,0),(7,0)]
     '''
-    total_slices = comm_spec.device_mesh.mesh_shape[0]
+    total_slices = comm_spec.device_mesh.shape[0]
     tensor_list = [torch.zeros(tensor.shape, dtype=tensor.dtype, device=tensor.device) for _ in range(total_slices)]
     leading_group_dim = comm_spec.logical_process_axes[0]
     assert len(comm_spec.device_mesh.process_groups_dict) == 1
@@ -146,7 +146,7 @@ def _mix_gather(tensor, comm_spec):
     if comm_spec.logical_process_axes[0] == comm_spec.logical_process_axes[1]:
         output = torch.cat(tuple(tensor_list), comm_spec.gather_dim[0]).contiguous()
     else:
-        mesh_shape = comm_spec.device_meshes.mesh_shape
+        mesh_shape = comm_spec.device_meshes.shape
         cat_slice = [mesh_shape[comm_spec.logical_process_axes[0]], mesh_shape[comm_spec.logical_process_axes[1]]]
         tmp_tensor_shape = list(tensor.shape)
         tmp_tensor_shape[comm_spec.gather_dim[0]] *= cat_slice[0]
@@ -178,9 +178,9 @@ def _mix_split(tensor, comm_spec):
             #  [4, 5, 6, 7]]
             # return {0: [0, 4, 1, 5, 2, 6, 3, 7], 1: [0, 1, 2, 3, 4, 5, 6, 7]}
     '''
-    mesh_shape = comm_spec.device_meshes.mesh_shape
+    mesh_shape = comm_spec.device_meshes.shape
     dim = comm_spec.gather_dim
-    total_slices = comm_spec.device_mesh.mesh_shape[0]
+    total_slices = comm_spec.device_mesh.shape[0]
 
     # Get global rank
     rank = dist.get_rank()

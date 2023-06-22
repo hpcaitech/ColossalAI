@@ -53,7 +53,7 @@ def exam_state_dict_with_origin(placement_policy, model_name, use_safetensors: b
 @parameterize('shard', [True, False])
 @parameterize('model_name', ['transformers_gpt'])
 def exam_state_dict(placement_policy, shard: bool, model_name: str):
-    (model_fn, data_gen_fn, output_transform_fn, _) = next(iter(model_zoo.get_sub_registry(model_name).values()))
+    (model_fn, data_gen_fn, output_transform_fn, _, _) = next(iter(model_zoo.get_sub_registry(model_name).values()))
     criterion = lambda x: x.mean()
     plugin = GeminiPlugin(placement_policy=placement_policy)
     booster = Booster(plugin=plugin)

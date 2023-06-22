@@ -12,7 +12,7 @@ from tests.kit.model_zoo import model_zoo
 def test_gpt():
     sub_registry = model_zoo.get_sub_registry('transformers_gpt')
 
-    for name, (model_fn, data_gen_fn, _, _) in sub_registry.items():
+    for name, (model_fn, data_gen_fn, _, _, _) in sub_registry.items():
         model = model_fn()
 
         # TODO: support the following models
@@ -21,7 +21,7 @@ def test_gpt():
         if model.__class__.__name__ in ['GPT2DoubleHeadsModel']:
             continue
 
-        trace_model_and_compare_output(model, data_gen_fn)
+        trace_model_and_compare_output(model, data_gen_fn, ignore_data=['labels'])
 
 
 if __name__ == '__main__':
