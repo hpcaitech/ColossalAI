@@ -23,7 +23,7 @@ def get_overall_score(model_name : str, path : str, eval_config_file : str):
             config[key] = {}
             config[key]['weight']=1.0
             config[key]['metrics'] = {}
-            for metrics  in statistics[key].keys():
+            for metrics in statistics[key].keys():
                 config[key]['metrics'][metrics] = 1.0/len(statistics[key])
         with open(eval_config_file, 'w', encoding='utf8') as f:
             f.write(json.dumps(config, ensure_ascii=False, indent=4))
@@ -71,11 +71,11 @@ if __name__ == '__main__':
             print(f"The directory '{args.config_path}' has been created.")
         else:
             print(f"The directory '{args.config_path}' already exists.")
-        score = get_overall_score(model_name, model_statistics_dir, \
+        score = get_overall_score(model_name, model_statistics_dir, 
                                   os.path.join(args.config_path,'overall_performance_weight_%s_config.json'%args.language))
         result[model_name] = score
         print("model: %s --- score: %f"%(model_name, score))
-    with open(os.path.join(args.output_path, 'overall_score_%s.json'%args.language),\
+    with open(os.path.join(args.output_path, 'overall_score_%s.json'%args.language),
               'w',encoding='utf8') as f:
         f.write(json.dumps(result, ensure_ascii=False, indent=4))
     print(result)
