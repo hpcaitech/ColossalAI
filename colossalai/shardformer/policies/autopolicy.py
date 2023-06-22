@@ -25,17 +25,19 @@ class PolicyLocation:
 _POLICY_LIST = {
     # BERT
     "transformers.models.bert.modeling_bert.BertModel":
-        PolicyLocation(file_name="bert", class_name="BertPolicy"),
+        PolicyLocation(file_name="bert", class_name="BertModelPolicy"),
     "transformers.models.bert.modeling_bert.BertForPreTraining":
         PolicyLocation(file_name="bert", class_name="BertForPretrainingPolicy"),
-    "transformers.models.bert.modeling_bert.BertForMaskedLM":
-        PolicyLocation(file_name="bert", class_name="BertForMaskedLMPolicy"),
     "transformers.models.bert.modeling_bert.BertLMHeadModel":
         PolicyLocation(file_name="bert", class_name="BertLMHeadModelPolicy"),
-    "transformers.models.bert.modeling_bert.BertForNextSentencePrediction":
-        PolicyLocation(file_name="bert", class_name="BertForNextSentencePredictionPolicy"),
+    "transformers.models.bert.modeling_bert.BertForMaskedLM":
+        PolicyLocation(file_name="bert", class_name="BertForMaskedLMPolicy"),
     "transformers.models.bert.modeling_bert.BertForSequenceClassification":
         PolicyLocation(file_name="bert", class_name="BertForSequenceClassificationPolicy"),
+    "transformers.models.bert.modeling_bert.BertForTokenClassification":
+        PolicyLocation(file_name="bert", class_name="BertForTokenClassificationPolicy"),
+    "transformers.models.bert.modeling_bert.BertForNextSentencePrediction":
+        PolicyLocation(file_name="bert", class_name="BertForNextSentencePredictionPolicy"),
     "transformers.models.bert.modeling_bert.BertForMultipleChoice":
         PolicyLocation(file_name="bert", class_name="BertForMultipleChoicePolicy"),
 
@@ -58,6 +60,14 @@ _POLICY_LIST = {
     # GPT2
     "transformers.models.gpt2.modeling_gpt2.GPT2Model":
         PolicyLocation(file_name="gpt2", class_name="GPT2ModelPolicy"),
+    "transformers.models.gpt2.modeling_gpt2.GPT2LMHeadModel":
+        PolicyLocation(file_name="gpt2", class_name="GPT2LMHeadModelPolicy"),
+    "transformers.models.gpt2.modeling_gpt2.GPT2DoubleHeadsModel":
+        PolicyLocation(file_name="gpt2", class_name="GPT2DoubleHeadsModelPolicy"),
+    "transformers.models.gpt2.modeling_gpt2.GPT2ForTokenClassification":
+        PolicyLocation(file_name="gpt2", class_name="GPT2ForTokenClassificationPolicy"),
+    "transformers.models.gpt2.modeling_gpt2.GPT2ForSequenceClassification":
+        PolicyLocation(file_name="gpt2", class_name="GPT2ForSequenceClassificationPolicy"),
 }
 
 
