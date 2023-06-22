@@ -66,6 +66,9 @@ class LayerNorm1D(ParallelModule):
         r"""
         Convert a native pytorch layer norm module to colossalai layer norm module
         """
+        use_mixedfusedLN = kwargs['use_mixedfusedLN']
+        if not use_mixedfusedLN:
+            return module
         normalized_shape = module.normalized_shape
         eps = module.eps
         bias = module.bias is not None
@@ -79,7 +82,7 @@ class LayerNorm1D(ParallelModule):
             process_group = process_group[0]
 
         # create layer norm
-        layer_norm = LayerNorm1D(normalized_shape, eps=eps, bias=bias, device=device, dtype=dtype, *args, **kwargs).norm
+        layer_norm = LayerNorm1D(normalized_shape, eps=eps, bias=bias, device=device, dtype=dtype).norm
 
         with torch.no_grad():
             # copy weight and bias

@@ -70,6 +70,7 @@ class BertPolicy(Policy):
                         SubModuleReplacementDescription(
                             suffix="attention.output.LayerNorm",
                             target_module=col_nn.LayerNorm1D,
+                            kwargs={"use_mixedfusedLN": self.shard_config.use_mixedfusedLN},
                         ),
                         SubModuleReplacementDescription(
                             suffix="attention.output.dropout",
@@ -86,6 +87,7 @@ class BertPolicy(Policy):
                         SubModuleReplacementDescription(
                             suffix="output.LayerNorm",
                             target_module=col_nn.LayerNorm1D,
+                            kwargs={"use_mixedfusedLN": self.shard_config.use_mixedfusedLN},
                         ),
                         SubModuleReplacementDescription(
                             suffix="output.dropout",
@@ -103,6 +105,7 @@ class BertPolicy(Policy):
                                             SubModuleReplacementDescription(
                                                 suffix="LayerNorm",
                                                 target_module=col_nn.LayerNorm1D,
+                                                kwargs={"use_mixedfusedLN": self.shard_config.use_mixedfusedLN},
                                             ),
                                             SubModuleReplacementDescription(
                                                 suffix="dropout",
@@ -145,6 +148,7 @@ class BertForPretrainingPolicy(BertPolicy):
                                             SubModuleReplacementDescription(
                                                 suffix="transform.LayerNorm",
                                                 target_module=col_nn.LayerNorm1D,
+                                                kwargs={"use_mixedfusedLN": self.shard_config.use_mixedfusedLN},
                                             )
                                         ])
         }
@@ -180,6 +184,7 @@ class BertLMHeadModelPolicy(BertPolicy):
                                             SubModuleReplacementDescription(
                                                 suffix="transform.LayerNorm",
                                                 target_module=col_nn.LayerNorm1D,
+                                                kwargs={"use_mixedfusedLN": self.shard_config.use_mixedfusedLN},
                                             )
                                         ])
         }
@@ -215,6 +220,7 @@ class BertForMaskedLMPolicy(BertPolicy):
                                             SubModuleReplacementDescription(
                                                 suffix="transform.LayerNorm",
                                                 target_module=col_nn.LayerNorm1D,
+                                                kwargs={"use_mixedfusedLN": self.shard_config.use_mixedfusedLN},
                                             )
                                         ])
         }
