@@ -5,6 +5,7 @@ from torch.testing import assert_close
 
 import colossalai
 from colossalai.shardformer.layer import LinearConv1D_Col, LinearConv1D_Row
+from colossalai.shardformer.layer.linear_conv import split_fused_qkv
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 
@@ -53,8 +54,14 @@ def check_linear_conv_1d_col():
     linear = Conv1D(192, 48).cuda()
     linear_conv_col = LinearConv1D_Col.from_native_module(linear, process_group=None, gather_output=True, n_fused=3)
 
-    assert linear_conv_col.weight.shape == torch.Size([96, 48])
+    assert linear.weight.shape == torch.Size([48, 192])
+    assert linear.bias.shape == torch.Size([192])
+    assert linear_conv_col.weight.shape == torch.Size([48, 96])
     assert linear_conv_col.bias.shape == torch.Size([96])
+
+    # ensure weights are reversibly loadable
+    linear_conv_col.load_state_dict(linear.state_dict())
+    linear.load_state_dict(linear_conv_col.state_dict())
 
     # check computation correctness
     x = torch.rand(4, 48).cuda()
@@ -66,16 +73,16 @@ def check_linear_conv_1d_col():
     out.sum().backward()
     gather_out.sum().backward()
 
-    rank = dist.get_rank()
-    target_grad = torch.chunk(linear.weight.grad, 2, dim=1)[rank]
-    assert_close(target_grad.transpose(0, 1).contiguous(), linear_conv_col.weight.grad)
+    target_grad = split_fused_qkv(linear.weight.grad, 3, None)
+    assert_close(target_grad, linear_conv_col.weight.grad)
 
 
 def check_linear_1d_row():
     linear = Conv1D(192, 48).cuda()
     linear_row = LinearConv1D_Row.from_native_module(linear, process_group=None, parallel_input=False)
 
-    assert linear_row.weight.shape == torch.Size([192, 24])
+    assert linear.weight.shape == torch.Size([48, 192])
+    assert linear_row.weight.shape == torch.Size([24, 192])
     assert linear_row.bias.shape == torch.Size([192])
 
     # check computation correctness
@@ -89,13 +96,14 @@ def check_linear_1d_row():
     gather_out.sum().backward()
 
     rank = dist.get_rank()
-    target_grad = torch.chunk(linear.weight.grad, 2, dim=1)[rank]
+    target_grad = torch.chunk(linear.weight.grad, 2, dim=0)[rank]
     assert_close(target_grad, linear_row.weight.grad)
 
 
 def run_dist(rank, world_size, port):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     check_linear_conv_1d_col()
+    check_linear_1d_row()
 
 
 @rerun_if_address_is_in_use()
