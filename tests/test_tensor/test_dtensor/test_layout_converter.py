@@ -9,7 +9,7 @@ from colossalai.logging import disable_existing_loggers
 from colossalai.tensor.d_tensor.comm_spec import CollectiveCommPattern
 from colossalai.tensor.d_tensor.layout import Layout
 from colossalai.tensor.d_tensor.layout_converter import LayoutConverter
-from colossalai.tensor.d_tensor.sharding_spec import DimSpec, ShardingSpec
+from colossalai.tensor.d_tensor.sharding_spec import ShardingSpec
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 entire_shape = torch.Size((64, 32, 16))
