@@ -31,7 +31,6 @@ __all__ = ['LinearConv1D_Col', 'LinearConv1D_Row']
 
 class LinearConv1D_Col(ParallelModule):
     r"""Linear layer with column parallelism.
-    Specially created for HuggingFace's GPT2 model.
 
     The linear layer is defined as :math:`Y = XA + b`. A is parallelized along
     its second dimension as :math:`A = [A_1, ..., A_p]`. This layer is used to fit `Conv1D` layer in gpt2 of huggingface.
@@ -189,7 +188,6 @@ class LinearConv1D_Col(ParallelModule):
 
 class LinearConv1D_Row(ParallelModule):
     r""" Linear layer with row parallelism
-    Specially created for HuggingFace's GPT2 model.
 
     Args:
         in_features (int): size of each input sample.
