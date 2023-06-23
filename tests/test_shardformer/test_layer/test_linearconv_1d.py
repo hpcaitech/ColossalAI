@@ -77,7 +77,7 @@ def check_linear_conv_1d_col():
     assert_close(target_grad, linear_conv_col.weight.grad)
 
 
-def check_linear_1d_row():
+def check_linear_conv_1d_row():
     linear = Conv1D(192, 48).cuda()
     linear_row = LinearConv1D_Row.from_native_module(linear, process_group=None, parallel_input=False)
 
@@ -103,7 +103,7 @@ def check_linear_1d_row():
 def run_dist(rank, world_size, port):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     check_linear_conv_1d_col()
-    check_linear_1d_row()
+    check_linear_conv_1d_row()
 
 
 @rerun_if_address_is_in_use()
