@@ -14,13 +14,18 @@ from torch.nn.parameter import Parameter
 
 from colossalai.nn import init as init
 from colossalai.nn.layer.utils import divide
-from colossalai.tensor.d_tensor.api import shard_colwise, shard_rowwise
-from colossalai.utils.cuda import get_current_device
+from colossalai.tensor.d_tensor.api import (
+    customized_distributed_tensor_to_param,
+    distribute_tensor_with_customization,
+    shard_rowwise,
+    sharded_tensor_to_param,
+)
 
 from ._operation import (
     gather_forward_split_backward,
-    linear_with_async_comm,
-    reduce_input,
+    matmul_with_async_comm,
+    reduce_backward,
+    reduce_forward,
     split_forward_gather_backward,
 )
 from .parallel_module import ParallelModule
@@ -29,11 +34,69 @@ from .utils import create_randomizer_with_offset
 __all__ = ['LinearConv1D_Col', 'LinearConv1D_Row']
 
 
+def split_fused_qkv(qkv: torch.Tensor, n_fused: int, process_group: ProcessGroup):
+    """
+    The fused qkv tensor looks like [Q1, Q2, K1, K2, V1, V2], this function will split them into [Q1, K1, V1] and [Q2, K2, V2].
+    """
+    # get the number of slice for the fused qkv
+    rank = dist.get_rank(group=process_group)
+    world_size = dist.get_world_size(group=process_group)
+    order = torch.arange(world_size * n_fused)
+
+    # split the fused qkv
+    # from
+    # [Q, K, V]
+    # to
+    # [Q1, Q2, K1, K2, V1, V2]
+    weight_chunks = torch.chunk(qkv, world_size * n_fused, dim=-1)
+
+    # rearrange the slice into the final order
+    # from
+    # [Q1, Q2, K1, K2, V1, V2]
+    # to
+    # [Q1, K1, V1], [Q2, K2, V2]
+    weight_chunks_of_current_rank = [weight_chunks[i] for i in order[rank::world_size]]
+    weight_of_current_rank = torch.cat(weight_chunks_of_current_rank, dim=-1)
+    return weight_of_current_rank
+
+
+def gather_fused_qkv(qkv: torch.Tensor, n_fused: int, process_group: ProcessGroup):
+    """
+    The splitted qkv tensor looks like [Q1, K1, V1] and [Q2, K2, V2], this function will gather them into [Q1, Q2, K1, K2, V1, V2].
+    """
+    world_size = dist.get_world_size(group=process_group)
+
+    # gather the tensors
+    # from
+    # [Q1, K1, V1], [Q2, K2, V2]
+    # to
+    # [Q1, K1, V1, Q2, K2, V2]
+    origin_device = qkv.device
+    qkv = qkv.cuda()
+    gather_list = [torch.zeros_like(qkv) for _ in range(world_size)]
+    dist.all_gather(gather_list, qkv, group=process_group)
+    gather_weight = torch.cat(gather_list, dim=-1)
+    gather_weight = gather_weight.to(origin_device)
+    qkv = qkv.to(origin_device)
+
+    # rearrange the tensor slices
+    # from
+    # [Q1, K1, V1, Q2, K2, V2]
+    # to
+    # [Q1, Q2, K1, K2, V1, V2]
+    weight_chunks = torch.chunk(gather_weight, world_size * n_fused, dim=-1)
+    reordered_chunk_list = []
+    for i in range(n_fused):
+        reordered_chunk_list.extend(weight_chunks[i::n_fused])
+    reordered_gather_weight = torch.cat(reordered_chunk_list, dim=-1)
+    return reordered_gather_weight
+
+
 class LinearConv1D_Col(ParallelModule):
     r"""Linear layer with column parallelism.
 
     The linear layer is defined as :math:`Y = XA + b`. A is parallelized along
-    its second dimension as :math:`A = [A_1, ..., A_p]`. This layer is used to fit `Conv1D` layer in gpt2 of huggingface.
+    its second dimension as :math:`A = [A_1, ..., A_p]`. This layer is used to fit `Conv1D` layer (Fused QKV) in gpt2 of huggingface.
 
     Args:
         in_features (int): size of each input sample.
@@ -41,6 +104,7 @@ class LinearConv1D_Col(ParallelModule):
         bias (bool, optional): If set to ``False``, the layer will not learn an additive bias, defaults to ``True``.
         dtype (`torch.dtype`): The dtype of parameters, defaults to None.
         device (`torch.device`): The device of parameters, defaults to None.
+        n_fused (int): The number items fused, defaults to 3 (QKV).
         process_group (`torch.distributed.ProcessGroup`): The process group to be used for weight sharding and communication, defaults to None.
         gather_output (bool, optional): If true, call all-gather on output and make Y available
                     to all GPUs, otherwise, every GPU will have its output
@@ -63,8 +127,10 @@ class LinearConv1D_Col(ParallelModule):
                  dtype: torch.dtype = None,
                  device: torch.device = None,
                  process_group: ProcessGroup = None,
+                 async_communication: bool = False,
                  gather_output: bool = False,
                  skip_bias_add: bool = False,
+                 n_fused: int = 3,
                  weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
                  bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1)):
         super().__init__()
@@ -75,23 +141,34 @@ class LinearConv1D_Col(ParallelModule):
         self.gather_output = gather_output
         self.skip_bias_add = skip_bias_add
         self.device = device
+        self.n_fused = n_fused
         self.process_group = process_group
-        self.num_partitions = dist.get_world_size(self.process_group)
+        self.async_communication = async_communication
 
         if skip_bias_add and not bias:
             raise ValueError('cannot skip bias addition if bias is None')
 
-        self.out_features_per_partition = divide(out_features, self.num_partitions)
-
         # Parameters.
         # Initialize weight.
-        if device is None:
-            device = get_current_device()
         factory_kwargs = {'device': device, 'dtype': dtype}
-        self.weight = Parameter(torch.empty(self.out_features_per_partition, self.in_features, **factory_kwargs))
+        weight = torch.empty(self.in_features, self.out_features, **factory_kwargs)
+
+        def shard_fn(tensor):
+            return split_fused_qkv(tensor, self.n_fused, self.process_group)
+
+        def gather_fn(tensor):
+            return gather_fused_qkv(tensor, 3, self.process_group)
+
+        with torch.no_grad():
+            sharded_weight = distribute_tensor_with_customization(weight, shard_fn, gather_fn)
+        self.weight = customized_distributed_tensor_to_param(sharded_weight)
 
         if bias:
-            self.bias = Parameter(torch.empty(self.out_features_per_partition, **factory_kwargs))
+            bias = torch.empty(self.out_features, **factory_kwargs)
+
+            with torch.no_grad():
+                sharded_bias = distribute_tensor_with_customization(bias, shard_fn, gather_fn)
+            self.bias = customized_distributed_tensor_to_param(sharded_bias)
         else:
             self.bias = None
 
@@ -103,7 +180,7 @@ class LinearConv1D_Col(ParallelModule):
         self.reset_parameters(weight_initializer, bias_initializer)
 
     @staticmethod
-    def from_native_module(module: nn.Linear, process_group: Union[ProcessGroup, List[ProcessGroup]], n_fused: int,
+    def from_native_module(module: nn.Module, process_group: Union[ProcessGroup, List[ProcessGroup]], n_fused: int,
                            *args, **kwargs) -> ParallelModule:
         r"""
         Convert a huggingface layer `Conv1D` in gpt2 to a parallelized linear layer.
@@ -135,29 +212,12 @@ class LinearConv1D_Col(ParallelModule):
 
         # TODO: copy the sharded weights
         with torch.no_grad():
-            # the weigh to the linear layer is a transpose
-            # thus shard on row is equal to shard on column
-
-            # first rearange the order of weight and bias
-            world_size = dist.get_world_size(group=process_group)
-            order = torch.arange(world_size * n_fused)
-            new_order = []
-            for i in range(world_size):
-                new_order.append(order[i::world_size])
-            new_order = torch.cat(new_order)
-
-            weight_chunks = torch.chunk(module.weight.data, world_size * n_fused, dim=1)
-            rearanged_weight_chunks = [weight_chunks[i] for i in new_order]
-            rearanged_weight = torch.cat(rearanged_weight_chunks, dim=1)
-            sharded_weight = shard_colwise(rearanged_weight, process_group)
-            linear_1d.weight.data.copy_(sharded_weight.T.contiguous())
+            sharded_weight = split_fused_qkv(module.weight.data, n_fused=n_fused, process_group=process_group)
+            linear_1d.weight.data.copy_(sharded_weight.data)
 
             if bias:
-                bias_chunks = torch.chunk(module.bias.data, world_size * n_fused, dim=0)
-                rearanged_bias_chunks = [bias_chunks[i] for i in new_order]
-                rearanged_bias = torch.cat(rearanged_bias_chunks, dim=0)
-                sharded_bias = shard_colwise(rearanged_bias, process_group)
-                linear_1d.bias.copy_(sharded_bias.contiguous())
+                sharded_bias = split_fused_qkv(module.bias.data, n_fused=n_fused, process_group=process_group)
+                linear_1d.bias.data.copy_(sharded_bias.data)
 
         return linear_1d
 
@@ -169,15 +229,18 @@ class LinearConv1D_Col(ParallelModule):
                 bias_initializer(self.bias, fan_in=fan_in)
 
     def forward(self, input_: Tensor) -> Tuple[Tensor, Tensor]:
-        assert input_.shape[-1] == self.weight.shape[-1], \
+        assert input_.shape[-1] == self.weight.shape[0], \
             'Invalid shapes in Linear1D_Col forward: input={}, weight={}. Expected last dim of input {}.'.format(
                 input_.shape, self.weight.shape, self.weight.shape[-1])
         # Set up backprop all-reduce.
-        # input_parallel = reduce_grad(input_, ParallelMode.PARALLEL_1D)
-        input_parallel = input_
+        input_parallel = reduce_backward(input_, self.process_group)
+        # input_parallel = input_
+
         # Matrix multiply.
         bias = self.bias if not self.skip_bias_add else None
-        output_parallel = linear_with_async_comm(input_parallel, self.weight, bias, self.process_group, True)
+
+        output_parallel = matmul_with_async_comm(input_parallel, self.weight, bias, self.process_group,
+                                                 self.async_communication)
 
         if self.gather_output:
             # All-gather across the partitions.
@@ -192,7 +255,8 @@ class LinearConv1D_Col(ParallelModule):
 
 
 class LinearConv1D_Row(ParallelModule):
-    r""" Linear layer with row parallelism
+    r""" Linear layer with row parallelism.
+    This layer is used to fit `Conv1D` layer (Fused QKV) in gpt2 of huggingface.
 
     Args:
         in_features (int): size of each input sample.
@@ -243,11 +307,10 @@ class LinearConv1D_Row(ParallelModule):
 
         # Parameters.
         # Initialize weight.
-        if device is None:
-            device = get_current_device()
-
         factory_kwargs = {'device': device, 'dtype': dtype}
-        self.weight = Parameter(torch.empty(self.out_features, self.input_size_per_partition, **factory_kwargs))
+        weight = torch.empty(self.in_features, self.out_features, **factory_kwargs)
+        sharded_weight = shard_rowwise(weight, self.process_group)
+        self.weight = sharded_tensor_to_param(sharded_weight)
 
         if self.stream_chunk_num > 1:
             # TODO() work for inference only
@@ -295,7 +358,7 @@ class LinearConv1D_Row(ParallelModule):
             # the weigh to the linear layer is a transpose
             # thus shard on col is equal to shard on row
             sharded_weight = shard_rowwise(module.weight.data, process_group)
-            linear_1d.weight.data.copy_(sharded_weight.T.contiguous())
+            linear_1d.weight.data.copy_(sharded_weight.data)
 
             if bias:
                 linear_1d.bias.copy_(module.bias.data)
@@ -325,12 +388,12 @@ class LinearConv1D_Row(ParallelModule):
     def forward(self, input_: Tensor) -> Tensor:
         # Set up backprop all-reduce.
         if self.parallel_input:
-            assert input_.shape[-1] == self.weight.shape[-1], \
+            assert input_.shape[-1] == self.weight.shape[0], \
                 'Invalid shapes in Linear1D_Row forward: input={}, weight={}. Expected last dim of input {}.'.format(
                 input_.shape, self.weight.shape, self.weight.shape[-1])
             input_ = input_
         else:
-            assert divide(input_.shape[-1], self.num_partitions) == self.weight.shape[-1], \
+            assert divide(input_.shape[-1], self.num_partitions) == self.weight.shape[0], \
                 'Invalid shapes in Linear1D_Row forward: input={}, weight={}. Expected last dim of input {}.'.format(
                 input_.shape, self.weight.shape, self.weight.shape[-1] * self.num_partitions)
             input_ = split_forward_gather_backward(input_, dim=-1, process_group=self.process_group)
@@ -342,7 +405,7 @@ class LinearConv1D_Row(ParallelModule):
                 output_parallel_list = [None for i in range(self.stream_chunk_num)]
                 handle_list = []
                 for i in range(self.stream_chunk_num):
-                    output_parallel_list[i] = F.linear(input_, self.weight_list[i])
+                    output_parallel_list[i] = torch.matmul(input_, self.weight_list[i])
                     handle = torch.distributed.all_reduce(output_parallel_list[i],
                                                           group=self.process_group,
                                                           async_op=True)
@@ -352,9 +415,8 @@ class LinearConv1D_Row(ParallelModule):
                     handle.wait()
                 output = torch.cat(output_parallel_list, dim=-1)
         else:
-            output_parallel = F.linear(input_, self.weight)
-            # output_parallel = linear_with_async_comm(input_, self.weight, None, ParallelMode.PARALLEL_1D, False)
-            output = reduce_input(output_parallel, self.process_group)
+            output_parallel = torch.matmul(input_, self.weight)
+            output = reduce_forward(output_parallel, self.process_group)
 
         if not self.skip_bias_add:
             if self.bias is not None:
