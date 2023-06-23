@@ -68,6 +68,10 @@ _POLICY_LIST = {
         PolicyLocation(file_name="gpt2", class_name="GPT2ForTokenClassificationPolicy"),
     "transformers.models.gpt2.modeling_gpt2.GPT2ForSequenceClassification":
         PolicyLocation(file_name="gpt2", class_name="GPT2ForSequenceClassificationPolicy"),
+
+    # Bloom
+    "transformers.models.bloom.modeling_bloom.BloomModel":
+        PolicyLocation(file_name="bloom", class_name="BloomModelPolicy"),
 }
 
 
