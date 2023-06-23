@@ -20,20 +20,21 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
 
     # check grad equality
     if org_model.__class__.__name__ == 'GPT2Model':
-        org_grad = org_model.h[0].attn.c_attn.weight.grad
-        shard_grad = sharded_model.h[0].attn.c_attn.weight.grad.transpose(0, 1).contiguous()
+        org_grad = org_model.h[0].mlp.c_fc.weight.grad
+        shard_grad = sharded_model.h[0].mlp.c_fc.weight.grad
     else:
         org_grad = org_model.transformer.h[0].mlp.c_fc.weight.grad
-        shard_grad = sharded_model.transformer.h[0].mlp.c_fc.weight.grad.transpose(0, 1).contiguous()
+        shard_grad = sharded_model.transformer.h[0].mlp.c_fc.weight.grad
 
     shard_grad_list = [torch.zeros([*shard_grad.shape]).to('cuda') for _ in range(2)]
     shard_grad = torch.distributed.all_gather(shard_grad_list, shard_grad)
     all_shard_grad = torch.cat(shard_grad_list, dim=1)
 
     assert torch.allclose(org_loss, shard_loss,
-                          atol=1e-5), f"shard model loss is not equal to orgin model loss\n{org_loss}\n{shard_loss}"
-    assert torch.allclose(org_grad, all_shard_grad,
-                          atol=1e-5), f"shard model grad is not equal to orgin model grad\n{org_grad}\n{all_shard_grad}"
+                          atol=1e-5), f"shard model loss is not equal to origin model loss\n{org_loss}\n{shard_loss}"
+    assert torch.allclose(
+        org_grad, all_shard_grad,
+        atol=1e-5), f"shard model grad is not equal to origin model grad\n{org_grad}\n{all_shard_grad}"
 
 
 def check_gpt2(rank, world_size, port):
