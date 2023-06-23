@@ -1,5 +1,6 @@
 import torch
 import torch.distributed as dist
+import torch.nn.functional as F
 
 try:
     import fused_mix_prec_layer_norm_cuda
@@ -46,6 +47,53 @@ class FusedLayerNormAffineFunction1D(torch.autograd.Function):
         return grad_input, grad_weight, grad_bias, None, None
 
 
+class MatmulWithAsyncCommunication(torch.autograd.Function):
+    """
+    Linear layer execution with asynchronous communication in backprop.
+    """
+
+    @staticmethod
+    def forward(ctx, input_, weight, bias, process_group, async_grad_allreduce):
+        ctx.save_for_backward(input_, weight)
+        ctx.use_bias = bias is not None
+        ctx.process_group = process_group
+        ctx.async_grad_allreduce = async_grad_allreduce
+
+        output = torch.matmul(input_, weight)
+
+        if bias is not None:
+            output = output + bias
+        return output
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        input, weight = ctx.saved_tensors
+        use_bias = ctx.use_bias
+
+        total_input = input
+        grad_input = grad_output.matmul(weight.T)
+        grad_output = grad_output.contiguous()
+        # Convert the tensor shapes to 2D for execution compatibility
+        if len(grad_output.shape) > 2:
+            grad_output = grad_output.view(-1, grad_output.shape[-1])
+            total_input = total_input.view(-1, total_input.shape[-1])
+
+        if ctx.async_grad_allreduce:
+            # Asynchronous all-reduce
+            handle = dist.all_reduce(grad_input, group=ctx.process_group, async_op=True)
+            # Delay the start of weight gradient computation shortly (3us) to have
+            # all-reduce scheduled first and have GPU resources allocated
+            _ = torch.empty(1, device=grad_output.device) + 1
+
+        grad_weight = total_input.t().matmul(grad_output)
+        grad_bias = grad_output.sum(dim=0) if use_bias else None
+
+        if ctx.async_grad_allreduce:
+            handle.wait()
+
+        return grad_input, grad_weight, grad_bias, None, None, None
+
+
 class LinearWithAsyncCommunication(torch.autograd.Function):
     """
     Linear layer execution with asynchronous communication in backprop.
@@ -58,9 +106,10 @@ class LinearWithAsyncCommunication(torch.autograd.Function):
         ctx.process_group = process_group
         ctx.async_grad_allreduce = async_grad_allreduce
 
-        output = torch.matmul(input_, weight.t())
         if bias is not None:
-            output = output + bias
+            output = F.linear(input_, weight, bias)
+        else:
+            output = F.linear(input_, weight)
         return output
 
     @staticmethod
@@ -114,7 +163,7 @@ class _SplitForwardGatherBackward(torch.autograd.Function):
         return _gather(grad_output, ctx.dim, ctx.process_group), None, None
 
 
-class _ReduceInput(torch.autograd.Function):
+class _ReduceForward(torch.autograd.Function):
     """
     All-reduce the input from the model parallel region.
 
@@ -130,6 +179,25 @@ class _ReduceInput(torch.autograd.Function):
     @staticmethod
     def backward(ctx, grad_output):
         return grad_output, None
+
+
+class _ReduceBackward(torch.autograd.Function):
+    """
+    All-reduce the input from the model parallel region.
+
+    Args:
+        input_: input matrix.
+        parallel_mode: parallel mode.
+    """
+
+    @staticmethod
+    def forward(ctx, input_, process_group):
+        ctx.process_group = process_group
+        return input_
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        return _reduce(grad_output, ctx.process_group), None
 
 
 def _reduce(input_, process_group):
@@ -198,6 +266,10 @@ class _GatherForwardSplitBackward(torch.autograd.Function):
         return _split(grad_output, ctx.dim, ctx.process_group), None, None
 
 
+def matmul_with_async_comm(input_, weight, bias, process_group, async_grad_allreduce):
+    return MatmulWithAsyncCommunication.apply(input_, weight, bias, process_group, async_grad_allreduce)
+
+
 def linear_with_async_comm(input_, weight, bias, process_group, async_grad_allreduce):
     return LinearWithAsyncCommunication.apply(input_, weight, bias, process_group, async_grad_allreduce)
 
@@ -210,5 +282,9 @@ def split_forward_gather_backward(input_, dim, process_group):
     return _SplitForwardGatherBackward.apply(input_, dim, process_group)
 
 
-def reduce_input(input_, process_group):
-    return _ReduceInput.apply(input_, process_group)
+def reduce_forward(input_, process_group):
+    return _ReduceForward.apply(input_, process_group)
+
+
+def reduce_backward(input_, process_group):
+    return _ReduceBackward.apply(input_, process_group)
