@@ -21,7 +21,7 @@ class ShardConfig:
         gather_output (bool): Whether to gather the output of the model of the last layer
     """
     tensor_parallel_size: int
-    use_mixedfusedLN: bool = False
+    fused_layernorm: bool = False
 
     # TODO: add support for tensor parallel
     # pipeline_parallel_size: int

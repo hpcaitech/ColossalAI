@@ -10,8 +10,7 @@ from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 def check_layernorm_1d():
     norm = nn.LayerNorm(128, 0.00001).cuda()
-    kwargs = {'use_mixedfusedLN': True}
-    norm1d = LayerNorm1D.from_native_module(norm, process_group=None, **kwargs)
+    norm1d = LayerNorm1D.from_native_module(norm, process_group=None)
 
     assert norm1d.weight.shape == torch.Size([128])
 

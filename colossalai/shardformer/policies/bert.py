@@ -30,7 +30,7 @@ class BertPolicy(Policy):
         return self.model
 
     def module_policy(self):
-        return {
+        base_policy = {
             BertLayer:
                 ModulePolicyDescription(
                     attribute_replacement={
@@ -68,11 +68,6 @@ class BertPolicy(Policy):
                             target_module=col_nn.Linear1D_Row,
                         ),
                         SubModuleReplacementDescription(
-                            suffix="attention.output.LayerNorm",
-                            target_module=col_nn.LayerNorm1D,
-                            kwargs={"use_mixedfusedLN": self.shard_config.use_mixedfusedLN},
-                        ),
-                        SubModuleReplacementDescription(
                             suffix="attention.output.dropout",
                             target_module=col_nn.Dropout1D,
                         ),
@@ -83,11 +78,6 @@ class BertPolicy(Policy):
                         SubModuleReplacementDescription(
                             suffix="output.dense",
                             target_module=col_nn.Linear1D_Row,
-                        ),
-                        SubModuleReplacementDescription(
-                            suffix="output.LayerNorm",
-                            target_module=col_nn.LayerNorm1D,
-                            kwargs={"use_mixedfusedLN": self.shard_config.use_mixedfusedLN},
                         ),
                         SubModuleReplacementDescription(
                             suffix="output.dropout",
@@ -103,16 +93,29 @@ class BertPolicy(Policy):
                                                 target_module=col_nn.VocabParallelEmbedding1D,
                                             ),
                                             SubModuleReplacementDescription(
-                                                suffix="LayerNorm",
-                                                target_module=col_nn.LayerNorm1D,
-                                                kwargs={"use_mixedfusedLN": self.shard_config.use_mixedfusedLN},
-                                            ),
-                                            SubModuleReplacementDescription(
                                                 suffix="dropout",
                                                 target_module=col_nn.Dropout1D,
                                             )
                                         ])
         }
+
+        if self.shard_config.fused_layernorm:
+            base_policy[BertLayer].sub_module_replacement.append(
+                SubModuleReplacementDescription(
+                    suffix="attention.output.LayerNorm",
+                    target_module=col_nn.LayerNorm1D,
+                ))
+            base_policy[BertLayer].sub_module_replacement.append(
+                SubModuleReplacementDescription(
+                    suffix="output.LayerNorm",
+                    target_module=col_nn.LayerNorm1D,
+                ))
+            base_policy[BertEmbeddings].sub_module_replacement.append(
+                SubModuleReplacementDescription(
+                    suffix="LayerNorm",
+                    target_module=col_nn.LayerNorm1D,
+                ),)
+        return base_policy
 
     def new_model_class(self):
         # do nothing
@@ -145,13 +148,14 @@ class BertForPretrainingPolicy(BertPolicy):
                                             SubModuleReplacementDescription(suffix="decoder",
                                                                             target_module=col_nn.Linear1D_Col,
                                                                             kwargs={"gather_output": True}),
-                                            SubModuleReplacementDescription(
-                                                suffix="transform.LayerNorm",
-                                                target_module=col_nn.LayerNorm1D,
-                                                kwargs={"use_mixedfusedLN": self.shard_config.use_mixedfusedLN},
-                                            )
                                         ])
         }
+        if self.shard_config.fused_layernorm:
+            addon_module[BertLMPredictionHead].sub_module_replacement.append(
+                SubModuleReplacementDescription(
+                    suffix="transform.LayerNorm",
+                    target_module=col_nn.LayerNorm1D,
+                ))
         module_policy.update(addon_module)
         return module_policy
 
@@ -181,13 +185,14 @@ class BertLMHeadModelPolicy(BertPolicy):
                                             SubModuleReplacementDescription(suffix="decoder",
                                                                             target_module=col_nn.Linear1D_Col,
                                                                             kwargs={"gather_output": True}),
-                                            SubModuleReplacementDescription(
-                                                suffix="transform.LayerNorm",
-                                                target_module=col_nn.LayerNorm1D,
-                                                kwargs={"use_mixedfusedLN": self.shard_config.use_mixedfusedLN},
-                                            )
                                         ])
         }
+        if self.shard_config.fused_layernorm:
+            addon_module[BertLMPredictionHead].sub_module_replacement.append(
+                SubModuleReplacementDescription(
+                    suffix="transform.LayerNorm",
+                    target_module=col_nn.LayerNorm1D,
+                ))
         module_policy.update(addon_module)
         return module_policy
 
@@ -217,13 +222,14 @@ class BertForMaskedLMPolicy(BertPolicy):
                                             SubModuleReplacementDescription(suffix="decoder",
                                                                             target_module=col_nn.Linear1D_Col,
                                                                             kwargs={"gather_output": True}),
-                                            SubModuleReplacementDescription(
-                                                suffix="transform.LayerNorm",
-                                                target_module=col_nn.LayerNorm1D,
-                                                kwargs={"use_mixedfusedLN": self.shard_config.use_mixedfusedLN},
-                                            )
                                         ])
         }
+        if self.shard_config.fused_layernorm:
+            addon_module[BertLMPredictionHead].sub_module_replacement.append(
+                SubModuleReplacementDescription(
+                    suffix="transform.LayerNorm",
+                    target_module=col_nn.LayerNorm1D,
+                ))
         module_policy.update(addon_module)
         return module_policy
 
