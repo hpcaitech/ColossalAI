@@ -87,6 +87,7 @@ def main():
 
 
     original_image = download_image(args.val_image_url)
+    original_image.save("original_image.png")
 
     image = pipeline(prompt, image=original_image, num_inference_steps=20,
                          image_guidance_scale=1.5,

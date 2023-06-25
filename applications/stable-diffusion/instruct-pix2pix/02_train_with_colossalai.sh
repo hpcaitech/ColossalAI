@@ -10,7 +10,7 @@ torchrun --nproc_per_node 4 train_instruct_pix2pix_colossalai.py \
     --dataset_name=$DATASET_ID \
     --resolution=256 --random_flip \
     --train_batch_size=4 --gradient_accumulation_steps=4 --gradient_checkpointing \
-    --max_train_steps=1500 \
+    --max_train_steps=3000 \
     --checkpointing_steps=5000 --checkpoints_total_limit=1 \
     --learning_rate=5e-05 --max_grad_norm=1 --lr_warmup_steps=0 \
     --conditioning_dropout_prob=0.05 \

@@ -122,6 +122,11 @@ python image_to_image_inference.py --validation_prompts "the picture has some su
 ```
 
 Here is a demo how it looks like after using script train_instruct_pix2pix_colossal.py
+The Original Image is the following: 
+
+![png](original_image.png?raw=true "Optional Title")
+
+After transforming using trained pix2pix model: 
 
 ![png](stable_diffusion_example_colossalai.png?raw=true "Optional Title")
 
@@ -141,7 +146,7 @@ Thanks so much to all of our amazing contributors!
 
 ## Comments
 
-- Our codebase for the diffusion models builds heavily on [OpenAI's ADM codebase](https://github.com/openai/guided-diffusion)
+- Our codebase for the diffusion models builds heavily on [OpenAI's ADM codebase](https://github.com/openai/guided-diffusion) and [hugging_face diffusion](https://github.com/huggingface/diffusers/blob/main/examples/instruct_pix2pix/train_instruct_pix2pix.py)
 , [lucidrains](https://github.com/lucidrains/denoising-diffusion-pytorch),
 [Stable Diffusion](https://github.com/CompVis/stable-diffusion), [Lightning](https://github.com/Lightning-AI/lightning) and [Hugging Face](https://huggingface.co/CompVis/stable-diffusion).
 Thanks for open-sourcing!
