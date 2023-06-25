@@ -7,7 +7,6 @@ torchrun --nproc_per_node 4 stable_diffusion_colossalai_trainer.py \
     --mixed_precision="fp16" \
     --pretrained_model_name_or_path=$MODEL_NAME \
     --dataset_name=$dataset_name \
-    --use_ema \
     --resolution=512 --center_crop --random_flip \
     --train_batch_size=1 \
     --gradient_accumulation_steps=4 \
