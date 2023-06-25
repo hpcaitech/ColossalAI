@@ -1,13 +1,12 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import Callable, List
 
 import pandas as pd
 import torch
-import torch.distributed as dist
-from torch.optim import Optimizer, lr_scheduler
-from torch.utils.data import DataLoader, Dataset, DistributedSampler
+from torch.optim import Optimizer
+from torch.optim.lr_scheduler import _LRScheduler
+from torch.utils.data import DataLoader
 from tqdm import tqdm
-from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
 from .base import Trainer
 from .callbacks import Callback
@@ -22,7 +21,8 @@ class RewardModelTrainer(Trainer):
     Args:
         model (torch.nn.Module): the model to train
         strategy (Strategy): the strategy to use for training
-        optim(Optimizer): the optimizer to use for training
+        optim (Optimizer): the optimizer to use for training
+        lr_scheduler (_LRScheduler): the lr scheduler to use for training
         loss_fn (callable): the loss function to use for training
         train_dataloader (DataLoader): the dataloader to use for training
         valid_dataloader (DataLoader): the dataloader to use for validation
@@ -37,7 +37,8 @@ class RewardModelTrainer(Trainer):
         model,
         strategy: Strategy,
         optim: Optimizer,
-        loss_fn,
+        lr_scheduler: _LRScheduler,
+        loss_fn: Callable,
         train_dataloader: DataLoader,
         valid_dataloader: DataLoader,
         eval_dataloader: DataLoader,
@@ -53,7 +54,7 @@ class RewardModelTrainer(Trainer):
         self.model = model
         self.loss_fn = loss_fn
         self.optimizer = optim
-        self.scheduler = lr_scheduler.CosineAnnealingLR(self.optimizer, self.train_dataloader.__len__() // 100)
+        self.scheduler = lr_scheduler
 
     def eval_acc(self, dataloader):
         dist = 0
@@ -116,7 +117,8 @@ class RewardModelTrainer(Trainer):
             # eval
             dist, acc = self.eval_acc(self.eval_dataloader)
             if is_rank_0():
-                log = pd.DataFrame([[step_bar.n, loss.item(), dist, acc]], columns=['step', 'loss', 'dist', 'acc'])
+                log = pd.DataFrame([[step_bar.n, loss.item(), dist, acc]],
+                                   columns=['step', 'loss', 'dist', 'acc'])
                 log.to_csv('log.csv', mode='a', header=False, index=False)
             epoch_bar.update()
             step_bar.set_postfix({'dist': dist, 'acc': acc})

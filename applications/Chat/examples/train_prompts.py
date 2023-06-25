@@ -1,6 +1,5 @@
 import argparse
 
-import pandas as pd
 import torch
 import torch.distributed as dist
 from coati.dataset import DataCollatorForSupervisedDataset, PromptDataset, SupervisedDataset
@@ -51,7 +50,7 @@ def main(args):
         else:
             raise ValueError(f'Unsupported actor model "{args.model}"')
 
-        if args.rm_model == None:
+        if args.rm_model is None:
             rm_model_name = args.model
         else:
             rm_model_name = args.rm_model
@@ -163,7 +162,9 @@ def main(args):
                                      batch_size=args.ptx_batch_size,
                                      collate_fn=data_collator)
 
-    (actor, actor_optim), (critic, critic_optim) = strategy.prepare((actor, actor_optim), (critic, critic_optim))
+    # NOTE: For small models like opt-1.3b, reward model and initial model are not required to be parallelized.
+    (actor, actor_optim), (critic, critic_optim), reward_model, initial_model = \
+        strategy.prepare((actor, actor_optim), (critic, critic_optim), reward_model, initial_model)
 
     # configure trainer
     trainer = PPOTrainer(
@@ -185,6 +186,7 @@ def main(args):
         top_k=50,
         pad_token_id=tokenizer.pad_token_id,
         eos_token_id=tokenizer.eos_token_id,
+        offload_inference_models=args.strategy != 'colossalai_gemini'
     )
 
     trainer.fit(prompt_dataloader=prompt_dataloader,

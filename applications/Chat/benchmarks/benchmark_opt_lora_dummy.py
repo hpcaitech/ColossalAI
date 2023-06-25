@@ -19,8 +19,10 @@ from colossalai.nn.optimizer import HybridAdam
 
 def get_model_numel(model: nn.Module, strategy: Strategy) -> int:
     numel = sum(p.numel() for p in model.parameters())
-    if isinstance(strategy, ColossalAIStrategy) and strategy.stage == 3 and strategy.shard_init:
-        numel *= dist.get_world_size()
+    if isinstance(strategy, ColossalAIStrategy):
+        from colossalai.booster.plugin import GeminiPlugin
+        if isinstance(strategy.plugin, GeminiPlugin) and strategy.shard_init:
+            numel *= dist.get_world_size()
     return numel
 
 

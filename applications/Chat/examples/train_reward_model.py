@@ -18,6 +18,7 @@ from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrat
 from coati.utils import prepare_llama_tokenizer_and_embedding
 from datasets import load_dataset
 from torch.optim import Adam
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 from transformers import AutoTokenizer, BloomTokenizerFast, DebertaV2Tokenizer, LlamaTokenizer, RobertaTokenizer
@@ -165,10 +166,17 @@ def train(args):
                                  batch_size=args.batch_size,
                                  pin_memory=True)
 
-    (model, optim) = strategy.prepare((model, optim))
+    lr_scheduler = CosineAnnealingLR(optim, train_dataloader.__len__() // 100)
+    strategy_dict = strategy.prepare(
+        dict(model=model, optimizer=optim, lr_scheduler=lr_scheduler)
+    )
+    model = strategy_dict['model']
+    optim = strategy_dict['optimizer']
+    lr_scheduler = strategy_dict['lr_scheduler']
     trainer = RewardModelTrainer(model=model,
                                  strategy=strategy,
                                  optim=optim,
+                                 lr_scheduler=lr_scheduler,
                                  loss_fn=loss_fn,
                                  train_dataloader=train_dataloader,
                                  valid_dataloader=valid_dataloader,

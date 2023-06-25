@@ -1,23 +1,22 @@
+import functools
 import warnings
-from typing import Optional, Union
+from typing import Optional
 
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-import torch.optim as optim
-from torch.optim import Optimizer
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
 import colossalai
-from colossalai.logging import get_dist_logger
-from colossalai.nn.optimizer import CPUAdam, HybridAdam
+from colossalai.booster.plugin import GeminiPlugin, LowLevelZeroPlugin
+from colossalai.booster.plugin.gemini_plugin import GeminiModel
+from colossalai.booster.plugin.low_level_zero_plugin import LowLevelZeroModel
 from colossalai.tensor import ProcessGroup, ShardSpec
 from colossalai.utils import get_current_device
-from colossalai.zero import ColoInitContext, ZeroDDP, zero_model_wrapper, zero_optim_wrapper
+from colossalai.zero import ColoInitContext
+from colossalai.zero.gemini.gemini_ddp import GeminiDDP
 
 from .ddp import DDPStrategy
-
-logger = get_dist_logger(__name__)
 
 
 class ColossalAIStrategy(DDPStrategy):
@@ -62,7 +61,6 @@ class ColossalAIStrategy(DDPStrategy):
             placement_policy: str = 'cuda',
             pin_memory: bool = True,    # only for stage 3
             force_outputs_fp32: bool = False,    # only for stage 3
-            scatter_after_inference: bool = False,    # only for stage 3
             search_range_mb: int = 32,    # only for stage 3
             hidden_dim: Optional[int] = None,    # only for stage 3
             min_chunk_size_mb: float = 32,    # only for stage 3
@@ -78,50 +76,76 @@ class ColossalAIStrategy(DDPStrategy):
             max_scale: float = 2**32,
             max_norm: float = 0.0,
             norm_type: float = 2.0) -> None:
-        super().__init__(seed)
+
+        assert stage in (1, 2, 3), f'Unsupported stage "{stage}"'
         assert placement_policy in ('cpu', 'cuda'), f'Unsupported placement policy "{placement_policy}"'
         assert precision in ('fp32', 'fp16'), f'Unsupported precision "{precision}"'
-        self.stage = stage
+
         # TODO(ver217): support shard_init when using from_pretrained()
         if shard_init:
             warnings.warn(
-                f'Shard init is not supported model.from_pretrained() yet. Please load weights after strategy.prepare()'
+                f'Shard init is not supported model.from_pretrained() yet. '
+                'Please load weights after strategy.prepare()'
             )
         if stage == 3 and precision == 'fp32':
             warnings.warn(f'Stage 3 only supports fp16. Precision is set to fp16.')
             precision = 'fp16'
         self.precision = precision
         self.shard_init = shard_init
-        self.gemini_config = dict(device=get_current_device(),
-                                  placement_policy=placement_policy,
-                                  pin_memory=pin_memory,
-                                  force_outputs_fp32=force_outputs_fp32,
-                                  strict_ddp_mode=shard_init,
-                                  search_range_mb=search_range_mb,
-                                  hidden_dim=hidden_dim,
-                                  min_chunk_size_mb=min_chunk_size_mb,
-                                  scatter_after_inference=scatter_after_inference)
+
+        optim_kwargs = dict(
+            initial_scale=initial_scale,
+            growth_factor=growth_factor,
+            backoff_factor=backoff_factor,
+            growth_interval=growth_interval,
+            hysteresis=hysteresis,
+            min_scale=min_scale,
+            max_scale=max_scale,
+            max_norm=max_norm,
+            norm_type=norm_type
+        )
+        # NOTE: dist should be initialized before calling get_current_device()
         if stage == 3:
-            self.zero_optim_config = dict(gpu_margin_mem_ratio=gpu_margin_mem_ratio)
+            plugin_initializer = lambda: GeminiPlugin(
+                # gemini_config
+                device=get_current_device(),
+                placement_policy=placement_policy,
+                precision=precision,
+                pin_memory=pin_memory,
+                force_outputs_fp32=force_outputs_fp32,
+                strict_ddp_mode=shard_init,
+                search_range_mb=search_range_mb,
+                hidden_dim=hidden_dim,
+                min_chunk_size_mb=min_chunk_size_mb,
+                # zero_optim_config
+                gpu_margin_mem_ratio=gpu_margin_mem_ratio,
+                # optim_config
+                **optim_kwargs
+            )
         else:
-            self.zero_optim_config = dict(reduce_bucket_size=reduce_bucket_size,
-                                          overlap_communication=overlap_communication,
-                                          cpu_offload=(placement_policy == 'cpu'))
-        self.optim_kwargs = dict(initial_scale=initial_scale,
-                                 growth_factor=growth_factor,
-                                 backoff_factor=backoff_factor,
-                                 growth_interval=growth_interval,
-                                 hysteresis=hysteresis,
-                                 min_scale=min_scale,
-                                 max_scale=max_scale,
-                                 max_norm=max_norm,
-                                 norm_type=norm_type)
+            plugin_initializer = lambda: LowLevelZeroPlugin(
+                # zero_config
+                stage=stage,
+                precision=precision,
+                # zero_optim_config
+                reduce_bucket_size_in_m=reduce_bucket_size,
+                overlap_communication=overlap_communication,
+                cpu_offload=(placement_policy == 'cpu'),
+                # optim_config
+                **optim_kwargs
+            )
+
+        super().__init__(seed, plugin_initializer)
+
+    def _post_init(self) -> None:
+        assert isinstance(self.plugin, (LowLevelZeroPlugin, GeminiPlugin)), \
+            f'{type(self).__name__}\'s plugin is not initialized properly.'
 
     def setup_distributed(self) -> None:
         colossalai.launch_from_torch({}, seed=self.seed)
 
     def model_init_context(self):
-        if self.stage == 3:
+        if isinstance(self.plugin, GeminiPlugin):
             world_size = dist.get_world_size()
             shard_pg = ProcessGroup(tp_degree=world_size) if self.shard_init else None
             default_dist_spec = ShardSpec([-1], [world_size]) if self.shard_init else None
@@ -131,61 +155,29 @@ class ColossalAIStrategy(DDPStrategy):
                                    default_dist_spec=default_dist_spec)
         return super().model_init_context()
 
-    def setup_model(self, model: nn.Module) -> nn.Module:
-
-        model = zero_model_wrapper(model, zero_stage=self.stage, gemini_config=self.gemini_config)
-
-        if self.stage != 3 and self.precision == 'fp16':
-            model = model.half().cuda()
-        return model
-
-    def setup_optimizer(self, optimizer: optim.Optimizer, model: nn.Module) -> optim.Optimizer:
-        assert isinstance(optimizer, (CPUAdam, HybridAdam)), f'Unsupported optimizer {type(optimizer)}'
-        return zero_optim_wrapper(model, optimizer, optim_config=self.zero_optim_config, **self.optim_kwargs)
-
-    def backward(self, loss: torch.Tensor, model: nn.Module, optimizer: optim.Optimizer, **kwargs) -> None:
-        optimizer.backward(loss)
-
-    def optimizer_step(self, optimizer: optim.Optimizer, **kwargs) -> None:
-        optimizer.step()
-
-    def save_model(self, model: nn.Module, path: str, only_rank0: bool = True) -> None:
-        if only_rank0 and dist.get_rank() != 0 and self.stage != 3:
-            return
-        if self.stage == 3:
-            assert isinstance(model, ZeroDDP)
-            # for stage 3, state_dict() method should be called on every rank
-            state_dict = model.state_dict(only_rank_0=only_rank0)
-        else:
-            # only_rank0 is false or rank == 0
-            state_dict = model.state_dict()
-        if only_rank0 and dist.get_rank() != 0:
-            return
-        torch.save(state_dict, path)
-
-    def save_optimizer(self, optimizer: Optimizer, path: str, only_rank0: bool = False) -> None:
-        if only_rank0:
-            raise RuntimeError(
-                f'Optimizer states are sharded when using ColossalAIStrategy. Only rank0 is not supported.')
-        torch.save(optimizer.state_dict(), path)
-
     def unwrap_model(self, model: nn.Module) -> nn.Module:
-        if self.stage == 3:
-            assert isinstance(model, ZeroDDP)
+        if isinstance(self.plugin, GeminiPlugin):
+            assert isinstance(model, GeminiModel)
+            ddp_model = model.unwrap()
+            assert isinstance(ddp_model, GeminiDDP)
+            return ddp_model.module
+        elif isinstance(self.plugin, LowLevelZeroPlugin):
+            assert isinstance(model, LowLevelZeroModel)
             return model.module
-        return model
+        else:
+            raise RuntimeError(f'Unsupported plugin {type(self.plugin)}')
 
     def save_pretrained(self,
                         model: nn.Module,
                         path: str,
                         only_rank0: bool = True,
                         tokenizer: Optional[PreTrainedTokenizerBase] = None) -> None:
-        if self.stage == 3:
+        if isinstance(self.plugin, GeminiPlugin):
             raise RuntimeError('ColossalAI strategy with stage-3 does not support save_pretrained() now')
         super().save_pretrained(model, path, only_rank0, tokenizer)
 
     def get_model_state_dict_shard(self, model: nn.Module, **config):
-        if self.stage != 3:
+        if not isinstance(self.plugin, GeminiPlugin):
             yield from super().get_model_state_dict_shard(model, **config)
         else:
             # unwrapped_model = self._unwrap_model(model)
@@ -193,5 +185,5 @@ class ColossalAIStrategy(DDPStrategy):
             #     if isinstance(module, LoraLinear):
             #         module.merge_weights = True
             #         module.eval()
-            assert isinstance(model, ZeroDDP)
+            assert isinstance(model, LowLevelZeroModel)
             yield from model.state_dict_shard(max_shard_size=1024, only_rank_0=False)
