@@ -1,21 +1,3 @@
-#!/usr/bin/env python
-# coding=utf-8
-# Copyright 2023 The HuggingFace Inc. team. All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-"""Script to fine-tune Stable Diffusion for InstructPix2Pix."""
-
 import argparse
 import logging
 import math
@@ -33,9 +15,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.checkpoint
 import transformers
-from accelerate import Accelerator
-from accelerate.logging import get_logger
-from accelerate.utils import ProjectConfiguration, set_seed
 from datasets import load_dataset
 from huggingface_hub import create_repo, upload_folder
 from packaging import version
@@ -50,8 +29,25 @@ from diffusers.training_utils import EMAModel
 from diffusers.utils import check_min_version, deprecate, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
+import colossalai
+from colossalai.context.parallel_mode import ParallelMode
+from colossalai.core import global_context as gpc
+from colossalai.cluster import DistCoordinator
+from colossalai.logging import disable_existing_loggers, get_dist_logger
+from colossalai.nn.optimizer import HybridAdam
+from colossalai.utils import get_current_device
+from colossalai.zero import ColoInitContext
+from colossalai.zero.gemini import get_static_torch_model
+from colossalai.booster import Booster
+from colossalai.booster.plugin import GeminiPlugin, LowLevelZeroPlugin, TorchDDPPlugin
 
-logger = get_logger(__name__, log_level="INFO")
+
+
+if is_wandb_available():
+    import wandb
+
+disable_existing_loggers()
+logger = get_dist_logger()
 
 DATASET_NAME_MAPPING = {
     "fusing/instructpix2pix-1000-samples": ("input_image", "edit_prompt", "edited_image"),
@@ -291,6 +287,19 @@ def parse_args():
             " *output_dir/runs/**CURRENT_DATETIME_HOSTNAME***."
         ),
     )
+    parser.add_argument('-p',
+                        '--plugin',
+                        type=str,
+                        default='torch_ddp',
+                        choices=['torch_ddp', 'torch_ddp_fp16', 'gemini', 'low_level_zero'],
+                        help="plugin to use")
+    parser.add_argument(
+        "--placement",
+        type=str,
+        default="cpu",
+        help="Placement Policy for Gemini. Valid when using colossalai as dist plan.",
+    )
+    
     parser.add_argument(
         "--mixed_precision",
         type=str,
