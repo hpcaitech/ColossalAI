@@ -27,7 +27,7 @@ from transformers.utils.versions import require_version
 
 import colossalai
 from colossalai.booster import Booster
-from colossalai.zero.gemini.placement_policy import AutoPlacementPolicy
+from colossalai.zero.gemini.placement_policy import AutoPlacementPolicy, ConstPlacementPolicy
 from colossalai.booster.plugin import GeminiPlugin, LowLevelZeroPlugin, TorchDDPPlugin, TorchFSDPPlugin
 from colossalai.booster.plugin.dp_plugin_base import DPPluginBase
 from colossalai.cluster import DistCoordinator
@@ -109,7 +109,7 @@ def main():
     parser.add_argument('-g', '--grad_checkpoint', action='store_true', help='Use gradient checkpointing')
     parser.add_argument('-l', '--max_length', type=int, default=2048, help='Max sequence length')
     parser.add_argument('-w', '--warmup_ratio', type=float, default=0.8, help='warm up ratio for auto placement policy')
-
+    parser.add_argument('-m', '--memory_limit', type=int, help='Gemini memory limit in mb')
     args = parser.parse_args()
 
     colossalai.launch_from_torch({})
@@ -124,6 +124,7 @@ def main():
     elif args.plugin == 'gemini_cpu':
         plugin = GeminiPlugin(placement_policy='cpu')
     elif args.plugin == 'const':
+        ConstPlacementPolicy.set_const_memory_boundary(args.memory_limit)
         plugin = GeminiPlugin(placement_policy='const')
     elif args.plugin == 'fsdp':
         plugin = TorchFSDPPlugin(mixed_precision=MixedPrecision(reduce_dtype=torch.float16, param_dtype=torch.float16,
