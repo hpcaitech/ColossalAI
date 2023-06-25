@@ -1,10 +1,11 @@
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, List, Optional, Union
+from contextlib import contextmanager
+from typing import List
 
-import torch
 import torch.nn as nn
 import tqdm
 from coati.experience_maker import Experience
+from coati.replay_buffer import NaiveReplayBuffer
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 
@@ -59,17 +60,46 @@ class SLTrainer(ABC):
             self._train(epoch)
             self._eval(epoch)
 
-    def _on_fit_end(self) -> None:
-        for callback in self.callbacks:
-            callback.on_fit_end()
 
-    def _on_episode_start(self, episode: int) -> None:
+class OnPolicyTrainer(ABC):
+    """
+        Base class for on-policy rl trainers, e.g. PPO.
+
+    Args:
+        strategy (Strategy):the strategy to use for training
+        buffer (NaiveReplayBuffer): the buffer to collect experiences
+        callbacks (List[Callback], defaults to []): the callbacks to call during training process
+    """
+
+    def __init__(self,
+                 strategy: Strategy,
+                 buffer: NaiveReplayBuffer,
+                 callbacks: List[Callback] = []
+                 ) -> None:
+        super().__init__()
+        self.strategy = strategy
+        self.buffer = buffer
+        self.callbacks = callbacks
+
+    @contextmanager
+    def _fit_ctx(self) -> None:
+        for callback in self.callbacks:
+            callback.on_fit_start()
+        try:
+            yield
+        finally:
+            for callback in self.callbacks:
+                callback.on_fit_end()
+
+    @contextmanager
+    def _episode_ctx(self, episode: int) -> None:
         for callback in self.callbacks:
             callback.on_episode_start(episode)
-
-    def _on_episode_end(self, episode: int) -> None:
-        for callback in self.callbacks:
-            callback.on_episode_end(episode)
+        try:
+            yield
+        finally:
+            for callback in self.callbacks:
+                callback.on_episode_end(episode)
 
     def _on_make_experience_start(self) -> None:
         for callback in self.callbacks:
@@ -79,14 +109,6 @@ class SLTrainer(ABC):
         for callback in self.callbacks:
             callback.on_make_experience_end(experience)
 
-    def _on_learn_epoch_start(self, epoch: int) -> None:
-        for callback in self.callbacks:
-            callback.on_learn_epoch_start(epoch)
-
-    def _on_learn_epoch_end(self, epoch: int) -> None:
-        for callback in self.callbacks:
-            callback.on_learn_epoch_end(epoch)
-
     def _on_learn_batch_start(self) -> None:
         for callback in self.callbacks:
             callback.on_learn_batch_start()
@@ -94,3 +116,35 @@ class SLTrainer(ABC):
     def _on_learn_batch_end(self, metrics: dict, experience: Experience) -> None:
         for callback in self.callbacks:
             callback.on_learn_batch_end(metrics, experience)
+
+    # TODO(cwher):
+    # @abstractmethod
+    # def _make_experience(self):
+    #     raise NotImplementedError()
+
+    # @abstractmethod
+    # def _learn(self):
+    #     raise NotImplementedError()
+
+    # def _collect_phase(self):
+    #     self._on_make_experience_start()
+    #     experience = self._make_experience()
+    #     self._on_make_experience_end(experience)
+
+    # def _update_phase(self):
+    #     pass
+
+    # def fit(self,
+    #         num_episodes: int,
+    #         num_collect_steps: int,
+    #         num_update_steps: int,
+    #         ):
+    #     with self._fit_ctx():
+    #         for episode in range(num_episodes):
+    #             with self._episode_ctx(episode):
+    #                 for collect_step in range(num_collect_steps):
+    #                     self._collect_phase()
+    #                 for update_step in range(num_update_steps):
+    #                     self._update_phase()
+    #                 # NOTE: this is for on-policy algorithms
+    #                 self.buffer.clear()

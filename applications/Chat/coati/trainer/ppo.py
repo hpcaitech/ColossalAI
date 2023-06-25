@@ -1,6 +1,5 @@
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Dict, List, Union
 
-import torch
 import torch.nn as nn
 from coati.experience_maker import Experience, NaiveExperienceMaker
 from coati.models.base import Actor, Critic, get_base_model
@@ -11,17 +10,16 @@ from torch import Tensor
 from torch.optim import Optimizer
 from torch.utils.data import DistributedSampler
 from tqdm import tqdm
-from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
 from colossalai.utils import get_current_device
 
-from .base import Trainer
+from .base import OnPolicyTrainer
 from .callbacks import Callback
 from .strategies import ColossalAIStrategy, Strategy
 from .utils import is_rank_0, to_device
 
 
-class PPOTrainer(Trainer):
+class PPOTrainer(OnPolicyTrainer):
     """
         Trainer for PPO algorithm.
 
@@ -77,12 +75,14 @@ class PPOTrainer(Trainer):
                 "GeminiPlugin is not compatible with manual model.to('cpu')"
 
         experience_maker = NaiveExperienceMaker(actor, critic, reward_model, initial_model, kl_coef)
-        replay_buffer = NaiveReplayBuffer(train_batch_size, buffer_limit, buffer_cpu_offload)
+        buffer = NaiveReplayBuffer(train_batch_size, buffer_limit, buffer_cpu_offload)
         generate_kwargs = _set_default_generate_kwargs(strategy, generate_kwargs, actor)
-        super().__init__(strategy, max_epochs, dataloader_pin_memory, callbacks, **generate_kwargs)
+        super().__init__(strategy, buffer, callbacks)
 
+        self.max_epochs = max_epochs
+        self.dataloader_pin_memory = dataloader_pin_memory
+        self.generate_kwargs = generate_kwargs
         self.experience_maker = experience_maker
-        self.replay_buffer = replay_buffer
         self.sample_replay_buffer = sample_replay_buffer
         self.offload_inference_models = offload_inference_models
 
@@ -109,20 +109,18 @@ class PPOTrainer(Trainer):
 
     def _learn(self):
         # replay buffer may be empty at first, we should rebuild at each training
-        if not self.sample_replay_buffer:
-            # HACK(cwher): according to the design of boost API, dataloader should also be boosted,
-            #  but it is impractical to adapt this pattern in RL training. Thus, I left dataloader unboosted.
-            dataloader = self.strategy.setup_dataloader(self.replay_buffer, self.dataloader_pin_memory)
         if self.sample_replay_buffer:
             pbar = tqdm(range(self.max_epochs), desc='Train epoch', disable=not is_rank_0())
             for _ in pbar:
-                experience = self.replay_buffer.sample()
+                experience = self.buffer.sample()
                 experience.to_device(self.device)
                 metrics = self.training_step(experience)
                 pbar.set_postfix(metrics)
         else:
+            # HACK(cwher): according to the design of boost API, dataloader should also be boosted,
+            #  but it is impractical to adapt this pattern in RL training. Thus, I left dataloader unboosted.
+            dataloader = self.strategy.setup_dataloader(self.buffer, self.dataloader_pin_memory)
             for epoch in range(self.max_epochs):
-                self._on_learn_epoch_start(epoch)
                 if isinstance(dataloader.sampler, DistributedSampler):
                     dataloader.sampler.set_epoch(epoch)
                 pbar = tqdm(dataloader, desc=f'Train epoch [{epoch+1}/{self.max_epochs}]', disable=not is_rank_0())
@@ -132,7 +130,6 @@ class PPOTrainer(Trainer):
                     metrics = self.training_step(experience)
                     self._on_learn_batch_end(metrics, experience)
                     pbar.set_postfix(metrics)
-                self._on_learn_epoch_end(epoch)
 
     def fit(self,
             prompt_dataloader,
@@ -143,30 +140,28 @@ class PPOTrainer(Trainer):
         time = 0
         self.pretrain_dataloader = pretrain_dataloader
         self.prompt_dataloader = prompt_dataloader
-        self._on_fit_start()
-        for episode in range(num_episodes):
-            self._on_episode_start(episode)
-            for timestep in tqdm(range(max_timesteps),
-                                 desc=f'Episode [{episode+1}/{num_episodes}]',
-                                 disable=not is_rank_0()):
-                time += 1
-                prompts = next(iter(self.prompt_dataloader))
-                self._on_make_experience_start()
-                if self.offload_inference_models:
-                    # TODO(ver217): this may be controlled by strategy if they are prepared by strategy
-                    self.experience_maker.initial_model.to(self.device)
-                    self.experience_maker.reward_model.to(self.device)
-                experience = self._make_experience(prompts)
-                self._on_make_experience_end(experience)
-                self.replay_buffer.append(experience)
-                if time % update_timesteps == 0:
-                    if self.offload_inference_models:
-                        self.experience_maker.initial_model.to('cpu')
-                        self.experience_maker.reward_model.to('cpu')
-                    self._learn()
-                    self.replay_buffer.clear()
-            self._on_episode_end(episode)
-        self._on_fit_end()
+        with self._fit_ctx():
+            for episode in range(num_episodes):
+                with self._episode_ctx(episode):
+                    for timestep in tqdm(range(max_timesteps),
+                                         desc=f'Episode [{episode+1}/{num_episodes}]',
+                                         disable=not is_rank_0()):
+                        time += 1
+                        prompts = next(iter(self.prompt_dataloader))
+                        self._on_make_experience_start()
+                        if self.offload_inference_models:
+                            # TODO(ver217): this may be controlled by strategy if they are prepared by strategy
+                            self.experience_maker.initial_model.to(self.device)
+                            self.experience_maker.reward_model.to(self.device)
+                        experience = self._make_experience(prompts)
+                        self._on_make_experience_end(experience)
+                        self.buffer.append(experience)
+                        if time % update_timesteps == 0:
+                            if self.offload_inference_models:
+                                self.experience_maker.initial_model.to('cpu')
+                                self.experience_maker.reward_model.to('cpu')
+                            self._learn()
+                            self.buffer.clear()
 
     def training_step(self, experience: Experience) -> Dict[str, float]:
         self.actor.train()
