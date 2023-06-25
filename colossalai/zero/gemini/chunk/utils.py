@@ -23,10 +23,10 @@ def init_chunk_manager(model: nn.Module,
                        verbose: bool = False,
                        **kwargs) -> ChunkManager:
     if hidden_dim:
-        search_interval_byte = hidden_dim
+        search_interval = hidden_dim
     else:
-        search_interval_byte = 1024    # defaults to 1kb
-    kwargs["search_interval_byte"] = search_interval_byte
+        search_interval = 1024    # defaults to 1024
+    kwargs["search_interval"] = search_interval
 
     dist.barrier()
     begin = time()
@@ -36,13 +36,13 @@ def init_chunk_manager(model: nn.Module,
     dist.barrier()
     end = time()
     span_s = end - begin
-    mb_size = 1024**2
-    total_size /= mb_size
-    wasted_size /= mb_size
+    mega_unit = 1024**2
+    total_size /= mega_unit
+    wasted_size /= mega_unit
 
     if verbose and dist.get_rank() == 0:
         print("searching chunk configuration is completed in {:.2f} s.\n".format(span_s),
-              "used number: {:.2f} MB, wasted number: {:.2f} MB\n".format(total_size, wasted_size),
+              "used number: {:.2f} * 2^20, wasted number: {:.2f} * 2^20\n".format(total_size, wasted_size),
               "total wasted percentage is {:.2f}%".format(100 * safe_div(wasted_size, total_size + wasted_size)),
               sep='',
               flush=True)

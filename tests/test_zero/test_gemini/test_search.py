@@ -30,9 +30,9 @@ def exam_search_chunk_size():
         model = model_builder()
     init_1d_row_spec(model, pg_tp)
     config_dict, *_ = search_chunk_configuration(model,
-                                                 search_range_mb=1,
-                                                 search_interval_byte=16,
-                                                 min_chunk_size_mb=0,
+                                                 search_range_m=1,
+                                                 search_interval=16,
+                                                 min_chunk_size_m=0,
                                                  filter_exlarge_params=True)
 
     for key in config_dict:
@@ -54,9 +54,9 @@ def exam_search_strict_ddp():
     with ColoInitContext(device=get_current_device()):
         ddp_model = model_builder()
     re_dict, re_total, re_wasted = search_chunk_configuration(ddp_model,
-                                                              search_range_mb=1,
-                                                              search_interval_byte=16,
-                                                              min_chunk_size_mb=0,
+                                                              search_range_m=1,
+                                                              search_interval=16,
+                                                              min_chunk_size_m=0,
                                                               filter_exlarge_params=True,
                                                               strict_ddp_flag=False)
     # get the chunk configuration over sharded ddp models
@@ -64,9 +64,9 @@ def exam_search_strict_ddp():
                          default_dist_spec=default_shard_spec):
         sharded_ddp_model = model_builder()
     sh_dict, sh_total, sh_wasted = search_chunk_configuration(sharded_ddp_model,
-                                                              search_range_mb=1,
-                                                              search_interval_byte=16,
-                                                              min_chunk_size_mb=0,
+                                                              search_range_m=1,
+                                                              search_interval=16,
+                                                              min_chunk_size_m=0,
                                                               filter_exlarge_params=True,
                                                               strict_ddp_flag=True)
     assert re_dict == sh_dict
@@ -91,8 +91,8 @@ def exam_chunk_manager():
     chunk_manager = init_chunk_manager(sharded_ddp_model,
                                        get_current_device(),
                                        hidden_dim=16,
-                                       search_range_mb=1,
-                                       min_chunk_size_mb=0,
+                                       search_range_m=1,
+                                       min_chunk_size_m=0,
                                        filter_exlarge_params=True,
                                        strict_ddp_flag=True)
     config_dict = chunk_manager.dp_degree_chunk_size_dict
