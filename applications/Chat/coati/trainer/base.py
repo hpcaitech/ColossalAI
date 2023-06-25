@@ -2,36 +2,52 @@ from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
+import torch.nn as nn
 from coati.experience_maker import Experience
+from torch.optim import Optimizer
+from torch.utils.data import DataLoader
 
 from .callbacks import Callback
 from .strategies import Strategy
 
 
-class Trainer(ABC):
+class SLTrainer(ABC):
     """
-        Base class for rlhf trainers.
+        Base class for supervised learning trainers.
 
     Args:
         strategy (Strategy):the strategy to use for training
         max_epochs (int, defaults to 1): the number of epochs of training process
-        dataloader_pin_memory (bool, defaults to True): whether to pin memory for data loader
-        callbacks (List[Callback], defaults to []): the callbacks to call during training process
-        generate_kwargs (dict, optional): the kwargs to use while model generating
+        model (nn.Module): the model to train
+        optim (Optimizer): the optimizer to use for training
+        train_dataloader (DataLoader): the dataloader to use for training
     """
 
     def __init__(self,
                  strategy: Strategy,
-                 max_epochs: int = 1,
-                 dataloader_pin_memory: bool = True,
-                 callbacks: List[Callback] = [],
-                 **generate_kwargs) -> None:
+                 max_epochs: int,
+                 model: nn.Module,
+                 optimizer: Optimizer,
+                 train_dataloader: DataLoader,
+                 ) -> None:
         super().__init__()
         self.strategy = strategy
         self.max_epochs = max_epochs
-        self.generate_kwargs = generate_kwargs
-        self.dataloader_pin_memory = dataloader_pin_memory
-        self.callbacks = callbacks
+        self.model = model
+        self.optimizer = optimizer
+        self.train_dataloader = train_dataloader
+
+    # @abstractmethod
+    # def _train(self):
+    #     raise NotImplementedError()
+
+    # @abstractmethod
+    # def _eval(self):
+    #     raise NotImplementedError()
+
+    @abstractmethod
+    def fit(self):
+        raise NotImplementedError()
 
     # TODO(ver217): maybe simplify these code using context
     def _on_fit_start(self) -> None:

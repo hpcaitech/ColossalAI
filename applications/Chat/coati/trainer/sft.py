@@ -1,5 +1,5 @@
 import time
-from typing import List
+from typing import List, Optional
 
 import torch
 import torch.distributed as dist
@@ -9,13 +9,13 @@ from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from .base import Trainer
+from .base import SLTrainer
 from .callbacks import Callback
 from .strategies import ColossalAIStrategy, Strategy
 from .utils import is_rank_0, to_device
 
 
-class SFTTrainer(Trainer):
+class SFTTrainer(SLTrainer):
     """
         Trainer to use while training reward model.
 
@@ -23,12 +23,11 @@ class SFTTrainer(Trainer):
         model (torch.nn.Module): the model to train
         strategy (Strategy): the strategy to use for training
         optim(Optimizer): the optimizer to use for training
+        lr_scheduler(_LRScheduler): the lr scheduler to use for training
         train_dataloader: the dataloader to use for training
         eval_dataloader: the dataloader to use for evaluation
-        batch_size (int, defaults to 1): the batch size while training
         max_epochs (int, defaults to 2): the number of epochs to train
-        callbacks (List[Callback], defaults to []): the callbacks to call during training process
-        optim_kwargs (dict, defaults to {'lr':1e-4}): the kwargs to use while initializing optimizer
+        accumulation_steps (int, defaults to 8): the number of steps to accumulate gradients
     """
 
     def __init__(
@@ -38,23 +37,22 @@ class SFTTrainer(Trainer):
         optim: Optimizer,
         lr_scheduler: _LRScheduler,
         train_dataloader: DataLoader,
-        eval_dataloader: DataLoader = None,
+        eval_dataloader: Optional[DataLoader] = None,
         max_epochs: int = 2,
         accumulation_steps: int = 8,
-        callbacks: List[Callback] = [],
     ) -> None:
         if accumulation_steps > 1 and isinstance(strategy, ColossalAIStrategy):
             from colossalai.booster.plugin import GeminiPlugin
             assert not isinstance(strategy.plugin, GeminiPlugin), \
                 "Accumulation steps are not supported in stage 3 of ColossalAI"
-        super().__init__(strategy, max_epochs, callbacks=callbacks)
-        self.train_dataloader = train_dataloader
+        super().__init__(
+            strategy, max_epochs,
+            model, optim, train_dataloader
+        )
+
         self.eval_dataloader = eval_dataloader
-        self.model = model
-        self.optimizer = optim
 
         self.accumulation_steps = accumulation_steps
-
         self.scheduler = lr_scheduler
 
     def fit(self, logger, use_wandb: bool = False):

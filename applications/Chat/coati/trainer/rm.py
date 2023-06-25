@@ -8,13 +8,12 @@ from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from .base import Trainer
-from .callbacks import Callback
+from .base import SLTrainer
 from .strategies import Strategy
 from .utils import is_rank_0
 
 
-class RewardModelTrainer(Trainer):
+class RewardModelTrainer(SLTrainer):
     """
         Trainer to use while training reward model.
 
@@ -27,9 +26,7 @@ class RewardModelTrainer(Trainer):
         train_dataloader (DataLoader): the dataloader to use for training
         valid_dataloader (DataLoader): the dataloader to use for validation
         eval_dataloader (DataLoader): the dataloader to use for evaluation
-        batch_size (int, defaults to 1): the batch size while training
         max_epochs (int, defaults to 2): the number of epochs to train
-        callbacks (List[Callback], defaults to []): the callbacks to call during training process
     """
 
     def __init__(
@@ -43,17 +40,16 @@ class RewardModelTrainer(Trainer):
         valid_dataloader: DataLoader,
         eval_dataloader: DataLoader,
         max_epochs: int = 1,
-        callbacks: List[Callback] = [],
     ) -> None:
-        super().__init__(strategy, max_epochs, callbacks=callbacks)
+        super().__init__(
+            strategy, max_epochs,
+            model, optim, train_dataloader
+        )
 
-        self.train_dataloader = train_dataloader
         self.valid_dataloader = valid_dataloader
         self.eval_dataloader = eval_dataloader
 
-        self.model = model
         self.loss_fn = loss_fn
-        self.optimizer = optim
         self.scheduler = lr_scheduler
 
     def eval_acc(self, dataloader):
@@ -88,9 +84,7 @@ class RewardModelTrainer(Trainer):
                             disable=not is_rank_0())
             # train
             self.model.train()
-            cnt = 0
-            acc = 0
-            dist = 0
+            cnt, acc, dist = 0, 0, 0
             for chosen_ids, c_mask, reject_ids, r_mask in self.train_dataloader:
                 chosen_ids = chosen_ids.squeeze(1).to(torch.cuda.current_device())
                 c_mask = c_mask.squeeze(1).to(torch.cuda.current_device())
