@@ -1,6 +1,7 @@
 #!/bin/bash
 
-export MODEL_NAME="runwayml/stable-diffusion-v1-5"
+# export MODEL_NAME="runwayml/stable-diffusion-v1-5"
+export MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export DATASET_ID="fusing/instructpix2pix-1000-samples"
 
 accelerate launch --mixed_precision="fp16" train_instruct_pix2pix.py \

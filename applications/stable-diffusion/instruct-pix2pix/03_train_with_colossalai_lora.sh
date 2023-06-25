@@ -1,6 +1,7 @@
 #!/bin/bash
 
-export MODEL_NAME="runwayml/stable-diffusion-v1-5"
+# export MODEL_NAME="runwayml/stable-diffusion-v1-5"
+export MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export DATASET_ID="fusing/instructpix2pix-1000-samples"
 
 torchrun --nproc_per_node 4 train_instruct_pix2pix_colossalai_lora.py \

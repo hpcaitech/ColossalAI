@@ -5,7 +5,6 @@ import os
 import shutil
 from pathlib import Path
 
-import accelerate
 import datasets
 import numpy as np
 import PIL
@@ -29,6 +28,8 @@ from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
 from diffusers.utils import check_min_version, deprecate, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
+from diffusers.models.cross_attention import LoRACrossAttnProcessor
+from diffusers.loaders import AttnProcsLayers
 
 import colossalai
 from colossalai.context.parallel_mode import ParallelMode
@@ -92,7 +93,9 @@ def main():
     booster = Booster(plugin=plugin, **booster_kwargs)
 
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
-    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
+    
+    if args.seed is not None:
+        generator = torch.Generator(device=get_current_device()).manual_seed(args.seed)
 
     if args.report_to == "wandb":
         if not is_wandb_available():
@@ -118,9 +121,6 @@ def main():
         transformers.utils.logging.set_verbosity_error()
         diffusers.utils.logging.set_verbosity_error()
 
-    # If passed along, set the training seed now.
-    if args.seed is not None:
-        set_seed(args.seed)
 
     # Handle the repository creation
     if local_rank == 0:
@@ -163,6 +163,27 @@ def main():
     vae.requires_grad_(False)
     text_encoder.requires_grad_(False)
 
+    unet.requires_grad_(False)
+
+    # Set correct lora layers
+    lora_attn_procs = {}
+    for name in unet.attn_processors.keys():
+        cross_attention_dim = None if name.endswith("attn1.processor") else unet.config.cross_attention_dim
+        if name.startswith("mid_block"):
+            hidden_size = unet.config.block_out_channels[-1]
+        elif name.startswith("up_blocks"):
+            block_id = int(name[len("up_blocks.")])
+            hidden_size = list(reversed(unet.config.block_out_channels))[block_id]
+        elif name.startswith("down_blocks"):
+            block_id = int(name[len("down_blocks.")])
+            hidden_size = unet.config.block_out_channels[block_id]
+
+        lora_attn_procs[name] = LoRACrossAttnProcessor(hidden_size=hidden_size,
+                                                       cross_attention_dim=cross_attention_dim)
+
+    unet.set_attn_processor(lora_attn_procs)
+    lora_layers = AttnProcsLayers(unet.attn_processors)
+
     # Create EMA for the unet.
     if args.use_ema:
         ema_unet = EMAModel(unet.parameters(), model_cls=UNet2DConditionModel, model_config=unet.config)
@@ -178,7 +199,7 @@ def main():
 
     if args.scale_lr:
         args.learning_rate = (
-            args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
+            args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * world_size
         )
     
     # config optimizer for colossalai zero
@@ -289,11 +310,11 @@ def main():
         examples["input_ids"] = tokenize_captions(captions)
         return examples
 
-    with local_rank == 0:
-        if args.max_train_samples is not None:
-            dataset["train"] = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
-        # Set the training transforms
-        train_dataset = dataset["train"].with_transform(preprocess_train)
+
+    if args.max_train_samples is not None:
+        dataset["train"] = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
+    # Set the training transforms
+    train_dataset = dataset["train"].with_transform(preprocess_train)
 
     def collate_fn(examples):
         original_pixel_values = torch.stack([example["original_pixel_values"] for example in examples])
@@ -339,9 +360,9 @@ def main():
     # For mixed precision training we cast the text_encoder and vae weights to half-precision
     # as these models are only used for inference, keeping weights in full precision is not required.
     weight_dtype = torch.float32
-    if accelerator.mixed_precision == "fp16":
+    if args.mixed_precision == "fp16":
         weight_dtype = torch.float16
-    elif accelerator.mixed_precision == "bf16":
+    elif args.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
 
     # Move text_encode and vae to gpu and cast to weight_dtype
@@ -357,7 +378,7 @@ def main():
 
 
     # Train!
-    total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
+    total_batch_size = args.train_batch_size * world_size * args.gradient_accumulation_steps
 
     logger.info("***** Running training *****")
     logger.info(f"  Num examples = {len(train_dataset)}")
@@ -389,7 +410,7 @@ def main():
             resume_step = resume_global_step % (num_update_steps_per_epoch * args.gradient_accumulation_steps)
 
     # Only show the progress bar once on each machine.
-    progress_bar = tqdm(range(global_step, args.max_train_steps), disable=not accelerator.is_local_main_process)
+    progress_bar = tqdm(range(global_step, args.max_train_steps), disable=(local_rank!=0))
     progress_bar.set_description("Steps")
 
     torch.cuda.synchronize()
@@ -397,7 +418,6 @@ def main():
 
     for epoch in range(first_epoch, args.num_train_epochs):
         unet.train()
-        train_loss = 0.0
         for step, batch in enumerate(train_dataloader):
             # Skip steps until we reach the resumed step
             if args.resume_from_checkpoint and epoch == first_epoch and step < resume_step:
@@ -435,12 +455,16 @@ def main():
             # Conditioning dropout to support classifier-free guidance during inference. For more details
             # check out the section 3.2.1 of the original paper https://arxiv.org/abs/2211.09800.
             if args.conditioning_dropout_prob is not None:
-                random_p = torch.rand(bsz, device=latents.device, generator=generator)
+                if args.seed is not None:
+                    random_p = torch.rand(bsz, device=latents.device, generator=generator)
+                else:
+                    random_p = torch.rand(bsz, device=latents.device)
+
                 # Sample masks for the edit prompts.
                 prompt_mask = random_p < 2 * args.conditioning_dropout_prob
                 prompt_mask = prompt_mask.reshape(bsz, 1, 1)
                 # Final text conditioning.
-                null_conditioning = text_encoder(tokenize_captions([""]).to(accelerator.device))[0]
+                null_conditioning = text_encoder(tokenize_captions([""]).to(get_current_device()))[0]
                 encoder_hidden_states = torch.where(prompt_mask, null_conditioning, encoder_hidden_states)
 
                 # Sample masks for the original images.
@@ -478,8 +502,6 @@ def main():
             # Checks if the accelerator has performed an optimization step behind the scenes
             if args.use_ema:
                 ema_unet.step(unet.parameters())
-            global_step += 1
-            train_loss = 0.0
 
             if global_step % args.checkpointing_steps == 0:
                 if local_rank == 0:
@@ -513,7 +535,7 @@ def main():
             torch.cuda.synchronize()
 
     torch.cuda.synchronize()
-    booster.save_model(unet, os.path.join(args.output_dir, "diffusion_pytorch_model.bin"))
+    booster.save_model(unet, os.path.join(args.output_dir, "pix2pix_lora.bin"))
     logger.info(f"Saving model checkpoint to {args.output_dir} on rank {local_rank}")
 
 if __name__ == "__main__":
