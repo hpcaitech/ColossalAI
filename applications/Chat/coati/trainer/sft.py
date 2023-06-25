@@ -1,15 +1,13 @@
-import math
 import time
-from typing import List, Optional
+from typing import List
 
 import torch
 import torch.distributed as dist
 import wandb
 from torch.optim import Optimizer
+from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from transformers.tokenization_utils_base import PreTrainedTokenizerBase
-from transformers.trainer import get_scheduler
 
 from .base import Trainer
 from .callbacks import Callback
@@ -38,14 +36,17 @@ class SFTTrainer(Trainer):
         model,
         strategy: Strategy,
         optim: Optimizer,
+        lr_scheduler: _LRScheduler,
         train_dataloader: DataLoader,
         eval_dataloader: DataLoader = None,
         max_epochs: int = 2,
         accumulation_steps: int = 8,
         callbacks: List[Callback] = [],
     ) -> None:
-        if accumulation_steps > 1 and isinstance(strategy, ColossalAIStrategy) and strategy.stage == 3:
-            raise ValueError("Accumulation steps are not supported in stage 3 of ColossalAI")
+        if accumulation_steps > 1 and isinstance(strategy, ColossalAIStrategy):
+            from colossalai.booster.plugin import GeminiPlugin
+            assert not isinstance(strategy.plugin, GeminiPlugin), \
+                "Accumulation steps are not supported in stage 3 of ColossalAI"
         super().__init__(strategy, max_epochs, callbacks=callbacks)
         self.train_dataloader = train_dataloader
         self.eval_dataloader = eval_dataloader
@@ -53,13 +54,8 @@ class SFTTrainer(Trainer):
         self.optimizer = optim
 
         self.accumulation_steps = accumulation_steps
-        num_update_steps_per_epoch = len(train_dataloader) // self.accumulation_steps
-        max_steps = math.ceil(self.max_epochs * num_update_steps_per_epoch)
 
-        self.scheduler = get_scheduler("cosine",
-                                       self.optimizer,
-                                       num_warmup_steps=math.ceil(max_steps * 0.03),
-                                       num_training_steps=max_steps)
+        self.scheduler = lr_scheduler
 
     def fit(self, logger, use_wandb: bool = False):
         if use_wandb:
