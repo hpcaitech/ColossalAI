@@ -1,0 +1,9 @@
+diffusers>==0.12.1
+accelerate
+torchvision
+transformers>=4.21.0
+ftfy
+tensorboard
+modelcards
+colossalai
+pytest
