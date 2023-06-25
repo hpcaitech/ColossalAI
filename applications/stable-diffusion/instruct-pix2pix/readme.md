@@ -116,8 +116,15 @@ You can change the training config in the yaml file
 ### Inference config
 After training, you can use the following command line to test your inference result:
 ```
-python image_to_image_colossalai.py --validation_prompts "a person is walking on the Moon" --saved_unet_path /path/to/unet_trained_model.bin 
+python image_to_image_inference.py --validation_prompts "the picture has some sunshine" \
+                                   --val_image_url https://hf.co/datasets/diffusers/diffusers-images-docs/resolve/main/mountain.png \
+                                   --unet_saved_path /home/lclcq/ColossalAI/applications/stable-diffusion/instruct-pix2pix/instruct-pix2pix-model/diffusion_pytorch_model.bin
 ```
+
+Here is a demo how it looks like after using script train_instruct_pix2pix_colossal.py
+
+![png](stable_diffusion_example_colossalai.png?raw=true "Optional Title")
+
 
 ## Invitation to open-source contribution
 Referring to the successful attempts of [BLOOM](https://bigscience.huggingface.co/) and [Stable Diffusion](https://en.wikipedia.org/wiki/Stable_Diffusion), any and all developers and partners with computing powers, datasets, models are welcome to join and build the Colossal-AI community, making efforts towards the era of big AI models!
