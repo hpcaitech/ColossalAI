@@ -53,7 +53,7 @@ def main():
 
     image = pipe(prompt).images[0]  
         
-    image.save("astronaut_rides_horse_colossalai.png")
+    image.save("stable_diffusion_example_colossalai.png")
 
 
 if __name__ == "__main__":

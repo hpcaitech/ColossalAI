@@ -115,6 +115,11 @@ You can change the training config in the yaml file
 - more information about the configuration of ColossalAIStrategy can be found [here](https://pytorch-lightning.readthedocs.io/en/latest/advanced/model_parallel.html#colossal-ai)
 - Also, for more arguments info, please check parse_arguments.py file in the current directory.
 
+### Inference config
+After training, you can use the following command line to test your inference result:
+```
+python text_to_image_colossalai.py --validation_prompts "a person is walking on the Moon" --saved_unet_path /path/to/unet_trained_model.bin 
+```
 
 ## Invitation to open-source contribution
 Referring to the successful attempts of [BLOOM](https://bigscience.huggingface.co/) and [Stable Diffusion](https://en.wikipedia.org/wiki/Stable_Diffusion), any and all developers and partners with computing powers, datasets, models are welcome to join and build the Colossal-AI community, making efforts towards the era of big AI models!
