@@ -40,7 +40,7 @@ DISTRIBUTED_ARGS="--nproc_per_node $nprocs_per_node \
                   --master_port ${MASTER_PORT}"
 
 cd ../..
-torchrun $DISTRIBUTED_ARGS benchmark.py --plugin "const" -l 512 -c '65b' -g -m 23552
+torchrun $DISTRIBUTED_ARGS benchmark.py --plugin "const" -l 512 -c '65b' -g -m 16384
 
 
 
