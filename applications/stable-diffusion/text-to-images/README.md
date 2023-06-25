@@ -121,7 +121,7 @@ After training, you can use the following command line to test your inference re
 python text_to_image_colossalai.py --validation_prompts "a person is walking on the Moon" --saved_unet_path /path/to/unet_trained_model.bin 
 ```
 The following is an example after running command line above, and the picture was generated after training diffusion models using our script stable_diffusion_colossalai_trainer.py. 
-![alt text][stable_diffusion_example_colossalai.png]
+![alt text][stable_diffusion_example_colossalai.png?raw=true "Optional Title"]
 
 ## Invitation to open-source contribution
 Referring to the successful attempts of [BLOOM](https://bigscience.huggingface.co/) and [Stable Diffusion](https://en.wikipedia.org/wiki/Stable_Diffusion), any and all developers and partners with computing powers, datasets, models are welcome to join and build the Colossal-AI community, making efforts towards the era of big AI models!
