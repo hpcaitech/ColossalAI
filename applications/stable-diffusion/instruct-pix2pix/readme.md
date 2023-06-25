@@ -1,189 +1,171 @@
-# InstructPix2Pix training example
+# Text-to-Image: Stable Diffusion with Colossal-AI
 
-[InstructPix2Pix](https://arxiv.org/abs/2211.09800) is a method to fine-tune text-conditioned diffusion models such that they can follow an edit instruction for an input image. Models fine-tuned using this method take the following as inputs:
+Acceleration of AIGC (AI-Generated Content) models such as [Text-to-image model](https://huggingface.co/CompVis/stable-diffusion-v1-4).
 
-<p align="center">
-    <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/evaluation_diffusion_models/edit-instruction.png" alt="instructpix2pix-inputs" width=600/>
-</p>
+More details can be found in our [blog of Stable Diffusion v1](https://www.hpc-ai.tech/blog/diffusion-pretraining-and-hardware-fine-tuning-can-be-almost-7x-cheaper) and [blog of Stable Diffusion v2](https://www.hpc-ai.tech/blog/colossal-ai-0-2-0).
 
-The output is an "edited" image that reflects the edit instruction applied on the input image:
 
-<p align="center">
-    <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/output-gs%407-igs%401-steps%4050.png" alt="instructpix2pix-output" width=600/>
-</p>
+## Installation
 
-The `train_instruct_pix2pix.py` script shows how to implement the training procedure and adapt it for Stable Diffusion.
+### Option #1: Install from source
+#### Step 1: Requirements
 
-***Disclaimer: Even though `train_instruct_pix2pix.py` implements the InstructPix2Pix
-training procedure while being faithful to the [original implementation](https://github.com/timothybrooks/instruct-pix2pix) we have only tested it on a [small-scale dataset](https://huggingface.co/datasets/fusing/instructpix2pix-1000-samples). This can impact the end results. For better results, we recommend longer training runs with a larger dataset. [Here](https://huggingface.co/datasets/timbrooks/instructpix2pix-clip-filtered) you can find a large dataset for InstructPix2Pix training.***
+To begin with, make sure your operating system has the cuda version suitable for this exciting training session, which is cuda11.6/11.8. For your convience, we have set up the rest of packages here. You can create and activate a suitable [conda](https://conda.io/) environment named `ldm` :
 
-## Running locally with PyTorch
-
-### Installing the dependencies
-
-Before running the scripts, make sure to install the library's training dependencies:
-
-**Important**
-
-To make sure you can successfully run the latest versions of the example scripts, we highly recommend **installing from source** and keeping the install up to date as we update the example scripts frequently and install some example-specific requirements. To do this, execute the following steps in a new virtual environment:
-```bash
-git clone https://github.com/huggingface/diffusers
-cd diffusers
-pip install -e .
+```
+conda env create -f environment.yaml
+conda activate ldm
 ```
 
-Then cd in the example folder and run
-```bash
-pip install -r requirements.txt
+You can also update an existing [latent diffusion](https://github.com/CompVis/latent-diffusion) environment by running:
+
+```
+conda install pytorch==1.12.1 torchvision==0.13.1 torchaudio==0.12.1 cudatoolkit=11.3 -c pytorch
+pip install transformers diffusers invisible-watermark
 ```
 
-And initialize an [🤗Accelerate](https://github.com/huggingface/accelerate/) environment with:
+#### Step 2: Install [Colossal-AI](https://colossalai.org/download/) From Our Official Website
 
-```bash
-accelerate config
+You can install the latest version (0.2.7) from our official website or from source. Notice that the suitable version for this training is colossalai(0.2.5), which stands for torch(1.12.1).
+
+##### Download suggested version for this training
+
+```
+pip install colossalai==0.2.5
 ```
 
-Or for a default accelerate configuration without answering questions about your environment
+##### Download the latest version from pip for latest torch version
 
-```bash
-accelerate config default
+```
+pip install colossalai
 ```
 
-Or if your environment doesn't support an interactive shell e.g. a notebook
+##### From source:
 
-```python
-from accelerate.utils import write_basic_config
-write_basic_config()
+```
+git clone https://github.com/hpcaitech/ColossalAI.git
+cd ColossalAI
+
+# install colossalai
+CUDA_EXT=1 pip install .
 ```
 
-### Toy example
+#### Step 3: Accelerate with flash attention by xformers (Optional)
 
-As mentioned before, we'll use a [small toy dataset](https://huggingface.co/datasets/fusing/instructpix2pix-1000-samples) for training. The dataset 
-is a smaller version of the [original dataset](https://huggingface.co/datasets/timbrooks/instructpix2pix-clip-filtered) used in the InstructPix2Pix paper.
+Notice that xformers will accelerate the training process at the cost of extra disk space. The suitable version of xformers for this training process is 0.0.12, which can be downloaded directly via pip. For more release versions, feel free to check its official website: [XFormers](https://pypi.org/project/xformers/)
 
-Configure environment variables such as the dataset identifier and the Stable Diffusion
-checkpoint:
-
-```bash
-export MODEL_NAME="runwayml/stable-diffusion-v1-5"
-export DATASET_ID="fusing/instructpix2pix-1000-samples"
+```
+pip install xformers==0.0.12
 ```
 
-Now, we can launch training:
 
-```bash
-accelerate launch --mixed_precision="fp16" train_instruct_pix2pix.py \
+### stable-diffusion-model (Recommended)
+
+For example: You can follow this [link] (https://huggingface.co/CompVis/stable-diffusion-v1-4) to download your model. In our training example, we choose Stable-Diffusion-v1-4 as a demo example to who how to train our model. 
+
+### stable-diffusion-v1-4
+
+```
+git lfs install
+git clone https://huggingface.co/CompVis/stable-diffusion-v1-4
+```
+
+
+## Dataset
+
+The dataSet is from [Dataset-HuggingFace](https://huggingface.co/datasets?task_categories=task_categories:text-to-image&sort=downloads). In our example, we choose lambdalabs/pokemon-blip-captions as a demo example. You can also create your own dataset, but make sure your data set matches with formats in this [website] (https://huggingface.co/docs/diffusers/training/create_dataset). 
+
+## Training
+
+We provide the script `01_trainer_no_colossalai.sh` to run the training task without colossalai. Meanwhile, we also provided script called `02_run_trainer_with_colossalai.sh` to train text-to-image model using colossalai. Also, if you want to LoRA to fine-tune your model, we also provided a bash script called `03_run_trainer_with_colossalai_lora.sh` to fine-tune your model. If you are not familar with, you can check this [website](https://huggingface.co/docs/diffusers/training/lora). There is a simple example below to demonstarte how to launch training. 
+
+
+```
+# your model name, the python script will automaticall download corresponding model from model hub.
+export MODEL_NAME="CompVis/stable-diffusion-v1-4"
+# You can provide official dataset to train your model. You also can provide your own dataset. 
+export dataset_name="lambdalabs/pokemon-blip-captions"
+
+torchrun --nproc_per_node 4 stable_diffusion_colossalai_trainer.py \
+    --mixed_precision="fp16" \
     --pretrained_model_name_or_path=$MODEL_NAME \
-    --dataset_name=$DATASET_ID \
-    --enable_xformers_memory_efficient_attention \
-    --resolution=256 --random_flip \
-    --train_batch_size=4 --gradient_accumulation_steps=4 --gradient_checkpointing \
-    --max_train_steps=15000 \
-    --checkpointing_steps=5000 --checkpoints_total_limit=1 \
-    --learning_rate=5e-05 --max_grad_norm=1 --lr_warmup_steps=0 \
-    --conditioning_dropout_prob=0.05 \
-    --mixed_precision=fp16 \
-    --seed=42 
+    --dataset_name=$dataset_name \
+    --use_ema \
+    --resolution=512 --center_crop --random_flip \
+    --train_batch_size=1 \
+    --gradient_accumulation_steps=4 \
+    --gradient_checkpointing \
+    --max_train_steps=800 \
+    --learning_rate=1e-05 \
+    --max_grad_norm=1 \
+    --lr_scheduler="constant" --lr_warmup_steps=0 \
+    --output_dir="sd-pokemon-model" \
+    --plugin="gemini" \
+    --placement="cuda"
 ```
 
-Additionally, we support performing validation inference to monitor training progress
-with Weights and Biases. You can enable this feature with `report_to="wandb"`:
+### Training config
 
-```bash
-accelerate launch --mixed_precision="fp16" train_instruct_pix2pix.py \
-    --pretrained_model_name_or_path=$MODEL_NAME \
-    --dataset_name=$DATASET_ID \
-    --enable_xformers_memory_efficient_attention \
-    --resolution=256 --random_flip \
-    --train_batch_size=4 --gradient_accumulation_steps=4 --gradient_checkpointing \
-    --max_train_steps=15000 \
-    --checkpointing_steps=5000 --checkpoints_total_limit=1 \
-    --learning_rate=5e-05 --max_grad_norm=1 --lr_warmup_steps=0 \
-    --conditioning_dropout_prob=0.05 \
-    --mixed_precision=fp16 \
-    --val_image_url="https://hf.co/datasets/diffusers/diffusers-images-docs/resolve/main/mountain.png" \
-    --validation_prompt="make the mountains snowy" \
-    --seed=42 \
-    --report_to=wandb 
- ```
+You can change the training config in the yaml file
 
- We recommend this type of validation as it can be useful for model debugging. Note that you need `wandb` installed to use this. You can install `wandb` by running `pip install wandb`. 
+- nproc_per_node: device number used for training, default = 4
+- precision: the precision type used in training, default = 16 (fp16), you must use fp16 if you want to apply colossalai
+- plugin：we support the following training stategies: 'torch_ddp', 'torch_ddp_fp16', 'gemini', 'low_level_zero', and we choose gemini as our demonstration in our example. 
+- placement_policy: the training strategy supported by Colossal AI, default = 'cuda', which refers to loading all the parameters into cuda memory. On the other hand, 'cpu' refers to 'cpu offload' strategy while 'auto' enables 'Gemini', both featured by Colossal AI.
+- more information about the configuration of ColossalAIStrategy can be found [here](https://pytorch-lightning.readthedocs.io/en/latest/advanced/model_parallel.html#colossal-ai)
+- Also, for more arguments info, please check parse_arguments.py file in the current directory.
 
- [Here](https://wandb.ai/sayakpaul/instruct-pix2pix/runs/ctr3kovq), you can find an example training run that includes some validation samples and the training hyperparameters.
-
- ***Note: In the original paper, the authors observed that even when the model is trained with an image resolution of 256x256, it generalizes well to bigger resolutions such as 512x512. This is likely because of the larger dataset they used during training.***
-
- ## Training with multiple GPUs
-
-`accelerate` allows for seamless multi-GPU training. Follow the instructions [here](https://huggingface.co/docs/accelerate/basic_tutorials/launch)
-for running distributed training with `accelerate`. Here is an example command:
-
-```bash 
-accelerate launch --mixed_precision="fp16" --multi_gpu train_instruct_pix2pix.py \
- --pretrained_model_name_or_path=runwayml/stable-diffusion-v1-5 \
- --dataset_name=sayakpaul/instructpix2pix-1000-samples \
- --use_ema \
- --enable_xformers_memory_efficient_attention \
- --resolution=512 --random_flip \
- --train_batch_size=4 --gradient_accumulation_steps=4 --gradient_checkpointing \
- --max_train_steps=15000 \
- --checkpointing_steps=5000 --checkpoints_total_limit=1 \
- --learning_rate=5e-05 --lr_warmup_steps=0 \
- --conditioning_dropout_prob=0.05 \
- --mixed_precision=fp16 \
- --seed=42 
+### Inference config
+After training, you can use the following command line to test your inference result:
+```
+python text_to_image_colossalai.py --validation_prompts "a person is walking on the Moon" --saved_unet_path /path/to/unet_trained_model.bin 
 ```
 
- ## Inference
+## Invitation to open-source contribution
+Referring to the successful attempts of [BLOOM](https://bigscience.huggingface.co/) and [Stable Diffusion](https://en.wikipedia.org/wiki/Stable_Diffusion), any and all developers and partners with computing powers, datasets, models are welcome to join and build the Colossal-AI community, making efforts towards the era of big AI models!
 
- Once training is complete, we can perform inference:
+You may contact us or participate in the following ways:
+1. [Leaving a Star ⭐](https://github.com/hpcaitech/ColossalAI/stargazers) to show your like and support. Thanks!
+2. Posting an [issue](https://github.com/hpcaitech/ColossalAI/issues/new/choose), or submitting a PR on GitHub follow the guideline in [Contributing](https://github.com/hpcaitech/ColossalAI/blob/main/CONTRIBUTING.md).
+3. Join the Colossal-AI community on
+[Slack](https://join.slack.com/t/colossalaiworkspace/shared_invite/zt-z7b26eeb-CBp7jouvu~r0~lcFzX832w),
+and [WeChat(微信)](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/WeChat.png "qrcode") to share your ideas.
+4. Send your official proposal to email contact@hpcaitech.com
 
- ```python
-import PIL
-import requests
-import torch
-from diffusers import StableDiffusionInstructPix2PixPipeline
+Thanks so much to all of our amazing contributors!
 
-model_id = "your_model_id" # <- replace this 
-pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
-generator = torch.Generator("cuda").manual_seed(0)
+## Comments
 
-url = "https://huggingface.co/datasets/sayakpaul/sample-datasets/resolve/main/test_pix2pix_4.png"
+- Our codebase for the diffusion models builds heavily on [OpenAI's ADM codebase](https://github.com/openai/guided-diffusion)
+, [lucidrains](https://github.com/lucidrains/denoising-diffusion-pytorch),
+[Stable Diffusion](https://github.com/CompVis/stable-diffusion), [Lightning](https://github.com/Lightning-AI/lightning) and [Hugging Face](https://huggingface.co/CompVis/stable-diffusion).
+Thanks for open-sourcing!
 
+- The implementation of the transformer encoder is from [x-transformers](https://github.com/lucidrains/x-transformers) by [lucidrains](https://github.com/lucidrains?tab=repositories).
 
-def download_image(url):
-    image = PIL.Image.open(requests.get(url, stream=True).raw)
-    image = PIL.ImageOps.exif_transpose(image)
-    image = image.convert("RGB")
-    return image
+- The implementation of [flash attention](https://github.com/HazyResearch/flash-attention) is from [HazyResearch](https://github.com/HazyResearch).
 
-image = download_image(url)
-prompt = "wipe out the lake"
-num_inference_steps = 20
-image_guidance_scale = 1.5
-guidance_scale = 10
+## BibTeX
 
-edited_image = pipe(prompt, 
-    image=image, 
-    num_inference_steps=num_inference_steps, 
-    image_guidance_scale=image_guidance_scale, 
-    guidance_scale=guidance_scale,
-    generator=generator,
-).images[0]
-edited_image.save("edited_image.png")
 ```
-
-An example model repo obtained using this training script can be found
-here - [sayakpaul/instruct-pix2pix](https://huggingface.co/sayakpaul/instruct-pix2pix).
-
-We encourage you to play with the following three parameters to control
-speed and quality during performance:
-
-* `num_inference_steps`
-* `image_guidance_scale`
-* `guidance_scale`
-
-Particularly, `image_guidance_scale` and `guidance_scale` can have a profound impact
-on the generated ("edited") image (see [here](https://twitter.com/RisingSayak/status/1628392199196151808?s=20) for an example).
-
-If you're looking for some interesting ways to use the InstructPix2Pix training methodology, we welcome you to check out this blog post: [Instruction-tuning Stable Diffusion with InstructPix2Pix](https://huggingface.co/blog/instruction-tuning-sd). 
+@article{bian2021colossal,
+  title={Colossal-AI: A Unified Deep Learning System For Large-Scale Parallel Training},
+  author={Bian, Zhengda and Liu, Hongxin and Wang, Boxiang and Huang, Haichen and Li, Yongbin and Wang, Chuanrui and Cui, Fan and You, Yang},
+  journal={arXiv preprint arXiv:2110.14883},
+  year={2021}
+}
+@misc{rombach2021highresolution,
+  title={High-Resolution Image Synthesis with Latent Diffusion Models},
+  author={Robin Rombach and Andreas Blattmann and Dominik Lorenz and Patrick Esser and Björn Ommer},
+  year={2021},
+  eprint={2112.10752},
+  archivePrefix={arXiv},
+  primaryClass={cs.CV}
+}
+@article{dao2022flashattention,
+  title={FlashAttention: Fast and Memory-Efficient Exact Attention with IO-Awareness},
+  author={Dao, Tri and Fu, Daniel Y. and Ermon, Stefano and Rudra, Atri and R{\'e}, Christopher},
+  journal={arXiv preprint arXiv:2205.14135},
+  year={2022}
+}
+```
