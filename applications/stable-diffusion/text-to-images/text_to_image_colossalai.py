@@ -34,6 +34,7 @@ def main():
     )
 
     if args.unet_saved_path is not None:
+        print("loading trained model from {}".format(args.unet_saved_path))
         unet.load_state_dict(torch.load(args.unet_saved_path))
 
     pipeline = StableDiffusionPipeline.from_pretrained(
@@ -46,7 +47,7 @@ def main():
     pipe = pipeline.to("cuda")
     pipe.enable_attention_slicing()
 
-    prompt = "a photo of an astronaut riding a horse on moon"
+    prompt = "a photo of an astronaut riding a horse on Mars"
     if args.validation_prompts is not None:
         prompt = args.validation_prompts
 
