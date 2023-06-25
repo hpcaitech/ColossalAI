@@ -31,7 +31,7 @@ def main():
     )
 
     unet = UNet2DConditionModel.from_pretrained(
-        model_id, subfolder="unet", revision=None
+        model_id, subfolder="unet", scheduler=noise_scheduler, revision=None
     )
 
     if args.unet_saved_path is not None:
