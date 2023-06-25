@@ -56,7 +56,6 @@ DATASET_NAME_MAPPING = {
 def main():
     args = parse_args()
 
-    print(args)
     if args.seed is None:
         colossalai.launch_from_torch(config={})
     else:
@@ -111,11 +110,6 @@ def main():
             ).repo_id
 
     # Load scheduler, tokenizer and models.
-    noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
-    tokenizer = CLIPTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision
-    )
-
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
     tokenizer = CLIPTokenizer.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision
@@ -311,7 +305,6 @@ def main():
     )
 
     # Use Booster API to use Gemini/Zero with ColossalAI
-
     unet, optimizer, _, _, lr_scheduler = booster.boost(unet, optimizer, lr_scheduler=lr_scheduler)
 
 
@@ -426,9 +419,6 @@ def main():
                 loss = loss.mean(dim=list(range(1, len(loss.shape)))) * mse_loss_weights
                 loss = loss.mean()
 
-            # Gather the losses across all processes for logging (if we use distributed training).
-            # avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
-            # train_loss += avg_loss.item() / args.gradient_accumulation_steps
 
             
             booster.backward(loss, optimizer)
