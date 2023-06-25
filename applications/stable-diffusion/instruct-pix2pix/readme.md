@@ -1,4 +1,4 @@
-# Text-to-Image: Stable Diffusion with Colossal-AI
+# Image-to-Image: Stable Diffusion with Colossal-AI
 
 Acceleration of AIGC (AI-Generated Content) models such as [Text-to-image model](https://huggingface.co/CompVis/stable-diffusion-v1-4).
 
@@ -73,33 +73,31 @@ git clone https://huggingface.co/CompVis/stable-diffusion-v1-4
 
 ## Dataset
 
-The dataSet is from [Dataset-HuggingFace](https://huggingface.co/datasets?task_categories=task_categories:text-to-image&sort=downloads). In our example, we choose lambdalabs/pokemon-blip-captions as a demo example. You can also create your own dataset, but make sure your data set matches with formats in this [website] (https://huggingface.co/docs/diffusers/training/create_dataset). 
+The dataSet is from [Dataset-HuggingFace](https://huggingface.co/datasets?task_categories=task_categories:text-to-image&sort=downloads). In our example, we choose fusing/instructpix2pix-1000-samples as a demo example. You can also create your own dataset, but make sure your data set matches with formats in this [website] (https://huggingface.co/docs/diffusers/training/create_dataset). 
 
 ## Training
 
-We provide the script `01_trainer_no_colossalai.sh` to run the training task without colossalai. Meanwhile, we also provided script called `02_run_trainer_with_colossalai.sh` to train text-to-image model using colossalai. Also, if you want to LoRA to fine-tune your model, we also provided a bash script called `03_run_trainer_with_colossalai_lora.sh` to fine-tune your model. If you are not familar with, you can check this [website](https://huggingface.co/docs/diffusers/training/lora). There is a simple example below to demonstarte how to launch training. 
+We provide the script `01_trainer_pix2pix.sh` to run the training task without colossalai. Meanwhile, we also provided script called `02_train_with_colossalai.sh` to train text-to-image model using colossalai. Also, if you want to LoRA to fine-tune your model, we also provided a bash script called `03_train_with_colossalai_lora.sh` to fine-tune your model. If you are not familar with, you can check this [website](https://huggingface.co/docs/diffusers/training/lora). There is a simple example below to demonstarte how to launch training. 
 
 
 ```
 # your model name, the python script will automaticall download corresponding model from model hub.
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
 # You can provide official dataset to train your model. You also can provide your own dataset. 
-export dataset_name="lambdalabs/pokemon-blip-captions"
+export DATASET_ID="fusing/instructpix2pix-1000-samples"
 
-torchrun --nproc_per_node 4 stable_diffusion_colossalai_trainer.py \
+torchrun --nproc_per_node 4 train_instruct_pix2pix_colossalai.py \
     --mixed_precision="fp16" \
     --pretrained_model_name_or_path=$MODEL_NAME \
-    --dataset_name=$dataset_name \
-    --use_ema \
-    --resolution=512 --center_crop --random_flip \
-    --train_batch_size=1 \
-    --gradient_accumulation_steps=4 \
-    --gradient_checkpointing \
-    --max_train_steps=800 \
-    --learning_rate=1e-05 \
-    --max_grad_norm=1 \
-    --lr_scheduler="constant" --lr_warmup_steps=0 \
-    --output_dir="sd-pokemon-model" \
+    --dataset_name=$DATASET_ID \
+    --resolution=256 --random_flip \
+    --train_batch_size=4 --gradient_accumulation_steps=4 --gradient_checkpointing \
+    --max_train_steps=1500 \
+    --checkpointing_steps=5000 --checkpoints_total_limit=1 \
+    --learning_rate=5e-05 --max_grad_norm=1 --lr_warmup_steps=0 \
+    --conditioning_dropout_prob=0.05 \
+    --mixed_precision=fp16 \
+    --seed=42 \
     --plugin="gemini" \
     --placement="cuda"
 ```
@@ -118,7 +116,7 @@ You can change the training config in the yaml file
 ### Inference config
 After training, you can use the following command line to test your inference result:
 ```
-python text_to_image_colossalai.py --validation_prompts "a person is walking on the Moon" --saved_unet_path /path/to/unet_trained_model.bin 
+python image_to_image_colossalai.py --validation_prompts "a person is walking on the Moon" --saved_unet_path /path/to/unet_trained_model.bin 
 ```
 
 ## Invitation to open-source contribution
