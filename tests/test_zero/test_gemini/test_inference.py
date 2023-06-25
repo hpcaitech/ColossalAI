@@ -34,7 +34,7 @@ def check_param(model: ZeroDDP, torch_model: torch.nn.Module):
 
 def multi_chunk_init(model: torch.nn.Module, placement_policy: str):
     world_size = dist.get_world_size()
-    config_dict, *_ = search_chunk_configuration(model, search_range_mb=1, search_interval_byte=100)
+    config_dict, *_ = search_chunk_configuration(model, search_range_m=1, search_interval=100)
     config_dict[world_size]['chunk_size'] = 5000
     config_dict[world_size]['keep_gathered'] = False
     if placement_policy != 'cuda':
