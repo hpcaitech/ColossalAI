@@ -157,9 +157,6 @@ def main():
     deepspeed.init_distributed()
 
     config = MODEL_CONFIGS[args.config]
-    with low_precision_init(), no_init_weights():
-        model = LlamaForCausalLM(config)
-        model.tie_weights()
 
 
     # ==============================

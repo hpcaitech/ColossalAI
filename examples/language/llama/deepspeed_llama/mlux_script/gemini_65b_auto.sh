@@ -40,7 +40,7 @@ DISTRIBUTED_ARGS="--nproc_per_node $nprocs_per_node \
                   --master_port ${MASTER_PORT}"
 
 cd ../..
-torchrun $DISTRIBUTED_ARGS benchmark.py --plugin "gemini" -l 512 -c '65b' -g
+torchrun $DISTRIBUTED_ARGS benchmark.py --plugin "gemini" -l 512 -c '65b' -w 0.5 -g
 
 
 
