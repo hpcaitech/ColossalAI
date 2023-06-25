@@ -484,7 +484,7 @@ class InterleavedPipelineSchedule(PipelineSchedule):
         self.num_model_chunks = num_model_chunks
 
     def pre_processing(self, engine):
-        from colossalai.zero.sharded_model.sharded_model_v2 import ShardedModelV2
+        from colossalai.zero.legacy.sharded_model.sharded_model_v2 import ShardedModelV2
         if isinstance(engine.model, ShardedModelV2):
             self.dtype = torch.half
         elif isinstance(engine.model[0], NaiveAMPModel):
