@@ -3,12 +3,14 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
 import torch.nn as nn
+import tqdm
 from coati.experience_maker import Experience
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 
 from .callbacks import Callback
 from .strategies import Strategy
+from .utils import is_rank_0
 
 
 class SLTrainer(ABC):
@@ -37,22 +39,25 @@ class SLTrainer(ABC):
         self.optimizer = optimizer
         self.train_dataloader = train_dataloader
 
-    # @abstractmethod
-    # def _train(self):
-    #     raise NotImplementedError()
-
-    # @abstractmethod
-    # def _eval(self):
-    #     raise NotImplementedError()
-
     @abstractmethod
-    def fit(self):
+    def _train(self, epoch):
         raise NotImplementedError()
 
-    # TODO(ver217): maybe simplify these code using context
-    def _on_fit_start(self) -> None:
-        for callback in self.callbacks:
-            callback.on_fit_start()
+    @abstractmethod
+    def _eval(self, epoch):
+        raise NotImplementedError()
+
+    def _before_fit(self):
+        self.no_epoch_bar = False
+
+    def fit(self, *args, **kwargs):
+        self._before_fit(*args, **kwargs)
+        for epoch in tqdm.trange(self.max_epochs,
+                                 desc="Epochs",
+                                 disable=not is_rank_0() or self.no_epoch_bar
+                                 ):
+            self._train(epoch)
+            self._eval(epoch)
 
     def _on_fit_end(self) -> None:
         for callback in self.callbacks:
