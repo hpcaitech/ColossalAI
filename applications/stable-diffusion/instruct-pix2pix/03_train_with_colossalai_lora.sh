@@ -3,11 +3,10 @@
 export MODEL_NAME="runwayml/stable-diffusion-v1-5"
 export DATASET_ID="fusing/instructpix2pix-1000-samples"
 
-torchrun --nproc_per_node 4 train_instruct_pix2pix_colossalai_lora.py
-    ----mixed_precision="fp16" \
+torchrun --nproc_per_node 4 train_instruct_pix2pix_colossalai_lora.py \
+    --mixed_precision="fp16" \
     --pretrained_model_name_or_path=$MODEL_NAME \
     --dataset_name=$DATASET_ID \
-    --enable_xformers_memory_efficient_attention \
     --resolution=256 --random_flip \
     --train_batch_size=4 --gradient_accumulation_steps=4 --gradient_checkpointing \
     --max_train_steps=15000 \
