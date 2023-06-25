@@ -162,6 +162,7 @@ def main(args):
                                      batch_size=args.ptx_batch_size,
                                      collate_fn=data_collator)
 
+    # NOTE: For small models like opt-1.3b, reward model and initial model are not required to be parallelized.
     (actor, actor_optim), (critic, critic_optim), reward_model, initial_model = \
         strategy.prepare((actor, actor_optim), (critic, critic_optim), reward_model, initial_model)
 
