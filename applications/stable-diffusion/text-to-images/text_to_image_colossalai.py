@@ -1,3 +1,4 @@
+import argparse
 import torch
 from diffusers import DDPMScheduler, StableDiffusionPipeline, UNet2DConditionModel, AutoencoderKL
 from transformers import CLIPTextModel, CLIPTokenizer
@@ -32,7 +33,7 @@ def main():
     unet = UNet2DConditionModel.from_pretrained(
         model_id, subfolder="unet", revision=None
     )
-    
+
     if args.unet_saved_path is not None:
         unet.load_state_dict(torch.load(args.unet_saved_path))
 
