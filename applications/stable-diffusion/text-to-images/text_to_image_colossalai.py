@@ -18,7 +18,6 @@ def main():
 
     model_id = "CompVis/stable-diffusion-v1-4"
 
-    noise_scheduler = DDPMScheduler.from_pretrained(model_id, subfolder="scheduler")
     tokenizer = CLIPTokenizer.from_pretrained(
         model_id, subfolder="tokenizer", revision=None
     )
@@ -31,7 +30,7 @@ def main():
     )
 
     unet = UNet2DConditionModel.from_pretrained(
-        model_id, subfolder="unet", scheduler=noise_scheduler, revision=None
+        model_id, subfolder="unet", revision=None
     )
 
     if args.unet_saved_path is not None:
