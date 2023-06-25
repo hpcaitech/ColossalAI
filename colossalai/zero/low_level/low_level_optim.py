@@ -1,4 +1,5 @@
 # this code is inspired by the DeepSpeed library and implemented with our own design from scratch
+from contextlib import contextmanager
 from functools import partial
 from typing import Optional
 
@@ -16,20 +17,11 @@ from colossalai.core import global_context as gpc
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import ColossalaiOptimizer
 from colossalai.tensor import ColoParameter, ProcessGroup
+from colossalai.utils import conditional_context
 from colossalai.utils.cuda import get_current_device
 
-from ._utils import (
-    calculate_global_norm_from_list,
-    compute_norm,
-    flatten,
-    has_inf_or_nan,
-    reduce_tensor_dp_group,
-    release_param_grad,
-    split_by_dtype,
-    sync_param,
-    unflatten,
-)
-from .bookkeeping import BucketStore, GradientStore, ParameterStore, TensorBucket
+from ._utils import calculate_global_norm_from_list, compute_norm, flatten, has_inf_or_nan, release_param_grad
+from .bookkeeping import BucketStore, GradientStore, ParameterStore
 
 
 class LowLevelZeroFP16MixedPrecisionMixin(FP16MixedPrecisionMixin):
@@ -78,11 +70,11 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
             overlap_communication: bool = False,
             partition_grad: bool = False,    # stage 2 flag
             cpu_offload: bool = False,    # cpu offload
+            grad_accumulate_interval: int = 1,
             forced_dtype: Optional[torch.dtype] = None):
 
-        # TODO: add support for
-        # 1. optimize the sharding
-        # 2. support layer drop
+        assert not (partition_grad and grad_accumulate_interval > 1), \
+                    "gradient accumulation is not compatible with ZeRO-2"
         super(LowLevelZeroOptimizer, self).__init__(optim=optimizer)
         self._dtype = self.optim.param_groups[0]['params'][0].dtype
         self._logger = get_dist_logger()
@@ -92,6 +84,11 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
         self._partition_grads = partition_grad
 
         self._cpu_offload = cpu_offload
+
+        # grad accumulation
+        self.require_grad_sync = True
+        self._accumulate_intervel = grad_accumulate_interval
+        self._accumulate_step = 0
 
         colo_pg = self._search_colo_process_group()
         if isinstance(colo_pg, ProcessGroup):
@@ -226,7 +223,7 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
         return colo_pg
 
     def _create_master_param_current_rank(self, param_list):
-        # split each param evenly
+        # split each param evenly by world size
         params_current_rank = []
         device = 'cpu' if self._cpu_offload else get_current_device()
 
@@ -255,7 +252,9 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
     ###########################
 
     def _grad_handler(self, param, group_id, grad):
-        self._add_to_bucket(param, group_id, grad)
+        # if run with no_sync context, would not sync grad when backward
+        if self.require_grad_sync:
+            self._add_to_bucket(param, group_id, grad)
         return grad
 
     def _attach_reduction_hook(self):
@@ -273,7 +272,7 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
 
     def _run_reduction(self):
         if self._bucket_store.num_elements_in_bucket() > 0:
-            grads_in_bucket = self._bucket_store.get_grad()
+            self._bucket_store.build_grad_in_bucket()
             flat_grads = self._bucket_store.get_flatten_grad()
             if self._overlap_communication:
                 stream = self._comm_stream
@@ -281,32 +280,27 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
                 stream = torch.cuda.current_stream()
 
             with torch.cuda.stream(stream):
-                # TODO: both zero 1 and 2 do need flatten when comm
                 group_id = self._bucket_store.current_group_id
                 if not self._partition_grads:
                     dist.all_reduce(flat_grads, group=self._dp_torch_group)
-                    flat_grads /= self._world_size
-                    flat_grads_list = flat_grads.split(len(flat_grads) // self._world_size)
-                    for flat_grad_rank, (rank, grad_list) in zip(flat_grads_list, grads_in_bucket.items()):
-                        updated_grad_list = unflatten(flat_grad_rank, grad_list)
-                        for old_grad, new_grad in zip(grad_list, updated_grad_list):
-                            param_id = self._bucket_store.get_param_id_of_grad(old_grad)
-                            stored_param_grad = self._grad_store.get_partitioned_gradients_by_param_id(
-                                group_id, param_id)
-                            if len(stored_param_grad) == self._world_size:
-                                self._grad_store.add_gradients_by_param_id(new_grad, rank, group_id, param_id)
-                            else:
-                                self._grad_store.append_gradients_by_param_id(new_grad, group_id, param_id)
+                    # flat_grads /= self._world_size
+                    grad_in_bucket = self._bucket_store.get_grad()
+
+                    for _, grad_list in grad_in_bucket.items():
+                        for grad in grad_list:
+                            param_id = self._bucket_store.get_param_id_of_grad(grad)
+                            self._grad_store.append_gradients_by_param_id(grad, group_id, param_id)
 
                 else:
                     flat_grads_list = list(flat_grads.split(len(flat_grads) // self._world_size))
                     recieved_grad = torch.zeros_like(flat_grads_list[0])
                     dist.reduce_scatter(recieved_grad, flat_grads_list, group=self._dp_torch_group)
                     recieved_grad /= self._world_size
-                    updated_grad_list = unflatten(recieved_grad, grads_in_bucket[0])
-                    for new_grad, old_grad in zip(updated_grad_list, grads_in_bucket[0]):
-                        param_id = self._bucket_store.get_param_id_of_grad(old_grad)
-                        self._grad_store.append_gradients_by_param_id(new_grad, group_id, param_id)
+
+                    grad_in_bucket_current_rank = self._bucket_store.get_grad()[self._local_rank]
+                    for grad in grad_in_bucket_current_rank:
+                        param_id = self._bucket_store.get_param_id_of_grad(grad)
+                        self._grad_store.append_gradients_by_param_id(grad, group_id, param_id)
 
                 self._bucket_store.reset()
 
@@ -328,10 +322,17 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
     # torch.optim.Optimizer methods
     ################################
 
-    def backward(self, loss, retain_graph=False, sync_grad=True):
+    def backward(self, loss, retain_graph=False):
         if self.mixed_precision_mixin is not None:
             loss = self.mixed_precision_mixin.pre_backward(loss)
-        loss.backward(retain_graph=retain_graph)
+
+        self._accumulate_step += 1
+        no_sync = self._accumulate_step < self._accumulate_intervel
+        with conditional_context(self.no_sync(), enable=no_sync):
+            loss.backward(retain_graph=retain_graph)
+
+        if no_sync:
+            return
 
         self._reduce_grad(self._partition_grads)
 
@@ -366,6 +367,9 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
 
     def step(self, closure=None):
         assert closure is None, 'closure is not supported by step()'
+
+        if not self._accumulate_step == self._accumulate_intervel:
+            return
 
         if self.mixed_precision_mixin is not None and self.mixed_precision_mixin.should_skip_step():
             self._grad_store.reset_all_gradients()
@@ -441,6 +445,9 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
 
             self.optim.param_groups[group_id]['params'] = self._master_param_groups_of_current_rank[group_id]
 
+        # reset accumulate step
+        self._accumulate_step = 0
+
     #############################
     # Mixed Precision Utilities #
     #############################
@@ -476,3 +483,13 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
 
         # run reduction
         self._run_reduction()
+
+    # this context comes from pytorch DDP
+    @contextmanager
+    def no_sync(self):
+        old_require_grad_sync = self.require_grad_sync
+        self.require_grad_sync = False
+        try:
+            yield
+        finally:
+            self.require_grad_sync = old_require_grad_sync
