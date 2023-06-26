@@ -9,7 +9,7 @@ from transformers.models.t5.modeling_t5 import (
     T5Stack,
 )
 
-from colossalai.shardformer.layer import Dropout1D, Embedding1D, Linear1D_Col, Linear1D_Row
+from colossalai.shardformer.layer import DropoutForParallelInput, Embedding1D, Linear1D_Col, Linear1D_Row
 
 from .basepolicy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
@@ -38,7 +38,7 @@ class T5ModelPolicy(Policy):
                                         sub_module_replacement=[
                                             SubModuleReplacementDescription(
                                                 suffix="dropout",
-                                                target_module=Dropout1D,
+                                                target_module=DropoutForParallelInput,
                                             )
                                         ]),
             T5LayerSelfAttention:
@@ -47,7 +47,7 @@ class T5ModelPolicy(Policy):
                                         sub_module_replacement=[
                                             SubModuleReplacementDescription(
                                                 suffix="dropout",
-                                                target_module=Dropout1D,
+                                                target_module=DropoutForParallelInput,
                                             ),
                                         ]),
             T5LayerCrossAttention:
@@ -56,7 +56,7 @@ class T5ModelPolicy(Policy):
                                         sub_module_replacement=[
                                             SubModuleReplacementDescription(
                                                 suffix="dropout",
-                                                target_module=Dropout1D,
+                                                target_module=DropoutForParallelInput,
                                             )
                                         ]),
             T5Attention:
@@ -97,7 +97,7 @@ class T5ModelPolicy(Policy):
                                         sub_module_replacement=[
                                             SubModuleReplacementDescription(
                                                 suffix="dropout",
-                                                target_module=Dropout1D,
+                                                target_module=DropoutForParallelInput,
                                             ),
                                         ]),
             T5DenseGatedActDense:
@@ -117,7 +117,7 @@ class T5ModelPolicy(Policy):
                                                                             kwargs=dict(gather_output=True)),
                                             SubModuleReplacementDescription(
                                                 suffix="dropout",
-                                                target_module=Dropout1D,
+                                                target_module=DropoutForParallelInput,
                                             )
                                         ]),
             T5DenseActDense:
@@ -134,7 +134,7 @@ class T5ModelPolicy(Policy):
                                             ),
                                             SubModuleReplacementDescription(
                                                 suffix="dropout",
-                                                target_module=Dropout1D,
+                                                target_module=DropoutForParallelInput,
                                             )
                                         ])
         }

@@ -78,6 +78,18 @@ _POLICY_LIST = {
         PolicyLocation(file_name="opt", class_name="OPTForSequenceClassificationPolicy"),
     "transformers.models.opt.modeling_opt.OPTForQuestionAnswering":
         PolicyLocation(file_name="opt", class_name="OPTForQuestionAnsweringPolicy"),
+        
+    # Bloom
+    "transformers.models.bloom.modeling_bloom.BloomModel":
+        PolicyLocation(file_name="bloom", class_name="BloomModelPolicy"),
+    "transformers.models.bloom.modeling_bloom.BloomForCausalLM":
+        PolicyLocation(file_name="bloom", class_name="BloomForCausalLMPolicy"),
+    "transformers.models.bloom.modeling_bloom.BloomForSequenceClassification":
+        PolicyLocation(file_name="bloom", class_name="BloomForSequenceClassificationPolicy"),
+    "transformers.models.bloom.modeling_bloom.BloomForTokenClassification":
+        PolicyLocation(file_name="bloom", class_name="BloomForTokenClassificationPolicy"),
+    "transformers.models.bloom.modeling_bloom.BloomForQuestionAnswering":
+        PolicyLocation(file_name="bloom", class_name="BloomForQuestionAnsweringPolicy"),
 }
 
 
