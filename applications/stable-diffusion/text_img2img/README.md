@@ -1,6 +1,6 @@
-# Text-to-Image: Stable Diffusion with Colossal-AI
+# Text-to-Image/Image-to-Image: Stable Diffusion with Colossal-AI
 
-Acceleration of AIGC (AI-Generated Content) models such as [Text-to-image model](https://huggingface.co/CompVis/stable-diffusion-v1-4).
+Acceleration of AIGC (AI-Generated Content) models such as [Text-to-image model](https://huggingface.co/CompVis/stable-diffusion-v1-4) and Instruct-Pix2Pix such as [Image-to-Image Model](https://huggingface.co/docs/diffusers/training/instructpix2pix)
 
 More details can be found in our [blog of Stable Diffusion v1](https://www.hpc-ai.tech/blog/diffusion-pretraining-and-hardware-fine-tuning-can-be-almost-7x-cheaper) and [blog of Stable Diffusion v2](https://www.hpc-ai.tech/blog/colossal-ai-0-2-0).
 
@@ -73,36 +73,64 @@ git clone https://huggingface.co/CompVis/stable-diffusion-v1-4
 
 ## Dataset
 
-The dataSet is from [Dataset-HuggingFace](https://huggingface.co/datasets?task_categories=task_categories:text-to-image&sort=downloads). In our example, we choose lambdalabs/pokemon-blip-captions as a demo example. You can also create your own dataset, but make sure your data set matches with formats in this [website] (https://huggingface.co/docs/diffusers/training/create_dataset). 
+The dataSet is from [Dataset-HuggingFace](https://huggingface.co/datasets?task_categories=task_categories:text-to-image&sort=downloads). In our examples, we choose lambdalabs/pokemon-blip-captions as a demo example for text-to-image, and fusing/instructpix2pix-1000-samples as our data to train instruct-pix2pix model. You can also create your own dataset, but make sure your data set matches with formats in this [website] (https://huggingface.co/docs/diffusers/training/create_dataset). 
 
 ## Training
 
-We provide the script `01_trainer_no_colossalai.sh` to run the training task without colossalai. Meanwhile, we also provided script called `02_run_trainer_with_colossalai.sh` to train text-to-image model using colossalai. Also, if you want to LoRA to fine-tune your model, we also provided a bash script called `03_run_trainer_with_colossalai_lora.sh` to fine-tune your model. If you are not familar with, you can check this [website](https://huggingface.co/docs/diffusers/training/lora). There is a simple example below to demonstarte how to launch training. 
+We provide the script `trainer_no_colossalai.sh` to run the training task without colossalai. Meanwhile, we also provided script called `trainer_with_colossalai_text_to_image.sh` to train text-to-image, and  `trainer_with_colossalai_image_to_image.sh` instruct-pix2pix models using colossalai. The following is a command demo: 
+```
+#!/bin/bash
 
+# export MODEL_NAME="runwayml/stable-diffusion-v1-5"
+export MODEL_NAME="CompVis/stable-diffusion-v1-4"
+export DATASET_ID="fusing/instructpix2pix-1000-samples"
+
+torchrun --nproc_per_node 4 stable_diffusion_colossalai_trainer.py \
+    --mixed_precision="fp16" \
+    --pretrained_model_name_or_path=$MODEL_NAME \
+    --dataset_name=$DATASET_ID \
+    --resolution=256 --random_flip \
+    --train_batch_size=4 --gradient_accumulation_steps=4 --gradient_checkpointing \
+    --max_train_steps=200 \
+    --checkpointing_steps=5000 --checkpoints_total_limit=1 \
+    --learning_rate=5e-05 --max_grad_norm=1 --lr_warmup_steps=0 \
+    --conditioning_dropout_prob=0.05 \
+    --mixed_precision=fp16 \
+    --seed=42 \
+    --plugin="gemini" \
+    --placement="cuda" \
+    --task_type="image_to_image" \
+    --output_dir="instruct_pix2pix" 
 
 ```
-# your model name, the python script will automaticall download corresponding model from model hub.
+Also, if you want to LoRA to fine-tune your model, you can use the following command line to yse LoRA to fine-tune your model. You only need to add --use_lora in your arguments. If you are not familar with LoRA, you can check this [website](https://huggingface.co/docs/diffusers/training/lora). There is a simple example below to demonstarte how to launch training. 
+
+```
+#!/bin/bash
+
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-# You can provide official dataset to train your model. You also can provide your own dataset. 
 export dataset_name="lambdalabs/pokemon-blip-captions"
 
 torchrun --nproc_per_node 4 stable_diffusion_colossalai_trainer.py \
     --mixed_precision="fp16" \
     --pretrained_model_name_or_path=$MODEL_NAME \
     --dataset_name=$dataset_name \
-    --use_ema \
     --resolution=512 --center_crop --random_flip \
     --train_batch_size=1 \
     --gradient_accumulation_steps=4 \
     --gradient_checkpointing \
-    --max_train_steps=800 \
+    --max_train_steps=100 \
     --learning_rate=1e-05 \
     --max_grad_norm=1 \
     --lr_scheduler="constant" --lr_warmup_steps=0 \
     --output_dir="sd-pokemon-model" \
     --plugin="gemini" \
-    --placement="cuda"
+    --placement="cuda" \
+    --task_type="text_to_image" \
+    --use_lora
+
 ```
+
 
 ### Training config
 
@@ -122,7 +150,6 @@ python text_to_image_colossalai.py --validation_prompts "a person is walking on 
 ```
 The following is an example after running command line above, and the picture was generated after training diffusion models using our script stable_diffusion_colossalai_trainer.py. 
 
-![png](stable_diffusion_example_colossalai.png?raw=true "Optional Title")
 
 ## Invitation to open-source contribution
 Referring to the successful attempts of [BLOOM](https://bigscience.huggingface.co/) and [Stable Diffusion](https://en.wikipedia.org/wiki/Stable_Diffusion), any and all developers and partners with computing powers, datasets, models are welcome to join and build the Colossal-AI community, making efforts towards the era of big AI models!
