@@ -139,7 +139,7 @@ Thanks so much to all of our amazing contributors!
 
 ## Comments
 
-- Our codebase for the diffusion models builds heavily on [OpenAI's ADM codebase](https://github.com/openai/guided-diffusion)
+- Our codebase for the diffusion models builds heavily on [OpenAI's ADM codebase](https://github.com/openai/guided-diffusion) and [hugging face diffusion](https://github.com/huggingface/diffusers/blob/main/examples).
 , [lucidrains](https://github.com/lucidrains/denoising-diffusion-pytorch),
 [Stable Diffusion](https://github.com/CompVis/stable-diffusion), [Lightning](https://github.com/Lightning-AI/lightning) and [Hugging Face](https://huggingface.co/CompVis/stable-diffusion).
 Thanks for open-sourcing!

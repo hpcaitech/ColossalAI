@@ -77,7 +77,7 @@ The dataSet is from [Dataset-HuggingFace](https://huggingface.co/datasets?task_c
 
 ## Training
 
-We provide the script `01_trainer_pix2pix.sh` to run the training task without colossalai. Meanwhile, we also provided script called `02_train_with_colossalai.sh` to train text-to-image model using colossalai. Also, if you want to LoRA to fine-tune your model, we also provided a bash script called `03_train_with_colossalai_lora.sh` to fine-tune your model. If you are not familar with, you can check this [website](https://huggingface.co/docs/diffusers/training/lora). There is a simple example below to demonstarte how to launch training. 
+We provide the script `01_trainer_pix2pix.sh` to run the training task without colossalai. Meanwhile, we also provided script called `02_train_with_colossalai.sh` to train image-to-image model using colossalai. Also, if you want to use LoRA to fine-tune your model, we also provided a bash script called `03_train_with_colossalai_lora.sh` to fine-tune your model. If you are not familar with, you can check this [website](https://huggingface.co/docs/diffusers/training/lora). There is a simple example below to demonstarte how to launch training. 
 
 
 ```
