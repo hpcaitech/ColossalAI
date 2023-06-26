@@ -22,7 +22,7 @@ class BucketStore(BaseStore):
     def num_elements_in_bucket(self):
         return self._num_elements_in_bucket
 
-    def add_param_grad(self, group_id, param, grad, padding_size):
+    def add_param_grad(self, group_id, param, padding_size):
         self._param_list.append(param)
         self._padding_size.append(padding_size)
         self._num_elements_in_bucket += (param.numel() + padding_size)

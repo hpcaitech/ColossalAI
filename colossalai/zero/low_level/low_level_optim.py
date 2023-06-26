@@ -242,9 +242,9 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
 
             with torch.no_grad():
                 if padding_size > 0:
-                    padding_param = torch.nn.functional.pad(param.view(-1), [0, padding_size])
+                    padding_param = torch.nn.functional.pad(param.data.view(-1), [0, padding_size])
                 else:
-                    padding_param = param.view(-1)
+                    padding_param = param.data.view(-1)
                 splited_params = padding_param.split(param.numel() // self._world_size)
                 offset += splited_params[0].numel()
 
@@ -261,7 +261,7 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
     def _grad_handler(self, param, group_id, grad):
         # if run with no_sync context, would not sync grad when backward
         if self.require_grad_sync:
-            self._add_to_bucket(param, group_id, grad)
+            self._add_to_bucket(param, group_id)
         return grad
 
     def _attach_reduction_hook(self):
@@ -315,7 +315,7 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
 
                 self._bucket_store.reset()
 
-    def _add_to_bucket(self, param, group_id, grad):
+    def _add_to_bucket(self, param, group_id):
         param_size = param.numel()
 
         # check if the bucket is full
@@ -327,7 +327,7 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
             self._run_reduction()
 
         padding_size = self._param_store.get_param_padding_size(param)
-        self._bucket_store.add_param_grad(group_id, param, grad, padding_size)
+        self._bucket_store.add_param_grad(group_id, param, padding_size)
 
     ################################
     # torch.optim.Optimizer methods
@@ -434,7 +434,6 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
         # unscale and clip grads
         global_norm = calculate_global_norm_from_list(norm_list=norm_groups)
         self._unscale_and_clip_grads(grad_partition_groups, global_norm)
-
         # update the parameters
         self.optim.step()
 
@@ -449,9 +448,9 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
             for idx, splited_param in enumerate(master_working_param):
                 full_master_param = [torch.zeros_like(splited_param).cuda() for _ in range(self._world_size)]
                 dist.all_gather(full_master_param, splited_param.cuda(), group=self._dp_torch_group)
-
                 working_param = real_working_params[group_id][idx]
-                full_master_param = flatten(full_master_param)[:working_param.numel()].reshape_as(working_param)
+                full_master_param = flatten(full_master_param)
+                full_master_param = full_master_param[:working_param.numel()].reshape_as(working_param)
                 working_param.data.copy_(full_master_param)
 
             self.optim.param_groups[group_id]['params'] = self._master_param_groups_of_current_rank[group_id]
@@ -490,7 +489,7 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
                 param_group = self._working_param_groups[group_id]
                 for param in param_group:
                     if param.grad is not None:
-                        self._add_to_reduction_bucket(param)
+                        self._add_to_bucket(param, group_id)
 
         # run reduction
         self._run_reduction()
