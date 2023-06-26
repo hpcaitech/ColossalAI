@@ -11,7 +11,7 @@ torchrun --nproc_per_node 4 stable_diffusion_colossalai_trainer.py \
     --train_batch_size=1 \
     --gradient_accumulation_steps=4 \
     --gradient_checkpointing \
-    --max_train_steps=100 \
+    --max_train_steps=12000 \
     --learning_rate=1e-05 \
     --max_grad_norm=1 \
     --lr_scheduler="constant" --lr_warmup_steps=0 \

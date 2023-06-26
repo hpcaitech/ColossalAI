@@ -1,10 +1,10 @@
 #!/bin/bash
 
+
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export DATASET_ID="fusing/instructpix2pix-1000-samples"
 
-torchrun --nproc_per_node 4 stable_diffusion_colossalai_trainer.py \
-    --mixed_precision="fp16" \
+accelerate launch --mixed_precision="fp16"  stable_diffusion_trainer.py \
     --pretrained_model_name_or_path=$MODEL_NAME \
     --dataset_name=$DATASET_ID \
     --resolution=256 --random_flip \
