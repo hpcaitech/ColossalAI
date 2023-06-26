@@ -1,5 +1,8 @@
 #!/bin/bash
 
+module load CUDA/11.7.0
+module load cuDNN/8.4.1.50-CUDA-11.7.0
+module load GCC/11.3.0
 
 hostid_start=3
 if [ $SLURM_NNODES -gt 1 ]
@@ -10,12 +13,11 @@ master="mel${SLURM_NODELIST:hostid_start:4}"
 master=`host $master| grep address | awk '{print $4}'`
 
 export MASTER_ADDR=$master
-export MASTER_PORT=13245
-export LOCAL_SIZE=4
-rank=$SLURM_PROCID
-nprocs_per_node=4
+export MASTER_PORT=29500
+export RANK=$SLURM_PROCID
+export WORLD_SIZE=$SLURM_NPROCS
+export LOCAL_RANK=0
 
-# WORLD_SIZE=$SLURM_NPROCS
 # >>> conda initialize >>>
 # !! Contents within this block are managed by 'conda init' !!
 __conda_setup="$('/home/users/u100034/miniconda3/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
@@ -32,36 +34,8 @@ unset __conda_setup
 # <<< conda initialize <<<
 conda activate llama
 
-nodes_ip=`scontrol show hostnames $SLURM_JOB_NODELIST`
-
-ssh $nodes_ip[1] "ls"
-
-# shellcheck disable=SC2068
-local_node=$SLURM_NODEID
-echo $local_node
-if [ $local_node -eq 0 ];
-then
-   # shellcheck disable=SC2068
-   for var in ${nodes_ip[@]}
-      do
-         temp_ip=`host $var| grep address | awk '{print $4}'`
-         echo "${temp_ip} slots=4 " >> nodes_ip.txt
-         echo "${temp_ip} slots=4 "
-      done
-fi
-
-
-
-#DISTRIBUTED_ARGS="--nproc_per_node $nprocs_per_node \
-#                  --nnodes $SLURM_NNODES \
-#                  --node_rank ${rank} \
-#                  --master_addr ${MASTER_ADDR} \
-#                  --master_port ${MASTER_PORT}"
-
-cd ..
-deepspeed --num_nodes 2 --num_gpus 4 --master_addr ${MASTER_ADDR} --master_port ${MASTER_PORT} --hostfile mlux_script/nodes_ip.txt \
-	ds_benchmark.py -l 512 \
-	--deepspeed --deepspeed_config mlux_script/zero1.json
-
-rm mlux_script/nodes_ip.txt
-
+ROOT=$(pwd)
+cd /mnt/tier2/users/u100034/ColossalAI_llama/examples/language/llama/deepspeed_llama
+python -u \
+        ds_benchmark.py -l 512 \
+        --deepspeed --deepspeed_config ${ROOT}/zero1.json --world_size $WORLD_SIZE --local_rank 0

@@ -1,6 +1,9 @@
 {
     "zero_optimization": {
         "stage": 1,
+      "offload_optimizer": {
+            "device": "cpu"
+        },
       "contiguous_gradients": true,
         "overlap_comm": true
     },

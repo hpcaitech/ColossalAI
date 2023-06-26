@@ -69,7 +69,7 @@ class AutoPlacementPolicy(PlacementPolicy):
     # model data will use 1-_warmup_non_model_data_ratio CUDA memory in warmup phase
     # you can set them by AutoPlacementPolicy.set_warmup_non_model_data_ratio()
     # and AutoPlacementPolicy.set_steady_cuda_cap_ratio()
-    _warmup_non_model_data_ratio: float = 0.8
+    _warmup_non_model_data_ratio: float = 0.95
     _steady_cuda_cap_ratio: float = 0.9
 
     def __init__(self,
