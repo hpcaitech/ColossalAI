@@ -86,7 +86,7 @@ def get_argument_parser():
     parser.add_argument('-i', '--ignore_steps', type=int, default=2, help='Number of steps to ignore')
     parser.add_argument('-g', '--grad_checkpoint', action='store_true', help='Use gradient checkpointing')
     parser.add_argument('-l', '--max_length', type=int, default=2048, help='Max sequence length')
-    parser.add_argument('-world_size', type=int, default=4, help='Distributed world size')
+    parser.add_argument('-w', '--world_size', type=int, default=4, help='Distributed world size')
     parser.add_argument('-train_micro_batch_size_per_gpu', type=int, default=2, help='Batch size per GPU')
 
     return parser
