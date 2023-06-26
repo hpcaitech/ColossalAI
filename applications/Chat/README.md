@@ -287,7 +287,7 @@ If you only have a single 24G GPU, you can use the following script. `batch_size
 torchrun --standalone --nproc_per_node=1 train_sft.py \
     --pretrain "/path/to/LLaMa-7B/" \
     --model 'llama' \
-    --strategy naive \
+    --strategy ddp \
     --log_interval 10 \
     --save_path  /path/to/Coati-7B \
     --dataset /path/to/data.json \

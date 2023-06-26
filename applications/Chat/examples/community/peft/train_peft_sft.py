@@ -11,7 +11,7 @@ from coati.models.gpt import GPTLM
 from coati.models.llama import LlamaLM
 from coati.models.opt import OPTLM
 from coati.trainer import SFTTrainer
-from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
+from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy
 from coati.utils import prepare_llama_tokenizer_and_embedding
 from datasets import load_dataset
 from easy_dataset import EasyDataset
@@ -30,9 +30,7 @@ from colossalai.tensor import ColoParameter
 
 def train(args):
     # configure strategy
-    if args.strategy == 'naive':
-        strategy = NaiveStrategy()
-    elif args.strategy == 'ddp':
+    if args.strategy == 'ddp':
         strategy = DDPStrategy()
     elif args.strategy == 'colossalai_gemini':
         strategy = ColossalAIStrategy(stage=3, placement_policy='cuda')
@@ -170,8 +168,8 @@ def train(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--strategy',
-                        choices=['naive', 'ddp', 'colossalai_gemini', 'colossalai_zero2'],
-                        default='naive')
+                        choices=['ddp', 'colossalai_gemini', 'colossalai_zero2'],
+                        default='ddp')
     parser.add_argument('--model', choices=['gpt2', 'bloom', 'opt', 'llama'], default='bloom')
     parser.add_argument('--pretrain', type=str, default=None)
     parser.add_argument('--dataset', type=str, default=None)
