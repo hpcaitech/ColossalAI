@@ -11,17 +11,9 @@ from torch.distributed.fsdp.fully_sharded_data_parallel import CPUOffload, Mixed
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
-from transformers import (
-    CONFIG_MAPPING,
-    MODEL_MAPPING,
-    AutoConfig,
-    LlamaConfig,
-    LlamaForCausalLM,
-    LlamaModel,
-    LlamaTokenizer,
-    get_linear_schedule_with_warmup,
-)
 from transformers.modeling_utils import no_init_weights
+from transformers.models.llama.configuration_llama import LlamaConfig
+from transformers.models.llama.modeling_llama import LlamaForCausalLM
 from transformers.utils.versions import require_version
 
 import colossalai
@@ -150,6 +142,9 @@ def main():
     with no_init_weights(), init_ctx:
         model = LlamaForCausalLM(config)
         model.tie_weights()
+
+    if args.grad_checkpoint:
+        model.gradient_checkpointing_enable()
 
     model_numel = get_model_numel(model)
     coordinator.print_on_master(f'Model params: {format_numel_str(model_numel)}')
