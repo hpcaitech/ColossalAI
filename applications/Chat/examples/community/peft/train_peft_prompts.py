@@ -10,7 +10,7 @@ from coati.models.llama import LlamaActor, LlamaCritic, LlamaRM
 from coati.models.opt import OPTRM, OPTActor, OPTCritic
 from coati.trainer import PPOTrainer
 from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
-from coati.utils import prepare_llama_tokenizer_and_embedding
+from coati.utils import prepare_llama_tokenizer
 from easy_dataset import EasyPromptsDataset, EasySupervisedDataset
 from easy_models import BLOOMActor
 from peft import PeftModel
@@ -125,7 +125,7 @@ def main(args):
         raise ValueError(f'Unsupported model "{args.model}"')
 
     if args.model == 'llama':
-        tokenizer = prepare_llama_tokenizer_and_embedding(tokenizer, actor)
+        tokenizer = prepare_llama_tokenizer(tokenizer)
     else:
         tokenizer.pad_token = tokenizer.eos_token
 

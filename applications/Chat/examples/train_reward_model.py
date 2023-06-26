@@ -15,7 +15,7 @@ from coati.models.opt import OPTRM
 from coati.models.roberta import RoBERTaRM
 from coati.trainer import RewardModelTrainer
 from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
-from coati.utils import prepare_llama_tokenizer_and_embedding
+from coati.utils import prepare_llama_tokenizer
 from datasets import load_dataset
 from torch.optim import Adam
 from torch.optim.lr_scheduler import CosineAnnealingLR
@@ -81,7 +81,7 @@ def train(args):
     max_len = args.max_len
 
     if args.model == 'llama':
-        tokenizer = prepare_llama_tokenizer_and_embedding(tokenizer, model)
+        tokenizer = prepare_llama_tokenizer(tokenizer)
     else:
         tokenizer.pad_token = tokenizer.eos_token
 

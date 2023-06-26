@@ -9,7 +9,7 @@ from coati.dataset import DataCollatorForSupervisedDataset, SFTDataset, Supervis
 from coati.models import convert_to_lora_module
 from coati.trainer import SFTTrainer
 from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
-from coati.utils import prepare_llama_tokenizer_and_embedding
+from coati.utils import prepare_llama_tokenizer
 from datasets import load_dataset
 from torch.optim import Adam
 from torch.utils.data import DataLoader
@@ -82,7 +82,7 @@ def train(args):
     tokenizer.pad_token = tokenizer.eos_token
     max_len = args.max_len
     if args.model == 'llama':
-        tokenizer = prepare_llama_tokenizer_and_embedding(tokenizer, model)
+        tokenizer = prepare_llama_tokenizer(tokenizer)
 
         if args.strategy == 'colossalai_gemini':
             # this is a hack to deal with the resized embedding
