@@ -20,7 +20,14 @@ from colossalai.tensor import ColoParameter, ProcessGroup
 from colossalai.utils import conditional_context
 from colossalai.utils.cuda import get_current_device
 
-from ._utils import calculate_global_norm_from_list, compute_norm, flatten, has_inf_or_nan, release_param_grad
+from ._utils import (
+    calculate_global_norm_from_list,
+    compute_norm,
+    flatten,
+    has_inf_or_nan,
+    release_param_grad,
+    sync_tensor,
+)
 from .bookkeeping import BucketStore, GradientStore, ParameterStore
 
 
@@ -283,10 +290,13 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
                 group_id = self._bucket_store.current_group_id
                 if not self._partition_grads:
                     dist.all_reduce(flat_grads, group=self._dp_torch_group)
-                    # flat_grads /= self._world_size
+                    flat_grads /= self._world_size
+
+                    flat_grads_per_rank = flat_grads.split(flat_grads.numel() // self._world_size)
                     grad_in_bucket = self._bucket_store.get_grad()
 
-                    for _, grad_list in grad_in_bucket.items():
+                    for rank, grad_list in grad_in_bucket.items():
+                        sync_tensor(flat_grads_per_rank[rank], grad_list)
                         for grad in grad_list:
                             param_id = self._bucket_store.get_param_id_of_grad(grad)
                             self._grad_store.append_gradients_by_param_id(grad, group_id, param_id)
@@ -298,6 +308,7 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
                     recieved_grad /= self._world_size
 
                     grad_in_bucket_current_rank = self._bucket_store.get_grad()[self._local_rank]
+                    sync_tensor(recieved_grad, grad_in_bucket_current_rank)
                     for grad in grad_in_bucket_current_rank:
                         param_id = self._bucket_store.get_param_id_of_grad(grad)
                         self._grad_store.append_gradients_by_param_id(grad, group_id, param_id)

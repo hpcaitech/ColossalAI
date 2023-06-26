@@ -3,6 +3,7 @@ import copy
 import pytest
 import torch
 import torch.nn as nn
+from common import split_ddp_grad
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.testing import assert_close
 
@@ -16,8 +17,8 @@ class MlpModel(nn.Module):
 
     def __init__(self):
         super(MlpModel, self).__init__()
-        self.linear1 = nn.Linear(32, 64)
-        self.linear2 = nn.Linear(64, 32)
+        self.linear1 = nn.Linear(128, 256)
+        self.linear2 = nn.Linear(256, 512)
 
     def forward(self, x):
         x = self.linear1(x)
@@ -72,23 +73,21 @@ def exam_zero_1_2():
                                             initial_scale=128)
     # create data
     seed_all(2001 + local_rank)
-    input_data = torch.randn(32, 32).cuda()
+    input_data = torch.randn(32, 128).cuda()
 
     zero1_output = zero1_model(input_data)
     zero2_output = zero2_model(input_data)
     assert torch.equal(zero1_output, zero2_output)
 
     # zero-dp backward
-    zero1_optimizer.backward(zero1_output.mean().float(), sync_grad=False)
-    zero2_optimizer.backward(zero2_output.mean().float(), sync_grad=False)
+    zero1_optimizer.backward(zero1_output.mean().float())
+    zero2_optimizer.backward(zero2_output.mean().float())
 
-    # for (n, z1p), z2p in zip(zero1_model.named_parameters(), zero2_model.parameters()):
-    #     if z2p.grad is not None:
-    #         # print(local_rank, n, z1p.shape, torch.max(z2p.grad), torch.max(torch.abs(z1p.grad - z2p.grad)))
-    #         assert torch.equal(z1p.grad, z2p.grad)
-
-    # zero1_optimizer._sync_grad()
-    # zero2_optimizer._sync_grad()
+    # check grad
+    z1g_list = zero1_optimizer._grad_store.get_working_grads_by_group_id(0)
+    z2g_list = zero2_optimizer._grad_store.get_working_grads_by_group_id(0)
+    for z1g, z2g in zip(z1g_list, z2g_list):
+        assert torch.equal(z1g, z2g)
 
     # step
     zero1_optimizer.step()
@@ -100,7 +99,7 @@ def exam_zero_1_2():
 
 
 @parameterize('dtype', [torch.float16, torch.bfloat16])
-def exam_zero_1_torch_ddp(dtype: torch.dtype):
+def exam_zero_1_torch_ddp(world_size, dtype: torch.dtype):
     """
     In this test, two pairs of model and optimizers are created.
     1. zero: use sharded optimizer and fp16 parameters
@@ -133,7 +132,7 @@ def exam_zero_1_torch_ddp(dtype: torch.dtype):
 
     seed_all(1453 + local_rank)
     # create
-    input_data = torch.rand(32, 32).cuda()
+    input_data = torch.rand(32, 128).cuda()
 
     # zero-dp forward
     zero_output = zero_model(input_data.to(dtype))
@@ -143,20 +142,19 @@ def exam_zero_1_torch_ddp(dtype: torch.dtype):
     loose_close(zero_output, torch_output, dtype=dtype)
 
     # zero-dp backward
-    zero_optimizer.backward(zero_output.mean().float(), sync_grad=False)
+    zero_optimizer.backward(zero_output.mean().float())
 
     # torch-ddp backward
     torch_output.mean().backward()
 
     # check grad
-    # for (n, p), z1p in zip(torch_model.named_parameters(), zero_model.parameters()):
-    #     loose_close(p.grad, z1p.grad, dtype=dtype)
-    # print("torch")
-    # for (n, p) in torch_model.named_parameters():
-    #     print(p.grad)
+    for (n, p), z1p in zip(torch_model.named_parameters(), zero_model.parameters()):
+        zero_grad_list = zero_optimizer._grad_store.get_partitioned_gradients_by_param_id(0, id(z1p))
+        torch_grad_list = split_ddp_grad(p.grad, world_size)
+        for zero_grad, torch_grad in zip(zero_grad_list, torch_grad_list):
+            loose_close(zero_grad, torch_grad, dtype=dtype)
 
     # zero-dp step
-    # zero_optimizer._sync_grad()
     zero_optimizer.step()
 
     # torch ddp step
@@ -164,14 +162,13 @@ def exam_zero_1_torch_ddp(dtype: torch.dtype):
 
     # check updated param
     for (n, p), z1p in zip(torch_model.named_parameters(), zero_model.parameters()):
-        # print(n, torch.max(torch.abs(p.data - z1p.data)))
         loose_close(p.data, z1p.data, dtype=dtype)
 
 
 def run_dist(rank, world_size, port):
     colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host='localhost')
 
-    exam_zero_1_torch_ddp()
+    exam_zero_1_torch_ddp(world_size=world_size)
     exam_zero_1_2()
 
 

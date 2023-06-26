@@ -1,5 +1,5 @@
 import torch
-from torch._utils import _flatten_dense_tensors
+from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 from torch.distributed import ProcessGroup
 
 from .base_store import BaseStore
