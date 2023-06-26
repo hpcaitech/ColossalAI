@@ -77,7 +77,7 @@ The dataSet is from [Dataset-HuggingFace](https://huggingface.co/datasets?task_c
 
 ## Training
 
-We provide the script `trainer_no_colossalai.sh` to run the training task without colossalai. Meanwhile, we also provided script called `trainer_with_colossalai_text_to_image.sh` to train text-to-image, and  `trainer_with_colossalai_image_to_image.sh` instruct-pix2pix models using colossalai. The following is a command demo: 
+We provide the script `trainer_no_colossalai_text_to_image.sh` and `trainer_no_colossalai_image_to_image.sh` to run the training task without colossalai. Meanwhile, we also provided script called `trainer_with_colossalai_text_to_image.sh` to train text-to-image, and  `trainer_with_colossalai_image_to_image.sh` instruct-pix2pix models using colossalai. The following is a command demo: 
 ```
 #!/bin/bash
 
