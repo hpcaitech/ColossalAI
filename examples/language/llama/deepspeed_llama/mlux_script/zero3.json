@@ -4,6 +4,9 @@
       "offload_optimizer": {
             "device": "cpu"
         },
+      "offload_param": {
+            "device": "cpu"
+        },
       "contiguous_gradients": true,
         "overlap_comm": true
     },
