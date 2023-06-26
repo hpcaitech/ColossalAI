@@ -18,12 +18,10 @@ class Layout:
         global_shape: the entire shape of the global tensor.
     """
 
-    def __init__(self, device_mesh: DeviceMesh, device_type: torch.device, sharding_spec: ShardingSpec,
-                 entire_shape: torch.Size):
+    def __init__(self, device_mesh: DeviceMesh, sharding_spec: ShardingSpec, global_shape: torch.Size):
         self.device_mesh = device_mesh
-        self.device_type = device_type
         self.sharding_spec = sharding_spec
-        self.entire_shape = entire_shape
+        self.global_shape = global_shape
         self._sanity_check()
 
     def __hash__(self) -> int:
@@ -55,7 +53,7 @@ class Layout:
 
         # make sure that the sharding for a dimension is divisible by the number of devices
         for dim, shard_list in sharding_spec.dim_partition_dict.items():
-            tensor_dim_size = self.entire_shape[dim]
+            tensor_dim_size = self.global_shape[dim]
             num_devices = 1
 
             for element in shard_list:
