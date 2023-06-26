@@ -48,13 +48,33 @@ if is_wandb_available():
 disable_existing_loggers()
 logger = get_dist_logger()
 
-DATASET_NAME_MAPPING = {
-    "lambdalabs/pokemon-blip-captions": ("image", "text"),
-}
 
+def convert_to_np(image, resolution):
+    image = image.convert("RGB").resize((resolution, resolution))
+    return np.array(image).transpose(2, 0, 1)
+
+
+def download_image(url):
+    image = PIL.Image.open(requests.get(url, stream=True).raw)
+    image = PIL.ImageOps.exif_transpose(image)
+    image = image.convert("RGB")
+    return image
 
 def main():
     args = parse_args()
+
+    DATASET_NAME_MAPPING = {}
+    WANDB_TABLE_COL_NAMES = {}
+    if args.task_type == "image_to_image":
+        DATASET_NAME_MAPPING = {
+            "fusing/instructpix2pix-1000-samples": ("input_image", "edit_prompt", "edited_image"),
+        }
+        WANDB_TABLE_COL_NAMES = ["original_image", "edited_image", "edit_prompt"]
+    else:
+        DATASET_NAME_MAPPING = {
+            "lambdalabs/pokemon-blip-captions": ("image", "text"),
+        }
+
 
     if args.seed is None:
         colossalai.launch_from_torch(config={})
@@ -104,10 +124,6 @@ def main():
             logger.info(f"create output dir : {args.output_dir}")
             os.makedirs(args.output_dir, exist_ok=True)
 
-        if args.push_to_hub:
-            repo_id = create_repo(
-                repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
-            ).repo_id
 
     # Load scheduler, tokenizer and models.
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
@@ -126,23 +142,32 @@ def main():
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.non_ema_revision
     )
 
+    if args.task_type == "image_to_image":
+        # InstructPix2Pix uses an additional image for conditioning. To accommodate that,
+        # it uses 8 channels (instead of 4) in the first (conv) layer of the UNet. This UNet is
+        # then fine-tuned on the custom InstructPix2Pix dataset. This modified UNet is initialized
+        # from the pre-trained checkpoints. For the extra channels added to the first layer, they are
+        # initialized to zero.
+        logger.info("Initializing the InstructPix2Pix UNet from the pretrained UNet.")
+        in_channels = 8
+        out_channels = unet.conv_in.out_channels
+        unet.register_to_config(in_channels=in_channels)
+
+        with torch.no_grad():
+            new_conv_in = nn.Conv2d(
+                in_channels, out_channels, unet.conv_in.kernel_size, unet.conv_in.stride, unet.conv_in.padding
+            )
+            new_conv_in.weight.zero_()
+            new_conv_in.weight[:, :4, :, :].copy_(unet.conv_in.weight)
+            unet.conv_in = new_conv_in
+
     # Freeze vae and text_encoder
     vae.requires_grad_(False)
     text_encoder.requires_grad_(False)
 
-
-    if args.enable_xformers_memory_efficient_attention:
-        if is_xformers_available():
-            import xformers
-
-            xformers_version = version.parse(xformers.__version__)
-            if xformers_version == version.parse("0.0.16"):
-                logger.warn(
-                    "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
-                )
-            unet.enable_xformers_memory_efficient_attention()
-        else:
-            raise ValueError("xformers is not available. Make sure it is installed correctly")
+    # Create EMA for the unet.
+    if args.use_ema:
+        ema_unet = EMAModel(unet.parameters(), model_cls=UNet2DConditionModel, model_config=unet.config)
     
     def compute_snr(timesteps):
         """
@@ -217,22 +242,52 @@ def main():
 
     # 6. Get the column names for input/target.
     dataset_columns = DATASET_NAME_MAPPING.get(args.dataset_name, None)
-    if args.image_column is None:
-        image_column = dataset_columns[0] if dataset_columns is not None else column_names[0]
+    if args.task_type == "text_to_image":
+        if args.image_column is None:
+            image_column = dataset_columns[0] if dataset_columns is not None else column_names[0]
+        else:
+            image_column = args.image_column
+            if image_column not in column_names:
+                raise ValueError(
+                    f"--image_column' value '{args.image_column}' needs to be one of: {', '.join(column_names)}"
+                )
+
+        if args.caption_column is None:
+            caption_column = dataset_columns[1] if dataset_columns is not None else column_names[1]
+        else:
+            caption_column = args.caption_column
+            if caption_column not in column_names:
+                raise ValueError(
+                    f"--caption_column' value '{args.caption_column}' needs to be one of: {', '.join(column_names)}"
+                )
     else:
-        image_column = args.image_column
-        if image_column not in column_names:
-            raise ValueError(
-                f"--image_column' value '{args.image_column}' needs to be one of: {', '.join(column_names)}"
-            )
-    if args.caption_column is None:
-        caption_column = dataset_columns[1] if dataset_columns is not None else column_names[1]
-    else:
-        caption_column = args.caption_column
-        if caption_column not in column_names:
-            raise ValueError(
-                f"--caption_column' value '{args.caption_column}' needs to be one of: {', '.join(column_names)}"
-            )
+        if args.original_image_column is None:
+            original_image_column = dataset_columns[0] if dataset_columns is not None else column_names[0]
+        else:
+            original_image_column = args.original_image_column
+            if original_image_column not in column_names:
+                raise ValueError(
+                    f"--original_image_column' value '{args.original_image_column}' needs to be one of: {', '.join(column_names)}"
+                )
+
+        if args.edit_prompt_column is None:
+            edit_prompt_column = dataset_columns[1] if dataset_columns is not None else column_names[1]
+        else:
+            edit_prompt_column = args.edit_prompt_column
+            if edit_prompt_column not in column_names:
+                raise ValueError(
+                    f"--edit_prompt_column' value '{args.edit_prompt_column}' needs to be one of: {', '.join(column_names)}"
+                )
+
+        if args.edited_image_column is None:
+            edited_image_column = dataset_columns[2] if dataset_columns is not None else column_names[2]
+        else:
+            edited_image_column = args.edited_image_column
+            if edited_image_column not in column_names:
+                raise ValueError(
+                    f"--edited_image_column' value '{args.edited_image_column}' needs to be one of: {', '.join(column_names)}"
+                )
+
 
     # Preprocessing the datasets.
     # We need to tokenize input captions and transform the images.

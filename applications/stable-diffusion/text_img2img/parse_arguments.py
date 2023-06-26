@@ -73,6 +73,24 @@ def parse_args():
         help=("A set of prompts evaluated every `--validation_epochs` and logged to `--report_to`."),
     )
     parser.add_argument(
+        "--edit_prompt_column",
+        type=str,
+        default="edit_prompt",
+        help="The column of the dataset containing the edit instruction.",
+    )
+    parser.add_argument(
+        "--edited_image_column",
+        type=str,
+        default="edited_image",
+        help="The column of the dataset containing the edited image.",
+    )
+    parser.add_argument(
+        "--original_image_column",
+        type=str,
+        default="input_image",
+        help="The column of the dataset containing the original image on which edits where made.",
+    )
+    parser.add_argument(
         "--output_dir",
         type=str,
         default="sd-model-finetuned",
@@ -221,6 +239,11 @@ def parse_args():
         default="cpu",
         help="Placement Policy for Gemini. Valid when using colossalai as dist plan.",
     )
+    parser.add_argument('--task_type',
+                        type=str,
+                        default='text_to_image',
+                        choices=['text_to_image', 'image_to_image'],
+                        help="plugin to use")
                         
     parser.add_argument(
         "--logging_dir",
