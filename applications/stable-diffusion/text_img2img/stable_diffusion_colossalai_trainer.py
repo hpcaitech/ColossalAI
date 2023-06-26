@@ -10,6 +10,7 @@ import accelerate
 import datasets
 import numpy as np
 import torch
+from torch import nn
 import torch.nn.functional as F
 import torch.utils.checkpoint
 import transformers
@@ -98,6 +99,10 @@ def main():
 
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
     # Make one log on every process with the configuration for debugging.
+
+    if args.seed is not None:
+        generator = torch.Generator(device=get_current_device()).manual_seed(args.seed)
+
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
         datefmt="%m/%d/%Y %H:%M:%S",
@@ -278,7 +283,7 @@ def main():
                 raise ValueError(
                     f"--edit_prompt_column' value '{args.edit_prompt_column}' needs to be one of: {', '.join(column_names)}"
                 )
-
+                
         if args.edited_image_column is None:
             edited_image_column = dataset_columns[2] if dataset_columns is not None else column_names[2]
         else:
@@ -291,52 +296,133 @@ def main():
 
     # Preprocessing the datasets.
     # We need to tokenize input captions and transform the images.
-    def tokenize_captions(examples, is_train=True):
-        captions = []
-        for caption in examples[caption_column]:
-            if isinstance(caption, str):
-                captions.append(caption)
-            elif isinstance(caption, (list, np.ndarray)):
-                # take a random caption if there are multiple
-                captions.append(random.choice(caption) if is_train else caption[0])
-            else:
-                raise ValueError(
-                    f"Caption column `{caption_column}` should contain either strings or lists of strings."
-                )
-        inputs = tokenizer(
-            captions, max_length=tokenizer.model_max_length, padding="max_length", truncation=True, return_tensors="pt"
-        )
-        return inputs.input_ids
+    def tokenize_captions_dispatch(task_type):
+        def tokenize_captions_1(examples, is_train=True):
+            captions = []
+            for caption in examples[caption_column]:
+                if isinstance(caption, str):
+                    captions.append(caption)
+                elif isinstance(caption, (list, np.ndarray)):
+                    # take a random caption if there are multiple
+                    captions.append(random.choice(caption) if is_train else caption[0])
+                else:
+                    raise ValueError(
+                        f"Caption column `{caption_column}` should contain either strings or lists of strings."
+                    )
+            inputs = tokenizer(
+                captions, max_length=tokenizer.model_max_length, padding="max_length", truncation=True, return_tensors="pt"
+            )
+            return inputs.input_ids
+        
+        def tokenize_captions_2(captions):
+            inputs = tokenizer(
+                captions, max_length=tokenizer.model_max_length, padding="max_length", truncation=True, return_tensors="pt"
+            )
+            return inputs.input_ids
+        
+        if task_type == "text_to_image":
+            return tokenize_captions_1
+        return tokenize_captions_2
+
 
     # Preprocessing the datasets.
-    train_transforms = transforms.Compose(
-        [
-            transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
-            transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution),
-            transforms.RandomHorizontalFlip() if args.random_flip else transforms.Lambda(lambda x: x),
-            transforms.ToTensor(),
-            transforms.Normalize([0.5], [0.5]),
-        ]
-    )
+    if args.task_type == "text_to_image":
+        train_transforms = transforms.Compose(
+            [
+                transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
+                transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution),
+                transforms.RandomHorizontalFlip() if args.random_flip else transforms.Lambda(lambda x: x),
+                transforms.ToTensor(),
+                transforms.Normalize([0.5], [0.5]),
+            ]
+        )
+    else:
+        train_transforms = transforms.Compose(
+            [
+                transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution),
+                transforms.RandomHorizontalFlip() if args.random_flip else transforms.Lambda(lambda x: x),
+            ]
+        )
 
-    def preprocess_train(examples):
-        images = [image.convert("RGB") for image in examples[image_column]]
-        examples["pixel_values"] = [train_transforms(image) for image in images]
-        examples["input_ids"] = tokenize_captions(examples)
-        return examples
+    tokenize_captions = tokenize_captions_dispatch(args.task_type)
+    def process_train_dispatch(task_type):
+        def preprocess_train_text_to_image(examples):
+            images = [image.convert("RGB") for image in examples[image_column]]
+            examples["pixel_values"] = [train_transforms(image) for image in images]
+            examples["input_ids"] = tokenize_captions(examples)
+            return examples
+        
+        def preprocess_images(examples):
+            original_images = np.concatenate(
+                [convert_to_np(image, args.resolution) for image in examples[original_image_column]]
+            )
+            edited_images = np.concatenate(
+                [convert_to_np(image, args.resolution) for image in examples[edited_image_column]]
+            )
+            # We need to ensure that the original and the edited images undergo the same
+            # augmentation transforms.
+            images = np.concatenate([original_images, edited_images])
+            images = torch.tensor(images)
+            images = 2 * (images / 255) - 1
+            return train_transforms(images)
+
+        def preprocess_train_image_to_image(examples):
+            # Preprocess images.
+            preprocessed_images = preprocess_images(examples)
+            # Since the original and edited images were concatenated before
+            # applying the transformations, we need to separate them and reshape
+            # them accordingly.
+            original_images, edited_images = preprocessed_images.chunk(2)
+            original_images = original_images.reshape(-1, 3, args.resolution, args.resolution)
+            edited_images = edited_images.reshape(-1, 3, args.resolution, args.resolution)
+
+            # Collate the preprocessed images into the `examples`.
+            examples["original_pixel_values"] = original_images
+            examples["edited_pixel_values"] = edited_images
+
+            # Preprocess the captions.
+            captions = list(examples[edit_prompt_column])
+            examples["input_ids"] = tokenize_captions(captions)
+            return examples
+        
+        if task_type == "text_to_image":
+            return preprocess_train_text_to_image
+        return preprocess_train_image_to_image
+        
+
 
     if args.max_train_samples is not None:
         dataset["train"] = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
     # Set the training transforms
+    preprocess_train = process_train_dispatch(args.task_type)
     train_dataset = dataset["train"].with_transform(preprocess_train)
 
-    def collate_fn(examples):
-        pixel_values = torch.stack([example["pixel_values"] for example in examples])
-        pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
-        input_ids = torch.stack([example["input_ids"] for example in examples])
-        return {"pixel_values": pixel_values, "input_ids": input_ids}
+    def collate_fn_dispatch(task_type):
+        def collate_fn_text_to_image(examples):
+            pixel_values = torch.stack([example["pixel_values"] for example in examples])
+            pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
+            input_ids = torch.stack([example["input_ids"] for example in examples])
+            return {"pixel_values": pixel_values, "input_ids": input_ids}
+        
+        def collate_fn_image_to_image(examples):
+            original_pixel_values = torch.stack([example["original_pixel_values"] for example in examples])
+            original_pixel_values = original_pixel_values.to(memory_format=torch.contiguous_format).float()
+            edited_pixel_values = torch.stack([example["edited_pixel_values"] for example in examples])
+            edited_pixel_values = edited_pixel_values.to(memory_format=torch.contiguous_format).float()
+            input_ids = torch.stack([example["input_ids"] for example in examples])
+            return {
+                "original_pixel_values": original_pixel_values,
+                "edited_pixel_values": edited_pixel_values,
+                "input_ids": input_ids,
+            }
+        
+        if task_type == "text_to_image":
+            return collate_fn_text_to_image
+        
+        return collate_fn_image_to_image
 
     # DataLoaders creation:
+    collate_fn = collate_fn_dispatch(args.task_type)
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
         shuffle=True,
@@ -359,8 +445,8 @@ def main():
         num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
     )
 
-    # Use Booster API to use Gemini/Zero with ColossalAI
-    unet, optimizer, _, _, lr_scheduler = booster.boost(unet, optimizer, lr_scheduler=lr_scheduler)
+    if args.use_ema:
+        ema_unet.to(get_current_device())
 
 
     weight_dtype = torch.float32
@@ -395,6 +481,9 @@ def main():
     progress_bar = tqdm(range(global_step, args.max_train_steps), disable = (local_rank!=0))
     progress_bar.set_description("Steps")
 
+    # Use Booster API to use Gemini/Zero with ColossalAI
+    unet, optimizer, _, _, lr_scheduler = booster.boost(unet, optimizer, lr_scheduler=lr_scheduler)
+
     torch.cuda.synchronize()
     print("start training ... ")
 
@@ -415,7 +504,10 @@ def main():
             # Convert images to latent space
             optimizer.zero_grad()
             
-            latents = vae.encode(batch["pixel_values"].to(weight_dtype)).latent_dist.sample()
+            if args.task_type == "text_to_image":
+                latents = vae.encode(batch["pixel_values"].to(weight_dtype)).latent_dist.sample()
+            else:
+                latents = vae.encode(batch["edited_pixel_values"].to(weight_dtype)).latent_dist.sample()
             latents = latents * vae.config.scaling_factor
 
             # Sample noise that we'll add to the latents
@@ -428,6 +520,7 @@ def main():
             if args.input_perturbation:
                 new_noise = noise + args.input_perturbation * torch.randn_like(noise)
             bsz = latents.shape[0]
+
             # Sample a random timestep for each image
             timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
             timesteps = timesteps.long()
@@ -438,9 +531,45 @@ def main():
                 noisy_latents = noise_scheduler.add_noise(latents, new_noise, timesteps)
             else:
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
-
+            
             # Get the text embedding for conditioning
             encoder_hidden_states = text_encoder(batch["input_ids"])[0]
+            
+            if args.task_type == "image_to_image":
+                # Get the additional image embedding for conditioning.
+                # Instead of getting a diagonal Gaussian here, we simply take the mode.
+                original_image_embeds = vae.encode(batch["original_pixel_values"].to(weight_dtype)).latent_dist.mode()
+
+                # Conditioning dropout to support classifier-free guidance during inference. For more details
+                # check out the section 3.2.1 of the original paper https://arxiv.org/abs/2211.09800.
+                if args.conditioning_dropout_prob is not None:
+                    if args.seed is not None:
+                        random_p = torch.rand(bsz, device=latents.device, generator=generator)
+                    else:
+                        random_p = torch.rand(bsz, device=latents.device)
+
+                    # Sample masks for the edit prompts.
+                    prompt_mask = random_p < 2 * args.conditioning_dropout_prob
+                    prompt_mask = prompt_mask.reshape(bsz, 1, 1)
+                    # Final text conditioning.
+                    null_conditioning = text_encoder(tokenize_captions([""]).to(get_current_device()))[0]
+                    encoder_hidden_states = torch.where(prompt_mask, null_conditioning, encoder_hidden_states)
+
+                    # Sample masks for the original images.
+                    image_mask_dtype = original_image_embeds.dtype
+                    image_mask = 1 - (
+                        (random_p >= args.conditioning_dropout_prob).to(image_mask_dtype)
+                        * (random_p < 3 * args.conditioning_dropout_prob).to(image_mask_dtype)
+                    )
+                    image_mask = image_mask.reshape(bsz, 1, 1, 1)
+                    # Final image conditioning.
+                    original_image_embeds = image_mask * original_image_embeds
+
+                # Concatenate the `original_image_embeds` with the `noisy_latents`.
+                concatenated_noisy_latents = torch.cat([noisy_latents, original_image_embeds], dim=1)
+                noisy_latents = concatenated_noisy_latents
+
+
 
             # Get the target for loss depending on the prediction type
             if args.prediction_type is not None:
@@ -507,11 +636,6 @@ def main():
                                 removing_checkpoint = os.path.join(args.output_dir, removing_checkpoint)
                                 shutil.rmtree(removing_checkpoint)
 
-                    # save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
-                    # if os.path.isdir(save_path) is False:
-                    #     os.makedirs(save_path)
-                    # booster.save_model(unet, os.path.join(save_path, "diffusion_pytorch_model.bin"))
-                    # print("finished saving")
             
             logger.info(f'train_loss : {loss.detach().item()} for global_step : {global_step}')
             logger.info(f'lr: {lr_scheduler.get_last_lr()[0]}')

@@ -227,6 +227,12 @@ def parse_args():
         default=None,
         help="The name of the repository to keep in sync with the local `output_dir`.",
     )
+    parser.add_argument(
+        "--conditioning_dropout_prob",
+        type=float,
+        default=None,
+        help="Conditioning dropout probability. Drops out the conditionings (image and edit prompt) used in training InstructPix2Pix. See section 3.2.1 in the paper: https://arxiv.org/abs/2211.09800.",
+    )
     parser.add_argument('-p',
                         '--plugin',
                         type=str,
