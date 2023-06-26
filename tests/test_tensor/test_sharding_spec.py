@@ -5,7 +5,7 @@ from colossalai.tensor.sharding_spec import ShardingSpec, _DimSpec
 
 
 def test_sharding_spec():
-    physical_mesh_id = torch.arange(0, 16).reshape(2, 8)
+    physical_mesh_id = torch.arange(0, 16)
     mesh_shape = (4, 4)
     # [[0, 1, 2, 3],
     #  [4, 5, 6, 7],
