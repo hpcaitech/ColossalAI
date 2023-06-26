@@ -122,6 +122,14 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        "--use_lora",
+        default=False,
+        action="store_true",
+        help=(
+            "Whether to use LoRA to fine-tune your model"
+        ),
+    )
+    parser.add_argument(
         "--random_flip",
         action="store_true",
         help="whether to randomly flip images horizontally",
