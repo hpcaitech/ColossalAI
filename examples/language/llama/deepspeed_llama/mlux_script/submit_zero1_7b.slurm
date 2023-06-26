@@ -3,10 +3,10 @@
 #SBATCH --account=p200164 # project account
 #SBATCH --partition=gpu                    # partition
 #SBATCH --nodes=2                          # number of nodes
-#SBATCH --ntasks=2                         # number of tasks
-#SBATCH --ntasks-per-node=1                # number of tasks per node
-#SBATCH --cpus-per-task=32                  # number of cores per task
-#SBATCH --gpus-per-task=4                  # number of gpu per task
+#SBATCH --ntasks=8                         # number of tasks
+#SBATCH --ntasks-per-node=4                # number of tasks per node
+#SBATCH --cpus-per-task=8                  # number of cores per task
+#SBATCH --gpus-per-task=1                  # number of gpu per task
 #SBATCH --time=00-01:00                     # time (DD-HH:MM)
 #SBATCH --qos=default
 #SBATCH --contiguous
