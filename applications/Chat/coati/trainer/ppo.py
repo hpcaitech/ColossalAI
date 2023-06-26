@@ -49,13 +49,13 @@ class PPOTrainer(OnPolicyTrainer):
         pretrain_dataloader (DataLoader): the dataloader to use for pretrain data
         kl_coef (float, defaults to 0.1): the coefficient of kl divergence loss
         train_batch_size (int, defaults to 8): the batch size to use for training
-        buffer_limit (int, defaults to 0): the max_size limitation of replay buffer
-        buffer_cpu_offload (bool, defaults to True): whether to offload replay buffer to cpu
+        buffer_limit (int, defaults to 0): the max_size limitation of buffer
+        buffer_cpu_offload (bool, defaults to True): whether to offload buffer to cpu
         eps_clip (float, defaults to 0.2): the clip coefficient of policy loss
         vf_coef (float, defaults to 1.0): the coefficient of value loss
         ptx_coef (float, defaults to 0.9): the coefficient of ptx loss
         value_clip (float, defaults to 0.4): the clip coefficient of value loss
-        sample_replay_buffer (bool, defaults to False): whether to sample from replay buffer
+        sample_buffer (bool, defaults to False): whether to sample from buffer
         dataloader_pin_memory (bool, defaults to True): whether to pin memory for data loader
         offload_inference_models (bool, defaults to True): whether to offload inference models to cpu during training process
         callbacks (List[Callback], defaults to []): the callbacks to call during training process
@@ -80,7 +80,7 @@ class PPOTrainer(OnPolicyTrainer):
                  eps_clip: float = 0.2,
                  vf_coef: float = 1.0,
                  value_clip: float = 0.4,
-                 sample_replay_buffer: bool = False,
+                 sample_buffer: bool = False,
                  dataloader_pin_memory: bool = True,
                  offload_inference_models: bool = True,
                  callbacks: List[Callback] = [],
@@ -94,7 +94,7 @@ class PPOTrainer(OnPolicyTrainer):
         buffer = NaiveReplayBuffer(train_batch_size, buffer_limit, buffer_cpu_offload)
         super().__init__(
             strategy, buffer,
-            sample_replay_buffer, dataloader_pin_memory,
+            sample_buffer, dataloader_pin_memory,
             callbacks
         )
 
