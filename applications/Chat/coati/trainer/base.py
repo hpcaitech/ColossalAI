@@ -109,6 +109,14 @@ class OnPolicyTrainer(ABC):
         for callback in self.callbacks:
             callback.on_make_experience_end(experience)
 
+    def _on_learn_epoch_start(self, epoch: int) -> None:
+        for callback in self.callbacks:
+            callback.on_learn_epoch_start(epoch)
+
+    def _on_learn_epoch_end(self, epoch: int) -> None:
+        for callback in self.callbacks:
+            callback.on_learn_epoch_end(epoch)
+
     def _on_learn_batch_start(self) -> None:
         for callback in self.callbacks:
             callback.on_learn_batch_start()
