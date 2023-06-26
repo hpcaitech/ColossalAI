@@ -188,7 +188,7 @@ class NodeHandler(ABC):
         remove_strategy_list = []
         for strategy in self.strategies_vector:
             shard_axis_list = []
-            last_axis = len(self.device_mesh.mesh_shape) - 1
+            last_axis = len(self.device_mesh.shape) - 1
             for op_data, sharding_spec in strategy.sharding_specs.items():
                 if op_data.data is not None and isinstance(op_data.data, torch.Tensor):
                     for dim, shard_axes in sharding_spec.dim_partition_dict.items():
