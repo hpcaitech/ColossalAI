@@ -63,7 +63,7 @@ class DDPStrategy(Strategy):
             f'{type(self).__name__}\'s plugin is not initialized properly.'
 
     def setup_distributed(self) -> None:
-        self._try_init_dist(force=True)
+        self._try_init_dist(force=False)
         self.set_seed(self.seed)
 
     def set_seed(self, seed: int) -> None:
