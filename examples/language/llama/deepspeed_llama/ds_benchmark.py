@@ -81,7 +81,7 @@ def get_argument_parser():
                         default=-1,
                         help="local_rank for distributed training on gpus")
     parser.add_argument('-c', '--config', type=str, default='7b', help='Model configuration')
-    # parser.add_argument('-b', '--batch_size', type=int, default=2, help='Batch size')
+    parser.add_argument('-b', '--batch_size', type=int, default=8, help='Batch size')
     parser.add_argument('-s', '--num_steps', type=int, default=10, help='Number of steps to run')
     parser.add_argument('-i', '--ignore_steps', type=int, default=2, help='Number of steps to ignore')
     parser.add_argument('-g', '--grad_checkpoint', action='store_true', help='Use gradient checkpointing')
