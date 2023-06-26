@@ -169,9 +169,10 @@ def main(args):
         initial_model,
         actor_optim,
         critic_optim,
+        prompt_dataloader=prompt_dataloader,
+        pretrain_dataloader=pretrain_dataloader,
         kl_coef=args.kl_coef,
         ptx_coef=args.ptx_coef,
-        max_epochs=args.max_epochs,
         train_batch_size=args.train_batch_size,
         experience_batch_size=args.experience_batch_size,
         tokenizer=tokenize_fn,
@@ -183,11 +184,9 @@ def main(args):
         eos_token_id=tokenizer.eos_token_id,
     )
 
-    trainer.fit(prompt_dataloader=prompt_dataloader,
-                pretrain_dataloader=pretrain_dataloader,
-                num_episodes=args.num_episodes,
-                max_timesteps=args.max_timesteps,
-                update_timesteps=args.update_timesteps)
+    trainer.fit(num_episodes=args.num_episodes,
+                num_update_steps=args.num_update_steps,
+                num_collect_steps=args.num_collect_steps)
 
     # save model checkpoint after fitting
     trainer.save_model(args.save_path, only_rank0=True, tokenizer=tokenizer)
@@ -215,9 +214,8 @@ if __name__ == '__main__':
     parser.add_argument('--save_path', type=str, default='actor_checkpoint_prompts')
     parser.add_argument('--need_optim_ckpt', type=bool, default=False)
     parser.add_argument('--num_episodes', type=int, default=10)
-    parser.add_argument('--max_timesteps', type=int, default=10)
-    parser.add_argument('--update_timesteps', type=int, default=10)
-    parser.add_argument('--max_epochs', type=int, default=5)
+    parser.add_argument('--num_collect_steps', type=int, default=10)
+    parser.add_argument('--num_update_steps', type=int, default=5)
     parser.add_argument('--train_batch_size', type=int, default=2)
     parser.add_argument('--ptx_batch_size', type=int, default=1)
     parser.add_argument('--experience_batch_size', type=int, default=8)

@@ -171,9 +171,8 @@ Pretrain dataset: the pretrain dataset including the instruction and correspondi
 - --pretrain_dataset:  path of the ptx dataset, type=str, default=None
 - --need_optim_ckpt:   whether to save optim ckpt, type=bool, default=False
 - --num_episodes:      num of episodes for training, type=int, default=10
-- --max_epochs:        max epochs for training in one episode, type=int, default=5
-- --max_timesteps:     max episodes in one batch, type=int, default=10
-- --update_timesteps:  timesteps to update, type=int, default=10
+- --num_update_steps:  number of steps to update policy per episode, type=int
+- --num_collect_steps: number of steps to collect experience per episode, type=int
 - --train_batch_size:  batch size while training, type=int, default=8
 - --ptx_batch_size:    batch size to compute ptx loss, type=int, default=1
 - --experience_batch_size: batch size to make experience, type=int, default=8
