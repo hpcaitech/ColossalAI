@@ -141,8 +141,8 @@ def distinct_score(preds: List[str], language: str) -> Dict[str, float]:
             count_segs = len(pred_seg_list)
             unique_segs = set(pred_seg_list)
             count_unique_chars = len(unique_segs)
-
-            cumulative_distinct.append(count_unique_chars / count_segs)
+            # prevent denominator from being 0
+            cumulative_distinct.append(count_unique_chars / (count_segs + 1e-6))
         elif language == "en":
             # calculate distinct 1-gram, 2-gram, 3-gram
             unique_ngram = [set() for _ in range(0, 3)]
