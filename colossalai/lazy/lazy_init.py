@@ -1,5 +1,5 @@
 from types import MethodType
-from typing import Callable, Dict, Optional, Union
+from typing import Callable, Optional, Union
 
 import torch
 import torch.distributed as dist
@@ -173,7 +173,7 @@ class LazyTensor(torch.Tensor):
         self.clean()
         return _convert_cls(self, target)
 
-    def distribute(self, device_mesh: DeviceMesh, sharding_spec: ShardingSpec) -> torch.Tensor:
+    def distribute(self, layout: Layout) -> torch.Tensor:
         """Distribute the ``LazyTensor`` to ``torch.Tensor`` by modifying __class__ (inplace), according to the layout.
 
         Args:
@@ -537,10 +537,7 @@ class LazyInitContext:
         return _apply_to_lazy_module(module, apply_fn, verbose)
 
     @staticmethod
-    def distribute(module: nn.Module,
-                   device_mesh: DeviceMesh,
-                   sharding_spec_dict: Dict[str, ShardingSpec],
-                   verbose: bool = False) -> nn.Module:
+    def distribute(module: nn.Module, layout_dict: dict, verbose: bool = False) -> nn.Module:
         """Distribute all ``nn.Parameter`` from ``LazyTensor``. This function will modify the module in-place.
 
         Args:
@@ -550,7 +547,7 @@ class LazyInitContext:
         """
 
         def apply_fn(name: str, p: LazyTensor):
-            p.distribute(device_mesh, sharding_spec_dict[name])
+            p.distribute(layout_dict[name])
 
         return _apply_to_lazy_module(module, apply_fn, verbose)
 
