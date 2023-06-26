@@ -1,4 +1,4 @@
-from typing import Dict, List, Union
+from typing import Dict, List
 
 import torch.nn as nn
 from coati.experience_maker import Experience, NaiveExperienceMaker
@@ -8,7 +8,7 @@ from coati.models.utils import calc_action_log_probs
 from coati.replay_buffer import NaiveReplayBuffer
 from torch import Tensor
 from torch.optim import Optimizer
-from torch.utils.data import DistributedSampler
+from torch.utils.data import DataLoader, DistributedSampler
 from tqdm import tqdm
 
 from colossalai.utils import get_current_device
@@ -17,6 +17,20 @@ from .base import OnPolicyTrainer
 from .callbacks import Callback
 from .strategies import ColossalAIStrategy, Strategy
 from .utils import is_rank_0, to_device
+
+
+def _set_default_generate_kwargs(strategy: Strategy, generate_kwargs: dict, actor: Actor) -> Dict:
+    unwrapper_model = strategy.unwrap_model(actor)
+    hf_model = get_base_model(unwrapper_model)
+    new_kwargs = {**generate_kwargs}
+    # use huggingface models method directly
+    if 'prepare_inputs_fn' not in generate_kwargs and hasattr(hf_model, 'prepare_inputs_for_generation'):
+        new_kwargs['prepare_inputs_fn'] = hf_model.prepare_inputs_for_generation
+
+    if 'update_model_kwargs_fn' not in generate_kwargs and hasattr(hf_model, '_update_model_kwargs_for_generation'):
+        new_kwargs['update_model_kwargs_fn'] = hf_model._update_model_kwargs_for_generation
+
+    return new_kwargs
 
 
 class PPOTrainer(OnPolicyTrainer):
@@ -31,6 +45,8 @@ class PPOTrainer(OnPolicyTrainer):
         initial_model (Actor): the initial model in rlhf algorithm to generate reference logics to limit the update of actor
         actor_optim (Optimizer): the optimizer to use for actor model
         critic_optim (Optimizer): the optimizer to use for critic model
+        prompt_dataloader (DataLoader): the dataloader to use for prompt data
+        pretrain_dataloader (DataLoader): the dataloader to use for pretrain data
         kl_coef (float, defaults to 0.1): the coefficient of kl divergence loss
         train_batch_size (int, defaults to 8): the batch size to use for training
         buffer_limit (int, defaults to 0): the max_size limitation of replay buffer
@@ -39,7 +55,6 @@ class PPOTrainer(OnPolicyTrainer):
         vf_coef (float, defaults to 1.0): the coefficient of value loss
         ptx_coef (float, defaults to 0.9): the coefficient of ptx loss
         value_clip (float, defaults to 0.4): the clip coefficient of value loss
-        max_epochs (int, defaults to 1): the number of epochs of training process
         sample_replay_buffer (bool, defaults to False): whether to sample from replay buffer
         dataloader_pin_memory (bool, defaults to True): whether to pin memory for data loader
         offload_inference_models (bool, defaults to True): whether to offload inference models to cpu during training process
@@ -55,6 +70,8 @@ class PPOTrainer(OnPolicyTrainer):
                  initial_model: Actor,
                  actor_optim: Optimizer,
                  critic_optim: Optimizer,
+                 prompt_dataloader: DataLoader,
+                 pretrain_dataloader: DataLoader,
                  kl_coef: float = 0.1,
                  ptx_coef: float = 0.9,
                  train_batch_size: int = 8,
@@ -63,28 +80,30 @@ class PPOTrainer(OnPolicyTrainer):
                  eps_clip: float = 0.2,
                  vf_coef: float = 1.0,
                  value_clip: float = 0.4,
-                 max_epochs: int = 1,
                  sample_replay_buffer: bool = False,
                  dataloader_pin_memory: bool = True,
                  offload_inference_models: bool = True,
                  callbacks: List[Callback] = [],
-                 **generate_kwargs) -> None:
+                 **generate_kwargs
+                 ) -> None:
         if isinstance(strategy, ColossalAIStrategy):
             from colossalai.booster.plugin import GeminiPlugin
             assert not (isinstance(strategy.plugin, GeminiPlugin) and offload_inference_models), \
                 "GeminiPlugin is not compatible with manual model.to('cpu')"
 
-        experience_maker = NaiveExperienceMaker(actor, critic, reward_model, initial_model, kl_coef)
         buffer = NaiveReplayBuffer(train_batch_size, buffer_limit, buffer_cpu_offload)
-        generate_kwargs = _set_default_generate_kwargs(strategy, generate_kwargs, actor)
-        super().__init__(strategy, buffer, callbacks)
+        super().__init__(
+            strategy, buffer,
+            sample_replay_buffer, dataloader_pin_memory,
+            callbacks
+        )
 
-        self.max_epochs = max_epochs
-        self.dataloader_pin_memory = dataloader_pin_memory
-        self.generate_kwargs = generate_kwargs
-        self.experience_maker = experience_maker
-        self.sample_replay_buffer = sample_replay_buffer
+        self.generate_kwargs = _set_default_generate_kwargs(strategy, generate_kwargs, actor)
+        self.experience_maker = NaiveExperienceMaker(actor, critic, reward_model, initial_model, kl_coef)
         self.offload_inference_models = offload_inference_models
+
+        self.prompt_dataloader = prompt_dataloader
+        self.pretrain_dataloader = pretrain_dataloader
 
         self.actor = actor
         self.critic = critic
@@ -99,71 +118,20 @@ class PPOTrainer(OnPolicyTrainer):
 
         self.device = get_current_device()
 
-    def _make_experience(self, inputs: Union[Tensor, Dict[str, Tensor]]) -> Experience:
-        if isinstance(inputs, Tensor):
-            return self.experience_maker.make_experience(inputs, **self.generate_kwargs)
-        elif isinstance(inputs, dict):
-            return self.experience_maker.make_experience(**inputs, **self.generate_kwargs)
+    def _make_experience(self, collect_step: int) -> Experience:
+        prompts = next(iter(self.prompt_dataloader))  # sample a prompt
+        if self.offload_inference_models:
+            # TODO(ver217): this may be controlled by strategy if they are prepared by strategy
+            self.experience_maker.initial_model.to(self.device)
+            self.experience_maker.reward_model.to(self.device)
+        if isinstance(prompts, Tensor):
+            return self.experience_maker.make_experience(prompts, **self.generate_kwargs)
+        elif isinstance(prompts, dict):
+            return self.experience_maker.make_experience(**prompts, **self.generate_kwargs)
         else:
-            raise ValueError(f'Unsupported input type "{type(inputs)}"')
+            raise ValueError(f'Unsupported input type "{type(prompts)}"')
 
-    def _learn(self):
-        # replay buffer may be empty at first, we should rebuild at each training
-        if self.sample_replay_buffer:
-            pbar = tqdm(range(self.max_epochs), desc='Train epoch', disable=not is_rank_0())
-            for _ in pbar:
-                experience = self.buffer.sample()
-                experience.to_device(self.device)
-                metrics = self.training_step(experience)
-                pbar.set_postfix(metrics)
-        else:
-            # HACK(cwher): according to the design of boost API, dataloader should also be boosted,
-            #  but it is impractical to adapt this pattern in RL training. Thus, I left dataloader unboosted.
-            dataloader = self.strategy.setup_dataloader(self.buffer, self.dataloader_pin_memory)
-            for epoch in range(self.max_epochs):
-                if isinstance(dataloader.sampler, DistributedSampler):
-                    dataloader.sampler.set_epoch(epoch)
-                pbar = tqdm(dataloader, desc=f'Train epoch [{epoch+1}/{self.max_epochs}]', disable=not is_rank_0())
-                for experience in pbar:
-                    self._on_learn_batch_start()
-                    experience.to_device(self.device)
-                    metrics = self.training_step(experience)
-                    self._on_learn_batch_end(metrics, experience)
-                    pbar.set_postfix(metrics)
-
-    def fit(self,
-            prompt_dataloader,
-            pretrain_dataloader,
-            num_episodes: int = 50000,
-            max_timesteps: int = 500,
-            update_timesteps: int = 5000) -> None:
-        time = 0
-        self.pretrain_dataloader = pretrain_dataloader
-        self.prompt_dataloader = prompt_dataloader
-        with self._fit_ctx():
-            for episode in range(num_episodes):
-                with self._episode_ctx(episode):
-                    for timestep in tqdm(range(max_timesteps),
-                                         desc=f'Episode [{episode+1}/{num_episodes}]',
-                                         disable=not is_rank_0()):
-                        time += 1
-                        prompts = next(iter(self.prompt_dataloader))
-                        self._on_make_experience_start()
-                        if self.offload_inference_models:
-                            # TODO(ver217): this may be controlled by strategy if they are prepared by strategy
-                            self.experience_maker.initial_model.to(self.device)
-                            self.experience_maker.reward_model.to(self.device)
-                        experience = self._make_experience(prompts)
-                        self._on_make_experience_end(experience)
-                        self.buffer.append(experience)
-                        if time % update_timesteps == 0:
-                            if self.offload_inference_models:
-                                self.experience_maker.initial_model.to('cpu')
-                                self.experience_maker.reward_model.to('cpu')
-                            self._learn()
-                            self.buffer.clear()
-
-    def training_step(self, experience: Experience) -> Dict[str, float]:
+    def _training_step(self, experience: Experience) -> Dict[str, float]:
         self.actor.train()
         self.critic.train()
         # policy loss
@@ -203,16 +171,29 @@ class PPOTrainer(OnPolicyTrainer):
 
         return {'reward': experience.reward.mean().item()}
 
+    def _learn(self, update_step: int):
+        if self.offload_inference_models:
+            self.experience_maker.initial_model.to('cpu')
+            self.experience_maker.reward_model.to('cpu')
 
-def _set_default_generate_kwargs(strategy: Strategy, generate_kwargs: dict, actor: Actor) -> Dict:
-    unwrapper_model = strategy.unwrap_model(actor)
-    hf_model = get_base_model(unwrapper_model)
-    new_kwargs = {**generate_kwargs}
-    # use huggingface models method directly
-    if 'prepare_inputs_fn' not in generate_kwargs and hasattr(hf_model, 'prepare_inputs_for_generation'):
-        new_kwargs['prepare_inputs_fn'] = hf_model.prepare_inputs_for_generation
-
-    if 'update_model_kwargs_fn' not in generate_kwargs and hasattr(hf_model, '_update_model_kwargs_for_generation'):
-        new_kwargs['update_model_kwargs_fn'] = hf_model._update_model_kwargs_for_generation
-
-    return new_kwargs
+        # buffer may be empty at first, we should rebuild at each training
+        if self.sample_buffer:
+            experience = self.buffer.sample()
+            self._on_learn_batch_start()
+            experience.to_device(self.device)
+            metrics = self._training_step(experience)
+            self._on_learn_batch_end(metrics, experience)
+        else:
+            if isinstance(self.dataloader.sampler, DistributedSampler):
+                self.dataloader.sampler.set_epoch(update_step)
+            pbar = tqdm(
+                self.dataloader,
+                desc=f'Train epoch [{update_step + 1}]',
+                disable=not is_rank_0()
+            )
+            for experience in pbar:
+                self._on_learn_batch_start()
+                experience.to_device(self.device)
+                metrics = self._training_step(experience)
+                self._on_learn_batch_end(metrics, experience)
+                pbar.set_postfix(metrics)

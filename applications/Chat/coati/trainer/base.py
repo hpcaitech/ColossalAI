@@ -74,11 +74,15 @@ class OnPolicyTrainer(ABC):
     def __init__(self,
                  strategy: Strategy,
                  buffer: NaiveReplayBuffer,
+                 sample_buffer: bool,
+                 dataloader_pin_memory: bool,
                  callbacks: List[Callback] = []
                  ) -> None:
         super().__init__()
         self.strategy = strategy
         self.buffer = buffer
+        self.sample_buffer = sample_buffer
+        self.dataloader_pin_memory = dataloader_pin_memory
         self.callbacks = callbacks
 
     @contextmanager
@@ -125,34 +129,64 @@ class OnPolicyTrainer(ABC):
         for callback in self.callbacks:
             callback.on_learn_batch_end(metrics, experience)
 
-    # TODO(cwher):
-    # @abstractmethod
-    # def _make_experience(self):
-    #     raise NotImplementedError()
+    @abstractmethod
+    def _make_experience(self, collect_step: int):
+        """
+        Implement this method to make experience.
+        """
+        raise NotImplementedError()
 
-    # @abstractmethod
-    # def _learn(self):
-    #     raise NotImplementedError()
+    @abstractmethod
+    def _learn(self, update_step: int):
+        """
+        Implement this method to learn from experience, either 
+        sample from buffer or transform buffer into dataloader.
+        """
+        raise NotImplementedError()
 
-    # def _collect_phase(self):
-    #     self._on_make_experience_start()
-    #     experience = self._make_experience()
-    #     self._on_make_experience_end(experience)
+    def _collect_phase(self, collect_step: int):
+        self._on_make_experience_start()
+        experience = self._make_experience(collect_step)
+        self._on_make_experience_end(experience)
+        self.buffer.append(experience)
 
-    # def _update_phase(self):
-    #     pass
+    def _update_phase(self, update_step: int):
+        self._on_learn_epoch_start(update_step)
+        self._learn(update_step)
+        self._on_learn_epoch_end(update_step)
 
-    # def fit(self,
-    #         num_episodes: int,
-    #         num_collect_steps: int,
-    #         num_update_steps: int,
-    #         ):
-    #     with self._fit_ctx():
-    #         for episode in range(num_episodes):
-    #             with self._episode_ctx(episode):
-    #                 for collect_step in range(num_collect_steps):
-    #                     self._collect_phase()
-    #                 for update_step in range(num_update_steps):
-    #                     self._update_phase()
-    #                 # NOTE: this is for on-policy algorithms
-    #                 self.buffer.clear()
+    def fit(self,
+            num_episodes: int,
+            num_collect_steps: int,
+            num_update_steps: int,
+            ):
+        """
+        The main training loop of on-policy rl trainers.
+
+        Args:
+            num_episodes (int): the number of episodes to train
+            num_collect_steps (int): the number of collect steps per episode
+            num_update_steps (int): the number of update steps per episode
+        """
+
+        with self._fit_ctx():
+            for episode in tqdm.trange(num_episodes,
+                                       desc="Episodes",
+                                       disable=not is_rank_0()):
+                with self._episode_ctx(episode):
+                    for collect_step in tqdm.trange(num_collect_steps,
+                                                    desc="Collect steps",
+                                                    disable=not is_rank_0()):
+                        self._collect_phase(collect_step)
+                    if not self.sample_buffer:
+                        # HACK(cwher): according to the design of boost API, dataloader should also be boosted,
+                        #  but it is impractical to adapt this pattern in RL training. Thus, I left dataloader unboosted.
+                        #  I only call strategy.setup_dataloader() to setup dataloader.
+                        self.dataloader = self.strategy.setup_dataloader(self.buffer,
+                                                                         self.dataloader_pin_memory)
+                    for update_step in tqdm.trange(num_update_steps,
+                                                   desc="Update steps",
+                                                   disable=not is_rank_0()):
+                        self._update_phase(update_step)
+                    # NOTE: this is for on-policy algorithms
+                    self.buffer.clear()
