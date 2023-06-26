@@ -64,7 +64,7 @@ def check_dtensor(rank, world_size, port):
     else:
         raise ValueError(f'rank {rank} is not in the device mesh')
 
-    dtensor_from_local = distribute_tensor(original_tensor, new_layout)
+    dtensor_from_local = distribute_tensor(original_tensor, device_mesh, new_sharding_spec)
 
     if rank == 0:
         assert dtensor_from_local.equal(original_tensor.narrow(0, 0, 1))
