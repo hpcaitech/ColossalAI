@@ -65,10 +65,6 @@ class SFTTrainer(SLTrainer):
                                  labels=batch["labels"])
 
             loss = outputs.loss
-
-            if loss >= 2.5 and is_rank_0():
-                self.logger.warning(f"batch_id:{batch_id}, abnormal loss: {loss}")
-
             loss = loss / self.accumulation_steps
 
             self.strategy.backward(loss, self.model, self.optimizer)
