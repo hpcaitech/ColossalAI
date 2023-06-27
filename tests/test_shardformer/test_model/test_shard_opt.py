@@ -1,12 +1,18 @@
+import copy
 import os
 
 import pytest
 import torch
-import copy
 
 import colossalai
 from colossalai.logging import disable_existing_loggers
-from colossalai.testing import assert_hf_output_close, clear_cache_before_run, rerun_if_address_is_in_use, spawn, check_state_dict_equal
+from colossalai.testing import (
+    assert_hf_output_close,
+    check_state_dict_equal,
+    clear_cache_before_run,
+    rerun_if_address_is_in_use,
+    spawn,
+)
 from tests.kit.model_zoo import model_zoo
 from tests.test_shardformer.test_model._utils import build_model, run_forward
 
@@ -52,6 +58,7 @@ def check_OPTModel(rank, world_size, port):
         check_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn)
 
     torch.cuda.empty_cache()
+
 
 @pytest.mark.dist
 @rerun_if_address_is_in_use()

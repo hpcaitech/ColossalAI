@@ -76,6 +76,8 @@ _POLICY_LIST = {
         PolicyLocation(file_name="opt", class_name="OPTForCausalLMPolicy"),
     "transformers.models.opt.modeling_opt.OPTForSequenceClassification":
         PolicyLocation(file_name="opt", class_name="OPTForSequenceClassificationPolicy"),
+    "transformers.models.opt.modeling_opt.OPTForQuestionAnswering":
+        PolicyLocation(file_name="opt", class_name="OPTForQuestionAnsweringPolicy"),
 }
 
 
