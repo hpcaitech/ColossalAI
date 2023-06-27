@@ -281,6 +281,7 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
         if self._bucket_store.num_elements_in_bucket() > 0:
             self._bucket_store.build_grad_in_bucket()
             flat_grads = self._bucket_store.get_flatten_grad()
+            flat_grads /= self._world_size
             if self._overlap_communication:
                 stream = self._comm_stream
             else:
@@ -290,7 +291,6 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
                 group_id = self._bucket_store.current_group_id
                 if not self._partition_grads:
                     dist.all_reduce(flat_grads, group=self._dp_torch_group)
-                    flat_grads /= self._world_size
 
                     flat_grads_per_rank = flat_grads.split(flat_grads.numel() // self._world_size)
                     grad_in_bucket = self._bucket_store.get_grad()
@@ -305,7 +305,6 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
                     flat_grads_list = list(flat_grads.split(len(flat_grads) // self._world_size))
                     recieved_grad = torch.zeros_like(flat_grads_list[0])
                     dist.reduce_scatter(recieved_grad, flat_grads_list, group=self._dp_torch_group)
-                    recieved_grad /= self._world_size
 
                     grad_in_bucket_current_rank = self._bucket_store.get_grad()[self._local_rank]
                     sync_tensor(recieved_grad, grad_in_bucket_current_rank)
@@ -387,6 +386,7 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
             if self._verbose:
                 self._logger.info(f'Found overflow. Skip step')
             self.zero_grad()
+            self._accumulate_step -= 1
             return
 
         # record all grads for unscale and clip
@@ -408,7 +408,7 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
             for splited_param in master_params:
                 working_param = self._param_store.master_to_working_param[id(splited_param)]
                 # if a working param requires grad and has no grad
-                # it is not 'really' working
+                # it is not 'really' working, e.g. the droped layer
                 # else the splited grad should be attached to the splited param
                 grads = self._grad_store.get_partitioned_gradients_by_param_id(group_id, id(working_param))
                 if len(grads) > 0:
@@ -434,10 +434,12 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
         # unscale and clip grads
         global_norm = calculate_global_norm_from_list(norm_list=norm_groups)
         self._unscale_and_clip_grads(grad_partition_groups, global_norm)
+
         # update the parameters
         self.optim.step()
 
-        # release the master grad, release the mem
+        # release the grad
+        grad_partition_groups = []
         for group_id in range(self.num_param_groups):
             release_param_grad(self._master_param_groups_of_current_rank[group_id])
 
@@ -449,8 +451,7 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
                 full_master_param = [torch.zeros_like(splited_param).cuda() for _ in range(self._world_size)]
                 dist.all_gather(full_master_param, splited_param.cuda(), group=self._dp_torch_group)
                 working_param = real_working_params[group_id][idx]
-                full_master_param = flatten(full_master_param)
-                full_master_param = full_master_param[:working_param.numel()].reshape_as(working_param)
+                full_master_param = flatten(full_master_param)[:working_param.numel()].reshape_as(working_param)
                 working_param.data.copy_(full_master_param)
 
             self.optim.param_groups[group_id]['params'] = self._master_param_groups_of_current_rank[group_id]

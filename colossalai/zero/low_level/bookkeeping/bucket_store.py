@@ -36,8 +36,9 @@ class BucketStore(BaseStore):
                     grad = torch.nn.function.pad(grad, [0, padding_size])
                 grad_list = grad.split(grad.numel() // self._world_size)
                 for rank in range(self._world_size):
-                    self.grad_to_param_mapping[id(grad_list[rank])] = id(param)
-                    self._grad_in_bucket[rank].append(grad_list[rank])
+                    grad_current_rank = grad_list[rank].detach()
+                    self.grad_to_param_mapping[id(grad_current_rank)] = id(param)
+                    self._grad_in_bucket[rank].append(grad_current_rank)
             param.grad = None
 
     def get_grad(self):
