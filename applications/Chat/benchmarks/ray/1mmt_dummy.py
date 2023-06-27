@@ -83,8 +83,8 @@ def main(args):
         env_info=env_info_maker,
         kl_coef=0.1,
         debug=args.debug,
-    # sync_models_from_trainers=True,
-    # generation kwargs:
+        # sync_models_from_trainers=True,
+        # generation kwargs:
         max_length=512,
         do_sample=True,
         temperature=1.0,
@@ -153,10 +153,10 @@ if __name__ == '__main__':
     parser.add_argument('--num_trainers', type=int, default=1)
     parser.add_argument('--trainer_strategy',
                         choices=[
-                            'naive', 'ddp', 'colossalai_gemini', 'colossalai_zero2', 'colossalai_gemini_cpu',
+                            'ddp', 'colossalai_gemini', 'colossalai_zero2', 'colossalai_gemini_cpu',
                             'colossalai_zero2_cpu'
                         ],
-                        default='naive')
+                        default='ddp')
     parser.add_argument('--maker_strategy', choices=['naive'], default='naive')
     parser.add_argument('--model', default='gpt2', choices=['gpt2', 'bloom', 'opt', 'llama'])
     parser.add_argument('--critic_model', default='gpt2', choices=['gpt2', 'bloom', 'opt', 'llama'])

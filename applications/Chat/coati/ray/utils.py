@@ -76,9 +76,7 @@ def get_reward_model_from_args(model: str, pretrained: str = None, config=None):
 
 
 def get_strategy_from_args(strategy: str):
-    if strategy == 'naive':
-        strategy_ = NaiveStrategy()
-    elif strategy == 'ddp':
+    if strategy == 'ddp':
         strategy_ = DDPStrategy()
     elif strategy == 'colossalai_gemini':
         strategy_ = ColossalAIStrategy(stage=3, placement_policy='cuda', initial_scale=2**5)
