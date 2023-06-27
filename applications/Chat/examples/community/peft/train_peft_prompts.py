@@ -9,7 +9,7 @@ from coati.models.gpt import GPTRM, GPTActor, GPTCritic
 from coati.models.llama import LlamaActor, LlamaCritic, LlamaRM
 from coati.models.opt import OPTRM, OPTActor, OPTCritic
 from coati.trainer import PPOTrainer
-from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy
+from coati.trainer.strategies import DDPStrategy, GeminiStrategy, LowLevelZeroStrategy
 from coati.utils import prepare_llama_tokenizer_and_embedding
 from easy_dataset import EasyPromptsDataset, EasySupervisedDataset
 from easy_models import BLOOMActor
@@ -27,9 +27,9 @@ def main(args):
     if args.strategy == 'ddp':
         strategy = DDPStrategy()
     elif args.strategy == 'colossalai_gemini':
-        strategy = ColossalAIStrategy(stage=3, placement_policy='cpu', initial_scale=2**5)
+        strategy = GeminiStrategy(placement_policy='cpu', initial_scale=2**5)
     elif args.strategy == 'colossalai_zero2':
-        strategy = ColossalAIStrategy(stage=2, placement_policy='cpu')
+        strategy = LowLevelZeroStrategy(stage=2, placement_policy='cpu')
     else:
         raise ValueError(f'Unsupported strategy "{args.strategy}"')
 

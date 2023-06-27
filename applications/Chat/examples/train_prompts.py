@@ -9,7 +9,7 @@ from coati.models.llama import LlamaActor, LlamaCritic, LlamaRM
 from coati.models.opt import OPTRM, OPTActor, OPTCritic
 from coati.models.roberta import RoBERTaActor, RoBERTaCritic, RoBERTaRM
 from coati.trainer import PPOTrainer
-from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy
+from coati.trainer.strategies import DDPStrategy, GeminiStrategy, LowLevelZeroStrategy
 from coati.utils import prepare_llama_tokenizer_and_embedding
 from torch.optim import Adam
 from torch.utils.data import DataLoader
@@ -24,9 +24,9 @@ def main(args):
     if args.strategy == 'ddp':
         strategy = DDPStrategy()
     elif args.strategy == 'colossalai_gemini':
-        strategy = ColossalAIStrategy(stage=3, placement_policy='cuda', initial_scale=2**5)
+        strategy = GeminiStrategy(placement_policy='cuda', initial_scale=2**5)
     elif args.strategy == 'colossalai_zero2':
-        strategy = ColossalAIStrategy(stage=2, placement_policy='cuda')
+        strategy = LowLevelZeroStrategy(stage=2, placement_policy='cuda')
     else:
         raise ValueError(f'Unsupported strategy "{args.strategy}"')
 

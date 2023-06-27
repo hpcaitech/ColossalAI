@@ -8,7 +8,7 @@ from coati.models.base import RewardModel
 from coati.models.opt import OPTActor, OPTCritic
 from coati.trainer import PPOTrainer
 from coati.trainer.callbacks import PerformanceEvaluator
-from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy, Strategy
+from coati.trainer.strategies import DDPStrategy, GeminiStrategy, LowLevelZeroStrategy, Strategy
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from transformers import AutoTokenizer
@@ -19,10 +19,8 @@ from colossalai.nn.optimizer import HybridAdam
 
 def get_model_numel(model: nn.Module, strategy: Strategy) -> int:
     numel = sum(p.numel() for p in model.parameters())
-    if isinstance(strategy, ColossalAIStrategy):
-        from colossalai.booster.plugin import GeminiPlugin
-        if isinstance(strategy.plugin, GeminiPlugin) and strategy.shard_init:
-            numel *= dist.get_world_size()
+    if isinstance(strategy, GeminiStrategy) and strategy.shard_init:
+        numel *= dist.get_world_size()
     return numel
 
 
@@ -78,17 +76,17 @@ def main(args):
     if args.strategy == 'ddp':
         strategy = DDPStrategy()
     elif args.strategy == 'colossalai_gemini':
-        strategy = ColossalAIStrategy(stage=3, placement_policy='cuda', initial_scale=2**5)
+        strategy = GeminiStrategy(placement_policy='cuda', initial_scale=2**5)
     elif args.strategy == 'colossalai_gemini_cpu':
-        strategy = ColossalAIStrategy(stage=3, placement_policy='cpu', initial_scale=2**5)
+        strategy = GeminiStrategy(placement_policy='cpu', initial_scale=2**5)
     elif args.strategy == 'colossalai_zero2':
-        strategy = ColossalAIStrategy(stage=2, placement_policy='cuda')
+        strategy = LowLevelZeroStrategy(stage=2, placement_policy='cuda')
     elif args.strategy == 'colossalai_zero2_cpu':
-        strategy = ColossalAIStrategy(stage=2, placement_policy='cpu')
+        strategy = LowLevelZeroStrategy(stage=2, placement_policy='cpu')
     elif args.strategy == 'colossalai_zero1':
-        strategy = ColossalAIStrategy(stage=1, placement_policy='cuda')
+        strategy = LowLevelZeroStrategy(stage=1, placement_policy='cuda')
     elif args.strategy == 'colossalai_zero1_cpu':
-        strategy = ColossalAIStrategy(stage=1, placement_policy='cpu')
+        strategy = LowLevelZeroStrategy(stage=1, placement_policy='cpu')
     else:
         raise ValueError(f'Unsupported strategy "{args.strategy}"')
 

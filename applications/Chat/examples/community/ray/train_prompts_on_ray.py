@@ -15,7 +15,7 @@ from coati.models.lora import LoRAModule
 from coati.models.loss import PolicyLoss, ValueLoss
 from coati.models.opt import OPTActor, OPTCritic
 from coati.models.utils import compute_reward
-from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
+from coati.trainer.strategies import DDPStrategy, GeminiStrategy, LowLevelZeroStrategy
 from ray.util.placement_group import placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from torch.optim import Adam
@@ -102,14 +102,14 @@ class BasePPORole(DistributedTorchRayActor):
         if strategy == 'ddp':
             self._strategy = DDPStrategy()
         elif strategy == 'colossalai_gemini':
-            self._strategy = ColossalAIStrategy(stage=3, placement_policy='cuda', initial_scale=2**5)
+            self._strategy = GeminiStrategy(placement_policy='cuda', initial_scale=2**5)
         elif strategy == 'colossalai_zero2':
-            self._strategy = ColossalAIStrategy(stage=2, placement_policy='cuda')
+            self._strategy = LowLevelZeroStrategy(stage=2, placement_policy='cuda')
         else:
             raise ValueError(f'Unsupported strategy "{strategy}"')
 
     def _init_optimizer(self):
-        if isinstance(self._strategy, ColossalAIStrategy):
+        if isinstance(self._strategy, (GeminiStrategy, LowLevelZeroStrategy)):
             self._optimizer = HybridAdam(self._model.parameters(), lr=5e-6)
         else:
             self._optimizer = Adam(self._model.parameters(), lr=5e-6)

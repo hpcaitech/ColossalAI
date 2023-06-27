@@ -8,7 +8,7 @@ import torch.distributed as dist
 from coati.dataset import DataCollatorForSupervisedDataset, SFTDataset, SupervisedDataset
 from coati.models import convert_to_lora_module
 from coati.trainer import SFTTrainer
-from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy
+from coati.trainer.strategies import DDPStrategy, GeminiStrategy, LowLevelZeroStrategy
 from coati.utils import prepare_llama_tokenizer_and_embedding
 from datasets import load_dataset
 from torch.optim import Adam
@@ -34,11 +34,11 @@ def train(args):
     elif args.strategy == 'colossalai_gemini':
         raise NotImplementedError(
             'Gemini is not supported .from_pretrained() yet. We will update this after checkpoint io is ready.')
-        strategy = ColossalAIStrategy(stage=3, placement_policy='cuda')
+        strategy = GeminiStrategy(placement_policy='cuda')
     elif args.strategy == 'colossalai_zero2':
-        strategy = ColossalAIStrategy(stage=2, placement_policy='cuda')
+        strategy = LowLevelZeroStrategy(stage=2, placement_policy='cuda')
     elif args.strategy == 'colossalai_zero2_cpu':
-        strategy = ColossalAIStrategy(stage=2, placement_policy='cpu')
+        strategy = LowLevelZeroStrategy(stage=2, placement_policy='cpu')
     else:
         raise ValueError(f'Unsupported strategy "{args.strategy}"')
 

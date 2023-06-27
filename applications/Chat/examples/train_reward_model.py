@@ -14,7 +14,7 @@ from coati.models.llama import LlamaRM
 from coati.models.opt import OPTRM
 from coati.models.roberta import RoBERTaRM
 from coati.trainer import RewardModelTrainer
-from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy
+from coati.trainer.strategies import DDPStrategy, GeminiStrategy, LowLevelZeroStrategy
 from coati.utils import prepare_llama_tokenizer_and_embedding
 from datasets import load_dataset
 from torch.optim import Adam
@@ -32,9 +32,9 @@ def train(args):
     if args.strategy == 'ddp':
         strategy = DDPStrategy()
     elif args.strategy == 'colossalai_gemini':
-        strategy = ColossalAIStrategy(stage=3, placement_policy='cuda')
+        strategy = GeminiStrategy(placement_policy='cuda')
     elif args.strategy == 'colossalai_zero2':
-        strategy = ColossalAIStrategy(stage=2, placement_policy='cuda')
+        strategy = LowLevelZeroStrategy(stage=2, placement_policy='cuda')
     else:
         raise ValueError(f'Unsupported strategy "{args.strategy}"')
 
