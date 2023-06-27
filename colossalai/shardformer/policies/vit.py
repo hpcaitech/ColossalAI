@@ -4,7 +4,7 @@ import torch.nn as nn
 
 from transformers.models.vit.modeling_vit import ViTModel, ViTLayer, ViTEmbeddings, ViTAttention
 
-from colossalai.shardformer.layer.layers import Linear1D_Col, Linear1D_Row, LayerNorm1D, Dropout1D
+from colossalai.shardformer.layer import Linear1D_Col, Linear1D_Row, Dropout1D
 
 from .basepolicy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
@@ -80,28 +80,15 @@ class ViTPolicy(Policy):
                             suffix="output.dropout",
                             target_module=Dropout1D,
                         ),
-                        # SubModuleReplacementDescription(
-                        #     suffix="layernorm_before",
-                        #     target_module=LayerNorm1D,
-                        # ),
-                        # SubModuleReplacementDescription(
-                        #     suffix="layernorm_after",
-                        #     target_module=LayerNorm1D,
-                        # ),
                     ]
                 ),
-            # ViTModel:
-            #     ModulePolicyDescription(
-            #         attribute_replacement{},
-            #         param_replacement=[],
-            #         sub_module_replacement=[
-            #             SubModuleReplacementDescription(
-            #                 suffix="layernorm",
-            #                 target_module=LayerNorm1D,
-            #             )
-            #         ]
-            #     ),
         }
+    
+    def new_model_class(self):
+        return None
+
+    def postprocess(self):
+        return self.model
 
 
 

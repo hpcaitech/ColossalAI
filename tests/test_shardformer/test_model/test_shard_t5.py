@@ -45,10 +45,7 @@ def check_t5(rank, world_size, port):
         org_model, sharded_model = build_model(world_size, model_fn)
         check_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn)
 
-    for model_fn in model_fn_list:
-        org_model, sharded_model = build_model(world_size, model_fn)
-        check_forward_backward(org_model, sharded_model)
-        torch.cuda.empty_cache()
+    torch.cuda.empty_cache()
 
 
 @pytest.mark.dist

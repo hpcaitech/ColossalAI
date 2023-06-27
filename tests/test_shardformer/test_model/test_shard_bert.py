@@ -38,26 +38,7 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
 
 def check_bert(rank, world_size, port):
     disable_existing_loggers()
-<<<<<<< HEAD
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-=======
-    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    forward_list = [
-        BertForMaskedLM,
-        BertForPreTraining,
-        BertLMHeadModel,
-
-    # TODO: do not work yet
-    # BertModel,
-    # BertForSequenceClassification
-    # BertForNextSentencePrediction,
-    ]
-    backward_lsit = [BertForMaskedLM, BertLMHeadModel]
-
-    for model_fn in forward_list:
-        org_model, sharded_model = build_model(world_size, model_fn)
-        check_forward(org_model, sharded_model)
->>>>>>> 0cf164a2... update
 
     sub_model_zoo = model_zoo.get_sub_registry('transformers_bert')
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
