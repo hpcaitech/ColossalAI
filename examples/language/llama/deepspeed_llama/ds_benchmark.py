@@ -166,6 +166,10 @@ def main():
     with low_precision_init(), no_init_weights():
         model = LlamaForCausalLM(config)
         model.tie_weights()
+
+    if args.grad_checkpoint:
+        print("Enabling gradient checkpointing")
+        model.gradient_checkpointing_enable()
     model_numel = get_model_numel(model)
     performance_evaluator = PerformanceEvaluator(model_numel, args.grad_checkpoint, args.ignore_steps,
                                                  args.world_size)

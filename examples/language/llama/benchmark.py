@@ -156,6 +156,9 @@ def main():
             model.tie_weights()
 
     print(model.dtype)
+    if args.grad_checkpoint:
+        print('Using gradient checkpointing')
+        model.gradient_checkpointing_enable()
     model_numel = get_model_numel(model)
     coordinator.print_on_master(f'Model params: {format_numel_str(model_numel)}')
     performance_evaluator = PerformanceEvaluator(model_numel, args.grad_checkpoint, args.ignore_steps)

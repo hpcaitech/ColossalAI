@@ -37,5 +37,5 @@ conda activate llama
 ROOT=$(pwd)
 cd /mnt/tier2/users/u100034/ColossalAI_llama/examples/language/llama/deepspeed_llama
 python -u \
-        ds_benchmark.py -l 512 -c '65b' \
+        ds_benchmark.py -l 512 -c '65b' -g \
         --deepspeed --deepspeed_config ${ROOT}/zero3.json --world_size $WORLD_SIZE --local_rank 0
