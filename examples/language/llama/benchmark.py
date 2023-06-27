@@ -1,4 +1,5 @@
 import argparse
+import resource
 from contextlib import contextmanager, nullcontext
 from random import randint
 
@@ -6,7 +7,7 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 import transformers
-from performance_evaluator import PerformanceEvaluator
+from performance_evaluator import PerformanceEvaluator, Timer
 from torch.distributed.fsdp.fully_sharded_data_parallel import CPUOffload, MixedPrecision
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader, Dataset
@@ -27,6 +28,7 @@ from colossalai.utils import get_current_device
 
 MODEL_CONFIGS = {
     '7b': LlamaConfig(),
+    '30b': LlamaConfig(hidden_size=7168, intermediate_size=28672, num_hidden_layers=48, num_attention_heads=56),
     '65b': LlamaConfig(hidden_size=8192, intermediate_size=22016, num_hidden_layers=80, num_attention_heads=64),
 }
 
@@ -108,7 +110,7 @@ def main():
     # Initialize Booster
     # ==============================
     if args.plugin == 'gemini':
-        plugin = GeminiPlugin()
+        plugin = GeminiPlugin(placement_policy='auto')
     elif args.plugin == 'gemini_cpu':
         plugin = GeminiPlugin(placement_policy='cpu')
     elif args.plugin == 'fsdp':
@@ -136,9 +138,11 @@ def main():
     # ==============================
     # Initialize Model and Optimizer
     # ==============================
+    init_ctx = LazyInitContext(
+        default_device=get_current_device()) if isinstance(plugin, GeminiPlugin) else nullcontext()
 
-    init_ctx = LazyInitContext() if isinstance(plugin, GeminiPlugin) else nullcontext()
-
+    timer = Timer()
+    timer.start()
     with no_init_weights(), init_ctx:
         model = LlamaForCausalLM(config)
         model.tie_weights()
@@ -153,6 +157,11 @@ def main():
     optimizer = HybridAdam(model.parameters())
 
     model, optimizer, _, dataloader, _ = booster.boost(model, optimizer, dataloader=dataloader)
+    timer.end()
+    coordinator.print_on_master(f'Booster init time: {timer.duration:.2f} s')
+    coordinator.print_on_master(f'Booster init max CUDA memory: {torch.cuda.max_memory_allocated()/1024**2:.2f} MB')
+    coordinator.print_on_master(
+        f'Booster init max CPU memory: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024:.2f} MB')
 
     for step, batch in enumerate(tqdm(dataloader, desc='Step', disable=not coordinator.is_master())):
         performance_evaluator.on_step_start(step)
