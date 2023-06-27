@@ -80,27 +80,27 @@ class ViTPolicy(Policy):
                             suffix="output.dropout",
                             target_module=Dropout1D,
                         ),
-                        SubModuleReplacementDescription(
-                            suffix="layernorm_before",
-                            target_module=LayerNorm1D,
-                        ),
-                        SubModuleReplacementDescription(
-                            suffix="layernorm_after",
-                            target_module=LayerNorm1D,
-                        ),
+                        # SubModuleReplacementDescription(
+                        #     suffix="layernorm_before",
+                        #     target_module=LayerNorm1D,
+                        # ),
+                        # SubModuleReplacementDescription(
+                        #     suffix="layernorm_after",
+                        #     target_module=LayerNorm1D,
+                        # ),
                     ]
                 ),
-            ViTModel:
-                ModulePolicyDescription(
-                    attribute_replacement{},
-                    param_replacement=[],
-                    sub_module_replacement=[
-                        SubModuleReplacementDescription(
-                            suffix="layernorm",
-                            target_module=LayerNorm1D,
-                        )
-                    ]
-                ),
+            # ViTModel:
+            #     ModulePolicyDescription(
+            #         attribute_replacement{},
+            #         param_replacement=[],
+            #         sub_module_replacement=[
+            #             SubModuleReplacementDescription(
+            #                 suffix="layernorm",
+            #                 target_module=LayerNorm1D,
+            #             )
+            #         ]
+            #     ),
         }
 
 
