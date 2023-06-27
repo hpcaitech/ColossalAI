@@ -18,4 +18,4 @@ torchrun --nproc_per_node 4 stable_diffusion_colossalai_trainer.py \
     --output_dir="sd-pokemon-model" \
     --plugin="gemini" \
     --placement="cuda" \
-    --task_type="text_to_image"
+    --task_type="text_to_image" 

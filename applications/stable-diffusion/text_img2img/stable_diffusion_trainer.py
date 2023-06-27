@@ -2,9 +2,12 @@ import argparse
 import logging
 import math
 import os
+import PIL
 import random
 import shutil
 from pathlib import Path
+from typing import Optional
+from dreambooth_utils import DreamBoothDataset, PromptDataset, get_full_repo_name
 
 import accelerate
 import datasets
@@ -24,6 +27,7 @@ from packaging import version
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
+from transformers import AutoTokenizer, PretrainedConfig
 from transformers.utils import ContextManagers
 from parse_arguments import parse_args
 
@@ -56,8 +60,79 @@ def download_image(url):
     image = image.convert("RGB")
     return image
 
+def import_model_class_from_model_name_or_path(pretrained_model_name_or_path, revision):
+    text_encoder_config = PretrainedConfig.from_pretrained(
+        pretrained_model_name_or_path,
+        subfolder="text_encoder",
+        revision=revision,
+    )
+    model_class = text_encoder_config.architectures[0]
+
+    if model_class == "CLIPTextModel":
+        from transformers import CLIPTextModel
+
+        return CLIPTextModel
+    elif model_class == "RobertaSeriesModelWithTransformation":
+        from diffusers.pipelines.alt_diffusion.modeling_roberta_series import RobertaSeriesModelWithTransformation
+
+        return RobertaSeriesModelWithTransformation
+    else:
+        raise ValueError(f"{model_class} is not supported.")
+
+def load_tokenizer(config):
+    args = config
+    if config.task_type == "dreambooth":
+        # Load the tokenizer
+        if args.tokenizer_name:
+            logger.info(f"Loading tokenizer from {args.tokenizer_name}")
+            tokenizer = AutoTokenizer.from_pretrained(
+                args.tokenizer_name,
+                revision=args.revision,
+                use_fast=False,
+            )
+        elif args.pretrained_model_name_or_path:
+            logger.info("Loading tokenizer from pretrained model")
+            tokenizer = AutoTokenizer.from_pretrained(
+                args.pretrained_model_name_or_path,
+                subfolder="tokenizer",
+                revision=args.revision,
+                use_fast=False,
+            )
+    else:
+        tokenizer = CLIPTokenizer.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision
+        )
+    
+    return tokenizer
+
+def load_text_endcoder(args):
+    # import correct text encoder class
+    if args.task_type == "dreambooth":
+        text_encoder_cls = import_model_class_from_model_name_or_path(args.pretrained_model_name_or_path, args.revision)
+
+        # Load models and create wrapper for stable diffusion
+
+        logger.info(f"Loading text_encoder from {args.pretrained_model_name_or_path}")
+
+        text_encoder = text_encoder_cls.from_pretrained(
+            args.pretrained_model_name_or_path,
+            subfolder="text_encoder",
+            revision=args.revision,
+        )
+    else:
+        text_encoder = CLIPTextModel.from_pretrained(
+            args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision
+        )
+        
+    return text_encoder
+
+
 def main():
     args = parse_args()
+
+    if args.task_type == "dreambooth":
+        assert args.instance_data_dir is not None, "instance_data_dir has to be provided for dreambooth training case"
+
     DATASET_NAME_MAPPING = {}
     WANDB_TABLE_COL_NAMES = []
     if args.task_type == "image_to_image":
@@ -80,10 +155,9 @@ def main():
                 " use `--variant=non_ema` instead."
             ),
         )
+
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
-
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
-
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
@@ -117,21 +191,27 @@ def main():
         if args.output_dir is not None:
             os.makedirs(args.output_dir, exist_ok=True)
 
-        if args.push_to_hub:
-            repo_id = create_repo(
-                repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
-            ).repo_id
-
     # Load scheduler, tokenizer and models.
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
-    tokenizer = CLIPTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision
+    # Load the tokenizer
+    tokenizer = load_tokenizer(args)
+    #load text_encoder 
+    text_encoder = load_text_endcoder(args)
+    vae = AutoencoderKL.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision
     )
 
-    noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
-    tokenizer = CLIPTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision
-    )
+    if args.externel_unet_path is None:
+        logger.info(f"Loading UNet2DConditionModel from {args.pretrained_model_name_or_path}")
+        unet = UNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path,
+                                                subfolder="unet",
+                                                revision=args.non_ema_revision)
+    else:
+        logger.info(f"Loading UNet2DConditionModel from {args.externel_unet_path}")
+        unet = UNet2DConditionModel.from_pretrained(args.externel_unet_path,
+                                                revision=args.revision,
+                                                low_cpu_mem_usage=False)
+
 
     def deepspeed_zero_init_disabled_context_manager():
         """
@@ -160,10 +240,16 @@ def main():
             args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision
         )
     
-    unet = UNet2DConditionModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="unet", revision=args.non_ema_revision
-    )
-
+    if args.externel_unet_path is None:
+        logger.info(f"Loading UNet2DConditionModel from {args.pretrained_model_name_or_path}")
+        unet = UNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path,
+                                                subfolder="unet",
+                                                revision=args.non_ema_revision)
+    else:
+        logger.info(f"Loading UNet2DConditionModel from {args.externel_unet_path}")
+        unet = UNet2DConditionModel.from_pretrained(args.externel_unet_path,
+                                                revision=args.revision,
+                                                low_cpu_mem_usage=False)
     # Freeze vae and text_encoder
     vae.requires_grad_(False)
     text_encoder.requires_grad_(False)
@@ -259,73 +345,74 @@ def main():
 
     # In distributed training, the load_dataset function guarantees that only one local process can concurrently
     # download the dataset.
-    if args.dataset_name is not None:
-        # Downloading and loading a dataset from the hub.
-        dataset = load_dataset(
-            args.dataset_name,
-            args.dataset_config_name,
-            cache_dir=args.cache_dir,
-        )
-    else:
-        data_files = {}
-        if args.train_data_dir is not None:
-            data_files["train"] = os.path.join(args.train_data_dir, "**")
-        dataset = load_dataset(
-            "imagefolder",
-            data_files=data_files,
-            cache_dir=args.cache_dir,
-        )
-        # See more about loading custom images at
-        # https://huggingface.co/docs/datasets/v2.4.0/en/image_load#imagefolder
+    if args.task_type != "dreambooth":
+        if args.dataset_name is not None:
+            # Downloading and loading a dataset from the hub.
+            dataset = load_dataset(
+                args.dataset_name,
+                args.dataset_config_name,
+                cache_dir=args.cache_dir,
+            )
+        else:
+            data_files = {}
+            if args.train_data_dir is not None:
+                data_files["train"] = os.path.join(args.train_data_dir, "**")
+            dataset = load_dataset(
+                "imagefolder",
+                data_files=data_files,
+                cache_dir=args.cache_dir,
+            )
+            # See more about loading custom images at
+            # https://huggingface.co/docs/datasets/v2.4.0/en/image_load#imagefolder
 
-    # Preprocessing the datasets.
-    # We need to tokenize inputs and targets.
-    column_names = dataset["train"].column_names
+        # Preprocessing the datasets.
+        # We need to tokenize inputs and targets.
+        column_names = dataset["train"].column_names
 
-    # 6. Get the column names for input/target.
-    dataset_columns = DATASET_NAME_MAPPING.get(args.dataset_name, None)
-    if args.task_type == "text_to_image":
-        if args.image_column is None:
-            image_column = dataset_columns[0] if dataset_columns is not None else column_names[0]
+        # 6. Get the column names for input/target.
+        dataset_columns = DATASET_NAME_MAPPING.get(args.dataset_name, None)
+        if args.task_type == "text_to_image":
+            if args.image_column is None:
+                image_column = dataset_columns[0] if dataset_columns is not None else column_names[0]
+            else:
+                image_column = args.image_column
+                if image_column not in column_names:
+                    raise ValueError(
+                        f"--image_column' value '{args.image_column}' needs to be one of: {', '.join(column_names)}"
+                    )
+            if args.caption_column is None:
+                caption_column = dataset_columns[1] if dataset_columns is not None else column_names[1]
+            else:
+                caption_column = args.caption_column
+                if caption_column not in column_names:
+                    raise ValueError(
+                        f"--caption_column' value '{args.caption_column}' needs to be one of: {', '.join(column_names)}"
+                    )
         else:
-            image_column = args.image_column
-            if image_column not in column_names:
-                raise ValueError(
-                    f"--image_column' value '{args.image_column}' needs to be one of: {', '.join(column_names)}"
-                )
-        if args.caption_column is None:
-            caption_column = dataset_columns[1] if dataset_columns is not None else column_names[1]
-        else:
-            caption_column = args.caption_column
-            if caption_column not in column_names:
-                raise ValueError(
-                    f"--caption_column' value '{args.caption_column}' needs to be one of: {', '.join(column_names)}"
-                )
-    else:
-        if args.original_image_column is None:
-            original_image_column = dataset_columns[0] if dataset_columns is not None else column_names[0]
-        else:
-            original_image_column = args.original_image_column
-            if original_image_column not in column_names:
-                raise ValueError(
-                    f"--original_image_column' value '{args.original_image_column}' needs to be one of: {', '.join(column_names)}"
-                )
-        if args.edit_prompt_column is None:
-            edit_prompt_column = dataset_columns[1] if dataset_columns is not None else column_names[1]
-        else:
-            edit_prompt_column = args.edit_prompt_column
-            if edit_prompt_column not in column_names:
-                raise ValueError(
-                    f"--edit_prompt_column' value '{args.edit_prompt_column}' needs to be one of: {', '.join(column_names)}"
-                )
-        if args.edited_image_column is None:
-            edited_image_column = dataset_columns[2] if dataset_columns is not None else column_names[2]
-        else:
-            edited_image_column = args.edited_image_column
-            if edited_image_column not in column_names:
-                raise ValueError(
-                    f"--edited_image_column' value '{args.edited_image_column}' needs to be one of: {', '.join(column_names)}"
-                )
+            if args.original_image_column is None:
+                original_image_column = dataset_columns[0] if dataset_columns is not None else column_names[0]
+            else:
+                original_image_column = args.original_image_column
+                if original_image_column not in column_names:
+                    raise ValueError(
+                        f"--original_image_column' value '{args.original_image_column}' needs to be one of: {', '.join(column_names)}"
+                    )
+            if args.edit_prompt_column is None:
+                edit_prompt_column = dataset_columns[1] if dataset_columns is not None else column_names[1]
+            else:
+                edit_prompt_column = args.edit_prompt_column
+                if edit_prompt_column not in column_names:
+                    raise ValueError(
+                        f"--edit_prompt_column' value '{args.edit_prompt_column}' needs to be one of: {', '.join(column_names)}"
+                    )
+            if args.edited_image_column is None:
+                edited_image_column = dataset_columns[2] if dataset_columns is not None else column_names[2]
+            else:
+                edited_image_column = args.edited_image_column
+                if edited_image_column not in column_names:
+                    raise ValueError(
+                        f"--edited_image_column' value '{args.edited_image_column}' needs to be one of: {', '.join(column_names)}"
+                    )
 
     # Preprocessing the datasets.
     # We need to tokenize input captions and transform the images.
@@ -426,9 +513,23 @@ def main():
     with accelerator.main_process_first():
         if args.max_train_samples is not None:
             dataset["train"] = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
+        
         # Set the training transforms
-        preprocess_train = process_train_dispatch(args.task_type)
-        train_dataset = dataset["train"].with_transform(preprocess_train)
+        if args.task_type == "dreambooth":
+            # prepare dataset
+            logger.info(f"Prepare dataset from {args.instance_data_dir}")
+            train_dataset = DreamBoothDataset(
+                instance_data_root=args.instance_data_dir,
+                instance_prompt=args.instance_prompt,
+                class_data_root=None,
+                class_prompt=args.class_prompt,
+                tokenizer=tokenizer,
+                size=args.resolution,
+                center_crop=args.center_crop,
+            )
+        else:
+            preprocess_train = process_train_dispatch(args.task_type)
+            train_dataset = dataset["train"].with_transform(preprocess_train)
 
     def collate_fn_dispatch(task_type):
         def collate_fn_text_to_image(examples):
@@ -449,10 +550,34 @@ def main():
                 "input_ids": input_ids,
             }
         
+        def collate_fn_dreambooth(examples):
+            input_ids = [example["instance_prompt_ids"] for example in examples]
+            pixel_values = [example["instance_images"] for example in examples]
+    
+            pixel_values = torch.stack(pixel_values)
+            pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
+
+            input_ids = tokenizer.pad(
+                {
+                    "input_ids": input_ids
+                },
+                padding="max_length",
+                max_length=tokenizer.model_max_length,
+                return_tensors="pt",
+            ).input_ids
+
+            batch = {
+                "input_ids": input_ids,
+                "pixel_values": pixel_values,
+            }
+            return batch
+            
         if task_type == "text_to_image":
             return collate_fn_text_to_image
-        
-        return collate_fn_image_to_image
+        elif task_type == "dreambooth":
+            return collate_fn_dreambooth
+        else:
+            return collate_fn_image_to_image
 
     # DataLoaders creation:
     collate_fn = collate_fn_dispatch(args.task_type)
@@ -566,7 +691,7 @@ def main():
 
             with accelerator.accumulate(unet):
                 # Convert images to latent space
-                if args.task_type == "text_to_image":
+                if args.task_type == "text_to_image" or args.task_type == "dreambooth":
                     latents = vae.encode(batch["pixel_values"].to(weight_dtype)).latent_dist.sample()
                 else:
                     latents = vae.encode(batch["edited_pixel_values"].to(weight_dtype)).latent_dist.sample()

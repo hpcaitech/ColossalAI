@@ -15,11 +15,51 @@ def parse_args():
         help="Path to pretrained model or model identifier from huggingface.co/models.",
     )
     parser.add_argument(
+        "--externel_unet_path",
+        type=str,
+        default=None,
+        required=False,
+        help="Path to the externel unet model.",
+    )
+    parser.add_argument(
         "--revision",
         type=str,
         default=None,
         required=False,
         help="Revision of pretrained model identifier from huggingface.co/models.",
+    )
+    parser.add_argument(
+        "--instance_data_dir",
+        type=str,
+        default=None,
+        help="A folder containing the training data of instance images.",
+    )
+    parser.add_argument("--prior_loss_weight", type=float, default=1.0, help="The weight of prior preservation loss.")
+    parser.add_argument(
+        "--num_class_images",
+        type=int,
+        default=100,
+        help=("Minimal class images for prior preservation loss. If there are not enough images already present in"
+              " class_data_dir, additional images will be sampled with class_prompt."),
+    )
+    parser.add_argument(
+        "--class_prompt",
+        type=str,
+        default=None,
+        help="The prompt to specify images in the same class as provided instance images.",
+    )
+    parser.add_argument(
+        "--class_data_dir",
+        type=str,
+        default=None,
+        required=False,
+        help="A folder containing the training data of class images.",
+    )
+    parser.add_argument(
+        "--tokenizer_name",
+        type=str,
+        default=None,
+        help="Pretrained tokenizer name or path if not the same as model_name",
     )
     parser.add_argument(
         "--dataset_name",
@@ -64,6 +104,13 @@ def parse_args():
             "For debugging purposes or quicker training, truncate the number of training examples to this "
             "value if set."
         ),
+    )
+    parser.add_argument(
+        "--instance_prompt",
+        type=str,
+        default="a photo of sks dog",
+        required=False,
+        help="The prompt with identifier specifying the instance",
     )
     parser.add_argument(
         "--validation_prompts",
@@ -137,6 +184,7 @@ def parse_args():
     parser.add_argument(
         "--train_batch_size", type=int, default=16, help="Batch size (per device) for the training dataloader."
     )
+    parser.add_argument("--sample_batch_size", type=int, default=4, help="Batch size (per device) for sampling images.")
     parser.add_argument("--num_train_epochs", type=int, default=100)
     parser.add_argument(
         "--max_train_steps",
@@ -256,7 +304,7 @@ def parse_args():
     parser.add_argument('--task_type',
                         type=str,
                         default='text_to_image',
-                        choices=['text_to_image', 'image_to_image'],
+                        choices=['text_to_image', 'image_to_image', 'dreambooth'],
                         help="plugin to use")
                         
     parser.add_argument(
@@ -339,8 +387,11 @@ def parse_args():
         args.local_rank = env_local_rank
 
     # Sanity checks
-    if args.dataset_name is None and args.train_data_dir is None:
-        raise ValueError("Need either a dataset name or a training folder.")
+    if args.task_type == "dreambooth":
+        if args.instance_data_dir is None:
+            raise ValueError("need to provide instance_data_dir for dreambooth training task")
+    elif args.dataset_name is None and args.train_data_dir is None:
+            raise ValueError("Need either a dataset name or a training folder.")
 
     # default to using the same revision for the non-ema model if not specified
     if args.non_ema_revision is None:
