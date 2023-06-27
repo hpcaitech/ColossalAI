@@ -68,6 +68,16 @@ _POLICY_LIST = {
         PolicyLocation(file_name="gpt2", class_name="GPT2ForTokenClassificationPolicy"),
     "transformers.models.gpt2.modeling_gpt2.GPT2ForSequenceClassification":
         PolicyLocation(file_name="gpt2", class_name="GPT2ForSequenceClassificationPolicy"),
+
+    # OPT
+    "transformers.models.opt.modeling_opt.OPTModel":
+        PolicyLocation(file_name="opt", class_name="OPTModelPolicy"),
+    "transformers.models.opt.modeling_opt.OPTForCausalLM":
+        PolicyLocation(file_name="opt", class_name="OPTForCausalLMPolicy"),
+    "transformers.models.opt.modeling_opt.OPTForSequenceClassification":
+        PolicyLocation(file_name="opt", class_name="OPTForSequenceClassificationPolicy"),
+    "transformers.models.opt.modeling_opt.OPTForQuestionAnswering":
+        PolicyLocation(file_name="opt", class_name="OPTForQuestionAnsweringPolicy"),
 }
 
 
