@@ -77,7 +77,7 @@ The dataSet is from [Dataset-HuggingFace](https://huggingface.co/datasets?task_c
 
 ## Training
 
-We provide the script `trainer_no_colossalai_text_to_image.sh` and `trainer_no_colossalai_image_to_image.sh` to run the training task without colossalai. Meanwhile, we also provided script called `trainer_with_colossalai_text_to_image.sh` to train text-to-image, and  `trainer_with_colossalai_image_to_image.sh` instruct-pix2pix models using colossalai. The following is a command demo: 
+We provide the script `trainer_no_colossalai_text_to_image.sh`, `trainer_no_colossalai_image_to_image.sh` and `trainer_no_colossalai_dreambooth.sh` to run the training task without colossalai. Meanwhile, we also provided script called `trainer_with_colossalai_text_to_image.sh` to train text-to-image, and  `trainer_with_colossalai_image_to_image.sh` to train instruct-pix2pix models using colossalai. We also provided `trainer_with_colossalai_dreambooth.sh` to train dreambooth model using colossalai. The following is a command demo: 
 ```
 #!/bin/bash
 
@@ -129,6 +129,25 @@ torchrun --nproc_per_node 4 stable_diffusion_colossalai_trainer.py \
     --task_type="text_to_image" \
     --use_lora
 
+```
+
+Also, if you want to train your dreambooth model, make sure you have correct dataset to be prepared. In our case, you need to firstly to run download_dataset_dreambooth.py to download data, then use the following command line to run training script:
+
+```
+torchrun --nproc_per_node 4 --standalone stable_diffusion_colossalai_trainer.py \
+  --pretrained_model_name_or_path="CompVis/stable-diffusion-v1-4"  \
+  --instance_data_dir="/home/lclcq/ColossalAI/applications/stable-diffusion/text_img2img/dog" \
+  --output_dir="./weight_output" \
+  --instance_prompt="a picture of a dog" \
+  --resolution=512 \
+  --plugin="gemini" \
+  --train_batch_size=1 \
+  --learning_rate=5e-6 \
+  --lr_scheduler="constant" \
+  --lr_warmup_steps=0 \
+  --num_class_images=200 \
+  --placement="cuda" \
+  --task_type="dreambooth" 
 ```
 
 
