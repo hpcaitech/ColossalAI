@@ -138,9 +138,9 @@ torchrun --standalone --nproc_per_node=2 ${BASE}/train_reward_model.py \
     --dataset 'Anthropic/hh-rlhf' --subset 'harmless-base' \
     --test True --lora_rank 4 \
     --save_path ${BASE}/rm_ckpt.pt
-
 rm -rf ${BASE}/rm_ckpt.pt
 
+# train rl
 torchrun --standalone --nproc_per_node=2 ${BASE}/train_prompts.py \
     --prompt_dataset $PROMPT_PATH --pretrain_dataset $PRETRAIN_DATASET \
     --strategy colossalai_zero2 --num_episodes 1 \
