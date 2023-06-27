@@ -1,28 +1,20 @@
 import argparse
-from contextlib import contextmanager
+import resource
+from contextlib import contextmanager, nullcontext
 from random import randint
 
 import torch
 import torch.distributed as dist
 import torch.nn as nn
 import transformers
-from torch.distributed.fsdp import MixedPrecision
-
-from performance_evaluator import PerformanceEvaluator
+from performance_evaluator import PerformanceEvaluator, Timer
+from torch.distributed.fsdp.fully_sharded_data_parallel import CPUOffload, MixedPrecision
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
-from transformers import (
-    CONFIG_MAPPING,
-    MODEL_MAPPING,
-    AutoConfig,
-    LlamaConfig,
-    LlamaForCausalLM,
-    LlamaModel,
-    LlamaTokenizer,
-    get_linear_schedule_with_warmup,
-)
 from transformers.modeling_utils import no_init_weights
+from transformers.models.llama.configuration_llama import LlamaConfig
+from transformers.models.llama.modeling_llama import LlamaForCausalLM
 from transformers.utils.versions import require_version
 
 import colossalai
@@ -37,6 +29,7 @@ from colossalai.utils import get_current_device
 
 MODEL_CONFIGS = {
     '7b': LlamaConfig(),
+    '30b': LlamaConfig(hidden_size=7168, intermediate_size=28672, num_hidden_layers=48, num_attention_heads=56),
     '65b': LlamaConfig(hidden_size=8192, intermediate_size=22016, num_hidden_layers=80, num_attention_heads=64),
 }
 
@@ -100,7 +93,7 @@ def main():
     parser.add_argument('-c', '--config', type=str, default='7b', help='Model configuration')
     parser.add_argument('-p',
                         '--plugin',
-                        choices=['const', 'gemini', 'gemini_cpu', 'fsdp'],
+                        choices=['gemini', 'gemini_cpu', 'fsdp', 'fsdp_cpu'],
                         default='gemini',
                         help='Choose which plugin to use')
     parser.add_argument('-b', '--batch_size', type=int, default=2, help='Batch size')
@@ -127,8 +120,13 @@ def main():
         ConstPlacementPolicy.set_const_memory_boundary(args.memory_limit)
         plugin = GeminiPlugin(placement_policy='const')
     elif args.plugin == 'fsdp':
-        plugin = TorchFSDPPlugin(mixed_precision=MixedPrecision(reduce_dtype=torch.float16, param_dtype=torch.float16,
-                                                                buffer_dtype=torch.float16))
+        plugin = TorchFSDPPlugin(mixed_precision=MixedPrecision(
+            param_dtype=torch.float16, reduce_dtype=torch.float16, buffer_dtype=torch.float16))
+    elif args.plugin == 'fsdp_cpu':
+        plugin = TorchFSDPPlugin(mixed_precision=MixedPrecision(param_dtype=torch.float16,
+                                                                reduce_dtype=torch.float16,
+                                                                buffer_dtype=torch.float16),
+                                 cpu_offload=CPUOffload(offload_params=True))
     else:
         raise ValueError(f'Unknown plugin {args.plugin}')
 
@@ -146,19 +144,18 @@ def main():
     # ==============================
     # Initialize Model and Optimizer
     # ==============================
-    if args.plugin == 'fsdp':
-        with no_init_weights():
-            model = LlamaForCausalLM(config)
-            model.tie_weights()
-    else:
-        with low_precision_init(), no_init_weights(), LazyInitContext():
-            model = LlamaForCausalLM(config)
-            model.tie_weights()
+    init_ctx = LazyInitContext(
+        default_device=get_current_device()) if isinstance(plugin, GeminiPlugin) else nullcontext()
 
-    print(model.dtype)
+    timer = Timer()
+    timer.start()
+    with no_init_weights(), init_ctx:
+        model = LlamaForCausalLM(config)
+        model.tie_weights()
+
     if args.grad_checkpoint:
-        print('Using gradient checkpointing')
         model.gradient_checkpointing_enable()
+
     model_numel = get_model_numel(model)
     coordinator.print_on_master(f'Model params: {format_numel_str(model_numel)}')
     performance_evaluator = PerformanceEvaluator(model_numel, args.grad_checkpoint, args.ignore_steps)
@@ -166,6 +163,11 @@ def main():
     optimizer = HybridAdam(model.parameters())
 
     model, optimizer, _, dataloader, _ = booster.boost(model, optimizer, dataloader=dataloader)
+    timer.end()
+    coordinator.print_on_master(f'Booster init time: {timer.duration:.2f} s')
+    coordinator.print_on_master(f'Booster init max CUDA memory: {torch.cuda.max_memory_allocated()/1024**2:.2f} MB')
+    coordinator.print_on_master(
+        f'Booster init max CPU memory: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024:.2f} MB')
 
     for step, batch in enumerate(tqdm(dataloader, desc='Step', disable=not coordinator.is_master())):
         performance_evaluator.on_step_start(step)
