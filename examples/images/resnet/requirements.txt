@@ -2,3 +2,4 @@ colossalai
 torch
 torchvision
 tqdm
+pytest
