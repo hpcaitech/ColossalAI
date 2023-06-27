@@ -8,6 +8,8 @@ import torch.nn as nn
 
 from ..shard.shard_config import ShardConfig
 
+__all__ = ["ParallelModule", "SubModuleReplacementDescription", "ModulePolicyDescription", "Policy"]
+
 
 class ParallelModule():
 
