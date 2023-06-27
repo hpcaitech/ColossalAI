@@ -169,8 +169,6 @@ def main(args):
         initial_model,
         actor_optim,
         critic_optim,
-        prompt_dataloader=prompt_dataloader,
-        pretrain_dataloader=pretrain_dataloader,
         kl_coef=args.kl_coef,
         ptx_coef=args.ptx_coef,
         train_batch_size=args.train_batch_size,
@@ -184,7 +182,9 @@ def main(args):
         eos_token_id=tokenizer.eos_token_id,
     )
 
-    trainer.fit(num_episodes=args.num_episodes,
+    trainer.fit(prompt_dataloader=prompt_dataloader,
+                pretrain_dataloader=pretrain_dataloader,
+                num_episodes=args.num_episodes,
                 num_update_steps=args.num_update_steps,
                 num_collect_steps=args.num_collect_steps)
 

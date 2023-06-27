@@ -65,6 +65,8 @@ class OnPolicyTrainer(ABC):
     Args:
         strategy (Strategy):the strategy to use for training
         buffer (NaiveReplayBuffer): the buffer to collect experiences
+        sample_buffer (bool, defaults to False): whether to sample from buffer
+        dataloader_pin_memory (bool, defaults to True): whether to pin memory for data loader
         callbacks (List[Callback], defaults to []): the callbacks to call during training process
     """
 
@@ -153,6 +155,8 @@ class OnPolicyTrainer(ABC):
         self._on_learn_epoch_end(update_step)
 
     def fit(self,
+            prompt_dataloader: DataLoader,
+            pretrain_dataloader: DataLoader,
             num_episodes: int,
             num_collect_steps: int,
             num_update_steps: int,
@@ -161,10 +165,14 @@ class OnPolicyTrainer(ABC):
         The main training loop of on-policy rl trainers.
 
         Args:
+            prompt_dataloader (DataLoader): the dataloader to use for prompt data
+            pretrain_dataloader (DataLoader): the dataloader to use for pretrain data
             num_episodes (int): the number of episodes to train
             num_collect_steps (int): the number of collect steps per episode
             num_update_steps (int): the number of update steps per episode
         """
+        self.prompt_dataloader = prompt_dataloader
+        self.pretrain_dataloader = pretrain_dataloader
 
         with self._fit_ctx():
             for episode in tqdm.trange(num_episodes,

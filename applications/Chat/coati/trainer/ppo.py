@@ -45,8 +45,6 @@ class PPOTrainer(OnPolicyTrainer):
         initial_model (Actor): the initial model in rlhf algorithm to generate reference logics to limit the update of actor
         actor_optim (Optimizer): the optimizer to use for actor model
         critic_optim (Optimizer): the optimizer to use for critic model
-        prompt_dataloader (DataLoader): the dataloader to use for prompt data
-        pretrain_dataloader (DataLoader): the dataloader to use for pretrain data
         kl_coef (float, defaults to 0.1): the coefficient of kl divergence loss
         train_batch_size (int, defaults to 8): the batch size to use for training
         buffer_limit (int, defaults to 0): the max_size limitation of buffer
@@ -70,8 +68,6 @@ class PPOTrainer(OnPolicyTrainer):
                  initial_model: Actor,
                  actor_optim: Optimizer,
                  critic_optim: Optimizer,
-                 prompt_dataloader: DataLoader,
-                 pretrain_dataloader: DataLoader,
                  kl_coef: float = 0.1,
                  ptx_coef: float = 0.9,
                  train_batch_size: int = 8,
@@ -101,9 +97,6 @@ class PPOTrainer(OnPolicyTrainer):
         self.generate_kwargs = _set_default_generate_kwargs(strategy, generate_kwargs, actor)
         self.experience_maker = NaiveExperienceMaker(actor, critic, reward_model, initial_model, kl_coef)
         self.offload_inference_models = offload_inference_models
-
-        self.prompt_dataloader = prompt_dataloader
-        self.pretrain_dataloader = pretrain_dataloader
 
         self.actor = actor
         self.critic = critic

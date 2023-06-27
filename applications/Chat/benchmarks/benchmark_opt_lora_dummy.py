@@ -150,8 +150,6 @@ def main(args):
                          initial_model,
                          actor_optim,
                          critic_optim,
-                         prompt_dataloader=dataloader,
-                         pretrain_dataloader=None,
                          ptx_coef=0,
                          train_batch_size=args.train_batch_size,
                          offload_inference_models=args.offload_inference_models,
@@ -164,7 +162,9 @@ def main(args):
                          eos_token_id=tokenizer.eos_token_id,
                          callbacks=[performance_evaluator])
 
-    trainer.fit(num_episodes=args.num_episodes,
+    trainer.fit(prompt_dataloader=dataloader,
+                pretrain_dataloader=None,
+                num_episodes=args.num_episodes,
                 num_update_steps=args.num_update_steps,
                 num_collect_steps=args.num_collect_steps)
 
