@@ -9,6 +9,8 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import DataLoader
 
+from colossalai.logging import DistributedLogger
+
 from .base import SLTrainer
 from .strategies import ColossalAIStrategy, Strategy
 from .utils import is_rank_0, to_device
@@ -23,8 +25,6 @@ class SFTTrainer(SLTrainer):
         strategy (Strategy): the strategy to use for training
         optim(Optimizer): the optimizer to use for training
         lr_scheduler(_LRScheduler): the lr scheduler to use for training
-        train_dataloader: the dataloader to use for training
-        eval_dataloader: the dataloader to use for evaluation
         max_epochs (int, defaults to 2): the number of epochs to train
         accumulation_steps (int, defaults to 8): the number of steps to accumulate gradients
     """
@@ -35,8 +35,6 @@ class SFTTrainer(SLTrainer):
         strategy: Strategy,
         optim: Optimizer,
         lr_scheduler: _LRScheduler,
-        train_dataloader: DataLoader,
-        eval_dataloader: Optional[DataLoader] = None,
         max_epochs: int = 2,
         accumulation_steps: int = 8,
     ) -> None:
@@ -45,12 +43,7 @@ class SFTTrainer(SLTrainer):
             assert not isinstance(strategy.plugin, GeminiPlugin), \
                 "Accumulation steps are not supported in stage 3 of ColossalAI"
 
-        super().__init__(
-            strategy, max_epochs,
-            model, optim, train_dataloader
-        )
-
-        self.eval_dataloader = eval_dataloader
+        super().__init__(strategy, max_epochs, model, optim)
 
         self.accumulation_steps = accumulation_steps
         self.scheduler = lr_scheduler
@@ -106,9 +99,18 @@ class SFTTrainer(SLTrainer):
                     self.logger.info(f'Eval Epoch {epoch}/{self.max_epochs} loss {loss_mean}')
 
     def _before_fit(self,
-                    logger,
-                    use_wandb: bool = False
-                    ):
+                    train_dataloader: DataLoader,
+                    eval_dataloader: Optional[DataLoader] = None,
+                    logger: Optional[DistributedLogger] = None,
+                    use_wandb: bool = False):
+        """
+        Args:
+            train_dataloader: the dataloader to use for training
+            eval_dataloader: the dataloader to use for evaluation
+        """
+        self.train_dataloader = train_dataloader
+        self.eval_dataloader = eval_dataloader
+
         self.logger = logger
         self.use_wandb = use_wandb
         if use_wandb:

@@ -23,9 +23,6 @@ class RewardModelTrainer(SLTrainer):
         optim (Optimizer): the optimizer to use for training
         lr_scheduler (_LRScheduler): the lr scheduler to use for training
         loss_fn (callable): the loss function to use for training
-        train_dataloader (DataLoader): the dataloader to use for training
-        valid_dataloader (DataLoader): the dataloader to use for validation
-        eval_dataloader (DataLoader): the dataloader to use for evaluation
         max_epochs (int, defaults to 2): the number of epochs to train
     """
 
@@ -36,18 +33,9 @@ class RewardModelTrainer(SLTrainer):
         optim: Optimizer,
         lr_scheduler: _LRScheduler,
         loss_fn: Callable,
-        train_dataloader: DataLoader,
-        valid_dataloader: DataLoader,
-        eval_dataloader: DataLoader,
         max_epochs: int = 1,
     ) -> None:
-        super().__init__(
-            strategy, max_epochs,
-            model, optim, train_dataloader
-        )
-
-        self.valid_dataloader = valid_dataloader
-        self.eval_dataloader = eval_dataloader
+        super().__init__(strategy, max_epochs, model, optim)
 
         self.loss_fn = loss_fn
         self.scheduler = lr_scheduler
@@ -55,7 +43,7 @@ class RewardModelTrainer(SLTrainer):
     def _eval(self, epoch):
         if self.eval_dataloader is not None:
             self.model.eval()
-            dist, on, cnt = 0, 0 , 0
+            dist, on, cnt = 0, 0, 0
             with torch.no_grad():
                 for chosen_ids, c_mask, reject_ids, r_mask in self.eval_dataloader:
                     chosen_ids = chosen_ids.squeeze(1).to(torch.cuda.current_device())
@@ -74,7 +62,7 @@ class RewardModelTrainer(SLTrainer):
 
             if is_rank_0():
                 log = pd.DataFrame(
-                    [[(epoch + 1) * len(self.train_dataloader) ,
+                    [[(epoch + 1) * len(self.train_dataloader),
                       self.loss.item(), self.dist, self.acc]],
                     columns=['step', 'loss', 'dist', 'acc']
                 )
@@ -105,6 +93,19 @@ class RewardModelTrainer(SLTrainer):
             step_bar.update()
         step_bar.close()
 
-    def _before_fit(self):
+    def _before_fit(self,
+                    train_dataloader: DataLoader,
+                    valid_dataloader: DataLoader,
+                    eval_dataloader: DataLoader):
+        """
+        Args:
+            train_dataloader (DataLoader): the dataloader to use for training
+            valid_dataloader (DataLoader): the dataloader to use for validation
+            eval_dataloader (DataLoader): the dataloader to use for evaluation
+        """
         super()._before_fit()
         self.datetime = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+
+        self.train_dataloader = train_dataloader
+        self.valid_dataloader = valid_dataloader
+        self.eval_dataloader = eval_dataloader

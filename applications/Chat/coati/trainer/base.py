@@ -23,7 +23,6 @@ class SLTrainer(ABC):
         max_epochs (int, defaults to 1): the number of epochs of training process
         model (nn.Module): the model to train
         optim (Optimizer): the optimizer to use for training
-        train_dataloader (DataLoader): the dataloader to use for training
     """
 
     def __init__(self,
@@ -31,14 +30,12 @@ class SLTrainer(ABC):
                  max_epochs: int,
                  model: nn.Module,
                  optimizer: Optimizer,
-                 train_dataloader: DataLoader,
                  ) -> None:
         super().__init__()
         self.strategy = strategy
         self.max_epochs = max_epochs
         self.model = model
         self.optimizer = optimizer
-        self.train_dataloader = train_dataloader
 
     @abstractmethod
     def _train(self, epoch):
