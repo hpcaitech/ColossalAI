@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader
 
 from .callbacks import Callback
 from .strategies import Strategy
-from .utils import is_rank_0
+from .utils import CycledDataLoader, is_rank_0
 
 
 class SLTrainer(ABC):
@@ -171,8 +171,8 @@ class OnPolicyTrainer(ABC):
             num_collect_steps (int): the number of collect steps per episode
             num_update_steps (int): the number of update steps per episode
         """
-        self.prompt_dataloader = prompt_dataloader
-        self.pretrain_dataloader = pretrain_dataloader
+        self.prompt_dataloader = CycledDataLoader(prompt_dataloader)
+        self.pretrain_dataloader = CycledDataLoader(pretrain_dataloader)
 
         with self._fit_ctx():
             for episode in tqdm.trange(num_episodes,

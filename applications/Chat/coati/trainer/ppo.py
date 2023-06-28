@@ -112,7 +112,7 @@ class PPOTrainer(OnPolicyTrainer):
         self.device = get_current_device()
 
     def _make_experience(self, collect_step: int) -> Experience:
-        prompts = next(iter(self.prompt_dataloader))  # sample a prompt
+        prompts = self.prompt_dataloader.next()
         if self.offload_inference_models:
             # TODO(ver217): this may be controlled by strategy if they are prepared by strategy
             self.experience_maker.initial_model.to(self.device)
@@ -138,7 +138,7 @@ class PPOTrainer(OnPolicyTrainer):
 
         # ptx loss
         if self.ptx_coef != 0:
-            batch = next(iter(self.pretrain_dataloader))
+            batch = self.pretrain_dataloader.next()
             batch = to_device(batch, self.device)
             ptx_log_probs = self.actor(batch['input_ids'],
                                        attention_mask=batch['attention_mask'])['logits']
