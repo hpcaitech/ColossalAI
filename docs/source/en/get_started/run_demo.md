@@ -14,8 +14,7 @@ Detailed instructions can be found in its `README.md`.
 ## Multiple GPUs
 
 Colossal-AI can be used to train deep learning models on distributed systems with multiple GPUs and accelerate the
-training process drastically by applying efficient parallelization techniques. When we have several parallelism for you
-to try out.
+training process drastically by applying efficient parallelization techniques. When we have several parallelism for you to try out.
 
 #### 1. data parallel
 
@@ -41,3 +40,5 @@ MoE parallelism. WideNet uses mixture of experts (MoE) to achieve better perform
 Sequence parallel is designed to tackle memory efficiency and sequence length limit problems in NLP tasks. We provided
 [an example of BERT](https://github.com/hpcaitech/ColossalAI/tree/main/examples/tutorial/sequence_parallel) in
 [ColossalAI-Examples](https://github.com/hpcaitech/ColossalAI/tree/main/examples). You can follow the `README.md` to execute the code.
+
+<!-- doc-test-command: torchrun --standalone --nproc_per_node=1 run_demo.py  -->

@@ -28,3 +28,5 @@ Colossal-AI 可用于在具有多个 GPU 的分布式系统上训练深度学习
 #### 4. 序列并行
 
 序列并行是为了解决 NLP 任务中的内存效率和序列长度限制问题。 我们在 [ColossalAI-Examples](https://github.com/hpcaitech/ColossalAI/tree/main/examples) 中提供了一个 [Sequence Parallelism 例子](https://github.com/hpcaitech/ColossalAI/tree/main/examples/tutorial/sequence_parallel)。您可以按照 `README.md` 来执行代码。
+
+<!-- doc-test-command: torchrun --standalone --nproc_per_node=1 run_demo.py  -->
