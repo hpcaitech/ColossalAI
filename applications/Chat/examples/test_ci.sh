@@ -69,7 +69,7 @@ for model in 'gpt2' 'bloom' 'opt' 'roberta' 'llama'; do
             --prompt_dataset $PROMPT_PATH --pretrain_dataset $PRETRAIN_DATASET \
             --strategy $strategy --model $model \
             --num_episodes 1 --num_collect_steps 2 --num_update_steps 1 \
-            --train_batch_size 2
+            --train_batch_size 2 --lora_rank 4
     done
 done
 
