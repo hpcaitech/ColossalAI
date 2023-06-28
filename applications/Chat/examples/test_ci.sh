@@ -43,18 +43,23 @@ pip install -r ${BASE}/requirements.txt
 
 wandb init -m offline
 
-# FIXME: This is a hack to skip tests that are not working (tested at commit b3ab7fbabf)
+# FIXME: This is a hack to skip tests that are not working
 #  - gpt2-ddp: RuntimeError: one of the variables needed for gradient computation has been modified by an inplace operation
-#  - llama-*: Repository Not Found for url: https://huggingface.co/{...}/resolve/main/tokenizer.model.
-#  - roberta-*: RuntimeError: CUDA error: CUBLAS_STATUS_NOT_INITIALIZED when calling `cublasCreate(handle)`
+#  - llama-ddp, llama-gemini: Out of memory
+#  - roberta-ddp: RuntimeError: one of the variables needed for gradient computation has been modified by an inplace operation
+#  - roberta-gemini: RuntimeError: ZERO DDP error: the synchronization of gradients doesn't exit properly.
+#  - roberta-zero2: "zero/low_level/low_level_optim.py", line 498, assert param_shape == flat_master_avg_grads.shape
 SKIPPED_TESTS=(
     "gpt2-ddp"
-    "llama-ddp" "llama-colossalai_gemini" "llama-colossalai_zero2"
-    "roberta-ddp" "roberta-colossalai_gemini" "roberta-colossalai_zero2"
+    "llama-ddp"
+    "llama-gemini"
+    "roberta-ddp"
+    "roberta-colossalai_gemini"
+    "roberta-colossalai_zero2"
 )
 
 # These tests are quick and do not have any dependencies
-for model in 'gpt2' 'bloom' 'opt' 'llama' 'roberta'; do
+for model in 'gpt2' 'bloom' 'opt' 'roberta' 'llama'; do
     for strategy in 'ddp' 'colossalai_gemini' 'colossalai_zero2'; do
         if [[ " ${SKIPPED_TESTS[*]} " =~ " ${model}-${strategy} " ]]; then
             echo "[Test]: Skipped $model-$strategy"
