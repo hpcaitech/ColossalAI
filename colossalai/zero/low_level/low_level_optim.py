@@ -234,10 +234,8 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
         params_current_rank = []
         device = 'cpu' if self._cpu_offload else get_current_device()
 
-        offset = 0
         for param in reversed(param_list):
             padding_size = (self._world_size - param.numel() % self._world_size) % self._world_size
-            self._param_store.record_offset_in_flatten(param, offset)
             self._param_store.record_param_padding_size(param, padding_size)
 
             with torch.no_grad():
@@ -246,7 +244,6 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
                 else:
                     padding_param = param.data.view(-1)
                 splited_params = padding_param.split(param.numel() // self._world_size)
-                offset += splited_params[0].numel()
 
                 splited_param_current_rank = splited_params[self._local_rank].detach().float().to(device)
                 params_current_rank.append(splited_param_current_rank)
