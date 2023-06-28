@@ -78,9 +78,9 @@ def run_dist(rank, world_size, port):
 
 
 @pytest.mark.dist
-def test_process_group_mesh():
+def test_pipeline_stage_manager():
     spawn(run_dist, 4)
 
 
 if __name__ == '__main__':
-    test_process_group_mesh()
+    test_pipeline_stage_manager()
