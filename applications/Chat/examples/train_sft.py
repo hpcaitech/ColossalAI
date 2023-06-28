@@ -70,7 +70,7 @@ def train(args):
         tokenizer = AutoTokenizer.from_pretrained("facebook/opt-350m")
     elif args.model == 'llama':
         tokenizer = AutoTokenizer.from_pretrained(
-            args.pretrain,
+            "hf-internal-testing/llama-tokenizer",
             padding_side="right",
             use_fast=False,
         )
@@ -79,20 +79,16 @@ def train(args):
         raise ValueError(f'Unsupported model "{args.model}"')
     tokenizer.pad_token = tokenizer.eos_token
     max_len = args.max_len
-    if args.model == 'llama':
-        tokenizer = prepare_llama_tokenizer_and_embedding(tokenizer, model)
 
-        if args.strategy == 'colossalai_gemini':
-            # this is a hack to deal with the resized embedding
-            # to make sure all parameters are ColoParameter for Colossal-AI Gemini Compatibility
-            for name, param in model.named_parameters():
-                if not isinstance(param, ColoParameter):
-                    sub_module_name = '.'.join(name.split('.')[:-1])
-                    weight_name = name.split('.')[-1]
-                    sub_module = model.get_submodule(sub_module_name)
-                    setattr(sub_module, weight_name, ColoParameter(param))
-    else:
-        tokenizer.pad_token = tokenizer.eos_token
+    if args.model == 'llama' and args.strategy == 'colossalai_gemini':
+        # this is a hack to deal with the resized embedding
+        # to make sure all parameters are ColoParameter for Colossal-AI Gemini Compatibility
+        for name, param in model.named_parameters():
+            if not isinstance(param, ColoParameter):
+                sub_module_name = '.'.join(name.split('.')[:-1])
+                weight_name = name.split('.')[-1]
+                sub_module = model.get_submodule(sub_module_name)
+                setattr(sub_module, weight_name, ColoParameter(param))
 
     # configure optimizer
     if args.strategy.startswith('colossalai'):

@@ -122,17 +122,14 @@ def main(args):
     elif args.model == 'opt':
         tokenizer = AutoTokenizer.from_pretrained("facebook/opt-350m")
     elif args.model == 'llama':
-        tokenizer = LlamaTokenizer.from_pretrained(args.pretrain)
+        tokenizer = LlamaTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
         tokenizer.eos_token = '<\s>'
     elif args.model == 'roberta':
         tokenizer = RobertaTokenizer.from_pretrained("roberta-base")
     else:
         raise ValueError(f'Unsupported model "{args.model}"')
 
-    if args.model == 'llama':
-        tokenizer = prepare_llama_tokenizer_and_embedding(tokenizer, actor)
-    else:
-        tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.pad_token = tokenizer.eos_token
 
     data_collator = DataCollatorForSupervisedDataset(tokenizer=tokenizer)
 

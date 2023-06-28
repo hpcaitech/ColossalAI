@@ -71,17 +71,14 @@ def train(args):
     elif args.model == 'deberta':
         tokenizer = DebertaV2Tokenizer.from_pretrained('microsoft/deberta-v3-large')
     elif args.model == 'llama':
-        tokenizer = LlamaTokenizer.from_pretrained(args.pretrain)
+        tokenizer = LlamaTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
     elif args.model == 'roberta':
         tokenizer = RobertaTokenizer.from_pretrained("roberta-base")
     else:
         raise ValueError(f'Unsupported model "{args.model}"')
     max_len = args.max_len
 
-    if args.model == 'llama':
-        tokenizer = prepare_llama_tokenizer_and_embedding(tokenizer, model)
-    else:
-        tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.pad_token = tokenizer.eos_token
 
     # configure optimizer
     if args.strategy.startswith('colossalai'):
