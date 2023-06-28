@@ -4,8 +4,8 @@ import torch.nn as nn
 from torch.testing import assert_close
 
 import colossalai
-from colossalai.shardformer.layer import LinearConv1D_Col, LinearConv1D_Row
-from colossalai.shardformer.layer.linear_conv import split_fused_qkv
+from colossalai.shardformer.layer import GPT2FusedLinearConv1D_Col, GPT2FusedLinearConv1D_Row
+from colossalai.shardformer.layer.qkv_fused_linear import split_fused_qkv_in_gpt2_style
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 
@@ -52,7 +52,10 @@ def rearrange(tensor: torch.Tensor, dim: int):
 
 def check_linear_conv_1d_col():
     linear = Conv1D(192, 48).cuda()
-    linear_conv_col = LinearConv1D_Col.from_native_module(linear, process_group=None, gather_output=True, n_fused=3)
+    linear_conv_col = GPT2FusedLinearConv1D_Col.from_native_module(linear,
+                                                                   process_group=None,
+                                                                   gather_output=True,
+                                                                   n_fused=3)
 
     assert linear.weight.shape == torch.Size([48, 192])
     assert linear.bias.shape == torch.Size([192])
@@ -73,13 +76,13 @@ def check_linear_conv_1d_col():
     out.sum().backward()
     gather_out.sum().backward()
 
-    target_grad = split_fused_qkv(linear.weight.grad, 3, None)
+    target_grad = split_fused_qkv_in_gpt2_style(linear.weight.grad, 3, None, True)
     assert_close(target_grad, linear_conv_col.weight.grad)
 
 
 def check_linear_conv_1d_row():
     linear = Conv1D(192, 48).cuda()
-    linear_row = LinearConv1D_Row.from_native_module(linear, process_group=None, parallel_input=False)
+    linear_row = GPT2FusedLinearConv1D_Row.from_native_module(linear, process_group=None, parallel_input=False)
 
     assert linear.weight.shape == torch.Size([48, 192])
     assert linear_row.weight.shape == torch.Size([24, 192])
@@ -102,6 +105,8 @@ def check_linear_conv_1d_row():
 
 def run_dist(rank, world_size, port):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+
+    # test for linear conv
     check_linear_conv_1d_col()
     check_linear_conv_1d_row()
 

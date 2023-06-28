@@ -95,8 +95,9 @@ class ModelSharder(object):
             attr_replacement = module_description[1].attribute_replacement
             param_replacement = module_description[1].param_replacement
             sub_module_replacement = module_description[1].sub_module_replacement
+            method_replacement = module_description[1].method_replacement
             self._recursive_replace_layer(self.model, origin_layer_cls, attr_replacement, param_replacement,
-                                          sub_module_replacement)
+                                          method_replacement, sub_module_replacement)
 
     def _recursive_replace_layer(
         self,
@@ -104,6 +105,7 @@ class ModelSharder(object):
         origin_cls: nn.Module,
         attr_replacement: Dict[str, Any],
         param_replacement: List[Callable],
+        method_replacement: Dict[str, Callable],
         sub_module_replacement: List[Callable],
     ) -> None:
         r"""
@@ -119,9 +121,11 @@ class ModelSharder(object):
         if module.__class__ == origin_cls:
             self._replace_attr(module, attr_replacement)
             self._replace_param(module, param_replacement)
+            self._replace_method(module, method_replacement)
             self._replace_sub_module(module, sub_module_replacement)
+
         for name, child in module.named_children():
-            self._recursive_replace_layer(child, origin_cls, attr_replacement, param_replacement,
+            self._recursive_replace_layer(child, origin_cls, attr_replacement, param_replacement, method_replacement,
                                           sub_module_replacement)
 
     def _replace_attr(
@@ -153,6 +157,14 @@ class ModelSharder(object):
         """
         # TODO: support parameter shard
         pass
+
+    def _replace_method(self, module: nn.Module, method_replacement: Dict[str, Callable]):
+        if method_replacement is None:
+            return
+
+        for method_name, new_method in method_replacement.items():
+            # bind the new method to the module
+            setattr(module, method_name, new_method.__get__(module, module.__class__))
 
     def _replace_sub_module(
         self,
