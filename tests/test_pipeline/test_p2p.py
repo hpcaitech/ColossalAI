@@ -6,7 +6,7 @@ import colossalai
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.pipeline.p2p import PipelineP2PCommunication
 from colossalai.pipeline.stage_manager import PipelineStageManager
-from colossalai.testing import spawn
+from colossalai.testing import rerun_if_address_is_in_use, spawn
 from colossalai.utils import get_current_device
 
 
@@ -50,6 +50,7 @@ def run_dist(rank, world_size, port):
 
 
 @pytest.mark.dist
+@rerun_if_address_is_in_use()
 def test_pipeline_p2p():
     spawn(run_dist, 2)
 

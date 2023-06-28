@@ -4,7 +4,7 @@ import torch.distributed as dist
 import colossalai
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.pipeline.stage_manager import PipelineStageManager
-from colossalai.testing import spawn
+from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 
 def check_stage_manager():
@@ -78,6 +78,7 @@ def run_dist(rank, world_size, port):
 
 
 @pytest.mark.dist
+@rerun_if_address_is_in_use()
 def test_pipeline_stage_manager():
     spawn(run_dist, 4)
 
