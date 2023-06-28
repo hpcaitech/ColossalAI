@@ -287,15 +287,14 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
             with torch.cuda.stream(stream):
                 group_id = self._bucket_store.current_group_id
 
+                grad_dtype = flat_grads.dtype
                 if self._communication_dtype is not None:
-                    comm_flat_grads = flat_grads.to(self._communication_dtype)
-                else:
-                    comm_flat_grads = flat_grads
+                    flat_grads = flat_grads.to(self._communication_dtype)
 
                 if not self._partition_grads:
-                    dist.all_reduce(comm_flat_grads, group=self._dp_torch_group)
-                    if flat_grads.dtype != comm_flat_grads.dtype:
-                        flat_grads.copy_(comm_flat_grads)
+                    dist.all_reduce(flat_grads, group=self._dp_torch_group)
+                    if flat_grads.dtype != grad_dtype:
+                        flat_grads = flat_grads.to(grad_dtype)
 
                     flat_grads_per_rank = flat_grads.split(flat_grads.numel() // self._world_size)
                     grad_in_bucket = self._bucket_store.get_grad()
@@ -307,12 +306,12 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
                             self._grad_store.append_gradients_by_param_id(grad, group_id, param_id)
 
                 else:
-                    comm_flat_grads_list = list(comm_flat_grads.split(len(comm_flat_grads) // self._world_size))
-                    recieved_grad = torch.zeros_like(comm_flat_grads_list[0])
-                    dist.reduce_scatter(recieved_grad, comm_flat_grads_list, group=self._dp_torch_group)
+                    flat_grads_list = list(flat_grads.split(len(flat_grads) // self._world_size))
+                    recieved_grad = torch.zeros_like(flat_grads_list[0])
+                    dist.reduce_scatter(recieved_grad, flat_grads_list, group=self._dp_torch_group)
 
-                    if recieved_grad.dtype != flat_grads.dtype:
-                        recieved_grad = recieved_grad.to(flat_grads.dtype)
+                    if recieved_grad.dtype != grad_dtype:
+                        recieved_grad = recieved_grad.to(grad_dtype)
 
                     grad_in_bucket_current_rank = self._bucket_store.get_grad()[self._local_rank]
                     sync_tensor(recieved_grad, grad_in_bucket_current_rank)
