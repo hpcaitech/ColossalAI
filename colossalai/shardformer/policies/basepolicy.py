@@ -52,6 +52,7 @@ class ModulePolicyDescription:
     attribute_replacement: Dict[str, Any]
     param_replacement: List[Callable]
     sub_module_replacement: List[SubModuleReplacementDescription]
+    method_replacement: List[Callable] = None
 
 
 class Policy(ABC):

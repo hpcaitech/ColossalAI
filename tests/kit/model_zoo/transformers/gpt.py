@@ -6,8 +6,6 @@ from ..registry import ModelAttribute, model_zoo
 # ===============================
 # Register single-sentence GPT
 # ===============================
-BATCH_SIZE = 1    # it can only be 1 as GPT cannot handle batch sizes > 1 if no padding token is defined.
-SEQ_LENGTH = 16
 
 
 def data_gen():

@@ -277,6 +277,7 @@ class Linear1D_Row(ParallelModule):
     def chunk_weight(self):
         self.weight_list = torch.chunk(self.weight, self.stream_chunk_num, dim=0)
 
+    @torch.no_grad()
     def reset_parameters(self, weight_initializer, bias_initializer) -> None:
         fan_in, fan_out = self.in_features, self.out_features
         weight_initializer(self.weight, fan_in=fan_in, fan_out=fan_out)
@@ -289,9 +290,10 @@ class Linear1D_Row(ParallelModule):
                 src_rank = dist.distributed_c10d._get_global_rank(self.process_group, 0)
 
             origin_device = self.bias.device
-            self.bias = self.bias.cuda()
-            dist.broadcast(self.bias, src=src_rank, group=self.process_group)
-            self.bias = self.bias.to(origin_device)
+            bias = self.bias.cuda()
+            dist.broadcast(bias, src=src_rank, group=self.process_group)
+            bias = bias.to(origin_device)
+            self.bias.copy_(bias)
 
     def forward(self, input_: Tensor) -> Tensor:
         # Set up backprop all-reduce.
