@@ -1,5 +1,5 @@
 # booster 使用
-作者: [Mingyan Jiang](https://github.com/jiangmingyan)
+作者: [Mingyan Jiang](https://github.com/jiangmingyan) [Jianghai Chen](https://github.com/CjhHa1)
 
 **预备知识:**
 - [分布式训练](../concepts/distributed_training.md)
