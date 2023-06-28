@@ -9,7 +9,7 @@ from transformers.models.t5.modeling_t5 import (
     T5Stack,
 )
 
-from colossalai.shardformer.layer import DropoutForParallelInput, Embedding1D, Linear1D_Col, Linear1D_Row
+from colossalai.shardformer.layer import DropoutForParallelInput, Embedding1D, FusedRMSNorm, Linear1D_Col, Linear1D_Row
 
 from .basepolicy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
@@ -17,6 +17,9 @@ __all__ = ["T5ModelPolicy", "T5ForConditionalGenerationPolicy", "T5EncoderPolicy
 
 
 class T5ModelPolicy(Policy):
+
+    def config_sanity_check(self):
+        pass
 
     def preprocess(self):
         # reshape the embedding layer
@@ -31,7 +34,7 @@ class T5ModelPolicy(Policy):
         return self.model
 
     def module_policy(self):
-        return {
+        base_policy = {
             T5Stack:
                 ModulePolicyDescription(attribute_replacement={},
                                         param_replacement=[],
@@ -138,6 +141,19 @@ class T5ModelPolicy(Policy):
                                             )
                                         ])
         }
+
+        # optimization configuration
+        if self.shard_config.enable_fused_normalization:
+            base_policy[T5LayerFF].sub_module_replacement.append(
+                SubModuleReplacementDescription(suffix="layer_norm", target_module=FusedRMSNorm))
+            base_policy[T5LayerSelfAttention].sub_module_replacement.append(
+                SubModuleReplacementDescription(suffix="layer_norm", target_module=FusedRMSNorm))
+            base_policy[T5LayerCrossAttention].sub_module_replacement.append(
+                SubModuleReplacementDescription(suffix="layer_norm", target_module=FusedRMSNorm))
+            base_policy[T5Stack].sub_module_replacement.append(
+                SubModuleReplacementDescription(suffix="final_layer_norm", target_module=FusedRMSNorm))
+
+        return base_policy
 
     def new_model_class(self):
         return None

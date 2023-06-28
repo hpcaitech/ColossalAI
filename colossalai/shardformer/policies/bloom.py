@@ -65,6 +65,9 @@ def build_bloom_alibi_tensor(self, attention_mask: torch.Tensor, num_heads: int,
 
 class BloomPolicy(Policy):
 
+    def config_sanity_check(self):
+        pass
+
     def preprocess(self):
         # reshape the embedding layer
         r"""
@@ -81,7 +84,7 @@ class BloomPolicy(Policy):
     def module_policy(self):
         from transformers.models.bloom.modeling_bloom import BloomBlock, BloomModel
 
-        return {
+        base_policy = {
             BloomBlock:
                 ModulePolicyDescription(
                     attribute_replacement={
@@ -99,7 +102,6 @@ class BloomPolicy(Policy):
                         SubModuleReplacementDescription(
                             suffix="self_attention.query_key_value",
                             target_module=col_nn.Linear1D_Col,
-        # kwargs={'n_fused': 3}
                         ),
                         SubModuleReplacementDescription(
                             suffix="self_attention.dense",
@@ -131,6 +133,31 @@ class BloomPolicy(Policy):
                                             )
                                         ])
         }
+
+        # optimization configuration
+        if self.shard_config.enable_fused_normalization:
+            base_policy[BloomModel].sub_module_replacement.extend([
+                SubModuleReplacementDescription(
+                    suffix="ln_f",
+                    target_module=col_nn.FusedLayerNorm,
+                ),
+                SubModuleReplacementDescription(
+                    suffix="word_embeddings_layernorm",
+                    target_module=col_nn.FusedLayerNorm,
+                )
+            ])
+            base_policy[BloomBlock].sub_module_replacement.extend([
+                SubModuleReplacementDescription(
+                    suffix="input_layernorm",
+                    target_module=col_nn.FusedLayerNorm,
+                ),
+                SubModuleReplacementDescription(
+                    suffix="post_attention_layernorm",
+                    target_module=col_nn.FusedLayerNorm,
+                )
+            ])
+
+        return base_policy
 
     def new_model_class(self):
         # do nothing
