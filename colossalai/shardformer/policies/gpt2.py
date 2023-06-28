@@ -42,37 +42,37 @@ class GPT2Policy(Policy):
                                         sub_module_replacement=[
                                             SubModuleReplacementDescription(
                                                 suffix="attn.c_attn",
-                                                target_module=col_nn.LinearConv1D_Col,
+                                                target_module=col_nn.GPT2FusedLinearConv1D_Col,
                                                 kwargs={
                                                     "n_fused": 3,
                                                 },
                                             ),
                                             SubModuleReplacementDescription(
                                                 suffix="attn.c_proj",
-                                                target_module=col_nn.LinearConv1D_Row,
+                                                target_module=col_nn.GPT2FusedLinearConv1D_Row,
                                             ),
                                             SubModuleReplacementDescription(
                                                 suffix="mlp.c_fc",
-                                                target_module=col_nn.LinearConv1D_Col,
+                                                target_module=col_nn.GPT2FusedLinearConv1D_Col,
                                                 kwargs={
                                                     "n_fused": 1,
                                                 },
                                             ),
                                             SubModuleReplacementDescription(
                                                 suffix="mlp.c_proj",
-                                                target_module=col_nn.LinearConv1D_Row,
+                                                target_module=col_nn.GPT2FusedLinearConv1D_Row,
                                             ),
                                             SubModuleReplacementDescription(
                                                 suffix="attn.attn_dropout",
-                                                target_module=col_nn.Dropout1D,
+                                                target_module=col_nn.DropoutForParallelInput,
                                             ),
                                             SubModuleReplacementDescription(
                                                 suffix="attn.resid_dropout",
-                                                target_module=col_nn.Dropout1D,
+                                                target_module=col_nn.DropoutForParallelInput,
                                             ),
                                             SubModuleReplacementDescription(
                                                 suffix="mlp.dropout",
-                                                target_module=col_nn.Dropout1D,
+                                                target_module=col_nn.DropoutForParallelInput,
                                             ),
                                         ])
         }

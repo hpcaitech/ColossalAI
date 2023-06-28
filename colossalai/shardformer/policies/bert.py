@@ -61,7 +61,7 @@ class BertPolicy(Policy):
                         ),
                         SubModuleReplacementDescription(
                             suffix="attention.self.dropout",
-                            target_module=col_nn.Dropout1D,
+                            target_module=col_nn.DropoutForParallelInput,
                         ),
                         SubModuleReplacementDescription(
                             suffix="attention.output.dense",
@@ -69,7 +69,7 @@ class BertPolicy(Policy):
                         ),
                         SubModuleReplacementDescription(
                             suffix="attention.output.dropout",
-                            target_module=col_nn.Dropout1D,
+                            target_module=col_nn.DropoutForParallelInput,
                         ),
                         SubModuleReplacementDescription(
                             suffix="intermediate.dense",
@@ -81,7 +81,7 @@ class BertPolicy(Policy):
                         ),
                         SubModuleReplacementDescription(
                             suffix="output.dropout",
-                            target_module=col_nn.Dropout1D,
+                            target_module=col_nn.DropoutForParallelInput,
                         )
                     ]),
             BertEmbeddings:
@@ -94,7 +94,7 @@ class BertPolicy(Policy):
                                             ),
                                             SubModuleReplacementDescription(
                                                 suffix="dropout",
-                                                target_module=col_nn.Dropout1D,
+                                                target_module=col_nn.DropoutForParallelInput,
                                             )
                                         ])
         }
@@ -258,7 +258,7 @@ class BertForSequenceClassificationPolicy(BertPolicy):
                                         sub_module_replacement=[
                                             SubModuleReplacementDescription(
                                                 suffix="dropout",
-                                                target_module=col_nn.Dropout1D,
+                                                target_module=col_nn.DropoutForParallelInput,
                                             )
                                         ])
         }
@@ -281,7 +281,7 @@ class BertForTokenClassificationPolicy(BertPolicy):
                                         sub_module_replacement=[
                                             SubModuleReplacementDescription(
                                                 suffix="dropout",
-                                                target_module=col_nn.Dropout1D,
+                                                target_module=col_nn.DropoutForParallelInput,
                                             )
                                         ])
         }
@@ -311,7 +311,7 @@ class BertForMultipleChoicePolicy(BertPolicy):
                                         sub_module_replacement=[
                                             SubModuleReplacementDescription(
                                                 suffix="dropout",
-                                                target_module=col_nn.Dropout1D,
+                                                target_module=col_nn.DropoutForParallelInput,
                                             )
                                         ])
         }

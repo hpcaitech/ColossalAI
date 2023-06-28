@@ -83,8 +83,10 @@ We will follow this roadmap to develop Shardformer:
       - [x] BERT
       - [x] T5
       - [x] LlaMa
-      - [ ] GPT2
-      - [ ] BLOOM
+      - [x] GPT2
+      - [x] OPT
+      - [x] BLOOM
+      - [ ] GLM
       - [ ] RoBERTa
       - [ ] ALBERT
       - [ ] ERNIE
@@ -96,7 +98,7 @@ We will follow this roadmap to develop Shardformer:
       - [ ] SwinTransformer
       - [ ] SwinTransformer V2
     - [ ] Audio
-      - [ ] To be added
+      - [ ] Whisper
     - [ ] Multi-modal
       - [ ] To be added
 

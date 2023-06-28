@@ -31,12 +31,25 @@ from ._operation import (
 from .parallel_module import ParallelModule
 from .utils import create_randomizer_with_offset
 
-__all__ = ['LinearConv1D_Col', 'LinearConv1D_Row']
+__all__ = ['FusedLinear1D_Col', 'FusedLinear1D_Row']
+
+# ====================================
+# For GPT Only
+# ====================================
 
 
-def split_fused_qkv(qkv: torch.Tensor, n_fused: int, process_group: ProcessGroup):
+def split_fused_qkv_in_gpt2_style(qkv: torch.Tensor,
+                                  n_fused: int,
+                                  process_group: ProcessGroup,
+                                  is_transposed: bool = False):
     """
     The fused qkv tensor looks like [Q1, Q2, K1, K2, V1, V2], this function will split them into [Q1, K1, V1] and [Q2, K2, V2].
+
+    Args:
+        qkv (torch.Tensor): The fused qkv tensor.
+        n_fused (int): The number items fused together, defaults to 3 (query, key and value).
+        process_group (ProcessGroup): The process group for distributed communication.
+        is_transposed (bool): generally the tensor is the shape of (out_features, in_features). Set this to True if the tensor is in the shape (in_features, out_features).
     """
     # get the number of slice for the fused qkv
     rank = dist.get_rank(group=process_group)
@@ -48,7 +61,10 @@ def split_fused_qkv(qkv: torch.Tensor, n_fused: int, process_group: ProcessGroup
     # [Q, K, V]
     # to
     # [Q1, Q2, K1, K2, V1, V2]
-    weight_chunks = torch.chunk(qkv, world_size * n_fused, dim=-1)
+    if is_transposed:
+        weight_chunks = torch.chunk(qkv, world_size * n_fused, dim=-1)
+    else:
+        weight_chunks = torch.chunk(qkv, world_size * n_fused, dim=0)
 
     # rearrange the slice into the final order
     # from
@@ -56,13 +72,26 @@ def split_fused_qkv(qkv: torch.Tensor, n_fused: int, process_group: ProcessGroup
     # to
     # [Q1, K1, V1], [Q2, K2, V2]
     weight_chunks_of_current_rank = [weight_chunks[i] for i in order[rank::world_size]]
-    weight_of_current_rank = torch.cat(weight_chunks_of_current_rank, dim=-1)
+
+    if is_transposed:
+        weight_of_current_rank = torch.cat(weight_chunks_of_current_rank, dim=-1)
+    else:
+        weight_of_current_rank = torch.cat(weight_chunks_of_current_rank, dim=0)
     return weight_of_current_rank
 
 
-def gather_fused_qkv(qkv: torch.Tensor, n_fused: int, process_group: ProcessGroup):
+def gather_fused_qkv_in_gpt2_style(qkv: torch.Tensor,
+                                   n_fused: int,
+                                   process_group: ProcessGroup,
+                                   is_transposed: bool = False):
     """
     The splitted qkv tensor looks like [Q1, K1, V1] and [Q2, K2, V2], this function will gather them into [Q1, Q2, K1, K2, V1, V2].
+
+    Args:
+        qkv (torch.Tensor): The fused qkv tensor.
+        n_fused (int): The number items fused together, defaults to 3 (query, key and value).
+        process_group (ProcessGroup): The process group for distributed communication.
+        is_transposed (bool): generally the tensor is the shape of (out_features, in_features). Set this to True if the tensor is in the shape (in_features, out_features).
     """
     world_size = dist.get_world_size(group=process_group)
 
@@ -75,7 +104,11 @@ def gather_fused_qkv(qkv: torch.Tensor, n_fused: int, process_group: ProcessGrou
     qkv = qkv.cuda()
     gather_list = [torch.zeros_like(qkv) for _ in range(world_size)]
     dist.all_gather(gather_list, qkv, group=process_group)
-    gather_weight = torch.cat(gather_list, dim=-1)
+
+    if is_transposed:
+        gather_weight = torch.cat(gather_list, dim=-1)
+    else:
+        gather_weight = torch.cat(gather_list, dim=0)
     gather_weight = gather_weight.to(origin_device)
     qkv = qkv.to(origin_device)
 
@@ -84,15 +117,23 @@ def gather_fused_qkv(qkv: torch.Tensor, n_fused: int, process_group: ProcessGrou
     # [Q1, K1, V1, Q2, K2, V2]
     # to
     # [Q1, Q2, K1, K2, V1, V2]
-    weight_chunks = torch.chunk(gather_weight, world_size * n_fused, dim=-1)
+    if is_transposed:
+        weight_chunks = torch.chunk(gather_weight, world_size * n_fused, dim=-1)
+    else:
+        weight_chunks = torch.chunk(gather_weight, world_size * n_fused, dim=0)
+
     reordered_chunk_list = []
     for i in range(n_fused):
         reordered_chunk_list.extend(weight_chunks[i::n_fused])
-    reordered_gather_weight = torch.cat(reordered_chunk_list, dim=-1)
+
+    if is_transposed:
+        reordered_gather_weight = torch.cat(reordered_chunk_list, dim=-1)
+    else:
+        reordered_gather_weight = torch.cat(reordered_chunk_list, dim=0)
     return reordered_gather_weight
 
 
-class LinearConv1D_Col(ParallelModule):
+class GPT2FusedLinearConv1D_Col(ParallelModule):
     r"""Linear layer with column parallelism.
 
     The linear layer is defined as :math:`Y = XA + b`. A is parallelized along
@@ -154,10 +195,10 @@ class LinearConv1D_Col(ParallelModule):
         weight = torch.empty(self.in_features, self.out_features, **factory_kwargs)
 
         def shard_fn(tensor):
-            return split_fused_qkv(tensor, self.n_fused, self.process_group)
+            return split_fused_qkv_in_gpt2_style(tensor, self.n_fused, self.process_group, True)
 
         def gather_fn(tensor):
-            return gather_fused_qkv(tensor, 3, self.process_group)
+            return gather_fused_qkv_in_gpt2_style(tensor, 3, self.process_group, True)
 
         with torch.no_grad():
             sharded_weight = distribute_tensor_with_customization(weight, shard_fn, gather_fn)
@@ -202,21 +243,27 @@ class LinearConv1D_Col(ParallelModule):
                 f'Expected only one process group, got {len(process_group)}.'
             process_group = process_group[0]
 
-        linear_1d = LinearConv1D_Col(in_features=in_features,
-                                     out_features=out_features,
-                                     bias=bias,
-                                     device=device,
-                                     process_group=process_group,
-                                     *args,
-                                     **kwargs)
+        linear_1d = GPT2FusedLinearConv1D_Col(in_features=in_features,
+                                              out_features=out_features,
+                                              bias=bias,
+                                              device=device,
+                                              process_group=process_group,
+                                              *args,
+                                              **kwargs)
 
         # TODO: copy the sharded weights
         with torch.no_grad():
-            sharded_weight = split_fused_qkv(module.weight.data, n_fused=n_fused, process_group=process_group)
+            sharded_weight = split_fused_qkv_in_gpt2_style(module.weight.data,
+                                                           n_fused=n_fused,
+                                                           process_group=process_group,
+                                                           is_transposed=True)
             linear_1d.weight.data.copy_(sharded_weight.data)
 
             if bias:
-                sharded_bias = split_fused_qkv(module.bias.data, n_fused=n_fused, process_group=process_group)
+                sharded_bias = split_fused_qkv_in_gpt2_style(module.bias.data,
+                                                             n_fused=n_fused,
+                                                             process_group=process_group,
+                                                             is_transposed=True)
                 linear_1d.bias.data.copy_(sharded_bias.data)
 
         return linear_1d
@@ -254,7 +301,7 @@ class LinearConv1D_Col(ParallelModule):
             return output
 
 
-class LinearConv1D_Row(ParallelModule):
+class GPT2FusedLinearConv1D_Row(ParallelModule):
     r""" Linear layer with row parallelism.
     This layer is used to fit `Conv1D` layer (Fused QKV) in gpt2 of huggingface.
 
@@ -345,13 +392,13 @@ class LinearConv1D_Row(ParallelModule):
                 f'Expected only one process group, got {len(process_group)}.'
             process_group = process_group[0]
 
-        linear_1d = LinearConv1D_Row(in_features=in_features,
-                                     out_features=out_features,
-                                     bias=bias,
-                                     device=device,
-                                     process_group=process_group,
-                                     *args,
-                                     **kwargs)
+        linear_1d = GPT2FusedLinearConv1D_Row(in_features=in_features,
+                                              out_features=out_features,
+                                              bias=bias,
+                                              device=device,
+                                              process_group=process_group,
+                                              *args,
+                                              **kwargs)
 
         # TODO: copy the sharded weights
         with torch.no_grad():
