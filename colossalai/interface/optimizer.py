@@ -1,5 +1,6 @@
 from typing import Union
 
+import torch
 import torch.nn as nn
 from torch import Tensor
 from torch.optim import Optimizer
@@ -52,6 +53,9 @@ class OptimizerWrapper:
         Performs a backward pass on the loss.
         """
         loss.backward(*args, **kwargs)
+
+    def backward_by_grad(self, tensor: Tensor, grad: Tensor):
+        torch.autograd.backward(tensor, grad)
 
     def state_dict(self):
         """
