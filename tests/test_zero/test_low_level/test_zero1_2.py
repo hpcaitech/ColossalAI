@@ -3,7 +3,6 @@ import copy
 import pytest
 import torch
 import torch.nn as nn
-from common import split_ddp_grad
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.testing import assert_close
 
@@ -18,6 +17,7 @@ class MlpModel(nn.Module):
     def __init__(self):
         super(MlpModel, self).__init__()
         self.linear1 = nn.Linear(128, 256)
+        self.linear_drop = nn.Linear(256, 256)
         self.linear2 = nn.Linear(256, 512)
 
     def forward(self, x):
@@ -40,6 +40,16 @@ def loose_close(a, b, dtype: torch.dtype = torch.float32):
     b = b.detach().to(dtype)
 
     assert_close(a, b, rtol=rtol, atol=atol)
+
+
+def split_ddp_grad(grad, world_size):
+    with torch.no_grad():
+        grad = grad.clone().detach().flatten()
+        padding_size = (world_size - grad.numel() % world_size) % world_size
+        if padding_size > 0:
+            grad = torch.nn.function.pad(grad, [0, padding_size])
+        splited_grad = grad.split(grad.numel() // world_size)
+    return splited_grad
 
 
 def exam_zero_1_2():
@@ -149,10 +159,11 @@ def exam_zero_1_torch_ddp(world_size, dtype: torch.dtype):
 
     # check grad
     for (n, p), z1p in zip(torch_model.named_parameters(), zero_model.parameters()):
-        zero_grad_list = zero_optimizer._grad_store.get_partitioned_gradients_by_param_id(0, id(z1p))
-        torch_grad_list = split_ddp_grad(p.grad, world_size)
-        for zero_grad, torch_grad in zip(zero_grad_list, torch_grad_list):
-            loose_close(zero_grad, torch_grad, dtype=dtype)
+        if p.grad is not None:
+            zero_grad_list = zero_optimizer._grad_store.get_partitioned_gradients_by_param_id(0, id(z1p))
+            torch_grad_list = split_ddp_grad(p.grad, world_size)
+            for zero_grad, torch_grad in zip(zero_grad_list, torch_grad_list):
+                loose_close(zero_grad, torch_grad, dtype=dtype)
 
     # zero-dp step
     zero_optimizer.step()
