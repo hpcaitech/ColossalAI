@@ -153,6 +153,7 @@ def main():
     # ==============================
     # Parse Arguments
     # ==============================
+    start_time = time.time()
     args = get_arguments()
     deepspeed.init_distributed()
 
@@ -200,7 +201,8 @@ def main():
                                                         shuffle=True)
                              )
 
-
+    end_time = time.time()
+    print(f'Initialization took {end_time - start_time:.2f} seconds')
     for step, batch in enumerate(tqdm(data_loader, desc='Step')):
         #forward() method
         # print(batch)
