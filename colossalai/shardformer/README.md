@@ -91,7 +91,7 @@ We will follow this roadmap to develop Shardformer:
       - [ ] GPT Neo
       - [ ] GPT-J
     - [ ] CV
-      - [ ] ViT
+      - [x] ViT
       - [ ] BEiT
       - [ ] SwinTransformer
       - [ ] SwinTransformer V2
