@@ -164,7 +164,8 @@ def main():
     # Initialize Model and Optimizer
     # ==============================
 
-    with low_precision_init(), no_init_weights(), deepspeed.zero.Init():
+    with low_precision_init(), no_init_weights():
+    # with low_precision_init(), no_init_weights(), deepspeed.zero.Init():
         model = LlamaForCausalLM(config)
         model.tie_weights()
 
