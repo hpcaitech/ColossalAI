@@ -9,7 +9,7 @@ When you only have a few GPUs for large model training tasks, **heterogeneous tr
 
 ## Usage
 
-At present, Gemini supports compatibility with ZeRO parallel mode, and it is really simple to use Gemini: Inject the feathures of `GeminiPlugin` into training components with `booster`. More instructions of `booster` please refer to [**usage of booster**](../basics/booster_api.md).
+At present, Gemini supports compatibility with ZeRO parallel mode, and it is really simple to use Gemini: Inject the features of `GeminiPlugin` into training components with `booster`. More instructions of `booster` please refer to [**usage of booster**](../basics/booster_api.md).
 
 ```python
 from torchvision.models import resnet18
