@@ -49,13 +49,13 @@ wandb init -m offline
 #  - roberta-*: RuntimeError: CUDA error: CUBLAS_STATUS_NOT_INITIALIZED when calling `cublasCreate(handle)`
 SKIPPED_TESTS=(
     "gpt2-ddp"
-    "llama-naive" "llama-ddp" "llama-colossalai_gemini" "llama-colossalai_zero2"
-    "roberta-naive" "roberta-ddp" "roberta-colossalai_gemini" "roberta-colossalai_zero2"
+    "llama-ddp" "llama-colossalai_gemini" "llama-colossalai_zero2"
+    "roberta-ddp" "roberta-colossalai_gemini" "roberta-colossalai_zero2"
 )
 
 # These tests are quick and do not have any dependencies
 for model in 'gpt2' 'bloom' 'opt' 'llama' 'roberta'; do
-    for strategy in 'naive' 'ddp' 'colossalai_gemini' 'colossalai_zero2'; do
+    for strategy in 'ddp' 'colossalai_gemini' 'colossalai_zero2'; do
         if [[ " ${SKIPPED_TESTS[*]} " =~ " ${model}-${strategy} " ]]; then
             echo "[Test]: Skipped $model-$strategy"
             continue
@@ -91,12 +91,6 @@ torchrun --standalone --nproc_per_node=4 ${BASE}/train_sft.py --pretrain 'gpt2' 
     --model 'gpt2' --strategy ddp --lora_rank 4 \
     --dataset $SFT_DATASET --max_datasets_size 512 --max_epochs 1 \
     --save_path ${BASE}/output
-
-# torchrun --standalone --nproc_per_node=4 ${BASE}/train_sft.py --pretrain 'facebook/opt-350m' \
-#     --model 'opt' --strategy naive \
-#     --dataset $SFT_DATASET --max_datasets_size 512 --max_epochs 1 \
-#     --save_path ${BASE}/output
-
 rm -rf ${BASE}/output
 
 # train rm
@@ -144,9 +138,9 @@ torchrun --standalone --nproc_per_node=2 ${BASE}/train_reward_model.py \
     --dataset 'Anthropic/hh-rlhf' --subset 'harmless-base' \
     --test True --lora_rank 4 \
     --save_path ${BASE}/rm_ckpt.pt
-
 rm -rf ${BASE}/rm_ckpt.pt
 
+# train rl
 torchrun --standalone --nproc_per_node=2 ${BASE}/train_prompts.py \
     --prompt_dataset $PROMPT_PATH --pretrain_dataset $PRETRAIN_DATASET \
     --strategy colossalai_zero2 --num_episodes 1 \

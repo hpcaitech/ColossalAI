@@ -1,7 +1,7 @@
 import os
 
 import torch.distributed as dist
-from coati.trainer.strategies import ColossalAIStrategy, Strategy
+from coati.trainer.strategies import GeminiStrategy, LowLevelZeroStrategy, Strategy
 from coati.trainer.utils import is_rank_0
 from torch import nn
 from torch.optim import Optimizer
@@ -69,7 +69,7 @@ class SaveCheckpoint(Callback):
             # save optimizer
             if self.model_dict[model][1] is None:
                 continue
-            only_rank0 = not isinstance(self.strategy, ColossalAIStrategy)
+            only_rank0 = not isinstance(self.strategy, (LowLevelZeroStrategy, GeminiStrategy))
             rank = 0 if is_rank_0() else dist.get_rank()
             optim_path = os.path.join(base_path, f'{model}-optim-rank-{rank}.pt')
             self.strategy.save_optimizer(optimizer=self.model_dict[model][1], path=optim_path, only_rank0=only_rank0)
