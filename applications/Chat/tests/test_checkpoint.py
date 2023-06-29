@@ -7,7 +7,7 @@ import torch
 import torch.distributed as dist
 from coati.models.gpt import GPTActor
 from coati.models.utils import calc_action_log_probs
-from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy
+from coati.trainer.strategies import DDPStrategy, GeminiStrategy, LowLevelZeroStrategy
 from transformers.models.gpt2.configuration_gpt2 import GPT2Config
 
 from colossalai.nn.optimizer import HybridAdam
@@ -28,9 +28,9 @@ def run_test_checkpoint(strategy):
     if strategy == 'ddp':
         strategy = DDPStrategy()
     elif strategy == 'colossalai_gemini':
-        strategy = ColossalAIStrategy(stage=3, placement_policy='cuda', initial_scale=2**5)
+        strategy = GeminiStrategy(placement_policy='cuda', initial_scale=2**5)
     elif strategy == 'colossalai_zero2':
-        strategy = ColossalAIStrategy(stage=2, placement_policy='cuda')
+        strategy = LowLevelZeroStrategy(stage=2, placement_policy='cuda')
     else:
         raise ValueError(f'Unsupported strategy "{strategy}"')
 

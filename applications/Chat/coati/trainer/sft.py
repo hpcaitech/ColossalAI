@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader
 from colossalai.logging import DistributedLogger
 
 from .base import SLTrainer
-from .strategies import ColossalAIStrategy, Strategy
+from .strategies import GeminiStrategy, Strategy
 from .utils import is_rank_0, to_device
 
 
@@ -38,9 +38,8 @@ class SFTTrainer(SLTrainer):
         max_epochs: int = 2,
         accumulation_steps: int = 8,
     ) -> None:
-        if accumulation_steps > 1 and isinstance(strategy, ColossalAIStrategy):
-            from colossalai.booster.plugin import GeminiPlugin
-            assert not isinstance(strategy.plugin, GeminiPlugin), \
+        if accumulation_steps > 1:
+            assert not isinstance(strategy, GeminiStrategy), \
                 "Accumulation steps are not supported in stage 3 of ColossalAI"
 
         super().__init__(strategy, max_epochs, model, optim)

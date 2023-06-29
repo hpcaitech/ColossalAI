@@ -15,7 +15,7 @@ from colossalai.utils import get_current_device
 
 from .base import OnPolicyTrainer
 from .callbacks import Callback
-from .strategies import ColossalAIStrategy, Strategy
+from .strategies import GeminiStrategy, Strategy
 from .utils import is_rank_0, to_device
 
 
@@ -82,9 +82,8 @@ class PPOTrainer(OnPolicyTrainer):
                  callbacks: List[Callback] = [],
                  **generate_kwargs
                  ) -> None:
-        if isinstance(strategy, ColossalAIStrategy):
-            from colossalai.booster.plugin import GeminiPlugin
-            assert not (isinstance(strategy.plugin, GeminiPlugin) and offload_inference_models), \
+        if isinstance(strategy, GeminiStrategy):
+            assert not offload_inference_models, \
                 "GeminiPlugin is not compatible with manual model.to('cpu')"
 
         buffer = NaiveReplayBuffer(train_batch_size, buffer_limit, buffer_cpu_offload)

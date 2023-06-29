@@ -11,7 +11,7 @@ from coati.models.gpt import GPTLM
 from coati.models.llama import LlamaLM
 from coati.models.opt import OPTLM
 from coati.trainer import SFTTrainer
-from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
+from coati.trainer.strategies import DDPStrategy, GeminiStrategy, LowLevelZeroStrategy
 from coati.utils import prepare_llama_tokenizer_and_embedding
 from datasets import load_dataset
 from easy_dataset import EasyDataset
@@ -30,14 +30,12 @@ from colossalai.tensor import ColoParameter
 
 def train(args):
     # configure strategy
-    if args.strategy == 'naive':
-        strategy = NaiveStrategy()
-    elif args.strategy == 'ddp':
+    if args.strategy == 'ddp':
         strategy = DDPStrategy()
     elif args.strategy == 'colossalai_gemini':
-        strategy = ColossalAIStrategy(stage=3, placement_policy='cuda')
+        strategy = GeminiStrategy(placement_policy='cuda')
     elif args.strategy == 'colossalai_zero2':
-        strategy = ColossalAIStrategy(stage=2, placement_policy='cuda')
+        strategy = LowLevelZeroStrategy(stage=2, placement_policy='cuda')
     else:
         raise ValueError(f'Unsupported strategy "{args.strategy}"')
 
@@ -45,15 +43,15 @@ def train(args):
     with strategy.model_init_context():
         print('Warning: currently only bloom is tested, gpt2,llama and opt are not tested')
         model = AutoModelForCausalLM.from_pretrained(args.pretrain).to(torch.cuda.current_device())
-        #if the args.save_path exists and args.save_path+'/adapter_config.json' exists, we'll load the adapter_config.json
-        if os.path.exists(args.save_path) and os.path.exists(args.save_path+'/adapter_config.json') \
-            and os.path.exists(args.save_path+'/adapter_model.bin'):
+        # if the args.save_path exists and args.save_path+'/adapter_config.json' exists, we'll load the adapter_config.json
+        if os.path.exists(args.save_path) and os.path.exists(args.save_path + '/adapter_config.json') \
+                and os.path.exists(args.save_path + '/adapter_model.bin'):
             print("loading from saved peft model ", args.save_path)
             model = PeftModel.from_pretrained(model, args.save_path)
         else:
-            #we'll use peft lora library to do the lora
+            # we'll use peft lora library to do the lora
             lora_rank = args.lora_rank if args.lora_rank > 0 else 32
-            #config lora with rank of lora_rank
+            # config lora with rank of lora_rank
             lora_config = LoraConfig(task_type=TaskType.CAUSAL_LM,
                                      inference_mode=False,
                                      r=lora_rank,
@@ -170,8 +168,8 @@ def train(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--strategy',
-                        choices=['naive', 'ddp', 'colossalai_gemini', 'colossalai_zero2'],
-                        default='naive')
+                        choices=['ddp', 'colossalai_gemini', 'colossalai_zero2'],
+                        default='ddp')
     parser.add_argument('--model', choices=['gpt2', 'bloom', 'opt', 'llama'], default='bloom')
     parser.add_argument('--pretrain', type=str, default=None)
     parser.add_argument('--dataset', type=str, default=None)
