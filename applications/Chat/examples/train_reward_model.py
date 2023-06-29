@@ -84,9 +84,6 @@ def train(args):
     # configure optimizer
     if args.strategy.startswith('colossalai'):
         optim = HybridAdam(model.parameters(), lr=5e-6)
-        # 7b 5e-6
-        # 4 -> 1e-5
-        # 5 -> 5e-5
     else:
         optim = Adam(model.parameters(), lr=5e-6)
 
@@ -159,7 +156,7 @@ if __name__ == '__main__':
     parser.add_argument('--subset', type=str, default=None)
     parser.add_argument('--save_path', type=str, default='rm_ckpt')
     parser.add_argument('--max_epochs', type=int, default=1)
-    parser.add_argument('--batch_size', type=int, default=4)
+    parser.add_argument('--batch_size', type=int, default=1)
     parser.add_argument('--max_len', type=int, default=512)
     parser.add_argument('--lora_rank', type=int, default=0, help="low-rank adaptation matrices rank")
     parser.add_argument('--loss_fn', type=str, default='log_sig', choices=['log_sig', 'log_exp'])

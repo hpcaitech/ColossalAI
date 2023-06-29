@@ -12,10 +12,6 @@ from .callbacks import Callback
 from .strategies import Strategy
 from .utils import is_rank_0
 
-from torch import profiler
-from torch.profiler import ProfilerActivity
-
-import time as t
 
 class Trainer(ABC):
     """
@@ -106,15 +102,14 @@ class Trainer(ABC):
             max_timesteps: int = 500,
             update_timesteps: int = 5000) -> None:
         time = 0
-        self.ptx_data_iter = iter(pretrain_dataloader)
+        self.pretrain_dataloader = pretrain_dataloader
         self.prompt_dataloader = prompt_dataloader
         self._on_fit_start()
         for episode in range(num_episodes):
             self._on_episode_start(episode)
-            ctime = t.time()
             for timestep in tqdm(range(max_timesteps),
-                                desc=f'Episode [{episode+1}/{num_episodes}]',
-                                disable=not is_rank_0()):
+                                 desc=f'Episode [{episode+1}/{num_episodes}]',
+                                 disable=not is_rank_0()):
                 time += 1
                 prompts = next(iter(self.prompt_dataloader))
                 self._on_make_experience_start()
@@ -124,13 +119,10 @@ class Trainer(ABC):
                 self._on_make_experience_end(experience)
                 self.replay_buffer.append(experience)
                 if time % update_timesteps == 0:
-                    # self.experience_maker.initial_model.to('cpu')
-                    # self.experience_maker.reward_model.to('cpu')
+                    self.experience_maker.initial_model.to('cpu')
+                    self.experience_maker.reward_model.to('cpu')
                     self._learn()
                     self.replay_buffer.clear()
-            print(f'Episode {episode} time: {t.time() - ctime}')
-            print('throughputs:', 8*100/(t.time() - ctime))
-
             self._on_episode_end(episode)
         self._on_fit_end()
 

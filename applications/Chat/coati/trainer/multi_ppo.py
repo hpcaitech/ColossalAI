@@ -97,7 +97,7 @@ class MPPOTrainer(Trainer):
                                         experience.advantages)
         # ptx loss
         if self.ptx_coef != 0:
-            batch = next(self.ptx_data_iter)
+            batch = next(self.pretrain_dataloader)
             ptx = batch['input_ids'].to(torch.cuda.current_device())
             label = batch['labels'].to(torch.cuda.current_device())[:, 1:]
             attention_mask = batch['attention_mask'].to(torch.cuda.current_device())
