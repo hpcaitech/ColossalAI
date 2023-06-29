@@ -11,7 +11,6 @@ from coati.models.llama import LlamaRM
 from coati.models.opt import OPTRM
 from coati.trainer import RewardModelTrainer
 from coati.trainer.strategies import DDPStrategy, GeminiStrategy, LowLevelZeroStrategy
-from coati.utils import prepare_llama_tokenizer_and_embedding
 from datasets import load_dataset
 from torch.optim import Adam
 from torch.optim.lr_scheduler import CosineAnnealingLR

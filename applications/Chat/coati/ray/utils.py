@@ -10,7 +10,6 @@ from coati.models.gpt import GPTRM, GPTActor, GPTCritic
 from coati.models.llama import LlamaActor, LlamaCritic, LlamaRM
 from coati.models.opt import OPTRM, OPTActor, OPTCritic
 from coati.trainer.strategies import DDPStrategy, GeminiStrategy, LowLevelZeroStrategy
-from coati.utils import prepare_llama_tokenizer_and_embedding
 from transformers import AutoTokenizer, BloomTokenizerFast, GPT2Tokenizer, LlamaTokenizer
 
 

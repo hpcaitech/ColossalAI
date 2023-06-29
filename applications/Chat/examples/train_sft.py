@@ -9,7 +9,6 @@ from coati.dataset import DataCollatorForSupervisedDataset, SFTDataset, Supervis
 from coati.models import convert_to_lora_module
 from coati.trainer import SFTTrainer
 from coati.trainer.strategies import DDPStrategy, GeminiStrategy, LowLevelZeroStrategy
-from coati.utils import prepare_llama_tokenizer_and_embedding
 from datasets import load_dataset
 from torch.optim import Adam
 from torch.utils.data import DataLoader
