@@ -23,6 +23,6 @@ ROOT=$(pwd)
 
 cd ..
 
-deepspeed --num_nodes 2 --num_gpus 16 --master_addr 180.184.78.121 --master_port 29503 --hostfile=${ROOT}/host_file_2.txt \
+deepspeed --master_addr 180.184.78.121 --master_port 29503 --hostfile=${ROOT}/host_file_2.txt \
 	ds_benchmark.py -l 512 -g \
 	--deepspeed --deepspeed_config ${ROOT}/zero3.json
