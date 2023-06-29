@@ -101,7 +101,7 @@ pip install .
 Given Hugging Face hasn't officially supported the LLaMA models, We fork a branch of Transformers that can be compatible with our code
 
 ```shell
-git clone https://github.com/hpcaitech/transformers
+git clone --depth 1 --branch v4.30.2 https://github.com/huggingface/transformers.git
 cd transformers
 pip install .
 ```
