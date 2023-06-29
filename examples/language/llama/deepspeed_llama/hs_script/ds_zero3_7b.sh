@@ -25,4 +25,4 @@ cd ..
 
 deepspeed --hostfile=${ROOT}/host_file_2.txt \
 	ds_benchmark.py -l 512 -g \
-	--deepspeed --deepspeed_config zero.json
+	--deepspeed --deepspeed_config ${ROOT}/zero3.json
