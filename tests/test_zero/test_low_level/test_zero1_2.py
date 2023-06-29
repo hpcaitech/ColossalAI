@@ -16,9 +16,9 @@ class MlpModel(nn.Module):
 
     def __init__(self):
         super(MlpModel, self).__init__()
-        self.linear1 = nn.Linear(128, 256)
-        self.linear_drop = nn.Linear(256, 256)
-        self.linear2 = nn.Linear(256, 512)
+        self.linear1 = nn.Linear(123, 253)
+        self.linear_drop = nn.Linear(253, 253)
+        self.linear2 = nn.Linear(253, 512)
 
     def forward(self, x):
         x = self.linear1(x)
@@ -47,7 +47,7 @@ def split_ddp_grad(grad, world_size):
         grad = grad.clone().detach().flatten()
         padding_size = (world_size - grad.numel() % world_size) % world_size
         if padding_size > 0:
-            grad = torch.nn.function.pad(grad, [0, padding_size])
+            grad = torch.nn.functional.pad(grad, [0, padding_size])
         splited_grad = grad.split(grad.numel() // world_size)
     return splited_grad
 
@@ -83,7 +83,7 @@ def exam_zero_1_2():
                                             initial_scale=128)
     # create data
     seed_all(2001 + local_rank)
-    input_data = torch.randn(32, 128).cuda()
+    input_data = torch.randn(32, 123).cuda()
 
     zero1_output = zero1_model(input_data)
     zero2_output = zero2_model(input_data)
@@ -142,7 +142,7 @@ def exam_zero_1_torch_ddp(world_size, dtype: torch.dtype):
 
     seed_all(1453 + local_rank)
     # create
-    input_data = torch.rand(32, 128).cuda()
+    input_data = torch.rand(32, 123).cuda()
 
     # zero-dp forward
     zero_output = zero_model(input_data.to(dtype))
@@ -160,6 +160,8 @@ def exam_zero_1_torch_ddp(world_size, dtype: torch.dtype):
     # check grad
     for (n, p), z1p in zip(torch_model.named_parameters(), zero_model.parameters()):
         if p.grad is not None:
+            # print(p.grad, local_rank)
+            # exit()
             zero_grad_list = zero_optimizer._grad_store.get_partitioned_gradients_by_param_id(0, id(z1p))
             torch_grad_list = split_ddp_grad(p.grad, world_size)
             for zero_grad, torch_grad in zip(zero_grad_list, torch_grad_list):

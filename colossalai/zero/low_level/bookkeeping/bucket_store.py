@@ -60,7 +60,7 @@ class BucketStore(BaseStore):
             with torch.no_grad():
                 grad = param.grad.view(-1)
                 if padding_size > 0:
-                    grad = torch.nn.function.pad(grad, [0, padding_size])
+                    grad = torch.nn.functional.pad(grad, [0, padding_size])
                 grad_list = grad.split(grad.numel() // self._world_size)
                 for rank in range(self._world_size):
                     grad_current_rank = grad_list[rank].detach()

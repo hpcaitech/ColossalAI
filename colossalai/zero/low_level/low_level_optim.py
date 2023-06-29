@@ -243,7 +243,7 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
                     padding_param = torch.nn.functional.pad(param.data.view(-1), [0, padding_size])
                 else:
                     padding_param = param.data.view(-1)
-                splited_params = padding_param.split(param.numel() // self._world_size)
+                splited_params = padding_param.split(padding_param.numel() // self._world_size)
 
                 splited_param_current_rank = splited_params[self._local_rank].detach().float().to(device)
                 params_current_rank.append(splited_param_current_rank)
