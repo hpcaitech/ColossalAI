@@ -6,6 +6,7 @@ import torch.nn as nn
 import warnings
 from packaging import version
 from torch.distributed import ProcessGroup
+from torch.distributed.fsdp.wrap import size_based_auto_wrap_policy
 
 if version.parse(torch.__version__) >= version.parse('1.12.0'):
     from torch.distributed.fsdp import FullStateDictConfig
@@ -109,7 +110,7 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
 
 class TorchFSDPModel(ModelWrapper):
 
-    def __init__(self, module: nn.Module, *args, **kwargs) -> None:
+    def __init__(self, module: nn.Module, benchmark_flag: bool = False, *args, **kwargs) -> None:
         super().__init__(module)
         self.module = FSDP(module, *args, **kwargs)
 
@@ -198,10 +199,11 @@ class TorchFSDPPlugin(DPPluginBase):
         criterion: Callable = None,
         dataloader: DataLoader = None,
         lr_scheduler: LRScheduler = None,
+        benchmark_flag: bool = False,
     ) -> Tuple[Union[nn.Module, OptimizerWrapper, LRScheduler, DataLoader]]:
 
         # wrap the model with PyTorch FSDP
-        fsdp_model = TorchFSDPModel(model, device_id=torch.cuda.current_device(), **self.fsdp_kwargs)
+        fsdp_model = TorchFSDPModel(model, device_id=torch.cuda.current_device(), benchmark_flag=benchmark_flag, **self.fsdp_kwargs)
 
         if len(optimizer.param_groups) > 1:
             warnings.warn(

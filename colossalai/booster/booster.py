@@ -12,7 +12,7 @@ from colossalai.checkpoint_io import GeneralCheckpointIO
 
 from .accelerator import Accelerator
 from .mixed_precision import MixedPrecision, mixed_precision_factory
-from .plugin import Plugin
+from .plugin import Plugin, TorchFSDPPlugin
 
 __all__ = ['Booster']
 
@@ -101,6 +101,7 @@ class Booster:
         criterion: Callable = None,
         dataloader: DataLoader = None,
         lr_scheduler: LRScheduler = None,
+        benchmark: bool = False,
     ) -> List[Union[nn.Module, Optimizer, LRScheduler, DataLoader]]:
         """
         Boost the model, optimizer, criterion, lr_scheduler, and dataloader.
@@ -116,8 +117,12 @@ class Booster:
         # TODO(FrankLeeeee): consider multi-dataloader case
         # transform model for mixed precision
         if self.plugin:
-            model, optimizer, criterion, dataloader, lr_scheduler = self.plugin.configure(
-                model, optimizer, criterion, dataloader, lr_scheduler)
+            if isinstance(self.plugin, TorchFSDPPlugin):
+                model, optimizer, criterion, dataloader, lr_scheduler = self.plugin.configure(
+                    model, optimizer, criterion, dataloader, lr_scheduler, benchmark_flag=benchmark)
+            else:
+                model, optimizer, criterion, dataloader, lr_scheduler = self.plugin.configure(
+                    model, optimizer, criterion, dataloader, lr_scheduler)
 
         if self.plugin and not self.plugin.control_device():
             # transform model for accelerator
