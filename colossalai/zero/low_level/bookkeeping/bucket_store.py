@@ -58,7 +58,7 @@ class BucketStore(BaseStore):
 
         for param, padding_size in zip(self._param_list, self._padding_size):
             with torch.no_grad():
-                grad = param.grad.view(-1)
+                grad = param.grad.detach().flatten()
                 if padding_size > 0:
                     grad = torch.nn.functional.pad(grad, [0, padding_size])
                 grad_list = grad.split(grad.numel() // self._world_size)
@@ -107,6 +107,7 @@ class BucketStore(BaseStore):
         self.grad_to_param_mapping = dict()
         self._num_elements_in_bucket = 0
         self._param_list = []
+        self._padding_size = []
         self._grad_in_bucket = dict()
         for rank in range(self._world_size):
             self._grad_in_bucket[rank] = []
