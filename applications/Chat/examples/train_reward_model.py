@@ -178,12 +178,11 @@ def train(args):
                                  optim=optim,
                                  lr_scheduler=lr_scheduler,
                                  loss_fn=loss_fn,
-                                 train_dataloader=train_dataloader,
-                                 valid_dataloader=valid_dataloader,
-                                 eval_dataloader=eval_dataloader,
                                  max_epochs=args.max_epochs)
 
-    trainer.fit()
+    trainer.fit(train_dataloader=train_dataloader,
+                valid_dataloader=valid_dataloader,
+                eval_dataloader=eval_dataloader)
     # save model checkpoint after fitting on only rank0
     strategy.save_model(model, args.save_path, only_rank0=True)
     # save optimizer checkpoint on all ranks
