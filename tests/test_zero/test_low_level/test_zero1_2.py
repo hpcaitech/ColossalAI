@@ -2,6 +2,7 @@ import copy
 
 import pytest
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.testing import assert_close
@@ -125,7 +126,7 @@ def exam_zero_1_torch_ddp(world_size, dtype: torch.dtype):
     torch_model = MlpModel().cuda()
     zero_model = copy.deepcopy(torch_model).to(dtype)
 
-    torch_model = DDP(torch_model.cuda(), bucket_cap_mb=0).cuda()
+    torch_model = DDP(torch_model.cuda(), static_graph=True).cuda()
 
     # create optimizer
     zero_optimizer = torch.optim.SGD(zero_model.parameters(), lr=1)
@@ -160,8 +161,6 @@ def exam_zero_1_torch_ddp(world_size, dtype: torch.dtype):
     # check grad
     for (n, p), z1p in zip(torch_model.named_parameters(), zero_model.parameters()):
         if p.grad is not None:
-            # print(p.grad, local_rank)
-            # exit()
             zero_grad_list = zero_optimizer._grad_store.get_partitioned_gradients_by_param_id(0, id(z1p))
             torch_grad_list = split_ddp_grad(p.grad, world_size)
             for zero_grad, torch_grad in zip(zero_grad_list, torch_grad_list):
