@@ -170,12 +170,13 @@ def train(args):
                          strategy=strategy,
                          optim=optim,
                          lr_scheduler=lr_scheduler,
-                         train_dataloader=train_dataloader,
-                         eval_dataloader=eval_dataloader,
                          max_epochs=args.max_epochs,
                          accumulation_steps=args.accumulation_steps)
 
-    trainer.fit(logger=logger, use_wandb=args.use_wandb)
+    trainer.fit(train_dataloader=train_dataloader,
+                eval_dataloader=eval_dataloader,
+                logger=logger,
+                use_wandb=args.use_wandb)
 
     # save model checkpoint after fitting on only rank0
     strategy.save_pretrained(model, path=args.save_path, only_rank0=True, tokenizer=tokenizer)

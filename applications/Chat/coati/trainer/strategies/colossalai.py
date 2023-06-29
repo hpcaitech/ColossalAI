@@ -1,4 +1,3 @@
-import functools
 import warnings
 from typing import Optional
 
@@ -103,7 +102,7 @@ class ColossalAIStrategy(DDPStrategy):
         # NOTE: dist should be initialized before calling get_current_device()
         if stage == 3:
             plugin_initializer = lambda: GeminiPlugin(
-            # gemini_config
+                # gemini_config
                 device=get_current_device(),
                 placement_policy=placement_policy,
                 precision=precision,
@@ -113,20 +112,20 @@ class ColossalAIStrategy(DDPStrategy):
                 search_range_m=search_range_m,
                 hidden_dim=hidden_dim,
                 min_chunk_size_m=min_chunk_size_m,
-            # zero_optim_config
+                # zero_optim_config
                 gpu_margin_mem_ratio=gpu_margin_mem_ratio,
-            # optim_config
+                # optim_config
                 **optim_kwargs)
         else:
             plugin_initializer = lambda: LowLevelZeroPlugin(
-            # zero_config
+                # zero_config
                 stage=stage,
                 precision=precision,
-            # zero_optim_config
+                # zero_optim_config
                 reduce_bucket_size_in_m=reduce_bucket_size,
                 overlap_communication=overlap_communication,
                 cpu_offload=(placement_policy == 'cpu'),
-            # optim_config
+                # optim_config
                 **optim_kwargs)
 
         super().__init__(seed, plugin_initializer)

@@ -63,8 +63,8 @@ for model in 'gpt2' 'bloom' 'opt' 'llama' 'roberta'; do
         torchrun --standalone --nproc_per_node=2 ${BASE}/train_prompts.py \
             --prompt_dataset $PROMPT_PATH --pretrain_dataset $PRETRAIN_DATASET \
             --strategy $strategy --model $model \
-            --num_episodes 1 --max_timesteps 2 \
-            --update_timesteps 2 --max_epochs 1 --train_batch_size 2
+            --num_episodes 1 --num_collect_steps 2 --num_update_steps 1 \
+            --train_batch_size 2
     done
 done
 
@@ -149,8 +149,8 @@ rm -rf ${BASE}/rm_ckpt.pt
 
 torchrun --standalone --nproc_per_node=2 ${BASE}/train_prompts.py \
     --prompt_dataset $PROMPT_PATH --pretrain_dataset $PRETRAIN_DATASET \
-    --strategy colossalai_zero2 --num_episodes 1 --max_timesteps 2 \
-    --update_timesteps 2 --max_epochs 1 --train_batch_size 2 \
+    --strategy colossalai_zero2 --num_episodes 1 \
+    --num_collect_steps 2 --num_update_steps 1 --train_batch_size 2 \
     --pretrain 'facebook/opt-350m' --model opt \
     --rm_pretrain 'facebook/opt-350m' \
     --rm_path ${BASE}/rm_ckpt_opt.pt \
@@ -159,8 +159,8 @@ rm -rf ${BASE}/rm_ckpt_opt.pt
 
 torchrun --standalone --nproc_per_node=2 ${BASE}/train_prompts.py \
     --prompt_dataset $PROMPT_PATH --pretrain_dataset $PRETRAIN_DATASET \
-    --strategy colossalai_zero2 --num_episodes 1 --max_timesteps 2 \
-    --update_timesteps 2 --max_epochs 1 --train_batch_size 2 \
+    --strategy colossalai_zero2 --num_episodes 1 \
+    --num_collect_steps 2 --num_update_steps 1 --train_batch_size 2 \
     --pretrain 'gpt2' --model gpt2 \
     --rm_pretrain 'gpt2' \
     --rm_path ${BASE}/rm_ckpt_gpt.pt \
@@ -168,8 +168,8 @@ torchrun --standalone --nproc_per_node=2 ${BASE}/train_prompts.py \
 
 torchrun --standalone --nproc_per_node=2 ${BASE}/train_prompts.py \
     --prompt_dataset $PROMPT_PATH --pretrain_dataset $PRETRAIN_DATASET \
-    --strategy colossalai_gemini --num_episodes 1 --max_timesteps 2 \
-    --update_timesteps 2 --max_epochs 1 --train_batch_size 2 \
+    --strategy colossalai_gemini --num_episodes 1 \
+    --num_collect_steps 2 --num_update_steps 1 --train_batch_size 2 \
     --pretrain 'gpt2' --model gpt2 \
     --rm_pretrain 'gpt2' \
     --rm_path ${BASE}/rm_ckpt_gpt.pt \
