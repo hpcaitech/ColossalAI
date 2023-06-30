@@ -8,11 +8,11 @@ def build_model(world_size, model_fn):
     org_model = model_fn().cuda()
 
     # shard model
-    shard_config = ShardConfig(tensor_parallel_size=world_size, fused_layernorm=True)
+    shard_config = ShardConfig(tensor_parallel_size=world_size, enable_fused_normalization=True)
     model_copy = copy.deepcopy(org_model)
     shard_former = ShardFormer(shard_config=shard_config)
     shard_former.init_distributed()
-    sharded_model = shard_former.shard_model(model_copy)
+    sharded_model = shard_former.shard_model(model_copy).cuda()
 
     return org_model, sharded_model
 

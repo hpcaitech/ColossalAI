@@ -98,6 +98,14 @@ class Policy(ABC):
             shard_config (:class:`ShardConfig`): The shard config to be perform
         """
         self.shard_config = shard_config
+        self.config_sanity_check()
+
+    @abstractmethod
+    def config_sanity_check(self):
+        """
+        Check if the shard config is valid for the model. Raise an exception if the config is invalid.
+        """
+        pass
 
     @abstractmethod
     def preprocess(self) -> nn.Module:

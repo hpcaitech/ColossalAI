@@ -12,16 +12,10 @@ class ShardConfig:
 
     Args:
         tensor_parallel_size (int): The size of tensor parallel
-        use_mixedfusedLN (bool): Whether to use the `MixedFusedLayerNorm`
-        data_parallel_size (int): The size of data parallel
-        pipeline_parallel_size (int): The size of pipeline parallel
-        tensor_parallel_mode (List): The mode of tensor parallel, choose from `['1d','2d','2.5d','3d']
-        inference_only (bool): Whether to use the inference only mode, when setting to `True`, the model
-            will not calculate the loss and just return the output.
-        gather_output (bool): Whether to gather the output of the model of the last layer
+        enable_fused_normalization (bool): Whether to use fused layernorm, default is False
     """
     tensor_parallel_size: int
-    fused_layernorm: bool = False
+    enable_fused_normalization: bool = False
 
     # TODO: add support for tensor parallel
     # pipeline_parallel_size: int
