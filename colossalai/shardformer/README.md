@@ -15,6 +15,7 @@
     - [Policy](#policy)
     - [Model Sharder](#model-sharder)
     - [User-facing API](#user-facing-api)
+    - [Shardformer Convergence](#shardformer-convergence)
 
 
 ## 🔗 Introduction
@@ -324,3 +325,15 @@ class ShardFormer:
         """
         ...
 ```
+
+### Shardformer Convergence
+
+To validate that training the model using shardformers does not impact its convergence. We [fine-tuned the BERT model](./examples/shardformer_benchmark.py) using both shardformer and non-shardformer approaches. We compared the accuracy, loss, F1 score of the training results.
+
+| accuracy | f1 | loss | GPU number | model shard |
+| :-----: | :----: | :----: | :----: | :----: |
+| 0.82594 | 0.87441 | 0.09913 | 4 | True |
+| 0.81884 | 0.87299 | 0.10120 | 2 | True |
+| 0.81855 | 0.87124 | 0.10357 | 1 | False |
+
+Overall, the results demonstrate that using shardformers during model training does not affect the convergence.
