@@ -1,6 +1,7 @@
 #!/bin/bash
 
 module load cuda/11.7.1-gcc-9.4.0
+module load nccl/2.14.3-1-gcc-9.4.0
 
 # >>> conda initialize >>>
 # !! Contents within this block are managed by 'conda init' !!
