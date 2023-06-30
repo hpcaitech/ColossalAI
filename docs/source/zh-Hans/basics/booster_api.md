@@ -1,35 +1,44 @@
 # booster 使用
-作者: [Mingyan Jiang](https://github.com/jiangmingyan)
+
+作者: [Mingyan Jiang](https://github.com/jiangmingyan) [Jianghai Chen](https://github.com/CjhHa1)
 
 **预备知识:**
+
 - [分布式训练](../concepts/distributed_training.md)
 - [Colossal-AI 总览](../concepts/colossalai_overview.md)
 
 **示例代码**
-- [使用booster训练](https://github.com/hpcaitech/ColossalAI/blob/main/examples/tutorial/new_api/cifar_resnet/README.md)
+
+<!-- update this url-->
+
+- [使用 booster 训练](https://github.com/hpcaitech/ColossalAI/blob/main/examples/tutorial/new_api/cifar_resnet/README.md)
 
 ## 简介
-在我们的新设计中， `colossalai.booster` 代替 `colossalai.initialize` 将特征(例如，模型、优化器、数据加载器）无缝注入您的训练组件中。 使用booster API, 您可以更友好地将我们的并行策略整合到待训练模型中. 调用 `colossalai.booster` 是您进入训练循环前的基本操作。
+
+在我们的新设计中， `colossalai.booster` 代替 `colossalai.initialize` 将特征(例如，模型、优化器、数据加载器)无缝注入您的训练组件中。 使用 booster API, 您可以更友好地将我们的并行策略整合到待训练模型中. 调用 `colossalai.booster` 是您进入训练循环前的基本操作。
 在下面的章节中，我们将介绍 `colossalai.booster` 是如何工作的以及使用时我们要注意的细节。
 
-### Booster插件
-Booster插件是管理并行配置的重要组件（eg：gemini插件封装了gemini加速方案）。目前支持的插件如下：
+### Booster 插件
 
-***GeminiPlugin:*** GeminiPlugin插件封装了 gemini 加速解决方案，即基于块内存管理的 ZeRO优化方案。
+Booster 插件是管理并行配置的重要组件（eg：gemini 插件封装了 gemini 加速方案）。目前支持的插件如下：
 
-***TorchDDPPlugin:*** TorchDDPPlugin插件封装了DDP加速方案，实现了模型级别的数据并行，可以跨多机运行。
+**_GeminiPlugin:_** GeminiPlugin 插件封装了 gemini 加速解决方案，即基于块内存管理的 ZeRO 优化方案。
 
-***LowLevelZeroPlugin:*** LowLevelZeroPlugin插件封装了零冗余优化器的 1/2 阶段。阶段 1：切分优化器参数，分发到各并发进程或并发GPU上。阶段 2：切分优化器参数及梯度，分发到各并发进程或并发GPU上。
+**_TorchDDPPlugin:_** TorchDDPPlugin 插件封装了 DDP 加速方案，实现了模型级别的数据并行，可以跨多机运行。
 
-### Booster接口
+**_LowLevelZeroPlugin:_** LowLevelZeroPlugin 插件封装了零冗余优化器的 1/2 阶段。阶段 1：切分优化器参数，分发到各并发进程或并发 GPU 上。阶段 2：切分优化器参数及梯度，分发到各并发进程或并发 GPU 上。
+
+### Booster 接口
+
+<!--TODO: update autodoc -->
 
 {{ autodoc:colossalai.booster.Booster }}
 
 ## 使用方法及示例
 
-在使用colossalai训练时，首先需要在训练脚本的开头启动分布式环境，并创建需要使用的模型、优化器、损失函数、数据加载器等对象。之后，调用`colossalai.booster` 将特征注入到这些对象中，您就可以使用我们的booster API去进行您接下来的训练流程。
+在使用 colossalai 训练时，首先需要在训练脚本的开头启动分布式环境，并创建需要使用的模型、优化器、损失函数、数据加载器等对象。之后，调用`colossalai.booster` 将特征注入到这些对象中，您就可以使用我们的 booster API 去进行您接下来的训练流程。
 
-以下是一个伪代码示例，将展示如何使用我们的booster API进行模型训练:
+以下是一个伪代码示例，将展示如何使用我们的 booster API 进行模型训练:
 
 ```python
 import torch

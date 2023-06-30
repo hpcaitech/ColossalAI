@@ -1,5 +1,4 @@
 import os
-from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Dict, List
 
@@ -10,8 +9,7 @@ import seaborn
 from requests_toolbelt import MultipartEncoder
 
 
-@dataclass
-class Contributor:
+class Counter(dict):
     """
     Dataclass for a github contributor.
 
@@ -19,8 +17,40 @@ class Contributor:
         name (str): name of the contributor
         num_commits_this_week (int): number of commits made within one week
     """
-    name: str
-    num_commits_this_week: int
+
+    def record(self, item: str):
+        if item in self:
+            self[item] += 1
+        else:
+            self[item] = 1
+
+    def to_sorted_list(self):
+        data = [(key, value) for key, value in self.items()]
+        data.sort(key=lambda x: x[1], reverse=True)
+        return data
+
+
+def get_utc_time_one_week_ago():
+    """
+    Get the UTC time one week ago.
+    """
+    now = datetime.utcnow()
+    start_datetime = now - timedelta(days=7)
+    return start_datetime
+
+
+def datetime2str(dt):
+    """
+    Convert datetime to string in the format of YYYY-MM-DDTHH:MM:SSZ
+    """
+    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def str2datetime(string):
+    """
+    Convert string in the format of YYYY-MM-DDTHH:MM:SSZ to datetime
+    """
+    return datetime.strptime(string, "%Y-%m-%dT%H:%M:%SZ")
 
 
 def plot_bar_chart(x: List[Any], y: List[Any], xlabel: str, ylabel: str, title: str, output_path: str) -> None:
@@ -36,7 +66,28 @@ def plot_bar_chart(x: List[Any], y: List[Any], xlabel: str, ylabel: str, title: 
     plt.savefig(output_path, dpi=1200)
 
 
-def get_issue_pull_request_comments(github_token: str, since: str) -> Dict[str, int]:
+def get_organization_repositories(github_token, organization_name) -> List[str]:
+    """
+    Retrieve the public repositories under the organization.
+    """
+    url = f"https://api.github.com/orgs/{organization_name}/repos?type=public"
+
+    # prepare header
+    headers = {
+        'Authorization': f'Bearer {github_token}',
+        'Accept': 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28'
+    }
+
+    res = requests.get(url, headers=headers).json()
+    repo_list = []
+
+    for item in res:
+        repo_list.append(item['name'])
+    return repo_list
+
+
+def get_issue_pull_request_comments(github_token: str, org_name: str, repo_name: str, since: str) -> Dict[str, int]:
     """
     Retrieve the issue/PR comments made by our members in the last 7 days.
 
@@ -56,7 +107,7 @@ def get_issue_pull_request_comments(github_token: str, since: str) -> Dict[str, 
     # do pagination to the API
     page = 1
     while True:
-        comment_api = f'https://api.github.com/repos/hpcaitech/ColossalAI/issues/comments?since={since}&page={page}'
+        comment_api = f'https://api.github.com/repos/{org_name}/{repo_name}/issues/comments?since={since}&page={page}'
         comment_response = requests.get(comment_api, headers=headers).json()
 
         if len(comment_response) == 0:
@@ -70,7 +121,7 @@ def get_issue_pull_request_comments(github_token: str, since: str) -> Dict[str, 
                     continue
 
                 issue_id = item['issue_url'].split('/')[-1]
-                issue_api = f'https://api.github.com/repos/hpcaitech/ColossalAI/issues/{issue_id}'
+                issue_api = f'https://api.github.com/repos/{org_name}/{repo_name}/issues/{issue_id}'
                 issue_response = requests.get(issue_api, headers=headers).json()
                 issue_author_relationship = issue_response['author_association']
 
@@ -87,7 +138,7 @@ def get_issue_pull_request_comments(github_token: str, since: str) -> Dict[str, 
     return user_engagement_count
 
 
-def get_discussion_comments(github_token, since) -> Dict[str, int]:
+def get_discussion_comments(github_token: str, org_name: str, repo_name: str, since: str) -> Dict[str, int]:
     """
     Retrieve the discussion comments made by our members in the last 7 days.
     This is only available via the GitHub GraphQL API.
@@ -105,7 +156,7 @@ def get_discussion_comments(github_token, since) -> Dict[str, int]:
             offset_str = f", after: \"{cursor}\""
         query = f"""
         {{
-            repository(owner: "hpcaitech", name: "ColossalAI"){{
+            repository(owner: "{org_name}", name: "{repo_name}"){{
                 discussions(first: {num} {offset_str}){{
                     edges {{
                         cursor
@@ -134,7 +185,7 @@ def get_discussion_comments(github_token, since) -> Dict[str, int]:
             offset_str = f", before: \"{cursor}\""
         query = f"""
         {{
-            repository(owner: "hpcaitech", name: "ColossalAI"){{
+            repository(owner: "{org_name}", name: "{repo_name}"){{
                 discussion(number: {discussion_number}){{
                     title
                     comments(last: {num} {offset_str}){{
@@ -191,8 +242,8 @@ def get_discussion_comments(github_token, since) -> Dict[str, int]:
             for edge in edges:
                 # print the discussion title
                 discussion = edge['node']
+                discussion_updated_at = str2datetime(discussion['updatedAt'])
 
-                discussion_updated_at = datetime.strptime(discussion['updatedAt'], "%Y-%m-%dT%H:%M:%SZ")
                 # check if the updatedAt is within the last 7 days
                 # if yes, add it to discussion_numbers
                 if discussion_updated_at > since:
@@ -250,6 +301,7 @@ def get_discussion_comments(github_token, since) -> Dict[str, int]:
                             if reply['authorAssociation'] == 'MEMBER':
                                 # check if the updatedAt is within the last 7 days
                                 # if yes, add it to discussion_numbers
+
                                 reply_updated_at = datetime.strptime(reply['updatedAt'], "%Y-%m-%dT%H:%M:%SZ")
                                 if reply_updated_at > since:
                                     member_name = reply['author']['login']
@@ -260,7 +312,7 @@ def get_discussion_comments(github_token, since) -> Dict[str, int]:
     return user_engagement_count
 
 
-def generate_user_engagement_leaderboard_image(github_token: str, output_path: str) -> bool:
+def generate_user_engagement_leaderboard_image(github_token: str, org_name: str, repo_list: List[str], output_path: str) -> bool:
     """
     Generate the user engagement leaderboard image for stats within the last 7 days
 
@@ -270,23 +322,29 @@ def generate_user_engagement_leaderboard_image(github_token: str, output_path: s
     """
 
     # request to the Github API to get the users who have replied the most in the last 7 days
-    now = datetime.utcnow()
-    start_datetime = now - timedelta(days=7)
-    start_datetime_str = start_datetime.strftime("%Y-%m-%dT%H:%M:%SZ")
+    start_datetime = get_utc_time_one_week_ago()
+    start_datetime_str = datetime2str(start_datetime)
 
     # get the issue/PR comments and discussion comment count
-    issue_pr_engagement_count = get_issue_pull_request_comments(github_token=github_token, since=start_datetime_str)
-    discussion_engagement_count = get_discussion_comments(github_token=github_token, since=start_datetime)
     total_engagement_count = {}
 
-    # update the total engagement count
-    total_engagement_count.update(issue_pr_engagement_count)
-    for name, count in discussion_engagement_count.items():
-        if name in total_engagement_count:
-            total_engagement_count[name] += count
-        else:
-            total_engagement_count[name] = count
+    def _update_count(counter):
+        for name, count in counter.items():
+            if name in total_engagement_count:
+                total_engagement_count[name] += count
+            else:
+                total_engagement_count[name] = count
 
+
+    for repo_name in repo_list:
+        print(f"Fetching user engagement count for {repo_name}/{repo_name}")
+        issue_pr_engagement_count = get_issue_pull_request_comments(github_token=github_token, org_name=org_name, repo_name=repo_name, since=start_datetime_str)
+        discussion_engagement_count = get_discussion_comments(github_token=github_token, org_name=org_name, repo_name=repo_name, since=start_datetime)
+
+        # update the total engagement count
+        _update_count(issue_pr_engagement_count)
+        _update_count(discussion_engagement_count)
+        
     # prepare the data for plotting
     x = []
     y = []
@@ -302,9 +360,6 @@ def generate_user_engagement_leaderboard_image(github_token: str, output_path: s
             x.append(count)
             y.append(name)
 
-        # use Shanghai time to display on the image
-        start_datetime_str = datetime.now(pytz.timezone('Asia/Shanghai')).strftime("%Y-%m-%dT%H:%M:%SZ")
-
         # plot the leaderboard
         xlabel = f"Number of Comments made (since {start_datetime_str})"
         ylabel = "Member"
@@ -315,7 +370,7 @@ def generate_user_engagement_leaderboard_image(github_token: str, output_path: s
         return False
 
 
-def generate_contributor_leaderboard_image(github_token, output_path) -> bool:
+def generate_contributor_leaderboard_image(github_token, org_name, repo_list, output_path) -> bool:
     """
     Generate the contributor leaderboard image for stats within the last 7 days
 
@@ -324,54 +379,81 @@ def generate_contributor_leaderboard_image(github_token, output_path) -> bool:
         output_path (str): the path to save the image
     """
     # request to the Github API to get the users who have contributed in the last 7 days
-    URL = 'https://api.github.com/repos/hpcaitech/ColossalAI/stats/contributors'
     headers = {
         'Authorization': f'Bearer {github_token}',
         'Accept': 'application/vnd.github+json',
         'X-GitHub-Api-Version': '2022-11-28'
     }
 
-    while True:
-        response = requests.get(URL, headers=headers).json()
+    counter = Counter()
+    start_datetime = get_utc_time_one_week_ago()
 
-        if len(response) != 0:
-            # sometimes the Github API returns empty response for unknown reason
-            # request again if the response is empty
-            break
+    def _get_url(org_name, repo_name, page):
+        return f'https://api.github.com/repos/{org_name}/{repo_name}/pulls?per_page=50&page={page}&state=closed'
 
-    contributor_list = []
+    def _iterate_by_page(org_name, repo_name):
+        page = 1
+        stop = False
 
-    # get number of commits for each contributor
-    start_timestamp = None
-    for item in response:
-        num_commits_this_week = item['weeks'][-1]['c']
-        name = item['author']['login']
-        contributor = Contributor(name=name, num_commits_this_week=num_commits_this_week)
-        contributor_list.append(contributor)
+        while not stop:
+            print(f"Fetching pull request data for {org_name}/{repo_name} - page{page}")
+            url = _get_url(org_name, repo_name, page)
 
-        # update start_timestamp
-        start_timestamp = item['weeks'][-1]['w']
+            while True:
+                response = requests.get(url, headers=headers).json()
+
+                if isinstance(response, list):
+                    # sometimes the Github API returns nothing
+                    # request again if the response is not a list
+                    break
+                print("Empty response, request again...")
+
+            if len(response) == 0:
+                # if the response is empty, stop
+                stop = True
+                break
+
+            # count the pull request and author from response
+            for pr_data in response:
+                merged_at = pr_data['merged_at']
+                author = pr_data['user']['login']
+
+                if merged_at is None:
+                    continue
+
+                merge_datetime = str2datetime(merged_at)
+
+                if merge_datetime < start_datetime:
+                    # if we found a pull request that is merged before the start_datetime
+                    # we stop
+                    stop = True
+                    break
+                else:
+                    # record the author1
+                    counter.record(author)
+
+            # next page
+            page += 1
+
+    for repo_name in repo_list:
+        _iterate_by_page(org_name, repo_name)
 
     # convert unix timestamp to Beijing datetime
-    start_datetime = datetime.fromtimestamp(start_timestamp, tz=pytz.timezone('Asia/Shanghai'))
-    start_datetime_str = start_datetime.strftime("%Y-%m-%dT%H:%M:%SZ")
+    bj_start_datetime = datetime.fromtimestamp(start_datetime.timestamp(), tz=pytz.timezone('Asia/Shanghai'))
+    bj_start_datetime_str = datetime2str(bj_start_datetime)
 
-    # sort by number of commits
-    contributor_list.sort(key=lambda x: x.num_commits_this_week, reverse=True)
+    contribution_list = counter.to_sorted_list()
 
     # remove contributors who has zero commits
-    contributor_list = [x for x in contributor_list if x.num_commits_this_week > 0]
-
-    # prepare the data for plotting
-    x = [x.num_commits_this_week for x in contributor_list]
-    y = [x.name for x in contributor_list]
+    author_list = [x[0] for x in contribution_list]
+    num_commit_list = [x[1] for x in contribution_list]
 
     # plot
-    if len(x) > 0:
-        xlabel = f"Number of Commits (since {start_datetime_str})"
+    if len(author_list) > 0:
+        xlabel = f"Number of Pull Requests (since {bj_start_datetime_str})"
         ylabel = "Contributor"
         title = 'Active Contributor Leaderboard'
-        plot_bar_chart(x, y, xlabel=xlabel, ylabel=ylabel, title=title, output_path=output_path)
+        plot_bar_chart(num_commit_list, author_list, xlabel=xlabel, ylabel=ylabel, title=title, output_path=output_path)
         return True
     else:
         return False
@@ -438,10 +520,14 @@ if __name__ == '__main__':
     GITHUB_TOKEN = os.environ['GITHUB_TOKEN']
     CONTRIBUTOR_IMAGE_PATH = 'contributor_leaderboard.png'
     USER_ENGAGEMENT_IMAGE_PATH = 'engagement_leaderboard.png'
+    ORG_NAME = "hpcaitech"
+
+    # get all open source repositories
+    REPO_LIST = get_organization_repositories(GITHUB_TOKEN, ORG_NAME)
 
     # generate images
-    contrib_success = generate_contributor_leaderboard_image(GITHUB_TOKEN, CONTRIBUTOR_IMAGE_PATH)
-    engagement_success = generate_user_engagement_leaderboard_image(GITHUB_TOKEN, USER_ENGAGEMENT_IMAGE_PATH)
+    contrib_success = generate_contributor_leaderboard_image(GITHUB_TOKEN, ORG_NAME, REPO_LIST, CONTRIBUTOR_IMAGE_PATH)
+    engagement_success = generate_user_engagement_leaderboard_image(GITHUB_TOKEN, ORG_NAME, REPO_LIST, USER_ENGAGEMENT_IMAGE_PATH)
 
     # upload images
     APP_ID = os.environ['LARK_APP_ID']
@@ -457,8 +543,8 @@ if __name__ == '__main__':
 2. 用户互动榜单
 
 注：
-- 开发贡献者测评标准为：本周由公司成员提交的commit次数
-- 用户互动榜单测评标准为：本周由公司成员在非成员创建的issue/PR/discussion中回复的次数
+- 开发贡献者测评标准为：本周由公司成员与社区在所有开源仓库提交的Pull Request次数
+- 用户互动榜单测评标准为：本周由公司成员在非成员在所有开源仓库创建的issue/PR/discussion中回复的次数
 """
 
     send_message_to_lark(message, LARK_WEBHOOK_URL)
@@ -467,7 +553,7 @@ if __name__ == '__main__':
     if contrib_success:
         send_image_to_lark(contributor_image_key, LARK_WEBHOOK_URL)
     else:
-        send_message_to_lark("本周没有成员贡献commit，无榜单图片生成。", LARK_WEBHOOK_URL)
+        send_message_to_lark("本周没有成员贡献PR，无榜单图片生成。", LARK_WEBHOOK_URL)
 
     # send user engagement image to lark
     if engagement_success:
