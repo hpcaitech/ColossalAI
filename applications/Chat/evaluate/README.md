@@ -293,7 +293,7 @@ You can create your config file based on available settings listed in following 
 | "summarization"  |       "fidelity"        |             |                              |
 |                  |      "conciseness"      |             |                              |
 
-> **NOTE:**  For categories which don't have standard answers such as `brainstorming`, you should avoid using automatic metrics such as `BLEU` and `ROUGE` which are based on similarity measures and you should use `Distinct` instead in your config file.
+> **NOTE:**  For categories which don't have standard answers such as `brainstorming`, you should avoid using automatic metrics such as `BLEU` and `ROUGE` which are based on similarity measures, and you should use `Distinct` instead in your config file.
 
 #### Evaluate
 
@@ -342,7 +342,7 @@ For example, if you want to add a new metric `persuasiveness` into category `bra
 
 <details><summary><b>How can I add a new UniEval evaluation metric?</b></summary>
 
-For example, if you want to add a new metric `persuasiveness` into task `data2text`, you should add a Boolean QA question about the metric in function `add_question` in `unieval/utils.py`. Please do note that how effectively the model would evaluate this metric is unknown and you may need some experiments to test whether the model is capable of evaluating this metric.
+For example, if you want to add a new metric `persuasiveness` into task `data2text`, you should add a Boolean QA question about the metric in function `add_question` in `unieval/utils.py`. Please do note that how effectively the model would evaluate this metric is unknown, and you may need some experiments to test whether the model is capable of evaluating this metric.
 
 ```python
 if task == 'data2text':

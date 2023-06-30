@@ -576,7 +576,7 @@ def calculate_scores_form_logprobs(logprobs: Dict[str, Any]) -> float:
 
     for key, value in logprobs.items():
         # Sometimes the key will be one byte of a unicode character which takes the form of "bytes:\\xe7".
-        # It is meaningless and thus we don't calculate probability.
+        # It is meaningless, and thus we don't calculate probability.
         if "bytes" in key:
             continue
         # results[0] is the score which corresponds to the key(predicted token).
@@ -621,7 +621,7 @@ def save_gpt_evaluation_results(model_name: str, gpt_evaluation_results: Dict[st
 
     Args:
         model_name: name of the model for saving evaluation results.
-        gpt_evaluation_results: evaluations results for all of the model answers.
+        gpt_evaluation_results: evaluations results for all the model answers.
         save_path: path to save GPT evaluation statistics.
     """
 
@@ -641,7 +641,7 @@ def save_gpt_evaluation_statistics(model_name: str, evaluations: List[Dict], sav
 
     Args:
         model_name: name of the model for saving statistics.
-        evaluations: evaluations for all of the model answers.
+        evaluations: evaluations for all the model answers.
         save_path: path to save GPT evaluation statistics.
     """
 
@@ -663,7 +663,7 @@ def save_gpt_evaluation_statistics(model_name: str, evaluations: List[Dict], sav
         for evaluation in data:
             for metric in metrics:
                 if evaluation["evaluation"][metric] == {}:
-                    # This means after 3 retries, the server still returns an error and we set the score to 0.
+                    # This means after 3 retries, the server still returns an error, and we set the score to 0.
                     scores[metric].append(0)
                 elif evaluation["evaluation"][metric]["logprobs"] is not None:
                     scores[metric].append(

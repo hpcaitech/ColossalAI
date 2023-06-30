@@ -16,7 +16,7 @@ from ray.util.queue import Queue
 class DetachedReplayBuffer:
     '''
         Detached replay buffer. Share Experience across workers on the same node.
-        Therefore a trainer node is expected to have only one instance.
+        Therefore, a trainer node is expected to have only one instance.
         It is ExperienceMakerHolder's duty to call append(exp) method, remotely.
 
     Args:

@@ -149,8 +149,8 @@ For more details, see [`examples/`](https://github.com/hpcaitech/ColossalAI/tree
 
 We provide an online inference server and a benchmark. We aim to run inference on single GPU, so quantization is essential when using large models.
 
-We support 8-bit quantization (RTN), 4-bit quantization (GPTQ), and  FP16 inference. You can
-Online inference server scripts can help you deploy your own services.
+We support 8-bit quantization (RTN), 4-bit quantization (GPTQ), and  FP16 inference. 
+Online inference server scripts can assist you in deploying your own services.
 
 For more details, see [`inference/`](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat/inference).
 
@@ -349,7 +349,7 @@ torchrun --standalone --nproc_per_node=4 train_sft.py \
 - [ ] support chain-of-thought by [langchain](https://github.com/hwchase17/langchain)
 
 ### Real-time progress
-You will find our progress in github project broad
+You will find our progress in GitHub project broad
 
 [Coati](https://github.com/orgs/hpcaitech/projects/17/views/1)
 
@@ -373,7 +373,7 @@ Thanks so much to all of our amazing contributors!
    </a>
 </div>
 
-- An open-source low cost solution for cloning [ChatGPT](https://openai.com/blog/chatgpt/) with a complete RLHF pipeline. [[demo]](https://chat.colossalai.org)
+- An open-source low-cost solution for cloning [ChatGPT](https://openai.com/blog/chatgpt/) with a complete RLHF pipeline. [[demo]](https://chat.colossalai.org)
 
 <p id="ChatGPT_scaling" align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chatgpt/ChatGPT%20scaling.png" width=800/>
@@ -411,7 +411,7 @@ Coati is developed by ColossalAI Team:
 - [ver217](https://github.com/ver217)
 - [ofey404](https://github.com/ofey404)
 
-The Phd student from [(HPC-AI) Lab](https://ai.comp.nus.edu.sg/) also contributed a lot to this project.
+The PhD student from [(HPC-AI) Lab](https://ai.comp.nus.edu.sg/) also contributed a lot to this project.
 - [Zangwei Zheng](https://github.com/zhengzangw)
 - [Xue Fuzhao](https://github.com/XueFuzhao)
 

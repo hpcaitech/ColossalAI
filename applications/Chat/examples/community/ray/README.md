@@ -3,7 +3,7 @@
 This is an experimental effort to run ColossalAI Chat training on Ray
 ## How to use?
 ### 1. Setup Ray clusters
-Please follow the official [Ray cluster setup instructions](https://docs.ray.io/en/latest/cluster/getting-started.html) to setup an cluster with GPU support. Record the cluster's api server endpoint, it should be something similar to http://your.head.node.addrees:8265
+Please follow the official [Ray cluster setup instructions](https://docs.ray.io/en/latest/cluster/getting-started.html) to setup a cluster with GPU support. Record the cluster's api server endpoint, it should be something similar to http://your.head.node.addrees:8265
 ### 2. Clone repo
 Clone this project:
 ```shell

@@ -186,7 +186,7 @@ For details, see [`inference/`](https://github.com/hpcaitech/ColossalAI/tree/mai
 
 
 ## Attention
-The examples are demos for the whole training process.You need to change the hyper-parameters to reach great performance.
+The examples are demos for the whole training process.You need to change the Hyperparameters to reach great performance.
 
 #### data
 - [x] [rm-static](https://huggingface.co/datasets/Dahoas/rm-static)
