@@ -22,16 +22,10 @@ class ModelSharder(object):
         shard_config: The setting of distributed model
     """
 
-    def __init__(
-            self,
-            model: nn.Module,
-            policy: Policy,
-            shard_config: ShardConfig = None,    # TODO
-            pg_manager: ProcessGroupManager = None) -> None:
+    def __init__(self, model: nn.Module, policy: Policy, shard_config: ShardConfig = None) -> None:
         self.model = model
         self.policy = get_autopolicy(self.model) if policy is None else policy
         self.shard_config = shard_config
-        self.pg_manager = pg_manager
 
     def shard(self) -> None:
         r"""
@@ -198,7 +192,8 @@ class ModelSharder(object):
                 continue
 
             try:
-                replace_layer = target_module.from_native_module(native_sub_module, self.pg_manager.pg_store['tp1d'],
+                replace_layer = target_module.from_native_module(native_sub_module,
+                                                                 self.shard_config.tensor_parallel_process_group,
                                                                  **kwargs)
             except Exception as e:
                 raise RuntimeError(
