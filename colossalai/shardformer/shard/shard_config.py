@@ -19,6 +19,7 @@ class ShardConfig:
     """
     tensor_parallel_process_group: int = None
     enable_fused_normalization: bool = False
+    enable_all_optimization: bool = False
 
     # TODO: add support for tensor parallel
     # pipeline_parallel_size: int
@@ -27,6 +28,21 @@ class ShardConfig:
     # inference_only: bool = True
     # gather_output: bool = True
 
+    @property
+    def tensor_parallel_size(self):
+        return self._tensor_parallel_size
+
     def __post_init__(self):
         # get the parallel size
-        self.tensor_parallel_size = dist.get_world_size(self.tensor_parallel_process_group)
+        self._tensor_parallel_size = dist.get_world_size(self.tensor_parallel_process_group)
+
+        # turn on all optimization if all_optimization is set to True
+        if self.enable_all_optimization:
+            self._turn_on_all_optimization()
+
+    def _turn_on_all_optimization(self):
+        """
+        Turn on all optimization.
+        """
+        # you can add all the optimization flag here
+        self.fused_layernorm = True
