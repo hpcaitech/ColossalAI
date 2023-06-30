@@ -86,7 +86,7 @@ class BucketStore(BaseStore):
         """
 
         flat_grad = []
-        for _, grad_list in self._grad_in_bucket.items():
+        for grad_list in self._grad_in_bucket.values():
             flat_grad.append(_flatten_dense_tensors(grad_list))
         flat_grad = _flatten_dense_tensors(flat_grad)
         return flat_grad
