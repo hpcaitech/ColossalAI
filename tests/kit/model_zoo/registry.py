@@ -70,6 +70,8 @@ class ModelZooRegistry(dict):
         for k, v in self.items():
             if keyword in k:
                 new_dict[k] = v
+
+        assert len(new_dict) > 0, f'No model found with keyword {keyword}'
         return new_dict
 
 

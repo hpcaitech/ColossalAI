@@ -1,5 +1,6 @@
-from colossalai.shardformer.layer import Embedding1D, FusedLayerNorm, Linear1D_Col, Linear1D_Row
+from colossalai.shardformer.layer import FusedLayerNorm, Linear1D_Col, Linear1D_Row, VocabParallelEmbedding1D
 
+from .._utils import getattr_, setattr_
 from .basepolicy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = [
@@ -35,7 +36,7 @@ class OPTPolicy(Policy):
                                         sub_module_replacement=[
                                             SubModuleReplacementDescription(
                                                 suffix="embed_tokens",
-                                                target_module=Embedding1D,
+                                                target_module=VocabParallelEmbedding1D,
                                             )
                                         ]),
             OPTDecoderLayer:
@@ -126,6 +127,18 @@ class OPTForCausalLMPolicy(OPTPolicy):
 
         policy.update(new_item)
         return policy
+
+    def postprocess(self):
+        binding_map = {
+            'model.decoder.embed_tokens': 'lm_head',
+        }
+
+        for k, v in binding_map.items():
+            src_mod = getattr_(self.model, k)
+            dst_mod = getattr_(self.model, v)
+            dst_mod.weight = src_mod.weight
+
+        return self.model
 
 
 class OPTForSequenceClassificationPolicy(OPTPolicy):

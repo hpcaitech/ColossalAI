@@ -97,7 +97,7 @@ class BertPolicy(Policy):
                                             ),
                                             SubModuleReplacementDescription(
                                                 suffix="dropout",
-                                                target_module=col_nn.DropoutForParallelInput,
+                                                target_module=col_nn.DropoutForReplicatedInput,
                                             )
                                         ])
         }

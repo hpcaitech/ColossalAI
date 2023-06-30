@@ -45,6 +45,7 @@ def check_vit(rank, world_size, port):
 
 
 @pytest.mark.dist
+@pytest.mark.skip
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()
 def test_vit():

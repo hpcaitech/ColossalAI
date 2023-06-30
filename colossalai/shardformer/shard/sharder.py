@@ -38,17 +38,6 @@ class ModelSharder(object):
         self._replace_module()
         self._postprocess()
 
-    def reshape_embedding(self) -> None:
-        r"""
-        Reshape the Embedding layer to make the embedding dimension divisible by world_size
-        """
-        vocab_size = self.model_config.vocab_size
-        world_size = self.shard_config.world_size
-        if vocab_size % world_size != 0:
-            new_vocab_size = vocab_size + world_size - vocab_size % world_size
-            self.model.resize_token_embeddings(new_vocab_size)
-            self.model_config = self.model.config
-
     def _preprocess(self) -> None:
         self.model = self.policy.preprocess()
 
