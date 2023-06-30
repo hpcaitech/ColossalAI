@@ -1,6 +1,5 @@
 import argparse
 
-import pandas as pd
 import torch
 import torch.distributed as dist
 from coati.dataset import DataCollatorForSupervisedDataset, PromptDataset, SupervisedDataset
@@ -10,7 +9,7 @@ from coati.models.llama import LlamaActor, LlamaCritic, LlamaRM
 from coati.models.opt import OPTRM, OPTActor, OPTCritic
 from coati.models.roberta import RoBERTaActor, RoBERTaCritic, RoBERTaRM
 from coati.trainer import PPOTrainer
-from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
+from coati.trainer.strategies import DDPStrategy, GeminiStrategy, LowLevelZeroStrategy
 from coati.utils import prepare_llama_tokenizer_and_embedding
 from torch.optim import Adam
 from torch.utils.data import DataLoader
@@ -22,14 +21,12 @@ from colossalai.nn.optimizer import HybridAdam
 
 def main(args):
     # configure strategy
-    if args.strategy == 'naive':
-        strategy = NaiveStrategy()
-    elif args.strategy == 'ddp':
+    if args.strategy == 'ddp':
         strategy = DDPStrategy()
     elif args.strategy == 'colossalai_gemini':
-        strategy = ColossalAIStrategy(stage=3, placement_policy='cuda', initial_scale=2**5)
+        strategy = GeminiStrategy(placement_policy='cuda', initial_scale=2**5)
     elif args.strategy == 'colossalai_zero2':
-        strategy = ColossalAIStrategy(stage=2, placement_policy='cuda')
+        strategy = LowLevelZeroStrategy(stage=2, placement_policy='cuda')
     else:
         raise ValueError(f'Unsupported strategy "{args.strategy}"')
 
@@ -51,7 +48,7 @@ def main(args):
         else:
             raise ValueError(f'Unsupported actor model "{args.model}"')
 
-        if args.rm_model == None:
+        if args.rm_model is None:
             rm_model_name = args.model
         else:
             rm_model_name = args.rm_model
@@ -163,7 +160,9 @@ def main(args):
                                      batch_size=args.ptx_batch_size,
                                      collate_fn=data_collator)
 
-    (actor, actor_optim), (critic, critic_optim) = strategy.prepare((actor, actor_optim), (critic, critic_optim))
+    # NOTE: For small models like opt-1.3b, reward model and initial model are not required to be parallelized.
+    (actor, actor_optim), (critic, critic_optim), reward_model, initial_model = \
+        strategy.prepare((actor, actor_optim), (critic, critic_optim), reward_model, initial_model)
 
     # configure trainer
     trainer = PPOTrainer(
@@ -176,7 +175,6 @@ def main(args):
         critic_optim,
         kl_coef=args.kl_coef,
         ptx_coef=args.ptx_coef,
-        max_epochs=args.max_epochs,
         train_batch_size=args.train_batch_size,
         max_length=args.max_seq_len,
         use_cache=True,
@@ -185,13 +183,14 @@ def main(args):
         top_k=50,
         pad_token_id=tokenizer.pad_token_id,
         eos_token_id=tokenizer.eos_token_id,
+        offload_inference_models=args.strategy != 'colossalai_gemini'
     )
 
     trainer.fit(prompt_dataloader=prompt_dataloader,
                 pretrain_dataloader=pretrain_dataloader,
                 num_episodes=args.num_episodes,
-                max_timesteps=args.max_timesteps,
-                update_timesteps=args.update_timesteps)
+                num_collect_steps=args.num_collect_steps,
+                num_update_steps=args.num_update_steps)
 
     # save model checkpoint after fitting
     strategy.save_model(actor, args.save_path, only_rank0=True)
@@ -207,7 +206,7 @@ if __name__ == '__main__':
     parser.add_argument('--prompt_dataset', type=str, default=None, help='path to the prompt dataset')
     parser.add_argument('--pretrain_dataset', type=str, default=None, help='path to the pretrained dataset')
     parser.add_argument('--strategy',
-                        choices=['naive', 'ddp', 'colossalai_gemini', 'colossalai_zero2'],
+                        choices=['ddp', 'colossalai_gemini', 'colossalai_zero2'],
                         default='colossalai_zero2',
                         help='strategy to use')
     parser.add_argument('--model', default='gpt2', choices=['gpt2', 'bloom', 'opt', 'llama', 'roberta'])
@@ -218,9 +217,8 @@ if __name__ == '__main__':
     parser.add_argument('--save_path', type=str, default='actor_checkpoint_prompts')
     parser.add_argument('--need_optim_ckpt', type=bool, default=False)
     parser.add_argument('--num_episodes', type=int, default=10)
-    parser.add_argument('--max_timesteps', type=int, default=10)
-    parser.add_argument('--update_timesteps', type=int, default=10)
-    parser.add_argument('--max_epochs', type=int, default=5)
+    parser.add_argument('--num_collect_steps', type=int, default=10)
+    parser.add_argument('--num_update_steps', type=int, default=5)
     parser.add_argument('--train_batch_size', type=int, default=8)
     parser.add_argument('--ptx_batch_size', type=int, default=1)
     parser.add_argument('--experience_batch_size', type=int, default=8)
