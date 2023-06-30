@@ -22,6 +22,13 @@ conda activate llama
 
 ROOT=$(pwd)
 
+export NCCL_IB_HCA=mlx5_1:1,mlx5_2:1,mlx5_3:1,mlx5_4:1
+export NCCL_IB_DISABLE=0
+export NCCL_SOCKET_IFNAME=eth0
+export NCCL_IB_GID_INDEX=3
+export NCCL_IB_TIMEOUT=23
+export NCCL_IB_RETRY_CNT=7
+
 cd ..
 
 deepspeed --master_addr 192.168.0.64 --master_port 29503 --hostfile=${ROOT}/host_file_2.txt \
