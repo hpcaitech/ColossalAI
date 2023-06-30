@@ -18,20 +18,36 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
     org_loss.backward()
     shard_loss.backward()
 
-    # check grad equality
+    assert torch.allclose(org_loss, shard_loss,
+                          atol=1e-5), f"shard model loss is not equal to orgin model loss\n{org_loss}\n{shard_loss}"
+
+    # unwrap model
     if org_model.__class__.__name__ == 'BloomModel':
-        org_grad = org_model.h[0].self_attention.query_key_value.weight.grad
-        shard_grad = sharded_model.h[0].self_attention.query_key_value.weight.grad
+        bloom = org_model
+        sharded_bloom = sharded_model
     else:
-        org_grad = org_model.transformer.h[0].self_attention.query_key_value.weight.grad
-        shard_grad = sharded_model.transformer.h[0].self_attention.query_key_value.weight.grad
+        bloom = org_model.transformer
+        sharded_bloom = sharded_model.transformer
+
+    # check attention grad
+    org_grad = bloom.h[0].self_attention.query_key_value.weight.grad
+    shard_grad = sharded_bloom.h[0].self_attention.query_key_value.weight.grad
 
     shard_grad_list = [torch.zeros([*shard_grad.shape]).to('cuda') for _ in range(2)]
     torch.distributed.all_gather(shard_grad_list, shard_grad)
     all_shard_grad = torch.cat(shard_grad_list, dim=0)
 
-    assert torch.allclose(org_loss, shard_loss,
-                          atol=1e-5), f"shard model loss is not equal to orgin model loss\n{org_loss}\n{shard_loss}"
+    assert torch.allclose(org_grad, all_shard_grad,
+                          atol=1e-5), f"shard model grad is not equal to orgin model grad\n{org_grad}\n{all_shard_grad}"
+
+    # check embedding weights
+    org_grad = bloom.word_embeddings.weight.grad
+    shard_grad = sharded_bloom.word_embeddings.weight.grad
+
+    shard_grad_list = [torch.zeros([*shard_grad.shape]).to('cuda') for _ in range(2)]
+    torch.distributed.all_gather(shard_grad_list, shard_grad)
+    all_shard_grad = torch.cat(shard_grad_list, dim=0)
+
     assert torch.allclose(org_grad, all_shard_grad,
                           atol=1e-5), f"shard model grad is not equal to orgin model grad\n{org_grad}\n{all_shard_grad}"
 
