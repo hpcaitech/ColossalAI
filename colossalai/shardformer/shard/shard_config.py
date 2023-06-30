@@ -17,7 +17,7 @@ class ShardConfig:
         tensor_parallel_process_group (int): The process group for tensor parallelism, defaults to None, which is the global process group.
         enable_fused_normalization (bool): Whether to use fused layernorm, default is False
     """
-    tensor_parallel_process_group: int = None
+    tensor_parallel_process_group: ProcessGroup = None
     enable_fused_normalization: bool = False
     enable_all_optimization: bool = False
 
