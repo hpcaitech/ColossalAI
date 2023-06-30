@@ -9,6 +9,9 @@ from .basepolicy import ModulePolicyDescription, Policy, SubModuleReplacementDes
 
 class GPT2Policy(Policy):
 
+    def config_sanity_check(self):
+        pass
+
     def preprocess(self):
         # reshape the embedding layer
         r"""
@@ -22,7 +25,7 @@ class GPT2Policy(Policy):
         return self.model
 
     def module_policy(self):
-        return {
+        base_policy = {
             GPT2Model:
                 ModulePolicyDescription(attribute_replacement={},
                                         param_replacement=[],
@@ -76,6 +79,30 @@ class GPT2Policy(Policy):
                                             ),
                                         ])
         }
+
+        # optimization configuration
+        if self.shard_config.enable_fused_normalization:
+            base_policy[GPT2Model].sub_module_replacement.append(
+                SubModuleReplacementDescription(
+                    suffix="ln_f",
+                    target_module=col_nn.FusedLayerNorm,
+                ))
+
+            base_policy[GPT2Block].sub_module_replacement.extend([
+                SubModuleReplacementDescription(
+                    suffix="ln_1",
+                    target_module=col_nn.FusedLayerNorm,
+                ),
+                SubModuleReplacementDescription(
+                    suffix="ln_2",
+                    target_module=col_nn.FusedLayerNorm,
+                ),
+                SubModuleReplacementDescription(suffix="ln_cross_attn",
+                                                target_module=col_nn.FusedLayerNorm,
+                                                ignore_if_not_exist=True)
+            ])
+
+        return base_policy
 
     def new_model_class(self):
         return self.model

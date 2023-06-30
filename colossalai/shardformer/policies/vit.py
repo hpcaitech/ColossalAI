@@ -3,12 +3,15 @@ from typing import Dict, Union
 import torch.nn as nn
 from transformers.models.vit.modeling_vit import ViTAttention, ViTEmbeddings, ViTLayer, ViTModel
 
-from colossalai.shardformer.layer import DropoutForReplicatedInput, Linear1D_Col, Linear1D_Row
+from colossalai.shardformer.layer import DropoutForReplicatedInput, FusedLayerNorm, Linear1D_Col, Linear1D_Row
 
 from .basepolicy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 
 class ViTPolicy(Policy):
+
+    def config_sanity_check(self):
+        pass
 
     def preprocess(self):
         # Resize embedding
@@ -22,7 +25,7 @@ class ViTPolicy(Policy):
         return self.model
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
-        return {
+        base_policy = {
             ViTEmbeddings:
                 ModulePolicyDescription(attribute_replacement={},
                                         param_replacement=[],
@@ -79,6 +82,26 @@ class ViTPolicy(Policy):
                                             ),
                                         ]),
         }
+
+        # optimization configuration
+        if self.shard_config.enable_fused_normalization:
+            base_policy[ViTAttention].sub_module_replacement.extend([
+                SubModuleReplacementDescription(
+                    suffix="layernorm_before",
+                    target_module=FusedLayerNorm,
+                ),
+                SubModuleReplacementDescription(
+                    suffix="layernorm_after",
+                    target_module=FusedLayerNorm,
+                )
+            ])
+            base_policy[ViTModel].sub_module_replacement.append(
+                SubModuleReplacementDescription(
+                    suffix="layernorm",
+                    target_module=FusedLayerNorm,
+                ))
+
+        return base_policy
 
     def new_model_class(self):
         return None
