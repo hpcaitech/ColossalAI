@@ -21,18 +21,42 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
     org_loss.backward()
     shard_loss.backward()
 
-    # check grad equality
+    assert torch.allclose(org_loss, shard_loss,
+                          atol=1e-5), f"shard model loss is not equal to orgin model loss\n{org_loss}\n{shard_loss}"
+
+    # check attention grad
     org_grad = org_model.encoder.block[0].layer[0].SelfAttention.q.weight.grad
     shard_grad = sharded_model.encoder.block[0].layer[0].SelfAttention.q.weight.grad
 
     shard_grad_list = [torch.zeros([*shard_grad.shape]).to('cuda') for _ in range(2)]
     shard_grad = torch.distributed.all_gather(shard_grad_list, shard_grad)
     all_shard_grad = torch.cat(shard_grad_list, dim=0)
-
-    assert torch.allclose(org_loss, shard_loss,
-                          atol=1e-5), f"shard model loss is not equal to orgin model loss\n{org_loss}\n{shard_loss}"
     assert torch.allclose(org_grad, all_shard_grad,
                           atol=1e-5), f"shard model grad is not equal to orgin model grad\n{org_grad}\n{shard_grad}"
+
+    # check self attention embed
+    org_grad = org_model.encoder.block[0].layer[0].SelfAttention.relative_attention_bias.weight.grad
+    shard_grad = sharded_model.encoder.block[0].layer[0].SelfAttention.relative_attention_bias.weight.grad
+    shard_grad_list = [torch.zeros([*shard_grad.shape]).to('cuda') for _ in range(2)]
+    torch.distributed.all_gather(shard_grad_list, shard_grad)
+    all_shard_grad = torch.cat(shard_grad_list, dim=1)
+    assert torch.allclose(org_grad, all_shard_grad,
+                          atol=1e-5), f"shard model grad is not equal to orgin model grad\n{org_grad}\n{all_shard_grad}"
+
+    # check token embedding grad
+    org_grad = org_model.shared.weight.grad
+
+    # check weights are tied
+    if hasattr(org_model, 'lm_head'):
+        assert org_model.shared.weight.data.data_ptr() == org_model.lm_head.weight.data.data_ptr()
+        assert sharded_model.shared.weight.data.data_ptr() == sharded_model.lm_head.weight.data.data_ptr()
+
+    shard_grad = sharded_model.shared.weight.grad
+    shard_grad_list = [torch.zeros([*shard_grad.shape]).to('cuda') for _ in range(2)]
+    torch.distributed.all_gather(shard_grad_list, shard_grad)
+    all_shard_grad = torch.cat(shard_grad_list, dim=0)
+    assert torch.allclose(org_grad, all_shard_grad,
+                          atol=1e-5), f"shard model grad is not equal to orgin model grad\n{org_grad}\n{all_shard_grad}"
 
 
 def check_t5(rank, world_size, port):
@@ -44,7 +68,6 @@ def check_t5(rank, world_size, port):
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         org_model, sharded_model = build_model(model_fn)
         check_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn)
-
     torch.cuda.empty_cache()
 
 
