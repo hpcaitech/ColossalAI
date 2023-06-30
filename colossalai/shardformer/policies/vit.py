@@ -1,11 +1,12 @@
 from typing import Dict, Union
 
 import torch.nn as nn
-from transformers.models.vit.modeling_vit import ViTAttention, ViTEmbeddings, ViTLayer, ViTModel
 
 from colossalai.shardformer.layer import DropoutForReplicatedInput, FusedLayerNorm, Linear1D_Col, Linear1D_Row
 
 from .basepolicy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
+
+__all__ = ['ViTPolicy']
 
 
 class ViTPolicy(Policy):
@@ -25,7 +26,9 @@ class ViTPolicy(Policy):
         return self.model
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
-        base_policy = {
+        from transformers.models.vit.modeling_vit import ViTEmbeddings, ViTLayer
+
+        return {
             ViTEmbeddings:
                 ModulePolicyDescription(attribute_replacement={},
                                         param_replacement=[],
