@@ -39,7 +39,7 @@ jobs:
       - name: Install Transformers
         run: |
           cd applications/Chat
-          git clone --depth 1 --branch v4.30.2 https://github.com/huggingface/transformers.git
+          git clone --depth 1 --branch v4.30.2 https://github.com/huggingface/transformers
           cd transformers
           pip install -v .
 
