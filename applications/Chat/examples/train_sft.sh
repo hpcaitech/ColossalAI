@@ -3,10 +3,10 @@ torchrun --standalone --nproc_per_node=4 train_sft.py \
     --model 'llama' \
     --strategy colossalai_zero2 \
     --log_interval 10 \
-    --save_path /path/to/Coati-7B \
+    --save_path  /path/to/Coati-7B \
     --dataset /path/to/data.json \
     --batch_size 4 \
-    --accumulation_steps 8 \
+    --accimulation_steps 8 \
     --lr 2e-5 \
     --max_datasets_size 512 \
-    --max_epochs 1
+    --max_epochs 1 \
