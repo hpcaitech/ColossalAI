@@ -31,23 +31,20 @@ class GPT2Policy(Policy):
     def module_policy(self):
         from transformers.models.gpt2.modeling_gpt2 import GPT2Block, GPT2Model
 
-        return {
+        base_policy = {
             GPT2Model:
-                ModulePolicyDescription(attribute_replacement={},
-                                        param_replacement=[],
-                                        sub_module_replacement=[
-                                            SubModuleReplacementDescription(
-                                                suffix="wte",
-                                                target_module=col_nn.VocabParallelEmbedding1D,
-                                            ),
-                                        ]),
+                ModulePolicyDescription(sub_module_replacement=[
+                    SubModuleReplacementDescription(
+                        suffix="wte",
+                        target_module=col_nn.VocabParallelEmbedding1D,
+                    ),
+                ]),
             GPT2Block:
                 ModulePolicyDescription(attribute_replacement={
                     "attn.embed_dim": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
                     "attn.split_size": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
                     "attn.num_heads": self.model.config.num_attention_heads // self.shard_config.tensor_parallel_size,
                 },
-                                        param_replacement=[],
                                         sub_module_replacement=[
                                             SubModuleReplacementDescription(
                                                 suffix="attn.c_attn",
@@ -110,9 +107,6 @@ class GPT2Policy(Policy):
 
         return base_policy
 
-    def new_model_class(self):
-        return self.model
-
     def postprocess(self):
         return self.model
 
@@ -136,13 +130,10 @@ class GPT2LMHeadModelPolicy(GPT2Policy):
         module_policy = super().module_policy()
         addon_module = {
             GPT2LMHeadModel:
-                ModulePolicyDescription(attribute_replacement={},
-                                        param_replacement=[],
-                                        sub_module_replacement=[
-                                            SubModuleReplacementDescription(suffix="lm_head",
-                                                                            target_module=col_nn.Linear1D_Col,
-                                                                            kwargs={"gather_output": True})
-                                        ])
+                ModulePolicyDescription(sub_module_replacement=[
+                    SubModuleReplacementDescription(
+                        suffix="lm_head", target_module=col_nn.Linear1D_Col, kwargs={"gather_output": True})
+                ])
         }
         module_policy.update(addon_module)
         return module_policy
@@ -169,13 +160,10 @@ class GPT2DoubleHeadsModelPolicy(GPT2Policy):
         module_policy = super().module_policy()
         addon_module = {
             GPT2DoubleHeadsModel:
-                ModulePolicyDescription(attribute_replacement={},
-                                        param_replacement=[],
-                                        sub_module_replacement=[
-                                            SubModuleReplacementDescription(suffix="lm_head",
-                                                                            target_module=col_nn.Linear1D_Col,
-                                                                            kwargs={"gather_output": True})
-                                        ])
+                ModulePolicyDescription(sub_module_replacement=[
+                    SubModuleReplacementDescription(
+                        suffix="lm_head", target_module=col_nn.Linear1D_Col, kwargs={"gather_output": True})
+                ])
         }
         module_policy.update(addon_module)
         return module_policy

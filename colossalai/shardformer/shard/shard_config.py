@@ -3,8 +3,6 @@ from dataclasses import dataclass
 import torch.distributed as dist
 from torch.distributed import ProcessGroup
 
-from colossalai.cluster.dist_coordinator import DistCoordinator
-
 __all__ = ['ShardConfig']
 
 
@@ -15,7 +13,9 @@ class ShardConfig:
 
     Args:
         tensor_parallel_process_group (int): The process group for tensor parallelism, defaults to None, which is the global process group.
-        enable_fused_normalization (bool): Whether to use fused layernorm, default is False
+        enable_fused_normalization (bool): Whether to use fused layernorm, default is False.
+        enable_tensor_parallelism (bool): Whether to use tensor parallelism, default is True.
+        enable_all_optimization (bool): Whether to turn on all optimization, default is False.
     """
     tensor_parallel_process_group: ProcessGroup = None
     enable_fused_normalization: bool = False
@@ -45,4 +45,4 @@ class ShardConfig:
         Turn on all optimization.
         """
         # you can add all the optimization flag here
-        self.fused_layernorm = True
+        self.enable_fused_normalization = True
