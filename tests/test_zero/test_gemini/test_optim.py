@@ -73,7 +73,7 @@ def exam_model_step(placement_policy, model_name: str, mixed_precision: torch.dt
         p.data.copy_(torch_p.data)
 
     world_size = torch.distributed.get_world_size()
-    config_dict, *_ = search_chunk_configuration(model, search_range_mb=1, search_interval_byte=100)
+    config_dict, *_ = search_chunk_configuration(model, search_range_m=1, search_interval=100)
     config_dict[world_size]['chunk_size'] = 5000
     config_dict[world_size]['keep_gathered'] = False
     if placement_policy != 'cuda':
@@ -130,7 +130,7 @@ def exam_tiny_example(placement_policy, model_name: str, mixed_precision: torch.
     for torch_p, p in zip(torch_model.parameters(), model.parameters()):
         p.data.copy_(torch_p.data)
 
-    chunk_manager = init_chunk_manager(model=model, init_device=get_current_device(), search_range_mb=1)
+    chunk_manager = init_chunk_manager(model=model, init_device=get_current_device(), search_range_m=1)
     gemini_manager = GeminiManager(placement_policy, chunk_manager)
     model = ZeroDDP(model, gemini_manager, pin_memory=True, mixed_precision=mixed_precision)
     optimizer = HybridAdam(model.parameters(), lr=1e-3)

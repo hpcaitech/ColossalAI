@@ -30,7 +30,7 @@ def exam_state_dict_with_origin(placement_policy, model_name, use_safetensors: b
         bert_model.config.save_pretrained(save_directory=pretrained_path)
 
         # TODO(ver217): use boost api
-        config_dict, *_ = search_chunk_configuration(bert_model, search_range_mb=1, search_interval_byte=100)
+        config_dict, *_ = search_chunk_configuration(bert_model, search_range_m=1, search_interval=100)
         chunk_manager = ChunkManager(config_dict)
         gemini_manager = GeminiManager(placement_policy, chunk_manager)
         bert_model = ZeroDDP(bert_model, gemini_manager)
