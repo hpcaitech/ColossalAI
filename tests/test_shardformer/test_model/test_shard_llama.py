@@ -50,7 +50,7 @@ def check_llama(rank, world_size, port):
     sub_model_zoo = model_zoo.get_sub_registry('transformers_llama')
 
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
-        org_model, sharded_model = build_model(world_size, model_fn)
+        org_model, sharded_model = build_model(model_fn)
         check_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn)
 
     torch.cuda.empty_cache()
