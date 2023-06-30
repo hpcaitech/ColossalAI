@@ -55,7 +55,7 @@ def setattr_(obj, attr: str, value, ignore: bool = False):
         except AttributeError:
             if ignore:
                 return
-            raise AttributeError(f"Object {obj} has no attribute {attr}")
+            raise AttributeError(f"Object {obj.__class__.__name__} has no attribute {attr}")
     setattr(obj, attrs[-1], value)
 
 
@@ -76,5 +76,5 @@ def getattr_(obj, attr: str, ignore: bool = False):
         except AttributeError:
             if ignore:
                 return None
-            raise AttributeError(f"Object {obj} has no attribute {attr}")
+            raise AttributeError(f"Object {obj.__class__.__name__} has no attribute {attr}")
     return obj
