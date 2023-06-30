@@ -13,6 +13,9 @@ from .basepolicy import ModulePolicyDescription, Policy, SubModuleReplacementDes
 
 class OPTPolicy(Policy):
 
+    def config_sanity_check(self):
+        pass
+
     def preprocess(self):
         # reshape the embedding layer
         r"""
@@ -74,7 +77,9 @@ class OPTPolicy(Policy):
                                             ),
                                         ]),
         }
-        if self.shard_config.fused_layernorm:
+
+        # optimization configuration
+        if self.shard_config.enable_fused_normalization:
             base_policy[OPTDecoder].sub_module_replacement.append(
                 SubModuleReplacementDescription(suffix="final_layer_norm",
                                                 target_module=FusedLayerNorm,
@@ -87,6 +92,7 @@ class OPTPolicy(Policy):
                                                 target_module=FusedLayerNorm,
                                                 ignore_if_not_exist=True)
             ])
+
         return base_policy
 
     def new_model_class(self):

@@ -4,12 +4,15 @@ import torch.nn as nn
 from transformers import LlamaForCausalLM, LlamaForSequenceClassification
 from transformers.models.llama.modeling_llama import LlamaDecoderLayer, LlamaModel
 
-from colossalai.shardformer.layer import Linear1D_Col, Linear1D_Row, VocabParallelEmbedding1D
+from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col, Linear1D_Row, VocabParallelEmbedding1D
 
 from .basepolicy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 
 class LlamaPolicy(Policy):
+
+    def config_sanity_check(self):
+        pass
 
     def preprocess(self):
         # Resize embedding
@@ -23,7 +26,7 @@ class LlamaPolicy(Policy):
         return self.model
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
-        return {
+        base_policy = {
             LlamaDecoderLayer:
                 ModulePolicyDescription(
                     attribute_replacement={
@@ -74,6 +77,27 @@ class LlamaPolicy(Policy):
                                             )
                                         ])
         }
+
+        # optimization configuration
+        if self.shard_config.enable_fused_normalization:
+            base_policy[LlamaDecoderLayer].sub_module_replacement.extend([
+                SubModuleReplacementDescription(
+                    suffix="input_layernorm",
+                    target_module=FusedRMSNorm,
+                ),
+                SubModuleReplacementDescription(
+                    suffix="post_attention_layernorm",
+                    target_module=FusedRMSNorm,
+                )
+            ])
+
+            base_policy[LlamaModel].sub_module_replacement.append(
+                SubModuleReplacementDescription(
+                    suffix="norm",
+                    target_module=FusedRMSNorm,
+                ))
+
+        return base_policy
 
     def new_model_class(self):
         return None
