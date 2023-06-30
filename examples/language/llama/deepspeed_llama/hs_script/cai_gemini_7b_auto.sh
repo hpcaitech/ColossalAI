@@ -20,6 +20,8 @@ unset __conda_setup
 
 conda activate llama
 
+pip install pytest
+
 ROOT=$(pwd)
 
 cd ../..
