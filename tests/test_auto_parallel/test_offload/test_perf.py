@@ -60,7 +60,7 @@ def exam_fwd_bwd(model_name: str, memory_budget: float, solver_name: str):
                          placement_policy='cpu',
                          pin_memory=True,
                          hidden_dim=8192,
-                         search_range_mb=128)
+                         search_range_m=128)
     gemini_model = zero_model_wrapper(gemini_model, 3, gemini_config)
     optim_config = dict(reduce_bucket_size=12 * 1024 * 1024, overlap_communication=True, verbose=True)
     gemini_optim = zero_optim_wrapper(gemini_model, hybrid_optimizer, optim_config=optim_config)

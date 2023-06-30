@@ -181,11 +181,11 @@ class GeminiPlugin(DPPluginBase):
         pin_memory (bool, optional): use pin memory on CPU. Defaults to False.
         force_outputs_fp32 (bool, optional): force outputs are fp32. Defaults to False.
         strict_ddp_mode (bool, optional): use strict ddp mode (only use dp without other parallelism). Defaults to False.
-        search_range_mb (int, optional): chunk size searching range in MegaByte. Defaults to 32.
+        search_range_m (int, optional): chunk size searching range divided by 2^20. Defaults to 32.
         hidden_dim (int, optional): the hidden dimension of DNN.
             Users can provide this argument to speed up searching.
             If users do not know this argument before training, it is ok. We will use a default value 1024.
-        min_chunk_size_mb (float, optional): the minimum chunk size in MegaByte.
+        min_chunk_size_m (float, optional): the minimum chunk size divided by 2^20.
             If the aggregate size of parameters is still smaller than the minimum chunk size,
             all parameters will be compacted into one small chunk.
         memstats (MemStats, optional) the memory statistics collector by a runtime memory tracer.
@@ -214,9 +214,9 @@ class GeminiPlugin(DPPluginBase):
         pin_memory: bool = False,
         force_outputs_fp32: bool = False,
         strict_ddp_mode: bool = False,
-        search_range_mb: int = 32,
+        search_range_m: int = 32,
         hidden_dim: Optional[int] = None,
-        min_chunk_size_mb: float = 32,
+        min_chunk_size_m: float = 32,
         memstats: Optional[MemStats] = None,
         gpu_margin_mem_ratio: float = 0.0,
         initial_scale: float = 2**32,
@@ -238,9 +238,9 @@ class GeminiPlugin(DPPluginBase):
             pin_memory=pin_memory,
             force_outputs_fp32=force_outputs_fp32,
             strict_ddp_mode=strict_ddp_mode,
-            search_range_mb=search_range_mb,
+            search_range_m=search_range_m,
             hidden_dim=hidden_dim,
-            min_chunk_size_mb=min_chunk_size_mb,
+            min_chunk_size_m=min_chunk_size_m,
             memstats=memstats,
             mixed_precision=PRECISION_STR_TO_DTYPE[precision],
         )
@@ -295,10 +295,7 @@ class GeminiPlugin(DPPluginBase):
 
         if optimizer is not None and \
                 not isinstance(optimizer, OptimizerWrapper):
-            optimizer = GeminiOptimizer(model.unwrap(),
-                                        optimizer,
-                                        self.zero_optim_config,
-                                        self.optim_kwargs,
+            optimizer = GeminiOptimizer(model.unwrap(), optimizer, self.zero_optim_config, self.optim_kwargs,
                                         self.verbose)
 
         return model, optimizer, criterion, dataloader, lr_scheduler

@@ -1,6 +1,6 @@
 import os
-from typing import Any, Callable, Dict, List, Optional
 from collections import OrderedDict
+from typing import Any, Callable, Dict, List, Optional
 
 import torch
 import torch.distributed as dist
@@ -10,7 +10,7 @@ from coati.models.gpt import GPTRM, GPTActor, GPTCritic
 from coati.models.llama import LlamaActor, LlamaCritic, LlamaRM
 from coati.models.opt import OPTRM, OPTActor, OPTCritic
 from coati.models.roberta import RoBERTaActor, RoBERTaCritic, RoBERTaRM
-from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
+from coati.trainer.strategies import DDPStrategy, GeminiStrategy, LowLevelZeroStrategy
 from coati.utils import prepare_llama_tokenizer_and_embedding
 from transformers import AutoTokenizer, BloomTokenizerFast, GPT2Tokenizer, LlamaTokenizer, RobertaTokenizer
 
@@ -76,18 +76,16 @@ def get_reward_model_from_args(model: str, pretrained: str = None, config=None):
 
 
 def get_strategy_from_args(strategy: str):
-    if strategy == 'naive':
-        strategy_ = NaiveStrategy()
-    elif strategy == 'ddp':
+    if strategy == 'ddp':
         strategy_ = DDPStrategy()
     elif strategy == 'colossalai_gemini':
-        strategy_ = ColossalAIStrategy(stage=3, placement_policy='cuda', initial_scale=2**5)
+        strategy_ = GeminiStrategy(placement_policy='cuda', initial_scale=2**5)
     elif strategy == 'colossalai_zero2':
-        strategy_ = ColossalAIStrategy(stage=2, placement_policy='cuda')
+        strategy_ = LowLevelZeroStrategy(stage=2, placement_policy='cuda')
     elif strategy == 'colossalai_gemini_cpu':
-        strategy_ = ColossalAIStrategy(stage=3, placement_policy='cpu', initial_scale=2**5)
+        strategy_ = GeminiStrategy(placement_policy='cpu', initial_scale=2**5)
     elif strategy == 'colossalai_zero2_cpu':
-        strategy_ = ColossalAIStrategy(stage=2, placement_policy='cpu')
+        strategy_ = LowLevelZeroStrategy(stage=2, placement_policy='cpu')
     else:
         raise ValueError(f'Unsupported strategy "{strategy}"')
     return strategy_

@@ -258,7 +258,7 @@ def main():
                                   placement_policy=args.placement,
                                   pin_memory=True,
                                   strict_ddp_mode=args.tp_degree == 1,
-                                  search_range_mb=128,
+                                  search_range_m=128,
                                   hidden_dim=model.config.n_embd,
                                   gpu_margin_mem_ratio=0.)
         else:
