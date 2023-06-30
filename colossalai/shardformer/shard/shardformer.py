@@ -1,7 +1,6 @@
 import torch.nn as nn
-from torch.utils.data import Dataset
 
-from colossalai.cluster import DistCoordinator, ProcessGroupManager
+from colossalai.cluster import DistCoordinator
 
 from ..policies.basepolicy import Policy
 from .shard_config import ShardConfig
@@ -28,7 +27,6 @@ class ShardFormer:
         tensor_parallel_mode='1d',
     )
     shard_former = ShardFormer(shard_config=shard_config)
-    shard_former.init_distributed()
     model = shard_former.shard_model(org_model)
     ```
     """
@@ -41,19 +39,6 @@ class ShardFormer:
         """
         self.coordinator = DistCoordinator()
         self.shard_config = shard_config
-        self.pg_manager = None
-
-    def init_distributed(self) -> ProcessGroupManager:
-        """
-        Initialize the distributed process group according to the
-        """
-        # create process group manager and 1d process group
-        # TODO: may need to support other parallel mode when the config has such as field
-        pg_manager = ProcessGroupManager()
-        pg_manager.create_process_group(name='tp1d', ranks=range(self.coordinator.world_size))
-        self.pg_manager = pg_manager
-
-        return pg_manager
 
     def shard_model(self, model: nn.Module, policy: Policy = None):
         r"""
@@ -64,12 +49,6 @@ class ShardFormer:
             shard_config (`ShardConfig`): the config for distribute information
             policy (`Policy`): the custom policy for sharding
         """
-        sharder = ModelSharder(model=model, shard_config=self.shard_config, policy=policy, pg_manager=self.pg_manager)
+        sharder = ModelSharder(model=model, shard_config=self.shard_config, policy=policy)
         sharder.shard()
         return model
-
-    def shard_dataset(self, dataset: Dataset):
-        """
-        Shard dataset for DP
-        """
-        pass
