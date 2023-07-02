@@ -24,4 +24,4 @@ ROOT=$(pwd)
 
 cd ../..
 
-colossalai run --nproc_per_node 8 --hostfile ${ROOT}/cai_host_2.txt --master_addr 192.168.0.189 benchmark.py --plugin "fsdp_cpu" -l 512 -g
+colossalai run --nproc_per_node 8 --hostfile ${ROOT}/cai_host_2.txt --master_addr 192.168.0.189 benchmark.py --plugin "fsdp" -l 512 -g
