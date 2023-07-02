@@ -23,7 +23,10 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
     org_loss.backward()
     shard_loss.backward()
 
-    # check grad
+    assert torch.allclose(org_loss, shard_loss,
+                          atol=1e-5), f"shard model loss is not equal to orgin model loss\n{org_loss}\n{shard_loss}"
+
+    # unwrap model
     if hasattr(org_model, 'model'):
         llama_model = org_model.model
         shard_llama_model = sharded_model.model
@@ -31,14 +34,21 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
         llama_model = org_model
         shard_llama_model = sharded_model
 
+    # check attention grad
     org_grad = llama_model.layers[0].self_attn.q_proj.weight.grad
     shard_grad = shard_llama_model.layers[0].self_attn.q_proj.weight.grad
     shard_grad_list = [torch.zeros([*shard_grad.shape]).to('cuda') for _ in range(4)]
     shard_grad = torch.distributed.all_gather(shard_grad_list, shard_grad)
     all_shard_grad = torch.cat(shard_grad_list, dim=0)
+    assert torch.allclose(org_grad, all_shard_grad,
+                          atol=1e-5), f"shard model grad is not equal to orgin model grad\n{org_grad}\n{shard_grad}"
 
-    assert torch.allclose(org_loss, shard_loss,
-                          atol=1e-5), f"shard model loss is not equal to orgin model loss\n{org_loss}\n{shard_loss}"
+    # check embedding grad
+    org_grad = llama_model.embed_tokens.weight.grad
+    shard_grad = shard_llama_model.embed_tokens.weight.grad
+    shard_grad_list = [torch.zeros([*shard_grad.shape]).to('cuda') for _ in range(4)]
+    shard_grad = torch.distributed.all_gather(shard_grad_list, shard_grad)
+    all_shard_grad = torch.cat(shard_grad_list, dim=0)
     assert torch.allclose(org_grad, all_shard_grad,
                           atol=1e-5), f"shard model grad is not equal to orgin model grad\n{org_grad}\n{shard_grad}"
 
