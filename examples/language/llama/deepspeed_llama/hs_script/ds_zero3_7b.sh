@@ -18,7 +18,7 @@ fi
 unset __conda_setup
 # <<< conda initialize <<<
 
-conda activate llama
+conda activate /mnt/vepfs/conda/envs/llama_2
 
 ROOT=$(pwd)
 
