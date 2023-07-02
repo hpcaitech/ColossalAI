@@ -3,12 +3,12 @@ import copy
 from colossalai.shardformer import ShardConfig, ShardFormer
 
 
-def build_model(model_fn):
+def build_model(model_fn, enable_flash_attention):
     # create new model
     org_model = model_fn().cuda()
 
     # shard model
-    shard_config = ShardConfig(enable_fused_normalization=True)
+    shard_config = ShardConfig(enable_fused_normalization=True, enable_flash_attention=enable_flash_attention)
     model_copy = copy.deepcopy(org_model)
     shard_former = ShardFormer(shard_config=shard_config)
     sharded_model = shard_former.shard_model(model_copy).cuda()

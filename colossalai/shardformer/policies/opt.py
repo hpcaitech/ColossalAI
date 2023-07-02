@@ -1,3 +1,4 @@
+from colossalai.shardformer.flashattention import FlashAttention
 from colossalai.shardformer.layer import FusedLayerNorm, Linear1D_Col, Linear1D_Row, VocabParallelEmbedding1D
 
 from .._utils import getattr_, setattr_
@@ -92,6 +93,25 @@ class OPTPolicy(Policy):
                                                 target_module=FusedLayerNorm,
                                                 ignore_if_not_exist=True)
             ])
+
+        # use flash attention
+        if self.shard_config.enable_flash_attention:
+            base_policy[OPTDecoderLayer].sub_module_replacement.append(
+                SubModuleReplacementDescription(
+                    suffix="self_attn",
+                    target_module=FlashAttention,
+                ),)
+            base_policy[OPTAttention].sub_module_replacement = [
+                SubModuleReplacementDescription(suffix="q_proj",
+                                                target_module=Linear1D_Col,
+                                                kwargs=dict(gather_output=True)),
+                SubModuleReplacementDescription(suffix="k_proj",
+                                                target_module=Linear1D_Col,
+                                                kwargs=dict(gather_output=True)),
+                SubModuleReplacementDescription(suffix="v_proj",
+                                                target_module=Linear1D_Col,
+                                                kwargs=dict(gather_output=True)),
+            ]
 
         return base_policy
 
