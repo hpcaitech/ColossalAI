@@ -6,11 +6,6 @@ from torch.distributed import ProcessGroup
 
 from colossalai.shardformer.layer.parallel_module import ParallelModule
 
-try:
-    from xformers.ops import memory_efficient_attention as me_attention
-except ImportError:
-    print("Error: xformers module is not installed. Please install it to use flash attention.")
-
 __all__ = ['FlashAttentionForOPT']
 
 
@@ -77,6 +72,10 @@ class FlashAttentionForOPT(ParallelModule):
                     f"Attention mask should be of size {(bsz, 1, tgt_len, src_len)}, but is {attention_mask.size()}")
             attention_mask = attention_mask.expand(bsz, self.num_heads, tgt_len, tgt_len).contiguous()
 
+        try:
+            from xformers.ops import memory_efficient_attention as me_attention
+        except ImportError:
+            print("Error: xformers module is not installed. Please install it to use flash attention.")
         attn_output = me_attention(query_states,
                                    key_states,
                                    value_states,
