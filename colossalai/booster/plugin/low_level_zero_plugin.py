@@ -179,8 +179,14 @@ class LowLevelZeroPlugin(DPPluginBase):
                                  norm_type=norm_type)
         self.verbose = verbose
 
+        # set class name with stage, for better error message
+        setattr(self.__class__, "__name__", f"LowLevelZeroPlugin_ZeRO-{stage}")
+
     def support_no_sync(self) -> bool:
-        return False
+        if self.stage == 1:
+            return True
+        else:
+            return False
 
     def control_precision(self) -> bool:
         return True
@@ -208,10 +214,7 @@ class LowLevelZeroPlugin(DPPluginBase):
 
         if optimizer is not None and \
                 not isinstance(optimizer, OptimizerWrapper):
-            optimizer = LowLevelZeroOptimizer(model.unwrap(),
-                                              optimizer,
-                                              self.zero_optim_config,
-                                              self.optim_kwargs,
+            optimizer = LowLevelZeroOptimizer(model.unwrap(), optimizer, self.zero_optim_config, self.optim_kwargs,
                                               self.verbose)
 
         return model, optimizer, criterion, dataloader, lr_scheduler
@@ -222,5 +225,6 @@ class LowLevelZeroPlugin(DPPluginBase):
     def get_checkpoint_io(self) -> CheckpointIO:
         return LowLevelZeroCheckpointIO()
 
-    def no_sync(self, model: nn.Module) -> Iterator[None]:
-        raise NotImplementedError
+    def no_sync(self, model: nn.Module, optimizer: OptimizerWrapper) -> Iterator[None]:
+        assert isinstance(optimizer, LowLevelZeroOptimizer)
+        return optimizer.optim.no_sync()
