@@ -46,7 +46,7 @@
         "ROUGE",
         "BERTScore",
         "CHRF"
-      ]   
+      ]
     },
     "extraction": {
       "GPT": [
@@ -58,7 +58,7 @@
         "Recall",
         "F1 score",
         "CHRF"
-      ]   
+      ]
     },
     "generation": {
       "GPT": [
@@ -93,7 +93,7 @@
       ],
       "Metrics": [
         "Distinct"
-      ]   
+      ]
     },
     "rewriting": {
       "GPT": [
@@ -105,7 +105,7 @@
         "BLEU",
         "ROUGE",
         "BERTScore"
-      ]   
+      ]
     },
     "roleplay": {
       "GPT": [
@@ -200,6 +200,5 @@
       "Metrics": [
       ]   
     }
-
   }
 }
