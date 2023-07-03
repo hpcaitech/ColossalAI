@@ -11,7 +11,7 @@ def build_model(model_fn, enable_flash_attention=False):
     shard_config = ShardConfig(enable_fused_normalization=True, enable_flash_attention=enable_flash_attention)
     model_copy = copy.deepcopy(org_model)
     shard_former = ShardFormer(shard_config=shard_config)
-    sharded_model = shard_former.shard_model(model_copy).cuda()
+    sharded_model = shard_former.optimize(model_copy).cuda()
     return org_model, sharded_model
 
 

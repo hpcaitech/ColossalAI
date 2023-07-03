@@ -51,7 +51,7 @@ def train(args):
     if dist.get_world_size() > 1:
         shard_config = ShardConfig(enable_fused_normalization=args.fused_layernorm)
         shard_former = ShardFormer(shard_config=shard_config)
-        model = shard_former.shard_model(model)
+        model = shard_former.optimize(model)
 
     optim = Adam(model.parameters(), lr=args.lr)
     num_update_steps_per_epoch = len(train_dataloader) // args.accumulation_steps
