@@ -1,29 +1,31 @@
+# TODO: low level zero
+# TODO: grad clipping
+# TODO: bf16
+# TODO: checkpoint
+# TODO: tensorboard
+# TODO: wandb
+
 import argparse
 import resource
-from contextlib import contextmanager, nullcontext
-from random import randint
+from contextlib import nullcontext
+from functools import partial
+from typing import Optional
 
 import torch
-import torch.distributed as dist
 import torch.nn as nn
-import transformers
-from performance_evaluator import PerformanceEvaluator, Timer
+from datasets import load_dataset
 from torch.distributed.fsdp.fully_sharded_data_parallel import CPUOffload, MixedPrecision
-from torch.optim import Optimizer
-from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
-from transformers.modeling_utils import no_init_weights
 from transformers.models.llama.configuration_llama import LlamaConfig
 from transformers.models.llama.modeling_llama import LlamaForCausalLM
-from transformers.utils.versions import require_version
+from transformers.models.llama.tokenization_llama import LlamaTokenizer
 
 import colossalai
 from colossalai.booster import Booster
-from colossalai.zero.gemini.placement_policy import AutoPlacementPolicy, ConstPlacementPolicy
-from colossalai.booster.plugin import GeminiPlugin, LowLevelZeroPlugin, TorchDDPPlugin, TorchFSDPPlugin
-from colossalai.booster.plugin.dp_plugin_base import DPPluginBase
+from colossalai.booster.plugin import GeminiPlugin, TorchFSDPPlugin
 from colossalai.cluster import DistCoordinator
 from colossalai.lazy import LazyInitContext
+from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.utils import get_current_device
 
@@ -33,39 +35,6 @@ MODEL_CONFIGS = {
     '30b': LlamaConfig(hidden_size=6656, intermediate_size=17888, num_hidden_layers=60, num_attention_heads=52),
     '65b': LlamaConfig(hidden_size=8192, intermediate_size=22016, num_hidden_layers=80, num_attention_heads=64),
 }
-
-# ==============================
-# random dataloader for llama finetuning
-# ==============================
-
-
-class RandomDataset(Dataset):
-
-    def __init__(self, num_samples: int = 1000, max_length: int = 2048, vocab_size: int = 32000):
-        self.num_samples = num_samples
-        self.max_length = max_length
-        self.input_ids = torch.randint(0, vocab_size, (num_samples, max_length), device=get_current_device())
-        self.attention_mask = torch.ones_like(self.input_ids)
-
-    def __len__(self):
-        return self.num_samples
-
-    def __getitem__(self, idx):
-        return {
-            'input_ids': self.input_ids[idx],
-            'attention_mask': self.attention_mask[idx],
-            'labels': self.input_ids[idx]
-        }
-
-
-@contextmanager
-def low_precision_init(target_dtype: torch.dtype = torch.float16):
-    dtype = torch.get_default_dtype()
-    try:
-        torch.set_default_dtype(target_dtype)
-        yield
-    finally:
-        torch.set_default_dtype(dtype)
 
 
 def get_model_numel(model: nn.Module) -> int:
@@ -86,6 +55,13 @@ def format_numel_str(numel: int) -> str:
         return f'{numel}'
 
 
+def tokenize_batch(batch, tokenizer: Optional[LlamaTokenizer] = None, max_length: int = 2048):
+    texts = [sample['text'] for sample in batch]
+    data = tokenizer(texts, return_tensors="pt", padding='max_length', truncation=True, max_length=max_length)
+    data['labels'] = data['input_ids'].clone()
+    return data
+
+
 def main():
     # ==============================
     # Parse Arguments
@@ -97,13 +73,19 @@ def main():
                         choices=['gemini', 'gemini_cpu', 'fsdp', 'fsdp_cpu'],
                         default='gemini',
                         help='Choose which plugin to use')
-    parser.add_argument('-b', '--batch_size', type=int, default=2, help='Batch size')
-    parser.add_argument('-s', '--num_steps', type=int, default=10, help='Number of steps to run')
-    parser.add_argument('-i', '--ignore_steps', type=int, default=2, help='Number of steps to ignore')
+    parser.add_argument('-d',
+                        '--dataset',
+                        type=str,
+                        default='togethercomputer/RedPajama-Data-1T-Sample',
+                        help='Data set path')
+    parser.add_argument('-e', '--num_epochs', type=int, default=1, help='Number of epochs')
+    parser.add_argument('-b', '--batch_size', type=int, default=2, help='Local batch size')
+    parser.add_argument('--lr', type=float, default=3e-4, help='Learning rate')
+    parser.add_argument('-w', '--weigth_decay', type=float, default=0.1, help='Weight decay')
+    parser.add_argument('-s', '--warmup_steps', type=int, default=2000, help='Warmup steps')
     parser.add_argument('-g', '--grad_checkpoint', action='store_true', help='Use gradient checkpointing')
     parser.add_argument('-l', '--max_length', type=int, default=2048, help='Max sequence length')
-    parser.add_argument('-w', '--warmup_ratio', type=float, default=0.8, help='warm up ratio for auto placement policy')
-    parser.add_argument('-m', '--memory_limit', type=int, help='Gemini memory limit in mb')
+
     args = parser.parse_args()
 
     colossalai.launch_from_torch({})
@@ -113,13 +95,9 @@ def main():
     # Initialize Booster
     # ==============================
     if args.plugin == 'gemini':
-        AutoPlacementPolicy.set_warmup_non_model_data_ratio(args.warmup_ratio)
-        plugin = GeminiPlugin(placement_policy='auto')
+        plugin = GeminiPlugin(placement_policy='auto', initial_scale=2**16)
     elif args.plugin == 'gemini_cpu':
-        plugin = GeminiPlugin(placement_policy='cpu')
-    elif args.plugin == 'const':
-        ConstPlacementPolicy.set_const_memory_boundary(args.memory_limit)
-        plugin = GeminiPlugin(placement_policy='const')
+        plugin = GeminiPlugin(placement_policy='cpu', initial_scale=2**16)
     elif args.plugin == 'fsdp':
         plugin = TorchFSDPPlugin(mixed_precision=MixedPrecision(
             param_dtype=torch.float16, reduce_dtype=torch.float16, buffer_dtype=torch.float16))
@@ -132,54 +110,67 @@ def main():
         raise ValueError(f'Unknown plugin {args.plugin}')
 
     booster = Booster(plugin=plugin)
-    # ==============================
-    # Initialize Dataset and Dataloader
-    # ==============================
 
+    # ==============================
+    # Initialize Tokenizer, Dataset and Dataloader
+    # ==============================
+    tokenizer = LlamaTokenizer.from_pretrained('hf-internal-testing/llama-tokenizer')
+    # follows fast chat: https://github.com/lm-sys/FastChat/blob/main/fastchat/train/train.py#L257
+    tokenizer.pad_token = tokenizer.unk_token
+
+    dataset = load_dataset(args.dataset)
+    train_ds = dataset['train']
+    dataloader = plugin.prepare_dataloader(train_ds,
+                                           batch_size=args.batch_size,
+                                           shuffle=True,
+                                           drop_last=True,
+                                           collate_fn=partial(tokenize_batch,
+                                                              tokenizer=tokenizer,
+                                                              max_length=args.max_length))
+
+    # ==============================
+    # Initialize Model, Optimizer and LR Scheduler
+    # ==============================
     config = MODEL_CONFIGS[args.config]
-    dataset = RandomDataset(num_samples=args.batch_size * args.num_steps * coordinator.world_size,
-                            max_length=args.max_length,
-                            vocab_size=config.vocab_size)
-    dataloader = plugin.prepare_dataloader(dataset, batch_size=args.batch_size, shuffle=True, drop_last=True)
-
-    # ==============================
-    # Initialize Model and Optimizer
-    # ==============================
     init_ctx = LazyInitContext(
         default_device=get_current_device()) if isinstance(plugin, GeminiPlugin) else nullcontext()
 
-    timer = Timer()
-    timer.start()
-    with no_init_weights(), init_ctx:
+    with init_ctx:
         model = LlamaForCausalLM(config)
-        model.tie_weights()
 
     if args.grad_checkpoint:
         model.gradient_checkpointing_enable()
 
     model_numel = get_model_numel(model)
     coordinator.print_on_master(f'Model params: {format_numel_str(model_numel)}')
-    performance_evaluator = PerformanceEvaluator(model_numel, args.grad_checkpoint, args.ignore_steps)
 
-    optimizer = HybridAdam(model.parameters())
+    optimizer = HybridAdam(model.parameters(), lr=args.lr, betas=(0.9, 0.95), weight_decay=args.weigth_decay)
+    lr_scheduler = CosineAnnealingWarmupLR(optimizer,
+                                           total_steps=args.num_epochs * len(dataloader),
+                                           warmup_steps=args.warmup_steps,
+                                           eta_min=0.1 * args.lr)
 
-    model, optimizer, _, dataloader, _ = booster.boost(model, optimizer, dataloader=dataloader)
-    timer.end()
-    coordinator.print_on_master(f'Booster init time: {timer.duration:.2f} s')
+    model, optimizer, _, dataloader, lr_scheduler = booster.boost(model,
+                                                                  optimizer,
+                                                                  dataloader=dataloader,
+                                                                  lr_scheduler=lr_scheduler)
+
     coordinator.print_on_master(f'Booster init max CUDA memory: {torch.cuda.max_memory_allocated()/1024**2:.2f} MB')
     coordinator.print_on_master(
         f'Booster init max CPU memory: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024:.2f} MB')
 
-    for step, batch in enumerate(tqdm(dataloader, desc='Step', disable=not coordinator.is_master())):
-        performance_evaluator.on_step_start(step)
-        outputs = model(**batch)
-        loss = outputs[0]
-        booster.backward(loss, optimizer)
-        optimizer.step()
-        optimizer.zero_grad()
-        performance_evaluator.on_step_end(**batch)
+    for epoch in range(args.num_epochs):
+        with tqdm(dataloader, desc=f'Epoch {epoch}', disable=not coordinator.is_master()) as pbar:
+            for batch in pbar:
+                batch = {k: v.cuda() for k, v in batch.items()}
+                outputs = model(**batch)
+                loss = outputs[0]
+                booster.backward(loss, optimizer)
+                optimizer.step()
+                lr_scheduler.step()
+                optimizer.zero_grad()
+                pbar.set_postfix({'loss': loss.item()})
 
-    performance_evaluator.on_fit_end()
     coordinator.print_on_master(f'Max CUDA memory usage: {torch.cuda.max_memory_allocated()/1024**2:.2f} MB')
 
 
