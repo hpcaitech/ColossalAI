@@ -101,17 +101,24 @@ class OPTPolicy(Policy):
                     suffix="self_attn",
                     target_module=FlashAttention,
                 ),)
-            base_policy[OPTAttention].sub_module_replacement = [
-                SubModuleReplacementDescription(suffix="q_proj",
-                                                target_module=Linear1D_Col,
-                                                kwargs=dict(gather_output=True)),
-                SubModuleReplacementDescription(suffix="k_proj",
-                                                target_module=Linear1D_Col,
-                                                kwargs=dict(gather_output=True)),
-                SubModuleReplacementDescription(suffix="v_proj",
-                                                target_module=Linear1D_Col,
-                                                kwargs=dict(gather_output=True)),
-            ]
+            del base_policy[OPTAttention]
+            new_item = {
+                FlashAttention:
+                    ModulePolicyDescription(attribute_replacement={},
+                                            param_replacement=[],
+                                            sub_module_replacement=[
+                                                SubModuleReplacementDescription(suffix="q_proj",
+                                                                                target_module=Linear1D_Col,
+                                                                                kwargs=dict(gather_output=True)),
+                                                SubModuleReplacementDescription(suffix="k_proj",
+                                                                                target_module=Linear1D_Col,
+                                                                                kwargs=dict(gather_output=True)),
+                                                SubModuleReplacementDescription(suffix="v_proj",
+                                                                                target_module=Linear1D_Col,
+                                                                                kwargs=dict(gather_output=True)),
+                                            ]),
+            }
+            base_policy.update(new_item)
 
         return base_policy
 
