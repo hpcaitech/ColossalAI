@@ -99,12 +99,11 @@ class FlashAttentionForOPT(ParallelModule):
         Convert a native OPT Attention to a Flash Attention.
         """
         # get the attributes
-        old_module = module
-        module.__class__ = FlashAttentionForOPT
-        for key in old_module.__dict__.keys():
+        new_module = FlashAttentionForOPT()
+        for key in module.__dict__.keys():
             setattr(
-                module.__class__,
+                new_module.__class__,
                 key,
-                getattr(old_module, key),
+                getattr(module, key),
             )
-        return module
+        return new_module
