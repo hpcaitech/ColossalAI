@@ -30,15 +30,26 @@ def check_bert_model_forward():
 
     stage_manager = PipelineStageManager(pg_mesh, PP_DIM)
     rank = dist.get_rank()
-    #print(rank)
+    # print(rank)
     
     x = torch.randint(0, 1000, (2, 3))  
-    attention_mask = torch.ones_like(x)
+    hidden_states = torch.randint(0,1000,(2,3,768)).to(torch.float32)
+    if stage_manager.stage == 0:
+        attention_mask = torch.ones_like(x)
+        output = bert_model_forward(self=model, input_ids=x, attention_mask=attention_mask,
+                                    stage_manager=stage_manager)
+        print(output[0].shape)
+        assert output[0].shape == (2, 3, 768)
+        print('start the training')
+    else:
+        attention_mask = torch.ones((2,12,3,3))
+        output = bert_model_forward(self=model, hidden_states=hidden_states, attention_mask=attention_mask,
+                                    stage_manager=stage_manager)
+        print(output[0].shape)
+        assert output[0].shape == (2, 3, 768)
+        print('end the training')
+        print(output)
     
-    output = bert_model_forward(self=model, input_ids=x, attention_mask=attention_mask,
-                                stage_manager=stage_manager)
-    print(output)
-    assert output[0].shape == (2, 3, 768)
     # assert output[1].shape == (2, 768)
 
 
