@@ -55,17 +55,18 @@ def train(args):
     # configure tokenizer
     if args.model == 'gpt2':
         tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
+        tokenizer.pad_token = tokenizer.eos_token
     elif args.model == 'bloom':
         tokenizer = BloomTokenizerFast.from_pretrained('bigscience/bloom-560m')
+        tokenizer.pad_token = tokenizer.eos_token
     elif args.model == 'opt':
         tokenizer = AutoTokenizer.from_pretrained("facebook/opt-350m")
+        tokenizer.pad_token = tokenizer.eos_token
     elif args.model == 'llama':
         tokenizer = LlamaTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
+        tokenizer.pad_token = tokenizer.unk_token
     else:
         raise ValueError(f'Unsupported model "{args.model}"')
-    max_len = args.max_len
-
-    tokenizer.pad_token = tokenizer.eos_token
 
     # configure optimizer
     if args.strategy.startswith('colossalai'):
@@ -96,13 +97,13 @@ def train(args):
     valid_data = data['test'].select((randint(0, len(eval_data) - 1) for _ in range(len(eval_data) // 5)))
 
     if args.dataset == 'Dahoas/rm-static':
-        train_dataset = RmStaticDataset(train_data, tokenizer, max_len)
-        valid_dataset = RmStaticDataset(valid_data, tokenizer, max_len)
-        eval_dataset = RmStaticDataset(eval_data, tokenizer, max_len)
+        train_dataset = RmStaticDataset(train_data, tokenizer, args.max_len)
+        valid_dataset = RmStaticDataset(valid_data, tokenizer, args.max_len)
+        eval_dataset = RmStaticDataset(eval_data, tokenizer, args.max_len)
     elif args.dataset == 'Anthropic/hh-rlhf':
-        train_dataset = HhRlhfDataset(train_data, tokenizer, max_len)
-        valid_dataset = HhRlhfDataset(valid_data, tokenizer, max_len)
-        eval_dataset = HhRlhfDataset(eval_data, tokenizer, max_len)
+        train_dataset = HhRlhfDataset(train_data, tokenizer, args.max_len)
+        valid_dataset = HhRlhfDataset(valid_data, tokenizer, args.max_len)
+        eval_dataset = HhRlhfDataset(eval_data, tokenizer, args.max_len)
     else:
         raise ValueError(f'Unsupported dataset "{args.dataset}"')
 
