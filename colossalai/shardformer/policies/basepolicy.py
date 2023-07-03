@@ -22,9 +22,11 @@ class SubModuleReplacementDescription:
     r"""
     Describe how a submodule will be replaced
 
-    suffix (str): used to get the submodule object
-    target_module (ParallelModule): specifies the module class used to replace to submodule
-    kwargs (Dict[str, Any]): the dictionary used to pass extra arguments to the `ParallelModule.from_native_module` method.
+    Args:
+        suffix (str): used to get the submodule object
+        target_module (ParallelModule): specifies the module class used to replace to submodule
+        kwargs (Dict[str, Any]): the dictionary used to pass extra arguments to the `ParallelModule.from_native_module` method.
+        ignore_if_not_exist (bool): if the submodule does not exist, ignore it or raise an exception
     """
     suffix: str
     target_module: ParallelModule
@@ -35,47 +37,37 @@ class SubModuleReplacementDescription:
 @dataclass
 class ModulePolicyDescription:
     r"""
-    Describe how the attributes and parameters will be transformed in a policy
+    Describe how the attributes and parameters will be transformed in a policy.
 
-    attribute_replacement (Dict[str, Any]): key is the attribute name, value is the attribute value after sharding
-    param_replacement (List[Callable]): a list of functions to perform in-place param replacement. The function
-    must receive two arguments: module, process_group. One example is
+    Args:
+        attribute_replacement (Dict[str, Any]): key is the attribute name, value is the attribute value after sharding
+        param_replacement (List[Callable]): a list of functions to perform in-place param replacement. The function
+                    must receive only one arguments: module. One example is
 
-    ```python
-    def example_replace_weight(module: torch.nn.Module, process_group):
-        weight = module.weight
-        new_weight = shard_rowwise(weight, process_group)
-        module.weight = torch.nn.Parameter(new_weight)
-    ```
-
-    sub_module_replacement: each element in the list is a ParamReplacementDescription object which specifies
-    the module to be replaced and the target module used to replacement
+                    ```python
+                    def example_replace_weight(module: torch.nn.Module):
+                        weight = module.weight
+                        new_weight = shard_rowwise(weight, process_group)
+                        module.weight = torch.nn.Parameter(new_weight)
+                    ```
+        sub_module_replacement (List[SubModuleReplacementDescription]): each element in the list is a ParamReplacementDescription
+                    object which specifies the module to be replaced and the target module used to replacement.
+        method_replace (Dict[str, Callable]): key is the method name, value is the method for replacement
     """
-    attribute_replacement: Dict[str, Any]
-    param_replacement: List[Callable]
-    sub_module_replacement: List[SubModuleReplacementDescription]
-    method_replacement: List[Callable] = None
+    attribute_replacement: Dict[str, Any] = None
+    param_replacement: List[Callable] = None
+    sub_module_replacement: List[SubModuleReplacementDescription] = None
+    method_replacement: Dict[str, Callable] = None
 
 
 class Policy(ABC):
     r"""
-    The base class for all the policies
+    The base class for all the policies. For each different model, it should have a different policy class,
+    like BertPolicy for Bert Model or OPTPolicy for OPT model.
 
-    For each different model, it should have a different policy class, like BertPolicy for Bert Model
-    or OPTPolicy for OPT model.
-
-    AutoPolicy:
-        Shardformer already defined some policies for huggingface model, just set ``custom_policy`` = None
-        to use the auto policy. In shardformer autopolicy, we define a base policy for one type model,
-        like BertPolicy, and for each different Bert modle in huggingface like, BertForMaskedLM,
-        BertForSequenceClassification, etc., for each different Bert model we difine different policy class
-        and overwrite the method like ``inject_policy`` to modify the forward and backward process.
-
-    CustomPolicy:
-        If you want to define your own policy, you can set ``custom_policy`` = CustomPolicy, and overwrite
-        all the methods in ``Policy`` class. You can refer to any policy we defined like the ``BertPolicy``
-        class for the example.
-
+    Shardformer has provided many built-in sharding policies for the mainstream models. You can use the
+    built-in policies by setting `policy = None`, which is already the default arguemnt for `Shardformer.optimize`.
+    If you want to define your own policy, you can inherit from this class and overwrite the methods you want to modify.
     """
 
     def __init__(self) -> None:
@@ -106,63 +98,24 @@ class Policy(ABC):
     def config_sanity_check(self):
         """
         Check if the shard config is valid for the model. Raise an exception if the config is invalid.
+        This method is made abstractmethod with no default implementation because we want to the policy writer
+        to take note of the feature supported by his/her model and policy.
         """
         pass
 
     @abstractmethod
     def preprocess(self) -> nn.Module:
         r"""
-        Perform some preprocessing of the model, like reshaping the embedding layer
+        Perform some preprocessing of the model, like reshaping the embedding layer.
         """
         pass
 
     @abstractmethod
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
         r"""
-        Return the dict for the modify policy, the key is the original layer class and the value is the
-        argument for the modify layer
-
-        Return:
-            Dict for the modify policy,
-            ::
-            {
-                origin layer class1 (nn.Module): ModulePolicyDescription(
-                    attribute_replacement = {
-                        "attribute1": value1,
-                        "attribute2": value2,
-                        ...
-                    },
-                    param_replacement = [
-                        function1,
-                        function2,
-                        ...
-                    ],
-                    sub_module_replacement = [
-                        `SubModuleReplacementDescription` description1,
-                        `SubModuleReplacementDescription` description2,
-                        ...
-                    ]
-                ),
-                origin layer class2 (nn.Module): ModulePolicyDescription(
-                    ...
-                ),
-                ...
-            }
-        """
-        pass
-
-    @abstractmethod
-    def new_model_class(self) -> Union[Type[nn.Module], None]:
-        r"""
-        Return the new model class for the new model, None means no need to modify the model class
-
-        Return:
-            New model class
-
-            E.g.
-            ```
-            return BertModel_
-            ```
+        This method returns the module policy, which is a dictionary. The key is the module name or the module object,
+        and the value is the ModulePolicyDescription object. The ModulePolicyDescription object describes how the module
+        will be transformed.
         """
         pass
 
