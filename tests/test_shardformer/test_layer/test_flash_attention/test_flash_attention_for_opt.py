@@ -22,12 +22,12 @@ def test_flash_attention_for_opt():
 
     opt_attention = OPTAttention(embed_dim=D_HEAD * N_HEADS, num_heads=N_HEADS, dropout=0, is_decoder=True,
                                  bias=True).to("cuda")
-    opt_flash_attention = FlashAttentionForOPT().from_native_module(opt_attention, None).to("cuda")
 
+    opt_flash_attention = FlashAttentionForOPT.from_native_module(opt_attention, None).to("cuda")
     opt_attention_output = opt_attention(hidden_states, key_value_states, attention_mask=attention_mask)
     flash_attention_output = opt_flash_attention(hidden_states, key_value_states, attention_mask=attention_mask)
 
-    assert_close(flash_attention_output, opt_attention_output, atol=1e-5, rtol=1e-5)
+    assert_close(flash_attention_output[0], opt_attention_output[0], atol=1e-5, rtol=1e-5)
 
 
 if __name__ == '__main__':

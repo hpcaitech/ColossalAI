@@ -1,15 +1,42 @@
-from typing import List, Optional, Tuple, Union
+import math
+from copy import deepcopy
+from typing import Callable, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 from torch.distributed import ProcessGroup
 
+from colossalai.nn import init as init
 from colossalai.shardformer.layer.parallel_module import ParallelModule
+from colossalai.shardformer.layer.utils import create_randomizer_with_offset
 
 __all__ = ['FlashAttentionForOPT']
 
 
 class FlashAttentionForOPT(ParallelModule):
+
+    def __init__(self,
+                 embed_dim: int,
+                 num_heads: int,
+                 dropout: float = 0.0,
+                 is_decoder: bool = False,
+                 bias: bool = True):
+        super().__init__()
+        self.embed_dim = embed_dim
+        self.num_heads = num_heads
+        self.dropout = dropout
+        self.head_dim = embed_dim // num_heads
+
+        if (self.head_dim * num_heads) != self.embed_dim:
+            raise ValueError(f"embed_dim must be divisible by num_heads (got `embed_dim`: {self.embed_dim}"
+                             f" and `num_heads`: {num_heads}).")
+        self.scaling = self.head_dim**-0.5
+        self.is_decoder = is_decoder
+
+        self.k_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
+        self.v_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
+        self.q_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
+        self.out_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
 
     def _shape(self, tensor: torch.Tensor, seq_len: int, bsz: int):
         return tensor.view(bsz, seq_len, self.num_heads, self.head_dim)
@@ -98,12 +125,13 @@ class FlashAttentionForOPT(ParallelModule):
         r"""
         Convert a native OPT Attention to a Flash Attention.
         """
-        # get the attributes
-        new_module = FlashAttentionForOPT()
-        for key in module.__dict__.keys():
-            setattr(
-                new_module.__class__,
-                key,
-                getattr(module, key),
-            )
-        return new_module
+        embed_dim = module.embed_dim
+        num_heads = module.num_heads
+        dropout = module.dropout
+        is_decoder = module.is_decoder
+        bias = module.k_proj.bias == None
+        f_attn = FlashAttentionForOPT(embed_dim, num_heads, dropout, is_decoder, bias)
+        f_attn.k_proj = deepcopy(module.k_proj)
+        f_attn.q_proj = deepcopy(module.q_proj)
+        f_attn.v_proj = deepcopy(module.v_proj)
+        f_attn.out_proj = deepcopy(module.out_proj)
