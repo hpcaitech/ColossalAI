@@ -111,17 +111,19 @@ def main(args):
     # configure tokenizer
     if args.model == 'gpt2':
         tokenizer = GPT2Tokenizer.from_pretrained(args.rm_pretrain)
+        tokenizer.pad_token = tokenizer.eos_token
     elif args.model == 'bloom':
         tokenizer = BloomTokenizerFast.from_pretrained(args.rm_pretrain)
+        tokenizer.pad_token = tokenizer.eos_token
     elif args.model == 'opt':
         tokenizer = AutoTokenizer.from_pretrained(args.rm_pretrain)
+        tokenizer.pad_token = tokenizer.eos_token
     elif args.model == 'llama':
         tokenizer = LlamaTokenizer.from_pretrained(args.pretrain)
         tokenizer.eos_token = '<\s>'
+        tokenizer.pad_token = tokenizer.unk_token
     else:
         raise ValueError(f'Unsupported model "{args.model}"')
-
-    tokenizer.pad_token = tokenizer.eos_token
 
     data_collator = DataCollatorForSupervisedDataset(tokenizer=tokenizer)
 
