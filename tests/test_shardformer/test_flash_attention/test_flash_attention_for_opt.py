@@ -18,7 +18,7 @@ def test_flash_attention_for_opt():
                                    dtype=torch.float32,
                                    device="cuda",
                                    requires_grad=True)
-    attention_mask = torch.ones((4, 1, 4096, 4096), dtype=torch.float32, device="cuda")
+    attention_mask = torch.ones((BATCH, 1, N_CTX, N_CTX), dtype=torch.float32, device="cuda")
 
     opt_attention = OPTAttention(embed_dim=D_HEAD * N_HEADS, num_heads=N_HEADS, dropout=0, is_decoder=True,
                                  bias=True).to("cuda")
