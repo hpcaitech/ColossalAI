@@ -3,7 +3,14 @@ import torch
 
 import colossalai
 from colossalai.logging import disable_existing_loggers
-from colossalai.testing import assert_hf_output_close, clear_cache_before_run, rerun_if_address_is_in_use, spawn
+from colossalai.tensor.d_tensor.api import is_customized_distributed_tensor, is_distributed_tensor
+from colossalai.testing import (
+    assert_hf_output_close,
+    clear_cache_before_run,
+    parameterize,
+    rerun_if_address_is_in_use,
+    spawn,
+)
 from tests.kit.model_zoo import model_zoo
 from tests.test_shardformer.test_model._utils import build_model, run_forward
 
@@ -32,11 +39,14 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
     # check mlp grad
     org_grad = org_model.h[0].mlp.c_fc.weight.grad
     shard_grad = sharded_model.h[0].mlp.c_fc.weight.grad
+    shard_weight = sharded_model.h[0].mlp.c_fc.weight
 
-    shard_grad_list = [torch.zeros([*shard_grad.shape]).to('cuda') for _ in range(2)]
-    shard_grad = torch.distributed.all_gather(shard_grad_list, shard_grad)
-    all_shard_grad = torch.cat(shard_grad_list, dim=1)
-
+    if is_distributed_tensor(shard_weight) or is_customized_distributed_tensor(shard_weight):
+        shard_grad_list = [torch.zeros([*shard_grad.shape]).to('cuda') for _ in range(2)]
+        shard_grad = torch.distributed.all_gather(shard_grad_list, shard_grad)
+        all_shard_grad = torch.cat(shard_grad_list, dim=1)
+    else:
+        all_shard_grad = shard_grad
     assert torch.allclose(
         org_grad, all_shard_grad,
         atol=1e-5), f"shard model grad is not equal to origin model grad\n{org_grad}\n{all_shard_grad}"
@@ -44,25 +54,33 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
     # check embedding weights
     org_grad = org_model.wte.weight.grad
     shard_grad = sharded_model.wte.weight.grad
-    shard_grad_list = [torch.zeros([*shard_grad.shape]).to('cuda') for _ in range(2)]
-    shard_grad = torch.distributed.all_gather(shard_grad_list, shard_grad)
-    all_shard_grad = torch.cat(shard_grad_list, dim=0)
+    shard_weight = sharded_model.wte.weight
 
+    if is_distributed_tensor(shard_weight) or is_customized_distributed_tensor(shard_weight):
+        shard_grad_list = [torch.zeros([*shard_grad.shape]).to('cuda') for _ in range(2)]
+        shard_grad = torch.distributed.all_gather(shard_grad_list, shard_grad)
+        all_shard_grad = torch.cat(shard_grad_list, dim=0)
+    else:
+        all_shard_grad = shard_grad
     assert torch.allclose(
         org_grad, all_shard_grad,
         atol=1e-5), f"shard model grad is not equal to origin model grad\n{org_grad}\n{all_shard_grad}"
 
 
+@parameterize('enable_fused_normalization', [True, False])
+@parameterize('enable_tensor_parallelism', [True, False])
+def run_gpt2_test(enable_fused_normalization, enable_tensor_parallelism):
+    sub_model_zoo = model_zoo.get_sub_registry('transformers_gpt')
+    for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
+        org_model, sharded_model = build_model(model_fn, enable_fused_normalization, enable_tensor_parallelism)
+        check_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn)
+    torch.cuda.empty_cache()
+
+
 def check_gpt2(rank, world_size, port):
     disable_existing_loggers()
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-
-    sub_model_zoo = model_zoo.get_sub_registry('transformers_gpt')
-    for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
-        org_model, sharded_model = build_model(model_fn)
-        check_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn)
-
-    torch.cuda.empty_cache()
+    run_gpt2_test()
 
 
 @pytest.mark.dist

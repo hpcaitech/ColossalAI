@@ -126,3 +126,28 @@ class Policy(ABC):
         the classifier layer
         """
         pass
+
+    def append_or_create_submodule_replacement(
+            self, description: Union[SubModuleReplacementDescription,
+                                     List[SubModuleReplacementDescription]], policy: Dict[Union[str, nn.Module],
+                                                                                          ModulePolicyDescription],
+            target_key: Union[str, nn.Module]) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
+        r"""
+        Append or create a new submodule replacement description to the policy for the given key.
+
+        Args:
+            submodule_replace_desc (Union[SubModuleReplacementDescription, List[SubModuleReplacementDescription]]): the submodule replacement description to be appended
+            policy (Dict[Union[str, nn.Module], ModulePolicyDescription]): the policy to be updated
+            target_key (Union[str, nn.Module]): the key of the policy to be updated
+        """
+        # convert to list
+        if isinstance(description, SubModuleReplacementDescription):
+            description = [description]
+
+        # append or create a new description
+        if target_key in policy:
+            policy[target_key].sub_module_replacement.extend(description)
+        else:
+            policy[target_key] = ModulePolicyDescription(sub_module_replacement=description)
+
+        return policy
