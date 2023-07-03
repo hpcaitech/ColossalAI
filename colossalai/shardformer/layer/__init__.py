@@ -1,6 +1,6 @@
 from .dropout import DropoutForParallelInput, DropoutForReplicatedInput
 from .embedding import Embedding1D, VocabParallelEmbedding1D
-from .flash_attention.flash_attention_opt import FlashAttentionForOPT
+from .flash_attention import FlashAttentionForOPT
 from .linear import Linear1D_Col, Linear1D_Row
 from .loss import cross_entropy_1d
 from .normalization import FusedLayerNorm, FusedRMSNorm
