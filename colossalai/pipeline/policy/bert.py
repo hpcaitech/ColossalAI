@@ -10,7 +10,7 @@ from transformers.modeling_outputs import (
     BaseModelOutputWithPastAndCrossAttentions,
     BaseModelOutputWithPoolingAndCrossAttentions,
 )
-from transformers.models.bert.modeling_bert import BertModel
+from transformers.models.bert.modeling_bert import BertForPreTrainingOutput, BertModel
 from transformers.utils import logging
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
@@ -307,23 +307,20 @@ class BertModelPolicy(Policy):
         return layers_per_stage_accumulated
 
 
-'''
 def bert_pretraining_model_forward(
-        self,
-        input_ids: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        token_type_ids: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.Tensor] = None,
-        head_mask: Optional[torch.Tensor] = None,
-        inputs_embeds: Optional[torch.Tensor] = None,
-        labels: Optional[torch.Tensor] = None,
-        next_sentence_label: Optional[torch.Tensor] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
-        hidden_states: Optional[torch.LongTensor] = None,
-        stage_manager: Optional[PipelineStageManager] = None,
-
-        ) -> Union[Tuple[torch.Tensor], BertForPreTrainingOutput]:
+    self,
+    input_ids: Optional[torch.Tensor] = None,
+    attention_mask: Optional[torch.Tensor] = None,
+    token_type_ids: Optional[torch.Tensor] = None,
+    position_ids: Optional[torch.Tensor] = None,
+    head_mask: Optional[torch.Tensor] = None,
+    inputs_embeds: Optional[torch.Tensor] = None,
+    labels: Optional[torch.Tensor] = None,
+    next_sentence_label: Optional[torch.Tensor] = None,
+    output_attentions: Optional[bool] = None,
+    output_hidden_states: Optional[bool] = None,
+    return_dict: Optional[bool] = None,
+    hidden_states: Optional[torch.LongTensor] = None,
+    stage_manager: Optional[PipelineStageManager] = None,
+) -> Union[Tuple[torch.Tensor], BertForPreTrainingOutput]:
     pass
-'''
