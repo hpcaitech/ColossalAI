@@ -81,8 +81,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
         # TODO:
         # 1. process group api
-        # 2. state dict
-        # 3. gradient accumulation
+        # 2. checkpoint IO
 
         super(LowLevelZeroOptimizer, self).__init__(optim=optimizer)
         self._dtype = self.optim.param_groups[0]['params'][0].dtype
