@@ -248,7 +248,6 @@ class VocabParallelEmbedding1D(ParallelModule):
             # the shape of the weight is (num_embeddings, embedding_dim)
             shard_weight = shard_rowwise(module.weight.data, process_group)
             vocab_embedding_1d.weight.data.copy_(shard_weight)
-            from colossalai.tensor.d_tensor.api import is_distributed_tensor
 
         return vocab_embedding_1d
 
