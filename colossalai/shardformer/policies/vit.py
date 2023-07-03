@@ -28,16 +28,14 @@ class ViTPolicy(Policy):
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
         from transformers.models.vit.modeling_vit import ViTEmbeddings, ViTLayer
 
-        return {
+        base_policy = {
             ViTEmbeddings:
-                ModulePolicyDescription(attribute_replacement={},
-                                        param_replacement=[],
-                                        sub_module_replacement=[
-                                            SubModuleReplacementDescription(
-                                                suffix="dropout",
-                                                target_module=DropoutForReplicatedInput,
-                                            )
-                                        ]),
+                ModulePolicyDescription(sub_module_replacement=[
+                    SubModuleReplacementDescription(
+                        suffix="dropout",
+                        target_module=DropoutForReplicatedInput,
+                    )
+                ]),
             ViTLayer:
                 ModulePolicyDescription(attribute_replacement={
                     "attention.attention.num_attention_heads":
@@ -45,7 +43,6 @@ class ViTPolicy(Policy):
                     "attention.attention.all_head_size":
                         self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
                 },
-                                        param_replacement=[],
                                         sub_module_replacement=[
                                             SubModuleReplacementDescription(
                                                 suffix="attention.attention.query",
