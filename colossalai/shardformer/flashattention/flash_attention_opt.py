@@ -13,7 +13,7 @@ __all__ = ['FlashAttention']
 class FlashAttention(ParallelModule):
 
     def _shape(self, tensor: torch.Tensor, seq_len: int, bsz: int):
-        return tensor.view(bsz, seq_len, self.num_heads, self.head_dim).contiguous()
+        return tensor.view(bsz, seq_len, self.num_heads, self.head_dim)
 
     def forward(
         self,
@@ -72,6 +72,7 @@ class FlashAttention(ParallelModule):
                 raise ValueError(
                     f"Attention mask should be of size {(bsz, 1, tgt_len, src_len)}, but is {attention_mask.size()}")
             attention_mask = attention_mask.expand(bsz, self.num_heads, tgt_len, tgt_len).contiguous()
+
         attn_output = me_attention(query_states,
                                    key_states,
                                    value_states,
@@ -92,7 +93,7 @@ class FlashAttention(ParallelModule):
     def from_native_module(module: nn.Module, process_group: Union[ProcessGroup, List[ProcessGroup]], *args,
                            **kwargs) -> nn.Module:
         r"""
-        Convert a native PyTorch linear layer to a parallelized linear layer.
+        Convert a native OPT Attention to a Flash Attention.
         """
         # get the attributes
         old_module = module
