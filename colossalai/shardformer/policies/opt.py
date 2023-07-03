@@ -1,5 +1,11 @@
-from colossalai.shardformer.flashattention import FlashAttention
-from colossalai.shardformer.layer import FusedLayerNorm, Linear1D_Col, Linear1D_Row, VocabParallelEmbedding1D
+# from colossalai.shardformer.flashattention import FlashAttention
+from colossalai.shardformer.layer import (
+    FlashAttentionForOPT,
+    FusedLayerNorm,
+    Linear1D_Col,
+    Linear1D_Row,
+    VocabParallelEmbedding1D,
+)
 
 from .._utils import getattr_, setattr_
 from .basepolicy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
@@ -99,11 +105,11 @@ class OPTPolicy(Policy):
             base_policy[OPTDecoderLayer].sub_module_replacement.append(
                 SubModuleReplacementDescription(
                     suffix="self_attn",
-                    target_module=FlashAttention,
+                    target_module=FlashAttentionForOPT,
                 ),)
             del base_policy[OPTAttention]
             new_item = {
-                FlashAttention:
+                FlashAttentionForOPT:
                     ModulePolicyDescription(attribute_replacement={},
                                             param_replacement=[],
                                             sub_module_replacement=[

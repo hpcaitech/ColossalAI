@@ -46,4 +46,5 @@ class ShardConfig:
         Turn on all optimization.
         """
         # you can add all the optimization flag here
-        self.fused_layernorm = True
+        self.enable_fused_normalization = True
+        self.enable_flash_attention = True

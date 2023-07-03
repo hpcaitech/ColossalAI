@@ -3,14 +3,18 @@ from typing import List, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 from torch.distributed import ProcessGroup
-from xformers.ops import memory_efficient_attention as me_attention
 
 from colossalai.shardformer.layer.parallel_module import ParallelModule
 
-__all__ = ['FlashAttention']
+try:
+    from xformers.ops import memory_efficient_attention as me_attention
+except ImportError:
+    print("Error: xformers module is not installed. Please install it to use flash attention.")
+
+__all__ = ['FlashAttentionForOPT']
 
 
-class FlashAttention(ParallelModule):
+class FlashAttentionForOPT(ParallelModule):
 
     def _shape(self, tensor: torch.Tensor, seq_len: int, bsz: int):
         return tensor.view(bsz, seq_len, self.num_heads, self.head_dim)
@@ -97,7 +101,7 @@ class FlashAttention(ParallelModule):
         """
         # get the attributes
         old_module = module
-        module.__class__ = FlashAttention
+        module.__class__ = FlashAttentionForOPT
         for key in old_module.__dict__.keys():
             setattr(
                 module.__class__,
