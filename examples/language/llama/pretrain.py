@@ -1,17 +1,19 @@
-# TODO: checkpoint
 # TODO: tensorboard
 # TODO: wandb
 
 import argparse
+import os
 import resource
 from contextlib import nullcontext
 from functools import partial
-from typing import Optional
+from typing import Optional, Tuple
 
 import torch
 import torch.nn as nn
+from data_utils import load_json, prepare_dataloader, save_json
 from datasets import load_dataset
-from torch.distributed.fsdp.fully_sharded_data_parallel import CPUOffload, MixedPrecision
+from torch.optim import Optimizer
+from torch.optim.lr_scheduler import _LRScheduler
 from tqdm import tqdm
 from transformers.models.llama.configuration_llama import LlamaConfig
 from transformers.models.llama.modeling_llama import LlamaForCausalLM
@@ -59,6 +61,33 @@ def tokenize_batch(batch, tokenizer: Optional[LlamaTokenizer] = None, max_length
     return data
 
 
+def save(booster: Booster, model: nn.Module, optimizer: Optimizer, lr_scheduler: _LRScheduler, epoch: int, step: int,
+         batch_size: int, coordinator: DistCoordinator, save_dir: str):
+    save_dir = os.path.join(save_dir, f'epoch{epoch}-step{step}')
+    os.makedirs(os.path.join(save_dir, 'model'), exist_ok=True)
+
+    booster.save_model(model, os.path.join(save_dir, 'model'), shard=True)
+    # TODO: sharded optimizer is not supported yet
+    booster.save_optimizer(optimizer, os.path.join(save_dir, 'optimizer'), shard=False)
+    booster.save_lr_scheduler(lr_scheduler, os.path.join(save_dir, 'lr_scheduler'))
+    running_states = {
+        'epoch': epoch,
+        'step': step,
+        'sample_start_index': step * batch_size,
+    }
+    if coordinator.is_master():
+        save_json(running_states, os.path.join(save_dir, 'running_states.json'))
+
+
+def load(booster: Booster, model: nn.Module, optimizer: Optimizer, lr_scheduler: _LRScheduler,
+         load_dir: str) -> Tuple[int, int, int]:
+    booster.load_model(model, os.path.join(load_dir, 'model'))
+    booster.load_optimizer(optimizer, os.path.join(load_dir, 'optimizer'))
+    booster.load_lr_scheduler(lr_scheduler, os.path.join(load_dir, 'lr_scheduler'))
+    running_states = load_json(os.path.join(load_dir, 'running_states.json'))
+    return running_states['epoch'], running_states['step'], running_states['sample_start_index']
+
+
 def main():
     # ==============================
     # Parse Arguments
@@ -83,6 +112,9 @@ def main():
     parser.add_argument('-g', '--grad_checkpoint', action='store_true', help='Use gradient checkpointing')
     parser.add_argument('-l', '--max_length', type=int, default=2048, help='Max sequence length')
     parser.add_argument('-x', '--mixed_precision', default='fp16', choices=['fp16', 'bf16'], help='Mixed precision')
+    parser.add_argument('-i', '--save_interval', type=int, default=1000, help='Save interval')
+    parser.add_argument('-o', '--save_dir', type=str, default='checkpoint', help='Checkpoint directory')
+    parser.add_argument('-f', '--load', type=str, default=None, help='Load checkpoint')
     parser.add_argument('--grad_clip', type=float, default=1.0, help='Gradient clipping')
 
     args = parser.parse_args()
@@ -128,13 +160,11 @@ def main():
 
     dataset = load_dataset(args.dataset)
     train_ds = dataset['train']
-    dataloader = plugin.prepare_dataloader(train_ds,
-                                           batch_size=args.batch_size,
-                                           shuffle=True,
-                                           drop_last=True,
-                                           collate_fn=partial(tokenize_batch,
-                                                              tokenizer=tokenizer,
-                                                              max_length=args.max_length))
+    dataloader = prepare_dataloader(train_ds,
+                                    batch_size=args.batch_size,
+                                    shuffle=True,
+                                    drop_last=True,
+                                    collate_fn=partial(tokenize_batch, tokenizer=tokenizer, max_length=args.max_length))
 
     # ==============================
     # Initialize Model, Optimizer and LR Scheduler
@@ -167,9 +197,25 @@ def main():
     coordinator.print_on_master(
         f'Booster init max CPU memory: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024:.2f} MB')
 
-    for epoch in range(args.num_epochs):
-        with tqdm(dataloader, desc=f'Epoch {epoch}', disable=not coordinator.is_master()) as pbar:
-            for batch in pbar:
+    # load checkpoint if specified
+    start_epoch = 0
+    start_step = 0
+    sampler_start_idx = 0
+    if args.load is not None:
+        coordinator.print_on_master('Loading checkpoint')
+        start_epoch, start_step, sampler_start_idx = load(booster, model, optimizer, lr_scheduler, args.load)
+        coordinator.print_on_master(f'Loaded checkpoint {args.load} at epoch {start_epoch} step {start_step}')
+
+    num_steps_per_epoch = len(dataloader)
+    dataloader.sampler.set_start_index(sampler_start_idx)
+    for epoch in range(start_epoch, args.num_epochs):
+        dataloader.sampler.set_epoch(epoch)
+        with tqdm(enumerate(dataloader),
+                  desc=f'Epoch {epoch}',
+                  disable=not coordinator.is_master(),
+                  total=num_steps_per_epoch,
+                  initial=start_step) as pbar:
+            for step, batch in pbar:
                 batch = {k: v.cuda() for k, v in batch.items()}
                 outputs = model(**batch)
                 loss = outputs[0]
@@ -178,6 +224,14 @@ def main():
                 lr_scheduler.step()
                 optimizer.zero_grad()
                 pbar.set_postfix({'loss': loss.item()})
+                if args.save_interval > 0 and (step + 1) % args.save_interval == 0:
+                    coordinator.print_on_master(f'Saving checkpoint')
+                    save(booster, model, optimizer, lr_scheduler, epoch, step + 1, args.batch_size, coordinator,
+                         args.save_dir)
+                    coordinator.print_on_master(f'Saved checkpoint at epoch {epoch} step {step + 1}')
+
+        dataloader.sampler.set_start_index(0)
+        start_step = 0
 
     coordinator.print_on_master(f'Max CUDA memory usage: {torch.cuda.max_memory_allocated()/1024**2:.2f} MB')
 
