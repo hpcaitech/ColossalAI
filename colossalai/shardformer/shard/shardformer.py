@@ -22,27 +22,19 @@ class ShardFormer:
     colossalai.launch_from_torch(config={})
 
     org_model = BertForMaskedLM.from_pretrained('bert-base-uncased')
-    shard_config = ShardConfig(
-        tensor_parallel_size=2,
-        tensor_parallel_mode='1d',
-    )
+    shard_config = ShardConfig()
     shard_former = ShardFormer(shard_config=shard_config)
-    model = shard_former.shard_model(org_model)
+    model = shard_former.optimize(org_model)
     ```
     """
 
     def __init__(self, shard_config: ShardConfig):
-        """
-        Do two things:
-        1. Create a colossalai.cluster.process_group_manager to manage process groups for dp, tp and pp
-        2. serve as a store for
-        """
         self.coordinator = DistCoordinator()
         self.shard_config = shard_config
 
-    def shard_model(self, model: nn.Module, policy: Policy = None):
+    def optimize(self, model: nn.Module, policy: Policy = None):
         r"""
-        The function is used to shard the PyTorch model.
+        This method will optimize the model based on the given policy.
 
         Args:
             model (`torch.nn.Model`): the origin huggingface model

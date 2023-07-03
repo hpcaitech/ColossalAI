@@ -1,8 +1,6 @@
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, Union
 
 import torch.nn as nn
-
-from colossalai.cluster.process_group_manager import ProcessGroupManager
 
 from .._utils import getattr_, setattr_
 from ..policies.autopolicy import get_autopolicy
@@ -34,7 +32,6 @@ class ModelSharder(object):
         self.policy.set_model(self.model)
         self.policy.set_shard_config(self.shard_config)
         self._preprocess()
-        self._replace_model_class()
         self._replace_module()
         self._postprocess()
 
@@ -44,27 +41,6 @@ class ModelSharder(object):
     def _postprocess(self) -> None:
         self.model = self.policy.postprocess()
 
-    def _replace_model_class(self,) -> None:
-        r"""
-        Replace the model to policy defined model
-        Mainly modify the forward and backward to fit distributed model
-
-        e.g.
-        ::
-            BertForMaskedLM.forward -> BertForMaskedLM_.forward
-        """
-        new_model_class = self.policy.new_model_class()
-        if new_model_class is None:
-            return
-
-        for key in new_model_class.__dict__.keys():
-            if hasattr(self.model.__class__, key):
-                setattr(
-                    self.model.__class__,
-                    key,
-                    getattr(new_model_class, key),
-                )
-
     def _replace_module(self,) -> None:
         r"""
         Replace the module according to the policy, and replace the module one by one
@@ -73,19 +49,18 @@ class ModelSharder(object):
             model (:class:`torch.nn.Module`): The model to shard
         """
         module_descriptions = self.policy.module_policy()
-        for module_description in module_descriptions.items():
-            origin_layer_cls = module_description[0]
-            attr_replacement = module_description[1].attribute_replacement
-            param_replacement = module_description[1].param_replacement
-            sub_module_replacement = module_description[1].sub_module_replacement
-            method_replacement = module_description[1].method_replacement
-            self._recursive_replace_layer(self.model, origin_layer_cls, attr_replacement, param_replacement,
+        for layer_cls, module_description in module_descriptions.items():
+            attr_replacement = module_description.attribute_replacement
+            param_replacement = module_description.param_replacement
+            sub_module_replacement = module_description.sub_module_replacement
+            method_replacement = module_description.method_replacement
+            self._recursive_replace_layer(self.model, layer_cls, attr_replacement, param_replacement,
                                           method_replacement, sub_module_replacement)
 
     def _recursive_replace_layer(
         self,
         module: nn.Module,
-        origin_cls: nn.Module,
+        origin_cls: Union[str, nn.Module],
         attr_replacement: Dict[str, Any],
         param_replacement: List[Callable],
         method_replacement: Dict[str, Callable],
@@ -95,17 +70,25 @@ class ModelSharder(object):
         Reverse the replace layer operation
 
         Args:
-            layer (:class:`torch.nn.Module`): The object of layer to shard
-            origin_cls (:class:`transformers.model`): The origin layer class
+            layer (torch.nn.Module): The object of layer to shard
+            origin_cls (Union[str, torch.nn.Module]): The origin layer class or a string of layer class name.
             attr_replacement (Dict): The attribute dict to modify
             param_replacement (List[Callable]): The function list to get parameter shard information in polic
             sub_module_replacement (List[Callable]): The function list to get sub module shard information in policy
         """
-        if module.__class__ == origin_cls:
-            self._replace_attr(module, attr_replacement)
-            self._replace_param(module, param_replacement)
-            self._replace_method(module, method_replacement)
-            self._replace_sub_module(module, sub_module_replacement)
+        if (isinstance(origin_cls, str) and origin_cls == module.__class__.__name__) or \
+           (module.__class__ == origin_cls):
+            if attr_replacement is not None:
+                self._replace_attr(module, attr_replacement)
+
+            if param_replacement is not None:
+                self._replace_param(module, param_replacement)
+
+            if method_replacement is not None:
+                self._replace_method(module, method_replacement)
+
+            if sub_module_replacement is not None:
+                self._replace_sub_module(module, sub_module_replacement)
 
         for name, child in module.named_children():
             self._recursive_replace_layer(child, origin_cls, attr_replacement, param_replacement, method_replacement,
@@ -138,13 +121,10 @@ class ModelSharder(object):
             layer (:class:`torch.nn.Module`): The object of layer to shard
             param_replacement (List[Callable]): The function list to get parameter shard information in policy
         """
-        # TODO: support parameter shard
-        pass
+        for param_func in param_replacement:
+            param_func(module)
 
     def _replace_method(self, module: nn.Module, method_replacement: Dict[str, Callable]):
-        if method_replacement is None:
-            return
-
         for method_name, new_method in method_replacement.items():
             # bind the new method to the module
             setattr(module, method_name, new_method.__get__(module, module.__class__))
@@ -158,8 +138,8 @@ class ModelSharder(object):
         Shard one layer according to the policy, the layer should be the same class as the key in policy's argument_policy return dict
 
         Args:
-            org_layer (:class:`torch.nn.Module`): The origin layer object to shard
-            param_funcs (:class:`List[typing.Callable]`): The function list to get shard information in policy class
+            org_layer (torch.nn.Module): The origin layer object to shard
+            sub_module_replacement (List[SubModuleReplacementDescription]): The sub module replacement description list
 
         """
         for description in sub_module_replacement:
