@@ -1,4 +1,3 @@
-# from colossalai.shardformer.flashattention import FlashAttention
 from colossalai.shardformer.layer import (
     FlashAttentionForOPT,
     FusedLayerNorm,
