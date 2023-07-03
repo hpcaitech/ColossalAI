@@ -93,7 +93,3 @@ def opt_flash_attention_forward(
 
     attn_output = self.out_proj(attn_output)
     return attn_output, None, past_key_value
-
-
-# def attention_input_reshape(self, tensor: torch.Tensor, seq_len: int, bsz: int):
-#     return tensor.view(bsz, seq_len, self.num_heads, self.head_dim)
