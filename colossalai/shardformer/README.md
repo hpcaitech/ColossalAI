@@ -149,7 +149,7 @@ class ParallelModule(torch.nn.Module):
 ```python
 @dataclass
 class ShardConfig:
-    tensor_paralle_process_group: ProcessGroup = None
+    tensor_parallel_process_group: ProcessGroup = None
     enable_fused_normalization: bool = False
     ...
 
