@@ -135,3 +135,5 @@ class FlashAttentionForOPT(ParallelModule):
         f_attn.q_proj = deepcopy(module.q_proj)
         f_attn.v_proj = deepcopy(module.v_proj)
         f_attn.out_proj = deepcopy(module.out_proj)
+
+        return f_attn
