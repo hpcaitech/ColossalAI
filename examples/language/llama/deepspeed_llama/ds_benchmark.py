@@ -153,7 +153,10 @@ def main():
     # ==============================
     # Parse Arguments
     # ==============================
-    print(os.environ)
+    print(os.environ['NCCL_IB_HCA'])
+    print(os.environ['NCCL_IB_DISABLE'])
+    print(os.environ['NCCL_SOCKET_IFNAME'])
+    print(os.environ['NCCL_IB_GID_INDEX'])
     start_time = time.time()
     args = get_arguments()
     deepspeed.init_distributed()
