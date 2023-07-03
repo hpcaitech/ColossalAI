@@ -1,9 +1,11 @@
+from copy import deepcopy
+
 import torch
 import torch.nn as nn
 from torch.testing import assert_close
 from transformers.models.opt.modeling_opt import OPTAttention
 
-from colossalai.shardformer.layer import FlashAttentionForOPT
+from colossalai.shardformer.layer import opt_flash_attention_forward
 
 
 def test_flash_attention_for_opt():
@@ -23,7 +25,9 @@ def test_flash_attention_for_opt():
     opt_attention = OPTAttention(embed_dim=D_HEAD * N_HEADS, num_heads=N_HEADS, dropout=0, is_decoder=True,
                                  bias=True).to("cuda")
 
-    opt_flash_attention = FlashAttentionForOPT.from_native_module(opt_attention, None).to("cuda")
+    opt_flash_attention = deepcopy(opt_attention)
+    setattr(opt_flash_attention, 'forward',
+            opt_flash_attention_forward.__get__(opt_flash_attention, opt_flash_attention.__class__))
     opt_attention_output = opt_attention(hidden_states, key_value_states, attention_mask=attention_mask)
     flash_attention_output = opt_flash_attention(hidden_states, key_value_states, attention_mask=attention_mask)
 
