@@ -11,7 +11,6 @@ import torch.nn as nn
 from torch.optim import Optimizer
 
 from colossalai.tensor.d_tensor.d_tensor import DTensor
-from .index_file import CheckpointIndexFile
 
 SAFE_WEIGHTS_NAME = "model.safetensors"
 WEIGHTS_NAME = "pytorch_model.bin"
