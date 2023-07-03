@@ -2,6 +2,7 @@ from functools import partial
 from types import MethodType
 from typing import Dict, List, Optional, Tuple, Union
 
+import numpy as np
 import torch
 from torch import Tensor
 from torch.nn import CrossEntropyLoss, Module
@@ -252,7 +253,7 @@ class BertModelPolicy(Policy):
         hold_layers = []
         if self.stage_manager.is_first_stage():
             hold_layers.append(module.embeddings)
-        num_layers_per_stage_accumulated = self.convert_into_accumulated()
+        num_layers_per_stage_accumulated = np.cumsum(self.layers_per_stage)
         hold_layers.extend(module.encoder.layer[num_layers_per_stage_accumulated \
                     [self.stage_manager.stage-1] if self.stage_manager.stage > 0 else 0:
                     num_layers_per_stage_accumulated[self.stage_manager.stage]])
@@ -269,42 +270,22 @@ class BertModelPolicy(Policy):
     def replace_forward(self, module: Module) -> None:
         module.model.forward = MethodType(partial(bert_model_forward, stage_manager=self.stage_manager), module.model)
 
-    def distribute_layers(self, num, stage_num) -> List[int]:
+    def distribute_layers(self, num_layers: int, num_stages: int) -> List[int]:
         """
         divide layers into stages
         """
-        quotient = num // stage_num
-        remainder = num % stage_num
+        quotient = num_layers // num_stages
+        remainder = num_layers % num_stages
 
         # calculate the num_layers per stage
-        layers_per_stage = [quotient] * stage_num
+        layers_per_stage = [quotient] * num_stages
 
         # deal with the rest layers
         if remainder > 0:
-            middle_stages = (stage_num - 1) // 2
-            right_extra = remainder // 2
-            left_extra = remainder - right_extra
-
-            #divide the rest part
-            left = 0
-            right = 0
-            while left_extra > 0:
-                layers_per_stage[middle_stages - left] += 1
-                left_extra -= 1
-                left += 1
-            while right_extra > 0:
-                layers_per_stage[middle_stages + right + 1] += 1
-                right_extra -= 1
-                right += 1
+            start_position = num_layers // 2 - remainder // 2
+            for i in range(start_position, start_position + remainder):
+                layers_per_stage[i] += 1
         return layers_per_stage
-
-    def convert_into_accumulated(self) -> List[int]:
-        acc = 0
-        layers_per_stage_accumulated = []
-        for num in self.layers_per_stage:
-            acc += num
-            layers_per_stage_accumulated.append(acc)
-        return layers_per_stage_accumulated
 
 
 def bert_pretraining_model_forward(
