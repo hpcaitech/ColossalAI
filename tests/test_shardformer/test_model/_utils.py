@@ -3,7 +3,7 @@ import copy
 from colossalai.shardformer import ShardConfig, ShardFormer
 
 
-def build_model(model_fn, enable_flash_attention):
+def build_model(model_fn, enable_flash_attention=False):
     # create new model
     org_model = model_fn().cuda()
 
