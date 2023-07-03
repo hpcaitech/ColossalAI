@@ -1,6 +1,3 @@
-# TODO: low level zero
-# TODO: grad clipping
-# TODO: bf16
 # TODO: checkpoint
 # TODO: tensorboard
 # TODO: wandb
@@ -22,7 +19,7 @@ from transformers.models.llama.tokenization_llama import LlamaTokenizer
 
 import colossalai
 from colossalai.booster import Booster
-from colossalai.booster.plugin import GeminiPlugin, TorchFSDPPlugin
+from colossalai.booster.plugin import GeminiPlugin, LowLevelZeroPlugin
 from colossalai.cluster import DistCoordinator
 from colossalai.lazy import LazyInitContext
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
@@ -70,7 +67,7 @@ def main():
     parser.add_argument('-c', '--config', type=str, default='7b', help='Model configuration')
     parser.add_argument('-p',
                         '--plugin',
-                        choices=['gemini', 'gemini_cpu', 'fsdp', 'fsdp_cpu'],
+                        choices=['gemini', 'gemini_cpu', 'zero2', 'zero2_cpu'],
                         default='gemini',
                         help='Choose which plugin to use')
     parser.add_argument('-d',
@@ -85,6 +82,8 @@ def main():
     parser.add_argument('-s', '--warmup_steps', type=int, default=2000, help='Warmup steps')
     parser.add_argument('-g', '--grad_checkpoint', action='store_true', help='Use gradient checkpointing')
     parser.add_argument('-l', '--max_length', type=int, default=2048, help='Max sequence length')
+    parser.add_argument('-x', '--mixed_precision', default='fp16', choices=['fp16', 'bf16'], help='Mixed precision')
+    parser.add_argument('--grad_clip', type=float, default=1.0, help='Gradient clipping')
 
     args = parser.parse_args()
 
@@ -95,17 +94,26 @@ def main():
     # Initialize Booster
     # ==============================
     if args.plugin == 'gemini':
-        plugin = GeminiPlugin(placement_policy='auto', initial_scale=2**16)
+        plugin = GeminiPlugin(precision=args.mixed_precision,
+                              placement_policy='auto',
+                              initial_scale=2**16,
+                              max_norm=args.grad_clip)
     elif args.plugin == 'gemini_cpu':
-        plugin = GeminiPlugin(placement_policy='cpu', initial_scale=2**16)
-    elif args.plugin == 'fsdp':
-        plugin = TorchFSDPPlugin(mixed_precision=MixedPrecision(
-            param_dtype=torch.float16, reduce_dtype=torch.float16, buffer_dtype=torch.float16))
-    elif args.plugin == 'fsdp_cpu':
-        plugin = TorchFSDPPlugin(mixed_precision=MixedPrecision(param_dtype=torch.float16,
-                                                                reduce_dtype=torch.float16,
-                                                                buffer_dtype=torch.float16),
-                                 cpu_offload=CPUOffload(offload_params=True))
+        plugin = GeminiPlugin(precision=args.mixed_precision,
+                              placement_policy='cpu',
+                              initial_scale=2**16,
+                              max_norm=args.grad_clip)
+    elif args.plugin == 'zero2':
+        plugin = LowLevelZeroPlugin(stage=2,
+                                    precision=args.mixed_precision,
+                                    initial_scale=2**16,
+                                    max_norm=args.grad_clip)
+    elif args.plugin == 'zero2_cpu':
+        plugin = LowLevelZeroPlugin(stage=2,
+                                    precision=args.mixed_precision,
+                                    initial_scale=2**16,
+                                    cpu_offload=True,
+                                    max_norm=args.grad_clip)
     else:
         raise ValueError(f'Unknown plugin {args.plugin}')
 
