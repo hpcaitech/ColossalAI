@@ -153,6 +153,7 @@ def main():
     # ==============================
     # Parse Arguments
     # ==============================
+    print(os.environ)
     start_time = time.time()
     args = get_arguments()
     deepspeed.init_distributed()
