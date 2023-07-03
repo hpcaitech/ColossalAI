@@ -6,10 +6,9 @@ from torch.nn import Module, Parameter
 from colossalai.pipeline.stage_manager import PipelineStageManager
 
 from .base import Policy
-from .llama import LlamaForCausalLM, LlamaForCausalLMPolicy
-
+from .bert import BertModel,BertModelPolicy
 POLICY_MAP: Dict[Type[Module], Type[Policy]] = {
-    LlamaForCausalLM: LlamaForCausalLMPolicy,
+    BertModel: BertModelPolicy,
 }
 
 

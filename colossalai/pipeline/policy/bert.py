@@ -240,29 +240,69 @@ def bert_model_forward(self:BertModel,
                 cross_attentions=all_cross_attentions,
         )
 
+# The layer partition policy for bertmodel
+class BertModelPolicy(Policy):
+    def __init__(self, stage_manager: PipelineStageManager, num_layers: int,num_stages: int):
+        self.stage_manager = stage_manager
+        self.layers_per_stage = self.distribute_layers(num_layers,num_stages)
 
-# class BertModelPolicy(Policy):
-#     def get_hold_layers(self, module: BertModel) -> List[Module]:
-#         # get pipeline layers for curerent stage
-#         hold_layers = []
-#         if self.stage_manager.is_first_stage():
-#             hold_layers.append(module.embeddings)
-#         #Fix: num_layers_per_stage should be calculated based on the number of layers in the model
-#         num_layers_per_stage = len(module.encoder.layer) // self.stage_manager.num_stages
+    def get_hold_layers(self, module: BertModel) -> List[Module]:
+        # get pipeline layers for current stage
+        hold_layers = []
+        if self.stage_manager.is_first_stage():
+            hold_layers.append(module.embeddings)
+        num_layers_per_stage_accumulated = self.convert_into_accumulated()
+        hold_layers.extend(module.encoder.layer[num_layers_per_stage_accumulated \
+                    [self.stage_manager.stage-1] if self.stage_manager.stage > 0 else 0:
+                    num_layers_per_stage_accumulated[self.stage_manager.stage]])
         
-#         hold_layers.extend(module.encoder.layer[self.stage_manager.stage*
-#                                                 num_layers_per_stage : (self.stage_manager.stage+1)* num_layers_per_stage])
-#         if self.stage_manager.is_last_stage():
-#             hold_layers.append(module.pooler)
+        if self.stage_manager.is_last_stage():
+            hold_layers.append(module.pooler)
 
-#         return hold_layers
+        return hold_layers
     
-#     def get_shared_params(self, module: BertModel) -> List[Dict[int, Tensor]]:
-#         if id(module.embeddings.parameters) == id(module.pooler.parameters)
-#             return [dict(module.embeddings.named_parameters())]
-#         return []
-#     def replace_forward(self, module: Module) -> None:
-#         return super().replace_forward(module)
+    def get_shared_params(self, module: BertModel) -> List[Dict[int, Tensor]]:
+        '''no shared params in bertmodel'''
+        pass
+    def replace_forward(self, module: Module) -> None:
+        module.model.forward = MethodType(partial(bert_model_forward,stage_manager=self.stage_manager), module.model)
+
+    # divide layers into stages
+    def distribute_layers(self, num, stage_num) -> List[int]:
+        quotient = num // stage_num  
+        remainder = num % stage_num  
+
+        # calculate the num_layers per stage
+        layers_per_stage = [quotient] * stage_num
+
+        # deal with the rest layers
+        if remainder > 0:
+            middle_stages = (stage_num-1) // 2  
+            right_extra = remainder // 2  
+            left_extra = remainder - right_extra  
+            
+            #divide the rest part
+            left=0
+            right=0
+            while left_extra > 0:
+                layers_per_stage[middle_stages - left] += 1
+                left_extra -= 1
+                left+= 1
+            while right_extra > 0 :
+                layers_per_stage[middle_stages + right + 1] += 1            
+                right_extra -= 1
+                right+=1          
+        return layers_per_stage
+    def convert_into_accumulated(self) -> List[int]:
+        '''convert a array into accumulated array'''
+        acc = 0
+        layers_per_stage_accumulated=[]
+        for num in self.layers_per_stage:
+            acc += num
+            layers_per_stage_accumulated.append(acc)
+        return layers_per_stage_accumulated
+    
+
 
 '''
 def bert_pretraining_model_forward(
