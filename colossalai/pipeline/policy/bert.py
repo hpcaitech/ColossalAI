@@ -57,6 +57,7 @@ def bert_model_forward(self:BertModel,
             If set to `True`, `past_key_values` key value states are returned and can be used to speed up decoding (see
             `past_key_values`).
         """
+        # debugging
         # preprocess:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -69,15 +70,26 @@ def bert_model_forward(self:BertModel,
         else:
             use_cache = False
 
-        if input_ids is not None and inputs_embeds is not None:
-            raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
-        elif input_ids is not None:
-            input_shape = input_ids.size()
-        elif inputs_embeds is not None:
-            input_shape = inputs_embeds.size()[:-1]
+        if stage_manager.is_first_stage():
+            if input_ids is not None and inputs_embeds is not None:
+                raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
+            elif input_ids is not None:
+                input_shape = input_ids.size()
+            elif inputs_embeds is not None:
+                input_shape = inputs_embeds.size()[:-1]
+            else:
+                raise ValueError("You have to specify either input_ids or inputs_embeds")
+            batch_size, seq_length = input_shape
+            device = input_ids.device if input_ids is not None else inputs_embeds.device 
+            # We can provide a self-attention mask of dimensions [batch_size, from_seq_length, to_seq_length]
+            # ourselves in which case we just need to make it broadcastable to all heads.
+            extended_attention_mask: torch.Tensor = self.get_extended_attention_mask(attention_mask, input_shape)    
+            attention_mask = extended_attention_mask
         else:
-            raise ValueError("You have to specify either input_ids or inputs_embeds")
-        
+            input_shape = hidden_states.size()[:-1]
+            batch_size, seq_length = input_shape
+            device = hidden_states.device
+            
         if output_attentions:
             logger.warning_once('output_attentions=True is not supported for pipeline models at the moment.')
             output_attentions = False
@@ -88,8 +100,7 @@ def bert_model_forward(self:BertModel,
             logger.warning_once('use_cache=True is not supported for pipeline models at the moment.')
             use_cache = False
         
-        batch_size, seq_length = input_shape
-        device = input_ids.device if input_ids is not None else inputs_embeds.device
+        
         
         # past_key_values_length
         past_key_values_length = past_key_values[0][0].shape[2] if past_key_values is not None else 0
@@ -105,10 +116,24 @@ def bert_model_forward(self:BertModel,
             else:
                 token_type_ids = torch.zeros(input_shape, dtype=torch.long, device=device)
 
-        # We can provide a self-attention mask of dimensions [batch_size, from_seq_length, to_seq_length]
-        # ourselves in which case we just need to make it broadcastable to all heads.
-        extended_attention_mask: torch.Tensor = self.get_extended_attention_mask(attention_mask, input_shape)
+        
 
+        # Prepare head mask if needed
+        # 1.0 in head_mask indicate we keep the head
+        # attention_probs has shape bsz x n_heads x N x N
+        # input head_mask has shape [num_heads] or [num_hidden_layers x num_heads]
+        # and head_mask is converted to shape [num_hidden_layers x batch x num_heads x seq_length x seq_length]
+        head_mask = self.get_head_mask(head_mask, self.config.num_hidden_layers)
+
+        hidden_states = hidden_states if hidden_states is not None else None
+        if stage_manager.is_first_stage():        
+            hidden_states= self.embeddings(
+            input_ids=input_ids,
+            position_ids=position_ids,
+            token_type_ids=token_type_ids,
+            inputs_embeds=inputs_embeds,
+            past_key_values_length=past_key_values_length,
+        )
         # If a 2D or 3D attention mask is provided for the cross-attention
         # we need to make broadcastable to [batch_size, num_heads, seq_length, seq_length]
         if self.config.is_decoder and encoder_hidden_states is not None:
@@ -120,27 +145,7 @@ def bert_model_forward(self:BertModel,
         else:
             encoder_extended_attention_mask = None
 
-        # Prepare head mask if needed
-        # 1.0 in head_mask indicate we keep the head
-        # attention_probs has shape bsz x n_heads x N x N
-        # input head_mask has shape [num_heads] or [num_hidden_layers x num_heads]
-        # and head_mask is converted to shape [num_hidden_layers x batch x num_heads x seq_length x seq_length]
-        head_mask = self.get_head_mask(head_mask, self.config.num_hidden_layers)
-       
-        # assure that the input is embedding_output and is the hidden_states of previous stages.
 
-        hidden_states = input_ids if input_ids is not None else None
-        if stage_manager.is_first_stage():        
-                hidden_states= self.embeddings(
-                input_ids=input_ids,
-                position_ids=position_ids,
-                token_type_ids=token_type_ids,
-                inputs_embeds=inputs_embeds,
-                past_key_values_length=past_key_values_length,
-            )
-       
-
-        encoder_outputs = None
         #inherit from bert_layer
         all_hidden_states = () if output_hidden_states else None
         all_self_attentions = () if output_attentions else None
@@ -159,22 +164,19 @@ def bert_model_forward(self:BertModel,
         start_layer = stage_manager.stage * num_layers_per_stage
         end_layer = (stage_manager.stage + 1) * num_layers_per_stage
 
+        #layer_outputs
+        layer_outputs = hidden_states if hidden_states is not None else None
         for idx, encoder_layer in enumerate(self.encoder.layer[start_layer:end_layer], start=start_layer):
             if stage_manager.is_first_stage() and idx == 0:
-                attention_mask = extended_attention_mask
+                encoder_attention_mask=encoder_extended_attention_mask
 
             if output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
             
             layer_head_mask = head_mask[idx] if head_mask is not None else None
             past_key_value = past_key_values[idx] if past_key_values is not None else None
-            
-            ###
-            print('where is the model now',start_layer,idx,end_layer)
-            print('what stage is now',stage_manager.stage)
-
-            if self.encoder.gradient_checkpointing and self.encoder.training:
-                
+        
+            if self.encoder.gradient_checkpointing and self.encoder.training:        
                 def create_custom_forward(module):
                     def custom_forward(*inputs):
                         return module(*inputs, past_key_value, output_attentions)
@@ -190,16 +192,6 @@ def bert_model_forward(self:BertModel,
                     encoder_attention_mask,
                 )
             else:
-                if stage_manager.stage == 1:
-                    if hidden_states is not None :
-                        print('shape of hidden_states',hidden_states.shape)
-                    if attention_mask is not None :
-                        print('shape of attention_mask',attention_mask.shape)
-                    ## TODO: check for this layer_head_mask
-                    if layer_head_mask is not None :
-                        print('shape of layer_head_mask',layer_head_mask.shape)
-                    if encoder_hidden_states is not None :
-                        print('shape of encoder_hidden_states',encoder_hidden_states.shape)
                 layer_outputs = encoder_layer(
                     hidden_states,
                     attention_mask,
@@ -226,9 +218,8 @@ def bert_model_forward(self:BertModel,
         if stage_manager.is_last_stage():    
             pooled_output = self.pooler(sequence_output) if self.pooler is not None else None
             if not return_dict:
-                return (sequence_output, pooled_output) + encoder_outputs[1:]
+                return (sequence_output, pooled_output) + layer_outputs[1:]
         
-
         #output of non-first and non-last stages: 
         if not return_dict:
             return tuple(v 
