@@ -60,3 +60,4 @@ The dataset can be automatically downloaded by using `huggingface/datasets`. You
 - Checkpoint to load: `-f`, `--load`. The checkpoint path to load. The default value is `None`.
 - Gradient clipping: `--gradient_clipping`. The default value is 1.0.
 - Tensorboard log directory: `-t`, `--tensorboard_dir`. The directory path to save tensorboard logs. The default value is `tb_logs`.
+- Flash attention: `-a`, `--flash_attention`. If you want to use flash attention, you must install [xformers](https://github.com/facebookresearch/xformers) first. The default value is `False`.
