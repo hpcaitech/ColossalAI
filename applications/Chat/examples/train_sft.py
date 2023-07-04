@@ -70,7 +70,7 @@ def train(args):
         tokenizer.pad_token = tokenizer.eos_token
     elif args.model == 'llama':
         tokenizer = AutoTokenizer.from_pretrained(
-            "hf-internal-testing/llama-tokenizer",
+            args.pretrain,
             padding_side="right",
             use_fast=False,
         )
