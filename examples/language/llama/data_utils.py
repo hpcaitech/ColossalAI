@@ -45,7 +45,7 @@ def prepare_dataloader(dataset,
                        **kwargs):
     r"""
     Prepare a dataloader for distributed training. The dataloader will be wrapped by
-    `torch.utils.data.DataLoader` and `torch.utils.data.DistributedSampler`.
+    `torch.utils.data.DataLoader` and `StatefulDistributedSampler`.
 
 
     Args:

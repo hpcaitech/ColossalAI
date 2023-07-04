@@ -122,9 +122,11 @@ def main():
     parser.add_argument('-f', '--load', type=str, default=None, help='Load checkpoint')
     parser.add_argument('--grad_clip', type=float, default=1.0, help='Gradient clipping')
     parser.add_argument('-t', '--tensorboard_dir', type=str, default='tb_logs', help='Tensorboard directory')
-
     args = parser.parse_args()
 
+    # ==============================
+    # Initialize Distributed Training
+    # ==============================
     colossalai.launch_from_torch({})
     coordinator = DistCoordinator()
 
@@ -220,6 +222,7 @@ def main():
         coordinator.print_on_master(f'Loaded checkpoint {args.load} at epoch {start_epoch} step {start_step}')
 
     num_steps_per_epoch = len(dataloader)
+    # if resume training, set the sampler start index to the correct value
     dataloader.sampler.set_start_index(sampler_start_idx)
     for epoch in range(start_epoch, args.num_epochs):
         dataloader.sampler.set_epoch(epoch)
@@ -247,7 +250,7 @@ def main():
                     save(booster, model, optimizer, lr_scheduler, epoch, step + 1, args.batch_size, coordinator,
                          args.save_dir)
                     coordinator.print_on_master(f'Saved checkpoint at epoch {epoch} step {step + 1}')
-
+        # the continue epochs are not resumed, so we need to reset the sampler start index and start step
         dataloader.sampler.set_start_index(0)
         start_step = 0
 
