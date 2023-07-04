@@ -66,7 +66,7 @@ class Policy(ABC):
     like BertPolicy for Bert Model or OPTPolicy for OPT model.
 
     Shardformer has provided many built-in sharding policies for the mainstream models. You can use the
-    built-in policies by setting `policy = None`, which is already the default arguemnt for `Shardformer.optimize`.
+    built-in policies by setting `policy = None`, which is already the default argument for `Shardformer.optimize`.
     If you want to define your own policy, you can inherit from this class and overwrite the methods you want to modify.
     """
 
