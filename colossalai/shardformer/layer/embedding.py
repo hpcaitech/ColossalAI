@@ -259,7 +259,7 @@ class VocabParallelEmbedding1D(ParallelModule):
 
     def _fill_padding_idx_with_zero(self) -> None:
         if self.padding_idx is not None and \
-                self.padding_idx >= self.vocab_start_index and self.padding_idx < self.vocab_end_index:
+                self.vocab_start_index <= self.padding_idx < self.vocab_end_index:
             with torch.no_grad():
                 self.weight[self.padding_idx - self.vocab_start_index].fill_(0)
 

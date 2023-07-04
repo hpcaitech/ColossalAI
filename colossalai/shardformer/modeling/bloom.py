@@ -49,7 +49,7 @@ def build_bloom_alibi_tensor_fn(process_group: ProcessGroup) -> torch.Tensor:
                                         dtype=torch.int32)
             slopes = torch.cat([slopes, torch.pow(extra_base, extra_powers)], dim=0)
 
-        # Note: alibi will added to the attention bias that will be applied to the query, key product of attention
+        # Note: alibi will add to the attention bias that will be applied to the query, key product of attention
         # => therefore alibi will have to be of shape (batch_size, num_heads, query_length, key_length)
         # => here we set (batch_size=1, num_heads=num_heads, query_length=1, key_length=max_length)
         # => the query_length dimension will then be broadcasted correctly

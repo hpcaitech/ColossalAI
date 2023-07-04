@@ -129,7 +129,7 @@ Each distributed module implements its `from_native_module` static method to con
 class ParallelModule(torch.nn.Module):
 
     @abstractmethod
-    def from_native_module(module: torch.nn.Module, process_group: Union[ProcessGroup, Tuple[ProcessGroup]]) -> ParallelModule
+    def from_native_module(module: torch.nn.Module, process_group: Union[ProcessGroup, Tuple[ProcessGroup]]) -> ParallelModule:
         """
         Convert a native module to a parallelized
 
@@ -166,7 +166,7 @@ It is merely a description, the actual sharding will be performed by `ModelShard
 We abstract the policy into four stages:
 
 1. Preprocessing: call `Policy.preprocess` to do some prior work before sharding, for example, resizing the embedding
-2. Providing `ModulePolicyDescription`: call `Policy.module_policy` to get a bunch of `ModulePolicyDescription` to tell `ModelSharder` how the submodules's attributes, child parameters, and deeper submodules will be substituted.
+2. Providing `ModulePolicyDescription`: call `Policy.module_policy` to get a bunch of `ModulePolicyDescription` to tell `ModelSharder` how the submodule's attributes, child parameters, and deeper submodules will be substituted.
 3. Postprocessing: call `Policy.postprocess` to perform some postprocessing work, for example, binding the embedding and classifier head weights of the BERT model.
 
 ``` python
@@ -298,7 +298,7 @@ class ShardFormer:
         self.pg_manager = pg_manager
         return pg_manager
 
-    def shard_model(self, model: torch.nn.Module，policy: Policy) -> torch.nn.Module:
+    def shard_model(self, model: torch.nn.Module,policy: Policy) -> torch.nn.Module:
         """
         Shard model for TP and PP
         """

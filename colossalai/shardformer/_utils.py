@@ -39,7 +39,7 @@ def hasattr_(obj, attr: str):
 
 def setattr_(obj, attr: str, value, ignore: bool = False):
     r"""
-    Set the object's multi sublevel attr to value, if ignore, ignore when it doesn't exist
+    Set the object's multi sublevel attr to value, if ignore when it doesn't exist
 
     Args:
         obj (object): The object to set

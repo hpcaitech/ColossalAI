@@ -42,7 +42,7 @@ class ModulePolicyDescription:
     Args:
         attribute_replacement (Dict[str, Any]): key is the attribute name, value is the attribute value after sharding
         param_replacement (List[Callable]): a list of functions to perform in-place param replacement. The function
-                    must receive only one arguments: module. One example is
+                    must receive only one argument: module. One example is
 
                     ```python
                     def example_replace_weight(module: torch.nn.Module):

@@ -134,4 +134,4 @@ def get_autopolicy(model: nn.Module) -> Policy:
         )
     else:
         policy = import_policy(policy_location)
-    return policy()
+    return policy
