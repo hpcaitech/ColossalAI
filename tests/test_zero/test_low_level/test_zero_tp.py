@@ -8,7 +8,7 @@ import colossalai
 from colossalai.tensor import ProcessGroup
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.utils import get_current_device
-from colossalai.zero import ColoInitContext, LowLevelZeroOptimizer
+from colossalai.zero import ColoInitContext, TPLowLevelZeroOptimizer
 from tests.test_tensor.common_utils import set_seed, split_param_col_tp1d, split_param_row_tp1d, tensor_shard_equal
 
 
@@ -53,11 +53,13 @@ def exam_zero_with_tp(overlap_flag, partition_flag):
     torch_model = DDP(torch_model, device_ids=[tp_pg.rank()], process_group=tp_pg.dp_process_group())
     torch_optim = torch.optim.Adam(torch_model.parameters(), lr=1e-2)    # set to 1e-2 for torch-1.11
     hybrid_optim = torch.optim.Adam(hybrid_model.parameters(), lr=1e-2)
-    hybrid_optim = LowLevelZeroOptimizer(hybrid_optim,
-                                         initial_scale=2,
-                                         clip_grad_norm=1.0,
-                                         overlap_communication=overlap_flag,
-                                         partition_grad=partition_flag)
+    hybrid_optim = TPLowLevelZeroOptimizer(hybrid_optim,
+                                           initial_scale=2,
+                                           clip_grad_norm=1.0,
+                                           overlap_communication=overlap_flag,
+                                           partition_grad=partition_flag,
+                                           dp_process_group=tp_pg.dp_process_group(),
+                                           tp_process_group=tp_pg.tp_process_group())
 
     dp_local_rank = tp_pg.dp_local_rank()
     set_seed(255 + dp_local_rank)
