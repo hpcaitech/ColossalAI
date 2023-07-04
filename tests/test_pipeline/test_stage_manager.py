@@ -21,7 +21,7 @@ def check_stage_manager():
         1: [0, 1],
         2: [2, 3],
         3: [2, 3],
-    }
+    }   
     pg_mesh = ProcessGroupMesh(DP_SIZE, PP_SIZE)
     stage_manager = PipelineStageManager(pg_mesh, PP_DIM)
     rank = dist.get_rank()
