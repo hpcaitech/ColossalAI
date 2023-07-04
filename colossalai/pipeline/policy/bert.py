@@ -290,8 +290,8 @@ def bert_for_pretraining_forward(
 ) -> Union[Tuple[torch.Tensor], BertForPreTrainingOutput]:
 
     return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
-    outputs = self.bert(
+    outputs = bert_model_forward(
+        self.bert,
         input_ids,
         attention_mask=attention_mask,
         token_type_ids=token_type_ids,
@@ -304,7 +304,8 @@ def bert_for_pretraining_forward(
     )
 
     sequence_output, pooled_output = outputs[:2]
-    prediction_scores, seq_relationship_score = self.cls(sequence_output, pooled_output)
+    if stage_manager.is_last_stage():
+        prediction_scores, seq_relationship_score = self.cls(sequence_output, pooled_output)
 
     total_loss = None
     if labels is not None and next_sentence_label is not None:
@@ -339,12 +340,12 @@ class BertForPreTrainingPolicy(Policy):
         hold_layers = []
         if self.stage_manager.is_first_stage():
             hold_layers.append(module.bert.embeddings)
-        num_layers_per_stage_accumulated = np.cumsum(self.layers_per_stage)
-        hold_layers.extend(
-            module.bert.encoder.layer[num_layers_per_stage_accumulated[self.stage_manager.stage -
-                                                                       1] if self.stage_manager.
-                                      stage > 0 else 0:num_layers_per_stage_accumulated[self.stage_manager.stage]])
+
+        start_idx, end_idx = self.get_stage_index(self.layers_per_stage, self.stage_manager.stage)
+        hold_layers.extend(module.bert.encoder.layer[start_idx:end_idx])
+
         if self.stage_manager.is_last_stage():
+            hold_layers.append(module.bert.pooler)
             hold_layers.append(module.cls)
 
         return hold_layers
