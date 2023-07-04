@@ -252,7 +252,7 @@ class ModelSharder:
 
     def shard(self) -> None:
         """
-        Shard model with parallelelism with the help of pre-processing, replace_model_class, replace_module, and post-processing.
+        Shard model with parallelism with the help of pre-processing, replace_model_class, replace_module, and post-processing.
         """
         ...
 

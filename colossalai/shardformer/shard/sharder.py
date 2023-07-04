@@ -73,7 +73,7 @@ class ModelSharder(object):
             layer (torch.nn.Module): The object of layer to shard
             origin_cls (Union[str, torch.nn.Module]): The origin layer class or a string of layer class name.
             attr_replacement (Dict): The attribute dict to modify
-            param_replacement (List[Callable]): The function list to get parameter shard information in polic
+            param_replacement (List[Callable]): The function list to get parameter shard information in policy
             sub_module_replacement (List[Callable]): The function list to get sub module shard information in policy
         """
         if (isinstance(origin_cls, str) and origin_cls == module.__class__.__name__) or \
