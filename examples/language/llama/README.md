@@ -61,3 +61,34 @@ The dataset can be automatically downloaded by using `huggingface/datasets`. You
 - Gradient clipping: `--gradient_clipping`. The default value is 1.0.
 - Tensorboard log directory: `-t`, `--tensorboard_dir`. The directory path to save tensorboard logs. The default value is `tb_logs`.
 - Flash attention: `-a`, `--flash_attention`. If you want to use flash attention, you must install [xformers](https://github.com/facebookresearch/xformers) first. The default value is `False`.
+
+## Reference
+
+```bibtex
+@software{openlm2023openllama,
+  author = {Geng, Xinyang and Liu, Hao},
+  title = {OpenLLaMA: An Open Reproduction of LLaMA},
+  month = May,
+  year = 2023,
+  url = {https://github.com/openlm-research/open_llama}
+}
+```
+
+```bibtex
+@software{together2023redpajama,
+  author = {Together Computer},
+  title = {RedPajama-Data: An Open Source Recipe to Reproduce LLaMA training dataset},
+  month = April,
+  year = 2023,
+  url = {https://github.com/togethercomputer/RedPajama-Data}
+}
+```
+
+```bibtex
+@article{touvron2023llama,
+  title={Llama: Open and efficient foundation language models},
+  author={Touvron, Hugo and Lavril, Thibaut and Izacard, Gautier and Martinet, Xavier and Lachaux, Marie-Anne and Lacroix, Timoth{\'e}e and Rozi{\`e}re, Baptiste and Goyal, Naman and Hambro, Eric and Azhar, Faisal and others},
+  journal={arXiv preprint arXiv:2302.13971},
+  year={2023}
+}
+```
