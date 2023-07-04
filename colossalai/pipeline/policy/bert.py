@@ -22,6 +22,7 @@ logger = logging.get_logger(__name__)
 
 
 def bert_model_forward(
+
     self: BertModel,
     input_ids: Optional[torch.Tensor] = None,
     attention_mask: Optional[torch.Tensor] = None,
@@ -93,6 +94,7 @@ def bert_model_forward(
         input_shape = hidden_states.size()[:-1]
         batch_size, seq_length = input_shape
         device = hidden_states.device
+
 
     # TODO: left the recording kv-value tensors as () or None type, this feature may be added in the future.
     if output_attentions:
@@ -211,6 +213,7 @@ def bert_model_forward(
                 all_cross_attentions = all_cross_attentions + \
                     (layer_outputs[2],)
 
+
     if output_hidden_states:
         all_hidden_states = all_hidden_states + (hidden_states,)
 
@@ -222,6 +225,7 @@ def bert_model_forward(
         if not return_dict:
             return (sequence_output, pooled_output) + layer_outputs[1:]
 
+
     # output of non-first and non-last stages:
     if not return_dict:
         return tuple(v for v in [
@@ -231,6 +235,7 @@ def bert_model_forward(
             all_self_attentions,
             all_cross_attentions,
         ] if v is not None)
+
 
     # return dict is not supported at this moment
     return BaseModelOutputWithPastAndCrossAttentions(
@@ -273,7 +278,6 @@ class BertModelPolicy(Policy):
 
     def replace_forward(self, module: Module) -> None:
         module.model.forward = MethodType(partial(bert_model_forward, stage_manager=self.stage_manager), module.model)
-
 
 def bert_for_pretraining_forward(
     self: BertForPreTraining,
@@ -347,6 +351,7 @@ class BertForPreTrainingPolicy(Policy):
             module.bert.encoder.layer[num_layers_per_stage_accumulated[self.stage_manager.stage -
                                                                        1] if self.stage_manager.
                                       stage > 0 else 0:num_layers_per_stage_accumulated[self.stage_manager.stage]])
+
         if self.stage_manager.is_last_stage():
             hold_layers.append(module.cls)
 

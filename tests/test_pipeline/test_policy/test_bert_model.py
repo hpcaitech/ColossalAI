@@ -27,6 +27,7 @@ def check_bert_model_forward():
         3: [2, 3],
     }
     pg_mesh = ProcessGroupMesh(DP_SIZE, PP_SIZE)
+
     # print(pg_mesh)
 
     stage_manager = PipelineStageManager(pg_mesh, PP_DIM)

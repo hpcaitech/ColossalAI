@@ -4,11 +4,11 @@ from torch import Tensor
 from torch.nn import Module, Parameter
 
 from colossalai.lazy import LazyTensor
+
 from colossalai.pipeline.stage_manager import PipelineStageManager
 
 
 class Policy:
-
     def __init__(self, stage_manager: PipelineStageManager) -> None:
         self.stage_manager = stage_manager
 
