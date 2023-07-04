@@ -9,6 +9,7 @@ from coati.experience_maker import NaiveExperienceMaker
 from coati.models.base import RewardModel
 from coati.models.gpt import GPTActor, GPTCritic
 from coati.trainer.strategies import DDPStrategy, GeminiStrategy
+from coati.trainer.strategies.colossalai import LowLevelZeroStrategy
 from transformers.models.gpt2.configuration_gpt2 import GPT2Config
 
 from colossalai.testing import rerun_if_address_is_in_use, spawn
@@ -32,13 +33,15 @@ def gather_and_equal(tensor: torch.Tensor) -> bool:
     return True
 
 
-def run_test_data(strategy):
+def make_and_consume_experience(strategy):
     EXPERIENCE_BATCH_SIZE = 4
     SAMPLE_BATCH_SIZE = 2
 
     if strategy == 'ddp':
         strategy = DDPStrategy()
-    elif strategy == 'colossalai':
+    elif strategy == 'colossalai-zero2':
+        strategy = LowLevelZeroStrategy()
+    elif strategy == 'colossalai-gemini':
         strategy = GeminiStrategy(placement_policy='cuda')
     else:
         raise ValueError(f'Unsupported strategy "{strategy}"')
@@ -102,17 +105,16 @@ def run_dist(rank, world_size, port, strategy):
     os.environ['WORLD_SIZE'] = str(world_size)
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = str(port)
-    run_test_data(strategy)
+    make_and_consume_experience(strategy)
 
 
-@pytest.mark.skip
 @pytest.mark.dist
 @pytest.mark.parametrize('world_size', [2])
-@pytest.mark.parametrize('strategy', ['ddp', 'colossalai'])
+@pytest.mark.parametrize('strategy', ['ddp', 'colossalai-zero2', 'colossalai-gemini'])
 @rerun_if_address_is_in_use()
-def test_data(world_size, strategy):
+def test_experience(world_size, strategy):
     spawn(run_dist, world_size, strategy=strategy)
 
 
 if __name__ == '__main__':
-    test_data(2, 'colossalai')
+    test_experience(2, 'colossalai')
