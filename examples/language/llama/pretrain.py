@@ -1,6 +1,3 @@
-# TODO: tensorboard
-# TODO: wandb
-
 import argparse
 import os
 import resource
@@ -9,11 +6,13 @@ from functools import partial
 from typing import Optional, Tuple
 
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 from data_utils import load_json, prepare_dataloader, save_json
 from datasets import load_dataset
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
+from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from transformers.models.llama.configuration_llama import LlamaConfig
 from transformers.models.llama.modeling_llama import LlamaForCausalLM
@@ -59,6 +58,12 @@ def tokenize_batch(batch, tokenizer: Optional[LlamaTokenizer] = None, max_length
     data = tokenizer(texts, return_tensors="pt", padding='max_length', truncation=True, max_length=max_length)
     data['labels'] = data['input_ids'].clone()
     return data
+
+
+def all_reduce_mean(tensor: torch.Tensor) -> torch.Tensor:
+    dist.all_reduce(tensor, op=dist.ReduceOp.SUM)
+    tensor.div_(dist.get_world_size())
+    return tensor
 
 
 def save(booster: Booster, model: nn.Module, optimizer: Optimizer, lr_scheduler: _LRScheduler, epoch: int, step: int,
@@ -116,11 +121,19 @@ def main():
     parser.add_argument('-o', '--save_dir', type=str, default='checkpoint', help='Checkpoint directory')
     parser.add_argument('-f', '--load', type=str, default=None, help='Load checkpoint')
     parser.add_argument('--grad_clip', type=float, default=1.0, help='Gradient clipping')
+    parser.add_argument('-t', '--tensorboard_dir', type=str, default='tb_logs', help='Tensorboard directory')
 
     args = parser.parse_args()
 
     colossalai.launch_from_torch({})
     coordinator = DistCoordinator()
+
+    # ==============================
+    # Initialize Tensorboard
+    # ==============================
+    if coordinator.is_master():
+        os.makedirs(args.tensorboard_dir, exist_ok=True)
+        writer = SummaryWriter(args.tensorboard_dir)
 
     # ==============================
     # Initialize Booster
@@ -223,7 +236,12 @@ def main():
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
+
+                all_reduce_mean(loss)
                 pbar.set_postfix({'loss': loss.item()})
+                if coordinator.is_master():
+                    writer.add_scalar('loss', loss.item(), epoch * num_steps_per_epoch + step)
+
                 if args.save_interval > 0 and (step + 1) % args.save_interval == 0:
                     coordinator.print_on_master(f'Saving checkpoint')
                     save(booster, model, optimizer, lr_scheduler, epoch, step + 1, args.batch_size, coordinator,
