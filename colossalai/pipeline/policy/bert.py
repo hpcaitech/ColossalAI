@@ -11,7 +11,7 @@ from transformers.modeling_outputs import (
     BaseModelOutputWithPastAndCrossAttentions,
     BaseModelOutputWithPoolingAndCrossAttentions,
 )
-from transformers.models.bert.modeling_bert import BertForPreTrainingOutput, BertModel
+from transformers.models.bert.modeling_bert import BertForPreTraining, BertForPreTrainingOutput, BertModel
 from transformers.utils import logging
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
@@ -288,8 +288,8 @@ class BertModelPolicy(Policy):
         return layers_per_stage
 
 
-def bert_pretraining_model_forward(
-    self,
+def bert_for_pretraining_forward(
+    self: BertForPreTraining,
     input_ids: Optional[torch.Tensor] = None,
     attention_mask: Optional[torch.Tensor] = None,
     token_type_ids: Optional[torch.Tensor] = None,
@@ -304,4 +304,87 @@ def bert_pretraining_model_forward(
     hidden_states: Optional[torch.LongTensor] = None,
     stage_manager: Optional[PipelineStageManager] = None,
 ) -> Union[Tuple[torch.Tensor], BertForPreTrainingOutput]:
-    pass
+
+    return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+    outputs = self.bert(
+        input_ids,
+        attention_mask=attention_mask,
+        token_type_ids=token_type_ids,
+        position_ids=position_ids,
+        head_mask=head_mask,
+        inputs_embeds=inputs_embeds,
+        output_attentions=output_attentions,
+        output_hidden_states=output_hidden_states,
+        return_dict=return_dict,
+    )
+
+    sequence_output, pooled_output = outputs[:2]
+    prediction_scores, seq_relationship_score = self.cls(sequence_output, pooled_output)
+
+    total_loss = None
+    if labels is not None and next_sentence_label is not None:
+        loss_fct = CrossEntropyLoss()
+        masked_lm_loss = loss_fct(prediction_scores.view(-1, self.config.vocab_size), labels.view(-1))
+        next_sentence_loss = loss_fct(seq_relationship_score.view(-1, 2), next_sentence_label.view(-1))
+        total_loss = masked_lm_loss + next_sentence_loss
+
+    if not return_dict:
+        output = (prediction_scores, seq_relationship_score) + outputs[2:]
+        return ((total_loss,) + output) if total_loss is not None else output
+
+    return BertForPreTrainingOutput(
+        loss=total_loss,
+        prediction_logits=prediction_scores,
+        seq_relationship_logits=seq_relationship_score,
+        hidden_states=outputs.hidden_states,
+        attentions=outputs.attentions,
+    )
+
+
+class BertForPreTrainingPolicy(Policy):
+
+    def __init__(self, stage_manager: PipelineStageManager, num_layers: int, num_stages: int):
+        self.stage_manager = stage_manager
+        self.layers_per_stage = self.distribute_layers(num_layers, num_stages)
+
+    def get_hold_layers(self, module: BertForPreTraining) -> List[Module]:
+        """
+        get pipeline layers for current stage
+        """
+        hold_layers = []
+        if self.stage_manager.is_first_stage():
+            hold_layers.append(module.bert.embeddings)
+        num_layers_per_stage_accumulated = np.cumsum(self.layers_per_stage)
+        hold_layers.extend(module.bert.encoder.layer[num_layers_per_stage_accumulated \
+                    [self.stage_manager.stage-1] if self.stage_manager.stage > 0 else 0:
+                    num_layers_per_stage_accumulated[self.stage_manager.stage]])
+        if self.stage_manager.is_last_stage():
+            hold_layers.append(module.cls)
+
+        return hold_layers
+
+    def get_shared_params(self, module: BertForPreTraining) -> List[Dict[int, Tensor]]:
+        '''no shared params in bertmodel'''
+        pass
+
+    def replace_forward(self, module: Module) -> None:
+        module.model.forward = MethodType(partial(bert_for_pretraining_forward, stage_manager=self.stage_manager),
+                                          module.model)
+
+    def distribute_layers(self, num_layers: int, num_stages: int) -> List[int]:
+        """
+        divide layers into stages
+        """
+        quotient = num_layers // num_stages
+        remainder = num_layers % num_stages
+
+        # calculate the num_layers per stage
+        layers_per_stage = [quotient] * num_stages
+
+        # deal with the rest layers
+        if remainder > 0:
+            start_position = num_layers // 2 - remainder // 2
+            for i in range(start_position, start_position + remainder):
+                layers_per_stage[i] += 1
+        return layers_per_stage
