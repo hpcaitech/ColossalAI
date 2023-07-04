@@ -80,7 +80,7 @@ _POLICY_LIST = {
         PolicyLocation(file_name="opt", class_name="OPTForSequenceClassificationPolicy"),
     "transformers.models.opt.modeling_opt.OPTForQuestionAnswering":
         PolicyLocation(file_name="opt", class_name="OPTForQuestionAnsweringPolicy"),
-        
+
     # Bloom
     "transformers.models.bloom.modeling_bloom.BloomModel":
         PolicyLocation(file_name="bloom", class_name="BloomModelPolicy"),
