@@ -168,6 +168,6 @@ class TorchDDPPlugin(DPPluginBase):
     def get_checkpoint_io(self) -> CheckpointIO:
         return TorchDDPCheckpointIO()
 
-    def no_sync(self, model: nn.Module) -> Iterator[None]:
+    def no_sync(self, model: nn.Module, optimizer: OptimizerWrapper) -> Iterator[None]:
         assert isinstance(model, TorchDDPModel), 'Model is not boosted by TorchDDPPlugin.'
         return model.module.no_sync()
