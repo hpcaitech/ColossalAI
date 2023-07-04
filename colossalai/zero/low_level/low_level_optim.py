@@ -75,8 +75,8 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             overlap_communication: bool = False,
             partition_grad: bool = False,    # stage 2 flag
             cpu_offload: bool = False,    # cpu offload
-            dp_process_group: ProcessGroup = None,    # the dp pg for comm
-            tp_process_group: ProcessGroup = None,    # if using tp
+            dp_process_group: Optional[ProcessGroup] = None,    # the dp pg for comm
+            tp_process_group: Optional[ProcessGroup] = None,    # if using tp
             forced_dtype: Optional[torch.dtype] = None):
 
         # TODO:
