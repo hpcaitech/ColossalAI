@@ -1,4 +1,10 @@
-from colossalai.shardformer.layer import FusedLayerNorm, Linear1D_Col, Linear1D_Row, VocabParallelEmbedding1D
+from colossalai.shardformer.layer import (
+    FusedLayerNorm,
+    Linear1D_Col,
+    Linear1D_Row,
+    VocabParallelEmbedding1D,
+    opt_flash_attention_forward,
+)
 
 from .._utils import getattr_, setattr_
 from .basepolicy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
@@ -29,67 +35,90 @@ class OPTPolicy(Policy):
     def module_policy(self):
         from transformers.models.opt.modeling_opt import OPTAttention, OPTDecoder, OPTDecoderLayer
 
-        policy = {}
-
-        if self.shard_config.enable_tensor_parallelism:
-            policy[OPTDecoder] = ModulePolicyDescription(sub_module_replacement=[
-                SubModuleReplacementDescription(
-                    suffix="embed_tokens",
-                    target_module=VocabParallelEmbedding1D,
-                )
-            ])
-            policy[OPTDecoderLayer] = ModulePolicyDescription(sub_module_replacement=[
-                SubModuleReplacementDescription(
-                    suffix="fc1",
-                    target_module=Linear1D_Col,
-                ),
-                SubModuleReplacementDescription(
-                    suffix="fc2",
-                    target_module=Linear1D_Row,
-                )
-            ])
-
-            policy[OPTAttention] = ModulePolicyDescription(attribute_replacement={
-                "embed_dim": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
-                "num_heads": self.model.config.num_attention_heads // self.shard_config.tensor_parallel_size
-            },
-                                                           sub_module_replacement=[
-                                                               SubModuleReplacementDescription(
-                                                                   suffix="q_proj",
-                                                                   target_module=Linear1D_Col,
-                                                               ),
-                                                               SubModuleReplacementDescription(
-                                                                   suffix="k_proj",
-                                                                   target_module=Linear1D_Col,
-                                                               ),
-                                                               SubModuleReplacementDescription(
-                                                                   suffix="v_proj",
-                                                                   target_module=Linear1D_Col,
-                                                               ),
-                                                               SubModuleReplacementDescription(
-                                                                   suffix="out_proj",
-                                                                   target_module=Linear1D_Row,
-                                                               ),
-                                                           ])
+        base_policy = {
+            OPTDecoder:
+                ModulePolicyDescription(sub_module_replacement=[
+                    SubModuleReplacementDescription(
+                        suffix="embed_tokens",
+                        target_module=VocabParallelEmbedding1D,
+                    )
+                ]),
+            OPTDecoderLayer:
+                ModulePolicyDescription(sub_module_replacement=[
+                    SubModuleReplacementDescription(
+                        suffix="fc1",
+                        target_module=Linear1D_Col,
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="fc2",
+                        target_module=Linear1D_Row,
+                    )
+                ]),
+            OPTAttention:
+                ModulePolicyDescription(attribute_replacement={
+                    "embed_dim": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
+                    "num_heads": self.model.config.num_attention_heads // self.shard_config.tensor_parallel_size
+                },
+                                        sub_module_replacement=[
+                                            SubModuleReplacementDescription(
+                                                suffix="q_proj",
+                                                target_module=Linear1D_Col,
+                                            ),
+                                            SubModuleReplacementDescription(
+                                                suffix="k_proj",
+                                                target_module=Linear1D_Col,
+                                            ),
+                                            SubModuleReplacementDescription(
+                                                suffix="v_proj",
+                                                target_module=Linear1D_Col,
+                                            ),
+                                            SubModuleReplacementDescription(
+                                                suffix="out_proj",
+                                                target_module=Linear1D_Row,
+                                            ),
+                                        ]),
+        }
 
         # optimization configuration
         if self.shard_config.enable_fused_normalization:
-            self.append_or_create_submodule_replacement(description=SubModuleReplacementDescription(
-                suffix="final_layer_norm", target_module=FusedLayerNorm, ignore_if_not_exist=True),
-                                                        policy=policy,
-                                                        target_key=OPTDecoder)
-            self.append_or_create_submodule_replacement(description=[
+            base_policy[OPTDecoder].sub_module_replacement.append(
+                SubModuleReplacementDescription(suffix="final_layer_norm",
+                                                target_module=FusedLayerNorm,
+                                                ignore_if_not_exist=True))
+            base_policy[OPTDecoderLayer].sub_module_replacement.extend([
                 SubModuleReplacementDescription(suffix="self_attn_layer_norm",
                                                 target_module=FusedLayerNorm,
                                                 ignore_if_not_exist=True),
                 SubModuleReplacementDescription(suffix="final_layer_norm",
                                                 target_module=FusedLayerNorm,
                                                 ignore_if_not_exist=True)
-            ],
-                                                        policy=policy,
-                                                        target_key=OPTDecoderLayer)
+            ])
 
-        return policy
+        # use flash attention
+        if self.shard_config.enable_flash_attention:
+            del base_policy[OPTAttention]
+            new_item = {
+                OPTAttention:
+                    ModulePolicyDescription(attribute_replacement={},
+                                            param_replacement=[],
+                                            method_replacement={
+                                                'forward': opt_flash_attention_forward,
+                                            },
+                                            sub_module_replacement=[
+                                                SubModuleReplacementDescription(suffix="q_proj",
+                                                                                target_module=Linear1D_Col,
+                                                                                kwargs=dict(gather_output=True)),
+                                                SubModuleReplacementDescription(suffix="k_proj",
+                                                                                target_module=Linear1D_Col,
+                                                                                kwargs=dict(gather_output=True)),
+                                                SubModuleReplacementDescription(suffix="v_proj",
+                                                                                target_module=Linear1D_Col,
+                                                                                kwargs=dict(gather_output=True)),
+                                            ]),
+            }
+            base_policy.update(new_item)
+
+        return base_policy
 
     def postprocess(self):
         return self.model
@@ -107,12 +136,15 @@ class OPTForCausalLMPolicy(OPTPolicy):
         from transformers.models.opt.modeling_opt import OPTForCausalLM
 
         policy = super().module_policy()
+        new_item = {
+            OPTForCausalLM:
+                ModulePolicyDescription(sub_module_replacement=[
+                    SubModuleReplacementDescription(
+                        suffix="lm_head", target_module=Linear1D_Col, kwargs=dict(gather_output=True))
+                ])
+        }
 
-        if self.shard_config.enable_tensor_parallelism:
-            self.append_or_create_submodule_replacement(description=SubModuleReplacementDescription(
-                suffix="lm_head", target_module=Linear1D_Col, kwargs=dict(gather_output=True)),
-                                                        policy=policy,
-                                                        target_key=OPTForCausalLM)
+        policy.update(new_item)
         return policy
 
     def postprocess(self):
