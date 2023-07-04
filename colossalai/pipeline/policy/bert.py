@@ -248,7 +248,7 @@ class BertModelPolicy(Policy):
     def __init__(self, stage_manager: PipelineStageManager, num_layers: int, num_stages: int):
         super().__init__(stage_manager=stage_manager)
         self.stage_manager = stage_manager
-        self.layers_per_stage = super().distribute_layers(num_layers, num_stages)
+        self.layers_per_stage = self.distribute_layers(num_layers, num_stages)
 
     def get_hold_layers(self, module: BertModel) -> List[Module]:
         """
@@ -257,11 +257,12 @@ class BertModelPolicy(Policy):
         hold_layers = []
         if self.stage_manager.is_first_stage():
             hold_layers.append(module.embeddings)
-        num_layers_per_stage_accumulated = np.cumsum(self.layers_per_stage)
-        hold_layers.extend(
-            module.encoder.layer[num_layers_per_stage_accumulated[self.stage_manager.stage - 1] if self.stage_manager.
-                                 stage > 0 else 0:num_layers_per_stage_accumulated[self.stage_manager.stage]])
+        num_layers_per_stage_accumulated = np.insert(np.cumsum(self.layers_per_stage), 0, 0)
 
+        start_idx = num_layers_per_stage_accumulated[self.stage_manager.stage]
+        end_idx = num_layers_per_stage_accumulated[self.stage_manager.stage + 1]
+
+        hold_layers.extend(module.encoder.layer[start_idx:end_idx])
         if self.stage_manager.is_last_stage():
             hold_layers.append(module.pooler)
 

@@ -109,7 +109,8 @@ class Policy:
         shared_params = self.get_shared_params(module)
         return hold_params, hold_buffers, shared_params
 
-    def distribute_layers(self, num_layers: int, num_stages: int) -> List[int]:
+    @staticmethod
+    def distribute_layers(num_layers: int, num_stages: int) -> List[int]:
         """
         divide layers into stages
         """
