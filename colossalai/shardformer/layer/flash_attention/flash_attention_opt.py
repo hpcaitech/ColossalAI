@@ -68,8 +68,9 @@ def opt_flash_attention_forward(
 
     try:
         from xformers.ops import memory_efficient_attention as me_attention
-    except ImportError:
-        print("Error: xformers module is not installed. Please install it to use flash attention.")
+    except:
+        raise ImportError("Error: xformers module is not installed. Please install it to use flash attention.")
+
     attn_output = me_attention(query_states,
                                key_states,
                                value_states,

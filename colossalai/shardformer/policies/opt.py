@@ -97,24 +97,9 @@ class OPTPolicy(Policy):
 
         # use flash attention
         if self.shard_config.enable_flash_attention:
-            policy[OPTAttention] = ModulePolicyDescription(
-                method_replacement={
-                    'forward': opt_flash_attention_forward,
-                },
-                sub_module_replacement=[
-                    SubModuleReplacementDescription(suffix="q_proj",
-                                                    target_module=Linear1D_Col,
-                                                    kwargs=dict(gather_output=True)),
-                    SubModuleReplacementDescription(suffix="k_proj",
-                                                    target_module=Linear1D_Col,
-                                                    kwargs=dict(gather_output=True)),
-                    SubModuleReplacementDescription(suffix="v_proj",
-                                                    target_module=Linear1D_Col,
-                                                    kwargs=dict(gather_output=True)),
-                    SubModuleReplacementDescription(suffix="out_proj",
-                                                    target_module=Linear1D_Col,
-                                                    kwargs=dict(gather_output=True)),
-                ])
+            policy[OPTAttention] = ModulePolicyDescription(method_replacement={
+                'forward': opt_flash_attention_forward,
+            })
 
         return policy
 
