@@ -1,3 +1,3 @@
-from .low_level_optim import LowLevelZeroOptimizer, TPLowLevelZeroOptimizer
+from .low_level_optim import LowLevelZeroOptimizer
 
-__all__ = ['LowLevelZeroOptimizer', 'TPLowLevelZeroOptimizer']
+__all__ = ['LowLevelZeroOptimizer']

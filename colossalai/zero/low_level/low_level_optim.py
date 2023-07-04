@@ -54,8 +54,8 @@ class LowLevelZeroFP16MixedPrecisionMixin(FP16MixedPrecisionMixin):
         return False
 
 
-class TPLowLevelZeroOptimizer(OptimizerWrapper):
-    """Optimizer used for ZeRO-1 and ZeRO-2 with Tensor Parallelism.
+class LowLevelZeroOptimizer(OptimizerWrapper):
+    """Optimizer used for ZeRO-1 and ZeRO-2.
     """
 
     def __init__(
@@ -75,15 +75,14 @@ class TPLowLevelZeroOptimizer(OptimizerWrapper):
             overlap_communication: bool = False,
             partition_grad: bool = False,    # stage 2 flag
             cpu_offload: bool = False,    # cpu offload
-            dp_process_group: ProcessGroup = None,
-            tp_process_group: ProcessGroup = None,
+            dp_process_group: ProcessGroup = None,    # the dp pg for comm
+            tp_process_group: ProcessGroup = None,    # if using tp
             forced_dtype: Optional[torch.dtype] = None):
 
         # TODO:
-        # 1. process group api
-        # 2. checkpoint IO
+        # 1. state_dict for checkpoint IO
 
-        super(TPLowLevelZeroOptimizer, self).__init__(optim=optimizer)
+        super(LowLevelZeroOptimizer, self).__init__(optim=optimizer)
         self._dtype = self.optim.param_groups[0]['params'][0].dtype
         self._logger = get_dist_logger()
         self._verbose = verbose
@@ -469,47 +468,3 @@ class TPLowLevelZeroOptimizer(OptimizerWrapper):
             yield
         finally:
             self.require_grad_sync = old_require_grad_sync
-
-
-class LowLevelZeroOptimizer(TPLowLevelZeroOptimizer):
-    """Optimizer used for ZeRO-1 and ZeRO-2.
-    """
-
-    def __init__(
-            self,
-            optimizer: Optimizer,
-            initial_scale: int = 2**16,    # grad scaler config
-            min_scale: int = 1,
-            growth_factor: float = 2.,
-            backoff_factor: float = .5,
-            growth_interval: int = 2000,
-            hysteresis: int = 2,
-            max_scale: int = 2**24,
-            clip_grad_norm: float = 0.0,    # grad clipping
-            verbose: bool = False,
-            reduce_bucket_size: int = 1024 * 1024,    # communication
-            communication_dtype: Optional[torch.dtype] = None,
-            overlap_communication: bool = False,
-            partition_grad: bool = False,    # stage 2 flag
-            cpu_offload: bool = False,    # cpu offload
-            dp_process_group: ProcessGroup = None,
-            forced_dtype: Optional[torch.dtype] = None):
-
-        super(LowLevelZeroOptimizer, self).__init__(
-            optimizer=optimizer,
-            initial_scale=initial_scale,    # grad scaler config
-            min_scale=min_scale,
-            growth_factor=growth_factor,
-            backoff_factor=backoff_factor,
-            growth_interval=growth_interval,
-            hysteresis=hysteresis,
-            max_scale=max_scale,
-            clip_grad_norm=clip_grad_norm,    # grad clipping
-            verbose=verbose,
-            reduce_bucket_size=reduce_bucket_size,    # communication
-            communication_dtype=communication_dtype,
-            overlap_communication=overlap_communication,
-            partition_grad=partition_grad,    # stage 2 flag
-            cpu_offload=cpu_offload,    # cpu offload
-            dp_process_group=dp_process_group,
-            forced_dtype=forced_dtype)
