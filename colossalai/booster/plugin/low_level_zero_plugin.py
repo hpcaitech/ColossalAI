@@ -183,10 +183,7 @@ class LowLevelZeroPlugin(DPPluginBase):
         setattr(self.__class__, "__name__", f"LowLevelZeroPlugin_ZeRO-{stage}")
 
     def support_no_sync(self) -> bool:
-        if self.stage == 1:
-            return True
-        else:
-            return False
+        return self.stage == 1
 
     def control_precision(self) -> bool:
         return True
