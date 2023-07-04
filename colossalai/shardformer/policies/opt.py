@@ -84,12 +84,6 @@ class OPTPolicy(Policy):
                 suffix="final_layer_norm", target_module=FusedLayerNorm, ignore_if_not_exist=True),
                                                         policy=policy,
                                                         target_key=OPTDecoder)
-        # optimization configuration
-        if self.shard_config.enable_fused_normalization:
-            self.append_or_create_submodule_replacement(description=SubModuleReplacementDescription(
-                suffix="final_layer_norm", target_module=FusedLayerNorm, ignore_if_not_exist=True),
-                                                        policy=policy,
-                                                        target_key=OPTDecoder)
             self.append_or_create_submodule_replacement(description=[
                 SubModuleReplacementDescription(suffix="self_attn_layer_norm",
                                                 target_module=FusedLayerNorm,

@@ -40,6 +40,9 @@ class ShardConfig:
         else:
             # get the parallel size
             self._tensor_parallel_size = dist.get_world_size(self.tensor_parallel_process_group)
+        # turn on all optimization if all_optimization is set to True
+        if self.enable_all_optimization:
+            self._turn_on_all_optimization()
 
     def _turn_on_all_optimization(self):
         """
