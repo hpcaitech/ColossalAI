@@ -295,10 +295,7 @@ class GeminiPlugin(DPPluginBase):
 
         if optimizer is not None and \
                 not isinstance(optimizer, OptimizerWrapper):
-            optimizer = GeminiOptimizer(model.unwrap(),
-                                        optimizer,
-                                        self.zero_optim_config,
-                                        self.optim_kwargs,
+            optimizer = GeminiOptimizer(model.unwrap(), optimizer, self.zero_optim_config, self.optim_kwargs,
                                         self.verbose)
 
         return model, optimizer, criterion, dataloader, lr_scheduler
@@ -309,5 +306,5 @@ class GeminiPlugin(DPPluginBase):
     def get_checkpoint_io(self) -> CheckpointIO:
         return GeminiCheckpointIO()
 
-    def no_sync(self, model: nn.Module) -> Iterator[None]:
+    def no_sync(self, model: nn.Module, optimizer: OptimizerWrapper) -> Iterator[None]:
         raise NotImplementedError
