@@ -31,67 +31,67 @@ class GPT2Policy(Policy):
     def module_policy(self):
         from transformers.models.gpt2.modeling_gpt2 import GPT2Block, GPT2Model
 
-        base_policy = {
-            GPT2Model:
-                ModulePolicyDescription(sub_module_replacement=[
-                    SubModuleReplacementDescription(
-                        suffix="wte",
-                        target_module=col_nn.VocabParallelEmbedding1D,
-                    ),
-                ]),
-            GPT2Block:
-                ModulePolicyDescription(attribute_replacement={
-                    "attn.embed_dim": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
-                    "attn.split_size": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
-                    "attn.num_heads": self.model.config.num_attention_heads // self.shard_config.tensor_parallel_size,
-                },
-                                        sub_module_replacement=[
-                                            SubModuleReplacementDescription(
-                                                suffix="attn.c_attn",
-                                                target_module=col_nn.GPT2FusedLinearConv1D_Col,
-                                                kwargs={
-                                                    "n_fused": 3,
-                                                },
-                                            ),
-                                            SubModuleReplacementDescription(
-                                                suffix="attn.c_proj",
-                                                target_module=col_nn.GPT2FusedLinearConv1D_Row,
-                                            ),
-                                            SubModuleReplacementDescription(
-                                                suffix="mlp.c_fc",
-                                                target_module=col_nn.GPT2FusedLinearConv1D_Col,
-                                                kwargs={
-                                                    "n_fused": 1,
-                                                },
-                                            ),
-                                            SubModuleReplacementDescription(
-                                                suffix="mlp.c_proj",
-                                                target_module=col_nn.GPT2FusedLinearConv1D_Row,
-                                            ),
-                                            SubModuleReplacementDescription(
-                                                suffix="attn.attn_dropout",
-                                                target_module=col_nn.DropoutForParallelInput,
-                                            ),
-                                            SubModuleReplacementDescription(
-                                                suffix="attn.resid_dropout",
-                                                target_module=col_nn.DropoutForParallelInput,
-                                            ),
-                                            SubModuleReplacementDescription(
-                                                suffix="mlp.dropout",
-                                                target_module=col_nn.DropoutForParallelInput,
-                                            ),
-                                        ])
-        }
+        policy = {}
+
+        if self.shard_config.enable_tensor_parallelism:
+            policy[GPT2Model] = ModulePolicyDescription(sub_module_replacement=[
+                SubModuleReplacementDescription(
+                    suffix="wte",
+                    target_module=col_nn.VocabParallelEmbedding1D,
+                ),
+            ])
+            policy[GPT2Block] = ModulePolicyDescription(attribute_replacement={
+                "attn.embed_dim": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
+                "attn.split_size": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
+                "attn.num_heads": self.model.config.num_attention_heads // self.shard_config.tensor_parallel_size,
+            },
+                                                        sub_module_replacement=[
+                                                            SubModuleReplacementDescription(
+                                                                suffix="attn.c_attn",
+                                                                target_module=col_nn.GPT2FusedLinearConv1D_Col,
+                                                                kwargs={
+                                                                    "n_fused": 3,
+                                                                },
+                                                            ),
+                                                            SubModuleReplacementDescription(
+                                                                suffix="attn.c_proj",
+                                                                target_module=col_nn.GPT2FusedLinearConv1D_Row,
+                                                            ),
+                                                            SubModuleReplacementDescription(
+                                                                suffix="mlp.c_fc",
+                                                                target_module=col_nn.GPT2FusedLinearConv1D_Col,
+                                                                kwargs={
+                                                                    "n_fused": 1,
+                                                                },
+                                                            ),
+                                                            SubModuleReplacementDescription(
+                                                                suffix="mlp.c_proj",
+                                                                target_module=col_nn.GPT2FusedLinearConv1D_Row,
+                                                            ),
+                                                            SubModuleReplacementDescription(
+                                                                suffix="attn.attn_dropout",
+                                                                target_module=col_nn.DropoutForParallelInput,
+                                                            ),
+                                                            SubModuleReplacementDescription(
+                                                                suffix="attn.resid_dropout",
+                                                                target_module=col_nn.DropoutForParallelInput,
+                                                            ),
+                                                            SubModuleReplacementDescription(
+                                                                suffix="mlp.dropout",
+                                                                target_module=col_nn.DropoutForParallelInput,
+                                                            ),
+                                                        ])
 
         # optimization configuration
         if self.shard_config.enable_fused_normalization:
-            base_policy[GPT2Model].sub_module_replacement.append(
-                SubModuleReplacementDescription(
-                    suffix="ln_f",
-                    target_module=col_nn.FusedLayerNorm,
-                ))
+            self.append_or_create_submodule_replacement(description=SubModuleReplacementDescription(
+                suffix="ln_f",
+                target_module=col_nn.FusedLayerNorm,
+            ),
+                                                        policy=policy,
+                                                        target_key=GPT2Model)
 
-            base_policy[GPT2Block].sub_module_replacement.extend([
+            self.append_or_create_submodule_replacement(description=[
                 SubModuleReplacementDescription(
                     suffix="ln_1",
                     target_module=col_nn.FusedLayerNorm,
@@ -103,9 +103,10 @@ class GPT2Policy(Policy):
                 SubModuleReplacementDescription(suffix="ln_cross_attn",
                                                 target_module=col_nn.FusedLayerNorm,
                                                 ignore_if_not_exist=True)
-            ])
-
-        return base_policy
+            ],
+                                                        policy=policy,
+                                                        target_key=GPT2Block)
+        return policy
 
     def postprocess(self):
         return self.model
@@ -128,22 +129,22 @@ class GPT2LMHeadModelPolicy(GPT2Policy):
         from transformers.models.gpt2.modeling_gpt2 import GPT2LMHeadModel
 
         module_policy = super().module_policy()
-        addon_module = {
-            GPT2LMHeadModel:
-                ModulePolicyDescription(sub_module_replacement=[
-                    SubModuleReplacementDescription(
-                        suffix="lm_head", target_module=col_nn.Linear1D_Col, kwargs={"gather_output": True})
-                ])
-        }
-        module_policy.update(addon_module)
+
+        if self.shard_config.enable_tensor_parallelism:
+            addon_module = {
+                GPT2LMHeadModel:
+                    ModulePolicyDescription(sub_module_replacement=[
+                        SubModuleReplacementDescription(
+                            suffix="lm_head", target_module=col_nn.Linear1D_Col, kwargs={"gather_output": True})
+                    ])
+            }
+            module_policy.update(addon_module)
         return module_policy
 
     def postprocess(self):
         binding_map = {"transformer.wte.weight": "lm_head.weight"}
         for k, v in binding_map.items():
             param = getattr_(self.model, k)
-            param = nn.Parameter(param)
-            setattr_(self.model, k, param)
             setattr_(self.model, v, param)
         return self.model
 
@@ -158,22 +159,22 @@ class GPT2DoubleHeadsModelPolicy(GPT2Policy):
         from transformers.models.gpt2.modeling_gpt2 import GPT2DoubleHeadsModel
 
         module_policy = super().module_policy()
-        addon_module = {
-            GPT2DoubleHeadsModel:
-                ModulePolicyDescription(sub_module_replacement=[
-                    SubModuleReplacementDescription(
-                        suffix="lm_head", target_module=col_nn.Linear1D_Col, kwargs={"gather_output": True})
-                ])
-        }
-        module_policy.update(addon_module)
+
+        if self.shard_config.enable_tensor_parallelism:
+            addon_module = {
+                GPT2DoubleHeadsModel:
+                    ModulePolicyDescription(sub_module_replacement=[
+                        SubModuleReplacementDescription(
+                            suffix="lm_head", target_module=col_nn.Linear1D_Col, kwargs={"gather_output": True})
+                    ])
+            }
+            module_policy.update(addon_module)
         return module_policy
 
     def postprocess(self):
         binding_map = {"transformer.wte.weight": "lm_head.weight"}
         for k, v in binding_map.items():
             param = getattr_(self.model, k)
-            param = nn.Parameter(param)
-            setattr_(self.model, k, param)
             setattr_(self.model, v, param)
         return self.model
 
