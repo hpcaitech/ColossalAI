@@ -1,14 +1,15 @@
 from typing import Any, Dict, List, Optional, Tuple
 
+import numpy as np
 from torch import Tensor
 from torch.nn import Module, Parameter
 
 from colossalai.lazy import LazyTensor
-
 from colossalai.pipeline.stage_manager import PipelineStageManager
 
 
 class Policy:
+
     def __init__(self, stage_manager: PipelineStageManager) -> None:
         self.stage_manager = stage_manager
 
@@ -126,3 +127,15 @@ class Policy:
             for i in range(start_position, start_position + remainder):
                 layers_per_stage[i] += 1
         return layers_per_stage
+
+    @staticmethod
+    def get_stage_index(layers_per_stage: List[int], stage: int) -> List[int]:
+        """
+        get the start index and end index of layers for each stage.
+        """
+        num_layers_per_stage_accumulated = np.insert(np.cumsum(layers_per_stage), 0, 0)
+
+        start_idx = num_layers_per_stage_accumulated[stage]
+        end_idx = num_layers_per_stage_accumulated[stage + 1]
+
+        return [start_idx, end_idx]

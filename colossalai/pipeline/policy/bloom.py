@@ -15,8 +15,8 @@ from colossalai.pipeline.stage_manager import PipelineStageManager
 
 from .base import Policy
 
-
 logger = logging.get_logger(__name__)
+
 
 def bloom_model_forward(
     self: BloomModel,
@@ -187,7 +187,7 @@ def bloom_model_forward(
         attentions=all_self_attentions,
     )
 
-  
+
 class BloomModelPolicy(Policy):
 
     def __init__(self, stage_manager: PipelineStageManager, num_layers: int, num_stages: int):
@@ -203,10 +203,8 @@ class BloomModelPolicy(Policy):
         if self.stage_manager.is_first_stage():
             hold_layers.append(module.word_embeddings)
             hold_layers.append(module.word_embeddings_layernorm)
-        num_layers_per_stage_accumulated = np.insert(np.cumsum(self.layers_per_stage), 0, 0)
 
-        start_idx = num_layers_per_stage_accumulated[self.stage_manager.stage]
-        end_idx = num_layers_per_stage_accumulated[self.stage_manager.stage + 1]
+        start_idx, end_idx = self.get_stage_index(self.layers_per_stage, self.stage_manager.stage)
         hold_layers.extend(module.h[start_idx:end_idx])
 
         if self.stage_manager.is_last_stage():
@@ -220,4 +218,3 @@ class BloomModelPolicy(Policy):
 
     def replace_forward(self, module: Module) -> None:
         module.forward = MethodType(partial(bloom_model_forward, stage_manager=self.stage_manager), module.model)
-
