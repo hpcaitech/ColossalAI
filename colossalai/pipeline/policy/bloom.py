@@ -15,8 +15,8 @@ from colossalai.pipeline.stage_manager import PipelineStageManager
 
 from .base import Policy
 
-logger = logging.get_logger(__name__)
 
+logger = logging.get_logger(__name__)
 
 def bloom_model_forward(
     self: BloomModel,
@@ -88,6 +88,7 @@ def bloom_model_forward(
         batch_size, seq_length = input_shape
 
     # extra recording tensor should be generated in the first stage
+
     presents = () if use_cache else None
     all_self_attentions = () if output_attentions else None
     all_hidden_states = () if output_hidden_states else None
@@ -105,6 +106,7 @@ def bloom_model_forward(
     past_key_values_length = 0
     if past_key_values[0] is not None:
         past_key_values_length = past_key_values[0][0].shape[2]    # source_len
+
         seq_length_with_past = seq_length_with_past + past_key_values_length
     if attention_mask is None:
         attention_mask = torch.ones((batch_size, seq_length_with_past), device=hidden_states.device)
@@ -162,7 +164,6 @@ def bloom_model_forward(
 
         if use_cache is True:
             presents = presents + (outputs[1],)
-
         if output_attentions:
             all_self_attentions = all_self_attentions + \
                 (outputs[2 if use_cache else 1],)
@@ -179,7 +180,6 @@ def bloom_model_forward(
         return tuple(v for v in [hidden_states, presents, all_hidden_states, all_self_attentions] if v is not None)
 
     # attention_mask is not returned ; presents = past_key_values
-
     return BaseModelOutputWithPastAndCrossAttentions(
         last_hidden_state=hidden_states,
         past_key_values=presents,
@@ -187,7 +187,7 @@ def bloom_model_forward(
         attentions=all_self_attentions,
     )
 
-
+  
 class BloomModelPolicy(Policy):
 
     def __init__(self, stage_manager: PipelineStageManager, num_layers: int, num_stages: int):
@@ -220,3 +220,4 @@ class BloomModelPolicy(Policy):
 
     def replace_forward(self, module: Module) -> None:
         module.forward = MethodType(partial(bloom_model_forward, stage_manager=self.stage_manager), module.model)
+
