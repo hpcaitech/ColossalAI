@@ -257,11 +257,7 @@ class BertModelPolicy(Policy):
         hold_layers = []
         if self.stage_manager.is_first_stage():
             hold_layers.append(module.embeddings)
-        num_layers_per_stage_accumulated = np.insert(np.cumsum(self.layers_per_stage), 0, 0)
-
-        start_idx = num_layers_per_stage_accumulated[self.stage_manager.stage]
-        end_idx = num_layers_per_stage_accumulated[self.stage_manager.stage + 1]
-
+        start_idx, end_idx = self.get_stage_index(self.layers_per_stage, self.stage_manager.stage)
         hold_layers.extend(module.encoder.layer[start_idx:end_idx])
         if self.stage_manager.is_last_stage():
             hold_layers.append(module.pooler)
