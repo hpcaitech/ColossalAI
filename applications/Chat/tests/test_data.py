@@ -8,7 +8,7 @@ from coati.experience_maker import NaiveExperienceMaker
 from coati.models.base import RewardModel
 from coati.models.gpt import GPTActor, GPTCritic
 from coati.replay_buffer import NaiveReplayBuffer
-from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy
+from coati.trainer.strategies import DDPStrategy, GeminiStrategy
 from transformers.models.gpt2.configuration_gpt2 import GPT2Config
 
 from colossalai.testing import rerun_if_address_is_in_use, spawn
@@ -39,7 +39,7 @@ def run_test_data(strategy):
     if strategy == 'ddp':
         strategy = DDPStrategy()
     elif strategy == 'colossalai':
-        strategy = ColossalAIStrategy(placement_policy='cuda')
+        strategy = GeminiStrategy(placement_policy='cuda')
     else:
         raise ValueError(f'Unsupported strategy "{strategy}"')
 

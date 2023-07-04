@@ -67,12 +67,12 @@ Define the model parameters as follows:
 chunk_manager = init_chunk_manager(model=module,
                                            init_device=device,
                                            hidden_dim=hidden_dim,
-                                           search_range_mb=search_range_mb,
-                                           min_chunk_size_mb=min_chunk_size_mb)
+                                           search_range_m=search_range_m,
+                                           min_chunk_size_m=min_chunk_size_m)
 gemini_manager = GeminiManager(placement_policy, chunk_manager)
 ```
 
-`hidden_dim` is the hidden dimension of DNN. Users can provide this argument to speed up searching. If users do not know this argument before training, it is ok. We will use a default value 1024. `min_chunk_size_mb` is the the minimum chunk size in MegaByte. If the aggregate size of parameters is still smaller than the minimum chunk size, all parameters will be compacted into one small chunk.
+`hidden_dim` is the hidden dimension of DNN. Users can provide this argument to speed up searching. If users do not know this argument before training, it is ok. We will use a default value 1024. `min_chunk_size_m` is a floating point, being the minimum chunk size divided by 2^20 (e.g., if min_chunk_size_m=2.5, then the minimum chunk size should be 2.5*(2^20)).If the aggregate size of parameters is still smaller than the minimum chunk size, all parameters will be compacted into one small chunk.
 
 Initialization of the optimizer.
 ```python

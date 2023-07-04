@@ -75,7 +75,7 @@ def check_auto_parallel_with_gemini(rank, world_size, port):
                          device=get_current_device(),
                          placement_policy='cpu',
                          pin_memory=True,
-                         search_range_mb=128)
+                         search_range_m=128)
 
     post_process_colo_init_ctx(gm, device=get_current_device(), default_pg=dp_process_group)
     gm = zero_model_wrapper(gm, zero_stage=3, gemini_config=gemini_config)

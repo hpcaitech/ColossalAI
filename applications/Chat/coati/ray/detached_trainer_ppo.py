@@ -6,7 +6,7 @@ from coati.experience_maker import Experience, NaiveExperienceMaker
 from coati.models.base import Actor, Critic
 from coati.models.loss import PolicyLoss, ValueLoss
 from coati.trainer.callbacks import Callback
-from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy, Strategy
+from coati.trainer.strategies import DDPStrategy, GeminiStrategy, LowLevelZeroStrategy, Strategy
 from torch.optim import Adam
 
 from colossalai.nn.optimizer import HybridAdam
@@ -85,7 +85,7 @@ class DetachedPPOTrainer(DetachedTrainer):
             evaluator = TrainerPerformanceEvaluator(actor_numel, critic_numel)
             callbacks = callbacks + [evaluator]
 
-        if isinstance(self.strategy, ColossalAIStrategy):
+        if isinstance(self.strategy, (LowLevelZeroStrategy, GeminiStrategy)):
             self.actor_optim = HybridAdam(self.actor.parameters(), lr=1e-7)
             self.critic_optim = HybridAdam(self.critic.parameters(), lr=1e-7)
         else:

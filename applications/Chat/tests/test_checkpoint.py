@@ -7,7 +7,7 @@ import torch
 import torch.distributed as dist
 from coati.models.gpt import GPTActor
 from coati.models.utils import calc_action_log_probs
-from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy
+from coati.trainer.strategies import DDPStrategy, GeminiStrategy, LowLevelZeroStrategy
 from transformers.models.gpt2.configuration_gpt2 import GPT2Config
 
 from colossalai.nn.optimizer import HybridAdam
@@ -28,9 +28,9 @@ def run_test_checkpoint(strategy):
     if strategy == 'ddp':
         strategy = DDPStrategy()
     elif strategy == 'colossalai_gemini':
-        strategy = ColossalAIStrategy(stage=3, placement_policy='cuda', initial_scale=2**5)
+        strategy = GeminiStrategy(placement_policy='cuda', initial_scale=2**5)
     elif strategy == 'colossalai_zero2':
-        strategy = ColossalAIStrategy(stage=2, placement_policy='cuda')
+        strategy = LowLevelZeroStrategy(stage=2, placement_policy='cuda')
     else:
         raise ValueError(f'Unsupported strategy "{strategy}"')
 
@@ -60,10 +60,15 @@ def run_test_checkpoint(strategy):
         rank0_dirname = rank0_dirname[0]
 
         model_path = os.path.join(rank0_dirname, 'model.pt')
-        optim_path = os.path.join(rank0_dirname, f'optim-r{dist.get_rank()}.pt')
-
         strategy.save_model(actor, model_path, only_rank0=True)
-        strategy.save_optimizer(actor_optim, optim_path, only_rank0=False)
+
+        optim_path = os.path.join(rank0_dirname, f'optim.pt')
+        strategy.save_optimizer(actor_optim, optim_path, only_rank0=True)
+
+        # FIXME(cwher): Sharded optimizer checkpoint is not supported yet.
+        #  at "ColossalAI/colossalai/checkpoint_io/general_checkpoint_io.py", line 62
+        # optim_path = os.path.join(rank0_dirname, f'optim-r{dist.get_rank()}.pt')
+        # strategy.save_optimizer(actor_optim, optim_path, only_rank0=False)
 
         dist.barrier()
 
