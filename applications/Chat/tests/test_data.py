@@ -4,10 +4,10 @@ from copy import deepcopy
 import pytest
 import torch
 import torch.distributed as dist
+from coati.experience_buffer import NaiveExperienceBuffer
 from coati.experience_maker import NaiveExperienceMaker
 from coati.models.base import RewardModel
 from coati.models.gpt import GPTActor, GPTCritic
-from coati.replay_buffer import NaiveReplayBuffer
 from coati.trainer.strategies import DDPStrategy, GeminiStrategy
 from transformers.models.gpt2.configuration_gpt2 import GPT2Config
 
@@ -50,7 +50,7 @@ def run_test_data(strategy):
     reward_model = RewardModel(deepcopy(critic.model)).cuda()
 
     experience_maker = NaiveExperienceMaker(actor, critic, reward_model, initial_model)
-    replay_buffer = NaiveReplayBuffer(SAMPLE_BATCH_SIZE, cpu_offload=False)
+    data_buffer = NaiveExperienceBuffer(SAMPLE_BATCH_SIZE, cpu_offload=False)
 
     # experience of all ranks should be the same
     for _ in range(2):
@@ -69,12 +69,12 @@ def run_test_data(strategy):
         assert gather_and_equal(experience.advantages)
         assert gather_and_equal(experience.action_mask)
         assert gather_and_equal(experience.attention_mask)
-        replay_buffer.append(experience)
+        data_buffer.append(experience)
 
-    # replay buffer's data should be the same
-    buffer_size = torch.tensor([len(replay_buffer)], device='cuda')
+    # data buffer's data should be the same
+    buffer_size = torch.tensor([len(data_buffer)], device='cuda')
     assert gather_and_equal(buffer_size)
-    for item in replay_buffer.items:
+    for item in data_buffer.items:
         assert gather_and_equal(item.sequences)
         assert gather_and_equal(item.action_log_probs)
         assert gather_and_equal(item.values)
@@ -84,7 +84,7 @@ def run_test_data(strategy):
         assert gather_and_equal(item.attention_mask)
 
     # dataloader of each rank should have the same size and different batch
-    dataloader = strategy.setup_dataloader(replay_buffer)
+    dataloader = strategy.setup_dataloader(data_buffer)
     dataloader_size = torch.tensor([len(dataloader)], device='cuda')
     assert gather_and_equal(dataloader_size)
     for experience in dataloader:

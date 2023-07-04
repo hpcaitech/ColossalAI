@@ -8,9 +8,9 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 import ray
 import torch
 import torch.nn as nn
+from coati.experience_buffer.utils import BufferItem, make_experience_batch, split_experience_batch
 from coati.experience_maker import Experience, ExperienceMaker, NaiveExperienceMaker
 from coati.models.base import Actor, Critic, RewardModel
-from coati.replay_buffer.utils import BufferItem, make_experience_batch, split_experience_batch
 from coati.trainer.callbacks import Callback
 from coati.trainer.strategies import Strategy
 from coati.trainer.strategies.sampler import DistributedSampler
@@ -19,13 +19,9 @@ from torch import Tensor
 from tqdm import tqdm
 
 from .callbacks import ExperienceMakerPerformanceEvaluator, MakerCallback
-from .utils import (get_model_numel, 
-                    get_rank, 
-                    get_world_size, 
-                    is_rank_0, 
-                    set_dist_env,
-                    state_dict_to)
 from .lora_constructor import LoRAConstructor
+from .utils import get_model_numel, get_rank, get_world_size, is_rank_0, set_dist_env, state_dict_to
+
 
 @ray.remote(concurrency_groups={"experience_io": 1, "model_io": 1, "compute": 1})
 class ExperienceMakerHolder:

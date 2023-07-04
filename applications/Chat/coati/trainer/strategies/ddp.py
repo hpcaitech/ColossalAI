@@ -7,7 +7,7 @@ import numpy as np
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-from coati.replay_buffer import ReplayBuffer
+from coati.experience_buffer import ExperienceBuffer
 from torch.utils.data import DataLoader
 from transformers.modeling_utils import PreTrainedModel
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
@@ -71,13 +71,13 @@ class DDPStrategy(Strategy):
         np.random.seed(seed)
         torch.manual_seed(seed)
 
-    def setup_dataloader(self, replay_buffer: ReplayBuffer, pin_memory: bool = False) -> DataLoader:
-        return self.plugin.prepare_dataloader(replay_buffer,
-                                              batch_size=replay_buffer.sample_batch_size,
+    def setup_dataloader(self, data_buffer: ExperienceBuffer, pin_memory: bool = False) -> DataLoader:
+        return self.plugin.prepare_dataloader(data_buffer,
+                                              batch_size=data_buffer.sample_batch_size,
                                               shuffle=True,
                                               drop_last=True,
                                               pin_memory=pin_memory,
-                                              collate_fn=replay_buffer.collate_fn)
+                                              collate_fn=data_buffer.collate_fn)
 
     def setup_sampler(self, dataset) -> DistributedSampler:
         # FIXME(cwher): this is only invoked in train_on_ray, not tested after adapt Boost API.
