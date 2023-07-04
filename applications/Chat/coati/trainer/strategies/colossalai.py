@@ -44,7 +44,7 @@ class LowLevelZeroStrategy(DDPStrategy):
     """
 
     def __init__(self,
-                 stage: int = 3,
+                 stage: int = 2,
                  precision: str = 'fp16',
                  seed: int = 42,
                  placement_policy: str = 'cuda',
