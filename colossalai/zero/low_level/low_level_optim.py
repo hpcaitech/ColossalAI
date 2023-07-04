@@ -5,6 +5,7 @@ from typing import Optional
 
 import torch
 import torch.distributed as dist
+from torch.distributed import ProcessGroup
 from torch.optim import Optimizer
 
 from colossalai.amp.naive_amp.mixed_precision_mixin import (
@@ -12,12 +13,9 @@ from colossalai.amp.naive_amp.mixed_precision_mixin import (
     FP16MixedPrecisionMixin,
     MixedPrecisionMixin,
 )
-from colossalai.context import ParallelMode
-from colossalai.core import global_context as gpc
 from colossalai.interface import OptimizerWrapper
 from colossalai.logging import get_dist_logger
-from colossalai.nn.optimizer import ColossalaiOptimizer
-from colossalai.tensor import ColoParameter, ProcessGroup
+# from colossalai.tensor import ColoParameter, ProcessGroup
 from colossalai.utils.cuda import get_current_device
 
 from ._utils import (
@@ -77,11 +75,12 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             overlap_communication: bool = False,
             partition_grad: bool = False,    # stage 2 flag
             cpu_offload: bool = False,    # cpu offload
+            dp_process_group: Optional[ProcessGroup] = None,    # the dp pg for comm
+            tp_process_group: Optional[ProcessGroup] = None,    # if using tp
             forced_dtype: Optional[torch.dtype] = None):
 
         # TODO:
-        # 1. process group api
-        # 2. checkpoint IO
+        # 1. state_dict for checkpoint IO
 
         super(LowLevelZeroOptimizer, self).__init__(optim=optimizer)
         self._dtype = self.optim.param_groups[0]['params'][0].dtype
@@ -96,30 +95,12 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         # grad accumulation
         self.require_grad_sync = True
 
-        colo_pg = self._search_colo_process_group()
-        if isinstance(colo_pg, ProcessGroup):
-            self._local_rank = colo_pg.dp_local_rank()
-            self._world_size = colo_pg.dp_world_size()
-            self._dp_global_ranks = colo_pg.get_ranks_in_dp()
-            self._dp_torch_group = colo_pg.dp_process_group()
-            self._mp_torch_group = None
-            if colo_pg.tp_world_size() > 1:
-                self._mp_torch_group = colo_pg.tp_process_group()
-        elif colo_pg is None:
-            dp_parallel_mode = ParallelMode.DATA
-            mp_parallel_mode = ParallelMode.MODEL
+        # if process_group is none, will use the default one
+        self.dp_pg = dp_process_group
+        self._local_rank = dist.get_rank(group=self.dp_pg)
+        self._world_size = dist.get_world_size(group=self.dp_pg)
 
-            self._dp_parallel_mode = dp_parallel_mode
-            self._mp_parallel_mode = mp_parallel_mode
-            self._local_rank = gpc.get_local_rank(dp_parallel_mode)
-            self._world_size = gpc.get_world_size(dp_parallel_mode)
-            self._dp_global_ranks = gpc.get_ranks_in_group(dp_parallel_mode)
-            self._dp_torch_group = gpc.get_group(dp_parallel_mode)
-            self._mp_torch_group = None
-            if gpc.is_initialized(mp_parallel_mode) and gpc.get_world_size(mp_parallel_mode) > 1:
-                self._mp_torch_group = gpc.get_group(mp_parallel_mode)
-        else:
-            raise NotImplementedError
+        self.tp_pg = tp_process_group
 
         # working and master params for mixed precision training
         self._working_param_groups = dict()
@@ -145,9 +126,9 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
         # ParameterStore will manage the tensor buffers used for zero
         # it will not manage the tensors used by mixed precision training
-        self._param_store = ParameterStore(self._dp_torch_group)
-        self._grad_store = GradientStore(self._dp_torch_group, partition_grad=partition_grad)
-        self._bucket_store = BucketStore(self._dp_torch_group)
+        self._param_store = ParameterStore(self.dp_pg)
+        self._grad_store = GradientStore(self.dp_pg, partition_grad=partition_grad)
+        self._bucket_store = BucketStore(self.dp_pg)
 
         # iterate over the param group in the optimizer
         # partition these param groups for data parallel training
@@ -212,22 +193,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 assert param.dtype == self._dtype, \
                     f"Parameters are expected to have the same dtype `{self._dtype}`, but got `{param.dtype}`"
 
-    def _search_colo_process_group(self):
-        colo_flag = False
-        colo_pg = None
-        for param_group in self.optim.param_groups:
-            group_params = param_group['params']
-            for param in group_params:
-                if isinstance(param, ColoParameter):
-                    colo_flag = True
-                    if colo_pg is None:
-                        colo_pg = param.get_process_group()
-                    else:
-                        assert colo_pg == param.get_process_group(), "All parameters should be in a same process group"
-                elif colo_flag:
-                    raise RuntimeError("All parameters should be ColoParameter if you use ColoParameter.")
-        return colo_pg
-
     def _create_master_param_current_rank(self, param_list):
         # split each param evenly by world size
         params_current_rank = []
@@ -291,7 +256,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                     flat_grads = flat_grads.to(self._communication_dtype)
 
                 if not self._partition_grads:
-                    dist.all_reduce(flat_grads, group=self._dp_torch_group)
+                    dist.all_reduce(flat_grads, group=self.dp_pg)
                     if flat_grads.dtype != grad_dtype:
                         flat_grads = flat_grads.to(grad_dtype)
 
@@ -307,7 +272,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 else:
                     flat_grads_list = list(flat_grads.split(len(flat_grads) // self._world_size))
                     recieved_grad = torch.zeros_like(flat_grads_list[0])
-                    dist.reduce_scatter(recieved_grad, flat_grads_list, group=self._dp_torch_group)
+                    dist.reduce_scatter(recieved_grad, flat_grads_list, group=self.dp_pg)
 
                     if recieved_grad.dtype != grad_dtype:
                         recieved_grad = recieved_grad.to(grad_dtype)
@@ -425,10 +390,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
             # compute norm
             working_grads = self._grad_store.get_working_grads_by_group_id(group_id)
-            norm_group = compute_norm(gradients=working_grads,
-                                      params=real_working_params[group_id],
-                                      dp_group=self._dp_torch_group,
-                                      mp_group=self._mp_torch_group)
+            norm_group = compute_norm(gradients=working_grads, dp_group=self.dp_pg, tp_group=self.tp_pg)
             norm_groups.append(norm_group)
 
             self._grad_store.reset_grads_by_group_id(group_id)
@@ -454,7 +416,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
             for idx, splited_param in enumerate(master_working_param):
                 full_master_param = [torch.zeros_like(splited_param).cuda() for _ in range(self._world_size)]
-                dist.all_gather(full_master_param, splited_param.cuda(), group=self._dp_torch_group)
+                dist.all_gather(full_master_param, splited_param.cuda(), group=self.dp_pg)
                 working_param = real_working_params[group_id][idx]
                 full_master_param = flatten(full_master_param)[:working_param.numel()].reshape_as(working_param)
                 working_param.data.copy_(full_master_param)
