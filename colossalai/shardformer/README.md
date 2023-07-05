@@ -381,6 +381,7 @@ To be added.
 
 ### Convergence
 
+
 To validate that training the model using shardformers does not impact its convergence. We [fine-tuned the BERT model](./examples/convergence_benchmark.py) using both shardformer and non-shardformer approaches. We compared the accuracy, loss, F1 score of the training results.
 
 | accuracy |   f1    |  loss   | GPU number | model shard |
