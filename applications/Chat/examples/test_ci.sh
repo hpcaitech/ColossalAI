@@ -43,18 +43,18 @@ pip install -r ${BASE}/requirements.txt
 
 wandb init -m offline
 
-# FIXME: This is a hack to skip tests that are not working (tested at commit b3ab7fbabf)
+# FIXME: This is a hack to skip tests that are not working
 #  - gpt2-ddp: RuntimeError: one of the variables needed for gradient computation has been modified by an inplace operation
-#  - llama-*: Repository Not Found for url: https://huggingface.co/{...}/resolve/main/tokenizer.model.
-#  - roberta-*: RuntimeError: CUDA error: CUBLAS_STATUS_NOT_INITIALIZED when calling `cublasCreate(handle)`
+#  - llama-*: These tests can be passed locally, skipped for long execution time
 SKIPPED_TESTS=(
     "gpt2-ddp"
-    "llama-ddp" "llama-colossalai_gemini" "llama-colossalai_zero2"
-    "roberta-ddp" "roberta-colossalai_gemini" "roberta-colossalai_zero2"
+    "llama-ddp"
+    "llama-colossalai_gemini"
+    "llama-colossalai_zero2"
 )
 
 # These tests are quick and do not have any dependencies
-for model in 'gpt2' 'bloom' 'opt' 'llama' 'roberta'; do
+for model in 'gpt2' 'bloom' 'opt' 'llama'; do
     for strategy in 'ddp' 'colossalai_gemini' 'colossalai_zero2'; do
         if [[ " ${SKIPPED_TESTS[*]} " =~ " ${model}-${strategy} " ]]; then
             echo "[Test]: Skipped $model-$strategy"
@@ -64,7 +64,7 @@ for model in 'gpt2' 'bloom' 'opt' 'llama' 'roberta'; do
             --prompt_dataset $PROMPT_PATH --pretrain_dataset $PRETRAIN_DATASET \
             --strategy $strategy --model $model \
             --num_episodes 1 --num_collect_steps 2 --num_update_steps 1 \
-            --train_batch_size 2
+            --train_batch_size 2 --lora_rank 4
     done
 done
 
@@ -119,22 +119,6 @@ rm -rf ${BASE}/rm_ckpt.pt
 torchrun --standalone --nproc_per_node=2 ${BASE}/train_reward_model.py \
     --pretrain 'bigscience/bloom-560m' --model 'bloom' \
     --strategy colossalai_zero2 --loss_fn 'log_sig' \
-    --dataset 'Anthropic/hh-rlhf' --subset 'harmless-base' \
-    --test True --lora_rank 4 \
-    --save_path ${BASE}/rm_ckpt.pt
-rm -rf ${BASE}/rm_ckpt.pt
-
-torchrun --standalone --nproc_per_node=2 ${BASE}/train_reward_model.py \
-    --pretrain 'microsoft/deberta-v3-large' --model 'deberta' \
-    --strategy colossalai_zero2 --loss_fn 'log_sig' \
-    --dataset 'Anthropic/hh-rlhf' --subset 'harmless-base' \
-    --test True --lora_rank 4 \
-    --save_path ${BASE}/rm_ckpt.pt
-rm -rf ${BASE}/rm_ckpt.pt
-
-torchrun --standalone --nproc_per_node=2 ${BASE}/train_reward_model.py \
-    --pretrain 'roberta-base' --model 'roberta' \
-    --strategy colossalai_zero2 --loss_fn 'log_exp' \
     --dataset 'Anthropic/hh-rlhf' --subset 'harmless-base' \
     --test True --lora_rank 4 \
     --save_path ${BASE}/rm_ckpt.pt

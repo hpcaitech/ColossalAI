@@ -9,10 +9,8 @@ from coati.models.bloom import BLOOMRM, BLOOMActor, BLOOMCritic
 from coati.models.gpt import GPTRM, GPTActor, GPTCritic
 from coati.models.llama import LlamaActor, LlamaCritic, LlamaRM
 from coati.models.opt import OPTRM, OPTActor, OPTCritic
-from coati.models.roberta import RoBERTaActor, RoBERTaCritic, RoBERTaRM
 from coati.trainer.strategies import DDPStrategy, GeminiStrategy, LowLevelZeroStrategy
-from coati.utils import prepare_llama_tokenizer_and_embedding
-from transformers import AutoTokenizer, BloomTokenizerFast, GPT2Tokenizer, LlamaTokenizer, RobertaTokenizer
+from transformers import AutoTokenizer, BloomTokenizerFast, GPT2Tokenizer, LlamaTokenizer
 
 
 def is_rank_0() -> bool:
@@ -36,8 +34,6 @@ def get_actor_from_args(model: str, pretrained: str = None, config=None, lora_ra
         actor = OPTActor(pretrained=pretrained, config=config, lora_rank=lora_rank)
     elif model == 'llama':
         actor = LlamaActor(pretrained=pretrained, config=config, lora_rank=lora_rank)
-    elif model == 'roberta':
-        actor = RoBERTaActor(pretrained=pretrained, config=config, lora_rank=lora_rank)
     else:
         raise ValueError(f'Unsupported actor model "{model}"')
     return actor
@@ -52,8 +48,6 @@ def get_critic_from_args(model: str, pretrained: str = None, config=None, lora_r
         critic = OPTCritic(pretrained=pretrained, lora_rank=lora_rank, config=config, use_action_mask=True)
     elif model == 'llama':
         critic = LlamaCritic(pretrained=pretrained, lora_rank=lora_rank, config=config, use_action_mask=True)
-    elif model == 'roberta':
-        critic = RoBERTaCritic(pretrained=pretrained, lora_rank=lora_rank, config=config, use_action_mask=True)
     else:
         raise ValueError(f'Unsupported reward model "{model}"')
     return critic
@@ -68,8 +62,6 @@ def get_reward_model_from_args(model: str, pretrained: str = None, config=None):
         reward_model = OPTRM(pretrained=pretrained, config=config)
     elif model == 'llama':
         reward_model = LlamaRM(pretrained=pretrained, config=config)
-    elif model == 'roberta':
-        reward_model = RoBERTaRM(pretrained=pretrained, config=config)
     else:
         raise ValueError(f'Unsupported reward model "{model}"')
     return reward_model
@@ -101,8 +93,6 @@ def get_tokenizer_from_args(model: str, **kwargs):
     elif model == 'llama':
         pretrain_path = kwargs["pretrain"]
         tokenizer = AutoTokenizer.from_pretrained(pretrain_path)
-    elif model == 'roberta':
-        tokenizer = RobertaTokenizer.from_pretrained("roberta-base")
     else:
         raise ValueError(f'Unsupported model "{model}"')
 

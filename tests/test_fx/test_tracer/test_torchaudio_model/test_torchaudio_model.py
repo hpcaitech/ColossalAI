@@ -16,7 +16,7 @@ def test_torchaudio_models():
 
     sub_model_zoo = model_zoo.get_sub_registry('torchaudio')
 
-    for name, (model_fn, data_gen_fn, output_transform_fn, attribute) in sub_model_zoo.items():
+    for name, (model_fn, data_gen_fn, output_transform_fn, _, _, attribute) in sub_model_zoo.items():
         model = model_fn()
         trace_and_compare(model,
                           data_gen_fn,

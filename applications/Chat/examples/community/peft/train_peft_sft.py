@@ -12,7 +12,6 @@ from coati.models.llama import LlamaLM
 from coati.models.opt import OPTLM
 from coati.trainer import SFTTrainer
 from coati.trainer.strategies import DDPStrategy, GeminiStrategy, LowLevelZeroStrategy
-from coati.utils import prepare_llama_tokenizer_and_embedding
 from datasets import load_dataset
 from easy_dataset import EasyDataset
 from peft import LoraConfig, PeftModel, TaskType, get_peft_model
@@ -65,10 +64,11 @@ def train(args):
         tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
         tokenizer.pad_token = tokenizer.eos_token
     elif args.model == 'bloom':
-        tokenizer = BloomTokenizerFast.from_pretrained(args.pretrain)
+        tokenizer = BloomTokenizerFast.from_pretrained("bigscience/bloom-560m")
         tokenizer.pad_token = tokenizer.eos_token
     elif args.model == 'opt':
         tokenizer = AutoTokenizer.from_pretrained("facebook/opt-350m")
+        tokenizer.pad_token = tokenizer.eos_token
     elif args.model == 'llama':
         tokenizer = AutoTokenizer.from_pretrained(
             args.pretrain,
@@ -76,23 +76,19 @@ def train(args):
             use_fast=False,
         )
         tokenizer.eos_token = '<\s>'
+        tokenizer.pad_token = tokenizer.unk_token
     else:
         raise ValueError(f'Unsupported model "{args.model}"')
-    tokenizer.pad_token = tokenizer.eos_token
-    if args.model == 'llama':
-        tokenizer = prepare_llama_tokenizer_and_embedding(tokenizer, model)
 
-        if args.strategy == 'colossalai_gemini':
-            # this is a hack to deal with the resized embedding
-            # to make sure all parameters are ColoParameter for Colossal-AI Gemini Compatibility
-            for name, param in model.named_parameters():
-                if not isinstance(param, ColoParameter):
-                    sub_module_name = '.'.join(name.split('.')[:-1])
-                    weight_name = name.split('.')[-1]
-                    sub_module = model.get_submodule(sub_module_name)
-                    setattr(sub_module, weight_name, ColoParameter(param))
-    else:
-        tokenizer.pad_token = tokenizer.eos_token
+    if args.model == 'llama' and args.strategy == 'colossalai_gemini':
+        # this is a hack to deal with the resized embedding
+        # to make sure all parameters are ColoParameter for Colossal-AI Gemini Compatibility
+        for name, param in model.named_parameters():
+            if not isinstance(param, ColoParameter):
+                sub_module_name = '.'.join(name.split('.')[:-1])
+                weight_name = name.split('.')[-1]
+                sub_module = model.get_submodule(sub_module_name)
+                setattr(sub_module, weight_name, ColoParameter(param))
 
     # configure optimizer
     if args.strategy.startswith('colossalai'):
