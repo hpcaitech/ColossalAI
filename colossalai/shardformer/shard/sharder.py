@@ -6,8 +6,8 @@ from torch import Tensor
 from colossalai.lazy import LazyTensor
 
 from .._utils import getattr_, setattr_
-from ..policies.autopolicy import get_autopolicy
-from ..policies.basepolicy import Policy, SubModuleReplacementDescription
+from ..policies.auto_policy import get_autopolicy
+from ..policies.base_policy import Policy, SubModuleReplacementDescription
 from .shard_config import ShardConfig
 from .utils import set_tensors_to_none
 

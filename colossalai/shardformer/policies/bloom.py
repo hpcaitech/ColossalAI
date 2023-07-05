@@ -4,7 +4,7 @@ import colossalai.shardformer.layer as col_nn
 
 from .._utils import getattr_, setattr_
 from ..modeling.bloom import build_bloom_alibi_tensor_fn
-from .basepolicy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
+from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 
 class BloomPolicy(Policy):

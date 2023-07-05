@@ -5,7 +5,7 @@ from torch import Tensor
 
 from colossalai.cluster import DistCoordinator
 
-from ..policies.basepolicy import Policy
+from ..policies.base_policy import Policy
 from .shard_config import ShardConfig
 from .sharder import ModelSharder
 
