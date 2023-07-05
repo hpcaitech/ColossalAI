@@ -369,7 +369,7 @@ class CheckpointSolverRotor(CheckpointSolverBase):
                     in_ckpt = False
                     for node_idx in ckpt_region:
                         for n in node_list[node_idx]:
-                            n.meta['activation_checkpoint'] = [ckpt_idx]
+                            n.meta['info'].activation_checkpoint = [ckpt_idx]
 
                     ckpt_idx += 1
                     ckpt_region = []
@@ -377,7 +377,7 @@ class CheckpointSolverRotor(CheckpointSolverBase):
                 elif isinstance(op, ForwardCheck):
                     for node_idx in ckpt_region:
                         for n in node_list[node_idx]:
-                            n.meta['activation_checkpoint'] = [ckpt_idx]
+                            n.meta['info'].activation_checkpoint = [ckpt_idx]
 
                     ckpt_idx += 1
                     ckpt_region = [idx]
@@ -397,7 +397,7 @@ class CheckpointSolverRotor(CheckpointSolverBase):
                 elif isinstance(op, ForwardEnable):
                     for node_idx in ckpt_region:
                         for n in node_list[node_idx]:
-                            n.meta['activation_checkpoint'].append(ckpt_idx)
+                            n.meta['info'].activation_checkpoint.append(ckpt_idx)
 
                     ckpt_idx += 1
                     ckpt_region = []
@@ -405,7 +405,7 @@ class CheckpointSolverRotor(CheckpointSolverBase):
                 elif isinstance(op, ForwardCheck):
                     for node_idx in ckpt_region:
                         for n in node_list[node_idx]:
-                            n.meta['activation_checkpoint'].append(ckpt_idx)
+                            n.meta['info'].activation_checkpoint.append(ckpt_idx)
 
                     ckpt_idx += 1
                     ckpt_region = [op.index]
@@ -413,7 +413,7 @@ class CheckpointSolverRotor(CheckpointSolverBase):
                 elif isinstance(op, Backward):
                     for node_idx in ckpt_region:
                         for n in node_list[node_idx]:
-                            n.meta['activation_checkpoint'].append(ckpt_idx)
+                            n.meta['info'].activation_checkpoint.append(ckpt_idx)
 
                     in_recompute = False
 
@@ -433,7 +433,7 @@ class CheckpointSolverRotor(CheckpointSolverBase):
         ckpt_regions = _find_nested_ckpt_regions(op_list)
         for (start_idx, end_idx) in ckpt_regions:
             nested_length = max(
-                len(op_list[idx].meta['activation_checkpoint']) for idx in range(start_idx, end_idx + 1))
+                len(op_list[idx].meta['info'].activation_checkpoint) for idx in range(start_idx, end_idx + 1))
             for idx in range(start_idx, end_idx + 1):
-                op_list[idx].meta['activation_checkpoint'] += [None] * (nested_length -
-                                                                        len(op_list[idx].meta['activation_checkpoint']))
+                op_list[idx].meta['info'].activation_checkpoint += [None] * (
+                    nested_length - len(op_list[idx].meta['info'].activation_checkpoint))

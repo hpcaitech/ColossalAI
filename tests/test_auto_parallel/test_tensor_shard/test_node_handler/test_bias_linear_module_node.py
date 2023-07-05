@@ -151,7 +151,7 @@ def check_linear_module_handler(rank, world_size, port, bias):
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_linear_handler(bias=True):
-    spawn(check_linear_module_handler, bias=bias)
+    spawn(check_linear_module_handler, 4, bias=bias)
 
 
 if __name__ == '__main__':

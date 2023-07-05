@@ -94,6 +94,8 @@ def _find_nested_ckpt_regions(node_list: List[Node], ckpt_level: int = 0):
     current_region = None
 
     for idx, node in enumerate(node_list):
+        if 'info' not in node.meta:
+            continue
         if len(node.meta['info'].activation_checkpoint) > ckpt_level:
             act_ckpt_label = node.meta['info'].activation_checkpoint[ckpt_level]
 
