@@ -10,6 +10,7 @@ from colossalai.core import global_context as gpc
 
 
 class ParallelLayer(nn.Module):
+
     global_state_dict: bool = True
 
     def __init__(self):

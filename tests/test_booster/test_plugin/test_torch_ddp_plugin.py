@@ -40,7 +40,7 @@ def run_fn(model_fn, data_gen_fn, output_transform_fn):
 
 
 def check_torch_ddp_plugin():
-    for name, (model_fn, data_gen_fn, output_transform_fn, _) in model_zoo.items():
+    for name, (model_fn, data_gen_fn, output_transform_fn, _, _) in model_zoo.items():
         if name == 'dlrm_interactionarch':
             continue
         run_fn(model_fn, data_gen_fn, output_transform_fn)

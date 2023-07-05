@@ -26,7 +26,7 @@ def run_dist(rank, world_size, port):
     # the mesh is in the following topo
     # [[0, 1],
     #  [2, 3]]
-    physical_mesh_id = torch.arange(0, 4).reshape(2, 2)
+    physical_mesh_id = torch.arange(0, 4)
     mesh_shape = (2, 2)
     device_mesh = DeviceMesh(physical_mesh_id, mesh_shape)
     row_id = rank // 2

@@ -4,11 +4,10 @@ on:
   pull_request:
     types: [synchronize, opened, reopened]
     paths:
-      - 'applications/Chat/coati/**'
-      - 'applications/Chat/requirements.txt'
-      - 'applications/Chat/setup.py'
-      - 'applications/Chat/examples/**'
-
+      - "applications/Chat/coati/**"
+      - "applications/Chat/requirements.txt"
+      - "applications/Chat/setup.py"
+      - "applications/Chat/examples/**"
 
 jobs:
   tests:
@@ -38,10 +37,7 @@ jobs:
 
       - name: Install Transformers
         run: |
-          cd applications/Chat
-          git clone https://github.com/hpcaitech/transformers
-          cd transformers
-          pip install -v .
+          pip install transformers==4.30.2
 
       - name: Execute Examples
         run: |
