@@ -285,51 +285,76 @@ def bert_for_pretraining_forward(
     output_attentions: Optional[bool] = None,
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
-    hidden_states: Optional[torch.LongTensor] = None,
+    hidden_states: Optional[torch.FloatTensor] = None,
     stage_manager: Optional[PipelineStageManager] = None,
 ) -> Union[Tuple[torch.Tensor], BertForPreTrainingOutput]:
-
     return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-    outputs = bert_model_forward(
-        self.bert,
-        input_ids,
-        attention_mask=attention_mask,
-        token_type_ids=token_type_ids,
-        position_ids=position_ids,
-        head_mask=head_mask,
-        inputs_embeds=inputs_embeds,
-        output_attentions=output_attentions,
-        output_hidden_states=output_hidden_states,
-        return_dict=return_dict,
-    )
+    # TODO: left the recording kv-value tensors as () or None type, this feature may be added in the future.
+    if output_attentions:
+        logger.warning_once('output_attentions=True is not supported for pipeline models at the moment.')
+        output_attentions = False
+    if output_hidden_states:
+        logger.warning_once('output_hidden_states=True is not supported for pipeline models at the moment.')
+        output_hidden_states = False
+    if return_dict:
+        logger.warning_once('return_dict is not supported for pipeline models at the moment')
+        return_dict = False
 
-    sequence_output, pooled_output = outputs[:2]
+    outputs = bert_model_forward(self.bert,
+                                 input_ids,
+                                 attention_mask=attention_mask,
+                                 token_type_ids=token_type_ids,
+                                 position_ids=position_ids,
+                                 head_mask=head_mask,
+                                 inputs_embeds=inputs_embeds,
+                                 output_attentions=output_attentions,
+                                 output_hidden_states=output_hidden_states,
+                                 return_dict=return_dict,
+                                 stage_manager=stage_manager,
+                                 hidden_states=hidden_states if hidden_states is not None else None)
+    past_key_values = None
+    all_hidden_states = None
+    all_self_attentions = None
+    all_cross_attentions = None
+    hidden_states = outputs[0]
     if stage_manager.is_last_stage():
+        sequence_output, pooled_output = outputs[:2]
         prediction_scores, seq_relationship_score = self.cls(sequence_output, pooled_output)
+        # the last stage for pretraining model
+        total_loss = None
+        if labels is not None and next_sentence_label is not None:
+            loss_fct = CrossEntropyLoss()
+            masked_lm_loss = loss_fct(prediction_scores.view(-1, self.config.vocab_size), labels.view(-1))
+            next_sentence_loss = loss_fct(seq_relationship_score.view(-1, 2), next_sentence_label.view(-1))
+            total_loss = masked_lm_loss + next_sentence_loss
 
-    total_loss = None
-    if labels is not None and next_sentence_label is not None:
-        loss_fct = CrossEntropyLoss()
-        masked_lm_loss = loss_fct(prediction_scores.view(-1, self.config.vocab_size), labels.view(-1))
-        next_sentence_loss = loss_fct(seq_relationship_score.view(-1, 2), next_sentence_label.view(-1))
-        total_loss = masked_lm_loss + next_sentence_loss
+        if not return_dict:
+            output = (prediction_scores, seq_relationship_score) + outputs[2:]
+            return ((total_loss,) + output) if total_loss is not None else output
 
-    if not return_dict:
-        output = (prediction_scores, seq_relationship_score) + outputs[2:]
-        return ((total_loss,) + output) if total_loss is not None else output
+        return BertForPreTrainingOutput(
+            loss=total_loss,
+            prediction_logits=prediction_scores,
+            seq_relationship_logits=seq_relationship_score,
+            hidden_states=outputs.hidden_states,
+            attentions=outputs.attentions,
+        )
 
-    return BertForPreTrainingOutput(
-        loss=total_loss,
-        prediction_logits=prediction_scores,
-        seq_relationship_logits=seq_relationship_score,
-        hidden_states=outputs.hidden_states,
-        attentions=outputs.attentions,
-    )
+    else:
+        if not return_dict:
+            return tuple(v for v in [
+                hidden_states,
+                past_key_values,
+                all_hidden_states,
+                all_self_attentions,
+                all_cross_attentions,
+            ] if v is not None)
 
 
 class BertForPreTrainingPolicy(Policy):
 
     def __init__(self, stage_manager: PipelineStageManager, num_layers: int, num_stages: int):
+        super().__init__(stage_manager=stage_manager)
         self.stage_manager = stage_manager
         self.layers_per_stage = self.distribute_layers(num_layers, num_stages)
 
@@ -355,22 +380,5 @@ class BertForPreTrainingPolicy(Policy):
         pass
 
     def replace_forward(self, module: Module) -> None:
-        module.model.forward = MethodType(partial(bert_for_pretraining_forward, stage_manager=self.stage_manager),
-                                          module.model)
-
-    def distribute_layers(self, num_layers: int, num_stages: int) -> List[int]:
-        """
-        divide layers into stages
-        """
-        quotient = num_layers // num_stages
-        remainder = num_layers % num_stages
-
-        # calculate the num_layers per stage
-        layers_per_stage = [quotient] * num_stages
-
-        # deal with the rest layers
-        if remainder > 0:
-            start_position = num_layers // 2 - remainder // 2
-            for i in range(start_position, start_position + remainder):
-                layers_per_stage[i] += 1
-        return layers_per_stage
+        module.forward = MethodType(partial(bert_for_pretraining_forward, stage_manager=self.stage_manager),
+                                    module.forward)
