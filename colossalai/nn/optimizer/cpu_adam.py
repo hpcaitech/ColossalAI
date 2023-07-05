@@ -176,3 +176,6 @@ class CPUAdam(NVMeOptimizer):
                     raise RuntimeError
         self._post_step()
         return loss
+
+    def get_state_names(self):
+        return ['step', 'exp_avg', 'exp_avg_sq']

@@ -147,3 +147,6 @@ class FusedAdam(torch.optim.Optimizer):
                                  group['weight_decay'], div_scale)
 
         return loss
+
+    def get_state_names(self):
+        return ['step', 'exp_avg', 'exp_avg_sq']

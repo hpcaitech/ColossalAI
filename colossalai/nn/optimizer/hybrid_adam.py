@@ -152,3 +152,6 @@ class HybridAdam(CPUAdam):
                                      bias_correction, group['weight_decay'], div_scale)
         self._post_step()
         return loss
+
+    def get_state_names(self):
+        return ['step', 'exp_avg', 'exp_avg_sq']
