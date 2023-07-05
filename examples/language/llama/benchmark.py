@@ -2,9 +2,18 @@ import argparse
 import resource
 from contextlib import contextmanager, nullcontext
 
+from random import randint
+import time
+
+
 import torch
 import torch.nn as nn
+
 from attn import SUPPORT_XFORMERS, replace_xformers
+
+import transformers
+from torch.distributed.fsdp.wrap import size_based_auto_wrap_policy
+
 from performance_evaluator import PerformanceEvaluator, Timer
 from torch.distributed.fsdp.fully_sharded_data_parallel import CPUOffload, MixedPrecision
 from torch.utils.data import Dataset
@@ -85,6 +94,7 @@ def main():
     # ==============================
     # Parse Arguments
     # ==============================
+    start_time = time.time()
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config', type=str, default='7b', help='Model configuration')
     parser.add_argument('-p',
@@ -105,9 +115,13 @@ def main():
     colossalai.launch_from_torch({})
     coordinator = DistCoordinator()
 
+    def empty_init():
+        pass
+
     # ==============================
     # Initialize Booster
     # ==============================
+    use_empty_init = True
     if args.plugin == 'gemini':
         AutoPlacementPolicy.set_warmup_non_model_data_ratio(args.warmup_ratio)
         plugin = GeminiPlugin(placement_policy='auto')
@@ -117,13 +131,25 @@ def main():
         ConstPlacementPolicy.set_const_memory_boundary(args.memory_limit)
         plugin = GeminiPlugin(placement_policy='const')
     elif args.plugin == 'fsdp':
-        plugin = TorchFSDPPlugin(mixed_precision=MixedPrecision(
-            param_dtype=torch.float16, reduce_dtype=torch.float16, buffer_dtype=torch.float16))
+        if use_empty_init:
+            plugin = TorchFSDPPlugin(mixed_precision=MixedPrecision(
+                param_dtype=torch.float16, reduce_dtype=torch.float16, buffer_dtype=torch.float16), param_init_fn=empty_init(),)
+                # auto_wrap_policy=size_based_auto_wrap_policy)
+        else:
+            plugin = TorchFSDPPlugin(mixed_precision=MixedPrecision(
+                param_dtype=torch.float16, reduce_dtype=torch.float16, buffer_dtype=torch.float16))
     elif args.plugin == 'fsdp_cpu':
-        plugin = TorchFSDPPlugin(mixed_precision=MixedPrecision(param_dtype=torch.float16,
-                                                                reduce_dtype=torch.float16,
-                                                                buffer_dtype=torch.float16),
-                                 cpu_offload=CPUOffload(offload_params=True))
+        if use_empty_init:
+            plugin = TorchFSDPPlugin(mixed_precision=MixedPrecision(param_dtype=torch.float16,
+                                                                    reduce_dtype=torch.float16,
+                                                                    buffer_dtype=torch.float16),
+                                     cpu_offload=CPUOffload(offload_params=True), param_init_fn=empty_init(),)
+                                     # auto_wrap_policy=size_based_auto_wrap_policy)
+        else:
+            plugin = TorchFSDPPlugin(mixed_precision=MixedPrecision(param_dtype=torch.float16,
+                                                                    reduce_dtype=torch.float16,
+                                                                    buffer_dtype=torch.float16),
+                                     cpu_offload=CPUOffload(offload_params=True))
     else:
         raise ValueError(f'Unknown plugin {args.plugin}')
 
@@ -162,9 +188,11 @@ def main():
     performance_evaluator = PerformanceEvaluator(model_numel, args.grad_checkpoint, args.ignore_steps)
 
     optimizer = HybridAdam(model.parameters())
-
-    model, optimizer, _, dataloader, _ = booster.boost(model, optimizer, dataloader=dataloader)
+    print("model is on {}".format(model.device))
+    model, optimizer, _, dataloader, _ = booster.boost(model, optimizer, dataloader=dataloader, benchmark=use_empty_init)
     timer.end()
+    end_time = time.time()
+    print("total init time: ", end_time - start_time, "s")
     coordinator.print_on_master(f'Booster init time: {timer.duration:.2f} s')
     coordinator.print_on_master(f'Booster init max CUDA memory: {torch.cuda.max_memory_allocated()/1024**2:.2f} MB')
     coordinator.print_on_master(

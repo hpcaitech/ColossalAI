@@ -153,6 +153,11 @@ def main():
     # ==============================
     # Parse Arguments
     # ==============================
+    print(os.environ['NCCL_IB_HCA'])
+    print(os.environ['NCCL_IB_DISABLE'])
+    print(os.environ['NCCL_SOCKET_IFNAME'])
+    print(os.environ['NCCL_IB_GID_INDEX'])
+    start_time = time.time()
     args = get_arguments()
     deepspeed.init_distributed()
 
@@ -163,6 +168,7 @@ def main():
     # Initialize Model and Optimizer
     # ==============================
 
+    # with low_precision_init(), no_init_weights():
     with low_precision_init(), no_init_weights(), deepspeed.zero.Init():
         model = LlamaForCausalLM(config)
         model.tie_weights()
@@ -200,7 +206,8 @@ def main():
                                                         shuffle=True)
                              )
 
-
+    end_time = time.time()
+    print(f'Initialization took {end_time - start_time:.2f} seconds')
     for step, batch in enumerate(tqdm(data_loader, desc='Step')):
         #forward() method
         # print(batch)
