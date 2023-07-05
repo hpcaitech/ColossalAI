@@ -1,31 +1,26 @@
 import argparse
 import resource
 from contextlib import contextmanager, nullcontext
-from random import randint
 
 import torch
-import torch.distributed as dist
 import torch.nn as nn
-import transformers
+from attn import SUPPORT_XFORMERS, replace_xformers
 from performance_evaluator import PerformanceEvaluator, Timer
 from torch.distributed.fsdp.fully_sharded_data_parallel import CPUOffload, MixedPrecision
-from torch.optim import Optimizer
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import Dataset
 from tqdm import tqdm
 from transformers.modeling_utils import no_init_weights
 from transformers.models.llama.configuration_llama import LlamaConfig
 from transformers.models.llama.modeling_llama import LlamaForCausalLM
-from transformers.utils.versions import require_version
 
 import colossalai
 from colossalai.booster import Booster
-from colossalai.zero.gemini.placement_policy import AutoPlacementPolicy, ConstPlacementPolicy
-from colossalai.booster.plugin import GeminiPlugin, LowLevelZeroPlugin, TorchDDPPlugin, TorchFSDPPlugin
-from colossalai.booster.plugin.dp_plugin_base import DPPluginBase
+from colossalai.booster.plugin import GeminiPlugin, TorchFSDPPlugin
 from colossalai.cluster import DistCoordinator
 from colossalai.lazy import LazyInitContext
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.utils import get_current_device
+from colossalai.zero.gemini.placement_policy import AutoPlacementPolicy, ConstPlacementPolicy
 
 MODEL_CONFIGS = {
     '7b': LlamaConfig(),
@@ -104,6 +99,7 @@ def main():
     parser.add_argument('-l', '--max_length', type=int, default=2048, help='Max sequence length')
     parser.add_argument('-w', '--warmup_ratio', type=float, default=0.8, help='warm up ratio for auto placement policy')
     parser.add_argument('-m', '--memory_limit', type=int, help='Gemini memory limit in mb')
+    parser.add_argument('-x', '--xformers', action='store_true', help='Use xformers')
     args = parser.parse_args()
 
     colossalai.launch_from_torch({})
@@ -156,6 +152,10 @@ def main():
 
     if args.grad_checkpoint:
         model.gradient_checkpointing_enable()
+
+    if args.xformers:
+        assert SUPPORT_XFORMERS, 'Use flash attention while xfomers is not installed'
+        replace_xformers(model)
 
     model_numel = get_model_numel(model)
     coordinator.print_on_master(f'Model params: {format_numel_str(model_numel)}')
