@@ -3,7 +3,7 @@ import torch.nn as nn
 import colossalai.shardformer.layer as col_nn
 
 from .._utils import getattr_, setattr_
-from .basepolicy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
+from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = [
     'BertPolicy', 'BertModelPolicy', 'BertForPretrainingPolicy', 'BertLMHeadModelPolicy', 'BertForMaskedLMPolicy',
