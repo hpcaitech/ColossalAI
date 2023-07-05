@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 import torch.nn as nn
 
-from .basepolicy import Policy
+from .base_policy import Policy
 
 __all__ = ["PolicyLocation", "get_autopolicy", "import_policy"]
 

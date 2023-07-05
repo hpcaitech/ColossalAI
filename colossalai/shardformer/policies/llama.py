@@ -4,7 +4,7 @@ import torch.nn as nn
 
 from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col, Linear1D_Row, VocabParallelEmbedding1D
 
-from .basepolicy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
+from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = ['LlamaPolicy', 'LlamaForCausalLMPolicy', 'LlamaForSequenceClassificationPolicy']
 
