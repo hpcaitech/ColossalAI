@@ -1,4 +1,5 @@
 # this code is inspired by the DeepSpeed library and implemented with our own design from scratch
+import copy
 from contextlib import contextmanager
 from functools import partial
 from typing import Optional
@@ -198,7 +199,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         params_current_rank = []
         device = 'cpu' if self._cpu_offload else get_current_device()
 
-        for param in reversed(param_list):
+        for param in param_list:
             padding_size = (self._world_size - param.numel() % self._world_size) % self._world_size
             self._param_store.record_param_padding_size(param, padding_size)
 
@@ -468,3 +469,70 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             yield
         finally:
             self.require_grad_sync = old_require_grad_sync
+
+    ##############
+    # State Dict #
+    ##############
+
+    def state_dict(self) -> dict:
+        """Return a state_dict same with DDP
+
+        Returns:
+            dict: the pytorch form state_dict
+        """
+        zero_state = self.optim.state.copy()
+        for param, state in zero_state.items():
+            for k, v in state.items():
+                if isinstance(v, torch.Tensor) and k != 'step':
+                    working_param = self._param_store.master_to_working_param[id(param)]
+                    gather_tensor = [torch.zeros_like(v) for _ in range(self._world_size)]
+                    dist.all_gather(gather_tensor, v, group=self.dp_pg)
+                    param_state = torch.stack(gather_tensor).view(-1)[:working_param.numel()].reshape_as(working_param)
+                    zero_state[param][k] = param_state
+
+        torch.cuda.synchronize()
+
+        # below comes from pytorch optimizer.state_dict()
+        param_mappings = {}
+        start_index = 0
+
+        def pack_group(group):
+            nonlocal start_index
+            packed = {k: v for k, v in group.items() if k != 'params'}
+            param_mappings.update(
+                {id(p): i for i, p in enumerate(group['params'], start_index) if id(p) not in param_mappings})
+            packed['params'] = [param_mappings[id(p)] for p in group['params']]
+            start_index += len(packed['params'])
+            return packed
+
+        param_groups = [pack_group(g) for g in self.param_groups]
+        # Remap state to use order indices as keys
+        packed_state = {(param_mappings[id(k)] if isinstance(k, torch.Tensor) else k): v for k, v in zero_state.items()}
+
+        zero_state = None
+
+        return {
+            'state': packed_state,
+            'param_groups': param_groups,
+        }
+
+    def load_state_dict(self, state_dict: dict):
+        """Load state dict, requires the state_dict be the pytorch form
+
+        Args:
+            state_dict (dict): A pytorch form state_dict
+        """
+        tmp_state_dict = state_dict.copy()
+        for param_idx, state in tmp_state_dict['state'].items():
+            for k, v in state.items():
+                if isinstance(v, torch.Tensor) and k != 'step':
+                    padding_size = (self._world_size - v.numel() % self._world_size) % self._world_size
+                    with torch.no_grad():
+                        v = v.detach().flatten()
+                        if padding_size > 0:
+                            v = torch.nn.functional.pad(v, [0, padding_size])
+                        v_list = v.split(v.numel() // self._world_size)
+                        tmp_state_dict['state'][param_idx][k] = v_list[self._local_rank].detach()
+
+        self.optim.load_state_dict(tmp_state_dict)
+        tmp_state_dict = None
