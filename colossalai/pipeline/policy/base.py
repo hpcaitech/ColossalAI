@@ -1,13 +1,15 @@
 from typing import Any, Dict, List, Optional, Tuple
 
-from colossalai.lazy import LazyTensor
+import numpy as np
 from torch import Tensor
 from torch.nn import Module, Parameter
 
+from colossalai.lazy import LazyTensor
 from colossalai.pipeline.stage_manager import PipelineStageManager
 
 
 class Policy:
+
     def __init__(self, stage_manager: PipelineStageManager) -> None:
         self.stage_manager = stage_manager
 
@@ -93,7 +95,8 @@ class Policy:
         """
         raise NotImplementedError
 
-    def parallelize_model(self, module: Module) -> Tuple[Dict[str, Parameter], Dict[str, Tensor], List[Dict[int, Tensor]]]:
+    def parallelize_model(self,
+                          module: Module) -> Tuple[Dict[str, Parameter], Dict[str, Tensor], List[Dict[int, Tensor]]]:
         """Parallelize model for pipeline parallel
 
         Args:
@@ -106,3 +109,33 @@ class Policy:
         self.replace_forward(module)
         shared_params = self.get_shared_params(module)
         return hold_params, hold_buffers, shared_params
+
+    @staticmethod
+    def distribute_layers(num_layers: int, num_stages: int) -> List[int]:
+        """
+        divide layers into stages
+        """
+        quotient = num_layers // num_stages
+        remainder = num_layers % num_stages
+
+        # calculate the num_layers per stage
+        layers_per_stage = [quotient] * num_stages
+
+        # deal with the rest layers
+        if remainder > 0:
+            start_position = num_layers // 2 - remainder // 2
+            for i in range(start_position, start_position + remainder):
+                layers_per_stage[i] += 1
+        return layers_per_stage
+
+    @staticmethod
+    def get_stage_index(layers_per_stage: List[int], stage: int) -> List[int]:
+        """
+        get the start index and end index of layers for each stage.
+        """
+        num_layers_per_stage_accumulated = np.insert(np.cumsum(layers_per_stage), 0, 0)
+
+        start_idx = num_layers_per_stage_accumulated[stage]
+        end_idx = num_layers_per_stage_accumulated[stage + 1]
+
+        return [start_idx, end_idx]
