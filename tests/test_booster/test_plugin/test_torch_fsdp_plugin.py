@@ -42,7 +42,7 @@ def run_fn(model_fn, data_gen_fn, output_transform_fn):
 
 
 def check_torch_fsdp_plugin():
-    for name, (model_fn, data_gen_fn, output_transform_fn, _) in model_zoo.items():
+    for name, (model_fn, data_gen_fn, output_transform_fn, _, _) in model_zoo.items():
         if any(element in name for element in [
                 'diffusers', 'deepfm_sparsearch', 'dlrm_interactionarch', 'torchvision_googlenet',
                 'torchvision_inception_v3'
