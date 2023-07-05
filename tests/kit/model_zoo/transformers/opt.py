@@ -11,14 +11,47 @@ SEQ_LENGTH = 16
 
 
 def data_gen():
-    input_ids = torch.zeros((BATCH_SIZE, SEQ_LENGTH), dtype=torch.int64)
-    attention_mask = torch.zeros((BATCH_SIZE, SEQ_LENGTH), dtype=torch.int64)
+    input_ids = torch.Tensor([[1, 15043, 29892, 590, 11203, 338, 274, 1082]]).long()
+    attention_mask = torch.Tensor([[1, 1, 1, 1, 1, 1, 1, 1]]).long()
     return dict(input_ids=input_ids, attention_mask=attention_mask)
 
 
-output_transform_fn = lambda x: x
+def data_gen_for_causal_lm():
+    # LM data gen
+    # the `labels` of LM is the token of the output, cause no padding, use `input_ids` as `labels`
+    data = data_gen()
+    labels = data['input_ids'].clone()
+    data['labels'] = labels
+    return data
 
-config = transformers.OPTConfig(hidden_size=128, num_hidden_layers=2, num_attention_heads=4)
+
+def data_gen_for_sequence_classification():
+    # LM data gen
+    # the `labels` of LM is the token of the output, cause no padding, use `input_ids` as `labels`
+    data = data_gen()
+    labels = data['input_ids'].clone()
+    data['labels'] = torch.tensor([1])
+    return data
+
+
+def data_gen_for_question_answering():
+    # LM data gen
+    # the `labels` of LM is the token of the output, cause no padding, use `input_ids` as `labels`
+    data = data_gen()
+    data['start_positions'] = torch.tensor([0])
+    data['end_positions'] = torch.tensor([1])
+    return data
+
+
+output_transform_fn = lambda x: x
+loss_fn_for_opt_model = lambda x: x.last_hidden_state.mean()
+loss_fn_for_lm = lambda x: x.loss
+config = transformers.OPTConfig(
+    hidden_size=128,
+    num_hidden_layers=2,
+    num_attention_heads=4,
+    dropout=0,
+)
 
 # register the following models
 # transformers.OPTModel,
@@ -27,9 +60,23 @@ model_zoo.register(name='transformers_opt',
                    model_fn=lambda: transformers.OPTModel(config),
                    data_gen_fn=data_gen,
                    output_transform_fn=output_transform_fn,
+                   loss_fn=loss_fn_for_opt_model,
                    model_attribute=ModelAttribute(has_control_flow=True))
 model_zoo.register(name='transformers_opt_for_causal_lm',
                    model_fn=lambda: transformers.OPTForCausalLM(config),
-                   data_gen_fn=data_gen,
+                   data_gen_fn=data_gen_for_causal_lm,
                    output_transform_fn=output_transform_fn,
+                   loss_fn=loss_fn_for_lm,
+                   model_attribute=ModelAttribute(has_control_flow=True))
+model_zoo.register(name='transformers_opt_for_question_answering',
+                   model_fn=lambda: transformers.OPTForQuestionAnswering(config),
+                   data_gen_fn=data_gen_for_question_answering,
+                   output_transform_fn=output_transform_fn,
+                   loss_fn=loss_fn_for_lm,
+                   model_attribute=ModelAttribute(has_control_flow=True))
+model_zoo.register(name='transformers_opt_for_sequence_classification',
+                   model_fn=lambda: transformers.OPTForSequenceClassification(config),
+                   data_gen_fn=data_gen_for_sequence_classification,
+                   output_transform_fn=output_transform_fn,
+                   loss_fn=loss_fn_for_lm,
                    model_attribute=ModelAttribute(has_control_flow=True))
