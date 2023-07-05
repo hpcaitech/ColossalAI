@@ -1,7 +1,10 @@
 from dataclasses import dataclass
+from typing import Optional
 
 import torch.distributed as dist
 from torch.distributed import ProcessGroup
+
+from colossalai.pipeline.stage_manager import PipelineStageManager
 
 __all__ = ['ShardConfig']
 
@@ -13,11 +16,13 @@ class ShardConfig:
 
     Args:
         tensor_parallel_process_group (int): The process group for tensor parallelism, defaults to None, which is the global process group.
+        pipeline_stage_manager (PipelineStageManager): The pipeline stage manager, defaults to None, which means no pipeline.
         enable_tensor_parallelism (bool): Whether to turn on tensor parallelism, default is True.
         enable_fused_normalization (bool): Whether to use fused layernorm, default is False.
         enable_all_optimization (bool): Whether to turn on all optimization, default is False.
     """
-    tensor_parallel_process_group: ProcessGroup = None
+    tensor_parallel_process_group: Optional[ProcessGroup] = None
+    pipeline_stage_manager: Optional[PipelineStageManager] = None
     enable_tensor_parallelism: bool = True
     enable_fused_normalization: bool = False
     enable_all_optimization: bool = False
