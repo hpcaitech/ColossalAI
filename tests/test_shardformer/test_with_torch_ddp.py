@@ -44,7 +44,7 @@ def check_shardformer_with_ddp(rank, world_size, port):
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         # create and shard model
         model = model_fn().cuda()
-        sharded_model = shardformer.optimize(model)
+        sharded_model, _ = shardformer.optimize(model)
 
         # add ddp
         sharded_ddp_model = DDP(sharded_model, process_group=dp_process_group)
