@@ -42,5 +42,5 @@ class ShardFormer:
             policy (`Policy`): the custom policy for sharding
         """
         sharder = ModelSharder(model=model, shard_config=self.shard_config, policy=policy)
-        sharder.shard()
-        return model
+        shared_params = sharder.shard()
+        return model, shared_params

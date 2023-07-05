@@ -1,11 +1,15 @@
 from typing import Any, Callable, Dict, List, Union
 
 import torch.nn as nn
+from torch import Tensor
+
+from colossalai.lazy import LazyTensor
 
 from .._utils import getattr_, setattr_
 from ..policies.autopolicy import get_autopolicy
 from ..policies.basepolicy import Policy, SubModuleReplacementDescription
 from .shard_config import ShardConfig
+from .utils import set_tensors_to_none
 
 __all__ = ['ModelSharder', 'shard_model']
 
@@ -25,15 +29,18 @@ class ModelSharder(object):
         self.policy = get_autopolicy(self.model) if policy is None else policy
         self.shard_config = shard_config
 
-    def shard(self) -> None:
+    def shard(self) -> List[Dict[int, Tensor]]:
         r"""
         Shard the model according to the policy
         """
         self.policy.set_model(self.model)
         self.policy.set_shard_config(self.shard_config)
         self._preprocess()
+        self._release_unheld_layers()
         self._replace_module()
+        self._materialize()
         self._postprocess()
+        return self.policy.get_shared_params()
 
     def _preprocess(self) -> None:
         self.model = self.policy.preprocess()
@@ -172,3 +179,23 @@ class ModelSharder(object):
                 )
 
             setattr_(org_layer, suffix, replace_layer)
+
+    def _release_unheld_layers(self) -> None:
+        r"""
+        Release the unheld layers in the model
+        """
+        if self.shard_config and self.shard_config.pipeline_stage_manager:
+            held_layers = self.policy.get_held_layers()
+            set_tensors_to_none(self.model, exclude=set(held_layers))
+
+    def _materialize(self) -> None:
+        r"""
+        Materialize the model if lazy initialization is used
+        """
+        for p in self.model.parameters():
+            if isinstance(p, LazyTensor):
+                p.materialize()
+
+        for b in self.model.buffers():
+            if isinstance(b, LazyTensor):
+                b.materialize()
