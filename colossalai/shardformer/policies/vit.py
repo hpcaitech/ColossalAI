@@ -4,7 +4,7 @@ import torch.nn as nn
 
 from colossalai.shardformer.layer import DropoutForReplicatedInput, FusedLayerNorm, Linear1D_Col, Linear1D_Row
 
-from .basepolicy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
+from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = ['ViTPolicy']
 

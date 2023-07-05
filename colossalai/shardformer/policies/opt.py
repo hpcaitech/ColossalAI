@@ -1,7 +1,7 @@
 from colossalai.shardformer.layer import FusedLayerNorm, Linear1D_Col, Linear1D_Row, VocabParallelEmbedding1D
 
 from .._utils import getattr_, setattr_
-from .basepolicy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
+from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = [
     'OPTPolicy', 'OPTModelPolicy', 'OPTForCausalLMPolicy', 'OPTForSequenceClassificationPolicy',
