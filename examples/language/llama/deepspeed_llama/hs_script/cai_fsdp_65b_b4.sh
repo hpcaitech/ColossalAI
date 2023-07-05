@@ -31,4 +31,4 @@ export NCCL_IB_GID_INDEX=3
 export NCCL_IB_TIMEOUT=23
 export NCCL_IB_RETRY_CNT=7
 
-colossalai run --nproc_per_node 8 --hostfile ${ROOT}/cai_host_6.txt --master_addr 192.168.0.189 benchmark.py --plugin "fsdp" -l 512 -b 4 > cai_fsdp_65b_b4.log 2>&1
+colossalai run --nproc_per_node 8 --hostfile ${ROOT}/cai_host_6.txt --master_addr 192.168.0.189 benchmark.py --plugin "fsdp_cpu" -l 512 -b 4 -c '65b' > cai_fsdp_65b_b4.log 2>&1

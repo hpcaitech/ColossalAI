@@ -1,10 +1,16 @@
 {
     "zero_optimization": {
         "stage": 3,
+      "offload_optimizer": {
+            "device": "cpu"
+        },
+      "offload_param": {
+            "device": "cpu"
+        },
       "contiguous_gradients": true,
         "overlap_comm": true
     },
-    "train_micro_batch_size_per_gpu": 16,
+    "train_micro_batch_size_per_gpu": 2,
     "gradient_accumulation_steps": 1,
     "steps_per_print": 10,
     "prescale_gradients": false,

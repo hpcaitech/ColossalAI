@@ -22,8 +22,6 @@ conda activate /mnt/vepfs/conda/envs/llama_2
 
 ROOT=$(pwd)
 
-cd ../..
-
 export NCCL_IB_HCA=mlx5_1:1,mlx5_2:1,mlx5_3:1,mlx5_4:1
 export NCCL_IB_DISABLE=0
 export NCCL_SOCKET_IFNAME=eth0
@@ -31,4 +29,8 @@ export NCCL_IB_GID_INDEX=3
 export NCCL_IB_TIMEOUT=23
 export NCCL_IB_RETRY_CNT=7
 
-colossalai run --nproc_per_node 8 --hostfile ${ROOT}/cai_host_6.txt --master_addr 192.168.0.189 benchmark.py --plugin "fsdp_cpu" -l 512 -b 8 -c '65b' > cai_fsdp_65b_b8.log 2>&1
+cd ..
+
+deepspeed --master_addr 192.168.0.189 --master_port 29503 --hostfile=${ROOT}/host_file_4.txt \
+	ds_benchmark.py -l 512 -w 32 -c '65b' -train_micro_batch_size_per_gpu 4 -g \
+	--deepspeed --deepspeed_config ${ROOT}/zero3_no_off.json

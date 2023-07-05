@@ -32,5 +32,5 @@ export NCCL_IB_RETRY_CNT=7
 cd ..
 
 deepspeed --master_addr 192.168.0.189 --master_port 29503 --hostfile=${ROOT}/host_file_6.txt \
-	ds_benchmark.py -l 512 -w 32 -c '65b' \
-	--deepspeed --deepspeed_config ${ROOT}/zero3.json > ${ROOT}/ds_zero3_65b_b2.log 2>&1
+	ds_benchmark.py -l 512 -w 48 -c '65b' \
+	--deepspeed --deepspeed_config ${ROOT}/zero3.json > ${ROOT}/ds_zero3_65b_b2_off_all.log 2>&1

@@ -32,5 +32,5 @@ export NCCL_IB_RETRY_CNT=7
 cd ..
 
 deepspeed --master_addr 192.168.0.189 --master_port 29503 --hostfile=${ROOT}/host_file_6.txt \
-	ds_benchmark.py -l 512 -w 32 -c '65b' -train_micro_batch_size_per_gpu 8 -g \
-	--deepspeed --deepspeed_config ${ROOT}/zero3.json > ${ROOT}/ds_zero3_65b_b8.log 2>&1
+	ds_benchmark.py -l 512 -w 48 -c '65b' -train_micro_batch_size_per_gpu 8 -g \
+	--deepspeed --deepspeed_config ${ROOT}/zero3.json > ${ROOT}/ds_zero3_65b_b8_off_all.log 2>&1
