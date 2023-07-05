@@ -2,9 +2,13 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Type, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch.nn as nn
+from torch import Tensor
+from torch.nn import Module
+
+from colossalai.pipeline.stage_manager import PipelineStageManager
 
 from ..shard.shard_config import ShardConfig
 
@@ -71,9 +75,8 @@ class Policy(ABC):
     """
 
     def __init__(self) -> None:
-        self.shard_config = None
-        self.model = None
-        self.shard_config = None
+        self.shard_config: Optional[ShardConfig] = None
+        self.model: Optional[Module] = None
 
     def set_model(self, model: nn.Module) -> None:
         r"""
@@ -93,6 +96,12 @@ class Policy(ABC):
         """
         self.shard_config = shard_config
         self.config_sanity_check()
+
+    @property
+    def pipeline_stage_manager(self) -> Optional[PipelineStageManager]:
+        if self.shard_config is not None:
+            return self.shard_config.pipeline_stage_manager
+        return None
 
     @abstractmethod
     def config_sanity_check(self):
@@ -151,3 +160,19 @@ class Policy(ABC):
             policy[target_key] = ModulePolicyDescription(sub_module_replacement=description)
 
         return policy
+
+    def get_held_layers(self) -> List[Module]:
+        """Get layers that should be held in current stage. This method should be implemented by subclass.
+
+        Returns:
+            List[Module]: List of layers that should be hold in current stage
+        """
+        raise NotImplementedError
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        """Get parameters that should be shared across stages. This method should be implemented by subclass.
+
+        Returns:
+            List[Dict[int, Tensor]]: List of parameters that should be shared across stages. E.g. [{0: module.model.embed_tokens.weight, 3: module.lm_head.weight}]
+        """
+        return []
