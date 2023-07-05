@@ -90,7 +90,7 @@ def data_gen_for_mcq():
 # define output transform function
 output_transform_fn = lambda x: x
 
-# define loss funciton
+# define loss function
 loss_fn_for_bert_model = lambda x: x.pooler_output.mean()
 loss_fn = lambda x: x.loss
 
