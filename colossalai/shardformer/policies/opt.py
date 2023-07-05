@@ -1,12 +1,7 @@
-from colossalai.shardformer.layer import (
-    FusedLayerNorm,
-    Linear1D_Col,
-    Linear1D_Row,
-    VocabParallelEmbedding1D,
-    opt_flash_attention_forward,
-)
+from colossalai.shardformer.layer import FusedLayerNorm, Linear1D_Col, Linear1D_Row, VocabParallelEmbedding1D
 
 from .._utils import getattr_, setattr_
+from ..modeling.opt import opt_flash_attention_forward
 from .basepolicy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = [
