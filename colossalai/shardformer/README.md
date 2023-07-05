@@ -377,25 +377,7 @@ pytest tests/test_shardformer
 
 ### System Performance
 
-To be added.
-
-### Convergence
-
-
-To validate that training the model using shardformers does not impact its convergence. We [fine-tuned the BERT model](./examples/convergence_benchmark.py) using both shardformer and non-shardformer approaches. We compared the accuracy, loss, F1 score of the training results.
-
-| accuracy |   f1    |  loss   | GPU number | model shard |
-| :------: | :-----: | :-----: | :--------: | :---------: |
-| 0.82594  | 0.87441 | 0.09913 |     4      |    True     |
-| 0.81884  | 0.87299 | 0.10120 |     2      |    True     |
-| 0.81855  | 0.87124 | 0.10357 |     1      |    False    |
-
-Overall, the results demonstrate that using shardformers during model training does not affect the convergence.
-
-### Performance
-
-
-We also conducted [benchmark tests](./examples/performance_benchmark.py) to evaluate the performance improvement of Shardformer. We compared the training time between the original model and the shard model.
+We conducted [benchmark tests](./examples/performance_benchmark.py) to evaluate the performance improvement of Shardformer. We compared the training time between the original model and the shard model.
 
 We set the batch size to 4, the number of attention heads to 8, and the head dimension to 64. 'N_CTX' refers to the sequence length.
 
@@ -433,3 +415,16 @@ In the case of using 4 GPUs, the training times are as follows.
 
 
 As shown in the figures above, when the sequence length is around 1000 or greater, the parallel optimization of Shardformer for long sequences starts to become evident.
+
+### Convergence
+
+
+To validate that training the model using shardformers does not impact its convergence. We [fine-tuned the BERT model](./examples/convergence_benchmark.py) using both shardformer and non-shardformer approaches. We compared the accuracy, loss, F1 score of the training results.
+
+| accuracy |   f1    |  loss   | GPU number | model shard |
+| :------: | :-----: | :-----: | :--------: | :---------: |
+| 0.82594  | 0.87441 | 0.09913 |     4      |    True     |
+| 0.81884  | 0.87299 | 0.10120 |     2      |    True     |
+| 0.81855  | 0.87124 | 0.10357 |     1      |    False    |
+
+Overall, the results demonstrate that using shardformers during model training does not affect the convergence.
