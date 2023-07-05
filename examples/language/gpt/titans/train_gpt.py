@@ -15,7 +15,7 @@ from colossalai.nn import LinearWarmupLR
 from colossalai.trainer import Trainer, hooks
 from colossalai.utils import colo_set_process_memory_fraction, is_using_pp
 from colossalai.utils.timer import MultiTimer
-from colossalai.zero.init_ctx import ZeroInitContext
+from colossalai.zero.legacy.init_ctx import ZeroInitContext
 
 
 def calc_local_model_size(model: torch.nn.Module):

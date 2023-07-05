@@ -1,26 +1,22 @@
 import argparse
 from random import randint
 
-import loralib as lora
 import torch
 import torch.distributed as dist
 from coati.dataset import HhRlhfDataset, RmStaticDataset
 from coati.models import LogExpLoss, LogSigLoss
-from coati.models.base import RewardModel
 from coati.models.bloom import BLOOMRM
-from coati.models.deberta import DebertaRM
 from coati.models.gpt import GPTRM
 from coati.models.llama import LlamaRM
 from coati.models.opt import OPTRM
-from coati.models.roberta import RoBERTaRM
 from coati.trainer import RewardModelTrainer
-from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
-from coati.utils import prepare_llama_tokenizer_and_embedding
+from coati.trainer.strategies import DDPStrategy, GeminiStrategy, LowLevelZeroStrategy
 from datasets import load_dataset
 from torch.optim import Adam
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
-from transformers import AutoTokenizer, BloomTokenizerFast, DebertaV2Tokenizer, LlamaTokenizer, RobertaTokenizer
+from transformers import AutoTokenizer, BloomTokenizerFast, LlamaTokenizer
 from transformers.models.gpt2.tokenization_gpt2 import GPT2Tokenizer
 
 from colossalai.nn.optimizer import HybridAdam
@@ -28,14 +24,12 @@ from colossalai.nn.optimizer import HybridAdam
 
 def train(args):
     # configure strategy
-    if args.strategy == 'naive':
-        strategy = NaiveStrategy()
-    elif args.strategy == 'ddp':
+    if args.strategy == 'ddp':
         strategy = DDPStrategy()
     elif args.strategy == 'colossalai_gemini':
-        strategy = ColossalAIStrategy(stage=3, placement_policy='cuda')
+        strategy = GeminiStrategy(placement_policy='cuda')
     elif args.strategy == 'colossalai_zero2':
-        strategy = ColossalAIStrategy(stage=2, placement_policy='cuda')
+        strategy = LowLevelZeroStrategy(stage=2, placement_policy='cuda')
     else:
         raise ValueError(f'Unsupported strategy "{args.strategy}"')
 
@@ -47,12 +41,8 @@ def train(args):
             model = OPTRM(pretrained=args.pretrain, lora_rank=args.lora_rank).to(torch.cuda.current_device())
         elif args.model == 'gpt2':
             model = GPTRM(pretrained=args.pretrain, lora_rank=args.lora_rank).to(torch.cuda.current_device())
-        elif args.model == 'deberta':
-            model = DebertaRM(pretrained=args.pretrain, lora_rank=args.lora_rank).to(torch.cuda.current_device())
         elif args.model == 'llama':
             model = LlamaRM(pretrained=args.pretrain, lora_rank=args.lora_rank).to(torch.cuda.current_device())
-        elif args.model == 'roberta':
-            model = RoBERTaRM(pretrained=args.pretrain, lora_rank=args.lora_rank).to(torch.cuda.current_device())
         else:
             raise ValueError(f'Unsupported model "{args.model}"')
 
@@ -65,24 +55,18 @@ def train(args):
     # configure tokenizer
     if args.model == 'gpt2':
         tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
+        tokenizer.pad_token = tokenizer.eos_token
     elif args.model == 'bloom':
         tokenizer = BloomTokenizerFast.from_pretrained('bigscience/bloom-560m')
+        tokenizer.pad_token = tokenizer.eos_token
     elif args.model == 'opt':
         tokenizer = AutoTokenizer.from_pretrained("facebook/opt-350m")
-    elif args.model == 'deberta':
-        tokenizer = DebertaV2Tokenizer.from_pretrained('microsoft/deberta-v3-large')
+        tokenizer.pad_token = tokenizer.eos_token
     elif args.model == 'llama':
         tokenizer = LlamaTokenizer.from_pretrained(args.pretrain)
-    elif args.model == 'roberta':
-        tokenizer = RobertaTokenizer.from_pretrained("roberta-base")
+        tokenizer.pad_token = tokenizer.unk_token
     else:
         raise ValueError(f'Unsupported model "{args.model}"')
-    max_len = args.max_len
-
-    if args.model == 'llama':
-        tokenizer = prepare_llama_tokenizer_and_embedding(tokenizer, model)
-    else:
-        tokenizer.pad_token = tokenizer.eos_token
 
     # configure optimizer
     if args.strategy.startswith('colossalai'):
@@ -113,13 +97,13 @@ def train(args):
     valid_data = data['test'].select((randint(0, len(eval_data) - 1) for _ in range(len(eval_data) // 5)))
 
     if args.dataset == 'Dahoas/rm-static':
-        train_dataset = RmStaticDataset(train_data, tokenizer, max_len)
-        valid_dataset = RmStaticDataset(valid_data, tokenizer, max_len)
-        eval_dataset = RmStaticDataset(eval_data, tokenizer, max_len)
+        train_dataset = RmStaticDataset(train_data, tokenizer, args.max_len)
+        valid_dataset = RmStaticDataset(valid_data, tokenizer, args.max_len)
+        eval_dataset = RmStaticDataset(eval_data, tokenizer, args.max_len)
     elif args.dataset == 'Anthropic/hh-rlhf':
-        train_dataset = HhRlhfDataset(train_data, tokenizer, max_len)
-        valid_dataset = HhRlhfDataset(valid_data, tokenizer, max_len)
-        eval_dataset = HhRlhfDataset(eval_data, tokenizer, max_len)
+        train_dataset = HhRlhfDataset(train_data, tokenizer, args.max_len)
+        valid_dataset = HhRlhfDataset(valid_data, tokenizer, args.max_len)
+        eval_dataset = HhRlhfDataset(eval_data, tokenizer, args.max_len)
     else:
         raise ValueError(f'Unsupported dataset "{args.dataset}"')
 
@@ -165,17 +149,23 @@ def train(args):
                                  batch_size=args.batch_size,
                                  pin_memory=True)
 
-    (model, optim) = strategy.prepare((model, optim))
+    lr_scheduler = CosineAnnealingLR(optim, train_dataloader.__len__() // 100)
+    strategy_dict = strategy.prepare(
+        dict(model=model, optimizer=optim, lr_scheduler=lr_scheduler)
+    )
+    model = strategy_dict['model']
+    optim = strategy_dict['optimizer']
+    lr_scheduler = strategy_dict['lr_scheduler']
     trainer = RewardModelTrainer(model=model,
                                  strategy=strategy,
                                  optim=optim,
+                                 lr_scheduler=lr_scheduler,
                                  loss_fn=loss_fn,
-                                 train_dataloader=train_dataloader,
-                                 valid_dataloader=valid_dataloader,
-                                 eval_dataloader=eval_dataloader,
                                  max_epochs=args.max_epochs)
 
-    trainer.fit()
+    trainer.fit(train_dataloader=train_dataloader,
+                valid_dataloader=valid_dataloader,
+                eval_dataloader=eval_dataloader)
     # save model checkpoint after fitting on only rank0
     strategy.save_model(model, args.save_path, only_rank0=True)
     # save optimizer checkpoint on all ranks
@@ -188,9 +178,9 @@ def train(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--strategy',
-                        choices=['naive', 'ddp', 'colossalai_gemini', 'colossalai_zero2'],
+                        choices=['ddp', 'colossalai_gemini', 'colossalai_zero2'],
                         default='colossalai_zero2')
-    parser.add_argument('--model', choices=['gpt2', 'bloom', 'opt', 'deberta', 'llama', 'roberta'], default='bloom')
+    parser.add_argument('--model', choices=['gpt2', 'bloom', 'opt', 'llama'], default='bloom')
     parser.add_argument('--pretrain', type=str, default=None)
     parser.add_argument('--model_path', type=str, default=None)
     parser.add_argument('--need_optim_ckpt', type=bool, default=False)

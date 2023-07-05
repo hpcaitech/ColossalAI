@@ -53,7 +53,7 @@ def test_torchrec_deepfm_models():
     deepfm_models = model_zoo.get_sub_registry('deepfm')
     torch.backends.cudnn.deterministic = True
 
-    for name, (model_fn, data_gen_fn, output_transform_fn, attribute) in deepfm_models.items():
+    for name, (model_fn, data_gen_fn, output_transform_fn, _, attribute) in deepfm_models.items():
         data = data_gen_fn()
         if attribute is not None and attribute.has_control_flow:
             meta_args = {k: v.to('meta') for k, v in data.items()}
