@@ -392,7 +392,8 @@ To validate that training the model using shardformers does not impact its conve
 
 Overall, the results demonstrate that using shardformers during model training does not affect the convergence.
 
-### performance
+### Performance
+
 
 We also conducted [benchmark tests](./examples/performance_benchmark.py) to evaluate the performance improvement of Shardformer. We compared the training time between the original model and the shard model.
 
