@@ -480,8 +480,9 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         Returns:
             dict: the pytorch form state_dict
         """
-        zero_state = self.optim.state.copy()
-        for param, state in zero_state.items():
+        zero_state = dict()
+        for param, state in self.optim.state.items():
+            zero_state[param] = copy.deepcopy(state)
             for k, v in state.items():
                 if isinstance(v, torch.Tensor) and k != 'step':
                     working_param = self._param_store.master_to_working_param[id(param)]
@@ -489,9 +490,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                     dist.all_gather(gather_tensor, v, group=self.dp_pg)
                     param_state = torch.stack(gather_tensor).view(-1)[:working_param.numel()].reshape_as(working_param)
                     zero_state[param][k] = param_state
-
-        torch.cuda.synchronize()
-
         # below comes from pytorch optimizer.state_dict()
         param_mappings = {}
         start_index = 0
@@ -509,7 +507,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         # Remap state to use order indices as keys
         packed_state = {(param_mappings[id(k)] if isinstance(k, torch.Tensor) else k): v for k, v in zero_state.items()}
 
-        zero_state = None
+        zero_state = dict()
 
         return {
             'state': packed_state,
@@ -520,19 +518,17 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         """Load state dict, requires the state_dict be the pytorch form
 
         Args:
-            state_dict (dict): A pytorch form state_dict
+            state_dict (dict): A pytorch form state_dict, be aware that the state_dict would be changed
         """
-        tmp_state_dict = state_dict.copy()
-        for param_idx, state in tmp_state_dict['state'].items():
+        for param_idx, state in state_dict['state'].items():
             for k, v in state.items():
                 if isinstance(v, torch.Tensor) and k != 'step':
                     padding_size = (self._world_size - v.numel() % self._world_size) % self._world_size
                     with torch.no_grad():
-                        v = v.detach().flatten()
+                        v = v.clone().detach().flatten()
                         if padding_size > 0:
                             v = torch.nn.functional.pad(v, [0, padding_size])
                         v_list = v.split(v.numel() // self._world_size)
-                        tmp_state_dict['state'][param_idx][k] = v_list[self._local_rank].detach()
+                        state_dict['state'][param_idx][k] = v_list[self._local_rank].detach()
 
-        self.optim.load_state_dict(tmp_state_dict)
-        tmp_state_dict = None
+        self.optim.load_state_dict(state_dict)

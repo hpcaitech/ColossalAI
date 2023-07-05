@@ -96,7 +96,7 @@ def exam_zero_1_torch_ddp_ckpt():
     zero_optimizer.optim.state = []
 
     # zero load a torch checkpoint
-    zero_optimizer.load_state_dict(torch_state_dict)
+    zero_optimizer.load_state_dict(copy.deepcopy(torch_state_dict))
     zero_state_dict = zero_optimizer.state_dict()
 
     # examine the loaded state dict
