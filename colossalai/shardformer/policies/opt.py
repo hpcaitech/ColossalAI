@@ -1,7 +1,7 @@
 from colossalai.shardformer.layer import FusedLayerNorm, Linear1D_Col, Linear1D_Row, VocabParallelEmbedding1D
 
 from .._utils import getattr_, setattr_
-from ..modeling.opt import opt_flash_attention_forward
+from ..modeling.opt import get_opt_forward
 from .basepolicy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = [
@@ -93,7 +93,7 @@ class OPTPolicy(Policy):
         # use flash attention
         if self.shard_config.enable_flash_attention:
             policy[OPTAttention] = ModulePolicyDescription(method_replacement={
-                'forward': opt_flash_attention_forward,
+                'forward': get_opt_forward(),
             })
 
         return policy
