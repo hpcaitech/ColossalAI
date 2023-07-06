@@ -29,7 +29,7 @@ from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDe
 logger = logging.get_logger(__name__)
 
 __all__ = [
-    'BertPolicy', 'BertModelPolicy', 'BertForPretrainingPolicy', 'BertLMHeadModelPolicy', 'BertForMaskedLMPolicy',
+    'BertPolicy', 'BertModelPolicy', 'BertForPreTrainingPolicy', 'BertLMHeadModelPolicy', 'BertForMaskedLMPolicy',
     'BertForNextSentencePredictionPolicy', 'BertForSequenceClassificationPolicy', 'BertForTokenClassificationPolicy',
     'BertForMultipleChoicePolicy'
 ]
@@ -173,18 +173,18 @@ class BertPolicy(Policy):
 # BertModel
 class BertModelPolicy(BertPolicy):
 
-    def __init__(self, stage_manager: PipelineStageManager) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self.stage_manager = stage_manager
         self.layers_per_stage = []
 
     def get_held_layers(self) -> List[Module]:
         """Get pipeline layers for current stage."""
         module = self.model
+        stage_manager = self.pipeline_stage_manager()
         held_layers = []
         if self.stage_manager.is_first_stage():
             held_layers.append(module.embeddings)
-        start_idx, end_idx = self.get_stage_index(self.layers_per_stage, self.stage_manager.stage)
+        start_idx, end_idx = self.get_stage_index(self.layers_per_stage, stage_manager.stage)
         held_layers.extend(module.encoder.layer[start_idx:end_idx])
         if self.stage_manager.is_last_stage():
             held_layers.append(module.pooler)
@@ -200,11 +200,10 @@ class BertModelPolicy(BertPolicy):
 
 
 # BertForPreTraining
-class BertForPretrainingPolicy(BertPolicy):
+class BertForPreTrainingPolicy(BertPolicy):
 
-    def __init__(self, stage_manager: PipelineStageManager) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self.stage_manager = stage_manager
         self.layers_per_stage = []
 
     def module_policy(self):
@@ -215,11 +214,12 @@ class BertForPretrainingPolicy(BertPolicy):
     def get_held_layers(self) -> List[Module]:
         """Get pipeline layers for current stage"""
         module = self.model
+        stage_manager = self.pipeline_stage_manager()
         held_layers = []
         if self.stage_manager.is_first_stage():
             held_layers.append(module.bert.embeddings)
 
-        start_idx, end_idx = self.get_stage_index(self.layers_per_stage, self.stage_manager.stage)
+        start_idx, end_idx = self.get_stage_index(self.layers_per_stage, stage_manager.stage)
         held_layers.extend(module.bert.encoder.layer[start_idx:end_idx])
 
         if self.stage_manager.is_last_stage():
@@ -234,7 +234,8 @@ class BertForPretrainingPolicy(BertPolicy):
 
     def set_layers_per_stage(self) -> None:
         """Set layers per stage after set model"""
-        self.layers_per_stage = self.distribute_layers(len(self.model.encoder.layer), self.stage_manager.num_stages)
+        self.layers_per_stage = self.distribute_layers(len(self.model.bert.encoder.layer),
+                                                       self.stage_manager.num_stages)
 
     def postprocess(self):
         binding_map = {"bert.embeddings.word_embeddings.weight": "cls.predictions.decoder.weight"}
@@ -247,9 +248,8 @@ class BertForPretrainingPolicy(BertPolicy):
 # BertLMHeadModel
 class BertLMHeadModelPolicy(BertPolicy):
 
-    def __init__(self, stage_manager: PipelineStageManager) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self.stage_manager = stage_manager
         self.layers_per_stage = []
 
     def module_policy(self):
@@ -263,9 +263,10 @@ class BertLMHeadModelPolicy(BertPolicy):
         """
         module = self.model
         held_layers = []
+        stage_manager = self.pipeline_stage_manager()
         if self.stage_manager.is_first_stage():
             held_layers.append(module.bert.embeddings)
-        start_idx, end_idx = self.get_stage_index(self.layers_per_stage, self.stage_manager.stage)
+        start_idx, end_idx = self.get_stage_index(self.layers_per_stage, stage_manager.stage)
         held_layers.extend(module.bert.encoder.layer[start_idx:end_idx])
         if self.stage_manager.is_last_stage():
             held_layers.append(module.bert.pooler)

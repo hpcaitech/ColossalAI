@@ -6,8 +6,8 @@ from transformers.models.bert.modeling_bert import BertForPreTraining
 
 import colossalai
 from colossalai.cluster import ProcessGroupMesh
-from colossalai.pipeline.policy.bert import BertForPreTrainingPolicy, bert_for_pretraining_forward
 from colossalai.pipeline.stage_manager import PipelineStageManager
+from colossalai.shardformer.policies.bert import BertForPreTrainingPolicy, bert_for_pretraining_forward
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 
@@ -83,9 +83,11 @@ def check_bert_for_pretraining_policy():
     stage_manager = PipelineStageManager(pg_mesh, PP_DIM)
     rank = dist.get_rank()
 
-    model_policy = BertForPreTrainingPolicy(stage_manager, len(model.bert.encoder.layer))
+    model_policy = BertForPreTrainingPolicy(stage_manager)
+    model_policy.set_model(model)
+    model_policy.set_layers_per_stage()
     assert model_policy.layers_per_stage == [6, 6]
-    layers = model_policy.get_hold_layers(model)
+    layers = model_policy.get_held_layers()
     for layer in layers:
         print(layer)
 
@@ -115,4 +117,5 @@ def test_bert_for_pretraining_policy():
 if __name__ == "__main__":
     """test the bert for pretraining model forward and bert for pretraining model policy"""
     test_bert_for_pretraining_forward()
-    test_bert_for_pretraining_policy()
+    # test_bert_for_pretraining_policy()
+    # this test need config to run

@@ -112,4 +112,5 @@ def test_bert_model_policy():
 if __name__ == "__main__":
     """test the bert model forward and bert model policy"""
     test_bert_model_forward()
-    test_bert_model_policy()
+    # test_bert_model_policy()
+    # this test need config to run

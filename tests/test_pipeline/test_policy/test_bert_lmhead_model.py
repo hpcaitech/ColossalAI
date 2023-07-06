@@ -115,4 +115,4 @@ def test_bert_lmhead_policy():
 if __name__ == "__main__":
     """test the bert for pretraining model forward and bert for pretraining model policy"""
     test_bert_lmhead_forward()
-    test_bert_lmhead_policy()
+    # test_bert_lmhead_policy()
