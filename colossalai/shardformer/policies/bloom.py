@@ -3,7 +3,7 @@ import torch.nn as nn
 import colossalai.shardformer.layer as col_nn
 
 from .._utils import getattr_, setattr_
-from ..modeling.bloom import build_bloom_alibi_tensor_fn
+from ..modeling.bloom import build_bloom_alibi_tensor_fn, get_bloom_forward
 from .basepolicy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 
@@ -25,7 +25,7 @@ class BloomPolicy(Policy):
         return self.model
 
     def module_policy(self):
-        from transformers.models.bloom.modeling_bloom import BloomBlock, BloomModel
+        from transformers.models.bloom.modeling_bloom import BloomBlock, BloomModel, BloomAttention
 
         policy = {}
 
@@ -101,6 +101,11 @@ class BloomPolicy(Policy):
             ],
                                                         policy=policy,
                                                         target_key=BloomBlock)
+            
+        if self.shard_config.enable_flash_attention:
+            policy[BloomAttention] = ModulePolicyDescription(method_replacement={
+                'forward': get_bloom_forward(),
+            })
 
         return policy
 

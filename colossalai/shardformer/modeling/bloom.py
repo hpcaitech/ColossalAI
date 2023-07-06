@@ -1,6 +1,9 @@
+from typing import Optional, Tuple
+
 import torch
 import torch.distributed as dist
 from torch.distributed import ProcessGroup
+from torch.nn import functional as F
 
 
 def build_bloom_alibi_tensor_fn(process_group: ProcessGroup) -> torch.Tensor:
@@ -67,3 +70,88 @@ def build_bloom_alibi_tensor_fn(process_group: ProcessGroup) -> torch.Tensor:
             return alibi.reshape(batch_size * num_heads, 1, seq_length).to(dtype)
 
     return build_bloom_alibi_tensor
+
+def get_bloom_forward():
+
+    try:
+        from xformers.ops import memory_efficient_attention as me_attention
+    except:
+        raise ImportError("Error: xformers module is not installed. Please install it to use flash attention.")
+        
+    def bloom_flash_attention_forward(
+        self,
+        hidden_states: torch.Tensor,
+        residual: torch.Tensor,
+        alibi: torch.Tensor,
+        attention_mask: torch.Tensor,
+        layer_past: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        head_mask: Optional[torch.Tensor] = None,
+        use_cache: bool = False,
+        output_attentions: bool = False,):
+
+        fused_qkv = self.query_key_value(hidden_states)
+        (query_layer, key_layer, value_layer) = self._split_heads(fused_qkv)
+        batch_size, tgt_len, _ = hidden_states.size()
+        _, kv_length, _, _ = key_layer.size()
+
+        proj_shape = (batch_size, tgt_len, self.num_heads, self.head_dim)
+        query_layer = query_layer.contiguous().view(*proj_shape)
+        key_layer = key_layer.contiguous().view(*proj_shape)
+        value_layer = value_layer.contiguous().view(*proj_shape)
+
+        if layer_past is not None:
+            past_key, past_value = layer_past
+            # concatenate along seq_length dimension:
+            #  - key: [batch_size * self.num_heads, head_dim, kv_length]
+            #  - value: [batch_size * self.num_heads, kv_length, head_dim]
+            key_layer = torch.cat((past_key, key_layer), dim=1)
+            value_layer = torch.cat((past_value, value_layer), dim=1)
+
+        if use_cache is True:
+            present = (key_layer, value_layer)
+        else:
+            present = None
+        
+        tgt_len = key_layer.size()[1]
+
+        attention_numerical_mask = torch.zeros((batch_size, self.num_heads, tgt_len, kv_length), dtype=torch.float32, device=query_layer.device, requires_grad=True)
+        attention_numerical_mask = attention_numerical_mask + alibi.view(batch_size, self.num_heads, 1, kv_length) * self.beta
+        attention_numerical_mask = torch.masked_fill(attention_numerical_mask, attention_mask, torch.finfo(torch.float32).min)
+        
+        context_layer = me_attention(query_layer, key_layer, value_layer, attn_bias=attention_numerical_mask, scale=self.inv_norm_factor, p=self.attention_dropout.p)
+        context_layer = context_layer.reshape(-1, kv_length, self.hidden_size)
+        if self.pretraining_tp > 1 and self.slow_but_exact:
+            slices = self.hidden_size / self.pretraining_tp
+            output_tensor = torch.zeros_like(context_layer)
+            for i in range(self.pretraining_tp):
+                output_tensor = output_tensor + F.linear(
+                    context_layer[:, :, int(i * slices) : int((i + 1) * slices)],
+                    self.dense.weight[:, int(i * slices) : int((i + 1) * slices)],
+                )
+        else:
+            output_tensor = self.dense(context_layer)
+
+            output_tensor = dropout_add(output_tensor, residual, self.hidden_dropout, self.training)
+            outputs = (output_tensor, present, None)
+
+            return outputs
+        
+    return bloom_flash_attention_forward
+    
+def dropout_add(x: torch.Tensor, residual: torch.Tensor, prob: float, training: bool) -> torch.Tensor:
+    """
+    Dropout add function
+
+    Args:
+        x (`torch.tensor`, *required*):
+            input tensor
+        residual (`torch.tensor`, *required*):
+            esidual tensor
+        prob (`float`, *required*):
+            dropout probability
+        training (`bool`, *required*):
+            training mode
+    """
+    out = F.dropout(x, p=prob, training=training)
+    out = residual + out
+    return out
