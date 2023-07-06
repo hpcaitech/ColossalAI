@@ -179,8 +179,9 @@ class BertModelPolicy(BertPolicy):
 
     def get_held_layers(self) -> List[Module]:
         """Get pipeline layers for current stage."""
+        self.layers_per_stage = self.distribute_layers(len(self.model.encoder.layer), self.stage_manager.num_stages)
         module = self.model
-        stage_manager = self.pipeline_stage_manager()
+        stage_manager = self.pipeline_stage_manager
         held_layers = []
         if self.stage_manager.is_first_stage():
             held_layers.append(module.embeddings)
@@ -193,10 +194,6 @@ class BertModelPolicy(BertPolicy):
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
         """No shared params in bert model"""
         return []
-
-    def set_layers_per_stage(self) -> None:
-        """Set layers per stage after set model"""
-        self.layers_per_stage = self.distribute_layers(len(self.model.encoder.layer), self.stage_manager.num_stages)
 
 
 # BertForPreTraining
@@ -213,8 +210,10 @@ class BertForPreTrainingPolicy(BertPolicy):
 
     def get_held_layers(self) -> List[Module]:
         """Get pipeline layers for current stage"""
+        self.layers_per_stage = self.distribute_layers(len(self.model.bert.encoder.layer),
+                                                       self.stage_manager.num_stages)
         module = self.model
-        stage_manager = self.pipeline_stage_manager()
+        stage_manager = self.pipeline_stage_manager
         held_layers = []
         if self.stage_manager.is_first_stage():
             held_layers.append(module.bert.embeddings)
@@ -231,11 +230,6 @@ class BertForPreTrainingPolicy(BertPolicy):
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
         '''No shared params in bertmodel'''
         return []
-
-    def set_layers_per_stage(self) -> None:
-        """Set layers per stage after set model"""
-        self.layers_per_stage = self.distribute_layers(len(self.model.bert.encoder.layer),
-                                                       self.stage_manager.num_stages)
 
     def postprocess(self):
         binding_map = {"bert.embeddings.word_embeddings.weight": "cls.predictions.decoder.weight"}
@@ -261,9 +255,11 @@ class BertLMHeadModelPolicy(BertPolicy):
         """
         get pipeline layers for current stage
         """
+        self.layers_per_stage = self.distribute_layers(len(self.model.bert.encoder.layer),
+                                                       self.stage_manager.num_stages)
         module = self.model
         held_layers = []
-        stage_manager = self.pipeline_stage_manager()
+        stage_manager = self.pipeline_stage_manager
         if self.stage_manager.is_first_stage():
             held_layers.append(module.bert.embeddings)
         start_idx, end_idx = self.get_stage_index(self.layers_per_stage, stage_manager.stage)
@@ -276,10 +272,6 @@ class BertLMHeadModelPolicy(BertPolicy):
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
         '''No shared params in bertmodel'''
         return []
-
-    def set_layers_per_stage(self) -> None:
-        """Set layers per stage after set model"""
-        self.layers_per_stage = self.distribute_layers(len(self.model.encoder.layer), self.stage_manager.num_stages)
 
     def postprocess(self):
         binding_map = {"bert.embeddings.word_embeddings.weight": "cls.predictions.decoder.weight"}
