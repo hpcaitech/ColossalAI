@@ -273,7 +273,7 @@ class BertModelPolicy(Policy):
 
     def get_shared_params(self, module: BertModel) -> List[Dict[int, Tensor]]:
         '''no shared params in bertmodel'''
-        pass
+        return []
 
     def replace_forward(self, module: Module) -> None:
         module.forward = MethodType(partial(bert_model_forward, stage_manager=self.stage_manager), module)
@@ -380,7 +380,7 @@ class BertForPreTrainingPolicy(Policy):
 
     def get_shared_params(self, module: BertForPreTraining) -> List[Dict[int, Tensor]]:
         '''no shared params in bertmodel'''
-        pass
+        return []
 
     def replace_forward(self, module: Module) -> None:
         module.forward = MethodType(partial(bert_for_pretraining_forward, stage_manager=self.stage_manager),
@@ -517,7 +517,7 @@ class BertLMHeadModelPolicy(Policy):
 
     def get_shared_params(self, module: BertLMHeadModel) -> List[Dict[int, Tensor]]:
         '''no shared params in bertmodel'''
-        pass
+        return []
 
     def replace_forward(self, module: Module) -> None:
         module.forward = MethodType(partial(bert_lmhead_forward, stage_manager=self.stage_manager), module)
