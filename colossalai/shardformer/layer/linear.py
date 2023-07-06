@@ -107,6 +107,7 @@ class Linear1D_Col(ParallelModule):
         r"""
         Convert a native PyTorch linear layer to a parallelized linear layer.
         """
+        LazyInitContext.materialize(module)
         # get the attributes
         in_features = module.in_features
         out_features = module.out_features
@@ -126,8 +127,6 @@ class Linear1D_Col(ParallelModule):
                                  process_group=process_group,
                                  *args,
                                  **kwargs)
-
-        LazyInitContext.materialize(module)
 
         with torch.no_grad():
             # the weigh to the linear layer is a transpose
@@ -245,6 +244,7 @@ class Linear1D_Row(ParallelModule):
         r"""
         Convert a native PyTorch linear layer to a parallelized linear layer.
         """
+        LazyInitContext.materialize(module)
         # get the attributes
         in_features = module.in_features
         out_features = module.out_features
@@ -265,7 +265,6 @@ class Linear1D_Row(ParallelModule):
                                  *args,
                                  **kwargs)
 
-        LazyInitContext.materialize(module)
         # TODO: copy the sharded weights
         with torch.no_grad():
             # the weigh to the linear layer is a transpose

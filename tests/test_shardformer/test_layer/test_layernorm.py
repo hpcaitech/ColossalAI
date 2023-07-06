@@ -1,14 +1,21 @@
+from contextlib import nullcontext
+
 import torch
 import torch.nn as nn
 from torch.testing import assert_close
 
 import colossalai
+from colossalai.lazy import LazyInitContext
 from colossalai.shardformer.layer import FusedLayerNorm
-from colossalai.testing import rerun_if_address_is_in_use, spawn
+from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 
 
-def check_layernorm():
-    norm = nn.LayerNorm(128, 0.00001).cuda()
+@parameterize('lazy_init', [False, True])
+def check_layernorm(lazy_init: bool):
+    ctx = LazyInitContext() if lazy_init else nullcontext()
+
+    with ctx:
+        norm = nn.LayerNorm(128, 0.00001).cuda()
     norm1d = FusedLayerNorm.from_native_module(norm, process_group=None)
 
     assert norm1d.weight.shape == torch.Size([128])

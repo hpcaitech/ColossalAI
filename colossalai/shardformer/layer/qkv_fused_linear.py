@@ -232,6 +232,7 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
             process_group (`Union[ProcessGroup, List[ProcessGroup]]`): The process group to be used for weight sharding and communication.
             n_fused (int): The number of layers to be fused. In GPT2, Q,K,V are fused in one weight.
         """
+        LazyInitContext.materialize(module)
         # get the attributes
         in_features = module.weight.shape[0]
         out_features = module.weight.shape[1]
@@ -251,7 +252,6 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
                                               process_group=process_group,
                                               *args,
                                               **kwargs)
-        LazyInitContext.materialize(module)
 
         # TODO: copy the sharded weights
         with torch.no_grad():
@@ -382,6 +382,7 @@ class GPT2FusedLinearConv1D_Row(ParallelModule):
         r"""
         Convert a native PyTorch linear layer to a parallelized linear layer.
         """
+        LazyInitContext.materialize(module)
         # get the attributes
         in_features = module.weight.shape[0]
         out_features = module.weight.shape[1]
@@ -402,7 +403,6 @@ class GPT2FusedLinearConv1D_Row(ParallelModule):
                                               *args,
                                               **kwargs)
 
-        LazyInitContext.materialize(module)
         # TODO: copy the sharded weights
         with torch.no_grad():
             # the weigh to the linear layer is a transpose

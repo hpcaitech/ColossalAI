@@ -95,6 +95,7 @@ class Embedding1D(ParallelModule):
         r"""
         Build a 1D parallelized Embedding from a native nn.Embedding module.
         """
+        LazyInitContext.materialize(module)
         # get the attributes
         num_embedding = module.num_embeddings
         embedding_dim = module.embedding_dim
@@ -123,7 +124,6 @@ class Embedding1D(ParallelModule):
                                 *args,
                                 **kwargs)
 
-        LazyInitContext.materialize(module)
         # copy the weight
         with torch.no_grad():
             sharded_weight = shard_colwise(module.weight.data, process_group)
@@ -224,6 +224,7 @@ class VocabParallelEmbedding1D(ParallelModule):
         r"""
         Convert a native pytorch embedding module to a parallel module.
         """
+        LazyInitContext.materialize(module)
         # get the origin attributes
         num_embeddings = module.num_embeddings
         embedding_dim = module.embedding_dim
@@ -244,7 +245,6 @@ class VocabParallelEmbedding1D(ParallelModule):
                                                       process_group=process_group,
                                                       *args,
                                                       **kwargs)
-        LazyInitContext.materialize(module)
 
         with torch.no_grad():
             # shard and slice the weight along the vocabulary(num_embeddings) dimension

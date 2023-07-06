@@ -37,6 +37,7 @@ class FusedLayerNorm():
             raise ImportError(
                 'Please install apex from source (https://github.com/NVIDIA/apex) to use the fused layernorm kernel')
 
+        LazyInitContext.materialize(module)
         # get the attributes of the module
         normalized_shape = module.normalized_shape
         eps = module.eps
@@ -58,8 +59,6 @@ class FusedLayerNorm():
 
         layernorm = ApexFusedLayerNorm(normalized_shape, eps=eps,
                                        elementwise_affine=elementwise_affine).to(dtype).to(device)
-
-        LazyInitContext.materialize(module)
 
         with torch.no_grad():
             # copy weight and bias
@@ -88,6 +87,7 @@ class FusedRMSNorm():
                 'Please install apex from source (https://github.com/NVIDIA/apex) to use the fused RMS normalization kernel'
             )
 
+        LazyInitContext.materialize(module)
         # to check if it is huggingface LlamaRMSNorm
         if module.__class__.__name__ == "LlamaRMSNorm":
             normalized_shape = module.weight.shape[0]
@@ -100,8 +100,6 @@ class FusedRMSNorm():
             elementwise_affine = module.elementwise_affine
 
         rmsnorm = ApexFusedRMSNorm(normalized_shape=normalized_shape, eps=eps, elementwise_affine=elementwise_affine)
-
-        LazyInitContext.materialize(module)
 
         with torch.no_grad():
             # copy weight and bias
