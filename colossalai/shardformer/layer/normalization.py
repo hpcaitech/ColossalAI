@@ -4,6 +4,8 @@
 import torch
 import torch.nn as nn
 
+from colossalai.lazy import LazyInitContext
+
 __all__ = ['FusedLayerNorm', 'FusedRMSNorm']
 
 FAST_LAYERNORM_SUPPORTED_SIZE = [
@@ -57,6 +59,8 @@ class FusedLayerNorm():
         layernorm = ApexFusedLayerNorm(normalized_shape, eps=eps,
                                        elementwise_affine=elementwise_affine).to(dtype).to(device)
 
+        LazyInitContext.materialize(module)
+
         with torch.no_grad():
             # copy weight and bias
             layernorm.weight.copy_(module.weight)
@@ -96,6 +100,8 @@ class FusedRMSNorm():
             elementwise_affine = module.elementwise_affine
 
         rmsnorm = ApexFusedRMSNorm(normalized_shape=normalized_shape, eps=eps, elementwise_affine=elementwise_affine)
+
+        LazyInitContext.materialize(module)
 
         with torch.no_grad():
             # copy weight and bias
