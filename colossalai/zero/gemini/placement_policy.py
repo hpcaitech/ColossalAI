@@ -56,6 +56,8 @@ class CUDAPlacementPolicy(PlacementPolicy):
         super().__init__(chunk_manager, mem_stats_collector=mem_stats_collector)
 
     def evict_tensors(self, can_evict_chunks: List[Chunk], **kwargs) -> Tuple[int, float]:
+        for chunk in can_evict_chunks:
+            self.chunk_manager.release_chunk(chunk)
         return 0, 0
 
     @staticmethod
