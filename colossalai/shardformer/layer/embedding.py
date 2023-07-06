@@ -9,8 +9,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
 from torch.distributed import ProcessGroup
-from torch.nn.parameter import Parameter
 
+from colossalai.lazy import LazyInitContext
 from colossalai.nn import init as init
 from colossalai.nn.layer.utils import divide
 from colossalai.tensor.d_tensor.api import shard_colwise, shard_rowwise, sharded_tensor_to_param
@@ -123,6 +123,7 @@ class Embedding1D(ParallelModule):
                                 *args,
                                 **kwargs)
 
+        LazyInitContext.materialize(module)
         # copy the weight
         with torch.no_grad():
             sharded_weight = shard_colwise(module.weight.data, process_group)
@@ -243,6 +244,8 @@ class VocabParallelEmbedding1D(ParallelModule):
                                                       process_group=process_group,
                                                       *args,
                                                       **kwargs)
+        LazyInitContext.materialize(module)
+
         with torch.no_grad():
             # shard and slice the weight along the vocabulary(num_embeddings) dimension
             # the shape of the weight is (num_embeddings, embedding_dim)
