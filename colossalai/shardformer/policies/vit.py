@@ -55,7 +55,7 @@ class ViTPolicy(Policy):
                         ),
                         SubModuleReplacementDescription(
                             suffix="attention.attention.dropout",
-                            target_module=DropoutForReplicatedInput,
+                            target_module=DropoutForParallelInput,
                         ),
                         SubModuleReplacementDescription(
                             suffix="attention.output.dense",
