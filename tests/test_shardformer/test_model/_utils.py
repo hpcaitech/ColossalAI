@@ -3,13 +3,17 @@ import copy
 from colossalai.shardformer import ShardConfig, ShardFormer
 
 
-def build_model(model_fn, enable_fused_normalization=True, enable_tensor_parallelism=True):
+def build_model(model_fn,
+                enable_fused_normalization=True,
+                enable_tensor_parallelism=True,
+                enable_flash_attention=False):
     # create new model
     org_model = model_fn().cuda()
 
     # shard model
     shard_config = ShardConfig(enable_fused_normalization=enable_fused_normalization,
-                               enable_tensor_parallelism=enable_tensor_parallelism)
+                               enable_tensor_parallelism=enable_tensor_parallelism,
+                               enable_flash_attention=enable_flash_attention)
     model_copy = copy.deepcopy(org_model)
     shard_former = ShardFormer(shard_config=shard_config)
     sharded_model = shard_former.optimize(model_copy).cuda()
