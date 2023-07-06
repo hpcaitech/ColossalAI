@@ -45,7 +45,7 @@ def check_bert_lmhead_forward():
                                      stage_manager=stage_manager)
         print(output['hidden_states'].shape)
         assert output['hidden_states'].shape == (2, 3, 768)
-        print('start the training')
+
     else:
         attention_mask = torch.ones((2, 3))
         output = bert_lmhead_forward(self=model,
@@ -54,8 +54,6 @@ def check_bert_lmhead_forward():
                                      stage_manager=stage_manager)
         print(output[0].shape)
         assert output[0].shape == (2, 3, 30522)
-        print('end the training')
-        print(output)
 
     # assert output[1].shape == (2, 768)
 
@@ -85,9 +83,7 @@ def check_bert_lmhead_policy():
 
     model_policy = BertLMHeadModelPolicy(stage_manager, len(model.bert.encoder.layer))
     assert model_policy.layers_per_stage == [6, 6]
-    layers = model_policy.get_hold_layers(model)
-    for layer in layers:
-        print(layer)
+    layers = model_policy.get_held_layers(model)
 
 
 def run_dist_model(rank, world_size, port):
