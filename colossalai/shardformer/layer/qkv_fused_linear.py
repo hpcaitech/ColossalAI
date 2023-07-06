@@ -12,6 +12,7 @@ from torch import Tensor
 from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
 
+from colossalai.lazy import LazyInitContext
 from colossalai.nn import init as init
 from colossalai.nn.layer.utils import divide
 from colossalai.tensor.d_tensor.api import (
@@ -250,6 +251,7 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
                                               process_group=process_group,
                                               *args,
                                               **kwargs)
+        LazyInitContext.materialize(module)
 
         # TODO: copy the sharded weights
         with torch.no_grad():
@@ -400,6 +402,7 @@ class GPT2FusedLinearConv1D_Row(ParallelModule):
                                               *args,
                                               **kwargs)
 
+        LazyInitContext.materialize(module)
         # TODO: copy the sharded weights
         with torch.no_grad():
             # the weigh to the linear layer is a transpose
