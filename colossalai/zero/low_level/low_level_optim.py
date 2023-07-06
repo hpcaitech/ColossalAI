@@ -473,6 +473,25 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
     ##############
     # State Dict #
     ##############
+    def _pack_state(self, state: dict) -> dict:
+        # comes from pytorch optimizer.state_dict()
+        param_mappings = {}
+        start_index = 0
+
+        def pack_group(group):
+            nonlocal start_index
+            packed = {k: v for k, v in group.items() if k != 'params'}
+            param_mappings.update(
+                {id(p): i for i, p in enumerate(group['params'], start_index) if id(p) not in param_mappings})
+            packed['params'] = [param_mappings[id(p)] for p in group['params']]
+            start_index += len(packed['params'])
+            return packed
+
+        param_groups = [pack_group(g) for g in self.param_groups]
+        # Remap state to use order indices as keys
+        packed_state = {(param_mappings[id(k)] if isinstance(k, torch.Tensor) else k): v for k, v in state.items()}
+
+        return {'state': packed_state, 'param_groups': param_groups}
 
     def state_dict(self) -> dict:
         """Return a state_dict same with DDP
@@ -490,45 +509,28 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                     dist.all_gather(gather_tensor, v, group=self.dp_pg)
                     param_state = torch.stack(gather_tensor).view(-1)[:working_param.numel()].reshape_as(working_param)
                     zero_state[param][k] = param_state
-        # below comes from pytorch optimizer.state_dict()
-        param_mappings = {}
-        start_index = 0
 
-        def pack_group(group):
-            nonlocal start_index
-            packed = {k: v for k, v in group.items() if k != 'params'}
-            param_mappings.update(
-                {id(p): i for i, p in enumerate(group['params'], start_index) if id(p) not in param_mappings})
-            packed['params'] = [param_mappings[id(p)] for p in group['params']]
-            start_index += len(packed['params'])
-            return packed
+        states_dict = self._pack_state(zero_state)
 
-        param_groups = [pack_group(g) for g in self.param_groups]
-        # Remap state to use order indices as keys
-        packed_state = {(param_mappings[id(k)] if isinstance(k, torch.Tensor) else k): v for k, v in zero_state.items()}
-
-        zero_state = dict()
-
-        return {
-            'state': packed_state,
-            'param_groups': param_groups,
-        }
+        return states_dict
 
     def load_state_dict(self, state_dict: dict):
         """Load state dict, requires the state_dict be the pytorch form
 
         Args:
-            state_dict (dict): A pytorch form state_dict, be aware that the state_dict would be changed
+            state_dict (dict): A pytorch form state_dict
         """
-        for param_idx, state in state_dict['state'].items():
+        zero_state_dict = copy.deepcopy(state_dict)
+        for param_idx, state in zero_state_dict['state'].items():
             for k, v in state.items():
                 if isinstance(v, torch.Tensor) and k != 'step':
                     padding_size = (self._world_size - v.numel() % self._world_size) % self._world_size
                     with torch.no_grad():
-                        v = v.clone().detach().flatten()
+                        v = v.flatten()
                         if padding_size > 0:
                             v = torch.nn.functional.pad(v, [0, padding_size])
                         v_list = v.split(v.numel() // self._world_size)
-                        state_dict['state'][param_idx][k] = v_list[self._local_rank].detach()
+                        zero_state_dict['state'][param_idx][k] = v_list[self._local_rank].detach()
 
-        self.optim.load_state_dict(state_dict)
+        self.optim.load_state_dict(zero_state_dict)
+        zero_state_dict = dict()
