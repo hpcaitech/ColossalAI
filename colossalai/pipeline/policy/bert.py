@@ -252,10 +252,9 @@ def bert_model_forward(
             )
 
     # output of non-first and non-last stages: must be a dict
-    if not return_dict:
-        logger.warning_once('The output of intermediate stage should always be a dict')
-
-    return BertModelIntermediateOutput(hidden_states=hidden_states,)
+    else:
+        # intermediate stage always return dict
+        return BertModelIntermediateOutput(hidden_states=hidden_states,)
 
 
 # The layer partition policy for bertmodel
@@ -362,8 +361,7 @@ def bert_for_pretraining_forward(
         )
 
     else:
-        if not return_dict:
-            logger.warning_once('The output of intermediate stage should always be a dict')
+        # intermediate stage always return dict
         return BertModelIntermediateOutput(hidden_states=hidden_states,)
 
 
@@ -502,8 +500,8 @@ def bert_lmhead_forward(self: BertLMHeadModel,
             cross_attentions=outputs.cross_attentions,
         )
     else:
-        if not return_dict:
-            return BertModelIntermediateOutput(hidden_states=hidden_states)
+        # intermediate stage always return dict
+        return BertModelIntermediateOutput(hidden_states=hidden_states)
 
 
 class BertLMHeadModelPolicy(Policy):
