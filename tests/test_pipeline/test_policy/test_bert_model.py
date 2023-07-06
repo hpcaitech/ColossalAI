@@ -5,8 +5,8 @@ from transformers.models.bert.modeling_bert import BertModel
 
 import colossalai
 from colossalai.cluster import ProcessGroupMesh
-from colossalai.pipeline.policy.bert import BertModelPolicy, bert_model_forward
 from colossalai.pipeline.stage_manager import PipelineStageManager
+from colossalai.shardformer.policies.bert import BertModelPolicy, bert_model_forward
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 
@@ -78,9 +78,11 @@ def check_bert_model_policy():
     stage_manager = PipelineStageManager(pg_mesh, PP_DIM)
     rank = dist.get_rank()
 
-    model_policy = BertModelPolicy(stage_manager, len(model.encoder.layer))
+    model_policy = BertModelPolicy(stage_manager)
+    model_policy.set_model(model)
+    model_policy.set_layers_per_stage()
+    layers = model_policy.get_held_layers()
     assert model_policy.layers_per_stage == [6, 6]
-    layers = model_policy.get_hold_layers(model)
     for layer in layers:
         print(layer)
 
