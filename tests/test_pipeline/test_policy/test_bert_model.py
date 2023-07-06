@@ -42,7 +42,7 @@ def check_bert_model_forward():
         assert output[0].shape == (2, 3, 768)
         print('start the training')
     else:
-        attention_mask = torch.ones((2, 12, 3, 3))
+        attention_mask = torch.ones((2, 3))
         output = bert_model_forward(self=model,
                                     hidden_states=hidden_states,
                                     attention_mask=attention_mask,
@@ -77,7 +77,7 @@ def check_bert_model_policy():
     stage_manager = PipelineStageManager(pg_mesh, PP_DIM)
     rank = dist.get_rank()
 
-    model_policy = BertModelPolicy(stage_manager, len(model.encoder.layer), 2)
+    model_policy = BertModelPolicy(stage_manager, len(model.encoder.layer))
     assert model_policy.layers_per_stage == [6, 6]
     layers = model_policy.get_hold_layers(model)
     for layer in layers:
