@@ -396,7 +396,7 @@ In the case of using 2 GPUs, the training times are as follows.
    <br/>
 </p>
 
-In the case of using 4 GPUs, the training times are as follows.
+In the case of using 4 GPUs, the training times are as follows.  
 
 | N_CTX |   org_model    |  shard_model   |
 | :------: | :-----: | :-----: |
@@ -419,7 +419,7 @@ As shown in the figures above, when the sequence length is around 1000 or greate
 ### Convergence
 
 
-To validate that training the model using shardformers does not impact its convergence. We [fine-tuned the BERT model](./examples/convergence_benchmark.py) using both shardformer and non-shardformer approaches. We compared the accuracy, loss, F1 score of the training results.
+To validate that training the model using shardformers does not impact its convergence. We [fine-tuned the BERT model](./examples/convergence_benchmark.py) using both shardformer and non-shardformer approaches. We compared the accuracy, loss, F1 score of the training results.  
 
 | accuracy |   f1    |  loss   | GPU number | model shard |
 | :------: | :-----: | :-----: | :--------: | :---------: |
