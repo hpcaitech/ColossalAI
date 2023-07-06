@@ -39,8 +39,8 @@ def check_bert_model_forward():
     if stage_manager.stage == 0:
         attention_mask = torch.ones_like(x)
         output = bert_model_forward(self=model, input_ids=x, attention_mask=attention_mask, stage_manager=stage_manager)
-        print(output[0].shape)
-        assert output[0].shape == (2, 3, 768)
+        print(output['hidden_states'].shape)
+        assert output['hidden_states'].shape == (2, 3, 768)
         print('start the training')
     else:
         attention_mask = torch.ones((2, 3))

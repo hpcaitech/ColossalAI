@@ -27,20 +27,6 @@ from .base import Policy
 logger = logging.get_logger(__name__)
 
 
-class BertModelIntermediateOutput(ModelOutput):
-    """
-    Class for the intermediate output of bert model and bert-based model
-
-    Args:
-        hidden_states (`torch.FloatTensor` of shape `(batch_size, sequence_length, hidden_size)`):
-            Sequence of hidden-states at the output of the last layer of the previous stage.
-            NOTE: This is different from the base model.
-    """
-
-    hidden_states: torch.FloatTensor = None
-    attention_mask: Optional[torch.Tensor] = None
-
-
 def bert_model_forward(
         self: BertModel,
         input_ids: Optional[torch.Tensor] = None,
@@ -254,7 +240,9 @@ def bert_model_forward(
     # output of non-first and non-last stages: must be a dict
     else:
         # intermediate stage always return dict
-        return BertModelIntermediateOutput(hidden_states=hidden_states,)
+        return {
+            'hidden_states': hidden_states,
+        }
 
 
 # The layer partition policy for bertmodel
@@ -288,7 +276,7 @@ class BertModelPolicy(Policy):
         pass
 
     def replace_forward(self, module: Module) -> None:
-        module.model.forward = MethodType(partial(bert_model_forward, stage_manager=self.stage_manager), module.model)
+        module.forward = MethodType(partial(bert_model_forward, stage_manager=self.stage_manager), module)
 
 
 def bert_for_pretraining_forward(
@@ -335,8 +323,6 @@ def bert_for_pretraining_forward(
     all_hidden_states = None
     all_self_attentions = None
     all_cross_attentions = None
-    hidden_states = outputs[0]
-
     if stage_manager.is_last_stage():
         sequence_output, pooled_output = outputs[:2]
         prediction_scores, seq_relationship_score = self.cls(sequence_output, pooled_output)
@@ -359,10 +345,13 @@ def bert_for_pretraining_forward(
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
         )
-
     else:
+        hidden_states = outputs.get('hidden_states')
+
         # intermediate stage always return dict
-        return BertModelIntermediateOutput(hidden_states=hidden_states,)
+        return {
+            'hidden_states': hidden_states,
+        }
 
 
 class BertForPreTrainingPolicy(Policy):
@@ -473,7 +462,6 @@ def bert_lmhead_forward(self: BertLMHeadModel,
     all_hidden_states = None
     all_self_attentions = None
     all_cross_attentions = None
-    hidden_states = outputs[0]
 
     if stage_manager.is_last_stage():
         sequence_output = outputs[0]
@@ -500,8 +488,9 @@ def bert_lmhead_forward(self: BertLMHeadModel,
             cross_attentions=outputs.cross_attentions,
         )
     else:
+        hidden_states = outputs.get('hidden_states')
         # intermediate stage always return dict
-        return BertModelIntermediateOutput(hidden_states=hidden_states)
+        return {'hidden_states': hidden_states}
 
 
 class BertLMHeadModelPolicy(Policy):
