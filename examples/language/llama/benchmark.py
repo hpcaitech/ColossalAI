@@ -99,7 +99,7 @@ def main():
     parser.add_argument('-c', '--config', type=str, default='7b', help='Model configuration')
     parser.add_argument('-p',
                         '--plugin',
-                        choices=['gemini', 'gemini_cpu', 'fsdp', 'fsdp_cpu'],
+                        choices=['gemini', 'gemini_cuda', 'gemini_cpu', 'fsdp', 'fsdp_cpu'],
                         default='gemini',
                         help='Choose which plugin to use')
     parser.add_argument('-b', '--batch_size', type=int, default=2, help='Batch size')
@@ -125,6 +125,8 @@ def main():
     if args.plugin == 'gemini':
         AutoPlacementPolicy.set_warmup_non_model_data_ratio(args.warmup_ratio)
         plugin = GeminiPlugin(placement_policy='auto')
+    elif args.plugin == 'gemini_cuda':
+        plugin = GeminiPlugin(placement_policy='cuda')
     elif args.plugin == 'gemini_cpu':
         plugin = GeminiPlugin(placement_policy='cpu')
     elif args.plugin == 'const':
