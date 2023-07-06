@@ -5,7 +5,7 @@ import torch.nn as nn
 from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col, Linear1D_Row, VocabParallelEmbedding1D
 
 from .basepolicy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
-from ..modeling.llama import llama_flash_attention_forward
+from ..modeling.llama import get_llama_forward
 
 __all__ = ['LlamaPolicy', 'LlamaForCausalLMPolicy', 'LlamaForSequenceClassificationPolicy']
 
@@ -102,7 +102,7 @@ class LlamaPolicy(Policy):
             
         if self.shard_config.enable_flash_attention:
             policy[LlamaAttention] = ModulePolicyDescription(method_replacement={
-                'forward': llama_flash_attention_forward,
+                'forward': get_llama_forward(),
             })   
 
         return policy
