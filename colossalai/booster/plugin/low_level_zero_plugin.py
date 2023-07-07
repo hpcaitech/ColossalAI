@@ -41,16 +41,27 @@ SUPPORTED_PRECISION = ['fp16', 'bf16', 'fp32']
 
 class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
 
-    def save_unsharded_optimizer(self, optimizer: Optimizer, checkpoint: str, gather_dtensor: bool):
+    def save_unsharded_optimizer(self, optimizer: OptimizerWrapper, checkpoint: str, gather_dtensor: bool = False):
+        """Save optimizer to checkpoint but only on master process.
+
+        Args:
+            optimizer (OptimizerWrapper): Optimizer to save state_dict
+            checkpoint (str): Path to save checkpoint
+            gather_dtensor (bool): Whether to gather_dtensor, not used
+        """
+
+        # the `state_dict` in LowLevelZeroOptimizer has communication
+        # if only the master rank collect state_dict and save,
+        # the communication on each rank would not match
         state_dict = optimizer.state_dict()
         if self.coordinator.is_master():
-            save_state_dict(state_dict, checkpoint, False)
+            save_state_dict(state_dict, checkpoint, use_safetensors=False)
 
     def save_sharded_optimizer(self,
                                optimizer: OptimizerWrapper,
                                checkpoint: str,
-                               gather_dtensor,
-                               prefix=None,
+                               gather_dtensor: bool = False,
+                               prefix: str = None,
                                size_per_shard: int = 1024):
         """
         Save sharded Zero-optimizer checkpoint under the given checkpointing path.
@@ -58,6 +69,13 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
         - An index file (pytorch_optim.bin.index.json) containing a map between optimizer states and file names
         - A group file (pytorch_optim_group.bin) recording information of param_groups
         - Multiple files (pytorch_optim-000XX.bin) that store state tensors of optimizer in a sharding way
+
+        Args:
+            optimizer (OptimizerWrapper): Optimizer to save sharded state_dict
+            checkpoint (str): Path to save optimizer state_dict
+            gather_dtensor (bool): Whether to gather_dtensor, not used
+            prefix (str): Perfix of file to save
+            size_per_shard (int): Max file size of each file that store state tensors
         """
         if os.path.isfile(checkpoint):
             logging.error(f"Provided path ({checkpoint}) should be a directory, not a file")
@@ -100,7 +118,14 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
                      f"You can find where each parameters has been saved in the "
                      f"index located at {save_index_file}.")
 
-    def load_sharded_optimizer(self, optimizer: Optimizer, index_file_path: str, prefix: str):
+    def load_sharded_optimizer(self, optimizer: OptimizerWrapper, index_file_path: str, prefix: str):
+        """Load sharded optimizer with the given path to index file.
+
+        Args:
+            optimizer (OptimizerWrapper): Optimizer to load state_dict
+            index_file_path (str): Path to the index file
+            prefix (str): Not used.
+        """
         super().load_sharded_optimizer(optimizer, index_file_path, prefix)
         current_rank_state_dict = optimizer.optim.state_dict()['state']
         for param_idx, state in current_rank_state_dict.items():
@@ -139,36 +164,6 @@ class LowLevelZeroModel(ModelWrapper):
             args = tree_map(self.convert_fn, args)
             kwargs = tree_map(self.convert_fn, kwargs)
         return super().forward(*args, **kwargs)
-
-
-# class LowLevelZeroOptimizer(OptimizerWrapper):
-
-#     def __init__(self,
-#                  module: nn.Module,
-#                  optimizer: Optimizer,
-#                  zero_optim_config: dict,
-#                  optim_kwargs: dict,
-#                  verbose: bool = False) -> None:
-#         optimizer = zero_optim_wrapper(module,
-#                                        optimizer,
-#                                        optim_config=zero_optim_config,
-#                                        **optim_kwargs,
-#                                        verbose=verbose)
-#         super().__init__(optimizer)
-
-#     def backward(self, loss: Tensor, *args, **kwargs):
-#         self.optim.backward(loss)
-
-#     def clip_grad_by_norm(self,
-#                           max_norm: Union[float, int],
-#                           norm_type: Union[float, int] = 2,
-#                           error_if_nonfinite: bool = False,
-#                           *args,
-#                           **kwargs) -> Tensor:
-#         warnings.warn(f'LowLevelZero controls grad clipping by itself, so you should not use clip_grad_by_norm')
-
-#     def clip_grad_by_value(self, clip_value: float, *args, **kwargs) -> None:
-#         raise NotImplementedError('LowLevelZero does not support clip_grad_by_value')
 
 
 class LowLevelZeroPlugin(DPPluginBase):
