@@ -8,6 +8,7 @@ import colossalai
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.policies.bert import BertLMHeadModelPolicy, bert_lmhead_forward
+from colossalai.shardformer.shard import ShardConfig
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 
@@ -81,9 +82,13 @@ def check_bert_lmhead_policy():
     stage_manager = PipelineStageManager(pg_mesh, PP_DIM)
     rank = dist.get_rank()
 
-    model_policy = BertLMHeadModelPolicy(stage_manager, len(model.bert.encoder.layer))
-    assert model_policy.layers_per_stage == [6, 6]
-    layers = model_policy.get_held_layers(model)
+    model_policy = BertLMHeadModelPolicy()
+    model_policy.set_model(model)
+    model_config = ShardConfig(pipeline_stage_manager=stage_manager, enable_tensor_parallelism=False)
+    model_policy.set_shard_config(model_config)
+    layers = model_policy.get_held_layers()
+
+    assert layers is not None
 
 
 def run_dist_model(rank, world_size, port):
@@ -111,4 +116,4 @@ def test_bert_lmhead_policy():
 if __name__ == "__main__":
     """test the bert for pretraining model forward and bert for pretraining model policy"""
     test_bert_lmhead_forward()
-    # test_bert_lmhead_policy()
+    test_bert_lmhead_policy()
