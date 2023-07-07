@@ -73,6 +73,7 @@ def build_bloom_alibi_tensor_fn(process_group: ProcessGroup) -> torch.Tensor:
 
 def get_bloom_forward():
 
+    from transformers.models.bloom.modeling_bloom import dropout_add
     try:
         from xformers.ops import memory_efficient_attention as me_attention
     except:
@@ -92,8 +93,8 @@ def get_bloom_forward():
         fused_qkv = self.query_key_value(hidden_states)
         (query_layer, key_layer, value_layer) = self._split_heads(fused_qkv)
         batch_size, tgt_len, _ = hidden_states.size()
-
         assert tgt_len % 4 == 0, "Flash Attention Error: The sequence length should be a multiple of 4."
+
         _, kv_length, _, _ = key_layer.size()
 
         proj_shape = (batch_size, tgt_len, self.num_heads, self.head_dim)
@@ -133,27 +134,10 @@ def get_bloom_forward():
         else:
             output_tensor = self.dense(context_layer)
 
+            # TODO to replace with the bias_dropout_add function in jit
             output_tensor = dropout_add(output_tensor, residual, self.hidden_dropout, self.training)
             outputs = (output_tensor, present, None)
 
             return outputs
         
     return bloom_flash_attention_forward
-    
-def dropout_add(x: torch.Tensor, residual: torch.Tensor, prob: float, training: bool) -> torch.Tensor:
-    """
-    Dropout add function
-
-    Args:
-        x (`torch.tensor`, *required*):
-            input tensor
-        residual (`torch.tensor`, *required*):
-            esidual tensor
-        prob (`float`, *required*):
-            dropout probability
-        training (`bool`, *required*):
-            training mode
-    """
-    out = F.dropout(x, p=prob, training=training)
-    out = residual + out
-    return out
