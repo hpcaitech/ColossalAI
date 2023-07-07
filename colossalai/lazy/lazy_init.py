@@ -97,6 +97,9 @@ def _convert_cls(tensor: 'LazyTensor', target: torch.Tensor) -> torch.Tensor:
     """
     cls_to_become = nn.Parameter if isinstance(tensor, nn.Parameter) else torch.Tensor
     tensor.__class__ = cls_to_become
+    if cls_to_become is nn.Parameter:
+        # to fit UninitializedParameter
+        delattr(tensor, '_is_param')
     tensor.data = target
     tensor.requires_grad = target.requires_grad
     # subclass of torch.Tensor does not have tolist() method
@@ -190,10 +193,10 @@ class LazyTensor(torch.Tensor):
     def clean(self) -> None:
         """Clean all stored operations, meta data and materialized data, which prevents memory leaking. This should be called after all tensors are materialized.
         """
-        self._factory_method = None
-        self._op_buffer = None
-        self._materialized_data = None
-        self._meta_data = None
+        delattr(self, '_factory_method')
+        delattr(self, '_op_buffer')
+        delattr(self, '_materialized_data')
+        delattr(self, '_meta_data')
 
     @staticmethod
     def _replace_with_materialized(x):
