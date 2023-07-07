@@ -134,7 +134,6 @@ class BertPolicy(Policy):
             ],
                                                         policy=policy,
                                                         target_key=BertLayer)
-
             # handle embedding layer
             self.append_or_create_submodule_replacement(
                 description=[SubModuleReplacementDescription(
@@ -143,6 +142,7 @@ class BertPolicy(Policy):
                 )],
                 policy=policy,
                 target_key=BertEmbeddings)
+
         return policy
 
     def add_lm_head_policy(self, base_policy):
@@ -175,6 +175,13 @@ class BertModelPolicy(BertPolicy):
 
     def __init__(self) -> None:
         super().__init__()
+
+    def module_policy(self):
+        module_policy = super().module_policy()
+        from transformers.models.bert.modeling_bert import BertModel
+        module_policy[BertModel] = ModulePolicyDescription(
+            method_replacement={'forward': partial(bert_model_forward, stage_manager=self.pipeline_stage_manager)})
+        return module_policy
 
     def get_held_layers(self) -> List[Module]:
         """Get pipeline layers for current stage."""
@@ -428,7 +435,8 @@ def bert_model_forward(
         use_cache = use_cache if use_cache is not None else self.config.use_cache
     else:
         use_cache = False
-
+    if stage_manager.stage == 1:
+        print('hidden_states', hidden_states)
     if stage_manager.is_first_stage():
         if input_ids is not None and inputs_embeds is not None:
             raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
@@ -440,6 +448,13 @@ def bert_model_forward(
             raise ValueError("You have to specify either input_ids or inputs_embeds")
         batch_size, seq_length = input_shape
         device = input_ids.device if input_ids is not None else inputs_embeds.device
+        if token_type_ids is None:
+            if hasattr(self.embeddings, "token_type_ids"):
+                buffered_token_type_ids = self.embeddings.token_type_ids[:, :seq_length]
+                buffered_token_type_ids_expanded = buffered_token_type_ids.expand(batch_size, seq_length)
+                token_type_ids = buffered_token_type_ids_expanded
+            else:
+                token_type_ids = torch.zeros(input_shape, dtype=torch.long, device=device)
     else:
         input_shape = hidden_states.size()[:-1]
         batch_size, seq_length = input_shape
@@ -461,14 +476,6 @@ def bert_model_forward(
 
     if attention_mask is None:
         attention_mask = torch.ones(((batch_size, seq_length + past_key_values_length)), device=device)
-
-    if token_type_ids is None:
-        if hasattr(self.embeddings, "token_type_ids"):
-            buffered_token_type_ids = self.embeddings.token_type_ids[:, :seq_length]
-            buffered_token_type_ids_expanded = buffered_token_type_ids.expand(batch_size, seq_length)
-            token_type_ids = buffered_token_type_ids_expanded
-        else:
-            token_type_ids = torch.zeros(input_shape, dtype=torch.long, device=device)
 
     # We can provide a self-attention mask of dimensions [batch_size, from_seq_length, to_seq_length]
     # ourselves in which case we just need to make it broadcastable to all heads.
