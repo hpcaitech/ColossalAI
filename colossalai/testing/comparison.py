@@ -39,7 +39,8 @@ def assert_equal_in_group(tensor: Tensor, process_group: ProcessGroup = None):
 
 
 def check_state_dict_equal(d1: OrderedDict, d2: OrderedDict, ignore_device: bool = True):
-    assert len(list(d1.keys())) == len(list(d2.keys()))
+    assert len(list(d1.keys())) == len(list(d2.keys())), \
+           f"Number of keys unequal: {len(list(d1.keys()))} vs {len(list(d2.keys()))}"
     for k, v1 in d1.items():
         assert k in d2
         v2 = d2[k]

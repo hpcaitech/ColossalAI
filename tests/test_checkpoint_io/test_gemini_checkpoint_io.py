@@ -58,7 +58,7 @@ def exam_state_dict_with_origin(placement_policy, model_name, use_safetensors: b
 def exam_state_dict(placement_policy, shard: bool, model_name: str, size_per_shard: int):
     (model_fn, data_gen_fn, output_transform_fn, _, _) = next(iter(model_zoo.get_sub_registry(model_name).values()))
     criterion = lambda x: x.mean()
-    plugin = GeminiPlugin(placement_policy=placement_policy)
+    plugin = GeminiPlugin(placement_policy=placement_policy, precision="fp16", initial_scale=(2**14))
     booster = Booster(plugin=plugin)
 
     model = model_fn()
@@ -91,7 +91,8 @@ def exam_state_dict(placement_policy, shard: bool, model_name: str, size_per_sha
                                new_model.unwrap().state_dict(only_rank_0=False), False)
 
         booster.load_optimizer(new_optimizer, optimizer_ckpt_path)
-        check_state_dict_equal(optimizer.state_dict(), new_optimizer.state_dict(), False)
+        check_state_dict_equal(optimizer.unwrap().state_dict(only_rank_0=False),
+                               new_optimizer.unwrap().state_dict(only_rank_0=False), False)
 
         # Check the new model/optimizer can successfully run.
         data = data_gen_fn()

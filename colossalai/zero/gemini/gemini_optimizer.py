@@ -1,8 +1,8 @@
 # this code is inspired by the DeepSpeed library and implemented with our own design from scratch
 import copy
+import gc
 import math
 import warnings
-from collections import abc as container_abcs
 from typing import Any, Dict, Set, Tuple
 
 import torch
@@ -348,10 +348,11 @@ class ZeroOptimizer(ColossalaiOptimizer):
             chunk_offset(int): Offset of parameter inside the chunk.
             shard_offset(int): Offset of its optimizer state shard
                                 relative to the whole optimizer state.
-            param_size(int): Length of parameter shard owned by current process.
+            shard_size(int): Length of parameter shard owned by current process.
         '''
 
-        assert param_id in self.id_to_fake_params
+        if param_id not in self.id_to_fake_params:
+            return -1, -1, -1
         fake_param = self.id_to_fake_params[param_id]
         chunk = self.param_to_chunk32[fake_param].paired_chunk
         param = self.id_to_real_params[param_id]
@@ -360,15 +361,16 @@ class ZeroOptimizer(ColossalaiOptimizer):
         begin_in_chunk, end_in_chunk = self.param_to_range[fake_param]
         chunk_offset = begin_in_chunk
         shard_offset = begin_in_chunk + chunk.shard_begin - param_info.offset
-        param_size = end_in_chunk - begin_in_chunk
+        shard_size = end_in_chunk - begin_in_chunk
         assert chunk_offset >= 0 and shard_offset >= 0
 
-        return chunk_offset, shard_offset, param_size
+        return chunk_offset, shard_offset, shard_size
 
-    def collect_states(self, param_id: int) -> dict:
+    def collect_states(self, param_id: int, only_rank_0: bool = True) -> dict:
         """
         Args:
             param_id (int): id of the parameter whose state is to be gathered at master rank.
+            only_rank_0(bool): if True, states will be collected only on master rank, otherwise collected on every rank.
 
         Returns:
             collected_states(dict): the gathered optimzier state of parameter with given id
@@ -379,21 +381,44 @@ class ZeroOptimizer(ColossalaiOptimizer):
 
         # Get param & chunk & process group.
         param = self.id_to_real_params[param_id]
+        fake_param = self.id_to_fake_params.get(param_id, None)
         chunk = self.chunk_manager.get_chunk(param)
         process_group = chunk.torch_pg
         rank = dist.get_rank(process_group)
         master_rank = 0
-        state_names = self.optim.get_state_names()
-
         collected_states = {}
+
+        # Fetch names of states through all_gather.
+        local_state_names = None
+        if fake_param is not None:
+            local_state_names = list(self.optim.state[fake_param].keys())
+        gathered_state_names = [None for _ in range(dist.get_world_size(process_group))]
+        dist.barrier()
+        dist.all_gather_object(gathered_state_names, local_state_names)
+        state_names = None
+        for names in gathered_state_names:
+            if names is not None:
+                # Assume different devices share the same set of state names if they have.
+                state_names = copy.deepcopy(names)
+                break
+
+        # Directly return if this parameter doesn't have optimizer states.
+        # e.g. parameter freezed/layer dropped
+        if state_names is None:
+            return collected_states
+
+        # Boolean variable is_collector indicates that whether the current rank
+        # needs to gather the whole optimizer states.
+        # Only master rank is collector when only_rank_0 is True.
+        # Every rank is collector when only_rank_0 is False.
+        is_collector = (rank == master_rank) or (not only_rank_0)
 
         # If the chunk is kept gathered,
         # the parameteres are treated the same as that of those in strict DDP during training.
         # So states can be directly fetched from current device.
         if chunk.keep_gathered:
             assert param_id in self.id_to_fake_params
-            fake_param = self.id_to_fake_params[param_id]
-            if rank == master_rank:
+            if is_collector:
                 states = self.optim.state[fake_param]
                 for state_name in state_names:
                     if state_name == 'step':
@@ -408,42 +433,8 @@ class ZeroOptimizer(ColossalaiOptimizer):
         # Check whether the param with given id is managed by current process.
         own_param = param_id in self.id_to_fake_params
 
-        # Compute position information (offsets) of state shard.
-        # If current process doesn't control this param, position message should be [rank, -1, -1]
-        # else it should be [rank, start_offset, end_offset]
-        state_shard_range = torch.tensor([rank, -1, -1], dtype=torch.int, requires_grad=False).cuda()
-        if own_param:
-            _, shard_offset, param_size = self.get_offsets(param_id)
-            state_shard_range[1] = shard_offset
-            state_shard_range[2] = shard_offset + param_size
-
-        # Ranks other than master send position messages to master.
-        # The master rank should receive a dict mapping rank number to state shard offsets, in the form of:
-        # {rank_0: (0, x_1), rank_1: (x_1, x_2), rank2: (x_2, x_3), ... rank_{n-1}: (x_{n-1}, param.numels()) }
-        dist.barrier(process_group)
-        range_info = dict()
-        if rank == master_rank:
-
-            # Record if master owns this param.
-            if state_shard_range[-1] >= 0:
-                range_info[master_rank] = (state_shard_range[-2].item(), state_shard_range[-1].item())
-
-            container_tensor = torch.zeros_like(state_shard_range, dtype=torch.int, requires_grad=False).cuda()
-            for src in range(0, dist.get_world_size(process_group)):
-                if src == master_rank:
-                    continue
-                dist.recv(container_tensor, src, process_group)
-                # Only keeps valid position messages.
-                if container_tensor[-1] >= 0:
-                    range_info[container_tensor[0].item()] = (container_tensor[-2].item(), container_tensor[-1].item())
-            assert len(list(range_info.keys())) > 0
-
-        else:
-            dist.send(state_shard_range, master_rank, process_group)
-        dist.barrier(process_group)
-
-        # Master get prepared for state collecting.
-        if rank == master_rank:
+        # Collector gets prepared for state collecting.
+        if is_collector:
             for state_name in state_names:
                 if state_name == 'step':
                     # To keep aligned with pytorch, state 'step' is stored as a pytorch tensor with type float32.
@@ -452,35 +443,33 @@ class ZeroOptimizer(ColossalaiOptimizer):
                     collected_states[state_name] = torch.zeros(param.numel(), dtype=torch.float32,
                                                                requires_grad=False).cpu()
 
-        # Master starts to receive state tensors from other ranks
-        # after all the position messages of state shards has been collected.
-        compacted_states = self.pack_optimizer_states_to_tensor(param_id)
-        if rank == master_rank:
-            for src, shard_range in range_info.items():
+        # Materials for gathering, including compacted state tensors, and the offset of shard inside each state.
+        compacted_states = self.pack_optimizer_states_to_tensor(param_id, state_names) if own_param else None
+        _, shard_offset, shard_size = self.get_offsets(param_id)
 
-                # If src is master, directly load from compacted_states tensor.
-                if src == master_rank:
-                    self.load_from_compacted_states(compacted_states, collected_states, shard_range)
+        # Collectors gather state shards through all_gathering.
+        gathered_state_shards = [None for _ in range(dist.get_world_size(process_group))]
+
+        dist.barrier()
+        dist.all_gather_object(gathered_state_shards, [compacted_states, shard_offset, shard_size])
+
+        if is_collector:
+            for state_shard in gathered_state_shards:
+                compacted_states = state_shard[0]
+                shard_offset = state_shard[1]
+                shard_size = state_shard[2]
+                if compacted_states is None:
                     continue
+                self.load_from_compacted_states(compacted_states, collected_states, state_names, shard_offset,
+                                                shard_size)
 
-                # If src is not master, receive states from other ranks.
-                shard_size = shard_range[1] - shard_range[0]
-                num_states = len(state_names)
-                container_size = 1 + (num_states - 1) * shard_size if 'step' in state_names \
-                                        else num_states * shard_size
-                container_tensor = torch.zeros(container_size, dtype=torch.float32, requires_grad=False).cuda()
-                dist.recv(container_tensor, src, process_group)
-                self.load_from_compacted_states(container_tensor, collected_states, shard_range)
-                del container_tensor
-        else:
-            if own_param:
-                dist.send(compacted_states, master_rank, process_group)
-
-        del compacted_states
-        dist.barrier(process_group)
+        # Clean gathered states
+        for state_shard in gathered_state_shards:
+            del state_shard[0]
+            gc.collect()
 
         # Reshape tensors
-        if rank == master_rank:
+        if is_collector:
             for state_name, state_tensor in collected_states.items():
                 if state_tensor.numel() == param.numel():
                     collected_states[state_name] = torch.reshape(state_tensor, param.shape)
@@ -489,6 +478,7 @@ class ZeroOptimizer(ColossalaiOptimizer):
 
     def pack_optimizer_states_to_tensor(self,
                                         param_id: int,
+                                        state_names: list,
                                         device: torch.device = torch.device('cuda'),
                                         dtype: torch.dtype = torch.float32) -> torch.Tensor:
         '''
@@ -502,7 +492,7 @@ class ZeroOptimizer(ColossalaiOptimizer):
         states = self.optim.state[fake_param]
         shard_size = param_range[1] - param_range[0]
         compacted_size = 0
-        for name in self.optim.get_state_names():
+        for name in state_names:
             if name == 'step':
                 compacted_size += 1
             else:
@@ -526,16 +516,16 @@ class ZeroOptimizer(ColossalaiOptimizer):
 
         return compacted_states
 
-    def load_from_compacted_states(self, compacted_states: torch.Tensor, collected_states: dict, shard_range: tuple):
+    def load_from_compacted_states(self, compacted_states: torch.Tensor, collected_states: dict, state_names: list,
+                                   shard_start: int, shard_size: int):
         '''
         Given a tensor carrying compacted optimizer states,
         update these states to collected_states.
         '''
-        shard_start, shard_end = shard_range
-        shard_size = shard_end - shard_start
+        shard_end = shard_start + shard_size
         next_state_offset = 0
 
-        for state_name in self.optim.get_state_names():
+        for state_name in state_names:
             if state_name == 'step':
                 collected_states['step'].data = torch.tensor(compacted_states[next_state_offset].item(),
                                                              dtype=torch.float32,
@@ -564,10 +554,6 @@ class ZeroOptimizer(ColossalaiOptimizer):
         Warning: This method will gather and return the whole optimizer state_dict,
                  so it should be called only when memory resources are abundant.
         """
-
-        if not only_rank_0:
-            raise ValueError("False 'only_rank_0' in self.state_dict() method is currently not supported")
-
         state_dict = {}
         state_dict['param_groups'] = copy.deepcopy(self.param_groups_backup)
 
@@ -589,7 +575,7 @@ class ZeroOptimizer(ColossalaiOptimizer):
         state_dict['state'] = dict()
         for param_id in self.id_to_real_params.keys():
             dist.barrier()
-            state_dict['state'][param_id] = self.collect_states(param_id=param_id)
+            state_dict['state'][param_id] = self.collect_states(param_id=param_id, only_rank_0=only_rank_0)
         return state_dict
 
     def load_param_groups(self, saved_param_groups: list):
