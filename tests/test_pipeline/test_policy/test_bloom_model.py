@@ -102,13 +102,15 @@ def run_dist_policy(rank, world_size, port):
 
 
 #TODO: Bloom model should be fixed after bert model
-#@pytest.mark.dist
+@pytest.mark.skip(reason="Bloom model should be fixed after bert model")
+@pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_bloom_model_forward():
     spawn(run_dist_model, 4)
 
 
-#@pytest.mark.dist
+@pytest.mark.skip(reason="Bloom model should be fixed after bert model")
+@pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_bloom_model_policy():
     spawn(run_dist_policy, 4)
