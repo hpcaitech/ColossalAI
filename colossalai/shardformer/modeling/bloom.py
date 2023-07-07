@@ -78,7 +78,7 @@ def get_bloom_forward():
     except:
         raise ImportError("Error: xformers module is not installed. Please install it to use flash attention.")
     from transformers.models.bloom.modeling_bloom import dropout_add
-     
+
     def bloom_flash_attention_forward(
         self,
         hidden_states: torch.Tensor,
@@ -134,10 +134,10 @@ def get_bloom_forward():
         else:
             output_tensor = self.dense(context_layer)
 
-            # TODO to replace with the bias_dropout_add function in jit
-            output_tensor = dropout_add(output_tensor, residual, self.hidden_dropout, self.training)
-            outputs = (output_tensor, present, None)
+        # TODO to replace with the bias_dropout_add function in jit
+        output_tensor = dropout_add(output_tensor, residual, self.hidden_dropout, self.training)
+        outputs = (output_tensor, present, None)
 
-            return outputs
+        return outputs
         
     return bloom_flash_attention_forward
