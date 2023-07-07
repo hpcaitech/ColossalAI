@@ -80,7 +80,6 @@ def default_init(cls, *args, **kwargs):
 
 
 class InvalidScoreLogitsProcessor(LogitsProcessor):
-
     def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor) -> torch.FloatTensor:
         if torch.isnan(scores).any() or torch.isinf(scores).any():
             scores.zero_()
@@ -220,7 +219,6 @@ def apply_rotary_pos_emb(x: torch.Tensor, rope_cache: torch.Tensor) -> torch.Ten
 
 
 class RMSNorm(torch.nn.Module):
-
     def __init__(self, normalized_shape, eps=1e-5, device=None, dtype=None, **kwargs):
         super().__init__()
         self.weight = torch.nn.Parameter(torch.empty(normalized_shape, device=device, dtype=dtype))
@@ -235,7 +233,6 @@ class RMSNorm(torch.nn.Module):
 
 
 class CoreAttention(torch.nn.Module):
-
     def __init__(self, config: ChatGLMConfig, layer_number):
         super(CoreAttention, self).__init__()
 
@@ -842,7 +839,6 @@ class Embedding(torch.nn.Module):
 
 
 class ChatGLMModel(ChatGLMPreTrainedModel):
-
     def __init__(self, config: ChatGLMConfig, device=None, empty_init=True):
         super().__init__(config)
         if empty_init:
@@ -981,13 +977,11 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
 
     def quantize(self, weight_bit_width: int):
         from .quantization import quantize
-
         quantize(self.encoder, weight_bit_width)
         return self
 
 
 class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
-
     def __init__(self, config: ChatGLMConfig, empty_init=True, device=None):
         super().__init__(config)
 
