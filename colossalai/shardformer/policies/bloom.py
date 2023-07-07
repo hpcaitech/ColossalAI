@@ -134,10 +134,6 @@ class BloomForCausalLMPolicy(BloomPolicy):
 
             for k, v in binding_map.items():
                 param = getattr_(self.model, k)
-
-                if not isinstance(param, nn.Parameter):
-                    param = nn.Parameter(param)
-
                 # tie weights
                 setattr_(self.model, v, param)
         return self.model
