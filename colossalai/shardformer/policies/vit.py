@@ -1,4 +1,3 @@
-from functools import partial
 from typing import Callable, Dict, List, Union
 
 import torch.nn as nn
@@ -36,7 +35,7 @@ class ViTPolicy(Policy):
                                                                     suffix="dropout",
                                                                     target_module=col_nn.DropoutForReplicatedInput,
                                                                 )
-                                                            ])
+            ])
 
             policy[ViTLayer] = ModulePolicyDescription(attribute_replacement={
                 "attention.attention.num_attention_heads":
@@ -44,45 +43,47 @@ class ViTPolicy(Policy):
                 "attention.attention.all_head_size":
                     self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
             },
-                                                       param_replacement=[],
-                                                       sub_module_replacement=[
-                                                           SubModuleReplacementDescription(
-                                                               suffix="attention.attention.query",
-                                                               target_module=col_nn.Linear1D_Col,
-                                                           ),
-                                                           SubModuleReplacementDescription(
-                                                               suffix="attention.attention.key",
-                                                               target_module=col_nn.Linear1D_Col,
-                                                           ),
-                                                           SubModuleReplacementDescription(
-                                                               suffix="attention.attention.value",
-                                                               target_module=col_nn.Linear1D_Col,
-                                                           ),
-                                                           SubModuleReplacementDescription(
-                                                               suffix="attention.attention.dropout",
-                                                               target_module=col_nn.DropoutForParallelInput,
-                                                           ),
-                                                           SubModuleReplacementDescription(
-                                                               suffix="attention.output.dense",
-                                                               target_module=col_nn.Linear1D_Row,
-                                                           ),
-                                                           SubModuleReplacementDescription(
-                                                               suffix="attention.output.dropout",
-                                                               target_module=col_nn.DropoutForReplicatedInput,
-                                                           ),
-                                                           SubModuleReplacementDescription(
-                                                               suffix="intermediate.dense",
-                                                               target_module=col_nn.Linear1D_Col,
-                                                           ),
-                                                           SubModuleReplacementDescription(
-                                                               suffix="output.dense",
-                                                               target_module=col_nn.Linear1D_Row,
-                                                           ),
-                                                           SubModuleReplacementDescription(
-                                                               suffix="output.dropout",
-                                                               target_module=col_nn.DropoutForReplicatedInput,
-                                                           ),
-                                                       ])
+                param_replacement=[],
+                sub_module_replacement=[
+                SubModuleReplacementDescription(
+                    suffix="attention.attention.query",
+                    target_module=col_nn.Linear1D_Col,
+                ),
+                SubModuleReplacementDescription(
+                    suffix="attention.attention.key",
+                    target_module=col_nn.Linear1D_Col,
+                ),
+                SubModuleReplacementDescription(
+                    suffix="attention.attention.value",
+                    target_module=col_nn.Linear1D_Col,
+                ),
+                SubModuleReplacementDescription(
+                    suffix="attention.attention.dropout",
+                    target_module=col_nn.DropoutForParallelInput,
+                ),
+                SubModuleReplacementDescription(
+                    suffix="attention.output.dense",
+                    target_module=col_nn.Linear1D_Row,
+                ),
+                SubModuleReplacementDescription(
+                    suffix="attention.output.dropout",
+                    target_module=col_nn.DropoutForReplicatedInput,
+                ),
+                SubModuleReplacementDescription(
+                    suffix="intermediate.dense",
+                    target_module=col_nn.Linear1D_Col,
+                ),
+                SubModuleReplacementDescription(
+                    suffix="output.dense",
+                    target_module=col_nn.Linear1D_Row,
+                ),
+                SubModuleReplacementDescription(
+                    suffix="output.dropout",
+                    target_module=col_nn.DropoutForReplicatedInput,
+                ),
+            ])
+
+        return policy
 
         return policy
 
