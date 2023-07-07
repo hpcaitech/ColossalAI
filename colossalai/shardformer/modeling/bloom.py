@@ -73,12 +73,12 @@ def build_bloom_alibi_tensor_fn(process_group: ProcessGroup) -> torch.Tensor:
 
 def get_bloom_forward():
 
-    from transformers.models.bloom.modeling_bloom import dropout_add
     try:
         from xformers.ops import memory_efficient_attention as me_attention
     except:
         raise ImportError("Error: xformers module is not installed. Please install it to use flash attention.")
-        
+    from transformers.models.bloom.modeling_bloom import dropout_add
+     
     def bloom_flash_attention_forward(
         self,
         hidden_states: torch.Tensor,
