@@ -115,5 +115,6 @@ def test_bloom_model_policy():
 
 if __name__ == "__main__":
     """test the bloom model forward and bloom model policy"""
-    test_bloom_model_forward()
-    test_bloom_model_policy()
+    # test_bloom_model_forward()
+    # test_bloom_model_policy()
+    #TODO: Bloom model should be fixed after bert model is all ready
