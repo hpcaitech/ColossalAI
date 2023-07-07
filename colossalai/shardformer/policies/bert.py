@@ -435,8 +435,7 @@ def bert_model_forward(
         use_cache = use_cache if use_cache is not None else self.config.use_cache
     else:
         use_cache = False
-    if stage_manager.stage == 1:
-        print('hidden_states', hidden_states)
+
     if stage_manager.is_first_stage():
         if input_ids is not None and inputs_embeds is not None:
             raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")

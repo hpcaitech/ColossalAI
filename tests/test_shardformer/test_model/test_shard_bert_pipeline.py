@@ -43,28 +43,26 @@ def run_bert_test(enable_fused_normalization, enable_tensor_parallelism):
     stage_manager = PipelineStageManager(pg_mesh, PP_DIM)
 
     sub_model_zoo = model_zoo.get_sub_registry('transformers_bert')
-    x = torch.randint(0, 1000, (2, 3))
-    hidden_states = torch.randint(0, 1000, (2, 3, 768)).to(torch.float32)
+    x = torch.randint(0, 1000, (2, 3)).cuda()
+    hidden_states = torch.randint(0, 1000, (2, 3, 128)).to(torch.float32).cuda()
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         if name == 'transformers_bert':
             org_model, sharded_model = build_pipeline_model(model_fn, stage_manager, enable_fused_normalization,
                                                             enable_tensor_parallelism)
 
-            if stage_manager.stage == 2:
-                attention_mask = torch.ones_like(x)
+            if stage_manager.stage == 0:
+                attention_mask = torch.ones_like(x).cuda()
                 output = sharded_model(input_ids=x, attention_mask=attention_mask, stage_manager=stage_manager)
                 print(output['hidden_states'].shape)
-                assert output['hidden_states'].shape == (2, 3, 768)
-                print('----------------------')
-            elif stage_manager.stage == 1:
-                print('----------------------')
-                attention_mask = torch.ones((2, 3))
+                assert output['hidden_states'].shape == (2, 3, 128)
+                print('end of the first stage')
+            else:
+                attention_mask = torch.ones((2, 3)).cuda()
                 output = sharded_model(hidden_states=hidden_states,
                                        attention_mask=attention_mask,
                                        stage_manager=stage_manager)
                 print(output[0].shape)
-                assert output[0].shape == (2, 3, 768)
-                print('----------------------')
+                assert output[0].shape == (2, 3, 128)
 
     torch.cuda.empty_cache()
 
