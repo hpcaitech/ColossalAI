@@ -41,4 +41,4 @@ def test_layernorm():
 
 
 if __name__ == '__main__':
-    test_layernorm_1d()
+    test_layernorm()
