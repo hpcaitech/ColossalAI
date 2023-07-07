@@ -15,13 +15,14 @@ class LlamaPolicy(Policy):
         pass
 
     def preprocess(self):
-        # Resize embedding
-        vocab_size = self.model.config.vocab_size
-        world_size = self.shard_config.tensor_parallel_size
+        if self.shard_config.enable_tensor_parallelism:
+            # Resize embedding
+            vocab_size = self.model.config.vocab_size
+            world_size = self.shard_config.tensor_parallel_size
 
-        if vocab_size % world_size != 0:
-            new_vocab_size = vocab_size + world_size - vocab_size % world_size
-            self.model.resize_token_embeddings(new_vocab_size)
+            if vocab_size % world_size != 0:
+                new_vocab_size = vocab_size + world_size - vocab_size % world_size
+                self.model.resize_token_embeddings(new_vocab_size)
 
         return self.model
 

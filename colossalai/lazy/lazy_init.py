@@ -407,6 +407,10 @@ class LazyTensor(torch.Tensor):
     def __hash__(self):
         return id(self)
 
+    def __rpow__(self, other):
+        dtype = torch.result_type(self, other)
+        return torch.tensor(other, dtype=dtype, device=self.device)**self
+
 
 class LazyInitContext:
     """Context manager for lazy initialization. Enables initializing the model without allocating real memory.
