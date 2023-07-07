@@ -29,7 +29,7 @@ _POLICY_LIST = {
     "transformers.models.bert.modeling_bert.BertModel":
         PolicyLocation(file_name="bert", class_name="BertModelPolicy"),
     "transformers.models.bert.modeling_bert.BertForPreTraining":
-        PolicyLocation(file_name="bert", class_name="BertForPretrainingPolicy"),
+        PolicyLocation(file_name="bert", class_name="BertForPreTrainingPolicy"),
     "transformers.models.bert.modeling_bert.BertLMHeadModel":
         PolicyLocation(file_name="bert", class_name="BertLMHeadModelPolicy"),
     "transformers.models.bert.modeling_bert.BertForMaskedLM":
