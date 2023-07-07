@@ -92,6 +92,8 @@ def get_bloom_forward():
         fused_qkv = self.query_key_value(hidden_states)
         (query_layer, key_layer, value_layer) = self._split_heads(fused_qkv)
         batch_size, tgt_len, _ = hidden_states.size()
+
+        assert tgt_len % 4 == 0, "Flash Attention Error: The sequence length should be a multiple of 4."
         _, kv_length, _, _ = key_layer.size()
 
         proj_shape = (batch_size, tgt_len, self.num_heads, self.head_dim)
