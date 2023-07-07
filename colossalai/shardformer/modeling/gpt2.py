@@ -62,8 +62,12 @@ def get_gpt2_forward():
             else:
                 batch_size, _, tgt_len, src_len = attention_mask.size()
                 attn_bias = attention_mask.expand(batch_size, self.num_heads, tgt_len, src_len).contiguous()
+        
         scale = value.size(-1) ** -0.5
+        if self.scale_attn_by_inverse_layer_idx:
+            scale = scale * (1 / float(self.layer_idx + 1))
         attn_output = me_attention(query=query, key=key, value=value, attn_bias=attn_bias, p=self.attn_dropout.p, scale=scale)
+        
         attn_output = merge_heads(attn_output, self.num_heads, self.head_dim)
         attn_output = self.c_proj(attn_output)
         attn_output = self.resid_dropout(attn_output)
