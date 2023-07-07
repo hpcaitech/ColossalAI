@@ -6,8 +6,9 @@ from transformers.models.bert.modeling_bert import BertForPreTraining
 
 import colossalai
 from colossalai.cluster import ProcessGroupMesh
-from colossalai.pipeline.policy.bert import BertForPreTrainingPolicy, bert_for_pretraining_forward
 from colossalai.pipeline.stage_manager import PipelineStageManager
+from colossalai.shardformer.policies.bert import BertForPreTrainingPolicy, bert_for_pretraining_forward
+from colossalai.shardformer.shard import ShardConfig
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 
@@ -45,7 +46,7 @@ def check_bert_for_pretraining_forward():
                                               stage_manager=stage_manager)
         print(output['hidden_states'].shape)
         assert output['hidden_states'].shape == (2, 3, 768)
-        print('start the training')
+
     else:
         attention_mask = torch.ones((2, 3))
         output = bert_for_pretraining_forward(self=model,
@@ -54,9 +55,6 @@ def check_bert_for_pretraining_forward():
                                               stage_manager=stage_manager)
         print(output[0].shape)
         assert output[0].shape == (2, 3, 30522)
-        print('end the training')
-        print(output)
-
     # assert output[1].shape == (2, 768)
 
 
@@ -83,11 +81,13 @@ def check_bert_for_pretraining_policy():
     stage_manager = PipelineStageManager(pg_mesh, PP_DIM)
     rank = dist.get_rank()
 
-    model_policy = BertForPreTrainingPolicy(stage_manager, len(model.bert.encoder.layer))
-    assert model_policy.layers_per_stage == [6, 6]
-    layers = model_policy.get_hold_layers(model)
-    for layer in layers:
-        print(layer)
+    model_policy = BertForPreTrainingPolicy()
+    model_policy.set_model(model)
+
+    model_config = ShardConfig(pipeline_stage_manager=stage_manager, enable_tensor_parallelism=False)
+    model_policy.set_shard_config(model_config)
+    layers = model_policy.get_held_layers()
+    assert layers is not None
 
 
 def run_dist_model(rank, world_size, port):

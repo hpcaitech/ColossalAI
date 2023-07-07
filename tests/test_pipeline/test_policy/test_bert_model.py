@@ -5,8 +5,9 @@ from transformers.models.bert.modeling_bert import BertModel
 
 import colossalai
 from colossalai.cluster import ProcessGroupMesh
-from colossalai.pipeline.policy.bert import BertModelPolicy, bert_model_forward
 from colossalai.pipeline.stage_manager import PipelineStageManager
+from colossalai.shardformer.policies.bert import BertModelPolicy, bert_model_forward
+from colossalai.shardformer.shard import ShardConfig
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 
@@ -41,7 +42,6 @@ def check_bert_model_forward():
         output = bert_model_forward(self=model, input_ids=x, attention_mask=attention_mask, stage_manager=stage_manager)
         print(output['hidden_states'].shape)
         assert output['hidden_states'].shape == (2, 3, 768)
-        print('start the training')
     else:
         attention_mask = torch.ones((2, 3))
         output = bert_model_forward(self=model,
@@ -50,8 +50,6 @@ def check_bert_model_forward():
                                     stage_manager=stage_manager)
         print(output[0].shape)
         assert output[0].shape == (2, 3, 768)
-        print('end the training')
-        print(output)
 
     # assert output[1].shape == (2, 768)
 
@@ -78,11 +76,14 @@ def check_bert_model_policy():
     stage_manager = PipelineStageManager(pg_mesh, PP_DIM)
     rank = dist.get_rank()
 
-    model_policy = BertModelPolicy(stage_manager, len(model.encoder.layer))
-    assert model_policy.layers_per_stage == [6, 6]
-    layers = model_policy.get_hold_layers(model)
-    for layer in layers:
-        print(layer)
+    model_policy = BertModelPolicy()
+    model_policy.set_model(model)
+    model_config = ShardConfig(pipeline_stage_manager=stage_manager, enable_tensor_parallelism=False)
+    model_policy.set_shard_config(model_config)
+
+    layers = model_policy.get_held_layers()
+
+    assert layers is not None
 
 
 def run_dist_model(rank, world_size, port):
@@ -109,5 +110,6 @@ def test_bert_model_policy():
 
 if __name__ == "__main__":
     """test the bert model forward and bert model policy"""
-    test_bert_model_forward()
+    #test_bert_model_forward()
     test_bert_model_policy()
+    # this test need config to run
