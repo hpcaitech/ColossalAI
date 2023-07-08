@@ -119,3 +119,9 @@ class OptimizerWrapper:
         """
         raise NotImplementedError(
             "The method unscale_grad is only available for optimizers with mixed precision training")
+
+    def unwrap(self):
+        """
+        Unwrap the optimizer for checkpoint saving/loading.
+        """
+        return self.optim
