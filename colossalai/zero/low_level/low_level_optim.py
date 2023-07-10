@@ -56,28 +56,40 @@ class LowLevelZeroFP16MixedPrecisionMixin(FP16MixedPrecisionMixin):
         return False
 
 
+def _get_ranks_in_group(group: ProcessGroup) -> list:
+    from torch.distributed.distributed_c10d import _get_default_group, _pg_group_ranks
+    if group is None:
+        group = _get_default_group()
+    group_rank_map = _pg_group_ranks[group]
+    return list(group_rank_map.keys())
+
+
 class LowLevelZeroOptimizer(ColossalaiOptimizer):
     """Optimizer used for ZeRO-1 and ZeRO-2.
     """
 
     def __init__(
-            self,
-            optimizer: Optimizer,
-            initial_scale: int = 2**16,    # grad scaler config
-            min_scale: int = 1,
-            growth_factor: float = 2.,
-            backoff_factor: float = .5,
-            growth_interval: int = 2000,
-            hysteresis: int = 2,
-            max_scale: int = 2**24,
-            clip_grad_norm: float = 0.0,    # grad clipping
-            verbose: bool = False,
-            reduce_bucket_size: int = 1024 * 1024,    # communication
-            communication_dtype: Optional[torch.dtype] = None,
-            overlap_communication: bool = False,
-            partition_grad: bool = False,    # stage 2 flag
-            cpu_offload: bool = False,    # cpu offload
-            forced_dtype: Optional[torch.dtype] = None):
+        self,
+        optimizer: Optimizer,
+        initial_scale: int = 2**16,    # grad scaler config
+        min_scale: int = 1,
+        growth_factor: float = 2.,
+        backoff_factor: float = .5,
+        growth_interval: int = 2000,
+        hysteresis: int = 2,
+        max_scale: int = 2**24,
+        clip_grad_norm: float = 0.0,    # grad clipping
+        verbose: bool = False,
+        reduce_bucket_size: int = 1024 * 1024,    # communication
+        communication_dtype: Optional[torch.dtype] = None,
+        overlap_communication: bool = False,
+        partition_grad: bool = False,    # stage 2 flag
+        cpu_offload: bool = False,    # cpu offload
+        forced_dtype: Optional[torch.dtype] = None,
+        zero_process_group: Optional[ProcessGroup] = None,
+        dp_process_group: Optional[ProcessGroup] = None,
+        tp_process_group: Optional[ProcessGroup] = None,
+    ):
 
         # TODO: add support for
         # 1. fp16 master weights
@@ -95,30 +107,14 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
 
         self._cpu_offload = cpu_offload
 
-        colo_pg = self._search_colo_process_group()
-        if isinstance(colo_pg, ProcessGroup):
-            self._local_rank = colo_pg.dp_local_rank()
-            self._world_size = colo_pg.dp_world_size()
-            self._dp_global_ranks = colo_pg.get_ranks_in_dp()
-            self._dp_torch_group = colo_pg.dp_process_group()
-            self._mp_torch_group = None
-            if colo_pg.tp_world_size() > 1:
-                self._mp_torch_group = colo_pg.tp_process_group()
-        elif colo_pg is None:
-            dp_parallel_mode = ParallelMode.DATA
-            mp_parallel_mode = ParallelMode.MODEL
-
-            self._dp_parallel_mode = dp_parallel_mode
-            self._mp_parallel_mode = mp_parallel_mode
-            self._local_rank = gpc.get_local_rank(dp_parallel_mode)
-            self._world_size = gpc.get_world_size(dp_parallel_mode)
-            self._dp_global_ranks = gpc.get_ranks_in_group(dp_parallel_mode)
-            self._dp_torch_group = gpc.get_group(dp_parallel_mode)
-            self._mp_torch_group = None
-            if gpc.is_initialized(mp_parallel_mode) and gpc.get_world_size(mp_parallel_mode) > 1:
-                self._mp_torch_group = gpc.get_group(mp_parallel_mode)
-        else:
-            raise NotImplementedError
+        if zero_process_group is None:
+            assert dp_process_group is None and tp_process_group is None
+        self._local_rank = dist.get_rank(zero_process_group)
+        self._world_size = dist.get_world_size(zero_process_group)
+        self._dp_global_ranks = _get_ranks_in_group(zero_process_group)
+        self._dp_torch_group = zero_process_group
+        self._mp_torch_group = tp_process_group
+        self._inner_dp_group = dp_process_group
 
         # working and master params for mixed precision training
         self._working_param_groups = dict()
@@ -325,7 +321,8 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
                                                   dtype=self._communication_dtype,
                                                   dst_local_rank=reduce_rank,
                                                   dst_global_rank=reduce_global_rank,
-                                                  group=self._dp_torch_group)
+                                                  group=self._dp_torch_group,
+                                                  inner_dp_group=self._inner_dp_group)
 
             # update the reduced tensor
             if reduce_rank is None or reduce_rank == self._local_rank:

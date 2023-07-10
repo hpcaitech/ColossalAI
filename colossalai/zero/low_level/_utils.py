@@ -109,11 +109,14 @@ def split_by_dtype(tensor_list):
     return buckets
 
 
-def reduce_tensor_dp_group(tensor: torch.Tensor,
-                           dtype: Optional[torch.dtype] = None,
-                           dst_local_rank: Optional[int] = None,
-                           dst_global_rank: Optional[int] = None,
-                           group: Optional[dist.ProcessGroup] = None):
+def reduce_tensor_dp_group(
+    tensor: torch.Tensor,
+    dtype: Optional[torch.dtype] = None,
+    dst_local_rank: Optional[int] = None,
+    dst_global_rank: Optional[int] = None,
+    group: Optional[dist.ProcessGroup] = None,
+    inner_dp_group: Optional[dist.ProcessGroup] = None,
+):
     """
     Reduce the tensor in the data parallel process group
 
@@ -149,6 +152,11 @@ def reduce_tensor_dp_group(tensor: torch.Tensor,
         dist.all_reduce(tensor_to_reduce, group=group)
     else:
         dist.reduce(tensor=tensor_to_reduce, dst=dst_global_rank, group=group)
+
+    if inner_dp_group is not None:
+        inner_dp_size = dist.get_world_size(group=inner_dp_group)
+        tensor_to_reduce.div_(inner_dp_size)
+        dist.all_reduce(tensor_to_reduce, group=inner_dp_group)
 
     # recover the original dtype
     if tensor.dtype != dtype and tensor is not tensor_to_reduce:

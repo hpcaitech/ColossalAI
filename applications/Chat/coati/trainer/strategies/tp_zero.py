@@ -69,6 +69,8 @@ class TPZeroStrategy(NaiveStrategy):
             size=self.tp_size,
         )))
         colossalai.launch_from_torch(config, seed=self.seed)
+        self.zero_optim_config['zero_process_group'] = gpc.get_group(ParallelMode.DATA)
+        self.zero_optim_config['tp_process_group'] = gpc.get_group(ParallelMode.PARALLEL_1D)
 
     def model_init_context(self):
         return LazyInitContext()
