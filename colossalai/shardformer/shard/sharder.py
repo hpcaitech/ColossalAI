@@ -136,7 +136,6 @@ class ModelSharder(object):
         for method_name, new_method in method_replacement.items():
             # bind the new method to the module
             bound_method = MethodType(new_method, module)
-            original_method = getattr(module, method_name)
             setattr(module, method_name, bound_method)
 
     def _replace_sub_module(
