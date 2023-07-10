@@ -268,7 +268,7 @@ def llama_model_forward(
     # for the other stages, hidden_states is the output of the previous stage
     # TODO: we should recive the attn mask of 1st stage and send it to the other stages
     if attention_mask is None:
-        attention_mask = torch.ones((batch_size, seq_length_with_past), dtype=torch.bool, device=inputs_embeds.device)
+        attention_mask = torch.ones((batch_size, seq_length_with_past), dtype=torch.bool, device=hidden_states.device)
     attention_mask = self._prepare_decoder_attention_mask(attention_mask, (batch_size, seq_length), hidden_states,
                                                           past_key_values_length)
 
@@ -341,4 +341,4 @@ def llama_model_forward(
             attentions=all_self_attns,
         )
     # always return dict for imediate stage
-    return {'hidden_states': hidden_states, 'attention_mask': attention_mask}
+    return {'hidden_states': hidden_states}
