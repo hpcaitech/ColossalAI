@@ -19,11 +19,12 @@ class OPTPolicy(Policy):
         r"""
         Reshape the Embedding layer to make the embedding dimension divisible by world_size
         """
-        vocab_size = self.model.config.vocab_size
-        world_size = self.shard_config.tensor_parallel_size
-        if vocab_size % world_size != 0:
-            new_vocab_size = vocab_size + world_size - vocab_size % world_size
-            self.model.resize_token_embeddings(new_vocab_size)
+        if self.shard_config.enable_tensor_parallelism:
+            vocab_size = self.model.config.vocab_size
+            world_size = self.shard_config.tensor_parallel_size
+            if vocab_size % world_size != 0:
+                new_vocab_size = vocab_size + world_size - vocab_size % world_size
+                self.model.resize_token_embeddings(new_vocab_size)
         return self.model
 
     def module_policy(self):
@@ -116,14 +117,15 @@ class OPTForCausalLMPolicy(OPTPolicy):
         return policy
 
     def postprocess(self):
-        binding_map = {
-            'model.decoder.embed_tokens': 'lm_head',
-        }
+        if self.shard_config.enable_tensor_parallelism:
+            binding_map = {
+                'model.decoder.embed_tokens': 'lm_head',
+            }
 
-        for k, v in binding_map.items():
-            src_mod = getattr_(self.model, k)
-            dst_mod = getattr_(self.model, v)
-            dst_mod.weight = src_mod.weight
+            for k, v in binding_map.items():
+                src_mod = getattr_(self.model, k)
+                dst_mod = getattr_(self.model, v)
+                dst_mod.weight = src_mod.weight
 
         return self.model
 

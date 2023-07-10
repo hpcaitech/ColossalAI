@@ -21,11 +21,12 @@ class GPT2Policy(Policy):
         r"""
         Reshape the Embedding layer to make the embedding dimension divisible by world_size
         """
-        vocab_size = self.model.config.vocab_size
-        world_size = self.shard_config.tensor_parallel_size
-        if vocab_size % world_size != 0:
-            new_vocab_size = vocab_size + world_size - vocab_size % world_size
-            self.model.resize_token_embeddings(new_vocab_size)
+        if self.shard_config.enable_tensor_parallelism:
+            vocab_size = self.model.config.vocab_size
+            world_size = self.shard_config.tensor_parallel_size
+            if vocab_size % world_size != 0:
+                new_vocab_size = vocab_size + world_size - vocab_size % world_size
+                self.model.resize_token_embeddings(new_vocab_size)
         return self.model
 
     def module_policy(self):
@@ -142,10 +143,11 @@ class GPT2LMHeadModelPolicy(GPT2Policy):
         return module_policy
 
     def postprocess(self):
-        binding_map = {"transformer.wte.weight": "lm_head.weight"}
-        for k, v in binding_map.items():
-            param = getattr_(self.model, k)
-            setattr_(self.model, v, param)
+        if self.shard_config.enable_tensor_parallelism:
+            binding_map = {"transformer.wte.weight": "lm_head.weight"}
+            for k, v in binding_map.items():
+                param = getattr_(self.model, k)
+                setattr_(self.model, v, param)
         return self.model
 
 
@@ -172,10 +174,11 @@ class GPT2DoubleHeadsModelPolicy(GPT2Policy):
         return module_policy
 
     def postprocess(self):
-        binding_map = {"transformer.wte.weight": "lm_head.weight"}
-        for k, v in binding_map.items():
-            param = getattr_(self.model, k)
-            setattr_(self.model, v, param)
+        if self.shard_config.enable_tensor_parallelism:
+            binding_map = {"transformer.wte.weight": "lm_head.weight"}
+            for k, v in binding_map.items():
+                param = getattr_(self.model, k)
+                setattr_(self.model, v, param)
         return self.model
 
 
