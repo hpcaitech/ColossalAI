@@ -54,13 +54,14 @@ def run_llama_test(enable_fused_normalization, enable_tensor_parallelism, use_la
                                                             enable_tensor_parallelism, use_lazy_init)
             if stage_manager.stage == 0:
                 attention_mask = torch.ones_like(x).cuda()
-                output = sharded_model(input_ids=x, attention_mask=attention_mask, stage_manager=stage_manager)
+                output = sharded_model(input_ids=x, attention_mask=attention_mask)
                 assert output['hidden_states'].shape == (2, 3, 128)
             else:
                 attention_mask = torch.ones((2, 3)).cuda()
-                output = sharded_model(hidden_states=hidden_states,
-                                       attention_mask=attention_mask,
-                                       stage_manager=stage_manager)
+                output = sharded_model(
+                    hidden_states=hidden_states,
+                    attention_mask=attention_mask,
+                )
                 # print(output[0].shape)
                 assert output[0].shape == (2, 3, 128)
 
