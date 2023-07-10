@@ -14,6 +14,7 @@ from colossalai.interface import ModelWrapper
 from .accelerator import Accelerator
 from .mixed_precision import MixedPrecision, mixed_precision_factory
 from .plugin import Plugin, TorchFSDPPlugin
+from .plugin.pp_plugin_base import PipelinePluginBase
 
 __all__ = ['Booster']
 
@@ -147,11 +148,13 @@ class Booster:
                          criterion: Callable[[torch.Tensor], torch.Tensor],
                          optimizer: Optimizer,
                          return_loss: bool = True,
-                         return_outputs: bool = False) -> Tuple[Optional[torch.Tensor], ...]:
+                         return_outputs: bool = False) -> dict:
         # TODO: implement this method
         # run pipeline forward backward pass
         # return loss or outputs if needed
-        pass
+        assert isinstance(self.plugin,
+                          PipelinePluginBase), f'The plugin {self.plugin.__class__.__name__} does not support pipeline.'
+        return self.plugin.execute_pipeline(data_iter, model, criterion, optimizer, return_loss, return_outputs)
 
     def no_sync(self, model: nn.Module) -> contextmanager:
         """Context manager to disable gradient synchronization across DP process groups.
