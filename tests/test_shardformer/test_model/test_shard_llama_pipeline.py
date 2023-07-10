@@ -52,23 +52,15 @@ def run_llama_test(enable_fused_normalization, enable_tensor_parallelism, use_la
         if name == 'transformers_llama':
             org_model, sharded_model = build_pipeline_model(model_fn, stage_manager, enable_fused_normalization,
                                                             enable_tensor_parallelism, use_lazy_init)
-
-            layers_per_stage = Policy.distribute_layers(len(org_model.layers), stage_manager.num_stages)
-            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
-
             if stage_manager.stage == 0:
                 attention_mask = torch.ones_like(x).cuda()
-                output = sharded_model(input_ids=x,
-                                       attention_mask=attention_mask,
-                                       stage_manager=stage_manager,
-                                       stage_index=stage_index)
+                output = sharded_model(input_ids=x, attention_mask=attention_mask, stage_manager=stage_manager)
                 assert output['hidden_states'].shape == (2, 3, 128)
             else:
                 attention_mask = torch.ones((2, 3)).cuda()
                 output = sharded_model(hidden_states=hidden_states,
                                        attention_mask=attention_mask,
-                                       stage_manager=stage_manager,
-                                       stage_index=stage_index)
+                                       stage_manager=stage_manager)
                 # print(output[0].shape)
                 assert output[0].shape == (2, 3, 128)
 
