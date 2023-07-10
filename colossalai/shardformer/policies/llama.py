@@ -133,8 +133,12 @@ class LlamaModelPolicy(LlamaPolicy):
         from transformers.models.llama.modeling_llama import LlamaModel
         if self.pipeline_stage_manager:
             # set None as default
-            module_policy[LlamaModel] = ModulePolicyDescription(
-                method_replacement={'forward': partial(llama_model_forward, stage_manager=self.pipeline_stage_manager)})
+            stage_manager = self.pipeline_stage_manager
+            layers_per_stage = Policy.distribute_layers(len(self.model.layers), stage_manager.num_stages)
+            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
+            module_policy[LlamaModel] = ModulePolicyDescription(method_replacement={
+                'forward': partial(llama_model_forward, stage_manager=stage_manager, stage_index=stage_index)
+            })
         return module_policy
 
     def get_held_layers(self) -> List[Module]:
@@ -266,7 +270,6 @@ def llama_model_forward(
 
     # embed positions, for the first stage, hidden_states is the input embeddings,
     # for the other stages, hidden_states is the output of the previous stage
-    # TODO: we should recive the attn mask of 1st stage and send it to the other stages
     if attention_mask is None:
         attention_mask = torch.ones((batch_size, seq_length_with_past), dtype=torch.bool, device=hidden_states.device)
     attention_mask = self._prepare_decoder_attention_mask(attention_mask, (batch_size, seq_length), hidden_states,
