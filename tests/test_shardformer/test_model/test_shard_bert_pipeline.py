@@ -24,6 +24,7 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
 
 @parameterize('enable_fused_normalization', [False])
 @parameterize('enable_tensor_parallelism', [False])
+#TODO: merge this into test_shard_bert
 def run_bert_test(enable_fused_normalization, enable_tensor_parallelism):
     DP_DIM, PP_DIM = 0, 1
     DP_SIZE, PP_SIZE = 2, 2
