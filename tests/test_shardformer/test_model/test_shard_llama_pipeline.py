@@ -26,8 +26,8 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
 @parameterize('enable_fused_normalization', [False])
 @parameterize('enable_tensor_parallelism', [False])
 @parameterize('use_lazy_init', [False])
-#TODO: merge this into test_shard_bert
-def run_bert_test(enable_fused_normalization, enable_tensor_parallelism, use_lazy_init):
+#TODO: merge this into test_shard_llama
+def run_llama_test(enable_fused_normalization, enable_tensor_parallelism, use_lazy_init):
     DP_DIM, PP_DIM = 0, 1
     DP_SIZE, PP_SIZE = 2, 2
     RANK_TO_COORDINATE = {
@@ -75,18 +75,18 @@ def run_bert_test(enable_fused_normalization, enable_tensor_parallelism, use_laz
     torch.cuda.empty_cache()
 
 
-def check_bert(rank, world_size, port):
+def check_llama(rank, world_size, port):
     disable_existing_loggers()
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    run_bert_test()
+    run_llama_test()
 
 
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()
-def test_bert():
-    spawn(check_bert, 4)
+def test_llama():
+    spawn(check_llama, 4)
 
 
 if __name__ == "__main__":
-    test_bert()
+    test_llama()
