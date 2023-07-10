@@ -1,12 +1,15 @@
+from contextlib import nullcontext
+
 import torch
 import torch.distributed as dist
 import torch.nn as nn
 from torch.testing import assert_close
 
 import colossalai
+from colossalai.lazy import LazyInitContext
 from colossalai.shardformer.layer import GPT2FusedLinearConv1D_Col, GPT2FusedLinearConv1D_Row
 from colossalai.shardformer.layer.qkv_fused_linear import split_fused_qkv_in_gpt2_style
-from colossalai.testing import rerun_if_address_is_in_use, spawn
+from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 
 
 # This code is copied from https://github.com/huggingface/transformers
@@ -50,8 +53,12 @@ def rearrange(tensor: torch.Tensor, dim: int):
     return rearanged_tensor
 
 
-def check_linear_conv_1d_col():
-    linear = Conv1D(192, 48).cuda()
+@parameterize('lazy_init', [False, True])
+def check_linear_conv_1d_col(lazy_init: bool):
+    ctx = LazyInitContext() if lazy_init else nullcontext()
+
+    with ctx:
+        linear = Conv1D(192, 48).cuda()
     linear_conv_col = GPT2FusedLinearConv1D_Col.from_native_module(linear,
                                                                    process_group=None,
                                                                    gather_output=True,
@@ -80,8 +87,12 @@ def check_linear_conv_1d_col():
     assert_close(target_grad, linear_conv_col.weight.grad)
 
 
-def check_linear_conv_1d_row():
-    linear = Conv1D(192, 48).cuda()
+@parameterize('lazy_init', [False, True])
+def check_linear_conv_1d_row(lazy_init: bool):
+    ctx = LazyInitContext() if lazy_init else nullcontext()
+
+    with ctx:
+        linear = Conv1D(192, 48).cuda()
     linear_row = GPT2FusedLinearConv1D_Row.from_native_module(linear, process_group=None, parallel_input=False)
 
     assert linear.weight.shape == torch.Size([48, 192])

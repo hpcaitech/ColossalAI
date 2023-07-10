@@ -17,11 +17,12 @@ class BloomPolicy(Policy):
         r"""
         Reshape the Embedding layer to make the embedding dimension divisible by world_size
         """
-        vocab_size = self.model.config.vocab_size
-        world_size = self.shard_config.tensor_parallel_size
-        if vocab_size % world_size != 0:
-            new_vocab_size = vocab_size + world_size - vocab_size % world_size
-            self.model.resize_token_embeddings(new_vocab_size)
+        if self.shard_config.enable_tensor_parallelism:
+            vocab_size = self.model.config.vocab_size
+            world_size = self.shard_config.tensor_parallel_size
+            if vocab_size % world_size != 0:
+                new_vocab_size = vocab_size + world_size - vocab_size % world_size
+                self.model.resize_token_embeddings(new_vocab_size)
         return self.model
 
     def module_policy(self):
@@ -128,16 +129,13 @@ class BloomForCausalLMPolicy(BloomPolicy):
         return policy
 
     def postprocess(self):
-        binding_map = {"transformer.word_embeddings.weight": "lm_head.weight"}
+        if self.shard_config.enable_tensor_parallelism:
+            binding_map = {"transformer.word_embeddings.weight": "lm_head.weight"}
 
-        for k, v in binding_map.items():
-            param = getattr_(self.model, k)
-
-            if not isinstance(param, nn.Parameter):
-                param = nn.Parameter(param)
-
-            # tie weights
-            setattr_(self.model, v, param)
+            for k, v in binding_map.items():
+                param = getattr_(self.model, k)
+                # tie weights
+                setattr_(self.model, v, param)
         return self.model
 
 

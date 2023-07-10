@@ -24,8 +24,9 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
 
 @parameterize('enable_fused_normalization', [False])
 @parameterize('enable_tensor_parallelism', [False])
+@parameterize('use_lazy_init', [False])
 #TODO: merge this into test_shard_bert
-def run_bert_test(enable_fused_normalization, enable_tensor_parallelism):
+def run_bert_test(enable_fused_normalization, enable_tensor_parallelism, use_lazy_init):
     DP_DIM, PP_DIM = 0, 1
     DP_SIZE, PP_SIZE = 2, 2
     RANK_TO_COORDINATE = {
@@ -49,7 +50,7 @@ def run_bert_test(enable_fused_normalization, enable_tensor_parallelism):
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         if name == 'transformers_bert':
             org_model, sharded_model = build_pipeline_model(model_fn, stage_manager, enable_fused_normalization,
-                                                            enable_tensor_parallelism)
+                                                            enable_tensor_parallelism, use_lazy_init)
 
             if stage_manager.stage == 0:
                 attention_mask = torch.ones_like(x).cuda()

@@ -67,12 +67,14 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
                           atol=1e-5), f"shard model grad is not equal to orgin model grad\n{org_grad}\n{all_shard_grad}"
 
 
-@parameterize('enable_fused_normalization', [True, False])
-@parameterize('enable_tensor_parallelism', [True, False])
-def run_bert_test(enable_fused_normalization, enable_tensor_parallelism):
+@parameterize('enable_fused_normalization', [False, True])
+@parameterize('enable_tensor_parallelism', [False, True])
+@parameterize('use_lazy_init', [False, True])
+def run_bert_test(enable_fused_normalization, enable_tensor_parallelism, use_lazy_init):
     sub_model_zoo = model_zoo.get_sub_registry('transformers_bert')
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
-        org_model, sharded_model = build_model(model_fn, enable_fused_normalization, enable_tensor_parallelism)
+        org_model, sharded_model = build_model(model_fn, enable_fused_normalization, enable_tensor_parallelism,
+                                               use_lazy_init)
         check_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn)
 
     torch.cuda.empty_cache()

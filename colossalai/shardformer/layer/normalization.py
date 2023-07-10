@@ -4,6 +4,8 @@
 import torch
 import torch.nn as nn
 
+from colossalai.lazy import LazyInitContext
+
 __all__ = ['FusedLayerNorm', 'FusedRMSNorm']
 
 FAST_LAYERNORM_SUPPORTED_SIZE = [
@@ -35,6 +37,7 @@ class FusedLayerNorm():
             raise ImportError(
                 'Please install apex from source (https://github.com/NVIDIA/apex) to use the fused layernorm kernel')
 
+        LazyInitContext.materialize(module)
         # get the attributes of the module
         normalized_shape = module.normalized_shape
         eps = module.eps
@@ -84,6 +87,7 @@ class FusedRMSNorm():
                 'Please install apex from source (https://github.com/NVIDIA/apex) to use the fused RMS normalization kernel'
             )
 
+        LazyInitContext.materialize(module)
         # to check if it is huggingface LlamaRMSNorm
         if module.__class__.__name__ == "LlamaRMSNorm":
             normalized_shape = module.weight.shape[0]
