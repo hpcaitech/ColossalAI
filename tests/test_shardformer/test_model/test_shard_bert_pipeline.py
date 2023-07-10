@@ -55,15 +55,14 @@ def run_bert_test(enable_fused_normalization, enable_tensor_parallelism, use_laz
             if stage_manager.stage == 0:
                 attention_mask = torch.ones_like(x).cuda()
                 output = sharded_model(input_ids=x, attention_mask=attention_mask, stage_manager=stage_manager)
-                print(output['hidden_states'].shape)
+                # print(output['hidden_states'].shape)
                 assert output['hidden_states'].shape == (2, 3, 128)
-                print('end of the first stage')
             else:
                 attention_mask = torch.ones((2, 3)).cuda()
                 output = sharded_model(hidden_states=hidden_states,
                                        attention_mask=attention_mask,
                                        stage_manager=stage_manager)
-                print(output[0].shape)
+                # print(output[0].shape)
                 assert output[0].shape == (2, 3, 128)
 
     torch.cuda.empty_cache()
