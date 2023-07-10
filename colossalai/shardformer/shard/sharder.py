@@ -3,7 +3,7 @@ from typing import Any, Callable, Dict, List, Union
 import torch.nn as nn
 from torch import Tensor
 
-from colossalai.lazy import LazyTensor
+from colossalai.lazy import LazyInitContext
 
 from .._utils import getattr_, setattr_
 from ..policies.auto_policy import get_autopolicy
@@ -192,10 +192,4 @@ class ModelSharder(object):
         r"""
         Materialize the model if lazy initialization is used
         """
-        for p in self.model.parameters():
-            if isinstance(p, LazyTensor):
-                p.materialize()
-
-        for b in self.model.buffers():
-            if isinstance(b, LazyTensor):
-                b.materialize()
+        LazyInitContext.materialize(self.model)
