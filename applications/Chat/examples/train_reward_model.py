@@ -14,10 +14,10 @@ from coati.models.llama import LlamaRM
 from coati.models.opt import OPTRM
 from coati.models.roberta import RoBERTaRM
 from coati.trainer import RewardModelTrainer
-from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
+from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy, ZeroDPStrategy
 from coati.utils import prepare_llama_tokenizer_and_embedding
 from datasets import load_dataset
-from torch.optim import Adam
+from torch.optim import Adam, Optimizer, lr_scheduler
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 from transformers import AutoTokenizer, BloomTokenizerFast, DebertaV2Tokenizer, LlamaTokenizer, RobertaTokenizer
@@ -36,6 +36,8 @@ def train(args):
         strategy = ColossalAIStrategy(stage=3, placement_policy='cuda')
     elif args.strategy == 'colossalai_zero2':
         strategy = ColossalAIStrategy(stage=2, placement_policy='cuda')
+    elif args.strategy == 'zero_dp':
+        strategy = ZeroDPStrategy(args.zero_size)
     else:
         raise ValueError(f'Unsupported strategy "{args.strategy}"')
 
@@ -89,7 +91,6 @@ def train(args):
         optim = HybridAdam(model.parameters(), lr=5e-6)
     else:
         optim = Adam(model.parameters(), lr=5e-6)
-
     # configure loss function
     if args.loss_fn == 'log_sig':
         loss_fn = LogSigLoss()
@@ -165,6 +166,7 @@ def train(args):
                                  batch_size=args.batch_size,
                                  pin_memory=True)
 
+    scheduler = lr_scheduler.CosineAnnealingLR(optim, len(train_dataloader) // 100)
     (model, optim) = strategy.prepare((model, optim))
     trainer = RewardModelTrainer(model=model,
                                  strategy=strategy,
@@ -173,6 +175,7 @@ def train(args):
                                  train_dataloader=train_dataloader,
                                  valid_dataloader=valid_dataloader,
                                  eval_dataloader=eval_dataloader,
+                                 scheduler=scheduler,
                                  max_epochs=args.max_epochs)
 
     trainer.fit()
@@ -187,9 +190,11 @@ def train(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--strategy',
-                        choices=['naive', 'ddp', 'colossalai_gemini', 'colossalai_zero2'],
-                        default='colossalai_zero2')
+    parser.add_argument('-s',
+                        '--strategy',
+                        choices=['naive', 'ddp', 'colossalai_gemini', 'colossalai_zero2', 'zero_dp'],
+                        default='zero_dp'),
+    parser.add_argument('-z', '--zero_size', type=int, default=1)
     parser.add_argument('--model', choices=['gpt2', 'bloom', 'opt', 'deberta', 'llama', 'roberta'], default='bloom')
     parser.add_argument('--pretrain', type=str, default=None)
     parser.add_argument('--model_path', type=str, default=None)
