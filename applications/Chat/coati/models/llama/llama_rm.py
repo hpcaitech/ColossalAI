@@ -23,7 +23,8 @@ class LlamaRM(RewardModel):
                  config: Optional[LlamaConfig] = None,
                  checkpoint: bool = False,
                  lora_rank: int = 0,
-                 lora_train_bias: str = 'none') -> None:
+                 lora_train_bias: str = 'none',
+                 freeze_exclude: list = []) -> None:
 
         if pretrained is not None:
             model = LlamaModel.from_pretrained(pretrained)
@@ -36,5 +37,8 @@ class LlamaRM(RewardModel):
             model.gradient_checkpointing_enable()
         value_head = nn.Linear(model.config.hidden_size, 1)
         value_head.weight.data.normal_(mean=0.0, std=1 / (model.config.hidden_size + 1))
-
+        if len(freeze_exclude) > 0:
+            for i, layer in enumerate(model.layers):
+                if i not in freeze_exclude:
+                    layer.requires_grad_(False)
         super().__init__(model, value_head, lora_rank, lora_train_bias)

@@ -44,17 +44,11 @@ def train(args):
     # configure model
     with strategy.model_init_context():
         if args.model == 'bloom':
-            model = BLOOMRM(pretrained=args.pretrain, lora_rank=args.lora_rank).to(torch.cuda.current_device())
-        elif args.model == 'opt':
-            model = OPTRM(pretrained=args.pretrain, lora_rank=args.lora_rank).to(torch.cuda.current_device())
-        elif args.model == 'gpt2':
-            model = GPTRM(pretrained=args.pretrain, lora_rank=args.lora_rank).to(torch.cuda.current_device())
-        elif args.model == 'deberta':
-            model = DebertaRM(pretrained=args.pretrain, lora_rank=args.lora_rank).to(torch.cuda.current_device())
+            model = BLOOMRM(pretrained=args.pretrain, lora_rank=args.lora_rank,
+                            freeze_exclude=args.freeze_exclude).cuda()
         elif args.model == 'llama':
-            model = LlamaRM(pretrained=args.pretrain, lora_rank=args.lora_rank).to(torch.cuda.current_device())
-        elif args.model == 'roberta':
-            model = RoBERTaRM(pretrained=args.pretrain, lora_rank=args.lora_rank).to(torch.cuda.current_device())
+            model = LlamaRM(pretrained=args.pretrain, lora_rank=args.lora_rank,
+                            freeze_exclude=args.freeze_exclude).cuda()
         else:
             raise ValueError(f'Unsupported model "{args.model}"')
 
@@ -65,18 +59,10 @@ def train(args):
     model = model.to(torch.float16)
 
     # configure tokenizer
-    if args.model == 'gpt2':
-        tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
-    elif args.model == 'bloom':
+    if args.model == 'bloom':
         tokenizer = BloomTokenizerFast.from_pretrained('bigscience/bloom-560m')
-    elif args.model == 'opt':
-        tokenizer = AutoTokenizer.from_pretrained("facebook/opt-350m")
-    elif args.model == 'deberta':
-        tokenizer = DebertaV2Tokenizer.from_pretrained('microsoft/deberta-v3-large')
     elif args.model == 'llama':
         tokenizer = LlamaTokenizer.from_pretrained(args.pretrain)
-    elif args.model == 'roberta':
-        tokenizer = RobertaTokenizer.from_pretrained("roberta-base")
     else:
         raise ValueError(f'Unsupported model "{args.model}"')
     max_len = args.max_len
@@ -195,7 +181,8 @@ if __name__ == '__main__':
                         choices=['naive', 'ddp', 'colossalai_gemini', 'colossalai_zero2', 'zero_dp'],
                         default='zero_dp'),
     parser.add_argument('-z', '--zero_size', type=int, default=1)
-    parser.add_argument('--model', choices=['gpt2', 'bloom', 'opt', 'deberta', 'llama', 'roberta'], default='bloom')
+    parser.add_argument('-f', '--freeze_exclude', type=int, default=[], nargs='*')
+    parser.add_argument('--model', choices=['bloom', 'llama'], default='bloom')
     parser.add_argument('--pretrain', type=str, default=None)
     parser.add_argument('--model_path', type=str, default=None)
     parser.add_argument('--need_optim_ckpt', type=bool, default=False)

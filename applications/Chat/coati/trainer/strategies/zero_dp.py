@@ -70,7 +70,6 @@ class ZeroDPStrategy(NaiveStrategy):
 
     def setup_model(self, model: torch.nn.Module) -> torch.nn.Module:
         model = LowLevelZeroModel(model, self.zero_stage, self.precision)
-        model.to('cpu')
         return model
 
     def unwrap_model(self, model: LowLevelZeroModel) -> torch.nn.Module:
