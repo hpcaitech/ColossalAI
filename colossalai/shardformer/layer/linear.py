@@ -12,6 +12,7 @@ from torch import Tensor
 from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
 
+from colossalai.lazy import LazyInitContext
 from colossalai.nn import init as init
 from colossalai.nn.layer.utils import divide
 from colossalai.tensor.d_tensor import shard_colwise, shard_rowwise, sharded_tensor_to_param
@@ -106,6 +107,7 @@ class Linear1D_Col(ParallelModule):
         r"""
         Convert a native PyTorch linear layer to a parallelized linear layer.
         """
+        LazyInitContext.materialize(module)
         # get the attributes
         in_features = module.in_features
         out_features = module.out_features
@@ -242,6 +244,7 @@ class Linear1D_Row(ParallelModule):
         r"""
         Convert a native PyTorch linear layer to a parallelized linear layer.
         """
+        LazyInitContext.materialize(module)
         # get the attributes
         in_features = module.in_features
         out_features = module.out_features
