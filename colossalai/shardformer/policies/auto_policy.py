@@ -45,7 +45,7 @@ _POLICY_LIST = {
 
     # LLaMA
     "transformers.models.llama.modeling_llama.LlamaModel":
-        PolicyLocation(file_name="llama", class_name="LlamaPolicy"),
+        PolicyLocation(file_name="llama", class_name="LlamaModelPolicy"),
     "transformers.models.llama.modeling_llama.LlamaForCausalLM":
         PolicyLocation(file_name="llama", class_name="LlamaForCausalLMPolicy"),
     "transformers.models.llama.modeling_llama.LlamaForSequenceClassification":
