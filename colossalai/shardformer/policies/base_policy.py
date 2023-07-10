@@ -191,7 +191,7 @@ class Policy(ABC):
 
         # deal with the rest layers
         if remainder > 0:
-            start_position = num_layers // 2 - remainder // 2
+            start_position = num_stages // 2 - remainder // 2
             for i in range(start_position, start_position + remainder):
                 layers_per_stage[i] += 1
         return layers_per_stage
