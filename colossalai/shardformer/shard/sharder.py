@@ -1,3 +1,4 @@
+from types import MethodType
 from typing import Any, Callable, Dict, List, Union
 
 import torch.nn as nn
@@ -134,7 +135,8 @@ class ModelSharder(object):
     def _replace_method(self, module: nn.Module, method_replacement: Dict[str, Callable]):
         for method_name, new_method in method_replacement.items():
             # bind the new method to the module
-            setattr(module, method_name, new_method.__get__(module, module.__class__))
+            bound_method = MethodType(new_method, module)
+            setattr(module, method_name, bound_method)
 
     def _replace_sub_module(
         self,
