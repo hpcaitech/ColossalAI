@@ -12,6 +12,7 @@ from torch import Tensor
 from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
 
+from colossalai.lazy import LazyInitContext
 from colossalai.nn import init as init
 from colossalai.nn.layer.utils import divide
 from colossalai.tensor.d_tensor.api import (
@@ -231,6 +232,7 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
             process_group (`Union[ProcessGroup, List[ProcessGroup]]`): The process group to be used for weight sharding and communication.
             n_fused (int): The number of layers to be fused. In GPT2, Q,K,V are fused in one weight.
         """
+        LazyInitContext.materialize(module)
         # get the attributes
         in_features = module.weight.shape[0]
         out_features = module.weight.shape[1]
@@ -380,6 +382,7 @@ class GPT2FusedLinearConv1D_Row(ParallelModule):
         r"""
         Convert a native PyTorch linear layer to a parallelized linear layer.
         """
+        LazyInitContext.materialize(module)
         # get the attributes
         in_features = module.weight.shape[0]
         out_features = module.weight.shape[1]
@@ -428,9 +431,9 @@ class GPT2FusedLinearConv1D_Row(ParallelModule):
                     src_rank = dist.distributed_c10d._get_global_rank(self.process_group, 0)
 
                 origin_device = self.bias.device
-                self.bias = self.bias.cuda()
+                self.bias.data = self.bias.cuda()
                 dist.broadcast(self.bias, src=src_rank, group=self.process_group)
-                self.bias = self.bias.to(origin_device)
+                self.bias.data = self.bias.to(origin_device)
 
     def forward(self, input_: Tensor) -> Tensor:
         # Set up backprop all-reduce.
