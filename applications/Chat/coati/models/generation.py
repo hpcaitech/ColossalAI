@@ -2,8 +2,8 @@ from typing import Any, Callable, Optional
 
 import torch
 import torch.distributed as dist
-import torch.nn as nn
-import torch.nn.functional as F
+
+from .base import Actor
 
 try:
     from transformers.generation_logits_process import (
@@ -37,7 +37,7 @@ def _is_sequence_finished(unfinished_sequences: torch.Tensor) -> bool:
     return unfinished_sequences.max() == 0
 
 
-def _sample(model: nn.Module,
+def _sample(model: Actor,
             input_ids: torch.Tensor,
             max_length: int,
             early_stopping: bool = False,
@@ -90,7 +90,7 @@ def _sample(model: nn.Module,
 
 
 @torch.no_grad()
-def generate(model: nn.Module,
+def generate(model: Actor,
              input_ids: torch.Tensor,
              max_length: int,
              num_beams: int = 1,
