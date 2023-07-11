@@ -16,9 +16,9 @@ except ImportError:
     from transformers.generation import LogitsProcessorList, TemperatureLogitsWarper, TopKLogitsWarper, TopPLogitsWarper
 
 
-def prepare_logits_processor(top_k: Optional[int] = None,
-                             top_p: Optional[float] = None,
-                             temperature: Optional[float] = None) -> LogitsProcessorList:
+def _prepare_logits_processor(top_k: Optional[int] = None,
+                              top_p: Optional[float] = None,
+                              temperature: Optional[float] = None) -> LogitsProcessorList:
     processor_list = LogitsProcessorList()
     if temperature is not None and temperature != 1.0:
         processor_list.append(TemperatureLogitsWarper(temperature))
@@ -37,22 +37,22 @@ def _is_sequence_finished(unfinished_sequences: torch.Tensor) -> bool:
     return unfinished_sequences.max() == 0
 
 
-def sample(model: nn.Module,
-           input_ids: torch.Tensor,
-           max_length: int,
-           early_stopping: bool = False,
-           eos_token_id: Optional[int] = None,
-           pad_token_id: Optional[int] = None,
-           top_k: Optional[int] = None,
-           top_p: Optional[float] = None,
-           temperature: Optional[float] = None,
-           prepare_inputs_fn: Optional[Callable[[torch.Tensor, Any], dict]] = None,
-           update_model_kwargs_fn: Optional[Callable[[dict, Any], dict]] = None,
-           **model_kwargs) -> torch.Tensor:
+def _sample(model: nn.Module,
+            input_ids: torch.Tensor,
+            max_length: int,
+            early_stopping: bool = False,
+            eos_token_id: Optional[int] = None,
+            pad_token_id: Optional[int] = None,
+            top_k: Optional[int] = None,
+            top_p: Optional[float] = None,
+            temperature: Optional[float] = None,
+            prepare_inputs_fn: Optional[Callable[[torch.Tensor, Any], dict]] = None,
+            update_model_kwargs_fn: Optional[Callable[[dict, Any], dict]] = None,
+            **model_kwargs) -> torch.Tensor:
     if input_ids.size(1) >= max_length:
         return input_ids
 
-    logits_processor = prepare_logits_processor(top_k, top_p, temperature)
+    logits_processor = _prepare_logits_processor(top_k, top_p, temperature)
     unfinished_sequences = input_ids.new(input_ids.shape[0]).fill_(1)
 
     for _ in range(input_ids.size(1), max_length):
@@ -128,18 +128,18 @@ def generate(model: nn.Module,
         raise NotImplementedError
     elif is_sample_gen_mode:
         # run sample
-        return sample(model,
-                      input_ids,
-                      max_length,
-                      early_stopping=early_stopping,
-                      eos_token_id=eos_token_id,
-                      pad_token_id=pad_token_id,
-                      top_k=top_k,
-                      top_p=top_p,
-                      temperature=temperature,
-                      prepare_inputs_fn=prepare_inputs_fn,
-                      update_model_kwargs_fn=update_model_kwargs_fn,
-                      **model_kwargs)
+        return _sample(model,
+                       input_ids,
+                       max_length,
+                       early_stopping=early_stopping,
+                       eos_token_id=eos_token_id,
+                       pad_token_id=pad_token_id,
+                       top_k=top_k,
+                       top_p=top_p,
+                       temperature=temperature,
+                       prepare_inputs_fn=prepare_inputs_fn,
+                       update_model_kwargs_fn=update_model_kwargs_fn,
+                       **model_kwargs)
     elif is_beam_gen_mode:
         raise NotImplementedError
     else:
