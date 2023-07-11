@@ -36,7 +36,11 @@ def test_attention_gpt(proj_shape, dtype=torch.float16):
 
     qkv = c_attn(x)
     q, k, v = rearrange(qkv, 'b s (n h d) -> n b s h d', n=3, h=H)
-    y = attn(q, k, v, attn_mask_type=AttnMaskType.causal)
+
+    mask = [torch.ones(S - i, dtype=dtype, device="cuda") for i in range(B)]
+    mask = torch.nn.utils.rnn.pad_sequence(mask, batch_first=True)
+
+    y = attn(q, k, v, attn_mask=mask, attn_mask_type=AttnMaskType.paddedcausal)
 
     assert list(y.shape) == [B, S, D]
 
