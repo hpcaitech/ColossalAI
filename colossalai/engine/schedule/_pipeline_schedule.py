@@ -605,10 +605,12 @@ class InterleavedPipelineSchedule(PipelineSchedule):
                 num_warmup_microbatches = num_microbatches
                 all_warmup_microbatches = True
             else:
-                num_warmup_microbatches = (pipeline_parallel_size - pipeline_parallel_rank - 1) * 2
+                num_warmup_microbatches = \
+                    (pipeline_parallel_size - pipeline_parallel_rank - 1) * 2
                 num_warmup_microbatches += (num_model_chunks - 1) * pipeline_parallel_size
                 num_warmup_microbatches = min(num_warmup_microbatches, num_microbatches)
-        num_microbatches_remaining = num_microbatches - num_warmup_microbatches
+        num_microbatches_remaining = \
+            num_microbatches - num_warmup_microbatches
 
         def get_model_chunk_id(microbatch_id, forward):
             """Helper method to get the model chunk ID given the iteration number."""
@@ -627,7 +629,8 @@ class InterleavedPipelineSchedule(PipelineSchedule):
 
             # forward step
             if gpc.is_pipeline_first_stage():
-                if len(input_objs[model_chunk_id]) == len(output_objs[model_chunk_id]):
+                if len(input_objs[model_chunk_id]) == \
+                        len(output_objs[model_chunk_id]):
                     input_objs[model_chunk_id].append(None)
             input_obj = input_objs[model_chunk_id][-1]
             output_obj = self._forward_step(engine,
