@@ -2,7 +2,7 @@
 import copy
 from contextlib import contextmanager
 from functools import partial
-from typing import Optional
+from typing import Dict, Iterator, Optional, Tuple
 
 import torch
 import torch.distributed as dist
@@ -447,18 +447,23 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
     # Gradient Synchronization #
     ############################
 
+    # this method is used to sync gradient manually
+    def sync_grad(self):
+        for group_id in range(self.num_param_groups):
+            param_group = self._working_param_groups[group_id]
+            for param in param_group:
+                if param.requires_grad and param.grad is not None:
+                    self._add_to_bucket(param, group_id)
+
+        self._run_reduction()
+
     def _reduce_grad(self, partition_grad):
         # if not overlapping communication (no reduction hook is attached) when zero1
         # we need to manually reduce these gradients
         if not partition_grad and not self._overlap_communication:
-            for group_id in range(len(self._working_param_groups)):
-                param_group = self._working_param_groups[group_id]
-                for param in param_group:
-                    if param.grad is not None:
-                        self._add_to_bucket(param, group_id)
-
-        # run reduction
-        self._run_reduction()
+            self.sync_grad()
+        else:
+            self._run_reduction()
 
     # this context comes from pytorch DDP
     @contextmanager
@@ -473,7 +478,8 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
     ##############
     # State Dict #
     ##############
-    def _pack_state(self, state: dict) -> dict:
+
+    def _pack_state(self, state: Dict) -> Dict:
         # comes from pytorch optimizer.state_dict()
         param_mappings = {}
         start_index = 0
@@ -487,17 +493,17 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             start_index += len(packed['params'])
             return packed
 
-        param_groups = [pack_group(g) for g in self.param_groups]
+        param_groups = [pack_group(g) for g in self.optim.param_groups]
         # Remap state to use order indices as keys
         packed_state = {(param_mappings[id(k)] if isinstance(k, torch.Tensor) else k): v for k, v in state.items()}
 
         return {'state': packed_state, 'param_groups': param_groups}
 
-    def state_dict(self) -> dict:
+    def state_dict(self) -> Dict:
         """Return a state_dict same with DDP
 
         Returns:
-            dict: the pytorch form state_dict
+            Dict: the pytorch form state_dict
         """
         zero_state = dict()
         for param, state in self.optim.state.items():
@@ -514,7 +520,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
         return states_dict
 
-    def load_state_dict(self, state_dict: dict):
+    def load_state_dict(self, state_dict: Dict):
         """Load state dict, requires the state_dict be the pytorch form
 
         Args:
@@ -534,3 +540,46 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
         self.optim.load_state_dict(zero_state_dict)
         zero_state_dict = dict()
+
+    def state_dict_shard(self, max_shard_size: int = 1024) -> Iterator[Tuple[Dict, int]]:
+        """Returns dictionaries containing a whole state of the module one by one. The max size of dictionary shard is specified by ``max_shard_size``.
+           Only include the 'state' in state_dict.
+
+        Args:
+            max_shard_size (int, optional): max size of state shard (in MB). Defaults to 1024.
+
+        Yields:
+            Iterator[OrderedDict]: A generator of state dict shard
+        """
+        ret_block = dict()
+        ret_block_size = 0
+
+        local_states = self.optim.state_dict()['state']
+        for param_idx, states in local_states.items():
+            current_block_size = 0
+            current_block = copy.deepcopy(states)
+
+            # find the working param of current param_id
+            for group_id, pg in self._master_param_groups_of_current_rank.items():
+                if (group_id + 1) * len(pg) < param_idx:
+                    continue
+                master_param = pg[param_idx - (group_id) * len(pg)]
+                working_param = self._param_store.master_to_working_param[id(master_param)]
+
+            for k, v in states.items():
+                if isinstance(v, torch.Tensor) and k != 'step':
+                    state_tensor = [torch.zeros_like(v) for _ in range(self._world_size)]
+                    dist.all_gather(state_tensor, v, group=self.dp_pg)
+                    state_tensor = torch.stack(state_tensor).view(-1)[:working_param.numel()].reshape_as(working_param)
+                    current_block_size += state_tensor.numel()
+                    current_block[k] = state_tensor
+
+            if ret_block_size + current_block_size > max_shard_size and len(ret_block) > 0:
+                yield ret_block, ret_block_size
+                ret_block = dict()
+                ret_block_size = 0
+
+            ret_block[param_idx] = current_block
+            ret_block_size += current_block_size
+
+        yield ret_block, ret_block_size
