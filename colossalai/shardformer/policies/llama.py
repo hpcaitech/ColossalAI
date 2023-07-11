@@ -6,14 +6,16 @@ from typing import Dict, List, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 from torch import Tensor
-from torch.nn import CrossEntropyLoss, Module
+from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, Module, MSELoss
 from transformers.modeling_outputs import (
     BaseModelOutputWithPast,
     BaseModelOutputWithPastAndCrossAttentions,
     BaseModelOutputWithPoolingAndCrossAttentions,
     CausalLMOutputWithCrossAttentions,
+    CausalLMOutputWithPast,
+    SequenceClassifierOutputWithPast,
 )
-from transformers.models.llama.modeling_llama import LlamaModel
+from transformers.models.llama.modeling_llama import LlamaForCausalLM, LlamaForSequenceClassification, LlamaModel
 from transformers.utils import ModelOutput, logging
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
@@ -129,13 +131,20 @@ class LlamaModelPolicy(LlamaPolicy):
         super().__init__()
 
     def module_policy(self):
-        module_policy = super().module_policy()
+        policy = super().module_policy()
         from transformers.models.llama.modeling_llama import LlamaModel
         if self.pipeline_stage_manager:
             # set None as default
-            module_policy[LlamaModel] = ModulePolicyDescription(
-                method_replacement={'forward': partial(llama_model_forward, stage_manager=self.pipeline_stage_manager)})
-        return module_policy
+            stage_manager = self.pipeline_stage_manager
+            layers_per_stage = Policy.distribute_layers(len(self.model.layers), stage_manager.num_stages)
+            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
+            method_replacement = {
+                'forward': partial(llama_model_forward, stage_manager=stage_manager, stage_index=stage_index)
+            }
+            self.append_or_create_method_replacement(description=method_replacement,
+                                                     policy=policy,
+                                                     target_key=LlamaModel)
+        return policy
 
     def get_held_layers(self) -> List[Module]:
         """Get pipeline layers for current stage."""
@@ -152,7 +161,7 @@ class LlamaModelPolicy(LlamaPolicy):
         return held_layers
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
-        """No shared params in bert model"""
+        """No shared params in llama model"""
         return []
 
 
@@ -173,7 +182,42 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
                     ])
             }
             policy.update(new_item)
+
+        if self.pipeline_stage_manager:
+            # set None as default
+            stage_manager = self.pipeline_stage_manager
+            layers_per_stage = Policy.distribute_layers(len(self.model.model.layers), stage_manager.num_stages)
+            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
+            method_replacement = {
+                'forward': partial(llama_for_causal_lm_forward, stage_manager=stage_manager, stage_index=stage_index)
+            }
+            self.append_or_create_method_replacement(description=method_replacement,
+                                                     policy=policy,
+                                                     target_key=LlamaForCausalLM)
         return policy
+
+    def get_held_layers(self) -> List[Module]:
+        """Get pipeline layers for current stage."""
+        module = self.model
+        stage_manager = self.pipeline_stage_manager
+        held_layers = []
+        layers_per_stage = self.distribute_layers(len(module.model.layers), stage_manager.num_stages)
+        if stage_manager.is_first_stage():
+            held_layers.append(module.model.embed_tokens)
+        start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
+        held_layers.extend(module.model.layers[start_idx:end_idx])
+        if stage_manager.is_last_stage():
+            held_layers.append(module.model.norm)
+            held_layers.append(module.lm_head)
+        return held_layers
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        """No shared params in llama model"""
+        llama_model = self.model.model
+        if id(llama_model.embed_tokens.weight) == id(self.model.lm_head.weight):
+            # tie weights
+            return [{0: llama_model.embed_tokens.weight, self.stage_manager.num_stages - 1: self.model.lm_head.weight}]
+        return []
 
 
 class LlamaForSequenceClassificationPolicy(LlamaPolicy):
@@ -193,7 +237,41 @@ class LlamaForSequenceClassificationPolicy(LlamaPolicy):
                     ])
             }
             policy.update(new_item)
+        # to be confirmed
+        if self.pipeline_stage_manager:
+            # set None as default
+            stage_manager = self.pipeline_stage_manager
+            layers_per_stage = Policy.distribute_layers(len(self.model.model.layers), stage_manager.num_stages)
+            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
+            method_replacement = {
+                'forward':
+                    partial(llama_for_sequence_classification_forward,
+                            stage_manager=stage_manager,
+                            stage_index=stage_index)
+            }
+            self.append_or_create_method_replacement(description=method_replacement,
+                                                     policy=policy,
+                                                     target_key=LlamaForSequenceClassification)
         return policy
+
+    def get_held_layers(self) -> List[Module]:
+        """Get pipeline layers for current stage."""
+        module = self.model
+        stage_manager = self.pipeline_stage_manager
+        held_layers = []
+        layers_per_stage = self.distribute_layers(len(module.model.layers), stage_manager.num_stages)
+        if stage_manager.is_first_stage():
+            held_layers.append(module.model.embed_tokens)
+        start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
+        held_layers.extend(module.model.layers[start_idx:end_idx])
+        if stage_manager.is_last_stage():
+            held_layers.append(module.model.norm)
+            held_layers.append(module.score)
+        return held_layers
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        """No shared params in llama for sequence classification model"""
+        return []
 
 
 def llama_model_forward(
@@ -266,7 +344,6 @@ def llama_model_forward(
 
     # embed positions, for the first stage, hidden_states is the input embeddings,
     # for the other stages, hidden_states is the output of the previous stage
-    # TODO: we should recive the attn mask of 1st stage and send it to the other stages
     if attention_mask is None:
         attention_mask = torch.ones((batch_size, seq_length_with_past), dtype=torch.bool, device=hidden_states.device)
     attention_mask = self._prepare_decoder_attention_mask(attention_mask, (batch_size, seq_length), hidden_states,
@@ -342,3 +419,226 @@ def llama_model_forward(
         )
     # always return dict for imediate stage
     return {'hidden_states': hidden_states}
+
+
+def llama_for_causal_lm_forward(
+    self: LlamaForCausalLM,
+    input_ids: torch.LongTensor = None,
+    attention_mask: Optional[torch.Tensor] = None,
+    position_ids: Optional[torch.LongTensor] = None,
+    past_key_values: Optional[List[torch.FloatTensor]] = None,
+    inputs_embeds: Optional[torch.FloatTensor] = None,
+    labels: Optional[torch.LongTensor] = None,
+    use_cache: Optional[bool] = None,
+    output_attentions: Optional[bool] = None,
+    output_hidden_states: Optional[bool] = None,
+    return_dict: Optional[bool] = None,
+    stage_manager: Optional[PipelineStageManager] = None,
+    hidden_states: Optional[torch.FloatTensor] = None,
+    stage_index: Optional[List[int]] = None,
+):
+    r"""
+        Args:
+            labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
+                Labels for computing the masked language modeling loss. Indices should either be in `[0, ...,
+                config.vocab_size]` or -100 (see `input_ids` docstring). Tokens with indices set to `-100` are ignored
+                (masked), the loss is only computed for the tokens with labels in `[0, ..., config.vocab_size]`.
+
+        Returns:
+
+        Example:
+
+        ```python
+        >>> from transformers import AutoTokenizer, LlamaForCausalLM
+
+        >>> model = LlamaForCausalLM.from_pretrained(PATH_TO_CONVERTED_WEIGHTS)
+        >>> tokenizer = AutoTokenizer.from_pretrained(PATH_TO_CONVERTED_TOKENIZER)
+
+        >>> prompt = "Hey, are you consciours? Can you talk to me?"
+        >>> inputs = tokenizer(prompt, return_tensors="pt")
+
+        >>> # Generate
+        >>> generate_ids = model.generate(inputs.input_ids, max_length=30)
+        >>> tokenizer.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
+        "Hey, are you consciours? Can you talk to me?\nI'm not consciours, but I can talk to you."
+        ```"""
+    output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+    output_hidden_states = (output_hidden_states
+                            if output_hidden_states is not None else self.config.output_hidden_states)
+    return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+    # TODO: left the recording kv-value tensors as () or None type, this feature may be added in the future.
+    if output_attentions:
+        logger.warning_once('output_attentions=True is not supported for pipeline models at the moment.')
+        output_attentions = False
+    if output_hidden_states:
+        logger.warning_once('output_hidden_states=True is not supported for pipeline models at the moment.')
+        output_hidden_states = False
+    if return_dict:
+        logger.warning_once('return_dict is not supported for pipeline models at the moment')
+        return_dict = False
+
+    # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
+    outputs = llama_model_forward(
+        self.model,
+        input_ids=input_ids,
+        attention_mask=attention_mask,
+        position_ids=position_ids,
+        past_key_values=past_key_values,
+        inputs_embeds=inputs_embeds,
+        use_cache=use_cache,
+        output_attentions=output_attentions,
+        output_hidden_states=output_hidden_states,
+        return_dict=return_dict,
+        stage_manager=stage_manager,
+        hidden_states=hidden_states,
+        stage_index=stage_index,
+    )
+    past_key_values = None
+    all_hidden_states = None
+    all_self_attentions = None
+    all_cross_attentions = None
+
+    if stage_manager.is_last_stage():
+        hidden_states = outputs[0]
+        logits = self.lm_head(hidden_states)
+        loss = None
+        if labels is not None:
+            # Shift so that tokens < n predict n
+            shift_logits = logits[..., :-1, :].contiguous()
+            shift_labels = labels[..., 1:].contiguous()
+            # Flatten the tokens
+            loss_fct = CrossEntropyLoss()
+            shift_logits = shift_logits.view(-1, self.config.vocab_size)
+            shift_labels = shift_labels.view(-1)
+            # Enable model parallelism
+            shift_labels = shift_labels.to(shift_logits.device)
+            loss = loss_fct(shift_logits, shift_labels)
+
+        if not return_dict:
+            output = (logits,) + outputs[1:]
+            return (loss,) + output if loss is not None else output
+
+        return CausalLMOutputWithPast(
+            loss=loss,
+            logits=logits,
+            past_key_values=outputs.past_key_values,
+            hidden_states=outputs.hidden_states,
+            attentions=outputs.attentions,
+        )
+    else:
+        hidden_states = outputs.get('hidden_states')
+        return {'hidden_states': hidden_states}
+
+
+def llama_for_sequence_classification_forward(
+    self: LlamaForSequenceClassification,
+    input_ids: torch.LongTensor = None,
+    attention_mask: Optional[torch.Tensor] = None,
+    position_ids: Optional[torch.LongTensor] = None,
+    past_key_values: Optional[List[torch.FloatTensor]] = None,
+    inputs_embeds: Optional[torch.FloatTensor] = None,
+    labels: Optional[torch.LongTensor] = None,
+    use_cache: Optional[bool] = None,
+    output_attentions: Optional[bool] = None,
+    output_hidden_states: Optional[bool] = None,
+    return_dict: Optional[bool] = None,
+    stage_manager: Optional[PipelineStageManager] = None,
+    hidden_states: Optional[torch.FloatTensor] = None,
+    stage_index: Optional[List[int]] = None,
+):
+    r"""
+    labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
+        Labels for computing the sequence classification/regression loss. Indices should be in `[0, ...,
+        config.num_labels - 1]`. If `config.num_labels == 1` a regression loss is computed (Mean-Square loss), If
+        `config.num_labels > 1` a classification loss is computed (Cross-Entropy).
+    """
+    return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+    # TODO: left the recording kv-value tensors as () or None type, this feature may be added in the future.
+    if output_attentions:
+        logger.warning_once('output_attentions=True is not supported for pipeline models at the moment.')
+        output_attentions = False
+    if output_hidden_states:
+        logger.warning_once('output_hidden_states=True is not supported for pipeline models at the moment.')
+        output_hidden_states = False
+    if return_dict:
+        logger.warning_once('return_dict is not supported for pipeline models at the moment')
+        return_dict = False
+
+    transformer_outputs = llama_model_forward(
+        self.model,
+        input_ids,
+        attention_mask=attention_mask,
+        position_ids=position_ids,
+        past_key_values=past_key_values,
+        inputs_embeds=inputs_embeds,
+        use_cache=use_cache,
+        output_attentions=output_attentions,
+        output_hidden_states=output_hidden_states,
+        return_dict=return_dict,
+        stage_manager=stage_manager,
+        hidden_states=hidden_states,
+        stage_index=stage_index,
+    )
+
+    if input_ids is not None:
+        batch_size = input_ids.shape[0]
+    elif inputs_embeds is not None:
+        batch_size = inputs_embeds.shape[0]
+    else:
+        batch_size = hidden_states.shape[0]
+
+    if stage_manager.is_last_stage():
+        hidden_states = transformer_outputs[0]
+        logits = self.score(hidden_states)
+
+        if self.config.pad_token_id is None and batch_size != 1:
+            raise ValueError("Cannot handle batch sizes > 1 if no padding token is defined.")
+        if self.config.pad_token_id is None:
+            sequence_lengths = -1
+        else:
+            if input_ids is not None:
+                sequence_lengths = (torch.ne(input_ids, self.config.pad_token_id).sum(-1) - 1).to(logits.device)
+            else:
+                sequence_lengths = -1
+
+        pooled_logits = logits[torch.arange(batch_size, device=logits.device), sequence_lengths]
+
+        loss = None
+        if labels is not None:
+            labels = labels.to(logits.device)
+            if self.config.problem_type is None:
+                if self.num_labels == 1:
+                    self.config.problem_type = "regression"
+                elif self.num_labels > 1 and (labels.dtype == torch.long or labels.dtype == torch.int):
+                    self.config.problem_type = "single_label_classification"
+                else:
+                    self.config.problem_type = "multi_label_classification"
+
+            if self.config.problem_type == "regression":
+                loss_fct = MSELoss()
+                if self.num_labels == 1:
+                    loss = loss_fct(pooled_logits.squeeze(), labels.squeeze())
+                else:
+                    loss = loss_fct(pooled_logits, labels)
+            elif self.config.problem_type == "single_label_classification":
+                loss_fct = CrossEntropyLoss()
+                loss = loss_fct(pooled_logits.view(-1, self.num_labels), labels.view(-1))
+            elif self.config.problem_type == "multi_label_classification":
+                loss_fct = BCEWithLogitsLoss()
+                loss = loss_fct(pooled_logits, labels)
+        if not return_dict:
+            output = (pooled_logits,) + transformer_outputs[1:]
+            return ((loss,) + output) if loss is not None else output
+
+        return SequenceClassifierOutputWithPast(
+            loss=loss,
+            logits=pooled_logits,
+            past_key_values=transformer_outputs.past_key_values,
+            hidden_states=transformer_outputs.hidden_states,
+            attentions=transformer_outputs.attentions,
+        )
+
+    else:
+        hidden_states = transformer_outputs.get('hidden_states')
+        return {'hidden_states': hidden_states}
