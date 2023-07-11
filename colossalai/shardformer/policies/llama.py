@@ -194,7 +194,6 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
             self.append_or_create_method_replacement(description=method_replacement,
                                                      policy=policy,
                                                      target_key=LlamaForCausalLM)
-
         return policy
 
     def get_held_layers(self) -> List[Module]:
