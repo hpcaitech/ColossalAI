@@ -131,17 +131,20 @@ class LlamaModelPolicy(LlamaPolicy):
         super().__init__()
 
     def module_policy(self):
-        module_policy = super().module_policy()
+        policy = super().module_policy()
         from transformers.models.llama.modeling_llama import LlamaModel
         if self.pipeline_stage_manager:
             # set None as default
             stage_manager = self.pipeline_stage_manager
             layers_per_stage = Policy.distribute_layers(len(self.model.layers), stage_manager.num_stages)
             stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
-            module_policy[LlamaModel] = ModulePolicyDescription(method_replacement={
+            method_replacement = {
                 'forward': partial(llama_model_forward, stage_manager=stage_manager, stage_index=stage_index)
-            })
-        return module_policy
+            }
+            self.append_or_create_method_replacement(description=method_replacement,
+                                                     policy=policy,
+                                                     target_key=LlamaModel)
+        return policy
 
     def get_held_layers(self) -> List[Module]:
         """Get pipeline layers for current stage."""
@@ -179,22 +182,19 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
                     ])
             }
             policy.update(new_item)
-        # to be confirmed
+
         if self.pipeline_stage_manager:
             # set None as default
             stage_manager = self.pipeline_stage_manager
             layers_per_stage = Policy.distribute_layers(len(self.model.model.layers), stage_manager.num_stages)
             stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
-            new_item = {
-                LlamaForCausalLM:
-                    ModulePolicyDescription(
-                        method_replacement={
-                            'forward':
-                                partial(
-                                    llama_for_causal_lm_forward, stage_manager=stage_manager, stage_index=stage_index)
-                        })
+            method_replacement = {
+                'forward': partial(llama_for_causal_lm_forward, stage_manager=stage_manager, stage_index=stage_index)
             }
-            policy.update(new_item)
+            self.append_or_create_method_replacement(description=method_replacement,
+                                                     policy=policy,
+                                                     target_key=LlamaForCausalLM)
+
         return policy
 
     def get_held_layers(self) -> List[Module]:
@@ -209,7 +209,7 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
         held_layers.extend(module.model.layers[start_idx:end_idx])
         if stage_manager.is_last_stage():
             held_layers.append(module.model.norm)
-            held_layers.append(module.lmhead)
+            held_layers.append(module.lm_head)
         return held_layers
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
@@ -244,17 +244,15 @@ class LlamaForSequenceClassificationPolicy(LlamaPolicy):
             stage_manager = self.pipeline_stage_manager
             layers_per_stage = Policy.distribute_layers(len(self.model.model.layers), stage_manager.num_stages)
             stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
-            new_item = {
-                LlamaForSequenceClassification:
-                    ModulePolicyDescription(
-                        method_replacement={
-                            'forward':
-                                partial(llama_for_sequence_classification_forward,
-                                        stage_manager=stage_manager,
-                                        stage_index=stage_index)
-                        })
+            method_replacement = {
+                'forward':
+                    partial(llama_for_sequence_classification_forward,
+                            stage_manager=stage_manager,
+                            stage_index=stage_index)
             }
-            policy.update(new_item)
+            self.append_or_create_method_replacement(description=method_replacement,
+                                                     policy=policy,
+                                                     target_key=LlamaForSequenceClassification)
         return policy
 
     def get_held_layers(self) -> List[Module]:

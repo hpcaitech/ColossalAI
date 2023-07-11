@@ -49,21 +49,19 @@ def run_llama_test(enable_fused_normalization, enable_tensor_parallelism, use_la
     x = torch.randint(0, 1000, (2, 3)).cuda()
     hidden_states = torch.randint(0, 1000, (2, 3, 128)).to(torch.float32).cuda()
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
-        if name == 'transformers_llama':
-            org_model, sharded_model = build_pipeline_model(model_fn, stage_manager, enable_fused_normalization,
-                                                            enable_tensor_parallelism, use_lazy_init)
-            if stage_manager.stage == 0:
-                attention_mask = torch.ones_like(x).cuda()
-                output = sharded_model(input_ids=x, attention_mask=attention_mask)
-                assert output['hidden_states'].shape == (2, 3, 128)
-            else:
-                attention_mask = torch.ones((2, 3)).cuda()
-                output = sharded_model(
-                    hidden_states=hidden_states,
-                    attention_mask=attention_mask,
-                )
-                # print(output[0].shape)
-                assert output[0].shape == (2, 3, 128)
+        org_model, sharded_model = build_pipeline_model(model_fn, stage_manager, enable_fused_normalization,
+                                                        enable_tensor_parallelism, use_lazy_init)
+        if stage_manager.stage == 0:
+            attention_mask = torch.ones_like(x).cuda()
+            output = sharded_model(input_ids=x, attention_mask=attention_mask)
+            assert output['hidden_states'].shape == (2, 3, 128)
+        else:
+            attention_mask = torch.ones((2, 3)).cuda()
+            output = sharded_model(
+                hidden_states=hidden_states,
+                attention_mask=attention_mask,
+            )
+            assert output[0] is not None
 
     torch.cuda.empty_cache()
 
