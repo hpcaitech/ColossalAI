@@ -7,6 +7,7 @@ from typing import Any, List, Optional, Union
 
 import torch
 import torch.distributed as dist
+from packaging import version
 from torch.distributed import ProcessGroup
 from torch.distributed import distributed_c10d as c10d
 
@@ -60,18 +61,8 @@ def _broadcast_object_list(object_list: List[Any],
     if c10d._rank_not_in_group(group):
         c10d._warn_not_in_group("broadcast_object_list")
         return
-
-    my_rank = dist.get_rank()
-    # Serialize object_list elements to tensors on src rank.
-    if my_rank == src:
-        tensor_list, size_list = zip(*[c10d._object_to_tensor(obj) for obj in object_list])
-        object_sizes_tensor = torch.cat(size_list)
-    else:
-        object_sizes_tensor = torch.empty(len(object_list), dtype=torch.long)
-
     is_nccl_backend = c10d._check_for_nccl_backend(group)
     current_device = None
-
     if device is not None:
         if is_nccl_backend and device.type != "cuda":
             raise ValueError("device type must be cuda for nccl backend")
@@ -80,6 +71,17 @@ def _broadcast_object_list(object_list: List[Any],
         current_device = torch.device("cpu")
         if is_nccl_backend:
             current_device = torch.device("cuda", torch.cuda.current_device())
+    my_rank = dist.get_rank()
+    # Serialize object_list elements to tensors on src rank.
+    if my_rank == src:
+        if version.parse(torch.__version__) >= version.parse('1.13.0'):
+            tensor_list, size_list = zip(*[c10d._object_to_tensor(obj, current_device) for obj in object_list])
+        else:
+            tensor_list, size_list = zip(*[c10d._object_to_tensor(obj) for obj in object_list])
+        object_sizes_tensor = torch.cat(size_list)
+    else:
+        object_sizes_tensor = torch.empty(len(object_list), dtype=torch.long)
+
     if is_nccl_backend:
         object_sizes_tensor = object_sizes_tensor.to(current_device)
 

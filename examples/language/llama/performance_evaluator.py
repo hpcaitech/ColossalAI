@@ -92,7 +92,7 @@ class PerformanceEvaluator:
         avg_duration = all_reduce_mean(self.timer.duration, self.coordinator.world_size)
         avg_throughput = self.num_samples * self.dp_world_size / (avg_duration + 1e-12)
         avg_tflops_per_gpu = self.flop / 1e12 / (avg_duration + 1e-12)
-        print(
+        self.coordinator.print_on_master(
             f'num_samples: {self.num_samples}, dp_world_size: {self.dp_world_size}, flop: {self.flop}, avg_duration: {avg_duration}, '
             f'avg_throughput: {avg_throughput}')
         self.coordinator.print_on_master(

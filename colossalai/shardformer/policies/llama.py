@@ -4,6 +4,7 @@ from types import MethodType
 from typing import Dict, List, Optional, Tuple, Union
 
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 from torch import Tensor
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, Module, MSELoss
@@ -125,44 +126,44 @@ class LlamaPolicy(Policy):
         return self.model
 
 
-class LlamaModelPolicy(LlamaPolicy):
+# class LlamaModelPolicy(LlamaPolicy):
 
-    def __init__(self) -> None:
-        super().__init__()
+#     def __init__(self) -> None:
+#         super().__init__()
 
-    def module_policy(self):
-        policy = super().module_policy()
-        from transformers.models.llama.modeling_llama import LlamaModel
-        if self.pipeline_stage_manager:
-            # set None as default
-            stage_manager = self.pipeline_stage_manager
-            layers_per_stage = Policy.distribute_layers(len(self.model.layers), stage_manager.num_stages)
-            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
-            method_replacement = {
-                'forward': partial(llama_model_forward, stage_manager=stage_manager, stage_index=stage_index)
-            }
-            self.append_or_create_method_replacement(description=method_replacement,
-                                                     policy=policy,
-                                                     target_key=LlamaModel)
-        return policy
+#     def module_policy(self):
+#         policy = super().module_policy()
+#         from transformers.models.llama.modeling_llama import LlamaModel
+#         if self.pipeline_stage_manager:
+#             # set None as default
+#             stage_manager = self.pipeline_stage_manager
+#             layers_per_stage = Policy.distribute_layers(len(self.model.layers), stage_manager.num_stages)
+#             stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
+#             method_replacement = {
+#                 'forward': partial(llama_model_forward, stage_manager=stage_manager, stage_index=stage_index)
+#             }
+#             self.append_or_create_method_replacement(description=method_replacement,
+#                                                      policy=policy,
+#                                                      target_key=LlamaModel)
+#         return policy
 
-    def get_held_layers(self) -> List[Module]:
-        """Get pipeline layers for current stage."""
-        module = self.model
-        stage_manager = self.pipeline_stage_manager
-        held_layers = []
-        layers_per_stage = self.distribute_layers(len(module.layers), stage_manager.num_stages)
-        if stage_manager.is_first_stage():
-            held_layers.append(module.embed_tokens)
-        start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
-        held_layers.extend(module.layers[start_idx:end_idx])
-        if stage_manager.is_last_stage():
-            held_layers.append(module.norm)
-        return held_layers
+#     def get_held_layers(self) -> List[Module]:
+#         """Get pipeline layers for current stage."""
+#         module = self.model
+#         stage_manager = self.pipeline_stage_manager
+#         held_layers = []
+#         layers_per_stage = self.distribute_layers(len(module.layers), stage_manager.num_stages)
+#         if stage_manager.is_first_stage():
+#             held_layers.append(module.embed_tokens)
+#         start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
+#         held_layers.extend(module.layers[start_idx:end_idx])
+#         if stage_manager.is_last_stage():
+#             held_layers.append(module.norm)
+#         return held_layers
 
-    def get_shared_params(self) -> List[Dict[int, Tensor]]:
-        """No shared params in llama model"""
-        return []
+#     def get_shared_params(self) -> List[Dict[int, Tensor]]:
+#         """No shared params in llama model"""
+#         return []
 
 
 class LlamaForCausalLMPolicy(LlamaPolicy):
@@ -360,7 +361,7 @@ def llama_model_forward(
     all_self_attns = () if output_attentions else None
     next_decoder_cache = () if use_cache else None
 
-    start_idx, end_idx = stage_index[0], stage_index[1]
+    start_idx, end_idx = stage_index
     for idx, decoder_layer in enumerate(self.layers[start_idx:end_idx]):
         if output_hidden_states:
             all_hidden_states += (hidden_states,)

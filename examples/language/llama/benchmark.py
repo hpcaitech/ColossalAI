@@ -89,7 +89,6 @@ def main():
     # ==============================
     # Parse Arguments
     # ==============================
-    start_time = time.time()
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config', type=str, default='7b', help='Model configuration')
     parser.add_argument('-p',
@@ -107,6 +106,7 @@ def main():
     parser.add_argument('-x', '--xformers', action='store_true', help='Use xformers')
     parser.add_argument('--tp', type=int, default=1, help='Tensor parallel size')
     parser.add_argument('--pp', type=int, default=1, help='Pipeline parallel size')
+    parser.add_argument('--mbs', type=int, default=1)
     args = parser.parse_args()
 
     colossalai.launch_from_torch({})
@@ -157,7 +157,10 @@ def main():
                                                                     buffer_dtype=torch.float16),
                                      cpu_offload=CPUOffload(offload_params=True))
     elif args.plugin == '3d':
-        plugin = ThreeDimParallelPlugin(tp_size=args.tp, pp_size=args.pp, enable_fused_normalization=True)
+        plugin = ThreeDimParallelPlugin(tp_size=args.tp,
+                                        pp_size=args.pp,
+                                        enable_fused_normalization=True,
+                                        num_microbatches=args.mbs)
     else:
         raise ValueError(f'Unknown plugin {args.plugin}')
 
@@ -194,27 +197,41 @@ def main():
 
     model_numel = get_model_numel(model)
     coordinator.print_on_master(f'Model params: {format_numel_str(model_numel)}')
-    performance_evaluator = PerformanceEvaluator(model_numel, args.grad_checkpoint, args.ignore_steps)
+    dp_size = plugin.dp_size if isinstance(plugin, ThreeDimParallelPlugin) else None
+    performance_evaluator = PerformanceEvaluator(model_numel,
+                                                 args.grad_checkpoint,
+                                                 args.ignore_steps,
+                                                 dp_world_size=dp_size)
 
     optimizer = HybridAdam(model.parameters())
-    print("model is on {}".format(model.device))
     model, optimizer, _, dataloader, _ = booster.boost(model, optimizer, dataloader=dataloader)
     timer.end()
-    end_time = time.time()
-    print("total init time: ", end_time - start_time, "s")
     coordinator.print_on_master(f'Booster init time: {timer.duration:.2f} s')
     coordinator.print_on_master(f'Booster init max CUDA memory: {torch.cuda.max_memory_allocated()/1024**2:.2f} MB')
     coordinator.print_on_master(
         f'Booster init max CPU memory: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024:.2f} MB')
 
-    for step, batch in enumerate(tqdm(dataloader, desc='Step', disable=not coordinator.is_master())):
-        performance_evaluator.on_step_start(step)
-        outputs = model(**batch)
-        loss = outputs[0]
-        booster.backward(loss, optimizer)
-        optimizer.step()
-        optimizer.zero_grad()
-        performance_evaluator.on_step_end(**batch)
+    if args.plugin == '3d' and args.pp > 1:
+        data_iter = iter(dataloader)
+        for step in tqdm(range(len(dataloader)), desc='Step', disable=not coordinator.is_master()):
+            performance_evaluator.on_step_start(step)
+            booster.execute_pipeline(data_iter,
+                                     model,
+                                     criterion=lambda outputs, inputs: outputs[0],
+                                     optimizer=optimizer,
+                                     return_loss=False)
+            optimizer.step()
+            optimizer.zero_grad()
+            performance_evaluator.on_step_end(input_ids=torch.empty(args.batch_size, 1))
+    else:
+        for step, batch in enumerate(tqdm(dataloader, desc='Step', disable=not coordinator.is_master())):
+            performance_evaluator.on_step_start(step)
+            outputs = model(**batch)
+            loss = outputs[0]
+            booster.backward(loss, optimizer)
+            optimizer.step()
+            optimizer.zero_grad()
+            performance_evaluator.on_step_end(**batch)
 
     performance_evaluator.on_fit_end()
     coordinator.print_on_master(f'Max CUDA memory usage: {torch.cuda.max_memory_allocated()/1024**2:.2f} MB')
