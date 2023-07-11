@@ -132,10 +132,16 @@ class Linear1D_Col(ParallelModule):
             # the weigh to the linear layer is a transpose
             # thus shard on row is equal to shard on column
             sharded_weight = shard_rowwise(module.weight.data, process_group)
-            linear_1d.weight.data.copy_(sharded_weight)
+            module.weight.data = sharded_weight.data
+            module.weight.dist_layout = sharded_weight.dist_layout
+            linear_1d.weight = module.weight
+            # linear_1d.weight.data.copy_(sharded_weight)
             if bias:
                 sharded_bias = shard_colwise(module.bias.data, process_group)
-                linear_1d.bias.copy_(sharded_bias)
+                module.bias.data = sharded_bias.data
+                module.bias.dist_layout = sharded_bias.dist_layout
+                linear_1d.bias = module.bias
+                # linear_1d.bias.copy_(sharded_bias)
         return linear_1d
 
     def reset_parameters(self, weight_initializer, bias_initializer) -> None:
@@ -270,10 +276,15 @@ class Linear1D_Row(ParallelModule):
             # the weigh to the linear layer is a transpose
             # thus shard on col is equal to shard on row
             sharded_weight = shard_colwise(module.weight.data, process_group)
-            linear_1d.weight.data.copy_(sharded_weight)
+            module.weight.data = sharded_weight.data
+            module.weight.dist_layout = sharded_weight.dist_layout
+            linear_1d.weight = module.weight
+            # linear_1d.weight.data.copy_(sharded_weight)
 
             if bias:
-                linear_1d.bias.copy_(module.bias.data)
+                module.bias.dist_layout = linear_1d.bias.dist_layout
+                linear_1d.bias = module.bias
+                # linear_1d.bias.copy_(module.bias.data)
 
         return linear_1d
 

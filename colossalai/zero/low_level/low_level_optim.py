@@ -6,6 +6,7 @@ from typing import Dict, Iterator, Optional, Tuple
 
 import torch
 import torch.distributed as dist
+from torch import Tensor
 from torch.distributed import ProcessGroup
 from torch.optim import Optimizer
 
@@ -294,7 +295,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         # or got a grad of param from another group
         # after reduction, the bucket will be empty
         if self._bucket_store.num_elements_in_bucket() + param_size > self._reduce_bucket_size or \
-            group_id != self._bucket_store.current_group_id:
+                group_id != self._bucket_store.current_group_id:
             self._run_reduction()
 
         padding_size = self._param_store.get_param_padding_size(param)
@@ -323,6 +324,11 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             torch.cuda.synchronize()
 
         self.zero_grad()
+
+    def backward_by_grad(self, tensor: Tensor, grad: Tensor):
+        if self.mixed_precision_mixin is not None:
+            grad = self.mixed_precision_mixin.pre_backward_by_grad(tensor, grad)
+        tensor.backward(grad)
 
     def zero_grad(self, set_to_none=True):
         """

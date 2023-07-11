@@ -1,6 +1,6 @@
 import random
 from contextlib import nullcontext
-from typing import Any, Callable, Iterator, List, Optional, Tuple
+from typing import Any, Callable, Iterator, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -20,6 +20,7 @@ from colossalai.interface import ModelWrapper, OptimizerWrapper
 from colossalai.pipeline.schedule import OneForwardOneBackwardSchedule
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig, ShardFormer
+from colossalai.zero.low_level import LowLevelZeroOptimizer
 
 from .pp_plugin_base import PipelinePluginBase
 
@@ -85,19 +86,59 @@ class PipelineOptimizer(MixedPrecisionOptimizer):
                  hysteresis: int = 2,
                  max_scale: float = 2**32,
                  max_norm: float = 0):
+        init_pipeline_optimizer(optim, model)
         super().__init__(optim, precision, initial_scale, min_scale, growth_factor, backoff_factor, growth_interval,
                          hysteresis, max_scale, max_norm)
-        init_pipeline_optimizer(optim, model)
+
+
+class PipelineZeroOptimizer(LowLevelZeroOptimizer):
+
+    def __init__(
+            self,
+            optimizer: Optimizer,
+            model: Module,
+            initial_scale: int = 2**16,    # grad scaler config
+            min_scale: int = 1,
+            growth_factor: float = 2.,
+            backoff_factor: float = .5,
+            growth_interval: int = 2000,
+            hysteresis: int = 2,
+            max_scale: int = 2**24,
+            clip_grad_norm: float = 0.0,    # grad clipping
+            verbose: bool = False,
+            reduce_bucket_size: int = 1024 * 1024,    # communication
+            communication_dtype: Optional[torch.dtype] = None,
+            overlap_communication: bool = True,
+            partition_grad: bool = False,    # stage 2 flag
+            cpu_offload: bool = False,    # cpu offload
+            dp_process_group: Optional[ProcessGroup] = None,    # the dp pg for comm
+            tp_process_group: Optional[ProcessGroup] = None,    # if using tp
+            forced_dtype: Optional[torch.dtype] = None):
+        init_pipeline_optimizer(optimizer, model)
+        super().__init__(optimizer, initial_scale, min_scale, growth_factor, backoff_factor, growth_interval,
+                         hysteresis, max_scale, clip_grad_norm, verbose, reduce_bucket_size, communication_dtype,
+                         overlap_communication, partition_grad, cpu_offload, dp_process_group, tp_process_group,
+                         forced_dtype)
 
 
 class ThreeDimParallelPlugin(PipelinePluginBase):
 
-    def __init__(self,
-                 tp_size: int,
-                 pp_size: int,
-                 precision: str = 'fp16',
-                 enable_fused_normalization: bool = False,
-                 num_microbatches: Optional[int] = None) -> None:
+    def __init__(
+        self,
+        tp_size: int,
+        pp_size: int,
+        precision: str = 'fp16',
+        zero_stage: int = 0,
+        enable_fused_normalization: bool = False,
+        num_microbatches: Optional[int] = None,
+        initial_scale: float = 2**16,
+        min_scale: float = 1,
+        growth_factor: float = 2,
+        backoff_factor: float = 0.5,
+        growth_interval: int = 1000,
+        hysteresis: int = 2,
+        max_scale: float = 2**32,
+    ) -> None:
         super().__init__()
         assert dist.get_world_size() % (
             tp_size * pp_size
@@ -106,12 +147,15 @@ class ThreeDimParallelPlugin(PipelinePluginBase):
         self.pp_size = pp_size
         self.dp_size = dist.get_world_size() // (tp_size * pp_size)
         self.precision = precision
+        self.zero_stage = zero_stage
         self.enable_fused_normalization = enable_fused_normalization
         self.pg_mesh = ProcessGroupMesh(self.dp_size, self.pp_size, self.tp_size)
         self.stage_manager = None
         self.schedule = None
+        assert zero_stage in (0, 1, 2)
         if self.pp_size > 1:
             assert num_microbatches is not None, 'num_microbatches must be specified when using pipeline parallelism'
+            assert self.zero_stage <= 1, 'zero stage must be 0 or 1 when using pipeline parallelism'
             self.stage_manager = PipelineStageManager(self.pg_mesh, PP_AXIS)
             self.schedule = OneForwardOneBackwardSchedule(num_microbatches, self.stage_manager)
         self.tp_group = self.pg_mesh.get_group_along_axis(TP_AXIS)
@@ -120,6 +164,15 @@ class ThreeDimParallelPlugin(PipelinePluginBase):
                                         pipeline_stage_manager=self.stage_manager,
                                         enable_tensor_parallelism=self.tp_size > 1,
                                         enable_fused_normalization=self.enable_fused_normalization)
+        self.amp_config = dict(
+            initial_scale=initial_scale,
+            growth_factor=growth_factor,
+            backoff_factor=backoff_factor,
+            growth_interval=growth_interval,
+            hysteresis=hysteresis,
+            min_scale=min_scale,
+            max_scale=max_scale,
+        )
 
     @property
     def enable_pipeline_parallelism(self) -> bool:
@@ -154,23 +207,35 @@ class ThreeDimParallelPlugin(PipelinePluginBase):
         if not isinstance(model, ModelWrapper):
             model = PipelineModule(model, self.precision, self.shard_config, self.stage_manager, self.dp_group)
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
-            optimizer = PipelineOptimizer(optimizer, model, precision=self.precision)
+            if self.zero_stage == 0:
+                optimizer = PipelineOptimizer(optimizer, model, precision=self.precision, **self.amp_config)
+            else:
+                optimizer = PipelineZeroOptimizer(optimizer,
+                                                  model,
+                                                  partition_grad=(self.zero_stage == 2),
+                                                  dp_process_group=self.dp_group,
+                                                  tp_process_group=self.tp_group,
+                                                  **self.amp_config)
         return model, optimizer, criterion, dataloader, lr_scheduler
 
     def execute_pipeline(self,
                          data_iter: Iterator,
                          model: PipelineModule,
                          criterion: Callable[[Any, Any], torch.Tensor],
-                         optimizer: PipelineOptimizer,
+                         optimizer: Union[PipelineOptimizer, PipelineZeroOptimizer],
                          return_loss: bool = True,
                          return_outputs: bool = False) -> dict:
         assert self.enable_pipeline_parallelism, 'pipeline parallelism is not enabled'
         # return loss or outputs if needed
-        with model.no_sync():
+        ctx = optimizer.no_sync() if isinstance(optimizer, PipelineZeroOptimizer) else model.no_sync()
+        with ctx:
             outputs = self.schedule.forward_backward_step(model, optimizer, data_iter, criterion, return_loss,
                                                           return_outputs)
         model.sync_shared_params()
-        model.sync_grads()
+        if isinstance(optimizer, PipelineZeroOptimizer):
+            optimizer.sync_grad()
+        else:
+            model.sync_grads()
         return outputs
 
     def prepare_dataloader(self,

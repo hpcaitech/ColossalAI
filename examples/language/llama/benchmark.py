@@ -107,6 +107,7 @@ def main():
     parser.add_argument('--tp', type=int, default=1, help='Tensor parallel size')
     parser.add_argument('--pp', type=int, default=1, help='Pipeline parallel size')
     parser.add_argument('--mbs', type=int, default=1)
+    parser.add_argument('--zero', type=int, default=0)
     args = parser.parse_args()
 
     colossalai.launch_from_torch({})
@@ -121,14 +122,14 @@ def main():
     use_empty_init = True
     if args.plugin == 'gemini':
         AutoPlacementPolicy.set_warmup_non_model_data_ratio(args.warmup_ratio)
-        plugin = GeminiPlugin(placement_policy='auto')
+        plugin = GeminiPlugin(placement_policy='auto', initial_scale=2**5)
     elif args.plugin == 'gemini_cuda':
-        plugin = GeminiPlugin(placement_policy='cuda')
+        plugin = GeminiPlugin(placement_policy='cuda', initial_scale=2**5)
     elif args.plugin == 'gemini_cpu':
-        plugin = GeminiPlugin(placement_policy='cpu')
+        plugin = GeminiPlugin(placement_policy='cpu', initial_scale=2**5)
     elif args.plugin == 'const':
         ConstPlacementPolicy.set_const_memory_boundary(args.memory_limit)
-        plugin = GeminiPlugin(placement_policy='const')
+        plugin = GeminiPlugin(placement_policy='const', initial_scale=2**5)
     elif args.plugin == 'fsdp':
         if use_empty_init:
             plugin = TorchFSDPPlugin(
@@ -159,8 +160,10 @@ def main():
     elif args.plugin == '3d':
         plugin = ThreeDimParallelPlugin(tp_size=args.tp,
                                         pp_size=args.pp,
+                                        zero_stage=args.zero,
                                         enable_fused_normalization=True,
-                                        num_microbatches=args.mbs)
+                                        num_microbatches=args.mbs,
+                                        initial_scale=2**5)
     else:
         raise ValueError(f'Unknown plugin {args.plugin}')
 
@@ -168,9 +171,10 @@ def main():
     # ==============================
     # Initialize Dataset and Dataloader
     # ==============================
+    dp_size = plugin.dp_size if isinstance(plugin, ThreeDimParallelPlugin) else coordinator.world_size
 
     config = MODEL_CONFIGS[args.config]
-    dataset = RandomDataset(num_samples=args.batch_size * args.num_steps * coordinator.world_size,
+    dataset = RandomDataset(num_samples=args.batch_size * args.num_steps * dp_size,
                             max_length=args.max_length,
                             vocab_size=config.vocab_size)
     dataloader = plugin.prepare_dataloader(dataset, batch_size=args.batch_size, shuffle=True, drop_last=True)
@@ -197,7 +201,6 @@ def main():
 
     model_numel = get_model_numel(model)
     coordinator.print_on_master(f'Model params: {format_numel_str(model_numel)}')
-    dp_size = plugin.dp_size if isinstance(plugin, ThreeDimParallelPlugin) else None
     performance_evaluator = PerformanceEvaluator(model_numel,
                                                  args.grad_checkpoint,
                                                  args.ignore_steps,

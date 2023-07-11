@@ -62,8 +62,10 @@ class FusedLayerNorm():
 
         with torch.no_grad():
             # copy weight and bias
-            layernorm.weight.copy_(module.weight)
-            layernorm.bias.copy_(module.bias)
+            layernorm.weight = module.weight
+            layernorm.bias = module.bias
+            # layernorm.weight.copy_(module.weight)
+            # layernorm.bias.copy_(module.bias)
         return layernorm
 
 
@@ -103,6 +105,7 @@ class FusedRMSNorm():
 
         with torch.no_grad():
             # copy weight and bias
-            rmsnorm.weight.copy_(module.weight)
+            rmsnorm.weight = module.weight
+            # rmsnorm.weight.copy_(module.weight)
 
         return rmsnorm
