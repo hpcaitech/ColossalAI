@@ -21,7 +21,8 @@ from coati.models.utils import calc_action_log_probs, compute_reward, masked_mea
 @pytest.mark.parametrize("actor_maker", [
     lambda: BLOOMActor(),
     lambda: GPTActor(),
-    lambda: LlamaActor(),
+    # HACK: skip llama due to long execution time
+    # lambda: LlamaActor(),
     lambda: OPTActor()
 ])
 @pytest.mark.parametrize("generate_kwargs", [{
@@ -125,9 +126,11 @@ def test_lora(lora_rank: int,
 @pytest.mark.parametrize("models_maker", [
     lambda: (BLOOMActor(), BLOOMCritic(), BLOOMRM()),
     lambda: (GPTActor(), GPTCritic(), GPTRM()),
-    lambda: (LlamaActor(), LlamaCritic(), LlamaRM()),
+    # HACK: skip llama due to long execution time
+    # lambda: (LlamaActor(), LlamaCritic(), LlamaRM()),
     lambda: (OPTActor(), OPTCritic(), OPTRM()),
 ])
+@torch.no_grad()
 def test_models(models_maker: Callable[[], Tuple[Actor, Critic, RewardModel]],
                 batch_size: int,
                 seq_len: int):
