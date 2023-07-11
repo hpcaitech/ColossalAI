@@ -20,15 +20,15 @@ Now include these metrics in benchmark: CUDA mem occupy, throughput and the numb
 
 |       | max cuda mem | throughput(sample/s) | params |
 | :-----| -----------: | :--------: | :----: |
-| ddp | 21.44 GB | 3.0 | 82M |
-| ddp_fp16 | 16.26 GB | 11.3 | 82M |
-| gemini | 11.0 GB | 12.9 | 82M |
-| low_level_zero | 11.29 G | 14.7 | 82M |
+| ddp | 21.44 GB | 3.0 | 87M |
+| ddp_fp16 | 16.26 GB | 11.6 | 87M |
+| gemini | 11.3 GB | 15.2 | 87M |
+| low_level_zero | 11.3 GB | 14.3 | 87M |
 
 ### AlBert
 |       | max cuda mem | throughput(sample/s) | params |
 | :-----| -----------: | :--------: | :----: |
 | ddp | OOM |  | |
 | ddp_fp16 | OOM |  | |
-| gemini | 69.39 G | 1.3 | 208M |
-| low_level_zero | 56.89 G | 1.4 | 208M |
+| gemini | 69.39 G | 1.4 | 219M |
+| low_level_zero | 56.80 G | 1.4 | 219M |

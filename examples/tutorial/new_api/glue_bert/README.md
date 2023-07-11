@@ -36,4 +36,4 @@ Expected F1-score will be:
 
 | Model             | Single-GPU Baseline FP32 | Booster DDP with FP32 | Booster DDP with FP16 | Booster Gemini | Booster Low Level Zero |
 | ----------------- | ------------------------ | --------------------- | --------------------- |--------------- | ---------------------- |
-| bert-base-uncased | 0.86                     | 0.88                  | 0.87                  | 0.88           | 0.89                   |
+| bert-base-uncased | 0.86                     | 0.88                  | 0.87                  | 0.88           | 0.88                   |
