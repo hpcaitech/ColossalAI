@@ -51,7 +51,6 @@ Zero-2 不支持局部梯度累积。如果您坚持使用，虽然可以积累�
 
 {{ autodoc:colossalai.booster.plugin.GeminiPlugin }}
 
-> ⚠ 该插件现在只能加载自己保存的且具有相同进程数的优化器 Checkpoint。这将在未来得到解决。
 
 ### Torch DDP 插件
 
