@@ -1,6 +1,6 @@
 import torch
 from coati.models.generation import generate_with_actor
-from coati.models.utils import calc_action_log_probs, compute_reward, normalize
+from coati.models.utils import calc_action_log_probs, compute_reward
 
 from .base import Experience, ExperienceMaker
 
