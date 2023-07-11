@@ -447,18 +447,23 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
     # Gradient Synchronization #
     ############################
 
+    # this method is used to sync gradient manually
+    def sync_grad(self):
+        for group_id in range(self.num_param_groups):
+            param_group = self._working_param_groups[group_id]
+            for param in param_group:
+                if param.requires_grad and param.grad is not None:
+                    self._add_to_bucket(param, group_id)
+
+        self._run_reduction()
+
     def _reduce_grad(self, partition_grad):
         # if not overlapping communication (no reduction hook is attached) when zero1
         # we need to manually reduce these gradients
         if not partition_grad and not self._overlap_communication:
-            for group_id in range(len(self._working_param_groups)):
-                param_group = self._working_param_groups[group_id]
-                for param in param_group:
-                    if param.grad is not None:
-                        self._add_to_bucket(param, group_id)
-
-        # run reduction
-        self._run_reduction()
+            self.sync_grad()
+        else:
+            self._run_reduction()
 
     # this context comes from pytorch DDP
     @contextmanager
