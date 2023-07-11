@@ -51,14 +51,14 @@ class MixedPrecisionOptimizer(OptimizerWrapper):
             for group in self.optim.param_groups:
                 for p in group['params']:
                     working_params.append(p)
-            self.mixed_precision = FP16MixedPrecisionMixin(working_params,
-                                                           initial_scale=initial_scale,
-                                                           min_scale=min_scale,
-                                                           growth_factor=growth_factor,
-                                                           backoff_factor=backoff_factor,
-                                                           growth_interval=growth_interval,
-                                                           hysteresis=hysteresis,
-                                                           max_scale=max_scale)
+            self.mixed_precision = NaiveFP16MixedPrecisionMixin(working_params,
+                                                                initial_scale=initial_scale,
+                                                                min_scale=min_scale,
+                                                                growth_factor=growth_factor,
+                                                                backoff_factor=backoff_factor,
+                                                                growth_interval=growth_interval,
+                                                                hysteresis=hysteresis,
+                                                                max_scale=max_scale)
         elif precision == 'bf16':
             self.mixed_precision = BF16MixedPrecisionMixin()
         else:

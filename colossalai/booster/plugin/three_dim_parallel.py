@@ -28,7 +28,7 @@ DP_AXIS, PP_AXIS, TP_AXIS = 0, 1, 2
 
 class PipelineModule(ModelWrapper):
 
-    def __init__(self, module: Module, shard_config: ShardConfig, stage_manager: PipelineStageManager,
+    def __init__(self, module: Module, precision: str, shard_config: ShardConfig, stage_manager: PipelineStageManager,
                  dp_group: ProcessGroup) -> None:
         self.stage_manager = stage_manager
         self.dp_group = dp_group
@@ -38,6 +38,10 @@ class PipelineModule(ModelWrapper):
         self.shared_param_process_groups = []
         for shared_param in self.shared_params:
             stage_manager.init_process_group_by_stages(list(shared_param.keys()))
+        if precision == 'fp16':
+            module = module.half().cuda()
+        elif precision == 'bf16':
+            module = module.to(dtype=torch.bfloat16).cuda()
         super().__init__(module)
 
     def sync_shared_params(self):
@@ -148,7 +152,7 @@ class ThreeDimParallelPlugin(PipelinePluginBase):
         lr_scheduler: Optional[LRScheduler] = None,
     ) -> Tuple[Module, OptimizerWrapper, Callable, DataLoader, LRScheduler]:
         if not isinstance(model, ModelWrapper):
-            model = PipelineModule(model, self.shard_config, self.stage_manager, self.dp_group)
+            model = PipelineModule(model, self.precision, self.shard_config, self.stage_manager, self.dp_group)
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
             optimizer = PipelineOptimizer(optimizer, model, precision=self.precision)
         return model, optimizer, criterion, dataloader, lr_scheduler
@@ -222,4 +226,7 @@ class ThreeDimParallelPlugin(PipelinePluginBase):
                           **_kwargs)
 
     def get_checkpoint_io(self) -> CheckpointIO:
+        return None
+
+    def no_sync(self, model: Module) -> Iterator[None]:
         raise NotImplementedError

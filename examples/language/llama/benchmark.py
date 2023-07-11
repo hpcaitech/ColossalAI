@@ -1,21 +1,16 @@
 import argparse
 import resource
-from contextlib import contextmanager, nullcontext
-
-from random import randint
 import time
-
+from contextlib import contextmanager, nullcontext
+from random import randint
 
 import torch
 import torch.nn as nn
-
-from attn import SUPPORT_XFORMERS, replace_xformers
-
 import transformers
-from torch.distributed.fsdp.wrap import size_based_auto_wrap_policy
-
+from attn import SUPPORT_XFORMERS, replace_xformers
 from performance_evaluator import PerformanceEvaluator, Timer
 from torch.distributed.fsdp.fully_sharded_data_parallel import CPUOffload, MixedPrecision
+from torch.distributed.fsdp.wrap import size_based_auto_wrap_policy
 from torch.utils.data import Dataset
 from tqdm import tqdm
 from transformers.modeling_utils import no_init_weights
@@ -24,7 +19,7 @@ from transformers.models.llama.modeling_llama import LlamaForCausalLM
 
 import colossalai
 from colossalai.booster import Booster
-from colossalai.booster.plugin import GeminiPlugin, TorchFSDPPlugin
+from colossalai.booster.plugin import GeminiPlugin, ThreeDimParallelPlugin, TorchFSDPPlugin
 from colossalai.cluster import DistCoordinator
 from colossalai.lazy import LazyInitContext
 from colossalai.nn.optimizer import HybridAdam
@@ -99,17 +94,19 @@ def main():
     parser.add_argument('-c', '--config', type=str, default='7b', help='Model configuration')
     parser.add_argument('-p',
                         '--plugin',
-                        choices=['gemini', 'gemini_cuda', 'gemini_cpu', 'fsdp', 'fsdp_cpu'],
+                        choices=['gemini', 'gemini_cuda', 'gemini_cpu', 'fsdp', 'fsdp_cpu', '3d'],
                         default='gemini',
                         help='Choose which plugin to use')
     parser.add_argument('-b', '--batch_size', type=int, default=2, help='Batch size')
-    parser.add_argument('-s', '--num_steps', type=int, default=10, help='Number of steps to run')
+    parser.add_argument('-s', '--num_steps', type=int, default=5, help='Number of steps to run')
     parser.add_argument('-i', '--ignore_steps', type=int, default=2, help='Number of steps to ignore')
     parser.add_argument('-g', '--grad_checkpoint', action='store_true', help='Use gradient checkpointing')
     parser.add_argument('-l', '--max_length', type=int, default=2048, help='Max sequence length')
     parser.add_argument('-w', '--warmup_ratio', type=float, default=0.8, help='warm up ratio for auto placement policy')
     parser.add_argument('-m', '--memory_limit', type=int, help='Gemini memory limit in mb')
     parser.add_argument('-x', '--xformers', action='store_true', help='Use xformers')
+    parser.add_argument('--tp', type=int, default=1, help='Tensor parallel size')
+    parser.add_argument('--pp', type=int, default=1, help='Pipeline parallel size')
     args = parser.parse_args()
 
     colossalai.launch_from_torch({})
@@ -134,24 +131,33 @@ def main():
         plugin = GeminiPlugin(placement_policy='const')
     elif args.plugin == 'fsdp':
         if use_empty_init:
-            plugin = TorchFSDPPlugin(mixed_precision=MixedPrecision(
-                param_dtype=torch.float16, reduce_dtype=torch.float16, buffer_dtype=torch.float16), param_init_fn=empty_init(),)
-                # auto_wrap_policy=size_based_auto_wrap_policy)
+            plugin = TorchFSDPPlugin(
+                mixed_precision=MixedPrecision(param_dtype=torch.float16,
+                                               reduce_dtype=torch.float16,
+                                               buffer_dtype=torch.float16),
+                param_init_fn=empty_init(),
+            )
+            # auto_wrap_policy=size_based_auto_wrap_policy)
         else:
             plugin = TorchFSDPPlugin(mixed_precision=MixedPrecision(
                 param_dtype=torch.float16, reduce_dtype=torch.float16, buffer_dtype=torch.float16))
     elif args.plugin == 'fsdp_cpu':
         if use_empty_init:
-            plugin = TorchFSDPPlugin(mixed_precision=MixedPrecision(param_dtype=torch.float16,
-                                                                    reduce_dtype=torch.float16,
-                                                                    buffer_dtype=torch.float16),
-                                     cpu_offload=CPUOffload(offload_params=True), param_init_fn=empty_init(),)
-                                     # auto_wrap_policy=size_based_auto_wrap_policy)
+            plugin = TorchFSDPPlugin(
+                mixed_precision=MixedPrecision(param_dtype=torch.float16,
+                                               reduce_dtype=torch.float16,
+                                               buffer_dtype=torch.float16),
+                cpu_offload=CPUOffload(offload_params=True),
+                param_init_fn=empty_init(),
+            )
+            # auto_wrap_policy=size_based_auto_wrap_policy)
         else:
             plugin = TorchFSDPPlugin(mixed_precision=MixedPrecision(param_dtype=torch.float16,
                                                                     reduce_dtype=torch.float16,
                                                                     buffer_dtype=torch.float16),
                                      cpu_offload=CPUOffload(offload_params=True))
+    elif args.plugin == '3d':
+        plugin = ThreeDimParallelPlugin(tp_size=args.tp, pp_size=args.pp, enable_fused_normalization=True)
     else:
         raise ValueError(f'Unknown plugin {args.plugin}')
 
@@ -170,7 +176,8 @@ def main():
     # Initialize Model and Optimizer
     # ==============================
     init_ctx = LazyInitContext(
-        default_device=get_current_device()) if isinstance(plugin, GeminiPlugin) else nullcontext()
+        default_device=get_current_device()) if isinstance(plugin,
+                                                           (GeminiPlugin, ThreeDimParallelPlugin)) else nullcontext()
 
     timer = Timer()
     timer.start()
@@ -191,7 +198,7 @@ def main():
 
     optimizer = HybridAdam(model.parameters())
     print("model is on {}".format(model.device))
-    model, optimizer, _, dataloader, _ = booster.boost(model, optimizer, dataloader=dataloader, benchmark=use_empty_init)
+    model, optimizer, _, dataloader, _ = booster.boost(model, optimizer, dataloader=dataloader)
     timer.end()
     end_time = time.time()
     print("total init time: ", end_time - start_time, "s")

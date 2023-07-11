@@ -18,7 +18,7 @@ fi
 unset __conda_setup
 # <<< conda initialize <<<
 
-conda activate /mnt/vepfs/conda/envs/llama_2
+conda activate /mnt/vepfs/conda/envs/lhx-1.13.1
 
 ROOT=$(pwd)
 
@@ -30,5 +30,7 @@ export NCCL_SOCKET_IFNAME=eth0
 export NCCL_IB_GID_INDEX=3
 export NCCL_IB_TIMEOUT=23
 export NCCL_IB_RETRY_CNT=7
+export BATCH=${1:-16}
+export TP=${2:-8}
 
-colossalai run --nproc_per_node 8 --hostfile ${ROOT}/cai_host_4.txt --master_addr 192.168.0.189 benchmark.py -c '65b' --plugin "gemini" -l 512 -g -b 8 > ${ROOT}/cai_gemini_65b_auto_b8.log 2>&1
+colossalai run --nproc_per_node 8 --hostfile ${ROOT}/cai_host_4.txt --master_addr 192.168.0.189 benchmark.py -c '65b' --plugin "3d" -x -b $BATCH --tp $TP

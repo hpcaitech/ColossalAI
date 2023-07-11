@@ -18,7 +18,7 @@ fi
 unset __conda_setup
 # <<< conda initialize <<<
 
-conda activate /mnt/vepfs/conda/envs/llama_2
+conda activate /mnt/vepfs/conda/envs/lhx-1.13.1
 
 ROOT=$(pwd)
 
