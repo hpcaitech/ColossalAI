@@ -193,7 +193,7 @@ class BertModelPolicy(BertPolicy):
         module = self.model
         stage_manager = self.pipeline_stage_manager
         held_layers = []
-        layers_per_stage = self.distribute_layers(len(self.model.encoder.layer), stage_manager.num_stages)
+        layers_per_stage = self.distribute_layers(len(module.encoder.layer), stage_manager.num_stages)
         if stage_manager.is_first_stage():
             held_layers.append(module.embeddings)
         start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)

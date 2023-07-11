@@ -39,6 +39,7 @@ def build_pipeline_model(model_fn,
     shard_config = ShardConfig(enable_fused_normalization=enable_fused_normalization,
                                enable_tensor_parallelism=enable_tensor_parallelism,
                                pipeline_stage_manager=stage_manager)
+
     shard_former = ShardFormer(shard_config=shard_config)
     sharded_model, shared_params = shard_former.optimize(model_copy)
     return org_model.cuda(), sharded_model.cuda()
