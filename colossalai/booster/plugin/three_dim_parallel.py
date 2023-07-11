@@ -13,6 +13,7 @@ from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 
+from colossalai.amp.naive_amp.mixed_precision_optimizer import MixedPrecisionOptimizer
 from colossalai.checkpoint_io import CheckpointIO
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.interface import ModelWrapper, OptimizerWrapper
@@ -57,17 +58,32 @@ class PipelineModule(ModelWrapper):
                 dist.all_reduce(p.grad, group=self.dp_group)
 
 
-class PipelineOptimizer(OptimizerWrapper):
+def init_pipeline_optimizer(optim: Optimizer, model: Module):
+    params = set(model.parameters())
+    new_param_groups = []
+    for group in optim.param_groups:
+        params = [p for p in group['params'] if p in params]
+        new_param_groups.append({**group, 'params': params})
+    optim.__setstate__({'param_groups': new_param_groups})
 
-    def __init__(self, optim: Optimizer, model: Module):
-        super().__init__(optim)
-        params = set(model.parameters())
-        new_param_groups = []
-        for group in optim.param_groups:
-            params = [p for p in group['params'] if p in params]
-            new_param_groups.append({**group, 'params': params})
-        optim.__setstate__({'param_groups': new_param_groups})
-        # TODO: support amp
+
+class PipelineOptimizer(MixedPrecisionOptimizer):
+
+    def __init__(self,
+                 optim: Optimizer,
+                 model: Module,
+                 precision: str = 'fp16',
+                 initial_scale: float = 2**16,
+                 min_scale: float = 1,
+                 growth_factor: float = 2,
+                 backoff_factor: float = 0.5,
+                 growth_interval: int = 1000,
+                 hysteresis: int = 2,
+                 max_scale: float = 2**32,
+                 max_norm: float = 0):
+        super().__init__(optim, precision, initial_scale, min_scale, growth_factor, backoff_factor, growth_interval,
+                         hysteresis, max_scale, max_norm)
+        init_pipeline_optimizer(optim, model)
 
 
 class ThreeDimParallelPlugin(PipelinePluginBase):
@@ -75,6 +91,7 @@ class ThreeDimParallelPlugin(PipelinePluginBase):
     def __init__(self,
                  tp_size: int,
                  pp_size: int,
+                 precision: str = 'fp16',
                  enable_fused_normalization: bool = False,
                  num_microbatches: Optional[int] = None) -> None:
         super().__init__()
@@ -84,6 +101,7 @@ class ThreeDimParallelPlugin(PipelinePluginBase):
         self.tp_size = tp_size
         self.pp_size = pp_size
         self.dp_size = dist.get_world_size() // (tp_size * pp_size)
+        self.precision = precision
         self.enable_fused_normalization = enable_fused_normalization
         self.pg_mesh = ProcessGroupMesh(self.dp_size, self.pp_size, self.tp_size)
         self.stage_manager = None
@@ -107,7 +125,7 @@ class ThreeDimParallelPlugin(PipelinePluginBase):
         return ['cuda']
 
     def supported_precisions(self) -> List[str]:
-        return ['fp32']
+        return ['fp16', 'bf16']
 
     def control_device(self) -> bool:
         return True
@@ -132,7 +150,7 @@ class ThreeDimParallelPlugin(PipelinePluginBase):
         if not isinstance(model, ModelWrapper):
             model = PipelineModule(model, self.shard_config, self.stage_manager, self.dp_group)
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
-            optimizer = PipelineOptimizer(optimizer, model)
+            optimizer = PipelineOptimizer(optimizer, model, precision=self.precision)
         return model, optimizer, criterion, dataloader, lr_scheduler
 
     def execute_pipeline(self,
