@@ -132,13 +132,13 @@ class Linear1D_Col(ParallelModule):
             # the weigh to the linear layer is a transpose
             # thus shard on row is equal to shard on column
             sharded_weight = shard_rowwise(module.weight.data, process_group)
-            module.weight.data = sharded_weight.data
+            module.weight.data = sharded_weight.data.clone()
             module.weight.dist_layout = sharded_weight.dist_layout
             linear_1d.weight = module.weight
             # linear_1d.weight.data.copy_(sharded_weight)
             if bias:
                 sharded_bias = shard_colwise(module.bias.data, process_group)
-                module.bias.data = sharded_bias.data
+                module.bias.data = sharded_bias.data.clone()
                 module.bias.dist_layout = sharded_bias.dist_layout
                 linear_1d.bias = module.bias
                 # linear_1d.bias.copy_(sharded_bias)
@@ -276,7 +276,7 @@ class Linear1D_Row(ParallelModule):
             # the weigh to the linear layer is a transpose
             # thus shard on col is equal to shard on row
             sharded_weight = shard_colwise(module.weight.data, process_group)
-            module.weight.data = sharded_weight.data
+            module.weight.data = sharded_weight.data.clone()
             module.weight.dist_layout = sharded_weight.dist_layout
             linear_1d.weight = module.weight
             # linear_1d.weight.data.copy_(sharded_weight)

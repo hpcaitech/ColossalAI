@@ -31,6 +31,8 @@ export NCCL_IB_GID_INDEX=3
 export NCCL_IB_TIMEOUT=23
 export NCCL_IB_RETRY_CNT=7
 export BATCH=${1:-16}
-export TP=${2:-8}
+export TP=${2:-4}
+export PP=${3:-2}
+export MBS=${4:-4}
 
-colossalai run --nproc_per_node 8 --hostfile ${ROOT}/cai_host_4.txt --master_addr 192.168.0.189 benchmark.py -c '65b' --plugin "3d" -x -b $BATCH --tp $TP
+colossalai run --nproc_per_node 8 --hostfile ${ROOT}/cai_host_4.txt --master_addr 192.168.0.189 benchmark.py -c '65b' --plugin "3d" -x -b $BATCH --tp $TP --zero 1 --pp $PP --mbs $MBS

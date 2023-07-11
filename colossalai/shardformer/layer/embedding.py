@@ -127,7 +127,7 @@ class Embedding1D(ParallelModule):
         # copy the weight
         with torch.no_grad():
             sharded_weight = shard_colwise(module.weight.data, process_group)
-            module.weight.data = sharded_weight.data
+            module.weight.data = sharded_weight.data.clone()
             module.weight.dist_layout = sharded_weight.dist_layout
             embedding.weight = module.weight
             # embedding.weight.copy_(sharded_weight)
@@ -253,7 +253,7 @@ class VocabParallelEmbedding1D(ParallelModule):
             # shard and slice the weight along the vocabulary(num_embeddings) dimension
             # the shape of the weight is (num_embeddings, embedding_dim)
             shard_weight = shard_rowwise(module.weight.data, process_group)
-            module.weight.data = shard_weight.data
+            module.weight.data = shard_weight.data.clone()
             module.weight.dist_layout = shard_weight.dist_layout
             vocab_embedding_1d.weight = module.weight
             # vocab_embedding_1d.weight.data.copy_(shard_weight)

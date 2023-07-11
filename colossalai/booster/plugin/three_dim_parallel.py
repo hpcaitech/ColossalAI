@@ -36,9 +36,10 @@ class PipelineModule(ModelWrapper):
         shardformer = ShardFormer(shard_config)
         module, self.shared_params = shardformer.optimize(module)
         # TODO(ver217): add zero here
-        self.shared_param_process_groups = []
-        for shared_param in self.shared_params:
-            stage_manager.init_process_group_by_stages(list(shared_param.keys()))
+        # self.shared_param_process_groups = []
+        # for shared_param in self.shared_params:
+        #     if len(shared_param) > 0:
+        #         stage_manager.init_process_group_by_stages(list(shared_param.keys()))
         if precision == 'fp16':
             module = module.half().cuda()
         elif precision == 'bf16':
@@ -231,7 +232,7 @@ class ThreeDimParallelPlugin(PipelinePluginBase):
         with ctx:
             outputs = self.schedule.forward_backward_step(model, optimizer, data_iter, criterion, return_loss,
                                                           return_outputs)
-        model.sync_shared_params()
+        # model.sync_shared_params()
         if isinstance(optimizer, PipelineZeroOptimizer):
             optimizer.sync_grad()
         else:
