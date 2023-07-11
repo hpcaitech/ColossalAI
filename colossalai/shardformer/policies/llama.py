@@ -158,7 +158,7 @@ class LlamaModelPolicy(LlamaPolicy):
         return held_layers
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
-        """No shared params in bert model"""
+        """No shared params in llama model"""
         return []
 
 
@@ -179,7 +179,46 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
                     ])
             }
             policy.update(new_item)
+        # to be confirmed
+        if self.pipeline_stage_manager:
+            # set None as default
+            stage_manager = self.pipeline_stage_manager
+            layers_per_stage = Policy.distribute_layers(len(self.model.model.layers), stage_manager.num_stages)
+            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
+            new_item = {
+                LlamaForCausalLM:
+                    ModulePolicyDescription(
+                        method_replacement={
+                            'forward':
+                                partial(
+                                    llama_for_causal_lm_forward, stage_manager=stage_manager, stage_index=stage_index)
+                        })
+            }
+            policy.update(new_item)
         return policy
+
+    def get_held_layers(self) -> List[Module]:
+        """Get pipeline layers for current stage."""
+        module = self.model
+        stage_manager = self.pipeline_stage_manager
+        held_layers = []
+        layers_per_stage = self.distribute_layers(len(module.model.layers), stage_manager.num_stages)
+        if stage_manager.is_first_stage():
+            held_layers.append(module.model.embed_tokens)
+        start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
+        held_layers.extend(module.model.layers[start_idx:end_idx])
+        if stage_manager.is_last_stage():
+            held_layers.append(module.model.norm)
+            held_layers.append(module.lmhead)
+        return held_layers
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        """No shared params in llama model"""
+        llama_model = self.model.model
+        if id(llama_model.embed_tokens.weight) == id(self.model.lm_head.weight):
+            # tie weights
+            return [{0: llama_model.embed_tokens.weight, self.stage_manager.num_stages - 1: self.model.lm_head.weight}]
+        return []
 
 
 class LlamaForSequenceClassificationPolicy(LlamaPolicy):
@@ -199,7 +238,43 @@ class LlamaForSequenceClassificationPolicy(LlamaPolicy):
                     ])
             }
             policy.update(new_item)
+        # to be confirmed
+        if self.pipeline_stage_manager:
+            # set None as default
+            stage_manager = self.pipeline_stage_manager
+            layers_per_stage = Policy.distribute_layers(len(self.model.model.layers), stage_manager.num_stages)
+            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
+            new_item = {
+                LlamaForSequenceClassification:
+                    ModulePolicyDescription(
+                        method_replacement={
+                            'forward':
+                                partial(llama_for_sequence_classification_forward,
+                                        stage_manager=stage_manager,
+                                        stage_index=stage_index)
+                        })
+            }
+            policy.update(new_item)
         return policy
+
+    def get_held_layers(self) -> List[Module]:
+        """Get pipeline layers for current stage."""
+        module = self.model
+        stage_manager = self.pipeline_stage_manager
+        held_layers = []
+        layers_per_stage = self.distribute_layers(len(module.model.layers), stage_manager.num_stages)
+        if stage_manager.is_first_stage():
+            held_layers.append(module.model.embed_tokens)
+        start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
+        held_layers.extend(module.model.layers[start_idx:end_idx])
+        if stage_manager.is_last_stage():
+            held_layers.append(module.model.norm)
+            held_layers.append(module.score)
+        return held_layers
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        """No shared params in llama for sequence classification model"""
+        return []
 
 
 def llama_model_forward(
