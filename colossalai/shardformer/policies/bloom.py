@@ -130,11 +130,17 @@ class BloomModelPolicy(BloomPolicy):
         super().__init__()
 
     def module_policy(self):
-        module_policy = super().module_policy()
+        policy = super().module_policy()
         from transformers.models.bloom.modeling_bloom import BloomModel
         if self.pipeline_stage_manager:
-            module_policy[BloomModel] = ModulePolicyDescription(
-                method_replacement={"forward": partial(bloom_model_forward, stage_manager=self.pipeline_stage_manager)})
+            stage_manager = self.pipeline_stage_manager
+            layers_per_stage = Policy.distribute_layers(len(self.model.h), stage_manager.num_stages)
+            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
+            policy[BloomModel] = ModulePolicyDescription(method_replacement={
+                "forward":
+                    partial(bloom_model_forward, stage_manager=self.pipeline_stage_manager, stage_index=stage_index)
+            })
+        return policy
 
     def get_held_layers(self) -> List[Module]:
         """
@@ -144,21 +150,21 @@ class BloomModelPolicy(BloomPolicy):
         stage_manager = self.pipeline_stage_manager
         held_layers = []
         layers_per_stage = self.distribute_layers(len(module.h), stage_manager.num_stages)
-        if self.stage_manager.is_first_stage():
+        if stage_manager.is_first_stage():
             held_layers.append(module.word_embeddings)
             held_layers.append(module.word_embeddings_layernorm)
 
-        start_idx, end_idx = self.get_stage_index(layers_per_stage, self.stage_manager.stage)
+        start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
         held_layers.extend(module.h[start_idx:end_idx])
 
-        if self.stage_manager.is_last_stage():
+        if stage_manager.is_last_stage():
             held_layers.append(module.ln_f)
 
         return held_layers
 
-    def get_shared_params(self, module: BloomModel) -> List[Dict[int, Tensor]]:
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
         '''no shared params in bloommodel'''
-        pass
+        return []
 
 
 class BloomForCausalLMPolicy(BloomPolicy):
@@ -244,6 +250,7 @@ def bloom_model_forward(
     return_dict: Optional[bool] = None,
     stage_manager: Optional[PipelineStageManager] = None,
     hidden_states: Optional[torch.FloatTensor] = None,
+    stage_index: Optional[List[int]] = None,
     **deprecated_arguments,
 ) -> Union[Tuple[torch.Tensor, ...], BaseModelOutputWithPastAndCrossAttentions]:
     if deprecated_arguments.pop("position_ids", False) is not False:
@@ -335,12 +342,8 @@ def bloom_model_forward(
         past_key_values_length=past_key_values_length,
     )
 
-    # calculate the num_layers
-    num_layers_per_stage = len(self.h) // stage_manager.num_stages
-    start_layer = stage_manager.stage * num_layers_per_stage
-    end_layer = (stage_manager.stage + 1) * num_layers_per_stage
-
-    for i, (block, layer_past) in enumerate(zip(self.h[start_layer:end_layer], past_key_values[start_layer:end_layer])):
+    start_idx, end_idx = stage_index[0], stage_index[1]
+    for i, (block, layer_past) in enumerate(zip(self.h[start_idx:end_idx], past_key_values[start_idx:end_idx])):
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
 
@@ -389,13 +392,17 @@ def bloom_model_forward(
     if output_hidden_states:
         all_hidden_states = all_hidden_states + (hidden_states,)
 
-    if not return_dict:
-        return tuple(v for v in [hidden_states, presents, all_hidden_states, all_self_attentions] if v is not None)
+    if stage_manager.is_last_stage():
+        if not return_dict:
+            return tuple(v for v in [hidden_states, presents, all_hidden_states, all_self_attentions] if v is not None)
 
-    # attention_mask is not returned ; presents = past_key_values
-    return BaseModelOutputWithPastAndCrossAttentions(
-        last_hidden_state=hidden_states,
-        past_key_values=presents,
-        hidden_states=all_hidden_states,
-        attentions=all_self_attentions,
-    )
+        # attention_mask is not returned ; presents = past_key_values
+        return BaseModelOutputWithPastAndCrossAttentions(
+            last_hidden_state=hidden_states,
+            past_key_values=presents,
+            hidden_states=all_hidden_states,
+            attentions=all_self_attentions,
+        )
+    else:
+        # always return dict for imediate stage
+        return {'hidden_states': hidden_states}
