@@ -11,6 +11,7 @@ from transformers.modeling_outputs import (
     BaseModelOutputWithPastAndCrossAttentions,
     BaseModelOutputWithPoolingAndCrossAttentions,
     CausalLMOutputWithCrossAttentions,
+    SequenceClassifierOutput,
 )
 from transformers.models.bert.modeling_bert import (
     BertForMaskedLM,
@@ -807,14 +808,63 @@ def bert_for_masked_lm_forward(
     hidden_states: Optional[torch.Tensor] = None,
     stage_manager: Optional[PipelineStageManager] = None,
 ):
-    #-> Union[Tuple[torch.Tensor], MaskedLMOutput]:
     r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
             Labels for computing the masked language modeling loss. Indices should be in `[-100, 0, ...,
             config.vocab_size]` (see `input_ids` docstring) Tokens with indices set to `-100` are ignored (masked), the
             loss is only computed for the tokens with labels in `[0, ..., config.vocab_size]`
         """
-    pass
+    return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+    if output_attentions:
+        logger.warning_once('output_attentions=True is not supported for pipeline models at the moment.')
+        output_attentions = False
+    if output_hidden_states:
+        logger.warning_once('output_hidden_states=True is not supported for pipeline models at the moment.')
+        output_hidden_states = False
+    if return_dict:
+        logger.warning_once('return_dict is not supported for pipeline models at the moment')
+        return_dict = False
+
+    outputs = bert_model_forward(
+        self.bert,
+        input_ids,
+        attention_mask=attention_mask,
+        token_type_ids=token_type_ids,
+        position_ids=position_ids,
+        head_mask=head_mask,
+        inputs_embeds=inputs_embeds,
+        encoder_hidden_states=encoder_hidden_states,
+        encoder_attention_mask=encoder_attention_mask,
+        output_attentions=output_attentions,
+        output_hidden_states=output_hidden_states,
+        return_dict=return_dict,
+        hidden_states=hidden_states,
+        stage_manager=stage_manager,
+    )
+
+    if stage_manager.is_last_stage():
+        sequence_output = outputs[0]
+        prediction_scores = self.cls(sequence_output)
+
+        masked_lm_loss = None
+        if labels is not None:
+            loss_fct = CrossEntropyLoss()    # -100 index = padding token
+            masked_lm_loss = loss_fct(prediction_scores.view(-1, self.config.vocab_size), labels.view(-1))
+
+        if not return_dict:
+            output = (prediction_scores,) + outputs[2:]
+            return ((masked_lm_loss,) + output) if masked_lm_loss is not None else output
+
+        return MaskedLMOutput(
+            loss=masked_lm_loss,
+            logits=prediction_scores,
+            hidden_states=outputs.hidden_states,
+            attentions=outputs.attentions,
+        )
+    else:
+        hidden_states = outputs.get('hidden_states')
+        return {'hidden_states': hidden_states}
 
 
 def bert_for_next_sentence_prediction_forward(
@@ -915,4 +965,97 @@ def bert_for_next_sentence_prediction_forward(
     else:
         hidden_states = outputs.get('hidden_states')
         # intermediate stage always return dict
+        return {'hidden_states': hidden_states}
+
+
+def bert_for_next_sentence_prediction_forward(
+    self: BertForNextSentencePrediction,
+    input_ids: Optional[torch.Tensor] = None,
+    attention_mask: Optional[torch.Tensor] = None,
+    token_type_ids: Optional[torch.Tensor] = None,
+    position_ids: Optional[torch.Tensor] = None,
+    head_mask: Optional[torch.Tensor] = None,
+    inputs_embeds: Optional[torch.Tensor] = None,
+    labels: Optional[torch.Tensor] = None,
+    output_attentions: Optional[bool] = None,
+    output_hidden_states: Optional[bool] = None,
+    return_dict: Optional[bool] = None,
+    hidden_states: Optional[torch.Tensor] = None,
+    stage_manager: Optional[PipelineStageManager] = None,
+    **kwargs,
+):
+    r"""
+    labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
+        Labels for computing the sequence classification/regression loss. Indices should be in `[0, ...,
+        config.num_labels - 1]`. If `config.num_labels == 1` a regression loss is computed (Mean-Square loss), If
+        `config.num_labels > 1` a classification loss is computed (Cross-Entropy).
+    """
+    return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+    if output_attentions:
+        logger.warning_once('output_attentions=True is not supported for pipeline models at the moment.')
+        output_attentions = False
+    if output_hidden_states:
+        logger.warning_once('output_hidden_states=True is not supported for pipeline models at the moment.')
+        output_hidden_states = False
+    if return_dict:
+        logger.warning_once('return_dict is not supported for pipeline models at the moment')
+        return_dict = False
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+    outputs = bert_model_forward(
+        self.bert,
+        input_ids,
+        attention_mask=attention_mask,
+        token_type_ids=token_type_ids,
+        position_ids=position_ids,
+        head_mask=head_mask,
+        inputs_embeds=inputs_embeds,
+        output_attentions=output_attentions,
+        output_hidden_states=output_hidden_states,
+        return_dict=return_dict,
+        hidden_states=hidden_states,
+        stage_manager=stage_manager,
+    )
+
+    if stage_manager.is_last_stage():
+        pooled_output = outputs[1]
+
+        pooled_output = self.dropout(pooled_output)
+        logits = self.classifier(pooled_output)
+
+        loss = None
+        if labels is not None:
+            if self.config.problem_type is None:
+                if self.num_labels == 1:
+                    self.config.problem_type = "regression"
+                elif self.num_labels > 1 and (labels.dtype == torch.long or labels.dtype == torch.int):
+                    self.config.problem_type = "single_label_classification"
+                else:
+                    self.config.problem_type = "multi_label_classification"
+
+            if self.config.problem_type == "regression":
+                loss_fct = MSELoss()
+                if self.num_labels == 1:
+                    loss = loss_fct(logits.squeeze(), labels.squeeze())
+                else:
+                    loss = loss_fct(logits, labels)
+            elif self.config.problem_type == "single_label_classification":
+                loss_fct = CrossEntropyLoss()
+                loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
+            elif self.config.problem_type == "multi_label_classification":
+                loss_fct = BCEWithLogitsLoss()
+                loss = loss_fct(logits, labels)
+        if not return_dict:
+            output = (logits,) + outputs[2:]
+            return ((loss,) + output) if loss is not None else output
+
+        return SequenceClassifierOutput(
+            loss=loss,
+            logits=logits,
+            hidden_states=outputs.hidden_states,
+            attentions=outputs.attentions,
+        )
+    else:
+        hidden_states = outputs.get('hidden_states')
         return {'hidden_states': hidden_states}
