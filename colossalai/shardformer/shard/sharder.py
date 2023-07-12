@@ -72,17 +72,18 @@ class ModelSharder(object):
         attr_replacement: Dict[str, Any],
         param_replacement: List[Callable],
         method_replacement: Dict[str, Callable],
-        sub_module_replacement: List[Callable],
+        sub_module_replacement: List[SubModuleReplacementDescription],
     ) -> None:
         r"""
         Reverse the replace layer operation
 
         Args:
-            layer (torch.nn.Module): The object of layer to shard
-            origin_cls (Union[str, torch.nn.Module]): The origin layer class or a string of layer class name.
-            attr_replacement (Dict): The attribute dict to modify
+            module (torch.nn.Module): The object of layer to shard
+            origin_cls (Union[str, torch.nn.Module]): The origin layer class or a string of layer class name
+            attr_replacement (Dict[str, Any]): The attribute dict to modify
             param_replacement (List[Callable]): The function list to get parameter shard information in policy
-            sub_module_replacement (List[Callable]): The function list to get sub module shard information in policy
+            method_replacement (Dict[str, Callable]):  Key is the method name, value is the method for replacement
+            sub_module_replacement ((List[SubModuleReplacementDescription]): The function list to get sub module shard information in policy
         """
         if (isinstance(origin_cls, str) and origin_cls == module.__class__.__name__) or \
            (module.__class__ == origin_cls):
@@ -111,7 +112,7 @@ class ModelSharder(object):
         Replace the attribute of the layer
 
         Args:
-            layer (:class:`torch.nn.Module`): The object of layer to shard
+            module (:class:`torch.nn.Module`): The object of layer to shard
             attr_replacement (Dict): The attribute dict to modify
         """
         for k, v in attr_replacement.items():
@@ -126,7 +127,7 @@ class ModelSharder(object):
         Replace the parameter of the layer
 
         Args:
-            layer (:class:`torch.nn.Module`): The object of layer to shard
+            module (:class:`torch.nn.Module`): The object of layer to shard
             param_replacement (List[Callable]): The function list to get parameter shard information in policy
         """
         for param_func in param_replacement:
