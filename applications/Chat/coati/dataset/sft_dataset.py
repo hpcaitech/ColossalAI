@@ -13,12 +13,10 @@
 #    limitations under the License.
 
 import copy
-import random
-from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Sequence, Tuple
+from dataclasses import dataclass
+from typing import Callable, Dict, Sequence
 
 import torch
-import torch.distributed as dist
 import transformers
 from torch.utils.data import Dataset
 from tqdm import tqdm
@@ -99,7 +97,7 @@ def _tokenize_fn(strings: Sequence[str], tokenizer: transformers.PreTrainedToken
     )
 
 
-def preprocess(
+def _preprocess(
     sources: Sequence[str],
     targets: Sequence[str],
     tokenizer: transformers.PreTrainedTokenizer,
@@ -113,6 +111,7 @@ def preprocess(
     input_ids = examples_tokenized["input_ids"]
     labels = copy.deepcopy(input_ids)
     for label, source_len in zip(labels, sources_tokenized["input_ids_lens"]):
+        # FIXME: This is wrong if padding is 'left'!
         label[:source_len] = IGNORE_INDEX
     return dict(input_ids=input_ids, labels=labels)
 
@@ -190,27 +189,15 @@ class SupervisedDataset(Dataset):
             list_data_dict = list_data_dict[:max_datasets_size]
 
         logger.info("Formatting inputs...")
-        if "conversations" not in list_data_dict[0]:
-            prompt_input, prompt_no_input = PROMPT_DICT["prompt_input"], PROMPT_DICT["prompt_no_input"]
-            sources = [
-                prompt_input.format_map(example)
-                if example.get("input", "") != "" else prompt_no_input.format_map(example) for example in list_data_dict
-            ]
-            targets = [f"{example['output']}{tokenizer.eos_token}" for example in list_data_dict]
+        prompt_input, prompt_no_input = PROMPT_DICT["prompt_input"], PROMPT_DICT["prompt_no_input"]
+        sources = [
+            prompt_input.format_map(example) if example.get("input", "") != "" else prompt_no_input.format_map(example)
+            for example in list_data_dict
+        ]
+        targets = [f"{example['output']}{tokenizer.eos_token}" for example in list_data_dict]
 
-            if is_rank_0():
-                logger.info("Tokenizing inputs... This may take some time...")
-
-            data_dict = preprocess(sources, targets, tokenizer, max_length)
-        else:
-            if is_rank_0():
-                logger.info("Tokenizing inputs... This may take some time...")
-
-            sources = [conv["conversations"] for conv in list_data_dict]
-            data_dict = preprocess_conversation(sources, tokenizer, max_length)
-
-        if is_rank_0():
-            logger.info("Tokenizing finish.")
+        logger.info("Tokenizing inputs... This may take some time...")
+        data_dict = _preprocess(sources, targets, tokenizer, max_length)
 
         self.input_ids = data_dict["input_ids"]
         self.labels = data_dict["labels"]

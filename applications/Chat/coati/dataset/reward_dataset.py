@@ -56,8 +56,8 @@ class RmStaticDataset(Dataset):
         return length
 
     def __getitem__(self, idx):
-        return self.chosen[idx]["input_ids"], self.chosen[idx]["attention_mask"], self.reject[idx][
-            "input_ids"], self.reject[idx]["attention_mask"]
+        return self.chosen[idx]["input_ids"], self.chosen[idx]["attention_mask"], \
+            self.reject[idx]["input_ids"], self.reject[idx]["attention_mask"]
 
 
 # Anthropic/hh-rlhf
@@ -108,5 +108,5 @@ class HhRlhfDataset(Dataset):
         return length
 
     def __getitem__(self, idx):
-        return self.chosen[idx]["input_ids"], self.chosen[idx]["attention_mask"], self.reject[idx][
-            "input_ids"], self.reject[idx]["attention_mask"]
+        return self.chosen[idx]["input_ids"], self.chosen[idx]["attention_mask"], \
+            self.reject[idx]["input_ids"], self.reject[idx]["attention_mask"]
