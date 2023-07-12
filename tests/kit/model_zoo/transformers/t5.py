@@ -17,7 +17,8 @@ def data_gen_for_encoder_only():
     # tokenizer = T5Tokenizer.from_pretrained("t5-small")
     # input_ids = tokenizer("translate English to German: The house is wonderful.", return_tensors="pt").input_ids
     input_ids = torch.Tensor([[13959, 1566, 12, 2968, 10, 37, 629, 19, 1627, 5, 1, 12]]).long()
-    return dict(input_ids=input_ids)
+    attention_mask = torch.Tensor([[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0]]).long()
+    return dict(input_ids=input_ids, attention_mask=attention_mask)
 
 
 def data_gen_for_conditional_generation():
@@ -61,15 +62,15 @@ model_zoo.register(name='transformers_t5',
                    output_transform_fn=output_transform_fn,
                    loss_fn=loss_fn_for_t5_model,
                    model_attribute=ModelAttribute(has_control_flow=True))
-model_zoo.register(name='transformers_t5_for_conditional_generation',
-                   model_fn=lambda: transformers.T5ForConditionalGeneration(config),
-                   data_gen_fn=data_gen_for_conditional_generation,
-                   output_transform_fn=output_transform_fn,
-                   loss_fn=loss_fn_for_conditional_generation,
-                   model_attribute=ModelAttribute(has_control_flow=True))
-model_zoo.register(name='transformers_t5_encoder_model',
-                   model_fn=lambda: transformers.T5EncoderModel(config),
-                   data_gen_fn=data_gen_for_encoder_only,
-                   output_transform_fn=output_transform_fn,
-                   loss_fn=loss_fn_for_encoder_only,
-                   model_attribute=ModelAttribute(has_control_flow=True))
+# model_zoo.register(name='transformers_t5_for_conditional_generation',
+#                    model_fn=lambda: transformers.T5ForConditionalGeneration(config),
+#                    data_gen_fn=data_gen_for_conditional_generation,
+#                    output_transform_fn=output_transform_fn,
+#                    loss_fn=loss_fn_for_conditional_generation,
+#                    model_attribute=ModelAttribute(has_control_flow=True))
+# model_zoo.register(name='transformers_t5_encoder_model',
+#                    model_fn=lambda: transformers.T5EncoderModel(config),
+#                    data_gen_fn=data_gen_for_encoder_only,
+#                    output_transform_fn=output_transform_fn,
+#                    loss_fn=loss_fn_for_encoder_only,
+#                    model_attribute=ModelAttribute(has_control_flow=True))

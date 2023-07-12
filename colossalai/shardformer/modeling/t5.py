@@ -3,12 +3,14 @@ from typing import Optional, Tuple
 import torch
 
 __all__ = ['get_t5_forward']
+
+
 def get_t5_forward():
     try:
         from xformers.ops import memory_efficient_attention as me_attention
     except:
         raise ImportError("Error: xformers module is not installed. Please install it to use flash attention.")
-    
+
     def t5_flash_attention_forward(
         self,
         hidden_states,
@@ -27,6 +29,9 @@ def get_t5_forward():
         # Input is (batch_size, seq_length, dim)
         # Mask is (batch_size, key_length) (non-causal) or (batch_size, key_length, key_length)
         # past_key_value[0] is (batch_size, n_heads, q_len - 1, dim_per_head)
+        import pathlib
+        pathlib.Path("/home/lcjmy/code/personal/ColossalAI/colossalai/shardformer/modeling/mask.txt").write_text(
+            str(mask) + str(mask.shape))
         batch_size, seq_length = hidden_states.shape[:2]
 
         real_seq_length = seq_length
@@ -43,11 +48,11 @@ def get_t5_forward():
         def shape(states):
             """projection"""
             return states.view(batch_size, -1, self.n_heads, self.key_value_proj_dim)
-        
+
         def unshape(states):
             """reshape"""
             return states.view(batch_size, -1, self.inner_dim)
-        
+
         def project(hidden_states, proj_layer, key_value_states, past_key_value):
             """projects hidden states correctly to key/query states"""
             if key_value_states is None:
@@ -74,23 +79,21 @@ def get_t5_forward():
                     # cross-attn
                     hidden_states = past_key_value
             return hidden_states
-        
+
         # get query states
-        query_states = shape(self.q(hidden_states))  # (batch_size, n_heads, seq_length, dim_per_head)
+        query_states = shape(self.q(hidden_states))    # (batch_size, n_heads, seq_length, dim_per_head)
 
         # get key/value states
-        key_states = project(
-            hidden_states, self.k, key_value_states, past_key_value[0] if past_key_value is not None else None
-        )
-        value_states = project(
-            hidden_states, self.v, key_value_states, past_key_value[1] if past_key_value is not None else None
-        )
+        key_states = project(hidden_states, self.k, key_value_states,
+                             past_key_value[0] if past_key_value is not None else None)
+        value_states = project(hidden_states, self.v, key_value_states,
+                               past_key_value[1] if past_key_value is not None else None)
 
         if position_bias is None:
             if not self.has_relative_attention_bias:
-                position_bias = torch.zeros(
-                    (1, self.n_heads, real_seq_length, key_length), device=query_states.device, dtype=query_states.dtype
-                )
+                position_bias = torch.zeros((1, self.n_heads, real_seq_length, key_length),
+                                            device=query_states.device,
+                                            dtype=query_states.dtype)
                 if self.gradient_checkpointing and self.training:
                     position_bias.requires_grad = True
             else:
@@ -99,10 +102,10 @@ def get_t5_forward():
             # if key and values are already calculated
             # we want only the last query position bias
             if past_key_value is not None:
-                position_bias = position_bias[:, :, -hidden_states.size(1) :, :]
+                position_bias = position_bias[:, :, -hidden_states.size(1):, :]
 
             if mask is not None:
-                position_bias = position_bias + mask  # (batch_size, n_heads, seq_length, key_length)
+                position_bias = position_bias + mask    # (batch_size, n_heads, seq_length, key_length)
 
         if self.pruned_heads:
             mask = torch.ones(position_bias.shape[1])
@@ -112,7 +115,12 @@ def get_t5_forward():
             position_bias_masked = position_bias
 
         position_bias_masked = position_bias_masked.contiguous()
-        attn_output = me_attention(query_states, key_states, value_states, attn_bias=position_bias_masked, p=self.dropout, scale=1.0)
+        attn_output = me_attention(query_states,
+                                   key_states,
+                                   value_states,
+                                   attn_bias=position_bias_masked,
+                                   p=self.dropout,
+                                   scale=1.0)
         attn_output = unshape(attn_output)
         attn_output = self.o(attn_output)
 
@@ -121,5 +129,5 @@ def get_t5_forward():
         outputs = (attn_output,) + (present_key_value_state,) + (position_bias,)
 
         return outputs
-    
+
     return t5_flash_attention_forward
