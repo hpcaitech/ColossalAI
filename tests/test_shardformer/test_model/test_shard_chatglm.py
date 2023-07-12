@@ -16,6 +16,7 @@ from colossalai.testing import (
 from tests.kit.model_zoo import model_zoo
 from tests.test_shardformer.test_model._utils import build_model, run_forward
 
+
 def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn):
     # check forward
     org_output, org_loss, shard_output, shard_loss = run_forward(org_model, sharded_model, data_gen_fn,
@@ -30,16 +31,16 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
 
     # unwrap model
     if org_model.__class__.__name__ == 'ChatGLMModel':
-        vit_model = org_model
-        shard_vit_model = sharded_model
+        chatglm_model = org_model
+        shard_chatglm_model = sharded_model
     else:
         chatglm_model = org_model.transformer
         shard_chatglm_model = sharded_model.transformer
 
     # check attention grad
-    org_grad = vit_model.encoder.layer[0].attention.attention.query.weight.grad
-    shard_grad = shard_vit_model.encoder.layer[0].attention.attention.query.weight.grad
-    shard_weight = shard_vit_model.encoder.layer[0].attention.attention.query.weight
+    org_grad = chatglm_model.encoder.layers[0].self_attention.query_key_value.weight.grad
+    shard_grad = shard_chatglm_model.encoder.layers[0].self_attention.query_key_value.weight.grad
+    shard_weight = shard_chatglm_model.encoder.layers[0].self_attention.query_key_value.weight
 
     if is_distributed_tensor(shard_weight) or is_customized_distributed_tensor(shard_weight):
         shard_grad_list = [torch.zeros([*shard_grad.shape]).to('cuda') for _ in range(2)]
@@ -49,3 +50,45 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
         all_shard_grad = shard_grad
     assert torch.allclose(org_grad, all_shard_grad,
                           atol=1e-5), f"shard model grad is not equal to orgin model grad\n{org_grad}\n{shard_grad}"
+
+    # check embedding weights
+    org_grad = chatglm_model.embedding.word_embeddings.weight.grad
+    shard_grad = shard_chatglm_model.embedding.word_embeddings.weight.grad
+    shard_weight = shard_chatglm_model.embedding.word_embeddings.weight
+
+    if is_distributed_tensor(shard_weight) or is_customized_distributed_tensor(shard_weight):
+        shard_grad_list = [torch.zeros([*shard_grad.shape]).to('cuda') for _ in range(2)]
+        torch.distributed.all_gather(shard_grad_list, shard_grad)
+        all_shard_grad = torch.cat(shard_grad_list, dim=0)
+    else:
+        all_shard_grad = shard_grad
+
+    assert torch.allclose(org_grad, all_shard_grad,
+                          atol=1e-5), f"shard model grad is not equal to orgin model grad\n{org_grad}\n{all_shard_grad}"
+
+
+@parameterize('enable_fused_normalization', [True, False])
+@parameterize('enable_tensor_parallelism', [True, False])
+def run_chatglm_test(enable_fused_normalization, enable_tensor_parallelism):
+    sub_model_zoo = model_zoo.get_sub_registry('transformers_chatglm')
+    for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
+        org_model, sharded_model = build_model(model_fn, enable_fused_normalization, enable_tensor_parallelism)
+        check_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn)
+    torch.cuda.empty_cache()
+
+
+def check_chatglm(rank, world_size, port):
+    disable_existing_loggers()
+    colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    run_chatglm_test()
+
+
+@pytest.mark.dist
+@rerun_if_address_is_in_use()
+@clear_cache_before_run()
+def test_chatglm():
+    spawn(check_chatglm, 2)
+
+
+if __name__ == "__main__":
+    test_chatglm()
