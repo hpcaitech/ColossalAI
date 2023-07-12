@@ -19,6 +19,7 @@ from colossalai.testing import (
 from tests.kit.model_zoo import model_zoo
 from tests.test_shardformer.test_model._utils import build_model, run_forward
 
+
 def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn):
     # check forward
     org_output, org_loss, shard_output, shard_loss = run_forward(org_model, sharded_model, data_gen_fn,
