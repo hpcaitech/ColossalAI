@@ -130,6 +130,7 @@ class ThreeDimParallelPlugin(PipelinePluginBase):
         pp_size: int,
         precision: str = 'fp16',
         zero_stage: int = 0,
+        cpu_offload: bool = False,
         enable_fused_normalization: bool = False,
         num_microbatches: Optional[int] = None,
         initial_scale: float = 2**16,
@@ -149,6 +150,7 @@ class ThreeDimParallelPlugin(PipelinePluginBase):
         self.dp_size = dist.get_world_size() // (tp_size * pp_size)
         self.precision = precision
         self.zero_stage = zero_stage
+        self.cpu_offload = cpu_offload
         self.enable_fused_normalization = enable_fused_normalization
         self.pg_mesh = ProcessGroupMesh(self.dp_size, self.pp_size, self.tp_size)
         self.stage_manager = None
@@ -214,8 +216,10 @@ class ThreeDimParallelPlugin(PipelinePluginBase):
                 optimizer = PipelineZeroOptimizer(optimizer,
                                                   model,
                                                   partition_grad=(self.zero_stage == 2),
+                                                  cpu_offload=self.cpu_offload,
                                                   dp_process_group=self.dp_group,
                                                   tp_process_group=self.tp_group,
+                                                  verbose=True,
                                                   **self.amp_config)
         return model, optimizer, criterion, dataloader, lr_scheduler
 

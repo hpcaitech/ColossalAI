@@ -52,6 +52,8 @@ class LowLevelZeroFP16MixedPrecisionMixin(FP16MixedPrecisionMixin):
         for group_id in range(self.num_working_param_groups):
             for avg_grad in self.grad_store.get_working_grads_by_group_id(group_id):
                 if avg_grad is not None and has_inf_or_nan(avg_grad):
+                    if dist.get_rank() == 0:
+                        print(f'overflow grad {avg_grad}')
                     return True
         return False
 
@@ -362,7 +364,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         if self.mixed_precision_mixin is not None and self.mixed_precision_mixin.should_skip_step():
             self._grad_store.reset_all_gradients()
             if self._verbose:
-                self._logger.info(f'Found overflow. Skip step')
+                self._logger.info(f'Found overflow. Skip step', ranks=[0])
             self.zero_grad()
             return
 

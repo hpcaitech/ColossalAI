@@ -161,6 +161,7 @@ def reduce_tensor_dp_group(tensor: torch.Tensor,
 
 
 def has_inf_or_nan(tensor):
+    return not torch.isfinite(tensor).all()
     try:
         # if tensor is half, the .float() incurs an additional deep copy, but it's necessary if
         # Pytorch's .sum() creates a one-element tensor of the same type as tensor

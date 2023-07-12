@@ -93,7 +93,7 @@ def main():
     parser.add_argument('-c', '--config', type=str, default='7b', help='Model configuration')
     parser.add_argument('-p',
                         '--plugin',
-                        choices=['gemini', 'gemini_cuda', 'gemini_cpu', 'fsdp', 'fsdp_cpu', '3d'],
+                        choices=['gemini', 'gemini_cuda', 'gemini_cpu', 'fsdp', 'fsdp_cpu', '3d', '3d_cpu'],
                         default='gemini',
                         help='Choose which plugin to use')
     parser.add_argument('-b', '--batch_size', type=int, default=2, help='Batch size')
@@ -110,7 +110,7 @@ def main():
     parser.add_argument('--zero', type=int, default=0)
     args = parser.parse_args()
 
-    colossalai.launch_from_torch({})
+    colossalai.launch_from_torch({}, seed=42)
     coordinator = DistCoordinator()
 
     def empty_init():
@@ -163,7 +163,15 @@ def main():
                                         zero_stage=args.zero,
                                         enable_fused_normalization=True,
                                         num_microbatches=args.mbs,
-                                        initial_scale=2**5)
+                                        initial_scale=2**0)
+    elif args.plugin == '3d_cpu':
+        plugin = ThreeDimParallelPlugin(tp_size=args.tp,
+                                        pp_size=args.pp,
+                                        zero_stage=args.zero,
+                                        enable_fused_normalization=True,
+                                        num_microbatches=args.mbs,
+                                        initial_scale=2**0,
+                                        cpu_offload=True)
     else:
         raise ValueError(f'Unknown plugin {args.plugin}')
 
@@ -177,6 +185,8 @@ def main():
     dataset = RandomDataset(num_samples=args.batch_size * args.num_steps * dp_size,
                             max_length=args.max_length,
                             vocab_size=config.vocab_size)
+    if coordinator.is_master():
+        torch.save(dataset.input_ids, '/mnt/vepfs/lclhx/input_ids.pt')
     dataloader = plugin.prepare_dataloader(dataset, batch_size=args.batch_size, shuffle=True, drop_last=True)
 
     # ==============================
@@ -207,14 +217,16 @@ def main():
                                                  dp_world_size=dp_size)
 
     optimizer = HybridAdam(model.parameters())
+    torch.set_default_dtype(torch.float16)
     model, optimizer, _, dataloader, _ = booster.boost(model, optimizer, dataloader=dataloader)
+    torch.set_default_dtype(torch.float)
     timer.end()
     coordinator.print_on_master(f'Booster init time: {timer.duration:.2f} s')
     coordinator.print_on_master(f'Booster init max CUDA memory: {torch.cuda.max_memory_allocated()/1024**2:.2f} MB')
     coordinator.print_on_master(
         f'Booster init max CPU memory: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024:.2f} MB')
 
-    if args.plugin == '3d' and args.pp > 1:
+    if isinstance(plugin, ThreeDimParallelPlugin) and args.pp > 1:
         data_iter = iter(dataloader)
         for step in tqdm(range(len(dataloader)), desc='Step', disable=not coordinator.is_master()):
             performance_evaluator.on_step_start(step)
@@ -225,7 +237,7 @@ def main():
                                      return_loss=False)
             optimizer.step()
             optimizer.zero_grad()
-            performance_evaluator.on_step_end(input_ids=torch.empty(args.batch_size, 1))
+            performance_evaluator.on_step_end(input_ids=torch.empty(args.batch_size, args.max_length))
     else:
         for step, batch in enumerate(tqdm(dataloader, desc='Step', disable=not coordinator.is_master())):
             performance_evaluator.on_step_start(step)
