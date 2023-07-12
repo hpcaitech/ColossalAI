@@ -175,7 +175,7 @@ class BloomModelPolicy(BloomPolicy):
         return held_layers
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
-        '''no shared params in bloommodel'''
+        '''no shared params in bloom model'''
         return []
 
 
@@ -192,7 +192,46 @@ class BloomForCausalLMPolicy(BloomPolicy):
                                                         policy=policy,
                                                         target_key=BloomForCausalLM)
 
+        if self.pipeline_stage_manager:
+            stage_manager = self.pipeline_stage_manager
+            layers_per_stage = Policy.distribute_layers(len(self.model.transformer.h), stage_manager.num_stages)
+            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
+            method_replace_ment = {
+                "forward":
+                    partial(bloom_for_causal_lm_forward,
+                            stage_manager=self.pipeline_stage_manager,
+                            stage_index=stage_index)
+            }
+            self.append_or_create_method_replacement(description=method_replace_ment,
+                                                     policy=policy,
+                                                     target_key=BloomForCausalLM)
         return policy
+
+    def get_held_layers(self) -> List[Module]:
+        """Get pipeline layers for current stage."""
+        module = self.model
+        stage_manager = self.pipeline_stage_manager
+        held_layers = []
+        layers_per_stage = self.distribute_layers(len(module.transformer.h), stage_manager.num_stages)
+        if stage_manager.is_first_stage():
+            held_layers.append(module.transformer.word_embeddings)
+            held_layers.append(module.transformer.word_embeddings_layernorm)
+        start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
+        held_layers.extend(module.transformer.h[start_idx:end_idx])
+        if stage_manager.is_last_stage():
+            held_layers.append(module.transformer.ln_f)
+            held_layers.append(module.lm_head)
+        return held_layers
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        bloom_model = self.model
+        if id(bloom_model.transformer.word_embeddings.weight) == id(bloom_model.lm_head.weight):
+            # tie weights
+            return [{
+                0: bloom_model.transformer.word_embeddings.weight,
+                self.stage_manager.num_stages - 1: bloom_model.lm_head.weight
+            }]
+        return []
 
     def postprocess(self):
         if self.shard_config.enable_tensor_parallelism:
@@ -217,8 +256,40 @@ class BloomForSequenceClassificationPolicy(BloomPolicy):
                 suffix="score", target_module=col_nn.Linear1D_Col, kwargs=dict(gather_output=True)),
                                                         policy=policy,
                                                         target_key=BloomForSequenceClassification)
-
+        if self.pipeline_stage_manager:
+            stage_manager = self.pipeline_stage_manager
+            layers_per_stage = Policy.distribute_layers(len(self.model.transformer.h), stage_manager.num_stages)
+            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
+            method_replace_ment = {
+                "forward":
+                    partial(bloom_for_sequence_classification_forward,
+                            stage_manager=self.pipeline_stage_manager,
+                            stage_index=stage_index)
+            }
+            self.append_or_create_method_replacement(description=method_replace_ment,
+                                                     policy=policy,
+                                                     target_key=BloomForSequenceClassification)
         return policy
+
+    def get_held_layers(self) -> List[Module]:
+        """Get pipeline layers for current stage."""
+        module = self.model
+        stage_manager = self.pipeline_stage_manager
+        held_layers = []
+        layers_per_stage = self.distribute_layers(len(module.transformer.h), stage_manager.num_stages)
+        if stage_manager.is_first_stage():
+            held_layers.append(module.transformer.word_embeddings)
+            held_layers.append(module.transformer.word_embeddings_layernorm)
+        start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
+        held_layers.extend(module.transformer.h[start_idx:end_idx])
+        if stage_manager.is_last_stage():
+            held_layers.append(module.transformer.ln_f)
+            held_layers.append(module.score)
+        return held_layers
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        """No shared params in bloom for sequence classification model"""
+        return []
 
 
 class BloomForTokenClassificationPolicy(BloomPolicy):
@@ -241,12 +312,81 @@ class BloomForTokenClassificationPolicy(BloomPolicy):
                                                         policy=policy,
                                                         target_key=BloomForTokenClassification)
 
+        if self.pipeline_stage_manager:
+            stage_manager = self.pipeline_stage_manager
+            layers_per_stage = Policy.distribute_layers(len(self.model.transformer.h), stage_manager.num_stages)
+            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
+            method_replace_ment = {
+                "forward":
+                    partial(bloom_for_token_classification_forward,
+                            stage_manager=self.pipeline_stage_manager,
+                            stage_index=stage_index)
+            }
+            self.append_or_create_method_replacement(description=method_replace_ment,
+                                                     policy=policy,
+                                                     target_key=BloomForTokenClassification)
         return policy
+
+    def get_held_layers(self) -> List[Module]:
+        """Get pipeline layers for current stage."""
+        module = self.model
+        stage_manager = self.pipeline_stage_manager
+        held_layers = []
+        layers_per_stage = self.distribute_layers(len(module.transformer.h), stage_manager.num_stages)
+        if stage_manager.is_first_stage():
+            held_layers.append(module.transformer.word_embeddings)
+            held_layers.append(module.transformer.word_embeddings_layernorm)
+        start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
+        held_layers.extend(module.transformer.h[start_idx:end_idx])
+        if stage_manager.is_last_stage():
+            held_layers.append(module.transformer.ln_f)
+            held_layers.append(module.dropout)
+            held_layers.append(module.classifier)
+        return held_layers
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        """No shared params in bloom for token classification model"""
+        return []
 
 
 class BloomForQuestionAnsweringPolicy(BloomPolicy):
     # No head sharding as the output features is only 2
-    pass
+    def module_policy(self):
+        from transformers.models.bloom.modeling_bloom import BloomForQuestionAnswering
+        policy = super().module_policy()
+        if self.pipeline_stage_manager:
+            stage_manager = self.pipeline_stage_manager
+            layers_per_stage = Policy.distribute_layers(len(self.model.transformer.h), stage_manager.num_stages)
+            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
+            method_replace_ment = {
+                "forward":
+                    partial(bloom_for_question_answering_forward,
+                            stage_manager=self.pipeline_stage_manager,
+                            stage_index=stage_index)
+            }
+            self.append_or_create_method_replacement(description=method_replace_ment,
+                                                     policy=policy,
+                                                     target_key=BloomForQuestionAnswering)
+
+    def get_held_layers(self) -> List[Module]:
+        """Get pipeline layers for current stage."""
+        module = self.model
+        stage_manager = self.pipeline_stage_manager
+        held_layers = []
+        layers_per_stage = self.distribute_layers(len(module.transformer.h), stage_manager.num_stages)
+        if stage_manager.is_first_stage():
+            held_layers.append(module.transformer.word_embeddings)
+            held_layers.append(module.transformer.word_embeddings_layernorm)
+        start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
+        held_layers.extend(module.transformer.h[start_idx:end_idx])
+        if stage_manager.is_last_stage():
+            held_layers.append(module.transformer.ln_f)
+            held_layers.append(module.qa_outputs)
+        return held_layers
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        """No shared params in bloom for question answering model"""
+        return []
 
 
 def bloom_model_forward(
