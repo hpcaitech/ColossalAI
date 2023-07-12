@@ -11,10 +11,13 @@ import numpy as np
 import random
 import json
 import torch
+import torch.profiler
 import torch.distributed as dist
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.sampler import RandomSampler, SequentialSampler
 from torch.utils.data.distributed import DistributedSampler
+sys.path.append("..")
+from attn import SUPPORT_XFORMERS, replace_xformers
 from tqdm import tqdm
 
 from transformers import (
@@ -87,6 +90,7 @@ def get_argument_parser():
     parser.add_argument('-g', '--grad_checkpoint', action='store_true', help='Use gradient checkpointing')
     parser.add_argument('-l', '--max_length', type=int, default=2048, help='Max sequence length')
     parser.add_argument('-w', '--world_size', type=int, default=4, help='Distributed world size')
+    parser.add_argument('-x', '--xformers', action='store_true', help='Use xformers')
     parser.add_argument('-train_micro_batch_size_per_gpu', type=int, default=2, help='Batch size per GPU')
 
     return parser
@@ -176,6 +180,11 @@ def main():
     if args.grad_checkpoint:
         print("Enabling gradient checkpointing")
         model.gradient_checkpointing_enable()
+
+    if args.xformers:
+        assert SUPPORT_XFORMERS, 'Use flash attention while xfomers is not installed'
+        replace_xformers(model)
+
     model_numel = get_model_numel(model)
     performance_evaluator = PerformanceEvaluator(model_numel, args.grad_checkpoint, args.ignore_steps,
                                                  args.world_size)
@@ -208,18 +217,39 @@ def main():
 
     end_time = time.time()
     print(f'Initialization took {end_time - start_time:.2f} seconds')
-    for step, batch in enumerate(tqdm(data_loader, desc='Step')):
-        #forward() method
-        # print(batch)
-        performance_evaluator.on_step_start(step)
-        loss = model_engine(**batch).loss
-        #runs backpropagation
-        model_engine.backward(loss)
 
-        #weight update
-        model_engine.step()
-        optimizer.zero_grad()
-        performance_evaluator.on_step_end(**batch)
+    related_env = {key_value[0]: key_value[1] for key_value in os.environ.items() if key_value[0].startswith("NCCL") or "CUDA" in key_value[0]}
+    print("="*30)
+    print("related env: ", related_env)
+    print("="*30)
+
+    with torch.profiler.profile(
+            activities=[
+                torch.profiler.ProfilerActivity.CPU,
+                torch.profiler.ProfilerActivity.CUDA],
+            schedule=torch.profiler.schedule(
+                wait=1,
+                warmup=1,
+                active=2),
+            on_trace_ready=torch.profiler.tensorboard_trace_handler('./zero_profile_full', worker_name='worker0'),
+            with_stack=True,
+            record_shapes=True,
+            profile_memory=True,
+            with_flops=True
+    ) as p:
+        for step, batch in enumerate(tqdm(data_loader, desc='Step')):
+            #forward() method
+            # print(batch)
+            performance_evaluator.on_step_start(step)
+            loss = model_engine(**batch).loss
+            #runs backpropagation
+            model_engine.backward(loss)
+
+            #weight update
+            model_engine.step()
+            optimizer.zero_grad()
+            performance_evaluator.on_step_end(**batch)
+            p.step()
 
     performance_evaluator.on_fit_end()
     rank = dist.get_rank()

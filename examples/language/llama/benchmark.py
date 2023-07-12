@@ -1,4 +1,6 @@
 import argparse
+import os
+
 import resource
 from contextlib import contextmanager, nullcontext
 
@@ -8,6 +10,7 @@ import time
 
 import torch
 import torch.nn as nn
+import torch.profiler
 
 from attn import SUPPORT_XFORMERS, replace_xformers
 
@@ -200,6 +203,25 @@ def main():
     coordinator.print_on_master(
         f'Booster init max CPU memory: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024:.2f} MB')
 
+    related_env = {key_value[0]: key_value[1] for key_value in os.environ.items() if key_value[0].startswith("NCCL") or "CUDA" in key_value[0]}
+    print("="*30)
+    print("related env: ", related_env)
+    print("="*30)
+
+    # with torch.profiler.profile(
+    #         activities=[
+    #             torch.profiler.ProfilerActivity.CPU,
+    #             torch.profiler.ProfilerActivity.CUDA],
+    #         schedule=torch.profiler.schedule(
+    #             wait=0,
+    #             warmup=1,
+    #             active=2),
+    #         on_trace_ready=torch.profiler.tensorboard_trace_handler('./gemini_profile_2node_cuda'),
+    #         with_stack=True,
+    #         record_shapes=True,
+    #         profile_memory=True,
+    #         with_flops=True
+    # ) as p:
     for step, batch in enumerate(tqdm(dataloader, desc='Step', disable=not coordinator.is_master())):
         performance_evaluator.on_step_start(step)
         outputs = model(**batch)
@@ -208,6 +230,7 @@ def main():
         optimizer.step()
         optimizer.zero_grad()
         performance_evaluator.on_step_end(**batch)
+            # p.step()
 
     performance_evaluator.on_fit_end()
     coordinator.print_on_master(f'Max CUDA memory usage: {torch.cuda.max_memory_allocated()/1024**2:.2f} MB')

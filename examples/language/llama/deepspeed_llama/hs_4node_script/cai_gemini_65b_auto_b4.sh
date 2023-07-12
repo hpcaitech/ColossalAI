@@ -30,5 +30,6 @@ export NCCL_SOCKET_IFNAME=eth0
 export NCCL_IB_GID_INDEX=3
 export NCCL_IB_TIMEOUT=23
 export NCCL_IB_RETRY_CNT=7
+export OMP_NUM_THREADS=8
 
 colossalai run --nproc_per_node 8 --hostfile ${ROOT}/cai_host_4.txt --master_addr 192.168.0.189 benchmark.py -c '65b' --plugin "gemini" -l 512 -g -b 4 > ${ROOT}/cai_gemini_65b_auto_b4.log 2>&1
