@@ -30,12 +30,12 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
 
     # check grad
 
-    if org_model.__class__.__name__ == 'WhisperModel':
+    if org_model.__class__.__name__ == 'WhisperForConditionalGeneration':
+        whisper = org_model.model
+        sharded_whisper = sharded_model.model
+    else:
         whisper = org_model
         sharded_whisper = sharded_model
-    # else:
-    #     bert = org_model.bert
-    #     sharded_bert = sharded_model.bert
 
     # compare self attention grad
     org_grad = whisper.encoder.layers[0].self_attn.q_proj.weight.grad
@@ -50,6 +50,10 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
         all_shard_grad = shard_grad
     assert torch.allclose(org_grad, all_shard_grad,
                           atol=1e-5), f"shard model grad is not equal to orgin model grad\n{org_grad}\n{all_shard_grad}"
+
+    # WhisperForAudioClassification does not have decoder and embedding layer
+    if org_model.__class__.__name__ == 'WhisperForAudioClassification':
+        return
 
     # compare embedding grad
     org_grad = whisper.decoder.embed_tokens.weight.grad

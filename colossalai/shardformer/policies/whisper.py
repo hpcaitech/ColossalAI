@@ -183,12 +183,50 @@ class WhisperPolicy(Policy):
                                                         target_key=WhisperDecoder)
         return policy
 
+    def add_lm_head_policy(self, base_policy):
+        from transformers.models.whisper.modeling_whisper import WhisperForConditionalGeneration
+
+        # optimize for tensor parallelism
+        if self.shard_config.enable_tensor_parallelism:
+            self.append_or_create_submodule_replacement(description=SubModuleReplacementDescription(
+                suffix="proj_out", target_module=col_nn.Linear1D_Col, kwargs={"gather_output": True}),
+                                                        policy=base_policy,
+                                                        target_key=WhisperForConditionalGeneration)
+
+        return base_policy
+
     def postprocess(self):
         return self.model
 
 
 # WhisperModel
 class WhisperModelPolicy(WhisperPolicy):
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+# WhisperForConditionalGeneration
+class WhisperForConditionalGenerationPolicy(WhisperPolicy):
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    def module_policy(self):
+        module_policy = super().module_policy()
+        module_policy = self.add_lm_head_policy(module_policy)
+        return module_policy
+
+    def postprocess(self):
+        binding_map = {"model.decoder.embed_tokens.weight": "proj_out.weight"}
+        for k, v in binding_map.items():
+            param = getattr_(self.model, k)
+            setattr_(self.model, v, param)
+        return self.model
+
+
+# WhisperForAudioClassification
+class WhisperForAudioClassificationPolicy(WhisperPolicy):
 
     def __init__(self) -> None:
         super().__init__()

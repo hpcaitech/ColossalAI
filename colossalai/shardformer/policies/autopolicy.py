@@ -104,6 +104,10 @@ _POLICY_LIST = {
     # Whisper
     "transformers.models.whisper.modeling_whisper.WhisperModel":
         PolicyLocation(file_name="whisper", class_name="WhisperModelPolicy"),
+    "transformers.models.whisper.modeling_whisper.WhisperForConditionalGeneration":
+        PolicyLocation(file_name="whisper", class_name="WhisperForConditionalGenerationPolicy"),
+    "transformers.models.whisper.modeling_whisper.WhisperForAudioClassification":
+        PolicyLocation(file_name="whisper", class_name="WhisperForAudioClassificationPolicy"),
 }
 
 
