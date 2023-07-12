@@ -67,15 +67,14 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
                           atol=1e-5), f"shard model grad is not equal to orgin model grad\n{org_grad}\n{all_shard_grad}"
 
 
-# @parameterize('enable_fused_normalization', [True, False])
-# @parameterize('enable_tensor_parallelism', [True, False])
-# def run_whisper_test(enable_fused_normalization, enable_tensor_parallelism):
-def run_whisper_test():
+@parameterize('enable_fused_normalization', [True, False])
+@parameterize('enable_tensor_parallelism', [True, False])
+def run_whisper_test(enable_fused_normalization, enable_tensor_parallelism):
     sub_model_zoo = model_zoo.get_sub_registry('transformers_whisper')
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         org_model, sharded_model = build_model(model_fn,
-                                               enable_fused_normalization=False,
-                                               enable_tensor_parallelism=True)
+                                               enable_fused_normalization=enable_fused_normalization,
+                                               enable_tensor_parallelism=enable_tensor_parallelism)
         check_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn)
 
     torch.cuda.empty_cache()

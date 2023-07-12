@@ -125,12 +125,12 @@ class WhisperPolicy(Policy):
                                                                       ),
                                                                   ])
 
-            # policy[WhisperDecoder] = ModulePolicyDescription(sub_module_replacement=[
-            #     SubModuleReplacementDescription(
-            #         suffix="embed_tokens",
-            #         target_module=col_nn.VocabParallelEmbedding1D,
-            #     ),
-            # ])
+            policy[WhisperDecoder] = ModulePolicyDescription(sub_module_replacement=[
+                SubModuleReplacementDescription(
+                    suffix="embed_tokens",
+                    target_module=col_nn.VocabParallelEmbedding1D,
+                ),
+            ])
 
         # optimization configuration
         if self.shard_config.enable_fused_normalization:
