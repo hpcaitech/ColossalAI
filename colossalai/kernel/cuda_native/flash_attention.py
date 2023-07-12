@@ -86,11 +86,11 @@ if HAS_MEM_EFF_ATTN:
 
     class ColoAttention(torch.nn.Module):
 
-        def __init__(self, embed_dim: int, num_heads: int, dropout: float = 0.0):
+        def __init__(self, embed_dim: int, num_heads: int, dropout: float = 0.0, scale=1.0):
             super().__init__()
             assert embed_dim % num_heads == 0, \
                 f"the embed dim ({embed_dim}) is not divisible by the number of attention heads ({num_heads})."
-            self.scale = 1 / math.sqrt(embed_dim // num_heads)
+            self.scale = scale
             self.dropout = dropout
 
         @staticmethod
