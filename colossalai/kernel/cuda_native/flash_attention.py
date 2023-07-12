@@ -22,7 +22,12 @@ if HAS_MEM_EFF_ATTN:
 
     from einops import rearrange
     from xformers.ops.fmha import MemoryEfficientAttentionCutlassOp
-    from xformers.ops.fmha.attn_bias import BlockDiagonalMask, BlockDiagonalCausalMask, LowerTriangularMask, LowerTriangularMaskWithTensorBias
+    from xformers.ops.fmha.attn_bias import (
+        BlockDiagonalCausalMask,
+        BlockDiagonalMask,
+        LowerTriangularMask,
+        LowerTriangularMaskWithTensorBias,
+    )
 
     from .scaled_softmax import AttnMaskType
 
@@ -86,11 +91,14 @@ if HAS_MEM_EFF_ATTN:
 
     class ColoAttention(torch.nn.Module):
 
-        def __init__(self, embed_dim: int, num_heads: int, dropout: float = 0.0, scale=1.0):
+        def __init__(self, embed_dim: int, num_heads: int, dropout: float = 0.0, scale=None):
             super().__init__()
             assert embed_dim % num_heads == 0, \
                 f"the embed dim ({embed_dim}) is not divisible by the number of attention heads ({num_heads})."
-            self.scale = scale
+            if scale is not None:
+                self.scale = scale
+            else:
+                self.scale = 1 / math.sqrt(embed_dim // num_heads)
             self.dropout = dropout
 
         @staticmethod
