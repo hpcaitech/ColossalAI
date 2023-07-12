@@ -205,7 +205,6 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
                 # the backward pass.
                 input_obj = input_objs.pop(0)
                 output_obj = output_objs.pop(0)
-
                 input_obj_grad = self.backward_step(optimizer, input_obj, output_obj, output_obj_grad)
 
                 if last_iteration:
