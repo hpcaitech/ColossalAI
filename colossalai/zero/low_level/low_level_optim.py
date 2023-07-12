@@ -424,11 +424,21 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             master_working_param = self.optim.param_groups[group_id]['params']
 
             for idx, splited_param in enumerate(master_working_param):
-                full_master_param = [torch.zeros_like(splited_param).cuda() for _ in range(self._world_size)]
-                dist.all_gather(full_master_param, splited_param.cuda(), group=self.dp_pg)
+                full_master_param = [
+                    torch.zeros_like(splited_param, dtype=self._dtype, device='cuda') for _ in range(self._world_size)
+                ]
+                dist.all_gather(full_master_param, splited_param.cuda().to(self._dtype), group=self.dp_pg)
                 working_param = real_working_params[group_id][idx]
                 full_master_param = flatten(full_master_param)[:working_param.numel()].reshape_as(working_param)
                 working_param.data.copy_(full_master_param)
+                # padding_left = self._local_rank * splited_param.numel()
+                # padding_right = splited_param.numel() * (self._world_size - self._local_rank - 1)
+                # with torch.no_grad():
+                #     working_param.data.copy_(
+                #         torch.nn.functional.pad(
+                #             splited_param,
+                #             (padding_left, padding_right))[:working_param.numel()].reshape_as(working_param))
+                # dist.all_reduce(working_param, group=self.dp_pg)
 
             self.optim.param_groups[group_id]['params'] = self._master_param_groups_of_current_rank[group_id]
 

@@ -29,8 +29,8 @@ export NCCL_SOCKET_IFNAME=eth0
 export NCCL_IB_GID_INDEX=3
 export NCCL_IB_TIMEOUT=23
 export NCCL_IB_RETRY_CNT=7
-export OMP_NUM_THREADS=16
+export OMP_NUM_THREADS=8
 export BATCH=${1:-16}
 export TP=${2:-4}
 
-colossalai run --nproc_per_node 8 --hostfile ${ROOT}/cai_host_4.txt --master_addr 192.168.0.189 --master_port 29600 benchmark.py -c 65b -x -p 3d -b $BATCH --tp $TP --zero 2
+colossalai run --nproc_per_node 8 --hostfile ${ROOT}/cai_host_4.txt --master_addr 192.168.0.189 --master_port 29600 benchmark.py -c 65b -x -g -p 3d_cpu -b $BATCH --tp $TP --zero 2

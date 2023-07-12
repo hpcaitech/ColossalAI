@@ -3,6 +3,7 @@ import resource
 import time
 from contextlib import contextmanager, nullcontext
 from random import randint
+from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -110,7 +111,7 @@ def main():
     parser.add_argument('--zero', type=int, default=0)
     args = parser.parse_args()
 
-    colossalai.launch_from_torch({}, seed=42)
+    colossalai.launch_from_torch({})
     coordinator = DistCoordinator()
 
     def empty_init():
@@ -163,14 +164,16 @@ def main():
                                         zero_stage=args.zero,
                                         enable_fused_normalization=True,
                                         num_microbatches=args.mbs,
-                                        initial_scale=2**0)
+                                        precision='bf16',
+                                        initial_scale=2**8)
     elif args.plugin == '3d_cpu':
         plugin = ThreeDimParallelPlugin(tp_size=args.tp,
                                         pp_size=args.pp,
                                         zero_stage=args.zero,
                                         enable_fused_normalization=True,
                                         num_microbatches=args.mbs,
-                                        initial_scale=2**0,
+                                        initial_scale=2**8,
+                                        precision='bf16',
                                         cpu_offload=True)
     else:
         raise ValueError(f'Unknown plugin {args.plugin}')
@@ -185,8 +188,6 @@ def main():
     dataset = RandomDataset(num_samples=args.batch_size * args.num_steps * dp_size,
                             max_length=args.max_length,
                             vocab_size=config.vocab_size)
-    if coordinator.is_master():
-        torch.save(dataset.input_ids, '/mnt/vepfs/lclhx/input_ids.pt')
     dataloader = plugin.prepare_dataloader(dataset, batch_size=args.batch_size, shuffle=True, drop_last=True)
 
     # ==============================
@@ -198,9 +199,8 @@ def main():
 
     timer = Timer()
     timer.start()
-    with no_init_weights(), init_ctx:
+    with init_ctx:
         model = LlamaForCausalLM(config)
-        model.tie_weights()
 
     if args.grad_checkpoint:
         model.gradient_checkpointing_enable()
@@ -217,7 +217,7 @@ def main():
                                                  dp_world_size=dp_size)
 
     optimizer = HybridAdam(model.parameters())
-    torch.set_default_dtype(torch.float16)
+    torch.set_default_dtype(torch.bfloat16)
     model, optimizer, _, dataloader, _ = booster.boost(model, optimizer, dataloader=dataloader)
     torch.set_default_dtype(torch.float)
     timer.end()
@@ -226,6 +226,7 @@ def main():
     coordinator.print_on_master(
         f'Booster init max CPU memory: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024:.2f} MB')
 
+    timer.reset()
     if isinstance(plugin, ThreeDimParallelPlugin) and args.pp > 1:
         data_iter = iter(dataloader)
         for step in tqdm(range(len(dataloader)), desc='Step', disable=not coordinator.is_master()):
@@ -244,12 +245,15 @@ def main():
             outputs = model(**batch)
             loss = outputs[0]
             booster.backward(loss, optimizer)
+            timer.start()
             optimizer.step()
+            timer.end()
             optimizer.zero_grad()
             performance_evaluator.on_step_end(**batch)
 
     performance_evaluator.on_fit_end()
     coordinator.print_on_master(f'Max CUDA memory usage: {torch.cuda.max_memory_allocated()/1024**2:.2f} MB')
+    coordinator.print_on_master(f'Avg optim time: {timer.duration / len(dataloader):.2f} s')
 
 
 if __name__ == '__main__':
