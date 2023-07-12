@@ -367,6 +367,7 @@ class BloomForQuestionAnsweringPolicy(BloomPolicy):
             self.append_or_create_method_replacement(description=method_replace_ment,
                                                      policy=policy,
                                                      target_key=BloomForQuestionAnswering)
+        return policy
 
     def get_held_layers(self) -> List[Module]:
         """Get pipeline layers for current stage."""
