@@ -1,0 +1,146 @@
+{
+    "brainstorming": {
+        "weight": 1.0,
+        "metrics": {
+            "language organization": 0.2,
+            "relevance": 0.2,
+            "creativity": 0.2,
+            "practicality": 0.2,
+            "reasonableness": 0.2
+        }
+    },
+    "chat": {
+        "weight": 1.0,
+        "metrics": {
+            "language organization": 0.25,
+            "naturalness": 0.25,
+            "engagingness": 0.25,
+            "fidelity": 0.25
+        }
+    },
+    "classification": {
+        "weight": 1.0,
+        "metrics": {
+            "relevance": 0.5,
+            "correctness": 0.5
+        }
+    },
+    "closed_qa": {
+        "weight": 1.0,
+        "metrics": {
+            "relevance": 0.5,
+            "correctness": 0.5
+        }
+    },
+    "extraction": {
+        "weight": 1.0,
+        "metrics": {
+            "relevance": 0.5,
+            "correctness": 0.5
+        }
+    },
+    "generation": {
+        "weight": 1.0,
+        "metrics": {
+            "language organization": 0.3333333333333333,
+            "relevance": 0.3333333333333333,
+            "diversity": 0.3333333333333333
+        }
+    },
+    "logical_reasoning": {
+        "weight": 1.0,
+        "metrics": {
+            "correctness": 0.3333333333333333,
+            "relevance": 0.3333333333333333,
+            "reasonableness": 0.3333333333333333
+        }
+    },
+    "open_qa": {
+        "weight": 1.0,
+        "metrics": {
+            "language organization": 0.3333333333333333,
+            "relevance": 0.3333333333333333,
+            "correctness": 0.3333333333333333
+        }
+    },
+    "rewriting": {
+        "weight": 1.0,
+        "metrics": {
+            "language organization": 0.3333333333333333,
+            "relevance": 0.3333333333333333,
+            "correctness": 0.3333333333333333
+        }
+    },
+    "summarization": {
+        "weight": 1.0,
+        "metrics": {
+            "language organization": 0.25,
+            "relevance": 0.25,
+            "correctness": 0.25,
+            "conciseness": 0.25
+        }
+    },
+    "Finance": {
+        "weight": 1.0,
+        "metrics": {
+            "relevance": 0.5,
+            "correctness": 0.5
+        }
+    },
+    "Law": {
+        "weight": 1.0,
+        "metrics": {
+            "relevance": 0.5,
+            "correctness": 0.5
+        }
+    },
+    "Education": {
+        "weight": 1.0,
+        "metrics": {
+            "relevance": 0.5,
+            "correctness": 0.5
+        }
+    },
+    "Medical": {
+        "weight": 1.0,
+        "metrics": {
+            "relevance": 0.5,
+            "correctness": 0.5
+        }
+    },
+    "STEM": {
+        "weight": 1.0,
+        "metrics": {
+            "relevance": 0.5,
+            "correctness": 0.5
+        }
+    },
+    "SocialScience": {
+        "weight": 1.0,
+        "metrics": {
+            "relevance": 0.5,
+            "correctness": 0.5
+        }
+    },
+    "Humanity": {
+        "weight": 1.0,
+        "metrics": {
+            "relevance": 0.5,
+            "correctness": 0.5
+        }
+    },
+    "Other": {
+        "weight": 1.0,
+        "metrics": {
+            "relevance": 0.5,
+            "correctness": 0.5
+        }
+    },
+    "ethics": {
+        "weight": 1.0,
+        "metrics": {
+            "relevance": 0.5,
+            "correctness": 0.5
+        }
+    }
+}
