@@ -417,9 +417,9 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             for idx, splited_param in enumerate(master_working_param):
                 working_param = real_working_params[group_id][idx]
                 padding_left = self._local_rank * splited_param.numel()
-                padding_right = working_param.numel() - (self._local_rank+1) * splited_param.numel()
-                print(working_param.shape, padding_left, padding_right, self._local_rank, splited_param.numel())
-                working_param.data.copy_(torch.nn.functional.pad(splited_param, (padding_left, padding_right)).reshape_as(working_param))
+                padding_right = splited_param.numel() * (self._world_size - self._local_rank - 1)
+                with torch.no_grad():
+                    working_param.data.copy_(torch.nn.functional.pad(splited_param, (padding_left, padding_right))[:working_param.numel()].reshape_as(working_param))
                 dist.all_reduce(working_param, group=self.dp_pg)
 
             self.optim.param_groups[group_id]['params'] = self._master_param_groups_of_current_rank[group_id]
