@@ -33,7 +33,6 @@ def data_gen_for_conditional_generation():
 
 def data_gen_for_t5_model():
     # decoder_inputs_ids is obtained with the following code
-    #
     # decoder_input_ids = model._shift_right(input_ids)
     data = data_gen_for_encoder_only()
     decoder_input_ids = torch.Tensor([[0, 13959, 1566, 12, 2968, 10, 37, 629, 19, 1627, 5, 5]]).long()
