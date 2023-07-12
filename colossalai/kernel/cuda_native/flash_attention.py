@@ -14,7 +14,7 @@ try:
     HAS_MEM_EFF_ATTN = True
 except ImportError:
     HAS_MEM_EFF_ATTN = False
-    print('please install xformers from https://github.com/facebookresearch/xformers')
+    raise ImportError('please install xformers from https://github.com/facebookresearch/xformers')
 
 if HAS_MEM_EFF_ATTN:
 
