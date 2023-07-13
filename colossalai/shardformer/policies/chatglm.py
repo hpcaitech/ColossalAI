@@ -16,7 +16,7 @@ class ChatGLMModelPolicy(Policy):
 
     def preprocess(self):
         # Resize embedding
-        vocab_size = self.model.config.vocab_size
+        vocab_size = self.model.config.padded_vocab_size
         world_size = self.shard_config.tensor_parallel_size
 
         if vocab_size % world_size != 0:
