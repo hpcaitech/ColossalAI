@@ -123,14 +123,14 @@ def main():
     use_empty_init = True
     if args.plugin == 'gemini':
         AutoPlacementPolicy.set_warmup_non_model_data_ratio(args.warmup_ratio)
-        plugin = GeminiPlugin(placement_policy='auto', initial_scale=2**5)
+        plugin = GeminiPlugin(placement_policy='auto', precision='bf16')
     elif args.plugin == 'gemini_cuda':
-        plugin = GeminiPlugin(placement_policy='cuda', initial_scale=2**5)
+        plugin = GeminiPlugin(placement_policy='cuda', precision='bf16')
     elif args.plugin == 'gemini_cpu':
-        plugin = GeminiPlugin(placement_policy='cpu', initial_scale=2**5)
+        plugin = GeminiPlugin(placement_policy='cpu', precision='bf16')
     elif args.plugin == 'const':
         ConstPlacementPolicy.set_const_memory_boundary(args.memory_limit)
-        plugin = GeminiPlugin(placement_policy='const', initial_scale=2**5)
+        plugin = GeminiPlugin(placement_policy='const', precision='bf16')
     elif args.plugin == 'fsdp':
         if use_empty_init:
             plugin = TorchFSDPPlugin(
@@ -164,8 +164,7 @@ def main():
                                         zero_stage=args.zero,
                                         enable_fused_normalization=True,
                                         num_microbatches=args.mbs,
-                                        precision='bf16',
-                                        initial_scale=2**8)
+                                        precision='bf16')
     elif args.plugin == '3d_cpu':
         plugin = ThreeDimParallelPlugin(tp_size=args.tp,
                                         pp_size=args.pp,
@@ -173,8 +172,7 @@ def main():
                                         enable_fused_normalization=True,
                                         num_microbatches=args.mbs,
                                         initial_scale=2**8,
-                                        precision='bf16',
-                                        cpu_offload=True)
+                                        precision='bf16')
     else:
         raise ValueError(f'Unknown plugin {args.plugin}')
 

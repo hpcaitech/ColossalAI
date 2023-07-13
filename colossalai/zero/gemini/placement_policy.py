@@ -72,7 +72,7 @@ class AutoPlacementPolicy(PlacementPolicy):
     # you can set them by AutoPlacementPolicy.set_warmup_non_model_data_ratio()
     # and AutoPlacementPolicy.set_steady_cuda_cap_ratio()
     _warmup_non_model_data_ratio: float = 0.95
-    _steady_cuda_cap_ratio: float = 0.9
+    _steady_cuda_cap_ratio: float = 0.7
 
     def __init__(self,
                  chunk_manager: ChunkManager,
@@ -127,10 +127,9 @@ class AutoPlacementPolicy(PlacementPolicy):
             for chunk in to_free_chunks:
                 if freed_cuda_model_data >= to_free_cuda_model_data:
                     break
-
                 self.chunk_manager.release_chunk(chunk)
-                self.chunk_manager.move_chunk(chunk, torch.device('cpu'))
-                freed_cuda_model_data += chunk.chunk_mem
+                # self.chunk_manager.move_chunk(chunk, torch.device('cpu'))
+                freed_cuda_model_data += (chunk.chunk_mem - chunk.shard_mem)
             if freed_cuda_model_data < to_free_cuda_model_data:
                 raise RuntimeError(f"Adjust layout failed! No enough CUDA memory! "
                                    f"Need {to_free_cuda_model_data}, freed {freed_cuda_model_data}")

@@ -1,7 +1,6 @@
 #!/bin/bash
 
 module load cuda/11.7.1-gcc-9.4.0
-module load nccl/2.14.3-1-gcc-9.4.0
 
 # >>> conda initialize >>>
 # !! Contents within this block are managed by 'conda init' !!
@@ -30,6 +29,7 @@ export NCCL_SOCKET_IFNAME=eth0
 export NCCL_IB_GID_INDEX=3
 export NCCL_IB_TIMEOUT=23
 export NCCL_IB_RETRY_CNT=7
+export OMP_NUM_THREADS=8
 export BATCH=${1:-16}
 
-colossalai run --nproc_per_node 8 --hostfile ${ROOT}/cai_host_4.txt --master_addr 192.168.0.189 benchmark.py -c '65b' --plugin "gemini" -x -b $BATCH
+colossalai run --nproc_per_node 8 --hostfile ${ROOT}/cai_host_4.txt --master_addr 192.168.0.189 --master_port 29600 benchmark.py -c '65b' --plugin "gemini" -x -g -b $BATCH
