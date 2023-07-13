@@ -12,7 +12,7 @@ from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch.utils.data import DataLoader
 
 from colossalai.checkpoint_io import CheckpointIndexFile, CheckpointIO, GeneralCheckpointIO
-from colossalai.checkpoint_io.utils import get_base_filenames, get_shard_filename, save_state_dict
+from colossalai.checkpoint_io.utils import get_model_base_filenames, get_shard_filename, save_state_dict
 from colossalai.cluster import DistCoordinator
 from colossalai.interface import ModelWrapper, OptimizerWrapper
 from colossalai.utils import get_current_device
@@ -76,14 +76,14 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
                            model: GeminiDDP,
                            checkpoint_path: str,
                            gather_dtensor: bool = False,
-                           variant: Optional[str] = None,
+                           prefix: Optional[str] = None,
                            max_shard_size: int = 1024,
                            use_safetensors: bool = False):
         """
         Save sharded model
         """
         state_dict_shard = model.state_dict_shard(max_shard_size=max_shard_size, only_rank_0=True, dtype=torch.float32)
-        weights_name, save_index_file = get_base_filenames(variant, use_safetensors)
+        weights_name, save_index_file = get_model_base_filenames(prefix, use_safetensors)
         total_size = 0
         index_file = CheckpointIndexFile(checkpoint_path)
         for idx, shard_pair in enumerate(state_dict_shard):
@@ -181,11 +181,11 @@ class GeminiPlugin(DPPluginBase):
         pin_memory (bool, optional): use pin memory on CPU. Defaults to False.
         force_outputs_fp32 (bool, optional): force outputs are fp32. Defaults to False.
         strict_ddp_mode (bool, optional): use strict ddp mode (only use dp without other parallelism). Defaults to False.
-        search_range_mb (int, optional): chunk size searching range in MegaByte. Defaults to 32.
+        search_range_m (int, optional): chunk size searching range divided by 2^20. Defaults to 32.
         hidden_dim (int, optional): the hidden dimension of DNN.
             Users can provide this argument to speed up searching.
             If users do not know this argument before training, it is ok. We will use a default value 1024.
-        min_chunk_size_mb (float, optional): the minimum chunk size in MegaByte.
+        min_chunk_size_m (float, optional): the minimum chunk size divided by 2^20.
             If the aggregate size of parameters is still smaller than the minimum chunk size,
             all parameters will be compacted into one small chunk.
         memstats (MemStats, optional) the memory statistics collector by a runtime memory tracer.
@@ -214,9 +214,9 @@ class GeminiPlugin(DPPluginBase):
         pin_memory: bool = False,
         force_outputs_fp32: bool = False,
         strict_ddp_mode: bool = False,
-        search_range_mb: int = 32,
+        search_range_m: int = 32,
         hidden_dim: Optional[int] = None,
-        min_chunk_size_mb: float = 32,
+        min_chunk_size_m: float = 32,
         memstats: Optional[MemStats] = None,
         gpu_margin_mem_ratio: float = 0.0,
         initial_scale: float = 2**32,
@@ -238,9 +238,9 @@ class GeminiPlugin(DPPluginBase):
             pin_memory=pin_memory,
             force_outputs_fp32=force_outputs_fp32,
             strict_ddp_mode=strict_ddp_mode,
-            search_range_mb=search_range_mb,
+            search_range_m=search_range_m,
             hidden_dim=hidden_dim,
-            min_chunk_size_mb=min_chunk_size_mb,
+            min_chunk_size_m=min_chunk_size_m,
             memstats=memstats,
             mixed_precision=PRECISION_STR_TO_DTYPE[precision],
         )
@@ -274,11 +274,11 @@ class GeminiPlugin(DPPluginBase):
     def configure(
         self,
         model: nn.Module,
-        optimizer: Optimizer,
-        criterion: Callable = None,
-        dataloader: DataLoader = None,
-        lr_scheduler: LRScheduler = None,
-    ) -> Tuple[Union[nn.Module, OptimizerWrapper, LRScheduler, DataLoader]]:
+        optimizer: Optional[Optimizer] = None,
+        criterion: Optional[Callable] = None,
+        dataloader: Optional[DataLoader] = None,
+        lr_scheduler: Optional[LRScheduler] = None,
+    ) -> Tuple[nn.Module, OptimizerWrapper, Callable, DataLoader, LRScheduler]:
 
         if not isinstance(model, ModelWrapper):
             # convert model to sync bn
@@ -293,7 +293,8 @@ class GeminiPlugin(DPPluginBase):
             # wrap the model with Gemini
             model = GeminiModel(model, self.gemini_config, self.verbose)
 
-        if not isinstance(optimizer, OptimizerWrapper):
+        if optimizer is not None and \
+                not isinstance(optimizer, OptimizerWrapper):
             optimizer = GeminiOptimizer(model.unwrap(), optimizer, self.zero_optim_config, self.optim_kwargs,
                                         self.verbose)
 
@@ -305,5 +306,5 @@ class GeminiPlugin(DPPluginBase):
     def get_checkpoint_io(self) -> CheckpointIO:
         return GeminiCheckpointIO()
 
-    def no_sync(self, model: nn.Module) -> Iterator[None]:
+    def no_sync(self, model: nn.Module, optimizer: OptimizerWrapper) -> Iterator[None]:
         raise NotImplementedError

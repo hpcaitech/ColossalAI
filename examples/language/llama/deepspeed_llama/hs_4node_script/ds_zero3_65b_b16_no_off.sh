@@ -18,7 +18,7 @@ fi
 unset __conda_setup
 # <<< conda initialize <<<
 
-conda activate /mnt/vepfs/conda/envs/llama_2
+conda activate /mnt/vepfs/conda/envs/lhx-1.13.1
 
 ROOT=$(pwd)
 
@@ -28,9 +28,10 @@ export NCCL_SOCKET_IFNAME=eth0
 export NCCL_IB_GID_INDEX=3
 export NCCL_IB_TIMEOUT=23
 export NCCL_IB_RETRY_CNT=7
+export BATCH=${1:-16}
 
 cd ..
 
 deepspeed --master_addr 192.168.0.189 --master_port 29503 --hostfile=${ROOT}/host_file_4.txt \
-	ds_benchmark.py -l 512 -w 32 -c '65b' -train_micro_batch_size_per_gpu 16 -g \
+	ds_benchmark.py -w 32 -c '65b' -train_micro_batch_size_per_gpu ${BATCH} -g \
 	--deepspeed --deepspeed_config ${ROOT}/zero3_no_off.json > ${ROOT}/ds_zero3_65b_b16_no_off.log 2>&1

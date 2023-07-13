@@ -7,7 +7,7 @@ def colo_model_optimizer_usage(optim) -> Tuple[int, int]:
     """Trace the optimizer memory usage
 
     Args:
-        optim (ShardedOptimV2): an instance of ShardedOptimver
+        optim (ShardedOptimV2): an instance of ShardedOptimizer
 
     Returns:
         Tuple[int, int]: cuda/cpu memory usage in Byte

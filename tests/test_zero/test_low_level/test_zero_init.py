@@ -33,10 +33,9 @@ def exam_zero_init():
 
     assert optimizer1._local_rank == optimizer2._local_rank
     assert optimizer1._world_size == optimizer2._world_size
-    assert optimizer1._dp_global_ranks == optimizer2._dp_global_ranks
 
-    mp_group1 = optimizer1._mp_torch_group
-    mp_group2 = optimizer2._mp_torch_group
+    mp_group1 = optimizer1.tp_pg
+    mp_group2 = optimizer2.tp_pg
     assert dist.get_world_size(mp_group1) == dist.get_world_size(mp_group2)
     assert dist.get_rank(mp_group1) == dist.get_rank(mp_group2)
 

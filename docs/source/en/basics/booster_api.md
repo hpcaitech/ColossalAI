@@ -1,31 +1,36 @@
 # Booster API
-Author: [Mingyan Jiang](https://github.com/jiangmingyan)
+
+Author: [Mingyan Jiang](https://github.com/jiangmingyan) [Jianghai Chen](https://github.com/CjhHa1)
 
 **Prerequisite:**
+
 - [Distributed Training](../concepts/distributed_training.md)
 - [Colossal-AI Overview](../concepts/colossalai_overview.md)
 
 **Example Code**
+
 - [Train with Booster](https://github.com/hpcaitech/ColossalAI/blob/main/examples/tutorial/new_api/cifar_resnet/README.md)
 
 ## Introduction
+
 In our new design, `colossalai.booster` replaces the role of `colossalai.initialize` to inject features into your training components (e.g. model, optimizer, dataloader) seamlessly. With these new APIs, you can integrate your model with our parallelism features more friendly. Also calling `colossalai.booster` is the standard procedure before you run into your training loops. In the sections below, I will cover how `colossalai.booster` works and what we should take note of.
 
 ### Plugin
+
 Plugin is an important component that manages parallel configuration (eg: The gemini plugin encapsulates the gemini acceleration solution). Currently supported plugins are as follows:
 
-***GeminiPlugin:*** This plugin wraps the Gemini acceleration solution, that ZeRO with chunk-based memory management.
+**_GeminiPlugin:_** This plugin wraps the Gemini acceleration solution, that ZeRO with chunk-based memory management.
 
-***TorchDDPPlugin:*** This plugin wraps the DDP acceleration solution, it implements data parallelism at the module level which can run across multiple machines.
+**_TorchDDPPlugin:_** This plugin wraps the DDP acceleration solution, it implements data parallelism at the module level which can run across multiple machines.
 
-***LowLevelZeroPlugin:*** This plugin wraps the 1/2 stage of Zero Redundancy Optimizer. Stage 1 : Shards optimizer states across data parallel workers/GPUs. Stage 2 : Shards optimizer states + gradients across data parallel workers/GPUs.
+**_LowLevelZeroPlugin:_** This plugin wraps the 1/2 stage of Zero Redundancy Optimizer. Stage 1 : Shards optimizer states across data parallel workers/GPUs. Stage 2 : Shards optimizer states + gradients across data parallel workers/GPUs.
 
 ### API of booster
-
 
 {{ autodoc:colossalai.booster.Booster }}
 
 ## Usage
+
 In a typical workflow, you should launch distributed environment at the beginning of training script and create objects needed (such as models, optimizers, loss function, data loaders etc.) firstly, then call `colossalai.booster` to inject features into these objects, After that, you can use our booster APIs and these returned objects to continue the rest of your training processes.
 
 A pseudo-code example is like below:
@@ -66,6 +71,5 @@ def train():
 ```
 
 [more design details](https://github.com/hpcaitech/ColossalAI/discussions/3046)
-
 
 <!-- doc-test-command: torchrun --standalone --nproc_per_node=1 booster_api.py  -->

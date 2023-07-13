@@ -1,61 +1,28 @@
-# Vision Transformer with ColoTensor
+## Overview
 
-# Overview
+Vision Transformer is a class of Transformer model tailored for computer vision tasks. It was first proposed in paper [An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale](https://arxiv.org/abs/2010.11929) and achieved SOTA results on various tasks at that time.
 
-In this example, we will run Vision Transformer with ColoTensor.
+In our example, we are using pretrained weights of ViT loaded from HuggingFace.
+We adapt the ViT training code to ColossalAI by leveraging [Boosting API](https://colossalai.org/docs/basics/booster_api) loaded with a chosen plugin, where each plugin corresponds to a specific kind of training strategy. This example supports plugins including TorchDDPPlugin, LowLevelZeroPlugin, and GeminiPlugin.
 
-We use model **ViTForImageClassification** from Hugging Face [Link](https://huggingface.co/docs/transformers/model_doc/vit) for unit test.
-You can change world size or decide whether use DDP in our code.
+## Run Demo
 
-We use model **vision_transformer** from timm [Link](https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision_transformer.py) for training example.
-
-(2022/6/28) The default configuration now supports 2DP+2TP with gradient accumulation and checkpoint support. Zero is not supported at present.
-
-# Requirement
-
-Install colossalai version >= 0.1.11
-
-## Unit test
-To run unit test, you should install pytest, transformers with:
-```shell
-pip install pytest transformers
+By running the following script:
+```bash
+bash run_demo.sh
 ```
+You will finetune a a [ViT-base](https://huggingface.co/google/vit-base-patch16-224) model on this [dataset](https://huggingface.co/datasets/beans), with more than 8000 images of bean leaves. This dataset is for image classification task and there are 3 labels: ['angular_leaf_spot', 'bean_rust', 'healthy'].
 
-## Training example
-To run training example with ViT-S, you should install **NVIDIA DALI** from [Link](https://docs.nvidia.com/deeplearning/dali/user-guide/docs/installation.html) for dataloader support.
-You also need to install timm and titans for model/dataloader support with:
-```shell
-pip install timm titans
+The script can be modified if you want to try another set of hyperparameters or change to another ViT model with different size.
+
+The demo code refers to this [blog](https://huggingface.co/blog/fine-tune-vit).
+
+
+
+## Run Benchmark
+
+You can run benchmark for ViT model by running the following script:
+```bash
+bash run_benchmark.sh
 ```
-
-### Data preparation
-You can download the ImageNet dataset from the [ImageNet official website](https://www.image-net.org/download.php). You should get the raw images after downloading the dataset. As we use **NVIDIA DALI** to read data, we use the TFRecords dataset instead of raw Imagenet dataset. This offers better speedup to IO. If you don't have TFRecords dataset, follow [imagenet-tools](https://github.com/ver217/imagenet-tools) to build one.
-
-Before you start training, you need to set the environment variable `DATA` so that the script knows where to fetch the data for DALI dataloader.
-```shell
-export DATA=/path/to/ILSVRC2012
-```
-
-
-# How to run
-
-## Unit test
-In your terminal
-```shell
-pytest test_vit.py
-```
-
-This will evaluate models with different **world_size** and **use_ddp**.
-
-## Training example
-Modify the settings in run.sh according to your environment.
-For example, if you set `--nproc_per_node=8` in `run.sh` and `TP_WORLD_SIZE=2` in your config file,
-data parallel size will be automatically calculated as 4.
-Thus, the parallel strategy is set to 4DP+2TP.
-
-Then in your terminal
-```shell
-sh run.sh
-```
-
-This will start ViT-S training with ImageNet.
+The script will test performance (throughput & peak memory usage) for each combination of hyperparameters. You can also play with this script to configure your own set of hyperparameters for testing.

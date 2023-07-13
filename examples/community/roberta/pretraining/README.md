@@ -13,7 +13,7 @@ bash run_pretrain.sh
 * `--bert_config`: config.json which represent model
 * `--mlm`: model type of backbone, bert or deberta_v2
 
-2. if resume training from earylier checkpoint, run the script below.
+2. if resume training from earlier checkpoint, run the script below.
 
 ```shell
 bash run_pretrain_resume.sh

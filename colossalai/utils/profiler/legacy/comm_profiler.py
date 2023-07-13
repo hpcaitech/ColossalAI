@@ -111,7 +111,7 @@ class CommProfiler(BaseProfiler):
             res.append(sep)
 
         if self.warn_flag:
-            append("Warnning: there exists multiple communication operations in the same time. As a result, "
+            append("Warning: there exists multiple communication operations in the same time. As a result, "
                    "the profiling result is not accurate.")
 
         if self.total_cuda_time == 0:
@@ -123,12 +123,12 @@ class CommProfiler(BaseProfiler):
         append("total number of calls: {}".format(self.total_count))
         append("All events:")
 
-        seperation = '-' * 74
+        separation = '-' * 74
         row_format = '{:^10}' + '{:^12}' * 2 + '{:^16}' + '{:^12}' * 2
 
-        append(seperation)
+        append(separation)
         append(row_format.format('Location', 'GPU time', 'Percentage', 'Comm volume', 'Bandwidth', 'Num of calls'))
-        append(seperation)
+        append(separation)
 
         show_list = sorted(self.ops_record.items(), key=lambda kv: -kv[1].self_cuda_time)
         for location, event in show_list:

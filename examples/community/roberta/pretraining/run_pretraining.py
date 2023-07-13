@@ -78,7 +78,7 @@ def main():
                              default_pg=shard_pg):
             config, model, numel = get_model(args, logger)
 
-        # asign running configurations
+        # assign running configurations
         gemini_config = None
         if args.distplan.startswith("CAI_ZeRO"):
             optim_config = dict(reduce_bucket_size=12 * 1024 * 1024, overlap_communication=True, verbose=True)
@@ -88,7 +88,7 @@ def main():
                                  placement_policy=args.placement,
                                  pin_memory=True,
                                  hidden_dim=model.config.hidden_size,
-                                 search_range_mb=128)
+                                 search_range_m=128)
             optim_config = dict(gpu_margin_mem_ratio=0.)
         else:
             raise RuntimeError

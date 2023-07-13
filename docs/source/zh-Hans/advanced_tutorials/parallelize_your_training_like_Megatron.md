@@ -126,16 +126,16 @@ for mn, module in model.named_modules():
 
         if 'mlp.c_fc' in mn:
             if 'weight' in pn or 'bias' in pn:
-                split_param_col_tp1d(param, pg)  # colmn slice
+                split_param_col_tp1d(param, pg)  # column slice
                 # keep the shape of the output from c_fc
                 param.compute_spec.set_output_replicate(False)
         elif 'mlp.c_proj' in mn:
             if 'weight' in pn:
                 split_param_row_tp1d(param, pg)  # row slice
         elif 'wte' in mn or 'wpe' in mn:
-            split_param_col_tp1d(param, pg)  # colmn slice
+            split_param_col_tp1d(param, pg)  # column slice
         elif 'c_attn' in mn or 'c_proj' in mn:
-            split_param_col_tp1d(param, pg)  # colmn slice
+            split_param_col_tp1d(param, pg)  # column slice
 ```
 
 修改后的模型如下图所示。
@@ -165,7 +165,7 @@ def gemini_zero_dpp(model: torch.nn.Module, pg: ProcessGroup, placement_policy: 
                         device=get_current_device(),
                         placement_policy=placement_policy,
                         pin_memory=True,
-                        search_range_mb=32)
+                        search_range_m=32)
     return model
 ```
 
@@ -174,3 +174,6 @@ def gemini_zero_dpp(model: torch.nn.Module, pg: ProcessGroup, placement_policy: 
 我们做的上述优化让我们可以在单GPU上训练GPT-2模型，只需要将`run.sh`中设置参数`GPUNUM`=1，再运行文件时就可以在单个GPU上完成模型的训练。
 
 GPT-2 示例在[Train GPT with Colossal-AI](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/gpt). 获得。
+
+
+<!-- doc-test-command: torchrun --standalone --nproc_per_node=1 parallelize_your_training_like_Megatron.py  -->
