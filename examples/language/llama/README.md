@@ -48,6 +48,13 @@ Then install other dependencies.
 pip install -r requirements.txt
 ```
 
+If you want to use flash attention, which can accelerate training while saving memory, you should install:
+```bash
+pip install xformers
+```
+
+Additionally, we recommend you to use torch 1.13.1. We've tested our code on torch 1.13.1 and found it's compatible with our code and xformers.
+
 ### 2. Download the dataset
 
 The dataset can be automatically downloaded by using `huggingface/datasets`. You can specify the dataset path by `-d` or `--dataset`. The default dataset is `togethercomputer/RedPajama-Data-1T-Sample`.
