@@ -52,7 +52,7 @@ The dataset can be automatically downloaded by using `huggingface/datasets`. You
 - Learning rate: `--lr`. The default value is 3e-4.
 - Weight decay: `-w`, `--weight_decay`. The default value is 0.1.
 - Warmup steps: `-s`, `--warmup_steps`. The default value is 2000.
-- Gradient checkpointing: `-g`, `--gradient_checkpoint`. The default value is `False`.
+- Gradient checkpointing: `-g`, `--gradient_checkpoint`. The default value is `False`. This saves memory at the cost of speed. You'd better enable this option when training with a large batch size.
 - Max length: `-l`, `--max_length`. The default value is 2048.
 - Mixed precision: `-x`, `--mixed_precision`. The default value is "fp16". "fp16" and "bf16" are supported.
 - Save interval: `-i`, `--save_interval`. The interval (steps) of saving checkpoints. The default value is 1000.
@@ -60,7 +60,7 @@ The dataset can be automatically downloaded by using `huggingface/datasets`. You
 - Checkpoint to load: `-f`, `--load`. The checkpoint path to load. The default value is `None`.
 - Gradient clipping: `--gradient_clipping`. The default value is 1.0.
 - Tensorboard log directory: `-t`, `--tensorboard_dir`. The directory path to save tensorboard logs. The default value is `tb_logs`.
-- Flash attention: `-a`, `--flash_attention`. If you want to use flash attention, you must install [xformers](https://github.com/facebookresearch/xformers) first. The default value is `False`.
+- Flash attention: `-a`, `--flash_attention`. If you want to use flash attention, you must install [xformers](https://github.com/facebookresearch/xformers) first. The default value is `False`. This is helpful to accelerate training while saving memory. We recommend you always use flash attention.
 
 ## Reference
 
