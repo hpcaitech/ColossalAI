@@ -3,23 +3,13 @@ import os
 
 import resource
 from contextlib import contextmanager, nullcontext
-
-from random import randint
 import time
 
 
 import torch
-import torch.nn as nn
-import torch.profiler
-
 from attn import SUPPORT_XFORMERS, replace_xformers
-
-import transformers
-from torch.distributed.fsdp.wrap import size_based_auto_wrap_policy
-
 from performance_evaluator import PerformanceEvaluator, Timer
 from torch.distributed.fsdp.fully_sharded_data_parallel import CPUOffload, MixedPrecision
-from torch.utils.data import Dataset
 from tqdm import tqdm
 from transformers.modeling_utils import no_init_weights
 from transformers.models.llama.configuration_llama import LlamaConfig
@@ -34,64 +24,19 @@ from colossalai.nn.optimizer import HybridAdam
 from colossalai.utils import get_current_device
 from colossalai.zero.gemini.placement_policy import AutoPlacementPolicy, ConstPlacementPolicy
 
+from data_utils import RandomDataset
+from model_utils import get_model_numel, format_numel_str, low_precision_init
+
+# ==============================
+# Constants
+# ==============================
+
 MODEL_CONFIGS = {
     '7b': LlamaConfig(),
     '13b': LlamaConfig(hidden_size=5120, intermediate_size=13760, num_hidden_layers=40, num_attention_heads=40),
     '30b': LlamaConfig(hidden_size=6656, intermediate_size=17888, num_hidden_layers=60, num_attention_heads=52),
     '65b': LlamaConfig(hidden_size=8192, intermediate_size=22016, num_hidden_layers=80, num_attention_heads=64),
 }
-
-# ==============================
-# random dataloader for llama finetuning
-# ==============================
-
-
-class RandomDataset(Dataset):
-
-    def __init__(self, num_samples: int = 1000, max_length: int = 2048, vocab_size: int = 32000):
-        self.num_samples = num_samples
-        self.max_length = max_length
-        self.input_ids = torch.randint(0, vocab_size, (num_samples, max_length), device=get_current_device())
-        self.attention_mask = torch.ones_like(self.input_ids)
-
-    def __len__(self):
-        return self.num_samples
-
-    def __getitem__(self, idx):
-        return {
-            'input_ids': self.input_ids[idx],
-            'attention_mask': self.attention_mask[idx],
-            'labels': self.input_ids[idx]
-        }
-
-
-@contextmanager
-def low_precision_init(target_dtype: torch.dtype = torch.float16):
-    dtype = torch.get_default_dtype()
-    try:
-        torch.set_default_dtype(target_dtype)
-        yield
-    finally:
-        torch.set_default_dtype(dtype)
-
-
-def get_model_numel(model: nn.Module) -> int:
-    return sum(p.numel() for p in model.parameters())
-
-
-def format_numel_str(numel: int) -> str:
-    B = 1024**3
-    M = 1024**2
-    K = 1024
-    if numel >= B:
-        return f'{numel / B:.2f} B'
-    elif numel >= M:
-        return f'{numel / M:.2f} M'
-    elif numel >= K:
-        return f'{numel / K:.2f} K'
-    else:
-        return f'{numel}'
-
 
 def main():
     # ==============================
@@ -139,7 +84,6 @@ def main():
         if use_empty_init:
             plugin = TorchFSDPPlugin(mixed_precision=MixedPrecision(
                 param_dtype=torch.float16, reduce_dtype=torch.float16, buffer_dtype=torch.float16), param_init_fn=empty_init(),)
-                # auto_wrap_policy=size_based_auto_wrap_policy)
         else:
             plugin = TorchFSDPPlugin(mixed_precision=MixedPrecision(
                 param_dtype=torch.float16, reduce_dtype=torch.float16, buffer_dtype=torch.float16))
@@ -149,7 +93,6 @@ def main():
                                                                     reduce_dtype=torch.float16,
                                                                     buffer_dtype=torch.float16),
                                      cpu_offload=CPUOffload(offload_params=True), param_init_fn=empty_init(),)
-                                     # auto_wrap_policy=size_based_auto_wrap_policy)
         else:
             plugin = TorchFSDPPlugin(mixed_precision=MixedPrecision(param_dtype=torch.float16,
                                                                     reduce_dtype=torch.float16,
@@ -159,6 +102,7 @@ def main():
         raise ValueError(f'Unknown plugin {args.plugin}')
 
     booster = Booster(plugin=plugin)
+
     # ==============================
     # Initialize Dataset and Dataloader
     # ==============================
@@ -175,8 +119,6 @@ def main():
     init_ctx = LazyInitContext(
         default_device=get_current_device()) if isinstance(plugin, GeminiPlugin) else nullcontext()
 
-    timer = Timer()
-    timer.start()
     with no_init_weights(), init_ctx:
         model = LlamaForCausalLM(config)
         model.tie_weights()
@@ -193,35 +135,16 @@ def main():
     performance_evaluator = PerformanceEvaluator(model_numel, args.grad_checkpoint, args.ignore_steps)
 
     optimizer = HybridAdam(model.parameters())
-    print("model is on {}".format(model.device))
     model, optimizer, _, dataloader, _ = booster.boost(model, optimizer, dataloader=dataloader, benchmark=use_empty_init)
-    timer.end()
-    end_time = time.time()
-    print("total init time: ", end_time - start_time, "s")
-    coordinator.print_on_master(f'Booster init time: {timer.duration:.2f} s')
     coordinator.print_on_master(f'Booster init max CUDA memory: {torch.cuda.max_memory_allocated()/1024**2:.2f} MB')
     coordinator.print_on_master(
         f'Booster init max CPU memory: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024:.2f} MB')
 
-    related_env = {key_value[0]: key_value[1] for key_value in os.environ.items() if key_value[0].startswith("NCCL") or "CUDA" in key_value[0]}
-    print("="*30)
-    print("related env: ", related_env)
-    print("="*30)
 
-    # with torch.profiler.profile(
-    #         activities=[
-    #             torch.profiler.ProfilerActivity.CPU,
-    #             torch.profiler.ProfilerActivity.CUDA],
-    #         schedule=torch.profiler.schedule(
-    #             wait=0,
-    #             warmup=1,
-    #             active=2),
-    #         on_trace_ready=torch.profiler.tensorboard_trace_handler('./gemini_profile_2node_cuda'),
-    #         with_stack=True,
-    #         record_shapes=True,
-    #         profile_memory=True,
-    #         with_flops=True
-    # ) as p:
+    # ==============================
+    # Run Training
+    # ==============================
+
     for step, batch in enumerate(tqdm(dataloader, desc='Step', disable=not coordinator.is_master())):
         performance_evaluator.on_step_start(step)
         outputs = model(**batch)
@@ -230,7 +153,6 @@ def main():
         optimizer.step()
         optimizer.zero_grad()
         performance_evaluator.on_step_end(**batch)
-            # p.step()
 
     performance_evaluator.on_fit_end()
     coordinator.print_on_master(f'Max CUDA memory usage: {torch.cuda.max_memory_allocated()/1024**2:.2f} MB')
