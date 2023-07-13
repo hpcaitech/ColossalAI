@@ -32,7 +32,17 @@ We follow the hyperparameter settings from the original LLaMA paper. We use Adam
 
 ## Usage
 
-### 1. Install dependencies
+### 1. Installation
+
+You should install ColossalAI of this branch from source.
+
+At the root directory of ColossalAI, run
+
+```bash
+CUDA_EXT=1 pip install .
+```
+
+Then install other dependencies.
 
 ```bash
 pip install -r requirements.txt
