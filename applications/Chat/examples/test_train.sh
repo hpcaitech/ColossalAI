@@ -68,7 +68,8 @@ for model in 'gpt2' 'bloom' 'opt' 'llama'; do
     done
 done
 
-# train sft
+echo "[Test]: testing sft ..."
+
 torchrun --standalone --nproc_per_node=4 ${BASE}/train_sft.py --pretrain 'bigscience/bloom-560m' \
     --model 'bloom' --strategy colossalai_zero2 --lora_rank 4 \
     --dataset $SFT_DATASET --max_datasets_size 512 --max_epochs 1 \
@@ -93,7 +94,8 @@ torchrun --standalone --nproc_per_node=4 ${BASE}/train_sft.py --pretrain 'gpt2' 
     --save_path ${BASE}/output
 rm -rf ${BASE}/output
 
-# train rm
+echo "[Test]: testing reward model ..."
+
 torchrun --standalone --nproc_per_node=2 ${BASE}/train_reward_model.py \
     --pretrain 'facebook/opt-350m' --model 'opt' \
     --strategy colossalai_zero2 --loss_fn 'log_sig' \
@@ -124,7 +126,8 @@ torchrun --standalone --nproc_per_node=2 ${BASE}/train_reward_model.py \
     --save_path ${BASE}/rm_ckpt.pt
 rm -rf ${BASE}/rm_ckpt.pt
 
-# train rl
+echo "[Test]: testing RLHF ..."
+
 torchrun --standalone --nproc_per_node=2 ${BASE}/train_prompts.py \
     --prompt_dataset $PROMPT_PATH --pretrain_dataset $PRETRAIN_DATASET \
     --strategy colossalai_zero2 --num_episodes 1 \
@@ -155,6 +158,3 @@ torchrun --standalone --nproc_per_node=2 ${BASE}/train_prompts.py \
 rm -rf ${BASE}/rm_ckpt_gpt.pt
 
 rm -rf ${BASE}/actor_checkpoint_prompts.pt
-
-# 3080 doesn't support P2P, skip this test
-# cd ${BASE}/ray && bash test_ci.sh && cd ${BASE}
