@@ -1,20 +1,14 @@
 import argparse
 import resource
-import time
 from contextlib import contextmanager, nullcontext
-from random import randint
-from typing import Optional
 
 import torch
 import torch.nn as nn
-import transformers
 from attn import SUPPORT_XFORMERS, replace_xformers
 from performance_evaluator import PerformanceEvaluator, Timer
 from torch.distributed.fsdp.fully_sharded_data_parallel import CPUOffload, MixedPrecision
-from torch.distributed.fsdp.wrap import size_based_auto_wrap_policy
 from torch.utils.data import Dataset
 from tqdm import tqdm
-from transformers.modeling_utils import no_init_weights
 from transformers.models.llama.configuration_llama import LlamaConfig
 from transformers.models.llama.modeling_llama import LlamaForCausalLM
 
