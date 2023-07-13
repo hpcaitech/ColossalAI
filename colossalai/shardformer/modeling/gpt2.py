@@ -69,9 +69,7 @@ def get_gpt2_forward():
                                   scale=scale)
 
         attn_output = attention(query, key, value, attn_mask=flash_attention_mask, attn_mask_type=attn_mask_type)
-        # attn_output = me_attention(query=query, key=key, value=value, attn_bias=attn_bias, p=self.attn_dropout.p, scale=scale)
 
-        # attn_output = merge_heads(attn_output, self.num_heads, self.head_dim)
         attn_output = self.c_proj(attn_output)
         attn_output = self.resid_dropout(attn_output)
         outputs = (attn_output, present, None)
