@@ -124,7 +124,7 @@ if HAS_MEM_EFF_ATTN:
                     bias: Optional[torch.Tensor] = None):
             batch_size, tgt_len, src_len = query.shape[0], query.shape[1], key.shape[1]
             attn_bias = None
-            if attn_mask_type in [AttnMaskType.padding, AttnMaskType.paddedcausal]:    # bert style
+            if attn_mask_type and attn_mask_type.value % 2 == 1:    # bert style
                 assert attn_mask is not None, \
                     f"attention mask {attn_mask} is not valid for attention mask type {attn_mask_type}."
                 assert attn_mask.dim() == 2, \
@@ -157,7 +157,7 @@ if HAS_MEM_EFF_ATTN:
 
             out = memory_efficient_attention(query, key, value, attn_bias=attn_bias, p=self.dropout, scale=self.scale)
 
-            if attn_mask_type in [AttnMaskType.padding, AttnMaskType.paddedcausal] and batch_size > 1:
+            if attn_mask_type and attn_mask_type.value % 2 == 1 and batch_size > 1:
                 out = self.repad(out, q_indices, batch_size, tgt_len)
 
             out = rearrange(out, 'b s h d -> b s (h d)')
