@@ -86,11 +86,3 @@ def split_heads(tensor, num_heads, attn_head_size):
     new_shape = tensor.size()[:-1] + (num_heads, attn_head_size)
     tensor = tensor.view(new_shape)
     return tensor
-
-
-def merge_heads(tensor, num_heads, attn_head_size):
-    """
-    Merges attn_head_size dim and num_attn_heads dim into hidden_size
-    """
-    new_shape = tensor.size()[:-2] + (num_heads * attn_head_size,)
-    return tensor.view(new_shape)
