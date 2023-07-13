@@ -70,6 +70,7 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
 @parameterize('enable_fused_normalization', [True, False])
 @parameterize('enable_tensor_parallelism', [True, False])
 @parameterize('use_lazy_init', [False, True])
+@clear_cache_before_run()
 def run_gpt2_test(enable_fused_normalization, enable_tensor_parallelism, use_lazy_init):
     sub_model_zoo = model_zoo.get_sub_registry('transformers_gpt')
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():

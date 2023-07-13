@@ -51,15 +51,17 @@ output_transform_fn = lambda x: x
 loss_fn_for_gpt2_model = lambda x: x.last_hidden_state.mean()
 loss_fn = lambda x: x.loss
 
-config = transformers.GPT2Config(n_layer=2,
-                                 n_head=4,
-                                 vocab_size=50258,
-                                 attn_pdrop=0,
-                                 embd_pdrop=0,
-                                 resid_pdrop=0,
-                                 summary_first_dropout=0,
-                                 hidden_dropout=0,
-                                 problem_type="single_label_classification")
+config = transformers.GPT2Config(
+    n_layer=2,
+    n_head=4,
+    #n_embd=128,
+    vocab_size=50258,
+    attn_pdrop=0,
+    embd_pdrop=0,
+    resid_pdrop=0,
+    summary_first_dropout=0,
+    hidden_dropout=0,
+    problem_type="single_label_classification")
 
 # register the following models
 model_zoo.register(name='transformers_gpt',
