@@ -14,7 +14,7 @@ try:
     HAS_MEM_EFF_ATTN = True
 except ImportError:
     HAS_MEM_EFF_ATTN = False
-    raise ImportError('please install xformers from https://github.com/facebookresearch/xformers')
+    print('please install xformers from https://github.com/facebookresearch/xformers')
 
 if HAS_MEM_EFF_ATTN:
 
@@ -22,12 +22,7 @@ if HAS_MEM_EFF_ATTN:
 
     from einops import rearrange
     from xformers.ops.fmha import MemoryEfficientAttentionCutlassOp
-    from xformers.ops.fmha.attn_bias import (
-        BlockDiagonalCausalMask,
-        BlockDiagonalMask,
-        LowerTriangularMask,
-        LowerTriangularMaskWithTensorBias,
-    )
+    from xformers.ops.fmha.attn_bias import BlockDiagonalMask, LowerTriangularMask, LowerTriangularMaskWithTensorBias
 
     from .scaled_softmax import AttnMaskType
 
@@ -91,14 +86,11 @@ if HAS_MEM_EFF_ATTN:
 
     class ColoAttention(torch.nn.Module):
 
-        def __init__(self, embed_dim: int, num_heads: int, dropout: float = 0.0, scale=None):
+        def __init__(self, embed_dim: int, num_heads: int, dropout: float = 0.0):
             super().__init__()
             assert embed_dim % num_heads == 0, \
                 f"the embed dim ({embed_dim}) is not divisible by the number of attention heads ({num_heads})."
-            if scale is not None:
-                self.scale = scale
-            else:
-                self.scale = 1 / math.sqrt(embed_dim // num_heads)
+            self.scale = 1 / math.sqrt(embed_dim // num_heads)
             self.dropout = dropout
 
         @staticmethod
@@ -124,7 +116,7 @@ if HAS_MEM_EFF_ATTN:
                     bias: Optional[torch.Tensor] = None):
             batch_size, tgt_len, src_len = query.shape[0], query.shape[1], key.shape[1]
             attn_bias = None
-            if attn_mask_type and attn_mask_type.value % 2 == 1:    # bert style
+            if attn_mask_type == AttnMaskType.padding:    # bert style
                 assert attn_mask is not None, \
                     f"attention mask {attn_mask} is not valid for attention mask type {attn_mask_type}."
                 assert attn_mask.dim() == 2, \
@@ -142,10 +134,7 @@ if HAS_MEM_EFF_ATTN:
                     if batch_size > 1:
                         query = rearrange(query, "b s ... -> c (b s) ...", c=1)
                         key, value = self.unpad(torch.stack([query, key, value], dim=2), kv_indices).unbind(dim=2)
-                if attn_mask_type == AttnMaskType.padding:
-                    attn_bias = BlockDiagonalMask.from_seqlens(q_seqlen, kv_seqlen)
-                elif attn_mask_type == AttnMaskType.paddedcausal:
-                    attn_bias = BlockDiagonalCausalMask.from_seqlens(q_seqlen, kv_seqlen)
+                attn_bias = BlockDiagonalMask.from_seqlens(q_seqlen, kv_seqlen)
             elif attn_mask_type == AttnMaskType.causal:    # gpt style
                 attn_bias = LowerTriangularMask()
 
@@ -157,7 +146,7 @@ if HAS_MEM_EFF_ATTN:
 
             out = memory_efficient_attention(query, key, value, attn_bias=attn_bias, p=self.dropout, scale=self.scale)
 
-            if attn_mask_type and attn_mask_type.value % 2 == 1 and batch_size > 1:
+            if attn_mask_type == AttnMaskType.padding and batch_size > 1:
                 out = self.repad(out, q_indices, batch_size, tgt_len)
 
             out = rearrange(out, 'b s h d -> b s (h d)')
