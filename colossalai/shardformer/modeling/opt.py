@@ -65,11 +65,13 @@ def get_opt_forward():
                 raise ValueError(f"Head mask for a single layer should be of size {(self.num_heads,)}, but is"
                                  f" {layer_head_mask.size()}")
         flash_attention_mask = None
+        attn_mask_type = AttnMaskType.causal
         if attention_mask != None:
             if attention_mask.size() != (bsz, 1, tgt_len, src_len):
                 raise ValueError(
                     f"Attention mask should be of size {(bsz, 1, tgt_len, src_len)}, but is {attention_mask.size()}")
             flash_attention_mask = ~(attention_mask[:, :, -1].squeeze(1).to(torch.bool)).contiguous()
+            attn_mask_type = AttnMaskType.paddedcausal
 
         attention = ColoAttention(embed_dim=self.embed_dim,
                                   num_heads=self.num_heads,
@@ -79,7 +81,7 @@ def get_opt_forward():
                                 key_states,
                                 value_states,
                                 attn_mask=flash_attention_mask,
-                                attn_mask_type=AttnMaskType.paddedcausal)
+                                attn_mask_type=attn_mask_type)
 
         attn_output = self.out_proj(attn_output)
         return attn_output, None, past_key_value
