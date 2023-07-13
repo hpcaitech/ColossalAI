@@ -3,12 +3,13 @@
 Author: [Mingyan Jiang](https://github.com/jiangmingyan)
 
 **Prerequisite**
+
 - [Define Your Configuration](../basics/define_your_config.md)
 - [Training Booster](../basics/booster_api.md)
 
 **Related Paper**
-- [Accelerating Scientific Computations with Mixed Precision Algorithms](https://arxiv.org/abs/0808.2794)
 
+- [Accelerating Scientific Computations with Mixed Precision Algorithms](https://arxiv.org/abs/0808.2794)
 
 ## Introduction
 
@@ -19,12 +20,11 @@ In Colossal-AI, we have incorporated different implementations of mixed precisio
 2. apex.amp
 3. naive amp
 
-
-| Colossal-AI | support tensor parallel | support pipeline parallel | fp16 extent |
-| ----------- | ----------------------- | ------------------------- | ----------- |
-| AMP_TYPE.TORCH | ✅ | ❌ | Model parameters, activation, gradients are downcast to fp16 during forward and backward propagation |
-| AMP_TYPE.APEX | ❌ | ❌ | More fine-grained, we can choose opt_level O0, O1, O2, O3 |
-| AMP_TYPE.NAIVE | ✅ | ✅ | Model parameters, forward and backward operations are all downcast to fp16 |
+| Colossal-AI    | support tensor parallel | support pipeline parallel | fp16 extent                                                                                          |
+| -------------- | ----------------------- | ------------------------- | ---------------------------------------------------------------------------------------------------- |
+| AMP_TYPE.TORCH | ✅                      | ❌                        | Model parameters, activation, gradients are downcast to fp16 during forward and backward propagation |
+| AMP_TYPE.APEX  | ❌                      | ❌                        | More fine-grained, we can choose opt_level O0, O1, O2, O3                                            |
+| AMP_TYPE.NAIVE | ✅                      | ✅                        | Model parameters, forward and backward operations are all downcast to fp16                           |
 
 The first two rely on the original implementation of PyTorch (version 1.6 and above) and NVIDIA Apex.
 The last method is similar to Apex O2 level.
@@ -64,8 +64,11 @@ However, there are other operations, like reductions, which require the dynamic 
 We supported three AMP training methods and allowed the user to train with AMP with no code. If you want to train with amp, just assign `mixed_precision` with `fp16` when you instantiate the `Booster`. Now booster support torch amp, the other two(apex amp, naive amp) are still started by `colossalai.initialize`, if needed, please refer to [this](./mixed_precision_training.md). Next we will support `bf16`, `fp8`.
 
 ### Start with Booster
+
 instantiate `Booster` with `mixed_precision="fp16"`, then you can train with torch amp.
+
 <!--- doc-test-ignore-start -->
+
 ```python
 """
     Mapping:
@@ -78,9 +81,13 @@ instantiate `Booster` with `mixed_precision="fp16"`, then you can train with tor
 from colossalai import Booster
 booster = Booster(mixed_precision='fp16',...)
 ```
+
 <!--- doc-test-ignore-end -->
+
 or you can create a `FP16TorchMixedPrecision` object, such as:
+
 <!--- doc-test-ignore-start -->
+
 ```python
 from colossalai.mixed_precision import FP16TorchMixedPrecision
 mixed_precision = FP16TorchMixedPrecision(
@@ -90,9 +97,10 @@ mixed_precision = FP16TorchMixedPrecision(
     growth_interval=2000)
 booster = Booster(mixed_precision=mixed_precision,...)
 ```
-<!--- doc-test-ignore-end -->
-The same goes for other types of amps.
 
+<!--- doc-test-ignore-end -->
+
+The same goes for other types of amps.
 
 ### Torch AMP Configuration
 
@@ -120,7 +128,6 @@ When using `colossalai.booster`, you are required to first instantiate a model, 
 The output model is converted to AMP model of smaller memory consumption.
 If your input model is already too large to fit in a GPU, please instantiate your model weights in `dtype=torch.float16`.
 Otherwise, try smaller models or checkout more parallelization training techniques!
-
 
 ## Hands-on Practice
 
@@ -248,4 +255,5 @@ Use the following command to start the training scripts. You can change `--nproc
 ```shell
 colossalai run --nproc_per_node 1 train.py
 ```
+
 <!-- doc-test-command: torchrun --standalone --nproc_per_node=1 mixed_precision_training_with_booster.py  -->

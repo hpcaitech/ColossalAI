@@ -26,26 +26,6 @@ class LayoutConverterOptions:
     pass
 
 
-def to_global(distributed_tensor: "DTensor", layout: Layout) -> torch.Tensor:
-    """
-    Convert a distributed tensor to the global tensor with the given layout.
-    This function returns a native `torch.Tensor` object.
-
-
-    Args:
-        distributed_tensor (`DTensor`): the distributed tensor to be converted.
-        layout (`Layout`): the target layout specification.
-    """
-    layout_converter = LayoutConverter()
-    global_sharding_spec = ShardingSpec(distributed_tensor.dim(), {})
-    global_layout = Layout(device_mesh=layout.device_mesh,
-                           sharding_spec=global_sharding_spec,
-                           global_shape=layout.global_shape)
-    with torch.no_grad():
-        global_tensor = layout_converter.apply(distributed_tensor, layout, global_layout)
-    return global_tensor
-
-
 def set_layout_converting_options(options: LayoutConverterOptions):
     """
     Configure the shape consistency manager via function call.
@@ -322,7 +302,7 @@ class LayoutConverter(metaclass=SingletonMeta):
         process_group_dict = source_layout.device_mesh._process_group_dict[current_rank]
 
         # legal sharding dims means the mesh_id is still available to use.
-        legal_sharding_dims = [i for i in range(len(source_layout.device_mesh.mesh_shape))]
+        legal_sharding_dims = [i for i in range(len(source_layout.device_mesh.shape))]
         for dim, shard_list in source_spec.dim_partition_dict.items():
             for element in shard_list:
                 legal_sharding_dims.remove(element)
@@ -566,5 +546,5 @@ class LayoutConverter(metaclass=SingletonMeta):
         _, comm_action_sequence = self.layout_converting(source_layout, target_layout)
         for comm_spec in comm_action_sequence:
             tensor = comm_spec.covert_spec_to_action(tensor)
-        return tensor
+        tensor.dist_layout = target_layout
         return tensor

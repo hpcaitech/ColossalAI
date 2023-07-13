@@ -27,7 +27,7 @@ def check_bn_module_handler(rank, world_size, port):
     # the index of bn node in computation graph
     node_index = 1
     # the total number of bn strategies without sync bn mode
-    # TODO: add sync bn stategies after related passes ready
+    # TODO: add sync bn strategies after related passes ready
     strategy_number = 4
     numerical_test_for_node_strategy(model=model,
                                      device_mesh=device_mesh,

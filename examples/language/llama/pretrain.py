@@ -212,11 +212,13 @@ def main():
                                            total_steps=args.num_epochs * len(dataloader),
                                            warmup_steps=args.warmup_steps,
                                            eta_min=0.1 * args.lr)
-
+    default_dtype = torch.float16 if args.mixed_precision == 'fp16' else torch.bfloat16
+    torch.set_default_dtype(default_dtype)
     model, optimizer, _, dataloader, lr_scheduler = booster.boost(model,
                                                                   optimizer,
                                                                   dataloader=dataloader,
                                                                   lr_scheduler=lr_scheduler)
+    torch.set_default_dtype(torch.float)
 
     coordinator.print_on_master(f'Booster init max CUDA memory: {torch.cuda.max_memory_allocated()/1024**2:.2f} MB')
     coordinator.print_on_master(

@@ -4,6 +4,7 @@ from typing import Dict, List
 import jieba
 from bert_score import score
 from nltk.translate.bleu_score import sentence_bleu
+from nltk.translate.chrf_score import sentence_chrf
 from rouge_chinese import Rouge as Rouge_cn
 from rouge_score import rouge_scorer as Rouge_en
 from sklearn.metrics import f1_score, precision_score, recall_score
@@ -38,6 +39,27 @@ def bleu_score(preds: List[str], targets: List[str], language: str) -> Dict[str,
         bleu_scores[f"bleu{i+1}"] = cumulative_bleu[i] / len(preds)
 
     return bleu_scores
+
+
+def chrf_score(preds: List[str], targets: List[str], language: str) -> Dict[str, float]:
+    """Calculate CHRF Score Metric in sentence level.
+    """
+    chrf_score = {"chrf": 0}
+    cumulative_chrf = []
+
+    for pred, target in zip(preds, targets):
+        if language == "cn":
+            pred_list = ' '.join(jieba.cut(preprocessing_text(pred))).split()
+            target_list = ' '.join(jieba.cut(preprocessing_text(target))).split()
+        elif language == "en":
+            pred_list = preprocessing_text(pred).split()
+            target_list = preprocessing_text(target).split()
+
+        cumulative_chrf.append(sentence_chrf(target_list, pred_list))
+
+    chrf_score["chrf"] = statistics.mean(cumulative_chrf)
+
+    return chrf_score
 
 
 def rouge_cn_score(preds: List[str], targets: List[str]) -> Dict[str, float]:
@@ -119,8 +141,8 @@ def distinct_score(preds: List[str], language: str) -> Dict[str, float]:
             count_segs = len(pred_seg_list)
             unique_segs = set(pred_seg_list)
             count_unique_chars = len(unique_segs)
-
-            cumulative_distinct.append(count_unique_chars / count_segs)
+            # prevent denominator from being 0
+            cumulative_distinct.append(count_unique_chars / (count_segs + 1e-6))
         elif language == "en":
             # calculate distinct 1-gram, 2-gram, 3-gram
             unique_ngram = [set() for _ in range(0, 3)]

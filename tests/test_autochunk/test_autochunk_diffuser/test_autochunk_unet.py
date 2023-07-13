@@ -4,12 +4,15 @@ import pytest
 import torch
 
 try:
-    from diffusers import UNet2DModel
-    MODELS = [UNet2DModel]
+    import diffusers
+    MODELS = [diffusers.UNet2DModel]
     HAS_REPO = True
+    from packaging import version
+    SKIP_UNET_TEST = version.parse(diffusers.__version__) > version.parse("0.10.2")
 except:
     MODELS = []
     HAS_REPO = False
+    SKIP_UNET_TEST = False
 
 from test_autochunk_diffuser_utils import run_test
 
@@ -33,6 +36,10 @@ def get_data(shape: tuple) -> Tuple[List, List]:
 
 
 @pytest.mark.skipif(
+    SKIP_UNET_TEST,
+    reason="diffusers version > 0.10.2",
+)
+@pytest.mark.skipif(
     not (AUTOCHUNK_AVAILABLE and HAS_REPO),
     reason="torch version is lower than 1.12.0",
 )
@@ -51,13 +58,4 @@ def test_evoformer_block(model, shape, max_memory):
 
 
 if __name__ == "__main__":
-    run_test(
-        rank=0,
-        data=get_data(LATENTS_SHAPE),
-        max_memory=None,
-        model=UNet2DModel,
-        print_code=False,
-        print_mem=True,
-        print_est_mem=False,
-        print_progress=False,
-    )
+    test_evoformer_block()

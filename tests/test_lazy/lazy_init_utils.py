@@ -8,8 +8,8 @@ from packaging import version
 
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.lazy.lazy_init import LazyInitContext, LazyTensor, _MyTensor
+from colossalai.tensor.d_tensor import to_global
 from colossalai.tensor.d_tensor.layout import Layout
-from colossalai.tensor.d_tensor.layout_converter import to_global
 from tests.kit.model_zoo.registry import ModelAttribute
 
 SUPPORT_LAZY = version.parse(torch.__version__) >= version.parse('1.12.0')
@@ -62,7 +62,7 @@ def assert_forward_equal(m1: torch.nn.Module, m2: torch.nn.Module, data_gen_fn: 
 
 
 def check_lazy_init(entry: TestingEntry, seed: int = 42, verbose: bool = False, check_forward: bool = False) -> None:
-    model_fn, data_gen_fn, output_transform_fn, model_attr = entry
+    model_fn, data_gen_fn, output_transform_fn, _, model_attr = entry
     _MyTensor._pre_op_fn = lambda *args: set_seed(seed)
     LazyTensor._pre_op_fn = lambda *args: set_seed(seed)
     ctx = LazyInitContext(tensor_cls=_MyTensor)
@@ -96,5 +96,6 @@ def assert_dist_model_equal(model: torch.nn.Module, distributed_model: torch.nn.
         t2 = t2.cuda()
         if n2 in sharding_spec_dict:
             layout = Layout(device_mesh=device_mesh, sharding_spec=sharding_spec_dict[n2], global_shape=t1.shape)
-            t2 = to_global(t2, layout)
+            t2.dist_layout = layout
+            t2 = to_global(t2)
         assert torch.equal(t1, t2), f'{n1} {t1} vs {t2}'

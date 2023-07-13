@@ -8,7 +8,7 @@ from coati.experience_maker import NaiveExperienceMaker
 from coati.models.base import RewardModel
 from coati.models.gpt import GPTActor, GPTCritic
 from coati.replay_buffer import NaiveReplayBuffer
-from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy
+from coati.trainer.strategies import DDPStrategy, GeminiStrategy
 from transformers.models.gpt2.configuration_gpt2 import GPT2Config
 
 from colossalai.testing import rerun_if_address_is_in_use, spawn
@@ -33,13 +33,13 @@ def gather_and_equal(tensor: torch.Tensor) -> bool:
 
 
 def run_test_data(strategy):
-    EXPERINCE_BATCH_SIZE = 4
+    EXPERIENCE_BATCH_SIZE = 4
     SAMPLE_BATCH_SIZE = 2
 
     if strategy == 'ddp':
         strategy = DDPStrategy()
     elif strategy == 'colossalai':
-        strategy = ColossalAIStrategy(placement_policy='cuda')
+        strategy = GeminiStrategy(placement_policy='cuda')
     else:
         raise ValueError(f'Unsupported strategy "{strategy}"')
 
@@ -54,7 +54,7 @@ def run_test_data(strategy):
 
     # experience of all ranks should be the same
     for _ in range(2):
-        data = get_data(EXPERINCE_BATCH_SIZE)
+        data = get_data(EXPERIENCE_BATCH_SIZE)
         assert gather_and_equal(data['input_ids'])
         assert gather_and_equal(data['attention_mask'])
         experience = experience_maker.make_experience(**data,

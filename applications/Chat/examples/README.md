@@ -69,7 +69,7 @@ torchrun --standalone --nproc_per_node=4 train_sft.py \
     --grad_checkpoint
 ```
 ### Arg List
-- --strategy:          the strategy using for training, choices=['naive', 'ddp', 'colossalai_gemini', 'colossalai_zero2'], default='colossalai_zero2'
+- --strategy:          the strategy using for training, choices=['ddp', 'colossalai_gemini', 'colossalai_zero2'], default='colossalai_zero2'
 - --model:             model type, choices=['gpt2', 'bloom', 'opt', 'llama'], default='bloom'
 - --pretrain:          pretrain model, type=str, default=None
 - --max_datasets_size: the max size of dataset, type=int, default=None
@@ -118,7 +118,7 @@ Model performance in [Anthropics paper](https://arxiv.org/abs/2204.05862):
 <div align=left>We also train the reward model based on LLaMA-7B, which reaches the ACC of 72.06% after 1 epoch, performing almost the same as Anthropic's best RM.
 
 ### Arg List
-- --strategy:          the strategy using for training, choices=['naive', 'ddp', 'colossalai_gemini', 'colossalai_zero2'], default='colossalai_zero2'
+- --strategy:          the strategy using for training, choices=['ddp', 'colossalai_gemini', 'colossalai_zero2'], default='colossalai_zero2'
 - --model:             model type, choices=['gpt2', 'bloom', 'opt', 'llama'], default='bloom'
 - --pretrain:          pretrain model, type=str, default=None
 - --model_path:        the path of rm model(if continue to train), type=str, default=None
@@ -160,7 +160,7 @@ Prompt dataset: the instruction dataset mentioned in the above figure which incl
 Pretrain dataset: the pretrain dataset including the instruction and corresponding response, e.g. you can use the [InstructWild Data](https://github.com/XueFuzhao/InstructionWild/tree/main/data) in stage 1 supervised instructs tuning.
 
 ### Arg List
-- --strategy:          the strategy using for training, choices=['naive', 'ddp', 'colossalai_gemini', 'colossalai_zero2'], default='colossalai_zero2'
+- --strategy:          the strategy using for training, choices=['ddp', 'colossalai_gemini', 'colossalai_zero2'], default='colossalai_zero2'
 - --model:             model type of actor, choices=['gpt2', 'bloom', 'opt', 'llama'], default='bloom'
 - --pretrain:          pretrain model, type=str, default=None
 - --rm_model:          reward model type, type=str, choices=['gpt2', 'bloom', 'opt', 'llama'], default=None
@@ -171,9 +171,8 @@ Pretrain dataset: the pretrain dataset including the instruction and correspondi
 - --pretrain_dataset:  path of the ptx dataset, type=str, default=None
 - --need_optim_ckpt:   whether to save optim ckpt, type=bool, default=False
 - --num_episodes:      num of episodes for training, type=int, default=10
-- --max_epochs:        max epochs for training in one episode, type=int, default=5
-- --max_timesteps:     max episodes in one batch, type=int, default=10
-- --update_timesteps:  timesteps to update, type=int, default=10
+- --num_update_steps:  number of steps to update policy per episode, type=int
+- --num_collect_steps: number of steps to collect experience per episode, type=int
 - --train_batch_size:  batch size while training, type=int, default=8
 - --ptx_batch_size:    batch size to compute ptx loss, type=int, default=1
 - --experience_batch_size: batch size to make experience, type=int, default=8

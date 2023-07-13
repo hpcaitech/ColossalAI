@@ -22,7 +22,7 @@ from tests.kit.model_zoo import model_zoo
 @parameterize('use_safetensors', [False, True])
 def exam_state_dict_with_origin(placement_policy, model_name, use_safetensors: bool):
     from transformers import BertForSequenceClassification
-    (model_fn, data_gen_fn, output_transform_fn, _) = next(iter(model_zoo.get_sub_registry(model_name).values()))
+    (model_fn, data_gen_fn, output_transform_fn, _, _) = next(iter(model_zoo.get_sub_registry(model_name).values()))
     bert_model = model_fn()
 
     with shared_tempdir() as tempdir:
@@ -30,7 +30,7 @@ def exam_state_dict_with_origin(placement_policy, model_name, use_safetensors: b
         bert_model.config.save_pretrained(save_directory=pretrained_path)
 
         # TODO(ver217): use boost api
-        config_dict, *_ = search_chunk_configuration(bert_model, search_range_mb=1, search_interval_byte=100)
+        config_dict, *_ = search_chunk_configuration(bert_model, search_range_m=1, search_interval=100)
         chunk_manager = ChunkManager(config_dict)
         gemini_manager = GeminiManager(placement_policy, chunk_manager)
         bert_model = ZeroDDP(bert_model, gemini_manager)
@@ -53,7 +53,7 @@ def exam_state_dict_with_origin(placement_policy, model_name, use_safetensors: b
 @parameterize('shard', [True, False])
 @parameterize('model_name', ['transformers_gpt'])
 def exam_state_dict(placement_policy, shard: bool, model_name: str):
-    (model_fn, data_gen_fn, output_transform_fn, _) = next(iter(model_zoo.get_sub_registry(model_name).values()))
+    (model_fn, data_gen_fn, output_transform_fn, _, _) = next(iter(model_zoo.get_sub_registry(model_name).values()))
     criterion = lambda x: x.mean()
     plugin = GeminiPlugin(placement_policy=placement_policy)
     booster = Booster(plugin=plugin)
