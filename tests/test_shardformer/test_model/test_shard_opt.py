@@ -72,7 +72,7 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
 
 @parameterize('enable_fused_normalization', [True, False])
 @parameterize('enable_tensor_parallelism', [True, False])
-@parameterize('enable_flash_attention', [False, False])
+@parameterize('enable_flash_attention', [True, False])
 def run_opt_test(enable_fused_normalization, enable_tensor_parallelism, enable_flash_attention):
     sub_model_zoo = model_zoo.get_sub_registry('transformers_opt')
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
