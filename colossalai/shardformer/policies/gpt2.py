@@ -299,7 +299,8 @@ class GPT2PipelineForwards:
             if token_type_ids is not None:
                 token_type_ids = token_type_ids.view(-1, seq_length)
         else:
-            assert hidden_states is not None
+            if hidden_states is None:
+                raise ValueError("hidden_states shouln't be None for stages other than the first stage.")
             input_shape = hidden_states.size()[:-1]
             batch_size, seq_length = input_shape[0], input_shape[1]
             device = hidden_states.device
