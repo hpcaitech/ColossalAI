@@ -5,7 +5,7 @@ import os
 import loralib as lora
 import torch
 import torch.distributed as dist
-from coati.dataset import DataCollatorForSupervisedDataset, SFTDataset, SupervisedDataset
+from coati.dataset import SFTDataset, SupervisedDataset
 from coati.models import convert_to_lora_module
 from coati.trainer import SFTTrainer
 from coati.trainer.strategies import DDPStrategy, GeminiStrategy, LowLevelZeroStrategy
@@ -111,7 +111,6 @@ def train(args):
                                           max_datasets_size=args.max_datasets_size,
                                           max_length=args.max_len)
         eval_dataset = None
-    data_collator = DataCollatorForSupervisedDataset(tokenizer=tokenizer)
 
     if dist.is_initialized() and dist.get_world_size() > 1:
         train_sampler = DistributedSampler(train_dataset,
@@ -135,14 +134,12 @@ def train(args):
                                   shuffle=(train_sampler is None),
                                   sampler=train_sampler,
                                   batch_size=args.batch_size,
-                                  collate_fn=data_collator,
                                   pin_memory=True)
     if eval_dataset is not None:
         eval_dataloader = DataLoader(eval_dataset,
                                      shuffle=(eval_sampler is None),
                                      sampler=eval_sampler,
                                      batch_size=args.batch_size,
-                                     collate_fn=data_collator,
                                      pin_memory=True)
     else:
         eval_dataloader = None

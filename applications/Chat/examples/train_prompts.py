@@ -2,7 +2,7 @@ import argparse
 
 import torch
 import torch.distributed as dist
-from coati.dataset import DataCollatorForSupervisedDataset, PromptDataset, SupervisedDataset
+from coati.dataset import PromptDataset, SupervisedDataset
 from coati.models.bloom import BLOOMRM, BLOOMActor, BLOOMCritic
 from coati.models.gpt import GPTRM, GPTActor, GPTCritic
 from coati.models.llama import LlamaActor, LlamaCritic, LlamaRM
@@ -121,8 +121,6 @@ def main(args):
     else:
         raise ValueError(f'Unsupported model "{args.model}"')
 
-    data_collator = DataCollatorForSupervisedDataset(tokenizer=tokenizer)
-
     prompt_dataset = PromptDataset(tokenizer=tokenizer, data_path=args.prompt_dataset, max_datasets_size=16384)
     if dist.is_initialized() and dist.get_world_size() > 1:
         prompt_sampler = DistributedSampler(prompt_dataset, shuffle=True, seed=42, drop_last=True)
@@ -144,8 +142,7 @@ def main(args):
     pretrain_dataloader = DataLoader(pretrain_dataset,
                                      shuffle=(pretrain_sampler is None),
                                      sampler=pretrain_sampler,
-                                     batch_size=args.ptx_batch_size,
-                                     collate_fn=data_collator)
+                                     batch_size=args.ptx_batch_size)
 
     # NOTE: For small models like opt-1.3b, reward model and initial model are not required to be parallelized.
     (actor, actor_optim), (critic, critic_optim), reward_model, initial_model = \
