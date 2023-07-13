@@ -7,11 +7,6 @@ __all__ = ['get_gpt2_forward']
 
 def get_gpt2_forward():
 
-    # try:
-    #     from xformers.ops import memory_efficient_attention as me_attention
-    #     from xformers.ops.fmha.attn_bias import LowerTriangularMask
-    # except:
-    #     raise ImportError("Error: xformers module is not installed. Please install it to use flash attention.")
     from colossalai.kernel.cuda_native.flash_attention import AttnMaskType, ColoAttention
 
     def gpt2_flash_attention_forward(
