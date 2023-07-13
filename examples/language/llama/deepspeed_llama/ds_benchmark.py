@@ -104,6 +104,8 @@ class RandomDataset(Dataset):
     def __init__(self, num_samples: int = 1000, max_length: int = 2048, vocab_size: int = 32000):
         self.num_samples = num_samples
         self.max_length = max_length
+        # self.input_ids = torch.randint(0, vocab_size, (num_samples, max_length), device=get_current_device(),
+        #                                )
         self.input_ids = torch.randint(0, vocab_size, (num_samples, max_length), device=get_current_device())
         self.attention_mask = torch.ones_like(self.input_ids)
 
@@ -173,7 +175,7 @@ def main():
     # ==============================
 
     # with low_precision_init(), no_init_weights():
-    with low_precision_init(), no_init_weights(), deepspeed.zero.Init():
+    with no_init_weights(), deepspeed.zero.Init():
         model = LlamaForCausalLM(config)
         model.tie_weights()
 
@@ -220,36 +222,37 @@ def main():
 
     related_env = {key_value[0]: key_value[1] for key_value in os.environ.items() if key_value[0].startswith("NCCL") or "CUDA" in key_value[0]}
     print("="*30)
-    print("related env: ", related_env)
+    print(model.dtype)
     print("="*30)
 
-    with torch.profiler.profile(
-            activities=[
-                torch.profiler.ProfilerActivity.CPU,
-                torch.profiler.ProfilerActivity.CUDA],
-            schedule=torch.profiler.schedule(
-                wait=1,
-                warmup=1,
-                active=2),
-            on_trace_ready=torch.profiler.tensorboard_trace_handler('./zero_profile_full', worker_name='worker0'),
-            with_stack=True,
-            record_shapes=True,
-            profile_memory=True,
-            with_flops=True
-    ) as p:
-        for step, batch in enumerate(tqdm(data_loader, desc='Step')):
-            #forward() method
-            # print(batch)
-            performance_evaluator.on_step_start(step)
-            loss = model_engine(**batch).loss
-            #runs backpropagation
-            model_engine.backward(loss)
+    # with torch.profiler.profile(
+    #         activities=[
+    #             torch.profiler.ProfilerActivity.CPU,
+    #             torch.profiler.ProfilerActivity.CUDA],
+    #         schedule=torch.profiler.schedule(
+    #             wait=1,
+    #             warmup=1,
+    #             active=2),
+    #         on_trace_ready=torch.profiler.tensorboard_trace_handler('./zero_profile_full', worker_name='worker0'),
+    #         with_stack=True,
+    #         record_shapes=True,
+    #         profile_memory=True,
+    #         with_flops=True
+    # ) as p:
+    for step, batch in enumerate(tqdm(data_loader, desc='Step')):
+        #forward() method
+        # print(batch)
+        print("batch dtype", batch['input_ids'].dtype)
+        performance_evaluator.on_step_start(step)
+        loss = model_engine(**batch).loss
+        #runs backpropagation
+        model_engine.backward(loss)
 
-            #weight update
-            model_engine.step()
-            optimizer.zero_grad()
-            performance_evaluator.on_step_end(**batch)
-            p.step()
+        #weight update
+        model_engine.step()
+        optimizer.zero_grad()
+        performance_evaluator.on_step_end(**batch)
+            # p.step()
 
     performance_evaluator.on_fit_end()
     rank = dist.get_rank()
