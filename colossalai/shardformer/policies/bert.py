@@ -11,6 +11,7 @@ from transformers.modeling_outputs import (
     BaseModelOutputWithPastAndCrossAttentions,
     BaseModelOutputWithPoolingAndCrossAttentions,
     CausalLMOutputWithCrossAttentions,
+    MultipleChoiceModelOutput,
     NextSentencePredictorOutput,
     QuestionAnsweringModelOutput,
     SequenceClassifierOutput,
@@ -869,8 +870,9 @@ def bert_model_forward(
             return (sequence_output, pooled_output) + layer_outputs[1:]
         # return dict is not supported at this moment
         else:
-            return BaseModelOutputWithPastAndCrossAttentions(
-                last_hidden_state=hidden_states,
+            return BaseModelOutputWithPoolingAndCrossAttentions(
+                last_hidden_state=sequence_output,
+                pooler_output=pooled_output,
                 past_key_values=next_decoder_cache,
                 hidden_states=all_hidden_states,
                 attentions=all_self_attentions,
@@ -964,23 +966,26 @@ def bert_for_pretraining_forward(
         }
 
 
-def bert_lm_head_model_forward(self: BertLMHeadModel,
-                               input_ids: Optional[torch.Tensor] = None,
-                               attention_mask: Optional[torch.Tensor] = None,
-                               token_type_ids: Optional[torch.Tensor] = None,
-                               position_ids: Optional[torch.Tensor] = None,
-                               head_mask: Optional[torch.Tensor] = None,
-                               inputs_embeds: Optional[torch.Tensor] = None,
-                               encoder_hidden_states: Optional[torch.Tensor] = None,
-                               encoder_attention_mask: Optional[torch.Tensor] = None,
-                               labels: Optional[torch.Tensor] = None,
-                               past_key_values: Optional[List[torch.Tensor]] = None,
-                               use_cache: Optional[bool] = None,
-                               output_attentions: Optional[bool] = None,
-                               output_hidden_states: Optional[bool] = None,
-                               return_dict: Optional[bool] = None,
-                               hidden_states: Optional[torch.FloatTensor] = None,
-                               stage_manager: Optional[PipelineStageManager] = None):
+def bert_lm_head_model_forward(
+    self: BertLMHeadModel,
+    input_ids: Optional[torch.Tensor] = None,
+    attention_mask: Optional[torch.Tensor] = None,
+    token_type_ids: Optional[torch.Tensor] = None,
+    position_ids: Optional[torch.Tensor] = None,
+    head_mask: Optional[torch.Tensor] = None,
+    inputs_embeds: Optional[torch.Tensor] = None,
+    encoder_hidden_states: Optional[torch.Tensor] = None,
+    encoder_attention_mask: Optional[torch.Tensor] = None,
+    labels: Optional[torch.Tensor] = None,
+    past_key_values: Optional[List[torch.Tensor]] = None,
+    use_cache: Optional[bool] = None,
+    output_attentions: Optional[bool] = None,
+    output_hidden_states: Optional[bool] = None,
+    return_dict: Optional[bool] = None,
+    hidden_states: Optional[torch.FloatTensor] = None,
+    stage_manager: Optional[PipelineStageManager] = None,
+    stage_index: Optional[List[int]] = None,
+):
     r"""
         encoder_hidden_states  (`torch.FloatTensor` of shape `(batch_size, sequence_length, hidden_size)`, *optional*):
             Sequence of hidden-states at the output of the last layer of the encoder. Used in the cross-attention if
@@ -1034,7 +1039,8 @@ def bert_lm_head_model_forward(self: BertLMHeadModel,
                                  output_hidden_states=output_hidden_states,
                                  return_dict=return_dict,
                                  stage_manager=stage_manager,
-                                 hidden_states=hidden_states if hidden_states is not None else None)
+                                 hidden_states=hidden_states if hidden_states is not None else None,
+                                 stage_index=stage_index)
     past_key_values = None
     all_hidden_states = None
     all_self_attentions = None
@@ -1226,6 +1232,7 @@ def bert_for_next_sentence_prediction_forward(
                                  hidden_states=hidden_states,
                                  stage_manager=stage_manager,
                                  stage_index=stage_index)
+
     if stage_manager.is_last_stage():
         pooled_output = outputs[1]
         seq_relationship_scores = self.cls(pooled_output)
@@ -1453,6 +1460,11 @@ def bert_for_multipile_choice_forward(
         return_dict = False
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
+    # in our pipeline design,input ids are copied for every stage and shouldn't be none
+    # the input_ids for multiple choice model is [batch_size, num_choices, sequence_length]
+    if stage_manager.is_last_stage():
+        num_choices = input_ids.shape[1] if input_ids is not None else inputs_embeds.shape[1]
+
     input_ids = input_ids.view(-1, input_ids.size(-1)) if input_ids is not None else None
     attention_mask = attention_mask.view(-1, attention_mask.size(-1)) if attention_mask is not None else None
     token_type_ids = token_type_ids.view(-1, token_type_ids.size(-1)) if token_type_ids is not None else None
@@ -1476,8 +1488,6 @@ def bert_for_multipile_choice_forward(
         stage_index=stage_index,
     )
     if stage_manager.is_last_stage():
-        # the num_choices is only used for the last stage
-        num_choices = hidden_states[1]
         pooled_output = outputs[1]
         pooled_output = self.dropout(pooled_output)
         logits = self.classifier(pooled_output)
