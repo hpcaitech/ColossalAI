@@ -89,7 +89,7 @@ colossalai run --nproc_per_node YOUR_GPU_PER_NODE --hostfile YOUR_HOST_FILE \
 --master_addr YOUR_MASTER_ADDR benchmark.py --OTHER_CONFIGURATIONS
 ```
 Here we will show an example of how to run training 
-llama pretraining with `gemini_auto, batch_size=12, sequence_length=2048, gradient_checkpoint=True`.
+llama pretraining with `gemini(gemini_auto plugin), batch_size=12, sequence_length=2048, gradient_checkpoint=True`.
 
 #### a. Running environment
 This environment was performed on 4 computing nodes with 32 A800 GPUs in total. The nodes are
