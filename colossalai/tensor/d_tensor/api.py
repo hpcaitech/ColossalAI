@@ -235,6 +235,14 @@ def sharded_tensor_to_param(dtensor: torch.Tensor, requires_grad: bool = True):
     return param
 
 
+def sharded_tensor_to_existing_param(dtensor: torch.Tensor, param: torch.nn.Parameter) -> None:
+    assert is_distributed_tensor(dtensor), 'The input tensor is not a distributed tensor.'
+    param.data = dtensor
+    # make it distributed as well
+    param.dist_layout = dtensor.dist_layout
+    _hijack_detach_and_clone(param)
+
+
 def compute_global_numel(dtensor: torch.Tensor) -> int:
     """
     Compute the global number of elements in the distributed tensor.
