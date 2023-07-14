@@ -71,14 +71,6 @@ class ChatGLMModelPolicy(Policy):
                                                                suffix="self_attention.core_attention.attention_dropout",
                                                                target_module=col_nn.DropoutForParallelInput,
                                                            ),
-                                                           SubModuleReplacementDescription(
-                                                               suffix="mlp.dense_h_to_4h",
-                                                               target_module=col_nn.Linear1D_Col,
-                                                           ),
-                                                           SubModuleReplacementDescription(
-                                                               suffix="mlp.dense_4h_to_h",
-                                                               target_module=col_nn.Linear1D_Row,
-                                                           )
                                                        ])
 
         return policy
