@@ -22,6 +22,7 @@ class ShardConfig:
     enable_fused_normalization: bool = False
     enable_all_optimization: bool = False
     enable_flash_attention: bool = False
+    enable_jit_fused: bool = False
 
     # TODO: add support for tensor parallel
     # pipeline_parallel_size: int
@@ -51,3 +52,4 @@ class ShardConfig:
         # you can add all the optimization flag here
         self.enable_fused_normalization = True
         self.enable_flash_attention = True
+        self.enable_jit_fused = True
