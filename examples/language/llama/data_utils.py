@@ -7,7 +7,7 @@ import torch
 from torch.distributed import ProcessGroup
 from torch.distributed.distributed_c10d import _get_default_group
 from torch.utils.data import DataLoader, Dataset, DistributedSampler
-
+from colossalai.utils import get_current_device
 
 class StatefulDistributedSampler(DistributedSampler):
 
@@ -96,3 +96,22 @@ def load_json(file_path: str):
 def save_json(data, file_path: str):
     with open(file_path, 'w') as f:
         json.dump(data, f, indent=4)
+
+
+class RandomDataset(Dataset):
+
+    def __init__(self, num_samples: int = 1000, max_length: int = 2048, vocab_size: int = 32000):
+        self.num_samples = num_samples
+        self.max_length = max_length
+        self.input_ids = torch.randint(0, vocab_size, (num_samples, max_length), device=get_current_device())
+        self.attention_mask = torch.ones_like(self.input_ids)
+
+    def __len__(self):
+        return self.num_samples
+
+    def __getitem__(self, idx):
+        return {
+            'input_ids': self.input_ids[idx],
+            'attention_mask': self.attention_mask[idx],
+            'labels': self.input_ids[idx]
+        }

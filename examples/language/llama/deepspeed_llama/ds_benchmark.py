@@ -11,24 +11,21 @@ import numpy as np
 import random
 import json
 import torch
+import torch.profiler
 import torch.distributed as dist
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.sampler import RandomSampler, SequentialSampler
 from torch.utils.data.distributed import DistributedSampler
+sys.path.append("..")
+from data_utils import RandomDataset
+from model_utils import get_model_numel, format_numel_str, low_precision_init
 from tqdm import tqdm
 
 from transformers import (
-    CONFIG_MAPPING,
-    MODEL_MAPPING,
-    AutoConfig,
     LlamaConfig,
     LlamaForCausalLM,
-    LlamaModel,
-    LlamaTokenizer,
-    get_linear_schedule_with_warmup,
 )
 from transformers.modeling_utils import no_init_weights
-from transformers.utils.versions import require_version
 
 from examples.language.llama.deepspeed_llama.performance_evaluator_ds import PerformanceEvaluator
 
@@ -48,34 +45,8 @@ def get_current_device() -> torch.device:
     else:
         return torch.device('cpu')
 
-def get_model_numel(model: torch.nn.Module) -> int:
-    return sum(p.numel() for p in model.parameters())
-
-
-def format_numel_str(numel: int) -> str:
-    B = 1024**3
-    M = 1024**2
-    K = 1024
-    if numel >= B:
-        return f'{numel / B:.2f} B'
-    elif numel >= M:
-        return f'{numel / M:.2f} M'
-    elif numel >= K:
-        return f'{numel / K:.2f} K'
-    else:
-        return f'{numel}'
-
 def get_argument_parser():
     parser = argparse.ArgumentParser()
-
-    # Required_parameter
-    # parser.add_argument(
-    #     "--config-file",
-    #     "--cf",
-    #     help="pointer to the configuration file of the experiment",
-    #     type=str,
-    #     required=True)
-
     parser.add_argument("--local_rank",
                         type=int,
                         default=-1,
@@ -90,51 +61,7 @@ def get_argument_parser():
     parser.add_argument('-train_micro_batch_size_per_gpu', type=int, default=2, help='Batch size per GPU')
 
     return parser
-# ==============================
-# random dataloader for llama finetuning
-# ==============================
 
-
-class RandomDataset(Dataset):
-
-    def __init__(self, num_samples: int = 1000, max_length: int = 2048, vocab_size: int = 32000):
-        self.num_samples = num_samples
-        self.max_length = max_length
-        self.input_ids = torch.randint(0, vocab_size, (num_samples, max_length), device=get_current_device())
-        self.attention_mask = torch.ones_like(self.input_ids)
-
-    def __len__(self):
-        return self.num_samples
-
-    def __getitem__(self, idx):
-        return {
-            'input_ids': self.input_ids[idx],
-            'attention_mask': self.attention_mask[idx],
-            'labels': self.input_ids[idx]
-        }
-
-
-@contextmanager
-def low_precision_init(target_dtype: torch.dtype = torch.float16):
-    dtype = torch.get_default_dtype()
-    try:
-        torch.set_default_dtype(target_dtype)
-        yield
-    finally:
-        torch.set_default_dtype(dtype)
-
-
-
-def get_dataloader(args, dataset: Dataset, eval_set=False):
-    # if args.local_rank == -1:
-    #     train_sampler = RandomSampler(dataset)
-    # else:
-    train_sampler = DistributedSampler(dataset)
-    return (x for x in
-            DataLoader(dataset,
-                       args.train_micro_batch_size_per_gpu,
-                       sampler=train_sampler,
-                       num_workers=10))
 
 def get_arguments():
     parser = get_argument_parser()
@@ -153,10 +80,6 @@ def main():
     # ==============================
     # Parse Arguments
     # ==============================
-    print(os.environ['NCCL_IB_HCA'])
-    print(os.environ['NCCL_IB_DISABLE'])
-    print(os.environ['NCCL_SOCKET_IFNAME'])
-    print(os.environ['NCCL_IB_GID_INDEX'])
     start_time = time.time()
     args = get_arguments()
     deepspeed.init_distributed()
@@ -169,13 +92,14 @@ def main():
     # ==============================
 
     # with low_precision_init(), no_init_weights():
-    with low_precision_init(), no_init_weights(), deepspeed.zero.Init():
+    with no_init_weights(), deepspeed.zero.Init():
         model = LlamaForCausalLM(config)
         model.tie_weights()
 
     if args.grad_checkpoint:
         print("Enabling gradient checkpointing")
         model.gradient_checkpointing_enable()
+
     model_numel = get_model_numel(model)
     performance_evaluator = PerformanceEvaluator(model_numel, args.grad_checkpoint, args.ignore_steps,
                                                  args.world_size)
@@ -184,33 +108,22 @@ def main():
                                                          model_parameters=model.parameters())
 
 
-    # Set DeepSpeed info
-    # args.local_rank = model.network.local_rank
-    # args.device = model.network.device
-    # model.set_device(args.device)
-    # args.fp16 = model.network.fp16_enabled()
     print("loading dataset")
     dataset = RandomDataset(num_samples=args.train_micro_batch_size_per_gpu * args.num_steps * args.world_size,
                             max_length=args.max_length,
                             vocab_size=config.vocab_size)
 
-    def seed_worker(worker_id):
-        worker_seed = 1024
-        np.random.seed(worker_seed)
-        torch.manual_seed(worker_seed)
-        random.seed(worker_seed)
 
-    # data_loader = get_dataloader(args, dataset)
     data_loader = DataLoader(dataset, batch_size=args.train_micro_batch_size_per_gpu, drop_last=True,
                              sampler=DistributedSampler(dataset, num_replicas=args.world_size, rank=args.local_rank,
                                                         shuffle=True)
                              )
 
-    end_time = time.time()
-    print(f'Initialization took {end_time - start_time:.2f} seconds')
+    # ==============================
+    # Training
+    # ==============================
     for step, batch in enumerate(tqdm(data_loader, desc='Step')):
-        #forward() method
-        # print(batch)
+        print("batch dtype", batch['input_ids'].dtype)
         performance_evaluator.on_step_start(step)
         loss = model_engine(**batch).loss
         #runs backpropagation
