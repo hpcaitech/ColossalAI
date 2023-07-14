@@ -43,7 +43,6 @@ def main():
     # ==============================
     # Parse Arguments
     # ==============================
-    start_time = time.time()
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config', type=str, default='7b', help='Model configuration')
     parser.add_argument('-p',

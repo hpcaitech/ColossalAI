@@ -17,7 +17,6 @@ from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.sampler import RandomSampler, SequentialSampler
 from torch.utils.data.distributed import DistributedSampler
 sys.path.append("..")
-from attn import SUPPORT_XFORMERS, replace_xformers
 from data_utils import RandomDataset
 from model_utils import get_model_numel, format_numel_str, low_precision_init
 from tqdm import tqdm
@@ -59,7 +58,6 @@ def get_argument_parser():
     parser.add_argument('-g', '--grad_checkpoint', action='store_true', help='Use gradient checkpointing')
     parser.add_argument('-l', '--max_length', type=int, default=2048, help='Max sequence length')
     parser.add_argument('-w', '--world_size', type=int, default=4, help='Distributed world size')
-    parser.add_argument('-x', '--xformers', action='store_true', help='Use xformers')
     parser.add_argument('-train_micro_batch_size_per_gpu', type=int, default=2, help='Batch size per GPU')
 
     return parser
@@ -101,10 +99,6 @@ def main():
     if args.grad_checkpoint:
         print("Enabling gradient checkpointing")
         model.gradient_checkpointing_enable()
-
-    if args.xformers:
-        assert SUPPORT_XFORMERS, 'Use flash attention while xfomers is not installed'
-        replace_xformers(model)
 
     model_numel = get_model_numel(model)
     performance_evaluator = PerformanceEvaluator(model_numel, args.grad_checkpoint, args.ignore_steps,
