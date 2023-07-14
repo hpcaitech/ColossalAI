@@ -440,3 +440,15 @@ def customized_distributed_tensor_to_param(dtensor: torch.Tensor, requires_grad:
     param.gather_fn = dtensor.gather_fn
     _hijack_detach_and_clone_for_customized_distributed_tensor(param)
     return param
+
+
+def customized_distributed_tensor_to_existing_param(dtensor: torch.Tensor, param: torch.nn.Parameter):
+    """
+    Convert the given customized distributed tensor to an existing parameter.
+    """
+    assert is_customized_distributed_tensor(dtensor), 'The input tensor is not a customized distributed tensor.'
+
+    param.data = dtensor.data
+    param.shard_fn = dtensor.shard_fn
+    param.gather_fn = dtensor.gather_fn
+    _hijack_detach_and_clone_for_customized_distributed_tensor(param)

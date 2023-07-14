@@ -13,12 +13,7 @@ from torch.distributed import ProcessGroup
 from colossalai.lazy import LazyInitContext
 from colossalai.nn import init as init
 from colossalai.nn.layer.utils import divide
-from colossalai.tensor.d_tensor.api import (
-    shard_colwise,
-    shard_rowwise,
-    sharded_tensor_to_existing_param,
-    sharded_tensor_to_param,
-)
+from colossalai.tensor.d_tensor.api import shard_colwise, shard_rowwise, sharded_tensor_to_existing_param
 
 from ._operation import gather_forward_split_backward, reduce_forward
 from .parallel_module import ParallelModule

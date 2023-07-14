@@ -56,10 +56,10 @@ def rearrange(tensor: torch.Tensor, dim: int):
 @parameterize('lazy_init', [False, True])
 def check_linear_conv_1d_col(lazy_init: bool):
     ctx = LazyInitContext() if lazy_init else nullcontext()
-
+    linear = Conv1D(192, 48).cuda()
     with ctx:
-        linear = Conv1D(192, 48).cuda()
-    linear_conv_col = GPT2FusedLinearConv1D_Col.from_native_module(linear,
+        linear_copy = Conv1D(192, 48).cuda()
+    linear_conv_col = GPT2FusedLinearConv1D_Col.from_native_module(linear_copy,
                                                                    process_group=None,
                                                                    gather_output=True,
                                                                    n_fused=3)
@@ -91,13 +91,18 @@ def check_linear_conv_1d_col(lazy_init: bool):
 def check_linear_conv_1d_row(lazy_init: bool):
     ctx = LazyInitContext() if lazy_init else nullcontext()
 
+    linear = Conv1D(192, 48).cuda()
     with ctx:
-        linear = Conv1D(192, 48).cuda()
-    linear_row = GPT2FusedLinearConv1D_Row.from_native_module(linear, process_group=None, parallel_input=False)
+        linear_copy = Conv1D(192, 48).cuda()
+    linear_row = GPT2FusedLinearConv1D_Row.from_native_module(linear_copy, process_group=None, parallel_input=False)
 
     assert linear.weight.shape == torch.Size([48, 192])
     assert linear_row.weight.shape == torch.Size([24, 192])
     assert linear_row.bias.shape == torch.Size([192])
+
+    # ensure weights are reversibly loadable
+    linear_row.load_state_dict(linear.state_dict())
+    linear.load_state_dict(linear_row.state_dict())
 
     # check computation correctness
     x = torch.rand(4, 48).cuda()
