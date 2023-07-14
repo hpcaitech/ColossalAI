@@ -135,6 +135,7 @@ class GPT2Policy(Policy):
         if stage_manager.is_first_stage():
             held_layers.append(module.wte)
             held_layers.append(module.wpe)
+            held_layers.append(module.drop)
         start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
         held_layers.extend(module.h[start_idx:end_idx])
         if stage_manager.is_last_stage():
@@ -267,6 +268,37 @@ class GPT2ForTokenClassificationPolicy(GPT2Policy):
 
     def __init__(self) -> None:
         super().__init__()
+
+    def module_policy(self):
+        from transformers.models.gpt2.modeling_gpt2 import GPT2ForTokenClassification
+
+        module_policy = super().module_policy()
+
+        if self.shard_config.enable_tensor_parallelism:
+            addon_module = {
+                GPT2ForTokenClassification:
+                    ModulePolicyDescription(sub_module_replacement=[
+                        SubModuleReplacementDescription(
+                            suffix="classifier", target_module=col_nn.Linear1D_Col, kwargs={"gather_output": True})
+                    ])
+            }
+            module_policy.update(addon_module)
+
+        self.set_pipeline_forward(model_cls=GPT2ForTokenClassification,
+                                  new_forward=GPT2PipelineForwards.gpt2_for_token_classification_forward,
+                                  policy=module_policy)
+        return module_policy
+
+    def get_held_layers(self) -> List[Module]:
+        held_layers = super().get_held_layers()
+        if self.pipeline_stage_manager.is_last_stage():
+            held_layers.append(self.model.dropout)
+            held_layers.append(self.model.classifier)
+        return held_layers
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        """No shared params in GPT2ForTokenClassification."""
+        return []
 
 
 # GPT2ForSequenceClassification
@@ -550,7 +582,6 @@ class GPT2PipelineForwards:
         if not stage_manager.is_last_stage():
             return {'hidden_states': outputs['hidden_states']}
 
-        torch.cuda.set_device(hidden_states.device)
         hidden_states = outputs[0]
         lm_logits = self.lm_head(hidden_states)
         loss = None
@@ -563,7 +594,6 @@ class GPT2PipelineForwards:
             # Flatten the tokens
             loss_fct = CrossEntropyLoss()
             loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
-
         if not return_dict:
             output = (lm_logits,) + outputs[1:]
             return ((loss,) + output) if loss is not None else output
@@ -575,4 +605,76 @@ class GPT2PipelineForwards:
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
             cross_attentions=outputs.cross_attentions,
+        )
+
+    @staticmethod
+    def gpt2_for_token_classification_forward(
+            self: 'GPT2ForTokenClassification',
+            input_ids: Optional[torch.LongTensor] = None,
+            past_key_values: Optional[Tuple[Tuple[torch.Tensor]]] = None,
+            attention_mask: Optional[torch.FloatTensor] = None,
+            token_type_ids: Optional[torch.LongTensor] = None,
+            position_ids: Optional[torch.LongTensor] = None,
+            head_mask: Optional[torch.FloatTensor] = None,
+            inputs_embeds: Optional[torch.FloatTensor] = None,
+            labels: Optional[torch.LongTensor] = None,
+            use_cache: Optional[bool] = None,
+            output_attentions: Optional[bool] = None,
+            output_hidden_states: Optional[bool] = None,
+            return_dict: Optional[bool] = None,
+            stage_manager: Optional[PipelineStageManager] = None,
+            hidden_states: Optional[torch.FloatTensor] = None,
+            stage_index: Optional[List[int]] = None) -> Union[Tuple, 'TokenClassifierOutput']:
+        r"""
+        labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
+            Labels for computing the sequence classification/regression loss. Indices should be in `[0, ...,
+            config.num_labels - 1]`. If `config.num_labels == 1` a regression loss is computed (Mean-Square loss), If
+            `config.num_labels > 1` a classification loss is computed (Cross-Entropy).
+
+        # This function is modified on the basis of transformers.models.gpt2.modeling_gpt2.GPT2ForTokenClassification.forward.
+        # Please refer to original code of transformers for more details.
+        """
+
+        from transformers.modeling_outputs import TokenClassifierOutput
+
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        outputs = GPT2PipelineForwards.gpt2_model_forward(self.transformer,
+                                                          input_ids,
+                                                          past_key_values=past_key_values,
+                                                          attention_mask=attention_mask,
+                                                          token_type_ids=token_type_ids,
+                                                          position_ids=position_ids,
+                                                          head_mask=head_mask,
+                                                          inputs_embeds=inputs_embeds,
+                                                          use_cache=use_cache,
+                                                          output_attentions=output_attentions,
+                                                          output_hidden_states=output_hidden_states,
+                                                          return_dict=return_dict,
+                                                          stage_manager=stage_manager,
+                                                          hidden_states=hidden_states,
+                                                          stage_index=stage_index)
+        # If not at the last stage, return hidden_states as in GPT2Model
+        if not stage_manager.is_last_stage():
+            return {'hidden_states': outputs['hidden_states']}
+
+        hidden_states = outputs[0]
+        hidden_states = self.dropout(hidden_states)
+        logits = self.classifier(hidden_states)
+
+        loss = None
+        if labels is not None:
+            labels = labels.to(logits.device)
+            loss_fct = CrossEntropyLoss()
+            loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
+
+        if not return_dict:
+            output = (logits,) + outputs[2:]
+            return ((loss,) + output) if loss is not None else output
+
+        return TokenClassifierOutput(
+            loss=loss,
+            logits=logits,
+            hidden_states=outputs.hidden_states,
+            attentions=outputs.attentions,
         )
