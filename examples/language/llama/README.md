@@ -59,7 +59,7 @@ Additionally, we recommend you to use torch 1.13.1. We've tested our code on tor
 
 The dataset can be automatically downloaded by using `huggingface/datasets`. You can specify the dataset path by `-d` or `--dataset`. The default dataset is `togethercomputer/RedPajama-Data-1T-Sample`.
 
-### 3. Commad line arguments
+### 3. Command line arguments
 
 - Model configuration: `-c`, `--config`. `7b`, `13b`, `30b` and `65b` are supported.
 - Booster plugin: `-p`, `--plugin`. `gemini`, `gemini_cpu`, `zero2` and `zero2_cpu` are supported. For more details, please refer to [Booster plugins](https://colossalai.org/docs/basics/booster_plugins).
@@ -79,6 +79,37 @@ The dataset can be automatically downloaded by using `huggingface/datasets`. You
 - Tensorboard log directory: `-t`, `--tensorboard_dir`. The directory path to save tensorboard logs. The default value is `tb_logs`.
 - Flash attention: `-a`, `--flash_attention`. If you want to use flash attention, you must install [xformers](https://github.com/facebookresearch/xformers) first. The default value is `False`. This is helpful to accelerate training while saving memory. We recommend you always use flash attention.
 
+
+### 4. Shell Script Examples
+
+For your convenience, we provide some shell scripts to run training with various gemini configurations.
+You can find them in `benchmark_65B` and `benchmark_7B` directory. The main command should be in the format of:
+```bash
+colossalai run --nproc_per_node YOUR_GPU_PER_NODE --hostfile YOUR_HOST_FILE \
+--master_addr YOUR_MASTER_ADDR benchmark.py --OTHER_CONFIGURATIONS
+```
+Here we will show an example of how to run training 
+llama pretraining with `gemini_auto, batch_size=12, sequence_length=2048, gradient_checkpoint=True`.
+
+#### a. Running environment
+This environment was performed on 4 computing nodes with 32 A800 GPUs in total. The nodes are
+connected with RDMA and GPUs within one node are fully connected with NVLink.
+
+#### b. Running command
+```bash
+cd examples/language/llama/benchmark_65B/gemini_auto/
+# First, modify hostfile_example.txt with your real host ip or host name.
+# Second, replace the hostfile path and the master address in the shell.
+# Third, add the system environment variables and load the running Python environment to the shell
+# if needed.
+bash batch12_seq2048_flash_attn.sh
+```
+#### c. Results
+If you run the above command successfully, you will get the following results:
+`max memory usage:  58500.20 MB, throughput:  5.29 samples/s, TFLOPS/GPU:  176,84`.
+
+
+```bash
 ## Reference
 
 ```bibtex
