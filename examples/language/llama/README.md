@@ -106,7 +106,7 @@ bash batch12_seq2048_flash_attn.sh
 ```
 #### c. Results
 If you run the above command successfully, you will get the following results:
-`max memory usage:  58500.20 MB, throughput:  5.29 samples/s, TFLOPS/GPU:  176,84`.
+`max memory usage:  58500.20 MB, throughput:  5.29 samples/s, TFLOPS/GPU:  176.84`.
 
 
 ```bash
