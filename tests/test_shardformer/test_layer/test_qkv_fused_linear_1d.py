@@ -68,6 +68,8 @@ def check_linear_conv_1d_col(lazy_init: bool):
     assert linear.bias.shape == torch.Size([192])
     assert linear_conv_col.weight.shape == torch.Size([48, 96])
     assert linear_conv_col.bias.shape == torch.Size([96])
+    assert linear_copy.weight is linear_conv_col.weight
+    assert linear_copy.bias is linear_conv_col.bias
 
     # ensure weights are reversibly loadable
     linear_conv_col.load_state_dict(linear.state_dict())
@@ -99,6 +101,8 @@ def check_linear_conv_1d_row(lazy_init: bool):
     assert linear.weight.shape == torch.Size([48, 192])
     assert linear_row.weight.shape == torch.Size([24, 192])
     assert linear_row.bias.shape == torch.Size([192])
+    assert linear_copy.weight is linear_row.weight
+    assert linear_copy.bias is linear_row.bias
 
     # ensure weights are reversibly loadable
     linear_row.load_state_dict(linear.state_dict())
