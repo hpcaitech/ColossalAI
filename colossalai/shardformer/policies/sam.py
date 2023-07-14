@@ -3,6 +3,7 @@ import torch.nn as nn
 import colossalai.shardformer.layer as col_nn
 
 from .._utils import getattr_, setattr_
+from ..modeling.sam import forward_fn
 from .basepolicy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = ['SamPolicy', 'SamModelPolicy']
@@ -21,6 +22,7 @@ class SamPolicy(Policy):
             SamFeedForward,
             SamTwoWayAttentionBlock,
             SamTwoWayTransformer,
+            SamVisionAttention,
             SamVisionLayer,
         )
 
@@ -150,6 +152,13 @@ class SamPolicy(Policy):
                                                                      target_module=col_nn.Linear1D_Row,
                                                                  ),
                                                              ])
+
+            # add `DropoutForParallelInput` layer to replace the useage of `nn.functional.dropout`
+            policy[SamVisionAttention] = ModulePolicyDescription(attribute_replacement={
+                "dropout_layer": col_nn.DropoutForParallelInput(self.model.config.vision_config.attention_dropout)
+            },
+                                                                 method_replacement={"forward": forward_fn()},
+                                                                 sub_module_replacement=[])
 
         # optimization configuration
         if self.shard_config.enable_fused_normalization:
