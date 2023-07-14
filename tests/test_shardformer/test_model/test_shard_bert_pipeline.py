@@ -61,7 +61,7 @@ def run_bert_test(enable_fused_normalization, enable_tensor_parallelism, use_laz
                                        hidden_states=hidden_states,
                                        attention_mask=attention_mask,
                                        stage_manager=stage_manager)
-            print('model_name. ', name, 'output. ', output)
+                assert output[0].shape == (2, 3)
         else:
             x = torch.randint(0, 1000, (2, 3)).cuda()
             # one batch, 2 single sentences, each sentence has 3 tokens
@@ -75,7 +75,7 @@ def run_bert_test(enable_fused_normalization, enable_tensor_parallelism, use_laz
                 output = sharded_model(hidden_states=hidden_states,
                                        attention_mask=attention_mask,
                                        stage_manager=stage_manager)
-                print('model_name. ', name, 'output. ', output[0].shape)
+                assert output[0].shape[0] == 2
 
     torch.cuda.empty_cache()
 
