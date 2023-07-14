@@ -139,21 +139,17 @@ class SamPolicy(Policy):
                                                                        )
                                                                    ])
 
-            # policy[SamFeedForward] = ModulePolicyDescription(attribute_replacement={},
-            #                                             sub_module_replacement=[
-            #                                                 SubModuleReplacementDescription(
-            #                                                     suffix="proj_in",
-            #                                                     target_module=col_nn.Linear1D_Col,
-            #                                                 ),
-            #                                                 SubModuleReplacementDescription(
-            #                                                     suffix="proj_out",
-            #                                                     target_module=col_nn.Linear1D_Row,
-            #                                                 ),
-            #                                                 SubModuleReplacementDescription(
-            #                                                     suffix="layers[0]",
-            #                                                     target_module=col_nn.Linear1D_Col,
-            #                                                 ),
-            #                                             ])
+            policy[SamFeedForward] = ModulePolicyDescription(attribute_replacement={},
+                                                             sub_module_replacement=[
+                                                                 SubModuleReplacementDescription(
+                                                                     suffix="proj_in",
+                                                                     target_module=col_nn.Linear1D_Col,
+                                                                 ),
+                                                                 SubModuleReplacementDescription(
+                                                                     suffix="layers[0]",
+                                                                     target_module=col_nn.Linear1D_Row,
+                                                                 ),
+                                                             ])
 
         # optimization configuration
         if self.shard_config.enable_fused_normalization:
