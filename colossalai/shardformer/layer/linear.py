@@ -15,7 +15,12 @@ from torch.nn.parameter import Parameter
 from colossalai.lazy import LazyInitContext
 from colossalai.nn import init as init
 from colossalai.nn.layer.utils import divide
-from colossalai.tensor.d_tensor.api import shard_colwise, shard_rowwise, sharded_tensor_to_existing_param
+from colossalai.tensor.d_tensor.api import (
+    is_distributed_tensor,
+    shard_colwise,
+    shard_rowwise,
+    sharded_tensor_to_existing_param,
+)
 
 from ._operation import (
     gather_forward_split_backward,
@@ -99,17 +104,19 @@ class Linear1D_Col(ParallelModule):
         else:
             weight.data = weight.data.to(device=device, dtype=dtype)
             self.weight = weight
-        sharded_weight = shard_rowwise(self.weight.data, self.process_group)
-        sharded_tensor_to_existing_param(sharded_weight, self.weight)
+        if not is_distributed_tensor(self.weight):
+            sharded_weight = shard_rowwise(self.weight.data, self.process_group)
+            sharded_tensor_to_existing_param(sharded_weight, self.weight)
 
         if bias:
             if bias_ is None:
                 self.bias = Parameter(torch.empty(self.out_features, **factory_kwargs))
             else:
-                bias_ = bias_.to(device=device, dtype=dtype)
+                bias_.data = bias_.data.to(device=device, dtype=dtype)
                 self.bias = bias_
-            sharded_bias = shard_colwise(self.bias.data, self.process_group)
-            sharded_tensor_to_existing_param(sharded_bias, self.bias)
+            if not is_distributed_tensor(self.bias):
+                sharded_bias = shard_colwise(self.bias.data, self.process_group)
+                sharded_tensor_to_existing_param(sharded_bias, self.bias)
         else:
             self.bias = None
 
@@ -246,8 +253,9 @@ class Linear1D_Row(ParallelModule):
         else:
             weight.data = weight.data.to(device=device, dtype=dtype)
             self.weight = weight
-        sharded_weight = shard_colwise(self.weight.data, self.process_group)
-        sharded_tensor_to_existing_param(sharded_weight, self.weight)
+        if not is_distributed_tensor(self.weight):
+            sharded_weight = shard_colwise(self.weight.data, self.process_group)
+            sharded_tensor_to_existing_param(sharded_weight, self.weight)
 
         if self.stream_chunk_num > 1:
             # TODO() work for inference only
@@ -262,8 +270,9 @@ class Linear1D_Row(ParallelModule):
         else:
             self.bias = None
 
-        with self.randomizer.fork_rng(enable_cpu=True):
-            self.reset_parameters(weight_initializer, bias_initializer)
+        if weight is None:
+            with self.randomizer.fork_rng(enable_cpu=True):
+                self.reset_parameters(weight_initializer, bias_initializer)
 
     @staticmethod
     def from_native_module(module: nn.Linear, process_group: Union[ProcessGroup, List[ProcessGroup]], *args,
