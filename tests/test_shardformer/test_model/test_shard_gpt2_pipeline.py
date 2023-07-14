@@ -21,8 +21,8 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
     pass
 
 
+@parameterize('enable_tensor_parallelism', [False, True])
 @parameterize('enable_fused_normalization', [False])
-@parameterize('enable_tensor_parallelism', [False])
 @parameterize('use_lazy_init', [False])
 #TODO: merge this into test_shard_gpt2
 def run_gpt2_test(enable_fused_normalization, enable_tensor_parallelism, use_lazy_init):
@@ -33,29 +33,28 @@ def run_gpt2_test(enable_fused_normalization, enable_tensor_parallelism, use_laz
 
     sub_model_zoo = model_zoo.get_sub_registry('transformers_gpt')
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
-        if name != "transformers_gpt":
-            continue
+        if name == 'transformers_gpt':
+            inputs = data_gen_fn()
+            inputs = {k: v.cuda() for k, v in inputs.items()}
+            input_ids, attention_mask = inputs['input_ids'], inputs['attention_mask']
+            batch_size, seq_len = input_ids.shape
+            hidden_size = 768
+            hidden_state_shape = (batch_size, seq_len, hidden_size)
 
-        inputs = data_gen_fn()
-        inputs = {k: v.cuda() for k, v in inputs.items()}
+            _, sharded_model = build_pipeline_model(model_fn, stage_manager, enable_fused_normalization,
+                                                    enable_tensor_parallelism, use_lazy_init)
 
-        org_model, sharded_model = build_pipeline_model(model_fn, stage_manager, enable_fused_normalization,
-                                                        enable_tensor_parallelism, use_lazy_init)
-        org_model.train()
-        org_output = org_model(**inputs)
-        hidden_state_shape = org_output['last_hidden_state'].shape
-
-        if stage_manager.is_first_stage():
-            output = sharded_model(**inputs)
-            assert output['hidden_states'].shape == hidden_state_shape
-        else:
-            attention_mask = inputs['attention_mask']
-            hidden_states = torch.zeros(*hidden_state_shape).cuda()
-            output = sharded_model(hidden_states=hidden_states, attention_mask=attention_mask)
-            if stage_manager.is_last_stage():
-                assert output['last_hidden_state'].shape == hidden_state_shape
-            else:
+            sharded_model.train()
+            if stage_manager.is_first_stage():
+                output = sharded_model(**inputs)
                 assert output['hidden_states'].shape == hidden_state_shape
+            else:
+                hidden_states = torch.zeros(*hidden_state_shape).cuda()
+                output = sharded_model(hidden_states=hidden_states, attention_mask=attention_mask)
+                if stage_manager.is_last_stage():
+                    assert output['last_hidden_state'].shape == hidden_state_shape
+                else:
+                    assert output['hidden_states'].shape == hidden_state_shape
 
     torch.cuda.empty_cache()
 

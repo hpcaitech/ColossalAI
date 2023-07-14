@@ -5,7 +5,7 @@ from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 from torch import Tensor
-from torch.nn import Module
+from torch.nn import CrossEntropyLoss, Module
 
 import colossalai.shardformer.layer as col_nn
 from colossalai.pipeline.stage_manager import PipelineStageManager
@@ -149,6 +149,7 @@ class GPT2ModelPolicy(GPT2Policy):
 
     def get_held_layers(self) -> List[Module]:
         """Get pipeline layers for current stage."""
+        assert self.pipeline_stage_manager is not None
         module = self.model
         stage_manager = self.pipeline_stage_manager
         held_layers = []
@@ -163,8 +164,7 @@ class GPT2ModelPolicy(GPT2Policy):
         return held_layers
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
-        # TODO: check whether there is shared param in gpt2model
-        """No shared params in gpt2 model."""
+        """No shared params in GPT2Model."""
         return []
 
 
@@ -188,10 +188,52 @@ class GPT2LMHeadModelPolicy(GPT2Policy):
                     ])
             }
             module_policy.update(addon_module)
+
+        if self.pipeline_stage_manager:
+            # set None as default
+            stage_manager = self.pipeline_stage_manager
+            layers_per_stage = Policy.distribute_layers(len(self.model.transformer.h), stage_manager.num_stages)
+            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
+            method_replacement = {
+                'forward':
+                    partial(GPT2PipelineForwards.gpt2_lmhead_model_forward,
+                            stage_manager=stage_manager,
+                            stage_index=stage_index)
+            }
+            self.append_or_create_method_replacement(description=method_replacement,
+                                                     policy=module_policy,
+                                                     target_key=GPT2LMHeadModel)
+
         return module_policy
 
+    def get_held_layers(self) -> List[Module]:
+        """Get pipeline layers for current stage."""
+        assert self.pipeline_stage_manager is not None
+        module = self.model
+        sub_module = self.model.transformer
+        stage_manager = self.pipeline_stage_manager
+        held_layers = []
+        layers_per_stage = self.distribute_layers(len(sub_module.h), stage_manager.num_stages)
+        if stage_manager.is_first_stage():
+            held_layers.append(sub_module.wte)
+            held_layers.append(sub_module.wpe)
+        start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
+        held_layers.extend(sub_module.h[start_idx:end_idx])
+        if stage_manager.is_last_stage():
+            held_layers.append(sub_module.ln_f)
+            held_layers.append(module.lm_head)
+        return held_layers
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        '''The weights of wte and lm_head are shared.'''
+        module = self.model
+        stage_manager = self.pipeline_stage_manager
+        first_stage, last_stage = 0, stage_manager.num_stages - 1
+        return [{first_stage: module.transformer.wte.weight, last_stage: module.lm_head.weight}]
+
     def postprocess(self):
-        if self.shard_config.enable_tensor_parallelism:
+        if self.shard_config.enable_tensor_parallelism \
+                and self.pipeline_stage_manager is None:
             binding_map = {"transformer.wte.weight": "lm_head.weight"}
             for k, v in binding_map.items():
                 param = getattr_(self.model, k)
@@ -199,7 +241,7 @@ class GPT2LMHeadModelPolicy(GPT2Policy):
         return self.model
 
 
-# GPT22DoubleHeadsModel
+# GPT2DoubleHeadsModel
 class GPT2DoubleHeadsModelPolicy(GPT2Policy):
 
     def __init__(self) -> None:
@@ -299,8 +341,7 @@ class GPT2PipelineForwards:
             if token_type_ids is not None:
                 token_type_ids = token_type_ids.view(-1, seq_length)
         else:
-            if hidden_states is None:
-                raise ValueError("hidden_states shouln't be None for stages other than the first stage.")
+            assert hidden_states is not None
             input_shape = hidden_states.size()[:-1]
             batch_size, seq_length = input_shape[0], input_shape[1]
             device = hidden_states.device
@@ -462,3 +503,86 @@ class GPT2PipelineForwards:
         else:
             # always return dict for intermediate stage
             return {'hidden_states': hidden_states}
+
+    @staticmethod
+    def gpt2_lmhead_model_forward(
+            self: 'GPT2LMHeadModel',
+            input_ids: Optional[torch.LongTensor] = None,
+            past_key_values: Optional[Tuple[Tuple[torch.Tensor]]] = None,
+            attention_mask: Optional[torch.FloatTensor] = None,
+            token_type_ids: Optional[torch.LongTensor] = None,
+            position_ids: Optional[torch.LongTensor] = None,
+            head_mask: Optional[torch.FloatTensor] = None,
+            inputs_embeds: Optional[torch.FloatTensor] = None,
+            encoder_hidden_states: Optional[torch.Tensor] = None,
+            encoder_attention_mask: Optional[torch.FloatTensor] = None,
+            labels: Optional[torch.LongTensor] = None,
+            use_cache: Optional[bool] = None,
+            output_attentions: Optional[bool] = None,
+            output_hidden_states: Optional[bool] = None,
+            return_dict: Optional[bool] = None,
+            stage_manager: Optional[PipelineStageManager] = None,
+            hidden_states: Optional[torch.FloatTensor] = None,
+            stage_index: Optional[List[int]] = None) -> Union[Tuple, 'CausalLMOutputWithCrossAttentions']:
+        r"""
+            labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
+                Labels for language modeling. Note that the labels **are shifted** inside the model, i.e. you can set
+                `labels = input_ids` Indices are selected in `[-100, 0, ..., config.vocab_size]` All labels set to `-100`
+                are ignored (masked), the loss is only computed for labels in `[0, ..., config.vocab_size]`
+
+            This function is modified on the basis of transformers.models.gpt2.modeling_gpt2.GPT2LMHeadModel.forward.
+            Please refer to original code of transformers for more details.
+            """
+
+        from transformers.modeling_outputs import CausalLMOutputWithCrossAttentions
+
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        outputs = GPT2PipelineForwards.gpt2_model_forward(self.transformer,
+                                                          input_ids,
+                                                          past_key_values=past_key_values,
+                                                          attention_mask=attention_mask,
+                                                          token_type_ids=token_type_ids,
+                                                          position_ids=position_ids,
+                                                          head_mask=head_mask,
+                                                          inputs_embeds=inputs_embeds,
+                                                          encoder_hidden_states=encoder_hidden_states,
+                                                          encoder_attention_mask=encoder_attention_mask,
+                                                          use_cache=use_cache,
+                                                          output_attentions=output_attentions,
+                                                          output_hidden_states=output_hidden_states,
+                                                          return_dict=return_dict,
+                                                          stage_manager=stage_manager,
+                                                          hidden_states=hidden_states,
+                                                          stage_index=stage_index)
+
+        # If not at the last stage, return hidden_states as in GPT2Model
+        if not stage_manager.is_last_stage():
+            return {'hidden_states': outputs['hidden_states']}
+
+        torch.cuda.set_device(hidden_states.device)
+        hidden_states = outputs[0]
+        lm_logits = self.lm_head(hidden_states)
+        loss = None
+        if labels is not None:
+            # move labels to correct device to enable model parallelism
+            labels = labels.to(lm_logits.device)
+            # Shift so that tokens < n predict n
+            shift_logits = lm_logits[..., :-1, :].contiguous()
+            shift_labels = labels[..., 1:].contiguous()
+            # Flatten the tokens
+            loss_fct = CrossEntropyLoss()
+            loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+
+        if not return_dict:
+            output = (lm_logits,) + outputs[1:]
+            return ((loss,) + output) if loss is not None else output
+
+        return CausalLMOutputWithCrossAttentions(
+            loss=loss,
+            logits=lm_logits,
+            past_key_values=outputs.past_key_values,
+            hidden_states=outputs.hidden_states,
+            attentions=outputs.attentions,
+            cross_attentions=outputs.cross_attentions,
+        )
