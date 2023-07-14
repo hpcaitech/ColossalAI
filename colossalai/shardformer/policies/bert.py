@@ -3,7 +3,6 @@ from types import MethodType
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import torch
-import torch.nn as nn
 from torch import Tensor
 from torch.nn import CrossEntropyLoss, Module
 from transformers.modeling_outputs import (
@@ -28,12 +27,11 @@ from transformers.models.bert.modeling_bert import (
     BertLMHeadModel,
     BertModel,
 )
-from transformers.utils import ModelOutput, logging
+from transformers.utils import logging
 
 import colossalai.shardformer.layer as col_nn
 from colossalai.pipeline.stage_manager import PipelineStageManager
 
-from .._utils import getattr_, setattr_
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 logger = logging.get_logger(__name__)
