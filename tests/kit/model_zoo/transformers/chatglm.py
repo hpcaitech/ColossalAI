@@ -9,7 +9,7 @@ from .chatglm2_6b.modeling_chatglm import ChatGLMModel
 # Register single-sentence ChatGLM
 # ================================
 
-config = ChatGLMConfig(num_layers=1, padded_vocab_size=65024, hidden_size=64, num_attention_heads=8)
+config = ChatGLMConfig(num_layers=1, padded_vocab_size=65024, hidden_size=64, num_attention_heads=8, rmsnorm=False)
 
 config.__setattr__('original_rope', True)
 config.__setattr__('use_cache', True)

@@ -44,7 +44,12 @@ class ChatGLMModelPolicy(Policy):
                 "self_attention.num_attention_heads_per_partition":
                     self.model.config.num_attention_heads // self.shard_config.tensor_parallel_size,
                 "self_attention.projection_size":
-                    self.model.config.kv_channels * self.model.config.num_attention_heads //
+                    (self.model.config.kv_channels * self.model.config.num_attention_heads) //
+                    self.shard_config.tensor_parallel_size,
+                "self_attention.hidden_size":
+                    self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
+                "self_attention.qkv_hidden_size":
+                    (self.model.config.kv_channels * self.model.config.num_attention_heads * 3) //
                     self.shard_config.tensor_parallel_size,
                 "self_attention.core_attention.num_attention_heads_per_partition":
                     self.model.config.num_attention_heads // self.shard_config.tensor_parallel_size,
