@@ -56,7 +56,7 @@ app.add_middleware(
 
 def generate_streamingly(prompt, max_new_tokens, top_k, top_p, temperature):
     inputs = {k: v.cuda() for k, v in tokenizer(prompt, return_tensors="pt").items()}
-    #TODO(ver217): streaming generation does not support repetition_penalty now
+    # TODO(ver217): streaming generation does not support repetition_penalty now
     model_kwargs = {
         'max_generate_tokens': max_new_tokens,
         'early_stopping': True,
