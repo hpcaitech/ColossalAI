@@ -141,18 +141,6 @@ class SamPolicy(Policy):
                                                                        )
                                                                    ])
 
-            policy[SamFeedForward] = ModulePolicyDescription(attribute_replacement={},
-                                                             sub_module_replacement=[
-                                                                 SubModuleReplacementDescription(
-                                                                     suffix="proj_in",
-                                                                     target_module=col_nn.Linear1D_Col,
-                                                                 ),
-                                                                 SubModuleReplacementDescription(
-                                                                     suffix="layers[0]",
-                                                                     target_module=col_nn.Linear1D_Row,
-                                                                 ),
-                                                             ])
-
             # add `DropoutForParallelInput` layer to replace the useage of `nn.functional.dropout`
             policy[SamVisionAttention] = ModulePolicyDescription(attribute_replacement={
                 "dropout_layer": col_nn.DropoutForParallelInput(self.model.config.vision_config.attention_dropout)
