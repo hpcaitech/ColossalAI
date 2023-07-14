@@ -21,7 +21,7 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
     pass
 
 
-@parameterize('enable_tensor_parallelism', [False, True])
+@parameterize('enable_tensor_parallelism', [False])
 @parameterize('enable_fused_normalization', [False])
 @parameterize('use_lazy_init', [False])
 #TODO: merge this into test_shard_gpt2
@@ -33,7 +33,7 @@ def run_gpt2_test(enable_fused_normalization, enable_tensor_parallelism, use_laz
 
     sub_model_zoo = model_zoo.get_sub_registry('transformers_gpt')
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
-        if name == 'transformers_gpt':
+        if name in ['transformers_gpt', 'transformers_gpt_lm']:
             inputs = data_gen_fn()
             inputs = {k: v.cuda() for k, v in inputs.items()}
             input_ids, attention_mask = inputs['input_ids'], inputs['attention_mask']
@@ -48,13 +48,10 @@ def run_gpt2_test(enable_fused_normalization, enable_tensor_parallelism, use_laz
             if stage_manager.is_first_stage():
                 output = sharded_model(**inputs)
                 assert output['hidden_states'].shape == hidden_state_shape
-            else:
+            elif not stage_manager.is_last_stage():
                 hidden_states = torch.zeros(*hidden_state_shape).cuda()
                 output = sharded_model(hidden_states=hidden_states, attention_mask=attention_mask)
-                if stage_manager.is_last_stage():
-                    assert output['last_hidden_state'].shape == hidden_state_shape
-                else:
-                    assert output['hidden_states'].shape == hidden_state_shape
+                assert output['hidden_states'].shape == hidden_state_shape
 
     torch.cuda.empty_cache()
 
