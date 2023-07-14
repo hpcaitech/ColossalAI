@@ -1,8 +1,6 @@
 import argparse
 import math
-import os
 
-import loralib as lora
 import torch
 import torch.distributed as dist
 from coati.dataset import SFTDataset, SupervisedDataset
@@ -13,11 +11,9 @@ from datasets import load_dataset
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
-from transformers import AutoTokenizer, BloomConfig, BloomForCausalLM, BloomTokenizerFast, LlamaConfig, LlamaForCausalLM
-from transformers.models.gpt2.configuration_gpt2 import GPT2Config
+from transformers import AutoTokenizer, BloomForCausalLM, BloomTokenizerFast, LlamaForCausalLM
 from transformers.models.gpt2.modeling_gpt2 import GPT2LMHeadModel
 from transformers.models.gpt2.tokenization_gpt2 import GPT2Tokenizer
-from transformers.models.opt.configuration_opt import OPTConfig
 from transformers.models.opt.modeling_opt import OPTForCausalLM
 from transformers.trainer import get_scheduler
 
