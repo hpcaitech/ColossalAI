@@ -7,7 +7,7 @@ from transformers.models.bert.modeling_bert import BertLMHeadModel
 import colossalai
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.pipeline.stage_manager import PipelineStageManager
-from colossalai.shardformer.policies.bert import BertLMHeadModelPolicy, bert_lmhead_forward
+from colossalai.shardformer.policies.bert import BertLMHeadModelPolicy, bert_lm_head_model_forward
 from colossalai.shardformer.shard import ShardConfig
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 
