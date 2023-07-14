@@ -20,12 +20,14 @@ else
     )
 fi
 
+BASE_DIR=$(dirname $(dirname $(realpath $BASH_SOURCE)))
+BENCHMARKS_DIR=$BASE_DIR/benchmarks
+
+echo "[Test]: testing benchmarks ..."
+
 for strategy in ${STRATEGIES[@]}; do
-    torchrun --standalone --nproc_per_node 1 benchmark_opt_lora_dummy.py \
+    torchrun --standalone --nproc_per_node 1 $BENCHMARKS_DIR/benchmark_opt_lora_dummy.py \
         --model 125m --critic_model 125m --strategy ${strategy} --lora_rank 4 \
         --num_episodes 2 --num_collect_steps 4 --num_update_steps 2 \
         --train_batch_size 2 --experience_batch_size 4
 done
-
-# Ray Benchmarks
-# TODO(cwher): add ray benchmarks
