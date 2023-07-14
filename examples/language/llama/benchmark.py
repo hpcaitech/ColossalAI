@@ -93,7 +93,6 @@ def main():
                                                buffer_dtype=torch.float16),
                 param_init_fn=empty_init(),
             )
-            # auto_wrap_policy=size_based_auto_wrap_policy)
         else:
             plugin = TorchFSDPPlugin(mixed_precision=MixedPrecision(
                 param_dtype=torch.float16, reduce_dtype=torch.float16, buffer_dtype=torch.float16))
@@ -106,7 +105,6 @@ def main():
                 cpu_offload=CPUOffload(offload_params=True),
                 param_init_fn=empty_init(),
             )
-            # auto_wrap_policy=size_based_auto_wrap_policy)
         else:
             plugin = TorchFSDPPlugin(mixed_precision=MixedPrecision(param_dtype=torch.float16,
                                                                     reduce_dtype=torch.float16,
@@ -168,7 +166,6 @@ def main():
                                                  dp_world_size=dp_size)
 
     optimizer = HybridAdam(model.parameters())
-    model, optimizer, _, dataloader, _ = booster.boost(model, optimizer, dataloader=dataloader, benchmark=use_empty_init)
     torch.set_default_dtype(torch.bfloat16)
     model, optimizer, _, dataloader, _ = booster.boost(model, optimizer, dataloader=dataloader)
     torch.set_default_dtype(torch.float)
