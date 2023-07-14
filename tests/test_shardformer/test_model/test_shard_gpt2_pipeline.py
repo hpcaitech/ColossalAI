@@ -33,7 +33,10 @@ def run_gpt2_test(enable_fused_normalization, enable_tensor_parallelism, use_laz
 
     sub_model_zoo = model_zoo.get_sub_registry('transformers_gpt')
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
-        if name in ['transformers_gpt', 'transformers_gpt_lm', 'transformers_gpt_for_token_classification']:
+        if name in [
+                'transformers_gpt', 'transformers_gpt_lm', 'transformers_gpt_for_token_classification',
+                'transformers_gpt_for_sequence_classification'
+        ]:
             inputs = data_gen_fn()
             inputs = {k: v.cuda() for k, v in inputs.items()}
             input_ids, attention_mask = inputs['input_ids'], inputs['attention_mask']
