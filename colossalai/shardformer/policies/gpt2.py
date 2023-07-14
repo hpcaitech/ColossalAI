@@ -120,6 +120,27 @@ class GPT2Policy(Policy):
     def postprocess(self):
         return self.model
 
+    def get_held_layers(self) -> List[Module]:
+        """Get pipeline layers for current stage."""
+        assert self.pipeline_stage_manager is not None
+
+        if self.model.__class__.__name__ == 'GPT2Model':
+            module = self.model
+        else:
+            module = self.model.transformer
+        stage_manager = self.pipeline_stage_manager
+
+        held_layers = []
+        layers_per_stage = self.distribute_layers(len(module.h), stage_manager.num_stages)
+        if stage_manager.is_first_stage():
+            held_layers.append(module.wte)
+            held_layers.append(module.wpe)
+        start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
+        held_layers.extend(module.h[start_idx:end_idx])
+        if stage_manager.is_last_stage():
+            held_layers.append(module.ln_f)
+        return held_layers
+
 
 # GPT2Model
 class GPT2ModelPolicy(GPT2Policy):
@@ -148,20 +169,7 @@ class GPT2ModelPolicy(GPT2Policy):
         return policy
 
     def get_held_layers(self) -> List[Module]:
-        """Get pipeline layers for current stage."""
-        assert self.pipeline_stage_manager is not None
-        module = self.model
-        stage_manager = self.pipeline_stage_manager
-        held_layers = []
-        layers_per_stage = self.distribute_layers(len(module.h), stage_manager.num_stages)
-        if stage_manager.is_first_stage():
-            held_layers.append(module.wte)
-            held_layers.append(module.wpe)
-        start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
-        held_layers.extend(module.h[start_idx:end_idx])
-        if stage_manager.is_last_stage():
-            held_layers.append(module.ln_f)
-        return held_layers
+        return super().get_held_layers()
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
         """No shared params in GPT2Model."""
@@ -207,21 +215,9 @@ class GPT2LMHeadModelPolicy(GPT2Policy):
         return module_policy
 
     def get_held_layers(self) -> List[Module]:
-        """Get pipeline layers for current stage."""
-        assert self.pipeline_stage_manager is not None
-        module = self.model
-        sub_module = self.model.transformer
-        stage_manager = self.pipeline_stage_manager
-        held_layers = []
-        layers_per_stage = self.distribute_layers(len(sub_module.h), stage_manager.num_stages)
-        if stage_manager.is_first_stage():
-            held_layers.append(sub_module.wte)
-            held_layers.append(sub_module.wpe)
-        start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
-        held_layers.extend(sub_module.h[start_idx:end_idx])
-        if stage_manager.is_last_stage():
-            held_layers.append(sub_module.ln_f)
-            held_layers.append(module.lm_head)
+        held_layers = super().get_held_layers()
+        if self.pipeline_stage_manager.is_last_stage():
+            held_layers.append(self.model.lm_head)
         return held_layers
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:

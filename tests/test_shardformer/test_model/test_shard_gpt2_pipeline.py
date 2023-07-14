@@ -40,10 +40,8 @@ def run_gpt2_test(enable_fused_normalization, enable_tensor_parallelism, use_laz
             batch_size, seq_len = input_ids.shape
             hidden_size = 768
             hidden_state_shape = (batch_size, seq_len, hidden_size)
-
             _, sharded_model = build_pipeline_model(model_fn, stage_manager, enable_fused_normalization,
                                                     enable_tensor_parallelism, use_lazy_init)
-
             sharded_model.train()
             if stage_manager.is_first_stage():
                 output = sharded_model(**inputs)
