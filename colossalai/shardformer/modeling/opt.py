@@ -31,7 +31,7 @@ def get_opt_forward():
         query_states = self.q_proj(hidden_states).view(*attention_input_shape)
         # get key, value proj
         if is_cross_attention and past_key_value is not None:
-            # reuse k,v, cross_attentions
+            # reuse k, v, cross_attentions
             key_states = past_key_value[0].transpose(1, 2).contiguous().view(*attention_input_shape)
             value_states = past_key_value[1].transpose(1, 2).contiguous().view(*attention_input_shape)
         elif is_cross_attention:
