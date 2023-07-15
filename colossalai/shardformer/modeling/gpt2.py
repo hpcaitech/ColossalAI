@@ -63,6 +63,7 @@ def get_gpt2_forward():
         if self.scale_attn_by_inverse_layer_idx:
             scale = scale * (1 / float(self.layer_idx + 1))
 
+        # use coloattention
         attention = ColoAttention(embed_dim=self.embed_dim,
                                   num_heads=self.num_heads,
                                   dropout=self.attn_dropout.p,
