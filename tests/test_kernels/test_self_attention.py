@@ -1,8 +1,10 @@
+import triton
 import torch
 from torch import nn 
 import torch.nn.functional as F
 
 from colossalai.kernel.triton.ops import self_attention_compute_using_triton
+from colossalai.kernel.triton.qkv_matmul_kernel import qkv_gemm_4d_kernel
 
 def self_attention_compute_using_torch(qkv,
                                        input_mask,
@@ -37,8 +39,63 @@ def self_attention_compute_using_torch(qkv,
 
     return res.view(batches, -1, d_model)
 
+def test_qkv_matmul():
+    qkv = torch.randn((4, 24, 64*3), device="cuda", dtype=torch.float32)
+    scale = 1.2
+    head_size = 32
+    batches = qkv.shape[0]
+    d_model = qkv.shape[-1] // 3
+    num_of_heads = d_model // head_size
 
-          
+    q = qkv[:, :, :d_model]
+    k = qkv[:, :, d_model:d_model * 2]
+
+    q = q.view(batches, -1, num_of_heads, head_size)
+    k = k.view(batches, -1, num_of_heads, head_size)
+    q_copy = q.clone()
+    k_copy = k.clone()
+    q = torch.transpose(q, 1, 2).contiguous()
+    k = torch.transpose(k, 1, 2).contiguous()
+    k = torch.transpose(k, 2, 3).contiguous()
+
+    print(q.shape)
+    print(k.shape)
+
+    torch_ouput = torch.einsum('bnij,bnjk->bnik', q, k)
+    torch_ouput *= 1.2
+
+    q, k = q_copy, k_copy
+    batches, M, H, K = q.shape
+    N = k.shape[1]
+    score_output = torch.empty(
+    (batches, H, M, N), device=q.device, dtype=q.dtype)
+
+    grid = lambda meta: (
+        batches,
+        H,
+        triton.cdiv(M, meta["BLOCK_SIZE_M"]) *
+        triton.cdiv(N, meta["BLOCK_SIZE_N"]),
+    )
+
+    K = q.shape[3]
+    qkv_gemm_4d_kernel[grid](
+        q, k, score_output,
+        M, N, K,
+        q.stride(0), q.stride(2), q.stride(1), q.stride(3),
+        k.stride(0), k.stride(2), k.stride(3), k.stride(1),
+        score_output.stride(0), score_output.stride(1), score_output.stride(2), score_output.stride(3),
+        scale=scale,
+        # currently manually setting, later on we can use auto-tune config to match best setting
+        BLOCK_SIZE_M=64,
+        BLOCK_SIZE_N=32,
+        BLOCK_SIZE_K=32,
+        GROUP_SIZE_M=8,
+    )
+
+    check = torch.allclose(torch_ouput.cpu(), score_output.cpu(), rtol=1e-3, atol=1e-2)
+    assert check is True, "the outputs of triton and torch are not matched"
+    
+
 
 
 def test_self_atttention_test():
@@ -70,4 +127,5 @@ def test_self_atttention_test():
 
 
 if __name__ == "__main__":
-    test_self_atttention_test()
+    test_qkv_matmul()
+    # test_self_atttention_test()
