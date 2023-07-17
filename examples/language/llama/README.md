@@ -1,4 +1,13 @@
-# A script of pretraining LLaMA
+# Pretraining LLaMA: best practices for building LLaMA-like base models
+
+<p id="ColossalChat-Speed" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/examples/images/LLaMA_pretraining.png" width=450/>
+</p>
+
+- 65-billion-parameter large model pretraining accelerated by 38%
+[[code]](https://github.com/hpcaitech/ColossalAI/tree/example/llama/examples/language/llama)
+[[blog]](https://www.hpc-ai.tech/blog/large-model-pretraining)
+
 
 ## Dataset
 
@@ -133,6 +142,14 @@ If you run the above command successfully, you will get the following results:
 
 
 ## Reference
+```
+@article{bian2021colossal,
+  title={Colossal-AI: A Unified Deep Learning System For Large-Scale Parallel Training},
+  author={Bian, Zhengda and Liu, Hongxin and Wang, Boxiang and Huang, Haichen and Li, Yongbin and Wang, Chuanrui and Cui, Fan and You, Yang},
+  journal={arXiv preprint arXiv:2110.14883},
+  year={2021}
+}
+```
 
 ```bibtex
 @software{openlm2023openllama,
