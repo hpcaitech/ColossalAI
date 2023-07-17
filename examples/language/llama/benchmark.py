@@ -1,18 +1,14 @@
 import argparse
-import os
-
 import resource
-from contextlib import contextmanager, nullcontext
-import time
-
+from contextlib import nullcontext
 
 import torch
 from attn import SUPPORT_XFORMERS, replace_xformers
-from performance_evaluator import PerformanceEvaluator, Timer
+from data_utils import RandomDataset
+from model_utils import format_numel_str, get_model_numel
+from performance_evaluator import PerformanceEvaluator
 from torch.distributed.fsdp.fully_sharded_data_parallel import CPUOffload, MixedPrecision
-from torch.utils.data import Dataset
 from tqdm import tqdm
-from transformers.modeling_utils import no_init_weights
 from transformers.models.llama.configuration_llama import LlamaConfig
 from transformers.models.llama.modeling_llama import LlamaForCausalLM
 
@@ -25,9 +21,6 @@ from colossalai.nn.optimizer import HybridAdam
 from colossalai.utils import get_current_device
 from colossalai.zero.gemini.placement_policy import AutoPlacementPolicy, ConstPlacementPolicy
 
-from data_utils import RandomDataset
-from model_utils import get_model_numel, format_numel_str, low_precision_init
-
 # ==============================
 # Constants
 # ==============================
@@ -38,6 +31,7 @@ MODEL_CONFIGS = {
     '30b': LlamaConfig(hidden_size=6656, intermediate_size=17888, num_hidden_layers=60, num_attention_heads=52),
     '65b': LlamaConfig(hidden_size=8192, intermediate_size=22016, num_hidden_layers=80, num_attention_heads=64),
 }
+
 
 def main():
     # ==============================
@@ -171,7 +165,6 @@ def main():
     coordinator.print_on_master(f'Booster init max CUDA memory: {torch.cuda.max_memory_allocated()/1024**2:.2f} MB')
     coordinator.print_on_master(
         f'Booster init max CPU memory: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024:.2f} MB')
-
 
     if isinstance(plugin, ThreeDimParallelPlugin) and args.pp > 1:
         data_iter = iter(dataloader)
