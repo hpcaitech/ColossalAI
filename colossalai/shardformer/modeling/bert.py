@@ -1,5 +1,5 @@
-from typing import Optional, Tuple
 import math
+from typing import Optional, Tuple
 
 import torch
 import torch.distributed as dist
@@ -8,14 +8,15 @@ from torch.nn import functional as F
 
 __all__ = ['get_bert_forward']
 
-def get_bert_forward():
+
+def get_bert_flash_attention_forward():
 
     try:
         from xformers.ops import memory_efficient_attention as me_attention
     except:
         raise ImportError("Error: xformers module is not installed. Please install it to use flash attention.")
-    
-    def bert_flash_attention_forward(
+
+    def forward(
         self,
         hidden_states: torch.Tensor,
         attention_mask: Optional[torch.FloatTensor] = None,
@@ -67,16 +68,14 @@ def get_bert_forward():
         if self.position_embedding_type == "relative_key" or self.position_embedding_type == "relative_key_query":
             query_length, key_length = query_layer.shape[2], key_layer.shape[2]
             if use_cache:
-                position_ids_l = torch.tensor(key_length - 1, dtype=torch.long, device=hidden_states.device).view(
-                    -1, 1
-                )
+                position_ids_l = torch.tensor(key_length - 1, dtype=torch.long, device=hidden_states.device).view(-1, 1)
             else:
                 position_ids_l = torch.arange(query_length, dtype=torch.long, device=hidden_states.device).view(-1, 1)
             position_ids_r = torch.arange(key_length, dtype=torch.long, device=hidden_states.device).view(1, -1)
             distance = position_ids_l - position_ids_r
 
             positional_embedding = self.distance_embedding(distance + self.max_position_embeddings - 1)
-            positional_embedding = positional_embedding.to(dtype=query_layer.dtype)  # fp16 compatibility
+            positional_embedding = positional_embedding.to(dtype=query_layer.dtype)    # fp16 compatibility
 
             if self.position_embedding_type == "relative_key":
                 relative_position_scores = torch.einsum("bhld,lrd->bhlr", query_layer, positional_embedding)
@@ -99,8 +98,13 @@ def get_bert_forward():
         query_layer = query_layer.permute(0, 2, 1, 3).contiguous()
         key_layer = key_layer.permute(0, 2, 1, 3).contiguous()
         value_layer = value_layer.permute(0, 2, 1, 3).contiguous()
-        
-        context_layer = me_attention(query_layer, key_layer, value_layer, attn_bias=final_attention_mask, p=self.dropout.p, scale=scale)
+
+        context_layer = me_attention(query_layer,
+                                     key_layer,
+                                     value_layer,
+                                     attn_bias=final_attention_mask,
+                                     p=self.dropout.p,
+                                     scale=scale)
         new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
         context_layer = context_layer.view(new_context_layer_shape)
 
@@ -109,5 +113,24 @@ def get_bert_forward():
         if self.is_decoder:
             outputs = outputs + (past_key_value,)
         return outputs
-    
-    return bert_flash_attention_forward
+
+    return forward
+
+
+def _get_jit_fused_output_forward():
+
+    def forward(self, hidden_states: torch.Tensor, input_tensor: torch.Tensor) -> torch.Tensor:
+        hidden_states = self.dense(hidden_states)
+        hidden_states = self.dropout_add(hidden_states, input_tensor, self.dropout.p, self.dropout.training)
+        hidden_states = self.LayerNorm(hidden_states)
+        return hidden_states
+
+    return forward
+
+
+def get_jit_fused_bert_self_output_forward():
+    return _get_jit_fused_output_forward()
+
+
+def get_jit_fused_bert_output_forward():
+    return _get_jit_fused_output_forward()

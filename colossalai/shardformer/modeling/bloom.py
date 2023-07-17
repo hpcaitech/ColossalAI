@@ -271,24 +271,15 @@ def get_jit_fused_mlp_forward():
     return forward
 
 
-def get_dropout_add_func():
+def get_jit_fused_bloom_gelu_forward():
 
-    from transformers.models.bloom.modeling_bloom import dropout_add
+    from colossalai.kernel.jit.bias_gelu import GeLUFunction as JitGeLUFunction
 
-    def self_dropout_add(self, x: torch.Tensor, residual: torch.Tensor, prob: float, training: bool) -> torch.Tensor:
-        return dropout_add(x, residual, prob, training)
-
-    return self_dropout_add
-
-
-def get_jit_fused_dropout_add_func():
-
-    from colossalai.kernel.jit import bias_dropout_add_fused_inference, bias_dropout_add_fused_train
-
-    def self_dropout_add(self, x: torch.Tensor, residual: torch.Tensor, prob: float, training: bool) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         bias = torch.zeros_like(x)
-        if training:
-            return bias_dropout_add_fused_train(x, bias, residual, prob)
-        return bias_dropout_add_fused_inference(x, bias, residual, prob)
+        if self.training:
+            return JitGeLUFunction.apply(x, bias)
+        else:
+            return self.bloom_gelu_forward(x, bias)
 
-    return self_dropout_add
+    return forward
