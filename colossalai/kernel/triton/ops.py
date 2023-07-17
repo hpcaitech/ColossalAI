@@ -199,7 +199,7 @@ def softmax(input: torch.Tensor, mask: torch.Tensor = None, dim=-1) -> torch.Ten
         elif block_size >= 2048:
             BLOCK_M = 8
 
-        softmax_kernel_2[grid](output_ptr  = output, 
+        softmax_kernel_2[grid](output_ptr = output, 
                          input_ptr = input, 
                          row_stride = input.stride(0), 
                          n_rows = num_rows, 
