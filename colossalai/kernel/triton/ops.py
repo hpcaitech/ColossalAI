@@ -7,11 +7,6 @@ import triton.language as tl
 from .qkv_matmul_kernel import qkv_gemm_4d_kernel
 from .softmax_kernel import softmax_kernel
 
-def self_attention_forward_with_fusion(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, scale: float):
-
-    # TODO: call flash attention kernel implemetation (@cuiqing.li (tiandiao123) works on) 
-    pass
-
 
 def self_attention_forward_without_fusion(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, input_mask: torch.Tensor, scale: float):
     r""" A function to do QKV Attention calculation by calling GEMM and softmax triton kernels 
@@ -152,11 +147,8 @@ def self_attention_compute_using_triton(qkv,
     k = k.view(batches, -1, num_of_heads, head_size)
     v = v.view(batches, -1, num_of_heads, head_size)
 
-    if use_flash:
-        data_output_triton = self_attention_forward_with_fusion(q, k, v, input_mask, scale)
-    else:
-        data_output_triton = self_attention_forward_without_fusion(
-            q, k, v, input_mask, scale)
+    data_output_triton = self_attention_forward_without_fusion(
+        q, k, v, input_mask, scale)
 
     return data_output_triton
 

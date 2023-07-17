@@ -16,7 +16,8 @@ def test_softmax_op():
         module = nn.Softmax(dim = -1)
         data_torch_out = module(data)
         data_triton_out = softmax(data)
-        print(torch.allclose(data_torch_out.cpu(), data_triton_out.cpu(), rtol=1e-3, atol=1e-3))
+        check = torch.allclose(data_torch_out.cpu(), data_triton_out.cpu(), rtol=1e-3, atol=1e-3)
+        assert check is True, "softmax outputs from triton and torch are not matched"
 
 
 if __name__ == "__main__":

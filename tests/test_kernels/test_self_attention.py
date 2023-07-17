@@ -118,8 +118,6 @@ def test_self_atttention_test():
     assert check is True, "the triton ouput is not matched with torch output"
 
 
-
-
 if __name__ == "__main__":
     test_qkv_matmul()
     test_self_atttention_test()
