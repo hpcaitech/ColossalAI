@@ -2,7 +2,6 @@ import torch
 import triton 
 import triton.language as tl
 
-from inference.ops.triton.k_activations import leaky_relu, relu
 
 
 '''
