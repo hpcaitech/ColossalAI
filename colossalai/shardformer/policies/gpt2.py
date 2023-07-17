@@ -296,6 +296,33 @@ class GPT2DoubleHeadsModelPolicy(GPT2Policy):
         return self.model
 
 
+# GPT2ForQuestionAnswering
+class GPT2ForQuestionAnsweringPolicy(GPT2Policy):
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    def module_policy(self):
+        from transformers.models.gpt2.modeling_gpt2 import GPT2ForQuestionAnswering
+
+        module_policy = super().module_policy()
+        self.set_pipeline_forward(model_cls=GPT2ForQuestionAnswering,
+                                  new_forward=GPT2PipelineForwards.gpt2_for_question_answering_forward,
+                                  policy=module_policy)
+
+        return module_policy
+
+    def get_held_layers(self) -> List[nn.Module]:
+        held_layers = super().get_held_layers()
+        if self.pipeline_stage_manager.is_last_stage():
+            held_layers.append(self.model.qa_outputs)
+        return held_layers
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        '''No shared_params in gpt2 for QA.'''
+        return []
+
+
 # GPT2ForTokenClassification
 class GPT2ForTokenClassificationPolicy(GPT2Policy):
 
@@ -747,6 +774,94 @@ class GPT2PipelineForwards:
             logits=lm_logits,
             mc_logits=mc_logits,
             past_key_values=outputs.past_key_values,
+            hidden_states=outputs.hidden_states,
+            attentions=outputs.attentions,
+        )
+
+    @staticmethod
+    def gpt2_for_question_answering_forward(
+            self: 'GPT2ForQuestionAnswering',
+            input_ids: Optional[torch.LongTensor] = None,
+            attention_mask: Optional[torch.FloatTensor] = None,
+            token_type_ids: Optional[torch.LongTensor] = None,
+            position_ids: Optional[torch.LongTensor] = None,
+            head_mask: Optional[torch.FloatTensor] = None,
+            inputs_embeds: Optional[torch.FloatTensor] = None,
+            start_positions: Optional[torch.LongTensor] = None,
+            end_positions: Optional[torch.LongTensor] = None,
+            output_attentions: Optional[bool] = None,
+            output_hidden_states: Optional[bool] = None,
+            return_dict: Optional[bool] = None,
+            stage_manager: Optional[PipelineStageManager] = None,
+            hidden_states: Optional[torch.FloatTensor] = None,
+            stage_index: Optional[List[int]] = None) -> Union[Tuple, 'QuestionAnsweringModelOutput']:
+        r"""
+        start_positions (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
+            Labels for position (index) of the start of the labelled span for computing the token classification loss.
+            Positions are clamped to the length of the sequence (`sequence_length`). Position outside of the sequence
+            are not taken into account for computing the loss.
+        end_positions (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
+            Labels for position (index) of the end of the labelled span for computing the token classification loss.
+            Positions are clamped to the length of the sequence (`sequence_length`). Position outside of the sequence
+            are not taken into account for computing the loss.
+
+        # This function is modified on the basis of transformers.models.gpt2.modeling_gpt2.GPT2ForQuestionAnswering.forward.
+        # Please refer to original code of transformers for more details.
+        """
+        from transformers.modeling_outputs import QuestionAnsweringModelOutput
+
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        outputs = GPT2PipelineForwards.gpt2_model_forward(self.transformer,
+                                                          input_ids,
+                                                          attention_mask=attention_mask,
+                                                          token_type_ids=token_type_ids,
+                                                          position_ids=position_ids,
+                                                          head_mask=head_mask,
+                                                          inputs_embeds=inputs_embeds,
+                                                          output_attentions=output_attentions,
+                                                          output_hidden_states=output_hidden_states,
+                                                          return_dict=return_dict,
+                                                          stage_manager=stage_manager,
+                                                          hidden_states=hidden_states,
+                                                          stage_index=stage_index)
+
+        # If not at the last stage, return hidden_states as in GPT2Model
+        if not stage_manager.is_last_stage():
+            return {'hidden_states': outputs['hidden_states']}
+
+        sequence_output = outputs[0]
+
+        logits = self.qa_outputs(sequence_output)
+        start_logits, end_logits = logits.split(1, dim=-1)
+        start_logits = start_logits.squeeze(-1).contiguous()
+        end_logits = end_logits.squeeze(-1).contiguous()
+
+        total_loss = None
+        if start_positions is not None and end_positions is not None:
+            # If we are on multi-GPU, split add a dimension
+            if len(start_positions.size()) > 1:
+                start_positions = start_positions.squeeze(-1).to(start_logits.device)
+            if len(end_positions.size()) > 1:
+                end_positions = end_positions.squeeze(-1).to(end_logits.device)
+            # sometimes the start/end positions are outside our model inputs, we ignore these terms
+            ignored_index = start_logits.size(1)
+            start_positions = start_positions.clamp(0, ignored_index)
+            end_positions = end_positions.clamp(0, ignored_index)
+
+            loss_fct = CrossEntropyLoss(ignore_index=ignored_index)
+            start_loss = loss_fct(start_logits, start_positions)
+            end_loss = loss_fct(end_logits, end_positions)
+            total_loss = (start_loss + end_loss) / 2
+
+        if not return_dict:
+            output = (start_logits, end_logits) + outputs[2:]
+            return ((total_loss,) + output) if total_loss is not None else output
+
+        return QuestionAnsweringModelOutput(
+            loss=total_loss,
+            start_logits=start_logits,
+            end_logits=end_logits,
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
         )
