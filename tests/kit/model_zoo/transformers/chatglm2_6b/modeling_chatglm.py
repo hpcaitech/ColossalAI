@@ -355,7 +355,6 @@ class SelfAttention(torch.nn.Module):
         self.layer_number = max(1, layer_number)
 
         self.projection_size = config.kv_channels * config.num_attention_heads
-        self.hidden_size = config.hidden_size
         # Per attention head and per partition values.
         self.hidden_size_per_attention_head = self.projection_size // config.num_attention_heads
         self.num_attention_heads_per_partition = config.num_attention_heads
@@ -366,7 +365,7 @@ class SelfAttention(torch.nn.Module):
             self.num_multi_query_groups_per_partition = config.multi_query_group_num
             self.qkv_hidden_size = (self.projection_size +
                                     2 * self.hidden_size_per_attention_head * config.multi_query_group_num)
-        self.query_key_value = nn.Linear(self.hidden_size,
+        self.query_key_value = nn.Linear(config.hidden_size,
                                          self.qkv_hidden_size,
                                          bias=config.add_bias_linear or config.add_qkv_bias,
                                          device=device,
@@ -376,7 +375,7 @@ class SelfAttention(torch.nn.Module):
 
         # Output.
         self.dense = nn.Linear(self.projection_size,
-                               self.hidden_size,
+                               config.hidden_size,
                                bias=config.add_bias_linear,
                                device=device,
                                **_config_to_kwargs(config))

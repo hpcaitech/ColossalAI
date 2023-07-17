@@ -46,8 +46,6 @@ class ChatGLMModelPolicy(Policy):
                 "self_attention.projection_size":
                     (self.model.config.kv_channels * self.model.config.num_attention_heads) //
                     self.shard_config.tensor_parallel_size,
-                "self_attention.hidden_size":
-                    self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
                 "self_attention.qkv_hidden_size":
                     (self.model.config.kv_channels * self.model.config.num_attention_heads * 3) //
                     self.shard_config.tensor_parallel_size,
@@ -72,6 +70,25 @@ class ChatGLMModelPolicy(Policy):
                                                                target_module=col_nn.DropoutForParallelInput,
                                                            ),
                                                        ])
+        # optimization configuration
+        if self.shard_config.enable_fused_normalization:
+            if not self.model.config.rmsnorm:
+
+                self.append_or_create_submodule_replacement(description=[
+                    SubModuleReplacementDescription(suffix="input_layernorm", target_module=col_nn.FusedLayerNorm),
+                    SubModuleReplacementDescription(suffix="post_attention_layernorm",
+                                                    target_module=col_nn.FusedLayerNorm)
+                ],
+                                                            policy=policy,
+                                                            target_key=GLMBlock)
+
+                if self.model.config.post_layer_norm:
+                    self.append_or_create_submodule_replacement(description=[
+                        SubModuleReplacementDescription(suffix="encoder.final_layernorm",
+                                                        target_module=col_nn.FusedLayerNorm)
+                    ],
+                                                                policy=policy,
+                                                                target_key=ChatGLMModel)
 
         return policy
 
