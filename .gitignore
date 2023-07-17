@@ -163,3 +163,4 @@ coverage.xml
 /examples/language/llama/deepspeed_llama/hs_4node_script/
 /examples/language/llama/deepspeed_llama/hs_script/
 /examples/language/llama/deepspeed_llama/mlux_script/
+/examples/language/llama/deepspeed_llama/
