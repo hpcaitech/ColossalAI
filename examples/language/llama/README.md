@@ -65,6 +65,25 @@ The dataset can be automatically downloaded by using `huggingface/datasets`. You
 
 ### 3. Command line arguments
 
+Yon can use colossalai run to launch multi-nodes training:
+```bash
+colossalai run --nproc_per_node YOUR_GPU_PER_NODE --hostfile YOUR_HOST_FILE \
+--master_addr YOUR_MASTER_ADDR pretrain.py --OTHER_CONFIGURATIONS
+```
+
+Here is a sample hostfile:
+
+```text
+hostname1
+hostname2
+hostname3
+hostname4
+```
+
+Make sure master node can access all nodes (including itself) by ssh without password.
+
+Here is details about CLI arguments:
+
 - Model configuration: `-c`, `--config`. `7b`, `13b`, `30b` and `65b` are supported.
 - Booster plugin: `-p`, `--plugin`. `gemini`, `gemini_cpu`, `zero2` and `zero2_cpu` are supported. For more details, please refer to [Booster plugins](https://colossalai.org/docs/basics/booster_plugins).
 - Dataset path: `-d`, `--dataset`. The default dataset is `togethercomputer/RedPajama-Data-1T-Sample`. It support any dataset from `datasets` with the same data format as RedPajama.
@@ -86,13 +105,13 @@ The dataset can be automatically downloaded by using `huggingface/datasets`. You
 
 ### 4. Shell Script Examples
 
-For your convenience, we provide some shell scripts to run training with various gemini configurations.
+For your convenience, we provide some shell scripts to run benchmark with various gemini configurations.
 You can find them in `benchmark_65B` and `benchmark_7B` directory. The main command should be in the format of:
 ```bash
 colossalai run --nproc_per_node YOUR_GPU_PER_NODE --hostfile YOUR_HOST_FILE \
 --master_addr YOUR_MASTER_ADDR benchmark.py --OTHER_CONFIGURATIONS
 ```
-Here we will show an example of how to run training 
+Here we will show an example of how to run training
 llama pretraining with `gemini(gemini_auto plugin), batch_size=12, sequence_length=2048, gradient_checkpoint=True`.
 
 #### a. Running environment
@@ -113,7 +132,6 @@ If you run the above command successfully, you will get the following results:
 `max memory usage:  58500.20 MB, throughput:  5.29 samples/s, TFLOPS/GPU:  176.84`.
 
 
-```bash
 ## Reference
 
 ```bibtex
