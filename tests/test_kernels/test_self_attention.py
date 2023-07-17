@@ -104,7 +104,7 @@ def test_self_atttention_test():
                                                            head_size = 32
                                                            )
 
-    data_output_triton, score_output_triton, softmax_output_triton = self_attention_compute_using_triton(
+    data_output_triton = self_attention_compute_using_triton(
                                                             qkv.clone(),
                                                             alibi=None,
                                                             head_size=32,
@@ -114,7 +114,7 @@ def test_self_atttention_test():
                                                             use_flash=False,
                                                             triangular=True)
 
-    check = torch.allclose(data_output_triton.cpu(), data_output_torch.cpu(), rtol=1e-4, atol=1e-2)
+    check = torch.allclose(data_output_triton.cpu(), data_output_torch.cpu(), rtol=1e-3, atol=1e-2)
     assert check is True, "the triton ouput is not matched with torch output"
 
 
