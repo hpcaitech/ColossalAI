@@ -1,12 +1,11 @@
 from functools import partial
-from types import MethodType
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional
 
 import torch
+import torch.nn as nn
 from torch import Tensor
 from torch.nn import CrossEntropyLoss, Module
 from transformers.modeling_outputs import (
-    BaseModelOutputWithPastAndCrossAttentions,
     BaseModelOutputWithPoolingAndCrossAttentions,
     CausalLMOutputWithCrossAttentions,
     MultipleChoiceModelOutput,
@@ -78,44 +77,44 @@ class BertPolicy(Policy):
                 "crossattention.self.num_attention_heads":
                     self.model.config.num_attention_heads // self.shard_config.tensor_parallel_size,
             },
-                sub_module_replacement=[
-                SubModuleReplacementDescription(
-                    suffix="attention.self.query",
-                    target_module=col_nn.Linear1D_Col,
-                ),
-                SubModuleReplacementDescription(
-                    suffix="attention.self.key",
-                    target_module=col_nn.Linear1D_Col,
-                ),
-                SubModuleReplacementDescription(
-                    suffix="attention.self.value",
-                    target_module=col_nn.Linear1D_Col,
-                ),
-                SubModuleReplacementDescription(
-                    suffix="attention.self.dropout",
-                    target_module=col_nn.DropoutForParallelInput,
-                ),
-                SubModuleReplacementDescription(
-                    suffix="attention.output.dense",
-                    target_module=col_nn.Linear1D_Row,
-                ),
-                SubModuleReplacementDescription(
-                    suffix="attention.output.dropout",
-                    target_module=col_nn.DropoutForParallelInput,
-                ),
-                SubModuleReplacementDescription(
-                    suffix="intermediate.dense",
-                    target_module=col_nn.Linear1D_Col,
-                ),
-                SubModuleReplacementDescription(
-                    suffix="output.dense",
-                    target_module=col_nn.Linear1D_Row,
-                ),
-                SubModuleReplacementDescription(
-                    suffix="output.dropout",
-                    target_module=col_nn.DropoutForParallelInput,
-                )
-            ])
+                                                        sub_module_replacement=[
+                                                            SubModuleReplacementDescription(
+                                                                suffix="attention.self.query",
+                                                                target_module=col_nn.Linear1D_Col,
+                                                            ),
+                                                            SubModuleReplacementDescription(
+                                                                suffix="attention.self.key",
+                                                                target_module=col_nn.Linear1D_Col,
+                                                            ),
+                                                            SubModuleReplacementDescription(
+                                                                suffix="attention.self.value",
+                                                                target_module=col_nn.Linear1D_Col,
+                                                            ),
+                                                            SubModuleReplacementDescription(
+                                                                suffix="attention.self.dropout",
+                                                                target_module=col_nn.DropoutForParallelInput,
+                                                            ),
+                                                            SubModuleReplacementDescription(
+                                                                suffix="attention.output.dense",
+                                                                target_module=col_nn.Linear1D_Row,
+                                                            ),
+                                                            SubModuleReplacementDescription(
+                                                                suffix="attention.output.dropout",
+                                                                target_module=col_nn.DropoutForParallelInput,
+                                                            ),
+                                                            SubModuleReplacementDescription(
+                                                                suffix="intermediate.dense",
+                                                                target_module=col_nn.Linear1D_Col,
+                                                            ),
+                                                            SubModuleReplacementDescription(
+                                                                suffix="output.dense",
+                                                                target_module=col_nn.Linear1D_Row,
+                                                            ),
+                                                            SubModuleReplacementDescription(
+                                                                suffix="output.dropout",
+                                                                target_module=col_nn.DropoutForParallelInput,
+                                                            )
+                                                        ])
 
             policy[BertEmbeddings] = ModulePolicyDescription(sub_module_replacement=[
                 SubModuleReplacementDescription(
@@ -141,8 +140,8 @@ class BertPolicy(Policy):
                     target_module=col_nn.FusedLayerNorm,
                 )
             ],
-                policy=policy,
-                target_key=BertLayer)
+                                                        policy=policy,
+                                                        target_key=BertLayer)
             # handle embedding layer
             self.append_or_create_submodule_replacement(
                 description=[SubModuleReplacementDescription(
@@ -161,8 +160,8 @@ class BertPolicy(Policy):
         if self.shard_config.enable_tensor_parallelism:
             self.append_or_create_submodule_replacement(description=SubModuleReplacementDescription(
                 suffix="decoder", target_module=col_nn.Linear1D_Col, kwargs={"gather_output": True}),
-                policy=base_policy,
-                target_key=BertLMPredictionHead)
+                                                        policy=base_policy,
+                                                        target_key=BertLMPredictionHead)
 
         # optimize with fused normalization
         if self.shard_config.enable_fused_normalization:
@@ -171,8 +170,8 @@ class BertPolicy(Policy):
                 suffix="transform.LayerNorm",
                 target_module=col_nn.FusedLayerNorm,
             ),
-                policy=base_policy,
-                target_key=BertLMPredictionHead)
+                                                        policy=base_policy,
+                                                        target_key=BertLMPredictionHead)
         return base_policy
 
     def add_lm_prediction_policy(self, base_policy):
@@ -368,14 +367,6 @@ class BertForMaskedLMPolicy(BertPolicy):
                     self.pipeline_stage_manager.num_stages - 1: self.model.cls.predictions.decoder.weight
                 }]
         return []
-
-    def postprocess(self):
-        if self.shard_config.enable_tensor_parallelism and self.pipeline_stage_manager is None:
-            binding_map = {"bert.embeddings.word_embeddings.weight": "cls.predictions.decoder.weight"}
-            for k, v in binding_map.items():
-                param = getattr_(self.model, k)
-                setattr_(self.model, v, param)
-        return self.model
 
 
 # BertForSequenceClassification

@@ -1,9 +1,9 @@
 import warnings
 from functools import partial
-from types import MethodType
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import torch
+import torch.nn as nn
 from torch import Tensor
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, Module, MSELoss
 from transformers.modeling_outputs import (
@@ -60,28 +60,28 @@ class BloomPolicy(Policy):
                 "self_attention.split_size": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
                 "self_attention.num_heads": self.model.config.n_head // self.shard_config.tensor_parallel_size,
             },
-                sub_module_replacement=[
-                SubModuleReplacementDescription(
-                    suffix="self_attention.query_key_value",
-                    target_module=col_nn.Linear1D_Col,
-                ),
-                SubModuleReplacementDescription(
-                    suffix="self_attention.dense",
-                    target_module=col_nn.Linear1D_Row,
-                ),
-                SubModuleReplacementDescription(
-                    suffix="self_attention.attention_dropout",
-                    target_module=col_nn.DropoutForParallelInput,
-                ),
-                SubModuleReplacementDescription(
-                    suffix="mlp.dense_h_to_4h",
-                    target_module=col_nn.Linear1D_Col,
-                ),
-                SubModuleReplacementDescription(
-                    suffix="mlp.dense_4h_to_h",
-                    target_module=col_nn.Linear1D_Row,
-                ),
-            ])
+                                                         sub_module_replacement=[
+                                                             SubModuleReplacementDescription(
+                                                                 suffix="self_attention.query_key_value",
+                                                                 target_module=col_nn.Linear1D_Col,
+                                                             ),
+                                                             SubModuleReplacementDescription(
+                                                                 suffix="self_attention.dense",
+                                                                 target_module=col_nn.Linear1D_Row,
+                                                             ),
+                                                             SubModuleReplacementDescription(
+                                                                 suffix="self_attention.attention_dropout",
+                                                                 target_module=col_nn.DropoutForParallelInput,
+                                                             ),
+                                                             SubModuleReplacementDescription(
+                                                                 suffix="mlp.dense_h_to_4h",
+                                                                 target_module=col_nn.Linear1D_Col,
+                                                             ),
+                                                             SubModuleReplacementDescription(
+                                                                 suffix="mlp.dense_4h_to_h",
+                                                                 target_module=col_nn.Linear1D_Row,
+                                                             ),
+                                                         ])
 
             policy[BloomModel] = ModulePolicyDescription(
                 attribute_replacement={
@@ -110,8 +110,8 @@ class BloomPolicy(Policy):
                     target_module=col_nn.FusedLayerNorm,
                 )
             ],
-                policy=policy,
-                target_key=BloomModel)
+                                                        policy=policy,
+                                                        target_key=BloomModel)
 
             # handle bloom block
             self.append_or_create_submodule_replacement(description=[
@@ -124,8 +124,8 @@ class BloomPolicy(Policy):
                     target_module=col_nn.FusedLayerNorm,
                 )
             ],
-                policy=policy,
-                target_key=BloomBlock)
+                                                        policy=policy,
+                                                        target_key=BloomBlock)
 
         return policy
 
@@ -197,8 +197,8 @@ class BloomForCausalLMPolicy(BloomPolicy):
         if self.shard_config.enable_tensor_parallelism:
             self.append_or_create_submodule_replacement(description=SubModuleReplacementDescription(
                 suffix="lm_head", target_module=col_nn.Linear1D_Col, kwargs=dict(gather_output=True)),
-                policy=policy,
-                target_key=BloomForCausalLM)
+                                                        policy=policy,
+                                                        target_key=BloomForCausalLM)
 
         self.set_pipeline_forward(model_cls=BloomForCausalLM, new_forward=bloom_for_causal_lm_forward, policy=policy)
         return policy
@@ -226,7 +226,7 @@ class BloomForCausalLMPolicy(BloomPolicy):
                 # tie weights
                 return [{
                     0: bloom_model.transformer.word_embeddings.weight,
-                    self.stage_manager.num_stages - 1: bloom_model.lm_head.weight
+                    self.pipeline_stage_manager.num_stages - 1: bloom_model.lm_head.weight
                 }]
         return []
 
@@ -241,8 +241,8 @@ class BloomForSequenceClassificationPolicy(BloomPolicy):
         if self.shard_config.enable_tensor_parallelism:
             self.append_or_create_submodule_replacement(description=SubModuleReplacementDescription(
                 suffix="score", target_module=col_nn.Linear1D_Col, kwargs=dict(gather_output=True)),
-                policy=policy,
-                target_key=BloomForSequenceClassification)
+                                                        policy=policy,
+                                                        target_key=BloomForSequenceClassification)
         self.set_pipeline_forward(model_cls=BloomForSequenceClassification,
                                   new_forward=bloom_for_sequence_classification_forward,
                                   policy=policy)
@@ -286,8 +286,8 @@ class BloomForTokenClassificationPolicy(BloomPolicy):
                     target_module=col_nn.DropoutForReplicatedInput,
                 ),
             ],
-                policy=policy,
-                target_key=BloomForTokenClassification)
+                                                        policy=policy,
+                                                        target_key=BloomForTokenClassification)
 
         self.set_pipeline_forward(model_cls=BloomForTokenClassification,
                                   new_forward=bloom_for_token_classification_forward,
