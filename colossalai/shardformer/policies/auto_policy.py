@@ -105,6 +105,14 @@ _POLICY_LIST = {
     "transformers.models.bloom.modeling_bloom.BloomForQuestionAnswering":
         PolicyLocation(file_name="bloom", class_name="BloomForQuestionAnsweringPolicy"),
 
+    # Whisper
+    "transformers.models.whisper.modeling_whisper.WhisperModel":
+        PolicyLocation(file_name="whisper", class_name="WhisperModelPolicy"),
+    "transformers.models.whisper.modeling_whisper.WhisperForConditionalGeneration":
+        PolicyLocation(file_name="whisper", class_name="WhisperForConditionalGenerationPolicy"),
+    "transformers.models.whisper.modeling_whisper.WhisperForAudioClassification":
+        PolicyLocation(file_name="whisper", class_name="WhisperForAudioClassificationPolicy"),
+
     # Sam
     "transformers.models.sam.modeling_sam.SamModel":
         PolicyLocation(file_name="sam", class_name="SamModelPolicy"),
