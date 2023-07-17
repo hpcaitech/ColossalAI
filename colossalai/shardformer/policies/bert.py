@@ -1,22 +1,30 @@
 from functools import partial
 from types import MethodType
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 from torch import Tensor
 from torch.nn import CrossEntropyLoss, Module
 from transformers.modeling_outputs import (
-    BaseModelOutputWithPast,
     BaseModelOutputWithPastAndCrossAttentions,
     BaseModelOutputWithPoolingAndCrossAttentions,
     CausalLMOutputWithCrossAttentions,
+    MultipleChoiceModelOutput,
+    NextSentencePredictorOutput,
+    QuestionAnsweringModelOutput,
+    SequenceClassifierOutput,
+    TokenClassifierOutput,
 )
 from transformers.models.bert.modeling_bert import (
     BertForMaskedLM,
+    BertForMultipleChoice,
     BertForNextSentencePrediction,
     BertForPreTraining,
     BertForPreTrainingOutput,
+    BertForQuestionAnswering,
+    BertForSequenceClassification,
+    BertForTokenClassification,
     BertLMHeadModel,
     BertModel,
 )
@@ -31,9 +39,9 @@ from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDe
 logger = logging.get_logger(__name__)
 
 __all__ = [
-    'BertPolicy', 'BertModelPolicy', 'BertForPreTrainingPolicy', 'BertLMHeadModelPolicy', 'BertForMaskedLMPolicy',
+    'BertPolicy', 'BertModelPolicy', 'BertForPreTrainingPolicy', 'BertLMdHeadModelPolicy', 'BertForMaskedLMPolicy',
     'BertForNextSentencePredictionPolicy', 'BertForSequenceClassificationPolicy', 'BertForTokenClassificationPolicy',
-    'BertForMultipleChoicePolicy'
+    'BertForMultipleChoicePolicy', 'BertForQuestionAnsweringPolicy'
 ]
 
 
@@ -172,6 +180,25 @@ class BertPolicy(Policy):
     def postprocess(self):
         return self.model
 
+    def set_pipeline_forward(self, model_cls: nn.Module, new_forward: Callable, policy: Dict) -> None:
+        """If under pipeline parallel setting, replacing the original forward method of huggingface
+           to customized forward method, and add this changing to policy."""
+        if self.pipeline_stage_manager:
+            stage_manager = self.pipeline_stage_manager
+            if self.model.__class__.__name__ == "BertModel":
+                module = self.model
+            else:
+                module = self.model.bert
+
+            layers_per_stage = Policy.distribute_layers(len(module.encoder.layer), stage_manager.num_stages)
+            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
+            method_replacement = {'forward': partial(new_forward, stage_manager=stage_manager, stage_index=stage_index)}
+            self.append_or_create_method_replacement(description=method_replacement,
+                                                     policy=policy,
+                                                     target_key=model_cls)
+
+        return
+
 
 # BertModel
 class BertModelPolicy(BertPolicy):
@@ -180,13 +207,10 @@ class BertModelPolicy(BertPolicy):
         super().__init__()
 
     def module_policy(self):
-        module_policy = super().module_policy()
+        policy = super().module_policy()
         from transformers.models.bert.modeling_bert import BertModel
-        if self.pipeline_stage_manager:
-            # set None as default
-            module_policy[BertModel] = ModulePolicyDescription(
-                method_replacement={'forward': partial(bert_model_forward, stage_manager=self.pipeline_stage_manager)})
-        return module_policy
+        self.set_pipeline_forward(model_cls=BertModel, new_forward=bert_model_forward, policy=policy)
+        return policy
 
     def get_held_layers(self) -> List[Module]:
         """Get pipeline layers for current stage."""
@@ -214,15 +238,17 @@ class BertForPreTrainingPolicy(BertPolicy):
         super().__init__()
 
     def module_policy(self):
-        module_policy = super().module_policy()
-        module_policy = self.add_lm_head_policy(module_policy)
-        return module_policy
+        policy = super().module_policy()
+        policy = self.add_lm_head_policy(policy)
+        from transformers.models.bert.modeling_bert import BertForPreTraining
+        self.set_pipeline_forward(model_cls=BertForPreTraining, new_forward=bert_for_pretraining_forward, policy=policy)
+        return policy
 
     def get_held_layers(self) -> List[Module]:
         """Get pipeline layers for current stage"""
         module = self.model
         stage_manager = self.pipeline_stage_manager
-        layers_per_stage = self.distribute_layers(len(self.model.bert.encoder.layer), stage_manager.num_stages)
+        layers_per_stage = self.distribute_layers(len(module.bert.encoder.layer), stage_manager.num_stages)
         held_layers = []
         if stage_manager.is_first_stage():
             held_layers.append(module.bert.embeddings)
@@ -237,11 +263,18 @@ class BertForPreTrainingPolicy(BertPolicy):
         return held_layers
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
-        '''No shared params in bertmodel'''
+        model = self.model
+        if self.pipeline_stage_manager:
+            if id(model.bert.embeddings.word_embeddings.weight) == id(model.cls.predictions.decoder.weight):
+                #tie weights
+                return [{
+                    0: model.bert.embeddings.word_embeddings.weight,
+                    self.pipeline_stage_manager.num_stages - 1: model.cls.predictions.decoder.weight
+                }]
         return []
 
     def postprocess(self):
-        if self.shard_config.enable_tensor_parallelism:
+        if self.shard_config.enable_tensor_parallelism and self.pipeline_stage_manager is None:
             binding_map = {"bert.embeddings.word_embeddings.weight": "cls.predictions.decoder.weight"}
             for k, v in binding_map.items():
                 param = getattr_(self.model, k)
@@ -256,9 +289,11 @@ class BertLMHeadModelPolicy(BertPolicy):
         super().__init__()
 
     def module_policy(self):
-        module_policy = super().module_policy()
-        module_policy = self.add_lm_head_policy(module_policy)
-        return module_policy
+        policy = super().module_policy()
+        policy = self.add_lm_head_policy(policy)
+        from transformers.models.bert.modeling_bert import BertLMHeadModel
+        self.set_pipeline_forward(model_cls=BertLMHeadModel, new_forward=bert_lm_head_model_forward, policy=policy)
+        return policy
 
     def get_held_layers(self) -> List[Module]:
         """
@@ -267,7 +302,7 @@ class BertLMHeadModelPolicy(BertPolicy):
         module = self.model
         held_layers = []
         stage_manager = self.pipeline_stage_manager
-        layers_per_stage = self.distribute_layers(len(self.model.bert.encoder.layer), stage_manager.num_stages)
+        layers_per_stage = self.distribute_layers(len(module.bert.encoder.layer), stage_manager.num_stages)
         if stage_manager.is_first_stage():
             held_layers.append(module.bert.embeddings)
         start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
@@ -278,11 +313,18 @@ class BertLMHeadModelPolicy(BertPolicy):
         return held_layers
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
-        '''No shared params in bertmodel'''
+        bert_model = self.model.bert
+        if self.pipeline_stage_manager:
+            if id(bert_model.embeddings.word_embeddings.weight) == id(self.model.cls.predictions.decoder.weight):
+                #tie weights
+                return [{
+                    0: bert_model.embeddings.word_embeddings.weight,
+                    self.pipeline_stage_manager.num_stages - 1: self.model.cls.predictions.decoder.weight
+                }]
         return []
 
     def postprocess(self):
-        if self.shard_config.enable_tensor_parallelism:
+        if self.shard_config.enable_tensor_parallelism and self.pipeline_stage_manager is None:
             binding_map = {"bert.embeddings.word_embeddings.weight": "cls.predictions.decoder.weight"}
             for k, v in binding_map.items():
                 param = getattr_(self.model, k)
@@ -297,12 +339,42 @@ class BertForMaskedLMPolicy(BertPolicy):
         super().__init__()
 
     def module_policy(self):
-        module_policy = super().module_policy()
-        module_policy = self.add_lm_head_policy(module_policy)
-        return module_policy
+        policy = super().module_policy()
+        policy = self.add_lm_head_policy(policy)
+        from transformers.models.bert.modeling_bert import BertForMaskedLM
+        self.set_pipeline_forward(model_cls=BertForMaskedLM, new_forward=bert_for_masked_lm_forward, policy=policy)
+        return policy
+
+    def get_held_layers(self) -> List[Module]:
+        """
+        get pipeline layers for current stage
+        """
+        module = self.model
+        held_layers = []
+        stage_manager = self.pipeline_stage_manager
+        layers_per_stage = self.distribute_layers(len(module.bert.encoder.layer), stage_manager.num_stages)
+        if stage_manager.is_first_stage():
+            held_layers.append(module.bert.embeddings)
+        start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
+        held_layers.extend(module.bert.encoder.layer[start_idx:end_idx])
+        if stage_manager.is_last_stage():
+            held_layers.append(module.bert.pooler)
+            held_layers.append(module.cls)
+        return held_layers
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        bert_model = self.model.bert
+        if self.pipeline_stage_manager:
+            if id(bert_model.embeddings.word_embeddings.weight) == id(self.model.cls.predictions.decoder.weight):
+                #tie weights
+                return [{
+                    0: bert_model.embeddings.word_embeddings.weight,
+                    self.pipeline_stage_manager.num_stages - 1: self.model.cls.predictions.decoder.weight
+                }]
+        return []
 
     def postprocess(self):
-        if self.shard_config.enable_tensor_parallelism:
+        if self.shard_config.enable_tensor_parallelism and self.pipeline_stage_manager is None:
             binding_map = {"bert.embeddings.word_embeddings.weight": "cls.predictions.decoder.weight"}
             for k, v in binding_map.items():
                 param = getattr_(self.model, k)
@@ -319,7 +391,7 @@ class BertForSequenceClassificationPolicy(BertPolicy):
     def module_policy(self):
         from transformers.models.bert.modeling_bert import BertForSequenceClassification
 
-        module_policy = super().module_policy()
+        policy = super().module_policy()
 
         if self.shard_config.enable_tensor_parallelism:
             addon_module = {
@@ -331,8 +403,35 @@ class BertForSequenceClassificationPolicy(BertPolicy):
                         )
                     ])
             }
-            module_policy.update(addon_module)
-        return module_policy
+            policy.update(addon_module)
+
+        self.set_pipeline_forward(model_cls=BertForSequenceClassification,
+                                  new_forward=bert_for_sequence_classification_forward,
+                                  policy=policy)
+
+        return policy
+
+    def get_held_layers(self) -> List[Module]:
+        """
+        get pipeline layers for current stage
+        """
+        module = self.model
+        held_layers = []
+        stage_manager = self.pipeline_stage_manager
+        layers_per_stage = self.distribute_layers(len(module.bert.encoder.layer), stage_manager.num_stages)
+        if stage_manager.is_first_stage():
+            held_layers.append(module.bert.embeddings)
+        start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
+        held_layers.extend(module.bert.encoder.layer[start_idx:end_idx])
+        if stage_manager.is_last_stage():
+            held_layers.append(module.bert.pooler)
+            held_layers.append(module.dropout)
+            held_layers.append(module.classifier)
+        return held_layers
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        # no shared params for sequence classification model
+        return []
 
 
 # BertForTokenClassification
@@ -344,7 +443,7 @@ class BertForTokenClassificationPolicy(BertPolicy):
     def module_policy(self):
         from transformers.models.bert.modeling_bert import BertForTokenClassification
 
-        module_policy = super().module_policy()
+        policy = super().module_policy()
 
         if self.shard_config.enable_tensor_parallelism:
             addon_module = {
@@ -356,8 +455,35 @@ class BertForTokenClassificationPolicy(BertPolicy):
                         )
                     ])
             }
-            module_policy.update(addon_module)
-        return module_policy
+            policy.update(addon_module)
+
+        self.set_pipeline_forward(model_cls=BertForTokenClassification,
+                                  new_forward=bert_for_token_classification_forward,
+                                  policy=policy)
+
+        return policy
+
+    def get_held_layers(self) -> List[Module]:
+        """
+        get pipeline layers for current stage
+        """
+        module = self.model
+        held_layers = []
+        stage_manager = self.pipeline_stage_manager
+        layers_per_stage = self.distribute_layers(len(module.bert.encoder.layer), stage_manager.num_stages)
+        if stage_manager.is_first_stage():
+            held_layers.append(module.bert.embeddings)
+        start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
+        held_layers.extend(module.bert.encoder.layer[start_idx:end_idx])
+        if stage_manager.is_last_stage():
+            held_layers.append(module.bert.pooler)
+            held_layers.append(module.dropout)
+            held_layers.append(module.classifier)
+        return held_layers
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        # no shared params for sequence classification model
+        return []
 
 
 # BertForNextSentencePrediction
@@ -365,6 +491,36 @@ class BertForNextSentencePredictionPolicy(BertPolicy):
 
     def __init__(self) -> None:
         super().__init__()
+
+    def module_policy(self):
+        policy = super().module_policy()
+        from transformers.models.bert.modeling_bert import BertForNextSentencePrediction
+        self.set_pipeline_forward(model_cls=BertForNextSentencePrediction,
+                                  new_forward=bert_for_next_sentence_prediction_forward,
+                                  policy=policy)
+
+        return policy
+
+    def get_held_layers(self) -> List[Module]:
+        """
+        get pipeline layers for current stage
+        """
+        module = self.model
+        held_layers = []
+        stage_manager = self.pipeline_stage_manager
+        layers_per_stage = self.distribute_layers(len(module.bert.encoder.layer), stage_manager.num_stages)
+        if stage_manager.is_first_stage():
+            held_layers.append(module.bert.embeddings)
+        start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
+        held_layers.extend(module.bert.encoder.layer[start_idx:end_idx])
+        if stage_manager.is_last_stage():
+            held_layers.append(module.bert.pooler)
+            held_layers.append(module.cls)
+        return held_layers
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        # no shared params for sequence classification model
+        return []
 
 
 # BertForMultipleChoice
@@ -376,7 +532,7 @@ class BertForMultipleChoicePolicy(BertPolicy):
     def module_policy(self):
         from transformers.models.bert.modeling_bert import BertForMultipleChoice
 
-        module_policy = super().module_policy()
+        policy = super().module_policy()
 
         if self.shard_config.enable_tensor_parallelism:
             addon_module = {
@@ -388,28 +544,91 @@ class BertForMultipleChoicePolicy(BertPolicy):
                         )
                     ])
             }
-            module_policy.update(addon_module)
-        return module_policy
+            policy.update(addon_module)
+
+        self.set_pipeline_forward(model_cls=BertForMultipleChoice,
+                                  new_forward=bert_for_multiple_choice_forward,
+                                  policy=policy)
+
+        return policy
+
+    def get_held_layers(self) -> List[Module]:
+        """
+        get pipeline layers for current stage
+        """
+        module = self.model
+        held_layers = []
+        stage_manager = self.pipeline_stage_manager
+        layers_per_stage = self.distribute_layers(len(module.bert.encoder.layer), stage_manager.num_stages)
+        if stage_manager.is_first_stage():
+            held_layers.append(module.bert.embeddings)
+        start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
+        held_layers.extend(module.bert.encoder.layer[start_idx:end_idx])
+        if stage_manager.is_last_stage():
+            held_layers.append(module.bert.pooler)
+            held_layers.append(module.dropout)
+            held_layers.append(module.classifier)
+        return held_layers
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        # no shared params for sequence classification model
+        return []
+
+
+class BertForQuestionAnsweringPolicy(BertPolicy):
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    def module_policy(self):
+        from transformers.models.bert.modeling_bert import BertForQuestionAnswering
+        policy = super().module_policy()
+        self.set_pipeline_forward(model_cls=BertForQuestionAnswering,
+                                  new_forward=bert_for_question_answering_forward,
+                                  policy=policy)
+
+        return policy
+
+    def get_held_layers(self) -> List[Module]:
+        """
+        get pipeline layers for current stage
+        """
+        module = self.model
+        held_layers = []
+        stage_manager = self.pipeline_stage_manager
+        layers_per_stage = self.distribute_layers(len(module.bert.encoder.layer), stage_manager.num_stages)
+        if stage_manager.is_first_stage():
+            held_layers.append(module.bert.embeddings)
+        start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
+        held_layers.extend(module.bert.encoder.layer[start_idx:end_idx])
+        if stage_manager.is_last_stage():
+            held_layers.append(module.bert.pooler)
+            held_layers.append(module.qa_outputs)
+        return held_layers
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        # no shared params for sequence classification model
+        return []
 
 
 def bert_model_forward(
-        self: BertModel,
-        input_ids: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        token_type_ids: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.Tensor] = None,
-        head_mask: Optional[torch.Tensor] = None,
-        inputs_embeds: Optional[torch.Tensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
-        past_key_values: Optional[List[torch.FloatTensor]] = None,
-    # labels: Optional[torch.LongTensor] = None,
-        use_cache: Optional[bool] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
-        stage_manager: Optional[PipelineStageManager] = None,
-        hidden_states: Optional[torch.FloatTensor] = None,    # this is from the previous stage
+    self: BertModel,
+    input_ids: Optional[torch.Tensor] = None,
+    attention_mask: Optional[torch.Tensor] = None,
+    token_type_ids: Optional[torch.Tensor] = None,
+    position_ids: Optional[torch.Tensor] = None,
+    head_mask: Optional[torch.Tensor] = None,
+    inputs_embeds: Optional[torch.Tensor] = None,
+    encoder_hidden_states: Optional[torch.Tensor] = None,
+    encoder_attention_mask: Optional[torch.Tensor] = None,
+    past_key_values: Optional[List[torch.FloatTensor]] = None,
+    use_cache: Optional[bool] = None,
+    output_attentions: Optional[bool] = None,
+    output_hidden_states: Optional[bool] = None,
+    return_dict: Optional[bool] = None,
+    stage_manager: Optional[PipelineStageManager] = None,
+    hidden_states: Optional[torch.FloatTensor] = None,    # this is from the previous stage
+    stage_index: Optional[List[int]] = None,
 ):
     # TODO: add explaination of the output here.
     r"""
@@ -528,14 +747,10 @@ def bert_model_forward(
             use_cache = False
     next_decoder_cache = () if use_cache else None
 
-    # calculate the num_layers
-    num_layers_per_stage = len(self.encoder.layer) // stage_manager.num_stages
-    start_layer = stage_manager.stage * num_layers_per_stage
-    end_layer = (stage_manager.stage + 1) * num_layers_per_stage
-
+    start_idx, end_idx = stage_index[0], stage_index[1]
     # layer_outputs
     layer_outputs = hidden_states if hidden_states is not None else None
-    for idx, encoder_layer in enumerate(self.encoder.layer[start_layer:end_layer], start=start_layer):
+    for idx, encoder_layer in enumerate(self.encoder.layer[start_idx:end_idx], start=start_idx):
         if stage_manager.is_first_stage() and idx == 0:
             encoder_attention_mask = encoder_extended_attention_mask
 
@@ -593,8 +808,9 @@ def bert_model_forward(
             return (sequence_output, pooled_output) + layer_outputs[1:]
         # return dict is not supported at this moment
         else:
-            return BaseModelOutputWithPastAndCrossAttentions(
-                last_hidden_state=hidden_states,
+            return BaseModelOutputWithPoolingAndCrossAttentions(
+                last_hidden_state=sequence_output,
+                pooler_output=pooled_output,
                 past_key_values=next_decoder_cache,
                 hidden_states=all_hidden_states,
                 attentions=all_self_attentions,
@@ -624,6 +840,7 @@ def bert_for_pretraining_forward(
     return_dict: Optional[bool] = None,
     hidden_states: Optional[torch.FloatTensor] = None,
     stage_manager: Optional[PipelineStageManager] = None,
+    stage_index: Optional[List[int]] = None,
 ):
     return_dict = return_dict if return_dict is not None else self.config.use_return_dict
     # TODO: left the recording kv-value tensors as () or None type, this feature may be added in the future.
@@ -637,18 +854,21 @@ def bert_for_pretraining_forward(
         logger.warning_once('return_dict is not supported for pipeline models at the moment')
         return_dict = False
 
-    outputs = bert_model_forward(self.bert,
-                                 input_ids,
-                                 attention_mask=attention_mask,
-                                 token_type_ids=token_type_ids,
-                                 position_ids=position_ids,
-                                 head_mask=head_mask,
-                                 inputs_embeds=inputs_embeds,
-                                 output_attentions=output_attentions,
-                                 output_hidden_states=output_hidden_states,
-                                 return_dict=return_dict,
-                                 stage_manager=stage_manager,
-                                 hidden_states=hidden_states if hidden_states is not None else None)
+    outputs = bert_model_forward(
+        self.bert,
+        input_ids,
+        attention_mask=attention_mask,
+        token_type_ids=token_type_ids,
+        position_ids=position_ids,
+        head_mask=head_mask,
+        inputs_embeds=inputs_embeds,
+        output_attentions=output_attentions,
+        output_hidden_states=output_hidden_states,
+        return_dict=return_dict,
+        stage_manager=stage_manager,
+        hidden_states=hidden_states if hidden_states is not None else None,
+        stage_index=stage_index,
+    )
     past_key_values = None
     all_hidden_states = None
     all_self_attentions = None
@@ -684,23 +904,26 @@ def bert_for_pretraining_forward(
         }
 
 
-def bert_lmhead_forward(self: BertLMHeadModel,
-                        input_ids: Optional[torch.Tensor] = None,
-                        attention_mask: Optional[torch.Tensor] = None,
-                        token_type_ids: Optional[torch.Tensor] = None,
-                        position_ids: Optional[torch.Tensor] = None,
-                        head_mask: Optional[torch.Tensor] = None,
-                        inputs_embeds: Optional[torch.Tensor] = None,
-                        encoder_hidden_states: Optional[torch.Tensor] = None,
-                        encoder_attention_mask: Optional[torch.Tensor] = None,
-                        labels: Optional[torch.Tensor] = None,
-                        past_key_values: Optional[List[torch.Tensor]] = None,
-                        use_cache: Optional[bool] = None,
-                        output_attentions: Optional[bool] = None,
-                        output_hidden_states: Optional[bool] = None,
-                        return_dict: Optional[bool] = None,
-                        hidden_states: Optional[torch.FloatTensor] = None,
-                        stage_manager: Optional[PipelineStageManager] = None):
+def bert_lm_head_model_forward(
+    self: BertLMHeadModel,
+    input_ids: Optional[torch.Tensor] = None,
+    attention_mask: Optional[torch.Tensor] = None,
+    token_type_ids: Optional[torch.Tensor] = None,
+    position_ids: Optional[torch.Tensor] = None,
+    head_mask: Optional[torch.Tensor] = None,
+    inputs_embeds: Optional[torch.Tensor] = None,
+    encoder_hidden_states: Optional[torch.Tensor] = None,
+    encoder_attention_mask: Optional[torch.Tensor] = None,
+    labels: Optional[torch.Tensor] = None,
+    past_key_values: Optional[List[torch.Tensor]] = None,
+    use_cache: Optional[bool] = None,
+    output_attentions: Optional[bool] = None,
+    output_hidden_states: Optional[bool] = None,
+    return_dict: Optional[bool] = None,
+    hidden_states: Optional[torch.FloatTensor] = None,
+    stage_manager: Optional[PipelineStageManager] = None,
+    stage_index: Optional[List[int]] = None,
+):
     r"""
         encoder_hidden_states  (`torch.FloatTensor` of shape `(batch_size, sequence_length, hidden_size)`, *optional*):
             Sequence of hidden-states at the output of the last layer of the encoder. Used in the cross-attention if
@@ -754,7 +977,8 @@ def bert_lmhead_forward(self: BertLMHeadModel,
                                  output_hidden_states=output_hidden_states,
                                  return_dict=return_dict,
                                  stage_manager=stage_manager,
-                                 hidden_states=hidden_states if hidden_states is not None else None)
+                                 hidden_states=hidden_states if hidden_states is not None else None,
+                                 stage_index=stage_index)
     past_key_values = None
     all_hidden_states = None
     all_self_attentions = None
@@ -806,15 +1030,66 @@ def bert_for_masked_lm_forward(
     return_dict: Optional[bool] = None,
     hidden_states: Optional[torch.Tensor] = None,
     stage_manager: Optional[PipelineStageManager] = None,
+    stage_index: Optional[List[int]] = None,
 ):
-    #-> Union[Tuple[torch.Tensor], MaskedLMOutput]:
     r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
             Labels for computing the masked language modeling loss. Indices should be in `[-100, 0, ...,
             config.vocab_size]` (see `input_ids` docstring) Tokens with indices set to `-100` are ignored (masked), the
             loss is only computed for the tokens with labels in `[0, ..., config.vocab_size]`
         """
-    pass
+    return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+    if output_attentions:
+        logger.warning_once('output_attentions=True is not supported for pipeline models at the moment.')
+        output_attentions = False
+    if output_hidden_states:
+        logger.warning_once('output_hidden_states=True is not supported for pipeline models at the moment.')
+        output_hidden_states = False
+    if return_dict:
+        logger.warning_once('return_dict is not supported for pipeline models at the moment')
+        return_dict = False
+
+    outputs = bert_model_forward(
+        self.bert,
+        input_ids,
+        attention_mask=attention_mask,
+        token_type_ids=token_type_ids,
+        position_ids=position_ids,
+        head_mask=head_mask,
+        inputs_embeds=inputs_embeds,
+        encoder_hidden_states=encoder_hidden_states,
+        encoder_attention_mask=encoder_attention_mask,
+        output_attentions=output_attentions,
+        output_hidden_states=output_hidden_states,
+        return_dict=return_dict,
+        hidden_states=hidden_states,
+        stage_manager=stage_manager,
+        stage_index=stage_index,
+    )
+
+    if stage_manager.is_last_stage():
+        sequence_output = outputs[0]
+        prediction_scores = self.cls(sequence_output)
+
+        masked_lm_loss = None
+        if labels is not None:
+            loss_fct = CrossEntropyLoss()    # -100 index = padding token
+            masked_lm_loss = loss_fct(prediction_scores.view(-1, self.config.vocab_size), labels.view(-1))
+
+        if not return_dict:
+            output = (prediction_scores,) + outputs[2:]
+            return ((masked_lm_loss,) + output) if masked_lm_loss is not None else output
+
+        return MaskedLMOutput(
+            loss=masked_lm_loss,
+            logits=prediction_scores,
+            hidden_states=outputs.hidden_states,
+            attentions=outputs.attentions,
+        )
+    else:
+        hidden_states = outputs.get('hidden_states')
+        return {'hidden_states': hidden_states}
 
 
 def bert_for_next_sentence_prediction_forward(
@@ -831,6 +1106,7 @@ def bert_for_next_sentence_prediction_forward(
     return_dict: Optional[bool] = None,
     hidden_states: Optional[torch.Tensor] = None,
     stage_manager: Optional[PipelineStageManager] = None,
+    stage_index: Optional[List[int]] = None,
     **kwargs,
 ):
     #-> Union[Tuple[torch.Tensor], NextSentencePredictorOutput]:
@@ -881,18 +1157,20 @@ def bert_for_next_sentence_prediction_forward(
         return_dict = False
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-    outputs = bert_model_forward(
-        self.bert,
-        input_ids,
-        attention_mask=attention_mask,
-        token_type_ids=token_type_ids,
-        position_ids=position_ids,
-        head_mask=head_mask,
-        inputs_embeds=inputs_embeds,
-        output_attentions=output_attentions,
-        output_hidden_states=output_hidden_states,
-        return_dict=return_dict,
-    )
+    outputs = bert_model_forward(self.bert,
+                                 input_ids,
+                                 attention_mask=attention_mask,
+                                 token_type_ids=token_type_ids,
+                                 position_ids=position_ids,
+                                 head_mask=head_mask,
+                                 inputs_embeds=inputs_embeds,
+                                 output_attentions=output_attentions,
+                                 output_hidden_states=output_hidden_states,
+                                 return_dict=return_dict,
+                                 hidden_states=hidden_states,
+                                 stage_manager=stage_manager,
+                                 stage_index=stage_index)
+
     if stage_manager.is_last_stage():
         pooled_output = outputs[1]
         seq_relationship_scores = self.cls(pooled_output)
@@ -915,4 +1193,356 @@ def bert_for_next_sentence_prediction_forward(
     else:
         hidden_states = outputs.get('hidden_states')
         # intermediate stage always return dict
+        return {'hidden_states': hidden_states}
+
+
+def bert_for_sequence_classification_forward(
+    self: BertForSequenceClassification,
+    input_ids: Optional[torch.Tensor] = None,
+    attention_mask: Optional[torch.Tensor] = None,
+    token_type_ids: Optional[torch.Tensor] = None,
+    position_ids: Optional[torch.Tensor] = None,
+    head_mask: Optional[torch.Tensor] = None,
+    inputs_embeds: Optional[torch.Tensor] = None,
+    labels: Optional[torch.Tensor] = None,
+    output_attentions: Optional[bool] = None,
+    output_hidden_states: Optional[bool] = None,
+    return_dict: Optional[bool] = None,
+    hidden_states: Optional[torch.Tensor] = None,
+    stage_manager: Optional[PipelineStageManager] = None,
+    stage_index: Optional[List[int]] = None,
+):
+    r"""
+    labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
+        Labels for computing the sequence classification/regression loss. Indices should be in `[0, ...,
+        config.num_labels - 1]`. If `config.num_labels == 1` a regression loss is computed (Mean-Square loss), If
+        `config.num_labels > 1` a classification loss is computed (Cross-Entropy).
+    """
+    return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+    if output_attentions:
+        logger.warning_once('output_attentions=True is not supported for pipeline models at the moment.')
+        output_attentions = False
+    if output_hidden_states:
+        logger.warning_once('output_hidden_states=True is not supported for pipeline models at the moment.')
+        output_hidden_states = False
+    if return_dict:
+        logger.warning_once('return_dict is not supported for pipeline models at the moment')
+        return_dict = False
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+    outputs = bert_model_forward(self.bert,
+                                 input_ids,
+                                 attention_mask=attention_mask,
+                                 token_type_ids=token_type_ids,
+                                 position_ids=position_ids,
+                                 head_mask=head_mask,
+                                 inputs_embeds=inputs_embeds,
+                                 output_attentions=output_attentions,
+                                 output_hidden_states=output_hidden_states,
+                                 return_dict=return_dict,
+                                 hidden_states=hidden_states,
+                                 stage_manager=stage_manager,
+                                 stage_index=stage_index)
+
+    if stage_manager.is_last_stage():
+        pooled_output = outputs[1]
+
+        pooled_output = self.dropout(pooled_output)
+        logits = self.classifier(pooled_output)
+
+        loss = None
+        if labels is not None:
+            if self.config.problem_type is None:
+                if self.num_labels == 1:
+                    self.config.problem_type = "regression"
+                elif self.num_labels > 1 and (labels.dtype == torch.long or labels.dtype == torch.int):
+                    self.config.problem_type = "single_label_classification"
+                else:
+                    self.config.problem_type = "multi_label_classification"
+
+            if self.config.problem_type == "regression":
+                loss_fct = MSELoss()
+                if self.num_labels == 1:
+                    loss = loss_fct(logits.squeeze(), labels.squeeze())
+                else:
+                    loss = loss_fct(logits, labels)
+            elif self.config.problem_type == "single_label_classification":
+                loss_fct = CrossEntropyLoss()
+                loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
+            elif self.config.problem_type == "multi_label_classification":
+                loss_fct = BCEWithLogitsLoss()
+                loss = loss_fct(logits, labels)
+        if not return_dict:
+            output = (logits,) + outputs[2:]
+            return ((loss,) + output) if loss is not None else output
+
+        return SequenceClassifierOutput(
+            loss=loss,
+            logits=logits,
+            hidden_states=outputs.hidden_states,
+            attentions=outputs.attentions,
+        )
+    else:
+        hidden_states = outputs.get('hidden_states')
+        return {'hidden_states': hidden_states}
+
+
+def bert_for_token_classification_forward(
+    self: BertForTokenClassification,
+    input_ids: Optional[torch.Tensor] = None,
+    attention_mask: Optional[torch.Tensor] = None,
+    token_type_ids: Optional[torch.Tensor] = None,
+    position_ids: Optional[torch.Tensor] = None,
+    head_mask: Optional[torch.Tensor] = None,
+    inputs_embeds: Optional[torch.Tensor] = None,
+    labels: Optional[torch.Tensor] = None,
+    output_attentions: Optional[bool] = None,
+    output_hidden_states: Optional[bool] = None,
+    return_dict: Optional[bool] = None,
+    hidden_states: Optional[torch.Tensor] = None,
+    stage_manager: Optional[PipelineStageManager] = None,
+    stage_index: Optional[List[int]] = None,
+):
+    r"""
+    labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
+        Labels for computing the token classification loss. Indices should be in `[0, ..., config.num_labels - 1]`.
+    """
+    return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+    if output_attentions:
+        logger.warning_once('output_attentions=True is not supported for pipeline models at the moment.')
+        output_attentions = False
+    if output_hidden_states:
+        logger.warning_once('output_hidden_states=True is not supported for pipeline models at the moment.')
+        output_hidden_states = False
+    if return_dict:
+        logger.warning_once('return_dict is not supported for pipeline models at the moment')
+        return_dict = False
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+    outputs = bert_model_forward(
+        self.bert,
+        input_ids,
+        attention_mask=attention_mask,
+        token_type_ids=token_type_ids,
+        position_ids=position_ids,
+        head_mask=head_mask,
+        inputs_embeds=inputs_embeds,
+        output_attentions=output_attentions,
+        output_hidden_states=output_hidden_states,
+        return_dict=return_dict,
+        hidden_states=hidden_states,
+        stage_manager=stage_manager,
+        stage_index=stage_index,
+    )
+
+    if stage_manager.is_last_stage():
+        sequence_output = outputs[0]
+
+        sequence_output = self.dropout(sequence_output)
+        logits = self.classifier(sequence_output)
+
+        loss = None
+        if labels is not None:
+            loss_fct = CrossEntropyLoss()
+            loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
+
+        if not return_dict:
+            output = (logits,) + outputs[2:]
+            return ((loss,) + output) if loss is not None else output
+
+        return TokenClassifierOutput(
+            loss=loss,
+            logits=logits,
+            hidden_states=outputs.hidden_states,
+            attentions=outputs.attentions,
+        )
+    else:
+        hidden_states = outputs.get('hidden_states')
+        return {'hidden_states': hidden_states}
+
+
+def bert_for_multiple_choice_forward(
+    self: BertForMultipleChoice,
+    input_ids: Optional[torch.Tensor] = None,
+    attention_mask: Optional[torch.Tensor] = None,
+    token_type_ids: Optional[torch.Tensor] = None,
+    position_ids: Optional[torch.Tensor] = None,
+    head_mask: Optional[torch.Tensor] = None,
+    inputs_embeds: Optional[torch.Tensor] = None,
+    labels: Optional[torch.Tensor] = None,
+    output_attentions: Optional[bool] = None,
+    output_hidden_states: Optional[bool] = None,
+    return_dict: Optional[bool] = None,
+    hidden_states: Optional[torch.Tensor] = None,
+    stage_manager: Optional[PipelineStageManager] = None,
+    stage_index: Optional[List[int]] = None,
+):
+    r"""
+    labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
+        Labels for computing the multiple choice classification loss. Indices should be in `[0, ...,
+        num_choices-1]` where `num_choices` is the size of the second dimension of the input tensors. (See
+        `input_ids` above)
+    """
+    return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+    if output_attentions:
+        logger.warning_once('output_attentions=True is not supported for pipeline models at the moment.')
+        output_attentions = False
+    if output_hidden_states:
+        logger.warning_once('output_hidden_states=True is not supported for pipeline models at the moment.')
+        output_hidden_states = False
+    if return_dict:
+        logger.warning_once('return_dict is not supported for pipeline models at the moment')
+        return_dict = False
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+    # in our pipeline design,input ids are copied for every stage and shouldn't be none
+    # the input_ids for multiple choice model is [batch_size, num_choices, sequence_length]
+    if stage_manager.is_last_stage():
+        num_choices = input_ids.shape[1] if input_ids is not None else inputs_embeds.shape[1]
+
+    input_ids = input_ids.view(-1, input_ids.size(-1)) if input_ids is not None else None
+    attention_mask = attention_mask.view(-1, attention_mask.size(-1)) if attention_mask is not None else None
+    token_type_ids = token_type_ids.view(-1, token_type_ids.size(-1)) if token_type_ids is not None else None
+    position_ids = position_ids.view(-1, position_ids.size(-1)) if position_ids is not None else None
+    inputs_embeds = (inputs_embeds.view(-1, inputs_embeds.size(-2), inputs_embeds.size(-1))
+                     if inputs_embeds is not None else None)
+
+    outputs = bert_model_forward(
+        self.bert,
+        input_ids,
+        attention_mask=attention_mask,
+        token_type_ids=token_type_ids,
+        position_ids=position_ids,
+        head_mask=head_mask,
+        inputs_embeds=inputs_embeds,
+        output_attentions=output_attentions,
+        output_hidden_states=output_hidden_states,
+        return_dict=return_dict,
+        hidden_states=hidden_states,
+        stage_manager=stage_manager,
+        stage_index=stage_index,
+    )
+    if stage_manager.is_last_stage():
+        pooled_output = outputs[1]
+        pooled_output = self.dropout(pooled_output)
+        logits = self.classifier(pooled_output)
+        reshaped_logits = logits.view(-1, num_choices)
+
+        loss = None
+        if labels is not None:
+            loss_fct = CrossEntropyLoss()
+            loss = loss_fct(reshaped_logits, labels)
+
+        if not return_dict:
+            output = (reshaped_logits,) + outputs[2:]
+            return ((loss,) + output) if loss is not None else output
+
+        return MultipleChoiceModelOutput(
+            loss=loss,
+            logits=reshaped_logits,
+            hidden_states=outputs.hidden_states,
+            attentions=outputs.attentions,
+        )
+    else:
+        hidden_states = outputs.get('hidden_states')
+        return {'hidden_states': hidden_states}
+
+
+def bert_for_question_answering_forward(
+    self: BertForQuestionAnswering,
+    input_ids: Optional[torch.Tensor] = None,
+    attention_mask: Optional[torch.Tensor] = None,
+    token_type_ids: Optional[torch.Tensor] = None,
+    position_ids: Optional[torch.Tensor] = None,
+    head_mask: Optional[torch.Tensor] = None,
+    inputs_embeds: Optional[torch.Tensor] = None,
+    start_positions: Optional[torch.Tensor] = None,
+    end_positions: Optional[torch.Tensor] = None,
+    output_attentions: Optional[bool] = None,
+    output_hidden_states: Optional[bool] = None,
+    return_dict: Optional[bool] = None,
+    hidden_states: Optional[torch.Tensor] = None,
+    stage_manager: Optional[PipelineStageManager] = None,
+    stage_index: Optional[List[int]] = None,
+):
+    # NOTE: the arg start_position and end_position are used only for the last stage
+    r"""
+    start_positions (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
+        Labels for position (index) of the start of the labelled span for computing the token classification loss.
+        Positions are clamped to the length of the sequence (`sequence_length`). Position outside of the sequence
+        are not taken into account for computing the loss.
+    end_positions (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
+        Labels for position (index) of the end of the labelled span for computing the token classification loss.
+        Positions are clamped to the length of the sequence (`sequence_length`). Position outside of the sequence
+        are not taken into account for computing the loss.
+    """
+    return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+    if output_attentions:
+        logger.warning_once('output_attentions=True is not supported for pipeline models at the moment.')
+        output_attentions = False
+    if output_hidden_states:
+        logger.warning_once('output_hidden_states=True is not supported for pipeline models at the moment.')
+        output_hidden_states = False
+    if return_dict:
+        logger.warning_once('return_dict is not supported for pipeline models at the moment')
+        return_dict = False
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+    outputs = bert_model_forward(
+        self.bert,
+        input_ids,
+        attention_mask=attention_mask,
+        token_type_ids=token_type_ids,
+        position_ids=position_ids,
+        head_mask=head_mask,
+        inputs_embeds=inputs_embeds,
+        output_attentions=output_attentions,
+        output_hidden_states=output_hidden_states,
+        return_dict=return_dict,
+        hidden_states=hidden_states,
+        stage_manager=stage_manager,
+        stage_index=stage_index,
+    )
+    if stage_manager.is_last_stage():
+        sequence_output = outputs[0]
+
+        logits = self.qa_outputs(sequence_output)
+        start_logits, end_logits = logits.split(1, dim=-1)
+        start_logits = start_logits.squeeze(-1).contiguous()
+        end_logits = end_logits.squeeze(-1).contiguous()
+
+        total_loss = None
+        if start_positions is not None and end_positions is not None:
+            # If we are on multi-GPU, split add a dimension
+            if len(start_positions.size()) > 1:
+                start_positions = start_positions.squeeze(-1)
+            if len(end_positions.size()) > 1:
+                end_positions = end_positions.squeeze(-1)
+            # sometimes the start/end positions are outside our model inputs, we ignore these terms
+            ignored_index = start_logits.size(1)
+            start_positions = start_positions.clamp(0, ignored_index)
+            end_positions = end_positions.clamp(0, ignored_index)
+
+            loss_fct = CrossEntropyLoss(ignore_index=ignored_index)
+            start_loss = loss_fct(start_logits, start_positions)
+            end_loss = loss_fct(end_logits, end_positions)
+            total_loss = (start_loss + end_loss) / 2
+
+        if not return_dict:
+            output = (start_logits, end_logits) + outputs[2:]
+            return ((total_loss,) + output) if total_loss is not None else output
+
+        return QuestionAnsweringModelOutput(
+            loss=total_loss,
+            start_logits=start_logits,
+            end_logits=end_logits,
+            hidden_states=outputs.hidden_states,
+            attentions=outputs.attentions,
+        )
+    else:
+        hidden_states = outputs.get('hidden_states')
         return {'hidden_states': hidden_states}

@@ -42,6 +42,8 @@ _POLICY_LIST = {
         PolicyLocation(file_name="bert", class_name="BertForNextSentencePredictionPolicy"),
     "transformers.models.bert.modeling_bert.BertForMultipleChoice":
         PolicyLocation(file_name="bert", class_name="BertForMultipleChoicePolicy"),
+    "transformers.models.bert.modeling_bert.BertForQuestionAnswering":
+        PolicyLocation(file_name="bert", class_name="BertForQuestionAnsweringPolicy"),
 
     # LLaMA
     "transformers.models.llama.modeling_llama.LlamaModel":
