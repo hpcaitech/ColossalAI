@@ -6,38 +6,6 @@ import torch.nn.functional as F
 from colossalai.kernel.triton.ops import self_attention_compute_using_triton
 from colossalai.kernel.triton.qkv_matmul_kernel import qkv_gemm_4d_kernel
 
-def self_attention_compute_using_torch(qkv,
-                                       input_mask,
-                                       scale,
-                                       head_size
-                                       ):
-    batches = qkv.shape[0]
-    d_model = qkv.shape[-1] // 3
-    num_of_heads = d_model // head_size
-    
-    q = qkv[:, :, :d_model]
-    k = qkv[:, :, d_model:d_model * 2]
-    v = qkv[:, :, d_model * 2:]
-    q = q.view(batches, -1, num_of_heads, head_size)
-    k = k.view(batches, -1, num_of_heads, head_size)
-    v = v.view(batches, -1, num_of_heads, head_size)
-
-    q = torch.transpose(q, 1, 2).contiguous()
-    k = torch.transpose(k, 1, 2).contiguous()
-    v = torch.transpose(v, 1, 2).contiguous()
-
-    k = torch.transpose(k, -1, -2).contiguous()
-
-    score_output = torch.einsum('bnij,bnjk->bnik', q, k)
-    score_output *= scale
-
-    softmax_output = F.softmax(score_output, dim = -1)
-    res = torch.einsum('bnij,bnjk->bnik', softmax_output, v)
-    res = torch.transpose(res, 1, 3)
-    res = res.contiguous()
-
-
-    return res.view(batches, -1, d_model), score_output, softmax_output
 
 def test_qkv_matmul():
     qkv = torch.randn((4, 24, 64*3), device="cuda", dtype=torch.float16)
@@ -57,9 +25,6 @@ def test_qkv_matmul():
     q = torch.transpose(q, 1, 2).contiguous()
     k = torch.transpose(k, 1, 2).contiguous()
     k = torch.transpose(k, 2, 3).contiguous()
-
-    print(q.shape)
-    print(k.shape)
 
     torch_ouput = torch.einsum('bnij,bnjk->bnik', q, k)
     torch_ouput *= 1.2
@@ -93,9 +58,42 @@ def test_qkv_matmul():
     )
 
     check = torch.allclose(torch_ouput.cpu(), score_output.cpu(), rtol=1e-3, atol=1e-5)
-    print(check)
     assert check is True, "the outputs of triton and torch are not matched"
     
+
+def self_attention_compute_using_torch(qkv,
+                                       input_mask,
+                                       scale,
+                                       head_size
+                                       ):
+    batches = qkv.shape[0]
+    d_model = qkv.shape[-1] // 3
+    num_of_heads = d_model // head_size
+    
+    q = qkv[:, :, :d_model]
+    k = qkv[:, :, d_model:d_model * 2]
+    v = qkv[:, :, d_model * 2:]
+    q = q.view(batches, -1, num_of_heads, head_size)
+    k = k.view(batches, -1, num_of_heads, head_size)
+    v = v.view(batches, -1, num_of_heads, head_size)
+
+    q = torch.transpose(q, 1, 2).contiguous()
+    k = torch.transpose(k, 1, 2).contiguous()
+    v = torch.transpose(v, 1, 2).contiguous()
+
+    k = torch.transpose(k, -1, -2).contiguous()
+
+    score_output = torch.einsum('bnij,bnjk->bnik', q, k)
+    score_output *= scale
+
+    softmax_output = F.softmax(score_output, dim = -1)
+    res = torch.einsum('bnij,bnjk->bnik', softmax_output, v)
+    res = torch.transpose(res, 1, 2)
+    res = res.contiguous()
+
+
+    return res.view(batches, -1, d_model), score_output, softmax_output
+
 
 def test_self_atttention_test():
     qkv = torch.randn((4, 24, 64*3), device="cuda", dtype=torch.float16)
@@ -115,20 +113,13 @@ def test_self_atttention_test():
                                                             layer_past=None,
                                                             use_flash=False,
                                                             triangular=True)
-    # print(data_output_torch.shape)
-    # print(data_output_triton.shape)
-    # print(data_output_torch)
-    # print(data_output_triton)
-    # print(torch.allclose(data_output_torch.cpu(), data_output_triton.cpu(), rtol=1e-2, atol=1e-2))
 
-    print(score_output_torch.shape)
-    print("**********")
-    print(score_output_triton.shape)
-    print(torch.allclose(data_output_torch.cpu(), data_output_triton.cpu(), rtol=1e-2, atol=1e-2))
+    check = torch.allclose(data_output_triton.cpu(), data_output_torch.cpu(), rtol=1e-4, atol=1e-2)
+    assert check is True, "the triton ouput is not matched with torch output"
 
 
 
 
 if __name__ == "__main__":
-    # test_qkv_matmul()
+    test_qkv_matmul()
     test_self_atttention_test()
