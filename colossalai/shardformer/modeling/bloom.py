@@ -72,7 +72,7 @@ def build_bloom_alibi_tensor_fn(process_group: ProcessGroup) -> torch.Tensor:
     return build_bloom_alibi_tensor
 
 
-def get_flash_attention_forward(enabel_jit_fused=False):
+def get_bloom_flash_attention_forward(enabel_jit_fused=False):
 
     try:
         from xformers.ops import memory_efficient_attention as me_attention
@@ -154,7 +154,7 @@ def get_flash_attention_forward(enabel_jit_fused=False):
     return forward
 
 
-def get_jit_fused_attention_forward():
+def get_jit_fused_bloom_attention_forward():
 
     def forward(
         self,
@@ -250,7 +250,7 @@ def get_jit_fused_attention_forward():
     return forward
 
 
-def get_jit_fused_mlp_forward():
+def get_jit_fused_bloom_mlp_forward():
 
     def forward(self, hidden_states: torch.Tensor, residual: torch.Tensor) -> torch.Tensor:
         hidden_states = self.gelu_impl(self.dense_h_to_4h(hidden_states))

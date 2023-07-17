@@ -6,8 +6,6 @@ import torch.distributed as dist
 from torch.distributed import ProcessGroup
 from torch.nn import functional as F
 
-__all__ = ['get_bert_forward']
-
 
 def get_bert_flash_attention_forward():
 

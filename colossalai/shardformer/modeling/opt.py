@@ -3,8 +3,6 @@ from typing import Optional, Tuple
 import torch
 from torch import nn
 
-__all__ = ['get_opt_forward']
-
 
 def get_opt_flash_attention_forward():
 

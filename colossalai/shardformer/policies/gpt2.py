@@ -3,8 +3,8 @@ import torch.nn as nn
 import colossalai.shardformer.layer as col_nn
 
 from .._utils import getattr_, setattr_
+from ..modeling.gpt2 import get_gpt2_flash_attention_forward
 from .basepolicy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
-from ..modeling.gpt2 import get_gpt2_forward
 
 __all__ = [
     'GPT2Policy', 'GPT2ModelPolicy', 'GPT2LMHeadModelPolicy', 'GPT2DoubleHeadsModelPolicy',
@@ -30,7 +30,7 @@ class GPT2Policy(Policy):
         return self.model
 
     def module_policy(self):
-        from transformers.models.gpt2.modeling_gpt2 import GPT2Block, GPT2Model, GPT2Attention
+        from transformers.models.gpt2.modeling_gpt2 import GPT2Attention, GPT2Block, GPT2Model
 
         policy = {}
 
@@ -107,11 +107,11 @@ class GPT2Policy(Policy):
             ],
                                                         policy=policy,
                                                         target_key=GPT2Block)
-            
+
         if self.shard_config.enable_flash_attention:
             policy[GPT2Attention] = ModulePolicyDescription(method_replacement={
-                'forward': get_gpt2_forward(),
-            }) 
+                'forward': get_gpt2_flash_attention_forward(),
+            })
         return policy
 
     def postprocess(self):
