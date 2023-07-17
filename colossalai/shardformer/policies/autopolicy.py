@@ -108,6 +108,8 @@ _POLICY_LIST = {
     # Blip2
     "transformers.models.blip_2.modeling_blip_2.Blip2Model":
         PolicyLocation(file_name="blip2", class_name="Blip2ModelPolicy"),
+    "transformers.models.blip_2.modeling_blip_2.Blip2ForConditionalGeneration":
+        PolicyLocation(file_name="blip2", class_name="Blip2ForConditionalGenerationPolicy"),
 }
 
 

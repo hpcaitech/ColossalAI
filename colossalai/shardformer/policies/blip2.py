@@ -291,3 +291,10 @@ class Blip2ModelPolicy(BlipPolicy):
 
     def __init__(self) -> None:
         super().__init__()
+
+
+# Blip2ForConditionalGeneration
+class Blip2ForConditionalGenerationPolicy(BlipPolicy):
+
+    def __init__(self) -> None:
+        super().__init__()

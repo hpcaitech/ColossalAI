@@ -52,3 +52,10 @@ model_zoo.register(name='transformers_blip2',
                    output_transform_fn=output_transform_fn,
                    loss_fn=loss_fn_blip2_model,
                    model_attribute=ModelAttribute(has_control_flow=True))
+
+model_zoo.register(name='transformers_blip2_conditional_gerneration',
+                   model_fn=lambda: transformers.Blip2ForConditionalGeneration(config),
+                   data_gen_fn=data_gen,
+                   output_transform_fn=output_transform_fn,
+                   loss_fn=loss_fn_blip2_model,
+                   model_attribute=ModelAttribute(has_control_flow=True))
