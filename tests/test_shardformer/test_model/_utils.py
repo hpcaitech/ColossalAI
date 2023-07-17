@@ -49,7 +49,6 @@ def run_forward(original_model, sharded_model, data_gen_fn, output_transform_fn,
     # prepare input
     data = data_gen_fn()
     data = {k: v.cuda() for k, v in data.items()}
-
     # switch to train mode
     original_model.train()
     sharded_model.train()

@@ -89,8 +89,12 @@ def data_gen_for_mcq():
 
 def data_gen_for_qa():
     # generating data for question answering
-    # no need for labels
+    # no need for labels and use start and end position instead
     data = data_gen()
+    start_positions = torch.tensor([0], dtype=torch.int64)
+    data['start_positions'] = start_positions
+    end_positions = torch.tensor([1], dtype=torch.int64)
+    data['end_positions'] = end_positions
     return data
 
 

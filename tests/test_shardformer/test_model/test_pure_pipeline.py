@@ -141,7 +141,8 @@ def run_llama_test(enable_fused_normalization, enable_tensor_parallelism, use_la
         pp_optimizer = PipelineOptimizer(optimizer, pipelined_model)
         data_it = iter(data_iter())
         results = execute_pipeline(data_it, pipelined_model, loss, pp_optimizer, schedule=schedule)
-        assert results['loss'] is not None
+        if stage_manager.is_last_stage():
+            assert results['loss'] is not None
         assert results['outputs'] is None
     torch.cuda.empty_cache()
 
