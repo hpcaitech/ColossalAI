@@ -13,6 +13,7 @@ from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 
 def check_bert_model_forward():
+    # this test may crash for internet reasons
     model = BertModel.from_pretrained('bert-base-uncased')
     DP_DIM, PP_DIM = 0, 1
     DP_SIZE, PP_SIZE = 2, 2

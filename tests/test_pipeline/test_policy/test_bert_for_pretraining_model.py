@@ -50,7 +50,6 @@ def check_bert_for_pretraining_forward():
             stage_manager=stage_manager,
             stage_index=stage_index,
         )
-        print(output['hidden_states'].shape)
         assert output['hidden_states'].shape == (2, 3, 768)
 
     else:
@@ -60,7 +59,6 @@ def check_bert_for_pretraining_forward():
                                               attention_mask=attention_mask,
                                               stage_manager=stage_manager,
                                               stage_index=stage_index)
-        print(output[0].shape)
         assert output[0].shape == (2, 3, 30522)
     # assert output[1].shape == (2, 768)
 

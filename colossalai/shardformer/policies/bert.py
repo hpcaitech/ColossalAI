@@ -1,13 +1,12 @@
 from functools import partial
 from types import MethodType
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 from torch import Tensor
 from torch.nn import CrossEntropyLoss, Module
 from transformers.modeling_outputs import (
-    BaseModelOutputWithPast,
     BaseModelOutputWithPastAndCrossAttentions,
     BaseModelOutputWithPoolingAndCrossAttentions,
     CausalLMOutputWithCrossAttentions,
@@ -181,6 +180,25 @@ class BertPolicy(Policy):
     def postprocess(self):
         return self.model
 
+    def set_pipeline_forward(self, model_cls: nn.Module, new_forward: Callable, policy: Dict) -> None:
+        """If under pipeline parallel setting, replacing the original forward method of huggingface
+           to customized forward method, and add this changing to policy."""
+        if self.pipeline_stage_manager:
+            stage_manager = self.pipeline_stage_manager
+            if self.model.__class__.__name__ == "BertModel":
+                module = self.model
+            else:
+                module = self.model.bert
+
+            layers_per_stage = Policy.distribute_layers(len(module.encoder.layer), stage_manager.num_stages)
+            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
+            method_replacement = {'forward': partial(new_forward, stage_manager=stage_manager, stage_index=stage_index)}
+            self.append_or_create_method_replacement(description=method_replacement,
+                                                     policy=policy,
+                                                     target_key=model_cls)
+
+        return
+
 
 # BertModel
 class BertModelPolicy(BertPolicy):
@@ -191,17 +209,7 @@ class BertModelPolicy(BertPolicy):
     def module_policy(self):
         policy = super().module_policy()
         from transformers.models.bert.modeling_bert import BertModel
-        if self.pipeline_stage_manager:
-            # set None as default
-            stage_manager = self.pipeline_stage_manager
-            layers_per_stage = Policy.distribute_layers(len(self.model.encoder.layer), stage_manager.num_stages)
-            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
-            method_replacement = {
-                'forward': partial(bert_model_forward, stage_manager=stage_manager, stage_index=stage_index)
-            }
-            self.append_or_create_method_replacement(description=method_replacement,
-                                                     policy=policy,
-                                                     target_key=BertModel)
+        self.set_pipeline_forward(model_cls=BertModel, new_forward=bert_model_forward, policy=policy)
         return policy
 
     def get_held_layers(self) -> List[Module]:
@@ -233,17 +241,7 @@ class BertForPreTrainingPolicy(BertPolicy):
         policy = super().module_policy()
         policy = self.add_lm_head_policy(policy)
         from transformers.models.bert.modeling_bert import BertForPreTraining
-        if self.pipeline_stage_manager:
-            # set None as default
-            stage_manager = self.pipeline_stage_manager
-            layers_per_stage = Policy.distribute_layers(len(self.model.bert.encoder.layer), stage_manager.num_stages)
-            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
-            method_replacement = {
-                'forward': partial(bert_for_pretraining_forward, stage_manager=stage_manager, stage_index=stage_index)
-            }
-            self.append_or_create_method_replacement(description=method_replacement,
-                                                     policy=policy,
-                                                     target_key=BertForPreTraining)
+        self.set_pipeline_forward(model_cls=BertForPreTraining, new_forward=bert_for_pretraining_forward, policy=policy)
         return policy
 
     def get_held_layers(self) -> List[Module]:
@@ -293,16 +291,7 @@ class BertLMHeadModelPolicy(BertPolicy):
         policy = super().module_policy()
         policy = self.add_lm_head_policy(policy)
         from transformers.models.bert.modeling_bert import BertLMHeadModel
-        if self.pipeline_stage_manager:
-            stage_manager = self.pipeline_stage_manager
-            layers_per_stage = Policy.distribute_layers(len(self.model.bert.encoder.layer), stage_manager.num_stages)
-            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
-            method_replacement = {
-                'forward': partial(bert_lm_head_model_forward, stage_manager=stage_manager, stage_index=stage_index)
-            }
-            self.append_or_create_method_replacement(description=method_replacement,
-                                                     policy=policy,
-                                                     target_key=BertLMHeadModel)
+        self.set_pipeline_forward(model_cls=BertLMHeadModel, new_forward=bert_lm_head_model_forward, policy=policy)
         return policy
 
     def get_held_layers(self) -> List[Module]:
@@ -351,16 +340,7 @@ class BertForMaskedLMPolicy(BertPolicy):
         policy = super().module_policy()
         policy = self.add_lm_head_policy(policy)
         from transformers.models.bert.modeling_bert import BertForMaskedLM
-        if self.pipeline_stage_manager:
-            stage_manager = self.pipeline_stage_manager
-            layers_per_stage = Policy.distribute_layers(len(self.model.bert.encoder.layer), stage_manager.num_stages)
-            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
-            method_replacement = {
-                'forward': partial(bert_for_masked_lm_forward, stage_manager=stage_manager, stage_index=stage_index)
-            }
-            self.append_or_create_method_replacement(description=method_replacement,
-                                                     policy=policy,
-                                                     target_key=BertForMaskedLM)
+        self.set_pipeline_forward(model_cls=BertForMaskedLM, new_forward=bert_for_masked_lm_forward, policy=policy)
         return policy
 
     def get_held_layers(self) -> List[Module]:
@@ -422,19 +402,9 @@ class BertForSequenceClassificationPolicy(BertPolicy):
             }
             policy.update(addon_module)
 
-        if self.pipeline_stage_manager:
-            stage_manager = self.pipeline_stage_manager
-            layers_per_stage = Policy.distribute_layers(len(self.model.bert.encoder.layer), stage_manager.num_stages)
-            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
-            method_replacement = {
-                'forward':
-                    partial(bert_for_sequence_classification_forward,
-                            stage_manager=stage_manager,
-                            stage_index=stage_index)
-            }
-            self.append_or_create_method_replacement(description=method_replacement,
-                                                     policy=policy,
-                                                     target_key=BertForSequenceClassification)
+        self.set_pipeline_forward(model_cls=BertForSequenceClassification,
+                                  new_forward=bert_for_sequence_classification_forward,
+                                  policy=policy)
 
         return policy
 
@@ -484,17 +454,9 @@ class BertForTokenClassificationPolicy(BertPolicy):
             }
             policy.update(addon_module)
 
-        if self.pipeline_stage_manager:
-            stage_manager = self.pipeline_stage_manager
-            layers_per_stage = Policy.distribute_layers(len(self.model.bert.encoder.layer), stage_manager.num_stages)
-            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
-            method_replacement = {
-                'forward':
-                    partial(bert_for_token_classification_forward, stage_manager=stage_manager, stage_index=stage_index)
-            }
-            self.append_or_create_method_replacement(description=method_replacement,
-                                                     policy=policy,
-                                                     target_key=BertForTokenClassification)
+        self.set_pipeline_forward(model_cls=BertForTokenClassification,
+                                  new_forward=bert_for_token_classification_forward,
+                                  policy=policy)
 
         return policy
 
@@ -530,20 +492,9 @@ class BertForNextSentencePredictionPolicy(BertPolicy):
     def module_policy(self):
         policy = super().module_policy()
         from transformers.models.bert.modeling_bert import BertForNextSentencePrediction
-
-        if self.pipeline_stage_manager:
-            stage_manager = self.pipeline_stage_manager
-            layers_per_stage = Policy.distribute_layers(len(self.model.bert.encoder.layer), stage_manager.num_stages)
-            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
-            method_replacement = {
-                'forward':
-                    partial(bert_for_next_sentence_prediction_forward,
-                            stage_manager=stage_manager,
-                            stage_index=stage_index)
-            }
-            self.append_or_create_method_replacement(description=method_replacement,
-                                                     policy=policy,
-                                                     target_key=BertForNextSentencePrediction)
+        self.set_pipeline_forward(model_cls=BertForNextSentencePrediction,
+                                  new_forward=bert_for_next_sentence_prediction_forward,
+                                  policy=policy)
 
         return policy
 
@@ -592,17 +543,9 @@ class BertForMultipleChoicePolicy(BertPolicy):
             }
             policy.update(addon_module)
 
-        if self.pipeline_stage_manager:
-            stage_manager = self.pipeline_stage_manager
-            layers_per_stage = Policy.distribute_layers(len(self.model.bert.encoder.layer), stage_manager.num_stages)
-            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
-            method_replacement = {
-                'forward':
-                    partial(bert_for_multipile_choice_forward, stage_manager=stage_manager, stage_index=stage_index)
-            }
-            self.append_or_create_method_replacement(description=method_replacement,
-                                                     policy=policy,
-                                                     target_key=BertForMultipleChoice)
+        self.set_pipeline_forward(model_cls=BertForMultipleChoice,
+                                  new_forward=bert_for_multiple_choice_forward,
+                                  policy=policy)
 
         return policy
 
@@ -637,17 +580,9 @@ class BertForQuestionAnsweringPolicy(BertPolicy):
     def module_policy(self):
         from transformers.models.bert.modeling_bert import BertForQuestionAnswering
         policy = super().module_policy()
-        if self.pipeline_stage_manager:
-            stage_manager = self.pipeline_stage_manager
-            layers_per_stage = Policy.distribute_layers(len(self.model.bert.encoder.layer), stage_manager.num_stages)
-            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
-            method_replacement = {
-                'forward':
-                    partial(bert_for_question_answering_forward, stage_manager=stage_manager, stage_index=stage_index)
-            }
-            self.append_or_create_method_replacement(description=method_replacement,
-                                                     policy=policy,
-                                                     target_key=BertForQuestionAnswering)
+        self.set_pipeline_forward(model_cls=BertForQuestionAnswering,
+                                  new_forward=bert_for_question_answering_forward,
+                                  policy=policy)
 
         return policy
 
@@ -1425,7 +1360,7 @@ def bert_for_token_classification_forward(
         return {'hidden_states': hidden_states}
 
 
-def bert_for_multipile_choice_forward(
+def bert_for_multiple_choice_forward(
     self: BertForMultipleChoice,
     input_ids: Optional[torch.Tensor] = None,
     attention_mask: Optional[torch.Tensor] = None,
