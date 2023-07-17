@@ -33,35 +33,29 @@ def run_gpt2_test(enable_fused_normalization, enable_tensor_parallelism, use_laz
 
     sub_model_zoo = model_zoo.get_sub_registry('transformers_gpt')
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
-        if name in [
-                'transformers_gpt', 'transformers_gpt_lm', 'transformers_gpt_for_token_classification',
-                'transformers_gpt_for_sequence_classification'
-        ]:
-            inputs = data_gen_fn()
-            inputs = {k: v.cuda() for k, v in inputs.items()}
-            input_ids, attention_mask = inputs['input_ids'], inputs['attention_mask']
-            batch_size, seq_len = input_ids.shape
-            hidden_size = 768
-            hidden_state_shape = (batch_size, seq_len, hidden_size)
 
-            if not stage_manager.is_first_stage():
-                # change inputs if not the first stage
-                hidden_states = torch.zeros(*hidden_state_shape).cuda()
-                inputs['input_ids'] = None
-                inputs['hidden_states'] = hidden_states
+        inputs = data_gen_fn()
+        inputs = {k: v.cuda() for k, v in inputs.items()}
+        input_ids, attention_mask = inputs['input_ids'], inputs['attention_mask']
+        batch_size, seq_len = input_ids.shape
+        hidden_size = 768
+        hidden_state_shape = (batch_size, seq_len, hidden_size)
 
-            _, sharded_model = build_pipeline_model(model_fn, stage_manager, enable_fused_normalization,
-                                                    enable_tensor_parallelism, use_lazy_init)
-            sharded_model.train()
-            output = sharded_model(**inputs)
-            if stage_manager.is_first_stage():
-                assert output['hidden_states'].shape == hidden_state_shape
-            else:
-                if stage_manager.is_last_stage():
-                    if name != 'transformers_gpt':
-                        assert output.loss is not None
-                else:
-                    assert output['hidden_states'].shape == hidden_state_shape
+        if not stage_manager.is_first_stage():
+            # change inputs if not the first stage
+            hidden_states = torch.zeros(*hidden_state_shape).cuda()
+            inputs['input_ids'] = None
+            inputs['hidden_states'] = hidden_states
+
+        _, sharded_model = build_pipeline_model(model_fn, stage_manager, enable_fused_normalization,
+                                                enable_tensor_parallelism, use_lazy_init)
+        sharded_model.train()
+        output = sharded_model(**inputs)
+        if stage_manager.is_last_stage():
+            if name != 'transformers_gpt':
+                assert output.loss is not None
+        else:
+            assert output['hidden_states'].shape == hidden_state_shape
 
     torch.cuda.empty_cache()
 

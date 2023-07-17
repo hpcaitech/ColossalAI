@@ -48,6 +48,10 @@ class GPT2Policy(Policy):
                     suffix="wte",
                     target_module=col_nn.VocabParallelEmbedding1D,
                 ),
+                SubModuleReplacementDescription(
+                    suffix="drop",
+                    target_module=col_nn.DropoutForParallelInput,
+                ),
             ])
             policy[GPT2Block] = ModulePolicyDescription(attribute_replacement={
                 "attn.embed_dim": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
@@ -217,8 +221,10 @@ class GPT2LMHeadModelPolicy(GPT2Policy):
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
         '''The weights of wte and lm_head are shared.'''
-        module = self.model
         stage_manager = self.pipeline_stage_manager
+        if stage_manager is None:
+            return []
+        module = self.model
         first_stage, last_stage = 0, stage_manager.num_stages - 1
         return [{first_stage: module.transformer.wte.weight, last_stage: module.lm_head.weight}]
 
@@ -252,10 +258,37 @@ class GPT2DoubleHeadsModelPolicy(GPT2Policy):
                     ])
             }
             module_policy.update(addon_module)
+
+        self.set_pipeline_forward(model_cls=GPT2DoubleHeadsModel,
+                                  new_forward=GPT2PipelineForwards.gpt2_double_heads_model_forward,
+                                  policy=module_policy)
+
         return module_policy
 
+    def get_held_layers(self) -> List[nn.Module]:
+        held_layers = super().get_held_layers()
+        if self.pipeline_stage_manager.is_last_stage():
+            multiple_choice_head = self.model.multiple_choice_head
+            held_layers.append(self.model.lm_head)
+            held_layers.append(multiple_choice_head.summary)
+            held_layers.append(multiple_choice_head.activation)
+            held_layers.append(multiple_choice_head.first_dropout)
+            held_layers.append(multiple_choice_head.last_dropout)
+
+        return held_layers
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        '''The weights of wte and lm_head are shared.'''
+        stage_manager = self.pipeline_stage_manager
+        if stage_manager is None:
+            return []
+        module = self.model
+        first_stage, last_stage = 0, stage_manager.num_stages - 1
+        return [{first_stage: module.transformer.wte.weight, last_stage: module.lm_head.weight}]
+
     def postprocess(self):
-        if self.shard_config.enable_tensor_parallelism:
+        if self.shard_config.enable_tensor_parallelism \
+                and self.pipeline_stage_manager is None:
             binding_map = {"transformer.wte.weight": "lm_head.weight"}
             for k, v in binding_map.items():
                 param = getattr_(self.model, k)
@@ -278,8 +311,7 @@ class GPT2ForTokenClassificationPolicy(GPT2Policy):
             addon_module = {
                 GPT2ForTokenClassification:
                     ModulePolicyDescription(sub_module_replacement=[
-                        SubModuleReplacementDescription(
-                            suffix="classifier", target_module=col_nn.Linear1D_Col, kwargs={"gather_output": True})
+                        SubModuleReplacementDescription(suffix="dropout", target_module=col_nn.DropoutForParallelInput)
                     ])
             }
             module_policy.update(addon_module)
@@ -311,17 +343,6 @@ class GPT2ForSequenceClassificationPolicy(GPT2Policy):
         from transformers.models.gpt2.modeling_gpt2 import GPT2ForSequenceClassification
 
         module_policy = super().module_policy()
-
-        if self.shard_config.enable_tensor_parallelism:
-            addon_module = {
-                GPT2ForSequenceClassification:
-                    ModulePolicyDescription(sub_module_replacement=[
-                        SubModuleReplacementDescription(
-                            suffix="score", target_module=col_nn.Linear1D_Col, kwargs={"gather_output": True})
-                    ])
-            }
-            module_policy.update(addon_module)
-
         self.set_pipeline_forward(model_cls=GPT2ForSequenceClassification,
                                   new_forward=GPT2PipelineForwards.gpt2_for_sequence_classification_forward,
                                   policy=module_policy)
@@ -635,6 +656,97 @@ class GPT2PipelineForwards:
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
             cross_attentions=outputs.cross_attentions,
+        )
+
+    @staticmethod
+    def gpt2_double_heads_model_forward(
+            self: 'GPT2DoubleHeadsModel',
+            input_ids: Optional[torch.LongTensor] = None,
+            past_key_values: Optional[Tuple[Tuple[torch.Tensor]]] = None,
+            attention_mask: Optional[torch.FloatTensor] = None,
+            token_type_ids: Optional[torch.LongTensor] = None,
+            position_ids: Optional[torch.LongTensor] = None,
+            head_mask: Optional[torch.FloatTensor] = None,
+            inputs_embeds: Optional[torch.FloatTensor] = None,
+            mc_token_ids: Optional[torch.LongTensor] = None,
+            labels: Optional[torch.LongTensor] = None,
+            mc_labels: Optional[torch.LongTensor] = None,
+            use_cache: Optional[bool] = None,
+            output_attentions: Optional[bool] = None,
+            output_hidden_states: Optional[bool] = None,
+            return_dict: Optional[bool] = None,
+            stage_manager: Optional[PipelineStageManager] = None,
+            hidden_states: Optional[torch.FloatTensor] = None,
+            stage_index: Optional[List[int]] = None) -> Union[Tuple, 'GPT2DoubleHeadsModelOutput']:
+        r"""
+        mc_token_ids (`torch.LongTensor` of shape `(batch_size, num_choices)`, *optional*, default to index of the last token of the input):
+            Index of the classification token in each input sequence. Selected in the range `[0, input_ids.size(-1) -
+            1]`.
+        labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
+            Labels for language modeling. Note that the labels **are shifted** inside the model, i.e. you can set
+            `labels = input_ids`. Indices are selected in `[-100, 0, ..., config.vocab_size - 1]`. All labels set to
+            `-100` are ignored (masked), the loss is only computed for labels in `[0, ..., config.vocab_size - 1]`
+        mc_labels (`torch.LongTensor` of shape `(batch_size)`, *optional*):
+            Labels for computing the multiple choice classification loss. Indices should be in `[0, ..., num_choices]`
+            where *num_choices* is the size of the second dimension of the input tensors. (see *input_ids* above)
+
+        This function is modified on the basis of transformers.models.gpt2.modeling_gpt2.GPT2DoubleHeadsModel.forward.
+        Please refer to original code of transformers for more details.
+        ```"""
+        from transformers.models.gpt2.modeling_gpt2 import GPT2DoubleHeadsModelOutput
+
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        outputs = GPT2PipelineForwards.gpt2_model_forward(self.transformer,
+                                                          input_ids,
+                                                          past_key_values=past_key_values,
+                                                          attention_mask=attention_mask,
+                                                          token_type_ids=token_type_ids,
+                                                          position_ids=position_ids,
+                                                          head_mask=head_mask,
+                                                          inputs_embeds=inputs_embeds,
+                                                          use_cache=use_cache,
+                                                          output_attentions=output_attentions,
+                                                          output_hidden_states=output_hidden_states,
+                                                          return_dict=return_dict,
+                                                          stage_manager=stage_manager,
+                                                          hidden_states=hidden_states,
+                                                          stage_index=stage_index)
+
+        # If not at the last stage, return hidden_states as in GPT2Model
+        if not stage_manager.is_last_stage():
+            return {'hidden_states': outputs['hidden_states']}
+
+        hidden_states = outputs[0]
+        lm_logits = self.lm_head(hidden_states)
+        mc_logits = self.multiple_choice_head(hidden_states, mc_token_ids).squeeze(-1)
+
+        mc_loss = None
+        if mc_labels is not None:
+            loss_fct = CrossEntropyLoss()
+            mc_loss = loss_fct(mc_logits.view(-1, mc_logits.size(-1)), mc_labels.view(-1))
+        lm_loss = None
+        if labels is not None:
+            labels = labels.to(lm_logits.device)
+            shift_logits = lm_logits[..., :-1, :].contiguous()
+            shift_labels = labels[..., 1:].contiguous()
+            loss_fct = CrossEntropyLoss()
+            lm_loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+
+        if not return_dict:
+            output = (lm_logits, mc_logits) + outputs[1:]
+            if mc_loss is not None:
+                output = (mc_loss,) + output
+            return ((lm_loss,) + output) if lm_loss is not None else output
+
+        return GPT2DoubleHeadsModelOutput(
+            loss=lm_loss,
+            mc_loss=mc_loss,
+            logits=lm_logits,
+            mc_logits=mc_logits,
+            past_key_values=outputs.past_key_values,
+            hidden_states=outputs.hidden_states,
+            attentions=outputs.attentions,
         )
 
     @staticmethod
