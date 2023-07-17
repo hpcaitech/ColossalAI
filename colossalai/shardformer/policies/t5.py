@@ -10,6 +10,7 @@ from colossalai.shardformer.policies.basepolicy import ModulePolicyDescription
 
 from .._utils import getattr_, setattr_
 from .basepolicy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
+from ..modeling.t5 import get_t5_forward
 
 __all__ = ["T5ModelPolicy", "T5ForConditionalGenerationPolicy", "T5EncoderPolicy"]
 
@@ -161,6 +162,12 @@ class T5BasePolicy(Policy):
                 suffix="final_layer_norm", target_module=FusedRMSNorm),
                                                         policy=policy,
                                                         target_key=T5Stack)
+
+        # use flash attention
+        if self.shard_config.enable_flash_attention:
+            policy[T5Attention] = ModulePolicyDescription(method_replacement={
+                'forward': get_t5_forward(),
+            })
         return policy
 
     def postprocess(self):

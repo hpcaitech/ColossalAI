@@ -6,10 +6,7 @@ from torch import nn
 
 def get_opt_flash_attention_forward():
 
-    try:
-        from xformers.ops import memory_efficient_attention as me_attention
-    except:
-        raise ImportError("Error: xformers module is not installed. Please install it to use flash attention.")
+    from colossalai.kernel.cuda_native.flash_attention import AttnMaskType, ColoAttention
 
     def forward(
         self,
@@ -34,7 +31,7 @@ def get_opt_flash_attention_forward():
         query_states = self.q_proj(hidden_states).view(*attention_input_shape)
         # get key, value proj
         if is_cross_attention and past_key_value is not None:
-            # reuse k,v, cross_attentions
+            # reuse k, v, cross_attentions
             key_states = past_key_value[0].transpose(1, 2).contiguous().view(*attention_input_shape)
             value_states = past_key_value[1].transpose(1, 2).contiguous().view(*attention_input_shape)
         elif is_cross_attention:
@@ -67,24 +64,25 @@ def get_opt_flash_attention_forward():
             if layer_head_mask.size() != (self.num_heads,):
                 raise ValueError(f"Head mask for a single layer should be of size {(self.num_heads,)}, but is"
                                  f" {layer_head_mask.size()}")
+
+        flash_attention_mask = None
+        attn_mask_type = AttnMaskType.causal
         if attention_mask != None:
             if attention_mask.size() != (bsz, 1, tgt_len, src_len):
                 raise ValueError(
                     f"Attention mask should be of size {(bsz, 1, tgt_len, src_len)}, but is {attention_mask.size()}")
-            attention_mask = attention_mask.expand(bsz, self.num_heads, tgt_len, tgt_len).contiguous()
+            flash_attention_mask = ~(attention_mask[:, :, -1].squeeze(1).to(torch.bool)).contiguous()
+            attn_mask_type = AttnMaskType.paddedcausal
 
-        attn_output = me_attention(query_states,
-                                   key_states,
-                                   value_states,
-                                   attn_bias=attention_mask,
-                                   p=self.dropout,
-                                   scale=self.scaling)
-
-        attn_output = attn_output.view(bsz, tgt_len, self.num_heads, self.head_dim)
-
-        # Use the `embed_dim` from the config (stored in the class) rather than `hidden_state` because `attn_output` can be
-        # partitioned aross GPUs when using tensor-parallelism.
-        attn_output = attn_output.reshape(bsz, tgt_len, self.embed_dim)
+        attention = ColoAttention(embed_dim=self.embed_dim,
+                                  num_heads=self.num_heads,
+                                  dropout=self.dropout,
+                                  scale=self.scaling)
+        attn_output = attention(query_states,
+                                key_states,
+                                value_states,
+                                attn_mask=flash_attention_mask,
+                                attn_mask_type=attn_mask_type)
 
         attn_output = self.out_proj(attn_output)
         return attn_output, None, past_key_value
