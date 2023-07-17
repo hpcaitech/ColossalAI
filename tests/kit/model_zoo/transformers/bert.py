@@ -87,6 +87,13 @@ def data_gen_for_mcq():
     return dict(input_ids=input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask, labels=labels)
 
 
+def data_gen_for_qa():
+    # generating data for question answering
+    # no need for labels
+    data = data_gen()
+    return data
+
+
 # define output transform function
 output_transform_fn = lambda x: x
 
@@ -152,7 +159,7 @@ model_zoo.register(name='transformers_bert_for_mcq',
                    model_attribute=ModelAttribute(has_control_flow=True))
 model_zoo.register(name='transformers_bert_for_question_answering',
                    model_fn=lambda: transformers.BertForQuestionAnswering(config),
-                   data_gen_fn=data_gen_for_lm,
+                   data_gen_fn=data_gen_for_qa,
                    output_transform_fn=output_transform_fn,
                    loss_fn=loss_fn,
                    model_attribute=ModelAttribute(has_control_flow=True))
