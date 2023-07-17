@@ -208,10 +208,7 @@ class LowLevelZeroPlugin(DPPluginBase):
 
         if optimizer is not None and \
                 not isinstance(optimizer, OptimizerWrapper):
-            optimizer = LowLevelZeroOptimizer(model.unwrap(),
-                                              optimizer,
-                                              self.zero_optim_config,
-                                              self.optim_kwargs,
+            optimizer = LowLevelZeroOptimizer(model.unwrap(), optimizer, self.zero_optim_config, self.optim_kwargs,
                                               self.verbose)
 
         return model, optimizer, criterion, dataloader, lr_scheduler
