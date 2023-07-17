@@ -417,7 +417,7 @@ class SelfAttention(torch.nn.Module):
         )
 =======
         self.dense = nn.Linear(self.projection_size,
-                               self.hidden_size,
+                               config.hidden_size,
                                bias=config.add_bias_linear,
                                device=device,
                                **_config_to_kwargs(config))
