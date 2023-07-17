@@ -137,7 +137,6 @@ def get_jit_fused_T5_layer_ff_forward():
         forwarded_states = self.layer_norm(hidden_states)
         forwarded_states = self.DenseReluDense(forwarded_states)
         hidden_states = self.dropout_add(forwarded_states, hidden_states, self.dropout.p, self.dropout.training)
-        # hidden_states = hidden_states + self.dropout(forwarded_states)
         return hidden_states
 
     return forward
@@ -165,7 +164,6 @@ def get_T5_layer_self_attention_forward():
             use_cache=use_cache,
             output_attentions=output_attentions,
         )
-        # hidden_states = hidden_states + self.dropout(attention_output[0])
         hidden_states = self.dropout_add(attention_output[0], hidden_states, self.dropout.p, self.dropout.training)
         outputs = (hidden_states,) + attention_output[1:]    # add attentions if we output them
         return outputs
@@ -199,7 +197,6 @@ def get_T5_layer_cross_attention_forward():
             query_length=query_length,
             output_attentions=output_attentions,
         )
-        # layer_output = hidden_states + self.dropout(attention_output[0])
         layer_output = self.dropout_add(attention_output[0], hidden_states, self.dropout.p, self.dropout.training)
         outputs = (layer_output,) + attention_output[1:]    # add attentions if we output them
         return outputs
