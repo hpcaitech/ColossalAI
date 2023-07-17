@@ -1,5 +1,6 @@
 from .albert import *
 from .bert import *
+from .blip2 import *
 from .bloom import *
 from .gpt import *
 from .llama import *

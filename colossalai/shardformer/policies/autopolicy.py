@@ -104,6 +104,10 @@ _POLICY_LIST = {
     # Sam
     "transformers.models.sam.modeling_sam.SamModel":
         PolicyLocation(file_name="sam", class_name="SamModelPolicy"),
+
+    # Blip2
+    "transformers.models.blip_2.modeling_blip_2.Blip2Model":
+        PolicyLocation(file_name="blip2", class_name="Blip2ModelPolicy"),
 }
 
 
