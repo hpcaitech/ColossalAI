@@ -17,6 +17,7 @@ from colossalai.nn.layer.utils import divide
 from colossalai.tensor.d_tensor.api import (
     customized_distributed_tensor_to_existing_param,
     distribute_tensor_with_customization,
+    is_customized_distributed_tensor,
     is_distributed_tensor,
     shard_rowwise,
     sharded_tensor_to_existing_param,
@@ -215,11 +216,11 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
             return split_fused_qkv_in_gpt2_style(tensor, self.n_fused, self.process_group, True)
 
         def gather_fn(tensor):
-            return gather_fused_qkv_in_gpt2_style(tensor, 3, self.process_group, True)
+            return gather_fused_qkv_in_gpt2_style(tensor, self.n_fused, self.process_group, True)
 
-        if not is_distributed_tensor(self.weight):
+        if not is_customized_distributed_tensor(self.weight):
             with torch.no_grad():
-                sharded_weight = distribute_tensor_with_customization(self.weight, shard_fn, gather_fn)
+                sharded_weight = distribute_tensor_with_customization(self.weight.data, shard_fn, gather_fn)
             customized_distributed_tensor_to_existing_param(sharded_weight, self.weight)
 
         if bias:
@@ -228,9 +229,9 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
             else:
                 bias_.data = bias_.data.to(device=device, dtype=dtype)
                 self.bias = bias_
-            if not is_distributed_tensor(self.bias):
+            if not is_customized_distributed_tensor(self.bias):
                 with torch.no_grad():
-                    sharded_bias = distribute_tensor_with_customization(self.bias, shard_fn, gather_fn)
+                    sharded_bias = distribute_tensor_with_customization(self.bias.data, shard_fn, gather_fn)
                 customized_distributed_tensor_to_existing_param(sharded_bias, self.bias)
         else:
             self.bias = None
@@ -240,8 +241,8 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
             self.reset_parameters(weight_initializer, bias_initializer)
 
     @staticmethod
-    def from_native_module(module: nn.Module, process_group: Union[ProcessGroup, List[ProcessGroup]], n_fused: int,
-                           *args, **kwargs) -> ParallelModule:
+    def from_native_module(module: nn.Module, process_group: Union[ProcessGroup, List[ProcessGroup]], *args,
+                           **kwargs) -> ParallelModule:
         r"""
         Convert a huggingface layer `Conv1D` in gpt2 to a parallelized linear layer.
 

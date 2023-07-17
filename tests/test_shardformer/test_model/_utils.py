@@ -5,7 +5,6 @@ import torch
 from torch.nn import Module
 
 from colossalai.lazy import LazyInitContext
-from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig, ShardFormer
 
 
