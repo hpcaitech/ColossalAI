@@ -45,25 +45,37 @@ def run_bert_test(enable_fused_normalization, enable_tensor_parallelism, use_laz
     stage_manager = PipelineStageManager(pg_mesh, PP_DIM)
 
     sub_model_zoo = model_zoo.get_sub_registry('transformers_bert')
-    x = torch.randint(0, 1000, (2, 3)).cuda()
-    hidden_states = torch.randint(0, 1000, (2, 3, 128)).to(torch.float32).cuda()
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
-        if name == 'transformers_bert':
-            org_model, sharded_model = build_pipeline_model(model_fn, stage_manager, enable_fused_normalization,
-                                                            enable_tensor_parallelism, use_lazy_init)
+        org_model, sharded_model = build_pipeline_model(model_fn, stage_manager, enable_fused_normalization,
+                                                        enable_tensor_parallelism, use_lazy_init)
 
+        if name == 'transformers_bert_for_mcq':
+            x = torch.randint(0, 1000, (2, 3, 3)).cuda()
+            attention_mask = torch.ones_like(x).cuda()
+            if stage_manager.stage == 0:
+                output = sharded_model(input_ids=x, attention_mask=attention_mask, stage_manager=stage_manager)
+                assert output['hidden_states'].shape == (6, 3, 128)
+            else:
+                hidden_states = torch.randint(0, 1000, (6, 3, 128)).to(torch.float32).cuda()
+                output = sharded_model(input_ids=x,
+                                       hidden_states=hidden_states,
+                                       attention_mask=attention_mask,
+                                       stage_manager=stage_manager)
+                assert output[0].shape == (2, 3)
+        else:
+            x = torch.randint(0, 1000, (2, 3)).cuda()
+            # one batch, 2 single sentences, each sentence has 3 tokens
+            hidden_states = torch.randint(0, 1000, (2, 3, 128)).to(torch.float32).cuda()
             if stage_manager.stage == 0:
                 attention_mask = torch.ones_like(x).cuda()
                 output = sharded_model(input_ids=x, attention_mask=attention_mask, stage_manager=stage_manager)
-                # print(output['hidden_states'].shape)
                 assert output['hidden_states'].shape == (2, 3, 128)
             else:
                 attention_mask = torch.ones((2, 3)).cuda()
                 output = sharded_model(hidden_states=hidden_states,
                                        attention_mask=attention_mask,
                                        stage_manager=stage_manager)
-                # print(output[0].shape)
-                assert output[0].shape == (2, 3, 128)
+                assert output[0].shape[0] == 2
 
     torch.cuda.empty_cache()
 
