@@ -114,7 +114,7 @@ def test_self_atttention_test():
                                                             use_flash=False,
                                                             triangular=True)
 
-    check = torch.allclose(data_output_triton.cpu(), data_output_torch.cpu(), rtol=1e-3, atol=1e-2)
+    check = torch.allclose(data_output_triton.cpu(), data_output_torch.cpu(), rtol=1e-4, atol=1e-2)
     assert check is True, "the triton ouput is not matched with torch output"
 
 
