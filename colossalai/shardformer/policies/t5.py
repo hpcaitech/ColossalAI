@@ -9,8 +9,14 @@ from colossalai.shardformer.layer import (
 from colossalai.shardformer.policies.basepolicy import ModulePolicyDescription
 
 from .._utils import getattr_, setattr_
+from ..modeling.jit import get_jit_fused_dropout_add_func
+from ..modeling.t5 import (
+    get_jit_fused_T5_layer_ff_forward,
+    get_t5_flash_attention_forward,
+    get_T5_layer_cross_attention_forward,
+    get_T5_layer_self_attention_forward,
+)
 from .basepolicy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
-from ..modeling.t5 import get_t5_forward
 
 __all__ = ["T5ModelPolicy", "T5ForConditionalGenerationPolicy", "T5EncoderPolicy"]
 
@@ -166,7 +172,22 @@ class T5BasePolicy(Policy):
         # use flash attention
         if self.shard_config.enable_flash_attention:
             policy[T5Attention] = ModulePolicyDescription(method_replacement={
-                'forward': get_t5_forward(),
+                'forward': get_t5_flash_attention_forward(),
+            })
+
+        # use jit operator
+        if self.shard_config.enable_jit_fused:
+            policy[T5LayerFF] = ModulePolicyDescription(method_replacement={
+                'forward': get_jit_fused_T5_layer_ff_forward(),
+                'dropout_add': get_jit_fused_dropout_add_func(),
+            })
+            policy[T5LayerSelfAttention] = ModulePolicyDescription(method_replacement={
+                'forward': get_T5_layer_self_attention_forward(),
+                'dropout_add': get_jit_fused_dropout_add_func(),
+            })
+            policy[T5LayerCrossAttention] = ModulePolicyDescription(method_replacement={
+                'forward': get_T5_layer_cross_attention_forward(),
+                'dropout_add': get_jit_fused_dropout_add_func(),
             })
         return policy
 
