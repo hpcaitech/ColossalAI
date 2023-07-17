@@ -108,6 +108,10 @@ _POLICY_LIST = {
         PolicyLocation(file_name="whisper", class_name="WhisperForConditionalGenerationPolicy"),
     "transformers.models.whisper.modeling_whisper.WhisperForAudioClassification":
         PolicyLocation(file_name="whisper", class_name="WhisperForAudioClassificationPolicy"),
+
+    # Sam
+    "transformers.models.sam.modeling_sam.SamModel":
+        PolicyLocation(file_name="sam", class_name="SamModelPolicy"),
 }
 
 
