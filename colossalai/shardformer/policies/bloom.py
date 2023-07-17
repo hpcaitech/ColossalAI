@@ -560,7 +560,6 @@ def bloom_model_forward(
         # always return dict for imediate stage
         return {'hidden_states': hidden_states}
 
-
 def bloom_for_causal_lm_forward(self: 'BloomForCausalLM',
                                 input_ids: Optional[torch.LongTensor] = None,
                                 past_key_values: Optional[Tuple[Tuple[torch.Tensor, torch.Tensor], ...]] = None,
@@ -966,3 +965,4 @@ def bloom_for_question_answering_forward(
     else:
         hidden_states = outputs.get('hidden_states')
         return {'hidden_states': hidden_states}
+
