@@ -1,7 +1,7 @@
 import warnings
 from functools import partial
 from types import MethodType
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -135,6 +135,24 @@ class BloomPolicy(Policy):
     def postprocess(self):
         return self.model
 
+    def set_pipeline_forward(self, model_cls: nn.Module, new_forward: Callable, policy: Dict) -> None:
+        """If under pipeline parallel setting, replacing the original forward method of huggingface
+           to customized forward method, and add this changing to policy."""
+        if self.pipeline_stage_manager:
+            stage_manager = self.pipeline_stage_manager
+            if self.model.__class__.__name__ == "BloomModel":
+                module = self.model
+            else:
+                module = self.model.transformer
+
+            layers_per_stage = Policy.distribute_layers(len(module.h), stage_manager.num_stages)
+            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
+            method_replacement = {'forward': partial(new_forward, stage_manager=stage_manager, stage_index=stage_index)}
+            self.append_or_create_method_replacement(description=method_replacement,
+                                                     policy=policy,
+                                                     target_key=model_cls)
+        return
+
 
 class BloomModelPolicy(BloomPolicy):
 
@@ -144,15 +162,7 @@ class BloomModelPolicy(BloomPolicy):
     def module_policy(self):
         policy = super().module_policy()
         from transformers.models.bloom.modeling_bloom import BloomModel
-        if self.pipeline_stage_manager:
-            stage_manager = self.pipeline_stage_manager
-            layers_per_stage = Policy.distribute_layers(len(self.model.h), stage_manager.num_stages)
-            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
-            policy[BloomModel] = ModulePolicyDescription(method_replacement={
-                "forward":
-                    partial(bloom_model_forward, stage_manager=self.pipeline_stage_manager, stage_index=stage_index)
-            })
-        return policy
+        self.set_pipeline_forward(model_cls=BloomModel, new_forward=bloom_model_forward, policy=policy)
 
     def get_held_layers(self) -> List[Module]:
         """
@@ -192,19 +202,7 @@ class BloomForCausalLMPolicy(BloomPolicy):
                                                         policy=policy,
                                                         target_key=BloomForCausalLM)
 
-        if self.pipeline_stage_manager:
-            stage_manager = self.pipeline_stage_manager
-            layers_per_stage = Policy.distribute_layers(len(self.model.transformer.h), stage_manager.num_stages)
-            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
-            method_replace_ment = {
-                "forward":
-                    partial(bloom_for_causal_lm_forward,
-                            stage_manager=self.pipeline_stage_manager,
-                            stage_index=stage_index)
-            }
-            self.append_or_create_method_replacement(description=method_replace_ment,
-                                                     policy=policy,
-                                                     target_key=BloomForCausalLM)
+        self.set_pipeline_forward(model_cls=BloomForCausalLM, new_forward=bloom_for_causal_lm_forward, policy=policy)
         return policy
 
     def get_held_layers(self) -> List[Module]:
@@ -225,16 +223,17 @@ class BloomForCausalLMPolicy(BloomPolicy):
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
         bloom_model = self.model
-        if id(bloom_model.transformer.word_embeddings.weight) == id(bloom_model.lm_head.weight):
-            # tie weights
-            return [{
-                0: bloom_model.transformer.word_embeddings.weight,
-                self.stage_manager.num_stages - 1: bloom_model.lm_head.weight
-            }]
+        if self.pipeline_stage_manager:
+            if id(bloom_model.transformer.word_embeddings.weight) == id(bloom_model.lm_head.weight):
+                # tie weights
+                return [{
+                    0: bloom_model.transformer.word_embeddings.weight,
+                    self.stage_manager.num_stages - 1: bloom_model.lm_head.weight
+                }]
         return []
 
     def postprocess(self):
-        if self.shard_config.enable_tensor_parallelism:
+        if self.shard_config.enable_tensor_parallelism and self.pipeline_stage_manager is None:
             binding_map = {"transformer.word_embeddings.weight": "lm_head.weight"}
 
             for k, v in binding_map.items():
@@ -256,19 +255,9 @@ class BloomForSequenceClassificationPolicy(BloomPolicy):
                 suffix="score", target_module=col_nn.Linear1D_Col, kwargs=dict(gather_output=True)),
                                                         policy=policy,
                                                         target_key=BloomForSequenceClassification)
-        if self.pipeline_stage_manager:
-            stage_manager = self.pipeline_stage_manager
-            layers_per_stage = Policy.distribute_layers(len(self.model.transformer.h), stage_manager.num_stages)
-            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
-            method_replace_ment = {
-                "forward":
-                    partial(bloom_for_sequence_classification_forward,
-                            stage_manager=self.pipeline_stage_manager,
-                            stage_index=stage_index)
-            }
-            self.append_or_create_method_replacement(description=method_replace_ment,
-                                                     policy=policy,
-                                                     target_key=BloomForSequenceClassification)
+        self.set_pipeline_forward(model_cls=BloomForSequenceClassification,
+                                  new_forward=bloom_for_sequence_classification_forward,
+                                  policy=policy)
         return policy
 
     def get_held_layers(self) -> List[Module]:
@@ -312,19 +301,10 @@ class BloomForTokenClassificationPolicy(BloomPolicy):
                                                         policy=policy,
                                                         target_key=BloomForTokenClassification)
 
-        if self.pipeline_stage_manager:
-            stage_manager = self.pipeline_stage_manager
-            layers_per_stage = Policy.distribute_layers(len(self.model.transformer.h), stage_manager.num_stages)
-            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
-            method_replace_ment = {
-                "forward":
-                    partial(bloom_for_token_classification_forward,
-                            stage_manager=self.pipeline_stage_manager,
-                            stage_index=stage_index)
-            }
-            self.append_or_create_method_replacement(description=method_replace_ment,
-                                                     policy=policy,
-                                                     target_key=BloomForTokenClassification)
+        self.set_pipeline_forward(model_cls=BloomForTokenClassification,
+                                  new_forward=bloom_for_token_classification_forward,
+                                  policy=policy)
+
         return policy
 
     def get_held_layers(self) -> List[Module]:
@@ -354,19 +334,9 @@ class BloomForQuestionAnsweringPolicy(BloomPolicy):
     def module_policy(self):
         from transformers.models.bloom.modeling_bloom import BloomForQuestionAnswering
         policy = super().module_policy()
-        if self.pipeline_stage_manager:
-            stage_manager = self.pipeline_stage_manager
-            layers_per_stage = Policy.distribute_layers(len(self.model.transformer.h), stage_manager.num_stages)
-            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
-            method_replace_ment = {
-                "forward":
-                    partial(bloom_for_question_answering_forward,
-                            stage_manager=self.pipeline_stage_manager,
-                            stage_index=stage_index)
-            }
-            self.append_or_create_method_replacement(description=method_replace_ment,
-                                                     policy=policy,
-                                                     target_key=BloomForQuestionAnswering)
+        self.set_pipeline_forward(model_cls=BloomForQuestionAnswering,
+                                  new_forward=bloom_for_question_answering_forward,
+                                  policy=policy)
         return policy
 
     def get_held_layers(self) -> List[Module]:
