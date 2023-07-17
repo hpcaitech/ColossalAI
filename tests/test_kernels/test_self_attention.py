@@ -22,25 +22,25 @@ def self_attention_compute_using_torch(qkv,
     k = k.view(batches, -1, num_of_heads, head_size)
     v = v.view(batches, -1, num_of_heads, head_size)
 
-    q = torch.transpose(q, 1, 2)
-    k = torch.transpose(k, 1, 2)
-    v = torch.transpose(v, 1, 2)
+    q = torch.transpose(q, 1, 2).contiguous()
+    k = torch.transpose(k, 1, 2).contiguous()
+    v = torch.transpose(v, 1, 2).contiguous()
 
-    k = torch.transpose(k, -1, -2)
+    k = torch.transpose(k, -1, -2).contiguous()
 
     score_output = torch.einsum('bnij,bnjk->bnik', q, k)
     score_output *= scale
 
-    score_output = F.softmax(score_output, dim = -1)
-    res = torch.einsum('bnij,bnjk->bnik', score_output, v)
+    softmax_output = F.softmax(score_output, dim = -1)
+    res = torch.einsum('bnij,bnjk->bnik', softmax_output, v)
     res = torch.transpose(res, 1, 3)
     res = res.contiguous()
 
 
-    return res.view(batches, -1, d_model)
+    return res.view(batches, -1, d_model), score_output, softmax_output
 
 def test_qkv_matmul():
-    qkv = torch.randn((4, 24, 64*3), device="cuda", dtype=torch.float32)
+    qkv = torch.randn((4, 24, 64*3), device="cuda", dtype=torch.float16)
     scale = 1.2
     head_size = 32
     batches = qkv.shape[0]
@@ -92,22 +92,21 @@ def test_qkv_matmul():
         GROUP_SIZE_M=8,
     )
 
-    check = torch.allclose(torch_ouput.cpu(), score_output.cpu(), rtol=1e-3, atol=1e-2)
+    check = torch.allclose(torch_ouput.cpu(), score_output.cpu(), rtol=1e-3, atol=1e-5)
+    print(check)
     assert check is True, "the outputs of triton and torch are not matched"
     
 
-
-
 def test_self_atttention_test():
-    qkv = torch.randn((4, 24, 64*3), device="cuda", dtype=torch.float32)
-    data_output_torch = self_attention_compute_using_torch(
+    qkv = torch.randn((4, 24, 64*3), device="cuda", dtype=torch.float16)
+    data_output_torch, score_output_torch, softmax_output_torch = self_attention_compute_using_torch(
                                                            qkv.clone(), 
                                                            input_mask = None, 
                                                            scale = 1.2, 
                                                            head_size = 32
                                                            )
 
-    data_output_triton = self_attention_compute_using_triton(
+    data_output_triton, score_output_triton, softmax_output_triton = self_attention_compute_using_triton(
                                                             qkv.clone(),
                                                             alibi=None,
                                                             head_size=32,
@@ -116,16 +115,20 @@ def test_self_atttention_test():
                                                             layer_past=None,
                                                             use_flash=False,
                                                             triangular=True)
-    print(data_output_torch.shape)
-    print(data_output_triton.shape)
-    print(data_output_torch)
-    print(data_output_triton)
-    exit(0)
-    print(torch.allclose(data_output_torch.cpu(), data_output_triton.cpu(), rtol=1e-3, atol=1e-3))
+    # print(data_output_torch.shape)
+    # print(data_output_triton.shape)
+    # print(data_output_torch)
+    # print(data_output_triton)
+    # print(torch.allclose(data_output_torch.cpu(), data_output_triton.cpu(), rtol=1e-2, atol=1e-2))
+
+    print(score_output_torch.shape)
+    print("**********")
+    print(score_output_triton.shape)
+    print(torch.allclose(data_output_torch.cpu(), data_output_triton.cpu(), rtol=1e-2, atol=1e-2))
 
 
 
 
 if __name__ == "__main__":
-    test_qkv_matmul()
-    # test_self_atttention_test()
+    # test_qkv_matmul()
+    test_self_atttention_test()
