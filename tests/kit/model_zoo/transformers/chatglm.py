@@ -9,14 +9,8 @@ from .chatglm2_6b.modeling_chatglm import ChatGLMModel
 # Register single-sentence ChatGLM
 # ================================
 
-config = ChatGLMConfig(num_layers=1, padded_vocab_size=65024, hidden_size=64, num_attention_heads=8, rmsnorm=False)
-
-config.__setattr__('original_rope', True)
-config.__setattr__('use_cache', True)
-
 
 def data_gen():
-
     input_ids = torch.tensor([[5941, 15, 2670, 3543, 632, 2075]], dtype=torch.int64)
     attention_mask = torch.tensor([[1, 1, 1, 1, 1, 1]])
     return dict(input_ids=input_ids, attention_mask=attention_mask)
@@ -28,6 +22,13 @@ output_transform_fn = lambda x: x
 # define loss function
 loss_fn_for_chatglm_model = lambda x: x.last_hidden_state.mean()
 loss_fn = lambda x: x.loss
+config = ChatGLMConfig(num_layers=1,
+                       padded_vocab_size=65024,
+                       hidden_size=64,
+                       num_attention_heads=8,
+                       rmsnorm=False,
+                       original_rope=True,
+                       use_cache=True)
 
 model_zoo.register(name='transformers_chatglm',
                    model_fn=lambda: ChatGLMModel(config, empty_init=False),
