@@ -163,6 +163,7 @@ class BloomModelPolicy(BloomPolicy):
         policy = super().module_policy()
         from transformers.models.bloom.modeling_bloom import BloomModel
         self.set_pipeline_forward(model_cls=BloomModel, new_forward=bloom_model_forward, policy=policy)
+        return policy
 
     def get_held_layers(self) -> List[Module]:
         """
