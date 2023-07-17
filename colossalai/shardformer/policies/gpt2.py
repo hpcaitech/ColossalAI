@@ -1,6 +1,4 @@
-import logging
 from functools import partial
-from types import MethodType
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -391,6 +389,8 @@ class GPT2PipelineForwards:
         # Please refer to original code of transformers for more details.
 
         from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions
+        from transformers.utils import logging
+        logger = logging.get_logger(__name__)
 
         # Preprocess passed in arguments
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
@@ -478,21 +478,21 @@ class GPT2PipelineForwards:
 
         # TODO: left the recording kv-value tensors as () or None type, this feature may be added in the future.
         if past_key_values:
-            logging.warning('Non-empty past_key_values is not supported for pipeline models at the moment.')
+            logger.warning_once('Non-empty past_key_values is not supported for pipeline models at the moment.')
             past_key_values = None
         if output_attentions:
-            logging.warning('output_attentions=True is not supported for pipeline models at the moment.')
+            logger.warning_once('output_attentions=True is not supported for pipeline models at the moment.')
             output_attentions = False
         if output_hidden_states:
-            logging.warning('output_hidden_states=True is not supported for pipeline models at the moment.')
+            logger.warning_once('output_hidden_states=True is not supported for pipeline models at the moment.')
             output_hidden_states = False
         if use_cache:
-            logging.warning('use_cache=True is not supported for pipeline models at the moment.')
+            logger.warning_once('use_cache=True is not supported for pipeline models at the moment.')
             use_cache = False
 
         if self.gradient_checkpointing and self.training:
             if use_cache:
-                logging.warning(
+                logger.warning_once(
                     "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`...")
                 use_cache = False
         presents = () if use_cache else None
@@ -852,6 +852,8 @@ class GPT2PipelineForwards:
         # Please refer to original code of transformers for more details.
        """
         from transformers.modeling_outputs import SequenceClassifierOutputWithPast
+        from transformers.utils import logging
+        logger = logging.get_logger(__name__)
 
         if input_ids is not None:
             batch_size, _ = input_ids.shape[:2]
@@ -892,7 +894,7 @@ class GPT2PipelineForwards:
                 sequence_lengths = (torch.ne(input_ids, self.config.pad_token_id).sum(-1) - 1).to(logits.device)
             else:
                 sequence_lengths = -1
-                logging.warning(
+                logger.warning_once(
                     f"{self.__class__.__name__} will not detect padding tokens in `inputs_embeds`. Results may be "
                     "unexpected if using padding tokens in conjunction with `inputs_embeds.`")
 
