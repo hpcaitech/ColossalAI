@@ -7,6 +7,7 @@ from transformers.models.bert.modeling_bert import BertForPreTraining
 import colossalai
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.pipeline.stage_manager import PipelineStageManager
+from colossalai.shardformer.policies.base_policy import Policy
 from colossalai.shardformer.policies.bert import BertForPreTrainingPolicy, bert_for_pretraining_forward
 from colossalai.shardformer.shard import ShardConfig
 from colossalai.testing import rerun_if_address_is_in_use, spawn
@@ -35,16 +36,20 @@ def check_bert_for_pretraining_forward():
     stage_manager = PipelineStageManager(pg_mesh, PP_DIM)
     rank = dist.get_rank()
     # print(rank)
+    layers_per_stage = Policy.distribute_layers(len(model.bert.encoder.layer), 2)
+    stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
 
     x = torch.randint(0, 1000, (2, 3))
     hidden_states = torch.randint(0, 1000, (2, 3, 768)).to(torch.float32)
     if stage_manager.stage == 0:
         attention_mask = torch.ones_like(x)
-        output = bert_for_pretraining_forward(self=model,
-                                              input_ids=x,
-                                              attention_mask=attention_mask,
-                                              stage_manager=stage_manager)
-        print(output['hidden_states'].shape)
+        output = bert_for_pretraining_forward(
+            self=model,
+            input_ids=x,
+            attention_mask=attention_mask,
+            stage_manager=stage_manager,
+            stage_index=stage_index,
+        )
         assert output['hidden_states'].shape == (2, 3, 768)
 
     else:
@@ -52,8 +57,8 @@ def check_bert_for_pretraining_forward():
         output = bert_for_pretraining_forward(self=model,
                                               hidden_states=hidden_states,
                                               attention_mask=attention_mask,
-                                              stage_manager=stage_manager)
-        print(output[0].shape)
+                                              stage_manager=stage_manager,
+                                              stage_index=stage_index)
         assert output[0].shape == (2, 3, 30522)
     # assert output[1].shape == (2, 768)
 
