@@ -264,16 +264,17 @@ class BertForPreTrainingPolicy(BertPolicy):
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
         model = self.model
-        if id(model.bert.embeddings.word_embeddings.weight) == id(model.cls.predictions.decoder.weight):
-            #tie weights
-            return [{
-                0: model.bert.embeddings.word_embeddings.weight,
-                self.pipeline_stage_manager.num_stages - 1: model.cls.predictions.decoder.weight
-            }]
+        if self.pipeline_stage_manager:
+            if id(model.bert.embeddings.word_embeddings.weight) == id(model.cls.predictions.decoder.weight):
+                #tie weights
+                return [{
+                    0: model.bert.embeddings.word_embeddings.weight,
+                    self.pipeline_stage_manager.num_stages - 1: model.cls.predictions.decoder.weight
+                }]
         return []
 
     def postprocess(self):
-        if self.shard_config.enable_tensor_parallelism:
+        if self.shard_config.enable_tensor_parallelism and self.pipeline_stage_manager is None:
             binding_map = {"bert.embeddings.word_embeddings.weight": "cls.predictions.decoder.weight"}
             for k, v in binding_map.items():
                 param = getattr_(self.model, k)
@@ -313,16 +314,17 @@ class BertLMHeadModelPolicy(BertPolicy):
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
         bert_model = self.model.bert
-        if id(bert_model.embeddings.word_embeddings.weight) == id(self.model.cls.predictions.decoder.weight):
-            #tie weights
-            return [{
-                0: bert_model.embeddings.word_embeddings.weight,
-                self.pipeline_stage_manager.num_stages - 1: self.model.cls.predictions.decoder.weight
-            }]
+        if self.pipeline_stage_manager:
+            if id(bert_model.embeddings.word_embeddings.weight) == id(self.model.cls.predictions.decoder.weight):
+                #tie weights
+                return [{
+                    0: bert_model.embeddings.word_embeddings.weight,
+                    self.pipeline_stage_manager.num_stages - 1: self.model.cls.predictions.decoder.weight
+                }]
         return []
 
     def postprocess(self):
-        if self.shard_config.enable_tensor_parallelism:
+        if self.shard_config.enable_tensor_parallelism and self.pipeline_stage_manager is None:
             binding_map = {"bert.embeddings.word_embeddings.weight": "cls.predictions.decoder.weight"}
             for k, v in binding_map.items():
                 param = getattr_(self.model, k)
@@ -362,16 +364,17 @@ class BertForMaskedLMPolicy(BertPolicy):
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
         bert_model = self.model.bert
-        if id(bert_model.embeddings.word_embeddings.weight) == id(self.model.cls.predictions.decoder.weight):
-            #tie weights
-            return [{
-                0: bert_model.embeddings.word_embeddings.weight,
-                self.pipeline_stage_manager.num_stages - 1: self.model.cls.predictions.decoder.weight
-            }]
+        if self.pipeline_stage_manager:
+            if id(bert_model.embeddings.word_embeddings.weight) == id(self.model.cls.predictions.decoder.weight):
+                #tie weights
+                return [{
+                    0: bert_model.embeddings.word_embeddings.weight,
+                    self.pipeline_stage_manager.num_stages - 1: self.model.cls.predictions.decoder.weight
+                }]
         return []
 
     def postprocess(self):
-        if self.shard_config.enable_tensor_parallelism:
+        if self.shard_config.enable_tensor_parallelism and self.pipeline_stage_manager is None:
             binding_map = {"bert.embeddings.word_embeddings.weight": "cls.predictions.decoder.weight"}
             for k, v in binding_map.items():
                 param = getattr_(self.model, k)
