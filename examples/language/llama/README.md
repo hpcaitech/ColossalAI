@@ -36,6 +36,10 @@ We follow the hyperparameter settings from the original LLaMA paper. We use Adam
 
 You should install ColossalAI of this branch from source.
 
+```bash
+git clone -b example/llama https://github.com/hpcaitech/ColossalAI.git
+```
+
 At the root directory of ColossalAI, run
 
 ```bash
@@ -92,7 +96,7 @@ Here we will show an example of how to run training
 llama pretraining with `gemini(gemini_auto plugin), batch_size=12, sequence_length=2048, gradient_checkpoint=True`.
 
 #### a. Running environment
-This environment was performed on 4 computing nodes with 32 A800 GPUs in total. The nodes are
+This experiment was performed on 4 computing nodes with 32 A800 GPUs in total. The nodes are
 connected with RDMA and GPUs within one node are fully connected with NVLink.
 
 #### b. Running command
