@@ -71,7 +71,7 @@ def check_gemini_plugin(init_method: str = 'none', early_stop: bool = True):
     passed_models = []
     failed_info = {}    # (model_name, error) pair
 
-    for name, (model_fn, data_gen_fn, output_transform_fn, _) in model_zoo.items():
+    for name, (model_fn, data_gen_fn, output_transform_fn, _, _) in model_zoo.items():
         # These models lead to CUDA error
         if name in ('diffusers_auto_encoder_kl', 'diffusers_vq_model', 'diffusers_unet2d_model', 'timm_resmlp',
                     'timm_gmixer_12_224', 'timm_gmlp_b16_224', 'timm_mixer_b16_224', 'timm_convnext'):

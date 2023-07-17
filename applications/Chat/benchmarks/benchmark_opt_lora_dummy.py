@@ -8,7 +8,7 @@ from coati.models.base import RewardModel
 from coati.models.opt import OPTActor, OPTCritic
 from coati.trainer import PPOTrainer
 from coati.trainer.callbacks import PerformanceEvaluator
-from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy, Strategy
+from coati.trainer.strategies import DDPStrategy, GeminiStrategy, LowLevelZeroStrategy, Strategy
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from transformers import AutoTokenizer
@@ -19,7 +19,7 @@ from colossalai.nn.optimizer import HybridAdam
 
 def get_model_numel(model: nn.Module, strategy: Strategy) -> int:
     numel = sum(p.numel() for p in model.parameters())
-    if isinstance(strategy, ColossalAIStrategy) and strategy.stage == 3 and strategy.shard_init:
+    if isinstance(strategy, GeminiStrategy) and strategy.shard_init:
         numel *= dist.get_world_size()
     return numel
 
@@ -76,17 +76,17 @@ def main(args):
     if args.strategy == 'ddp':
         strategy = DDPStrategy()
     elif args.strategy == 'colossalai_gemini':
-        strategy = ColossalAIStrategy(stage=3, placement_policy='cuda', initial_scale=2**5)
+        strategy = GeminiStrategy(placement_policy='cuda', initial_scale=2**5)
     elif args.strategy == 'colossalai_gemini_cpu':
-        strategy = ColossalAIStrategy(stage=3, placement_policy='cpu', initial_scale=2**5)
+        strategy = GeminiStrategy(placement_policy='cpu', initial_scale=2**5)
     elif args.strategy == 'colossalai_zero2':
-        strategy = ColossalAIStrategy(stage=2, placement_policy='cuda')
+        strategy = LowLevelZeroStrategy(stage=2, placement_policy='cuda')
     elif args.strategy == 'colossalai_zero2_cpu':
-        strategy = ColossalAIStrategy(stage=2, placement_policy='cpu')
+        strategy = LowLevelZeroStrategy(stage=2, placement_policy='cpu')
     elif args.strategy == 'colossalai_zero1':
-        strategy = ColossalAIStrategy(stage=1, placement_policy='cuda')
+        strategy = LowLevelZeroStrategy(stage=1, placement_policy='cuda')
     elif args.strategy == 'colossalai_zero1_cpu':
-        strategy = ColossalAIStrategy(stage=1, placement_policy='cpu')
+        strategy = LowLevelZeroStrategy(stage=1, placement_policy='cpu')
     else:
         raise ValueError(f'Unsupported strategy "{args.strategy}"')
 
@@ -135,6 +135,12 @@ def main(args):
 
     (actor, actor_optim), (critic, critic_optim) = strategy.prepare((actor, actor_optim), (critic, critic_optim))
 
+    random_prompts = torch.randint(tokenizer.vocab_size, (1000, 256), device=torch.cuda.current_device())
+    dataloader = DataLoader(random_prompts,
+                            batch_size=args.experience_batch_size,
+                            shuffle=True,
+                            collate_fn=preprocess_batch)
+
     trainer = PPOTrainer(strategy,
                          actor,
                          critic,
@@ -143,7 +149,6 @@ def main(args):
                          actor_optim,
                          critic_optim,
                          ptx_coef=0,
-                         max_epochs=args.max_epochs,
                          train_batch_size=args.train_batch_size,
                          offload_inference_models=args.offload_inference_models,
                          max_length=512,
@@ -155,17 +160,11 @@ def main(args):
                          eos_token_id=tokenizer.eos_token_id,
                          callbacks=[performance_evaluator])
 
-    random_prompts = torch.randint(tokenizer.vocab_size, (1000, 256), device=torch.cuda.current_device())
-    dataloader = DataLoader(random_prompts,
-                            batch_size=args.experience_batch_size,
-                            shuffle=True,
-                            collate_fn=preprocess_batch)
-
-    trainer.fit(dataloader,
-                None,
+    trainer.fit(prompt_dataloader=dataloader,
+                pretrain_dataloader=None,
                 num_episodes=args.num_episodes,
-                max_timesteps=args.max_timesteps,
-                update_timesteps=args.update_timesteps)
+                num_update_steps=args.num_update_steps,
+                num_collect_steps=args.num_collect_steps)
 
     print_rank_0(f'Peak CUDA mem: {torch.cuda.max_memory_allocated()/1024**3:.2f} GB')
 
@@ -181,9 +180,8 @@ if __name__ == '__main__':
                         ],
                         default='ddp')
     parser.add_argument('--num_episodes', type=int, default=3)
-    parser.add_argument('--max_timesteps', type=int, default=8)
-    parser.add_argument('--update_timesteps', type=int, default=8)
-    parser.add_argument('--max_epochs', type=int, default=1)
+    parser.add_argument('--num_collect_steps', type=int, default=8)
+    parser.add_argument('--num_update_steps', type=int, default=1)
     parser.add_argument('--train_batch_size', type=int, default=8)
     parser.add_argument('--experience_batch_size', type=int, default=8)
     parser.add_argument('--lora_rank', type=int, default=0)

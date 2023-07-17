@@ -22,7 +22,7 @@ def exam_state_dict(placement_policy, model_name: str):
 
     model_size = sum(p.numel() * p.element_size() for p in model.parameters()) / 1024**2
 
-    config_dict, *_ = search_chunk_configuration(model, search_range_mb=1, search_interval_byte=100)
+    config_dict, *_ = search_chunk_configuration(model, search_range_m=1, search_interval=100)
     chunk_manager = ChunkManager(config_dict)
     gemini_manager = GeminiManager(placement_policy, chunk_manager)
     model = ZeroDDP(model, gemini_manager)
@@ -37,6 +37,7 @@ def exam_state_dict(placement_policy, model_name: str):
             accumulated_keys.add(key)
             assert key in zero_dict, f"{key} not in ZeRO dictionary."
             assert torch.equal(value, zero_dict[key]), f"{key} not equal."
+
 
 def run_dist(rank, world_size, port):
     config = {}

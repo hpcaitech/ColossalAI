@@ -88,7 +88,7 @@ def main():
                                  placement_policy=args.placement,
                                  pin_memory=True,
                                  hidden_dim=model.config.hidden_size,
-                                 search_range_mb=128)
+                                 search_range_m=128)
             optim_config = dict(gpu_margin_mem_ratio=0.)
         else:
             raise RuntimeError
