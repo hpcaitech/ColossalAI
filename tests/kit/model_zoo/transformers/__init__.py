@@ -7,3 +7,4 @@ from .opt import *
 from .sam import *
 from .t5 import *
 from .vit import *
+from .whisper import *
