@@ -96,6 +96,31 @@ def test_attention_no_mask(proj_shape, dtype=torch.float16):
 
 @pytest.mark.skipif(HAS_MEM_EFF_ATTN == False, reason="xformers is not available")
 @clear_cache_before_run()
+@parameterize('proj_shape', [(6, 8, 4, 16)])
+def test_attention_tensor_attn_mask_type(proj_shape, dtype=torch.float16):
+    (B, S, H, D_HEAD) = proj_shape
+    D = H * D_HEAD
+
+    c_attn = torch.nn.Linear(D, 3 * D, dtype=dtype, device="cuda")
+    attn = ColoAttention(D, H, dropout=0.1)
+
+    x = torch.randn((B, S, D), dtype=dtype, device="cuda")
+    qkv = c_attn(x)
+    q, k, v = rearrange(qkv, 'b s (n h d) -> b s n h d', n=3, h=H).unbind(dim=2)
+
+    mask = torch.randn((B, H, S, S), dtype=dtype, device="cuda")
+    bias = torch.randn((B, 1, S, S), dtype=dtype, device="cuda")
+
+    y = attn(q, k, v, mask, attn_mask_type=AttnMaskType.tensor, bias=bias)
+
+    assert list(y.shape) == [B, S, D]
+
+    dy = torch.rand_like(y)
+    y.backward(dy)
+
+
+@pytest.mark.skipif(HAS_MEM_EFF_ATTN == False, reason="xformers is not available")
+@clear_cache_before_run()
 @parameterize('proj_shape', [(6, 24, 8, 4, 16)])
 def test_cross_attention(proj_shape, dtype=torch.float16):
     (B, S, T, H, D_HEAD) = proj_shape

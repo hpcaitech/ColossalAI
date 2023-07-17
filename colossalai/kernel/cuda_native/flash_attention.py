@@ -6,6 +6,7 @@ https://github.com/facebookresearch/xformers/tree/main/xformers/ops/fmha
 import math
 import os
 import subprocess
+import warnings
 
 import torch
 
@@ -14,7 +15,7 @@ try:
     HAS_MEM_EFF_ATTN = True
 except ImportError:
     HAS_MEM_EFF_ATTN = False
-    raise ImportError('please install xformers from https://github.com/facebookresearch/xformers')
+    warnings.warn('please install xformers from https://github.com/facebookresearch/xformers')
 
 if HAS_MEM_EFF_ATTN:
 
@@ -122,6 +123,19 @@ if HAS_MEM_EFF_ATTN:
                     attn_mask: Optional[torch.Tensor] = None,
                     attn_mask_type: Optional[AttnMaskType] = None,
                     bias: Optional[torch.Tensor] = None):
+
+            if attn_mask_type and attn_mask_type == AttnMaskType.tensor:
+                if bias != None:
+                    attn_mask += bias
+                out = memory_efficient_attention(query,
+                                                 key,
+                                                 value,
+                                                 attn_bias=attn_mask,
+                                                 p=self.dropout,
+                                                 scale=self.scale)
+                out = rearrange(out, 'b s h d -> b s (h d)')
+                return out
+
             batch_size, tgt_len, src_len = query.shape[0], query.shape[1], key.shape[1]
             attn_bias = None
             if attn_mask_type and attn_mask_type.value % 2 == 1:    # bert style

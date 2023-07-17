@@ -17,6 +17,7 @@ except ImportError:
 
 
 class AttnMaskType(enum.Enum):
+    tensor = 0
     padding = 1
     causal = 2
     paddedcausal = 3
