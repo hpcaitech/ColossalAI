@@ -221,12 +221,13 @@ class GPT2LMHeadModelPolicy(GPT2Policy):
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
         '''The weights of wte and lm_head are shared.'''
-        stage_manager = self.pipeline_stage_manager
-        if stage_manager is None:
-            return []
         module = self.model
-        first_stage, last_stage = 0, stage_manager.num_stages - 1
-        return [{first_stage: module.transformer.wte.weight, last_stage: module.lm_head.weight}]
+        stage_manager = self.pipeline_stage_manager
+        if stage_manager and id(module.transformer.wte.weight) == id(module.lm_head.weight):
+            first_stage, last_stage = 0, stage_manager.num_stages - 1
+            return [{first_stage: module.transformer.wte.weight, last_stage: module.lm_head.weight}]
+        else:
+            return []
 
     def postprocess(self):
         if self.shard_config.enable_tensor_parallelism \
@@ -279,12 +280,13 @@ class GPT2DoubleHeadsModelPolicy(GPT2Policy):
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
         '''The weights of wte and lm_head are shared.'''
-        stage_manager = self.pipeline_stage_manager
-        if stage_manager is None:
-            return []
         module = self.model
-        first_stage, last_stage = 0, stage_manager.num_stages - 1
-        return [{first_stage: module.transformer.wte.weight, last_stage: module.lm_head.weight}]
+        stage_manager = self.pipeline_stage_manager
+        if stage_manager and id(module.transformer.wte.weight) == id(module.lm_head.weight):
+            first_stage, last_stage = 0, stage_manager.num_stages - 1
+            return [{first_stage: module.transformer.wte.weight, last_stage: module.lm_head.weight}]
+        else:
+            return []
 
     def postprocess(self):
         if self.shard_config.enable_tensor_parallelism \

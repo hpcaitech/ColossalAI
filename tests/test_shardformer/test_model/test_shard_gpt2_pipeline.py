@@ -5,15 +5,9 @@ import colossalai
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.logging import disable_existing_loggers
 from colossalai.pipeline.stage_manager import PipelineStageManager
-from colossalai.testing import (
-    assert_hf_output_close,
-    clear_cache_before_run,
-    parameterize,
-    rerun_if_address_is_in_use,
-    spawn,
-)
+from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
 from tests.kit.model_zoo import model_zoo
-from tests.test_shardformer.test_model._utils import build_model, build_pipeline_model, run_forward
+from tests.test_shardformer.test_model._utils import build_pipeline_model
 
 
 def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn):
@@ -32,11 +26,11 @@ def run_gpt2_test(enable_fused_normalization, enable_tensor_parallelism, use_laz
     stage_manager = PipelineStageManager(pg_mesh, PP_DIM)
 
     sub_model_zoo = model_zoo.get_sub_registry('transformers_gpt')
-    for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
+    for name, (model_fn, data_gen_fn, _, _, _) in sub_model_zoo.items():
 
         inputs = data_gen_fn()
         inputs = {k: v.cuda() for k, v in inputs.items()}
-        input_ids, attention_mask = inputs['input_ids'], inputs['attention_mask']
+        input_ids, _ = inputs['input_ids'], inputs['attention_mask']
         batch_size, seq_len = input_ids.shape
         hidden_size = 768
         hidden_state_shape = (batch_size, seq_len, hidden_size)
