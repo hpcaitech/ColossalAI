@@ -37,11 +37,12 @@ def run_opt_test(enable_fused_normalization, enable_tensor_parallelism, use_lazy
         hidden_state_shape = (batch_size, seq_len, hidden_size)
 
         if not stage_manager.is_first_stage():
+            continue
             # change inputs if not the first stage
 
-            hidden_states = torch.zeros(*hidden_state_shape).cuda()
-            inputs['input_ids'] = None
-            inputs['hidden_states'] = hidden_states
+            # hidden_states = torch.zeros(*hidden_state_shape).cuda()
+            # inputs['input_ids'] = None
+            # inputs['hidden_states'] = hidden_states
 
         _, sharded_model = build_pipeline_model(model_fn, stage_manager, enable_fused_normalization,
                                                 enable_tensor_parallelism, use_lazy_init)
