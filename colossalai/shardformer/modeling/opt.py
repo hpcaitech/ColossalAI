@@ -131,8 +131,6 @@ def get_jit_fused_opt_decoder_layer_forward():
             layer_head_mask=layer_head_mask,
             output_attentions=output_attentions,
         )
-        # hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
-        # hidden_states = residual + hidden_states
 
         hidden_states = self.dropout_add(hidden_states, residual, self.dropout, self.training)
 
@@ -153,9 +151,6 @@ def get_jit_fused_opt_decoder_layer_forward():
         hidden_states = self.activation_fn(hidden_states)
 
         hidden_states = self.fc2(hidden_states)
-        # hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
-
-        # hidden_states = (residual + hidden_states).view(hidden_states_shape)
 
         hidden_states = self.dropout_add(hidden_states, residual, self.dropout, self.training).view(hidden_states_shape)
 
