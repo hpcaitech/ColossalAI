@@ -8,6 +8,10 @@ from colossalai.kernel.triton.qkv_matmul_kernel import qkv_gemm_4d_kernel
 
 
 def test_qkv_matmul():
+    cuda_version = float(torch.version.cuda)
+    if cuda_version <= 11.4:
+        return 
+
     qkv = torch.randn((4, 24, 64*3), device="cuda", dtype=torch.float16)
     scale = 1.2
     head_size = 32
@@ -66,6 +70,10 @@ def self_attention_compute_using_torch(qkv,
                                        scale,
                                        head_size
                                        ):
+    cuda_version = float(torch.version.cuda)
+    if cuda_version <= 11.4:
+        return 
+        
     batches = qkv.shape[0]
     d_model = qkv.shape[-1] // 3
     num_of_heads = d_model // head_size
