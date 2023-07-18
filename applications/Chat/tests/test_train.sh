@@ -36,11 +36,109 @@ fi
 
 BASE_DIR=$(dirname $(dirname $(realpath $BASH_SOURCE)))
 EXAMPLES_DIR=$BASE_DIR/examples
+MODELS_DIR=$BASE_DIR/examples/models_config
 
 export OMP_NUM_THREADS=8
 
 # install requirements
 pip install -r $EXAMPLES_DIR/requirements.txt
+
+python $EXAMPLES_DIR/download_model.py --model-dir $MODELS_DIR --config-only
+
+get_pretrain() {
+    local model=$1
+    if [[ $model == "gpt2" ]]; then
+        echo "gpt2"
+    elif [[ $model == "bloom" ]]; then
+        echo "bigscience/bloom-560m"
+    elif [[ $model == "opt" ]]; then
+        echo "facebook/opt-350m"
+    else
+        echo "Unknown model $model"
+        exit 1
+    fi
+}
+
+echo "[Test]: testing sft ..."
+
+# FIXME: This is a hack to skip tests that are not working
+#  - gpt2-colossalai_zero2-4: RuntimeError: torch.cat(): expected a non-empty list of Tensors, raised in prepare stage
+#  - gpt2-ddp: RuntimeError: one of the variables needed for gradient computation has been modified by an inplace operation
+#  - *-gemini: NotImplementedError: Gemini is not supported .from_pretrained() yet
+#  - llama-*: These tests can be passed locally, skipped for long execution time
+SKIPPED_TESTS=(
+    "gpt2-colossalai_zero2-4"
+    "gpt2-ddp"
+    "gpt2-colossalai_gemini"
+    "bloom-colossalai_gemini"
+    "opt-colossalai_gemini"
+    "llama-ddp"
+    "llama-colossalai_gemini"
+    "llama-colossalai_zero2"
+)
+
+for lora_rank in '0' '4'; do
+    for strategy in 'ddp' 'colossalai_gemini' 'colossalai_zero2'; do
+        for model in 'gpt2' 'bloom' 'opt' 'llama'; do
+            if [[ " ${SKIPPED_TESTS[*]} " =~ " $model-$strategy-$lora_rank " ]]; then
+                echo "[Test]: Skipped $model-$strategy-$lora_rank"
+                continue
+            elif [[ " ${SKIPPED_TESTS[*]} " =~ " $model-$strategy " ]]; then
+                echo "[Test]: Skipped $model-$strategy"
+                continue
+            fi
+            pretrain=$(get_pretrain $model)
+            torchrun --standalone --nproc_per_node=4 $EXAMPLES_DIR/train_sft.py \
+                --pretrain $pretrain --tokenizer $MODELS_DIR/$model \
+                --model $model --strategy $strategy --lora_rank $lora_rank \
+                --dataset $SFT_DATASET --max_datasets_size 32 \
+                --max_epochs 1 --batch_size 1 --accumulation_steps 1 \
+                --save_path $EXAMPLES_DIR/output
+            rm -rf $EXAMPLES_DIR/output
+        done
+    done
+done
+
+echo "[Test]: testing reward model ..."
+
+# FIXME: This is a hack to skip tests that are not working
+#  - gpt2-colossalai_zero2-4: RuntimeError: torch.cat(): expected a non-empty list of Tensors, raised in prepare stage
+#  - gpt2-ddp: RuntimeError: one of the variables needed for gradient computation has been modified by an inplace operation
+#  - llama-*: These tests can be passed locally, skipped for long execution time
+SKIPPED_TESTS=(
+    "gpt2-colossalai_zero2-4"
+    "gpt2-ddp"
+    "llama-ddp"
+    "llama-colossalai_gemini"
+    "llama-colossalai_zero2"
+)
+
+for lora_rank in '0' '4'; do
+    for strategy in 'ddp' 'colossalai_gemini' 'colossalai_zero2'; do
+        for model in 'gpt2' 'bloom' 'opt' 'llama'; do
+            if [[ " ${SKIPPED_TESTS[*]} " =~ " $model-$strategy-$lora_rank " ]]; then
+                echo "[Test]: Skipped $model-$strategy-$lora_rank"
+                continue
+            elif [[ " ${SKIPPED_TESTS[*]} " =~ " $model-$strategy " ]]; then
+                echo "[Test]: Skipped $model-$strategy"
+                continue
+            fi
+            pretrain=$(get_pretrain $model)
+            torchrun --standalone --nproc_per_node=4 $EXAMPLES_DIR/train_reward_model.py \
+                --pretrain $pretrain --tokenizer $MODELS_DIR/$model \
+                --model $model --strategy $strategy --lora_rank $lora_rank --loss_fn 'log_sig' \
+                --dataset 'Anthropic/hh-rlhf' --subset 'harmless-base' --test True \
+                --save_path $EXAMPLES_DIR/rm_ckpt_${model}_${lora_rank}.pt
+            torchrun --standalone --nproc_per_node=4 $EXAMPLES_DIR/train_reward_model.py \
+                --pretrain $pretrain --tokenizer $MODELS_DIR/$model \
+                --model $model --strategy $strategy --lora_rank $lora_rank --loss_fn 'log_exp' \
+                --dataset 'Dahoas/rm-static' --test True \
+                --save_path $EXAMPLES_DIR/rm_ckpt_${model}_${lora_rank}.pt
+        done
+    done
+done
+
+echo "[Test]: testing RLHF ..."
 
 # FIXME: This is a hack to skip tests that are not working
 #  - gpt2-ddp: RuntimeError: one of the variables needed for gradient computation has been modified by an inplace operation
@@ -52,108 +150,24 @@ SKIPPED_TESTS=(
     "llama-colossalai_zero2"
 )
 
-# These tests are quick and do not have any dependencies
 for model in 'gpt2' 'bloom' 'opt' 'llama'; do
-    for strategy in 'ddp' 'colossalai_gemini' 'colossalai_zero2'; do
-        if [[ " ${SKIPPED_TESTS[*]} " =~ " $model-$strategy " ]]; then
-            echo "[Test]: Skipped $model-$strategy"
-            continue
-        fi
-        torchrun --standalone --nproc_per_node=2 $EXAMPLES_DIR/train_prompts.py \
-            --prompt_dataset $PROMPT_PATH --pretrain_dataset $PRETRAIN_DATASET \
-            --strategy $strategy --model $model \
-            --num_episodes 1 --num_collect_steps 2 --num_update_steps 1 \
-            --train_batch_size 2 --lora_rank 4
+    for lora_rank in '0' '4'; do
+        for strategy in 'ddp' 'colossalai_gemini' 'colossalai_zero2'; do
+            if [[ " ${SKIPPED_TESTS[*]} " =~ " $model-$strategy " ]]; then
+                echo "[Test]: Skipped $model-$strategy"
+                continue
+            fi
+            pretrain=$(get_pretrain $model)
+            torchrun --standalone --nproc_per_node=2 $EXAMPLES_DIR/train_prompts.py \
+                --prompt_dataset $PROMPT_PATH --pretrain_dataset $PRETRAIN_DATASET \
+                --strategy $strategy --model $model --tokenizer $MODELS_DIR/$model \
+                --num_episodes 1 --num_collect_steps 2 --num_update_steps 1 \
+                --train_batch_size 2 --lora_rank $lora_rank \
+                --pretrain $pretrain --rm_pretrain $pretrain \
+                --rm_path $EXAMPLES_DIR/rm_ckpt_${model}_${lora_rank}.pt \
+                --save_path $EXAMPLES_DIR/actor_checkpoint_prompts.pt
+        done
+        rm $EXAMPLES_DIR/rm_ckpt_${model}_${lora_rank}.pt
     done
 done
-
-echo "[Test]: testing sft ..."
-
-torchrun --standalone --nproc_per_node=4 $EXAMPLES_DIR/train_sft.py --pretrain 'bigscience/bloom-560m' \
-    --model 'bloom' --strategy colossalai_zero2 --lora_rank 4 \
-    --dataset $SFT_DATASET --max_datasets_size 512 --max_epochs 1 \
-    --save_path $EXAMPLES_DIR/output
-rm -rf $EXAMPLES_DIR/output
-
-torchrun --standalone --nproc_per_node=4 $EXAMPLES_DIR/train_sft.py --pretrain 'gpt2' \
-    --model 'gpt2' --strategy colossalai_zero2 \
-    --dataset $SFT_DATASET --max_datasets_size 512 --max_epochs 1 \
-    --save_path $EXAMPLES_DIR/output
-rm -rf $EXAMPLES_DIR/output
-
-torchrun --standalone --nproc_per_node=4 $EXAMPLES_DIR/train_sft.py --pretrain 'facebook/opt-350m' \
-    --model 'opt' --strategy colossalai_zero2 --lora_rank 4 \
-    --dataset $SFT_DATASET --max_datasets_size 512 --max_epochs 1 \
-    --save_path $EXAMPLES_DIR/output
-rm -rf $EXAMPLES_DIR/output
-
-torchrun --standalone --nproc_per_node=4 $EXAMPLES_DIR/train_sft.py --pretrain 'gpt2' \
-    --model 'gpt2' --strategy ddp --lora_rank 4 \
-    --dataset $SFT_DATASET --max_datasets_size 512 --max_epochs 1 \
-    --save_path $EXAMPLES_DIR/output
-rm -rf $EXAMPLES_DIR/output
-
-echo "[Test]: testing reward model ..."
-
-torchrun --standalone --nproc_per_node=2 $EXAMPLES_DIR/train_reward_model.py \
-    --pretrain 'facebook/opt-350m' --model 'opt' \
-    --strategy colossalai_zero2 --loss_fn 'log_sig' \
-    --dataset 'Anthropic/hh-rlhf' --subset 'harmless-base' \
-    --test True --lora_rank 0 \
-    --save_path $EXAMPLES_DIR/rm_ckpt_opt.pt
-
-torchrun --standalone --nproc_per_node=2 $EXAMPLES_DIR/train_reward_model.py \
-    --pretrain 'gpt2' --model 'gpt2' \
-    --strategy colossalai_zero2 --loss_fn 'log_exp' \
-    --dataset 'Dahoas/rm-static' \
-    --test True --lora_rank 0 \
-    --save_path $EXAMPLES_DIR/rm_ckpt_gpt.pt
-
-torchrun --standalone --nproc_per_node=2 $EXAMPLES_DIR/train_reward_model.py \
-    --pretrain 'gpt2' --model 'gpt2' \
-    --strategy ddp --loss_fn 'log_exp' \
-    --dataset 'Dahoas/rm-static' \
-    --test True --lora_rank 4 \
-    --save_path $EXAMPLES_DIR/rm_ckpt.pt
-rm -rf $EXAMPLES_DIR/rm_ckpt.pt
-
-torchrun --standalone --nproc_per_node=2 $EXAMPLES_DIR/train_reward_model.py \
-    --pretrain 'bigscience/bloom-560m' --model 'bloom' \
-    --strategy colossalai_zero2 --loss_fn 'log_sig' \
-    --dataset 'Anthropic/hh-rlhf' --subset 'harmless-base' \
-    --test True --lora_rank 4 \
-    --save_path $EXAMPLES_DIR/rm_ckpt.pt
-rm -rf $EXAMPLES_DIR/rm_ckpt.pt
-
-echo "[Test]: testing RLHF ..."
-
-torchrun --standalone --nproc_per_node=2 $EXAMPLES_DIR/train_prompts.py \
-    --prompt_dataset $PROMPT_PATH --pretrain_dataset $PRETRAIN_DATASET \
-    --strategy colossalai_zero2 --num_episodes 1 \
-    --num_collect_steps 2 --num_update_steps 1 --train_batch_size 2 \
-    --pretrain 'facebook/opt-350m' --model opt \
-    --rm_pretrain 'facebook/opt-350m' \
-    --rm_path $EXAMPLES_DIR/rm_ckpt_opt.pt \
-    --save_path $EXAMPLES_DIR/actor_checkpoint_prompts.pt
-rm -rf $EXAMPLES_DIR/rm_ckpt_opt.pt
-
-torchrun --standalone --nproc_per_node=2 $EXAMPLES_DIR/train_prompts.py \
-    --prompt_dataset $PROMPT_PATH --pretrain_dataset $PRETRAIN_DATASET \
-    --strategy colossalai_zero2 --num_episodes 1 \
-    --num_collect_steps 2 --num_update_steps 1 --train_batch_size 2 \
-    --pretrain 'gpt2' --model gpt2 \
-    --rm_pretrain 'gpt2' \
-    --rm_path $EXAMPLES_DIR/rm_ckpt_gpt.pt \
-    --save_path $EXAMPLES_DIR/actor_checkpoint_prompts.pt
-
-torchrun --standalone --nproc_per_node=2 $EXAMPLES_DIR/train_prompts.py \
-    --prompt_dataset $PROMPT_PATH --pretrain_dataset $PRETRAIN_DATASET \
-    --strategy colossalai_gemini --num_episodes 1 \
-    --num_collect_steps 2 --num_update_steps 1 --train_batch_size 2 \
-    --pretrain 'gpt2' --model gpt2 \
-    --rm_pretrain 'gpt2' \
-    --rm_path $EXAMPLES_DIR/rm_ckpt_gpt.pt \
-    --save_path $EXAMPLES_DIR/actor_checkpoint_prompts.pt
-rm -rf $EXAMPLES_DIR/rm_ckpt_gpt.pt
-
-rm -rf $EXAMPLES_DIR/actor_checkpoint_prompts.pt
+rm $EXAMPLES_DIR/actor_checkpoint_prompts.pt
