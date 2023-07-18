@@ -89,8 +89,8 @@ def train(args):
         data = load_dataset(args.dataset)
 
     if args.test:
-        train_data = data['train'].select(range(100))
-        eval_data = data['test'].select(range(10))
+        train_data = data['train'].select(range(20))
+        eval_data = data['test'].select(range(5))
     else:
         train_data = data['train']
         eval_data = data['test']
