@@ -3,6 +3,7 @@ import torch.nn as nn
 import colossalai.shardformer.layer as col_nn
 
 from .._utils import getattr_, setattr_
+from ..modeling.blip2 import forward_fn
 from .basepolicy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = ['BlipPolicy', 'BlipModelPolicy']
@@ -28,6 +29,7 @@ class BlipPolicy(Policy):
 
     def module_policy(self):
         from transformers.models.blip_2.modeling_blip_2 import (
+            Blip2Attention,
             Blip2EncoderLayer,
             Blip2QFormerLayer,
             Blip2QFormerModel,
@@ -193,6 +195,8 @@ class BlipPolicy(Policy):
                     kwargs={"gather_output": True},
                 ),
             ])
+
+            policy[Blip2Attention] = ModulePolicyDescription(method_replacement={"forward": forward_fn()})
 
         # optimization configuration
         if self.shard_config.enable_fused_normalization:
