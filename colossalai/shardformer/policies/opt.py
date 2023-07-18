@@ -120,6 +120,7 @@ class OPTPolicy(Policy):
         layers_per_stage = self.distribute_layers(len(module.layers), stage_manager.num_stages)
         if stage_manager.is_first_stage():
             held_layers.append(module.embed_tokens)
+            held_layers.append(module.embed_positions)
             held_layers.append(module.project_in)
         start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
         held_layers.extend(module.layers[start_idx:end_idx])
@@ -243,7 +244,6 @@ class OPTPipelineForwards:
         """
         Make causal mask used for bi-directional self-attention.
         """
-        print(dtype)
         bsz, tgt_len = input_ids_shape
         mask = torch.full((tgt_len, tgt_len), torch.tensor(torch.finfo(dtype).min, device=device), device=device)
         mask_cond = torch.arange(mask.size(-1), device=device)
