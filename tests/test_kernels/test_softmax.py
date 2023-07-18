@@ -4,7 +4,7 @@ from torch import nn
 
 from colossalai.kernel.triton.ops import softmax
 
-@pytest.mark.skipif(float(torch.version.cuda) <= 11.7,
+@pytest.mark.skipif(float(torch.version.cuda) <= 11.4,
                     reason="triton requires cuda version to be higher than 11.4")
 def test_softmax_op():
     data_samples = [
