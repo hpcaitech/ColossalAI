@@ -8,7 +8,7 @@ def test_softmax_op():
     cuda_version = float(torch.version.cuda)
     if cuda_version <= 11.4:
         return 
-        
+    
     device = "cuda"
     data_samples = [
                         torch.randn((3, 4, 5, 32), device = "cuda", dtype = torch.float32),
