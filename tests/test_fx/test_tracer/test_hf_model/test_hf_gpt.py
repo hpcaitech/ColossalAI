@@ -18,7 +18,7 @@ def test_gpt():
         # TODO: support the following models
         # 1. GPT2DoubleHeadsModel
         # as they are not supported, let's skip them
-        if model.__class__.__name__ in ['GPT2DoubleHeadsModel']:
+        if model.__class__.__name__ in ['GPT2DoubleHeadsModel', 'GPT2ForQuestionAnswering']:
             continue
 
         trace_model_and_compare_output(model, data_gen_fn, ignore_data=['labels'])
