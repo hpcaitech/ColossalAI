@@ -2,7 +2,6 @@ import argparse
 import dataclasses
 import os
 import parser
-import shutil
 from typing import List
 
 import tqdm
@@ -55,6 +54,10 @@ if __name__ == "__main__":
     parser.add_argument("--config-only", default=False, action="store_true")
     args = parser.parse_args()
 
+    if os.path.exists(args.model_dir):
+        print(f"[INFO]: {args.model_dir} already exists")
+        exit(0)
+
     repo_list = {
         "gpt2": HFRepoFiles(
             repo_id="gpt2",
@@ -70,8 +73,6 @@ if __name__ == "__main__":
         ),
     }
 
-    if os.path.exists(args.model_dir):
-        shutil.rmtree(args.model_dir)
     os.mkdir(args.model_dir)
     for model_name in tqdm.tqdm(repo_list):
         dir_path = os.path.join(args.model_dir, model_name)
