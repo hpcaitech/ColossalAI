@@ -105,7 +105,7 @@ We will follow this roadmap to develop Shardformer:
       - [ ] Whisper
     - [ ] Multi-modal
       - [ ] To be added
-- [ ] Flash attention support
+- [ ] Flash Attention Support
     - [ ] NLP
       - [x] BERT
       - [x] T5
