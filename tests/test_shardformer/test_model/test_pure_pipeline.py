@@ -122,9 +122,7 @@ def run_llama_test(enable_fused_normalization, enable_tensor_parallelism, use_la
         2: [2, 3],
         3: [2, 3],
     }
-    from datasets import load_dataset
 
-    #dataset = load_dataset("open_subtitles", lang1="fi", lang2="hi")
     pg_mesh = ProcessGroupMesh(PP_SIZE)
     stage_manager = PipelineStageManager(pg_mesh, PP_DIM)
     sub_model_zoo = model_zoo.get_sub_registry('transformers_llama')
