@@ -169,7 +169,7 @@ for model in 'gpt2' 'bloom' 'opt' 'llama'; do
                 --rm_pretrain $pretrain --rm_path $EXAMPLES_DIR/rlhf_models/rm_ckpt_${model}_${lora_rank}.pt \
                 --save_path $EXAMPLES_DIR/rlhf_models/actor_checkpoint_prompts.pt
         done
-        rm $EXAMPLES_DIR/rlhf_models/sft_ckpt_${model}_${lora_rank}.pt
+        rm -rf $EXAMPLES_DIR/rlhf_models/sft_ckpt_${model}_${lora_rank}
         rm $EXAMPLES_DIR/rlhf_models/rm_ckpt_${model}_${lora_rank}.pt
     done
 done
