@@ -59,6 +59,13 @@ get_pretrain() {
     fi
 }
 
+random_choice() {
+    local arr=("$@")
+    local len=${#arr[@]}
+    local idx=$((RANDOM % len))
+    echo ${arr[$idx]}
+}
+
 echo "[Test]: testing sft ..."
 
 # FIXME: This is a hack to skip tests that are not working
@@ -108,6 +115,8 @@ SKIPPED_TESTS=(
     "llama-colossalai_zero2"
 )
 
+LOSS_FNS=('log_sig' 'log_exp')
+DATASETS=('Anthropic/hh-rlhf' 'Dahoas/rm-static')
 for lora_rank in '0' '4'; do
     for strategy in 'ddp' 'colossalai_gemini' 'colossalai_zero2'; do
         for model in 'gpt2' 'bloom' 'opt' 'llama'; do
@@ -119,15 +128,13 @@ for lora_rank in '0' '4'; do
                 continue
             fi
             pretrain=$(get_pretrain $model)
+            loss_fn=$(random_choice "${LOSS_FNS[@]}")
+            dataset=$(random_choice "${DATASETS[@]}")
+            subset=$(if [[ $dataset == "Dahoas/rm-static" ]]; then echo "None"; else echo "harmless-base"; fi)
             torchrun --standalone --nproc_per_node=2 $EXAMPLES_DIR/train_reward_model.py \
                 --pretrain $pretrain --tokenizer $MODELS_DIR/$model \
-                --model $model --strategy $strategy --lora_rank $lora_rank --loss_fn 'log_sig' \
-                --dataset 'Anthropic/hh-rlhf' --subset 'harmless-base' --test True \
-                --save_path $EXAMPLES_DIR/rm_ckpt_${model}_${lora_rank}.pt
-            torchrun --standalone --nproc_per_node=2 $EXAMPLES_DIR/train_reward_model.py \
-                --pretrain $pretrain --tokenizer $MODELS_DIR/$model \
-                --model $model --strategy $strategy --lora_rank $lora_rank --loss_fn 'log_exp' \
-                --dataset 'Dahoas/rm-static' --test True \
+                --model $model --strategy $strategy --lora_rank $lora_rank --loss_fn $loss_fn \
+                --dataset $dataset --subset $subset --test True \
                 --save_path $EXAMPLES_DIR/rlhf_models/rm_ckpt_${model}_${lora_rank}.pt
         done
     done
