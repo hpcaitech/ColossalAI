@@ -413,15 +413,14 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
         # update working partition updated by the current rank
         dtype = real_working_params[0][0].dtype
-        device = real_working_params[0][0].device
         for group_id in range(self.num_param_groups):
             master_working_param = self.optim.param_groups[group_id]['params']
             for idx, splited_param in enumerate(master_working_param):
                 working_param = real_working_params[group_id][idx]
                 all_splited_param = [
-                    torch.zeros(splited_param.shape, device=device, dtype=dtype) for _ in range(self._world_size)
+                    torch.zeros(splited_param.shape, device="cuda", dtype=dtype) for _ in range(self._world_size)
                 ]
-                dist.all_gather(all_splited_param, splited_param.to(device).to(dtype), group=self.dp_pg)
+                dist.all_gather(all_splited_param, splited_param.cuda().to(dtype), group=self.dp_pg)
                 working_param.data.copy_(flatten(all_splited_param)[:working_param.numel()].reshape_as(working_param))
 
             self.optim.param_groups[group_id]['params'] = self._master_param_groups_of_current_rank[group_id]
