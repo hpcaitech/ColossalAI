@@ -64,14 +64,10 @@ echo "[Test]: testing sft ..."
 # FIXME: This is a hack to skip tests that are not working
 #  - gpt2-colossalai_zero2-4: RuntimeError: torch.cat(): expected a non-empty list of Tensors, raised in prepare stage
 #  - gpt2-ddp: RuntimeError: one of the variables needed for gradient computation has been modified by an inplace operation
-#  - *-gemini: NotImplementedError: Gemini is not supported .from_pretrained() yet
 #  - llama-*: These tests can be passed locally, skipped for long execution time
 SKIPPED_TESTS=(
     "gpt2-colossalai_zero2-4"
     "gpt2-ddp"
-    "gpt2-colossalai_gemini"
-    "bloom-colossalai_gemini"
-    "opt-colossalai_gemini"
     "llama-ddp"
     "llama-colossalai_gemini"
     "llama-colossalai_zero2"

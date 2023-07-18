@@ -27,8 +27,6 @@ def train(args):
     if args.strategy == 'ddp':
         strategy = DDPStrategy()
     elif args.strategy == 'colossalai_gemini':
-        raise NotImplementedError(
-            'Gemini is not supported .from_pretrained() yet. We will update this after checkpoint io is ready.')
         strategy = GeminiStrategy(placement_policy='cuda')
     elif args.strategy == 'colossalai_zero2':
         strategy = LowLevelZeroStrategy(stage=2, placement_policy='cuda')
