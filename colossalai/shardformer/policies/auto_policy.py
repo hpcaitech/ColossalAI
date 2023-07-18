@@ -116,9 +116,6 @@ _POLICY_LIST = {
     # Sam
     "transformers.models.sam.modeling_sam.SamModel":
         PolicyLocation(file_name="sam", class_name="SamModelPolicy"),
-    # ChatGLM
-    "tests.kit.model_zoo.transformers.chatglm2_6b.modeling_chatglm.ChatGLMModel":
-        PolicyLocation(file_name="chatglm", class_name="ChatGLMModelPolicy"),
 }
 
 
