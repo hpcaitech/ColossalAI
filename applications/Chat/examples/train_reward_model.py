@@ -54,16 +54,21 @@ def train(args):
 
     # configure tokenizer
     if args.model == 'gpt2':
-        tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
+        tokenizer = GPT2Tokenizer.from_pretrained(
+            'gpt2' if args.tokenizer is None else args.tokenizer)
         tokenizer.pad_token = tokenizer.eos_token
     elif args.model == 'bloom':
-        tokenizer = BloomTokenizerFast.from_pretrained('bigscience/bloom-560m')
+        tokenizer = BloomTokenizerFast.from_pretrained(
+            'bigscience/bloom-560m' if args.tokenizer is None else args.tokenizer)
         tokenizer.pad_token = tokenizer.eos_token
     elif args.model == 'opt':
-        tokenizer = AutoTokenizer.from_pretrained("facebook/opt-350m")
+        tokenizer = AutoTokenizer.from_pretrained(
+            "facebook/opt-350m" if args.tokenizer is None else args.tokenizer)
         tokenizer.pad_token = tokenizer.eos_token
     elif args.model == 'llama':
-        tokenizer = LlamaTokenizer.from_pretrained(args.pretrain)
+        tokenizer = LlamaTokenizer.from_pretrained(
+            "hf-internal-testing/llama-tokenizer" if args.tokenizer is None else args.tokenizer)
+        tokenizer.eos_token = '<\s>'
         tokenizer.pad_token = tokenizer.unk_token
     else:
         raise ValueError(f'Unsupported model "{args.model}"')
@@ -177,6 +182,7 @@ if __name__ == '__main__':
                         choices=['ddp', 'colossalai_gemini', 'colossalai_zero2'],
                         default='colossalai_zero2')
     parser.add_argument('--model', choices=['gpt2', 'bloom', 'opt', 'llama'], default='bloom')
+    parser.add_argument('--tokenizer', type=str, default=None)
     parser.add_argument('--pretrain', type=str, default=None)
     parser.add_argument('--model_path', type=str, default=None)
     parser.add_argument('--need_optim_ckpt', type=bool, default=False)

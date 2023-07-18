@@ -11,7 +11,7 @@ from datasets import load_dataset
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
-from transformers import AutoTokenizer, BloomForCausalLM, BloomTokenizerFast, LlamaForCausalLM
+from transformers import AutoTokenizer, BloomForCausalLM, BloomTokenizerFast, LlamaForCausalLM, LlamaTokenizer
 from transformers.models.gpt2.modeling_gpt2 import GPT2LMHeadModel
 from transformers.models.gpt2.tokenization_gpt2 import GPT2Tokenizer
 from transformers.models.opt.modeling_opt import OPTForCausalLM
@@ -56,22 +56,22 @@ def train(args):
 
     # configure tokenizer
     if args.model == 'gpt2':
-        tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
+        tokenizer = GPT2Tokenizer.from_pretrained(
+            'gpt2' if args.tokenizer is None else args.tokenizer)
         tokenizer.pad_token = tokenizer.eos_token
     elif args.model == 'bloom':
-        tokenizer = BloomTokenizerFast.from_pretrained('bigscience/bloom-560m')
+        tokenizer = BloomTokenizerFast.from_pretrained(
+            'bigscience/bloom-560m' if args.tokenizer is None else args.tokenizer)
         tokenizer.pad_token = tokenizer.eos_token
     elif args.model == 'opt':
-        tokenizer = AutoTokenizer.from_pretrained("facebook/opt-350m")
+        tokenizer = AutoTokenizer.from_pretrained(
+            "facebook/opt-350m" if args.tokenizer is None else args.tokenizer)
         tokenizer.pad_token = tokenizer.eos_token
     elif args.model == 'llama':
-        tokenizer = AutoTokenizer.from_pretrained(
-            args.pretrain,
-            padding_side="right",
-            use_fast=False,
-        )
-        tokenizer.eos_token = '</s>'
-        tokenizer.pad_token = tokenizer.eos_token
+        tokenizer = LlamaTokenizer.from_pretrained(
+            "hf-internal-testing/llama-tokenizer" if args.tokenizer is None else args.tokenizer)
+        tokenizer.eos_token = '<\s>'
+        tokenizer.pad_token = tokenizer.unk_token
     else:
         raise ValueError(f'Unsupported model "{args.model}"')
 
@@ -177,6 +177,7 @@ if __name__ == '__main__':
                         choices=['ddp', 'colossalai_gemini', 'colossalai_zero2', 'colossalai_zero2_cpu'],
                         default='colossalai_zero2')
     parser.add_argument('--model', choices=['gpt2', 'bloom', 'opt', 'llama'], default='bloom')
+    parser.add_argument('--tokenizer', type=str, default=None)
     parser.add_argument('--pretrain', type=str, default=None)
     parser.add_argument('--dataset', type=str, default=None)
     parser.add_argument('--max_datasets_size', type=int, default=None)
