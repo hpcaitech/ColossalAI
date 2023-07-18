@@ -1,4 +1,5 @@
-import pytest 
+import pytest
+from packaging import version
 import torch
 from torch import nn 
 import torch.nn.functional as F
@@ -14,9 +15,9 @@ except ImportError:
     HAS_TRITON = False
     print("please install triton from https://github.com/openai/triton")
 
+TRITON_CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse('11.4')
 
-@pytest.mark.skipif(float(torch.version.cuda) <= 11.4,
-                    reason="triton requires cuda version to be higher than 11.4")
+@pytest.mark.skipif(not TRITON_CUDA_SUPPORT, reason="triton requires cuda version to be higher than 11.4")
 def test_qkv_matmul():
     qkv = torch.randn((4, 24, 64*3), device="cuda", dtype=torch.float16)
     scale = 1.2
@@ -105,10 +106,9 @@ def self_attention_compute_using_torch(qkv,
 
     return res.view(batches, -1, d_model), score_output, softmax_output
 
-@pytest.mark.skipif(float(torch.version.cuda) <= 11.4,
-                    reason="triton requires cuda version to be higher than 11.4")
+@pytest.mark.skipif(not TRITON_CUDA_SUPPORT, reason="triton requires cuda version to be higher than 11.4")
 def test_self_atttention_test():
-    
+
     qkv = torch.randn((4, 24, 64*3), device="cuda", dtype=torch.float16)
     data_output_torch, score_output_torch, softmax_output_torch = self_attention_compute_using_torch(
                                                            qkv.clone(), 
