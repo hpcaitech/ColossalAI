@@ -89,8 +89,7 @@ for lora_rank in '0' '4'; do
                 --model $model --strategy $strategy --lora_rank $lora_rank \
                 --dataset $SFT_DATASET --max_datasets_size 32 \
                 --max_epochs 1 --batch_size 1 --accumulation_steps 1 \
-                --save_path $EXAMPLES_DIR/output
-            rm -rf $EXAMPLES_DIR/output
+                --save_path $EXAMPLES_DIR/rlhf_models/sft_ckpt_${model}_${lora_rank}
         done
     done
 done
@@ -129,7 +128,7 @@ for lora_rank in '0' '4'; do
                 --pretrain $pretrain --tokenizer $MODELS_DIR/$model \
                 --model $model --strategy $strategy --lora_rank $lora_rank --loss_fn 'log_exp' \
                 --dataset 'Dahoas/rm-static' --test True \
-                --save_path $EXAMPLES_DIR/rm_ckpt_${model}_${lora_rank}.pt
+                --save_path $EXAMPLES_DIR/rlhf_models/rm_ckpt_${model}_${lora_rank}.pt
         done
     done
 done
@@ -159,11 +158,12 @@ for model in 'gpt2' 'bloom' 'opt' 'llama'; do
                 --strategy $strategy --model $model --tokenizer $MODELS_DIR/$model \
                 --num_episodes 1 --num_collect_steps 2 --num_update_steps 1 \
                 --train_batch_size 2 --lora_rank $lora_rank \
-                --pretrain $pretrain --rm_pretrain $pretrain \
-                --rm_path $EXAMPLES_DIR/rm_ckpt_${model}_${lora_rank}.pt \
-                --save_path $EXAMPLES_DIR/actor_checkpoint_prompts.pt
+                --pretrain $EXAMPLES_DIR/rlhf_models/sft_ckpt_${model}_${lora_rank} \
+                --rm_pretrain $pretrain --rm_path $EXAMPLES_DIR/rlhf_models/rm_ckpt_${model}_${lora_rank}.pt \
+                --save_path $EXAMPLES_DIR/rlhf_models/actor_checkpoint_prompts.pt
         done
-        rm $EXAMPLES_DIR/rm_ckpt_${model}_${lora_rank}.pt
+        rm $EXAMPLES_DIR/rlhf_models/sft_ckpt_${model}_${lora_rank}.pt
+        rm $EXAMPLES_DIR/rlhf_models/rm_ckpt_${model}_${lora_rank}.pt
     done
 done
-rm $EXAMPLES_DIR/actor_checkpoint_prompts.pt
+rm $EXAMPLES_DIR/rlhf_models/actor_checkpoint_prompts.pt
