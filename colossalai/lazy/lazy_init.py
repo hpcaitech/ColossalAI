@@ -62,12 +62,15 @@ class _MyTensor(Tensor):
     """
     _pre_op_fn: Callable[['LazyTensor'], None] = lambda *args: None
 
+    default_device: Optional[torch.device] = None
+
     def __new__(cls, func, *args, concrete_data=None, **kwargs) -> '_MyTensor':
         cls._pre_op_fn()
         if concrete_data is not None:
             # uniform api as LazyTensor
             data = concrete_data
         else:
+            kwargs['device'] = cls.default_device
             data = func(*args, **kwargs)
         return Tensor._make_subclass(cls, data, require_grad=data.requires_grad)
 
@@ -439,6 +442,7 @@ class LazyInitContext:
     def __init__(self,
                  tensor_cls: Union[_MyTensor, LazyTensor] = LazyTensor,
                  default_device: Optional[Union[torch.device, str, int]] = None):
+        assert tensor_cls is LazyTensor or tensor_cls is _MyTensor
         self.overrides = {}
         self.tensor_cls = tensor_cls
         self.old_default_device = LazyTensor.default_device
@@ -448,8 +452,8 @@ class LazyInitContext:
         if LazyInitContext._replaced:
             raise RuntimeError(f'LazyInitContext is not reentrant')
         LazyInitContext._replaced = True
-        self.old_default_device = LazyTensor.default_device
-        LazyTensor.default_device = self.default_device
+        self.old_default_device = self.tensor_cls.default_device
+        self.tensor_cls.default_device = self.default_device
 
         def wrap_factory_method(target):
             # factory functions (eg. torch.empty())
@@ -525,7 +529,7 @@ class LazyInitContext:
             setattr(torch, name, wrapper)
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        LazyTensor.default_device = self.old_default_device
+        self.tensor_cls.default_device = self.old_default_device
         LazyInitContext._replaced = False
         for name, (wrapper, orig) in self.overrides.items():
             setattr(torch, name, orig)
