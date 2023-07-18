@@ -1,3 +1,4 @@
+import copy
 import os
 
 import pytest
@@ -5,6 +6,8 @@ import torch
 
 import colossalai
 from colossalai.logging import disable_existing_loggers
+from colossalai.shardformer import ShardConfig, ShardFormer
+from colossalai.shardformer.policies.chatglm import ChatGLMModelPolicy
 from colossalai.tensor.d_tensor.api import is_customized_distributed_tensor, is_distributed_tensor
 from colossalai.testing import (
     assert_hf_output_close,
@@ -72,7 +75,17 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
 def run_chatglm_test(enable_fused_normalization, enable_tensor_parallelism):
     sub_model_zoo = model_zoo.get_sub_registry('transformers_chatglm')
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
-        org_model, sharded_model = build_model(model_fn, enable_fused_normalization, enable_tensor_parallelism)
+        # create new model
+        org_model = model_fn().cuda()
+
+        # shard model
+        shard_config = ShardConfig(enable_fused_normalization=enable_fused_normalization,
+                                   enable_tensor_parallelism=enable_tensor_parallelism)
+        model_copy = copy.deepcopy(org_model)
+        shard_former = ShardFormer(shard_config=shard_config)
+        if name == "transformers_chatglm":
+            sharded_model = shard_former.optimize(model_copy, ChatGLMModelPolicy()).cuda()
+
         check_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn)
     torch.cuda.empty_cache()
 
