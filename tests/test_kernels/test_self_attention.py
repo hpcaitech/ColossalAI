@@ -1,4 +1,4 @@
-import triton
+import pytest 
 import torch
 from torch import nn 
 import torch.nn.functional as F
@@ -6,12 +6,18 @@ import torch.nn.functional as F
 from colossalai.kernel.triton.ops import self_attention_compute_using_triton
 from colossalai.kernel.triton.qkv_matmul_kernel import qkv_gemm_4d_kernel
 
+try:
+    import triton
+    import triton.language as tl
+    HAS_TRITON = True
+except ImportError:
+    HAS_TRITON = False
+    print("please install triton from https://github.com/openai/triton")
 
+
+@pytest.mark.skipif(float(torch.version.cuda) <= 11.4,
+                    reason="triton requires cuda version to be higher than 11.4")
 def test_qkv_matmul():
-    cuda_version = float(torch.version.cuda)
-    if cuda_version <= 11.4:
-        return 
-
     qkv = torch.randn((4, 24, 64*3), device="cuda", dtype=torch.float16)
     scale = 1.2
     head_size = 32
@@ -70,10 +76,7 @@ def self_attention_compute_using_torch(qkv,
                                        scale,
                                        head_size
                                        ):
-    cuda_version = float(torch.version.cuda)
-    if cuda_version <= 11.4:
-        return 
-        
+
     batches = qkv.shape[0]
     d_model = qkv.shape[-1] // 3
     num_of_heads = d_model // head_size
@@ -102,8 +105,10 @@ def self_attention_compute_using_torch(qkv,
 
     return res.view(batches, -1, d_model), score_output, softmax_output
 
-
+@pytest.mark.skipif(float(torch.version.cuda) <= 11.4,
+                    reason="triton requires cuda version to be higher than 11.4")
 def test_self_atttention_test():
+    
     qkv = torch.randn((4, 24, 64*3), device="cuda", dtype=torch.float16)
     data_output_torch, score_output_torch, softmax_output_torch = self_attention_compute_using_torch(
                                                            qkv.clone(), 
