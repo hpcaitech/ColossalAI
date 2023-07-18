@@ -15,7 +15,7 @@ set_n_least_used_CUDA_VISIBLE_DEVICES() {
     echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 }
 
-set_n_least_used_CUDA_VISIBLE_DEVICES 4
+set_n_least_used_CUDA_VISIBLE_DEVICES 2
 
 set -xue
 
@@ -84,7 +84,7 @@ for lora_rank in '0' '4'; do
                 continue
             fi
             pretrain=$(get_pretrain $model)
-            torchrun --standalone --nproc_per_node=4 $EXAMPLES_DIR/train_sft.py \
+            torchrun --standalone --nproc_per_node=2 $EXAMPLES_DIR/train_sft.py \
                 --pretrain $pretrain --tokenizer $MODELS_DIR/$model \
                 --model $model --strategy $strategy --lora_rank $lora_rank \
                 --dataset $SFT_DATASET --max_datasets_size 32 \
@@ -120,12 +120,12 @@ for lora_rank in '0' '4'; do
                 continue
             fi
             pretrain=$(get_pretrain $model)
-            torchrun --standalone --nproc_per_node=4 $EXAMPLES_DIR/train_reward_model.py \
+            torchrun --standalone --nproc_per_node=2 $EXAMPLES_DIR/train_reward_model.py \
                 --pretrain $pretrain --tokenizer $MODELS_DIR/$model \
                 --model $model --strategy $strategy --lora_rank $lora_rank --loss_fn 'log_sig' \
                 --dataset 'Anthropic/hh-rlhf' --subset 'harmless-base' --test True \
                 --save_path $EXAMPLES_DIR/rm_ckpt_${model}_${lora_rank}.pt
-            torchrun --standalone --nproc_per_node=4 $EXAMPLES_DIR/train_reward_model.py \
+            torchrun --standalone --nproc_per_node=2 $EXAMPLES_DIR/train_reward_model.py \
                 --pretrain $pretrain --tokenizer $MODELS_DIR/$model \
                 --model $model --strategy $strategy --lora_rank $lora_rank --loss_fn 'log_exp' \
                 --dataset 'Dahoas/rm-static' --test True \
