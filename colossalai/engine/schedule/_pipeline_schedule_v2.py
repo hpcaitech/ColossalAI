@@ -84,7 +84,7 @@ class PipelineScheduleV2(PipelineSchedule):
             'The argument \'return_loss\' has to be True when \'forward_only\' is False, but got False.'
         self.load_batch(data_iter)
 
-        # num_warmup_microbatches is the step when not all the processers are working
+        # num_warmup_microbatches is the step when not all the processes are working
         num_warmup_microbatches = \
             (gpc.get_world_size(ParallelMode.PIPELINE)
              - gpc.get_local_rank(ParallelMode.PIPELINE) - 1)

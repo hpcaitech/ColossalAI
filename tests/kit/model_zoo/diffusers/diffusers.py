@@ -18,6 +18,7 @@ data_vae_fn = lambda: dict(sample=torch.randn(2, 3, 32, 32))
 data_unet_fn = lambda: dict(sample=torch.randn(2, 3, 32, 32), timestep=3)
 
 identity_output = lambda x: x
+clip_vision_model_output = lambda x: dict(pooler_output=x[1])
 
 
 def data_clip_model():
@@ -65,7 +66,7 @@ model_zoo.register(name='diffusers_clip_text_model',
 model_zoo.register(name='diffusers_clip_vision_model',
                    model_fn=partial(transformers.CLIPVisionModel, config=transformers.CLIPVisionConfig()),
                    data_gen_fn=data_clip_vision,
-                   output_transform_fn=identity_output)
+                   output_transform_fn=clip_vision_model_output)
 
 model_zoo.register(name='diffusers_unet2d_model',
                    model_fn=diffusers.UNet2DModel,

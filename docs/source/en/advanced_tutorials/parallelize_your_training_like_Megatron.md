@@ -69,7 +69,7 @@ After the forward operation of the embedding module, each word in all sequences 
 <figcaption>The embedding module</figcaption>
 </figure>
 
-Each transformer layer contains two blocks. The self-attention operation is called in the first block and a two-layer percepton is located in the second block.
+Each transformer layer contains two blocks. The self-attention operation is called in the first block and a two-layer perception is located in the second block.
 
 <figure style={{textAlign: "center"}}>
 <img src="https://s2.loli.net/2022/08/17/LAVzDlpRcj4dYeb.png"/>
@@ -141,16 +141,16 @@ for mn, module in model.named_modules():
 
         if 'mlp.c_fc' in mn:
             if 'weight' in pn or 'bias' in pn:
-                split_param_col_tp1d(param, pg)  # colmn slice
+                split_param_col_tp1d(param, pg)  # column slice
                 # keep the shape of the output from c_fc
                 param.compute_spec.set_output_replicate(False)
         elif 'mlp.c_proj' in mn:
             if 'weight' in pn:
                 split_param_row_tp1d(param, pg)  # row slice
         elif 'wte' in mn or 'wpe' in mn:
-            split_param_col_tp1d(param, pg)  # colmn slice
+            split_param_col_tp1d(param, pg)  # column slice
         elif 'c_attn' in mn or 'c_proj' in mn:
-            split_param_col_tp1d(param, pg)  # colmn slice
+            split_param_col_tp1d(param, pg)  # column slice
 ```
 
 The modified model is illustrated below.
@@ -175,13 +175,13 @@ In this way, users can train their models as usual.
 In our latest example, a Gemini + ZeRO DDP model is also defined to reduce overhead and improve efficiency.For the details of this part, please refer to [ZeRO](../features/zero_with_chunk.md). You can combine these two parts to understand our entire training process:
 
 ```python
-def gemini_zero_dpp(model: torch.nn.Module, pg: ProcessGroup, placememt_policy: str = "auto"):
+def gemini_zero_dpp(model: torch.nn.Module, pg: ProcessGroup, placement_policy: str = "auto"):
     from colossalai.nn.parallel import GeminiDDP
     model = GeminiDDP(model,
                         device=get_current_device(),
-                        placement_policy=placememt_policy,
+                        placement_policy=placement_policy,
                         pin_memory=True,
-                        search_range_mb=32)
+                        search_range_m=32)
     return model
 ```
 
@@ -190,3 +190,5 @@ def gemini_zero_dpp(model: torch.nn.Module, pg: ProcessGroup, placememt_policy: 
 The above optimization we made allows us to pretrain the GPT-2 model on a single GPU. We only need to set the parameter `GPUNUM`=1 in `run.sh`, and then we can complete the model training on a single GPU when running the file.
 
 The GPT-2 example is accessible at [Train GPT with Colossal-AI](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/gpt).
+
+<!-- doc-test-command: torchrun --standalone --nproc_per_node=1 parallelize_your_training_like_Megatron.py  -->

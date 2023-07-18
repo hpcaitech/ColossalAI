@@ -1,21 +1,16 @@
-import random
-from typing import Callable, List, Tuple, Union
+from typing import Callable, Iterator, List, Optional, Tuple, Union
 
-import numpy as np
-import torch
-import torch.distributed as dist
 import torch.nn as nn
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch.utils.data import DataLoader
-from torch.utils.data.distributed import DistributedSampler
 
 from colossalai.checkpoint_io import CheckpointIO, GeneralCheckpointIO
 from colossalai.cluster import DistCoordinator
 from colossalai.interface import ModelWrapper, OptimizerWrapper
 
-from .plugin_base import Plugin
+from .dp_plugin_base import DPPluginBase
 
 __all__ = ['TorchDDPPlugin']
 
@@ -33,20 +28,19 @@ class TorchDDPCheckpointIO(GeneralCheckpointIO):
         # the model should be unwrapped in self.load_model via ModelWrapper.unwrap
         return super().load_unsharded_model(model, checkpoint, strict=strict)
 
-    def save_unsharded_model(self, model: nn.Module, checkpoint: str):
+    def save_unsharded_model(self, model: nn.Module, checkpoint: str, gather_dtensor: bool, use_safetensors: bool):
         """
         Save model to checkpoint but only on master process.
         """
-        # the model should be unwrapped in self.load_model via ModelWrapper.unwrap
         if self.coordinator.is_master():
-            super().save_unsharded_model(model, checkpoint)
+            super().save_unsharded_model(model, checkpoint, gather_dtensor, use_safetensors)
 
-    def save_unsharded_optimizer(self, optimizer: Optimizer, checkpoint: str):
+    def save_unsharded_optimizer(self, optimizer: Optimizer, checkpoint: str, gather_dtensor: bool):
         """
         Save optimizer to checkpoint but only on master process.
         """
         if self.coordinator.is_master():
-            super().save_unsharded_optimizer(optimizer, checkpoint)
+            super().save_unsharded_optimizer(optimizer, checkpoint, gather_dtensor)
 
     def save_lr_scheduler(self, lr_scheduler: LRScheduler, checkpoint: str):
         """
@@ -54,6 +48,31 @@ class TorchDDPCheckpointIO(GeneralCheckpointIO):
         """
         if self.coordinator.is_master():
             super().save_lr_scheduler(lr_scheduler, checkpoint)
+
+    def save_sharded_model(self,
+                           model: nn.Module,
+                           checkpoint_path: str,
+                           gather_dtensor: bool = True,
+                           prefix: Optional[str] = None,
+                           max_shard_size: int = 1024,
+                           use_safetensors: bool = False):
+        """
+        Save model to checkpoint but only on master process.
+        """
+        if self.coordinator.is_master():
+            super().save_sharded_model(model, checkpoint_path, gather_dtensor, prefix, max_shard_size, use_safetensors)
+
+    def save_sharded_optimizer(self,
+                               optimizer: Optimizer,
+                               checkpoint: str,
+                               gather_dtensor: bool = True,
+                               prefix: Optional[str] = None,
+                               size_per_shard: int = 1024):
+        """
+        Save optimizer to checkpoint but only on master process.
+        """
+        if self.coordinator.is_master():
+            super().save_sharded_optimizer(optimizer, checkpoint, gather_dtensor, prefix, size_per_shard)
 
 
 class TorchDDPModel(ModelWrapper):
@@ -66,7 +85,7 @@ class TorchDDPModel(ModelWrapper):
         return self.module.module
 
 
-class TorchDDPPlugin(Plugin):
+class TorchDDPPlugin(DPPluginBase):
     """
     Plugin for PyTorch DDP.
 
@@ -77,7 +96,7 @@ class TorchDDPPlugin(Plugin):
         >>> model, train_dataset, optimizer, criterion = ...
         >>> plugin = TorchDDPPlugin()
 
-        >>> train_dataloader = plugin.prepare_train_dataloader(train_dataset, batch_size=8)
+        >>> train_dataloader = plugin.prepare_dataloader(train_dataset, batch_size=8)
         >>> booster = Booster(plugin=plugin)
         >>> model, optimizer, train_dataloader, criterion = booster.boost(model, optimizer, train_dataloader, criterion)
 
@@ -97,11 +116,7 @@ class TorchDDPPlugin(Plugin):
                  check_reduction: bool = False,
                  gradient_as_bucket_view: bool = False,
                  static_graph: bool = False) -> None:
-
-        assert dist.is_initialized(
-        ), 'torch.distributed is not initialized, please use colossalai.launch to create the distributed environment'
-        self.rank = dist.get_rank()
-        self.world_size = dist.get_world_size()
+        super().__init__()
         self.ddp_kwargs = dict(broadcast_buffers=broadcast_buffers,
                                bucket_cap_mb=bucket_cap_mb,
                                find_unused_parameters=find_unused_parameters,
@@ -124,65 +139,14 @@ class TorchDDPPlugin(Plugin):
     def supported_devices(self) -> List[str]:
         return ['cuda']
 
-    def prepare_train_dataloader(self,
-                                 dataset,
-                                 batch_size,
-                                 shuffle=False,
-                                 seed=1024,
-                                 drop_last=False,
-                                 pin_memory=False,
-                                 num_workers=0,
-                                 **kwargs):
-        r"""
-        Prepare a dataloader for distributed training. The dataloader will be wrapped by
-        `torch.utils.data.DataLoader` and `torch.utils.data.DistributedSampler`.
-
-        Note:
-            1. Evaluation datasets should not be passed to this function.
-
-        Args:
-            dataset (`torch.utils.data.Dataset`): The dataset to be loaded.
-            shuffle (bool, optional): Whether to shuffle the dataset. Defaults to False.
-            seed (int, optional): Random worker seed for sampling, defaults to 1024.
-            add_sampler: Whether to add ``DistributedDataParallelSampler`` to the dataset. Defaults to True.
-            drop_last (bool, optional): Set to True to drop the last incomplete batch, if the dataset size
-                is not divisible by the batch size. If False and the size of dataset is not divisible by
-                the batch size, then the last batch will be smaller, defaults to False.
-            pin_memory (bool, optional): Whether to pin memory address in CPU memory. Defaults to False.
-            num_workers (int, optional): Number of worker threads for this dataloader. Defaults to 0.
-            kwargs (dict): optional parameters for ``torch.utils.data.DataLoader``, more details could be found in
-                    `DataLoader <https://pytorch.org/docs/stable/_modules/torch/utils/data/dataloader.html#DataLoader>`_.
-
-        Returns:
-            :class:`torch.utils.data.DataLoader`: A DataLoader used for training or testing.
-        """
-        _kwargs = kwargs.copy()
-        sampler = DistributedSampler(dataset, num_replicas=self.world_size, rank=self.rank, shuffle=shuffle)
-
-        # Deterministic dataloader
-        def seed_worker(worker_id):
-            worker_seed = seed
-            np.random.seed(worker_seed)
-            torch.manual_seed(worker_seed)
-            random.seed(worker_seed)
-
-        return DataLoader(dataset,
-                          batch_size=batch_size,
-                          sampler=sampler,
-                          worker_init_fn=seed_worker,
-                          drop_last=drop_last,
-                          pin_memory=pin_memory,
-                          num_workers=num_workers,
-                          **_kwargs)
-
     def configure(
         self,
         model: nn.Module,
-        optimizer: Optimizer,
-        criterion: Callable = None,
-        dataloader: DataLoader = None,
-        lr_scheduler: LRScheduler = None,
-    ) -> Tuple[Union[nn.Module, OptimizerWrapper, LRScheduler, DataLoader]]:
+        optimizer: Optional[Optimizer] = None,
+        criterion: Optional[Callable] = None,
+        dataloader: Optional[DataLoader] = None,
+        lr_scheduler: Optional[LRScheduler] = None,
+    ) -> Tuple[nn.Module, OptimizerWrapper, Callable, DataLoader, LRScheduler]:
         # cast model to cuda
         model = model.cuda()
 
@@ -192,7 +156,8 @@ class TorchDDPPlugin(Plugin):
         # wrap the model with PyTorch DDP
         model = TorchDDPModel(model, **self.ddp_kwargs)
 
-        if not isinstance(optimizer, OptimizerWrapper):
+        if optimizer is not None and \
+                not isinstance(optimizer, OptimizerWrapper):
             optimizer = OptimizerWrapper(optimizer)
 
         return model, optimizer, criterion, dataloader, lr_scheduler
@@ -202,3 +167,7 @@ class TorchDDPPlugin(Plugin):
 
     def get_checkpoint_io(self) -> CheckpointIO:
         return TorchDDPCheckpointIO()
+
+    def no_sync(self, model: nn.Module) -> Iterator[None]:
+        assert isinstance(model, TorchDDPModel), 'Model is not boosted by TorchDDPPlugin.'
+        return model.module.no_sync()

@@ -9,9 +9,10 @@ from copy import deepcopy
 from einops import rearrange
 from glob import glob
 from natsort import natsorted
-
+from ldm.models.diffusion.ddpm import LatentDiffusion
+from ldm.lr_scheduler import LambdaLinearScheduler
 from ldm.modules.diffusionmodules.openaimodel import EncoderUNetModel, UNetModel
-from ldm.util import log_txt_as_img, default, ismap, instantiate_from_config
+from ldm.util import log_txt_as_img, default, ismap
 
 __models__ = {
     'class_label': EncoderUNetModel,
@@ -86,7 +87,7 @@ class NoisyLatentImageClassifier(pl.LightningModule):
             print(f"Unexpected Keys: {unexpected}")
 
     def load_diffusion(self):
-        model = instantiate_from_config(self.diffusion_config)
+        model = LatentDiffusion(**self.diffusion_config.get('params',dict()))
         self.diffusion_model = model.eval()
         self.diffusion_model.train = disabled_train
         for param in self.diffusion_model.parameters():
@@ -221,7 +222,7 @@ class NoisyLatentImageClassifier(pl.LightningModule):
         optimizer = AdamW(self.model.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
 
         if self.use_scheduler:
-            scheduler = instantiate_from_config(self.scheduler_config)
+            scheduler = LambdaLinearScheduler(**self.scheduler_config.get('params',dict()))
 
             print("Setting up LambdaLR scheduler...")
             scheduler = [

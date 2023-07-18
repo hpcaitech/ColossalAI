@@ -22,7 +22,7 @@ class TrainingSimulator(ABC):
 
     Args:
         region_list (List[Region]): represents the linearized DNN computing graph.
-        comp_power (float): the NVIDIA GPU FP16 compuing power.
+        comp_power (float): the NVIDIA GPU FP16 computing power.
         link_to_bw (Dict[str, Dict[float, float]]): communication links and the corresponding bandwidth.
     """
 

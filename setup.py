@@ -46,7 +46,7 @@ def environment_check_for_cuda_extension_build():
 
     if not CUDA_HOME:
         raise RuntimeError(
-            "[extension] CUDA_HOME is not found while CUDA_EXT=1. You need to export CUDA_HOME environment vairable or install CUDA Toolkit first in order to build CUDA extensions"
+            "[extension] CUDA_HOME is not found while CUDA_EXT=1. You need to export CUDA_HOME environment variable or install CUDA Toolkit first in order to build CUDA extensions"
         )
 
     check_system_pytorch_cuda_match(CUDA_HOME)

@@ -137,9 +137,9 @@ class StrategiesConstructor:
                                                              shard_option=self.solver_options.shard_option,
                                                              solver_perference=self.solver_options.solver_perference)
                 handler.register_strategy()
-                # attach metainfo_vector to node
-                if hasattr(handler, 'metainfo_vector'):
-                    setattr(node, 'metainfo_vector', handler.metainfo_vector)
+                # attach strategies_info to node
+                if hasattr(handler, 'strategies_info'):
+                    setattr(node, 'strategies_info', handler.strategies_info)
 
             # call_function node
             elif node.op == 'call_function':
@@ -150,9 +150,9 @@ class StrategiesConstructor:
                                                         shard_option=self.solver_options.shard_option,
                                                         solver_perference=self.solver_options.solver_perference)
                 handler.register_strategy()
-                # attach metainfo_vector to node
-                if hasattr(handler, 'metainfo_vector'):
-                    setattr(node, 'metainfo_vector', handler.metainfo_vector)
+                # attach strategies_info to node
+                if hasattr(handler, 'strategies_info'):
+                    setattr(node, 'strategies_info', handler.strategies_info)
 
             # call_method node
             elif node.op == 'call_method':
@@ -163,9 +163,9 @@ class StrategiesConstructor:
                                                         shard_option=self.solver_options.shard_option,
                                                         solver_perference=self.solver_options.solver_perference)
                 handler.register_strategy()
-                # attach metainfo_vector to node
-                if hasattr(handler, 'metainfo_vector'):
-                    setattr(node, 'metainfo_vector', handler.metainfo_vector)
+                # attach strategies_info to node
+                if hasattr(handler, 'strategies_info'):
+                    setattr(node, 'strategies_info', handler.strategies_info)
 
             # output node
             elif node.op == 'output':

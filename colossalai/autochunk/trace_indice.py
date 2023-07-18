@@ -8,7 +8,7 @@ from .utils import NodeMgr, find_first_tensor_arg, flat_list, get_module_node_na
 
 class TraceIndice(object):
     """
-    Trace all indice infomation for every node.
+    Trace all indice information for every node.
 
     Indice is a logical concept. Equal dims can been treated as one indice.
     eg. dim(x1) = [a, b, c]
@@ -18,7 +18,7 @@ class TraceIndice(object):
         dim(x1)=dim(x2)=dim(x3)=[a, b, c]
     This class will record every node's dims' indice, compute and source.
 
-    Attibutes:
+    Attributes:
         node_list (List)
         indice_trace_list (List): [{"indice": [...], "compute": [...], "source": [...]}, {...}]
         indice_view_list (Dict): not used for now
@@ -153,7 +153,7 @@ class TraceIndice(object):
 
     def _inherit_more_indice_from_node_with_exclude(self, node_from: Node, node_to: Node, exclude: List = None) -> None:
         """
-        inheirt indice from node without init
+        inherit indice from node without init
         """
         if exclude == None:
             exclude = []
@@ -301,7 +301,7 @@ class TraceIndice(object):
     def _assign_linear_indice(self, node: Node, node_idx: int) -> None:
         """
         Assign indice for linear op.
-        1. copy trace from input node and change last indice accroding to weight
+        1. copy trace from input node and change last indice according to weight
         2. mark equal for input node last indice, weight first dim and bias dim.
         3. inherit input's computation, mark computation for last dim.
 
@@ -360,7 +360,7 @@ class TraceIndice(object):
     def _assign_matmul_indice(self, node: Node, node_idx: int) -> None:
         """
         Assign indice for matmul op.
-        1. copy trace from matmul_left and change last indice accroding to matmul_right. (assert they have same length)
+        1. copy trace from matmul_left and change last indice according to matmul_right. (assert they have same length)
         2. mark equal for input matmul_left -1 indice and matmul_right -2 dim.
         3. inherit matmul_left and matmul_right computation, mark computation for last dim.
 
@@ -397,7 +397,7 @@ class TraceIndice(object):
         input_node = node.args[0]
         assert len(get_node_shape(input_node)) == 4
 
-        # assgin index
+        # assign index
         self._assign_indice_as_input(node, node_idx, input_node)
         self._del_dim(node_idx, 1)
         self._add_dim(node_idx, 1)
@@ -415,7 +415,7 @@ class TraceIndice(object):
         assert node.kwargs['size'] is None
         assert len(get_node_shape(node)) == 4
 
-        # assgin index
+        # assign index
         self._assign_indice_as_input(node, node_idx)
         self._mark_computation(node, node_idx, [-1, -2])
 
@@ -461,7 +461,7 @@ class TraceIndice(object):
                 nodes_in.append(node_in)
                 self._inherit_more_indice_from_node_with_exclude(node_in, node)
 
-    def _assgin_no_change_indice(self, node, idx):
+    def _assign_no_change_indice(self, node, idx):
         self._assign_indice_as_input(node, idx)
         for node_in in node.args:
             if type(node_in) == type(node):
@@ -720,11 +720,11 @@ class TraceIndice(object):
         Assign indice for view and reshape op.
         1. get origin shape and target shape by meta info.
         2. compute the real value of -1 in target shape.
-        3. determine changed dim, and assgin indice for generated dim.
+        3. determine changed dim, and assign indice for generated dim.
         4. log changed dim and generated dim for restore
         5. inherit computation.
         6. look into view list to see whether the view is associated with other,
-           if so assgin equal dim according to previous view.
+           if so assign equal dim according to previous view.
 
         Args:
             node (node)
@@ -792,7 +792,7 @@ class TraceIndice(object):
             self._add_dim(node_idx, i)
         dim_from.reverse()
 
-        # inheirt indice from current node
+        # inherit indice from current node
         if len(dim_from) != 0 and len(dim_to) != 0:
             if dim_diff == 1:
                 if origin_shape[dim_from[0]] == 1:
@@ -852,7 +852,7 @@ class TraceIndice(object):
                 elif "split" == node_name:
                     self._assign_split_indice(node, idx)
                 elif any(i == node_name for i in ["to", "contiguous", "clone", "type", "float"]):
-                    self._assgin_no_change_indice(node, idx)
+                    self._assign_no_change_indice(node, idx)
                 elif "new_ones" == node_name:
                     self._assign_all_indice(node, idx)
                 elif "flatten" == node_name:
@@ -914,7 +914,7 @@ class TraceIndice(object):
                 elif "conv2d" == node_name:
                     self._assign_conv2d_indice(node, idx)
                 elif "identity" == node_name:
-                    self._assgin_no_change_indice(node, idx)
+                    self._assign_no_change_indice(node, idx)
                 elif any(n == node_name for n in ["sigmoid", "dropout", "relu", "silu", "gelu"]):
                     self._assign_elementwise_indice(node, idx)
                 else:

@@ -1,7 +1,9 @@
 import torch
+from torch.fx import symbolic_trace
+
 from colossalai.fx._compatibility import is_compatible_with_meta
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp, TensorMetadata
-from torch.fx import symbolic_trace
+from colossalai.testing import clear_cache_before_run
 
 if is_compatible_with_meta():
     from colossalai.fx.profiler import MetaTensor
@@ -18,6 +20,7 @@ def meta_check(meta_info_spec: TensorMetadata, orig_tensor: torch.Tensor):
     assert meta_info_spec.numel == orig_tensor.numel()
 
 
+@clear_cache_before_run()
 def test_meta_info_prop():
     model = torch.nn.Linear(DIM_IN, DIM_OUT)
     input_sample = torch.rand(BATCH_SIZE, DIM_IN, device='meta')

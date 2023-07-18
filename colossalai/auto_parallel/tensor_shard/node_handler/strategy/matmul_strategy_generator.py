@@ -776,10 +776,6 @@ class BatchedMatMulStrategyGenerator(MatMulStrategyGenerator):
             bias_op_data = self.op_data['bias']
             assert bias_op_data.data.dim() < 3 and len(bias_op_data.logical_shape) == 2
 
-        if self.op_data['output'].data.dim() == 2:
-            # addbmm will shrink the first batch dim
-            self.squeeze_batch_dim = True
-
     def update_compute_cost(self, strategy: ShardingStrategy) -> ShardingStrategy:
         fwd_compute_cost = self.op_data['input'].data.shape[-1] * reduce(operator.mul,
                                                                          self.op_data['output'].data.shape)
@@ -988,7 +984,7 @@ class BatchedMatMulStrategyGenerator(MatMulStrategyGenerator):
     def collate_strategies(self) -> List[ShardingStrategy]:
         strategy_list = []
         device_mesh_is_1d = True
-        if len(self.device_mesh.mesh_shape) == 2 and 1 not in self.device_mesh.mesh_shape:
+        if len(self.device_mesh.shape) == 2 and 1 not in self.device_mesh.shape:
             device_mesh_is_1d = False
 
         if device_mesh_is_1d:
@@ -996,10 +992,10 @@ class BatchedMatMulStrategyGenerator(MatMulStrategyGenerator):
             # Sb = Sb x Sb
             # can be None as it is only for 1D device mesh
             # only for 1D device mesh
-            if len(self.device_mesh.mesh_shape) == 1:
+            if len(self.device_mesh.shape) == 1:
                 mesh_dim = 0
             else:
-                mesh_dim = self.device_mesh.mesh_shape.index(1)
+                mesh_dim = self.device_mesh.shape.index(1)
             strategy_list.append(self.split_one_batch_dim(mesh_dim))
         else:
             # for 2D device mesh

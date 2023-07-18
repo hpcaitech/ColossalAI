@@ -1,23 +1,20 @@
-from functools import partial
-
 import pytest
 import torch
-import torch.multiprocessing as mp
 import torch.nn as nn
 
+from colossalai._analyzer.fx.graph_module import ColoGraphModule
+from colossalai._analyzer.fx.passes.shape_prop import shape_prop_pass
+from colossalai._analyzer.fx.tracer.tracer import ColoTracer
 from colossalai.auto_parallel.tensor_shard.node_handler import BinaryElementwiseHandler
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationData, OperationDataType, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
-from colossalai.fx import ColoGraphModule, ColoTracer
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
-from colossalai.testing import assert_close, parameterize, rerun_if_address_is_in_use
-from colossalai.testing.pytest_wrapper import run_on_environment_flag
-from colossalai.utils import free_port
+from colossalai.testing import parameterize, rerun_if_address_is_in_use, run_on_environment_flag, spawn
 from tests.test_auto_parallel.test_tensor_shard.test_node_handler.utils import numerical_test_for_node_strategy
 
 
-def check_binary_elementwise_handler_with_tensor(rank, op, other_dim, world_size, port):
+def check_binary_elementwise_handler_with_tensor(rank, world_size, port, op, other_dim):
     disable_existing_loggers()
     launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
 
@@ -52,10 +49,11 @@ def check_binary_elementwise_handler_with_tensor(rank, op, other_dim, world_size
                                      input_args=input_args,
                                      meta_arg_names=meta_arg_names)
 
-    tracer = ColoTracer()
+    tracer = ColoTracer(bias_addition_split=True)
     meta_args = {'x1': torch.rand(4, 4).to('meta'), 'x2': torch.rand([4] * other_dim).to('meta')}
     graph = tracer.trace(model, meta_args=meta_args)
     gm = ColoGraphModule(model, graph)
+    shape_prop_pass(gm, *meta_args.values())
 
     op_node = list(graph.nodes)[2]
     strategies_vector = StrategiesVector(op_node)
@@ -146,7 +144,7 @@ class BEOpModelWithIntConst(nn.Module):
         return out
 
 
-def check_binary_elementwise_handler_with_int(rank, op, other_dim, model_cls, world_size, port):
+def check_binary_elementwise_handler_with_int(rank, world_size, port, op, other_dim, model_cls):
     disable_existing_loggers()
     launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
 
@@ -172,12 +170,11 @@ def check_binary_elementwise_handler_with_int(rank, op, other_dim, model_cls, wo
                                      strategy_number=strategy_number,
                                      input_args=input_args,
                                      meta_arg_names=meta_arg_names)
-    tracer = ColoTracer()
+    tracer = ColoTracer(bias_addition_split=True)
     meta_args = {'x1': torch.rand(4, 4).to('meta')}
     graph = tracer.trace(model, meta_args=meta_args)
-    print(graph)
-    # assert False
     gm = ColoGraphModule(model, graph)
+    shape_prop_pass(gm, *meta_args.values())
 
     if model_cls == BEOpModelWithNodeConst:
         op_node = list(graph.nodes)[2]
@@ -234,13 +231,12 @@ def check_binary_elementwise_handler_with_int(rank, op, other_dim, model_cls, wo
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_binary_elementwise_handler_with_tensor(op, other_dim):
-    world_size = 4
-    run_func_tensor = partial(check_binary_elementwise_handler_with_tensor,
-                              op=op,
-                              other_dim=other_dim,
-                              world_size=world_size,
-                              port=free_port())
-    mp.spawn(run_func_tensor, nprocs=world_size)
+    spawn(
+        check_binary_elementwise_handler_with_tensor,
+        4,
+        op=op,
+        other_dim=other_dim,
+    )
 
 
 @run_on_environment_flag(name='AUTO_PARALLEL')
@@ -250,14 +246,13 @@ def test_binary_elementwise_handler_with_tensor(op, other_dim):
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_binary_elementwise_handler_with_int(op, model_cls, other_dim):
-    world_size = 4
-    run_func_int = partial(check_binary_elementwise_handler_with_int,
-                           op=op,
-                           model_cls=model_cls,
-                           other_dim=other_dim,
-                           world_size=world_size,
-                           port=free_port())
-    mp.spawn(run_func_int, nprocs=world_size)
+    spawn(
+        check_binary_elementwise_handler_with_int,
+        4,
+        op=op,
+        model_cls=model_cls,
+        other_dim=other_dim,
+    )
 
 
 if __name__ == '__main__':

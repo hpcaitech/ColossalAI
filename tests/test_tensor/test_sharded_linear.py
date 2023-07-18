@@ -1,8 +1,5 @@
-from functools import partial
-
 import pytest
 import torch
-import torch.multiprocessing as mp
 import torch.nn.functional as F
 
 import colossalai
@@ -10,8 +7,7 @@ from colossalai.device.device_mesh import DeviceMesh
 from colossalai.nn._ops._utils import gather_forward_split_backward
 from colossalai.tensor import ColoParameter, ColoTensor, ProcessGroup
 from colossalai.tensor.sharding_spec import ShardingSpec
-from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.utils import free_port
+from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 
 def run_dist(rank, world_size, port):
@@ -30,7 +26,7 @@ def run_dist(rank, world_size, port):
     # the mesh is in the following topo
     # [[0, 1],
     #  [2, 3]]
-    physical_mesh_id = torch.arange(0, 4).reshape(2, 2)
+    physical_mesh_id = torch.arange(0, 4)
     mesh_shape = (2, 2)
     device_mesh = DeviceMesh(physical_mesh_id, mesh_shape)
     row_id = rank // 2
@@ -229,8 +225,7 @@ def run_dist(rank, world_size, port):
 @pytest.mark.parametrize('world_size', [4])
 @rerun_if_address_is_in_use()
 def test_sharded_mlp(world_size):
-    run_func = partial(run_dist, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_dist, world_size)
 
 
 if __name__ == '__main__':

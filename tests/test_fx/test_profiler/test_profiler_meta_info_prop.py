@@ -9,7 +9,7 @@ from torch.fx import symbolic_trace
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
 from colossalai.fx.profiler import calculate_fwd_out, calculate_fwd_tmp, is_compatible_with_meta, parameter_size
 from colossalai.fx.tracer.tracer import ColoTracer
-from colossalai.testing.pytest_wrapper import run_on_environment_flag
+from colossalai.testing import clear_cache_before_run, run_on_environment_flag
 
 if is_compatible_with_meta():
     from colossalai.fx.profiler import MetaTensor
@@ -126,6 +126,7 @@ def run_gpt_forward(gm: torch.fx.GraphModule):
 
 
 @run_on_environment_flag(name='FX_PROFILER')
+@clear_cache_before_run()
 def test_meta_info_prop():
     for m in [
             tm.alexnet, tm.resnet18, tm.resnet34, tm.resnet50, tm.resnet101, tm.resnet152, tm.densenet121,
@@ -155,6 +156,7 @@ def test_meta_info_prop():
 
 
 @run_on_environment_flag(name='FX_PROFILER')
+@clear_cache_before_run()
 def test_gpt_meta_info_prop():
     for m in [gpt2_medium]:
         model = m().cuda()

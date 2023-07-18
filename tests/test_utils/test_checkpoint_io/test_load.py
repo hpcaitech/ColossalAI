@@ -3,19 +3,18 @@ from functools import partial
 from tempfile import TemporaryDirectory
 from typing import Dict
 
-import colossalai
 import pytest
 import torch
 import torch.distributed as dist
-import torch.multiprocessing as mp
 import torch.nn as nn
-from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.utils import free_port
-from colossalai.utils.checkpoint_io.io import load, save
-from colossalai.utils.checkpoint_io.meta import (ParamDistMeta, ParamRedistMeta, RankRedistMeta, RedistMeta)
 from torch import Tensor
 from torch.nn import Module
 from torch.optim import Adam, Optimizer
+
+import colossalai
+from colossalai.testing import rerun_if_address_is_in_use, spawn
+from colossalai.utils.checkpoint_io.io import load, save
+from colossalai.utils.checkpoint_io.meta import ParamDistMeta, ParamRedistMeta, RankRedistMeta, RedistMeta
 
 
 def check_model_state_dict(a: Dict[str, Tensor], b: Dict[str, Tensor]) -> None:
@@ -24,7 +23,7 @@ def check_model_state_dict(a: Dict[str, Tensor], b: Dict[str, Tensor]) -> None:
         assert torch.equal(v, b[k])
 
 
-def check_optim_state_dict(a: dict, b: dict, ignore_param_gruops: bool = False) -> None:
+def check_optim_state_dict(a: dict, b: dict, ignore_param_groups: bool = False) -> None:
     assert set(a['state'].keys()) == set(b['state'].keys())
     for k, state in a['state'].items():
         b_state = b['state'][k]
@@ -33,7 +32,7 @@ def check_optim_state_dict(a: dict, b: dict, ignore_param_gruops: bool = False) 
                 assert torch.equal(v1, v2)
             else:
                 assert v1 == v2
-    if not ignore_param_gruops:
+    if not ignore_param_groups:
         assert a['param_groups'] == b['param_groups']
 
 
@@ -120,34 +119,33 @@ def test_save_global_load_global(max_shard_size_gb: float):
         check_optim_state_dict(optimizer.state_dict(), new_optimizer.state_dict())
 
 
-def run_dist(rank, world_size, port, func):
+def run_dist(rank, world_size, port, test_fn):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    func()
+    test_fn()
 
 
 def launch_dist(fn, world_size: int):
-    proc_fn = partial(run_dist, world_size=world_size, port=free_port(), func=fn)
-    mp.spawn(proc_fn, nprocs=world_size)
+    spawn(run_dist, world_size, test_fn=fn)
 
 
 def save_dist(dir_name: str, zero: bool):
-    model, optmizer = prepare_model_optim(shard=True, zero=zero)
-    reset_model_optim(model, optmizer)
+    model, optimizer = prepare_model_optim(shard=True, zero=zero)
+    reset_model_optim(model, optimizer)
     world_size = dist.get_world_size()
     rank = dist.get_rank()
-    save(dir_name, model, optmizer, dist_meta=get_dist_metas(world_size, zero)[rank])
+    save(dir_name, model, optimizer, dist_meta=get_dist_metas(world_size, zero)[rank])
 
 
 def load_and_check_dist(dir_name: str):
     world_size = dist.get_world_size()
-    model, optmizer = prepare_model_optim(shard=True)
-    reset_model_optim(model, optmizer)
+    model, optimizer = prepare_model_optim(shard=True)
+    reset_model_optim(model, optimizer)
     model_state_dict = deepcopy(model.state_dict())
-    optimizer_state_dict = deepcopy(optmizer.state_dict())
-    reset_model_optim(model, optmizer, 1)
-    load(dir_name, model, optmizer, get_redist_meta(world_size), get_dist_metas(world_size))
+    optimizer_state_dict = deepcopy(optimizer.state_dict())
+    reset_model_optim(model, optimizer, 1)
+    load(dir_name, model, optimizer, get_redist_meta(world_size), get_dist_metas(world_size))
     check_model_state_dict(model_state_dict, model.state_dict())
-    check_optim_state_dict(optimizer_state_dict, optmizer.state_dict())
+    check_optim_state_dict(optimizer_state_dict, optimizer.state_dict())
 
 
 @pytest.mark.dist

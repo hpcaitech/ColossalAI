@@ -1,14 +1,11 @@
-import colossalai
-import colossalai.nn as col_nn
+import pytest
 import torch
 import torch.distributed as dist
-import torch.multiprocessing as mp
-import pytest
 
-from colossalai.core import global_context as gpc
+import colossalai
 from colossalai.context import ParallelMode
-from colossalai.testing import rerun_if_address_is_in_use
-from functools import partial
+from colossalai.core import global_context as gpc
+from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 CONFIG = dict(parallel=dict(tensor=dict(size=4, mode='sequence')))
 
@@ -48,7 +45,7 @@ def check_ring_qk(rank, world_size):
     ring_qk = colossalai.nn.layer.parallel_sequence.RingQK.apply
     sub_a = ring_qk(sub_q, sub_k, batch_size, num_heads, sub_seq_length)
 
-    # check master and distributed attetion scores
+    # check master and distributed attention scores
     sub_master_a = a[:, rank * sub_seq_length:(rank + 1) * sub_seq_length]
     assert torch.allclose(sub_a, sub_master_a, rtol=1e-5, atol=1e-2)
 
@@ -121,8 +118,8 @@ def check_ring_av(rank, world_size):
         'attention output cannot match'
 
 
-def run_test(rank, world_size):
-    colossalai.launch(rank=rank, world_size=world_size, config=CONFIG, host='localhost', port=29500)
+def run_test(rank, world_size, port):
+    colossalai.launch(rank=rank, world_size=world_size, config=CONFIG, host='localhost', port=port)
 
     # check_ring_qk(rank, world_size)
     check_ring_av(rank, world_size)
@@ -134,9 +131,7 @@ def run_test(rank, world_size):
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_sequence():
-    world_size = 4
-    run_func = partial(run_test, world_size=world_size)
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_test, 4)
 
 
 if __name__ == '__main__':

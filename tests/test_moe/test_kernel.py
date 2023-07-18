@@ -1,15 +1,14 @@
-from functools import partial
 import pytest
 import torch
 import torch.nn as nn
-import torch.multiprocessing as mp
+
 import colossalai
 from colossalai.context import ParallelMode
-from colossalai.core import global_context as gpc
-from colossalai.utils import free_port, get_current_device
-from colossalai.nn.layer.moe import Top1Router, Top2Router, MoeLayer, Experts
 from colossalai.context.moe_context import MOE_CONTEXT
-from colossalai.testing import rerun_if_address_is_in_use
+from colossalai.core import global_context as gpc
+from colossalai.nn.layer.moe import Experts, MoeLayer, Top1Router, Top2Router
+from colossalai.testing import rerun_if_address_is_in_use, spawn
+from colossalai.utils import get_current_device
 
 BATCH_SIZE = 16
 NUM_EXPERTS = 4
@@ -42,7 +41,7 @@ def run_routing(rank, world_size, port, rs=2, hidden_size=128, data_type=torch.f
     if data_type == torch.float16:
         layer = layer.half()
 
-    # use matrix multiplication instead of COL_MOE_KERNL in MOE dispatch and combine
+    # use matrix multiplication instead of COL_MOE_KERNEL in MOE dispatch and combine
     layer.use_kernel = False
     old_out, _ = layer(tokens)
     ech = old_out.shape
@@ -58,7 +57,7 @@ def run_routing(rank, world_size, port, rs=2, hidden_size=128, data_type=torch.f
     layer.gate_weight.grad.zero_()
 
     layer.use_kernel = True
-    new_out, _ = layer(tokens)    # get ouputs through colossal kernel
+    new_out, _ = layer(tokens)    # get outputs through colossal kernel
 
     if data_type == torch.float32:
         check_equal(old_out, new_out)
@@ -90,15 +89,7 @@ def run_routing(rank, world_size, port, rs=2, hidden_size=128, data_type=torch.f
 @pytest.mark.parametrize("router", [Top1Router, Top2Router])
 @rerun_if_address_is_in_use()
 def test_moe_kernel(rs, hidden_size, data_type, router):
-    world_size = 4
-    run_func = partial(run_routing,
-                       world_size=world_size,
-                       port=free_port(),
-                       rs=rs,
-                       hidden_size=hidden_size,
-                       data_type=data_type,
-                       router=router)
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_routing, 4, rs=rs, hidden_size=hidden_size, data_type=data_type, router=router)
 
 
 if __name__ == '__main__':

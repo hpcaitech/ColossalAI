@@ -164,16 +164,16 @@ def _get_grad_args(*args):
     for obj in args:
         if _is_grad_tensor(obj):
             return args, None
-    # otherwise, the first arguement should be a tuple of grad tensors
+    # otherwise, the first argument should be a tuple of grad tensors
     # if there is no grad tensor, the backward of PreFwdPostBwd can't be triggered
     arg_zero = args[0]
     if not isinstance(arg_zero, tuple):
-        raise NotImplementedError("Some torch function is incompatible because of its complcated inputs.")
+        raise NotImplementedError("Some torch function is incompatible because of its complicated inputs.")
     check_grad_flag = False
     for obj in arg_zero:
         check_grad_flag |= _is_grad_tensor(obj)
     if not check_grad_flag:
-        raise NotImplementedError("Some torch function is incompatible because of its complcated inputs.")
+        raise NotImplementedError("Some torch function is incompatible because of its complicated inputs.")
     return arg_zero, args[1:]
 
 

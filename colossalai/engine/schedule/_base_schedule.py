@@ -2,10 +2,10 @@
 # -*- encoding: utf-8 -*-
 
 from abc import ABC, abstractmethod
+from typing import Callable, Iterable
 
 import torch
 
-from typing import Iterable, Callable
 from colossalai.logging import get_dist_logger
 from colossalai.utils import get_current_device
 

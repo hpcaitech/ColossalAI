@@ -1,14 +1,12 @@
-import torch
 import pytest
-import colossalai
+import torch
 import torch.nn.functional as F
-import torch.multiprocessing as mp
-from functools import partial
-from colossalai.tensor import ColoTensor, ProcessGroup, ColoTensorSpec, ShardSpec
-from colossalai.utils import get_current_device
 from torch.nn import Parameter
-from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.utils import free_port
+
+import colossalai
+from colossalai.tensor import ColoTensor, ColoTensorSpec, ProcessGroup, ShardSpec
+from colossalai.testing import rerun_if_address_is_in_use, spawn
+from colossalai.utils import get_current_device
 
 
 def _run_layer_norm():
@@ -66,8 +64,7 @@ def run_dist(rank, world_size, port):
 @pytest.mark.parametrize('world_size', [2])
 @rerun_if_address_is_in_use()
 def test_element_wise_ops(world_size):
-    run_func = partial(run_dist, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_dist, world_size)
 
 
 def run_dist2(rank, world_size, port):
@@ -79,8 +76,7 @@ def run_dist2(rank, world_size, port):
 @pytest.mark.parametrize('world_size', [1])
 @rerun_if_address_is_in_use()
 def test_ln(world_size):
-    run_func = partial(run_dist2, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_dist2, world_size)
 
 
 def check_all():

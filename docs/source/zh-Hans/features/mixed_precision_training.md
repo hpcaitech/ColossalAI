@@ -1,4 +1,4 @@
-# 自动混合精度训练 (AMP)
+# 自动混合精度训练 (旧版本)
 
 作者: Chuanrui Wang, Shenggui Li, Yongbin Li
 
@@ -203,7 +203,7 @@ Naive AMP 的默认参数:
 - initial_scale(int): gradient scaler 的初始值
 - growth_factor(int): loss scale 的增长率
 - backoff_factor(float): loss scale 的下降率
-- hysterisis(int): 动态 loss scaling 的延迟偏移
+- hysteresis(int): 动态 loss scaling 的延迟偏移
 - max_scale(int): loss scale 的最大允许值
 - verbose(bool): 如果被设为`True`,将打印调试信息
 
@@ -303,7 +303,7 @@ colossalai.launch_from_torch(config=args.config)
     # build loss
     criterion = torch.nn.CrossEntropyLoss()
 
-    # lr_scheduelr
+    # lr_scheduler
     lr_scheduler = LinearWarmupLR(optimizer, warmup_steps=50, total_steps=gpc.config.NUM_EPOCHS)
 ```
 
@@ -339,6 +339,7 @@ for epoch in range(gpc.config.NUM_EPOCHS):
 
 使用下列命令启动训练脚本，你可以改变 `--nproc_per_node` 以使用不同数量的 GPU。
 
-```python
+```shell
 python -m torch.distributed.launch --nproc_per_node 4 --master_addr localhost --master_port 29500 train_with_engine.py --config config/config_AMP_torch.py
 ```
+<!-- doc-test-command: torchrun --standalone --nproc_per_node=1 mixed_precision_training.py  -->

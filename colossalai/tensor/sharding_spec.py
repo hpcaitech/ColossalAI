@@ -18,7 +18,7 @@ NAN = 'nan'
 
 class _DimSpec:
     '''
-    Sharding spec for single dimension of the sharded tensor decribe the sharding dimension of
+    Sharding spec for single dimension of the sharded tensor describe the sharding dimension of
     logical device mesh and give a method to compute the difference between them.
     This class is used internally in ShardingSpec.
 
@@ -45,7 +45,7 @@ class _DimSpec:
 
     def _convert_str_to_shard_list(self, str_spec):
         '''
-        Conver str_spec into shard_list.
+        Convert str_spec into shard_list.
 
         Argument:
             str_spec(str): dim spec in str type.
@@ -62,7 +62,7 @@ class _DimSpec:
 
     def build_difference_2d_dict(self):
         '''
-        Build a difference maping for 2D device mesh case. It will be used to
+        Build a difference mapping for 2D device mesh case. It will be used to
         compute the difference between DimSpec pairs.
         '''
 
@@ -166,7 +166,7 @@ class ShardingSpec:
         device_mesh(DeviceMesh): A logical view of a physical mesh.
         entire_shape(torch.Size): The entire shape of tensor before sharded.
         dim_partition_dict(Dict[int, List[int]]， optional): The key is the dimension of tensor to be sharded,
-            and the value of the key decribe which logical axis will be sharded in that dimension.
+            and the value of the key describe which logical axis will be sharded in that dimension.
         sharding_sequence(List[_DimSpec], optional): A straight view of ShardingSpec looks like [R, R, S0, S1].
     '''
 
@@ -195,7 +195,7 @@ class ShardingSpec:
     def __repr__(self):
         res_list = ["DistSpec:"]
         res_list.append(f"\n\tshard_sequence: " + ",".join(str(dimspec) for dimspec in self.sharding_sequence))
-        res_list.append(f"\n\tdevice_mesh_shape: {self.device_mesh.mesh_shape}")
+        res_list.append(f"\n\tdevice_mesh_shape: {self.device_mesh.shape}")
         return ' '.join(res_list)
 
     def _sanity_check(self):
@@ -222,7 +222,7 @@ class ShardingSpec:
             num_devices = 1
 
             for element in shard_list:
-                num_devices *= self.device_mesh.mesh_shape[element]
+                num_devices *= self.device_mesh.shape[element]
 
             if tensor_dim_size % num_devices != 0:
                 raise ShardingNotDivisibleError(
@@ -288,7 +288,7 @@ class ShardingSpec:
 
         sharded_shape = list(self.entire_shape)
         for dim, shard_list in self.dim_partition_dict.items():
-            mesh_list = [self.device_mesh.mesh_shape[mesh_dim] for mesh_dim in shard_list]
+            mesh_list = [self.device_mesh.shape[mesh_dim] for mesh_dim in shard_list]
             shard_partitions = reduce(operator.mul, mesh_list, 1)
             assert sharded_shape[
                 dim] % shard_partitions == 0, f'Cannot shard dimension {dim} into {shard_partitions} partitions.'

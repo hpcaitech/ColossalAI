@@ -88,7 +88,7 @@ def colo_embedding_bag(input_tensor: GeneralTensor,
     assert isinstance(weight, ColoTensor)
     input_tensor = convert_to_colo_tensor(input_tensor, weight.get_process_group())
 
-    # Handle differen parallel actions.
+    # Handle different parallel actions.
 
     if not weight.has_compute_spec():    # No Model Parallel Applied
         assert weight.is_replicate(), 'Invalid weight spec for native embedding op'

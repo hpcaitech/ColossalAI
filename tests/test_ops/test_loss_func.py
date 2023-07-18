@@ -1,14 +1,11 @@
-import torch
 import pytest
-import colossalai
+import torch
 import torch.nn.functional as F
-import torch.multiprocessing as mp
-from functools import partial
-from colossalai.tensor import ColoTensor, ProcessGroup, ColoTensorSpec
+
+import colossalai
+from colossalai.tensor import ColoTensor, ColoTensorSpec, ComputePattern, ComputeSpec, ProcessGroup, ShardSpec
+from colossalai.testing import rerun_if_address_is_in_use, spawn
 from colossalai.utils import get_current_device
-from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.utils import free_port
-from colossalai.tensor import ShardSpec, ComputeSpec, ComputePattern
 
 
 def check_cross_entropy():
@@ -44,8 +41,7 @@ def run_dist(rank, world_size, port):
 @pytest.mark.parametrize('world_size', [1, 2])
 @rerun_if_address_is_in_use()
 def test_loss_func(world_size):
-    run_func = partial(run_dist, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_dist, world_size)
 
 
 if __name__ == '__main__':

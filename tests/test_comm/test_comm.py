@@ -1,15 +1,13 @@
-from functools import partial
-
 import pytest
 import torch
 import torch.distributed as dist
-import torch.multiprocessing as mp
+
 from colossalai.communication import all_gather, all_reduce, reduce_scatter
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.initialize import launch
-from colossalai.utils import free_port, get_current_device
-from colossalai.testing import rerun_if_address_is_in_use
+from colossalai.testing import rerun_if_address_is_in_use, spawn
+from colossalai.utils import get_current_device
 
 CONFIG = dict(parallel=dict(data=8, pipeline=1, tensor=dict(mode=None, size=1)))
 
@@ -66,9 +64,7 @@ def check_layer(rank, world_size, port):
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_comm():
-    world_size = 4
-    run_func = partial(check_layer, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(check_layer, 4)
 
 
 if __name__ == '__main__':

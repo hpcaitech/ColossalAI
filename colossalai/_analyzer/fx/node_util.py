@@ -112,7 +112,7 @@ class MetaInfo:
 
     # should keep the same whenever manipulated
     # ============================= Invariant ==================================
-    to_recompute: Tuple[torch.Tensor] = ()    # (region_0, region_1, ...) support nested codegen
+    activation_checkpoint: Tuple[torch.Tensor] = ()    # (region_0, region_1, ...) support nested codegen
     to_offload: Optional[bool] = False
     sharding_spec: str = 'RR'
 

@@ -5,16 +5,19 @@ from typing import Dict, List
 import torch
 from torch.fx import GraphModule
 
+from colossalai._analyzer.fx.graph_module import ColoGraphModule
+from colossalai._analyzer.fx.passes import shape_prop_pass
+# from colossalai.fx.tracer.tracer import ColoTracer
+from colossalai._analyzer.fx.tracer.tracer import ColoTracer
 from colossalai.auto_parallel.passes.runtime_apply_pass import runtime_apply_pass
 from colossalai.auto_parallel.passes.runtime_preparation_pass import runtime_preparation_pass
 from colossalai.auto_parallel.tensor_shard.options import SolverOptions
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationDataType, TrainCycleItem
 from colossalai.auto_parallel.tensor_shard.solver import StrategiesConstructor
 from colossalai.device.device_mesh import DeviceMesh
-from colossalai.fx.tracer.tracer import ColoTracer
 
 if torch.__version__ >= '1.12.0':
-    from colossalai.auto_parallel.meta_profiler import MetaInfo
+    from colossalai.auto_parallel.meta_profiler import ShardMetaInfo
 
 
 def mem_test_for_node_strategy(rank: int,
@@ -30,14 +33,16 @@ def mem_test_for_node_strategy(rank: int,
         model_to_shard, args_to_shard, kwargs_to_shard = copy.deepcopy(model), copy.deepcopy(input_args), copy.deepcopy(
             input_kwargs)
 
-        tracer = ColoTracer()
+        tracer = ColoTracer(bias_addition_split=True)
         input_sample = {}
         for input_arg, meta_arg_name in zip(input_args, meta_arg_names):
             input_sample[meta_arg_name] = torch.rand(input_arg.shape).to('meta')
         for meta_kwarg_name, input_kwarg in input_kwargs.items():
             input_sample[meta_kwarg_name] = torch.rand(input_kwarg.shape).to('meta')
         graph = tracer.trace(root=model_to_shard, meta_args=input_sample)
-        gm = GraphModule(model_to_shard, graph, model_to_shard.__class__.__name__)
+        gm = ColoGraphModule(model_to_shard, graph, model_to_shard.__class__.__name__)
+        shape_prop_pass(gm, *input_sample.values())
+        gm.recompile()
         solver_options = SolverOptions()
         strategies_constructor = StrategiesConstructor(graph, device_mesh, solver_options)
         strategies_constructor.build_strategies_and_cost()
@@ -108,10 +113,10 @@ def mem_test_for_node_strategy(rank: int,
 
             # estimated memory
             if target_node.op == "call_module":
-                metainfo = MetaInfo(target_node.strategies_vector[strategy_index],
-                                    target_node.graph.owning_module.get_submodule(target_node.target))
+                metainfo = ShardMetaInfo(target_node.strategies_vector[strategy_index],
+                                         target_node.graph.owning_module.get_submodule(target_node.target))
             else:
-                metainfo = MetaInfo(target_node.strategies_vector[strategy_index], target_node.target)
+                metainfo = ShardMetaInfo(target_node.strategies_vector[strategy_index], target_node.target)
 
             print("estimated memory:")
             print(

@@ -36,12 +36,12 @@ def swin_s():
 
 
 # special output transform fn
-google_net_output_transform_fn = lambda x: dict(output=x.logits) if isinstance(x, torchvision.models.GoogLeNetOutputs
-                                                                              ) else dict(output=x)
+google_net_output_transform_fn = lambda x: dict(output=sum(x)) if isinstance(x, torchvision.models.GoogLeNetOutputs
+                                                                            ) else dict(output=x)
 swin_s_output_output_transform_fn = lambda x: {f'output{idx}': val
                                                for idx, val in enumerate(x)} if isinstance(x, tuple) else dict(output=x)
-inception_v3_output_transform_fn = lambda x: dict(output=x.logits) if isinstance(x, torchvision.models.InceptionOutputs
-                                                                                ) else dict(output=x)
+inception_v3_output_transform_fn = lambda x: dict(output=sum(x)) if isinstance(x, torchvision.models.InceptionOutputs
+                                                                              ) else dict(output=x)
 
 model_zoo.register(name='torchvision_alexnet',
                    model_fn=tm.alexnet,

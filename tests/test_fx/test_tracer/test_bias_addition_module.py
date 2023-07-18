@@ -1,6 +1,7 @@
 import torch
 
 from colossalai.fx import ColoGraphModule, ColoTracer
+from colossalai.testing import clear_cache_before_run
 
 
 class LinearModel(torch.nn.Module):
@@ -32,6 +33,7 @@ class ConvModel(torch.nn.Module):
         return x
 
 
+@clear_cache_before_run()
 def test_linear_module():
     model = LinearModel(3, 6)
     tracer = ColoTracer()
@@ -68,6 +70,7 @@ def test_linear_module():
     assert add_node._meta_data.shape == (3, 6)
 
 
+@clear_cache_before_run()
 def test_conv_module():
     model = ConvModel(3, 6, 2)
     tracer = ColoTracer()

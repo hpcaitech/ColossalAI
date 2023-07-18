@@ -1,7 +1,10 @@
-from typing import List, Dict, Tuple
+from typing import Dict, List, Tuple
+
 import torch
 from torch.fx import Node
-from colossalai.gemini.tensor_utils import alloc_storage, free_storage
+
+from colossalai.zero.legacy.gemini.tensor_utils import alloc_storage, free_storage
+
 
 class Region:
     """
@@ -52,15 +55,13 @@ class Region:
         Map the parameters in the region to a contiguous memory space.
         """
 
-        self.fp16_data = torch.zeros(
-            self.param_num, dtype=torch.half, device='cuda')
+        self.fp16_data = torch.zeros(self.param_num, dtype=torch.half, device='cuda')
         offset = 0
         for param in self.fp16_params:
             param.data = param.data.cuda()
             p_num = param.data.numel()
             self.fp16_data[offset:offset + p_num].copy_(param.data.flatten())
-            param.data = self.fp16_data[offset:offset +
-                                               p_num].view(param.data.shape)
+            param.data = self.fp16_data[offset:offset + p_num].view(param.data.shape)
             self.param_to_range[param] = (offset, offset + p_num)
             offset += p_num
 
@@ -110,7 +111,7 @@ class Region:
         Copy data slice to the memory space indexed by the input tensor in the region.
 
         Args:
-            param (torch.nn.Parameter): the param used to retrive meta information
+            param (torch.nn.Parameter): the param used to retrieve meta information
             data_slice (torch.Tensor): the tensor to be copied to the region
         """
 

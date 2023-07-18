@@ -106,7 +106,7 @@ class _VocabParallelCrossEntropy2D(torch.autograd.Function):
     @staticmethod
     @custom_bwd
     def backward(ctx, output_grad):
-        # Retreive tensors from the forward path.
+        # Retrieve tensors from the forward path.
         softmax, target_mask, masked_target = ctx.saved_tensors
 
         # All the inputs have softmax as their gradient.

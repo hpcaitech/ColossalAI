@@ -439,7 +439,7 @@ class Linear1D_Col(ParallelLayer):
                     to all GPUs, otherwise, every GPU will have its output
                     which is :math:`Y_i = XA_i`, defaults to False
         skip_bias_add (bool, optional): If set to ``True``, it will skip bias add for linear layer,
-            which is preserved for kernel fusion, defaults to Fals
+            which is preserved for kernel fusion, defaults to False
         weight_initializer (:class:`typing.Callable`, optional):
             The initializer of weight, defaults to kaiming uniform initializer.
         bias_initializer (:class:`typing.Callable`, optional):
@@ -578,7 +578,7 @@ class Linear1D_Row(ParallelLayer):
         dtype (:class:`torch.dtype`, optional): The dtype of parameters, defaults to None.
         parallel_input (bool, optional): If set to ``True``, it's assumed that the input is split, defaults to False.
         skip_bias_add (bool, optional): If set to ``True``, it will skip bias add for linear layer,
-            which is preserved for kernel fusion, defaults to Fals
+            which is preserved for kernel fusion, defaults to False
         weight_initializer (:class:`typing.Callable`, optional):
             The initializer of weight, defaults to kaiming uniform initializer.
         bias_initializer (:class:`typing.Callable`, optional):
@@ -994,11 +994,11 @@ class PatchEmbedding1D(ColossalaiModule):
     :type dtype: torch.dtype, optional
     :param flatten: whether to flatten output tensor, defaults to True
     :type flatten: bool, optional
-    :param weight_initializer: The intializer of weight, defaults to kaiming uniform initializer
+    :param weight_initializer: The initializer of weight, defaults to kaiming uniform initializer
     :type weight_initializer: typing.Callable, optional
-    :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
+    :param bias_initializer: The initializer of bias, defaults to xavier uniform initializer
     :type bias_initializer: typing.Callable, optional
-    :param position_embed_initializer: The intializer of position embedding, defaults to zero
+    :param position_embed_initializer: The initializer of position embedding, defaults to zero
     :type position_embed_initializer: typing.Callable, optional
     """
 

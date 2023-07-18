@@ -16,7 +16,7 @@ class SearchChunk(object):
     This is the core class for AutoChunk.
 
     It defines the framework of the strategy of AutoChunk.
-    Chunks will be selected one by one utill search stops.
+    Chunks will be selected one by one until search stops.
 
     The chunk search is as follows:
     1. find the peak memory node
@@ -73,7 +73,7 @@ class SearchChunk(object):
 
     def _find_peak_region(self, mem_peak: List) -> int:
         """
-        find peak node, along with its neighbour nodes exceeds max mem
+        find peak node, along with its neighbor nodes exceeds max mem
         """
         max_value = max(mem_peak)
         max_idx = mem_peak.index(max_value)
@@ -118,7 +118,7 @@ class SearchChunk(object):
             chunk_region_start (int)
             chunk_region_end (int)
         """
-        # check if peak node already in chunkinfo
+        # check if peak node already in chunk info
         if chunk_regions is not None:
             for i in chunk_regions:
                 if i["region"][0] < peak_region[0] <= i["region"][1] or \

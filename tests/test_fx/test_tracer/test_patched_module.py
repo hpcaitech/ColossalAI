@@ -1,5 +1,7 @@
 import torch
+
 from colossalai.fx.tracer.meta_patch import patched_module
+from colossalai.testing import clear_cache_before_run
 
 
 def _run(data, module, patch_fn):
@@ -31,6 +33,7 @@ def _assert_output_shape(data, module, patch_fn, expect_exception, output_shape)
             assert output.shape == output_shape
 
 
+@clear_cache_before_run()
 def test_linear():
     # test linear patch can produce the meta output with correct shape
     data = torch.rand(2, 4, device='meta')
@@ -42,6 +45,7 @@ def test_linear():
     _assert_output_shape(data, module, patched_module.torch_nn_linear, True, None)
 
 
+@clear_cache_before_run()
 def test_rnn():
     # test rnn patch can produce the meta output with correct shape
     data = (torch.randn(5, 3, 10), torch.randn(2, 3, 20))
@@ -58,6 +62,7 @@ def test_rnn():
     _assert_output_shape(meta_data, module, patched_module.torch_nn_rnn, True, None)
 
 
+@clear_cache_before_run()
 def test_embedding():
     data = torch.rand(2, 4, device='meta')
 
@@ -134,6 +139,7 @@ def test_embedding():
                          output_shape=None)
 
 
+@clear_cache_before_run()
 def test_conv1d():
     # test conv 1d
     data = torch.rand(2, 3, 4)
@@ -212,6 +218,7 @@ def test_conv2d():
                          output_shape=materialized_output.shape)
 
 
+@clear_cache_before_run()
 def test_conv3d():
     # test conv 3d
     data = torch.rand(2, 3, 4, 4, 4)
@@ -253,6 +260,7 @@ def test_conv3d():
                          output_shape=materialized_output.shape)
 
 
+@clear_cache_before_run()
 def test_conv_transpose1d():
     # test conv transpose1d
     data = torch.rand(2, 3, 4)
@@ -276,6 +284,7 @@ def test_conv_transpose1d():
                          output_shape=materialized_output.shape)
 
 
+@clear_cache_before_run()
 def test_conv_transpose2d():
     # test conv transpose2d
     data = torch.rand(2, 3, 4, 4)
@@ -299,6 +308,7 @@ def test_conv_transpose2d():
                          output_shape=materialized_output.shape)
 
 
+@clear_cache_before_run()
 def test_conv_transpose3d():
     # test conv transpose2d
     data = torch.rand(2, 3, 4, 4, 4)
@@ -322,6 +332,7 @@ def test_conv_transpose3d():
                          output_shape=materialized_output.shape)
 
 
+@clear_cache_before_run()
 def test_pool1d():
     combinations = [[torch.nn.MaxPool1d, patched_module.torch_nn_maxpool1d],
                     [torch.nn.AvgPool1d, patched_module.torch_nn_avgpool1d]]
@@ -349,6 +360,7 @@ def test_pool1d():
         _assert_output_shape(data=data, module=pooler, patch_fn=patch_func, expect_exception=True, output_shape=None)
 
 
+@clear_cache_before_run()
 def test_pool2d():
     combinations = [[torch.nn.MaxPool2d, patched_module.torch_nn_maxpool2d],
                     [torch.nn.AvgPool2d, patched_module.torch_nn_avgpool2d]]
@@ -379,6 +391,7 @@ def test_pool2d():
         _assert_output_shape(data=data, module=pooler, patch_fn=patch_func, expect_exception=True, output_shape=None)
 
 
+@clear_cache_before_run()
 def test_pool3d():
     combinations = [[torch.nn.MaxPool3d, patched_module.torch_nn_maxpool3d],
                     [torch.nn.AvgPool3d, patched_module.torch_nn_avgpool3d]]
@@ -410,6 +423,7 @@ def test_pool3d():
 
 
 # adapative pooling is different from other pooling, so test it individually
+@clear_cache_before_run()
 def test_adaptive_pooling_1d():
     pooler = torch.nn.AdaptiveAvgPool1d(output_size=3)
     patch_func = patched_module.torch_nn_adapative_pooling_1d
@@ -434,6 +448,7 @@ def test_adaptive_pooling_1d():
     _assert_output_shape(data=data, module=pooler, patch_fn=patch_func, expect_exception=True, output_shape=None)
 
 
+@clear_cache_before_run()
 def test_adaptive_pooling_2d():
     pooler = torch.nn.AdaptiveAvgPool2d(output_size=3)
     patch_func = patched_module.torch_nn_adapative_pooling_2d
@@ -458,6 +473,7 @@ def test_adaptive_pooling_2d():
                          output_shape=output.shape)
 
 
+@clear_cache_before_run()
 def test_adaptive_pooling_3d():
     pooler = torch.nn.AdaptiveAvgPool3d(output_size=3)
     patch_func = patched_module.torch_nn_adapative_pooling_3d

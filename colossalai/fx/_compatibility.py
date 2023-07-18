@@ -14,9 +14,7 @@ elif TORCH_MAJOR == 1 and TORCH_MINOR == 13:
     from . import _meta_regist_13
     META_COMPATIBILITY = True
 elif TORCH_MAJOR == 2:
-    from . import _meta_regist_13
     META_COMPATIBILITY = True
-    raise UserWarning("Colossalai is not tested with torch2.0 yet!!!")
 
 
 def compatibility(is_backward_compatible: bool = False) -> Callable:

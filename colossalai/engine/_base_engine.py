@@ -10,9 +10,9 @@ from torch.nn.modules.loss import _Loss
 
 from colossalai.engine.gradient_handler import BaseGradientHandler
 from colossalai.engine.schedule import BaseSchedule, InterleavedPipelineSchedule, NonPipelineSchedule, PipelineSchedule
-from colossalai.gemini.ophooks import BaseOpHook, register_ophooks_recursively
 from colossalai.logging import get_dist_logger
-
+from colossalai.zero.legacy.gemini import BaseOpHook, register_ophooks_recursively
+from colossalai.nn.optimizer import ColossalaiOptimizer
 
 class Engine:
     """Basic engine class for training and evaluation. It runs a specific process method

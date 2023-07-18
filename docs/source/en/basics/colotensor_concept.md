@@ -2,6 +2,8 @@
 
 Author: [Jiarui Fang](https://github.com/feifeibear), [Hongxin Liu](https://github.com/ver217) and [Haichen Huang](https://github.com/1SAA)
 
+> ⚠️ The information on this page is outdated and will be deprecated.
+
 **Prerequisite:**
 - [Colossal-AI Overview](../concepts/colossalai_overview.md)
 - [Distributed Training](../concepts/distributed_training.md)
@@ -42,7 +44,7 @@ Therefore, when using Distributed Spec, we only need to describe the way that th
 
 ## Compute Spec
 
-An instance of class [ComputeSpec](https://colossalai.readthedocs.io/en/latest/colossalai/colossalai.tensor.compute_spec.html#colossalai.tensor.compute_spec.ComputeSpec) describes how a Coloensor be used in DNN training. Currently, we will set the correct Compute Pattern for the ColoTensor as the parameters of the module. The specific application scenarios will be shown in the next document.
+An instance of class [ComputeSpec](https://colossalai.readthedocs.io/en/latest/colossalai/colossalai.tensor.compute_spec.html#colossalai.tensor.compute_spec.ComputeSpec) describes how a Colotensor be used in DNN training. Currently, we will set the correct Compute Pattern for the ColoTensor as the parameters of the module. The specific application scenarios will be shown in the next document.
 
 ## ColoParameter
 
@@ -50,18 +52,18 @@ An instance of class [ComputeSpec](https://colossalai.readthedocs.io/en/latest/c
 
 ## Example
 
-Let's see an example. A ColoTensor is initialized and sharded on 8 GPUs using tp_degree=4, dp_dgree=2. And then the tensor is sharded along the last dim among the TP process groups. Finally, we reshard it along the first dim (0 dim) among the TP process groups. We encourage users to run the code and observe the shape of each tensor.
+Let's see an example. A ColoTensor is initialized and sharded on 8 GPUs using tp_degree=4, dp_degree=2. And then the tensor is sharded along the last dim among the TP process groups. Finally, we reshard it along the first dim (0 dim) among the TP process groups. We encourage users to run the code and observe the shape of each tensor.
 
 
 ```python
 import torch
 import torch.multiprocessing as mp
-from colossalai.utils import free_port, print_rank_0
+from colossalai.utils import print_rank_0
 from functools import partial
 
 import colossalai
 from colossalai.tensor import ProcessGroup, ColoTensor, ColoTensorSpec, ShardSpec, ComputeSpec, ComputePattern
-from colossalai.utils import free_port
+from colossalai.testing import spawn
 
 import torch
 
@@ -83,8 +85,7 @@ def run_dist_tests(rank, world_size, port):
     print_rank_0(f"shape {t1.shape}, {t1.data}")
 
 def test_dist_cases(world_size):
-    run_func = partial(run_dist_tests, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_dist_tests, world_size)
 
 if __name__ == '__main__':
     test_dist_cases(4)

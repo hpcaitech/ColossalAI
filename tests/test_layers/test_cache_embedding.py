@@ -1,20 +1,21 @@
-import pytest
-from functools import partial
+import random
+from typing import List
 
 import numpy as np
-import random
-
+import pytest
 import torch
-import torch.multiprocessing as mp
 
 import colossalai
-from colossalai.utils import free_port
-from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.tensor import ColoParameter, ProcessGroup, ShardSpec, ComputePattern, ComputeSpec, \
-    ColoTensor, ColoTensorSpec
-from colossalai.nn.parallel.layers import CachedParamMgr, CachedEmbeddingBag, ParallelCachedEmbeddingBag, EvictionStrategy, \
-    ParallelCachedEmbeddingBagTablewise, TablewiseEmbeddingBagConfig
-from typing import List
+from colossalai.nn.parallel.layers import (
+    CachedEmbeddingBag,
+    CachedParamMgr,
+    EvictionStrategy,
+    ParallelCachedEmbeddingBag,
+    ParallelCachedEmbeddingBagTablewise,
+    TablewiseEmbeddingBagConfig,
+)
+from colossalai.tensor import ColoTensor, ComputePattern, ComputeSpec, ProcessGroup, ShardSpec
+from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
 
 NUM_EMBED, EMBED_DIM = 10, 8
 BATCH_SIZE = 8
@@ -44,6 +45,7 @@ def synthesize_1d_sparse_feature(
 
 
 @pytest.mark.skip
+@clear_cache_before_run()
 def test_cachemgr():
     model = torch.nn.EmbeddingBag(10000, 128)
     # 10 chunks, 5 in cuda
@@ -72,6 +74,7 @@ def test_cachemgr():
     assert mgr.cuda_available_chunk_num == 5
 
 
+@clear_cache_before_run()
 def test_reorder_with_freq():
     num_embed = 100
     chunk_size = 1
@@ -102,7 +105,8 @@ def test_reorder_with_freq():
         f"offset in chunk: {offset_in_chunk}, mgr: {mgr_offsets}"
 
 
-@pytest.mark.parametrize('use_LFU', [True, False])
+@clear_cache_before_run()
+@parameterize('use_LFU', [True, False])
 def test_freq_aware_embed(use_LFU: bool):
     device = torch.device('cuda', 0)
     evict_strategy = EvictionStrategy.LFU if use_LFU else EvictionStrategy.DATASET
@@ -148,7 +152,8 @@ def test_freq_aware_embed(use_LFU: bool):
         f"model weight: {model_weight[10:18, :8]}, reference: {ref_weight[10:18, :8]}"
 
 
-@pytest.mark.parametrize('init_freq', [True, False])
+@clear_cache_before_run()
+@parameterize('init_freq', [True, False])
 def test_lfu_strategy(init_freq: bool):
     # minimal test to check behavior
     Bag = CachedEmbeddingBag(5,
@@ -248,7 +253,7 @@ def run_parallel_freq_aware_embed_tablewise(rank, world_size):
     input0      [1,2,3]         [6,7]           []
     input1      []              [9]             [13,15]
     input2      [1,5]           [6,8]           [11]
-                  ↑               ↑               ↑ 
+                  ↑               ↑               ↑
                 rank 0          rank 0          rank 1
     in KJT format
     '''
@@ -363,8 +368,7 @@ def run_dist(rank, world_size, port):
 @pytest.mark.parametrize('world_size', [1, 4])
 @rerun_if_address_is_in_use()
 def test_parallel_freq_aware_embed(world_size):
-    run_func = partial(run_dist, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_dist, world_size)
 
 
 if __name__ == '__main__':

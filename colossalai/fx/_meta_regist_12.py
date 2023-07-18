@@ -386,7 +386,7 @@ def meta_local_scalar_dense(self: torch.Tensor):
 @register_meta(aten.where.self)
 def meta_where_self(condition: torch.Tensor, self: torch.Tensor, other: torch.Tensor):
     result_type = torch.result_type(self, other)
-    return torch.empty_like(self, dtype=result_type)
+    return torch.empty_like(condition + self + other, dtype=result_type)
 
 
 @register_meta(aten.index.Tensor)

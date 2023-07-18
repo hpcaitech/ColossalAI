@@ -19,7 +19,7 @@ Colossal-AI 是一个集成的系统，为用户提供一套综合的训练方�
 
 1. 准备一个配置文件，指定您要使用的功能和参数。
 2. 用 `colossalai.launch` 初始化分布式后端。
-3. 用 `colossalai.initialize` 将训练特征注入您的训练组件（如模型、优化器）中。
+3. 用 `colossalai.booster` 将训练特征注入您的训练组件（如模型、优化器）中。
 4. 进行训练和测试.
 
 我们将在`基本教程`部分介绍整个工作流程。
@@ -34,3 +34,5 @@ Colossal-AI 系统将会进一步拓展和优化，包括但不限于:
 4. 拓展现有的并行方法
 
 **我们始终欢迎社区的建议和讨论，如果您遇到任何问题，我们将非常愿意帮助您。您可以在GitHub 提 [issue](https://github.com/hpcaitech/ColossalAI/issues) ，或在[论坛](https://github.com/hpcaitech/ColossalAI/discussions)上创建一个讨论主题。**
+
+<!-- doc-test-command: echo "colossalai_overview.md does not need test"  -->

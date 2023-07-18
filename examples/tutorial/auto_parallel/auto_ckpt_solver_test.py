@@ -4,14 +4,13 @@ from functools import partial
 
 import matplotlib.pyplot as plt
 import torch
-import torch.multiprocessing as mp
 import torchvision.models as tm
 from bench_utils import GPTLMLoss, bench_rotor, data_gen_gpt2, data_gen_resnet, gpt2_medium
 
 import colossalai
 from colossalai.auto_parallel.checkpoint import CheckpointSolverRotor
 from colossalai.fx import metainfo_trace, symbolic_trace
-from colossalai.utils import free_port
+from colossalai.testing import spawn
 
 
 def _benchmark(rank, world_size, port, args):
@@ -77,8 +76,7 @@ def _benchmark(rank, world_size, port, args):
 
 def auto_activation_checkpoint_benchmark(args):
     world_size = 1
-    run_func_module = partial(_benchmark, world_size=world_size, port=free_port(), args=args)
-    mp.spawn(run_func_module, nprocs=world_size)
+    spawn(_benchmark, world_size, args=args)
 
 
 if __name__ == "__main__":

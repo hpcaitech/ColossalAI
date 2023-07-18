@@ -81,7 +81,10 @@ class AddBMMFunctionHandler(NodeHandler):
     def get_strategy_generator(self) -> List[StrategyGenerator]:
         op_data_mapping = self.get_operation_data_mapping()
         generators = []
-        generators.append(BatchedMatMulStrategyGenerator(op_data_mapping, self.device_mesh))
+        generator = BatchedMatMulStrategyGenerator(op_data_mapping, self.device_mesh)
+        # addbmm will shrink the first batch dim
+        generator.squeeze_batch_dim = True
+        generators.append(generator)
         return generators
 
     def post_process(self, strategy: ShardingStrategy) -> Union[ShardingStrategy, List[ShardingStrategy]]:

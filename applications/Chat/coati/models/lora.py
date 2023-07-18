@@ -61,7 +61,13 @@ class LoraLinear(lora.LoRALayer, nn.Module):
         if self.merge_weights and self.merged:
             # Make sure that the weights are not merged
             if self.r > 0:
-                self.weight.data -= T(self.lora_B @ self.lora_A) * self.scaling
+                if not hasattr(self, "lora_A") or not hasattr(self, "lora_B"):
+                    # FIXME(csric): temporary fix
+                    self.lora_A = nn.Parameter(self.weight.new_empty((self.r, self.in_features)))
+                    self.lora_B = nn.Parameter(self.weight.new_empty((self.out_features, self.r)))
+                    self.reset_parameters()
+                else:
+                    self.weight.data -= T(self.lora_B @ self.lora_A) * self.scaling
             self.merged = False
 
     def eval(self):
@@ -106,9 +112,26 @@ def convert_to_lora_recursively(module: nn.Module, lora_rank: int) -> None:
             convert_to_lora_recursively(child, lora_rank)
 
 
+def convert_to_lora_module(module: nn.Module, lora_rank: int, lora_train_bias: str = 'none') -> nn.Module:
+    """Convert a torch.nn.Module to a LoRA module.
+
+    Args:
+        module (nn.Module): The module to convert.
+        lora_rank (int): LoRA rank.
+
+    Returns:
+        nn.Module: The converted module.
+    """
+    if lora_rank <= 0:
+        return module
+    convert_to_lora_recursively(module, lora_rank)
+    lora.mark_only_lora_as_trainable(module, lora_train_bias)
+    return module
+
+
 class LoRAModule(nn.Module):
     """A LoRA module base class. All derived classes should call `convert_to_lora()` at the bottom of `__init__()`.
-    This calss will convert all torch.nn.Linear layer to LoraLinear layer.
+    This class will convert all torch.nn.Linear layer to LoraLinear layer.
 
     Args:
         lora_rank (int, optional): LoRA rank. 0 means LoRA is not applied. Defaults to 0.
@@ -123,7 +146,4 @@ class LoRAModule(nn.Module):
         self.lora_train_bias = lora_train_bias
 
     def convert_to_lora(self) -> None:
-        if self.lora_rank <= 0:
-            return
-        convert_to_lora_recursively(self, self.lora_rank)
-        lora.mark_only_lora_as_trainable(self, self.lora_train_bias)
+        convert_to_lora_module(self, self.lora_rank, self.lora_train_bias)

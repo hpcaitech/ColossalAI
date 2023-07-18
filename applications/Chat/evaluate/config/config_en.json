@@ -1,0 +1,188 @@
+{
+  "language": "en",
+  "path_for_UniEval": {
+    "summarization": "path to unieval-sum",
+    "dialogue": "path to unieval-dialog",
+    "data2text": "path to unieval-sum"
+  },
+  "category": {
+    "brainstorming": {
+      "GPT": [
+        "language organization",
+        "relevance",
+        "creativity",
+        "practicality",
+        "reasonableness"
+      ],
+      "Metrics": [
+        "Distinct"
+      ],
+      "UniEval": [
+        "summarization-fluency",
+        "data2text-naturalness",
+        "data2text-informativeness"
+      ]
+    },
+    "chat": {
+      "GPT": [
+        "language organization",
+        "relevance",
+        "naturalness",
+        "engagingness",
+        "reasonableness"
+      ],
+      "Metrics": [
+        "Distinct"
+      ],
+      "UniEval": [
+        "summarization-fluency",
+        "dialogue-naturalness",
+        "dialogue-coherence",
+        "dialogue-understandability",
+        "data2text-naturalness",
+        "data2text-informativeness"
+      ]
+    },
+    "classification": {
+      "GPT": [
+        "language organization",
+        "relevance",
+        "correctness"
+      ],
+      "Metrics": [
+        "Precision",
+        "Recall",
+        "F1 score",
+        "CHRF"
+      ],
+      "UniEval": [
+        "summarization-fluency",
+        "data2text-naturalness",
+        "data2text-informativeness"
+      ]
+    },
+    "closed_qa": {
+      "GPT": [
+        "language organization",
+        "relevance",
+        "correctness"
+      ],
+      "Metrics": [
+        "BLEU",
+        "ROUGE",
+        "BERTScore",
+        "CHRF"
+      ],
+      "UniEval": [
+        "summarization-fluency",
+        "data2text-naturalness",
+        "data2text-informativeness"
+      ]
+    },
+    "extraction": {
+      "GPT": [
+        "language organization",
+        "relevance",
+        "correctness"
+      ],
+      "Metrics": [
+        "Precision",
+        "Recall",
+        "F1 score",
+        "CHRF"
+      ],
+      "UniEval": [
+        "summarization-fluency",
+        "data2text-naturalness",
+        "data2text-informativeness"
+      ]
+    },
+    "generation": {
+      "GPT": [
+        "language organization",
+        "relevance",
+        "diversity"
+      ],
+      "Metrics": [
+        "BLEU",
+        "ROUGE",
+        "BERTScore"
+      ],
+      "UniEval": [
+        "summarization-fluency",
+        "data2text-naturalness",
+        "data2text-informativeness"
+      ]
+    },
+    "open_qa": {
+      "GPT": [
+        "language organization",
+        "relevance",
+        "correctness"
+      ],
+      "Metrics": [
+        "Distinct"
+      ],
+      "UniEval": [
+        "summarization-fluency",
+        "data2text-naturalness",
+        "data2text-informativeness"
+      ]
+    },
+    "rewriting": {
+      "GPT": [
+        "language organization",
+        "relevance",
+        "correctness"
+      ],
+      "Metrics": [
+        "BLEU",
+        "ROUGE",
+        "BERTScore"
+      ],
+      "UniEval": [
+        "summarization-fluency",
+        "data2text-naturalness",
+        "data2text-informativeness"
+      ]
+    },
+    "roleplay": {
+      "GPT": [
+        "language organization",
+        "relevance",
+        "fidelity",
+        "creativity"
+      ],
+      "Metrics": [
+        "Distinct"
+      ],
+      "UniEval": [
+        "summarization-fluency",
+        "data2text-naturalness",
+        "data2text-informativeness"
+      ]
+    },
+    "summarization": {
+      "GPT": [
+        "language organization",
+        "relevance",
+        "correctness",
+        "conciseness"
+      ],
+      "Metrics": [
+        "BLEU",
+        "ROUGE",
+        "BERTScore",
+        "CHRF"
+      ],
+      "UniEval": [
+        "summarization-coherence",
+        "summarization-consistency",
+        "summarization-fluency",
+        "summarization-relevance",
+        "data2text-naturalness",
+        "data2text-informativeness"
+      ]
+    }
+  }
+}

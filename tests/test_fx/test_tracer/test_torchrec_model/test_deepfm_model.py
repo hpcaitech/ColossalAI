@@ -2,6 +2,7 @@ import pytest
 import torch
 
 from colossalai._analyzer.fx import symbolic_trace
+from colossalai.testing import clear_cache_before_run
 from tests.kit.model_zoo import model_zoo
 
 BATCH = 2
@@ -47,11 +48,12 @@ def trace_and_compare(model_cls, data, output_transform_fn, meta_args=None):
                                  ), f'{model.__class__.__name__} has inconsistent outputs, {fx_out} vs {non_fx_out}'
 
 
+@clear_cache_before_run()
 def test_torchrec_deepfm_models():
     deepfm_models = model_zoo.get_sub_registry('deepfm')
     torch.backends.cudnn.deterministic = True
 
-    for name, (model_fn, data_gen_fn, output_transform_fn, attribute) in deepfm_models.items():
+    for name, (model_fn, data_gen_fn, output_transform_fn, _, attribute) in deepfm_models.items():
         data = data_gen_fn()
         if attribute is not None and attribute.has_control_flow:
             meta_args = {k: v.to('meta') for k, v in data.items()}

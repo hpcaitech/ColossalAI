@@ -38,7 +38,7 @@ class HostInfo:
 
         # socket.getfqdn("127.0.0.1") does not return localhost
         # on some users' machines
-        # thus, we directly return True if hostname is locahost, 127.0.0.1 or 0.0.0.0
+        # thus, we directly return True if hostname is localhost, 127.0.0.1 or 0.0.0.0
         if hostname in ("localhost", "127.0.0.1", "0.0.0.0"):
             return True
 

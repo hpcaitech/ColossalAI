@@ -6,7 +6,7 @@ from tqdm import tqdm
 from .utils import is_rank_0
 
 
-# Dahaos/rm-static
+# Dahoas/rm-static
 class RmStaticDataset(Dataset):
     """
     Dataset for reward model

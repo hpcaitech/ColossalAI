@@ -1,9 +1,7 @@
 import torch
-import torch.multiprocessing as mp
 
 from colossalai.pipeline.pipelinable import PipelinableContext
-
-from colossalai.testing import rerun_on_exception
+from colossalai.testing import rerun_if_address_is_in_use, rerun_on_exception, spawn
 
 NUM_CHUNKS = 1
 PIPELINE_SIZE = 2
@@ -27,7 +25,7 @@ class MLP(torch.nn.Module):
         return x
 
 
-def run_pipelinable(rank):
+def run_pipelinable(rank, world_size, port):
     pipelinable = PipelinableContext()
     with pipelinable:
         model = MLP()
@@ -50,9 +48,9 @@ def run_pipelinable(rank):
     assert layers_count_in_part_0 + layers_count_in_part_1 == pipelinable.layers_count
 
 
-@rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
+@rerun_if_address_is_in_use()
 def test_pipelinable():
-    mp.spawn(run_pipelinable, nprocs=1)
+    spawn(run_pipelinable, 1)
 
 
 if __name__ == '__main__':

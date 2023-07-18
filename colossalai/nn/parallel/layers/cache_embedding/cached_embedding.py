@@ -12,23 +12,23 @@ class CachedEmbeddingBag(BaseEmbeddingBag):
 
     Cached Embedding. Apply a GPU-based software cache approaches to dynamically manage the embedding table in the CPU and GPU memory space.
     It can leverage the id's frequency statistics of the target dataset, by passing a frequency list to param `ids_freq_mapping`.
-    You can also apply a navie LFU cache eviction strategy by setting `evict_strategy` as EvictionStrategy.LFU.
+    You can also apply a naive LFU cache eviction strategy by setting `evict_strategy` as EvictionStrategy.LFU.
 
     Args:
         num_embeddings (int): size of the dictionary of embeddings
         embedding_dim (int):  the size of each embedding vector
         padding_idx (int, optional): If specified, the entries at padding_idx do not contribute to the gradient; therefore, the embedding vector at padding_idx is not updated during training, i.e. it remains as a fixed “pad”. For a newly constructed EmbeddingBag, the embedding vector at padding_idx will default to all zeros, but can be updated to another value to be used as the padding vector. Note that the embedding vector at padding_idx is excluded from the reduction.
         max_norm (float, optional): If given, each embedding vector with norm larger than max_norm is renormalized to have norm max_norm
-        norm_type (str, optional): The p of the p-norm to compute for the max_norm option. Defaults to 2..
+        norm_type (str, optional): The p of the p-norm to compute for the max_norm option. Defaults to 2.
         scale_grad_by_freq (bool, optional): if given, this will scale gradients by the inverse of frequency of the words in the mini-batch. Default False. Note: this option is not supported when mode="max". Defaults to False.
         sparse (bool, optional): if True, gradient w.r.t. weight matrix will be a sparse tensor. See Notes for more details regarding sparse gradients. Note: this option is not supported when mode="max".. Defaults to False.
-        _weight (torch.Tensor, optional): an embedding weight tensor. Concate multiple tables in a embedding bag as a single one. Defaults to None.
+        _weight (torch.Tensor, optional): an embedding weight tensor. Concatenate multiple tables in a embedding bag as a single one. Defaults to None.
         mode (str, optional): "sum", "mean" or "max". Specifies the way to reduce the bag. "sum" computes the weighted sum, taking per_sample_weights into consideration. "mean" computes the average of the values in the bag, "max" computes the max value over each bag. Default: "mean". Defaults to 'mean'.
         include_last_offset (bool, optional): if True, offsets has one additional element, where the last element is equivalent to the size of indices. This matches the CSR format.. Defaults to False.
         dtype (torch.dtype, optional): data type of the cpu weight initialization. Defaults to None meaning float32.
         device (torch.device, optional): device type to the cpu weight. Defaults to None meaning cpu.
         cache_ratio (float, float): cache ratio of the #cuda_weight_row / #cpu_weight_row 
-        ids_freq_mapping (Union[List, torch.Tensor], optional): the frequency of each embedding vector occures in dataset. Defaults to None.
+        ids_freq_mapping (Union[List, torch.Tensor], optional): the frequency of each embedding vector occurs in dataset. Defaults to None.
         warmup_ratio (float, optional): the ratio of cuda cache is warmuped with. Defaults to 0.7.
         buffer_size (int, optional): the max number of vectors in transmitter buffer. If set to 0, the buffer is not used. Defaults to 0.
         pin_weight (bool, optional): pin the cpu weight. Defaults to False.
@@ -145,7 +145,7 @@ class CachedEmbeddingBag(BaseEmbeddingBag):
     def swap_in_bandwidth(self):
         if self.cache_weight_mgr._cpu_to_cuda_numel > 0:
             return self.cache_weight_mgr._cpu_to_cuda_numel * self.cache_weight_mgr.elem_size_in_byte / 1e6 / \
-                   self.cache_weight_mgr._cpu_to_cuda_elpase
+                   self.cache_weight_mgr._cpu_to_cuda_elapse
         else:
             return 0
 

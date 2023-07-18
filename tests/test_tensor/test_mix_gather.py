@@ -1,8 +1,5 @@
-from functools import partial
-
 import pytest
 import torch
-import torch.multiprocessing as mp
 
 from colossalai.core import global_context as gpc
 from colossalai.device.device_mesh import DeviceMesh
@@ -11,7 +8,7 @@ from colossalai.logging import disable_existing_loggers
 from colossalai.tensor.shape_consistency import CollectiveCommPattern, CommSpec
 from colossalai.tensor.sharding_spec import ShardingSpec
 from colossalai.tensor.utils import mix_gather_simulator
-from colossalai.utils import free_port
+from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 
 def check_mix_gather_S0S1(device_mesh, rank):
@@ -323,10 +320,10 @@ def check_comm(rank, world_size, port):
 
 
 @pytest.mark.skip(reason="Skip because the check functions assume 8 GPUS but CI only have 4 GPUs")
+@rerun_if_address_is_in_use()
 def test_mix_gather():
     world_size = 8
-    run_func = partial(check_comm, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(check_comm, world_size)
 
 
 if __name__ == '__main__':

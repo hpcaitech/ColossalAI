@@ -3,7 +3,6 @@ import copy
 import pytest
 import torch
 import torch.fx
-import torch.multiprocessing as mp
 import torchvision.models as tm
 
 import colossalai
@@ -13,7 +12,7 @@ from colossalai.fx._compatibility import is_compatible_with_meta
 # from colossalai.fx.passes.algorithms import solver_rotor
 # from colossalai.fx.passes.algorithms.operation import Sequence
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
-from colossalai.utils import free_port
+from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 if is_compatible_with_meta():
     from colossalai.fx.profiler.tensor import MetaTensor
@@ -26,8 +25,8 @@ except:
     withcodegen = False
 
 
-def _run_C_solver_consistency_test(rank=0):
-    colossalai.launch(config={}, rank=rank, world_size=1, host='localhost', port=free_port(), backend='nccl')
+def _run_C_solver_consistency_test(rank, world_size, port):
+    colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
 
     for M, mem_budget in [(tm.resnet50, 4000), (tm.densenet121, 8080)]:
         model = M()
@@ -70,8 +69,9 @@ def _run_C_solver_consistency_test(rank=0):
 
 @pytest.mark.skip("TODO(lyl): refactor all tests.")
 @pytest.mark.skipif(not withcodegen, reason="torch version is less than 1.12.0")
+@rerun_if_address_is_in_use()
 def test_C_solver_consistency():
-    mp.spawn(_run_C_solver_consistency_test, nprocs=1)
+    spawn(_run_C_solver_consistency_test, 1)
 
 
 if __name__ == '__main__':

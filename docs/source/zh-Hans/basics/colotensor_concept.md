@@ -2,6 +2,8 @@
 
 Author: [Jiarui Fang](https://github.com/feifeibear), [Hongxin Liu](https://github.com/ver217) and [Haichen Huang](https://github.com/1SAA)
 
+> ⚠️ 此页面上的信息已经过时并将被废弃。
+
 **Prerequisite:**
 - [Colossal-AI Overview](../concepts/colossalai_overview.md)
 - [Distributed Training](../concepts/distributed_training.md)
@@ -51,18 +53,18 @@ ColoTensor 包含额外的属性[ColoTensorSpec](https://colossalai.readthedocs.
 
 ## Example
 
-让我们看一个例子。 使用 tp_degree=4, dp_dgree=2 在 8 个 GPU 上初始化并Shard一个ColoTensor。 然后tensor被沿着 TP 进程组中的最后一个维度进行分片。 最后，我们沿着 TP 进程组中的第一个维度（dim 0）对其进行重新Shard。 我们鼓励用户运行代码并观察每个张量的形状。
+让我们看一个例子。 使用 tp_degree=4, dp_degree=2 在 8 个 GPU 上初始化并Shard一个ColoTensor。 然后tensor被沿着 TP 进程组中的最后一个维度进行分片。 最后，我们沿着 TP 进程组中的第一个维度（dim 0）对其进行重新Shard。 我们鼓励用户运行代码并观察每个张量的形状。
 
 
 ```python
 import torch
 import torch.multiprocessing as mp
-from colossalai.utils import free_port, print_rank_0
+from colossalai.utils import print_rank_0
 from functools import partial
 
 import colossalai
 from colossalai.tensor import ProcessGroup, ColoTensor, ColoTensorSpec, ShardSpec, ComputeSpec, ComputePattern
-from colossalai.utils import free_port
+from colossalai.testing import spawn
 
 import torch
 
@@ -84,8 +86,7 @@ def run_dist_tests(rank, world_size, port):
     print_rank_0(f"shape {t1.shape}, {t1.data}")
 
 def test_dist_cases(world_size):
-    run_func = partial(run_dist_tests, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_dist_tests, world_size)
 
 if __name__ == '__main__':
     test_dist_cases(4)

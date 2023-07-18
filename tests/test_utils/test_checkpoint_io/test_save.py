@@ -3,20 +3,23 @@ from functools import partial
 from tempfile import TemporaryDirectory
 from typing import Dict
 
-import colossalai
 import pytest
 import torch
 import torch.distributed as dist
-import torch.multiprocessing as mp
 import torch.nn as nn
-from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.utils import free_port
-from colossalai.utils.checkpoint_io.constant import (GLOBAL_META_FILE_NAME, META_CKPT_FILE_NAME, MODEL_CKPT_FILE_NAME,
-                                                     OTHER_CKPT_FILE_NAME)
-from colossalai.utils.checkpoint_io.io import save
-from colossalai.utils.checkpoint_io.meta import ParamDistMeta
 from torch import Tensor
 from torch.optim import Adam
+
+import colossalai
+from colossalai.testing import rerun_if_address_is_in_use, spawn
+from colossalai.utils.checkpoint_io.constant import (
+    GLOBAL_META_FILE_NAME,
+    META_CKPT_FILE_NAME,
+    MODEL_CKPT_FILE_NAME,
+    OTHER_CKPT_FILE_NAME,
+)
+from colossalai.utils.checkpoint_io.io import save
+from colossalai.utils.checkpoint_io.meta import ParamDistMeta
 
 
 def check_model_state_dict(a: Dict[str, Tensor], b: Dict[str, Tensor]) -> None:
@@ -25,7 +28,7 @@ def check_model_state_dict(a: Dict[str, Tensor], b: Dict[str, Tensor]) -> None:
         assert torch.equal(v, b[k])
 
 
-def check_optim_state_dict(a: dict, b: dict, ignore_param_gruops: bool = False) -> None:
+def check_optim_state_dict(a: dict, b: dict, ignore_param_groups: bool = False) -> None:
     assert set(a['state'].keys()) == set(b['state'].keys())
     for k, state in a['state'].items():
         b_state = b['state'][k]
@@ -34,7 +37,7 @@ def check_optim_state_dict(a: dict, b: dict, ignore_param_gruops: bool = False) 
                 assert torch.equal(v1, v2)
             else:
                 assert v1 == v2
-    if not ignore_param_gruops:
+    if not ignore_param_groups:
         assert a['param_groups'] == b['param_groups']
 
 
@@ -104,18 +107,18 @@ def test_save_global_shard():
             })
 
 
-def run_dist(rank, world_size, port, func):
+def run_dist(rank, world_size, port, test_fn):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    func()
+    test_fn()
 
 
 def run_save_dist(dir_name):
-    model, optmizer = prepare_model_optim()
+    model, optimizer = prepare_model_optim()
     dist_metas = {
         'fc.weight': ParamDistMeta(dist.get_rank(), dist.get_world_size(), 0, 1),
         'fc.bias': ParamDistMeta(dist.get_rank(), dist.get_world_size(), 0, 1)
     }
-    save(dir_name, model, optmizer, dist_meta=dist_metas)
+    save(dir_name, model, optimizer, dist_meta=dist_metas)
 
 
 @pytest.mark.dist
@@ -124,8 +127,7 @@ def test_save_dist():
     with TemporaryDirectory() as dir_name:
         fn = partial(run_save_dist, dir_name)
         world_size = 2
-        proc_fn = partial(run_dist, world_size=world_size, port=free_port(), func=fn)
-        mp.spawn(proc_fn, nprocs=world_size)
+        spawn(run_dist, world_size, test_fn=fn)
         assert len(os.listdir(dir_name)) == 8
         global_meta = torch.load(os.path.join(dir_name, GLOBAL_META_FILE_NAME))
         assert len(global_meta['meta']) == 2

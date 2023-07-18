@@ -150,7 +150,7 @@ Colossal-AI 提供了自己的优化器、损失函数和学习率调度器。Py
 optimizer = colossalai.nn.Lamb(model.parameters(), lr=1.8e-2, weight_decay=0.1)
 # build loss
 criterion = torch.nn.CrossEntropyLoss()
-# lr_scheduelr
+# lr_scheduler
 lr_scheduler = LinearWarmupLR(optimizer, warmup_steps=50, total_steps=gpc.config.NUM_EPOCHS)
 ```
 
@@ -477,7 +477,7 @@ def build_cifar(batch_size):
     return train_dataloader, test_dataloader
 
 
-# craete dataloaders
+# create dataloaders
 train_dataloader , test_dataloader = build_cifar()
 # create loss function
 criterion = CrossEntropyLoss(label_smoothing=0.1)
@@ -492,7 +492,7 @@ lr_scheduler = CosineAnnealingWarmupLR(optimizer=optimizer,
 #### 启动 Colossal-AI 引擎
 
 ```python
-# intiailize
+# initialize
 engine, train_dataloader, test_dataloader, _ = colossalai.initialize(model=model,
                                                                      optimizer=optimizer,
                                                                      criterion=criterion,

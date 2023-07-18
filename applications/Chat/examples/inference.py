@@ -2,6 +2,7 @@ import argparse
 
 import torch
 from coati.models.bloom import BLOOMActor
+from coati.models.generation import generate
 from coati.models.gpt import GPTActor
 from coati.models.opt import OPTActor
 from transformers import AutoTokenizer
@@ -20,7 +21,7 @@ def eval(args):
         raise ValueError(f'Unsupported model "{args.model}"')
 
     state_dict = torch.load(args.model_path)
-    actor.model.load_state_dict(state_dict)
+    actor.load_state_dict(state_dict)
 
     # configure tokenizer
     if args.model == 'gpt2':
@@ -37,12 +38,13 @@ def eval(args):
     actor.eval()
     input = args.input
     input_ids = tokenizer.encode(input, return_tensors='pt').to(torch.cuda.current_device())
-    outputs = actor.generate(input_ids,
-                             max_length=args.max_length,
-                             do_sample=True,
-                             top_k=50,
-                             top_p=0.95,
-                             num_return_sequences=1)
+    outputs = generate(actor,
+                       input_ids,
+                       max_length=args.max_length,
+                       do_sample=True,
+                       top_k=50,
+                       top_p=0.95,
+                       num_return_sequences=1)
     output = tokenizer.batch_decode(outputs[0], skip_special_tokens=True)
     print(output)
 

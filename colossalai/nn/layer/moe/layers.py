@@ -1,24 +1,31 @@
 import math
+from typing import Optional, Tuple, Type
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 from colossalai.context.moe_context import MOE_CONTEXT
-from colossalai.utils import get_current_device
-from colossalai.nn.layer.moe._operation import COL_MOE_KERNEL_FLAG, AllToAll, AllGather, \
-    ReduceScatter, MoeDispatch, MoeCombine
-from colossalai.nn.layer.moe.experts import MoeExperts, Experts
-from colossalai.nn.layer.moe.utils import UniformNoiseGenerator, NormalNoiseGenerator
+from colossalai.nn.layer.moe._operation import (
+    COL_MOE_KERNEL_FLAG,
+    AllGather,
+    AllToAll,
+    MoeCombine,
+    MoeDispatch,
+    ReduceScatter,
+)
+from colossalai.nn.layer.moe.experts import Experts, MoeExperts
 from colossalai.nn.layer.moe.routers import MoeRouter, Top1Router, Top2Router
-from colossalai.zero.init_ctx import no_shard_zero_context, no_shard_zero_decrator
-from typing import Optional, Type, Tuple
+from colossalai.nn.layer.moe.utils import NormalNoiseGenerator, UniformNoiseGenerator
+from colossalai.utils import get_current_device
+from colossalai.zero.legacy.init_ctx import no_shard_zero_context, no_shard_zero_decrator
 
 
 @no_shard_zero_decrator(is_replicated=True)
 class MoeLayer(nn.Module):
     """A MoE layer, that puts its input tensor to its gate and uses the output logits
     to router all tokens, is mainly used to exchange all tokens for every expert across
-    the moe tensor group by all to all comunication. Then it will get the output of all
+    the moe tensor group by all to all communication. Then it will get the output of all
     experts and exchange the output. At last returns the output of the moe system.
 
     Args:
@@ -115,7 +122,7 @@ class MoeModule(nn.Module):
         drop_tks (bool, optional): Whether drops tokens in evaluation
         use_residual (bool, optional): Makes this MoE layer a Residual MoE.
             More information can be found in `Microsoft paper`_.
-        residual_instance (nn.Module, optional): The instance of residual module in Resiual MoE
+        residual_instance (nn.Module, optional): The instance of residual module in Residual MoE
         expert_instance (MoeExperts, optional): The instance of experts module in MoeLayer
         expert_cls (Type[nn.Module], optional): The class of each expert when no instance is given
         expert_args (optional): The args of expert when no instance is given
@@ -178,16 +185,16 @@ class MoeModule(nn.Module):
                 self.residual_combine = nn.Linear(dim_model, 2, device=get_current_device())
 
         if expert_instance is not None:
-            self.experts = expert_instance
+            my_experts = expert_instance
         else:
             assert expert_cls is not None, \
                 "Expert class can't be None when experts instance is not given"
-            self.experts = Experts(expert_cls, num_experts, **expert_args)
+            my_experts = Experts(expert_cls, num_experts, **expert_args)
 
         self.moe_layer = MoeLayer(dim_model=dim_model,
                                   num_experts=num_experts,
                                   router=self.moe_router,
-                                  experts=self.experts)
+                                  experts=my_experts)
 
     def forward(self, inputs: torch.Tensor):
         moe_output, l_aux = self.moe_layer(inputs)

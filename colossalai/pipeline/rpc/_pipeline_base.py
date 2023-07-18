@@ -123,7 +123,7 @@ class WorkerBase(ABC):
         self.device = device
         self._initialize_outstanding_range()
 
-        # variable and const for context managment
+        # variable and const for context management
         self.outstanding = 0
         self.forward_times = 0
         self.backward_times = 0
@@ -226,7 +226,7 @@ class WorkerBase(ABC):
         self.pp_rank_to_worker_rref = pp_rank_to_worker_rref
 
         # for some schedule need the other worker's info to initialise partition (like Chimera)
-        # construction of partition is executed after the registion of pp_rank_to_worker_rref
+        # construction of partition is executed after the registration of pp_rank_to_worker_rref
         self._initialize_partition()
 
     # res_use works for lifecycle counter,
@@ -418,7 +418,7 @@ class WorkerBase(ABC):
                 # On current PP middleware design for DAG, get_output_by_key used by _subscribe_producer
                 # can only be executed once for every producer-consumer stage pair, which is necessary
                 # to count the lifecycle of work_item. So, keeping the _subscribe_producer in the same
-                # lock of work_item queue operation gurantees the consistency of lifecycle counter.
+                # lock of work_item queue operation guarantees the consistency of lifecycle counter.
                 work_item_from_producer = self._subscribe_producer(microbatch_id, forward_only)
                 self.work_list[key] = work_item_from_producer
                 self.work_list_condition_lock.notify_all()
@@ -460,7 +460,7 @@ class WorkerBase(ABC):
                 # On current PP middleware design for DAG, get_output_by_key used by subscribe_consumer
                 # can only be executed once for every producer-consumer stage pair, which is necessary
                 # to count the lifecycle of work_item. So, keeping the subscribe_consumer in the same
-                # lock of work_item queue operation gurantees the consistency of lifecycle counter.
+                # lock of work_item queue operation guarantees the consistency of lifecycle counter.
                 work_item_from_consumer = self._subscribe_consumer(microbatch_id)
                 self.work_list[key] = work_item_from_consumer
                 self.work_list_condition_lock.notify_all()
@@ -508,7 +508,7 @@ class WorkerBase(ABC):
         assert self.producer_stage_ids is None, f"all the producers of rank {rank} has been subscribed"
         assert self.consumer_stage_ids is None, f"all the consumers of rank {rank} has been subscribed"
 
-        # should be aranged in order, the order of the input of current forward
+        # should be arranged in order, the order of the input of current forward
         self.producer_stage_ids = self.get_producer_stage_ids()
         self.consumer_stage_ids = self.get_consumer_stage_ids()
 

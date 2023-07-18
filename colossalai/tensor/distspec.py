@@ -15,7 +15,7 @@ class _DistSpec:
     A class indicates Distributed Specification.
     The DistSpec is only works for the tensor parallel process groups.
     Because the dist spec of data parallel process group can be automatically deduced.
-    This is an internal data structrue.
+    This is an internal data structure.
     The API for users should be `ShardSpec` and `ReplicaSpec`.
 
     Args:

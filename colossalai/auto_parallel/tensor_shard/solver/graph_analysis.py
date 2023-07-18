@@ -83,7 +83,7 @@ class GraphAnalyser:
 
     def liveness_analysis(self) -> List[LiveStage]:
         """
-        Analyse the graph to obtain the variable liveness information. This function returns
+        Analyses the graph to obtain the variable liveness information. This function returns
         an ordered dictionary where the key is the compute stage ID and the value is a LivenessStage object.
         """
         compute_nodes = self.graph.nodes
@@ -91,7 +91,7 @@ class GraphAnalyser:
 
         # checked: record all variables created since the first stage
         # all: record the live variables only exist until the current stage.
-        #       this can be different from the `checked list`` as some varialbes may be destroyed prior to this stage.
+        #       this can be different from the `checked list`` as some variables may be destroyed prior to this stage.
         # unique: record the unique live variables only exist until the current stage.
         #       this is different from `all list` as some variables are duplicated.
         checked_variables = LiveVariableVector()
@@ -103,7 +103,7 @@ class GraphAnalyser:
             # find new living variables #
             #############################
             # detect whether the current op is an in-place op
-            # if it is an in-place op, we would deem it as a duplciate var
+            # if it is an in-place op, we would deem it as a duplicate var
             is_inplace = False
             if node.op == 'call_function':
                 # check if this is an inplace op such as torch.nn.functional.relu(x, inplace=True)

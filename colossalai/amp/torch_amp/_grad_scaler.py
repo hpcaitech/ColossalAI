@@ -240,7 +240,7 @@ class GradScaler(object):
                 for grads in per_dtype_grads.values():
                     torch._amp_foreach_non_finite_check_and_unscale_(grads, per_device_found_inf.get(device),
                                                                      per_device_inv_scale.get(device))
-        # For tensor parallel paramters it should be all-reduced over tensor parallel process group
+        # For tensor parallel parameters it should be all-reduced over tensor parallel process group
         if gpc.is_initialized(ParallelMode.MODEL) and gpc.get_world_size(ParallelMode.MODEL) > 1:
             vals = [val for val in per_device_found_inf._per_device_tensors.values()]
             coalesced = _flatten_dense_tensors(vals)

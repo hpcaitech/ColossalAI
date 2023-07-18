@@ -1,15 +1,12 @@
-from functools import partial
-
 import pytest
 import torch
-import torch.multiprocessing as mp
+from checks_2p5d.check_layer_2p5d import *
+from checks_2p5d.check_operation_2p5d import check_AB, check_ABT, check_ATB
+
 from colossalai.core import global_context as gpc
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
-from colossalai.utils import free_port
-from colossalai.testing import rerun_if_address_is_in_use
-from checks_2p5d.check_layer_2p5d import *
-from checks_2p5d.check_operation_2p5d import check_AB, check_ABT, check_ATB
+from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 CONFIG = dict(parallel=dict(
     pipeline=dict(size=1),
@@ -53,9 +50,7 @@ def check_layer_and_operation(rank, world_size, port):
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_2p5d():
-    world_size = 4
-    run_func = partial(check_layer_and_operation, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(check_layer_and_operation, 4)
 
 
 if __name__ == '__main__':

@@ -10,7 +10,12 @@
 
 ## Overview
 
-This folder provides several examples accelerated by Colossal-AI. The `tutorial` folder is for everyone to quickly try out the different features in Colossal-AI. Other folders such as `images` and `language` include a wide range of deep learning tasks and applications.
+This folder provides several examples accelerated by Colossal-AI.
+Folders such as `images` and `language` include a wide range of deep learning tasks and applications.
+The `community` folder aim to create a collaborative platform for developers to contribute exotic features built on top of Colossal-AI.
+The `tutorial` folder is for everyone to quickly try out the different features in Colossal-AI.
+
+You can find applications such as Chatbot, AIGC and Biomedicine in the [Applications](https://github.com/hpcaitech/ColossalAI/tree/main/applications) directory.
 
 ## Folder Structure
 
@@ -50,3 +55,10 @@ Therefore, it is essential for the example contributors to know how to integrate
 2. Configure your testing parameters such as number steps, batch size in `test_ci.sh`, e.t.c. Keep these parameters small such that each example only takes several minutes.
 3. Export your dataset path with the prefix `/data` and make sure you have a copy of the dataset in the `/data/scratch/examples-data` directory on the CI machine. Community contributors can contact us via slack to request for downloading the dataset on the CI machine.
 4. Implement the logic such as dependency setup and example execution
+
+## Community Dependency
+We are happy to introduce the following nice community dependency repos that are powered by Colossal-AI:
+- [lightning-ColossalAI](https://github.com/Lightning-AI/lightning)
+- [HCP-Diffusion](https://github.com/7eu7d7/HCP-Diffusion)
+- [KoChatGPT](https://github.com/airobotlab/KoChatGPT)
+- [minichatgpt](https://github.com/juncongmoo/minichatgpt)

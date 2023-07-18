@@ -1,10 +1,8 @@
-from functools import partial
 from typing import Dict, List, Tuple
 
 import pytest
 import torch
 import torch.fx
-import torch.multiprocessing as mp
 
 try:
     from fastfold.model.nn.evoformer import EvoformerBlock
@@ -15,6 +13,7 @@ except:
 from test_autochunk_alphafold_utils import run_test
 
 from colossalai.autochunk.autochunk_codegen import AUTOCHUNK_AVAILABLE
+from colossalai.testing import clear_cache_before_run, parameterize, spawn
 
 
 def get_model():
@@ -66,18 +65,19 @@ def get_chunk_target() -> Dict:
     not (AUTOCHUNK_AVAILABLE and HAS_REPO),
     reason="torch version is lower than 1.12.0",
 )
-@pytest.mark.parametrize("max_memory", [None, 20, 24])
-@pytest.mark.parametrize("data_args", [(32, 64)])    # (msa_len, pair_len)
+@clear_cache_before_run()
+@parameterize("max_memory", [None, 20, 24])
+@parameterize("data_args", [(32, 64)])
 def test_evoformer_block(data_args, max_memory):
-    run_func = partial(
+    spawn(
         run_test,
+        1,
         data_args=data_args,
         max_memory=max_memory,
         get_model=get_model,
         get_data=get_data,
         get_chunk_target=get_chunk_target,
     )
-    mp.spawn(run_func, nprocs=1)
 
 
 if __name__ == "__main__":

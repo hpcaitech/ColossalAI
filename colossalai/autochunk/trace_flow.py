@@ -64,7 +64,7 @@ class TraceFlow(object):
             return False
         return True
 
-    def _assgin_single_node_flow(
+    def _assign_single_node_flow(
         self,
         arg_node: Node,
         start_idx: int,
@@ -177,7 +177,7 @@ class TraceFlow(object):
                     if get_node_shape(arg) is None:
                         continue
                     arg_list.append(arg)
-                    flow_flag = self._assgin_single_node_flow(
+                    flow_flag = self._assign_single_node_flow(
                         arg,
                         start_idx,
                         end_idx,
@@ -315,7 +315,7 @@ class TraceFlow(object):
         chunk_info["args"]["prepose_nodes"] = prepose_nodes
 
     def _get_non_chunk_inputs(self, chunk_info, start_idx, end_idx):
-        # we need to log input nodes to avoid deleteing them in the loop
+        # we need to log input nodes to avoid deleting them in the loop
         chunk_node_list = self.node_mgr.get_node_slice_by_idx(start_idx, end_idx + 1)
         # also need to get some prepose node's arg out of non_chunk_inputs
         for n in chunk_info["args"]["prepose_nodes"]:
@@ -366,8 +366,8 @@ class TraceFlow(object):
         # find non chunk inputs
         chunk_info = self._get_non_chunk_inputs(chunk_info, start_idx, end_idx)
 
-        # reassgin reshape size, some size may have changed due to chunk
-        chunk_info = self._reassgin_reshape_size(chunk_info)
+        # reassign reshape size, some size may have changed due to chunk
+        chunk_info = self._reassign_reshape_size(chunk_info)
 
         return chunk_info
 
@@ -428,10 +428,10 @@ class TraceFlow(object):
         chunk_info["outputs_dim"].append(output_dim)
         return True
 
-    def _reassgin_reshape_size(self, chunk_info):
+    def _reassign_reshape_size(self, chunk_info):
         """
         Some shape args in reshape may have changed due to chunk
-        reassgin those changed shape
+        reassign those changed shape
         """
         chunk_region = chunk_info["region"]
         reshape_size = {}
@@ -479,7 +479,7 @@ class TraceFlow(object):
         # check index source align
         if not self.check_index_source(start_dim, start_node, start_idx, end_dim, end_node):
             return False
-        # check index copmute
+        # check index compute
         if not self.check_index_compute(start_idx, end_dim, end_node, end_idx):
             return False
         return True

@@ -1,16 +1,18 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
+import operator
+from functools import reduce
 from typing import List, Tuple, Union
+
 import torch
 import torch.distributed as dist
 
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.utils import get_current_device
-from functools import reduce
-import operator
-from .utils import split_tensor_into_1d_equal_chunks, gather_split_1d_tensor
+
+from .utils import gather_split_1d_tensor, split_tensor_into_1d_equal_chunks
 
 TensorShape = Union[torch.Size, List[int], Tuple[int]]
 
@@ -103,10 +105,10 @@ def _communicate(object_send_next: Union[torch.Tensor, List[torch.Tensor]] = Non
                    previous rank.
         recv_next (bool): boolean for whether tensor should be received from
                    next rank.
-        recv_prev_shape (Union[:class:`torch.Size`, List[:class:`torch.Size`]]): shape of the tensor to be received from the previous stage, defualts to None.
-        recv_next_shape (Union[:class:`torch.Size`, List[:class:`torch.Size`]]): shape of the tensor to be received from the next stage, defualts to None.
-        prev_rank (int): the rank of the previous pipeline stage, defualts to None,
-        next_rank (int): the rank of the next pipeline stage, defualts to None,
+        recv_prev_shape (Union[:class:`torch.Size`, List[:class:`torch.Size`]]): shape of the tensor to be received from the previous stage, defaults to None.
+        recv_next_shape (Union[:class:`torch.Size`, List[:class:`torch.Size`]]): shape of the tensor to be received from the next stage, defaults to None.
+        prev_rank (int): the rank of the previous pipeline stage, defaults to None,
+        next_rank (int): the rank of the next pipeline stage, defaults to None,
         dtype (torch.dtype): data type of intermediate buffers, defaults to None
         scatter_gather_tensors (bool): whether to scatter and gather tensor between pipeline stages, defaults to False
 
@@ -217,7 +219,7 @@ def recv_backward(output_grad_shape,
         next_rank (int, optional): The rank of the source of the tensor.
 
     Returns:
-        Union[:class:`torch.Tensor`, List[:class:`torch.Tensor`]]: The input gradient tensor or gradident tensor list.
+        Union[:class:`torch.Tensor`, List[:class:`torch.Tensor`]]: The input gradient tensor or gradient tensor list.
     """
     if gpc.is_pipeline_last_stage():
         output_tensor_grad = None
@@ -260,7 +262,7 @@ def send_forward_recv_backward(output_tensor,
                                next_rank=None,
                                dtype=torch.float,
                                scatter_gather_tensors=False) -> Union[torch.Tensor, List[torch.Tensor]]:
-    """Batched communication operation. Sends the input tensor to the 
+    """Batched communication operation. Sends the input tensor to the
     next stage in pipeline, while receives the gradient tensor from the
     next stage in pipeline as the input gradient tensor of this stage.
 
@@ -319,7 +321,7 @@ def send_forward_recv_forward(output_tensor,
                               next_rank=None,
                               dtype=torch.float,
                               scatter_gather_tensors=False) -> Union[torch.Tensor, List[torch.Tensor]]:
-    """Batched communication operation. Sends the input tensor to the 
+    """Batched communication operation. Sends the input tensor to the
     next stage in pipeline, while receives the output tensor from the
     previous stage in pipeline as the input of this stage.
 

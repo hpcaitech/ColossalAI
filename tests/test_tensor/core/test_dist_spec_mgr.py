@@ -1,13 +1,12 @@
 import math
+
+import pytest
 import torch
 import torch.distributed as dist
-import pytest
+
 import colossalai
-import torch.multiprocessing as mp
-from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.utils import free_port
-from colossalai.tensor import DistSpecManager, ProcessGroup, ShardSpec, ReplicaSpec
-from functools import partial
+from colossalai.tensor import DistSpecManager, ProcessGroup, ReplicaSpec, ShardSpec
+from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 
 def run():
@@ -58,8 +57,7 @@ def run_dist(rank, world_size, port):
 @pytest.mark.parametrize('world_size', [1, 4])
 @rerun_if_address_is_in_use()
 def test_dist_spec_mgr(world_size):
-    run_func = partial(run_dist, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_dist, world_size)
 
 
 if __name__ == '__main__':

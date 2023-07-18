@@ -6,6 +6,7 @@ from colossalai.device.device_mesh import DeviceMesh
 from colossalai.fx.graph_module import ColoGraphModule
 from colossalai.fx.tracer import ColoTracer
 from colossalai.tensor.sharding_spec import ShardingSpec
+from colossalai.testing import clear_cache_before_run
 
 
 class TestModule(torch.nn.Module):
@@ -26,6 +27,7 @@ def insert_narrow(gm, x_node):
     return gm
 
 
+@clear_cache_before_run()
 def test_node_args_converting_pass():
     model = TestModule()
     physical_mesh_id = torch.arange(0, 4)

@@ -1,21 +1,27 @@
 name: Test Documentation on PR
 on:
   pull_request:
+    branches:
+      - "main"
+      - "develop"
+      - "feature/**"
     # any change in the examples folder will trigger check for the corresponding example.
     paths:
-      - 'docs/source/**.md'
+      - "docs/source/**.md"
 
 jobs:
   # This is for changed example files detect and output a matrix containing all the corresponding directory name.
   detect-changed-doc:
     if: |
-        github.event.pull_request.draft == false &&
-        github.base_ref == 'main' &&
-        github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' && github.event_name == 'pull_request'
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     outputs:
       any_changed: ${{ steps.changed-files.outputs.any_changed }}
       changed_files: ${{ steps.changed-files.outputs.all_changed_files }}
+    concurrency:
+      group: ${{ github.head_ref }}
+      cancel-in-progress: false
     name: Detect changed example files
     steps:
       - uses: actions/checkout@v3
@@ -26,10 +32,10 @@ jobs:
       - name: Locate base commit
         id: locate-base-sha
         run: |
-            curBranch=$(git rev-parse --abbrev-ref HEAD)
-            commonCommit=$(git merge-base origin/main $curBranch)
-            echo $commonCommit
-            echo "baseSHA=$commonCommit" >> $GITHUB_OUTPUT
+          curBranch=$(git rev-parse --abbrev-ref HEAD)
+          commonCommit=$(git merge-base origin/main $curBranch)
+          echo $commonCommit
+          echo "baseSHA=$commonCommit" >> $GITHUB_OUTPUT
 
       - name: Get all changed example files
         id: changed-files
@@ -43,10 +49,9 @@ jobs:
   check-changed-doc:
     # Add this condition to avoid executing this job if the trigger event is workflow_dispatch.
     if: |
-        github.event.pull_request.draft == false &&
-        github.base_ref == 'main' &&
-        github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' && github.event_name == 'pull_request' &&
-        needs.detect-changed-doc.outputs.any_changed == 'true'
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' && github.event_name == 'pull_request' &&
+      needs.detect-changed-doc.outputs.any_changed == 'true'
     name: Test the changed Doc
     needs: detect-changed-doc
     runs-on: [self-hosted, gpu]
@@ -57,12 +62,15 @@ jobs:
     defaults:
       run:
         shell: bash
+    concurrency:
+      group: ${{ github.head_ref }}
+      cancel-in-progress: false
     steps:
       - name: Checkout ColossalAI-Documentation
         uses: actions/checkout@v2
         with:
-          path: './ColossalAI-Documentation'
-          repository: 'hpcaitech/ColossalAI-Documentation'
+          path: "./ColossalAI-Documentation"
+          repository: "hpcaitech/ColossalAI-Documentation"
 
       - name: Install Docer
         run: |
@@ -86,7 +94,7 @@ jobs:
       - name: Test the Doc
         run: |
           source activate pytorch
-          for file in ${{ steps.changed-files.outputs.all_changed_files }}; do
+          for file in ${{ needs.detect-changed-doc.outputs.changed_files }}; do
             echo "Testing $file now..."
             docer test -p $file
           done

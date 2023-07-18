@@ -1,147 +1,105 @@
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, List, Optional, Union
+from contextlib import contextmanager
+from typing import List
 
-import torch
-from coati.experience_maker import Experience, ExperienceMaker
-from coati.replay_buffer import ReplayBuffer
-from torch import Tensor
-from torch.utils.data import DistributedSampler
-from tqdm import tqdm
+import torch.nn as nn
+import tqdm
+from coati.experience_maker import Experience
+from coati.replay_buffer import NaiveReplayBuffer
+from torch.optim import Optimizer
+from torch.utils.data import DataLoader
 
 from .callbacks import Callback
 from .strategies import Strategy
-from .utils import is_rank_0
+from .utils import CycledDataLoader, is_rank_0
 
 
-class Trainer(ABC):
+class SLTrainer(ABC):
     """
-        Base class for rlhf trainers.
+        Base class for supervised learning trainers.
 
     Args:
         strategy (Strategy):the strategy to use for training
-        experience_maker (ExperienceMaker): the experience maker to use for produce experience to fullfill replay buffer
-        replay_buffer (ReplayBuffer): the replay buffer to use for training
-        experience_batch_size (int, defaults to 8): the batch size to use for experience generation
         max_epochs (int, defaults to 1): the number of epochs of training process
-        tokenizer (Callable, optional): the tokenizer to use for tokenizing the input
-        sample_replay_buffer (bool, defaults to False): whether to sample from replay buffer
-        data_loader_pin_memory (bool, defaults to True): whether to pin memory for data loader
+        model (nn.Module): the model to train
+        optim (Optimizer): the optimizer to use for training
+    """
+
+    def __init__(
+        self,
+        strategy: Strategy,
+        max_epochs: int,
+        model: nn.Module,
+        optimizer: Optimizer,
+    ) -> None:
+        super().__init__()
+        self.strategy = strategy
+        self.max_epochs = max_epochs
+        self.model = model
+        self.optimizer = optimizer
+
+    @abstractmethod
+    def _train(self, epoch):
+        raise NotImplementedError()
+
+    @abstractmethod
+    def _eval(self, epoch):
+        raise NotImplementedError()
+
+    def _before_fit(self):
+        self.no_epoch_bar = False
+
+    def fit(self, *args, **kwargs):
+        self._before_fit(*args, **kwargs)
+        for epoch in tqdm.trange(self.max_epochs, desc="Epochs", disable=not is_rank_0() or self.no_epoch_bar):
+            self._train(epoch)
+            self._eval(epoch)
+
+
+class OnPolicyTrainer(ABC):
+    """
+        Base class for on-policy rl trainers, e.g. PPO.
+
+    Args:
+        strategy (Strategy):the strategy to use for training
+        buffer (NaiveReplayBuffer): the buffer to collect experiences
+        sample_buffer (bool, defaults to False): whether to sample from buffer
+        dataloader_pin_memory (bool, defaults to True): whether to pin memory for data loader
         callbacks (List[Callback], defaults to []): the callbacks to call during training process
-        generate_kwargs (dict, optional): the kwargs to use while model generating
     """
 
     def __init__(self,
                  strategy: Strategy,
-                 experience_maker: ExperienceMaker,
-                 replay_buffer: ReplayBuffer,
-                 experience_batch_size: int = 8,
-                 max_epochs: int = 1,
-                 tokenizer: Optional[Callable[[Any], dict]] = None,
-                 sample_replay_buffer: bool = False,
-                 dataloader_pin_memory: bool = True,
-                 callbacks: List[Callback] = [],
-                 **generate_kwargs) -> None:
+                 buffer: NaiveReplayBuffer,
+                 sample_buffer: bool,
+                 dataloader_pin_memory: bool,
+                 callbacks: List[Callback] = []) -> None:
         super().__init__()
         self.strategy = strategy
-        self.experience_maker = experience_maker
-        self.replay_buffer = replay_buffer
-        self.experience_batch_size = experience_batch_size
-        self.max_epochs = max_epochs
-        self.tokenizer = tokenizer
-        self.generate_kwargs = generate_kwargs
-        self.sample_replay_buffer = sample_replay_buffer
+        self.buffer = buffer
+        self.sample_buffer = sample_buffer
         self.dataloader_pin_memory = dataloader_pin_memory
         self.callbacks = callbacks
 
-    @abstractmethod
-    def training_step(self, experience: Experience) -> Dict[str, Any]:
-        pass
-
-    def _make_experience(self, inputs: Union[Tensor, Dict[str, Tensor]]) -> Experience:
-        if isinstance(inputs, Tensor):
-            return self.experience_maker.make_experience(inputs, **self.generate_kwargs)
-        elif isinstance(inputs, dict):
-            return self.experience_maker.make_experience(**inputs, **self.generate_kwargs)
-        else:
-            raise ValueError(f'Unsupported input type "{type(inputs)}"')
-
-    def _sample_prompts(self, prompts) -> list:
-        indices = list(range(len(prompts)))
-        sampled_indices = self.strategy.experience_sampler.choice(indices, self.experience_batch_size, replace=False)
-        return [prompts[i] for i in sampled_indices]
-
-    def _learn(self):
-        # replay buffer may be empty at first, we should rebuild at each training
-        if not self.sample_replay_buffer:
-            dataloader = self.strategy.setup_dataloader(self.replay_buffer, self.dataloader_pin_memory)
-            device = torch.cuda.current_device()
-        if self.sample_replay_buffer:
-            pbar = tqdm(range(self.max_epochs), desc='Train epoch', disable=not is_rank_0())
-            for _ in pbar:
-                experience = self.replay_buffer.sample()
-                metrics = self.training_step(experience)
-                pbar.set_postfix(metrics)
-        else:
-            for epoch in range(self.max_epochs):
-                self._on_learn_epoch_start(epoch)
-                if isinstance(dataloader.sampler, DistributedSampler):
-                    dataloader.sampler.set_epoch(epoch)
-                pbar = tqdm(dataloader, desc=f'Train epoch [{epoch+1}/{self.max_epochs}]', disable=not is_rank_0())
-                for experience in pbar:
-                    self._on_learn_batch_start()
-                    experience.to_device(device)
-                    metrics = self.training_step(experience)
-                    self._on_learn_batch_end(metrics, experience)
-                    pbar.set_postfix(metrics)
-                self._on_learn_epoch_end(epoch)
-
-    def fit(self,
-            prompt_dataloader,
-            pretrain_dataloader,
-            num_episodes: int = 50000,
-            max_timesteps: int = 500,
-            update_timesteps: int = 5000) -> None:
-        time = 0
-        self.pretrain_dataloader = pretrain_dataloader
-        self.prompt_dataloader = prompt_dataloader
-        self._on_fit_start()
-        for episode in range(num_episodes):
-            self._on_episode_start(episode)
-            for timestep in tqdm(range(max_timesteps),
-                                 desc=f'Episode [{episode+1}/{num_episodes}]',
-                                 disable=not is_rank_0()):
-                time += 1
-                prompts = next(iter(self.prompt_dataloader))
-                self._on_make_experience_start()
-                self.experience_maker.initial_model.to(torch.cuda.current_device())
-                self.experience_maker.reward_model.to(torch.cuda.current_device())
-                experience = self._make_experience(prompts)
-                self._on_make_experience_end(experience)
-                self.replay_buffer.append(experience)
-                if time % update_timesteps == 0:
-                    self.experience_maker.initial_model.to('cpu')
-                    self.experience_maker.reward_model.to('cpu')
-                    self._learn()
-                    self.replay_buffer.clear()
-            self._on_episode_end(episode)
-        self._on_fit_end()
-
-    # TODO(ver217): maybe simplify these code using context
-    def _on_fit_start(self) -> None:
+    @contextmanager
+    def _fit_ctx(self) -> None:
         for callback in self.callbacks:
             callback.on_fit_start()
+        try:
+            yield
+        finally:
+            for callback in self.callbacks:
+                callback.on_fit_end()
 
-    def _on_fit_end(self) -> None:
-        for callback in self.callbacks:
-            callback.on_fit_end()
-
-    def _on_episode_start(self, episode: int) -> None:
+    @contextmanager
+    def _episode_ctx(self, episode: int) -> None:
         for callback in self.callbacks:
             callback.on_episode_start(episode)
-
-    def _on_episode_end(self, episode: int) -> None:
-        for callback in self.callbacks:
-            callback.on_episode_end(episode)
+        try:
+            yield
+        finally:
+            for callback in self.callbacks:
+                callback.on_episode_end(episode)
 
     def _on_make_experience_start(self) -> None:
         for callback in self.callbacks:
@@ -166,3 +124,65 @@ class Trainer(ABC):
     def _on_learn_batch_end(self, metrics: dict, experience: Experience) -> None:
         for callback in self.callbacks:
             callback.on_learn_batch_end(metrics, experience)
+
+    @abstractmethod
+    def _make_experience(self, collect_step: int):
+        """
+        Implement this method to make experience.
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    def _learn(self, update_step: int):
+        """
+        Implement this method to learn from experience, either
+        sample from buffer or transform buffer into dataloader.
+        """
+        raise NotImplementedError()
+
+    def _collect_phase(self, collect_step: int):
+        self._on_make_experience_start()
+        experience = self._make_experience(collect_step)
+        self._on_make_experience_end(experience)
+        self.buffer.append(experience)
+
+    def _update_phase(self, update_step: int):
+        self._on_learn_epoch_start(update_step)
+        self._learn(update_step)
+        self._on_learn_epoch_end(update_step)
+
+    def fit(
+        self,
+        prompt_dataloader: DataLoader,
+        pretrain_dataloader: DataLoader,
+        num_episodes: int,
+        num_collect_steps: int,
+        num_update_steps: int,
+    ):
+        """
+        The main training loop of on-policy rl trainers.
+
+        Args:
+            prompt_dataloader (DataLoader): the dataloader to use for prompt data
+            pretrain_dataloader (DataLoader): the dataloader to use for pretrain data
+            num_episodes (int): the number of episodes to train
+            num_collect_steps (int): the number of collect steps per episode
+            num_update_steps (int): the number of update steps per episode
+        """
+        self.prompt_dataloader = CycledDataLoader(prompt_dataloader)
+        self.pretrain_dataloader = CycledDataLoader(pretrain_dataloader)
+
+        with self._fit_ctx():
+            for episode in tqdm.trange(num_episodes, desc="Episodes", disable=not is_rank_0()):
+                with self._episode_ctx(episode):
+                    for collect_step in tqdm.trange(num_collect_steps, desc="Collect steps", disable=not is_rank_0()):
+                        self._collect_phase(collect_step)
+                    if not self.sample_buffer:
+                        # HACK(cwher): according to the design of boost API, dataloader should also be boosted,
+                        #  but it is impractical to adapt this pattern in RL training. Thus, I left dataloader unboosted.
+                        #  I only call strategy.setup_dataloader() to setup dataloader.
+                        self.dataloader = self.strategy.setup_dataloader(self.buffer, self.dataloader_pin_memory)
+                    for update_step in tqdm.trange(num_update_steps, desc="Update steps", disable=not is_rank_0()):
+                        self._update_phase(update_step)
+                    # NOTE: this is for on-policy algorithms
+                    self.buffer.clear()

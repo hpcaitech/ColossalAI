@@ -1,15 +1,10 @@
-import torch
 import pytest
-from functools import partial
-
-import torch.multiprocessing as mp
+import torch
 import torch.distributed as dist
 
 import colossalai
-from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.utils.cuda import get_current_device
-from colossalai.utils import free_port
-from colossalai.tensor import ComputePattern, ComputeSpec, ColoTensor, ShardSpec, ProcessGroup, ColoTensorSpec
+from colossalai.tensor import ColoTensor, ColoTensorSpec, ComputePattern, ComputeSpec, ProcessGroup, ShardSpec
+from colossalai.testing import rerun_if_address_is_in_use, spawn
 from colossalai.utils.checkpoint.utils import gather_tensor, scatter_tensor
 from tests.test_tensor.common_utils import tensor_shard_equal
 
@@ -39,8 +34,7 @@ def run_dist(rank, world_size, port, dp_degree, tp_degree):
 @pytest.mark.parametrize('world_size', [4])
 @rerun_if_address_is_in_use()
 def test_checkpoint(world_size):
-    run_func = partial(run_dist, world_size=world_size, port=free_port(), dp_degree=2, tp_degree=world_size // 2)
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_dist, world_size, dp_degree=2, tp_degree=world_size // 2)
 
 
 if __name__ == '__main__':

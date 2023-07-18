@@ -6,12 +6,13 @@ import torch
 import torch.distributed as dist
 import torch.distributed.rpc as rpc
 import torch.multiprocessing as mp
-from colossalai import launch
-from colossalai.logging import disable_existing_loggers
-from colossalai.pipeline.pipeline_process_group import ppg
 from torch import nn
 from torch._C._distributed_rpc import _is_current_rpc_agent_set
 from torch.optim import SGD, Adam, Optimizer, RMSprop
+
+from colossalai import launch
+from colossalai.logging import disable_existing_loggers
+from colossalai.pipeline.pipeline_process_group import ppg
 
 rpc_is_initialized = _is_current_rpc_agent_set
 
@@ -20,7 +21,9 @@ def color_debug(text, prefix=' ', color='blue'):
     color = color.upper()
     print(getattr(Back, color), prefix, Style.RESET_ALL, text)
 
+
 class MLP(nn.Module):
+
     def __init__(self, dim: int, layers: int):
         super().__init__()
         self.layers = torch.nn.ModuleList()
@@ -32,8 +35,10 @@ class MLP(nn.Module):
         for layer in self.layers:
             x = layer(x)
         return x.sum()
-    
+
+
 class DAG_MLP(nn.Module):
+
     def __init__(self, dim: int, layers: int):
         super().__init__()
         self.layers = torch.nn.ModuleList()
@@ -47,6 +52,7 @@ class DAG_MLP(nn.Module):
             x = layer(x)
             y = self.dag_layer(y)
         return x.sum(), y.sum()
+
 
 class RpcTestModel(nn.Module):
 

@@ -53,11 +53,11 @@ It's compatible with all parallel methods in ColossalAI.
 
 > ⚠ It only offloads optimizer states on CPU. This means it only affects CPU training or Zero/Gemini with offloading.
 
-## Exampls
+## Examples
 
 Let's start from two simple examples -- training GPT with different methods. These examples relies on `transformers`.
 
-We should install denpendencies first:
+We should install dependencies first:
 
 ```shell
 pip install psutil transformers
@@ -78,8 +78,9 @@ from transformers.models.gpt2.modeling_gpt2 import GPT2LMHeadModel
 
 import colossalai
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.nn.parallel import zero_model_wrapper, zero_optim_wrapper
 from colossalai.utils.model.colo_init_context import ColoInitContext
+from colossalai.booster import Booster
+from colossalai.booster.plugin import GeminiPlugin
 ```
 
 Then we define a loss function:
@@ -99,7 +100,7 @@ class GPTLMLoss(nn.Module):
                             shift_labels.view(-1))
 ```
 
-And we define some utility functions, which generates random data, computes the number of paramters of a model and get memory usage of current process:
+And we define some utility functions, which generates random data, computes the number of parameters of a model and get memory usage of current process:
 
 ```python
 def get_data(batch_size: int, seq_len: int,
@@ -192,17 +193,23 @@ def train_gemini_cpu(nvme_offload_fraction: float = 0.0):
     optimizer = HybridAdam(model.parameters(), nvme_offload_fraction=nvme_offload_fraction)
     print(f'Model numel: {get_model_numel(model) / 1024**3:.3f} B')
 
-    gemini_config = dict(strict_ddp_mode=True, device=torch.cuda.current_device(),
-                         placement_policy='cpu', pin_memory=True, hidden_dim=config.n_embd)
-    model = zero_model_wrapper(model, zero_stage=3, gemini_config=gemini_config)
-    optimizer = zero_optim_wrapper(model, optimizer, initial_scale=2**5)
+    plugin = GeminiPlugin(
+                strict_ddp_mode=True,
+                device=torch.cuda.current_device(),
+                placement_policy='cpu',
+                pin_memory=True,
+                hidden_dim=config.n_embd,
+                initial_scale=2**5
+                )
+    booster = Booster(plugin)
+    model, optimizer, criterion, _* = booster.boost(model, optimizer, criterion)
 
     start = time.time()
     for step in range(3):
         data = get_data(4, 128, config.vocab_size)
         outputs = model(**data)
         loss = criterion(outputs.logits, data['input_ids'])
-        optimizer.backward(loss)
+        booster.backward(loss, optimizer)
         optimizer.step()
         optimizer.zero_grad()
         print(f'[{step}] loss: {loss.item():.3f}')
@@ -251,7 +258,7 @@ Time: 3.691 s
 Mem usage: 5298.344 MB
 ```
 
-NVME offload saves about 294 MB memory. Note that enabling `pin_memory` of Gemini can accelerate training but increase memory usage. So this result also meets our expectation. If we disable `pin_memory`, we can aslo observe a memory usage drop about 900 MB.
+NVME offload saves about 294 MB memory. Note that enabling `pin_memory` of Gemini can accelerate training but increase memory usage. So this result also meets our expectation. If we disable `pin_memory`, we can also observe a memory usage drop about 900 MB.
 
 ## API Reference
 

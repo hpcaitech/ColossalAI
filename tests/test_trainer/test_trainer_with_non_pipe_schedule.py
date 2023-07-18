@@ -1,15 +1,13 @@
-from functools import partial
-
-import colossalai
 import pytest
 import torch
-import torch.multiprocessing as mp
+
+import colossalai
 from colossalai.amp.amp_type import AMP_TYPE
 from colossalai.logging import get_dist_logger
+from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.trainer import Trainer
-from colossalai.utils import MultiTimer, free_port
+from colossalai.utils import MultiTimer
 from tests.components_to_test.registry import non_distributed_component_funcs
-from colossalai.testing import parameterize, rerun_if_address_is_in_use
 
 BATCH_SIZE = 4
 IMG_SIZE = 32
@@ -54,8 +52,7 @@ def run_dist(rank, world_size, port):
 @rerun_if_address_is_in_use()
 def test_trainer_no_pipeline():
     world_size = 4
-    run_func = partial(run_dist, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_dist, world_size)
 
 
 if __name__ == '__main__':

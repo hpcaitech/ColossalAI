@@ -1,14 +1,16 @@
 import torch
 
 from colossalai._analyzer.fx import symbolic_trace
+from colossalai.testing import clear_cache_before_run
 from tests.kit.model_zoo import model_zoo
 
 
+@clear_cache_before_run()
 def test_torchvision_models():
     torch.backends.cudnn.deterministic = True
     tv_sub_registry = model_zoo.get_sub_registry('torchvision')
 
-    for name, (model_fn, data_gen_fn, output_transform_fn, model_attribute) in tv_sub_registry.items():
+    for name, (model_fn, data_gen_fn, output_transform_fn, _, model_attribute) in tv_sub_registry.items():
         data = data_gen_fn()
 
         if model_attribute is not None and model_attribute.has_stochastic_depth_prob:

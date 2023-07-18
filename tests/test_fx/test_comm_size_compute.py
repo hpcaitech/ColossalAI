@@ -1,13 +1,11 @@
-import colossalai
-import colossalai.nn as col_nn
-import pytest
 import torch
-import torch.nn as nn
+from torch.fx import symbolic_trace
+
 from colossalai.fx._compatibility import is_compatible_with_meta
-from colossalai.fx.passes.adding_split_node_pass import (split_with_split_nodes_pass, uniform_split_pass)
+from colossalai.fx.passes.adding_split_node_pass import split_with_split_nodes_pass, uniform_split_pass
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
 from colossalai.fx.passes.utils import get_comm_size
-from torch.fx import symbolic_trace
+from colossalai.testing import clear_cache_before_run
 
 is_compatible = is_compatible_with_meta()
 if is_compatible:
@@ -35,6 +33,7 @@ class MLP(torch.nn.Module):
         return x
 
 
+@clear_cache_before_run()
 def test_comm_size_compute():
     model = MLP(MODEL_DIM)
     input_sample = torch.rand(BATCH_SIZE, MODEL_DIM, device='meta')

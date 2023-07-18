@@ -15,8 +15,8 @@ Method 2 is good because it allows the user to only build the kernel they actual
 
 ## PyTorch Extensions in Colossal-AI
 
-The project DeepSpeed (https://github.com/microsoft/DeepSpeed) has proposed a [solution](https://github.com/microsoft/DeepSpeed/tree/master/op_builder)) to support kernel-build during either installation or runtime.
-We have adapted from DeepSpeed's solution to build extensions. The extension build requries two main functions from PyTorch:
+The project [DeepSpeed](https://github.com/microsoft/DeepSpeed) has proposed a [solution](https://github.com/microsoft/DeepSpeed/tree/master/op_builder) to support kernel-build during either installation or runtime.
+We have adapted from DeepSpeed's solution to build extensions. The extension build requires two main functions from PyTorch:
 
 1. `torch.utils.cpp_extension.CUDAExtension`: used to build extensions in `setup.py` during `pip install`.
 2. `torch.utils.cpp_extension.load`: used to build and load extension during runtime

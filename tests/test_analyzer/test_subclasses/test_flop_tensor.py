@@ -4,6 +4,7 @@ import torch.nn.functional as F
 import torchvision.models as tm
 from packaging import version
 
+from colossalai.testing import clear_cache_before_run, parameterize
 from tests.test_analyzer.test_fx.zoo import tm_models, tmm_models
 
 try:

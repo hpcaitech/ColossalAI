@@ -1,22 +1,28 @@
 name: Test Example on PR
 on:
   pull_request:
+    branches:
+      - "main"
+      - "develop"
+      - "feature/**"
     # any change in the examples folder will trigger check for the corresponding example.
     paths:
-      - 'examples/**'
+      - "examples/**"
 
 jobs:
   # This is for changed example files detect and output a matrix containing all the corresponding directory name.
   detect-changed-example:
     if: |
-        github.event.pull_request.draft == false &&
-        github.base_ref == 'main' &&
-        github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' && github.event_name == 'pull_request'
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.setup-matrix.outputs.matrix }}
       anyChanged: ${{ steps.setup-matrix.outputs.anyChanged }}
     name: Detect changed example files
+    concurrency:
+      group: ${{ github.head_ref }}
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v3
         with:
@@ -26,10 +32,10 @@ jobs:
       - name: Locate base commit
         id: locate-base-sha
         run: |
-            curBranch=$(git rev-parse --abbrev-ref HEAD)
-            commonCommit=$(git merge-base origin/main $curBranch)
-            echo $commonCommit
-            echo "baseSHA=$commonCommit" >> $GITHUB_OUTPUT
+          curBranch=$(git rev-parse --abbrev-ref HEAD)
+          commonCommit=$(git merge-base origin/main $curBranch)
+          echo $commonCommit
+          echo "baseSHA=$commonCommit" >> $GITHUB_OUTPUT
 
       - name: Get all changed example files
         id: changed-files
@@ -61,10 +67,9 @@ jobs:
   check-changed-example:
     # Add this condition to avoid executing this job if the trigger event is workflow_dispatch.
     if: |
-        github.event.pull_request.draft == false &&
-        github.base_ref == 'main' &&
-        github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' && github.event_name == 'pull_request' &&
-        needs.detect-changed-example.outputs.anyChanged == 'true'
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' && github.event_name == 'pull_request' &&
+      needs.detect-changed-example.outputs.anyChanged == 'true'
     name: Test the changed example
     needs: detect-changed-example
     runs-on: [self-hosted, gpu]
@@ -75,6 +80,9 @@ jobs:
       image: hpcaitech/pytorch-cuda:1.12.0-11.3.0
       options: --gpus all --rm -v /data/scratch/examples-data:/data/
     timeout-minutes: 10
+    concurrency:
+      group: ${{ github.head_ref }}
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v3
 

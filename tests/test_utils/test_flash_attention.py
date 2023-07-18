@@ -5,6 +5,7 @@ import torch
 from einops import rearrange
 
 from colossalai.kernel.cuda_native.flash_attention import HAS_MEM_EFF_ATTN
+from colossalai.testing import clear_cache_before_run, parameterize
 
 if HAS_MEM_EFF_ATTN:
     from colossalai.kernel.cuda_native.flash_attention import AttnMaskType, ColoAttention
@@ -22,7 +23,8 @@ def baseline_attention(Z, N_CTX, H, q, k, v, sm_scale):
 
 
 @pytest.mark.skipif(HAS_MEM_EFF_ATTN == False, reason="xformers is not available")
-@pytest.mark.parametrize('B, S, H, D_HEAD', [(6, 8, 4, 16)])
+@clear_cache_before_run()
+@parameterize('B, S, H, D_HEAD', [(6, 8, 4, 16)])
 def test_attention_gpt(B, S, H, D_HEAD, dtype=torch.float16):
     D = H * D_HEAD
 
@@ -42,7 +44,8 @@ def test_attention_gpt(B, S, H, D_HEAD, dtype=torch.float16):
 
 
 @pytest.mark.skipif(HAS_MEM_EFF_ATTN == False, reason="xformers is not available")
-@pytest.mark.parametrize('B, S, H, D_HEAD', [(6, 8, 4, 16)])
+@clear_cache_before_run()
+@parameterize('B, S, H, D_HEAD', [(6, 8, 4, 16)])
 def test_attention_bert(B, S, H, D_HEAD, dtype=torch.float16):
     D = H * D_HEAD
 
@@ -65,7 +68,8 @@ def test_attention_bert(B, S, H, D_HEAD, dtype=torch.float16):
 
 
 @pytest.mark.skipif(HAS_MEM_EFF_ATTN == False, reason="xformers is not available")
-@pytest.mark.parametrize('B, S, H, D_HEAD', [(6, 8, 4, 16)])
+@clear_cache_before_run()
+@parameterize('B, S, H, D_HEAD', [(6, 8, 4, 16)])
 def test_attention_no_mask(B, S, H, D_HEAD, dtype=torch.float16):
     D = H * D_HEAD
 
@@ -84,7 +88,8 @@ def test_attention_no_mask(B, S, H, D_HEAD, dtype=torch.float16):
 
 
 @pytest.mark.skipif(HAS_MEM_EFF_ATTN == False, reason="xformers is not available")
-@pytest.mark.parametrize('B, S, T, H, D_HEAD', [(6, 24, 8, 4, 16)])
+@clear_cache_before_run()
+@parameterize('B, S, T, H, D_HEAD', [(6, 24, 8, 4, 16)])
 def test_cross_attention(B, S, T, H, D_HEAD, dtype=torch.float16):
     D = H * D_HEAD
 

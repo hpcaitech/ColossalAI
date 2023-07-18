@@ -53,46 +53,34 @@ class SFTDataset(Dataset):
 
     def __init__(self, dataset, tokenizer: Callable, max_length: int = 512) -> None:
         super().__init__()
-        # self.prompts = []
         self.input_ids = []
 
         for data in tqdm(dataset, disable=not is_rank_0()):
-            prompt = data['prompt'] + data['completion'] + "<|endoftext|>"
+            prompt = data['prompt'] + data['completion'] + tokenizer.eos_token
             prompt_token = tokenizer(prompt,
                                      max_length=max_length,
                                      padding="max_length",
                                      truncation=True,
                                      return_tensors="pt")
 
-            # self.prompts.append(prompt_token)s
-            self.input_ids.append(prompt_token)
-            self.labels = copy.deepcopy(self.input_ids)
+            self.input_ids.append(prompt_token['input_ids'][0])
+        self.labels = copy.deepcopy(self.input_ids)
 
     def __len__(self):
-        length = len(self.prompts)
+        length = len(self.input_ids)
         return length
 
     def __getitem__(self, idx):
-        # dict(input_ids=self.input_ids[i], labels=self.labels[i])
         return dict(input_ids=self.input_ids[idx], labels=self.labels[idx])
-        # return dict(self.prompts[idx], self.prompts[idx])
 
 
-def _tokenize_fn(strings: Sequence[str], tokenizer: transformers.PreTrainedTokenizer) -> Dict:
+def _tokenize_fn(strings: Sequence[str], tokenizer: transformers.PreTrainedTokenizer,
+                 max_length: int) -> Dict[str, torch.Tensor]:
     """Tokenize a list of strings."""
-    tokenized_list = [
-        tokenizer(
-            text,
-            return_tensors="pt",
-            padding="longest",
-            max_length=tokenizer.model_max_length,
-            truncation=True,
-        ) for text in strings
-    ]
-    input_ids = labels = [tokenized.input_ids[0] for tokenized in tokenized_list]
-    input_ids_lens = labels_lens = [
-        tokenized.input_ids.ne(tokenizer.pad_token_id).sum().item() for tokenized in tokenized_list
-    ]
+    tokenized_list = tokenizer(strings, return_tensors="pt", padding="longest", max_length=max_length, truncation=True)
+    input_ids = labels = tokenized_list["input_ids"]
+    input_ids_lens = labels_lens = \
+        tokenized_list["input_ids"].ne(tokenizer.pad_token_id).sum(dim=-1)
     return dict(
         input_ids=input_ids,
         labels=labels,
@@ -105,10 +93,13 @@ def preprocess(
     sources: Sequence[str],
     targets: Sequence[str],
     tokenizer: transformers.PreTrainedTokenizer,
+    max_length: int,
 ) -> Dict:
     """Preprocess the data by tokenizing."""
     examples = [s + t for s, t in zip(sources, targets)]
-    examples_tokenized, sources_tokenized = [_tokenize_fn(strings, tokenizer) for strings in (examples, sources)]
+    examples_tokenized, sources_tokenized = [
+        _tokenize_fn(strings, tokenizer, max_length) for strings in (examples, sources)
+    ]
     input_ids = examples_tokenized["input_ids"]
     labels = copy.deepcopy(input_ids)
     for label, source_len in zip(labels, sources_tokenized["input_ids_lens"]):
@@ -119,7 +110,11 @@ def preprocess(
 class SupervisedDataset(Dataset):
     """Dataset for supervised fine-tuning."""
 
-    def __init__(self, data_path: str, tokenizer: transformers.PreTrainedTokenizer, max_datasets_size: int = None):
+    def __init__(self,
+                 data_path: str,
+                 tokenizer: transformers.PreTrainedTokenizer,
+                 max_datasets_size: int = None,
+                 max_length: int = 512):
         super(SupervisedDataset, self).__init__()
         logger.info("Loading data...")
         list_data_dict = jload(data_path)
@@ -138,7 +133,7 @@ class SupervisedDataset(Dataset):
         targets = [f"{example['output']}{tokenizer.eos_token}" for example in list_data_dict]
 
         logger.info("Tokenizing inputs... This may take some time...")
-        data_dict = preprocess(sources, targets, tokenizer)
+        data_dict = preprocess(sources, targets, tokenizer, max_length)
 
         self.input_ids = data_dict["input_ids"]
         self.labels = data_dict["labels"]

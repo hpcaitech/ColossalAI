@@ -1,22 +1,20 @@
-from functools import partial
-
 import pytest
 import torch
-import torch.multiprocessing as mp
 import torch.nn as nn
 
+from colossalai._analyzer.fx.graph_module import ColoGraphModule
+from colossalai._analyzer.fx.passes.shape_prop import shape_prop_pass
+from colossalai._analyzer.fx.tracer.tracer import ColoTracer
 from colossalai.auto_parallel.tensor_shard.node_handler.embedding_handler import (
     EmbeddingFunctionHandler,
     EmbeddingModuleHandler,
 )
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationData, OperationDataType, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
-from colossalai.fx import ColoGraphModule, ColoTracer
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
-from colossalai.testing import assert_close, parameterize, rerun_if_address_is_in_use
+from colossalai.testing import rerun_if_address_is_in_use, spawn
 from colossalai.testing.pytest_wrapper import run_on_environment_flag
-from colossalai.utils import free_port
 from tests.test_auto_parallel.test_tensor_shard.test_node_handler.utils import numerical_test_for_node_strategy
 
 NUM_EMBEDDINGS = 16
@@ -60,9 +58,11 @@ def check_embedding_module_handler(rank, world_size, port):
                                      input_args=[input],
                                      meta_arg_names=['input'])
 
-    tracer = ColoTracer()
-    graph = tracer.trace(model, meta_args={"input": torch.rand(4, 16, 16).to('meta')})
+    tracer = ColoTracer(bias_addition_split=True)
+    meta_args = {"input": torch.randint(NUM_EMBEDDINGS, (4, 16, 16)).to('meta')}
+    graph = tracer.trace(model, meta_args=meta_args)
     gm = ColoGraphModule(model, graph)
+    shape_prop_pass(gm, *meta_args.values())
     embedding_node = list(graph.nodes)[1]
     strategies_vector = StrategiesVector(embedding_node)
 
@@ -171,18 +171,19 @@ def check_embedding_function_handler(rank, world_size, port):
                                      input_args=input_args,
                                      meta_arg_names=meta_arg_names,
                                      input_kwargs=input_kwargs)
-    tracer = ColoTracer()
+    tracer = ColoTracer(bias_addition_split=True)
     # graph():
     #     %input_1 : torch.Tensor [#users=1] = placeholder[target=input]
     #     %others : torch.Tensor [#users=1] = placeholder[target=others]
     #     %embedding : [#users=1] = call_function[target=torch.nn.functional.embedding](args = (%input_1, %others), kwargs = {padding_idx: None, max_norm: None, norm_type: 2.0, scale_grad_by_freq: False, sparse: False})
     #     return embedding
     meta_args = {
-        "input": torch.rand(4, 16, 16).to('meta'),
+        "input": torch.randint(NUM_EMBEDDINGS, (4, 16, 16)).to('meta'),
         "others": torch.rand(NUM_EMBEDDINGS, EMBEDDING_DIMS).to('meta')
     }
     graph = tracer.trace(model, meta_args=meta_args)
     gm = ColoGraphModule(model, graph)
+    shape_prop_pass(gm, *meta_args.values())
 
     embedding_node = list(graph.nodes)[2]
     strategies_vector = StrategiesVector(embedding_node)
@@ -267,18 +268,14 @@ def check_embedding_function_handler(rank, world_size, port):
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_embedding_module_handler():
-    world_size = 4
-    run_func = partial(check_embedding_module_handler, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(check_embedding_module_handler, 4)
 
 
 @run_on_environment_flag(name='AUTO_PARALLEL')
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_embedding_function_handler():
-    world_size = 4
-    run_func = partial(check_embedding_function_handler, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(check_embedding_function_handler, 4)
 
 
 if __name__ == '__main__':

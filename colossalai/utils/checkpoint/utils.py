@@ -34,7 +34,7 @@ def gather_tensor(colo_tensor: ColoTensor) -> None:
         dist.barrier()
 
     if dist.get_rank() == 0:
-        setattr(colo_tensor, 'save_ready', True)    # set saving signitrue
+        setattr(colo_tensor, 'save_ready', True)    # set saving signature
 
 
 def scatter_tensor(colo_tensor: ColoTensor, dist_spec: _DistSpec) -> None:

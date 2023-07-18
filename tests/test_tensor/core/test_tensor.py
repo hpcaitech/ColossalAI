@@ -1,17 +1,11 @@
-import torch
 import pytest
-from colossalai.tensor import ColoTensor
+import torch
 from numpy import allclose
 
 import colossalai
-from colossalai.utils import free_port
-from colossalai.tensor import ColoTensorSpec
 from colossalai.core import global_context as gpc
-import torch.multiprocessing as mp
-from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.utils import free_port
-from colossalai.tensor import distspec, ColoTensor, ProcessGroup, ShardSpec, ReplicaSpec
-from functools import partial
+from colossalai.tensor import ColoTensor, ColoTensorSpec, ProcessGroup, ReplicaSpec, ShardSpec, distspec
+from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 
 def _run_tensor_indexing():
@@ -152,8 +146,7 @@ def run_dist_tests(rank, world_size, port):
 @pytest.mark.parametrize('world_size', [1, 2])
 @rerun_if_address_is_in_use()
 def test_dist_cases(world_size):
-    run_func = partial(run_dist_tests, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_dist_tests, world_size)
 
 
 if __name__ == '__main__':

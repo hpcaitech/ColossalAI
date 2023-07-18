@@ -9,7 +9,7 @@ class CostGraph:
     1. To feed the quadratic resharding costs into solver, we need to linearize it. We build edge_cost in
     CostGraph, and it stored every combinations of strategies for a src-dst node pair in an 1D list.
     2. To reduce the searching space, we merge computationally-trivial operators, such as
-    element-wise operators, transpose, and reduction, into their following nodes. The merging infomation will
+    element-wise operators, transpose, and reduction, into their following nodes. The merging information will
     be given by the StrategiesVector depending on the type of target node and following nodes.
 
     Argument:
@@ -90,7 +90,7 @@ class CostGraph:
             if self.simplify and strategies_vector.check_merge():
                 for followed_node in strategies_vector.predecessor_nodes:
                     # we only merge node pairs which src node has a tensor element inside.
-                    # This is necessay because the node without a tensor element inside will not
+                    # This is necessary because the node without a tensor element inside will not
                     # be assigned any strategy.
                     if _check_tensor_in_node(followed_node._meta_data):
                         self.merge_pair.append((followed_node, dst_node))

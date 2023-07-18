@@ -1,6 +1,9 @@
-import torch
-from colossalai.fx.tracer.meta_patch import patched_function
 from functools import partial
+
+import torch
+
+from colossalai.fx.tracer.meta_patch import patched_function
+from colossalai.testing import clear_cache_before_run
 
 
 def _run(data, patch_fn):
@@ -22,6 +25,7 @@ def _assert_output_shape(data, patch_fn, expect_exception, output_shape):
         assert output.shape == output_shape
 
 
+@clear_cache_before_run()
 def test_repeat_interleave():
     patch_fn = patched_function.torch_repeat_interleave
 
@@ -63,6 +67,7 @@ def test_repeat_interleave():
                          output_shape=materialized_output.shape)
 
 
+@clear_cache_before_run()
 def test_torch_max():
     data = torch.rand(4, 3)
     out = torch.max(data)

@@ -31,7 +31,7 @@ def check_installation():
     found_aot_cuda_ext = _check_aot_built_cuda_extension_installed()
     cuda_version = _check_cuda_version()
     torch_version, torch_cuda_version = _check_torch_version()
-    colossalai_verison, prebuilt_torch_version_required, prebuilt_cuda_version_required = _parse_colossalai_version()
+    colossalai_version, prebuilt_torch_version_required, prebuilt_cuda_version_required = _parse_colossalai_version()
 
     # if cuda_version is None, that means either
     # CUDA_HOME is not found, thus cannot compare the version compatibility
@@ -57,7 +57,7 @@ def check_installation():
 
     click.echo(f'#### Installation Report ####')
     click.echo(f'\n------------ Environment ------------')
-    click.echo(f"Colossal-AI version: {to_click_output(colossalai_verison)}")
+    click.echo(f"Colossal-AI version: {to_click_output(colossalai_version)}")
     click.echo(f"PyTorch version: {to_click_output(torch_version)}")
     click.echo(f"System CUDA version: {to_click_output(cuda_version)}")
     click.echo(f"CUDA version required by PyTorch: {to_click_output(torch_cuda_version)}")
@@ -76,7 +76,7 @@ def check_installation():
     click.echo("")
     click.echo(f"Note:")
     click.echo(
-        f"1. AOT (ahead-of-time) compilation of the CUDA kernels occurs during installation when the environment varialbe CUDA_EXT=1 is set"
+        f"1. AOT (ahead-of-time) compilation of the CUDA kernels occurs during installation when the environment variable CUDA_EXT=1 is set"
     )
     click.echo(f"2. If AOT compilation is not enabled, stay calm as the CUDA kernels can still be built during runtime")
 
@@ -88,7 +88,7 @@ def check_installation():
     click.echo(f"Note:")
     click.echo(f"1. The table above checks the version compatibility of the libraries/tools in the current environment")
     click.echo(
-        f"   - PyTorch version mistach: whether the PyTorch version in the current environment is compatible with the PyTorch version used for AOT compilation"
+        f"   - PyTorch version mismatch: whether the PyTorch version in the current environment is compatible with the PyTorch version used for AOT compilation"
     )
     click.echo(
         f"   - System and PyTorch CUDA version match: whether the CUDA version in the current environment is compatible with the CUDA version required by PyTorch"
@@ -137,7 +137,7 @@ def _parse_colossalai_version():
     # 1. X.X.X+torchX.XXcuXX.X (when colossalai is installed with CUDA extensions)
     # 2. X.X.X (when colossalai is not installed with CUDA extensions)
     # where X represents an integer.
-    colossalai_verison = colossalai.__version__.split('+')[0]
+    colossalai_version = colossalai.__version__.split('+')[0]
 
     try:
         torch_version_for_aot_build = colossalai.__version__.split('torch')[1].split('cu')[0]
@@ -145,7 +145,7 @@ def _parse_colossalai_version():
     except:
         torch_version_for_aot_build = None
         cuda_version_for_aot_build = None
-    return colossalai_verison, torch_version_for_aot_build, cuda_version_for_aot_build
+    return colossalai_version, torch_version_for_aot_build, cuda_version_for_aot_build
 
 
 def _check_aot_built_cuda_extension_installed():

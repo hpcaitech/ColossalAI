@@ -87,14 +87,13 @@ import colossalai
 args = colossalai.get_default_parser().parse_args()
 
 # launch distributed environment
-colossalai.launch(config=<CONFIG>,
+colossalai.launch(config=args.config,
                   rank=args.rank,
                   world_size=args.world_size,
                   host=args.host,
                   port=args.port,
                   backend=args.backend
 )
-
 ```
 
 
@@ -107,12 +106,21 @@ First, we need to set the launch method in our code. As this is a wrapper of the
 use `colossalai.launch_from_torch`. The arguments required for distributed environment such as rank, world size, host and port are all set by the PyTorch
 launcher and can be read from the environment variable directly.
 
+config.py
+```python
+BATCH_SIZE = 512
+LEARNING_RATE = 3e-3
+WEIGHT_DECAY = 0.3
+NUM_EPOCHS = 2
+```
+train.py
 ```python
 import colossalai
 
 colossalai.launch_from_torch(
-    config=<CONFIG>,
+    config="./config.py",
 )
+...
 ```
 
 Next, we can easily start multiple processes with `colossalai run` in your terminal. Below is an example to run the code

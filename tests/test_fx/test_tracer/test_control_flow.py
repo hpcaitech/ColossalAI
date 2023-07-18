@@ -1,7 +1,9 @@
 import torch
 import torch.nn as nn
 from torch.fx import GraphModule
+
 from colossalai.fx import ColoTracer as Tracer
+from colossalai.testing import clear_cache_before_run
 
 
 class ControlFlowModel(nn.Module):
@@ -21,6 +23,7 @@ class ControlFlowModel(nn.Module):
             return x1 - y1
 
 
+@clear_cache_before_run()
 def test_control_flow():
     model = ControlFlowModel()
     tracer = Tracer()

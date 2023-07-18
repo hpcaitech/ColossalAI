@@ -1,16 +1,15 @@
-from colossalai.tensor import distspec, ColoTensorSpec, ProcessGroup
-from colossalai.tensor.colo_parameter import ColoParameter
-import colossalai
 import pytest
 import torch
-import torch.multiprocessing as mp
-from colossalai.logging import disable_existing_loggers
-from colossalai.utils import free_port, get_current_device
-from torch.nn.utils import clip_grad_norm_
-from functools import partial
-from colossalai.testing import parameterize, rerun_if_address_is_in_use
-from colossalai.utils.common import clip_grad_norm
 from torch.nn.parameter import Parameter
+from torch.nn.utils import clip_grad_norm_
+
+import colossalai
+from colossalai.logging import disable_existing_loggers
+from colossalai.tensor import ColoTensorSpec, ProcessGroup, distspec
+from colossalai.tensor.colo_parameter import ColoParameter
+from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
+from colossalai.utils import get_current_device
+from colossalai.utils.common import clip_grad_norm
 
 
 def close(num: float, other: float, rtol: float = 1e-5, atol: float = 1e-8):
@@ -71,8 +70,7 @@ def run_dist(rank, world_size, port):
 @pytest.mark.parametrize('world_size', [1, 2])
 @rerun_if_address_is_in_use()
 def test_zero_clip_grad(world_size: int):
-    run_func = partial(run_dist, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
+    spawn(run_dist, world_size)
 
 
 if __name__ == '__main__':
