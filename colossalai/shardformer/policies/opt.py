@@ -7,6 +7,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 from torch import Tensor, nn
+from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.layer import FusedLayerNorm, Linear1D_Col, Linear1D_Row, VocabParallelEmbedding1D
@@ -156,7 +157,10 @@ class OPTModelPolicy(OPTPolicy):
         from transformers.models.opt.modeling_opt import OPTModel
 
         policy = super().module_policy()
-        self.set_pipeline_forward(model_cls=OPTModel, new_forward=OPTPipelineForwards.opt_model_forward, policy=policy)
+        if self.pipeline_stage_manager:
+            self.set_pipeline_forward(model_cls=OPTModel,
+                                      new_forward=OPTPipelineForwards.opt_model_forward,
+                                      policy=policy)
         return policy
 
     def get_held_layers(self) -> List[nn.Module]:
@@ -179,10 +183,29 @@ class OPTForCausalLMPolicy(OPTPolicy):
                 suffix="lm_head", target_module=Linear1D_Col, kwargs=dict(gather_output=True)),
                                                         policy=policy,
                                                         target_key=OPTForCausalLM)
+
+        if self.pipeline_stage_manager:
+            self.set_pipeline_forward(model_cls=OPTForCausalLM,
+                                      new_forward=OPTPipelineForwards.opt_for_causal_lm_forward,
+                                      policy=policy)
+
         return policy
 
+    def get_held_layers(self) -> List[nn.Module]:
+        held_layers = super().get_held_layers()
+        if self.pipeline_stage_manager.is_last_stage():
+            held_layers.append(self.model.lm_head)
+        return held_layers
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        opt_model = self.model
+        if self.pipeline_stage_manager:
+            num_stages = self.pipeline_stage_manager.num_stages
+            if id(opt_model.model.decoder.embed_tokens.weight) == id(opt_model.lm_head.weight):
+                return [{0: opt_model.model.decoder.embed_tokens.weight, num_stages - 1: opt_model.lm_head.weight}]
+
     def postprocess(self):
-        if self.shard_config.enable_tensor_parallelism:
+        if self.shard_config.enable_tensor_parallelism and self.pipeline_stage_manager is None:
             binding_map = {
                 'model.decoder.embed_tokens': 'lm_head',
             }
@@ -200,11 +223,53 @@ class OPTForSequenceClassificationPolicy(OPTPolicy):
     def __init__(self) -> None:
         super().__init__()
 
+    def module_policy(self):
+        from transformers.models.opt.modeling_opt import OPTForSequenceClassification
+
+        policy = super().module_policy()
+        if self.pipeline_stage_manager:
+            self.set_pipeline_forward(model_cls=OPTForSequenceClassification,
+                                      new_forward=OPTPipelineForwards.opt_for_sequence_classification_forward,
+                                      policy=policy)
+
+        return policy
+
+    def get_held_layers(self) -> List[nn.Module]:
+        held_layers = super().get_held_layers()
+        if self.pipeline_stage_manager.is_last_stage():
+            held_layers.append(self.model.score)
+        return held_layers
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        "no shared params in OPTForSequenceClassification"
+        return []
+
 
 class OPTForQuestionAnsweringPolicy(OPTPolicy):
 
     def __init__(self) -> None:
         super().__init__()
+
+    def module_policy(self):
+        from transformers.models.opt.modeling_opt import OPTForQuestionAnswering
+
+        policy = super().module_policy()
+        if self.pipeline_stage_manager:
+            self.set_pipeline_forward(model_cls=OPTForQuestionAnswering,
+                                      new_forward=OPTPipelineForwards.opt_for_question_answering_forward,
+                                      policy=policy)
+
+        return policy
+
+    def get_held_layers(self) -> List[nn.Module]:
+        held_layers = super().get_held_layers()
+        if self.pipeline_stage_manager.is_last_stage():
+            held_layers.append(self.model.qa_outputs)
+        return held_layers
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        "no shared params in OPTForSequenceClassification"
+        return []
 
 
 class OPTPipelineForwards:
@@ -455,4 +520,362 @@ class OPTPipelineForwards:
                 attentions=all_self_attns,
             )
         else:
+            return {'hidden_states': hidden_states}
+
+    @staticmethod
+    def opt_for_causal_lm_forward(
+        self: 'OPTForCausalLM',
+        input_ids: torch.LongTensor = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        head_mask: Optional[torch.Tensor] = None,
+        past_key_values: Optional[List[torch.FloatTensor]] = None,
+        inputs_embeds: Optional[torch.FloatTensor] = None,
+        labels: Optional[torch.LongTensor] = None,
+        use_cache: Optional[bool] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+        stage_manager: Optional[PipelineStageManager] = None,
+        hidden_states: Optional[torch.FloatTensor] = None,
+        stage_index: Optional[List[int]] = None,
+    ) -> Union[Tuple, 'CausalLMOutputWithPast']:
+        r"""
+        Args:
+            input_ids (`torch.LongTensor` of shape `(batch_size, sequence_length)`):
+                Indices of input sequence tokens in the vocabulary. Padding will be ignored by default should you
+                provide it.
+
+                Indices can be obtained using [`AutoTokenizer`]. See [`PreTrainedTokenizer.encode`] and
+                [`PreTrainedTokenizer.__call__`] for details.
+
+                [What are input IDs?](../glossary#input-ids)
+            attention_mask (`torch.Tensor` of shape `(batch_size, sequence_length)`, *optional*):
+                Mask to avoid performing attention on padding token indices. Mask values selected in `[0, 1]`:
+
+                - 1 for tokens that are **not masked**,
+                - 0 for tokens that are **masked**.
+
+                [What are attention masks?](../glossary#attention-mask)
+            head_mask (`torch.Tensor` of shape `(num_hidden_layers, num_attention_heads)`, *optional*):
+                Mask to nullify selected heads of the attention modules. Mask values selected in `[0, 1]`:
+
+                - 1 indicates the head is **not masked**,
+                - 0 indicates the head is **masked**.
+
+            past_key_values (`tuple(tuple(torch.FloatTensor))`, *optional*, returned when `use_cache=True` is passed or when `config.use_cache=True`):
+                Tuple of `tuple(torch.FloatTensor)` of length `config.n_layers`, with each tuple having 2 tensors of
+                shape `(batch_size, num_heads, sequence_length, embed_size_per_head)`) and 2 additional tensors of
+                shape `(batch_size, num_heads, encoder_sequence_length, embed_size_per_head)`. The two additional
+                tensors are only required when the model is used as a decoder in a Sequence to Sequence model.
+
+                Contains pre-computed hidden-states (key and values in the self-attention blocks and in the
+                cross-attention blocks) that can be used (see `past_key_values` input) to speed up sequential decoding.
+
+                If `past_key_values` are used, the user can optionally input only the last `decoder_input_ids` (those
+                that don't have their past key value states given to this model) of shape `(batch_size, 1)` instead of
+                all `decoder_input_ids` of shape `(batch_size, sequence_length)`.
+            inputs_embeds (`torch.FloatTensor` of shape `(batch_size, sequence_length, hidden_size)`, *optional*):
+                Optionally, instead of passing `input_ids` you can choose to directly pass an embedded representation.
+                This is useful if you want more control over how to convert `input_ids` indices into associated vectors
+                than the model's internal embedding lookup matrix.
+            labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
+                Labels for computing the masked language modeling loss. Indices should either be in `[0, ...,
+                config.vocab_size]` or -100 (see `input_ids` docstring). Tokens with indices set to `-100` are ignored
+                (masked), the loss is only computed for the tokens with labels in `[0, ..., config.vocab_size]`.
+            use_cache (`bool`, *optional*):
+                If set to `True`, `past_key_values` key value states are returned and can be used to speed up decoding
+                (see `past_key_values`).
+            output_attentions (`bool`, *optional*):
+                Whether or not to return the attentions tensors of all attention layers. See `attentions` under
+                returned tensors for more detail.
+            output_hidden_states (`bool`, *optional*):
+                Whether or not to return the hidden states of all layers. See `hidden_states` under returned tensors
+                for more detail.
+            return_dict (`bool`, *optional*):
+                Whether or not to return a [`~utils.ModelOutput`] instead of a plain tuple.
+
+        Returns:
+
+        Example:
+
+        ```python
+        >>> from transformers import AutoTokenizer, OPTForCausalLM
+
+        >>> model = OPTForCausalLM.from_pretrained("facebook/opt-350m")
+        >>> tokenizer = AutoTokenizer.from_pretrained("facebook/opt-350m")
+
+        >>> prompt = "Hey, are you consciours? Can you talk to me?"
+        >>> inputs = tokenizer(prompt, return_tensors="pt")
+
+        >>> # Generate
+        >>> generate_ids = model.generate(inputs.input_ids, max_length=30)
+        >>> tokenizer.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
+        "Hey, are you consciours? Can you talk to me?\nI'm not consciours, but I can talk to you."
+        ```"""
+        from transformers.modeling_outputs import CausalLMOutputWithPast
+
+        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+        output_hidden_states = (output_hidden_states
+                                if output_hidden_states is not None else self.config.output_hidden_states)
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
+        outputs = OPTPipelineForwards.opt_model_forward(
+            self.model,
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            head_mask=head_mask,
+            past_key_values=past_key_values,
+            inputs_embeds=inputs_embeds,
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+            stage_manager=stage_manager,
+            hidden_states=hidden_states,
+            stage_index=stage_index,
+        )
+        if stage_manager.is_last_stage():
+            logits = self.lm_head(outputs[0]).contiguous()
+            loss = None
+            if labels is not None:
+                # move labels to correct device to enable model parallelism
+                labels = labels.to(logits.device)
+                # Shift so that tokens < n predict n
+                shift_logits = logits[..., :-1, :].contiguous()
+                shift_labels = labels[..., 1:].contiguous()
+                # Flatten the tokens
+                loss_fct = CrossEntropyLoss()
+                loss = loss_fct(shift_logits.view(-1, self.config.vocab_size), shift_labels.view(-1))
+            if not return_dict:
+                output = (logits,) + outputs[1:]
+                return (loss,) + output if loss is not None else output
+
+            return CausalLMOutputWithPast(
+                loss=loss,
+                logits=logits,
+                past_key_values=outputs.past_key_values,
+                hidden_states=outputs.hidden_states,
+                attentions=outputs.attentions,
+            )
+        else:
+            hidden_states = outputs.get('hidden_states')
+            return {'hidden_states': hidden_states}
+
+    @staticmethod
+    def opt_for_sequence_classification_forward(
+        self: 'OPTForSequenceClassification',
+        input_ids: Optional[torch.LongTensor] = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        head_mask: Optional[torch.FloatTensor] = None,
+        past_key_values: Optional[Tuple[Tuple[torch.Tensor]]] = None,
+        inputs_embeds: Optional[torch.FloatTensor] = None,
+        labels: Optional[torch.LongTensor] = None,
+        use_cache: Optional[bool] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+        stage_manager: Optional[PipelineStageManager] = None,
+        hidden_states: Optional[torch.FloatTensor] = None,
+        stage_index: Optional[List[int]] = None,
+    ) -> Union[Tuple, 'SequenceClassifierOutputWithPast']:
+        r"""
+        labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
+            Labels for computing the sequence classification/regression loss. Indices should be in `[0, ...,
+            config.num_labels - 1]`. If `config.num_labels == 1` a regression loss is computed (Mean-Square loss), If
+            `config.num_labels > 1` a classification loss is computed (Cross-Entropy).
+        """
+        from transformers.modeling_outputs import SequenceClassifierOutputWithPast
+        from transformers.utils import logging
+        logger = logging.get_logger(__name__)
+
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        transformer_outputs = OPTPipelineForwards.opt_model_forward(self.model,
+                                                                    input_ids,
+                                                                    past_key_values=past_key_values,
+                                                                    attention_mask=attention_mask,
+                                                                    head_mask=head_mask,
+                                                                    inputs_embeds=inputs_embeds,
+                                                                    use_cache=use_cache,
+                                                                    output_attentions=output_attentions,
+                                                                    output_hidden_states=output_hidden_states,
+                                                                    return_dict=return_dict,
+                                                                    stage_manager=stage_manager,
+                                                                    hidden_states=hidden_states,
+                                                                    stage_index=stage_index)
+
+        if stage_manager.is_last_stage():
+            hidden_states = transformer_outputs[0]
+            logits = self.score(hidden_states)
+
+            batch_size = input_ids.shape[0] if input_ids is not None else hidden_states.shape[0]
+
+            if self.config.pad_token_id is None:
+                sequence_lengths = -1
+            else:
+                if input_ids is not None:
+                    sequence_lengths = (torch.ne(input_ids, self.config.pad_token_id).sum(-1) - 1).to(logits.device)
+                else:
+                    sequence_lengths = -1
+                    logger.warning(
+                        f"{self.__class__.__name__} will not detect padding tokens in `inputs_embeds`. Results may be "
+                        "unexpected if using padding tokens in conjunction with `inputs_embeds.`")
+
+            pooled_logits = logits[torch.arange(batch_size, device=logits.device), sequence_lengths]
+
+            loss = None
+            if labels is not None:
+                if self.config.problem_type is None:
+                    if self.num_labels == 1:
+                        self.config.problem_type = "regression"
+                    elif self.num_labels > 1 and (labels.dtype == torch.long or labels.dtype == torch.int):
+                        self.config.problem_type = "single_label_classification"
+                    else:
+                        self.config.problem_type = "multi_label_classification"
+
+                if self.config.problem_type == "regression":
+                    loss_fct = MSELoss()
+                    if self.num_labels == 1:
+                        loss = loss_fct(pooled_logits.squeeze(), labels.squeeze())
+                    else:
+                        loss = loss_fct(pooled_logits, labels)
+                elif self.config.problem_type == "single_label_classification":
+                    loss_fct = CrossEntropyLoss()
+                    loss = loss_fct(pooled_logits.view(-1, self.num_labels), labels.view(-1))
+                elif self.config.problem_type == "multi_label_classification":
+                    loss_fct = BCEWithLogitsLoss()
+                    loss = loss_fct(pooled_logits, labels)
+
+            if not return_dict:
+                output = (pooled_logits,) + transformer_outputs[1:]
+                return ((loss,) + output) if loss is not None else output
+
+            return SequenceClassifierOutputWithPast(
+                loss=loss,
+                logits=pooled_logits,
+                past_key_values=transformer_outputs.past_key_values,
+                hidden_states=transformer_outputs.hidden_states,
+                attentions=transformer_outputs.attentions,
+            )
+        else:
+            hidden_states = transformer_outputs.get('hidden_states')
+            return {'hidden_states': hidden_states}
+
+    @staticmethod
+    def opt_for_question_answering_forward(
+        self: 'OPTForQuestionAnswering',
+        input_ids: Optional[torch.LongTensor] = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        head_mask: Optional[torch.FloatTensor] = None,
+        past_key_values: Optional[Tuple[Tuple[torch.Tensor]]] = None,
+        inputs_embeds: Optional[torch.FloatTensor] = None,
+        start_positions: Optional[torch.LongTensor] = None,
+        end_positions: Optional[torch.LongTensor] = None,
+        use_cache: Optional[bool] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+        stage_manager: Optional[PipelineStageManager] = None,
+        hidden_states: Optional[torch.FloatTensor] = None,
+        stage_index: Optional[List[int]] = None,
+    ) -> Union[Tuple, 'QuestionAnsweringModelOutput']:
+        r"""
+        start_positions (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
+            Labels for position (index) of the start of the labelled span for computing the token classification loss.
+            Positions are clamped to the length of the sequence (`sequence_length`). Position outside of the sequence
+            are not taken into account for computing the loss.
+        end_positions (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
+            Labels for position (index) of the end of the labelled span for computing the token classification loss.
+            Positions are clamped to the length of the sequence (`sequence_length`). Position outside of the sequence
+            are not taken into account for computing the loss.
+
+        Returns:
+
+        Example:
+
+        ```python
+        >>> from transformers import AutoTokenizer, OPTForQuestionAnswering
+        >>> import torch
+
+        >>> torch.manual_seed(4)  # doctest: +IGNORE_RESULT
+        >>> tokenizer = AutoTokenizer.from_pretrained("facebook/opt-350m")
+
+        >>> # note: we are loading a OPTForQuestionAnswering from the hub here,
+        >>> # so the head will be randomly initialized, hence the predictions will be random
+        >>> model = OPTForQuestionAnswering.from_pretrained("facebook/opt-350m")
+
+        >>> question, text = "Who was Jim Henson?", "Jim Henson was a nice puppet"
+
+        >>> inputs = tokenizer(question, text, return_tensors="pt")
+        >>> with torch.no_grad():
+        ...     outputs = model(**inputs)
+
+        >>> answer_start_index = outputs.start_logits.argmax()
+        >>> answer_end_index = outputs.end_logits.argmax()
+
+        >>> answer_offset = len(tokenizer(question)[0])
+
+        >>> predict_answer_tokens = inputs.input_ids[
+        ...     0, answer_offset + answer_start_index : answer_offset + answer_end_index + 1
+        ... ]
+        >>> predicted = tokenizer.decode(predict_answer_tokens)
+        >>> predicted
+        ' a nice puppet'
+        ```"""
+        from transformers.modeling_outputs import QuestionAnsweringModelOutput
+
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        transformer_outputs = OPTPipelineForwards.opt_model_forward(self.model,
+                                                                    input_ids,
+                                                                    past_key_values=past_key_values,
+                                                                    attention_mask=attention_mask,
+                                                                    head_mask=head_mask,
+                                                                    inputs_embeds=inputs_embeds,
+                                                                    use_cache=use_cache,
+                                                                    output_attentions=output_attentions,
+                                                                    output_hidden_states=output_hidden_states,
+                                                                    return_dict=return_dict,
+                                                                    stage_manager=stage_manager,
+                                                                    hidden_states=hidden_states,
+                                                                    stage_index=stage_index)
+        if stage_manager.is_last_stage():
+            hidden_states = transformer_outputs[0]
+
+            logits = self.qa_outputs(hidden_states)
+            start_logits, end_logits = logits.split(1, dim=-1)
+            start_logits = start_logits.squeeze(-1).contiguous()
+            end_logits = end_logits.squeeze(-1).contiguous()
+
+            total_loss = None
+            if start_positions is not None and end_positions is not None:
+                # If we are on multi-GPU, split add a dimension
+                if len(start_positions.size()) > 1:
+                    start_positions = start_positions.squeeze(-1)
+                if len(end_positions.size()) > 1:
+                    end_positions = end_positions.squeeze(-1)
+                # sometimes the start/end positions are outside our model inputs, we ignore these terms
+                ignored_index = start_logits.size(1)
+                start_positions = start_positions.clamp(0, ignored_index)
+                end_positions = end_positions.clamp(0, ignored_index)
+
+                loss_fct = CrossEntropyLoss(ignore_index=ignored_index)
+                start_loss = loss_fct(start_logits, start_positions)
+                end_loss = loss_fct(end_logits, end_positions)
+                total_loss = (start_loss + end_loss) / 2
+
+            if not return_dict:
+                output = (start_logits, end_logits) + transformer_outputs[2:]
+                return ((total_loss,) + output) if total_loss is not None else output
+
+            return QuestionAnsweringModelOutput(
+                loss=total_loss,
+                start_logits=start_logits,
+                end_logits=end_logits,
+                hidden_states=transformer_outputs.hidden_states,
+                attentions=transformer_outputs.attentions,
+            )
+        else:
+            hidden_states = transformer_outputs.get('hidden_states')
             return {'hidden_states': hidden_states}
