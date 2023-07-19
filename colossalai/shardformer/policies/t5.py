@@ -1,7 +1,7 @@
 import logging
 from functools import partial
 from types import MethodType
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple
 
 import torch
 from torch import Tensor, nn
@@ -19,7 +19,45 @@ from colossalai.shardformer.policies.base_policy import ModulePolicyDescription
 
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
-__all__ = ["T5ModelPolicy", "T5ForConditionalGenerationPolicy", "T5EncoderPolicy"]
+__all__ = ["distribute_t5_layers", "T5ModelPolicy", "T5ForConditionalGenerationPolicy", "T5EncoderPolicy"]
+
+
+def distribute_t5_layers(num_encoder_layers: int, num_decoder_layers: int, num_stages: int) -> Tuple[List[int], int]:
+    """
+    Distribute t5 layers into stages when pipeline parallel is used.
+    Return the layer distribution as a list and the starting stage of decoder (if decoder exists).
+    """
+
+    # number of encoder layers must be a positive integer
+    if num_encoder_layers <= 0:
+        raise ValueError("The number of encoder layers for T5 must be a positive integer.")
+
+    # number of layers should be large enough to fill in every stage
+    if num_encoder_layers + num_decoder_layers < num_stages:
+        raise ValueError("The total number of layers can't be smaller than number of stages.")
+
+    # int the case of T5EncoderModel, set decoder starting stage to -1 since it doesn't exist
+    if num_decoder_layers == 0:
+        return Policy.distribute_layers(num_encoder_layers, num_stages), -1
+
+    # the number of stages distributed between encoder and decoder is optmized in this way:
+    # num_encoder_stages = argmin(abs(num_encoder_layers / encoder_stages - num_decoder_layers / decoder_stages))
+    #                   s.t. num_encoder_stages + num_decoder_stages = num_stages, num_encoder_stages >= 1, num_decoder_stages >= 1
+    def objective(num_encoder_stages):
+        return abs(num_encoder_layers / num_encoder_stages - num_decoder_layers / (num_stages - num_encoder_stages))
+
+    num_encoder_stages = 0
+    optimal_diff = 2**31 - 1
+    for i in range(1, num_stages):
+        attempt = objective(i)
+        if attempt < optimal_diff:
+            num_encoder_stages = i
+            optimal_diff = attempt
+    num_decoder_stages = num_stages - num_encoder_stages
+
+    encoder_distribution = Policy.distribute_layers(num_encoder_layers, num_encoder_stages)
+    decoder_distribution = Policy.distribute_layers(num_decoder_layers, num_decoder_stages)
+    return encoder_distribution + decoder_distribution, num_encoder_stages
 
 
 class T5BasePolicy(Policy):
@@ -188,9 +226,9 @@ class T5BasePolicy(Policy):
         num_encoder_layers = len(encoder.block)
         num_decoder_layers = len(decoder.block) if decoder else 0
 
-        held_layers = []
-        layers_per_stage = self.distribute_t5_layers(len(encoder.block), stage_manager.num_stages)
 
+        held_layers = []
+        layers_per_stage, decoder_starting_stage = distribute_t5_layers(num_encoder_layers, num_decoder_layers, stage_manager.num_stages)
 
 
 
