@@ -50,13 +50,13 @@ def main(args):
             rm_model_name = args.rm_model
 
         if rm_model_name == 'gpt2':
-            reward_model = GPTRM(pretrained=args.rm_pretrain)
+            reward_model = GPTRM(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
         elif rm_model_name == 'bloom':
-            reward_model = BLOOMRM(pretrained=args.rm_pretrain)
+            reward_model = BLOOMRM(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
         elif rm_model_name == 'opt':
-            reward_model = OPTRM(pretrained=args.rm_pretrain)
+            reward_model = OPTRM(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
         elif rm_model_name == 'llama':
-            reward_model = LlamaRM(pretrained=args.rm_pretrain)
+            reward_model = LlamaRM(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
         else:
             raise ValueError(f'Unsupported reward model "{rm_model_name}"')
 
