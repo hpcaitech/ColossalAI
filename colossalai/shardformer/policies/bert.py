@@ -248,7 +248,7 @@ class BertForPreTrainingPolicy(BertPolicy):
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
         model = self.model
-        if self.pipeline_stage_manager:
+        if self.pipeline_stage_manager and self.pipeline_stage_manager.num_stages > 1:
             if id(model.bert.embeddings.word_embeddings.weight) == id(model.cls.predictions.decoder.weight):
                 #tie weights
                 return [{
@@ -294,7 +294,7 @@ class BertLMHeadModelPolicy(BertPolicy):
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
         bert_model = self.model.bert
-        if self.pipeline_stage_manager:
+        if self.pipeline_stage_manager and self.pipeline_stage_manager.num_stages > 1:
             if id(bert_model.embeddings.word_embeddings.weight) == id(self.model.cls.predictions.decoder.weight):
                 #tie weights
                 return [{
@@ -340,7 +340,7 @@ class BertForMaskedLMPolicy(BertPolicy):
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
         bert_model = self.model.bert
-        if self.pipeline_stage_manager:
+        if self.pipeline_stage_manager and self.pipeline_stage_manager.num_stages > 1:
             if id(bert_model.embeddings.word_embeddings.weight) == id(self.model.cls.predictions.decoder.weight):
                 #tie weights
                 return [{

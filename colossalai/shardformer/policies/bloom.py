@@ -212,7 +212,7 @@ class BloomForCausalLMPolicy(BloomPolicy):
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
         bloom_model = self.model
-        if self.pipeline_stage_manager:
+        if self.pipeline_stage_manager and self.pipeline_stage_manager.num_stages > 1:
             if id(bloom_model.transformer.word_embeddings.weight) == id(bloom_model.lm_head.weight):
                 # tie weights
                 return [{
