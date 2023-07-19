@@ -1,3 +1,12 @@
+import logging
+from functools import partial
+from types import MethodType
+from typing import Callable, Dict, List, Optional, Tuple, Union
+
+import torch
+from torch import Tensor, nn
+from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
+
 from colossalai.shardformer.layer import (
     DropoutForParallelInput,
     Embedding1D,
@@ -106,7 +115,7 @@ class T5BasePolicy(Policy):
             ])
             policy[T5DenseGatedActDense] = ModulePolicyDescription(sub_module_replacement=[
                 SubModuleReplacementDescription(
-                    suffix="wi_0",
+                    suffix="wi_0 ",
                     target_module=Linear1D_Col,
                 ),
                 SubModuleReplacementDescription(
@@ -167,6 +176,53 @@ class T5BasePolicy(Policy):
         return self.model
 
 
+'''
+    def get_held_layers(self) -> List[nn.Module]:
+        """Get pipeline layers for current stage."""
+        assert self.pipeline_stage_manager is not None
+        stage_manager = self.pipeline_stage_manager
+
+        encoder = self.model.encoder
+        decoder = self.model.__dict__.get('decoder', None)
+
+        num_encoder_layers = len(encoder.block)
+        num_decoder_layers = len(decoder.block) if decoder else 0
+
+        held_layers = []
+        layers_per_stage = self.distribute_t5_layers(len(encoder.block), stage_manager.num_stages)
+
+
+
+
+        if stage_manager.is_first_stage():
+            held_layers.append(module.wte)
+            held_layers.append(module.wpe)
+            held_layers.append(module.drop)
+        start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
+        held_layers.extend(module.h[start_idx:end_idx])
+        if stage_manager.is_last_stage():
+            held_layers.append(module.ln_f)
+        return held_layers
+
+    def set_pipeline_forward(self, model_cls: nn.Module, new_forward: Callable, policy: Dict) -> None:
+        """If under pipeline parallel setting, replacing the original forward method of huggingface
+           to customized forward method, and add this changing to policy."""
+        if self.pipeline_stage_manager:
+            stage_manager = self.pipeline_stage_manager
+            if self.model.__class__.__name__ == 'GPT2Model':
+                module = self.model
+            else:
+                module = self.model.transformer
+
+            layers_per_stage = Policy.distribute_layers(len(module.h), stage_manager.num_stages)
+            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
+            method_replacement = {'forward': partial(new_forward, stage_manager=stage_manager, stage_index=stage_index)}
+            self.append_or_create_method_replacement(description=method_replacement,
+                                                     policy=policy,
+                                                     target_key=model_cls)
+'''
+
+
 class T5ModelPolicy(T5BasePolicy):
 
     def module_policy(self):
@@ -181,6 +237,15 @@ class T5ModelPolicy(T5BasePolicy):
                                                         policy=base_policy,
                                                         target_key=T5Model)
         return base_policy
+
+    def postprocess(self):
+        if self.shard_config.enable_tensor_parallelism:
+            binding_map = {"shared.weight": ["encoder.embed_tokens.weight", "decoder.embed_tokens.weight"]}
+            for k, v in binding_map.items():
+                src = getattr_(self.model, k)
+                for dst in v:
+                    setattr_(self.model, dst, src)
+        return self.model
 
 
 class T5ForConditionalGenerationPolicy(T5BasePolicy):
@@ -204,6 +269,19 @@ class T5ForConditionalGenerationPolicy(T5BasePolicy):
                                                         target_key=T5ForConditionalGeneration)
         return policy
 
+    def postprocess(self):
+        super().postprocess()
+        if self.shard_config.enable_tensor_parallelism:
+            binding_map = {
+                "shared.weight": ["encoder.embed_tokens.weight", "decoder.embed_tokens.weight", "lm_head.weight"]
+            }
+            for k, v in binding_map.items():
+                src = getattr_(self.model, k)
+                for dst in v:
+                    setattr_(self.model, dst, src)
+
+        return self.model
+
 
 class T5EncoderPolicy(T5BasePolicy):
 
@@ -220,3 +298,12 @@ class T5EncoderPolicy(T5BasePolicy):
                                                         policy=base_policy,
                                                         target_key=T5EncoderModel)
         return base_policy
+
+    def postprocess(self):
+        if self.shard_config.enable_tensor_parallelism:
+            binding_map = {"shared.weight": ["encoder.embed_tokens.weight"]}
+            for k, v in binding_map.items():
+                src = getattr_(self.model, k)
+                for dst in v:
+                    setattr_(self.model, dst, src)
+        return self.model
