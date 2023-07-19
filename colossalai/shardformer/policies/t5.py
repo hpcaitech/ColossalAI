@@ -3,6 +3,7 @@ from functools import partial
 from types import MethodType
 from typing import Callable, Dict, List, Optional, Tuple
 
+import numpy as np
 import torch
 from torch import Tensor, nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
@@ -20,44 +21,6 @@ from colossalai.shardformer.policies.base_policy import ModulePolicyDescription
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = ["distribute_t5_layers", "T5ModelPolicy", "T5ForConditionalGenerationPolicy", "T5EncoderPolicy"]
-
-
-def distribute_t5_layers(num_encoder_layers: int, num_decoder_layers: int, num_stages: int) -> Tuple[List[int], int]:
-    """
-    Distribute t5 layers into stages when pipeline parallel is used.
-    Return the layer distribution as a list and the starting stage of decoder (if decoder exists).
-    """
-
-    # number of encoder layers must be a positive integer
-    if num_encoder_layers <= 0:
-        raise ValueError("The number of encoder layers for T5 must be a positive integer.")
-
-    # number of layers should be large enough to fill in every stage
-    if num_encoder_layers + num_decoder_layers < num_stages:
-        raise ValueError("The total number of layers can't be smaller than number of stages.")
-
-    # int the case of T5EncoderModel, set decoder starting stage to -1 since it doesn't exist
-    if num_decoder_layers == 0:
-        return Policy.distribute_layers(num_encoder_layers, num_stages), -1
-
-    # the number of stages distributed between encoder and decoder is optmized in this way:
-    # num_encoder_stages = argmin(abs(num_encoder_layers / encoder_stages - num_decoder_layers / decoder_stages))
-    #                   s.t. num_encoder_stages + num_decoder_stages = num_stages, num_encoder_stages >= 1, num_decoder_stages >= 1
-    def objective(num_encoder_stages):
-        return abs(num_encoder_layers / num_encoder_stages - num_decoder_layers / (num_stages - num_encoder_stages))
-
-    num_encoder_stages = 0
-    optimal_diff = 2**31 - 1
-    for i in range(1, num_stages):
-        attempt = objective(i)
-        if attempt < optimal_diff:
-            num_encoder_stages = i
-            optimal_diff = attempt
-    num_decoder_stages = num_stages - num_encoder_stages
-
-    encoder_distribution = Policy.distribute_layers(num_encoder_layers, num_encoder_stages)
-    decoder_distribution = Policy.distribute_layers(num_decoder_layers, num_decoder_stages)
-    return encoder_distribution + decoder_distribution, num_encoder_stages
 
 
 class T5BasePolicy(Policy):
@@ -213,33 +176,92 @@ class T5BasePolicy(Policy):
     def postprocess(self):
         return self.model
 
+    @staticmethod
+    def distribute_t5_layers(num_encoder_layers: int, num_decoder_layers: int,
+                             num_stages: int) -> Tuple[List[int], int]:
+        """
+        Distribute t5 layers into stages when pipeline parallel is used.
+        Return the layer distribution as a list and the starting stage of decoder (if decoder exists).
+        """
 
-'''
+        # number of encoder layers must be a positive integer
+        if num_encoder_layers <= 0:
+            raise ValueError("The number of encoder layers for T5 must be a positive integer.")
+
+        # number of layers should be large enough to fill in every stage
+        if num_encoder_layers + num_decoder_layers < num_stages:
+            raise ValueError("The total number of layers can't be smaller than number of stages.")
+
+        # int the case of T5EncoderModel, set decoder starting stage to num_stages since it doesn't exist
+        if num_decoder_layers == 0:
+            return Policy.distribute_layers(num_encoder_layers, num_stages), num_stages
+
+        # the number of stages distributed between encoder and decoder is optmized in this way:
+        # num_encoder_stages = argmin(abs(num_encoder_layers / encoder_stages - num_decoder_layers / decoder_stages))
+        #                   s.t. num_encoder_stages + num_decoder_stages = num_stages, num_encoder_stages >= 1, num_decoder_stages >= 1
+        def objective(num_encoder_stages):
+            return abs(num_encoder_layers / num_encoder_stages - num_decoder_layers / (num_stages - num_encoder_stages))
+
+        num_encoder_stages = 0
+        optimal_diff = 2**31 - 1
+        for i in range(1, num_stages):
+            attempt = objective(i)
+            if attempt < optimal_diff:
+                num_encoder_stages = i
+                optimal_diff = attempt
+        num_decoder_stages = num_stages - num_encoder_stages
+
+        encoder_distribution = Policy.distribute_layers(num_encoder_layers, num_encoder_stages)
+        decoder_distribution = Policy.distribute_layers(num_decoder_layers, num_decoder_stages)
+        return encoder_distribution + decoder_distribution, num_encoder_stages
+
+    @staticmethod
+    def get_t5_stage_index(layers_per_stage: List[int], stage: int,
+                           decoder_starting_stage: int) -> Tuple[bool, int, int]:
+        """
+        Input the distribution of layers among stages, the current stage and the first stage of decoder.
+        Return the starting/ending idx of layers in encoder/decoder
+        """
+        if stage < decoder_starting_stage:
+            return Policy.get_stage_index(layers_per_stage[:decoder_starting_stage], stage)
+        else:
+            return Policy.get_stage_index(layers_per_stage[decoder_starting_stage:], stage - decoder_starting_stage)
+
     def get_held_layers(self) -> List[nn.Module]:
         """Get pipeline layers for current stage."""
         assert self.pipeline_stage_manager is not None
         stage_manager = self.pipeline_stage_manager
 
+        model = self.model
         encoder = self.model.encoder
         decoder = self.model.__dict__.get('decoder', None)
 
         num_encoder_layers = len(encoder.block)
         num_decoder_layers = len(decoder.block) if decoder else 0
 
-
         held_layers = []
-        layers_per_stage, decoder_starting_stage = distribute_t5_layers(num_encoder_layers, num_decoder_layers, stage_manager.num_stages)
+        layers_per_stage, decoder_starting_stage = T5BasePolicy.distribute_t5_layers(
+            num_encoder_layers, num_decoder_layers, stage_manager.num_stages)
+        start_idx, end_idx = T5BasePolicy.get_t5_stage_index(layers_per_stage, stage_manager.stage,
+                                                             decoder_starting_stage)
 
-
-
-        if stage_manager.is_first_stage():
-            held_layers.append(module.wte)
-            held_layers.append(module.wpe)
-            held_layers.append(module.drop)
-        start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
-        held_layers.extend(module.h[start_idx:end_idx])
-        if stage_manager.is_last_stage():
-            held_layers.append(module.ln_f)
+        if stage_manager.stage < decoder_starting_stage:
+            # current stage is in t5's encoder
+            if stage_manager.is_first_stage():
+                held_layers.append(model.shared)
+                held_layers.append(encoder.embed_tokens)
+            if stage_manager.stage == decoder_starting_stage - 1:
+                held_layers.append(encoder.final_layer_norm)
+                held_layers.append(encoder.dropout)
+            held_layers.extend(encoder.block[start_idx:end_idx])
+        else:
+            # current stage is in t5's decoder
+            if stage_manager.stage == decoder_starting_stage:
+                held_layers.append(decoder.embed_tokens)
+            if stage_manager.is_last_stage():
+                held_layers.append(decoder.final_layer_norm)
+                held_layers.append(decoder.dropout)
+            held_layers.extend(decoder.block[start_idx:end_idx])
         return held_layers
 
     def set_pipeline_forward(self, model_cls: nn.Module, new_forward: Callable, policy: Dict) -> None:
@@ -247,18 +269,28 @@ class T5BasePolicy(Policy):
            to customized forward method, and add this changing to policy."""
         if self.pipeline_stage_manager:
             stage_manager = self.pipeline_stage_manager
-            if self.model.__class__.__name__ == 'GPT2Model':
-                module = self.model
-            else:
-                module = self.model.transformer
 
-            layers_per_stage = Policy.distribute_layers(len(module.h), stage_manager.num_stages)
-            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
-            method_replacement = {'forward': partial(new_forward, stage_manager=stage_manager, stage_index=stage_index)}
+            model = self.model
+            encoder = self.model.encoder
+            decoder = self.model.__dict__.get('decoder', None)
+
+            num_encoder_layers = len(encoder.block)
+            num_decoder_layers = len(decoder.block) if decoder else 0
+
+            layers_per_stage, decoder_starting_stage = T5BasePolicy.distribute_t5_layers(
+                num_encoder_layers, num_decoder_layers, stage_manager.num_stages)
+            stage_index = T5BasePolicy.get_t5_stage_index(layers_per_stage, stage_manager.stage, decoder_starting_stage)
+
+            method_replacement = {
+                'forward':
+                    partial(new_forward,
+                            stage_manager=stage_manager,
+                            stage_index=stage_index,
+                            decoder_starting_stage=decoder_starting_stage)
+            }
             self.append_or_create_method_replacement(description=method_replacement,
                                                      policy=policy,
                                                      target_key=model_cls)
-'''
 
 
 class T5ModelPolicy(T5BasePolicy):
