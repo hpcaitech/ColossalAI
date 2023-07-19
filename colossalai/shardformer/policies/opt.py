@@ -199,8 +199,8 @@ class OPTForCausalLMPolicy(OPTPolicy):
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
         opt_model = self.model
-        if self.pipeline_stage_manager:
-            num_stages = self.pipeline_stage_manager.num_stages
+        num_stages = self.pipeline_stage_manager.num_stages
+        if self.pipeline_stage_manager and num_stages > 1:
             if id(opt_model.model.decoder.embed_tokens.weight) == id(opt_model.lm_head.weight):
                 return [{0: opt_model.model.decoder.embed_tokens.weight, num_stages - 1: opt_model.lm_head.weight}]
 
@@ -282,10 +282,10 @@ class OPTPipelineForwards:
     def _prepare_decoder_attention_mask(attention_mask, input_shape, _dtype, device, past_key_values_length):
         # create causal mask
         # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
-
+        from transformers.models.opt.modeling_opt import _make_causal_mask
         combined_attention_mask = None
         if input_shape[-1] > 1:
-            combined_attention_mask = OPTPipelineForwards._make_causal_mask(
+            combined_attention_mask = _make_causal_mask(
                 input_shape,
                 _dtype,
                 device,
@@ -300,24 +300,6 @@ class OPTPipelineForwards:
                                        combined_attention_mask)
 
         return combined_attention_mask
-
-    @staticmethod
-    def _make_causal_mask(input_ids_shape: torch.Size,
-                          dtype: torch.dtype,
-                          device: torch.device,
-                          past_key_values_length: int = 0):
-        """
-        Make causal mask used for bi-directional self-attention.
-        """
-        bsz, tgt_len = input_ids_shape
-        mask = torch.full((tgt_len, tgt_len), torch.tensor(torch.finfo(dtype).min, device=device), device=device)
-        mask_cond = torch.arange(mask.size(-1), device=device)
-        mask.masked_fill_(mask_cond < (mask_cond + 1).view(mask.size(-1), 1), 0)
-        mask = mask.to(dtype)
-
-        if past_key_values_length > 0:
-            mask = torch.cat([torch.zeros(tgt_len, past_key_values_length, dtype=dtype, device=device), mask], dim=-1)
-        return mask[None, None, :, :].expand(bsz, 1, tgt_len, tgt_len + past_key_values_length)
 
     @staticmethod
     def _expand_mask(mask: torch.Tensor, dtype: torch.dtype, tgt_len: Optional[int] = None):
