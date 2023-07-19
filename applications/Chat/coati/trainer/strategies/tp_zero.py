@@ -18,6 +18,7 @@ from colossalai.booster.plugin.low_level_zero_plugin import (
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.lazy import LazyInitContext
+from colossalai.utils import get_current_device
 
 from .naive import NaiveStrategy
 from .tp import tp_parallelize
@@ -74,7 +75,7 @@ class TPZeroStrategy(NaiveStrategy):
         self.zero_optim_config['tp_process_group'] = gpc.get_group(ParallelMode.PARALLEL_1D)
 
     def model_init_context(self):
-        return LazyInitContext()
+        return LazyInitContext(default_device=get_current_device())
 
     def setup_model(self, model: torch.nn.Module) -> torch.nn.Module:
         tp_parallelize(model)

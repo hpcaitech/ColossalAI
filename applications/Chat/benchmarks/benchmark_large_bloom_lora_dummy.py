@@ -113,16 +113,12 @@ def main(args):
 
     model_config = get_gpt_config(args.model)
     critic_config = get_gpt_config(args.critic_model)
-    with strategy.model_init_context(), no_init_weights(), low_precision_init():
+    with strategy.model_init_context(), low_precision_init():
         actor = BLOOMActor(config=model_config, lora_rank=args.lora_rank, checkpoint=args.grad_checkpoint)
-        actor.model.tie_weights()
         critic = BLOOMCritic(config=critic_config, lora_rank=args.lora_rank, checkpoint=args.grad_checkpoint)
-        critic.model.tie_weights()
 
         initial_model = BLOOMActor(config=model_config, lora_rank=args.lora_rank, checkpoint=args.grad_checkpoint)
-        initial_model.model.tie_weights()
         reward_model = BLOOMCritic(config=critic_config, lora_rank=args.lora_rank, checkpoint=args.grad_checkpoint)
-        reward_model.model.tie_weights()
         reward_model = RewardModel(reward_model.model, reward_model.value_head)
 
     if args.use_kernels:
@@ -158,6 +154,7 @@ def main(args):
             (actor, actor_optim), (critic, critic_optim), initial_model, reward_model)
 
     print_rank_0(f'Mem after prepare: {psutil.Process(os.getpid()).memory_full_info().rss /1024**3:.2f} GB')
+    print_rank_0(f'CUDA Mem after prepare: {torch.cuda.memory_allocated() / 1024**3:.2f} GB')
     # TODO(ver217): load checkpoint here
 
     trainer = PPOTrainer(strategy,
