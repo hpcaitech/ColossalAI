@@ -20,6 +20,7 @@ def safe_div(a, b):
 def init_chunk_manager(model: nn.Module,
                        init_device: Optional[torch.device] = None,
                        hidden_dim: Optional[int] = None,
+                       dp_process_group=None,
                        verbose: bool = False,
                        **kwargs) -> ChunkManager:
     if hidden_dim:
@@ -31,7 +32,9 @@ def init_chunk_manager(model: nn.Module,
     dist.barrier()
     begin = time()
 
-    config_dict, total_size, wasted_size = search_chunk_configuration(model, **kwargs)
+    config_dict, total_size, wasted_size = search_chunk_configuration(model,
+                                                                      dp_process_group=dp_process_group,
+                                                                      **kwargs)
 
     dist.barrier()
     end = time()

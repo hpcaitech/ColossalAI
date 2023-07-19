@@ -79,7 +79,8 @@ def _tensor_numel(local_param: ColoParameter, strict_ddp_flag: bool) -> int:
 
 
 def classify_params_by_dp_degree(param_order: OrderedParamGenerator,
-                                 strict_ddp_flag: bool = False) -> Dict[int, List[ColoParameter]]:
+                                 strict_ddp_flag: bool = False,
+                                 dp_process_group=None) -> Dict[int, List[ColoParameter]]:
     """classify_params_by_dp_degree
 
     Classify the parameters by their dp degree
@@ -101,7 +102,7 @@ def classify_params_by_dp_degree(param_order: OrderedParamGenerator,
         if strict_ddp_flag or type(param) is not ColoParameter:
             # if model is not initialized with ColoInitContext, we assume it's replicated
             # TODO(ver217): integrate DTensor
-            param_key = dist.get_world_size()
+            param_key = dist.get_world_size(dp_process_group)
         else:
             param_key = param.process_group.dp_world_size()
 
@@ -119,6 +120,7 @@ def search_chunk_configuration(
         min_chunk_size_m: float = 32,
         filter_exlarge_params: bool = True,
         strict_ddp_flag: bool = False,
+        dp_process_group=None,
         memstas: Optional[MemStats] = None) -> Tuple[Dict, int, int]:
     """search_chunk_configuration
 
@@ -149,7 +151,7 @@ def search_chunk_configuration(
     min_chunk_size = round(min_chunk_size_m * 1024**2)
     assert search_range >= 0
 
-    params_dict = classify_params_by_dp_degree(param_order, strict_ddp_flag)
+    params_dict = classify_params_by_dp_degree(param_order, strict_ddp_flag, dp_process_group=dp_process_group)
     size_lcm = np.lcm.reduce(list(params_dict.keys()))
     config_dict: Dict[int, Dict] = dict()
     total_param_size = 0

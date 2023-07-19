@@ -12,10 +12,10 @@ from colossalai.checkpoint_io.utils import calculate_tensor_size
 from colossalai.lazy import LazyTensor
 from colossalai.logging import get_dist_logger
 from colossalai.nn.parallel.data_parallel import ColoDDP, _cast_float, free_storage
-from colossalai.tensor import ProcessGroup as ColoProcessGroup
 from colossalai.tensor import ReplicaSpec
 from colossalai.tensor.colo_parameter import ColoParameter, ColoTensor, ColoTensorSpec
 from colossalai.tensor.param_op_hook import ColoParamOpHookManager
+from colossalai.tensor.process_group import NewProcessGroup as ColoProcessGroup
 from colossalai.utils import get_current_device, is_ddp_ignored
 
 from .chunk import Chunk, ChunkManager, TensorState, init_chunk_manager
@@ -61,7 +61,9 @@ class ZeroDDP(ColoDDP):
                  force_outputs_fp32: bool = False,
                  strict_ddp_mode: bool = False,
                  scatter_after_inference: bool = True,
-                 mixed_precision: torch.dtype = torch.float16) -> None:
+                 mixed_precision: torch.dtype = torch.float16,
+                 dp_process_group: Optional[dist.ProcessGroup] = None,
+                 extra_dp_process_group: Optional[dist.ProcessGroup] = None) -> None:
         assert mixed_precision in (torch.float16, torch.bfloat16)
         self.gemini_manager = gemini_manager
         self.chunk_manager: ChunkManager = gemini_manager.chunk_manager
@@ -78,6 +80,8 @@ class ZeroDDP(ColoDDP):
 
         self._logger = get_dist_logger()
 
+        process_group = ColoProcessGroup(dp_process_group, extra_dp_process_group=extra_dp_process_group)
+        self.process_group = process_group
         if self.gemini_manager._premade_memstats_:
             # build chunk in param runtime visited order.
             param_order = self.gemini_manager.memstats()._param_runtime_order
@@ -99,7 +103,7 @@ class ZeroDDP(ColoDDP):
             for p_name, p_var in m_var.named_parameters(recurse=False):
                 param_name = m_name + '.' + p_name if m_name else p_name
                 self.name2param[param_name] = p_var
-        super().__init__(module, process_group=ColoProcessGroup())
+        super().__init__(module, process_group=process_group)
         self._non_persistent_buffers_set = self._get_non_persistent_buffers_set(module)
         self._cast_buffers()
 
@@ -557,7 +561,6 @@ class ZeroDDP(ColoDDP):
                         unexpected_keys.append(key)
 
     def _init_chunks(self, param_order, strict_ddp_mode: bool, cpu_offload: bool, pin_memory: bool):
-        ddp_pg = ColoProcessGroup()
         for p in param_order.generate():
             self._preprocess_param(p)
             assert type(p) is ColoParameter
@@ -566,7 +569,7 @@ class ZeroDDP(ColoDDP):
             if strict_ddp_mode:
                 if not p.is_replicate():
                     p.set_dist_spec(ReplicaSpec())
-                p.set_process_group(pg=ddp_pg)
+                p.set_process_group(pg=self.process_group)
 
             # ignore the parameters with no gradient
             if not p.requires_grad:
@@ -633,6 +636,7 @@ class ZeroDDP(ColoDDP):
             p.materialize()
         p.__class__ = ColoParameter
         p.__init__(p, requires_grad=requires_grad)
+        p.set_process_group(self.process_group)
 
     def state_dict_shard(self,
                          prefix: str = '',
@@ -744,7 +748,9 @@ class GeminiDDP(ZeroDDP):
                  min_chunk_size_m: float = 32,
                  memstats: Optional[MemStats] = None,
                  mixed_precision: torch.dtype = torch.float16,
-                 verbose: bool = False) -> None:
+                 verbose: bool = False,
+                 dp_process_group: Optional[dist.ProcessGroup] = None,
+                 extra_dp_process_group: Optional[dist.ProcessGroup] = None) -> None:
         """
         A torch.Module wrapper using ZeRO-DP and Gemini.
         ZeRO is for parallel. Gemini is for memory management.
@@ -782,7 +788,8 @@ class GeminiDDP(ZeroDDP):
                                            search_range_m=search_range_m,
                                            min_chunk_size_m=min_chunk_size_m,
                                            strict_ddp_flag=strict_ddp_mode,
-                                           verbose=verbose)
+                                           verbose=verbose,
+                                           dp_process_group=dp_process_group)
         gemini_manager = GeminiManager(placement_policy, chunk_manager, memstats)
         super().__init__(module,
                          gemini_manager,
@@ -790,4 +797,6 @@ class GeminiDDP(ZeroDDP):
                          force_outputs_fp32,
                          strict_ddp_mode,
                          scatter_after_inference,
-                         mixed_precision=mixed_precision)
+                         mixed_precision=mixed_precision,
+                         dp_process_group=dp_process_group,
+                         extra_dp_process_group=extra_dp_process_group)

@@ -1,6 +1,8 @@
 from typing import List, Optional
 
 import torch
+import torch.distributed as dist
+from torch.distributed.distributed_c10d import _get_default_group, _pg_group_ranks
 
 from colossalai.context.singleton_meta import SingletonMeta
 from colossalai.logging import get_dist_logger
@@ -317,3 +319,85 @@ class ProcessGroup:
             List[int]: a list of rank number.
         """
         return self._tp_rank_list
+
+
+class NewProcessGroup(ProcessGroup):
+
+    def __init__(self,
+                 dp_process_group: Optional[dist.ProcessGroup] = None,
+                 tp_process_group: Optional[dist.ProcessGroup] = None,
+                 extra_dp_process_group: Optional[dist.ProcessGroup] = None) -> None:
+        if dp_process_group is None:
+            dp_process_group = _get_default_group()
+        self._dp_process_group = dp_process_group
+        self._tp_process_group = tp_process_group
+        self._extra_dp_process_group = extra_dp_process_group
+        self._rank = dist.get_rank()
+        self._world_size = dist.get_world_size()
+        self._rank_list = list(range(self._world_size))
+        if dp_process_group is None:
+            self._dp_rank_list = self._rank_list
+            self._dp_degree = self._world_size
+            self._dp_local_rank = self._rank
+        else:
+            self._dp_rank_list = list(_pg_group_ranks[self._dp_process_group].keys())
+            self._dp_degree = len(self._dp_rank_list)
+            self._dp_local_rank = dist.get_rank(self._dp_process_group)
+        if tp_process_group is None:
+            self._tp_rank_list = []
+            self._tp_degree = 1
+            self._tp_local_rank = 0
+        else:
+            self._tp_rank_list = list(_pg_group_ranks[self._tp_process_group].keys())
+            self._tp_degree = len(self._tp_rank_list)
+            self._tp_local_rank = dist.get_rank(self._tp_process_group)
+        if extra_dp_process_group is None:
+            self._extra_dp_rank_list = []
+            self._extra_dp_degree = 1
+            self._extra_dp_local_rank = 0
+        else:
+            self._extra_dp_rank_list = list(_pg_group_ranks[self._extra_dp_process_group].keys())
+            self._extra_dp_degree = len(self._extra_dp_rank_list)
+            self._extra_dp_local_rank = dist.get_rank(self._extra_dp_process_group)
+
+    @property
+    def has_cpu_groups(self) -> bool:
+        return False
+
+    def set_cpu_groups(self):
+        raise NotImplementedError
+
+    def dp_local_rank(self) -> int:
+        return self._dp_local_rank
+
+    def tp_local_rank(self) -> int:
+        return self._tp_local_rank
+
+    def extra_dp_local_rank(self) -> int:
+        return self._extra_dp_local_rank
+
+    def dp_world_size(self) -> int:
+        return self._dp_degree
+
+    def tp_world_size(self) -> int:
+        return self._tp_degree
+
+    def extra_dp_world_size(self) -> int:
+        return self._extra_dp_degree
+
+    def dp_process_group(self):
+        return self._dp_process_group
+
+    def tp_process_group(self):
+        return self._tp_process_group
+
+    def extra_dp_process_group(self):
+        return self._extra_dp_process_group
+
+    def __repr__(self):
+        return f'ProcessGroup(dp_degree={self._dp_degree}, tp_degree={self._tp_degree}, extra_dp_degree={self._extra_dp_degree})'
+
+    def __eq__(self, obj: 'NewProcessGroup') -> bool:
+        if not isinstance(obj, NewProcessGroup):
+            return False
+        return self._dp_process_group == obj._dp_process_group and self._tp_process_group == obj._tp_process_group and self._extra_dp_process_group == obj._extra_dp_process_group
