@@ -27,7 +27,6 @@ def run_gpt2_test(enable_fused_normalization, enable_tensor_parallelism, use_laz
 
     sub_model_zoo = model_zoo.get_sub_registry('transformers_gpt')
     for name, (model_fn, data_gen_fn, _, _, _) in sub_model_zoo.items():
-
         inputs = data_gen_fn()
         inputs = {k: v.cuda() for k, v in inputs.items()}
         input_ids, _ = inputs['input_ids'], inputs['attention_mask']
