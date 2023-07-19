@@ -6,15 +6,12 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, Module, MSELoss
-from transformers.utils import logging
 
 import colossalai.shardformer.layer as col_nn
 from colossalai.pipeline.stage_manager import PipelineStageManager
 
 from .._utils import getattr_, setattr_
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
-
-logger = logging.get_logger(__name__)
 
 __all__ = [
     'BertPolicy', 'BertModelPolicy', 'BertForPreTrainingPolicy', 'BertLMdHeadModelPolicy', 'BertForMaskedLMPolicy',
@@ -208,9 +205,10 @@ class BertModelPolicy(BertPolicy):
     def module_policy(self):
         policy = super().module_policy()
         from transformers.models.bert.modeling_bert import BertModel
-        self.set_pipeline_forward(model_cls=BertModel,
-                                  new_forward=BertPipelineForwards.bert_model_forward,
-                                  policy=policy)
+        if self.pipeline_stage_manager:
+            self.set_pipeline_forward(model_cls=BertModel,
+                                      new_forward=BertPipelineForwards.bert_model_forward,
+                                      policy=policy)
         return policy
 
     def get_held_layers(self) -> List[Module]:
@@ -233,9 +231,10 @@ class BertForPreTrainingPolicy(BertPolicy):
         policy = super().module_policy()
         policy = self.add_lm_head_policy(policy)
         from transformers.models.bert.modeling_bert import BertForPreTraining
-        self.set_pipeline_forward(model_cls=BertForPreTraining,
-                                  new_forward=BertPipelineForwards.bert_for_pretraining_forward,
-                                  policy=policy)
+        if self.pipeline_stage_manager:
+            self.set_pipeline_forward(model_cls=BertForPreTraining,
+                                      new_forward=BertPipelineForwards.bert_for_pretraining_forward,
+                                      policy=policy)
         return policy
 
     def get_held_layers(self) -> List[Module]:
@@ -277,9 +276,10 @@ class BertLMHeadModelPolicy(BertPolicy):
         policy = super().module_policy()
         policy = self.add_lm_head_policy(policy)
         from transformers.models.bert.modeling_bert import BertLMHeadModel
-        self.set_pipeline_forward(model_cls=BertLMHeadModel,
-                                  new_forward=BertPipelineForwards.bert_lm_head_model_forward,
-                                  policy=policy)
+        if self.pipeline_stage_manager:
+            self.set_pipeline_forward(model_cls=BertLMHeadModel,
+                                      new_forward=BertPipelineForwards.bert_lm_head_model_forward,
+                                      policy=policy)
         return policy
 
     def get_held_layers(self) -> List[Module]:
@@ -322,9 +322,10 @@ class BertForMaskedLMPolicy(BertPolicy):
         policy = super().module_policy()
         policy = self.add_lm_head_policy(policy)
         from transformers.models.bert.modeling_bert import BertForMaskedLM
-        self.set_pipeline_forward(model_cls=BertForMaskedLM,
-                                  new_forward=BertPipelineForwards.bert_for_masked_lm_forward,
-                                  policy=policy)
+        if self.pipeline_stage_manager:
+            self.set_pipeline_forward(model_cls=BertForMaskedLM,
+                                      new_forward=BertPipelineForwards.bert_for_masked_lm_forward,
+                                      policy=policy)
         return policy
 
     def get_held_layers(self) -> List[Module]:
@@ -379,10 +380,10 @@ class BertForSequenceClassificationPolicy(BertPolicy):
                     ])
             }
             policy.update(addon_module)
-
-        self.set_pipeline_forward(model_cls=BertForSequenceClassification,
-                                  new_forward=BertPipelineForwards.bert_for_sequence_classification_forward,
-                                  policy=policy)
+        if self.pipeline_stage_manager:
+            self.set_pipeline_forward(model_cls=BertForSequenceClassification,
+                                      new_forward=BertPipelineForwards.bert_for_sequence_classification_forward,
+                                      policy=policy)
 
         return policy
 
@@ -424,10 +425,10 @@ class BertForTokenClassificationPolicy(BertPolicy):
                     ])
             }
             policy.update(addon_module)
-
-        self.set_pipeline_forward(model_cls=BertForTokenClassification,
-                                  new_forward=BertPipelineForwards.bert_for_token_classification_forward,
-                                  policy=policy)
+        if self.pipeline_stage_manager:
+            self.set_pipeline_forward(model_cls=BertForTokenClassification,
+                                      new_forward=BertPipelineForwards.bert_for_token_classification_forward,
+                                      policy=policy)
 
         return policy
 
@@ -456,9 +457,10 @@ class BertForNextSentencePredictionPolicy(BertPolicy):
     def module_policy(self):
         policy = super().module_policy()
         from transformers.models.bert.modeling_bert import BertForNextSentencePrediction
-        self.set_pipeline_forward(model_cls=BertForNextSentencePrediction,
-                                  new_forward=BertPipelineForwards.bert_for_next_sentence_prediction_forward,
-                                  policy=policy)
+        if self.pipeline_stage_manager:
+            self.set_pipeline_forward(model_cls=BertForNextSentencePrediction,
+                                      new_forward=BertPipelineForwards.bert_for_next_sentence_prediction_forward,
+                                      policy=policy)
 
         return policy
 
@@ -499,10 +501,10 @@ class BertForMultipleChoicePolicy(BertPolicy):
                     ])
             }
             policy.update(addon_module)
-
-        self.set_pipeline_forward(model_cls=BertForMultipleChoice,
-                                  new_forward=BertPipelineForwards.bert_for_multiple_choice_forward,
-                                  policy=policy)
+        if self.pipeline_stage_manager:
+            self.set_pipeline_forward(model_cls=BertForMultipleChoice,
+                                      new_forward=BertPipelineForwards.bert_for_multiple_choice_forward,
+                                      policy=policy)
 
         return policy
 
@@ -530,9 +532,10 @@ class BertForQuestionAnsweringPolicy(BertPolicy):
     def module_policy(self):
         from transformers.models.bert.modeling_bert import BertForQuestionAnswering
         policy = super().module_policy()
-        self.set_pipeline_forward(model_cls=BertForQuestionAnswering,
-                                  new_forward=BertPipelineForwards.bert_for_question_answering_forward,
-                                  policy=policy)
+        if self.pipeline_stage_manager:
+            self.set_pipeline_forward(model_cls=BertForQuestionAnswering,
+                                      new_forward=BertPipelineForwards.bert_for_question_answering_forward,
+                                      policy=policy)
 
         return policy
 
