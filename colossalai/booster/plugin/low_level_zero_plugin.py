@@ -14,6 +14,7 @@ from colossalai.checkpoint_io import CheckpointIO, GeneralCheckpointIO
 from colossalai.interface import ModelWrapper, OptimizerWrapper
 from colossalai.utils import get_current_device
 from colossalai.zero import zero_model_wrapper, zero_optim_wrapper
+from colossalai.zero.low_level import LowLevelZeroOptimizer as ZeroOptimizer
 
 from .dp_plugin_base import DPPluginBase
 from .torch_ddp_plugin import TorchDDPCheckpointIO
@@ -61,7 +62,7 @@ class LowLevelZeroModel(ModelWrapper):
         module = zero_model_wrapper(module, zero_stage=stage)
         if self.dtype is not None:
             module = module.to(self.dtype)
-        module = module.to(get_current_device())
+        # module = module.to(get_current_device())
         self.module = module
         self.convert_fn = None
         if self.dtype is not None:
@@ -82,12 +83,15 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                  zero_optim_config: dict,
                  optim_kwargs: dict,
                  verbose: bool = False) -> None:
-        optimizer = zero_optim_wrapper(module,
-                                       optimizer,
-                                       optim_config=zero_optim_config,
-                                       **optim_kwargs,
-                                       verbose=verbose)
+        optimizer: ZeroOptimizer = zero_optim_wrapper(module,
+                                                      optimizer,
+                                                      optim_config=zero_optim_config,
+                                                      **optim_kwargs,
+                                                      verbose=verbose)
         super().__init__(optimizer)
+
+    def to(self, device):
+        self.optim.to(device)
 
     def backward(self, loss: Tensor, *args, **kwargs):
         self.optim.backward(loss)
@@ -208,10 +212,7 @@ class LowLevelZeroPlugin(DPPluginBase):
 
         if optimizer is not None and \
                 not isinstance(optimizer, OptimizerWrapper):
-            optimizer = LowLevelZeroOptimizer(model.unwrap(),
-                                              optimizer,
-                                              self.zero_optim_config,
-                                              self.optim_kwargs,
+            optimizer = LowLevelZeroOptimizer(model.unwrap(), optimizer, self.zero_optim_config, self.optim_kwargs,
                                               self.verbose)
 
         return model, optimizer, criterion, dataloader, lr_scheduler

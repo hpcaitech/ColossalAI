@@ -44,11 +44,11 @@ class Linear1DColPolicy(Policy):
         divide(module.out_features, self.tp_size)
         if isinstance(module.weight, LazyTensor):
             module.weight.materialize()
-        module.weight.data = module.weight.chunk(self.tp_size, dim=0)[self.tp_rank].clone().detach()
+        module.weight.data = module.weight.chunk(self.tp_size, dim=0)[self.tp_rank].data.clone()
         if module.bias is not None:
             if isinstance(module.bias, LazyTensor):
                 module.bias.materialize()
-            module.bias.data = module.bias.chunk(self.tp_size, dim=0)[self.tp_rank].clone().detach()
+            module.bias.data = module.bias.chunk(self.tp_size, dim=0)[self.tp_rank].data.clone()
         # replace forward
         module.forward = MethodType(partial(linear_1d_col_fn, gather_output=self.gather_output), module)
         return False
@@ -67,7 +67,7 @@ class Linear1DRowPolicy(Policy):
         divide(module.in_features, gpc.tensor_parallel_size)
         if isinstance(module.weight, LazyTensor):
             module.weight.materialize()
-        module.weight.data = module.weight.chunk(self.tp_size, dim=1)[self.tp_rank].clone().detach()
+        module.weight.data = module.weight.chunk(self.tp_size, dim=1)[self.tp_rank].data.clone()
         if module.bias is not None and isinstance(module.bias, LazyTensor):
             module.bias.materialize()
         module.forward = MethodType(partial(linear_1d_row_fn, parallel_input=self.parallel_input), module)
@@ -86,7 +86,7 @@ class Embedding1DPolicy(Policy):
         divide(module.num_embeddings, self.tp_size)
         if isinstance(module.weight, LazyTensor):
             module.weight.materialize()
-        module.weight.data = module.weight.chunk(self.tp_size, dim=0)[self.tp_rank].clone().detach()
+        module.weight.data = module.weight.chunk(self.tp_size, dim=0)[self.tp_rank].data.clone()
         module.forward = MethodType(vocab_parallel_embedding_fn, module)
         return False
 

@@ -177,7 +177,7 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
                 tensor_list = self._param_store.get_params_by_rank_group(rank, group_id)
                 with torch.no_grad():
                     flat_tensor = flatten(tensor_list)
-                flat_tensor = flat_tensor.data.cuda()
+                # flat_tensor = flat_tensor.data.cuda()
                 self._param_store.add_flat_param_by_rank_group(rank, group_id, flat_tensor)
 
             # sync parameters
@@ -188,7 +188,7 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
 
             # create a copy of fp32 master weights of the parameters for which this rank is responsible
             working_flat_current_rank = self._param_store.get_flat_param_by_rank_group(self._local_rank, group_id)
-            master_flat_current_rank = working_flat_current_rank.float()
+            master_flat_current_rank = working_flat_current_rank.data.float()
             device = 'cpu' if self._cpu_offload else get_current_device()
             master_flat_current_rank = master_flat_current_rank.to(device)
             master_flat_current_rank.requires_grad = True
@@ -596,3 +596,12 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
         # left in the communication bucket
         for reduce_rank in range(self._world_size):
             self._run_reduction(reduce_rank)
+
+    def to(self, device):
+        for group_id in range(len(self.optim.param_groups)):
+            # sync parameters
+            for rank in range(self._world_size):
+                flat_tensor = self._param_store.get_flat_param_by_rank_group(rank, group_id)
+                flat_tensor.data = flat_tensor.data.to(device)
+                tensor_list = self._param_store.get_params_by_rank_group(rank, group_id)
+                sync_param(flat_tensor=flat_tensor, tensor_list=tensor_list)

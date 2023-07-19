@@ -1,3 +1,4 @@
+from types import MethodType
 from typing import Any, Optional
 
 import torch
@@ -77,6 +78,7 @@ class TPZeroStrategy(NaiveStrategy):
 
     def setup_model(self, model: torch.nn.Module) -> torch.nn.Module:
         tp_parallelize(model)
+        model.to('cpu')
         model = LowLevelZeroModel(model, self.zero_stage, self.precision)
         model.to('cpu')
         return model
@@ -86,7 +88,20 @@ class TPZeroStrategy(NaiveStrategy):
         return model.module
 
     def setup_optimizer(self, optimizer: Optimizer, model: LowLevelZeroModel) -> Optimizer:
-        return LowLevelZeroOptimizer(model.unwrap(), optimizer, self.zero_optim_config, self.optim_kwargs)
+        optim_ = LowLevelZeroOptimizer(model.unwrap(), optimizer, self.zero_optim_config, self.optim_kwargs)
+
+        # Hack to/cuda/cpu of model
+
+        def model_to(m: LowLevelZeroModel, device: str):
+            for b in m.buffers():
+                b.data = b.data.to(device)
+            optim_.to(device)
+            return m
+
+        model.to = MethodType(model_to, model)
+        model.cuda = MethodType(lambda m: model_to(m, 'cuda'), model)
+        model.cpu = MethodType(lambda m: model_to(m, 'cpu'), model)
+        return optim_
 
     def backward(self, loss: Tensor, model: Module, optimizer: Optimizer, **kwargs) -> None:
         optimizer.backward(loss)
