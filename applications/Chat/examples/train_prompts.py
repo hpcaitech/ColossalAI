@@ -1,4 +1,5 @@
 import argparse
+import warnings
 
 import torch
 import torch.distributed as dist
@@ -29,6 +30,7 @@ def main(args):
         raise ValueError(f'Unsupported strategy "{args.strategy}"')
 
     if args.rm_path is not None:
+        warnings.warn('LoRA weights should be merged with the model weights')
         state_dict = torch.load(args.rm_path, map_location='cpu')
 
     with strategy.model_init_context():
@@ -61,7 +63,7 @@ def main(args):
             raise ValueError(f'Unsupported reward model "{rm_model_name}"')
 
         if args.rm_path is not None:
-            reward_model.load_state_dict(state_dict)
+            reward_model.load_state_dict(state_dict, strict=False)
 
         initial_model.to(torch.float16).to(torch.cuda.current_device())
         reward_model.to(torch.float16).to(torch.cuda.current_device())
@@ -89,7 +91,7 @@ def main(args):
             raise ValueError(f'Unsupported reward model "{rm_model_name}"')
 
         if args.rm_path is not None:
-            critic.load_state_dict(state_dict)
+            critic.load_state_dict(state_dict, strict=False)
             del state_dict
 
     if args.strategy != 'colossalai_gemini':
