@@ -42,6 +42,8 @@ _POLICY_LIST = {
         PolicyLocation(file_name="bert", class_name="BertForNextSentencePredictionPolicy"),
     "transformers.models.bert.modeling_bert.BertForMultipleChoice":
         PolicyLocation(file_name="bert", class_name="BertForMultipleChoicePolicy"),
+    "transformers.models.bert.modeling_bert.BertForQuestionAnswering":
+        PolicyLocation(file_name="bert", class_name="BertForQuestionAnsweringPolicy"),
 
     # LLaMA
     "transformers.models.llama.modeling_llama.LlamaModel":
@@ -66,6 +68,8 @@ _POLICY_LIST = {
         PolicyLocation(file_name="gpt2", class_name="GPT2LMHeadModelPolicy"),
     "transformers.models.gpt2.modeling_gpt2.GPT2DoubleHeadsModel":
         PolicyLocation(file_name="gpt2", class_name="GPT2DoubleHeadsModelPolicy"),
+    "transformers.models.gpt2.modeling_gpt2.GPT2ForQuestionAnswering":
+        PolicyLocation(file_name="gpt2", class_name="GPT2ForQuestionAnsweringPolicy"),
     "transformers.models.gpt2.modeling_gpt2.GPT2ForTokenClassification":
         PolicyLocation(file_name="gpt2", class_name="GPT2ForTokenClassificationPolicy"),
     "transformers.models.gpt2.modeling_gpt2.GPT2ForSequenceClassification":

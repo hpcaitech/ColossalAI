@@ -212,11 +212,13 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
         return held_layers
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
-        """No shared params in llama model"""
         llama_model = self.model.model
         if id(llama_model.embed_tokens.weight) == id(self.model.lm_head.weight):
             # tie weights
-            return [{0: llama_model.embed_tokens.weight, self.stage_manager.num_stages - 1: self.model.lm_head.weight}]
+            return [{
+                0: llama_model.embed_tokens.weight,
+                self.pipeline_stage_manager.num_stages - 1: self.model.lm_head.weight
+            }]
         return []
 
 

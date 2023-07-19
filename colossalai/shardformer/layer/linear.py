@@ -129,7 +129,7 @@ class Linear1D_Col(ParallelModule):
                                  **kwargs)
 
         with torch.no_grad():
-            # the weigh to the linear layer is a transpose
+            # the weight to the linear layer is a transpose
             # thus shard on row is equal to shard on column
             sharded_weight = shard_rowwise(module.weight.data, process_group)
             linear_1d.weight.data.copy_(sharded_weight)

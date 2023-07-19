@@ -7,6 +7,8 @@ import numpy as np
 import pytest
 import torch
 import torch.distributed as dist
+
+from torch import Tensor
 from torch.nn import Module
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
@@ -125,7 +127,7 @@ def run_llama_test(enable_fused_normalization, enable_tensor_parallelism, use_la
 
     pg_mesh = ProcessGroupMesh(PP_SIZE)
     stage_manager = PipelineStageManager(pg_mesh, PP_DIM)
-
+    
     sub_model_zoo = model_zoo.get_sub_registry('transformers_llama')
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         if name != 'transformers_llama':
@@ -140,6 +142,7 @@ def run_llama_test(enable_fused_normalization, enable_tensor_parallelism, use_la
             y = model_copy(batch)
             org_loss = loss(batch, y)
         optimizer = torch.optim.AdamW(org_model.parameters(), lr=1e-3)
+
         schedule = OneForwardOneBackwardSchedule(num_microbatches, stage_manager)
         shard_config = ShardConfig(enable_fused_normalization=enable_fused_normalization,
                                    enable_tensor_parallelism=enable_tensor_parallelism,
@@ -152,6 +155,7 @@ def run_llama_test(enable_fused_normalization, enable_tensor_parallelism, use_la
             assert results['loss'] == -org_loss
         else:
             assert results['loss'] is None
+            
         assert results['outputs'] is None
     torch.cuda.empty_cache()
 

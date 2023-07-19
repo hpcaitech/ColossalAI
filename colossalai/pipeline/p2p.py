@@ -62,6 +62,17 @@ def _broadcast_object_list(object_list: List[Any],
         c10d._warn_not_in_group("broadcast_object_list")
         return
 
+    my_rank = dist.get_rank()
+    # Serialize object_list elements to tensors on src rank.
+    if my_rank == src:
+        if torch.__version__ >= "1.13.0":
+            tensor_list, size_list = zip(*[c10d._object_to_tensor(obj, device=device) for obj in object_list])
+        else:
+            tensor_list, size_list = zip(*[c10d._object_to_tensor(obj) for obj in object_list])
+        object_sizes_tensor = torch.cat(size_list)
+    else:
+        object_sizes_tensor = torch.empty(len(object_list), dtype=torch.long)
+
     is_nccl_backend = c10d._check_for_nccl_backend(group)
     current_device = None
 

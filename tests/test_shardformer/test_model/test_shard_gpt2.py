@@ -65,17 +65,20 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
     assert torch.allclose(
         org_grad, all_shard_grad,
         atol=1e-5), f"shard model grad is not equal to origin model grad\n{org_grad}\n{all_shard_grad}"
+    torch.cuda.empty_cache()
 
 
 @parameterize('enable_fused_normalization', [True, False])
 @parameterize('enable_tensor_parallelism', [True, False])
 @parameterize('use_lazy_init', [False, True])
+@clear_cache_before_run()
 def run_gpt2_test(enable_fused_normalization, enable_tensor_parallelism, use_lazy_init):
     sub_model_zoo = model_zoo.get_sub_registry('transformers_gpt')
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         org_model, sharded_model = build_model(model_fn, enable_fused_normalization, enable_tensor_parallelism,
                                                use_lazy_init)
         check_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn)
+
     torch.cuda.empty_cache()
 
 

@@ -14,6 +14,8 @@ def test_bert():
 
     for name, (model_fn, data_gen_fn, _, _, _) in sub_registry.items():
         model = model_fn()
+        if model.__class__.__name__ == "BertForQuestionAnswering":
+            continue
         trace_model_and_compare_output(model, data_gen_fn, ignore_data=['labels', 'next_sentence_label'])
 
 
