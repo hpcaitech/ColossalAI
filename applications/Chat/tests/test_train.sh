@@ -15,7 +15,7 @@ set_n_least_used_CUDA_VISIBLE_DEVICES() {
     echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 }
 
-set_n_least_used_CUDA_VISIBLE_DEVICES 2
+set_n_least_used_CUDA_VISIBLE_DEVICES 4
 
 set -xue
 
@@ -91,7 +91,7 @@ for lora_rank in '0' '4'; do
                 continue
             fi
             pretrain=$(get_pretrain $model)
-            torchrun --standalone --nproc_per_node=2 $EXAMPLES_DIR/train_sft.py \
+            torchrun --standalone --nproc_per_node=4 $EXAMPLES_DIR/train_sft.py \
                 --pretrain $pretrain --tokenizer $MODELS_DIR/$model \
                 --model $model --strategy $strategy --lora_rank $lora_rank \
                 --dataset $SFT_DATASET --max_datasets_size 32 \
@@ -131,7 +131,7 @@ for lora_rank in '0' '4'; do
             loss_fn=$(random_choice "${LOSS_FNS[@]}")
             dataset=$(random_choice "${DATASETS[@]}")
             subset=$(if [[ $dataset == "Dahoas/rm-static" ]]; then echo "None"; else echo "harmless-base"; fi)
-            torchrun --standalone --nproc_per_node=2 $EXAMPLES_DIR/train_reward_model.py \
+            torchrun --standalone --nproc_per_node=4 $EXAMPLES_DIR/train_reward_model.py \
                 --pretrain $pretrain --tokenizer $MODELS_DIR/$model \
                 --model $model --strategy $strategy --lora_rank $lora_rank --loss_fn $loss_fn \
                 --dataset $dataset --subset $subset --test True \
@@ -160,7 +160,7 @@ for model in 'gpt2' 'bloom' 'opt' 'llama'; do
                 continue
             fi
             pretrain=$(get_pretrain $model)
-            torchrun --standalone --nproc_per_node=2 $EXAMPLES_DIR/train_prompts.py \
+            torchrun --standalone --nproc_per_node=4 $EXAMPLES_DIR/train_prompts.py \
                 --prompt_dataset $PROMPT_PATH --pretrain_dataset $PRETRAIN_DATASET \
                 --strategy $strategy --model $model --tokenizer $MODELS_DIR/$model \
                 --num_episodes 1 --num_collect_steps 2 --num_update_steps 1 \
