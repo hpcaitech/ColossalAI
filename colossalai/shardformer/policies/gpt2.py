@@ -144,19 +144,18 @@ class GPT2Policy(Policy):
     def set_pipeline_forward(self, model_cls: nn.Module, new_forward: Callable, policy: Dict) -> None:
         """If under pipeline parallel setting, replacing the original forward method of huggingface
            to customized forward method, and add this changing to policy."""
-        if self.pipeline_stage_manager:
-            stage_manager = self.pipeline_stage_manager
-            if self.model.__class__.__name__ == 'GPT2Model':
-                module = self.model
-            else:
-                module = self.model.transformer
+        if not self.pipeline_stage_manager:
+            raise ValueError("set_pipeline_forward method can only be called when pipeline parallel is enabled.")
+        stage_manager = self.pipeline_stage_manager
+        if self.model.__class__.__name__ == 'GPT2Model':
+            module = self.model
+        else:
+            module = self.model.transformer
 
-            layers_per_stage = Policy.distribute_layers(len(module.h), stage_manager.num_stages)
-            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
-            method_replacement = {'forward': partial(new_forward, stage_manager=stage_manager, stage_index=stage_index)}
-            self.append_or_create_method_replacement(description=method_replacement,
-                                                     policy=policy,
-                                                     target_key=model_cls)
+        layers_per_stage = Policy.distribute_layers(len(module.h), stage_manager.num_stages)
+        stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
+        method_replacement = {'forward': partial(new_forward, stage_manager=stage_manager, stage_index=stage_index)}
+        self.append_or_create_method_replacement(description=method_replacement, policy=policy, target_key=model_cls)
 
 
 # GPT2Model
@@ -169,9 +168,11 @@ class GPT2ModelPolicy(GPT2Policy):
         from transformers.models.gpt2.modeling_gpt2 import GPT2Model
 
         policy = super().module_policy()
-        self.set_pipeline_forward(model_cls=GPT2Model,
-                                  new_forward=GPT2PipelineForwards.gpt2_model_forward,
-                                  policy=policy)
+
+        if self.pipeline_stage_manager is not None:
+            self.set_pipeline_forward(model_cls=GPT2Model,
+                                      new_forward=GPT2PipelineForwards.gpt2_model_forward,
+                                      policy=policy)
         return policy
 
     def get_held_layers(self) -> List[nn.Module]:
@@ -203,9 +204,10 @@ class GPT2LMHeadModelPolicy(GPT2Policy):
             }
             module_policy.update(addon_module)
 
-        self.set_pipeline_forward(model_cls=GPT2LMHeadModel,
-                                  new_forward=GPT2PipelineForwards.gpt2_lmhead_model_forward,
-                                  policy=module_policy)
+        if self.pipeline_stage_manager is not None:
+            self.set_pipeline_forward(model_cls=GPT2LMHeadModel,
+                                      new_forward=GPT2PipelineForwards.gpt2_lmhead_model_forward,
+                                      policy=module_policy)
         return module_policy
 
     def get_held_layers(self) -> List[nn.Module]:
@@ -246,9 +248,10 @@ class GPT2DoubleHeadsModelPolicy(GPT2Policy):
             }
             module_policy.update(addon_module)
 
-        self.set_pipeline_forward(model_cls=GPT2DoubleHeadsModel,
-                                  new_forward=GPT2PipelineForwards.gpt2_double_heads_model_forward,
-                                  policy=module_policy)
+        if self.pipeline_stage_manager is not None:
+            self.set_pipeline_forward(model_cls=GPT2DoubleHeadsModel,
+                                      new_forward=GPT2PipelineForwards.gpt2_double_heads_model_forward,
+                                      policy=module_policy)
 
         return module_policy
 
@@ -285,9 +288,11 @@ class GPT2ForQuestionAnsweringPolicy(GPT2Policy):
         from transformers.models.gpt2.modeling_gpt2 import GPT2ForQuestionAnswering
 
         module_policy = super().module_policy()
-        self.set_pipeline_forward(model_cls=GPT2ForQuestionAnswering,
-                                  new_forward=GPT2PipelineForwards.gpt2_for_question_answering_forward,
-                                  policy=module_policy)
+
+        if self.pipeline_stage_manager is not None:
+            self.set_pipeline_forward(model_cls=GPT2ForQuestionAnswering,
+                                      new_forward=GPT2PipelineForwards.gpt2_for_question_answering_forward,
+                                      policy=module_policy)
 
         return module_policy
 
@@ -322,9 +327,10 @@ class GPT2ForTokenClassificationPolicy(GPT2Policy):
             }
             module_policy.update(addon_module)
 
-        self.set_pipeline_forward(model_cls=GPT2ForTokenClassification,
-                                  new_forward=GPT2PipelineForwards.gpt2_for_token_classification_forward,
-                                  policy=module_policy)
+        if self.pipeline_stage_manager is not None:
+            self.set_pipeline_forward(model_cls=GPT2ForTokenClassification,
+                                      new_forward=GPT2PipelineForwards.gpt2_for_token_classification_forward,
+                                      policy=module_policy)
         return module_policy
 
     def get_held_layers(self) -> List[nn.Module]:
@@ -349,9 +355,11 @@ class GPT2ForSequenceClassificationPolicy(GPT2Policy):
         from transformers.models.gpt2.modeling_gpt2 import GPT2ForSequenceClassification
 
         module_policy = super().module_policy()
-        self.set_pipeline_forward(model_cls=GPT2ForSequenceClassification,
-                                  new_forward=GPT2PipelineForwards.gpt2_for_sequence_classification_forward,
-                                  policy=module_policy)
+
+        if self.pipeline_stage_manager is not None:
+            self.set_pipeline_forward(model_cls=GPT2ForSequenceClassification,
+                                      new_forward=GPT2PipelineForwards.gpt2_for_sequence_classification_forward,
+                                      policy=module_policy)
         return module_policy
 
     def get_held_layers(self) -> List[nn.Module]:
