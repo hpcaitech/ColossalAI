@@ -78,9 +78,10 @@ def get_bloom_flash_attention_forward(enabel_jit_fused=False):
         from xformers.ops import memory_efficient_attention as me_attention
     except:
         raise ImportError("Error: xformers module is not installed. Please install it to use flash attention.")
+    from transformers.models.bloom.modeling_bloom import BloomAttention
 
     def forward(
-        self,
+        self: BloomAttention,
         hidden_states: torch.Tensor,
         residual: torch.Tensor,
         alibi: torch.Tensor,
@@ -156,8 +157,10 @@ def get_bloom_flash_attention_forward(enabel_jit_fused=False):
 
 def get_jit_fused_bloom_attention_forward():
 
+    from transformers.models.bloom.modeling_bloom import BloomAttention
+
     def forward(
-        self,
+        self: BloomAttention,
         hidden_states: torch.Tensor,
         residual: torch.Tensor,
         alibi: torch.Tensor,
@@ -252,7 +255,9 @@ def get_jit_fused_bloom_attention_forward():
 
 def get_jit_fused_bloom_mlp_forward():
 
-    def forward(self, hidden_states: torch.Tensor, residual: torch.Tensor) -> torch.Tensor:
+    from transformers.models.bloom.modeling_bloom import BloomMLP
+
+    def forward(self: BloomMLP, hidden_states: torch.Tensor, residual: torch.Tensor) -> torch.Tensor:
         hidden_states = self.gelu_impl(self.dense_h_to_4h(hidden_states))
 
         if self.pretraining_tp > 1 and self.slow_but_exact:
@@ -273,9 +278,11 @@ def get_jit_fused_bloom_mlp_forward():
 
 def get_jit_fused_bloom_gelu_forward():
 
+    from transformers.models.bloom.modeling_bloom import BloomGelu
+
     from colossalai.kernel.jit.bias_gelu import GeLUFunction as JitGeLUFunction
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self: BloomGelu, x: torch.Tensor) -> torch.Tensor:
         bias = torch.zeros_like(x)
         if self.training:
             return JitGeLUFunction.apply(x, bias)

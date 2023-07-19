@@ -6,10 +6,12 @@ from torch import nn
 
 def get_opt_flash_attention_forward():
 
+    from transformers.models.opt.modeling_opt import OPTAttention
+
     from colossalai.kernel.cuda_native.flash_attention import AttnMaskType, ColoAttention
 
     def forward(
-        self,
+        self: OPTAttention,
         hidden_states: torch.Tensor,
         key_value_states: Optional[torch.Tensor] = None,
         past_key_value: Optional[Tuple[torch.Tensor]] = None,
@@ -92,8 +94,10 @@ def get_opt_flash_attention_forward():
 
 def get_jit_fused_opt_decoder_layer_forward():
 
+    from transformers.models.opt.modeling_opt import OPTDecoderLayer
+
     def forward(
-        self,
+        self: OPTDecoderLayer,
         hidden_states: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
         layer_head_mask: Optional[torch.Tensor] = None,

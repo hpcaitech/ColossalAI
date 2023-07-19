@@ -5,10 +5,12 @@ import torch
 
 def get_gpt2_flash_attention_forward():
 
+    from transformers.models.gpt2.modeling_gpt2 import GPT2Attention
+
     from colossalai.kernel.cuda_native.flash_attention import AttnMaskType, ColoAttention
 
     def forward(
-        self,
+        self: GPT2Attention,
         hidden_states: Optional[Tuple[torch.FloatTensor]],
         layer_past: Optional[Tuple[torch.Tensor]] = None,
         attention_mask: Optional[torch.FloatTensor] = None,

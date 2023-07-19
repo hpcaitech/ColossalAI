@@ -13,9 +13,10 @@ def get_bert_flash_attention_forward():
         from xformers.ops import memory_efficient_attention as me_attention
     except:
         raise ImportError("Error: xformers module is not installed. Please install it to use flash attention.")
+    from transformers.models.bert.modeling_bert import BertAttention
 
     def forward(
-        self,
+        self: BertAttention,
         hidden_states: torch.Tensor,
         attention_mask: Optional[torch.FloatTensor] = None,
         head_mask: Optional[torch.FloatTensor] = None,
@@ -115,9 +116,11 @@ def get_bert_flash_attention_forward():
     return forward
 
 
-def _get_jit_fused_output_forward():
+def get_jit_fused_bert_self_output_forward():
 
-    def forward(self, hidden_states: torch.Tensor, input_tensor: torch.Tensor) -> torch.Tensor:
+    from transformers.models.bert.modeling_bert import BertSelfOutput
+
+    def forward(self: BertSelfOutput, hidden_states: torch.Tensor, input_tensor: torch.Tensor) -> torch.Tensor:
         hidden_states = self.dense(hidden_states)
         hidden_states = self.dropout_add(hidden_states, input_tensor, self.dropout.p, self.dropout.training)
         hidden_states = self.LayerNorm(hidden_states)
@@ -126,9 +129,14 @@ def _get_jit_fused_output_forward():
     return forward
 
 
-def get_jit_fused_bert_self_output_forward():
-    return _get_jit_fused_output_forward()
-
-
 def get_jit_fused_bert_output_forward():
-    return _get_jit_fused_output_forward()
+
+    from transformers.models.bert.modeling_bert import BertOutput
+
+    def forward(self: BertOutput, hidden_states: torch.Tensor, input_tensor: torch.Tensor) -> torch.Tensor:
+        hidden_states = self.dense(hidden_states)
+        hidden_states = self.dropout_add(hidden_states, input_tensor, self.dropout.p, self.dropout.training)
+        hidden_states = self.LayerNorm(hidden_states)
+        return hidden_states
+
+    return forward

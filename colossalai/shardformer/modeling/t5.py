@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Tuple
 
 import torch
 
@@ -11,19 +11,20 @@ def get_t5_flash_attention_forward():
         from xformers.ops import memory_efficient_attention as me_attention
     except:
         raise ImportError("Error: xformers module is not installed. Please install it to use flash attention.")
+    from transformers.models.t5.modeling_t5 import T5Attention
 
     def forward(
-        self,
-        hidden_states,
-        mask=None,
-        key_value_states=None,
-        position_bias=None,
-        past_key_value=None,
-        layer_head_mask=None,
-        query_length=None,
-        use_cache=False,
-        output_attentions=False,
-    ):
+        self: T5Attention,
+        hidden_states: torch.Tensor,
+        mask: Optional[torch.Tensor] = None,
+        key_value_states: Optional[torch.Tensor] = None,
+        position_bias: Optional[torch.Tensor] = None,
+        past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        layer_head_mask: Optional[torch.Tensor] = None,
+        query_length: Optional[int] = None,
+        use_cache: bool = False,
+        output_attentions: bool = False,
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[torch.Tensor]]:
         """
         Self-attention (if key_value_states is None) or attention over source sentence (provided by key_value_states).
         """
@@ -133,7 +134,9 @@ def get_t5_flash_attention_forward():
 
 def get_jit_fused_T5_layer_ff_forward():
 
-    def forward(self, hidden_states):
+    from transformers.models.t5.modeling_t5 import T5LayerFF
+
+    def forward(self: T5LayerFF, hidden_states: torch.Tensor) -> torch.Tensor:
         forwarded_states = self.layer_norm(hidden_states)
         forwarded_states = self.DenseReluDense(forwarded_states)
         hidden_states = self.dropout_add(forwarded_states, hidden_states, self.dropout.p, self.dropout.training)
@@ -144,16 +147,18 @@ def get_jit_fused_T5_layer_ff_forward():
 
 def get_T5_layer_self_attention_forward():
 
+    from transformers.models.t5.modeling_t5 import T5LayerSelfAttention
+
     def forward(
-        self,
-        hidden_states,
-        attention_mask=None,
-        position_bias=None,
-        layer_head_mask=None,
-        past_key_value=None,
-        use_cache=False,
-        output_attentions=False,
-    ):
+        self: T5LayerSelfAttention,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_bias: Optional[torch.Tensor] = None,
+        layer_head_mask: Optional[torch.Tensor] = None,
+        past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        use_cache: bool = False,
+        output_attentions: bool = False,
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[torch.Tensor]]:
         normed_hidden_states = self.layer_norm(hidden_states)
         attention_output = self.SelfAttention(
             normed_hidden_states,
@@ -173,18 +178,20 @@ def get_T5_layer_self_attention_forward():
 
 def get_T5_layer_cross_attention_forward():
 
+    from transformers.models.t5.modeling_t5 import T5LayerCrossAttention
+
     def forward(
-        self,
-        hidden_states,
-        key_value_states,
-        attention_mask=None,
-        position_bias=None,
-        layer_head_mask=None,
-        past_key_value=None,
-        use_cache=False,
-        query_length=None,
-        output_attentions=False,
-    ):
+        self: T5LayerCrossAttention,
+        hidden_states: torch.Tensor,
+        key_value_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_bias: Optional[torch.Tensor] = None,
+        layer_head_mask: Optional[torch.Tensor] = None,
+        past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        use_cache: bool = False,
+        query_length: Optional[int] = None,
+        output_attentions: bool = False,
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[torch.Tensor]]:
         normed_hidden_states = self.layer_norm(hidden_states)
         attention_output = self.EncDecAttention(
             normed_hidden_states,

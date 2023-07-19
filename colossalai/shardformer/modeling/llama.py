@@ -5,12 +5,12 @@ import torch
 
 def get_llama_flash_attention_forward():
 
-    from transformers.models.llama.modeling_llama import apply_rotary_pos_emb
+    from transformers.models.llama.modeling_llama import LlamaAttention, apply_rotary_pos_emb
 
     from colossalai.kernel.cuda_native.flash_attention import AttnMaskType, ColoAttention
 
     def forward(
-        self,
+        self: LlamaAttention,
         hidden_states: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
