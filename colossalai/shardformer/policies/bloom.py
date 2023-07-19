@@ -217,7 +217,7 @@ class BloomForCausalLMPolicy(BloomPolicy):
                 # tie weights
                 return [{
                     0: bloom_model.transformer.word_embeddings.weight,
-                    self.stage_manager.num_stages - 1: bloom_model.lm_head.weight
+                    self.pipeline_stage_manager.num_stages - 1: bloom_model.lm_head.weight
                 }]
         return []
 
