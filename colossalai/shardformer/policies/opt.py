@@ -1,6 +1,5 @@
 from colossalai.shardformer.layer import FusedLayerNorm, Linear1D_Col, Linear1D_Row, VocabParallelEmbedding1D
 
-from .._utils import getattr_, setattr_
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = [
@@ -115,19 +114,6 @@ class OPTForCausalLMPolicy(OPTPolicy):
                                                         policy=policy,
                                                         target_key=OPTForCausalLM)
         return policy
-
-    def postprocess(self):
-        if self.shard_config.enable_tensor_parallelism:
-            binding_map = {
-                'model.decoder.embed_tokens': 'lm_head',
-            }
-
-            for k, v in binding_map.items():
-                src_mod = getattr_(self.model, k)
-                dst_mod = getattr_(self.model, v)
-                dst_mod.weight = src_mod.weight
-
-        return self.model
 
 
 class OPTForSequenceClassificationPolicy(OPTPolicy):
