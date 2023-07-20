@@ -1,12 +1,7 @@
-import logging
 from functools import partial
-from types import MethodType
 from typing import Callable, Dict, List, Optional, Tuple
 
-import numpy as np
-import torch
 from torch import Tensor, nn
-from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 
 from colossalai.shardformer.layer import (
     DropoutForParallelInput,
@@ -18,6 +13,8 @@ from colossalai.shardformer.layer import (
 )
 from colossalai.shardformer.policies.base_policy import ModulePolicyDescription
 
+from .._utils import getattr_, setattr_
+from ..modeling.t5 import T5PipelineForwards
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = ["distribute_t5_layers", "T5ModelPolicy", "T5ForConditionalGenerationPolicy", "T5EncoderPolicy"]
@@ -267,30 +264,28 @@ class T5BasePolicy(Policy):
     def set_pipeline_forward(self, model_cls: nn.Module, new_forward: Callable, policy: Dict) -> None:
         """If under pipeline parallel setting, replacing the original forward method of huggingface
            to customized forward method, and add this changing to policy."""
-        if self.pipeline_stage_manager:
-            stage_manager = self.pipeline_stage_manager
+        if not self.pipeline_stage_manager:
+            raise ValueError("set_pipeline_forward method can only be called when pipeline parallel is enabled.")
+        stage_manager = self.pipeline_stage_manager
 
-            model = self.model
-            encoder = self.model.encoder
-            decoder = self.model.__dict__.get('decoder', None)
+        encoder = self.model.encoder
+        decoder = self.model.__dict__.get('decoder', None)
 
-            num_encoder_layers = len(encoder.block)
-            num_decoder_layers = len(decoder.block) if decoder else 0
+        num_encoder_layers = len(encoder.block)
+        num_decoder_layers = len(decoder.block) if decoder else 0
 
-            layers_per_stage, decoder_starting_stage = T5BasePolicy.distribute_t5_layers(
-                num_encoder_layers, num_decoder_layers, stage_manager.num_stages)
-            stage_index = T5BasePolicy.get_t5_stage_index(layers_per_stage, stage_manager.stage, decoder_starting_stage)
+        layers_per_stage, decoder_starting_stage = T5BasePolicy.distribute_t5_layers(
+            num_encoder_layers, num_decoder_layers, stage_manager.num_stages)
+        stage_index = T5BasePolicy.get_t5_stage_index(layers_per_stage, stage_manager.stage, decoder_starting_stage)
 
-            method_replacement = {
-                'forward':
-                    partial(new_forward,
-                            stage_manager=stage_manager,
-                            stage_index=stage_index,
-                            decoder_starting_stage=decoder_starting_stage)
-            }
-            self.append_or_create_method_replacement(description=method_replacement,
-                                                     policy=policy,
-                                                     target_key=model_cls)
+        method_replacement = {
+            'forward':
+                partial(new_forward,
+                        stage_manager=stage_manager,
+                        stage_index=stage_index,
+                        decoder_starting_stage=decoder_starting_stage)
+        }
+        self.append_or_create_method_replacement(description=method_replacement, policy=policy, target_key=model_cls)
 
 
 class T5ModelPolicy(T5BasePolicy):
@@ -355,19 +350,33 @@ class T5ForConditionalGenerationPolicy(T5BasePolicy):
 
 class T5EncoderPolicy(T5BasePolicy):
 
+    def __init__(self) -> None:
+        super().__init__()
+
     def module_policy(self):
         from transformers import T5EncoderModel
 
-        base_policy = super().module_policy()
+        policy = super().module_policy()
 
         if self.shard_config.enable_tensor_parallelism:
             self.append_or_create_submodule_replacement(description=SubModuleReplacementDescription(
                 suffix="shared",
                 target_module=VocabParallelEmbedding1D,
             ),
-                                                        policy=base_policy,
+                                                        policy=policy,
                                                         target_key=T5EncoderModel)
-        return base_policy
+
+        if self.pipeline_stage_manager is not None:
+            self.set_pipeline_forward(model_cls=T5EncoderModel,
+                                      new_forward=T5PipelineForwards.t5_encoder_model_forward,
+                                      policy=policy)
+        return policy
+
+    def get_held_layers(self) -> List[nn.Module]:
+        return super().get_held_layers()
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        return []
 
     def postprocess(self):
         if self.shard_config.enable_tensor_parallelism:
