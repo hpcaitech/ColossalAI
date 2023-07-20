@@ -54,6 +54,7 @@ def main():
     parser.add_argument('-x', '--xformers', action='store_true', help='Use xformers')
     parser.add_argument('--tp', type=int, default=1, help='Tensor parallel size')
     parser.add_argument('--pp', type=int, default=1, help='Pipeline parallel size')
+    parser.add_argument('--edp', type=int, default=1, help='Extra data parallel size')
     parser.add_argument('--mbs', type=int, default=1)
     parser.add_argument('--zero', type=int, default=0)
     args = parser.parse_args()
@@ -70,11 +71,11 @@ def main():
     use_empty_init = True
     if args.plugin == 'gemini':
         AutoPlacementPolicy.set_warmup_non_model_data_ratio(args.warmup_ratio)
-        plugin = GeminiPlugin(placement_policy='auto', precision='bf16')
+        plugin = GeminiPlugin(placement_policy='auto', precision='bf16', extra_dp_size=args.edp)
     elif args.plugin == 'gemini_cuda':
-        plugin = GeminiPlugin(placement_policy='cuda', precision='bf16')
+        plugin = GeminiPlugin(placement_policy='cuda', precision='bf16', extra_dp_size=args.edp)
     elif args.plugin == 'gemini_cpu':
-        plugin = GeminiPlugin(placement_policy='cpu', precision='bf16')
+        plugin = GeminiPlugin(placement_policy='cpu', precision='bf16', extra_dp_size=args.edp)
     elif args.plugin == 'const':
         ConstPlacementPolicy.set_const_memory_boundary(args.memory_limit)
         plugin = GeminiPlugin(placement_policy='const', precision='bf16')

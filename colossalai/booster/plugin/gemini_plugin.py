@@ -13,7 +13,7 @@ from torch.utils.data import DataLoader
 
 from colossalai.checkpoint_io import CheckpointIndexFile, CheckpointIO, GeneralCheckpointIO
 from colossalai.checkpoint_io.utils import get_model_base_filenames, get_shard_filename, save_state_dict
-from colossalai.cluster import DistCoordinator
+from colossalai.cluster import DistCoordinator, ProcessGroupMesh
 from colossalai.interface import ModelWrapper, OptimizerWrapper
 from colossalai.utils import get_current_device
 from colossalai.zero import GeminiDDP, zero_model_wrapper, zero_optim_wrapper
@@ -25,12 +25,14 @@ __all__ = ['GeminiPlugin']
 
 SUPPORTED_PRECISION = ['fp16', 'bf16']
 PRECISION_STR_TO_DTYPE = {'fp16': torch.half, 'bf16': torch.bfloat16}
+DP_AXIS, GEMINI_AXIS = 0, 1
 
 
 class GeminiCheckpointIO(GeneralCheckpointIO):
 
-    def __init__(self) -> None:
+    def __init__(self, dp_rank: int) -> None:
         super().__init__()
+        self.dp_rank = dp_rank
         self.coordinator = DistCoordinator()
 
     def load_unsharded_model(self, model: GeminiDDP, checkpoint: str, strict: bool = True):
@@ -56,13 +58,13 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
         """
         # TODO(ver217): optimizer state dict is sharded
         warnings.warn('GeminiPlugin does not support save full optimizer checkpoint now. Save it on every process.')
-        checkpoint = f'{checkpoint}.rank{self.coordinator.rank}'
+        checkpoint = f'{checkpoint}.rank{self.dp_rank}'
         super().save_unsharded_optimizer(optimizer, checkpoint, gather_dtensor)
 
     def load_optimizer(self, optimizer: Optimizer, checkpoint: str):
         warnings.warn(
             'GeminiPlugin can only load optimizer checkpoint saved by itself with the same number of processes.')
-        checkpoint = f'{checkpoint}.rank{self.coordinator.rank}'
+        checkpoint = f'{checkpoint}.rank{self.dp_rank}'
         super().load_optimizer(optimizer, checkpoint)
 
     def save_lr_scheduler(self, lr_scheduler: LRScheduler, checkpoint: str):
@@ -228,6 +230,7 @@ class GeminiPlugin(DPPluginBase):
         max_scale: float = 2**32,
         max_norm: float = 0.0,
         norm_type: float = 2.0,
+        extra_dp_size: int = 1,
         verbose: bool = False,
     ) -> None:
         super().__init__()
@@ -244,6 +247,17 @@ class GeminiPlugin(DPPluginBase):
             memstats=memstats,
             mixed_precision=PRECISION_STR_TO_DTYPE[precision],
         )
+        coordinator = DistCoordinator()
+        self.dp_rank = coordinator.rank
+        if extra_dp_size > 1:
+            assert coordinator.world_size % extra_dp_size == 0, f'world_size {coordinator.world_size} is not divisible by extra_dp_size {extra_dp_size}'
+            gemini_size = coordinator.world_size // extra_dp_size
+            self.pg_mesh = ProcessGroupMesh(extra_dp_size, gemini_size)
+            self.dp_rank = self.pg_mesh.coordinate(GEMINI_AXIS)
+            extra_dp_group = self.pg_mesh.get_group_along_axis(DP_AXIS)
+            dp_group = self.pg_mesh.get_group_along_axis(GEMINI_AXIS)
+            self.gemini_config['dp_process_group'] = dp_group
+            self.gemini_config['extra_dp_process_group'] = extra_dp_group
         self.zero_optim_config = dict(gpu_margin_mem_ratio=gpu_margin_mem_ratio,)
         self.optim_kwargs = dict(initial_scale=initial_scale,
                                  growth_factor=growth_factor,
@@ -304,7 +318,7 @@ class GeminiPlugin(DPPluginBase):
         return True
 
     def get_checkpoint_io(self) -> CheckpointIO:
-        return GeminiCheckpointIO()
+        return GeminiCheckpointIO(self.dp_rank)
 
     def no_sync(self, model: nn.Module, optimizer: OptimizerWrapper) -> Iterator[None]:
         raise NotImplementedError

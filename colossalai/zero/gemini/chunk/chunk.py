@@ -5,7 +5,7 @@ from typing import Dict, List, Optional
 import torch
 import torch.distributed as dist
 
-from colossalai.tensor import ProcessGroup as ColoProcessGroup
+from colossalai.tensor.process_group import NewProcessGroup as ColoProcessGroup
 from colossalai.utils import get_current_device
 
 
@@ -86,6 +86,8 @@ class Chunk:
         self.torch_pg = process_group.dp_process_group()
         self.pg_size = dist.get_world_size(self.torch_pg)
         self.pg_rank = dist.get_rank(self.torch_pg)
+        self.extra_dp_group = process_group.extra_dp_process_group()
+        self.edp_size = process_group.extra_dp_world_size()
 
         # the chunk size should be divisible by the dp degree
         if not keep_gathered:
@@ -218,7 +220,7 @@ class Chunk:
             return False
         else:
             return self.tensor_state_cnter[TensorState.HOLD] + \
-                   self.tensor_state_cnter[TensorState.HOLD_AFTER_BWD] == self.num_tensors
+                self.tensor_state_cnter[TensorState.HOLD_AFTER_BWD] == self.num_tensors
 
     @property
     def can_reduce(self):
@@ -379,15 +381,23 @@ class Chunk:
             # just move cuda_global_chunk to cuda_shard
             # the communication is not necessary
             self.__scatter()
+            if self.edp_size > 1:
+                dist.all_reduce(self.cuda_shard, group=self.extra_dp_group)
+                self.cuda_shard.div_(self.edp_size)
         elif self.keep_gathered:
             # we use all-reduce here
             dist.all_reduce(self.cuda_global_chunk, group=self.torch_pg)
+            if self.edp_size > 1:
+                dist.all_reduce(self.cuda_global_chunk, group=self.extra_dp_group)
+                self.cuda_global_chunk.div_(self.edp_size)
         else:
             self.cuda_shard = torch.empty(self.shard_size, dtype=self.dtype, device=get_current_device())
 
             input_list = list(torch.chunk(self.cuda_global_chunk, chunks=self.pg_size, dim=0))
             dist.reduce_scatter(self.cuda_shard, input_list, group=self.torch_pg)
-
+            if self.edp_size > 1:
+                dist.all_reduce(self.cuda_shard, group=self.extra_dp_group)
+                self.cuda_shard.div_(self.edp_size)
             free_storage(self.cuda_global_chunk)
             self.is_gathered = False
         self.__update_tensors_state(TensorState.HOLD)
