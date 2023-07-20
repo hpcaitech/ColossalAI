@@ -29,6 +29,17 @@ def data_gen_for_lm():
     return data
 
 
+def data_gen_for_question_answering():
+    # question answering data gen
+    # `labels` is the type not the token id for token classification, 0 or 1
+    data = data_gen()
+    start_positions = torch.tensor([0], dtype=torch.int64)
+    data['start_positions'] = start_positions
+    end_positions = torch.tensor([1], dtype=torch.int64)
+    data['end_positions'] = end_positions
+    return data
+
+
 def data_gen_for_token_classification():
     # token classification data gen
     # `labels` is the type not the token id for token classification, 0 or 1
@@ -51,15 +62,17 @@ output_transform_fn = lambda x: x
 loss_fn_for_gpt2_model = lambda x: x.last_hidden_state.mean()
 loss_fn = lambda x: x.loss
 
-config = transformers.GPT2Config(n_layer=2,
-                                 n_head=4,
-                                 vocab_size=50258,
-                                 attn_pdrop=0,
-                                 embd_pdrop=0,
-                                 resid_pdrop=0,
-                                 summary_first_dropout=0,
-                                 hidden_dropout=0,
-                                 problem_type="single_label_classification")
+config = transformers.GPT2Config(
+    n_layer=2,
+    n_head=4,
+    #n_embd=128,
+    vocab_size=50258,
+    attn_pdrop=0,
+    embd_pdrop=0,
+    resid_pdrop=0,
+    summary_first_dropout=0,
+    hidden_dropout=0,
+    problem_type="single_label_classification")
 
 # register the following models
 model_zoo.register(name='transformers_gpt',
@@ -77,6 +90,12 @@ model_zoo.register(name='transformers_gpt_lm',
 model_zoo.register(name='transformers_gpt_double_heads',
                    model_fn=lambda: transformers.GPT2DoubleHeadsModel(config),
                    data_gen_fn=data_gen_for_lm,
+                   output_transform_fn=output_transform_fn,
+                   loss_fn=loss_fn,
+                   model_attribute=ModelAttribute(has_control_flow=True))
+model_zoo.register(name='transformers_gpt_for_question_answering',
+                   model_fn=lambda: transformers.GPT2ForQuestionAnswering(config),
+                   data_gen_fn=data_gen_for_question_answering,
                    output_transform_fn=output_transform_fn,
                    loss_fn=loss_fn,
                    model_attribute=ModelAttribute(has_control_flow=True))

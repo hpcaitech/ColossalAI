@@ -1,7 +1,5 @@
-import math
 from functools import partial
-from types import MethodType
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Union
 
 import torch
 import torch.nn as nn
@@ -9,14 +7,11 @@ from torch import Tensor
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, Module, MSELoss
 from transformers.modeling_outputs import (
     BaseModelOutputWithPast,
-    BaseModelOutputWithPastAndCrossAttentions,
-    BaseModelOutputWithPoolingAndCrossAttentions,
-    CausalLMOutputWithCrossAttentions,
     CausalLMOutputWithPast,
     SequenceClassifierOutputWithPast,
 )
 from transformers.models.llama.modeling_llama import LlamaForCausalLM, LlamaForSequenceClassification, LlamaModel
-from transformers.utils import ModelOutput, logging
+from transformers.utils import logging
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col, Linear1D_Row, VocabParallelEmbedding1D
@@ -212,11 +207,13 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
         return held_layers
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
-        """No shared params in llama model"""
         llama_model = self.model.model
         if id(llama_model.embed_tokens.weight) == id(self.model.lm_head.weight):
             # tie weights
-            return [{0: llama_model.embed_tokens.weight, self.stage_manager.num_stages - 1: self.model.lm_head.weight}]
+            return [{
+                0: llama_model.embed_tokens.weight,
+                self.pipeline_stage_manager.num_stages - 1: self.model.lm_head.weight
+            }]
         return []
 
 
