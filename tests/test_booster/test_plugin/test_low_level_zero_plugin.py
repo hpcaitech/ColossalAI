@@ -17,7 +17,7 @@ _LOW_LEVEL_ZERO_ERR_MODELS = ['dlrm_interactionarch', 'deepfm_overarch', 'deepfm
 # These models will get stuck
 _STUCK_MODELS = [
     'diffusers_vq_model', 'transformers_albert', 'transformers_albert_for_pretraining', 'transformers_bert',
-    'transformers_bert_for_pretraining', 'transformers_gpt_double_heads'
+    'transformers_bert_for_pretraining', 'transformers_gpt_double_heads', 'transformers_sam'
 ]
 
 
