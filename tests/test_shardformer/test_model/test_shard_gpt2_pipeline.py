@@ -29,9 +29,11 @@ def run_gpt2_test(enable_fused_normalization, enable_tensor_parallelism, use_laz
     for name, (model_fn, data_gen_fn, _, _, _) in sub_model_zoo.items():
         inputs = data_gen_fn()
         inputs = {k: v.cuda() for k, v in inputs.items()}
-        input_ids, _ = inputs['input_ids'], inputs['attention_mask']
+        _, sharded_model = build_pipeline_model(model_fn, stage_manager, enable_fused_normalization,
+                                                enable_tensor_parallelism, use_lazy_init)
+        input_ids = inputs['input_ids']
         batch_size, seq_len = input_ids.shape
-        hidden_size = 768
+        hidden_size = sharded_model.config.n_embd
         hidden_state_shape = (batch_size, seq_len, hidden_size)
 
         if not stage_manager.is_first_stage():
@@ -40,12 +42,12 @@ def run_gpt2_test(enable_fused_normalization, enable_tensor_parallelism, use_laz
             inputs['input_ids'] = None
             inputs['hidden_states'] = hidden_states
 
-        _, sharded_model = build_pipeline_model(model_fn, stage_manager, enable_fused_normalization,
-                                                enable_tensor_parallelism, use_lazy_init)
         sharded_model.train()
         output = sharded_model(**inputs)
         if stage_manager.is_last_stage():
-            if name != 'transformers_gpt':
+            if name == 'transformers_gpt':
+                assert output[0].shape == hidden_state_shape
+            else:
                 assert output.loss is not None
         else:
             assert output['hidden_states'].shape == hidden_state_shape
