@@ -1,6 +1,5 @@
 from functools import partial
-from types import MethodType
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional
 
 import torch
 import torch.nn as nn
@@ -10,7 +9,6 @@ from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, Module, MSELoss
 import colossalai.shardformer.layer as col_nn
 from colossalai.pipeline.stage_manager import PipelineStageManager
 
-from .._utils import getattr_, setattr_
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = [
@@ -152,6 +150,17 @@ class BertPolicy(Policy):
                                                         target_key=BertLMPredictionHead)
         return base_policy
 
+    def add_lm_prediction_policy(self, base_policy):
+        from transformers.models.bert.modeling_bert import BertLMPredictionHead
+        method_replacement = {
+            '_save_to_state_dict': col_nn.ParallelModule._save_to_state_dict,
+            '_load_from_state_dict': col_nn.ParallelModule._load_from_state_dict,
+        }
+        self.append_or_create_method_replacement(description=method_replacement,
+                                                 policy=base_policy,
+                                                 target_key=BertLMPredictionHead)
+        return base_policy
+
     def postprocess(self):
         return self.model
 
@@ -230,6 +239,7 @@ class BertForPreTrainingPolicy(BertPolicy):
     def module_policy(self):
         policy = super().module_policy()
         policy = self.add_lm_head_policy(policy)
+        policy = self.add_lm_prediction_policy(policy)
         from transformers.models.bert.modeling_bert import BertForPreTraining
         if self.pipeline_stage_manager:
             self.set_pipeline_forward(model_cls=BertForPreTraining,
@@ -250,20 +260,12 @@ class BertForPreTrainingPolicy(BertPolicy):
         model = self.model
         if self.pipeline_stage_manager and self.pipeline_stage_manager.num_stages > 1:
             if id(model.bert.embeddings.word_embeddings.weight) == id(model.cls.predictions.decoder.weight):
-                #tie weights
+                # tie weights
                 return [{
                     0: model.bert.embeddings.word_embeddings.weight,
                     self.pipeline_stage_manager.num_stages - 1: model.cls.predictions.decoder.weight
                 }]
         return []
-
-    def postprocess(self):
-        if self.shard_config.enable_tensor_parallelism and self.pipeline_stage_manager is None:
-            binding_map = {"bert.embeddings.word_embeddings.weight": "cls.predictions.decoder.weight"}
-            for k, v in binding_map.items():
-                param = getattr_(self.model, k)
-                setattr_(self.model, v, param)
-        return self.model
 
 
 # BertLMHeadModel
@@ -275,6 +277,7 @@ class BertLMHeadModelPolicy(BertPolicy):
     def module_policy(self):
         policy = super().module_policy()
         policy = self.add_lm_head_policy(policy)
+        policy = self.add_lm_prediction_policy(policy)
         from transformers.models.bert.modeling_bert import BertLMHeadModel
         if self.pipeline_stage_manager:
             self.set_pipeline_forward(model_cls=BertLMHeadModel,
@@ -296,20 +299,12 @@ class BertLMHeadModelPolicy(BertPolicy):
         bert_model = self.model.bert
         if self.pipeline_stage_manager and self.pipeline_stage_manager.num_stages > 1:
             if id(bert_model.embeddings.word_embeddings.weight) == id(self.model.cls.predictions.decoder.weight):
-                #tie weights
+                # tie weights
                 return [{
                     0: bert_model.embeddings.word_embeddings.weight,
                     self.pipeline_stage_manager.num_stages - 1: self.model.cls.predictions.decoder.weight
                 }]
         return []
-
-    def postprocess(self):
-        if self.shard_config.enable_tensor_parallelism and self.pipeline_stage_manager is None:
-            binding_map = {"bert.embeddings.word_embeddings.weight": "cls.predictions.decoder.weight"}
-            for k, v in binding_map.items():
-                param = getattr_(self.model, k)
-                setattr_(self.model, v, param)
-        return self.model
 
 
 # BertForMaskedLM
@@ -321,6 +316,7 @@ class BertForMaskedLMPolicy(BertPolicy):
     def module_policy(self):
         policy = super().module_policy()
         policy = self.add_lm_head_policy(policy)
+        mpolicy = self.add_lm_prediction_policy(policy)
         from transformers.models.bert.modeling_bert import BertForMaskedLM
         if self.pipeline_stage_manager:
             self.set_pipeline_forward(model_cls=BertForMaskedLM,
@@ -342,20 +338,12 @@ class BertForMaskedLMPolicy(BertPolicy):
         bert_model = self.model.bert
         if self.pipeline_stage_manager and self.pipeline_stage_manager.num_stages > 1:
             if id(bert_model.embeddings.word_embeddings.weight) == id(self.model.cls.predictions.decoder.weight):
-                #tie weights
+                # tie weights
                 return [{
                     0: bert_model.embeddings.word_embeddings.weight,
                     self.pipeline_stage_manager.num_stages - 1: self.model.cls.predictions.decoder.weight
                 }]
         return []
-
-    def postprocess(self):
-        if self.shard_config.enable_tensor_parallelism and self.pipeline_stage_manager is None:
-            binding_map = {"bert.embeddings.word_embeddings.weight": "cls.predictions.decoder.weight"}
-            for k, v in binding_map.items():
-                param = getattr_(self.model, k)
-                setattr_(self.model, v, param)
-        return self.model
 
 
 # BertForSequenceClassification

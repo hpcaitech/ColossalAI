@@ -14,11 +14,14 @@ from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 def check_layernorm(lazy_init: bool):
     ctx = LazyInitContext() if lazy_init else nullcontext()
 
+    norm = nn.LayerNorm(128, 0.00001).cuda()
     with ctx:
-        norm = nn.LayerNorm(128, 0.00001).cuda()
-    norm1d = FusedLayerNorm.from_native_module(norm, process_group=None)
+        norm_copy = nn.LayerNorm(128, 0.00001).cuda()
+    norm1d = FusedLayerNorm.from_native_module(norm_copy, process_group=None)
 
     assert norm1d.weight.shape == torch.Size([128])
+    assert norm_copy.weight is norm1d.weight
+    assert norm_copy.bias is norm1d.bias
 
     # ensure state dict is reversibly loadable
     norm.load_state_dict(norm1d.state_dict())
