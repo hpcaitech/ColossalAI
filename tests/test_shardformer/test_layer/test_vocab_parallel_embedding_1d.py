@@ -7,8 +7,7 @@ from torch.testing import assert_close
 
 import colossalai
 from colossalai.lazy import LazyInitContext
-from colossalai.shardformer.layer import GPT2FusedLinearConv1D_Col, GPT2FusedLinearConv1D_Row, VocabParallelEmbedding1D
-from colossalai.shardformer.layer.qkv_fused_linear import split_fused_qkv_in_gpt2_style
+from colossalai.shardformer.layer import VocabParallelEmbedding1D
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 
 
@@ -16,13 +15,15 @@ from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 def check_vocab_embedding_1d(lazy_init: bool):
     ctx = LazyInitContext() if lazy_init else nullcontext()
 
+    embedding = nn.Embedding(128, 32).to('cuda')
     with ctx:
-        embedding = nn.Embedding(128, 32).to('cuda')
-    dist_embedding_1d = VocabParallelEmbedding1D.from_native_module(embedding, process_group=None)
+        embedding_copy = nn.Embedding(128, 32).to('cuda')
+    dist_embedding_1d = VocabParallelEmbedding1D.from_native_module(embedding_copy, process_group=None)
 
     assert dist_embedding_1d.weight.shape == torch.Size([64, 32])
     assert dist_embedding_1d.num_embeddings == 64
     assert dist_embedding_1d.embedding_dim == 32
+    assert embedding_copy.weight is dist_embedding_1d.weight
 
     # ensure state dict is reversibly loadable
     embedding.load_state_dict(dist_embedding_1d.state_dict())

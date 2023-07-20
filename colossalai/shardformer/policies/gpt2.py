@@ -8,7 +8,6 @@ from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 import colossalai.shardformer.layer as col_nn
 from colossalai.pipeline.stage_manager import PipelineStageManager
 
-from .._utils import getattr_, setattr_
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = [
@@ -56,42 +55,42 @@ class GPT2Policy(Policy):
                 "attn.split_size": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
                 "attn.num_heads": self.model.config.num_attention_heads // self.shard_config.tensor_parallel_size,
             },
-                                                        sub_module_replacement=[
-                                                            SubModuleReplacementDescription(
-                                                                suffix="attn.c_attn",
-                                                                target_module=col_nn.GPT2FusedLinearConv1D_Col,
-                                                                kwargs={
-                                                                    "n_fused": 3,
-                                                                },
-                                                            ),
-                                                            SubModuleReplacementDescription(
-                                                                suffix="attn.c_proj",
-                                                                target_module=col_nn.GPT2FusedLinearConv1D_Row,
-                                                            ),
-                                                            SubModuleReplacementDescription(
-                                                                suffix="mlp.c_fc",
-                                                                target_module=col_nn.GPT2FusedLinearConv1D_Col,
-                                                                kwargs={
-                                                                    "n_fused": 1,
-                                                                },
-                                                            ),
-                                                            SubModuleReplacementDescription(
-                                                                suffix="mlp.c_proj",
-                                                                target_module=col_nn.GPT2FusedLinearConv1D_Row,
-                                                            ),
-                                                            SubModuleReplacementDescription(
-                                                                suffix="attn.attn_dropout",
-                                                                target_module=col_nn.DropoutForParallelInput,
-                                                            ),
-                                                            SubModuleReplacementDescription(
-                                                                suffix="attn.resid_dropout",
-                                                                target_module=col_nn.DropoutForParallelInput,
-                                                            ),
-                                                            SubModuleReplacementDescription(
-                                                                suffix="mlp.dropout",
-                                                                target_module=col_nn.DropoutForParallelInput,
-                                                            ),
-                                                        ])
+                sub_module_replacement=[
+                SubModuleReplacementDescription(
+                    suffix="attn.c_attn",
+                    target_module=col_nn.GPT2FusedLinearConv1D_Col,
+                    kwargs={
+                        "n_fused": 3,
+                    },
+                ),
+                SubModuleReplacementDescription(
+                    suffix="attn.c_proj",
+                    target_module=col_nn.GPT2FusedLinearConv1D_Row,
+                ),
+                SubModuleReplacementDescription(
+                    suffix="mlp.c_fc",
+                    target_module=col_nn.GPT2FusedLinearConv1D_Col,
+                    kwargs={
+                        "n_fused": 1,
+                    },
+                ),
+                SubModuleReplacementDescription(
+                    suffix="mlp.c_proj",
+                    target_module=col_nn.GPT2FusedLinearConv1D_Row,
+                ),
+                SubModuleReplacementDescription(
+                    suffix="attn.attn_dropout",
+                    target_module=col_nn.DropoutForParallelInput,
+                ),
+                SubModuleReplacementDescription(
+                    suffix="attn.resid_dropout",
+                    target_module=col_nn.DropoutForParallelInput,
+                ),
+                SubModuleReplacementDescription(
+                    suffix="mlp.dropout",
+                    target_module=col_nn.DropoutForParallelInput,
+                ),
+            ])
 
         # optimization configuration
         if self.shard_config.enable_fused_normalization:
@@ -99,8 +98,8 @@ class GPT2Policy(Policy):
                 suffix="ln_f",
                 target_module=col_nn.FusedLayerNorm,
             ),
-                                                        policy=policy,
-                                                        target_key=GPT2Model)
+                policy=policy,
+                target_key=GPT2Model)
 
             self.append_or_create_submodule_replacement(description=[
                 SubModuleReplacementDescription(
@@ -115,8 +114,8 @@ class GPT2Policy(Policy):
                                                 target_module=col_nn.FusedLayerNorm,
                                                 ignore_if_not_exist=True)
             ],
-                                                        policy=policy,
-                                                        target_key=GPT2Block)
+                policy=policy,
+                target_key=GPT2Block)
         return policy
 
     def postprocess(self):
@@ -227,15 +226,6 @@ class GPT2LMHeadModelPolicy(GPT2Policy):
         else:
             return []
 
-    def postprocess(self):
-        if self.shard_config.enable_tensor_parallelism \
-                and self.pipeline_stage_manager is None:
-            binding_map = {"transformer.wte.weight": "lm_head.weight"}
-            for k, v in binding_map.items():
-                param = getattr_(self.model, k)
-                setattr_(self.model, v, param)
-        return self.model
-
 
 # GPT2DoubleHeadsModel
 class GPT2DoubleHeadsModelPolicy(GPT2Policy):
@@ -285,15 +275,6 @@ class GPT2DoubleHeadsModelPolicy(GPT2Policy):
             return [{first_stage: module.transformer.wte.weight, last_stage: module.lm_head.weight}]
         else:
             return []
-
-    def postprocess(self):
-        if self.shard_config.enable_tensor_parallelism \
-                and self.pipeline_stage_manager is None:
-            binding_map = {"transformer.wte.weight": "lm_head.weight"}
-            for k, v in binding_map.items():
-                param = getattr_(self.model, k)
-                setattr_(self.model, v, param)
-        return self.model
 
 
 # GPT2ForQuestionAnswering

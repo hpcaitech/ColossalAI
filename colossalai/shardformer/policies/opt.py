@@ -12,7 +12,6 @@ from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.layer import FusedLayerNorm, Linear1D_Col, Linear1D_Row, VocabParallelEmbedding1D
 
-from .._utils import getattr_, setattr_
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = [

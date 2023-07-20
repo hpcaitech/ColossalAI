@@ -60,10 +60,8 @@ class FusedLayerNorm():
         layernorm = ApexFusedLayerNorm(normalized_shape, eps=eps,
                                        elementwise_affine=elementwise_affine).to(dtype).to(device)
 
-        with torch.no_grad():
-            # copy weight and bias
-            layernorm.weight.copy_(module.weight)
-            layernorm.bias.copy_(module.bias)
+        layernorm.weight = module.weight
+        layernorm.bias = module.bias
         return layernorm
 
 
@@ -101,8 +99,6 @@ class FusedRMSNorm():
 
         rmsnorm = ApexFusedRMSNorm(normalized_shape=normalized_shape, eps=eps, elementwise_affine=elementwise_affine)
 
-        with torch.no_grad():
-            # copy weight and bias
-            rmsnorm.weight.copy_(module.weight)
+        rmsnorm.weight = module.weight
 
         return rmsnorm
