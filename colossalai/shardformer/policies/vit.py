@@ -6,7 +6,11 @@ from torch import Tensor
 
 from colossalai.shardformer.layer import DropoutForReplicatedInput, DropoutForParallelInput, FusedLayerNorm, Linear1D_Col, Linear1D_Row
 
-from ..modeling.vit import forward_fn
+from ..modeling.vit import (
+    ViTForImageClassification_pipeline_forward,
+    ViTForMaskedImageModeling_pipeline_forward,
+    ViTModel_pipeline_forward,
+)
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = ['ViTPolicy', 'ViTModelPolicy', 'ViTForImageClassificationPolicy', 'ViTForMaskedImageModelingPolicy']
@@ -108,9 +112,6 @@ class ViTPolicy(Policy):
             held_layers.append(module.embeddings)
         start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
         held_layers.extend(module.encoder.layer[start_idx:end_idx])
-        if stage_manager.is_last_stage():
-            held_layers.append(module.layernorm)
-            held_layers.append(module.pooler)
         return held_layers
 
     def set_pipeline_forward(self, model_cls: nn.Module, pipeline_forward: Callable, policy: Dict):
@@ -141,21 +142,27 @@ class ViTModelPolicy(ViTPolicy):
         policy = super().module_policy()
 
         if self.shard_config.pipeline_stage_manager is not None:
-            self.set_pipeline_forward(model_cls=ViTModel, pipeline_forward=forward_fn, policy=policy)
+            self.set_pipeline_forward(model_cls=ViTModel, pipeline_forward=ViTModel_pipeline_forward, policy=policy)
         return policy
 
     def get_held_layers(self) -> List[nn.Module]:
-        return super().get_held_layers()
+        held_layers = super().get_held_layers()
+        assert self.pipeline_stage_manager is not None, "pipeline_stage_manager is None"
 
-    def get_shared_params(self) -> List[Dict[int, Tensor]]:
-        return super().get_shared_params()
+        module = self.model
+        stage_manager = self.pipeline_stage_manager
+        if stage_manager.is_last_stage():
+            held_layers.append(module.layernorm)
+            held_layers.append(module.pooler)
+
+        return held_layers
 
 
 # ViTForImageClassification
 class ViTForImageClassificationPolicy(ViTPolicy):
 
-     def module_policy(self):
-        from transformers.models.vit.modeling_vit import ViTForImageClassification
+    def module_policy(self):
+        from transformers.models.vit.modeling_vit import ViTForImageClassification, ViTModel
 
         policy = super().module_policy()
         if self.shard_config.enable_tensor_parallelism:
@@ -168,7 +175,28 @@ class ViTForImageClassificationPolicy(ViTPolicy):
                                         ])
             }
             policy.update(new_item)
+
+        from transformers.models.vit.modeling_vit import ViTForImageClassification
+
+        if self.shard_config.pipeline_stage_manager is not None:
+            self.set_pipeline_forward(model_cls=ViTModel, pipeline_forward=ViTModel_pipeline_forward, policy=policy)
+            self.set_pipeline_forward(model_cls=ViTForImageClassification,
+                                      pipeline_forward=ViTForImageClassification_pipeline_forward,
+                                      policy=policy)
+
         return policy
+
+    def get_held_layers(self) -> List[nn.Module]:
+        held_layers = super().get_held_layers()
+        assert self.pipeline_stage_manager is not None, "pipeline_stage_manager is None"
+
+        module = self.model.vit
+        stage_manager = self.pipeline_stage_manager
+        if stage_manager.is_last_stage():
+            held_layers.append(module.layernorm)
+            held_layers.append(self.model.classifier)
+
+        return held_layers
 
 
 # ViTForMaskedImageModeling
@@ -176,3 +204,27 @@ class ViTForMaskedImageModelingPolicy(ViTPolicy):
 
     def __init__(self) -> None:
         super().__init__()
+
+    def module_policy(self):
+        from transformers.models.vit.modeling_vit import ViTForMaskedImageModeling, ViTModel
+
+        policy = super().module_policy()
+
+        if self.shard_config.pipeline_stage_manager is not None:
+            self.set_pipeline_forward(model_cls=ViTModel, pipeline_forward=ViTModel_pipeline_forward, policy=policy)
+            self.set_pipeline_forward(model_cls=ViTForMaskedImageModeling,
+                                      pipeline_forward=ViTForMaskedImageModeling_pipeline_forward,
+                                      policy=policy)
+        return policy
+
+    def get_held_layers(self) -> List[nn.Module]:
+        held_layers = super().get_held_layers()
+        assert self.pipeline_stage_manager is not None, "pipeline_stage_manager is None"
+
+        module = self.model.vit
+        stage_manager = self.pipeline_stage_manager
+        if stage_manager.is_last_stage():
+            held_layers.append(module.layernorm)
+            held_layers.append(self.model.decoder)
+
+        return held_layers

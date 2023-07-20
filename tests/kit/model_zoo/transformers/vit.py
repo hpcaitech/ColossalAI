@@ -20,6 +20,12 @@ def data_gen():
     return dict(pixel_values=pixel_values)
 
 
+def data_gen_for_image_classification():
+    data = data_gen()
+    data['labels'] = torch.tensor([0])
+    return data
+
+
 def data_gen_for_masked_image_modeling():
     data = data_gen()
     num_patches = (config.image_size // config.patch_size)**2
@@ -56,7 +62,7 @@ model_zoo.register(name='transformers_vit_for_masked_image_modeling',
 
 model_zoo.register(name='transformers_vit_for_image_classification',
                    model_fn=lambda: transformers.ViTForImageClassification(config),
-                   data_gen_fn=data_gen,
+                   data_gen_fn=data_gen_for_image_classification,
                    output_transform_fn=output_transform_fn,
                    loss_fn=loss_fn_for_image_classification,
                    model_attribute=ModelAttribute(has_control_flow=True))

@@ -28,7 +28,7 @@ def run_vit_test(enable_fused_normalization, enable_tensor_parallelism, use_lazy
     sub_model_zoo = model_zoo.get_sub_registry('transformers_vit')
 
     for name, (model_fn, data_gen_fn, _, _, _) in sub_model_zoo.items():
-        print(name)
+
         inputs = data_gen_fn()
         inputs = {k: v.cuda() for k, v in inputs.items()}
         pixel_values = inputs['pixel_values']
@@ -39,7 +39,7 @@ def run_vit_test(enable_fused_normalization, enable_tensor_parallelism, use_lazy
         if not stage_manager.is_first_stage():
             # change inputs if not the first stage
             hidden_states = torch.randn(*hidden_state_shape).cuda()
-            inputs['pixel_values'] = None
+            # inputs['pixel_values'] = None
             inputs['hidden_states'] = hidden_states
 
         _, sharded_model = build_pipeline_model(model_fn, stage_manager, enable_fused_normalization,
@@ -51,7 +51,7 @@ def run_vit_test(enable_fused_normalization, enable_tensor_parallelism, use_lazy
             if name != 'transformers_vit':
                 assert output.loss is not None
         else:
-            assert output['hidden_states'].shape == hidden_state_shape
+            assert output.shape == hidden_state_shape, f'hidden_states shape is not correct, output:{output["hidden_states"].shape} is not equal to hidden_state:{hidden_state_shape}'
 
     torch.cuda.empty_cache()
 
