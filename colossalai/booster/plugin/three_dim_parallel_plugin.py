@@ -139,6 +139,7 @@ class ThreeDimParallelPlugin(PipelinePluginBase):
         growth_interval: int = 1000,
         hysteresis: int = 2,
         max_scale: float = 2**32,
+        max_norm: float = 0,
     ) -> None:
         super().__init__()
         assert dist.get_world_size() % (
@@ -177,6 +178,7 @@ class ThreeDimParallelPlugin(PipelinePluginBase):
             min_scale=min_scale,
             max_scale=max_scale,
         )
+        self.max_norm = max_norm
 
     @property
     def enable_pipeline_parallelism(self) -> bool:
@@ -212,7 +214,11 @@ class ThreeDimParallelPlugin(PipelinePluginBase):
             model = PipelineModule(model, self.precision, self.shard_config, self.stage_manager, self.dp_group)
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
             if self.zero_stage == 0:
-                optimizer = PipelineOptimizer(optimizer, model, precision=self.precision, **self.amp_config)
+                optimizer = PipelineOptimizer(optimizer,
+                                              model,
+                                              precision=self.precision,
+                                              max_norm=self.max_norm,
+                                              **self.amp_config)
             else:
                 optimizer = PipelineZeroOptimizer(optimizer,
                                                   model,
@@ -221,6 +227,7 @@ class ThreeDimParallelPlugin(PipelinePluginBase):
                                                   dp_process_group=self.dp_group,
                                                   tp_process_group=self.tp_group,
                                                   verbose=True,
+                                                  clip_grad_norm=self.max_norm,
                                                   **self.amp_config)
         return model, optimizer, criterion, dataloader, lr_scheduler
 
