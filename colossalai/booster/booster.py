@@ -1,6 +1,6 @@
 import warnings
 from contextlib import contextmanager
-from typing import Callable, Iterator, List, Optional, Union
+from typing import Any, Callable, Iterator, List, Optional, Union
 
 import torch
 import torch.nn as nn
@@ -145,7 +145,7 @@ class Booster:
     def execute_pipeline(self,
                          data_iter: Iterator,
                          model: nn.Module,
-                         criterion: Callable[[torch.Tensor], torch.Tensor],
+                         criterion: Callable[[Any, Any], torch.Tensor],
                          optimizer: Optimizer,
                          return_loss: bool = True,
                          return_outputs: bool = False) -> dict:

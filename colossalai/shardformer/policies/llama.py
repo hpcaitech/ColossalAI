@@ -471,9 +471,6 @@ def llama_for_causal_lm_forward(
     if output_hidden_states:
         logger.warning_once('output_hidden_states=True is not supported for pipeline models at the moment.')
         output_hidden_states = False
-    if return_dict:
-        logger.warning_once('return_dict is not supported for pipeline models at the moment')
-        return_dict = False
 
     # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
     outputs = llama_model_forward(
@@ -558,9 +555,6 @@ def llama_for_sequence_classification_forward(
     if output_hidden_states:
         logger.warning_once('output_hidden_states=True is not supported for pipeline models at the moment.')
         output_hidden_states = False
-    if return_dict:
-        logger.warning_once('return_dict is not supported for pipeline models at the moment')
-        return_dict = False
 
     transformer_outputs = llama_model_forward(
         self.model,
