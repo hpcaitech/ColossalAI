@@ -125,7 +125,6 @@ def run_llama_test(enable_fused_normalization, enable_tensor_parallelism, use_la
 
     pg_mesh = ProcessGroupMesh(PP_SIZE)
     stage_manager = PipelineStageManager(pg_mesh, PP_DIM)
-
     sub_model_zoo = model_zoo.get_sub_registry('transformers_llama')
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         if name != 'transformers_llama':
