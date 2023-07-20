@@ -55,11 +55,19 @@ class GPT2PipelineForwards:
         logger = logging.get_logger(__name__)
 
         # Preprocess passed in arguments
-        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (output_hidden_states
-                                if output_hidden_states is not None else self.config.output_hidden_states)
-        use_cache = use_cache if use_cache is not None else self.config.use_cache
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+        # TODO: left the recording kv-value tensors as () or None type, this feature may be added in the future.
+        if past_key_values:
+            logger.warning_once('Non-empty past_key_values is not supported for pipeline models at the moment.')
+            past_key_values = None
+        if output_attentions:
+            logger.warning_once('output_attentions=True is not supported for pipeline models at the moment.')
+            output_attentions = False
+        if output_hidden_states:
+            logger.warning_once('output_hidden_states=True is not supported for pipeline models at the moment.')
+            output_hidden_states = False
+        if use_cache:
+            logger.warning_once('use_cache=True is not supported for pipeline models at the moment.')
+            use_cache = False
 
         if stage_manager.is_first_stage():
             if input_ids is not None and inputs_embeds is not None:
@@ -138,20 +146,6 @@ class GPT2PipelineForwards:
                 hidden_states = self.drop(hidden_states)
 
         output_shape = input_shape + (hidden_states.size(-1),)
-
-        # TODO: left the recording kv-value tensors as () or None type, this feature may be added in the future.
-        if past_key_values:
-            logger.warning_once('Non-empty past_key_values is not supported for pipeline models at the moment.')
-            past_key_values = None
-        if output_attentions:
-            logger.warning_once('output_attentions=True is not supported for pipeline models at the moment.')
-            output_attentions = False
-        if output_hidden_states:
-            logger.warning_once('output_hidden_states=True is not supported for pipeline models at the moment.')
-            output_hidden_states = False
-        if use_cache:
-            logger.warning_once('use_cache=True is not supported for pipeline models at the moment.')
-            use_cache = False
 
         if self.gradient_checkpointing and self.training:
             if use_cache:
