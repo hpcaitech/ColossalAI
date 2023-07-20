@@ -1,7 +1,6 @@
 from functools import partial
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
-import torch
 import torch.nn as nn
 from torch import Tensor
 from transformers.modeling_outputs import BaseModelOutputWithPast
