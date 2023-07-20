@@ -149,7 +149,7 @@ def run_llama_test(enable_fused_normalization, enable_tensor_parallelism, use_la
         results = execute_pipeline(data_iter, pipelined_model, loss, pp_optimizer, schedule=schedule)
 
         if stage_manager.is_last_stage():
-            assert results['loss'] == -org_loss
+            assert results['loss'] == org_loss
         else:
             assert results['loss'] is None
         assert results['outputs'] is None
