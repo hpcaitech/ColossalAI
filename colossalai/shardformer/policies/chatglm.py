@@ -90,7 +90,31 @@ class ChatGLMModelPolicy(Policy):
                                                                 policy=policy,
                                                                 target_key=ChatGLMModel)
 
+            else:
+                self.append_or_create_submodule_replacement(description=[
+                    SubModuleReplacementDescription(suffix="input_layernorm", target_module=col_nn.FusedRMSNorm),
+                    SubModuleReplacementDescription(suffix="post_attention_layernorm",
+                                                    target_module=col_nn.FusedRMSNorm)
+                ],
+                                                            policy=policy,
+                                                            target_key=GLMBlock)
+
+                if self.model.config.post_layer_norm:
+                    self.append_or_create_submodule_replacement(description=[
+                        SubModuleReplacementDescription(suffix="encoder.final_layernorm",
+                                                        target_module=col_nn.FusedRMSNorm)
+                    ],
+                                                                policy=policy,
+                                                                target_key=ChatGLMModel)
+
         return policy
 
     def postprocess(self):
         return self.model
+
+
+class ChatGLMForConditionalGenerationPolicy(ChatGLMModelPolicy):
+
+    def module_policy(self):
+        policy = super().module_policy()
+        return policy
