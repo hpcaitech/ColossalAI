@@ -15,11 +15,13 @@ from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 def check_embedding_1d(lazy_init: bool):
     ctx = LazyInitContext() if lazy_init else nullcontext()
 
+    embedding = nn.Embedding(32, 128).cuda()
     with ctx:
-        embedding = nn.Embedding(32, 128).cuda()
-    embedding_1d = Embedding1D.from_native_module(embedding, process_group=None)
+        embedding_copy = nn.Embedding(32, 128).cuda()
+    embedding_1d = Embedding1D.from_native_module(embedding_copy, process_group=None)
 
     assert embedding_1d.weight.shape == torch.Size([32, 64])
+    assert embedding_1d.weight is embedding_copy.weight
 
     # ensure state dict is reversibly loadable
     embedding.load_state_dict(embedding_1d.state_dict())

@@ -14,7 +14,7 @@ from colossalai.testing import (
     spawn,
 )
 from tests.kit.model_zoo import model_zoo
-from tests.test_shardformer.test_model._utils import build_model, run_forward
+from tests.test_shardformer.test_model._utils import build_model, check_state_dict, run_forward
 
 os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
 
@@ -78,6 +78,7 @@ def run_gpt2_llama(enable_fused_normalization, enable_tensor_parallelism, use_la
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         org_model, sharded_model = build_model(model_fn, enable_fused_normalization, enable_tensor_parallelism,
                                                use_lazy_init)
+        check_state_dict(org_model, sharded_model, name=name)
         check_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn)
     torch.cuda.empty_cache()
 
