@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
@@ -47,7 +47,7 @@ class GPT2PipelineForwards:
             return_dict: Optional[bool] = None,
             stage_manager: Optional[PipelineStageManager] = None,
             hidden_states: Optional[torch.FloatTensor] = None,
-            stage_index: Optional[List[int]] = None) -> Union[Tuple, 'BaseModelOutputWithPastAndCrossAttentions']:
+            stage_index: Optional[List[int]] = None) -> Union[Dict, Tuple, BaseModelOutputWithPastAndCrossAttentions]:
 
         # This function is modified on the basis of transformers.models.gpt2.modeling_gpt2.GPT2Model.forward.
         # Please refer to original code of transformers for more details.
@@ -261,7 +261,7 @@ class GPT2PipelineForwards:
             return_dict: Optional[bool] = None,
             stage_manager: Optional[PipelineStageManager] = None,
             hidden_states: Optional[torch.FloatTensor] = None,
-            stage_index: Optional[List[int]] = None) -> Union[Tuple, CausalLMOutputWithCrossAttentions]:
+            stage_index: Optional[List[int]] = None) -> Union[Dict, Tuple, CausalLMOutputWithCrossAttentions]:
         r"""
             labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
                 Labels for language modeling. Note that the labels **are shifted** inside the model, i.e. you can set
@@ -339,7 +339,7 @@ class GPT2PipelineForwards:
             return_dict: Optional[bool] = None,
             stage_manager: Optional[PipelineStageManager] = None,
             hidden_states: Optional[torch.FloatTensor] = None,
-            stage_index: Optional[List[int]] = None) -> Union[Tuple, GPT2DoubleHeadsModelOutput]:
+            stage_index: Optional[List[int]] = None) -> Union[Dict, Tuple, GPT2DoubleHeadsModelOutput]:
         r"""
         mc_token_ids (`torch.LongTensor` of shape `(batch_size, num_choices)`, *optional*, default to index of the last token of the input):
             Index of the classification token in each input sequence. Selected in the range `[0, input_ids.size(-1) -
@@ -425,7 +425,7 @@ class GPT2PipelineForwards:
             return_dict: Optional[bool] = None,
             stage_manager: Optional[PipelineStageManager] = None,
             hidden_states: Optional[torch.FloatTensor] = None,
-            stage_index: Optional[List[int]] = None) -> Union[Tuple, QuestionAnsweringModelOutput]:
+            stage_index: Optional[List[int]] = None) -> Union[Dict, Tuple, QuestionAnsweringModelOutput]:
         r"""
         start_positions (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
             Labels for position (index) of the start of the labelled span for computing the token classification loss.
@@ -512,7 +512,7 @@ class GPT2PipelineForwards:
             return_dict: Optional[bool] = None,
             stage_manager: Optional[PipelineStageManager] = None,
             hidden_states: Optional[torch.FloatTensor] = None,
-            stage_index: Optional[List[int]] = None) -> Union[Tuple, TokenClassifierOutput]:
+            stage_index: Optional[List[int]] = None) -> Union[Dict, Tuple, TokenClassifierOutput]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
             Labels for computing the sequence classification/regression loss. Indices should be in `[0, ...,
@@ -582,7 +582,7 @@ class GPT2PipelineForwards:
             return_dict: Optional[bool] = None,
             stage_manager: Optional[PipelineStageManager] = None,
             hidden_states: Optional[torch.FloatTensor] = None,
-            stage_index: Optional[List[int]] = None) -> Union[Tuple, SequenceClassifierOutputWithPast]:
+            stage_index: Optional[List[int]] = None) -> Union[Dict, Tuple, SequenceClassifierOutputWithPast]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
             Labels for computing the sequence classification/regression loss. Indices should be in `[0, ...,
