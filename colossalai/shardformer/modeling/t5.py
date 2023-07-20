@@ -1,29 +1,30 @@
-from typing import Optional
+from typing import Optional, Tuple
 
 import torch
 
-__all__ = ['get_t5_forward']
+__all__ = ['get_t5_flash_attention_forward']
 
 
-def get_t5_forward():
+def get_t5_flash_attention_forward():
 
     try:
         from xformers.ops import memory_efficient_attention as me_attention
     except:
         raise ImportError("Error: xformers module is not installed. Please install it to use flash attention.")
+    from transformers.models.t5.modeling_t5 import T5Attention
 
-    def t5_flash_attention_forward(
-        self,
-        hidden_states,
-        mask=None,
-        key_value_states=None,
-        position_bias=None,
-        past_key_value=None,
-        layer_head_mask=None,
-        query_length=None,
-        use_cache=False,
-        output_attentions=False,
-    ):
+    def forward(
+        self: T5Attention,
+        hidden_states: torch.Tensor,
+        mask: Optional[torch.Tensor] = None,
+        key_value_states: Optional[torch.Tensor] = None,
+        position_bias: Optional[torch.Tensor] = None,
+        past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        layer_head_mask: Optional[torch.Tensor] = None,
+        query_length: Optional[int] = None,
+        use_cache: bool = False,
+        output_attentions: bool = False,
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[torch.Tensor]]:
         """
         Self-attention (if key_value_states is None) or attention over source sentence (provided by key_value_states).
         """
@@ -128,4 +129,83 @@ def get_t5_forward():
 
         return outputs
 
-    return t5_flash_attention_forward
+    return forward
+
+
+def get_jit_fused_T5_layer_ff_forward():
+
+    from transformers.models.t5.modeling_t5 import T5LayerFF
+
+    def forward(self: T5LayerFF, hidden_states: torch.Tensor) -> torch.Tensor:
+        forwarded_states = self.layer_norm(hidden_states)
+        forwarded_states = self.DenseReluDense(forwarded_states)
+        hidden_states = self.dropout_add(forwarded_states, hidden_states, self.dropout.p, self.dropout.training)
+        return hidden_states
+
+    return forward
+
+
+def get_T5_layer_self_attention_forward():
+
+    from transformers.models.t5.modeling_t5 import T5LayerSelfAttention
+
+    def forward(
+        self: T5LayerSelfAttention,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_bias: Optional[torch.Tensor] = None,
+        layer_head_mask: Optional[torch.Tensor] = None,
+        past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        use_cache: bool = False,
+        output_attentions: bool = False,
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[torch.Tensor]]:
+        normed_hidden_states = self.layer_norm(hidden_states)
+        attention_output = self.SelfAttention(
+            normed_hidden_states,
+            mask=attention_mask,
+            position_bias=position_bias,
+            layer_head_mask=layer_head_mask,
+            past_key_value=past_key_value,
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+        )
+        hidden_states = self.dropout_add(attention_output[0], hidden_states, self.dropout.p, self.dropout.training)
+        outputs = (hidden_states,) + attention_output[1:]    # add attentions if we output them
+        return outputs
+
+    return forward
+
+
+def get_T5_layer_cross_attention_forward():
+
+    from transformers.models.t5.modeling_t5 import T5LayerCrossAttention
+
+    def forward(
+        self: T5LayerCrossAttention,
+        hidden_states: torch.Tensor,
+        key_value_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_bias: Optional[torch.Tensor] = None,
+        layer_head_mask: Optional[torch.Tensor] = None,
+        past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        use_cache: bool = False,
+        query_length: Optional[int] = None,
+        output_attentions: bool = False,
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[torch.Tensor]]:
+        normed_hidden_states = self.layer_norm(hidden_states)
+        attention_output = self.EncDecAttention(
+            normed_hidden_states,
+            mask=attention_mask,
+            key_value_states=key_value_states,
+            position_bias=position_bias,
+            layer_head_mask=layer_head_mask,
+            past_key_value=past_key_value,
+            use_cache=use_cache,
+            query_length=query_length,
+            output_attentions=output_attentions,
+        )
+        layer_output = self.dropout_add(attention_output[0], hidden_states, self.dropout.p, self.dropout.training)
+        outputs = (layer_output,) + attention_output[1:]    # add attentions if we output them
+        return outputs
+
+    return forward

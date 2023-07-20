@@ -2,15 +2,15 @@ from typing import Optional, Tuple, Union
 
 import torch
 
-__all__ = ['get_gpt2_forward']
 
+def get_gpt2_flash_attention_forward():
 
-def get_gpt2_forward():
+    from transformers.models.gpt2.modeling_gpt2 import GPT2Attention
 
     from colossalai.kernel.cuda_native.flash_attention import AttnMaskType, ColoAttention
 
-    def gpt2_flash_attention_forward(
-        self,
+    def forward(
+        self: GPT2Attention,
         hidden_states: Optional[Tuple[torch.FloatTensor]],
         layer_past: Optional[Tuple[torch.Tensor]] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
@@ -77,7 +77,7 @@ def get_gpt2_forward():
 
         return outputs
 
-    return gpt2_flash_attention_forward
+    return forward
 
 
 def split_heads(tensor, num_heads, attn_head_size):

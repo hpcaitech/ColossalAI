@@ -4,8 +4,8 @@ import torch.nn as nn
 
 from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col, Linear1D_Row, VocabParallelEmbedding1D
 
+from ..modeling.llama import get_llama_flash_attention_forward
 from .basepolicy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
-from ..modeling.llama import get_llama_forward
 
 __all__ = ['LlamaPolicy', 'LlamaForCausalLMPolicy', 'LlamaForSequenceClassificationPolicy']
 
@@ -27,7 +27,7 @@ class LlamaPolicy(Policy):
         return self.model
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
-        from transformers.models.llama.modeling_llama import LlamaDecoderLayer, LlamaModel, LlamaAttention
+        from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecoderLayer, LlamaModel
 
         policy = {}
 
@@ -99,11 +99,11 @@ class LlamaPolicy(Policy):
             ),
                                                         policy=policy,
                                                         target_key=LlamaModel)
-            
+
         if self.shard_config.enable_flash_attention:
             policy[LlamaAttention] = ModulePolicyDescription(method_replacement={
-                'forward': get_llama_forward(),
-            })   
+                'forward': get_llama_flash_attention_forward(),
+            })
 
         return policy
 
