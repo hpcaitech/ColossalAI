@@ -21,8 +21,8 @@ def data_gen():
 output_transform_fn = lambda x: x
 
 # define loss function
-loss_fn_for_chatglm_model = lambda x: x.last_hidden_state.mean()
-loss_fn = lambda x: x.logits.mean()
+loss_fn_for_chatglm_model = lambda x: x.last_hidden_state
+loss_fn = lambda x: x.loss
 config = ChatGLMConfig(num_layers=1,
                        padded_vocab_size=65024,
                        hidden_size=64,
