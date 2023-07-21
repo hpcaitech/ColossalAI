@@ -6,11 +6,21 @@ import torch
 import torch.nn as nn
 from transformers.models.llama.modeling_llama import LlamaAttention, apply_rotary_pos_emb
 
+SUPPORT_XFORMERS = False
+SUPPORT_FLASH2 = False
 try:
     import xformers.ops as xops
     SUPPORT_XFORMERS = True
 except ImportError:
-    SUPPORT_XFORMERS = False
+    pass
+
+try:
+    from flash_attn import flash_attn_func, flash_attn_qkvpacked_func
+    SUPPORT_FLASH2 = True
+except ImportError:
+    pass
+
+SUPPORT_FLASH = SUPPORT_XFORMERS or SUPPORT_FLASH2
 
 
 def llama_flash_attention(
@@ -43,10 +53,16 @@ def llama_flash_attention(
     past_key_value = (key_states, value_states) if use_cache else None
 
     # q, k, v is [B, H, S, K] and xformers need [B, S, H, K]. returns [B, S, H, K]
-    attn_output = xops.memory_efficient_attention(query_states,
-                                                  key_states,
-                                                  value_states,
-                                                  attn_bias=xops.LowerTriangularMask())
+    query_states = query_states.transpose(1, 2)
+    key_states = key_states.transpose(1, 2)
+    value_states = value_states.transpose(1, 2)
+    if SUPPORT_FLASH2:
+        attn_output = flash_attn_func(query_states, key_states, value_states, causal=True)
+    else:
+        attn_output = xops.memory_efficient_attention(query_states,
+                                                      key_states,
+                                                      value_states,
+                                                      attn_bias=xops.LowerTriangularMask())
 
     attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
 
