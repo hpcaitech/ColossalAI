@@ -45,7 +45,6 @@ def examine_pp():
     """
     This test is to examine the correctness of 1F1B, compared with torch.
     Be aware it contains some hardcodes.
-
     """
     world_size = torch.distributed.get_world_size()
     local_rank = torch.distributed.get_rank()
@@ -126,9 +125,9 @@ def run_dist(rank, world_size, port):
 
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
-def test_zero_1_2():
+def test_pp():
     spawn(run_dist, 2)
 
 
 if __name__ == '__main__':
-    test_zero_1_2()
+    test_pp()
