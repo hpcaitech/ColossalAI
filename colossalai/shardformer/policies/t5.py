@@ -178,7 +178,8 @@ class T5BasePolicy(Policy):
                              num_stages: int) -> Tuple[List[int], int]:
         """
         Distribute t5 layers into stages when pipeline parallel is used.
-        Return the layer distribution as a list and the starting stage of decoder (if decoder exists).
+        Return the layer distribution as a list and the starting stage of decoder.
+        If decoder doesn't exist, returned decoder starting stage is set to num_encoder_layers.
         """
 
         # number of encoder layers must be a positive integer
@@ -189,7 +190,7 @@ class T5BasePolicy(Policy):
         if num_encoder_layers + num_decoder_layers < num_stages:
             raise ValueError("The total number of layers can't be smaller than number of stages.")
 
-        # int the case of T5EncoderModel, set decoder starting stage to num_stages since it doesn't exist
+        # in the case of T5EncoderModel, set decoder starting stage to num_stages since it doesn't exist
         if num_decoder_layers == 0:
             return Policy.distribute_layers(num_encoder_layers, num_stages), num_stages
 
