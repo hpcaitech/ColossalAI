@@ -157,6 +157,8 @@ def train(args):
     model = strategy_dict['model']
     optim = strategy_dict['optimizer']
     lr_scheduler = strategy_dict['lr_scheduler']
+    if args.optim_load_path:
+        strategy.load_optimizer(optim, path=args.optim_load_path)
     trainer = SFTTrainer(model=model,
                          strategy=strategy,
                          optim=optim,
@@ -167,16 +169,14 @@ def train(args):
     trainer.fit(train_dataloader=train_dataloader,
                 eval_dataloader=eval_dataloader,
                 logger=logger,
-                tensorboard_dir=args.tensorbard_dir,
+                tensorboard_dir=args.tensorboard_dir,
                 use_wandb=args.use_wandb)
 
     # save model checkpoint after fitting on only rank0
     strategy.save_pretrained(model, path=args.save_path, only_rank0=True, tokenizer=tokenizer)
     # save optimizer checkpoint on all ranks
-    if args.need_optim_ckpt:
-        strategy.save_optimizer(trainer.optimizer,
-                                'rm_optim_checkpoint_%d.pt' % (torch.cuda.current_device()),
-                                only_rank0=False)
+    if args.optim_save_path:
+        strategy.save_optimizer(trainer.optimizer, path=args.optim_save_path)
 
 
 if __name__ == '__main__':
@@ -189,7 +189,8 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', type=str, default=None)
     parser.add_argument('--max_datasets_size', type=int, default=None)
     parser.add_argument('--save_path', type=str, default='output')
-    parser.add_argument('--need_optim_ckpt', type=bool, default=False)
+    parser.add_argument('--optim_save_path', type=str, default=None)
+    parser.add_argument('--optim_load_path', type=str, default=None)
     parser.add_argument('--max_epochs', type=int, default=3)
     parser.add_argument('--batch_size', type=int, default=4)
     parser.add_argument('--max_len', type=int, default=512)
@@ -199,6 +200,6 @@ if __name__ == '__main__':
     parser.add_argument('--accumulation_steps', type=int, default=8)
     parser.add_argument('--use_wandb', default=False, action='store_true')
     parser.add_argument('--grad_checkpoint', default=False, action='store_true')
-    parser.add_argument('--tensorbard_dir', type=str, default=None)
+    parser.add_argument('--tensorboard_dir', type=str, default=None)
     args = parser.parse_args()
     train(args)
