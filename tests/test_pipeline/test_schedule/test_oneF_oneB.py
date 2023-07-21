@@ -51,6 +51,7 @@ def examine_pp():
     seed_all(1453)
 
     NUM_MICRO_BATCHS = 4
+    BATCH_SIZE = 4
 
     # create models
     torch_model = MlpModel().cuda()
@@ -76,9 +77,9 @@ def examine_pp():
     # create
     seed_all(1453)
     if stage_manager.is_first_stage():
-        input_list = [torch.rand(4, 4).cuda()]
+        input_list = [torch.rand(BATCH_SIZE, 4).cuda()]
     else:
-        input_list = [torch.zeros(4, 4).cuda()]
+        input_list = [torch.zeros(BATCH_SIZE, 4).cuda()]
     torch.distributed.all_reduce(input_list[0])
 
     criterion = lambda x, y: torch.mean(x)
