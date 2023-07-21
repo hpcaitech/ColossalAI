@@ -8,6 +8,7 @@ import wandb
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
 
 from colossalai.logging import DistributedLogger
 
@@ -49,12 +50,11 @@ class SFTTrainer(SLTrainer):
 
     def _train(self, epoch: int):
         self.model.train()
+        start_step = epoch * len(self.train_dataloader) // self.accumulation_steps
         for batch_id, batch in enumerate(self.train_dataloader):
 
             batch = to_device(batch, torch.cuda.current_device())
-            outputs = self.model(batch["input_ids"],
-                                 attention_mask=batch["attention_mask"],
-                                 labels=batch["labels"])
+            outputs = self.model(batch["input_ids"], attention_mask=batch["attention_mask"], labels=batch["labels"])
 
             loss = outputs.loss
             loss = loss / self.accumulation_steps
@@ -68,9 +68,12 @@ class SFTTrainer(SLTrainer):
                 self.strategy.optimizer_step(self.optimizer)
                 self.optimizer.zero_grad()
                 self.scheduler.step()
+                if self.writer:
+                    self.writer.add_scalar('loss', self.total_loss, start_step + batch_id)
+                    self.writer.add_scalar('lr', self.scheduler.get_last_lr()[0], start_step + batch_id)
                 if is_rank_0() and self.use_wandb:
                     wandb.log({
-                        "loss": self.total_loss / self.accumulation_steps,
+                        "loss": self.total_loss,
                         "lr": self.scheduler.get_last_lr()[0],
                         "epoch": epoch,
                         "batch_id": batch_id
@@ -96,11 +99,14 @@ class SFTTrainer(SLTrainer):
                 loss_mean = loss_sum / num_seen
                 if dist.get_rank() == 0:
                     self.logger.info(f'Eval Epoch {epoch}/{self.max_epochs} loss {loss_mean}')
+                if self.writer:
+                    self.writer.add_scalar('eval_loss', loss_mean, epoch)
 
     def _before_fit(self,
                     train_dataloader: DataLoader,
                     eval_dataloader: Optional[DataLoader] = None,
                     logger: Optional[DistributedLogger] = None,
+                    tensorboard_dir: Optional[str] = None,
                     use_wandb: bool = False):
         """
         Args:
@@ -118,8 +124,9 @@ class SFTTrainer(SLTrainer):
 
         self.total_loss = 0
         self.no_epoch_bar = True
-        self.step_bar = tqdm.trange(
-            len(self.train_dataloader) // self.accumulation_steps * self.max_epochs,
-            desc=f'steps',
-            disable=not is_rank_0()
-        )
+        self.step_bar = tqdm.trange(len(self.train_dataloader) // self.accumulation_steps * self.max_epochs,
+                                    desc=f'steps',
+                                    disable=not is_rank_0())
+        self.writer = None
+        if tensorboard_dir and dist.get_rank() == 0:
+            self.writer = SummaryWriter(tensorboard_dir)

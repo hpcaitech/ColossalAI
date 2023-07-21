@@ -153,9 +153,7 @@ def train(args):
                                  optim,
                                  num_warmup_steps=math.ceil(max_steps * 0.03),
                                  num_training_steps=max_steps)
-    strategy_dict = strategy.prepare(
-        dict(model=model, optimizer=optim, lr_scheduler=lr_scheduler)
-    )
+    strategy_dict = strategy.prepare(dict(model=model, optimizer=optim, lr_scheduler=lr_scheduler))
     model = strategy_dict['model']
     optim = strategy_dict['optimizer']
     lr_scheduler = strategy_dict['lr_scheduler']
@@ -169,6 +167,7 @@ def train(args):
     trainer.fit(train_dataloader=train_dataloader,
                 eval_dataloader=eval_dataloader,
                 logger=logger,
+                tensorboard_dir=args.tensorbard_dir,
                 use_wandb=args.use_wandb)
 
     # save model checkpoint after fitting on only rank0
@@ -200,5 +199,6 @@ if __name__ == '__main__':
     parser.add_argument('--accumulation_steps', type=int, default=8)
     parser.add_argument('--use_wandb', default=False, action='store_true')
     parser.add_argument('--grad_checkpoint', default=False, action='store_true')
+    parser.add_argument('--tensorbard_dir', type=str, default=None)
     args = parser.parse_args()
     train(args)
