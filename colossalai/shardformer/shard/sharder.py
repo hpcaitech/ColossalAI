@@ -37,11 +37,13 @@ class ModelSharder(object):
         self.policy.set_model(self.model)
         self.policy.set_shard_config(self.shard_config)
         self._preprocess()
+        # get shared params before release unheld layers, this avoid misjudgement of shared params (None is None)
+        shared_params = self.policy.get_shared_params()
         self._release_unheld_layers()
         self._replace_module()
         self._materialize()
         self._postprocess()
-        return self.policy.get_shared_params()
+        return shared_params
 
     def _preprocess(self) -> None:
         self.model = self.policy.preprocess()

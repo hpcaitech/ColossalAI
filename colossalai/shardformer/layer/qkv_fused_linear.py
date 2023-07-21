@@ -2,12 +2,11 @@
 # -*- encoding: utf-8 -*-
 
 import math
-from typing import Callable, List, Tuple, Union
+from typing import Callable, List, Optional, Tuple, Union
 
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-import torch.nn.functional as F
 from torch import Tensor
 from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
@@ -16,10 +15,12 @@ from colossalai.lazy import LazyInitContext
 from colossalai.nn import init as init
 from colossalai.nn.layer.utils import divide
 from colossalai.tensor.d_tensor.api import (
-    customized_distributed_tensor_to_param,
+    customized_distributed_tensor_to_existing_param,
     distribute_tensor_with_customization,
+    is_customized_distributed_tensor,
+    is_distributed_tensor,
     shard_rowwise,
-    sharded_tensor_to_param,
+    sharded_tensor_to_existing_param,
 )
 
 from ._operation import (
@@ -173,6 +174,8 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
                  gather_output: bool = False,
                  skip_bias_add: bool = False,
                  n_fused: int = 3,
+                 weight: Optional[Parameter] = None,
+                 bias_: Optional[Parameter] = None,
                  weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
                  bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1)):
         super().__init__()
@@ -190,40 +193,56 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
         if skip_bias_add and not bias:
             raise ValueError('cannot skip bias addition if bias is None')
 
+        # offset the seed with randomizer index and rank
+        seed = torch.random.initial_seed()
+        self.randomizer = create_randomizer_with_offset(seed, process_group=self.process_group)
+
+        # sanity check
+        if weight is not None:
+            assert not bias or bias_ is not None, 'bias_ must be provided if bias is True when weight is not None'
+        else:
+            assert bias_ is None, 'bias_ must be None if weight is None'
+
         # Parameters.
-        # Initialize weight.
-        factory_kwargs = {'device': device, 'dtype': dtype}
-        weight = torch.empty(self.in_features, self.out_features, **factory_kwargs)
+        if weight is None:
+            # Initialize weight.
+            factory_kwargs = {'device': device, 'dtype': dtype}
+            self.weight = Parameter(torch.empty(self.in_features, self.out_features, **factory_kwargs))
+        else:
+            weight.data = weight.data.to(device=device, dtype=dtype)
+            self.weight = weight
 
         def shard_fn(tensor):
             return split_fused_qkv_in_gpt2_style(tensor, self.n_fused, self.process_group, True)
 
         def gather_fn(tensor):
-            return gather_fused_qkv_in_gpt2_style(tensor, 3, self.process_group, True)
+            return gather_fused_qkv_in_gpt2_style(tensor, self.n_fused, self.process_group, True)
 
-        with torch.no_grad():
-            sharded_weight = distribute_tensor_with_customization(weight, shard_fn, gather_fn)
-        self.weight = customized_distributed_tensor_to_param(sharded_weight)
+        if not is_customized_distributed_tensor(self.weight):
+            with torch.no_grad():
+                sharded_weight = distribute_tensor_with_customization(self.weight.data, shard_fn, gather_fn)
+            customized_distributed_tensor_to_existing_param(sharded_weight, self.weight)
 
         if bias:
-            bias = torch.empty(self.out_features, **factory_kwargs)
-
-            with torch.no_grad():
-                sharded_bias = distribute_tensor_with_customization(bias, shard_fn, gather_fn)
-            self.bias = customized_distributed_tensor_to_param(sharded_bias)
+            if bias_ is None:
+                self.bias = Parameter(torch.empty(self.out_features, **factory_kwargs))
+            else:
+                bias_.data = bias_.data.to(device=device, dtype=dtype)
+                self.bias = bias_
+            if not is_customized_distributed_tensor(self.bias):
+                with torch.no_grad():
+                    sharded_bias = distribute_tensor_with_customization(self.bias.data, shard_fn, gather_fn)
+                customized_distributed_tensor_to_existing_param(sharded_bias, self.bias)
         else:
             self.bias = None
 
-        # offset the seed with randomizer index and rank
-        seed = torch.random.initial_seed()
-        self.randomizer = create_randomizer_with_offset(seed, process_group=self.process_group)
-
-        # init weights
-        self.reset_parameters(weight_initializer, bias_initializer)
+        if weight is None:
+            # init weights
+            self.reset_parameters(weight_initializer, bias_initializer)
 
     @staticmethod
-    def from_native_module(module: nn.Module, process_group: Union[ProcessGroup, List[ProcessGroup]], n_fused: int,
-                           *args, **kwargs) -> ParallelModule:
+    def from_native_module(module: nn.Module, process_group: Union[ProcessGroup, List[ProcessGroup]], *args,
+                           **kwargs) -> ParallelModule:
         r"""
         Convert a huggingface layer `Conv1D` in gpt2 to a parallelized linear layer.
 
@@ -250,23 +269,10 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
                                               bias=bias,
                                               device=device,
                                               process_group=process_group,
+                                              weight=module.weight,
+                                              bias_=module.bias,
                                               *args,
                                               **kwargs)
-
-        # TODO: copy the sharded weights
-        with torch.no_grad():
-            sharded_weight = split_fused_qkv_in_gpt2_style(module.weight.data,
-                                                           n_fused=n_fused,
-                                                           process_group=process_group,
-                                                           is_transposed=True)
-            linear_1d.weight.data.copy_(sharded_weight.data)
-
-            if bias:
-                sharded_bias = split_fused_qkv_in_gpt2_style(module.bias.data,
-                                                             n_fused=n_fused,
-                                                             process_group=process_group,
-                                                             is_transposed=True)
-                linear_1d.bias.data.copy_(sharded_bias.data)
 
         return linear_1d
 
@@ -333,6 +339,8 @@ class GPT2FusedLinearConv1D_Row(ParallelModule):
                  process_group: ProcessGroup = None,
                  parallel_input: bool = True,
                  skip_bias_add: bool = False,
+                 weight: Optional[Parameter] = None,
+                 bias_: Optional[Parameter] = None,
                  weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
                  bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
                  stream_chunk_num: int = 1):
@@ -351,30 +359,46 @@ class GPT2FusedLinearConv1D_Row(ParallelModule):
         if skip_bias_add and not bias:
             raise ValueError('cannot skip bias addition if bias is None')
 
+        # offset the seed with randomizer index and rank
+        seed = torch.random.initial_seed()
+        self.randomizer = create_randomizer_with_offset(seed, process_group=self.process_group)
+
         # Divide the weight matrix along the last dimension.
         self.input_size_per_partition = divide(in_features, self.num_partitions)
 
+        # sanity check
+        if weight is not None:
+            assert not bias or bias_ is not None, 'bias_ must be provided if bias is True when weight is not None'
+        else:
+            assert bias_ is None, 'bias_ must be None if weight is None'
+
         # Parameters.
-        # Initialize weight.
-        factory_kwargs = {'device': device, 'dtype': dtype}
-        weight = torch.empty(self.in_features, self.out_features, **factory_kwargs)
-        sharded_weight = shard_rowwise(weight, self.process_group)
-        self.weight = sharded_tensor_to_param(sharded_weight)
+        if weight is None:
+            # Initialize weight.
+            factory_kwargs = {'device': device, 'dtype': dtype}
+            self.weight = Parameter(torch.empty(self.in_features, self.out_features, **factory_kwargs))
+        else:
+            weight.data = weight.data.to(device=device, dtype=dtype)
+            self.weight = weight
+        if not is_distributed_tensor(self.weight):
+            sharded_weight = shard_rowwise(self.weight.data, self.process_group)
+            sharded_tensor_to_existing_param(sharded_weight, self.weight)
 
         if self.stream_chunk_num > 1:
             # TODO() work for inference only
             self.chunk_weight()
         if bias:
-            self.bias = Parameter(torch.empty(self.out_features, **factory_kwargs))
+            if bias_ is None:
+                self.bias = Parameter(torch.empty(self.out_features, **factory_kwargs))
+            else:
+                bias_.data = bias_.data.to(device=device, dtype=dtype)
+                self.bias = bias_
         else:
             self.bias = None
 
-        # offset the seed with randomizer index and rank
-        seed = torch.random.initial_seed()
-        self.randomizer = create_randomizer_with_offset(seed, process_group=self.process_group)
-
-        # init weights
-        self.reset_parameters(weight_initializer, bias_initializer)
+        if weight is None:
+            # init weights
+            self.reset_parameters(weight_initializer, bias_initializer)
 
     @staticmethod
     def from_native_module(module: nn.Linear, process_group: Union[ProcessGroup, List[ProcessGroup]], *args,
@@ -400,18 +424,10 @@ class GPT2FusedLinearConv1D_Row(ParallelModule):
                                               bias=bias,
                                               device=device,
                                               process_group=process_group,
+                                              weight=module.weight,
+                                              bias_=module.bias,
                                               *args,
                                               **kwargs)
-
-        # TODO: copy the sharded weights
-        with torch.no_grad():
-            # the weigh to the linear layer is a transpose
-            # thus shard on col is equal to shard on row
-            sharded_weight = shard_rowwise(module.weight.data, process_group)
-            linear_1d.weight.data.copy_(sharded_weight.data)
-
-            if bias:
-                linear_1d.bias.copy_(module.bias.data)
 
         return linear_1d
 
