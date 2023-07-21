@@ -1,5 +1,5 @@
 """ PyTorch ChatGLM model. """
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
