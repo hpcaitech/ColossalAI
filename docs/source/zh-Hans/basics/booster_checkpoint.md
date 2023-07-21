@@ -21,7 +21,6 @@
 
 ## 优化器 Checkpoint
 
-> ⚠ 尚不支持以分片方式保存优化器 Checkpoint。
 
 {{ autodoc:colossalai.booster.Booster.save_optimizer }}
 
