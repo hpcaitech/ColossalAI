@@ -247,6 +247,7 @@ class T5BasePolicy(Policy):
             if stage_manager.is_first_stage():
                 held_layers.append(model.shared)
                 held_layers.append(encoder.embed_tokens)
+                held_layers.append(encoder.dropout)
             if stage_manager.stage == decoder_starting_stage - 1:
                 held_layers.append(encoder.final_layer_norm)
                 held_layers.append(encoder.dropout)
@@ -255,6 +256,7 @@ class T5BasePolicy(Policy):
             # current stage is in t5's decoder
             if stage_manager.stage == decoder_starting_stage:
                 held_layers.append(decoder.embed_tokens)
+                held_layers.append(decoder.dropout)
             if stage_manager.is_last_stage():
                 held_layers.append(decoder.final_layer_norm)
                 held_layers.append(decoder.dropout)
