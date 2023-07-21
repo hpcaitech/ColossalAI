@@ -362,10 +362,12 @@ class ZeroOptimizer(ColossalaiOptimizer):
 
         begin_in_chunk, end_in_chunk = self.param_to_range[fake_param]
         chunk_offset = begin_in_chunk
-        shard_offset = begin_in_chunk + chunk.shard_begin - param_info.offset
+        if chunk.keep_gathered:
+            shard_offset = 0
+        else:
+            shard_offset = begin_in_chunk + chunk.shard_begin - param_info.offset
         shard_size = end_in_chunk - begin_in_chunk
         assert chunk_offset >= 0 and shard_offset >= 0
-
         return chunk_offset, shard_offset, shard_size
 
     def collect_states(self, param_id: int, only_rank_0: bool = True) -> dict:
@@ -429,7 +431,8 @@ class ZeroOptimizer(ColossalaiOptimizer):
                                                                     dtype=torch.float32,
                                                                     requires_grad=False).cpu()
                     else:
-                        collected_states[state_name] = states[state_name].detach().clone().to(torch.float32).cpu()
+                        state_tensor = states[state_name].detach().clone().to(torch.float32).cpu()
+                        collected_states[state_name] = torch.reshape(state_tensor, param.shape)
             return collected_states
 
         # Check whether the param with given id is managed by current process.
@@ -654,9 +657,9 @@ class ZeroOptimizer(ColossalaiOptimizer):
         Args:
             param_states (dict): A mapping from param_id to its states.
         """
-        for param_id, param_states in param_states.items():
+        for param_id, states in param_states.items():
             if param_id in self.id_to_fake_params:
-                self.load_single_param_states(param_id, param_states)
+                self.load_single_param_states(param_id, states)
 
     def optimizer_loading_epilogue(self):
         # Epilogue when loading state_dict to pytorch optimizer.
