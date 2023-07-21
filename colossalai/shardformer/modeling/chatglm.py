@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
-from torch.nn import CrossEntropyLoss, LayerNorm
+from torch.nn import CrossEntropyLoss
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.utils import logging
 
@@ -15,7 +15,6 @@ from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import (
     ChatGLMModel,
     GLMBlock,
 )
-
 
 class ChatGLMPipelineForwards:
     '''
