@@ -24,9 +24,12 @@ Booster 插件是管理并行配置的重要组件（eg：gemini 插件封装了
 
 **_GeminiPlugin:_** GeminiPlugin 插件封装了 gemini 加速解决方案，即基于块内存管理的 ZeRO 优化方案。
 
-**_TorchDDPPlugin:_** TorchDDPPlugin 插件封装了 DDP 加速方案，实现了模型级别的数据并行，可以跨多机运行。
+**_TorchDDPPlugin:_** TorchDDPPlugin 插件封装了Pytorch的DDP加速方案，实现了模型级别的数据并行，可以跨多机运行。
 
 **_LowLevelZeroPlugin:_** LowLevelZeroPlugin 插件封装了零冗余优化器的 1/2 阶段。阶段 1：切分优化器参数，分发到各并发进程或并发 GPU 上。阶段 2：切分优化器参数及梯度，分发到各并发进程或并发 GPU 上。
+
+**_TorchFSDPPlugin:_** TorchFSDPPlugin封装了 Pytorch的FSDP加速方案，可以用于零冗余优化器数据并行（ZeroDP）的训练。
+
 
 ### Booster 接口
 
