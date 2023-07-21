@@ -6,7 +6,7 @@ import torch.distributed as dist
 
 import colossalai
 from colossalai.booster import Booster
-from colossalai.booster.plugin import ThreeDimParallelPlugin
+from colossalai.booster.plugin import HybridParallelPlugin
 from colossalai.fx import is_compatible_with_meta
 from colossalai.lazy.lazy_init import LazyInitContext
 from colossalai.nn.optimizer import HybridAdam
@@ -20,7 +20,7 @@ def run_fn(init_method, model_fn, data_gen_fn, output_transform_fn) -> Optional[
             ctx = LazyInitContext()
         else:
             ctx = nullcontext()
-        plugin = ThreeDimParallelPlugin(tp_size=2, pp_size=2, num_microbatches=4, precision='bf16')
+        plugin = HybridParallelPlugin(tp_size=2, pp_size=2, num_microbatches=4, precision='bf16')
         booster = Booster(plugin=plugin)
         with ctx:
             model = model_fn()

@@ -26,11 +26,10 @@ from .pp_plugin_base import PipelinePluginBase
 DP_AXIS, PP_AXIS, TP_AXIS = 0, 1, 2
 
 
-class PipelineModule(ModelWrapper):
+class HybridParallelModule(ModelWrapper):
 
-    def __init__(self, module: Module, precision: str, shard_config: ShardConfig, stage_manager: PipelineStageManager,
-                 dp_group: ProcessGroup) -> None:
-        self.stage_manager = stage_manager
+    def __init__(self, module: Module, precision: str, shard_config: ShardConfig, dp_group: ProcessGroup) -> None:
+        self.stage_manager = shard_config.pipeline_stage_manager
         self.dp_group = dp_group
         shardformer = ShardFormer(shard_config)
         module, self.shared_params = shardformer.optimize(module)
@@ -38,11 +37,12 @@ class PipelineModule(ModelWrapper):
         self.shared_param_process_groups = []
         for shared_param in self.shared_params:
             if len(shared_param) > 0:
-                stage_manager.init_process_group_by_stages(list(shared_param.keys()))
+                self.stage_manager.init_process_group_by_stages(list(shared_param.keys()))
         if precision == 'fp16':
             module = module.half().cuda()
         elif precision == 'bf16':
             module = module.to(dtype=torch.bfloat16).cuda()
+        # TODO(ver217): support TP+DP
         super().__init__(module)
 
     def sync_shared_params(self):
@@ -72,11 +72,12 @@ def init_pipeline_optimizer(optim: Optimizer, model: Module):
     optim.__setstate__({'param_groups': new_param_groups})
 
 
-class PipelineOptimizer(MixedPrecisionOptimizer):
+class HybridParallelOptimizer(MixedPrecisionOptimizer):
 
     def __init__(self,
                  optim: Optimizer,
                  model: Module,
+                 use_pipeline: bool,
                  precision: str = 'fp16',
                  initial_scale: float = 2**16,
                  min_scale: float = 1,
@@ -86,17 +87,19 @@ class PipelineOptimizer(MixedPrecisionOptimizer):
                  hysteresis: int = 2,
                  max_scale: float = 2**32,
                  max_norm: float = 0):
-        init_pipeline_optimizer(optim, model)
+        if use_pipeline:
+            init_pipeline_optimizer(optim, model)
         super().__init__(optim, precision, initial_scale, min_scale, growth_factor, backoff_factor, growth_interval,
                          hysteresis, max_scale, max_norm)
 
 
-class PipelineZeroOptimizer(LowLevelZeroOptimizer):
+class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
 
     def __init__(
             self,
             optimizer: Optimizer,
             model: Module,
+            use_pipeline: bool,
             initial_scale: int = 2**16,    # grad scaler config
             min_scale: int = 1,
             growth_factor: float = 2.,
@@ -114,14 +117,15 @@ class PipelineZeroOptimizer(LowLevelZeroOptimizer):
             dp_process_group: Optional[ProcessGroup] = None,    # the dp pg for comm
             tp_process_group: Optional[ProcessGroup] = None,    # if using tp
             forced_dtype: Optional[torch.dtype] = None):
-        init_pipeline_optimizer(optimizer, model)
+        if use_pipeline:
+            init_pipeline_optimizer(optimizer, model)
         super().__init__(optimizer, initial_scale, min_scale, growth_factor, backoff_factor, growth_interval,
                          hysteresis, max_scale, clip_grad_norm, verbose, reduce_bucket_size, communication_dtype,
                          overlap_communication, partition_grad, cpu_offload, dp_process_group, tp_process_group,
                          forced_dtype)
 
 
-class ThreeDimParallelPlugin(PipelinePluginBase):
+class HybridParallelPlugin(PipelinePluginBase):
 
     def __init__(
         self,
@@ -211,41 +215,43 @@ class ThreeDimParallelPlugin(PipelinePluginBase):
         lr_scheduler: Optional[LRScheduler] = None,
     ) -> Tuple[Module, OptimizerWrapper, Callable, DataLoader, LRScheduler]:
         if not isinstance(model, ModelWrapper):
-            model = PipelineModule(model, self.precision, self.shard_config, self.stage_manager, self.dp_group)
+            model = HybridParallelModule(model, self.precision, self.shard_config, self.dp_group)
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
             if self.zero_stage == 0:
-                optimizer = PipelineOptimizer(optimizer,
-                                              model,
-                                              precision=self.precision,
-                                              max_norm=self.max_norm,
-                                              **self.amp_config)
+                optimizer = HybridParallelOptimizer(optimizer,
+                                                    model,
+                                                    use_pipeline=self.enable_pipeline_parallelism,
+                                                    precision=self.precision,
+                                                    max_norm=self.max_norm,
+                                                    **self.amp_config)
             else:
-                optimizer = PipelineZeroOptimizer(optimizer,
-                                                  model,
-                                                  partition_grad=(self.zero_stage == 2),
-                                                  cpu_offload=self.cpu_offload,
-                                                  dp_process_group=self.dp_group,
-                                                  tp_process_group=self.tp_group,
-                                                  verbose=True,
-                                                  clip_grad_norm=self.max_norm,
-                                                  **self.amp_config)
+                optimizer = HybridParallelZeroOptimizer(optimizer,
+                                                        model,
+                                                        use_pipeline=self.enable_pipeline_parallelism,
+                                                        partition_grad=(self.zero_stage == 2),
+                                                        cpu_offload=self.cpu_offload,
+                                                        dp_process_group=self.dp_group,
+                                                        tp_process_group=self.tp_group,
+                                                        verbose=True,
+                                                        clip_grad_norm=self.max_norm,
+                                                        **self.amp_config)
         return model, optimizer, criterion, dataloader, lr_scheduler
 
     def execute_pipeline(self,
                          data_iter: Iterator,
-                         model: PipelineModule,
+                         model: HybridParallelModule,
                          criterion: Callable[[Any, Any], torch.Tensor],
-                         optimizer: Union[PipelineOptimizer, PipelineZeroOptimizer],
+                         optimizer: Union[HybridParallelOptimizer, HybridParallelZeroOptimizer],
                          return_loss: bool = True,
                          return_outputs: bool = False) -> dict:
         assert self.enable_pipeline_parallelism, 'pipeline parallelism is not enabled'
         # return loss or outputs if needed
-        ctx = optimizer.no_sync() if isinstance(optimizer, PipelineZeroOptimizer) else model.no_sync()
+        ctx = optimizer.no_sync() if isinstance(optimizer, HybridParallelZeroOptimizer) else model.no_sync()
         with ctx:
             outputs = self.schedule.forward_backward_step(model, optimizer, data_iter, criterion, return_loss,
                                                           return_outputs)
         # model.sync_shared_params()
-        if isinstance(optimizer, PipelineZeroOptimizer):
+        if isinstance(optimizer, HybridParallelZeroOptimizer):
             optimizer.sync_grad()
         else:
             model.sync_grads()
