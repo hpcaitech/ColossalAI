@@ -7,7 +7,7 @@ import torch
 import colossalai
 from colossalai.logging import disable_existing_loggers
 from colossalai.shardformer import ShardConfig, ShardFormer
-from colossalai.shardformer.policies.chatglm import ChatGLMModelPolicy
+from colossalai.shardformer.policies.chatglm import ChatGLMForConditionalGenerationPolicy, ChatGLMModelPolicy
 from colossalai.tensor.d_tensor.api import is_customized_distributed_tensor, is_distributed_tensor
 from colossalai.testing import (
     assert_hf_output_close,
@@ -85,6 +85,8 @@ def run_chatglm_test(enable_fused_normalization, enable_tensor_parallelism):
         shard_former = ShardFormer(shard_config=shard_config)
         if name == "transformers_chatglm":
             sharded_model = shard_former.optimize(model_copy, ChatGLMModelPolicy()).cuda()
+        else:
+            sharded_model = shard_former.optimize(model_copy, ChatGLMForConditionalGenerationPolicy()).cuda()
 
         check_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn)
     torch.cuda.empty_cache()
