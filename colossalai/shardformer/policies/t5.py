@@ -339,7 +339,7 @@ class T5ForConditionalGenerationPolicy(T5BasePolicy):
 
     def postprocess(self):
         super().postprocess()
-        if self.shard_config.enable_tensor_parallelism:
+        if self.shard_config.enable_tensor_parallelism and self.pipeline_stage_manager is None:
             binding_map = {
                 "shared.weight": ["encoder.embed_tokens.weight", "decoder.embed_tokens.weight", "lm_head.weight"]
             }
