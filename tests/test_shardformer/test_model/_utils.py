@@ -1,11 +1,13 @@
 import copy
 from contextlib import nullcontext
+from typing import Optional
 
 import torch
 from torch.nn import Module
 
 from colossalai.lazy import LazyInitContext
 from colossalai.shardformer import ShardConfig, ShardFormer
+from colossalai.shardformer.policies.auto_policy import Policy
 
 
 def build_model(model_fn, enable_fused_normalization=True, enable_tensor_parallelism=True, use_lazy_init: bool = False):
@@ -28,7 +30,8 @@ def build_pipeline_model(model_fn,
                          stage_manager=None,
                          enable_fused_normalization=False,
                          enable_tensor_parallelism=False,
-                         use_lazy_init: bool = False):
+                         use_lazy_init: bool = False,
+                         policy: Optional[Policy] = None):
     ctx = LazyInitContext() if use_lazy_init else nullcontext()
     with ctx:
         # create new model
@@ -43,7 +46,7 @@ def build_pipeline_model(model_fn,
                                pipeline_stage_manager=stage_manager)
 
     shard_former = ShardFormer(shard_config=shard_config)
-    sharded_model, shared_params = shard_former.optimize(model_copy)
+    sharded_model, shared_params = shard_former.optimize(model_copy, policy=policy)
     return org_model.cuda(), sharded_model.cuda()
 
 
