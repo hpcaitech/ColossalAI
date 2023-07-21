@@ -188,7 +188,6 @@ class ChatGLMModelPolicy(ChatGLMPolicy):
         """No shared params in ChatGLMModel."""
         return []
 
-
 class ChatGLMForConditionalGenerationPolicy(ChatGLMModelPolicy):
 
     def module_policy(self):
