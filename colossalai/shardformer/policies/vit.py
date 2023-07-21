@@ -24,8 +24,7 @@ class ViTPolicy(Policy):
         return self.model
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
-        from transformers.models.vit.modeling_vit import ViTEmbeddings, ViTLayer
-
+        from transformers.models.vit.modeling_vit import ViTEmbeddings, ViTLayer, ViTModel
         policy = {}
 
         if self.shard_config.enable_tensor_parallelism:
