@@ -61,14 +61,18 @@ def assert_forward_equal(m1: torch.nn.Module, m2: torch.nn.Module, data_gen_fn: 
             f'{m1.__class__.__name__} has inconsistent outputs, {out1} vs {out2}'
 
 
-def check_lazy_init(entry: TestingEntry, seed: int = 42, verbose: bool = False, check_forward: bool = False) -> None:
+def check_lazy_init(entry: TestingEntry,
+                    seed: int = 42,
+                    verbose: bool = False,
+                    check_forward: bool = False,
+                    default_device: str = 'cpu') -> None:
     model_fn, data_gen_fn, output_transform_fn, _, model_attr = entry
     _MyTensor._pre_op_fn = lambda *args: set_seed(seed)
     LazyTensor._pre_op_fn = lambda *args: set_seed(seed)
-    ctx = LazyInitContext(tensor_cls=_MyTensor)
+    ctx = LazyInitContext(tensor_cls=_MyTensor, default_device=default_device)
     with ctx:
         model = model_fn()
-    ctx = LazyInitContext()
+    ctx = LazyInitContext(default_device=default_device)
     with ctx:
         deferred_model = model_fn()
         copied_deferred_model = deepcopy(deferred_model)
