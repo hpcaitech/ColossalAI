@@ -3,7 +3,7 @@ import transformers
 
 from ..registry import ModelAttribute, model_zoo
 from .chatglm2_6b.configuration_chatglm import ChatGLMConfig
-from .chatglm2_6b.modeling_chatglm import ChatGLMModel
+from .chatglm2_6b.modeling_chatglm import ChatGLMForConditionalGeneration, ChatGLMModel
 
 # ================================
 # Register single-sentence ChatGLM
@@ -21,7 +21,7 @@ output_transform_fn = lambda x: x
 
 # define loss function
 loss_fn_for_chatglm_model = lambda x: x.last_hidden_state.mean()
-loss_fn = lambda x: x.loss
+loss_fn = lambda x: x.logits.mean()
 config = ChatGLMConfig(num_layers=1,
                        padded_vocab_size=65024,
                        hidden_size=64,
@@ -35,4 +35,11 @@ model_zoo.register(name='transformers_chatglm',
                    data_gen_fn=data_gen,
                    output_transform_fn=output_transform_fn,
                    loss_fn=loss_fn_for_chatglm_model,
+                   model_attribute=ModelAttribute(has_control_flow=True))
+
+model_zoo.register(name="transformers_chatglm_for_conditional_generation",
+                   model_fn=lambda: ChatGLMForConditionalGeneration(config, empty_init=False),
+                   data_gen_fn=data_gen,
+                   output_transform_fn=output_transform_fn,
+                   loss_fn=loss_fn,
                    model_attribute=ModelAttribute(has_control_flow=True))
