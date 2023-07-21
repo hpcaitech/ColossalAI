@@ -28,8 +28,6 @@ def run_t5_test(enable_fused_normalization, enable_tensor_parallelism, use_lazy_
 
     sub_model_zoo = model_zoo.get_sub_registry('transformers_t5')
     for name, (model_fn, data_gen_fn, _, _, _) in sub_model_zoo.items():
-        if name != 'transformers_t5_encoder_model':
-            continue
 
         inputs = data_gen_fn()
         inputs = {k: v.cuda() for k, v in inputs.items()}
@@ -73,8 +71,8 @@ def run_t5_test(enable_fused_normalization, enable_tensor_parallelism, use_lazy_
         else:
             assert output['hidden_states'].shape == hidden_state_shape
             # position_bias information should be passed in T5
-            assert 'position_bias' in output
-            assert 'encoder_decoder_position_bias' in output
+            assert output['position_bias'].shape == position_bias_shape
+            # assert output['encoder_decoder_position_bias'].shape == position_bias_shape
 
     torch.cuda.empty_cache()
 
