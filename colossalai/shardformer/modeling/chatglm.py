@@ -80,8 +80,14 @@ class ChatGLMPipelineForwards:
         if position_ids is not None:
             rotary_pos_emb = rotary_pos_emb[position_ids]
         else:
-            rotary_pos_emb = rotary_pos_emb[None, :seq_length]
-        rotary_pos_emb = rotary_pos_emb.transpose(0, 1).contiguous()
+            layer_ret = layer(hidden_states,
+                              attention_mask,
+                              rotary_pos_emb,
+                              kv_cache=kv_caches[idx],
+                              use_cache=use_cache)
+        hidden_states, kv_cache = layer_ret
+        if use_cache:
+            presents = presents + (kv_cache,)
 
         if not past_key_values:
             past_key_values = [None for _ in range(self.num_layers)]
