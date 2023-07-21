@@ -20,6 +20,8 @@ from transformers.modeling_utils import PreTrainedModel
 from transformers.utils import logging
 
 import colossalai
+from colossalai.pipeline.stage_manager import PipelineStageManager
+from colossalai.tests.kit.model_zoo.transformers.chatglm2_6b.configuration_chatglm import ChatGLMConfig
 from colossalai.tests.kit.model_zoo.transformers.chatglm2_6b.modeling_chatglm import ChatGLMModel, GLMBlock
 
 logger = logging.get_logger(__name__)
