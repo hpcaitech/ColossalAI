@@ -211,13 +211,14 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
         llama_model = self.model.model
-        if id(llama_model.embed_tokens.weight) == id(
-                self.model.lm_head.weight) and self.pipeline_stage_manager.num_stages > 1:
-            # tie weights
-            return [{
-                0: llama_model.embed_tokens.weight,
-                self.pipeline_stage_manager.num_stages - 1: self.model.lm_head.weight
-            }]
+        if self.pipeline_stage_manager and self.pipeline_stage_manager.num_stages > 1:
+            if id(llama_model.embed_tokens.weight) == id(
+                    self.model.lm_head.weight) and self.pipeline_stage_manager.num_stages > 1:
+                # tie weights
+                return [{
+                    0: llama_model.embed_tokens.weight,
+                    self.pipeline_stage_manager.num_stages - 1: self.model.lm_head.weight
+                }]
         return []
 
 
