@@ -36,21 +36,21 @@ def train(args):
     # configure model
     with strategy.model_init_context():
         if args.model == 'bloom':
-            model = BLOOMRM(pretrained=args.pretrain, lora_rank=args.lora_rank).to(torch.cuda.current_device())
+            model = BLOOMRM(pretrained=args.pretrain, lora_rank=args.lora_rank)
         elif args.model == 'opt':
-            model = OPTRM(pretrained=args.pretrain, lora_rank=args.lora_rank).to(torch.cuda.current_device())
+            model = OPTRM(pretrained=args.pretrain, lora_rank=args.lora_rank)
         elif args.model == 'gpt2':
-            model = GPTRM(pretrained=args.pretrain, lora_rank=args.lora_rank).to(torch.cuda.current_device())
+            model = GPTRM(pretrained=args.pretrain, lora_rank=args.lora_rank)
         elif args.model == 'llama':
-            model = LlamaRM(pretrained=args.pretrain, lora_rank=args.lora_rank).to(torch.cuda.current_device())
+            model = LlamaRM(pretrained=args.pretrain, lora_rank=args.lora_rank)
         else:
             raise ValueError(f'Unsupported model "{args.model}"')
+
+        model.to(torch.float16).to(torch.cuda.current_device())
 
         if args.model_path is not None:
             state_dict = torch.load(args.model_path)
             model.load_state_dict(state_dict)
-
-    model = model.to(torch.float16)
 
     # configure tokenizer
     if args.model == 'gpt2':
