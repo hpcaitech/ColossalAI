@@ -8,6 +8,7 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 from coati.experience_buffer import ExperienceBuffer
+from coati.models import Actor
 from torch.utils.data import DataLoader
 from transformers.modeling_utils import PreTrainedModel
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
@@ -94,7 +95,9 @@ class DDPStrategy(Strategy):
                         tokenizer: Optional[PreTrainedTokenizerBase] = None) -> None:
         if only_rank0 and dist.get_rank() != 0:
             return
-        unwrapped_model = self.unwrap_model(model)
+        actor_model = self.unwrap_model(model)
+        assert isinstance(actor_model, Actor)
+        unwrapped_model = actor_model.model
         assert isinstance(unwrapped_model, PreTrainedModel)
         unwrapped_model.save_pretrained(path)
         if tokenizer is not None:

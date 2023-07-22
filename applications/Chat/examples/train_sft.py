@@ -4,17 +4,18 @@ import math
 import torch
 import torch.distributed as dist
 from coati.dataset import SFTDataset, SupervisedDataset
-from coati.models import convert_to_lora_module
+from coati.models.bloom import BLOOMActor
+from coati.models.gpt import GPTActor
+from coati.models.llama import LlamaActor
+from coati.models.opt import OPTActor
 from coati.trainer import SFTTrainer
 from coati.trainer.strategies import DDPStrategy, GeminiStrategy, LowLevelZeroStrategy
 from datasets import load_dataset
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
-from transformers import AutoTokenizer, BloomForCausalLM, BloomTokenizerFast, LlamaForCausalLM, LlamaTokenizer
-from transformers.models.gpt2.modeling_gpt2 import GPT2LMHeadModel
+from transformers import AutoTokenizer, BloomTokenizerFast, LlamaTokenizer
 from transformers.models.gpt2.tokenization_gpt2 import GPT2Tokenizer
-from transformers.models.opt.modeling_opt import OPTForCausalLM
 from transformers.trainer import get_scheduler
 
 from colossalai.logging import get_dist_logger
@@ -38,19 +39,25 @@ def train(args):
     # configure model
     with strategy.model_init_context():
         if args.model == 'bloom':
-            model = convert_to_lora_module(BloomForCausalLM.from_pretrained(args.pretrain),
-                                           args.lora_rank).half().cuda()
+            model = BLOOMActor(pretrained=args.pretrain,
+                               lora_rank=args.lora_rank,
+                               checkpoint=args.grad_checkpoint)
         elif args.model == 'opt':
-            model = convert_to_lora_module(OPTForCausalLM.from_pretrained(args.pretrain), args.lora_rank).half().cuda()
+            model = OPTActor(pretrained=args.pretrain,
+                             lora_rank=args.lora_rank,
+                             checkpoint=args.grad_checkpoint)
         elif args.model == 'gpt2':
-            model = convert_to_lora_module(GPT2LMHeadModel.from_pretrained(args.pretrain), args.lora_rank).half().cuda()
+            model = GPTActor(pretrained=args.pretrain,
+                             lora_rank=args.lora_rank,
+                             checkpoint=args.grad_checkpoint)
         elif args.model == 'llama':
-            model = convert_to_lora_module(LlamaForCausalLM.from_pretrained(args.pretrain),
-                                           args.lora_rank).half().cuda()
+            model = LlamaActor(pretrained=args.pretrain,
+                               lora_rank=args.lora_rank,
+                               checkpoint=args.grad_checkpoint)
         else:
             raise ValueError(f'Unsupported model "{args.model}"')
-    if args.grad_checkpoint:
-        model.gradient_checkpointing_enable()
+
+        model.to(torch.float16).to(torch.cuda.current_device())
 
     # configure tokenizer
     if args.model == 'gpt2':
