@@ -1,5 +1,6 @@
 import argparse
 import math
+import warnings
 
 import torch
 import torch.distributed as dist
@@ -37,6 +38,9 @@ def train(args):
         raise ValueError(f'Unsupported strategy "{args.strategy}"')
 
     # configure model
+    if args.lora_rank > 0:
+        warnings.warn("Gradient checkpoint is disabled when using LoRA")
+        args.grad_checkpoint = False
     with strategy.model_init_context():
         if args.model == 'bloom':
             model = BLOOMActor(pretrained=args.pretrain,
