@@ -209,7 +209,7 @@ class T5PipelineForwards:
             # (cross-attention position bias), (cross-attention weights)
             position_bias = layer_outputs[2]
 
-            if self.is_decoder and encoder_hidden_states is not None:
+            if in_decoder and encoder_hidden_states is not None:
                 encoder_decoder_position_bias = layer_outputs[4 if output_attentions else 3]
             # append next layer key value states
             if use_cache:
@@ -281,14 +281,32 @@ class T5PipelineForwards:
         use_cache = use_cache if use_cache is not None else self.config.use_cache
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
+        logger = logging.get_logger(__name__)
+
+        # TODO: left the recording kv-value tensors as () or None type, this feature may be added in the future.
+        if past_key_values:
+            logger.warning_once('Non-empty past_key_values is not supported for pipeline models at the moment.')
+            past_key_values = None
+        if output_attentions:
+            logger.warning_once('output_attentions=True is not supported for pipeline models at the moment.')
+            output_attentions = False
+        if output_hidden_states:
+            logger.warning_once('output_hidden_states=True is not supported for pipeline models at the moment.')
+            output_hidden_states = False
+        if use_cache:
+            logger.warning_once('use_cache=True is not supported for pipeline models at the moment.')
+            use_cache = False
+
         # FutureWarning: head_mask was separated into two input args - head_mask, decoder_head_mask
         if head_mask is not None and decoder_head_mask is None:
             if self.config.num_layers == self.config.num_decoder_layers:
                 warnings.warn(__HEAD_MASK_WARNING_MSG, FutureWarning)
                 decoder_head_mask = head_mask
 
-        # Encode if needed (training, first prediction pass)
-        if encoder_outputs is None:
+        in_decoder = stage_manager.stage >= decoder_starting_stage
+
+        # Stage is in encoder, directly return the output of t5_stack_forward
+        if not in_decoder:
             encoder_outputs = T5PipelineForwards.t5_stack_forward(
                 self.encoder,
                 input_ids=input_ids,
@@ -304,8 +322,13 @@ class T5PipelineForwards:
                 encoder_decoder_position_bias=encoder_decoder_position_bias,
                 stage_index=stage_index,
                 decoder_starting_stage=decoder_starting_stage)
+            return encoder_outputs
 
-        elif return_dict and not isinstance(encoder_outputs, BaseModelOutput):
+        # Stage is in decoder, we assume that the outputs of last stage of encoder will be passed in.
+        if encoder_outputs is None:
+            raise ValueError("Non-empty encoder_outputs should be passed in at decoder stages.")
+
+        if return_dict and not isinstance(encoder_outputs, BaseModelOutput):
             encoder_outputs = BaseModelOutput(
                 last_hidden_state=encoder_outputs[0],
                 hidden_states=encoder_outputs[1] if len(encoder_outputs) > 1 else None,
@@ -313,17 +336,6 @@ class T5PipelineForwards:
             )
 
         hidden_states = encoder_outputs[0]
-
-        # Set device for model parallelism
-        if self.model_parallel:
-            torch.cuda.set_device(self.decoder.first_device)
-            hidden_states = hidden_states.to(self.decoder.first_device)
-            if decoder_input_ids is not None:
-                decoder_input_ids = decoder_input_ids.to(self.decoder.first_device)
-            if attention_mask is not None:
-                attention_mask = attention_mask.to(self.decoder.first_device)
-            if decoder_attention_mask is not None:
-                decoder_attention_mask = decoder_attention_mask.to(self.decoder.first_device)
 
         # Decode
         decoder_outputs = T5PipelineForwards.t5_stack_forward(
@@ -432,23 +444,9 @@ class T5PipelineForwards:
 
         hidden_states = encoder_outputs[0]
 
-        if self.model_parallel:
-            torch.cuda.set_device(self.decoder.first_device)
-
         if labels is not None and decoder_input_ids is None and decoder_inputs_embeds is None:
             # get decoder inputs from shifting lm labels to the right
             decoder_input_ids = self._shift_right(labels)
-
-        # Set device for model parallelism
-        if self.model_parallel:
-            torch.cuda.set_device(self.decoder.first_device)
-            hidden_states = hidden_states.to(self.decoder.first_device)
-            if decoder_input_ids is not None:
-                decoder_input_ids = decoder_input_ids.to(self.decoder.first_device)
-            if attention_mask is not None:
-                attention_mask = attention_mask.to(self.decoder.first_device)
-            if decoder_attention_mask is not None:
-                decoder_attention_mask = decoder_attention_mask.to(self.decoder.first_device)
 
         # Decode
         decoder_outputs = T5PipelineForwards.t5_stack_forward(
