@@ -29,9 +29,6 @@ def run_t5_test(enable_fused_normalization, enable_tensor_parallelism, use_lazy_
     sub_model_zoo = model_zoo.get_sub_registry('transformers_t5')
     for name, (model_fn, data_gen_fn, _, _, _) in sub_model_zoo.items():
 
-        if name == 'transformers_t5_for_conditional_generation':
-            continue
-
         inputs = data_gen_fn()
         inputs = {k: v.cuda() for k, v in inputs.items()}
         input_ids = inputs['input_ids']
@@ -71,10 +68,10 @@ def run_t5_test(enable_fused_normalization, enable_tensor_parallelism, use_lazy_
         sharded_model.train()
         output = sharded_model(**inputs)
         if at_last_stage:
-            if name != 'transformers_t5_for_conditional_generation':
-                assert output[0].shape == hidden_state_shape
-            else:
+            if name == 'transformers_t5_for_conditional_generation' and in_decoder:
                 assert output.loss is not None
+            else:
+                assert output[0].shape == hidden_state_shape
         else:
             assert output['hidden_states'].shape == hidden_state_shape
             # position_bias information should be passed in T5
