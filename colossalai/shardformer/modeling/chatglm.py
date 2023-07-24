@@ -103,7 +103,7 @@ class ChatGLMPipelineForwards:
                                                               past_key_values[idx], use_cache)
             else:
                 layer_ret = layer(hidden_states,
-                                  attention_mask,
+                                  full_attention_mask,
                                   rotary_pos_emb,
                                   kv_cache=past_key_values[idx],
                                   use_cache=use_cache)

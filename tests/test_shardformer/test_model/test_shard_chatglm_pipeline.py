@@ -43,14 +43,15 @@ def run_chatglm_test(enable_fused_normalization, enable_tensor_parallelism, use_
                                                 enable_tensor_parallelism, use_lazy_init, ChatGLMModelPolicy())
         if name == "transformers_chatglm":
             if stage_manager.is_last_stage():
-                hidden_states = torch.zeros(*hidden_state_shape).cuda()
+                hidden_states = torch.randn(*hidden_state_shape).cuda()
                 inputs['input_ids'] = None
                 inputs['hidden_states'] = hidden_states
-                outputs = sharded_model(**inputs)
-                print('final_outputs', outputs)
+            outputs = sharded_model(**inputs)
+
+            if stage_manager.is_last_stage():
+                assert outputs[0].shape == hidden_state_shape
             else:
-                outputs = sharded_model(**inputs)
-                print('hidden_states', outputs['hidden_states'])
+                assert outputs['hidden_states'].shape == hidden_state_shape
 
     torch.cuda.empty_cache()
 
