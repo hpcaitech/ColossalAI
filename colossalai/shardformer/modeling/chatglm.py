@@ -16,6 +16,7 @@ from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import (
     GLMBlock,
 )
 
+
 class ChatGLMPipelineForwards:
     '''
     This class serves as a micro library for ChatGLM model forwards under pipeline parallelism.
