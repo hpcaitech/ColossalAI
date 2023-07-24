@@ -38,6 +38,8 @@ NUM_RETRY=3
 BASE_DIR=$(dirname $(dirname $(realpath $BASH_SOURCE)))
 EXAMPLES_DIR=$BASE_DIR/examples
 MODELS_DIR=$BASE_DIR/examples/models_config
+MODELS=('gpt2' 'bloom' 'opt' 'llama')
+STRATEGIES=('ddp' 'colossalai_gemini' 'colossalai_zero2')
 
 export OMP_NUM_THREADS=8
 
@@ -70,7 +72,6 @@ random_choice() {
 echo "[Test]: testing sft ..."
 
 # FIXME: This is a hack to skip tests that are not working
-#  - gpt2-colossalai_zero2-4: RuntimeError: torch.cat(): expected a non-empty list of Tensors, raised in prepare stage
 #  - gpt2-ddp: RuntimeError: one of the variables needed for gradient computation has been modified by an inplace operation
 #  - llama-*: These tests can be passed locally, skipped for long execution time
 SKIPPED_TESTS=(
@@ -83,8 +84,9 @@ SKIPPED_TESTS=(
 
 GRAD_CKPTS=('' '--grad_checkpoint')
 for lora_rank in '0' '4'; do
-    for strategy in 'ddp' 'colossalai_gemini' 'colossalai_zero2'; do
-        for model in 'gpt2' 'bloom' 'opt' 'llama'; do
+    for model in ${MODELS[@]}; do
+        strategies=($(shuf -e "${STRATEGIES[@]}"))
+        for strategy in ${strategies[@]}; do
             if [[ " ${SKIPPED_TESTS[*]} " =~ " $model-$strategy-$lora_rank " ]]; then
                 echo "[Test]: Skipped $model-$strategy-$lora_rank"
                 continue
@@ -122,7 +124,6 @@ done
 echo "[Test]: testing reward model ..."
 
 # FIXME: This is a hack to skip tests that are not working
-#  - gpt2-colossalai_zero2-4: RuntimeError: torch.cat(): expected a non-empty list of Tensors, raised in prepare stage
 #  - gpt2-ddp: RuntimeError: one of the variables needed for gradient computation has been modified by an inplace operation
 #  - llama-*: These tests can be passed locally, skipped for long execution time
 SKIPPED_TESTS=(
@@ -136,8 +137,9 @@ SKIPPED_TESTS=(
 LOSS_FNS=('log_sig' 'log_exp')
 DATASETS=('Anthropic/hh-rlhf' 'Dahoas/rm-static')
 for lora_rank in '0' '4'; do
-    for strategy in 'ddp' 'colossalai_gemini' 'colossalai_zero2'; do
-        for model in 'gpt2' 'bloom' 'opt' 'llama'; do
+    for model in ${MODELS[@]}; do
+        strategies=($(shuf -e "${STRATEGIES[@]}"))
+        for strategy in ${strategies[@]}; do
             if [[ " ${SKIPPED_TESTS[*]} " =~ " $model-$strategy-$lora_rank " ]]; then
                 echo "[Test]: Skipped $model-$strategy-$lora_rank"
                 continue
@@ -176,21 +178,20 @@ done
 echo "[Test]: testing RLHF ..."
 
 # FIXME: This is a hack to skip tests that are not working
-#  - gpt2-*-4: torch.load(checkpoint_file, map_location="cpu") raise RuntimeError: Trying to resize storage that is not resizable
 #  - gpt2-ddp: RuntimeError: one of the variables needed for gradient computation has been modified by an inplace operation
 #  - llama-*: These tests can be passed locally, skipped for long execution time
 SKIPPED_TESTS=(
     "gpt2-colossalai_zero2-4"
-    "gpt2-colossalai_gemini-4"
     "gpt2-ddp"
     "llama-ddp"
     "llama-colossalai_gemini"
     "llama-colossalai_zero2"
 )
 
-for model in 'gpt2' 'bloom' 'opt' 'llama'; do
+for model in ${MODELS[@]}; do
     for lora_rank in '0' '4'; do
-        for strategy in 'ddp' 'colossalai_gemini' 'colossalai_zero2'; do
+        strategies=($(shuf -e "${STRATEGIES[@]}"))
+        for strategy in ${strategies[@]}; do
             if [[ " ${SKIPPED_TESTS[*]} " =~ " $model-$strategy-$lora_rank " ]]; then
                 echo "[Test]: Skipped $model-$strategy-$lora_rank"
                 continue
