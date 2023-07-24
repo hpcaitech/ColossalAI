@@ -275,6 +275,7 @@ class CoreAttention(torch.nn.Module):
                     attention_mask = ~attention_mask
                 context_layer = torch.nn.functional.scaled_dot_product_attention(query_layer, key_layer, value_layer,
                                                                                  attention_mask)
+
             context_layer = context_layer.permute(2, 0, 1, 3)
             new_context_layer_shape = context_layer.size()[:-2] + (self.hidden_size_per_partition,)
             context_layer = context_layer.reshape(*new_context_layer_shape)
