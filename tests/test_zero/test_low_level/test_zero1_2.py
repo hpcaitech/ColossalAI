@@ -123,8 +123,9 @@ def exam_zero_1_torch_ddp(world_size, dtype: torch.dtype):
     seed_all(1453)
 
     # create models
-    torch_model = MlpModel().cuda()
-    zero_model = copy.deepcopy(torch_model).to(dtype)
+    # init a cpu model to examine `.cuda()`
+    zero_model = MlpModel().to(dtype)
+    torch_model = copy.deepcopy(zero_model).to(torch.float)
 
     torch_model = DDP(torch_model.cuda(), static_graph=True).cuda()
 
@@ -146,6 +147,7 @@ def exam_zero_1_torch_ddp(world_size, dtype: torch.dtype):
     input_data = torch.rand(32, 123).cuda()
 
     # zero-dp forward
+    zero_model.to(f'cuda:{local_rank}')
     zero_output = zero_model(input_data.to(dtype))
 
     # torch-ddp forward
