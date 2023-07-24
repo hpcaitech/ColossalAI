@@ -8,7 +8,6 @@ import colossalai
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.logging import disable_existing_loggers
 from colossalai.pipeline.stage_manager import PipelineStageManager
-from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.shardformer.policies.chatglm import ChatGLMForConditionalGenerationPolicy, ChatGLMModelPolicy
 from colossalai.tensor.d_tensor.api import is_customized_distributed_tensor, is_distributed_tensor
 from colossalai.testing import (
