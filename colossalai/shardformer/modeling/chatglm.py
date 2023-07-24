@@ -4,12 +4,17 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
+from torch.nn import CrossEntropyLoss, LayerNorm
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.utils import logging
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from tests.kit.model_zoo.transformers.chatglm2_6b.configuration_chatglm import ChatGLMConfig
-from tests.kit.model_zoo.transformers.chatglm2_6b.modeling_chatglm import ChatGLMModel, GLMBlock
+from tests.kit.model_zoo.transformers.chatglm2_6b.modeling_chatglm import (
+    ChatGLMForConditionalGeneration,
+    ChatGLMModel,
+    GLMBlock,
+)
 
 
 class ChatGLMPipelineForwards:
@@ -130,3 +135,72 @@ class ChatGLMPipelineForwards:
             )
         else:
             return {'hidden_states': hidden_states}
+
+    def chatglm_for_conditional_generation_forward(
+        self: ChatGLMForConditionalGeneration,
+        input_ids: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        past_key_values: Optional[Tuple[torch.FloatTensor]] = None,
+        inputs_embeds: Optional[torch.Tensor] = None,
+        labels: Optional[torch.Tensor] = None,
+        use_cache: Optional[bool] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+        return_last_logit: Optional[bool] = False,
+        stage_manager: Optional[PipelineStageManager] = None,
+        hidden_states: Optional[torch.FloatTensor] = None,
+        stage_index: Optional[List[int]] = None,
+    ):
+        logger = logging.get_logger(__name__)
+
+        use_cache = use_cache if use_cache is not None else self.config.use_cache
+        return_dict = (return_dict if return_dict is not None else self.config.use_return_dict)
+
+        transformer_outputs = ChatGLMPipelineForwards.chatglm_model_forward(
+            self.transformer,
+            input_ids=input_ids,
+            position_ids=position_ids,
+            attention_mask=attention_mask,
+            past_key_values=past_key_values,
+            inputs_embeds=inputs_embeds,
+            use_cache=use_cache,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+        )
+        if stage_manager.is_last_stage():
+            hidden_states = transformer_outputs[0]
+            if return_last_logit:
+                hidden_states = hidden_states[-1:]
+            lm_logits = self.transformer.output_layer(hidden_states)
+            lm_logits = lm_logits.transpose(0, 1).contiguous()
+
+            loss = None
+            if labels is not None:
+                lm_logits = lm_logits.to(torch.float32)
+
+                # Shift so that tokens < n predict n
+                shift_logits = lm_logits[..., :-1, :].contiguous()
+                shift_labels = labels[..., 1:].contiguous()
+                # Flatten the tokens
+                loss_fct = CrossEntropyLoss(ignore_index=-100)
+                loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+
+                lm_logits = lm_logits.to(hidden_states.dtype)
+                loss = loss.to(hidden_states.dtype)
+
+            if not return_dict:
+                output = (lm_logits,) + transformer_outputs[1:]
+                return ((loss,) + output) if loss is not None else output
+
+            return CausalLMOutputWithPast(
+                loss=loss,
+                logits=lm_logits,
+                past_key_values=transformer_outputs.past_key_values,
+                hidden_states=transformer_outputs.hidden_states,
+                attentions=transformer_outputs.attentions,
+            )
+        else:
+            hidden_states = transformer_outputs.get('hidden_states')
+            return {'hidden_states', hidden_states}
