@@ -51,7 +51,8 @@ def run_vit_test(enable_fused_normalization, enable_tensor_parallelism, use_lazy
             if name != 'transformers_vit':
                 assert output.loss is not None
         else:
-            assert output.shape == hidden_state_shape, f'hidden_states shape is not correct, output:{output["hidden_states"].shape} is not equal to hidden_state:{hidden_state_shape}'
+            assert output['hidden_states'].shape == hidden_state_shape, \
+            f'hidden_states shape is not correct, output:{output["hidden_states"].shape} is not equal to hidden_state:{hidden_state_shape}'
 
     torch.cuda.empty_cache()
 

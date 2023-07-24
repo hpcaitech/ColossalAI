@@ -117,7 +117,7 @@ def ViTModel_pipeline_forward(stage_manager: PipelineStageManager, stage_index: 
                 return_dict=return_dict,
                 stage_manager=stage_manager,
             )
-            return hidden_states
+            return {'hidden_states': hidden_states}
         else:
             encoder_outputs = _encoder_forward(
                 encoder=self.encoder,
