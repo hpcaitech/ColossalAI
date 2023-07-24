@@ -9,7 +9,7 @@ from colossalai.cluster import ProcessGroupMesh
 from colossalai.logging import disable_existing_loggers
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig, ShardFormer
-from colossalai.shardformer.policies.chatglm import ChatGLMModelPolicy
+from colossalai.shardformer.policies.chatglm import ChatGLMForConditionalGenerationPolicy, ChatGLMModelPolicy
 from colossalai.tensor.d_tensor.api import is_customized_distributed_tensor, is_distributed_tensor
 from colossalai.testing import (
     assert_hf_output_close,
@@ -39,9 +39,9 @@ def run_chatglm_test(enable_fused_normalization, enable_tensor_parallelism, use_
         hidden_size = 64
         batch_size, seq_len = input_ids.shape
         hidden_state_shape = (seq_len, batch_size, hidden_size)
-        _, sharded_model = build_pipeline_model(model_fn, stage_manager, enable_fused_normalization,
-                                                enable_tensor_parallelism, use_lazy_init, ChatGLMModelPolicy())
-        if name == "transformers_chatglm_for_conditional_generation":
+        if name == "transformers_chatglm":
+            _, sharded_model = build_pipeline_model(model_fn, stage_manager, enable_fused_normalization,
+                                                    enable_tensor_parallelism, use_lazy_init, ChatGLMModelPolicy())
             if stage_manager.is_last_stage():
                 hidden_states = torch.randn(*hidden_state_shape).cuda()
                 inputs['input_ids'] = None
@@ -50,6 +50,21 @@ def run_chatglm_test(enable_fused_normalization, enable_tensor_parallelism, use_
 
             if stage_manager.is_last_stage():
                 assert outputs[0].shape == hidden_state_shape
+            else:
+                assert outputs['hidden_states'].shape == hidden_state_shape
+
+        if name == "transformers_chatglm_for_conditional_generation":
+            _, sharded_model = build_pipeline_model(model_fn, stage_manager, enable_fused_normalization,
+                                                    enable_tensor_parallelism, use_lazy_init,
+                                                    ChatGLMForConditionalGenerationPolicy())
+            if stage_manager.is_last_stage():
+                hidden_states = torch.randn(*hidden_state_shape).cuda()
+                inputs['input_ids'] = None
+                inputs['hidden_states'] = hidden_states
+            outputs = sharded_model(**inputs)
+
+            if stage_manager.is_last_stage():
+                assert outputs[0].shape == (batch_size, seq_len, 65024)
             else:
                 assert outputs['hidden_states'].shape == hidden_state_shape
 
