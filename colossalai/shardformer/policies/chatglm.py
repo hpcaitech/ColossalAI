@@ -10,7 +10,11 @@ import colossalai.shardformer.layer as col_nn
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.modeling.chatglm import ChatGLMPipelineForwards
 from tests.kit.model_zoo.transformers.chatglm2_6b.configuration_chatglm import ChatGLMConfig
-from tests.kit.model_zoo.transformers.chatglm2_6b.modeling_chatglm import ChatGLMModel, GLMBlock
+from tests.kit.model_zoo.transformers.chatglm2_6b.modeling_chatglm import (
+    ChatGLMForConditionalGeneration,
+    ChatGLMModel,
+    GLMBlock,
+)
 
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
@@ -189,4 +193,19 @@ class ChatGLMForConditionalGenerationPolicy(ChatGLMModelPolicy):
 
     def module_policy(self):
         policy = super().module_policy()
+
+        if self.pipeline_stage_manager is not None:
+            self.set_pipeline_forward(model_cls=ChatGLMForConditionalGeneration,
+                                      new_forward=ChatGLMPipelineForwards.chatglm_for_conditional_generation_forward,
+                                      policy=policy)
         return policy
+
+    def get_held_layers(self) -> List[nn.Module]:
+        held_layers = super().get_held_layers()
+        if self.pipeline_stage_manager.is_last_stage():
+            held_layers.append(self.model.transformer.output_layer)
+        return held_layers
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        """No shared params in ChatGLMForConditionalGenerationModel."""
+        return []

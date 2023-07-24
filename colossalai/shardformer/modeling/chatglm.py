@@ -168,6 +168,9 @@ class ChatGLMPipelineForwards:
             use_cache=use_cache,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
+            stage_manager=stage_manager,
+            hidden_states=hidden_states,
+            stage_index=stage_index,
         )
         if stage_manager.is_last_stage():
             hidden_states = transformer_outputs[0]
@@ -202,5 +205,4 @@ class ChatGLMPipelineForwards:
                 attentions=transformer_outputs.attentions,
             )
         else:
-            hidden_states = transformer_outputs.get('hidden_states')
-            return {'hidden_states', hidden_states}
+            return transformer_outputs
