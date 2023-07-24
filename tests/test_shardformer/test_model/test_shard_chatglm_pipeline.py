@@ -41,7 +41,7 @@ def run_chatglm_test(enable_fused_normalization, enable_tensor_parallelism, use_
         hidden_state_shape = (seq_len, batch_size, hidden_size)
         _, sharded_model = build_pipeline_model(model_fn, stage_manager, enable_fused_normalization,
                                                 enable_tensor_parallelism, use_lazy_init, ChatGLMModelPolicy())
-        if name == "transformers_chatglm":
+        if name == "transformers_chatglm_for_conditional_generation":
             if stage_manager.is_last_stage():
                 hidden_states = torch.randn(*hidden_state_shape).cuda()
                 inputs['input_ids'] = None
