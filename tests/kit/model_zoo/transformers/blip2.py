@@ -25,9 +25,8 @@ def data_gen():
     # inputs = processor(images=image, text=prompt, return_tensors="pt").to(device, torch.float16)
 
     pixel_values = torch.rand(1, 3, 224, 224, dtype=torch.float32)
-    input_ids = torch.tensor([[2, 45641, 35, 141, 171, 10017, 32, 89, 116, 31652, 35, 32, 89, 116, 31652, 35]],
-                             dtype=torch.int64)
-    attention_mask = torch.tensor([[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]], dtype=torch.int64)
+    input_ids = torch.tensor([[2, 45641, 35, 141, 171, 10017, 32, 89, 116, 31652, 35]], dtype=torch.int64)
+    attention_mask = torch.tensor([[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]], dtype=torch.int64)
     labels = torch.tensor([[34, 56]], dtype=torch.int64)
     return dict(pixel_values=pixel_values, input_ids=input_ids, attention_mask=attention_mask, labels=labels)
 

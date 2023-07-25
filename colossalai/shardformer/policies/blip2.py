@@ -283,6 +283,7 @@ class BlipPolicy(Policy):
             ],
                                                         policy=policy,
                                                         target_key=OPTDecoderLayer)
+
         # use flash attention
         if self.shard_config.enable_flash_attention:
             policy[Blip2Attention] = ModulePolicyDescription(method_replacement={
@@ -303,6 +304,7 @@ class BlipPolicy(Policy):
                 'forward': get_jit_fused_blip2_QFormer_output_forward(),
                 'dropout_add': get_jit_fused_dropout_add_func(),
             })
+
         return policy
 
     def postprocess(self):
