@@ -190,9 +190,9 @@ except ImportError:
 try:
     from flash_attn.flash_attention import FlashAttention
     from flash_attn.flash_attn_interface import (
-        flash_attn_unpadded_func,
-        flash_attn_unpadded_kvpacked_func,
-        flash_attn_unpadded_qkvpacked_func,
+        flash_attn_varlen_func,
+        flash_attn_varlen_kvpacked_func,
+        flash_attn_varlen_qkvpacked_func,
     )
     HAS_FLASH_ATTN = True
 except ImportError:
@@ -577,7 +577,7 @@ if HAS_FLASH_ATTN:
         """
         max_s = seq_len
         cu_seqlens = torch.arange(0, (batch_size + 1) * seq_len, step=seq_len, dtype=torch.int32, device=qkv.device)
-        out = flash_attn_unpadded_qkvpacked_func(qkv,
+        out = flash_attn_varlen_qkvpacked_func(qkv,
                                                  cu_seqlens,
                                                  max_s,
                                                  dropout_p,
@@ -604,7 +604,7 @@ if HAS_FLASH_ATTN:
                                     step=kv_seqlen,
                                     dtype=torch.int32,
                                     device=kv.device)
-        out = flash_attn_unpadded_kvpacked_func(q, kv, cu_seqlens_q, cu_seqlens_k, q_seqlen, kv_seqlen, dropout_p,
+        out = flash_attn_varlen_kvpacked_func(q, kv, cu_seqlens_q, cu_seqlens_k, q_seqlen, kv_seqlen, dropout_p,
                                                 sm_scale, causal)
         return out
 
@@ -628,7 +628,7 @@ if HAS_FLASH_ATTN:
                                      step=kv_seqlen,
                                      dtype=torch.int32,
                                      device=k.device)
-        return flash_attn_unpadded_func(q, k, v, cu_seqlens_q, cu_seqlens_kv, q_seqlen, kv_seqlen, dropout_p, sm_scale,
+        return flash_attn_varlen_func(q, k, v, cu_seqlens_q, cu_seqlens_kv, q_seqlen, kv_seqlen, dropout_p, sm_scale,
                                         causal)
 
 
