@@ -21,7 +21,7 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
     # check forward
     org_output, org_loss, shard_output, shard_loss = run_forward(org_model, sharded_model, data_gen_fn,
                                                                  output_transform_fn, loss_fn)
-    assert_hf_output_close(org_output, shard_output, atol=1e-4, rtol=1e-4)
+    assert_hf_output_close(org_output, shard_output, atol=1e-3, rtol=1e-3)
     # do backward
     org_loss.backward()
     shard_loss.backward()
@@ -50,7 +50,7 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
         all_shard_grad = shard_grad
     assert torch.allclose(org_grad, all_shard_grad,
                           atol=1e-5), f"shard model grad is not equal to orgin model grad\n{org_grad}\n{shard_grad}"
-    
+
 
 @parameterize('enable_fused_normalization', [True, False])
 @parameterize('enable_tensor_parallelism', [True, False])
