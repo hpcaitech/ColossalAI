@@ -7,9 +7,9 @@ from typing import Any, List, Optional, Union
 
 import torch
 import torch.distributed as dist
+from packaging.version import Version
 from torch.distributed import ProcessGroup
 from torch.distributed import distributed_c10d as c10d
-from version_parser.version import Version
 
 from .stage_manager import PipelineStageManager
 
