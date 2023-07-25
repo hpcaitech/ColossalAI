@@ -202,7 +202,6 @@ class T5PipelineForwards:
             if use_cache is False or use_cache is None:
                 layer_outputs = layer_outputs[:1] + (None,) + layer_outputs[1:]
             hidden_states, present_key_value_state = layer_outputs[:2]
-            # print(stage, len(layer_outputs), present_key_value_state.shape)
 
             # We share the position biases between the layers - the first layer store them
             # layer_outputs = hidden-states, key-value-states (self-attention position bias), (self-attention weights),
@@ -324,19 +323,26 @@ class T5PipelineForwards:
                 decoder_starting_stage=decoder_starting_stage)
             return encoder_outputs
 
-        # Stage is in decoder, we assume that the outputs of last stage of encoder will be passed in.
-        if encoder_outputs is None:
-            raise ValueError("Non-empty encoder_outputs should be passed in at decoder stages.")
-
-        if return_dict and not isinstance(encoder_outputs, BaseModelOutput):
-            encoder_outputs = BaseModelOutput(
-                last_hidden_state=encoder_outputs[0],
-                hidden_states=encoder_outputs[1] if len(encoder_outputs) > 1 else None,
-                attentions=encoder_outputs[2] if len(encoder_outputs) > 2 else None,
-            )
-
-        hidden_states = encoder_outputs[0]
         at_last_decoder_stage = stage_manager.is_last_stage()
+        at_first_decoder_stage = stage_manager.stage == decoder_starting_stage
+        encoder_hidden_states = None
+
+        # Stage is in decoder, we assume that the outputs of last stage of encoder will be passed in.
+        if at_first_decoder_stage:
+            if encoder_outputs is None:
+                raise ValueError("Non-empty encoder_outputs should be passed in at decoder stages.")
+
+            if return_dict and not isinstance(encoder_outputs, BaseModelOutput):
+                encoder_outputs = BaseModelOutput(
+                    last_hidden_state=encoder_outputs[0],
+                    hidden_states=encoder_outputs[1] if len(encoder_outputs) > 1 else None,
+                    attentions=encoder_outputs[2] if len(encoder_outputs) > 2 else None,
+                )
+            hidden_states = None
+            encoder_hidden_states = encoder_outputs[0]
+        else:
+            if hidden_states is None:
+                raise ValueError("If not at the first layer of decoder, non-empty hidden_states must be provided.")
 
         # Decode
         decoder_outputs = T5PipelineForwards.t5_stack_forward(
@@ -345,7 +351,7 @@ class T5PipelineForwards:
             attention_mask=decoder_attention_mask,
             inputs_embeds=decoder_inputs_embeds,
             past_key_values=past_key_values,
-            encoder_hidden_states=hidden_states,
+            encoder_hidden_states=encoder_hidden_states,
             encoder_attention_mask=attention_mask,
             head_mask=decoder_head_mask,
             cross_attn_head_mask=cross_attn_head_mask,
@@ -460,19 +466,26 @@ class T5PipelineForwards:
                 decoder_starting_stage=decoder_starting_stage)
             return encoder_outputs
 
-        # Stage is in decoder, we assume that the outputs of last stage of encoder will be passed in.
-        if encoder_outputs is None:
-            raise ValueError("Non-empty encoder_outputs should be passed in at decoder stages.")
-
-        if return_dict and not isinstance(encoder_outputs, BaseModelOutput):
-            encoder_outputs = BaseModelOutput(
-                last_hidden_state=encoder_outputs[0],
-                hidden_states=encoder_outputs[1] if len(encoder_outputs) > 1 else None,
-                attentions=encoder_outputs[2] if len(encoder_outputs) > 2 else None,
-            )
-
-        hidden_states = encoder_outputs[0]
         at_last_decoder_stage = stage_manager.is_last_stage()
+        at_first_decoder_stage = stage_manager.stage == decoder_starting_stage
+        encoder_hidden_states = None
+
+        # Stage is in decoder, we assume that the outputs of last stage of encoder will be passed in.
+        if at_first_decoder_stage:
+            if encoder_outputs is None:
+                raise ValueError("Non-empty encoder_outputs should be passed in at decoder stages.")
+
+            if return_dict and not isinstance(encoder_outputs, BaseModelOutput):
+                encoder_outputs = BaseModelOutput(
+                    last_hidden_state=encoder_outputs[0],
+                    hidden_states=encoder_outputs[1] if len(encoder_outputs) > 1 else None,
+                    attentions=encoder_outputs[2] if len(encoder_outputs) > 2 else None,
+                )
+            hidden_states = None
+            encoder_hidden_states = encoder_outputs[0]
+        else:
+            if hidden_states is None:
+                raise ValueError("If not at the first layer of decoder, non-empty hidden_states must be provided.")
 
         if labels is not None and decoder_input_ids is None and decoder_inputs_embeds is None:
             # get decoder inputs from shifting lm labels to the right
@@ -485,7 +498,7 @@ class T5PipelineForwards:
             attention_mask=decoder_attention_mask,
             inputs_embeds=decoder_inputs_embeds,
             past_key_values=past_key_values,
-            encoder_hidden_states=hidden_states,
+            encoder_hidden_states=encoder_hidden_states,
             encoder_attention_mask=attention_mask,
             head_mask=decoder_head_mask,
             cross_attn_head_mask=cross_attn_head_mask,

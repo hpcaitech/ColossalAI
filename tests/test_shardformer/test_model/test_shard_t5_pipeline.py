@@ -61,7 +61,7 @@ def run_t5_test(enable_fused_normalization, enable_tensor_parallelism, use_lazy_
             inputs['hidden_states'] = hidden_states
             inputs['position_bias'] = position_bias
             inputs['encoder_decoder_position_bias'] = encoder_decoder_position_bias
-        if in_decoder:
+        if in_decoder and at_first_stage:
             encoder_output_states = torch.zeros(*hidden_state_shape).cuda()
             inputs['encoder_outputs'] = (encoder_output_states,)
 
