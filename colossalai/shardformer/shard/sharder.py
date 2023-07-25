@@ -1,5 +1,5 @@
 from types import MethodType
-from typing import Any, Callable, Dict, List, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Union
 
 import torch.nn as nn
 from torch import Tensor
@@ -39,8 +39,8 @@ class ModelSharder(object):
         self._preprocess()
         # get shared params before release unheld layers, this avoid misjudgement of shared params (None is None)
         shared_params = self.policy.get_shared_params()
-        self._release_unheld_layers()
-        self._replace_module()
+        held_layers = self._release_unheld_layers()
+        self._replace_module(include=held_layers)
         self._materialize()
         self._postprocess()
         return shared_params
@@ -51,7 +51,7 @@ class ModelSharder(object):
     def _postprocess(self) -> None:
         self.model = self.policy.postprocess()
 
-    def _replace_module(self,) -> None:
+    def _replace_module(self, include: Optional[Set[nn.Module]] = None) -> None:
         r"""
         Replace the module according to the policy, and replace the module one by one
 
@@ -64,8 +64,13 @@ class ModelSharder(object):
             param_replacement = module_description.param_replacement
             sub_module_replacement = module_description.sub_module_replacement
             method_replacement = module_description.method_replacement
-            self._recursive_replace_layer(self.model, layer_cls, attr_replacement, param_replacement,
-                                          method_replacement, sub_module_replacement)
+            self._recursive_replace_layer(self.model,
+                                          layer_cls,
+                                          attr_replacement,
+                                          param_replacement,
+                                          method_replacement,
+                                          sub_module_replacement,
+                                          include=include)
 
     def _recursive_replace_layer(
         self,
@@ -75,6 +80,7 @@ class ModelSharder(object):
         param_replacement: List[Callable],
         method_replacement: Dict[str, Callable],
         sub_module_replacement: List[SubModuleReplacementDescription],
+        include: Optional[Set[nn.Module]] = None,
     ) -> None:
         r"""
         Reverse the replace layer operation
@@ -87,23 +93,30 @@ class ModelSharder(object):
             method_replacement (Dict[str, Callable]):  Key is the method name, value is the method for replacement
             sub_module_replacement ((List[SubModuleReplacementDescription]): The function list to get sub module shard information in policy
         """
+        # released layers are not shardable
+        can_replace_param_or_layer = include is None or module in include
         if (isinstance(origin_cls, str) and origin_cls == module.__class__.__name__) or \
            (module.__class__ == origin_cls):
             if attr_replacement is not None:
                 self._replace_attr(module, attr_replacement)
 
-            if param_replacement is not None:
+            if param_replacement is not None and can_replace_param_or_layer:
                 self._replace_param(module, param_replacement)
 
             if method_replacement is not None:
                 self._replace_method(module, method_replacement)
 
-            if sub_module_replacement is not None:
+            if sub_module_replacement is not None and can_replace_param_or_layer:
                 self._replace_sub_module(module, sub_module_replacement)
 
         for name, child in module.named_children():
-            self._recursive_replace_layer(child, origin_cls, attr_replacement, param_replacement, method_replacement,
-                                          sub_module_replacement)
+            self._recursive_replace_layer(child,
+                                          origin_cls,
+                                          attr_replacement,
+                                          param_replacement,
+                                          method_replacement,
+                                          sub_module_replacement,
+                                          include=include)
 
     def _replace_attr(
         self,
@@ -185,13 +198,15 @@ class ModelSharder(object):
 
             setattr_(org_layer, suffix, replace_layer)
 
-    def _release_unheld_layers(self) -> None:
+    def _release_unheld_layers(self) -> Optional[Set[nn.Module]]:
         r"""
         Release the unheld layers in the model
         """
         if self.shard_config and self.shard_config.pipeline_stage_manager:
             held_layers = self.policy.get_held_layers()
             set_tensors_to_none(self.model, exclude=set(held_layers))
+            return set(held_layers)
+        return None
 
     def _materialize(self) -> None:
         r"""

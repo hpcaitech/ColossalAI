@@ -1,6 +1,6 @@
 import warnings
 from contextlib import contextmanager
-from typing import Callable, Iterator, List, Optional, Tuple, Union
+from typing import Any, Callable, Iterator, List, Optional, Union
 
 import torch
 import torch.nn as nn
@@ -14,6 +14,7 @@ from colossalai.interface import ModelWrapper, OptimizerWrapper
 from .accelerator import Accelerator
 from .mixed_precision import MixedPrecision, mixed_precision_factory
 from .plugin import Plugin
+from .plugin.pp_plugin_base import PipelinePluginBase
 
 __all__ = ['Booster']
 
@@ -144,14 +145,15 @@ class Booster:
     def execute_pipeline(self,
                          data_iter: Iterator,
                          model: nn.Module,
-                         criterion: Callable[[torch.Tensor], torch.Tensor],
+                         criterion: Callable[[Any, Any], torch.Tensor],
                          optimizer: Optimizer,
                          return_loss: bool = True,
-                         return_outputs: bool = False) -> Tuple[Optional[torch.Tensor], ...]:
-        # TODO: implement this method
+                         return_outputs: bool = False) -> dict:
         # run pipeline forward backward pass
         # return loss or outputs if needed
-        pass
+        assert isinstance(self.plugin,
+                          PipelinePluginBase), f'The plugin {self.plugin.__class__.__name__} does not support pipeline.'
+        return self.plugin.execute_pipeline(data_iter, model, criterion, optimizer, return_loss, return_outputs)
 
     def no_sync(self, model: nn.Module = None, optimizer: OptimizerWrapper = None) -> contextmanager:
         """Context manager to disable gradient synchronization across DP process groups.
