@@ -104,7 +104,8 @@ We will follow this roadmap to develop Shardformer:
     - [ ] Audio
       - [x] Whisper
     - [ ] Multi-modal
-      - [ ] To be added
+      - [x] SAM
+      - [x] BLIP-2
 
 ## 💡 API Design
 
