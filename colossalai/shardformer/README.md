@@ -105,6 +105,8 @@ We will follow this roadmap to develop Shardformer:
       - [x] Whisper
     - [ ] Multi-modal
       - [ ] To be added
+      - [x] SAM
+      - [x] BLIP-2
 - [ ] Flash Attention Support
     - [ ] NLP
       - [x] BERT
@@ -119,6 +121,7 @@ We will follow this roadmap to develop Shardformer:
       - [ ] ERNIE
       - [ ] GPT Neo
       - [ ] GPT-J
+
 ## 💡 API Design
 
 We will discuss the major components of `ShardFormer` below to help you better understand how things work.
