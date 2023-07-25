@@ -10,7 +10,6 @@ from ..modeling.blip2 import (
     get_jit_fused_blip2_QFormer_self_output_forward,
 )
 from ..modeling.jit import get_jit_fused_dropout_add_func
-from ..modeling.opt import get_opt_flash_attention_forward
 from .basepolicy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = ['BlipPolicy', 'BlipModelPolicy']
@@ -44,7 +43,7 @@ class BlipPolicy(Policy):
             Blip2QFormerSelfOutput,
             Blip2VisionModel,
         )
-        from transformers.models.opt.modeling_opt import OPTAttention, OPTDecoderLayer, OPTForCausalLM
+        from transformers.models.opt.modeling_opt import OPTDecoderLayer, OPTForCausalLM
 
         policy = {}
 
@@ -288,9 +287,6 @@ class BlipPolicy(Policy):
         if self.shard_config.enable_flash_attention:
             policy[Blip2Attention] = ModulePolicyDescription(method_replacement={
                 'forward': get_blip2_flash_attention_forward(),
-            })
-            policy[OPTAttention] = ModulePolicyDescription(method_replacement={
-                'forward': get_opt_flash_attention_forward(),
             })
 
         # use jit operator
