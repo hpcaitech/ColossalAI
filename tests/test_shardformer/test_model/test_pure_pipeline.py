@@ -1,3 +1,4 @@
+import copy
 import random
 from contextlib import nullcontext
 from typing import Any, Callable, Iterator, List, Optional, Tuple
@@ -6,7 +7,6 @@ import numpy as np
 import pytest
 import torch
 import torch.distributed as dist
-from torch import Tensor
 from torch.nn import Module
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
@@ -94,10 +94,10 @@ def execute_pipeline(
     return outputs
 
 
-class data_iter():
+class data_loader():
 
     def __getitem__(self, x):
-        return torch.randint(0, 100, (4, 128)).cuda()
+        return torch.ones((4, 128), dtype=torch.int).cuda() * 10
 
 
 def loss(x, y):
@@ -127,20 +127,30 @@ def run_llama_test(enable_fused_normalization, enable_tensor_parallelism, use_la
     stage_manager = PipelineStageManager(pg_mesh, PP_DIM)
     sub_model_zoo = model_zoo.get_sub_registry('transformers_llama')
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
+        if name != 'transformers_llama':
+            continue
         num_microbatches = 2
         org_model = model_fn().cuda()
+        data_iter = iter(data_loader())
+
+        model_copy = copy.deepcopy(org_model)
+        batch = next(data_iter)
+        with torch.no_grad():
+            y = model_copy(batch)
+            org_loss = loss(batch, y)
         optimizer = torch.optim.AdamW(org_model.parameters(), lr=1e-3)
-        #dataloader=prepare_dataloader(dataset=dataset['train'],batch_size=4)
         schedule = OneForwardOneBackwardSchedule(num_microbatches, stage_manager)
         shard_config = ShardConfig(enable_fused_normalization=enable_fused_normalization,
                                    enable_tensor_parallelism=enable_tensor_parallelism,
                                    pipeline_stage_manager=stage_manager)
         pipelined_model = PipelinedModel(org_model, shard_config, stage_manager)
         pp_optimizer = PipelineOptimizer(optimizer, pipelined_model)
-        data_it = iter(data_iter())
-        results = execute_pipeline(data_it, pipelined_model, loss, pp_optimizer, schedule=schedule)
+        results = execute_pipeline(data_iter, pipelined_model, loss, pp_optimizer, schedule=schedule)
+
         if stage_manager.is_last_stage():
-            assert results['loss'] is not None
+            assert results['loss'] == org_loss
+        else:
+            assert results['loss'] is None
         assert results['outputs'] is None
     torch.cuda.empty_cache()
 
