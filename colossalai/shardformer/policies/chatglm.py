@@ -138,14 +138,15 @@ class ChatGLMPolicy(Policy):
         layers_per_stage = self.distribute_layers(module.num_layers, stage_manager.num_stages)
         if stage_manager.is_first_stage():
             held_layers.append(module.embedding)
-            held_layers.append(module.rotary_pos_emb)
         start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
         held_layers.extend(module.encoder.layers[start_idx:end_idx])
         if stage_manager.is_last_stage():
             if module.encoder.post_layer_norm:
                 held_layers.append(module.encoder.final_layernorm)
-                # rotary_pos_emb is needed for all stages
-                held_layers.append(module.rotary_pos_emb)
+
+        # rotary_pos_emb is needed for all stages
+        held_layers.append(module.rotary_pos_emb)
+
         return held_layers
 
     def set_pipeline_forward(self, model_cls: nn.Module, new_forward: Callable, policy: Dict) -> None:
