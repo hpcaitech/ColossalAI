@@ -61,7 +61,7 @@ def run_t5_test(enable_fused_normalization, enable_tensor_parallelism, use_lazy_
             inputs['hidden_states'] = hidden_states
             inputs['position_bias'] = position_bias
             inputs['encoder_decoder_position_bias'] = encoder_decoder_position_bias
-        if in_decoder and at_first_stage:
+        if in_decoder:
             encoder_output_states = torch.zeros(*hidden_state_shape).cuda()
             inputs['encoder_outputs'] = (encoder_output_states,)
 
@@ -71,12 +71,15 @@ def run_t5_test(enable_fused_normalization, enable_tensor_parallelism, use_lazy_
             if name == 'transformers_t5_for_conditional_generation' and in_decoder:
                 assert output.loss is not None
             else:
+                if name != 'transformers_t5_encoder_model' and not in_decoder:
+                    output = output['encoder_outputs']
                 assert output[0].shape == hidden_state_shape
         else:
             assert output['hidden_states'].shape == hidden_state_shape
             # position_bias information should be passed in T5
             assert output['position_bias'].shape == position_bias_shape
-            # assert output['encoder_decoder_position_bias'].shape == position_bias_shape
+            if in_decoder:
+                assert output['encoder_decoder_position_bias'].shape == position_bias_shape
 
     torch.cuda.empty_cache()
 
