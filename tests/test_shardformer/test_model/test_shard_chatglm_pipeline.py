@@ -39,6 +39,7 @@ def run_chatglm_test(enable_fused_normalization, enable_tensor_parallelism, use_
         hidden_size = 64
         batch_size, seq_len = input_ids.shape
         hidden_state_shape = (seq_len, batch_size, hidden_size)
+
         if name == "transformers_chatglm":
             _, sharded_model = build_pipeline_model(model_fn, stage_manager, enable_fused_normalization,
                                                     enable_tensor_parallelism, use_lazy_init, ChatGLMModelPolicy())
