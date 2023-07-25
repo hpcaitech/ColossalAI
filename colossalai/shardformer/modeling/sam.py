@@ -1,6 +1,4 @@
 import torch
-import torch.distributed as dist
-from torch.distributed import ProcessGroup
 
 
 def forward_fn():
