@@ -4,6 +4,8 @@ import torch.nn as nn
 
 import colossalai.shardformer.layer as col_nn
 
+from ..modeling.chatglm import get_flash_core_attention_forward, get_jit_fused_glm_block_forward
+from ..modeling.jit import get_jit_fused_dropout_add_func
 from .basepolicy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = ['ChatGLMModelPolicy', 'ChatGLMForConditionalGenerationPolicy']
@@ -26,7 +28,7 @@ class ChatGLMModelPolicy(Policy):
         return self.model
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
-        from tests.kit.model_zoo.transformers.chatglm2_6b.modeling_chatglm import ChatGLMModel, GLMBlock
+        from tests.kit.model_zoo.transformers.chatglm2_6b.modeling_chatglm import ChatGLMModel, CoreAttention, GLMBlock
 
         policy = {}
 
@@ -106,6 +108,19 @@ class ChatGLMModelPolicy(Policy):
                     ],
                                                                 policy=policy,
                                                                 target_key=ChatGLMModel)
+
+        # use flash attention
+        if self.shard_config.enable_flash_attention:
+            policy[CoreAttention] = ModulePolicyDescription(method_replacement={
+                'forward': get_flash_core_attention_forward(),
+            })
+
+        # use jit fused operator
+        if self.shard_config.enable_jit_fused:
+            policy[GLMBlock] = ModulePolicyDescription(method_replacement={
+                'forward': get_jit_fused_glm_block_forward(),
+                'dropout_add': get_jit_fused_dropout_add_func(),
+            })
 
         return policy
 
