@@ -4,10 +4,6 @@ import torch.nn.functional as F
 
 def get_flash_core_attention_forward():
 
-    try:
-        from xformers.ops import memory_efficient_attention as me_attention
-    except:
-        raise ImportError("Error: xformers module is not installed. Please install it to use flash attention.")
     from colossalai.kernel.cuda_native.flash_attention import AttnMaskType, ColoAttention
     from tests.kit.model_zoo.transformers.chatglm2_6b.modeling_chatglm import CoreAttention
 
