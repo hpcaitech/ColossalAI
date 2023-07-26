@@ -137,7 +137,7 @@ def run_llama_test(enable_fused_normalization, enable_tensor_parallelism, use_la
         batch = next(data_iter)
         with torch.no_grad():
             y = model_copy(batch)
-            org_loss = loss(batch, y)
+            org_loss = loss(y, batch)
         optimizer = torch.optim.AdamW(org_model.parameters(), lr=1e-3)
         schedule = OneForwardOneBackwardSchedule(num_microbatches, stage_manager)
         shard_config = ShardConfig(enable_fused_normalization=enable_fused_normalization,
