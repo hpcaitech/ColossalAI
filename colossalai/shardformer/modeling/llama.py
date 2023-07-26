@@ -223,9 +223,6 @@ class LlamaPipelineForwards:
         if output_hidden_states:
             logger.warning_once('output_hidden_states=True is not supported for pipeline models at the moment.')
             output_hidden_states = False
-        if return_dict:
-            logger.warning_once('return_dict is not supported for pipeline models at the moment')
-            return_dict = False
 
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
         outputs = LlamaPipelineForwards.llama_model_forward(
@@ -311,9 +308,6 @@ class LlamaPipelineForwards:
         if output_hidden_states:
             logger.warning_once('output_hidden_states=True is not supported for pipeline models at the moment.')
             output_hidden_states = False
-        if return_dict:
-            logger.warning_once('return_dict is not supported for pipeline models at the moment')
-            return_dict = False
 
         transformer_outputs = LlamaPipelineForwards.llama_model_forward(
             self.model,
