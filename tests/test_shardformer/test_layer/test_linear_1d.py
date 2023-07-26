@@ -29,6 +29,7 @@ def check_linear_1d_col(seq_parallel):
     linear_col.load_state_dict(linear.state_dict())
 
     # check computation correctness
+    # [batch_size, seq_len, hidden_size]
     x = torch.rand(2, 4, 32).cuda()
     x_for_unshard = x.expand_as(x.clone())
     x_for_unshard.requires_grad_(True)
