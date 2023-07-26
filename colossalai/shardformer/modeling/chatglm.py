@@ -37,9 +37,9 @@ def get_flash_core_attention_forward():
 
             flash_attention_mask = None
             attn_mask_type = None
-            if (attention_mask is None):
+            if attention_mask is None:
                 attn_mask_type = AttnMaskType.causal
-            elif attention_mask is not None:
+            else:
                 flash_attention_mask = ~(attention_mask[:, :, -1].squeeze(1).to(torch.bool)).contiguous()
                 attn_mask_type = AttnMaskType.paddedcausal
 
@@ -73,7 +73,6 @@ def get_jit_fused_glm_block_forward():
         use_cache=True,
     ):
         # hidden_states: [s, b, h]
-
         # Layer norm at the beginning of the transformer layer.
         layernorm_output = self.input_layernorm(hidden_states)
         # Self attention.
