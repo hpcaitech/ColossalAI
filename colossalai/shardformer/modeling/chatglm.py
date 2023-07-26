@@ -5,7 +5,8 @@ import torch.nn.functional as F
 def get_flash_core_attention_forward():
 
     from colossalai.kernel.cuda_native.flash_attention import AttnMaskType, ColoAttention
-    from tests.kit.model_zoo.transformers.chatglm2_6b.modeling_chatglm import CoreAttention
+
+    from .chatglm2_6b.modeling_chatglm import CoreAttention
 
     def forward(self: CoreAttention, query_layer, key_layer, value_layer, attention_mask):
         pytorch_major_version = int(torch.__version__.split(".")[0])
@@ -61,7 +62,7 @@ def get_flash_core_attention_forward():
 
 def get_jit_fused_glm_block_forward():
 
-    from tests.kit.model_zoo.transformers.chatglm2_6b.modeling_chatglm import GLMBlock
+    from .chatglm2_6b.modeling_chatglm import GLMBlock
 
     def forward(
         self: GLMBlock,
