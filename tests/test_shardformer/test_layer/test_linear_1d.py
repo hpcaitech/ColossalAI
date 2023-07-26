@@ -66,6 +66,7 @@ def check_linear_1d_row(seq_parallel):
     assert linear_row.bias.shape == torch.Size([128])
 
     # check computation correctness
+    # [batch_size, seq_len, hidden_size]
     x = torch.rand(2, 4, 32).cuda()
     x_for_unshard = x.expand_as(x.clone())
     x_for_unshard.requires_grad_(True)
@@ -105,6 +106,7 @@ def check_linear_col_plus_row(seq_parallel):
                                                  seq_parallel=seq_parallel)
 
     # check computation correctness
+    # [batch_size, seq_len, hidden_size]
     x = torch.rand(2, 4, 32).cuda()
     x_for_unshard = x.expand_as(x.clone())
     x_for_unshard.requires_grad_(True)
