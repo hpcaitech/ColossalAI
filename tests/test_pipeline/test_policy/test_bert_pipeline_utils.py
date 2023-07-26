@@ -4,18 +4,15 @@ In the test policy we only test policy: held layers and others, as the tests for
 
 import pytest
 import torch.distributed as dist
-from transformers.models.bert.modeling_bert import BertModel
 
 import colossalai
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.policies.auto_policy import get_autopolicy
 from colossalai.shardformer.policies.base_policy import Policy
-from colossalai.shardformer.policies.bert import BertModelPolicy
 from colossalai.shardformer.shard import ShardConfig
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 from tests.kit.model_zoo import model_zoo
-from tests.test_shardformer.test_model._utils import build_pipeline_model
 
 
 def check_bert_model_policy():
@@ -37,13 +34,11 @@ def check_bert_model_policy():
         else:
             if name == "transformers_bert":
                 assert len(layers) == 1 + 1
-                continue
-            if name in [
+            elif name in [
                     "transformers_bert_for_sequence_classification", "transformers_bert_for_token_classification",
                     "transformers_bert_for_mcq"
             ]:
                 assert len(layers) == 1 + 3
-                continue
             else:
                 assert len(layers) == 1 + 2
 
