@@ -115,6 +115,7 @@ def main():
         plugin = ThreeDimParallelPlugin(tp_size=args.tp,
                                         pp_size=args.pp,
                                         zero_stage=args.zero,
+                                        cpu_offload=True,
                                         enable_fused_normalization=True,
                                         num_microbatches=args.mbs,
                                         initial_scale=2**8,
