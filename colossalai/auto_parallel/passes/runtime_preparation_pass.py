@@ -55,7 +55,7 @@ def size_processing(size: Union[int, torch.Size],
 
 
 def solution_annotation_pass(gm: torch.fx.GraphModule, solution: List[int],
-                               strategies_constructor: StrategiesConstructor):
+                             strategies_constructor: StrategiesConstructor):
     """
     This method is used to stick the solution strategy to the nodes and add the information
     required in runtime into graph as placeholder nodes.
