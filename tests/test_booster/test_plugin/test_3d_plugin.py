@@ -27,7 +27,6 @@ def run_fn(init_method, model_fn, data_gen_fn, output_transform_fn) -> Optional[
         optimizer = HybridAdam(model.parameters(), lr=1e-3)
         criterion = lambda x: x.mean()
         data = data_gen_fn()
-
         data = {
             k: v.to('cuda').repeat(4, 1) if torch.is_tensor(v) or 'Tensor' in v.__class__.__name__ else v
             for k, v in data.items()
