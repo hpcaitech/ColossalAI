@@ -2,7 +2,10 @@ import pytest
 import torch
 
 import colossalai
+from colossalai.cluster import ProcessGroupMesh
 from colossalai.logging import disable_existing_loggers
+from colossalai.pipeline.stage_manager import PipelineStageManager
+from colossalai.shardformer.policies.auto_policy import get_autopolicy
 from colossalai.tensor.d_tensor.api import is_customized_distributed_tensor, is_distributed_tensor
 from colossalai.testing import (
     assert_hf_output_close,
