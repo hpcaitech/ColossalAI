@@ -106,7 +106,7 @@ def lora_linear_wrapper(linear: nn.Linear, lora_rank: int) -> LoraLinear:
 
 def convert_to_lora_recursively(module: nn.Module, lora_rank: int) -> None:
     for name, child in module.named_children():
-        if isinstance(child, nn.Linear):
+        if isinstance(child, nn.Linear) and not getattr(child, 'lora_ignore', False):
             setattr(module, name, lora_linear_wrapper(child, lora_rank))
         else:
             convert_to_lora_recursively(child, lora_rank)

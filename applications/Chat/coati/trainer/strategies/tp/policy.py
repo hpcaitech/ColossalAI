@@ -3,6 +3,7 @@ from types import MethodType
 from typing import Dict, Type
 
 import torch.nn as nn
+from coati.models.lora import LoraLinear
 from torch.nn import Module
 from transformers.models.bloom.modeling_bloom import BloomAttention, BloomForCausalLM, BloomMLP
 from transformers.models.opt.modeling_opt import OPTAttention, OPTDecoder, OPTDecoderLayer
@@ -12,7 +13,14 @@ from colossalai.core import global_context as gpc
 from colossalai.lazy import LazyTensor
 from colossalai.nn.layer.utils import divide
 
-from .parallel import linear_1d_col_fn, linear_1d_row_fn, vocab_parallel_embedding_fn, vocab_parallel_lm_head_fn
+from .parallel import (
+    linear_1d_col_fn,
+    linear_1d_row_fn,
+    lora_linear_1d_col_fn,
+    lora_linear_1d_row_fn,
+    vocab_parallel_embedding_fn,
+    vocab_parallel_lm_head_fn,
+)
 
 
 class Policy:
@@ -38,7 +46,7 @@ class Linear1DColPolicy(Policy):
         self.tp_rank = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
 
     def replace(self, module: nn.Module) -> bool:
-        assert isinstance(module, nn.Linear)
+        assert isinstance(module, (nn.Linear, LoraLinear))
         # shard params
         # TODO(ver217): this should be done via DTensor
         divide(module.out_features, self.tp_size)
@@ -50,7 +58,8 @@ class Linear1DColPolicy(Policy):
                 module.bias.materialize()
             module.bias.data = module.bias.chunk(self.tp_size, dim=0)[self.tp_rank].data.clone()
         # replace forward
-        module.forward = MethodType(partial(linear_1d_col_fn, gather_output=self.gather_output), module)
+        fwd = lora_linear_1d_col_fn if isinstance(module, LoraLinear) else linear_1d_col_fn
+        module.forward = MethodType(partial(fwd, gather_output=self.gather_output), module)
         return False
 
 
@@ -63,14 +72,15 @@ class Linear1DRowPolicy(Policy):
         self.tp_rank = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
 
     def replace(self, module: nn.Module) -> bool:
-        assert isinstance(module, nn.Linear)
+        assert isinstance(module, (nn.Linear, LoraLinear))
         divide(module.in_features, gpc.tensor_parallel_size)
         if isinstance(module.weight, LazyTensor):
             module.weight.materialize()
         module.weight.data = module.weight.chunk(self.tp_size, dim=1)[self.tp_rank].data.clone()
         if module.bias is not None and isinstance(module.bias, LazyTensor):
             module.bias.materialize()
-        module.forward = MethodType(partial(linear_1d_row_fn, parallel_input=self.parallel_input), module)
+        fwd = lora_linear_1d_row_fn if isinstance(module, LoraLinear) else linear_1d_row_fn
+        module.forward = MethodType(partial(fwd, parallel_input=self.parallel_input), module)
         return False
 
 

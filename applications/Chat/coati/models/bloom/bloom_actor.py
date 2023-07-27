@@ -32,4 +32,5 @@ class BLOOMActor(Actor):
             model = BloomForCausalLM(BloomConfig())
         if checkpoint:
             model.gradient_checkpointing_enable()
+        model.lm_head.lora_ignore = True
         super().__init__(model, lora_rank, lora_train_bias)

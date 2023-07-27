@@ -2,8 +2,10 @@ from abc import ABC, abstractmethod
 from contextlib import nullcontext
 from typing import Any, List, Optional, Tuple, Union
 
+import loralib as lora
 import torch
 import torch.nn as nn
+from coati.models.lora import LoRAModule
 from coati.replay_buffer import ReplayBuffer
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
@@ -73,7 +75,10 @@ class Strategy(ABC):
             if isinstance(arg, tuple):
                 assert len(arg) == 2, f'Expect (model, optimizer) pair, got a tuple with size "{len(arg)}"'
                 model, optimizer = arg
+                is_lora = isinstance(model, LoRAModule)
                 model = self.setup_model(model)
+                if is_lora:
+                    lora.mark_only_lora_as_trainable(model)
                 optimizer = self.setup_optimizer(optimizer, model)
                 rets.append((model, optimizer))
             elif isinstance(arg, nn.Module):

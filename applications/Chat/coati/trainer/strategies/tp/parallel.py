@@ -1,5 +1,7 @@
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from coati.models.lora import LoraLinear
 from torch import Tensor
 
 from colossalai.context import ParallelMode
@@ -48,6 +50,58 @@ def linear_1d_row_fn(self: nn.Linear, input_: Tensor, parallel_input: bool = Tru
     output = reduce_input(output_parallel, ParallelMode.PARALLEL_1D)
     if self.bias is not None:
         output = output + self.bias
+    return output
+
+
+def lora_linear_1d_col_fn(self: LoraLinear, input_: Tensor, gather_output: bool = False) -> Tensor:
+    assert input_.shape[-1] == self.weight.shape[-1], \
+        'Invalid shapes in Linear1D_Col forward: input={}, weight={}. Expected last dim of input {}.'.format(
+        input_.shape, self.weight.shape, self.weight.shape[-1])
+    # Set up backprop all-reduce.
+    # TODO(ver217): this relies on GPC
+    input_parallel = reduce_grad(input_, ParallelMode.PARALLEL_1D)
+    # Matrix multiply.
+
+    output_parallel = F.linear(input_parallel, self.weight, self.bias)
+
+    if gather_output:
+        # All-gather across the partitions.
+        output = gather_forward_split_backward(output_parallel, ParallelMode.PARALLEL_1D, dim=-1)
+    else:
+        output = output_parallel
+
+    if self.r > 0:
+        lora_addon = (self.lora_dropout(input_) @ self.lora_A.t() @ self.lora_B.t()) * self.scaling
+        if not gather_output:
+            lora_addon = split_forward_gather_backward(lora_addon, ParallelMode.PARALLEL_1D, dim=-1)
+        output = output + lora_addon
+    return output
+
+
+def lora_linear_1d_row_fn(self: LoraLinear, input_: Tensor, parallel_input: bool = True) -> Tensor:
+    # Set up backprop all-reduce.
+    if parallel_input:
+        assert input_.shape[-1] == self.weight.shape[-1], \
+            'Invalid shapes in Linear1D_Row forward: input={}, weight={}. Expected last dim of input {}.'.format(
+            input_.shape, self.weight.shape, self.weight.shape[-1])
+        if self.r > 0:
+            lora_input = gather_forward_split_backward(input_, ParallelMode.PARALLEL_1D, dim=-1)
+        input_ = input_
+    else:
+        assert divide(input_.shape[-1], gpc.tensor_parallel_size) == self.weight.shape[-1], \
+            'Invalid shapes in Linear1D_Row forward: input={}, weight={}. Expected last dim of input {}.'.format(
+            input_.shape, self.weight.shape, self.weight.shape[-1] * gpc.tensor_parallel_size)
+        if self.r > 0:
+            lora_input = input_
+        input_ = split_forward_gather_backward(input_, ParallelMode.PARALLEL_1D, dim=-1)
+
+    output_parallel = F.linear(input_, self.weight)
+    output = reduce_input(output_parallel, ParallelMode.PARALLEL_1D)
+    if self.bias is not None:
+        output = output + self.bias
+    if self.r > 0:
+        lora_addon = (self.lora_dropout(lora_input) @ self.lora_A.t() @ self.lora_B.t()) * self.scaling
+        output = output + lora_addon
     return output
 
 

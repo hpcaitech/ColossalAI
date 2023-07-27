@@ -97,6 +97,9 @@ class TPZeroStrategy(NaiveStrategy):
             for b in m.buffers():
                 b.data = b.data.to(device)
             optim_.to(device)
+            for p in m.parameters():
+                if p.device != device:
+                    p.data = p.data.to(device)
             return m
 
         model.to = MethodType(model_to, model)
