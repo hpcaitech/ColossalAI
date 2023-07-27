@@ -1,7 +1,7 @@
 import copy
 from typing import List
 
-from colossalai.auto_parallel.tensor_shard.sharding_strategy import (MemoryCost, ShardingStrategy, TrainCycleItem)
+from colossalai.auto_parallel.tensor_shard.sharding_strategy import MemoryCost, ShardingStrategy, TrainCycleItem
 
 from .strategy_generator import FollowingStrategyGenerator
 
