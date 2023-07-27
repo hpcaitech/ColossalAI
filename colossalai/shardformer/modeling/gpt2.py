@@ -52,6 +52,8 @@ class GPT2PipelineForwards:
         # This function is modified on the basis of transformers.models.gpt2.modeling_gpt2.GPT2Model.forward.
         # Please refer to original code of transformers for more details.
 
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
         logger = logging.get_logger(__name__)
 
         # Preprocess passed in arguments

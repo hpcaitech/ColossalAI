@@ -1,6 +1,5 @@
 import copy
 import random
-from contextlib import nullcontext
 from typing import Any, Callable, Iterator, List, Optional, Tuple
 
 import numpy as np
@@ -100,8 +99,8 @@ class data_loader():
         return torch.ones((4, 128), dtype=torch.int).cuda() * 10
 
 
-def loss(x, y):
-    return (x[0].float().mean() - y[0].float().mean())
+def loss(y, x):
+    return (y[0].float().mean() - x[0].float().mean())
 
 
 @parameterize('enable_fused_normalization', [False])
@@ -137,7 +136,7 @@ def run_llama_test(enable_fused_normalization, enable_tensor_parallelism, use_la
         batch = next(data_iter)
         with torch.no_grad():
             y = model_copy(batch)
-            org_loss = loss(batch, y)
+            org_loss = loss(y, batch)
         optimizer = torch.optim.AdamW(org_model.parameters(), lr=1e-3)
         schedule = OneForwardOneBackwardSchedule(num_microbatches, stage_manager)
         shard_config = ShardConfig(enable_fused_normalization=enable_fused_normalization,

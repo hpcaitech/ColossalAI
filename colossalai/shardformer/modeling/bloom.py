@@ -313,9 +313,6 @@ class BloomPipelineForwards:
         if output_hidden_states:
             logger.warning_once('output_hidden_states=True is not supported for pipeline models at the moment.')
             output_hidden_states = False
-        if return_dict:
-            logger.warning_once('return_dict is not supported for pipeline models at the moment')
-            return_dict = False
 
         transformer_outputs = BloomPipelineForwards.bloom_model_forward(self.transformer,
                                                                         input_ids,
@@ -411,9 +408,6 @@ class BloomPipelineForwards:
         if output_hidden_states:
             logger.warning_once('output_hidden_states=True is not supported for pipeline models at the moment.')
             output_hidden_states = False
-        if return_dict:
-            logger.warning_once('return_dict is not supported for pipeline models at the moment')
-            return_dict = False
 
         transformer_outputs = BloomPipelineForwards.bloom_model_forward(
             self.transformer,
@@ -537,9 +531,6 @@ class BloomPipelineForwards:
         if output_hidden_states:
             logger.warning_once('output_hidden_states=True is not supported for pipeline models at the moment.')
             output_hidden_states = False
-        if return_dict:
-            logger.warning_once('return_dict is not supported for pipeline models at the moment')
-            return_dict = False
 
         transformer_outputs = BloomPipelineForwards.bloom_model_forward(
             self.transformer,
@@ -626,9 +617,6 @@ class BloomPipelineForwards:
         if output_hidden_states:
             logger.warning_once('output_hidden_states=True is not supported for pipeline models at the moment.')
             output_hidden_states = False
-        if return_dict:
-            logger.warning_once('return_dict is not supported for pipeline models at the moment')
-            return_dict = False
 
         outputs = BloomPipelineForwards.bloom_model_forward(
             self.transformer,
