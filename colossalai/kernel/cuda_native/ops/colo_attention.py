@@ -5,7 +5,7 @@ import torch
 from einops import rearrange
 
 from ..scaled_softmax import AttnMaskType
-from .padding import Repad, Unpad
+from .padding_processor import Repad, Unpad
 
 
 class ColoAttention(torch.nn.Module):
