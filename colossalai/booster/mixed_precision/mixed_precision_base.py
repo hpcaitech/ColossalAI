@@ -13,10 +13,11 @@ class MixedPrecision(ABC):
     """
 
     @abstractmethod
-    def configure(self,
-                  model: nn.Module,
-                  optimizer: Optional[Optimizer] = None,
-                  criterion: Optional[Callable] = None,
-                  ) -> Tuple[nn.Module, OptimizerWrapper, Callable]:
+    def configure(
+        self,
+        model: nn.Module,
+        optimizer: Optional[Optimizer] = None,
+        criterion: Optional[Callable] = None,
+    ) -> Tuple[nn.Module, OptimizerWrapper, Callable]:
         # TODO: implement this method
         pass
