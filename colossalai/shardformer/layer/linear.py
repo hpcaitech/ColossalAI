@@ -24,6 +24,8 @@ from colossalai.tensor.d_tensor.api import (
 
 from ._operation import (
     gather_forward_split_backward,
+    linear_gather_forward_reducescatter_backward,
+    linear_reducescatter_forward_gather_backward,
     linear_with_async_comm,
     reduce_forward,
     split_forward_gather_backward,
@@ -69,6 +71,7 @@ class Linear1D_Col(ParallelModule):
                  device: torch.device = None,
                  process_group: ProcessGroup = None,
                  gather_output: bool = False,
+                 seq_parallel: bool = False,
                  skip_bias_add: bool = False,
                  weight: Optional[Parameter] = None,
                  bias_: Optional[Parameter] = None,
@@ -80,6 +83,7 @@ class Linear1D_Col(ParallelModule):
         self.in_features = in_features
         self.out_features = out_features
         self.gather_output = gather_output
+        self.seq_parallel = seq_parallel
         self.skip_bias_add = skip_bias_add
         self.device = device
         self.process_group = process_group
@@ -172,7 +176,11 @@ class Linear1D_Col(ParallelModule):
 
         # Matrix multiply.
         bias = self.bias if not self.skip_bias_add else None
-        output_parallel = linear_with_async_comm(input_parallel, self.weight, bias, self.process_group, True)
+        if self.seq_parallel:
+            output_parallel = linear_gather_forward_reducescatter_backward(input_parallel, self.weight, bias,
+                                                                           self.process_group, True, 1)
+        else:
+            output_parallel = linear_with_async_comm(input_parallel, self.weight, bias, self.process_group, True)
 
         if self.gather_output:
             # All-gather across the partitions.
@@ -213,6 +221,7 @@ class Linear1D_Row(ParallelModule):
                  dtype: torch.dtype = None,
                  device: torch.device = None,
                  process_group: ProcessGroup = None,
+                 seq_parallel: bool = False,
                  parallel_input: bool = True,
                  skip_bias_add: bool = False,
                  weight: Optional[Parameter] = None,
@@ -230,6 +239,7 @@ class Linear1D_Row(ParallelModule):
         self.parallel_input = parallel_input
         self.skip_bias_add = skip_bias_add
         self.process_group = process_group
+        self.seq_parallel = seq_parallel
         self.num_partitions = dist.get_world_size(self.process_group)
 
         if skip_bias_add and not bias:
@@ -357,7 +367,10 @@ class Linear1D_Row(ParallelModule):
                 output = torch.cat(output_parallel_list, dim=-1)
         else:
             output_parallel = F.linear(input_, self.weight)
-            output = reduce_forward(output_parallel, self.process_group)
+            if self.seq_parallel:
+                output = linear_reducescatter_forward_gather_backward(output_parallel, self.process_group, 1)
+            else:
+                output = reduce_forward(output_parallel, self.process_group)
 
         if not self.skip_bias_add:
             if self.bias is not None:
