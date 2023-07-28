@@ -7,7 +7,7 @@ from torch.nn import functional as F
 import torch.distributed as dist
 from transformers.models.bloom.configuration_bloom import BloomConfig
 
-from inference.ops.self_attention import compute_attention_for_bloom
+from colossalai.kernel.triton.ops import compute_attention_for_bloom
 
 def dropout_add(x: torch.Tensor, residual: torch.Tensor, prob: float, training: bool) -> torch.Tensor:
     """
