@@ -66,9 +66,6 @@ class TritonBloomAttention(BloomAttention):
         _, _, kv_length = key_layer.shape
         alibi = alibi.view(batch_size, num_heads, q_length, -1)
 
-        # print(query_layer.shape)
-        # print(query_layer)
-
         context_layer = compute_attention_for_bloom(
             q=query_layer.view(batch_size, self.num_heads, q_length, self.head_dim),
             k=key_layer.view(batch_size, self.num_heads, self.head_dim, kv_length),
