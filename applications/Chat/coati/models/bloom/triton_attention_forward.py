@@ -6,6 +6,7 @@ import torch.nn as nn
 from torch.nn import functional as F
 import torch.distributed as dist
 from transformers.models.bloom.configuration_bloom import BloomConfig
+from transformers.models.bloom.model_bloom import BloomAttention
 
 from colossalai.kernel.triton.ops import compute_attention_for_bloom
 
@@ -27,48 +28,9 @@ def dropout_add(x: torch.Tensor, residual: torch.Tensor, prob: float, training: 
     out = residual + out
     return out
 
-class TritonBloomAttention(nn.Module):
+class TritonBloomAttention(BloomAttention):
     def __init__(self, config: BloomConfig):
-        super().__init__()
-
-        self.pretraining_tp = config.pretraining_tp
-        self.slow_but_exact = config.slow_but_exact
-
-        self.hidden_size = config.hidden_size
-        self.num_heads = config.n_head
-        self.head_dim = self.hidden_size // self.num_heads
-        self.split_size = self.hidden_size
-        self.hidden_dropout = config.hidden_dropout
-
-        if self.head_dim * self.num_heads != self.hidden_size:
-            raise ValueError(
-                f"`hidden_size` must be divisible by num_heads (got `hidden_size`: {self.hidden_size} and `num_heads`:"
-                f" {self.num_heads})."
-            )
-
-        # Layer-wise attention scaling
-        self.inv_norm_factor = 1.0 / math.sqrt(self.head_dim)
-        self.beta = 1.0
-
-        self.query_key_value = nn.Linear(self.hidden_size, 3 * self.hidden_size, bias=True)
-        self.dense = nn.Linear(self.hidden_size, self.hidden_size)
-        self.attention_dropout = nn.Dropout(config.attention_dropout)
-
-    def _split_heads(self, fused_qkv: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """
-        Split the last dimension into (num_heads, head_dim) without making any copies, results share same memory
-        storage as `fused_qkv`
-
-        Args:
-            fused_qkv (`torch.tensor`, *required*): [batch_size, seq_length, num_heads * 3 * head_dim]
-
-        Returns:
-            query: [batch_size, seq_length, num_heads, head_dim] key: [batch_size, seq_length, num_heads, head_dim]
-            value: [batch_size, seq_length, num_heads, head_dim]
-        """
-        batch_size, seq_length, three_times_hidden_size = fused_qkv.shape
-        fused_qkv = fused_qkv.view(batch_size, seq_length, self.num_heads, 3, self.head_dim)
-        return fused_qkv[..., 0, :], fused_qkv[..., 1, :], fused_qkv[..., 2, :]
+        super(TritonBloomAttention, self).__init__(config)
 
     def forward(
         self,
