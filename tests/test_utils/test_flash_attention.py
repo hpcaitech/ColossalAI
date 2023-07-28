@@ -4,11 +4,12 @@ import pytest
 import torch
 from einops import rearrange
 
-from colossalai.kernel.cuda_native.flash_attention import HAS_MEM_EFF_ATTN
+from colossalai.kernel.cuda_native.flash_attn.version_available import HAS_FLASH_ATTN, HAS_MEM_EFF_ATTN
 from colossalai.testing import clear_cache_before_run, parameterize
 
-if HAS_MEM_EFF_ATTN:
-    from colossalai.kernel.cuda_native.flash_attention import AttnMaskType, ColoAttention
+if HAS_MEM_EFF_ATTN or HAS_FLASH_ATTN:
+    from colossalai.kernel.cuda_native.flash_attention import AttnMaskType
+    from colossalai.kernel.cuda_native.flash_attn.colo_attention import ColoAttention
 
 
 def baseline_attention(Z, N_CTX, H, q, k, v, sm_scale):
@@ -22,10 +23,11 @@ def baseline_attention(Z, N_CTX, H, q, k, v, sm_scale):
     return ref_out
 
 
-@pytest.mark.skipif(HAS_MEM_EFF_ATTN == False, reason="xformers is not available")
+@pytest.mark.skipif(not HAS_MEM_EFF_ATTN and not HAS_FLASH_ATTN, reason="xformers is not available")
 @clear_cache_before_run()
 @parameterize('proj_shape', [(6, 8, 4, 16)])
 def test_attention_gpt(proj_shape, dtype=torch.float16):
+    # TODO checkout output value
     (B, S, H, D_HEAD) = proj_shape
     D = H * D_HEAD
 
@@ -48,7 +50,7 @@ def test_attention_gpt(proj_shape, dtype=torch.float16):
     y.backward(dy)
 
 
-@pytest.mark.skipif(HAS_MEM_EFF_ATTN == False, reason="xformers is not available")
+@pytest.mark.skipif(not HAS_MEM_EFF_ATTN and not HAS_FLASH_ATTN, reason="xformers is not available")
 @clear_cache_before_run()
 @parameterize('proj_shape', [(6, 8, 4, 16)])
 def test_attention_bert(proj_shape, dtype=torch.float16):
@@ -73,7 +75,7 @@ def test_attention_bert(proj_shape, dtype=torch.float16):
     y.backward(dy)
 
 
-@pytest.mark.skipif(HAS_MEM_EFF_ATTN == False, reason="xformers is not available")
+@pytest.mark.skipif(not HAS_MEM_EFF_ATTN and not HAS_FLASH_ATTN, reason="xformers is not available")
 @clear_cache_before_run()
 @parameterize('proj_shape', [(6, 8, 4, 16)])
 def test_attention_no_mask(proj_shape, dtype=torch.float16):
@@ -94,7 +96,7 @@ def test_attention_no_mask(proj_shape, dtype=torch.float16):
     y.backward(dy)
 
 
-@pytest.mark.skipif(HAS_MEM_EFF_ATTN == False, reason="xformers is not available")
+@pytest.mark.skipif(not HAS_MEM_EFF_ATTN and not HAS_FLASH_ATTN, reason="xformers is not available")
 @clear_cache_before_run()
 @parameterize('proj_shape', [(6, 24, 8, 4, 16)])
 def test_cross_attention(proj_shape, dtype=torch.float16):

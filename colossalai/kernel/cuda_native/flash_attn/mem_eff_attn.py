@@ -19,7 +19,6 @@ if HAS_MEM_EFF_ATTN:
     )
 
     from ..scaled_softmax import AttnMaskType
-    from .padding import Repad, Unpad
 
     allow_alibi = True
     for op in MemoryEfficientAttentionCutlassOp:
@@ -34,8 +33,6 @@ if HAS_MEM_EFF_ATTN:
                           bias: Optional[torch.Tensor] = None,
                           dropout=0.0,
                           scale=None):
-
-        # batch_size, tgt_len, src_len = query.shape[0], query.shape[1], key.shape[1]
         attn_bias = None
         if attn_mask_type and attn_mask_type.value % 2 == 1:    # bert style
             if attn_mask_type == AttnMaskType.padding:

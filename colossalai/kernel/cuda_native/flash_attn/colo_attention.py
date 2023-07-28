@@ -6,6 +6,7 @@ from einops import rearrange
 
 from ..scaled_softmax import AttnMaskType
 from .padding_processor import Repad, Unpad
+from .version_available import HAS_FLASH_ATTN, HAS_MEM_EFF_ATTN, HAS_TRITON
 
 
 class ColoAttention(torch.nn.Module):
@@ -19,6 +20,9 @@ class ColoAttention(torch.nn.Module):
         else:
             self.scale = 1 / math.sqrt(embed_dim // num_heads)
         self.dropout = dropout
+
+    if not HAS_TRITON and not HAS_FLASH_ATTN and not HAS_MEM_EFF_ATTN:
+        raise Exception("flash attention can not support!")
 
     @staticmethod
     def get_seq_info_from_mask(attn_mask: torch.Tensor):
@@ -41,13 +45,7 @@ class ColoAttention(torch.nn.Module):
                 attn_mask: Optional[torch.Tensor] = None,
                 attn_mask_type: Optional[AttnMaskType] = None,
                 bias: Optional[torch.Tensor] = None):
-
         batch_size, tgt_len, src_len = query.shape[0], query.shape[1], key.shape[1]
-
-        import pathlib
-        pathlib.Path(
-            "/home/lcjmy/code/personal/ColossalAI/colossalai/kernel/cuda_native/ops/flash_attention_2.txt").write_text(
-                str(query))
 
         q_seqlen = None
         kv_seqlen = None
@@ -71,15 +69,13 @@ class ColoAttention(torch.nn.Module):
                     query = rearrange(query, "b s ... -> c (b s) ...", c=1)
                     key, value = self.unpad(torch.stack([query, key, value], dim=2), kv_indices).unbind(dim=2)
 
-        out = get_attention_output(query,
-                                   key,
-                                   value,
-                                   q_seqlen,
-                                   kv_seqlen,
-                                   attn_mask_type=attn_mask_type,
-                                   bias=bias,
-                                   dropout=self.dropout,
-                                   scale=self.scale)
+        out = self.get_attention_output(query,
+                                        key,
+                                        value,
+                                        q_seqlen,
+                                        kv_seqlen,
+                                        attn_mask_type=attn_mask_type,
+                                        bias=bias)
 
         if attn_mask_type and attn_mask_type.value % 2 == 1 and batch_size > 1:
             out = self.repad(out, q_indices, batch_size, tgt_len)
@@ -87,46 +83,46 @@ class ColoAttention(torch.nn.Module):
         out = rearrange(out, 'b s h d -> b s (h d)')
         return out
 
+    def get_attention_output(self, query, key, value, q_seqlen, kv_seqlen, attn_mask_type, bias):
+        from .version_available import HAS_FLASH_ATTN, HAS_MEM_EFF_ATTN, HAS_TRITON
 
-def get_attention_output(query, key, value, q_seqlen, kv_seqlen, attn_mask_type, bias, dropout, scale):
-    from .version_available import HAS_FLASH_ATTN, HAS_MEM_EFF_ATTN, HAS_TRITON
+        # TODO deal with dispath better
+        if HAS_FLASH_ATTN:
+            from .flash_attn_2 import flash_attention_q_k_v
+            kwargs = dict(q=query,
+                          k=key,
+                          v=value,
+                          sm_scale=self.scale,
+                          cu_seqlens_q=q_seqlen,
+                          cu_seqlens_kv=(q_seqlen if kv_seqlen == None else kv_seqlen),
+                          dropout_p=self.dropout,
+                          causal=(attn_mask_type == AttnMaskType.causal))
+            attention_output = flash_attention_q_k_v(**kwargs)
+            return attention_output
 
-    # TODO deal with dispath better
-    HAS_MEM_EFF_ATTN = False
-    if HAS_MEM_EFF_ATTN:
-        from .mem_eff_attn import mem_eff_attention
-        kwargs = dict(
-            query=query,
-            key=key,
-            value=value,
-            q_seqlen=q_seqlen,
-            kv_seqlen=kv_seqlen,
-            attn_mask_type=attn_mask_type,
-            bias=bias,
-            dropout=dropout,
-            scale=scale,
-        )
-        attention_output = mem_eff_attention(**kwargs)
-        return attention_output
-    if HAS_FLASH_ATTN:
-        from .flash_attn_2 import flash_attention_q_k_v
-        kwargs = dict(q=query,
-                      k=key,
-                      v=value,
-                      sm_scale=scale,
-                      cu_seqlens_q=q_seqlen,
-                      cu_seqlens_kv=kv_seqlen,
-                      dropout_p=dropout,
-                      causal=(attn_mask_type == AttnMaskType.causal))
-        attention_output = flash_attention_q_k_v(**kwargs)
-        return attention_output
-    if HAS_TRITON:
-        from .triton_flash_attn import triton_flash_attention
-        kwargs = dict(
-            q=query,
-            k=key,
-            v=value,
-            sm_scale=scale,
-        )
-        attention_output = triton_flash_attention(**kwargs)
-        return attention_output
+        if HAS_MEM_EFF_ATTN:
+            from .mem_eff_attn import mem_eff_attention
+            kwargs = dict(
+                query=query,
+                key=key,
+                value=value,
+                q_seqlen=q_seqlen,
+                kv_seqlen=kv_seqlen,
+                attn_mask_type=attn_mask_type,
+                bias=bias,
+                dropout=self.dropout,
+                scale=self.scale,
+            )
+            attention_output = mem_eff_attention(**kwargs)
+            return attention_output
+
+        if HAS_TRITON:
+            from .triton_flash_attn import triton_flash_attention
+            kwargs = dict(
+                q=query,
+                k=key,
+                v=value,
+                sm_scale=self.scale,
+            )
+            attention_output = triton_flash_attention(**kwargs)
+            return attention_output

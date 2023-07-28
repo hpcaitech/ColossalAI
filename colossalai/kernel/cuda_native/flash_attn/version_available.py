@@ -68,9 +68,3 @@ def mem_eff_attn_available():
 HAS_TRITON = triton_available()
 HAS_FLASH_ATTN = flash_attn_2_available()
 HAS_MEM_EFF_ATTN = mem_eff_attn_available()
-
-if not HAS_TRITON and not HAS_FLASH_ATTN and not HAS_MEM_EFF_ATTN:
-    raise Exception("flash attention can not support!")
-print(HAS_TRITON)
-print(HAS_FLASH_ATTN)
-print(HAS_MEM_EFF_ATTN)
