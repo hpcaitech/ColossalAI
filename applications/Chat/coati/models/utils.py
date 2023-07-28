@@ -2,6 +2,7 @@ from typing import Optional, Union
 
 import loralib as lora
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -13,6 +14,42 @@ from colossalai.nn.layer.parallel_1d._utils import (
     reduce_input,
     split_forward_gather_backward,
 )
+
+
+def _reduce_max(input_, parallel_mode):
+    # skip if only one rank involved
+    if gpc.get_world_size(parallel_mode) == 1:
+        return input_
+    group = gpc.get_cpu_group(parallel_mode) if input_.device.type == "cpu" else gpc.get_group(parallel_mode)
+    dist.all_reduce(input_, op=dist.ReduceOp.MAX, group=group)
+
+    return input_
+
+
+class _ReduceInput(torch.autograd.Function):
+    """
+    All-reduce the input from the model parallel region.
+
+    Args:
+        input_: input matrix.
+        parallel_mode: parallel mode.
+    """
+
+    @staticmethod
+    def symbolic(graph, input_):
+        return _reduce_max(input_)
+
+    @staticmethod
+    def forward(ctx, input_, parallel_mode):
+        return _reduce_max(input_, parallel_mode)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        return grad_output, None
+
+
+def reduce_input_max(input_, parallel_mode):
+    return _ReduceInput.apply(input_, parallel_mode)
 
 
 def compute_approx_kl(log_probs: torch.Tensor,
@@ -57,7 +94,7 @@ def log_probs_from_logits(logits: torch.Tensor, labels: torch.Tensor) -> torch.T
 
 def dist_log_probs_from_logits(parallel_logits: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
     logits_max = torch.max(parallel_logits, dim=-1)[0]
-    logits_max = reduce_input(logits_max, ParallelMode.PARALLEL_1D)
+    logits_max = reduce_input_max(logits_max, ParallelMode.PARALLEL_1D)
 
     # minus the max to avoid the result of sum of exp is too large and the log is nan
     parallel_logits = parallel_logits - logits_max.unsqueeze(-1)
