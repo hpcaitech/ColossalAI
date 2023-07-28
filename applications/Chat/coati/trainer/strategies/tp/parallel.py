@@ -128,7 +128,8 @@ def vocab_parallel_lm_head_fn(self: nn.Linear, input_: Tensor) -> Tensor:
     input_parallel = reduce_grad(input_, ParallelMode.PARALLEL_1D)
     # Matrix multiply.
     output_parallel = F.linear(input_parallel, self.weight, self.bias)
-    gather_output = getattr(self, 'gather_output', True)
+    # gather_output = getattr(self, 'gather_output', True)
+    gather_output = False
     if gather_output:
         # All-gather across the partitions.
         output = gather_forward_split_backward(output_parallel, ParallelMode.PARALLEL_1D, dim=-1)

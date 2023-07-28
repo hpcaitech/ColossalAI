@@ -5,6 +5,15 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from colossalai.context import ParallelMode
+from colossalai.core import global_context as gpc
+from colossalai.nn.layer.parallel_1d._utils import (
+    gather_forward_split_backward,
+    reduce_grad,
+    reduce_input,
+    split_forward_gather_backward,
+)
+
 
 def compute_approx_kl(log_probs: torch.Tensor,
                       log_probs_base: torch.Tensor,
@@ -46,10 +55,37 @@ def log_probs_from_logits(logits: torch.Tensor, labels: torch.Tensor) -> torch.T
     return log_probs_labels.squeeze(-1)
 
 
-def calc_action_log_probs(output: torch.Tensor,
-                          sequences: torch.LongTensor,
-                          num_actions: int
-                          ) -> torch.Tensor:
+def dist_log_probs_from_logits(parallel_logits: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+    logits_max = torch.max(parallel_logits, dim=-1)[0]
+    logits_max = reduce_input(logits_max, ParallelMode.PARALLEL_1D)
+
+    # minus the max to avoid the result of sum of exp is too large and the log is nan
+    parallel_logits = parallel_logits - logits_max.unsqueeze(-1)
+
+    exp_sum = torch.sum(torch.exp(parallel_logits), dim=-1)
+    exp_sum = reduce_input(exp_sum, ParallelMode.PARALLEL_1D)
+    parallel_log_probs = parallel_logits - torch.log(exp_sum.unsqueeze(-1))
+
+    # create mask
+    rank = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
+    world_size = gpc.get_world_size(ParallelMode.PARALLEL_1D)
+    partition_vocab_size = parallel_logits.shape[-1]
+    global_vocab_size = partition_vocab_size * world_size
+    delta = (global_vocab_size + world_size - 1) // world_size
+    down_threshold = rank * delta
+    up_threshold = down_threshold + delta
+    mask = (labels < down_threshold) | (labels >= up_threshold)
+    masked_labels = labels.clone() - down_threshold
+    masked_labels[mask] = 0
+
+    parallel_log_prob_labels = parallel_log_probs.gather(dim=-1, index=masked_labels.unsqueeze(-1))
+    parallel_log_prob_labels = parallel_log_prob_labels.squeeze(-1)
+    parallel_log_prob_labels[mask] = 0
+    parallel_log_prob_labels = reduce_input(parallel_log_prob_labels, ParallelMode.PARALLEL_1D)
+    return parallel_log_prob_labels
+
+
+def calc_action_log_probs(output: torch.Tensor, sequences: torch.LongTensor, num_actions: int) -> torch.Tensor:
     """Calculate action log probs.
 
     Args:
@@ -61,7 +97,10 @@ def calc_action_log_probs(output: torch.Tensor,
         torch.Tensor: Action log probs.
     """
     logits = output['logits']
-    log_probs = log_probs_from_logits(logits[:, :-1, :], sequences[:, 1:])
+    if gpc.is_initialized(ParallelMode.PARALLEL_1D) and gpc.get_world_size(ParallelMode.PARALLEL_1D) > 1:
+        log_probs = dist_log_probs_from_logits(logits[:, :-1, :], sequences[:, 1:])
+    else:
+        log_probs = log_probs_from_logits(logits[:, :-1, :], sequences[:, 1:])
     return log_probs[:, -num_actions:]
 
 

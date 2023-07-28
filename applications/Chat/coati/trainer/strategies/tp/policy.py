@@ -117,7 +117,7 @@ def bloom_attn_fwd(module: BloomAttention, *args, alibi=None, **kwargs):
         tp_size = gpc.tensor_parallel_size
         tp_rank = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
         alibi = alibi.chunk(tp_size, dim=0)[tp_rank]
-    if module.training:
+    if module.training or True:
         return BloomAttention.forward(module, *args, alibi=alibi, **kwargs)
     else:
         return TritonBloomAttention.forward(module, *args, alibi=alibi, **kwargs)
