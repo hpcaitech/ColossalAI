@@ -5,6 +5,8 @@ import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
 
+from colossalai.context import ParallelMode
+from colossalai.core import global_context as gpc
 
 try:
     from transformers.generation_logits_process import (
@@ -38,6 +40,19 @@ def _is_sequence_finished(unfinished_sequences: torch.Tensor) -> bool:
     return unfinished_sequences.max() == 0
 
 
+def gather_logits(logits: torch.Tensor):
+    if gpc.get_world_size(ParallelMode.PARALLEL_1D) <= 1:
+        return logits
+    # gather logits
+    logits = logits.contiguous()
+    rank = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
+    world_size = gpc.get_world_size(ParallelMode.PARALLEL_1D)
+    tensor_list = [torch.zeros_like(logits) for _ in range(world_size)]
+    tensor_list[rank] = logits
+    dist.all_gather(tensor_list, logits, group=gpc.get_group(ParallelMode.PARALLEL_1D))
+    return torch.cat(tensor_list, dim=-1).contiguous()
+
+
 def sample(model: nn.Module,
            input_ids: torch.Tensor,
            max_length: int,
@@ -62,6 +77,7 @@ def sample(model: nn.Module,
         outputs = model(**model_inputs)
 
         next_token_logits = outputs['logits'][:, -1, :]
+        next_token_logits = gather_logits(next_token_logits)
         # pre-process distribution
         next_token_logits = logits_processor(input_ids, next_token_logits)
         # sample
@@ -148,12 +164,12 @@ def generate(model: nn.Module,
 
 
 @torch.no_grad()
-def generate_with_actor(actor_model: nn.Module,
-                        input_ids: torch.Tensor,
-                        return_action_mask: bool = True,
-                        **kwargs
-                        ) -> Union[Tuple[torch.LongTensor, torch.LongTensor],
-                                   Tuple[torch.LongTensor, torch.LongTensor, torch.BoolTensor]]:
+def generate_with_actor(
+    actor_model: nn.Module,
+    input_ids: torch.Tensor,
+    return_action_mask: bool = True,
+    **kwargs
+) -> Union[Tuple[torch.LongTensor, torch.LongTensor], Tuple[torch.LongTensor, torch.LongTensor, torch.BoolTensor]]:
     """Generate token sequence with actor model. Refer to `generate` for more details.
     """
     # generate sequences

@@ -148,7 +148,8 @@ class BloomForCausalLMPolicy(Policy):
 
     def replace(self, module: Module) -> bool:
         assert isinstance(module, BloomForCausalLM)
-        module.lm_head.forward = MethodType(partial(vocab_parallel_lm_head_fn, gather_output=True), module.lm_head)
+        module.lm_head.gather_output = True
+        module.lm_head.forward = MethodType(vocab_parallel_lm_head_fn, module.lm_head)
         return True
 
 

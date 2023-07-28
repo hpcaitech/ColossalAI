@@ -34,3 +34,6 @@ class BLOOMActor(Actor):
             model.gradient_checkpointing_enable()
         model.lm_head.lora_ignore = True
         super().__init__(model, lora_rank, lora_train_bias)
+
+    def inference_mode(self, enable: bool = True):
+        self.model.lm_head.gather_output = not enable

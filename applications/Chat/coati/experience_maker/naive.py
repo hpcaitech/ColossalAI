@@ -34,12 +34,14 @@ class NaiveExperienceMaker(ExperienceMaker):
         self.initial_model.eval()
         self.reward_model.eval()
 
+        self.actor.module.inference_mode(True)
         if not self.is_colossalai_strategy:
             self.actor.to(get_current_device())
         sequences, attention_mask, action_mask = generate_with_actor(self.actor,
                                                                      input_ids,
                                                                      return_action_mask=True,
                                                                      **generate_kwargs)
+        self.actor.module.inference_mode(False)
         num_actions = action_mask.size(1)
 
         actor_output = self.actor(sequences, attention_mask)

@@ -120,7 +120,7 @@ def vocab_parallel_embedding_fn(self: nn.Embedding, input_: Tensor) -> Tensor:
     return output
 
 
-def vocab_parallel_lm_head_fn(self: nn.Linear, input_: Tensor, gather_output: bool = True) -> Tensor:
+def vocab_parallel_lm_head_fn(self: nn.Linear, input_: Tensor) -> Tensor:
     assert input_.shape[-1] == self.weight.shape[-1], \
         'Invalid shapes in VocabParallelLMHead1D forward: input={}, weight={}. Expected last dim of input {}.'.format(
             input_.shape, self.weight.shape, self.weight.shape[-1])
@@ -128,6 +128,7 @@ def vocab_parallel_lm_head_fn(self: nn.Linear, input_: Tensor, gather_output: bo
     input_parallel = reduce_grad(input_, ParallelMode.PARALLEL_1D)
     # Matrix multiply.
     output_parallel = F.linear(input_parallel, self.weight, self.bias)
+    gather_output = getattr(self, 'gather_output', True)
     if gather_output:
         # All-gather across the partitions.
         output = gather_forward_split_backward(output_parallel, ParallelMode.PARALLEL_1D, dim=-1)
