@@ -98,7 +98,6 @@ model, optimizer, criterion, train_dataloader, _ = booster.boost(model=model,
 使用booster构建一个普通的训练循环，验证梯度累积。 `param_by_iter` 记录分布训练的信息。
 ```python
 optimizer.zero_grad()
-loss = 0
 for idx, (img, label) in enumerate(train_dataloader):
         sync_context = booster.no_sync(model)
         img = img.cuda()
