@@ -2,6 +2,7 @@ from typing import Optional, Tuple
 
 import torch
 from torch import nn
+from torch.nn import functional as F
 
 try:
     import triton
@@ -156,7 +157,7 @@ if HAS_TRITON:
         Return:
             output (Torch.Tensor): The output shape is (batch, seq_len, num_heads, head_size)
         """
-
+        
         assert len(q.shape) == len(k.shape), "the dimensions must be matched"
         assert len(q.shape) == len(v.shape), "the dimensions must be matched"
         assert len(q.shape) == 4, "the length of input q must be 4, which is (batch, seq_len, num_heads, head_dim)"
@@ -181,14 +182,14 @@ if HAS_TRITON:
             triton.cdiv(N, meta["BLOCK_SIZE_N"]),
         )
 
-        qkv_gemm_4d_kernel_alibi[grid](
-            q, k, alibi, score_output,
+        qkv_gemm_4d_kernel[grid](
+            q, k, 
+            score_output,
             M, N, K,
             q.stride(0), q.stride(1), q.stride(2), q.stride(3),
             k.stride(0), k.stride(1), k.stride(2), k.stride(3),
             score_output.stride(0), score_output.stride(1), score_output.stride(2), score_output.stride(3),
             scale=scale,
-            beta=beta,
             # currently manually setting, later on we can use auto-tune config to match best setting
             BLOCK_SIZE_M=64,
             BLOCK_SIZE_N=32,
@@ -196,6 +197,8 @@ if HAS_TRITON:
             GROUP_SIZE_M=8,
             num_stages=4,
         )
+
+        score_output += beta * alibi
 
         # cast attention scores to fp32, compute scaled softmax and cast back to initial dtype - [batch_size, num_heads, q_length, kv_length]
         input_dtype = score_output.dtype
@@ -209,7 +212,6 @@ if HAS_TRITON:
         softmax_leading_size = batches * H * M
 
         if softmax_leading_size <= 350000:
-
             score_output = score_output.to(input_dtype)
             softmax_output = torch.empty(
                 score_output.shape, device=score_output.device, dtype=score_output.dtype)
@@ -241,7 +243,7 @@ if HAS_TRITON:
             softmax_output = F.softmax(score_output, dim=-1, dtype=torch.float32).to(input_dtype)
 
         if drop_out > 0 and drop_out < 1:
-            softmax_output = F.dropout(softmax_output, drop_out, False, True).to(input_dtype)
+            softmax_output = F.dropout(softmax_output, drop_out, False, False).to(input_dtype)
         
         if head_mask is not None:
             softmax_output = softmax_output * head_mask

@@ -210,8 +210,8 @@ if HAS_TRITON:
         alibi_ptrs = (alibi_ptr + batch * stride_cb + head * stride_ch + stride_cm * offs_accumu_m[:, None] +
                 stride_cn * offs_accumu_n[None, :])
         alibi_vals = tl.load(alibi_ptrs, mask=accumulator_mask, other=0.)
+        accumulator += (alibi_vals * beta.to(c_ptr.dtype.element_ty))
 
-        accumulator += (alibi_vals * beta).to(c_ptr.dtype.element_ty)
         accumulator = accumulator.to(c_ptr.dtype.element_ty)
         
         tl.store(c_ptrs, accumulator, mask=accumulator_mask)
