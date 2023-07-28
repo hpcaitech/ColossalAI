@@ -42,6 +42,8 @@ class HybridParallelModule(ModelWrapper):
             module = module.half().cuda()
         elif precision == 'bf16':
             module = module.to(dtype=torch.bfloat16).cuda()
+        else:
+            module = module.cuda()    # train without AMP
         # TODO(ver217): support TP+DP
         super().__init__(module)
 
@@ -72,7 +74,15 @@ def init_pipeline_optimizer(optim: Optimizer, model: Module):
     optim.__setstate__({'param_groups': new_param_groups})
 
 
-class HybridParallelOptimizer(MixedPrecisionOptimizer):
+class HybridParallelNaiveOptimizer(OptimizerWrapper):
+
+    def __init__(self, optim: Optimizer, model: Module, use_pipeline: bool):
+        if use_pipeline:
+            init_pipeline_optimizer(optim, model)
+        super().__init__(optim)
+
+
+class HybridParallelAMPOptimizer(MixedPrecisionOptimizer):
 
     def __init__(self,
                  optim: Optimizer,
@@ -218,12 +228,17 @@ class HybridParallelPlugin(PipelinePluginBase):
             model = HybridParallelModule(model, self.precision, self.shard_config, self.dp_group)
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
             if self.zero_stage == 0:
-                optimizer = HybridParallelOptimizer(optimizer,
-                                                    model,
-                                                    use_pipeline=self.enable_pipeline_parallelism,
-                                                    precision=self.precision,
-                                                    max_norm=self.max_norm,
-                                                    **self.amp_config)
+                if self.precision in self.supported_precisions():
+                    optimizer = HybridParallelAMPOptimizer(optimizer,
+                                                           model,
+                                                           use_pipeline=self.enable_pipeline_parallelism,
+                                                           precision=self.precision,
+                                                           max_norm=self.max_norm,
+                                                           **self.amp_config)
+                else:
+                    optimizer = HybridParallelNaiveOptimizer(optimizer,
+                                                             model,
+                                                             use_pipeline=self.enable_pipeline_parallelism)
             else:
                 optimizer = HybridParallelZeroOptimizer(optimizer,
                                                         model,
@@ -241,7 +256,8 @@ class HybridParallelPlugin(PipelinePluginBase):
                          data_iter: Iterator,
                          model: HybridParallelModule,
                          criterion: Callable[[Any, Any], torch.Tensor],
-                         optimizer: Union[HybridParallelOptimizer, HybridParallelZeroOptimizer],
+                         optimizer: Union[HybridParallelNaiveOptimizer, HybridParallelAMPOptimizer,
+                                          HybridParallelZeroOptimizer],
                          return_loss: bool = True,
                          return_outputs: bool = False) -> dict:
         assert self.enable_pipeline_parallelism, 'pipeline parallelism is not enabled'
