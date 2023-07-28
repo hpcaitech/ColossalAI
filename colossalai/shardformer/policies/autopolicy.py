@@ -71,6 +71,14 @@ _POLICY_LIST = {
     "transformers.models.gpt2.modeling_gpt2.GPT2ForSequenceClassification":
         PolicyLocation(file_name="gpt2", class_name="GPT2ForSequenceClassificationPolicy"),
 
+    # ViT
+    "transformers.models.vit.modeling_vit.ViTModel":
+        PolicyLocation(file_name="vit", class_name="ViTPolicy"),
+    "transformers.models.vit.modeling_vit.ViTForImageClassification":
+        PolicyLocation(file_name="vit", class_name="ViTForImageClassificationPolicy"),
+    "transformers.models.vit.modeling_vit.ViTForMaskedImageModeling":
+        PolicyLocation(file_name="vit", class_name="ViTForMaskedImageModelingPolicy"),
+
     # OPT
     "transformers.models.opt.modeling_opt.OPTModel":
         PolicyLocation(file_name="opt", class_name="OPTModelPolicy"),
@@ -92,6 +100,24 @@ _POLICY_LIST = {
         PolicyLocation(file_name="bloom", class_name="BloomForTokenClassificationPolicy"),
     "transformers.models.bloom.modeling_bloom.BloomForQuestionAnswering":
         PolicyLocation(file_name="bloom", class_name="BloomForQuestionAnsweringPolicy"),
+
+    # Whisper
+    "transformers.models.whisper.modeling_whisper.WhisperModel":
+        PolicyLocation(file_name="whisper", class_name="WhisperModelPolicy"),
+    "transformers.models.whisper.modeling_whisper.WhisperForConditionalGeneration":
+        PolicyLocation(file_name="whisper", class_name="WhisperForConditionalGenerationPolicy"),
+    "transformers.models.whisper.modeling_whisper.WhisperForAudioClassification":
+        PolicyLocation(file_name="whisper", class_name="WhisperForAudioClassificationPolicy"),
+
+    # Sam
+    "transformers.models.sam.modeling_sam.SamModel":
+        PolicyLocation(file_name="sam", class_name="SamModelPolicy"),
+
+    # Blip2
+    "transformers.models.blip_2.modeling_blip_2.Blip2Model":
+        PolicyLocation(file_name="blip2", class_name="Blip2ModelPolicy"),
+    "transformers.models.blip_2.modeling_blip_2.Blip2ForConditionalGeneration":
+        PolicyLocation(file_name="blip2", class_name="Blip2ForConditionalGenerationPolicy"),
 }
 
 

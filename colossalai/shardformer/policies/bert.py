@@ -3,6 +3,12 @@ import torch.nn as nn
 import colossalai.shardformer.layer as col_nn
 
 from .._utils import getattr_, setattr_
+from ..modeling.bert import (
+    get_bert_flash_attention_forward,
+    get_jit_fused_bert_output_forward,
+    get_jit_fused_bert_self_output_forward,
+)
+from ..modeling.jit import get_jit_fused_dropout_add_func
 from .basepolicy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = [
@@ -31,7 +37,13 @@ class BertPolicy(Policy):
         return self.model
 
     def module_policy(self):
-        from transformers.models.bert.modeling_bert import BertEmbeddings, BertLayer
+        from transformers.models.bert.modeling_bert import (
+            BertEmbeddings,
+            BertLayer,
+            BertOutput,
+            BertSelfAttention,
+            BertSelfOutput,
+        )
 
         policy = {}
 
@@ -120,6 +132,24 @@ class BertPolicy(Policy):
                 )],
                 policy=policy,
                 target_key=BertEmbeddings)
+
+        # use flash attention
+        if self.shard_config.enable_flash_attention:
+            policy[BertSelfAttention] = ModulePolicyDescription(method_replacement={
+                'forward': get_bert_flash_attention_forward(),
+            })
+
+        # use jit operator
+        if self.shard_config.enable_jit_fused:
+            policy[BertSelfOutput] = ModulePolicyDescription(method_replacement={
+                'forward': get_jit_fused_bert_self_output_forward(),
+                'dropout_add': get_jit_fused_dropout_add_func(),
+            })
+            policy[BertOutput] = ModulePolicyDescription(method_replacement={
+                'forward': get_jit_fused_bert_output_forward(),
+                'dropout_add': get_jit_fused_dropout_add_func(),
+            })
+
         return policy
 
     def add_lm_head_policy(self, base_policy):
