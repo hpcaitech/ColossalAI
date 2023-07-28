@@ -57,6 +57,10 @@ class Linear1DColPolicy(Policy):
             if isinstance(module.bias, LazyTensor):
                 module.bias.materialize()
             module.bias.data = module.bias.chunk(self.tp_size, dim=0)[self.tp_rank].data.clone()
+        if isinstance(module, LoraLinear):
+            if isinstance(module.lora_B, LazyTensor):
+                module.lora_B.materialize()
+            module.lora_B.data = module.lora_B.chunk(self.tp_size, dim=0)[self.tp_rank].data.clone()
         # replace forward
         fwd = lora_linear_1d_col_fn if isinstance(module, LoraLinear) else linear_1d_col_fn
         module.forward = MethodType(partial(fwd, gather_output=self.gather_output), module)
@@ -79,6 +83,10 @@ class Linear1DRowPolicy(Policy):
         module.weight.data = module.weight.chunk(self.tp_size, dim=1)[self.tp_rank].data.clone()
         if module.bias is not None and isinstance(module.bias, LazyTensor):
             module.bias.materialize()
+        if isinstance(module, LoraLinear):
+            if isinstance(module.lora_A, LazyTensor):
+                module.lora_A.materialize()
+            module.lora_A.data = module.lora_A.chunk(self.tp_size, dim=1)[self.tp_rank].data.clone()
         fwd = lora_linear_1d_row_fn if isinstance(module, LoraLinear) else linear_1d_row_fn
         module.forward = MethodType(partial(fwd, parallel_input=self.parallel_input), module)
         return False

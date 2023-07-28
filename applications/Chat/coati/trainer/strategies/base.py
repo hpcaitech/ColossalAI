@@ -75,7 +75,7 @@ class Strategy(ABC):
             if isinstance(arg, tuple):
                 assert len(arg) == 2, f'Expect (model, optimizer) pair, got a tuple with size "{len(arg)}"'
                 model, optimizer = arg
-                is_lora = isinstance(model, LoRAModule)
+                is_lora = isinstance(model, LoRAModule) and model.lora_rank > 0
                 model = self.setup_model(model)
                 if is_lora:
                     lora.mark_only_lora_as_trainable(model)
