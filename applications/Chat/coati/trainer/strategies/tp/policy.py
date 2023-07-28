@@ -3,14 +3,14 @@ from types import MethodType
 from typing import Dict, Type
 
 import torch.nn as nn
-from torch.nn import functional as F
+from coati.models.bloom.triton_attention_forward import TritonBloomAttention
+from coati.models.lora import LoraLinear
 from torch.nn import Module
+from torch.nn import functional as F
 from transformers.models.bloom.configuration_bloom import BloomConfig
 from transformers.models.bloom.modeling_bloom import BloomAttention, BloomForCausalLM, BloomMLP
 from transformers.models.opt.modeling_opt import OPTAttention, OPTDecoder, OPTDecoderLayer
 
-from coati.models.lora import LoraLinear
-from coati.modles.bloom.triton_attention_forward import TritonBloomAttention
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.lazy import LazyTensor
@@ -117,7 +117,10 @@ def bloom_attn_fwd(module: BloomAttention, *args, alibi=None, **kwargs):
         tp_size = gpc.tensor_parallel_size
         tp_rank = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
         alibi = alibi.chunk(tp_size, dim=0)[tp_rank]
-    return BloomAttention.forward(module, *args, alibi=alibi, **kwargs)
+    if module.training:
+        return BloomAttention.forward(module, *args, alibi=alibi, **kwargs)
+    else:
+        return TritonBloomAttention.forward(module, *args, alibi=alibi, **kwargs)
 
 
 class BloomAttentionPolicy(Policy):
@@ -135,12 +138,6 @@ class BloomAttentionPolicy(Policy):
         module.forward = MethodType(bloom_attn_fwd, module)
         return False
 
-class BloomAttentionTritonPolicy(Policy):
-
-    def replace(self, module: Module) -> bool:
-        assert isinstance(module, BloomAttention)
-        module.forward = MethodType(TritonBloomAttention.forward, module)
-        return False
 
 class BloomMLPPolicy(Policy):
 

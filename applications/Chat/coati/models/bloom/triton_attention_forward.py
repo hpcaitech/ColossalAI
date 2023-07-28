@@ -1,14 +1,12 @@
-import math
-from typing import List, Optional, Tuple
+from typing import Optional, Tuple
 
 import torch
-import torch.nn as nn
 from torch.nn import functional as F
-import torch.distributed as dist
 from transformers.models.bloom.configuration_bloom import BloomConfig
-from transformers.models.bloom.model_bloom import BloomAttention
+from transformers.models.bloom.modeling_bloom import BloomAttention
 
 from colossalai.kernel.triton.ops import compute_attention_for_bloom
+
 
 def dropout_add(x: torch.Tensor, residual: torch.Tensor, prob: float, training: bool) -> torch.Tensor:
     """
@@ -28,7 +26,9 @@ def dropout_add(x: torch.Tensor, residual: torch.Tensor, prob: float, training: 
     out = residual + out
     return out
 
+
 class TritonBloomAttention(BloomAttention):
+
     def __init__(self, config: BloomConfig):
         super(TritonBloomAttention, self).__init__(config)
 
@@ -43,7 +43,7 @@ class TritonBloomAttention(BloomAttention):
         use_cache: bool = False,
         output_attentions: bool = False,
     ):
-        fused_qkv = self.query_key_value(hidden_states)  # [batch_size, seq_length, 3 x hidden_size]
+        fused_qkv = self.query_key_value(hidden_states)    # [batch_size, seq_length, 3 x hidden_size]
 
         # 3 x [batch_size, seq_length, num_heads, head_dim]
         (query_layer, key_layer, value_layer) = self._split_heads(fused_qkv)
@@ -62,22 +62,23 @@ class TritonBloomAttention(BloomAttention):
             #  - value: [batch_size * self.num_heads, kv_length, head_dim]
             key_layer = torch.cat((past_key, key_layer), dim=2)
             value_layer = torch.cat((past_value, value_layer), dim=1)
-        
+
         _, _, kv_length = key_layer.shape
         alibi = alibi.view(batch_size, num_heads, q_length, -1)
 
-        context_layer = compute_attention_for_bloom(q = query_layer.view(batch_size, self.num_heads, q_length, self.head_dim), 
-                                             k = key_layer.view(batch_size, self.num_heads, self.head_dim, kv_length), 
-                                             v = value_layer.view(batch_size, self.num_heads, kv_length, self.head_dim), 
-                                             alibi = alibi, 
-                                             beta = self.beta,
-                                             scale = self.inv_norm_factor,
-                                             attention_mask = attention_mask,
-                                             drop_out = self.hidden_dropout, 
-                                             head_mask = head_mask,
-                                             layer_past = layer_past,
-                                             use_cache = True,
-                                            )
+        context_layer = compute_attention_for_bloom(
+            q=query_layer.view(batch_size, self.num_heads, q_length, self.head_dim),
+            k=key_layer.view(batch_size, self.num_heads, self.head_dim, kv_length),
+            v=value_layer.view(batch_size, self.num_heads, kv_length, self.head_dim),
+            alibi=alibi,
+            beta=self.beta,
+            scale=self.inv_norm_factor,
+            attention_mask=attention_mask,
+            drop_out=self.hidden_dropout,
+            head_mask=head_mask,
+            layer_past=layer_past,
+            use_cache=True,
+        )
 
         if use_cache:
             present = (key_layer, value_layer)
@@ -90,8 +91,8 @@ class TritonBloomAttention(BloomAttention):
             output_tensor = torch.zeros_like(context_layer)
             for i in range(self.pretraining_tp):
                 output_tensor = output_tensor + F.linear(
-                    context_layer[:, :, int(i * slices) : int((i + 1) * slices)],
-                    self.dense.weight[:, int(i * slices) : int((i + 1) * slices)],
+                    context_layer[:, :, int(i * slices):int((i + 1) * slices)],
+                    self.dense.weight[:, int(i * slices):int((i + 1) * slices)],
                 )
         else:
             output_tensor = self.dense(context_layer)
