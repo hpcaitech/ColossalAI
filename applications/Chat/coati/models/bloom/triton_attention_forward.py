@@ -79,7 +79,7 @@ class TritonBloomAttention(BloomAttention):
             layer_past=layer_past,
             use_cache=True,
         )
-
+        
         if use_cache:
             present = (key_layer, value_layer)
         else:
