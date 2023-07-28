@@ -3,7 +3,14 @@ import torch.nn as nn
 import colossalai.shardformer.layer as col_nn
 
 from .._utils import getattr_, setattr_
-from ..modeling.bloom import build_bloom_alibi_tensor_fn
+from ..modeling.bloom import (
+    build_bloom_alibi_tensor_fn,
+    get_bloom_flash_attention_forward,
+    get_jit_fused_bloom_attention_forward,
+    get_jit_fused_bloom_gelu_forward,
+    get_jit_fused_bloom_mlp_forward,
+)
+from ..modeling.jit import get_dropout_add_func, get_jit_fused_dropout_add_func, get_jit_fused_gelu_forward_func
 from .basepolicy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 
@@ -25,7 +32,7 @@ class BloomPolicy(Policy):
         return self.model
 
     def module_policy(self):
-        from transformers.models.bloom.modeling_bloom import BloomBlock, BloomModel
+        from transformers.models.bloom.modeling_bloom import BloomAttention, BloomBlock, BloomGelu, BloomMLP, BloomModel
 
         policy = {}
 
@@ -101,6 +108,27 @@ class BloomPolicy(Policy):
             ],
                                                         policy=policy,
                                                         target_key=BloomBlock)
+
+        if self.shard_config.enable_flash_attention:
+            policy[BloomAttention] = ModulePolicyDescription(method_replacement={
+                'forward': get_bloom_flash_attention_forward(),
+                'dropout_add': get_dropout_add_func()
+            })
+
+        # enable jit fused operator
+        if self.shard_config.enable_jit_fused:
+            policy[BloomAttention] = ModulePolicyDescription(method_replacement={
+                'forward': get_jit_fused_bloom_attention_forward(),
+                'dropout_add': get_jit_fused_dropout_add_func(),
+            })
+            policy[BloomMLP] = ModulePolicyDescription(method_replacement={
+                'forward': get_jit_fused_bloom_mlp_forward(),
+                'dropout_add': get_jit_fused_dropout_add_func(),
+            })
+            policy[BloomGelu] = ModulePolicyDescription(method_replacement={
+                'forward': get_jit_fused_bloom_gelu_forward(),
+                'bloom_gelu_forward': get_jit_fused_gelu_forward_func(),
+            })
 
         return policy
 
