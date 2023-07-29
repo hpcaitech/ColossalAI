@@ -6,6 +6,7 @@
   - [Table of Contents](#table-of-contents)
   - [Install requirements](#install-requirements)
   - [Supervised datasets collection](#supervised-datasets-collection)
+    - [Conversation dataset generation](#conversation-dataset-generation)
   - [Stage1 - Supervised instructs tuning](#stage1---supervised-instructs-tuning)
     - [Arg List](#arg-list)
   - [Stage2 - Training reward model](#stage2---training-reward-model)
@@ -44,6 +45,49 @@ The following pic shows how we collected the data.
 <p align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/data-collect.png" width=500/>
 </p>
+
+### Conversation dataset generation
+
+In order to further improve the model's ability to handle multi-turn conversations, we need to include samples with multi-turn conversations in the dataset. However, the samples in InstructWild and Alpaca datasets currently consist of only single-turn conversations, and their dataset organization is not suitable for storing multi-turn conversations. Additionally, after converting the aforementioned datasets, we also need to include multi-turn conversation datasets like ShareGPT, and we should transform them into the training format supported by ColossalChat.
+
+A sample of conversation dataset should have the following fields:
+
+* `type` (str, optional): The type of the data sample.
+* `language` (str, optional): The language of the data sample.
+* `dataset` (str, optional): The dataset the data sample originates from.
+* `conversations` (str, compulsory): Conversation content of the data sample.
+* `id` (int, optional): The ID of the data sample.
+
+A simple example:
+```json
+{
+    "type": "instruction",
+    "language": "English",
+    "dataset": "Alpaca",
+    "conversations": [
+        {
+            "from": "human",
+            "value": "Give three tips for staying healthy."
+        },
+        {
+            "from": "gpt",
+            "value": "1.Eat a balanced diet and make sure to include plenty of fruits and vegetables. \n2. Exercise regularly to keep your body active and strong. \n3. Get enough sleep and maintain a consistent sleep schedule."
+        }
+    ],
+    "id": 1
+}
+```
+
+> **NOTE:**  Only key `conversations` is compulsary for training and other keys serve as metadata. The length of `conversations` varies.
+
+You can run the `examples/generate_conversation_dataset.py` to generate a conversation dataset supported by ColossalChat.
+
+You can use the following cmd to generate conversation dataset.
+```
+python generate_conversation_dataset.py \
+    --dataset "All"
+    --save_path "/path/to/dataset"
+```
 
 ## Stage1 - Supervised instructs tuning
 

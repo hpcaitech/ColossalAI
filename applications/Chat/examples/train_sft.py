@@ -74,8 +74,8 @@ def train(args):
             padding_side="right",
             use_fast=False,
         )
-        tokenizer.eos_token = '<\s>'
-        tokenizer.pad_token = tokenizer.unk_token
+        tokenizer.eos_token = '</s>'
+        tokenizer.pad_token = tokenizer.eos_token
     else:
         raise ValueError(f'Unsupported model "{args.model}"')
 
@@ -153,9 +153,7 @@ def train(args):
                                  optim,
                                  num_warmup_steps=math.ceil(max_steps * 0.03),
                                  num_training_steps=max_steps)
-    strategy_dict = strategy.prepare(
-        dict(model=model, optimizer=optim, lr_scheduler=lr_scheduler)
-    )
+    strategy_dict = strategy.prepare(dict(model=model, optimizer=optim, lr_scheduler=lr_scheduler))
     model = strategy_dict['model']
     optim = strategy_dict['optimizer']
     lr_scheduler = strategy_dict['lr_scheduler']
