@@ -7,7 +7,6 @@ from transformers.models.bloom.modeling_bloom import BloomAttention
 
 from colossalai.kernel.triton.ops import compute_attention_for_bloom
 
-
 def dropout_add(x: torch.Tensor, residual: torch.Tensor, prob: float, training: bool) -> torch.Tensor:
     """
     Dropout add function
@@ -65,7 +64,7 @@ class TritonBloomAttention(BloomAttention):
 
         _, _, kv_length = key_layer.shape
         alibi = alibi.view(batch_size, num_heads, q_length, -1)
-
+        
         context_layer = compute_attention_for_bloom(
             q=query_layer.view(batch_size, self.num_heads, q_length, self.head_dim),
             k=key_layer.view(batch_size, self.num_heads, self.head_dim, kv_length),

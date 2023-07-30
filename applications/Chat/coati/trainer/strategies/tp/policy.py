@@ -4,6 +4,7 @@ from typing import Dict, Type
 
 import torch.nn as nn
 from coati.models.bloom.triton_attention_forward import TritonBloomAttention
+from coati.models.bloom.cuda_attention_forward import CudaBloomAttention
 from coati.models.lora import LoraLinear
 from torch.nn import Module
 from torch.nn import functional as F

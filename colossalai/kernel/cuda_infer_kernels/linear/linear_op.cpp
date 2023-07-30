@@ -173,7 +173,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         "fp16 forward of dense layer."
   );
 
-  m.def("batch_gemm_strided_fwd_fp16",
+  m.def("batch_dense_layer_fp16_forward",
         &batch_dense_layer_fp16_forward,
         "fp16 forward of batch gemm"
   );
