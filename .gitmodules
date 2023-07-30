@@ -8,3 +8,6 @@
 [submodule "colossalai/kernel/cuda/cutlass"]
 	path = colossalai/kernel/cuda/cutlass
 	url = https://github.com/NVIDIA/cutlass
+[submodule "colossalai/kernel/cuda_infer_kernels/cutlass"]
+	path = colossalai/kernel/cuda_infer_kernels/cutlass
+	url = https://github.com/NVIDIA/cutlass
