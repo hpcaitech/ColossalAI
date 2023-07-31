@@ -80,7 +80,8 @@ class SumEvaluator:
                 start_idx = 0
                 score = []
                 for cur_n_sent in n_sents:
-                    score.append(sum(sent_score[start_idx:start_idx + cur_n_sent]) / cur_n_sent)
+                    # prevent denominator from being 0
+                    score.append(sum(sent_score[start_idx:start_idx + cur_n_sent]) / (cur_n_sent + 1e-6))
                     start_idx += cur_n_sent
 
             # Calculate summary-level score for 'coherence' and 'relevance'
@@ -277,7 +278,7 @@ class FactEvaluator:
         n_data = len(data)
         eval_scores = [{} for _ in range(n_data)]
 
-        # Calculate average sentence-level scores for facutal consistency
+        # Calculate average sentence-level scores for factual consistency
         src_list, output_list = [], []
         n_sents = []    # the number of sentences in the claim
         for i in range(n_data):
@@ -288,7 +289,7 @@ class FactEvaluator:
                 src_list.append(source)
                 output_list.append(system_outputs[j])
         input_list = add_question(dimension=self.dim, output=output_list, src=src_list, task=self.task)
-        sent_score = self.scorer.score(input_list, self.task, category, dim)
+        sent_score = self.scorer.score(input_list, self.task, category, self.dim)
 
         # Get average score for each sample
         start_idx = 0

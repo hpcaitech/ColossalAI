@@ -1,3 +1,5 @@
+from typing import List
+
 import torch
 from numpy import isin
 from torch.fx import GraphModule
@@ -7,19 +9,23 @@ from torch.utils._pytree import tree_flatten
 from colossalai._analyzer.fx import symbolic_trace
 
 
-def trace_model_and_compare_output(model, data_gen):
+def trace_model_and_compare_output(model, data_gen, ignore_data: List[str] = None):
     # must turn on eval mode to ensure the output is consistent
     model.eval()
 
+    inputs = data_gen()
+
+    if ignore_data is not None:
+        # drop the ignore_data key
+        inputs = {k: v for k, v in inputs.items() if k not in ignore_data}
+
     try:
-        kwargs = data_gen()
-        meta_args = {k: v.to('meta') for k, v in kwargs.items()}
+        meta_args = {k: v.to('meta') for k, v in inputs.items()}
         gm = symbolic_trace(model, meta_args=meta_args)
     except Exception as e:
         raise RuntimeError(f"Failed to trace {model.__class__.__name__}, error: {e}")
 
     # run forward
-    inputs = data_gen()
     non_fx_out = model(**inputs)
     fx_out = gm(**inputs)
 

@@ -21,8 +21,6 @@ Model must be boosted by `colossalai.booster.Booster` before loading. It will de
 
 ## Optimizer Checkpoint
 
-> ⚠ Saving optimizer checkpoint in a sharded way is not supported yet.
-
 {{ autodoc:colossalai.booster.Booster.save_optimizer }}
 
 Optimizer must be boosted by `colossalai.booster.Booster` before saving.

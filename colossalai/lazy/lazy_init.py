@@ -1,5 +1,6 @@
+from contextlib import contextmanager
 from types import MethodType
-from typing import Callable, Optional, Union
+from typing import Callable, Dict, Optional, Union
 
 import torch
 import torch.distributed as dist
@@ -8,8 +9,9 @@ from torch import Tensor
 from torch.utils._pytree import tree_map
 
 from colossalai._analyzer._subclasses import MetaTensor
-from colossalai.tensor.d_tensor.d_tensor import DTensor
-from colossalai.tensor.d_tensor.layout import Layout
+from colossalai.device.device_mesh import DeviceMesh
+from colossalai.tensor.d_tensor import distribute_tensor
+from colossalai.tensor.d_tensor.sharding_spec import ShardingSpec
 
 # reference: https://pytorch.org/cppdocs/notes/tensor_creation.html
 _NORMAL_FACTORY = [
@@ -60,12 +62,15 @@ class _MyTensor(Tensor):
     """
     _pre_op_fn: Callable[['LazyTensor'], None] = lambda *args: None
 
+    default_device: Optional[torch.device] = None
+
     def __new__(cls, func, *args, concrete_data=None, **kwargs) -> '_MyTensor':
         cls._pre_op_fn()
         if concrete_data is not None:
             # uniform api as LazyTensor
             data = concrete_data
         else:
+            kwargs['device'] = cls.default_device
             data = func(*args, **kwargs)
         return Tensor._make_subclass(cls, data, require_grad=data.requires_grad)
 
@@ -141,6 +146,8 @@ class LazyTensor(torch.Tensor):
     _meta_data: Optional[MetaTensor] = None    # shape, dtype, device
     _pre_op_fn: Callable[['LazyTensor'], None] = lambda *args: None
 
+    default_device: Optional[torch.device] = None
+
     @staticmethod
     def __new__(cls, func, *args, meta_data=None, concrete_data=None, **kwargs):
         if concrete_data is not None:
@@ -158,6 +165,8 @@ class LazyTensor(torch.Tensor):
         return r
 
     def __init__(self, func, *args, meta_data=None, concrete_data=None, **kwargs):
+        if func.__name__ in _NORMAL_FACTORY:
+            kwargs = {**kwargs, 'device': LazyTensor.default_device}
         self._factory_method = (func, args, kwargs)    # (func, args, kwargs)
         self._op_buffer = []    # (func, args, kwargs, replace)
         self._materialized_data: Optional[torch.Tensor] = concrete_data    # materialized data
@@ -172,7 +181,7 @@ class LazyTensor(torch.Tensor):
         self.clean()
         return _convert_cls(self, target)
 
-    def distribute(self, layout: Layout) -> torch.Tensor:
+    def distribute(self, device_mesh: DeviceMesh, sharding_spec: ShardingSpec) -> torch.Tensor:
         """Distribute the ``LazyTensor`` to ``torch.Tensor`` by modifying __class__ (inplace), according to the layout.
 
         Args:
@@ -183,7 +192,7 @@ class LazyTensor(torch.Tensor):
         """
         target = self._materialize_data()
         self.clean()
-        local_tensor = DTensor(target, layout).local_tensor
+        local_tensor = distribute_tensor(target, device_mesh, sharding_spec)
         return _convert_cls(self, local_tensor)
 
     def clean(self) -> None:
@@ -205,16 +214,11 @@ class LazyTensor(torch.Tensor):
         if self._materialized_data is None:
             # apply factory method
             func, args, kwargs = self._factory_method
-
             # apply cached sequence
             self._pre_op_fn()
 
-            try:
-                init_val = func(*tree_map(self._replace_with_materialized, args),
-                                **tree_map(self._replace_with_materialized, kwargs))
-            except TypeError as e:
-                print(f'init fn: {func.__name__}')
-                raise e
+            init_val = func(*tree_map(self._replace_with_materialized, args),
+                            **tree_map(self._replace_with_materialized, kwargs))
 
             self._materialized_data = self._rerun_ops(init_val)
         return self._materialized_data
@@ -304,6 +308,7 @@ class LazyTensor(torch.Tensor):
                     else:
                         # out of place op, create new lazy tensor
                         fn = lambda *a, **kw: func(*a, **kw) if i is None else func(*a, **kw)[i]
+                        fn.__name__ = func.__name__
                         lazy_y = LazyTensor(fn, *args, meta_data=y, **kwargs)
                         return lazy_y
                 elif type(y) is Tensor:
@@ -434,14 +439,21 @@ class LazyInitContext:
     """
     _replaced: bool = False
 
-    def __init__(self, tensor_cls: Union[_MyTensor, LazyTensor] = LazyTensor):
+    def __init__(self,
+                 tensor_cls: Union[_MyTensor, LazyTensor] = LazyTensor,
+                 default_device: Optional[Union[torch.device, str, int]] = None):
+        assert tensor_cls is LazyTensor or tensor_cls is _MyTensor
         self.overrides = {}
         self.tensor_cls = tensor_cls
+        self.old_default_device = LazyTensor.default_device
+        self.default_device = default_device
 
     def __enter__(self):
         if LazyInitContext._replaced:
             raise RuntimeError(f'LazyInitContext is not reentrant')
         LazyInitContext._replaced = True
+        self.old_default_device = self.tensor_cls.default_device
+        self.tensor_cls.default_device = self.default_device
 
         def wrap_factory_method(target):
             # factory functions (eg. torch.empty())
@@ -517,6 +529,7 @@ class LazyInitContext:
             setattr(torch, name, wrapper)
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        self.tensor_cls.default_device = self.old_default_device
         LazyInitContext._replaced = False
         for name, (wrapper, orig) in self.overrides.items():
             setattr(torch, name, orig)
@@ -536,7 +549,10 @@ class LazyInitContext:
         return _apply_to_lazy_module(module, apply_fn, verbose)
 
     @staticmethod
-    def distribute(module: nn.Module, layout_dict: dict, verbose: bool = False) -> nn.Module:
+    def distribute(module: nn.Module,
+                   device_mesh: DeviceMesh,
+                   sharding_spec_dict: Dict[str, ShardingSpec],
+                   verbose: bool = False) -> nn.Module:
         """Distribute all ``nn.Parameter`` from ``LazyTensor``. This function will modify the module in-place.
 
         Args:
@@ -546,7 +562,7 @@ class LazyInitContext:
         """
 
         def apply_fn(name: str, p: LazyTensor):
-            p.distribute(layout_dict[name])
+            p.distribute(device_mesh, sharding_spec_dict[name])
 
         return _apply_to_lazy_module(module, apply_fn, verbose)
 
