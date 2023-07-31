@@ -9,8 +9,8 @@ from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutpu
 from transformers.utils import logging
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
-from tests.kit.model_zoo.transformers.chatglm2_6b.configuration_chatglm import ChatGLMConfig
-from tests.kit.model_zoo.transformers.chatglm2_6b.modeling_chatglm import (
+from colossalai.shardformer.modeling.chatglm2_6b.configuration_chatglm import ChatGLMConfig
+from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import (
     ChatGLMForConditionalGeneration,
     ChatGLMModel,
     GLMBlock,
