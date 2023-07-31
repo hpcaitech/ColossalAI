@@ -16,13 +16,14 @@ class Evaluator(object):
     """
 
     def __init__(self, params: Dict[str, Any], battle_prompt: Dict[str, Any], gpt_evaluation_prompt: Dict[str, Any],
-                 gpt_model: str, language: str, path_for_UniEval: Dict[str, str]) -> None:
+                 gpt_model: str, language: str, path_for_UniEval: Dict[str, str], gpt_with_reference: bool) -> None:
         self.params = params
         self.battle_prompt = battle_prompt
         self.gpt_evaluation_prompt = gpt_evaluation_prompt
         self.gpt_model = gpt_model
         self.language = language
         self.path_for_UniEval = path_for_UniEval
+        self.gpt_with_reference = gpt_with_reference
         self.automatic_metric_stats = dict()
         self.unieval_metric_stats = dict()
         self.gpt_evaluation_results = dict()
@@ -157,8 +158,14 @@ class Evaluator(object):
                 print(f"No prompt for category {category}! Use prompt for category general now.")
                 prompt = self.gpt_evaluation_prompt["general"]
 
-            self.gpt_evaluation_results[category] = gpt_evaluate.evaluate(answers_per_category[category], prompt,
-                                                                          category_metrics, category, self.gpt_model)
+            self.gpt_evaluation_results[category] = gpt_evaluate.evaluate(
+                answers_per_category[category],
+                prompt,
+                category_metrics,
+                category,
+                self.gpt_model,
+                self.language,
+                references=targets_per_category[category] if self.gpt_with_reference else None)
 
     def save(self, path: str, model_name_list: List[str]) -> None:
         """

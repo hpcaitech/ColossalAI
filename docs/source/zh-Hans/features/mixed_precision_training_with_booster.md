@@ -3,12 +3,13 @@
 作者: [Mingyan Jiang](https://github.com/jiangmingyan)
 
 **前置教程**
+
 - [定义配置文件](../basics/define_your_config.md)
-- [booster使用](../basics/booster_api.md)
+- [booster 使用](../basics/booster_api.md)
 
 **相关论文**
-- [Accelerating Scientific Computations with Mixed Precision Algorithms](https://arxiv.org/abs/0808.2794)
 
+- [Accelerating Scientific Computations with Mixed Precision Algorithms](https://arxiv.org/abs/0808.2794)
 
 ## 引言
 
@@ -19,18 +20,17 @@ AMP 代表自动混合精度训练。
 2. apex.amp
 3. naive amp
 
+| Colossal-AI    | 支持张量并行 | 支持流水并行 | fp16 范围                                                 |
+| -------------- | ------------ | ------------ | --------------------------------------------------------- |
+| AMP_TYPE.TORCH | ✅           | ❌           | 在前向和反向传播期间，模型参数、激活和梯度向下转换至 fp16 |
+| AMP_TYPE.APEX  | ❌           | ❌           | 更细粒度，我们可以选择 opt_level O0, O1, O2, O3           |
+| AMP_TYPE.NAIVE | ✅           | ✅           | 模型参数、前向和反向操作，全都向下转换至 fp16             |
 
-| Colossal-AI | 支持张量并行 | 支持流水并行 | fp16范围 |
-| ----------- | ----------------------- | ------------------------- | ----------- |
-| AMP_TYPE.TORCH | ✅ | ❌ | 在前向和反向传播期间，模型参数、激活和梯度向下转换至fp16 |
-| AMP_TYPE.APEX | ❌ | ❌ | 更细粒度，我们可以选择 opt_level O0, O1, O2, O3 |
-| AMP_TYPE.NAIVE | ✅ | ✅ | 模型参数、前向和反向操作，全都向下转换至fp16 |
+前两个依赖于 PyTorch (1.6 及以上) 和 NVIDIA Apex 的原始实现。最后一种方法类似 Apex O2。在这些方法中，Apex-AMP 与张量并行不兼容。这是因为张量是以张量并行的方式在设备之间拆分的，因此，需要在不同的进程之间进行通信，以检查整个模型权重中是否出现 inf 或 nan。我们修改了 torch amp 实现，使其现在与张量并行兼容。
 
-前两个依赖于 PyTorch (1.6及以上) 和 NVIDIA Apex 的原始实现。最后一种方法类似 Apex O2。在这些方法中，Apex-AMP 与张量并行不兼容。这是因为张量是以张量并行的方式在设备之间拆分的，因此，需要在不同的进程之间进行通信，以检查整个模型权重中是否出现inf或nan。我们修改了torch amp实现，使其现在与张量并行兼容。
-
-> ❌️ fp16与ZeRO不兼容
+> ❌️ fp16 与 ZeRO 不兼容
 >
-> ⚠️ 流水并行目前仅支持naive amp
+> ⚠️ 流水并行目前仅支持 naive amp
 
 我们建议使用 torch AMP，因为在不使用流水并行时，它通常比 NVIDIA AMP 提供更好的准确性。
 
@@ -57,11 +57,14 @@ AMP 代表自动混合精度训练。
 
 ## Colossal-AI 中的 AMP
 
-我们支持三种 AMP 训练方法，并允许用户在没有改变代码的情况下使用 AMP 进行训练。booster支持amp特性注入，如果您要使用混合精度训练，则在创建booster实例时指定`mixed_precision`参数，我们现已支持torch amp，apex amp, naive amp（现已移植torch amp至booster，apex amp, naive amp仍由`colossalai.initialize`方式启动，如您需使用，请[参考](./mixed_precision_training.md）;后续将会拓展`bf16`,`pf8`的混合精度训练.
+我们支持三种 AMP 训练方法，并允许用户在没有改变代码的情况下使用 AMP 进行训练。booster 支持 amp 特性注入，如果您要使用混合精度训练，则在创建 booster 实例时指定`mixed_precision`参数，我们现已支持 torch amp，apex amp, naive amp（现已移植 torch amp 至 booster，apex amp, naive amp 仍由`colossalai.initialize`方式启动，如您需使用，请[参考](./mixed_precision_training.md);后续将会拓展`bf16`,`pf8`的混合精度训练.
 
-#### booster启动方式
-您可以在创建booster实例时，指定`mixed_precision="fp16"`即使用torch amp。
+#### booster 启动方式
+
+您可以在创建 booster 实例时，指定`mixed_precision="fp16"`即使用 torch amp。
+
 <!--- doc-test-ignore-start -->
+
 ```python
 """
     初始化映射关系如下：
@@ -74,9 +77,13 @@ AMP 代表自动混合精度训练。
 from colossalai import Booster
 booster = Booster(mixed_precision='fp16',...)
 ```
+
 <!--- doc-test-ignore-end -->
+
 或者您可以自定义一个`FP16TorchMixedPrecision`对象，如
+
 <!--- doc-test-ignore-start -->
+
 ```python
 from colossalai.mixed_precision import FP16TorchMixedPrecision
 mixed_precision = FP16TorchMixedPrecision(
@@ -86,8 +93,10 @@ mixed_precision = FP16TorchMixedPrecision(
     growth_interval=2000)
 booster = Booster(mixed_precision=mixed_precision,...)
 ```
+
 <!--- doc-test-ignore-end -->
-其他类型的amp使用方式也是一样的。
+
+其他类型的 amp 使用方式也是一样的。
 
 ### Torch AMP 配置
 
@@ -96,7 +105,7 @@ booster = Booster(mixed_precision=mixed_precision,...)
 ### Apex AMP 配置
 
 对于这种模式，我们依靠 Apex 实现混合精度训练。我们支持这个插件，因为它允许对混合精度的粒度进行更精细的控制。
-例如, O2 水平 (优化器水平2) 将保持 batch normalization 为 FP32。
+例如, O2 水平 (优化器水平 2) 将保持 batch normalization 为 FP32。
 
 如果你想了解更多细节，请参考 [Apex Documentation](https://nvidia.github.io/apex/)。
 
@@ -104,7 +113,7 @@ booster = Booster(mixed_precision=mixed_precision,...)
 
 ### Naive AMP 配置
 
-在 Naive AMP 模式中, 我们实现了混合精度训练，同时保持了与复杂张量和流水并行的兼容性。该 AMP 模式将所有操作转为 FP16 。下列代码块展示了该模式的booster启动方式。
+在 Naive AMP 模式中, 我们实现了混合精度训练，同时保持了与复杂张量和流水并行的兼容性。该 AMP 模式将所有操作转为 FP16 。下列代码块展示了该模式的 booster 启动方式。
 
 {{ autodoc:colossalai.booster.mixed_precision.FP16NaiveMixedPrecision }}
 
@@ -181,12 +190,13 @@ optimizer = torch.optim.SGD(model.parameters(), lr=1e-2, weight_decay=0.1)
 # build loss
 criterion = torch.nn.CrossEntropyLoss()
 
-# lr_scheduelr
+# lr_scheduler
 lr_scheduler = LinearWarmupLR(optimizer, warmup_steps=50, total_steps=NUM_EPOCHS)
 ```
 
 ### 步骤 4. 插入 AMP
-创建一个MixedPrecision对象（如果需要）及torchDDPPlugin对象，调用 `colossalai.boost` 将所有训练组件转为为FP16模式.
+
+创建一个 MixedPrecision 对象（如果需要）及 torchDDPPlugin 对象，调用 `colossalai.boost` 将所有训练组件转为为 FP16 模式.
 
 ```python
 plugin = TorchDDPPlugin()
@@ -209,7 +219,7 @@ model, optimizer, criterion, dataloader, lr_scheduler = booster.boost(model, opt
 
 ### 步骤 5. 使用 booster 训练
 
-使用booster构建一个普通的训练循环。
+使用 booster 构建一个普通的训练循环。
 
 ```python
 model.train()
@@ -232,4 +242,5 @@ for epoch in range(NUM_EPOCHS):
 ```shell
 colossalai run --nproc_per_node 1 train.py
 ```
+
 <!-- doc-test-command: torchrun --standalone --nproc_per_node=1 mixed_precision_training_with_booster.py  -->

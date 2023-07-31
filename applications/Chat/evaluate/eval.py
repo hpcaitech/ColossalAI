@@ -38,9 +38,14 @@ def main(args):
             raise Exception(
                 "No prompt file for gpt evaluation provided. Please specify the prompt file for gpt evaluation!")
 
+        if args.gpt_model == "text-davinci-003" and args.gpt_with_reference:
+            raise Exception(
+                "GPT evaluation with reference is not supported for text-davinci-003. You should specify chat models such as gpt-3.5-turbo or gpt-4."
+            )
+
         # initialize evaluator
         evaluator = Evaluator(metrics_per_category, battle_prompt, gpt_evaluation_prompt, args.gpt_model,
-                              config["language"], config.get("path_for_UniEval", None))
+                              config["language"], config.get("path_for_UniEval", None), args.gpt_with_reference)
         if len(args.model_name_list) == 2:
             answers1 = jload(args.answer_file_list[0])
             answers2 = jload(args.answer_file_list[1])
@@ -92,6 +97,10 @@ if __name__ == '__main__':
                         default="gpt-3.5-turbo",
                         choices=["text-davinci-003", "gpt-3.5-turbo", "gpt-4"],
                         help='which GPT model to use for evaluation')
+    parser.add_argument('--gpt_with_reference',
+                        default=False,
+                        action="store_true",
+                        help='whether to include reference answer in gpt evaluation')
     parser.add_argument('--save_path', type=str, default="results", help='path to save evaluation results')
     parser.add_argument('--openai_key', type=str, default=None, required=True, help='Your openai key')
     args = parser.parse_args()

@@ -66,13 +66,13 @@ with ColoInitContext(device='cpu', default_dist_spec=default_dist_spec, default_
 chunk_manager = init_chunk_manager(model=module,
                                    init_device=device,
                                    hidden_dim=hidden_dim,
-                                   search_range_mb=search_range_mb,
-                                   min_chunk_size_mb=min_chunk_size_mb)
+                                   search_range_m=search_range_m,
+                                   min_chunk_size_m=min_chunk_size_m)
 gemini_manager = GeminiManager(placement_policy, chunk_manager)
 model = ZeroDDP(model, gemini_manager)
 ```
 
-`hidden dim`是DNN的隐藏维度。用户可以提供这个参数来加快搜索速度。如果用户在训练前不知道这个参数也可以。 我们将使用默认值 1024。`min_chunk_size_mb`是以兆字节为单位的最小块大小。如果参数的总大小仍然小于最小块大小，则所有参数将被压缩为一个小块。
+`hidden dim`是DNN的隐藏维度。用户可以提供这个参数来加快搜索速度。如果用户在训练前不知道这个参数也可以。 我们将使用默认值 1024。`min_chunk_size_m`是以兆（2^20）为单位的最小块大小。如果参数的总大小仍然小于最小块大小，则所有参数将被压缩为一个小块。
 
 初始化优化器。
 ```python

@@ -83,7 +83,7 @@ More details can be found in the latest news.
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/ColossalChat%20Speed.jpg" width=450/>
 </p>
 
-> DeepSpeedChat performance comes from its blog on 2023 April 12, ColossalChat performance can be reproduced on an AWS p4d.24xlarge node with 8 A100-40G GPUs with the following command: torchrun --standalone --nproc_per_node 8 benchmark_opt_lora_dummy.py --max_timesteps 1 --update_timesteps 1 --use_kernels --strategy colossalai_zero2 --experience_batch_size 64 --train_batch_size 32
+> DeepSpeedChat performance comes from its blog on 2023 April 12, ColossalChat performance can be reproduced on an AWS p4d.24xlarge node with 8 A100-40G GPUs with the following command: torchrun --standalone --nproc_per_node 8 benchmark_opt_lora_dummy.py --num_collect_steps 1 --use_kernels --strategy colossalai_zero2 --experience_batch_size 64 --train_batch_size 32
 
 ## Install
 
@@ -98,12 +98,9 @@ pip install .
 ```
 
 ### Install the Transformers
-Given Hugging Face hasn't officially supported the LLaMA models, We fork a branch of Transformers that can be compatible with our code
 
 ```shell
-git clone https://github.com/hpcaitech/transformers
-cd transformers
-pip install .
+pip install transformers==4.30.2
 ```
 
 ## How to use?
@@ -287,7 +284,7 @@ If you only have a single 24G GPU, you can use the following script. `batch_size
 torchrun --standalone --nproc_per_node=1 train_sft.py \
     --pretrain "/path/to/LLaMa-7B/" \
     --model 'llama' \
-    --strategy naive \
+    --strategy ddp \
     --log_interval 10 \
     --save_path  /path/to/Coati-7B \
     --dataset /path/to/data.json \

@@ -165,7 +165,7 @@ def gemini_zero_dpp(model: torch.nn.Module, pg: ProcessGroup, placement_policy: 
                         device=get_current_device(),
                         placement_policy=placement_policy,
                         pin_memory=True,
-                        search_range_mb=32)
+                        search_range_m=32)
     return model
 ```
 
@@ -174,3 +174,6 @@ def gemini_zero_dpp(model: torch.nn.Module, pg: ProcessGroup, placement_policy: 
 我们做的上述优化让我们可以在单GPU上训练GPT-2模型，只需要将`run.sh`中设置参数`GPUNUM`=1，再运行文件时就可以在单个GPU上完成模型的训练。
 
 GPT-2 示例在[Train GPT with Colossal-AI](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/gpt). 获得。
+
+
+<!-- doc-test-command: torchrun --standalone --nproc_per_node=1 parallelize_your_training_like_Megatron.py  -->
