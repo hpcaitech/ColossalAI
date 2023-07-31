@@ -72,7 +72,7 @@ jobs:
           ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
       - name: Download cub for CUDA 10.2
         run: |
-          CUDA_VERSION=$(cat $CUDA_HOME/version.txt | grep "CUDA Version" | awk '{print $NF}' | cut -d. -f1,2)
+          CUDA_VERSION=$(nvcc -V | awk -F ',| ' '/release/{print $6}')
 
           # check if it is CUDA 10.2
           # download cub
