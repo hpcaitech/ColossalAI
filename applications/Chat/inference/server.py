@@ -14,7 +14,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 from sse_starlette.sse import EventSourceResponse
 from transformers import AutoTokenizer, GenerationConfig, LlamaForCausalLM
-from utils import ChatPromptProcessor, Dialogue, LockedIterator, sample_streamingly, update_model_kwargs_fn, load_json
+from utils import ChatPromptProcessor, Dialogue, LockedIterator, load_json, sample_streamingly, update_model_kwargs_fn
 
 CONTEXT = 'Below is an instruction that describes a task. Write a response that appropriately completes the request. Do not generate new instructions.'
 MAX_LEN = 512
@@ -145,7 +145,9 @@ if __name__ == '__main__':
                         help='Group size for GPTQ. This is only useful when quantization mode is 4bit. Default: 128.')
     parser.add_argument('--http_host', default='0.0.0.0')
     parser.add_argument('--http_port', type=int, default=7070)
-    parser.add_argument('--profanity_file', default=None, help='Path to profanity words list. It should be a JSON file containing a list of words.')
+    parser.add_argument('--profanity_file',
+                        default=None,
+                        help='Path to profanity words list. It should be a JSON file containing a list of words.')
     args = parser.parse_args()
 
     if args.quant == '4bit':

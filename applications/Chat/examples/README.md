@@ -6,6 +6,7 @@
   - [Table of Contents](#table-of-contents)
   - [Install requirements](#install-requirements)
   - [Supervised datasets collection](#supervised-datasets-collection)
+    - [Conversation dataset generation](#conversation-dataset-generation)
   - [Stage1 - Supervised instructs tuning](#stage1---supervised-instructs-tuning)
     - [Arg List](#arg-list)
   - [Stage2 - Training reward model](#stage2---training-reward-model)
@@ -45,6 +46,49 @@ The following pic shows how we collected the data.
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/data-collect.png" width=500/>
 </p>
 
+### Conversation dataset generation
+
+In order to further improve the model's ability to handle multi-turn conversations, we need to include samples with multi-turn conversations in the dataset. However, the samples in InstructWild and Alpaca datasets currently consist of only single-turn conversations, and their dataset organization is not suitable for storing multi-turn conversations. Additionally, after converting the aforementioned datasets, we also need to include multi-turn conversation datasets like ShareGPT, and we should transform them into the training format supported by ColossalChat.
+
+A sample of conversation dataset should have the following fields:
+
+* `type` (str, optional): The type of the data sample.
+* `language` (str, optional): The language of the data sample.
+* `dataset` (str, optional): The dataset the data sample originates from.
+* `conversations` (str, compulsory): Conversation content of the data sample.
+* `id` (int, optional): The ID of the data sample.
+
+A simple example:
+```json
+{
+    "type": "instruction",
+    "language": "English",
+    "dataset": "Alpaca",
+    "conversations": [
+        {
+            "from": "human",
+            "value": "Give three tips for staying healthy."
+        },
+        {
+            "from": "gpt",
+            "value": "1.Eat a balanced diet and make sure to include plenty of fruits and vegetables. \n2. Exercise regularly to keep your body active and strong. \n3. Get enough sleep and maintain a consistent sleep schedule."
+        }
+    ],
+    "id": 1
+}
+```
+
+> **NOTE:**  Only key `conversations` is compulsary for training and other keys serve as metadata. The length of `conversations` varies.
+
+You can run the `examples/generate_conversation_dataset.py` to generate a conversation dataset supported by ColossalChat.
+
+You can use the following cmd to generate conversation dataset.
+```
+python generate_conversation_dataset.py \
+    --dataset "All"
+    --save_path "/path/to/dataset"
+```
+
 ## Stage1 - Supervised instructs tuning
 
 Stage1 is supervised instructs fine-tuning, which uses the datasets mentioned earlier to fine-tune the model.
@@ -69,7 +113,7 @@ torchrun --standalone --nproc_per_node=4 train_sft.py \
     --grad_checkpoint
 ```
 ### Arg List
-- --strategy:          the strategy using for training, choices=['naive', 'ddp', 'colossalai_gemini', 'colossalai_zero2'], default='colossalai_zero2'
+- --strategy:          the strategy using for training, choices=['ddp', 'colossalai_gemini', 'colossalai_zero2'], default='colossalai_zero2'
 - --model:             model type, choices=['gpt2', 'bloom', 'opt', 'llama'], default='bloom'
 - --pretrain:          pretrain model, type=str, default=None
 - --max_datasets_size: the max size of dataset, type=int, default=None
@@ -118,7 +162,7 @@ Model performance in [Anthropics paper](https://arxiv.org/abs/2204.05862):
 <div align=left>We also train the reward model based on LLaMA-7B, which reaches the ACC of 72.06% after 1 epoch, performing almost the same as Anthropic's best RM.
 
 ### Arg List
-- --strategy:          the strategy using for training, choices=['naive', 'ddp', 'colossalai_gemini', 'colossalai_zero2'], default='colossalai_zero2'
+- --strategy:          the strategy using for training, choices=['ddp', 'colossalai_gemini', 'colossalai_zero2'], default='colossalai_zero2'
 - --model:             model type, choices=['gpt2', 'bloom', 'opt', 'llama'], default='bloom'
 - --pretrain:          pretrain model, type=str, default=None
 - --model_path:        the path of rm model(if continue to train), type=str, default=None
@@ -160,7 +204,7 @@ Prompt dataset: the instruction dataset mentioned in the above figure which incl
 Pretrain dataset: the pretrain dataset including the instruction and corresponding response, e.g. you can use the [InstructWild Data](https://github.com/XueFuzhao/InstructionWild/tree/main/data) in stage 1 supervised instructs tuning.
 
 ### Arg List
-- --strategy:          the strategy using for training, choices=['naive', 'ddp', 'colossalai_gemini', 'colossalai_zero2'], default='colossalai_zero2'
+- --strategy:          the strategy using for training, choices=['ddp', 'colossalai_gemini', 'colossalai_zero2'], default='colossalai_zero2'
 - --model:             model type of actor, choices=['gpt2', 'bloom', 'opt', 'llama'], default='bloom'
 - --pretrain:          pretrain model, type=str, default=None
 - --rm_model:          reward model type, type=str, choices=['gpt2', 'bloom', 'opt', 'llama'], default=None
@@ -171,9 +215,8 @@ Pretrain dataset: the pretrain dataset including the instruction and correspondi
 - --pretrain_dataset:  path of the ptx dataset, type=str, default=None
 - --need_optim_ckpt:   whether to save optim ckpt, type=bool, default=False
 - --num_episodes:      num of episodes for training, type=int, default=10
-- --max_epochs:        max epochs for training in one episode, type=int, default=5
-- --max_timesteps:     max episodes in one batch, type=int, default=10
-- --update_timesteps:  timesteps to update, type=int, default=10
+- --num_update_steps:  number of steps to update policy per episode, type=int
+- --num_collect_steps: number of steps to collect experience per episode, type=int
 - --train_batch_size:  batch size while training, type=int, default=8
 - --ptx_batch_size:    batch size to compute ptx loss, type=int, default=1
 - --experience_batch_size: batch size to make experience, type=int, default=8

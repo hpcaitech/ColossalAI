@@ -164,9 +164,7 @@ def get_launch_command(
         ]
     else:
         # extra launch args for torch distributed launcher with torch >= 1.9
-        default_torchrun_rdzv_args = dict(rdzv_backend="c10d",
-                                          rdzv_endpoint=f"{master_addr}:{master_port}",
-                                          rdzv_id="colossalai-default-job")
+        default_torchrun_rdzv_args = dict(master_addr=master_addr, master_port=master_port)
 
         # update rdzv arguments
         for key in default_torchrun_rdzv_args.keys():
