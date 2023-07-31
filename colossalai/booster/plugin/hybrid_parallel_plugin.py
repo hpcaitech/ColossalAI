@@ -63,6 +63,7 @@ class HybridParallelModule(ModelWrapper):
         for p in self.module.parameters():
             if p.grad is not None:
                 dist.all_reduce(p.grad, group=self.dp_group)
+                p.grad.div_(self.dp_group.size())
 
 
 def init_pipeline_optimizer(optim: Optimizer, model: Module):

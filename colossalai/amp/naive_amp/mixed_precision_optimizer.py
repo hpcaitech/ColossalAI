@@ -134,7 +134,7 @@ class MixedPrecisionOptimizer(OptimizerWrapper):
                 working_param = self.master_to_working_map[p]
                 if p is working_param:
                     continue
-                if working_param.grad is None:
+                if working_param.grad is not None:
                     p.grad = working_param.grad.data.float()
                     working_param.grad = None
         total_norm = self._compute_grad_norm()

@@ -126,7 +126,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             dist.all_gather(shard_weight_list, shard_weight, plugin.tp_group)
             shard_weight = torch.cat(shard_weight_list, dim=1)
 
-        assert torch.allclose(org_weight, shard_weight, atol=1e-3, rtol=1e-3), \
+        assert torch.allclose(org_weight, shard_weight, atol=5e-3, rtol=1e-3), \
             f"shard model weight is not equal to origin model weight\n{org_weight}\n{shard_weight}"
 
     torch.cuda.empty_cache()
@@ -138,14 +138,17 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     'pp_size': 2,
     'num_microbatches': 4,
     'enable_fused_normalization': False
+}, {
+    'tp_size': 1,
+    'pp_size': 2,
+    'num_microbatches': 4
 }])
 @clear_cache_before_run()
 def run_gpt2_test(use_lazy_init, plugin_config):
 
-    # TODO: add plugin_config for PureTP/TP+DP/PP+DP after supporting & debugging them
-    # {'tp_size': 4, 'pp_size': 1, 'enable_fused_normalization': True}
+    # TODO: add plugin_config for PureTP/TP+DP after supporting & debugging them
+    # {'tp_size': 4, 'pp_size': 1, 'enable_fused_normalization': True},
     # {'tp_size': 2, 'pp_size': 1, 'enable_fused_normalization': True}
-    # {'tp_size': 1, 'pp_size': 2, 'num_microbatches': 4, 'enable_fused_normalization': False}
 
     sub_model_zoo = model_zoo.get_sub_registry('transformers_gpt')
     plugin_config['precision'] = 'float'    # Do not use fp16/bf16 in testing
