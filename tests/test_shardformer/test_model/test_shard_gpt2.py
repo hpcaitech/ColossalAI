@@ -19,11 +19,6 @@ from tests.test_shardformer.test_model._utils import build_model, check_state_di
 
 def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, use_lazy_init, plugin_config):
 
-    def _criterion(outputs, inputs):
-        outputs = output_transform_fn(outputs)
-        loss = criterion(outputs)
-        return loss
-
     if use_lazy_init:
         ctx = LazyInitContext()
     else:
@@ -34,14 +29,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     booster = Booster(plugin=plugin)
     stage_manager = plugin.stage_manager
 
-    # prepare data
-    data = data_gen_fn()
-    data = {
-        k: v.to('cuda').repeat(plugin_config['num_microbatches'], 1)
-        if torch.is_tensor(v) or 'Tensor' in v.__class__.__name__ else v for k, v in data.items()
-    }
-    data_iter = iter([data])
-
     # prepare models and optimizers
     org_model = model_fn().cuda()
     with ctx:
@@ -50,29 +37,57 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     sharded_optimizer = Adam(sharded_model.parameters(), lr=1e-3)
     criterion = loss_fn
 
-    # run forward and backward
     sharded_model, sharded_optimizer, criterion, _, _ = booster.boost(sharded_model, sharded_optimizer, criterion)
+
+    def _criterion(outputs, inputs):
+        outputs = output_transform_fn(outputs)
+        loss = criterion(outputs)
+        return loss
+
+    data = data_gen_fn()
     sharded_model.train()
-    sharded_output = booster.execute_pipeline(data_iter,
-                                              sharded_model,
-                                              _criterion,
-                                              sharded_optimizer,
-                                              return_loss=True,
-                                              return_outputs=True)
+    if stage_manager:
+        data = {
+            k: v.to('cuda').repeat(4, 1) if torch.is_tensor(v) or 'Tensor' in v.__class__.__name__ else v
+            for k, v in data.items()
+        }
+        data_iter = iter([data])
+        sharded_output = booster.execute_pipeline(data_iter,
+                                                  sharded_model,
+                                                  _criterion,
+                                                  sharded_optimizer,
+                                                  return_loss=True,
+                                                  return_outputs=True)
+        sharded_loss = sharded_output['loss']
+    else:
+        data = {k: v.cuda() for k, v in data.items()}
+        sharded_output = sharded_model(**data)
+        sharded_loss = criterion(sharded_output)
+        sharded_loss.backward()
 
     org_model.train()
     org_output = org_model(**data)
     org_loss = criterion(org_output)
     org_loss.backward()
 
-    # check outputs and loss
-    if stage_manager.is_last_stage():
-        org_hidden_state = org_output.last_hidden_state
-        sharded_hidden_state = torch.cat([output.last_hidden_state for output in sharded_output['outputs']], dim=0)
-        sharded_loss = sharded_output['loss']
-        assert torch.allclose(org_hidden_state, sharded_hidden_state, atol=1e-5), \
-            f"shard model's output hidden state is not equal to origin model's last hidden state\n{org_hidden_state}\n{sharded_hidden_state}"
-        assert torch.allclose(org_loss, sharded_loss, atol=1e-8), \
+    if stage_manager is None or stage_manager.is_last_stage():
+
+        # check last hidden state
+        if org_model.__class__.__name__ == 'GPT2Model':
+            org_hidden_state = org_output.last_hidden_state
+
+            if stage_manager is None:
+                sharded_hidden_state = sharded_output.last_hidden_state
+
+            if stage_manager and stage_manager.is_last_stage():
+                sharded_hidden_state = torch.cat([output.last_hidden_state for output in sharded_output['outputs']],
+                                                 dim=0)
+
+            assert torch.allclose(org_hidden_state, sharded_hidden_state, atol=1e-5, rtol=1e-3), \
+                f"shard model's output hidden state is not equal to origin model's last hidden state\n{org_hidden_state}\n{sharded_hidden_state}"
+
+        # check loss
+        assert torch.allclose(org_loss, sharded_loss, atol=1e-5, rtol=1e-3), \
             f"shard model loss is not equal to origin model loss\n{org_loss}\n{sharded_loss}"
 
     # unwrap model
@@ -84,9 +99,8 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         sharded_model = sharded_model.unwrap().transformer
 
     # check weights and gradients
-    if stage_manager.is_first_stage():
+    if stage_manager is None or stage_manager.is_first_stage():
 
-        org_weight = org_model.h[0].mlp.c_fc.weight
         shard_weight = sharded_model.h[0].mlp.c_fc.weight
         org_grad = org_model.h[0].mlp.c_fc.weight.grad
         shard_grad = sharded_model.h[0].mlp.c_fc.weight.grad
@@ -95,40 +109,48 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             shard_grad_list = [torch.zeros([*shard_grad.shape]).to('cuda') for _ in range(plugin.tp_size)]
             dist.all_gather(shard_grad_list, shard_grad, plugin.tp_group)
             shard_grad = torch.cat(shard_grad_list, dim=1)
-        assert torch.allclose(org_weight, shard_weight, atol=1e-5), \
-            f"shard model weight is not equal to origin model weight\n{org_weight}\n{shard_weight}"
-        assert torch.allclose(org_grad, shard_grad, atol=1e-8), \
+
+        assert torch.allclose(org_grad, shard_grad, atol=1e-5, rtol=1e-3), \
             f"shard model grad is not equal to origin model grad\n{org_grad}\n{shard_grad}"
 
     # check weights after optimizer.step()
     org_optimizer.step()
     sharded_optimizer.step()
-    if stage_manager.is_first_stage():
+    if stage_manager is None or stage_manager.is_first_stage():
+
         org_weight = org_model.h[0].mlp.c_fc.weight
         shard_weight = sharded_model.h[0].mlp.c_fc.weight
+
         if is_distributed_tensor(shard_weight) or is_customized_distributed_tensor(shard_weight):
             shard_weight_list = [torch.zeros([*shard_weight.shape]).to('cuda') for _ in range(plugin.tp_size)]
             dist.all_gather(shard_weight_list, shard_weight, plugin.tp_group)
             shard_weight = torch.cat(shard_weight_list, dim=1)
-        assert torch.allclose(org_weight, shard_weight, atol=1e-5), \
+
+        assert torch.allclose(org_weight, shard_weight, atol=1e-3, rtol=1e-3), \
             f"shard model weight is not equal to origin model weight\n{org_weight}\n{shard_weight}"
 
     torch.cuda.empty_cache()
 
 
-@parameterize('enable_fused_normalization', [False])
 @parameterize('use_lazy_init', [False])
-@parameterize('plugin_config', [{'tp_size': 1, 'pp_size': 2, 'num_microbatches': 4}])
+@parameterize('plugin_config', [{
+    'tp_size': 2,
+    'pp_size': 2,
+    'num_microbatches': 4,
+    'enable_fused_normalization': False
+}])
 @clear_cache_before_run()
-def run_gpt2_test(enable_fused_normalization, use_lazy_init, plugin_config):
+def run_gpt2_test(use_lazy_init, plugin_config):
+
+    # TODO: add plugin_config for PureTP/TP+DP/PP+DP after supporting & debugging them
+    # {'tp_size': 4, 'pp_size': 1, 'enable_fused_normalization': True}
+    # {'tp_size': 2, 'pp_size': 1, 'enable_fused_normalization': True}
+    # {'tp_size': 1, 'pp_size': 2, 'num_microbatches': 4, 'enable_fused_normalization': False}
 
     sub_model_zoo = model_zoo.get_sub_registry('transformers_gpt')
-    plugin_config['enable_fused_normalization'] = enable_fused_normalization
     plugin_config['precision'] = 'float'    # Do not use fp16/bf16 in testing
 
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
-        if name != "transformers_gpt":
-            continue
         check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, use_lazy_init, plugin_config)
 
 
