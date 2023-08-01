@@ -38,9 +38,13 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     stage_manager = plugin.stage_manager
 
     # prepare models and optimizers
-    org_model = model_fn().cuda()
     with ctx:
+        org_model = model_fn().cuda()
         sharded_model = copy.deepcopy(org_model)
+
+    if use_lazy_init:
+        org_model = ctx.materialize(org_model)
+
     org_optimizer = Adam(org_model.parameters(), lr=1e-3)
     sharded_optimizer = Adam(sharded_model.parameters(), lr=1e-3)
     criterion = loss_fn
@@ -155,7 +159,8 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 }, {
     'tp_size': 4,
     'pp_size': 1,
-    'enable_fused_normalization': True
+    'enable_fused_normalization': True,
+    'use_lazy_init': False
 }])
 @clear_cache_before_run()
 def run_gpt2_test(test_config):

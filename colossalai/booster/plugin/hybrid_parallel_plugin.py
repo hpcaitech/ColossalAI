@@ -267,7 +267,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         with ctx:
             outputs = self.schedule.forward_backward_step(model, optimizer, data_iter, criterion, return_loss,
                                                           return_outputs)
-        # model.sync_shared_params()
+        model.sync_shared_params()
         if isinstance(optimizer, HybridParallelZeroOptimizer):
             optimizer.sync_grad()
         else:
