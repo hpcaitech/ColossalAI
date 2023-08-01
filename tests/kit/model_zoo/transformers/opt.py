@@ -44,7 +44,7 @@ def data_gen_for_question_answering():
 
 
 output_transform_fn = lambda x: x
-loss_fn_for_opt_model = lambda x: x.last_hidden_state.mean()
+loss_fn_for_opt_model = lambda x: x.last_hidden_state[0][0][0]
 loss_fn_for_lm = lambda x: x.loss
 config = transformers.OPTConfig(
     hidden_size=128,
