@@ -160,7 +160,6 @@ def check_llama(rank, world_size, port):
     run_llama_test()
 
 
-@pytest.mark.skip('This test will fail')
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()
