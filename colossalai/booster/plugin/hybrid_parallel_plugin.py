@@ -203,7 +203,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         return ['cuda']
 
     def supported_precisions(self) -> List[str]:
-        return ['fp16', 'bf16']
+        return ['fp16', 'bf16', 'fp32']
 
     def control_device(self) -> bool:
         return True
@@ -229,7 +229,7 @@ class HybridParallelPlugin(PipelinePluginBase):
             model = HybridParallelModule(model, self.precision, self.shard_config, self.dp_group)
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
             if self.zero_stage == 0:
-                if self.precision in self.supported_precisions():
+                if self.precision in ['fp16', 'bf16']:
                     optimizer = HybridParallelAMPOptimizer(optimizer,
                                                            model,
                                                            use_pipeline=self.enable_pipeline_parallelism,

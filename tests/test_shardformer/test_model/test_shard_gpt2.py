@@ -11,7 +11,11 @@ from colossalai.booster import Booster
 from colossalai.booster.plugin import HybridParallelPlugin
 from colossalai.lazy.lazy_init import LazyInitContext
 from colossalai.logging import disable_existing_loggers
-from colossalai.tensor.d_tensor.api import is_customized_distributed_tensor, is_distributed_tensor
+from colossalai.tensor.d_tensor.api import (
+    clear_layout_converter,
+    is_customized_distributed_tensor,
+    is_distributed_tensor,
+)
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
 from tests.kit.model_zoo import model_zoo
 from tests.test_shardformer.test_model._utils import build_model, check_state_dict, run_forward
@@ -44,6 +48,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         loss = criterion(outputs)
         return loss
 
+    # do forward and backward
     data = data_gen_fn()
     sharded_model.train()
     if stage_manager:
@@ -134,20 +139,23 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 
 @parameterize('use_lazy_init', [False])
 @parameterize('plugin_config', [{
+    'tp_size': 1,
+    'pp_size': 2,
+    'num_microbatches': 4
+}, {
     'tp_size': 2,
     'pp_size': 2,
     'num_microbatches': 4,
     'enable_fused_normalization': False
 }, {
-    'tp_size': 1,
-    'pp_size': 2,
-    'num_microbatches': 4
+    'tp_size': 4,
+    'pp_size': 1,
+    'enable_fused_normalization': True
 }])
 @clear_cache_before_run()
 def run_gpt2_test(use_lazy_init, plugin_config):
 
-    # TODO: add plugin_config for PureTP/TP+DP after supporting & debugging them
-    # {'tp_size': 4, 'pp_size': 1, 'enable_fused_normalization': True},
+    # TODO: add plugin_config for TP+DP after supporting & debugging it
     # {'tp_size': 2, 'pp_size': 1, 'enable_fused_normalization': True}
 
     sub_model_zoo = model_zoo.get_sub_registry('transformers_gpt')
@@ -155,6 +163,9 @@ def run_gpt2_test(use_lazy_init, plugin_config):
 
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, use_lazy_init, plugin_config)
+
+    clear_layout_converter()
+    torch.cuda.empty_cache()
 
 
 def check_gpt2(rank, world_size, port):
