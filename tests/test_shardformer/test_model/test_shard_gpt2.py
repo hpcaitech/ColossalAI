@@ -15,7 +15,7 @@ from tests.kit.model_zoo import model_zoo
 from tests.test_shardformer.test_model._utils import build_model, check_state_dict, run_forward
 
 
-def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn):
+def check_shard_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn):
     # check forward
     org_output, org_loss, shard_output, shard_loss = run_forward(org_model, sharded_model, data_gen_fn,
                                                                  output_transform_fn, loss_fn)
@@ -77,7 +77,8 @@ def run_gpt2_test(enable_fused_normalization, enable_tensor_parallelism, enable_
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         org_model, sharded_model = build_model(model_fn, enable_fused_normalization, enable_tensor_parallelism,
                                                enable_flash_attention, use_lazy_init)
-        check_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn)
+        check_state_dict(org_model, sharded_model, name=name)
+        check_shard_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn)
 
     torch.cuda.empty_cache()
 
