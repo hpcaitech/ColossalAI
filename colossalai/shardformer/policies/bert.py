@@ -315,7 +315,7 @@ class BertForMaskedLMPolicy(BertPolicy):
     def module_policy(self):
         policy = super().module_policy()
         policy = self.add_lm_head_policy(policy)
-        mpolicy = self.add_lm_prediction_policy(policy)
+        policy = self.add_lm_prediction_policy(policy)
         from transformers.models.bert.modeling_bert import BertForMaskedLM
         if self.pipeline_stage_manager:
             self.set_pipeline_forward(model_cls=BertForMaskedLM,
