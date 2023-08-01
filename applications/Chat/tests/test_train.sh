@@ -75,7 +75,6 @@ echo "[Test]: testing sft ..."
 #  - gpt2-ddp: RuntimeError: one of the variables needed for gradient computation has been modified by an inplace operation
 #  - llama-*: These tests can be passed locally, skipped for long execution time
 SKIPPED_TESTS=(
-    "gpt2-colossalai_zero2-4"
     "gpt2-ddp"
     "llama-ddp"
     "llama-colossalai_gemini"
@@ -127,7 +126,6 @@ echo "[Test]: testing reward model ..."
 #  - gpt2-ddp: RuntimeError: one of the variables needed for gradient computation has been modified by an inplace operation
 #  - llama-*: These tests can be passed locally, skipped for long execution time
 SKIPPED_TESTS=(
-    "gpt2-colossalai_zero2-4"
     "gpt2-ddp"
     "llama-ddp"
     "llama-colossalai_gemini"
@@ -181,7 +179,6 @@ echo "[Test]: testing RLHF ..."
 #  - gpt2-ddp: RuntimeError: one of the variables needed for gradient computation has been modified by an inplace operation
 #  - llama-*: These tests can be passed locally, skipped for long execution time
 SKIPPED_TESTS=(
-    "gpt2-colossalai_zero2-4"
     "gpt2-ddp"
     "llama-ddp"
     "llama-colossalai_gemini"
