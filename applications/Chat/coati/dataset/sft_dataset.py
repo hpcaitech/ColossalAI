@@ -22,21 +22,11 @@ from transformers import PreTrainedTokenizer
 
 from colossalai.logging import get_dist_logger
 
-from .conversation import default_conversation
 from .utils import is_rank_0, jload
-
-# The following is a template prompt for a 4-round conversation.
-"""
-A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the human's questions.
-
-Human: xxx</s>Assistant: xxx</s>Human: xxx</s>Assistant: xxx</s>Human: xxx</s>Assistant: xxx</s>Human: xxx</s>Assistant: xxx</s>
-"""
-# Please note that we only calculate loss on assistant's answer tokens.
 
 logger = get_dist_logger()
 
 IGNORE_INDEX = -100
-DEFAULT_EOS_TOKEN = "</s>"
 PROMPT_DICT = {
     "prompt_input": ("Below is an instruction that describes a task, paired with an input that provides further context. "
                      "Write a response that appropriately completes the request.\n\n"
@@ -116,61 +106,6 @@ class SFTDataset(Dataset):
         return dict(input_ids=self.input_ids[idx],
                     labels=self.labels[idx],
                     attention_mask=self.attention_mask[idx])
-
-
-def preprocess_conversation(sources: List[List[Dict]], tokenizer: transformers.PreTrainedTokenizer,
-                            max_length: int) -> Dict:
-    """Preprocess the conversation data by tokenizing."""
-    conversations = []
-    intermediates = []
-    for source in sources:
-        header = f"{default_conversation.system}"
-        conversation, intermediate = _add_speaker_and_signal(header, source)
-        conversations.append(conversation)
-        intermediates.append(intermediate)
-
-    conversations_tokenized = _tokenize_fn(conversations, tokenizer, max_length)
-    input_ids = conversations_tokenized["input_ids"]
-    targets = copy.deepcopy(input_ids)
-
-    assert len(targets) == len(intermediates)
-    for target, inters in zip(targets, intermediates):
-        mask = torch.zeros_like(target, dtype=torch.bool)
-        for inter in inters:
-            tokenized = _tokenize_fn(inter, tokenizer, max_length)
-
-            start_idx = tokenized["input_ids"][0].size(0) - 1
-            end_idx = tokenized["input_ids"][1].size(0)
-
-            mask[start_idx:end_idx] = True
-        target[~mask] = IGNORE_INDEX
-
-    return dict(input_ids=input_ids, labels=targets)
-
-
-def _add_speaker_and_signal(header: str,
-                            source: List[Dict],
-                            get_conversation: bool = True) -> Tuple[str, List[List[str]]]:
-    END_SIGNAL = DEFAULT_EOS_TOKEN
-    conversation = header
-    intermediate = []
-    for sentence in source:
-        from_str = sentence["from"]
-        if from_str.lower() == "human":
-            from_str = default_conversation.roles[0]
-        elif from_str.lower() == "gpt":
-            from_str = default_conversation.roles[1]
-        else:
-            from_str = 'unknown'
-
-        value = from_str + ": " + sentence["value"] + END_SIGNAL
-        if sentence["from"].lower() == "gpt":
-            start = conversation + from_str + ": "
-            end = conversation + value
-            intermediate.append([start, end])
-        if get_conversation:
-            conversation += value
-    return conversation, intermediate
 
 
 class SupervisedDataset(Dataset):
