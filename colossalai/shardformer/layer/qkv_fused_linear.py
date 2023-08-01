@@ -456,12 +456,12 @@ class GPT2FusedLinearConv1D_Row(ParallelModule):
         if self.parallel_input:
             assert input_.shape[-1] == self.weight.shape[0], \
                 'Invalid shapes in Linear1D_Row forward: input={}, weight={}. Expected last dim of input {}.'.format(
-                input_.shape, self.weight.shape, self.weight.shape[-1])
+                input_.shape, self.weight.shape, self.weight.shape[0])
             input_ = input_
         else:
             assert divide(input_.shape[-1], self.num_partitions) == self.weight.shape[0], \
                 'Invalid shapes in Linear1D_Row forward: input={}, weight={}. Expected last dim of input {}.'.format(
-                input_.shape, self.weight.shape, self.weight.shape[-1] * self.num_partitions)
+                input_.shape, self.weight.shape, self.weight.shape[0] * self.num_partitions)
             input_ = split_forward_gather_backward(input_, dim=-1, process_group=self.process_group)
 
         if self.stream_chunk_num > 1:

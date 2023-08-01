@@ -16,6 +16,11 @@ from .sharding_spec import ShardingSpec
 layout_converter = LayoutConverter()
 
 
+def clear_layout_converter():
+    global layout_converter
+    layout_converter.cached_solution.clear()
+
+
 def is_distributed_tensor(tensor: torch.Tensor) -> bool:
     """
     Check whether the given tensor is a distributed tensor.
