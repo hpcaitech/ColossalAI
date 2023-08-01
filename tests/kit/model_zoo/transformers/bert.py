@@ -87,6 +87,17 @@ def data_gen_for_mcq():
     return dict(input_ids=input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask, labels=labels)
 
 
+def data_gen_for_qa():
+    # generating data for question answering
+    # no need for labels and use start and end position instead
+    data = data_gen()
+    start_positions = torch.tensor([0], dtype=torch.int64)
+    data['start_positions'] = start_positions
+    end_positions = torch.tensor([1], dtype=torch.int64)
+    data['end_positions'] = end_positions
+    return data
+
+
 # define output transform function
 output_transform_fn = lambda x: x
 
@@ -147,6 +158,12 @@ model_zoo.register(name='transformers_bert_for_next_sentence',
 model_zoo.register(name='transformers_bert_for_mcq',
                    model_fn=lambda: transformers.BertForMultipleChoice(config),
                    data_gen_fn=data_gen_for_mcq,
+                   output_transform_fn=output_transform_fn,
+                   loss_fn=loss_fn,
+                   model_attribute=ModelAttribute(has_control_flow=True))
+model_zoo.register(name='transformers_bert_for_question_answering',
+                   model_fn=lambda: transformers.BertForQuestionAnswering(config),
+                   data_gen_fn=data_gen_for_qa,
                    output_transform_fn=output_transform_fn,
                    loss_fn=loss_fn,
                    model_attribute=ModelAttribute(has_control_flow=True))

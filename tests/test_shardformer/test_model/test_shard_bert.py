@@ -2,7 +2,10 @@ import pytest
 import torch
 
 import colossalai
+from colossalai.cluster import ProcessGroupMesh
 from colossalai.logging import disable_existing_loggers
+from colossalai.pipeline.stage_manager import PipelineStageManager
+from colossalai.shardformer.policies.auto_policy import get_autopolicy
 from colossalai.tensor.d_tensor.api import is_customized_distributed_tensor, is_distributed_tensor
 from colossalai.testing import (
     assert_hf_output_close,
@@ -12,7 +15,7 @@ from colossalai.testing import (
     spawn,
 )
 from tests.kit.model_zoo import model_zoo
-from tests.test_shardformer.test_model._utils import build_model, run_forward
+from tests.test_shardformer.test_model._utils import build_model, check_state_dict, run_forward
 
 
 def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn):
@@ -67,12 +70,15 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
                           atol=1e-5), f"shard model grad is not equal to orgin model grad\n{org_grad}\n{all_shard_grad}"
 
 
-@parameterize('enable_fused_normalization', [True, False])
-@parameterize('enable_tensor_parallelism', [True, False])
-def run_bert_test(enable_fused_normalization, enable_tensor_parallelism):
+@parameterize('enable_fused_normalization', [False, True])
+@parameterize('enable_tensor_parallelism', [False, True])
+@parameterize('use_lazy_init', [False, True])
+def run_bert_test(enable_fused_normalization, enable_tensor_parallelism, use_lazy_init):
     sub_model_zoo = model_zoo.get_sub_registry('transformers_bert')
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
-        org_model, sharded_model = build_model(model_fn, enable_fused_normalization, enable_tensor_parallelism)
+        org_model, sharded_model = build_model(model_fn, enable_fused_normalization, enable_tensor_parallelism,
+                                               use_lazy_init)
+        check_state_dict(org_model, sharded_model, name=name)
         check_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn)
 
     torch.cuda.empty_cache()

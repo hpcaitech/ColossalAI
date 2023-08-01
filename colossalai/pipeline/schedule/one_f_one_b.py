@@ -76,7 +76,6 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
         # for the first stage, input_obj is None
         # for the non-first stage, input_obj is the output of the previous stage and it's must be a dict
         output_obj = model_forward(model, micro_batch, input_obj)
-
         if self.stage_manager.is_last_stage():
             loss = criterion(output_obj, micro_batch) / self.num_microbatches
             if accum_loss is not None:
@@ -205,7 +204,6 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
                 # the backward pass.
                 input_obj = input_objs.pop(0)
                 output_obj = output_objs.pop(0)
-
                 input_obj_grad = self.backward_step(optimizer, input_obj, output_obj, output_obj_grad)
 
                 if last_iteration:
