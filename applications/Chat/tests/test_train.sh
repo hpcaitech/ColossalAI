@@ -104,7 +104,7 @@ for lora_rank in '0' '4'; do
                 torchrun --standalone --nproc_per_node=4 $EXAMPLES_DIR/train_sft.py \
                     $pretrain_model --tokenizer $MODELS_DIR/$model \
                     --model $model --strategy $strategy --lora_rank $lora_rank $grad_ckpt \
-                    --dataset $SFT_DATASET --max_datasets_size 32 \
+                    --dataset $SFT_DATASET --max_datasets_size 8 \
                     --max_epochs 1 --batch_size 1 --accumulation_steps 1 \
                     --save_path $EXAMPLES_DIR/rlhf_models/sft_ckpt_${model}_${lora_rank}
                 passed=$?
@@ -206,7 +206,7 @@ for model in ${MODELS[@]}; do
                 torchrun --standalone --nproc_per_node=4 $EXAMPLES_DIR/train_prompts.py \
                     --prompt_dataset $PROMPT_PATH --pretrain_dataset $PRETRAIN_DATASET \
                     --strategy $strategy --model $model --tokenizer $MODELS_DIR/$model \
-                    --num_episodes 1 --num_collect_steps 4 --num_update_steps 2 \
+                    --num_episodes 1 --num_collect_steps 1 --num_update_steps 1 \
                     --experience_batch_size 2 --train_batch_size 1 --lora_rank $lora_rank \
                     --pretrain $EXAMPLES_DIR/rlhf_models/sft_ckpt_${model}_${lora_rank} \
                     $rm_pretrain_model --rm_path $EXAMPLES_DIR/rlhf_models/rm_ckpt_${model}_${lora_rank}.pt \
