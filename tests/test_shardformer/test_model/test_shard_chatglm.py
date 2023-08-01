@@ -84,9 +84,10 @@ def run_chatglm_test(enable_fused_normalization, enable_tensor_parallelism):
         model_copy = copy.deepcopy(org_model)
         shard_former = ShardFormer(shard_config=shard_config)
         if name == "transformers_chatglm":
-            sharded_model = shard_former.optimize(model_copy, ChatGLMModelPolicy()).cuda()
+            sharded_model, _ = shard_former.optimize(model_copy, ChatGLMModelPolicy())
         else:
-            sharded_model = shard_former.optimize(model_copy, ChatGLMForConditionalGenerationPolicy()).cuda()
+            sharded_model, _ = shard_former.optimize(model_copy, ChatGLMForConditionalGenerationPolicy())
+        sharded_model = sharded_model.cuda()
 
         check_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn)
     torch.cuda.empty_cache()

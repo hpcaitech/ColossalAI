@@ -1,9 +1,12 @@
+from contextlib import nullcontext
+
 import torch
 import torch.distributed as dist
 import torch.nn as nn
 from torch.testing import assert_close
 
 import colossalai
+from colossalai.lazy import LazyInitContext
 from colossalai.shardformer.layer import FusedLinear1D_Col
 from colossalai.shardformer.layer.qkv_fused_linear import split_fused_qkv_in_gpt2_style
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
@@ -24,13 +27,23 @@ def rearrange(tensor: torch.Tensor, dim: int):
     return rearanged_tensor
 
 
-def check_linear_conv_1d_col():
+# TODO: solve lazy_init True is not working
+@parameterize('lazy_init', [False])
+def check_linear_conv_1d_col(lazy_init: bool):
+    ctx = LazyInitContext() if lazy_init else nullcontext()
     linear = nn.Linear(48, 192).cuda()
-    linear_conv_col = FusedLinear1D_Col.from_native_module(linear, process_group=None, gather_output=True, n_fused=3)
+    with ctx:
+        linear_copy = nn.Linear(48, 192).cuda()
+    linear_conv_col = FusedLinear1D_Col.from_native_module(linear_copy,
+                                                           process_group=None,
+                                                           gather_output=True,
+                                                           n_fused=3)
 
-    assert linear.weight.shape == torch.Size([192, 48])
+    assert linear.weight.shape == torch.Size([192,
+                                              48]), f"{linear.weight.shape} is expected to be {torch.Size([192, 48])}"
     assert linear.bias.shape == torch.Size([192])
-    assert linear_conv_col.weight.shape == torch.Size([96, 48])
+    assert linear_conv_col.weight.shape == torch.Size(
+        [96, 48]), f"{linear_conv_col.weight.shape} is expected to be {torch.Size([96, 48])}"
     assert linear_conv_col.bias.shape == torch.Size([96])
 
     # ensure weights are reversibly loadable
