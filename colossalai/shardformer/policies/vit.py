@@ -10,6 +10,8 @@ from colossalai.shardformer.layer import (
     Linear1D_Row,
 )
 
+from ..modeling.jit import get_jit_fused_dropout_add_func
+from ..modeling.vit import get_jit_fused_vit_output_forward, get_vit_flash_self_attention_forward
 from .basepolicy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = ['ViTPolicy', 'ViTForImageClassificationPolicy', 'ViTForMaskedImageModelingPolicy']
@@ -24,7 +26,7 @@ class ViTPolicy(Policy):
         return self.model
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
-        from transformers.models.vit.modeling_vit import ViTEmbeddings, ViTLayer, ViTModel
+        from transformers.models.vit.modeling_vit import ViTEmbeddings, ViTLayer, ViTModel, ViTOutput, ViTSelfAttention
 
         policy = {}
 
@@ -100,6 +102,19 @@ class ViTPolicy(Policy):
             ],
                                                         policy=policy,
                                                         target_key=ViTLayer)
+
+        # use flash attention
+        if self.shard_config.enable_flash_attention:
+            policy[ViTSelfAttention] = ModulePolicyDescription(method_replacement={
+                'forward': get_vit_flash_self_attention_forward(),
+            })
+
+        # use jit fused operator
+        if self.shard_config.enable_jit_fused:
+            policy[ViTOutput] = ModulePolicyDescription(method_replacement={
+                'forward': get_jit_fused_vit_output_forward(),
+                'dropout_add': get_jit_fused_dropout_add_func(),
+            })
 
         return policy
 
