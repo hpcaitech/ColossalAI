@@ -165,6 +165,7 @@ class ChatGLMPolicy(Policy):
         method_replacement = {'forward': partial(new_forward, stage_manager=stage_manager, stage_index=stage_index)}
         self.append_or_create_method_replacement(description=method_replacement, policy=policy, target_key=model_cls)
 
+
 class ChatGLMModelPolicy(ChatGLMPolicy):
 
     def __init__(self) -> None:
@@ -187,6 +188,7 @@ class ChatGLMModelPolicy(ChatGLMPolicy):
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
         """No shared params in ChatGLMModel."""
         return []
+
 
 class ChatGLMForConditionalGenerationPolicy(ChatGLMModelPolicy):
 
