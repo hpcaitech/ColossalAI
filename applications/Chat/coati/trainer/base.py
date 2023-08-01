@@ -181,11 +181,8 @@ class OnPolicyTrainer(ABC):
                         # HACK(cwher): according to the design of boost API, dataloader should also be boosted,
                         #  but it is impractical to adapt this pattern in RL training. Thus, I left dataloader unboosted.
                         #  I only call strategy.setup_dataloader() to setup dataloader.
-                        self.dataloader = self.strategy.setup_dataloader(self.data_buffer,
-                                                                         self.dataloader_pin_memory)
-                    for update_step in tqdm.trange(num_update_steps,
-                                                   desc="Update steps",
-                                                   disable=not is_rank_0()):
+                        self.dataloader = self.strategy.setup_dataloader(self.data_buffer, self.dataloader_pin_memory)
+                    for update_step in tqdm.trange(num_update_steps, desc="Update steps", disable=not is_rank_0()):
                         self._update_phase(update_step)
                     # NOTE: this is for on-policy algorithms
                     self.data_buffer.clear()
