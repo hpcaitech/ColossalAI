@@ -4,7 +4,7 @@ import colossalai.shardformer.layer as col_nn
 
 from .._utils import getattr_, setattr_
 from ..modeling.sam import forward_fn
-from .basepolicy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
+from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = ['SamPolicy', 'SamModelPolicy']
 
