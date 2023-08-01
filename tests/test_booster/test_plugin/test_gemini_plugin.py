@@ -89,7 +89,7 @@ def check_gemini_plugin(init_method: str = 'none', early_stop: bool = True):
                 'transformers_albert_for_pretraining', 'transformers_bert', 'transformers_bert_for_pretraining',
                 'transformers_gpt_double_heads', 'torchaudio_hubert_base', 'torchaudio_wav2vec2_base',
                 'transformers_t5_for_conditional_generation', 'transformers_t5', 'transformers_t5_encoder_model',
-                'transformers_vit', 'transformers_vit_for_masked_image_modeling',
+                'transformers_blip2', 'transformers_vit', 'transformers_vit_for_masked_image_modeling',
                 'transformers_vit_for_image_classification'
         ]:
             continue

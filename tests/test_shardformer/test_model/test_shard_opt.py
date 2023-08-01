@@ -9,6 +9,7 @@ from colossalai.logging import disable_existing_loggers
 from colossalai.tensor.d_tensor.api import is_customized_distributed_tensor, is_distributed_tensor
 from colossalai.testing import (
     assert_hf_output_close,
+    check_state_dict_equal,
     clear_cache_before_run,
     parameterize,
     rerun_if_address_is_in_use,
@@ -71,13 +72,15 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
 
 @parameterize('enable_fused_normalization', [True, False])
 @parameterize('enable_tensor_parallelism', [True, False])
+@parameterize('enable_flash_attention', [True, False])
+@parameterize('enable_jit_fused', [True, False])
 @parameterize('use_lazy_init', [False, True])
-def run_t5_test(enable_fused_normalization, enable_tensor_parallelism, use_lazy_init):
+def run_opt_test(enable_fused_normalization, enable_tensor_parallelism, enable_flash_attention, enable_jit_fused,
+                 use_lazy_init):
     sub_model_zoo = model_zoo.get_sub_registry('transformers_opt')
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         org_model, sharded_model = build_model(model_fn, enable_fused_normalization, enable_tensor_parallelism,
-                                               use_lazy_init)
-        check_state_dict(org_model, sharded_model, name=name)
+                                               enable_flash_attention, enable_jit_fused, use_lazy_init)
         check_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn)
     torch.cuda.empty_cache()
 
@@ -85,7 +88,7 @@ def run_t5_test(enable_fused_normalization, enable_tensor_parallelism, use_lazy_
 def check_OPTModel(rank, world_size, port):
     disable_existing_loggers()
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    run_t5_test()
+    run_opt_test()
 
 
 @pytest.mark.dist

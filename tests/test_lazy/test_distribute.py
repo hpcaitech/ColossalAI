@@ -71,7 +71,8 @@ def run_dist_lazy_init(subset, seed: int = 42):
 
     for name, entry in sub_model_zoo.items():
         # TODO(ver217): lazy init does not support weight norm, skip these models
-        if name in ('torchaudio_wav2vec2_base', 'torchaudio_hubert_base') or name.startswith('transformers_llama'):
+        if name in ('torchaudio_wav2vec2_base', 'torchaudio_hubert_base') or name.startswith(
+            ('transformers_llama', 'transformers_blip2')):
             continue
         print_rank_0(name)
         model_fn, data_gen_fn, output_transform_fn, _, model_attr = entry

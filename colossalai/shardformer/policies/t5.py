@@ -14,7 +14,14 @@ from colossalai.shardformer.layer import (
 from colossalai.shardformer.policies.base_policy import ModulePolicyDescription
 
 from .._utils import getattr_, setattr_
-from ..modeling.t5 import T5PipelineForwards
+from ..modeling.jit import get_jit_fused_dropout_add_func
+from ..modeling.t5 import (
+    T5PipelineForwards,
+    get_jit_fused_T5_layer_ff_forward,
+    get_t5_flash_attention_forward,
+    get_T5_layer_cross_attention_forward,
+    get_T5_layer_self_attention_forward,
+)
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = ["distribute_t5_layers", "T5ModelPolicy", "T5ForConditionalGenerationPolicy", "T5EncoderPolicy"]
@@ -168,6 +175,27 @@ class T5BasePolicy(Policy):
                 suffix="final_layer_norm", target_module=FusedRMSNorm),
                                                         policy=policy,
                                                         target_key=T5Stack)
+
+        # use flash attention
+        if self.shard_config.enable_flash_attention:
+            policy[T5Attention] = ModulePolicyDescription(method_replacement={
+                'forward': get_t5_flash_attention_forward(),
+            })
+
+        # use jit operator
+        if self.shard_config.enable_jit_fused:
+            policy[T5LayerFF] = ModulePolicyDescription(method_replacement={
+                'forward': get_jit_fused_T5_layer_ff_forward(),
+                'dropout_add': get_jit_fused_dropout_add_func(),
+            })
+            policy[T5LayerSelfAttention] = ModulePolicyDescription(method_replacement={
+                'forward': get_T5_layer_self_attention_forward(),
+                'dropout_add': get_jit_fused_dropout_add_func(),
+            })
+            policy[T5LayerCrossAttention] = ModulePolicyDescription(method_replacement={
+                'forward': get_T5_layer_cross_attention_forward(),
+                'dropout_add': get_jit_fused_dropout_add_func(),
+            })
         return policy
 
     def postprocess(self):

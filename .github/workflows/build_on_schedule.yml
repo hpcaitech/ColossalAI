@@ -3,7 +3,7 @@ name: Build on Schedule
 on:
   schedule:
     # run at 00:00 of every Sunday
-    - cron:  '0 0 * * *'
+    - cron: "0 0 * * *"
   workflow_dispatch:
 
 jobs:

@@ -17,3 +17,5 @@ git+https://github.com/HazyResearch/flash-attention.git@c422fee3776eb3ea24e011ef
 requests==2.27.1 # downgrade to avoid huggingface error https://github.com/huggingface/transformers/issues/17611
 SentencePiece
 datasets
+ninja
+git+https://github.com/facebookresearch/xformers.git@main#egg=xformers

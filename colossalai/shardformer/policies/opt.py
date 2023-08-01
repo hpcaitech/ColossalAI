@@ -25,6 +25,8 @@ from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.layer import FusedLayerNorm, Linear1D_Col, Linear1D_Row, VocabParallelEmbedding1D
 
 from .._utils import getattr_, setattr_
+from ..modeling.jit import get_jit_fused_dropout_add_func
+from ..modeling.opt import get_jit_fused_opt_decoder_layer_forward, get_opt_flash_attention_forward
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = [
@@ -114,6 +116,19 @@ class OPTPolicy(Policy):
                                                         policy=policy,
                                                         target_key=OPTDecoderLayer)
 
+        # use flash attention
+        if self.shard_config.enable_flash_attention:
+            policy[OPTAttention] = ModulePolicyDescription(method_replacement={
+                'forward': get_opt_flash_attention_forward(),
+            })
+
+        # use jit fused operator
+        if self.shard_config.enable_jit_fused:
+            policy[OPTDecoderLayer] = ModulePolicyDescription(method_replacement={
+                'forward': get_jit_fused_opt_decoder_layer_forward(),
+                'dropout_add': get_jit_fused_dropout_add_func(),
+            })
+
         return policy
 
     def postprocess(self):
@@ -189,13 +204,11 @@ class OPTForCausalLMPolicy(OPTPolicy):
         from transformers.models.opt.modeling_opt import OPTForCausalLM
 
         policy = super().module_policy()
-
         if self.shard_config.enable_tensor_parallelism:
             self.append_or_create_submodule_replacement(description=SubModuleReplacementDescription(
                 suffix="lm_head", target_module=Linear1D_Col, kwargs=dict(gather_output=True)),
                                                         policy=policy,
                                                         target_key=OPTForCausalLM)
-
         if self.pipeline_stage_manager:
             self.set_pipeline_forward(model_cls=OPTForCausalLM,
                                       new_forward=OPTPipelineForwards.opt_for_causal_lm_forward,
