@@ -21,7 +21,11 @@ from tests.kit.model_zoo import model_zoo
 from tests.test_shardformer.test_model._utils import build_model, check_state_dict, run_forward
 
 
-def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, use_lazy_init, plugin_config):
+def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config):
+
+    use_lazy_init = False
+    if 'use_lazy_init' in test_config:
+        use_lazy_init = test_config.pop('use_lazy_init')
 
     if use_lazy_init:
         ctx = LazyInitContext()
@@ -29,7 +33,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         ctx = nullcontext()
 
     # prepare booster
-    plugin = HybridParallelPlugin(**plugin_config)
+    plugin = HybridParallelPlugin(**test_config)
     booster = Booster(plugin=plugin)
     stage_manager = plugin.stage_manager
 
@@ -137,32 +141,33 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     torch.cuda.empty_cache()
 
 
-@parameterize('use_lazy_init', [False])
-@parameterize('plugin_config', [{
+@parameterize('test_config', [{
     'tp_size': 1,
     'pp_size': 2,
-    'num_microbatches': 4
+    'num_microbatches': 4,
+    'use_lazy_init': True
 }, {
     'tp_size': 2,
     'pp_size': 2,
     'num_microbatches': 4,
-    'enable_fused_normalization': False
+    'enable_fused_normalization': False,
+    'use_lazy_init': False
 }, {
     'tp_size': 4,
     'pp_size': 1,
     'enable_fused_normalization': True
 }])
 @clear_cache_before_run()
-def run_gpt2_test(use_lazy_init, plugin_config):
+def run_gpt2_test(test_config):
 
     # TODO: add plugin_config for TP+DP after supporting & debugging it
     # {'tp_size': 2, 'pp_size': 1, 'enable_fused_normalization': True}
 
     sub_model_zoo = model_zoo.get_sub_registry('transformers_gpt')
-    plugin_config['precision'] = 'float'    # Do not use fp16/bf16 in testing
+    test_config['precision'] = 'float'    # Do not use fp16/bf16 in testing
 
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
-        check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, use_lazy_init, plugin_config)
+        check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
 
     clear_layout_converter()
     torch.cuda.empty_cache()
