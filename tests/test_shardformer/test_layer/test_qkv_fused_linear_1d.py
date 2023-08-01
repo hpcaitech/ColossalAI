@@ -6,7 +6,7 @@ from torch.testing import assert_close
 import colossalai
 from colossalai.shardformer.layer import FusedLinear1D_Col
 from colossalai.shardformer.layer.qkv_fused_linear import split_fused_qkv_in_gpt2_style
-from colossalai.testing import rerun_if_address_is_in_use, spawn
+from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 
 
 def rearrange(tensor: torch.Tensor, dim: int):

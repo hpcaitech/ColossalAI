@@ -50,7 +50,7 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
         all_shard_grad = shard_grad
     assert torch.allclose(org_grad, all_shard_grad,
                           atol=1e-5), f"shard model grad is not equal to orgin model grad\n{org_grad}\n{shard_grad}"
-    
+
 
 @parameterize('enable_fused_normalization', [True, False])
 @parameterize('enable_tensor_parallelism', [True, False])

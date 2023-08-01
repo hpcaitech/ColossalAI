@@ -1,14 +1,19 @@
+from functools import partial
+from typing import Callable, Dict, List
+
 import torch.nn as nn
+from torch import Tensor
+from torch.nn import Module
 
 import colossalai.shardformer.layer as col_nn
 
-from .._utils import getattr_, setattr_
-from .basepolicy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
+from ..modeling.bert import BertPipelineForwards
+from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = [
-    'BertPolicy', 'BertModelPolicy', 'BertForPretrainingPolicy', 'BertLMHeadModelPolicy', 'BertForMaskedLMPolicy',
+    'BertPolicy', 'BertModelPolicy', 'BertForPreTrainingPolicy', 'BertLMdHeadModelPolicy', 'BertForMaskedLMPolicy',
     'BertForNextSentencePredictionPolicy', 'BertForSequenceClassificationPolicy', 'BertForTokenClassificationPolicy',
-    'BertForMultipleChoicePolicy'
+    'BertForMultipleChoicePolicy', 'BertForQuestionAnsweringPolicy'
 ]
 
 
@@ -23,11 +28,12 @@ class BertPolicy(Policy):
         Reshape the Embedding layer to make the embedding dimension divisible by world_size
         """
         # TODO:
-        vocab_size = self.model.config.vocab_size
-        world_size = self.shard_config.tensor_parallel_size
-        if vocab_size % world_size != 0:
-            new_vocab_size = vocab_size + world_size - vocab_size % world_size
-            self.model.resize_token_embeddings(new_vocab_size)
+        if self.shard_config.enable_tensor_parallelism:
+            vocab_size = self.model.config.vocab_size
+            world_size = self.shard_config.tensor_parallel_size
+            if vocab_size % world_size != 0:
+                new_vocab_size = vocab_size + world_size - vocab_size % world_size
+                self.model.resize_token_embeddings(new_vocab_size)
         return self.model
 
     def module_policy(self):
@@ -111,7 +117,6 @@ class BertPolicy(Policy):
             ],
                                                         policy=policy,
                                                         target_key=BertLayer)
-
             # handle embedding layer
             self.append_or_create_submodule_replacement(
                 description=[SubModuleReplacementDescription(
@@ -120,6 +125,7 @@ class BertPolicy(Policy):
                 )],
                 policy=policy,
                 target_key=BertEmbeddings)
+
         return policy
 
     def add_lm_head_policy(self, base_policy):
@@ -143,8 +149,59 @@ class BertPolicy(Policy):
                                                         target_key=BertLMPredictionHead)
         return base_policy
 
+    def add_lm_prediction_policy(self, base_policy):
+        from transformers.models.bert.modeling_bert import BertLMPredictionHead
+        method_replacement = {
+            '_save_to_state_dict': col_nn.ParallelModule._save_to_state_dict,
+            '_load_from_state_dict': col_nn.ParallelModule._load_from_state_dict,
+        }
+        self.append_or_create_method_replacement(description=method_replacement,
+                                                 policy=base_policy,
+                                                 target_key=BertLMPredictionHead)
+        return base_policy
+
     def postprocess(self):
         return self.model
+
+    def set_pipeline_forward(self, model_cls: nn.Module, new_forward: Callable, policy: Dict) -> None:
+        """If under pipeline parallel setting, replacing the original forward method of huggingface
+           to customized forward method, and add this changing to policy."""
+        if self.pipeline_stage_manager:
+            stage_manager = self.pipeline_stage_manager
+            if self.model.__class__.__name__ == "BertModel":
+                module = self.model
+            else:
+                module = self.model.bert
+
+            layers_per_stage = Policy.distribute_layers(len(module.encoder.layer), stage_manager.num_stages)
+            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
+            method_replacement = {'forward': partial(new_forward, stage_manager=stage_manager, stage_index=stage_index)}
+            self.append_or_create_method_replacement(description=method_replacement,
+                                                     policy=policy,
+                                                     target_key=model_cls)
+
+        return
+
+    def get_held_layers(self) -> List[Module]:
+        """Get pipeline layers for current stage."""
+        assert self.pipeline_stage_manager is not None
+
+        if self.model.__class__.__name__ == 'BertModel':
+            module = self.model
+        else:
+            module = self.model.bert
+        stage_manager = self.pipeline_stage_manager
+
+        held_layers = []
+        layers_per_stage = self.distribute_layers(len(module.encoder.layer), stage_manager.num_stages)
+        if stage_manager.is_first_stage():
+            held_layers.append(module.embeddings)
+        start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
+        held_layers.extend(module.encoder.layer[start_idx:end_idx])
+        if stage_manager.is_last_stage():
+            held_layers.append(module.pooler)
+
+        return held_layers
 
 
 # BertModel
@@ -153,24 +210,61 @@ class BertModelPolicy(BertPolicy):
     def __init__(self) -> None:
         super().__init__()
 
+    def module_policy(self):
+        policy = super().module_policy()
+        from transformers.models.bert.modeling_bert import BertModel
+        if self.pipeline_stage_manager:
+            self.set_pipeline_forward(model_cls=BertModel,
+                                      new_forward=BertPipelineForwards.bert_model_forward,
+                                      policy=policy)
+        return policy
+
+    def get_held_layers(self) -> List[Module]:
+        """Get pipeline layers for current stage."""
+        held_layers = super().get_held_layers()
+        return held_layers
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        """No shared params in bert model"""
+        return []
+
 
 # BertForPreTraining
-class BertForPretrainingPolicy(BertPolicy):
+class BertForPreTrainingPolicy(BertPolicy):
 
     def __init__(self) -> None:
         super().__init__()
 
     def module_policy(self):
-        module_policy = super().module_policy()
-        module_policy = self.add_lm_head_policy(module_policy)
-        return module_policy
+        policy = super().module_policy()
+        policy = self.add_lm_head_policy(policy)
+        policy = self.add_lm_prediction_policy(policy)
+        from transformers.models.bert.modeling_bert import BertForPreTraining
+        if self.pipeline_stage_manager:
+            self.set_pipeline_forward(model_cls=BertForPreTraining,
+                                      new_forward=BertPipelineForwards.bert_for_pretraining_forward,
+                                      policy=policy)
+        return policy
 
-    def postprocess(self):
-        binding_map = {"bert.embeddings.word_embeddings.weight": "cls.predictions.decoder.weight"}
-        for k, v in binding_map.items():
-            param = getattr_(self.model, k)
-            setattr_(self.model, v, param)
-        return self.model
+    def get_held_layers(self) -> List[Module]:
+        """Get pipeline layers for current stage"""
+        held_layers = super().get_held_layers()
+        stage_manager = self.pipeline_stage_manager
+        if stage_manager.is_last_stage():
+            held_layers.append(self.model.cls)
+
+        return held_layers
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        model = self.model
+        if self.pipeline_stage_manager and self.pipeline_stage_manager.num_stages > 1:
+            if id(model.bert.embeddings.word_embeddings.weight) == id(model.cls.predictions.decoder.weight):
+                # tie weights
+                return [{
+                    0: model.bert.embeddings.word_embeddings.weight,
+                    self.pipeline_stage_manager.num_stages - 1: model.cls.predictions.decoder.weight
+                }]
+        return []
 
 
 # BertLMHeadModel
@@ -180,16 +274,36 @@ class BertLMHeadModelPolicy(BertPolicy):
         super().__init__()
 
     def module_policy(self):
-        module_policy = super().module_policy()
-        module_policy = self.add_lm_head_policy(module_policy)
-        return module_policy
+        policy = super().module_policy()
+        policy = self.add_lm_head_policy(policy)
+        policy = self.add_lm_prediction_policy(policy)
+        from transformers.models.bert.modeling_bert import BertLMHeadModel
+        if self.pipeline_stage_manager:
+            self.set_pipeline_forward(model_cls=BertLMHeadModel,
+                                      new_forward=BertPipelineForwards.bert_lm_head_model_forward,
+                                      policy=policy)
+        return policy
 
-    def postprocess(self):
-        binding_map = {"bert.embeddings.word_embeddings.weight": "cls.predictions.decoder.weight"}
-        for k, v in binding_map.items():
-            param = getattr_(self.model, k)
-            setattr_(self.model, v, param)
-        return self.model
+    def get_held_layers(self) -> List[Module]:
+        """
+        get pipeline layers for current stage
+        """
+        held_layers = super().get_held_layers()
+        stage_manager = self.pipeline_stage_manager
+        if stage_manager.is_last_stage():
+            held_layers.append(self.model.cls)
+        return held_layers
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        bert_model = self.model.bert
+        if self.pipeline_stage_manager and self.pipeline_stage_manager.num_stages > 1:
+            if id(bert_model.embeddings.word_embeddings.weight) == id(self.model.cls.predictions.decoder.weight):
+                # tie weights
+                return [{
+                    0: bert_model.embeddings.word_embeddings.weight,
+                    self.pipeline_stage_manager.num_stages - 1: self.model.cls.predictions.decoder.weight
+                }]
+        return []
 
 
 # BertForMaskedLM
@@ -199,16 +313,36 @@ class BertForMaskedLMPolicy(BertPolicy):
         super().__init__()
 
     def module_policy(self):
-        module_policy = super().module_policy()
-        module_policy = self.add_lm_head_policy(module_policy)
-        return module_policy
+        policy = super().module_policy()
+        policy = self.add_lm_head_policy(policy)
+        policy = self.add_lm_prediction_policy(policy)
+        from transformers.models.bert.modeling_bert import BertForMaskedLM
+        if self.pipeline_stage_manager:
+            self.set_pipeline_forward(model_cls=BertForMaskedLM,
+                                      new_forward=BertPipelineForwards.bert_for_masked_lm_forward,
+                                      policy=policy)
+        return policy
 
-    def postprocess(self):
-        binding_map = {"bert.embeddings.word_embeddings.weight": "cls.predictions.decoder.weight"}
-        for k, v in binding_map.items():
-            param = getattr_(self.model, k)
-            setattr_(self.model, v, param)
-        return self.model
+    def get_held_layers(self) -> List[Module]:
+        """
+        get pipeline layers for current stage
+        """
+        held_layers = super().get_held_layers()
+        stage_manager = self.pipeline_stage_manager
+        if stage_manager.is_last_stage():
+            held_layers.append(self.model.cls)
+        return held_layers
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        bert_model = self.model.bert
+        if self.pipeline_stage_manager and self.pipeline_stage_manager.num_stages > 1:
+            if id(bert_model.embeddings.word_embeddings.weight) == id(self.model.cls.predictions.decoder.weight):
+                # tie weights
+                return [{
+                    0: bert_model.embeddings.word_embeddings.weight,
+                    self.pipeline_stage_manager.num_stages - 1: self.model.cls.predictions.decoder.weight
+                }]
+        return []
 
 
 # BertForSequenceClassification
@@ -220,7 +354,7 @@ class BertForSequenceClassificationPolicy(BertPolicy):
     def module_policy(self):
         from transformers.models.bert.modeling_bert import BertForSequenceClassification
 
-        module_policy = super().module_policy()
+        policy = super().module_policy()
 
         if self.shard_config.enable_tensor_parallelism:
             addon_module = {
@@ -232,8 +366,28 @@ class BertForSequenceClassificationPolicy(BertPolicy):
                         )
                     ])
             }
-            module_policy.update(addon_module)
-        return module_policy
+            policy.update(addon_module)
+        if self.pipeline_stage_manager:
+            self.set_pipeline_forward(model_cls=BertForSequenceClassification,
+                                      new_forward=BertPipelineForwards.bert_for_sequence_classification_forward,
+                                      policy=policy)
+
+        return policy
+
+    def get_held_layers(self) -> List[Module]:
+        """
+        get pipeline layers for current stage
+        """
+        held_layers = super().get_held_layers()
+        stage_manager = self.pipeline_stage_manager
+        if stage_manager.is_last_stage():
+            held_layers.append(self.model.dropout)
+            held_layers.append(self.model.classifier)
+        return held_layers
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        # no shared params for sequence classification model
+        return []
 
 
 # BertForTokenClassification
@@ -245,7 +399,7 @@ class BertForTokenClassificationPolicy(BertPolicy):
     def module_policy(self):
         from transformers.models.bert.modeling_bert import BertForTokenClassification
 
-        module_policy = super().module_policy()
+        policy = super().module_policy()
 
         if self.shard_config.enable_tensor_parallelism:
             addon_module = {
@@ -257,8 +411,28 @@ class BertForTokenClassificationPolicy(BertPolicy):
                         )
                     ])
             }
-            module_policy.update(addon_module)
-        return module_policy
+            policy.update(addon_module)
+        if self.pipeline_stage_manager:
+            self.set_pipeline_forward(model_cls=BertForTokenClassification,
+                                      new_forward=BertPipelineForwards.bert_for_token_classification_forward,
+                                      policy=policy)
+
+        return policy
+
+    def get_held_layers(self) -> List[Module]:
+        """
+        get pipeline layers for current stage
+        """
+        held_layers = super().get_held_layers()
+        stage_manager = self.pipeline_stage_manager
+        if stage_manager.is_last_stage():
+            held_layers.append(self.model.dropout)
+            held_layers.append(self.model.classifier)
+        return held_layers
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        # no shared params for sequence classification model
+        return []
 
 
 # BertForNextSentencePrediction
@@ -266,6 +440,30 @@ class BertForNextSentencePredictionPolicy(BertPolicy):
 
     def __init__(self) -> None:
         super().__init__()
+
+    def module_policy(self):
+        policy = super().module_policy()
+        from transformers.models.bert.modeling_bert import BertForNextSentencePrediction
+        if self.pipeline_stage_manager:
+            self.set_pipeline_forward(model_cls=BertForNextSentencePrediction,
+                                      new_forward=BertPipelineForwards.bert_for_next_sentence_prediction_forward,
+                                      policy=policy)
+
+        return policy
+
+    def get_held_layers(self) -> List[Module]:
+        """
+        get pipeline layers for current stage
+        """
+        held_layers = super().get_held_layers()
+        stage_manager = self.pipeline_stage_manager
+        if stage_manager.is_last_stage():
+            held_layers.append(self.model.cls)
+        return held_layers
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        # no shared params for sequence classification model
+        return []
 
 
 # BertForMultipleChoice
@@ -277,7 +475,7 @@ class BertForMultipleChoicePolicy(BertPolicy):
     def module_policy(self):
         from transformers.models.bert.modeling_bert import BertForMultipleChoice
 
-        module_policy = super().module_policy()
+        policy = super().module_policy()
 
         if self.shard_config.enable_tensor_parallelism:
             addon_module = {
@@ -289,5 +487,55 @@ class BertForMultipleChoicePolicy(BertPolicy):
                         )
                     ])
             }
-            module_policy.update(addon_module)
-        return module_policy
+            policy.update(addon_module)
+        if self.pipeline_stage_manager:
+            self.set_pipeline_forward(model_cls=BertForMultipleChoice,
+                                      new_forward=BertPipelineForwards.bert_for_multiple_choice_forward,
+                                      policy=policy)
+
+        return policy
+
+    def get_held_layers(self) -> List[Module]:
+        """
+        get pipeline layers for current stage
+        """
+        held_layers = super().get_held_layers()
+        stage_manager = self.pipeline_stage_manager
+        if stage_manager.is_last_stage():
+            held_layers.append(self.model.dropout)
+            held_layers.append(self.model.classifier)
+        return held_layers
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        # no shared params for sequence classification model
+        return []
+
+
+class BertForQuestionAnsweringPolicy(BertPolicy):
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    def module_policy(self):
+        from transformers.models.bert.modeling_bert import BertForQuestionAnswering
+        policy = super().module_policy()
+        if self.pipeline_stage_manager:
+            self.set_pipeline_forward(model_cls=BertForQuestionAnswering,
+                                      new_forward=BertPipelineForwards.bert_for_question_answering_forward,
+                                      policy=policy)
+
+        return policy
+
+    def get_held_layers(self) -> List[Module]:
+        """
+        get pipeline layers for current stage
+        """
+        held_layers = super().get_held_layers()
+        stage_manager = self.pipeline_stage_manager
+        if stage_manager.is_last_stage():
+            held_layers.append(self.model.qa_outputs)
+        return held_layers
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        # no shared params for sequence classification model
+        return []

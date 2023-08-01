@@ -48,13 +48,13 @@ class DistCrossEntropy(Function):
 
         # [down, up) => false, other device and -100 => true
         delta = (global_vocab_size + world_size - 1) // world_size
-        down_shreshold = rank * delta
-        up_shreshold = down_shreshold + delta
-        mask = (target < down_shreshold) | (target >= up_shreshold)
-        masked_target = target.clone() - down_shreshold
+        down_threshold = rank * delta
+        up_threshold = down_threshold + delta
+        mask = (target < down_threshold) | (target >= up_threshold)
+        masked_target = target.clone() - down_threshold
         masked_target[mask] = 0
 
-        # reshape the logist and target
+        # reshape the logits and target
         # reshape the vocab_logits to [bath_size * seq_len, vocab_size]
         # reshape the labels to [bath_size * seq_len]
         logits_2d = vocab_logits.view(-1, partition_vocab_size)
@@ -79,7 +79,7 @@ class DistCrossEntropy(Function):
         loss = torch.where(target == ignore_index, 0.0, torch.log(sum_exp_logits) - pred_logits)
         loss = torch.sum(loss).div_(torch.sum(loss != 0.0))
 
-        # caculate the softmax
+        # calculate the softmax
         exp_logits.div_(sum_exp_logits.unsqueeze(dim=-1))
         ctx.save_for_backward(exp_logits, mask, masked_target_1d)
 

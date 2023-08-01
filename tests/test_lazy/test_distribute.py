@@ -92,6 +92,7 @@ def run_dist(rank, world_size, port) -> None:
     run_dist_lazy_init()
 
 
+@pytest.mark.skip('This method is not used')
 @pytest.mark.skipif(not SUPPORT_LAZY, reason='torch version should be >= 1.12.0')
 @pytest.mark.dist
 @rerun_if_address_is_in_use()

@@ -1,11 +1,16 @@
-from typing import Any, Callable, Dict, List, Union
+from types import MethodType
+from typing import Any, Callable, Dict, List, Optional, Set, Union
 
 import torch.nn as nn
+from torch import Tensor
+
+from colossalai.lazy import LazyInitContext
 
 from .._utils import getattr_, setattr_
-from ..policies.autopolicy import get_autopolicy
-from ..policies.basepolicy import Policy, SubModuleReplacementDescription
+from ..policies.auto_policy import get_autopolicy
+from ..policies.base_policy import Policy, SubModuleReplacementDescription
 from .shard_config import ShardConfig
+from .utils import set_tensors_to_none
 
 __all__ = ['ModelSharder', 'shard_model']
 
@@ -25,15 +30,20 @@ class ModelSharder(object):
         self.policy = get_autopolicy(self.model) if policy is None else policy
         self.shard_config = shard_config
 
-    def shard(self) -> None:
+    def shard(self) -> List[Dict[int, Tensor]]:
         r"""
         Shard the model according to the policy
         """
         self.policy.set_model(self.model)
         self.policy.set_shard_config(self.shard_config)
         self._preprocess()
-        self._replace_module()
+        # get shared params before release unheld layers, this avoid misjudgement of shared params (None is None)
+        shared_params = self.policy.get_shared_params()
+        held_layers = self._release_unheld_layers()
+        self._replace_module(include=held_layers)
+        self._materialize()
         self._postprocess()
+        return shared_params
 
     def _preprocess(self) -> None:
         self.model = self.policy.preprocess()
@@ -41,7 +51,7 @@ class ModelSharder(object):
     def _postprocess(self) -> None:
         self.model = self.policy.postprocess()
 
-    def _replace_module(self,) -> None:
+    def _replace_module(self, include: Optional[Set[nn.Module]] = None) -> None:
         r"""
         Replace the module according to the policy, and replace the module one by one
 
@@ -54,8 +64,13 @@ class ModelSharder(object):
             param_replacement = module_description.param_replacement
             sub_module_replacement = module_description.sub_module_replacement
             method_replacement = module_description.method_replacement
-            self._recursive_replace_layer(self.model, layer_cls, attr_replacement, param_replacement,
-                                          method_replacement, sub_module_replacement)
+            self._recursive_replace_layer(self.model,
+                                          layer_cls,
+                                          attr_replacement,
+                                          param_replacement,
+                                          method_replacement,
+                                          sub_module_replacement,
+                                          include=include)
 
     def _recursive_replace_layer(
         self,
@@ -64,35 +79,44 @@ class ModelSharder(object):
         attr_replacement: Dict[str, Any],
         param_replacement: List[Callable],
         method_replacement: Dict[str, Callable],
-        sub_module_replacement: List[Callable],
+        sub_module_replacement: List[SubModuleReplacementDescription],
+        include: Optional[Set[nn.Module]] = None,
     ) -> None:
         r"""
         Reverse the replace layer operation
 
         Args:
-            layer (torch.nn.Module): The object of layer to shard
-            origin_cls (Union[str, torch.nn.Module]): The origin layer class or a string of layer class name.
-            attr_replacement (Dict): The attribute dict to modify
-            param_replacement (List[Callable]): The function list to get parameter shard information in polic
-            sub_module_replacement (List[Callable]): The function list to get sub module shard information in policy
+            module (torch.nn.Module): The object of layer to shard
+            origin_cls (Union[str, torch.nn.Module]): The origin layer class or a string of layer class name
+            attr_replacement (Dict[str, Any]): The attribute dict to modify
+            param_replacement (List[Callable]): The function list to get parameter shard information in policy
+            method_replacement (Dict[str, Callable]):  Key is the method name, value is the method for replacement
+            sub_module_replacement ((List[SubModuleReplacementDescription]): The function list to get sub module shard information in policy
         """
+        # released layers are not shardable
+        can_replace_param_or_layer = include is None or module in include
         if (isinstance(origin_cls, str) and origin_cls == module.__class__.__name__) or \
            (module.__class__ == origin_cls):
             if attr_replacement is not None:
                 self._replace_attr(module, attr_replacement)
 
-            if param_replacement is not None:
+            if param_replacement is not None and can_replace_param_or_layer:
                 self._replace_param(module, param_replacement)
 
             if method_replacement is not None:
                 self._replace_method(module, method_replacement)
 
-            if sub_module_replacement is not None:
+            if sub_module_replacement is not None and can_replace_param_or_layer:
                 self._replace_sub_module(module, sub_module_replacement)
 
         for name, child in module.named_children():
-            self._recursive_replace_layer(child, origin_cls, attr_replacement, param_replacement, method_replacement,
-                                          sub_module_replacement)
+            self._recursive_replace_layer(child,
+                                          origin_cls,
+                                          attr_replacement,
+                                          param_replacement,
+                                          method_replacement,
+                                          sub_module_replacement,
+                                          include=include)
 
     def _replace_attr(
         self,
@@ -103,7 +127,7 @@ class ModelSharder(object):
         Replace the attribute of the layer
 
         Args:
-            layer (:class:`torch.nn.Module`): The object of layer to shard
+            module (:class:`torch.nn.Module`): The object of layer to shard
             attr_replacement (Dict): The attribute dict to modify
         """
         for k, v in attr_replacement.items():
@@ -118,7 +142,7 @@ class ModelSharder(object):
         Replace the parameter of the layer
 
         Args:
-            layer (:class:`torch.nn.Module`): The object of layer to shard
+            module (:class:`torch.nn.Module`): The object of layer to shard
             param_replacement (List[Callable]): The function list to get parameter shard information in policy
         """
         for param_func in param_replacement:
@@ -127,7 +151,8 @@ class ModelSharder(object):
     def _replace_method(self, module: nn.Module, method_replacement: Dict[str, Callable]):
         for method_name, new_method in method_replacement.items():
             # bind the new method to the module
-            setattr(module, method_name, new_method.__get__(module, module.__class__))
+            bound_method = MethodType(new_method, module)
+            setattr(module, method_name, bound_method)
 
     def _replace_sub_module(
         self,
@@ -172,3 +197,19 @@ class ModelSharder(object):
                 )
 
             setattr_(org_layer, suffix, replace_layer)
+
+    def _release_unheld_layers(self) -> Optional[Set[nn.Module]]:
+        r"""
+        Release the unheld layers in the model
+        """
+        if self.shard_config and self.shard_config.pipeline_stage_manager:
+            held_layers = self.policy.get_held_layers()
+            set_tensors_to_none(self.model, exclude=set(held_layers))
+            return set(held_layers)
+        return None
+
+    def _materialize(self) -> None:
+        r"""
+        Materialize the model if lazy initialization is used
+        """
+        LazyInitContext.materialize(self.model)

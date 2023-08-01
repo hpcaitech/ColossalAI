@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 import torch.nn as nn
 
-from .basepolicy import Policy
+from .base_policy import Policy
 
 __all__ = ["PolicyLocation", "get_autopolicy", "import_policy"]
 
@@ -29,7 +29,7 @@ _POLICY_LIST = {
     "transformers.models.bert.modeling_bert.BertModel":
         PolicyLocation(file_name="bert", class_name="BertModelPolicy"),
     "transformers.models.bert.modeling_bert.BertForPreTraining":
-        PolicyLocation(file_name="bert", class_name="BertForPretrainingPolicy"),
+        PolicyLocation(file_name="bert", class_name="BertForPreTrainingPolicy"),
     "transformers.models.bert.modeling_bert.BertLMHeadModel":
         PolicyLocation(file_name="bert", class_name="BertLMHeadModelPolicy"),
     "transformers.models.bert.modeling_bert.BertForMaskedLM":
@@ -42,10 +42,12 @@ _POLICY_LIST = {
         PolicyLocation(file_name="bert", class_name="BertForNextSentencePredictionPolicy"),
     "transformers.models.bert.modeling_bert.BertForMultipleChoice":
         PolicyLocation(file_name="bert", class_name="BertForMultipleChoicePolicy"),
+    "transformers.models.bert.modeling_bert.BertForQuestionAnswering":
+        PolicyLocation(file_name="bert", class_name="BertForQuestionAnsweringPolicy"),
 
     # LLaMA
     "transformers.models.llama.modeling_llama.LlamaModel":
-        PolicyLocation(file_name="llama", class_name="LlamaPolicy"),
+        PolicyLocation(file_name="llama", class_name="LlamaModelPolicy"),
     "transformers.models.llama.modeling_llama.LlamaForCausalLM":
         PolicyLocation(file_name="llama", class_name="LlamaForCausalLMPolicy"),
     "transformers.models.llama.modeling_llama.LlamaForSequenceClassification":
@@ -66,6 +68,8 @@ _POLICY_LIST = {
         PolicyLocation(file_name="gpt2", class_name="GPT2LMHeadModelPolicy"),
     "transformers.models.gpt2.modeling_gpt2.GPT2DoubleHeadsModel":
         PolicyLocation(file_name="gpt2", class_name="GPT2DoubleHeadsModelPolicy"),
+    "transformers.models.gpt2.modeling_gpt2.GPT2ForQuestionAnswering":
+        PolicyLocation(file_name="gpt2", class_name="GPT2ForQuestionAnsweringPolicy"),
     "transformers.models.gpt2.modeling_gpt2.GPT2ForTokenClassification":
         PolicyLocation(file_name="gpt2", class_name="GPT2ForTokenClassificationPolicy"),
     "transformers.models.gpt2.modeling_gpt2.GPT2ForSequenceClassification":
@@ -73,7 +77,7 @@ _POLICY_LIST = {
 
     # ViT
     "transformers.models.vit.modeling_vit.ViTModel":
-        PolicyLocation(file_name="vit", class_name="ViTPolicy"),
+        PolicyLocation(file_name="vit", class_name="ViTModelPolicy"),
     "transformers.models.vit.modeling_vit.ViTForImageClassification":
         PolicyLocation(file_name="vit", class_name="ViTForImageClassificationPolicy"),
     "transformers.models.vit.modeling_vit.ViTForMaskedImageModeling":
