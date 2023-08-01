@@ -43,8 +43,8 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
     # check grad
     col_layer_for_check = ['layers[0].self_attn.q_proj', 'embed_tokens']
     row_layer_for_check = ['layers[0].self_attn.o_proj']
-    check_grad(llama_model, shard_llama_model, col_layer_for_check, atol=1e-6, dim=0, verbose=True)
-    check_grad(llama_model, shard_llama_model, row_layer_for_check, atol=1e-7, dim=1, verbose=True)
+    check_grad(llama_model, shard_llama_model, col_layer_for_check, atol=1e-6, dim=0, verbose=False)
+    check_grad(llama_model, shard_llama_model, row_layer_for_check, atol=1e-7, dim=1, verbose=False)
 
 
 @parameterize('enable_fused_normalization', [True, False])
