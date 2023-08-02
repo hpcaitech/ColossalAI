@@ -49,6 +49,7 @@ class HybridParallelModule(ModelWrapper):
 
     def sync_shared_params(self):
         for shared_param, group in zip(self.shared_params, self.shared_param_process_groups):
+            print('syncing shared param', param.grad)
             param = shared_param[self.stage_manager.stage]
             dist.all_reduce(param.grad, group=group)
 
