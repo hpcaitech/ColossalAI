@@ -102,9 +102,10 @@ We will follow this roadmap to develop Shardformer:
       - [ ] SwinTransformer
       - [ ] SwinTransformer V2
     - [ ] Audio
-      - [ ] Whisper
+      - [x] Whisper
     - [ ] Multi-modal
-      - [ ] To be added
+      - [x] SAM
+      - [x] BLIP-2
 
 ## 💡 API Design
 
