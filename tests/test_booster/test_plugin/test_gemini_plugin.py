@@ -50,6 +50,7 @@ def run_fn(init_method, model_fn, data_gen_fn, output_transform_fn) -> Optional[
         optimizer.step()
 
     except Exception as e:
+        raise e
         return repr(e)
 
 

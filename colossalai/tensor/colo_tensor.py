@@ -327,17 +327,17 @@ class ColoTensor(torch.Tensor):
 
     def is_replicate(self):
         return self.dist_spec.placement == DistPlacementPattern.REPLICATE \
-               or (len(self.dist_spec.num_partitions) == 1
-                   and self.dist_spec.num_partitions[0] == 1) \
-               or (self.process_group.tp_world_size() == 1)
+            or (len(self.dist_spec.num_partitions) == 1
+                and self.dist_spec.num_partitions[0] == 1) \
+            or (self.process_group.tp_world_size() == 1)
 
     def is_shard_1dcol(self):
         return self.dist_spec.placement == DistPlacementPattern.SHARD \
-               and len(self.dist_spec.dims) == 1 and self.dist_spec.dims[0] == -1
+            and len(self.dist_spec.dims) == 1 and self.dist_spec.dims[0] == -1
 
     def is_shard_1drow(self):
         return self.dist_spec.placement == DistPlacementPattern.SHARD \
-               and len(self.dist_spec.dims) == 1 and self.dist_spec.dims[0] == 0
+            and len(self.dist_spec.dims) == 1 and self.dist_spec.dims[0] == 0
 
     def is_sharded(self):
         return self.dist_spec.placement == DistPlacementPattern.SHARD
