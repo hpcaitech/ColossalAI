@@ -70,7 +70,8 @@ config = transformers.GPT2Config(n_layer=2,
                                  resid_pdrop=0,
                                  summary_first_dropout=0,
                                  hidden_dropout=0,
-                                 problem_type="single_label_classification")
+                                 problem_type="single_label_classification",
+                                 pad_token_id=50256)
 
 # register the following models
 model_zoo.register(name='transformers_gpt',
