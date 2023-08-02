@@ -676,6 +676,14 @@ def get_gpt2_flash_attention_forward():
 
     from colossalai.kernel.cuda_native.flash_attention import AttnMaskType, ColoAttention
 
+    def split_heads(tensor, num_heads, attn_head_size):
+        """
+        Splits hidden_size dim into attn_head_size and num_heads
+        """
+        new_shape = tensor.size()[:-1] + (num_heads, attn_head_size)
+        tensor = tensor.view(new_shape)
+        return tensor
+
     def forward(
         self: GPT2Attention,
         hidden_states: Optional[Tuple[torch.FloatTensor]],
@@ -745,12 +753,3 @@ def get_gpt2_flash_attention_forward():
         return outputs
 
     return forward
-
-
-def split_heads(tensor, num_heads, attn_head_size):
-    """
-    Splits hidden_size dim into attn_head_size and num_heads
-    """
-    new_shape = tensor.size()[:-1] + (num_heads, attn_head_size)
-    tensor = tensor.view(new_shape)
-    return tensor

@@ -10,6 +10,9 @@ def get_whisper_flash_attention_forward():
 
     from colossalai.kernel.cuda_native.flash_attention import AttnMaskType, ColoAttention
 
+    def shape(tensor: torch.Tensor, seq_len: int, bsz: int, num_heads: int, head_dim: int):
+        return tensor.view(bsz, seq_len, num_heads, head_dim).contiguous()
+
     def forward(
         self: WhisperAttention,
         hidden_states: torch.Tensor,
@@ -97,10 +100,6 @@ def get_whisper_flash_attention_forward():
         return attn_output, None, past_key_value
 
     return forward
-
-
-def shape(tensor: torch.Tensor, seq_len: int, bsz: int, num_heads: int, head_dim: int):
-    return tensor.view(bsz, seq_len, num_heads, head_dim).contiguous()
 
 
 def get_jit_fused_whisper_encoder_layer_forward():

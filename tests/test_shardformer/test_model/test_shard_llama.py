@@ -79,6 +79,7 @@ def run_gpt2_llama(enable_fused_normalization, enable_tensor_parallelism, enable
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         org_model, sharded_model = build_model(model_fn, enable_fused_normalization, enable_tensor_parallelism,
                                                enable_flash_attention, use_lazy_init)
+        check_state_dict(org_model, sharded_model, name=name)
         check_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn)
     torch.cuda.empty_cache()
 
