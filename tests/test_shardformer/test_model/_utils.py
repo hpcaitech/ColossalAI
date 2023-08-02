@@ -132,7 +132,8 @@ def build_model_from_hybrid_plugin(model_fn: Callable, loss_fn: Callable, test_c
 def run_forward_backward_with_hybrid_plugin(org_model: Module, sharded_model: Module, sharded_optimizer: Optimizer,
                                             data_gen_fn: Callable, output_transform_fn: Callable, criterion: Callable,
                                             booster: Booster):
-
+    org_model.cuda()
+    sharded_model.cuda()
     def _criterion(outputs, inputs):
         outputs = output_transform_fn(outputs)
         loss = criterion(outputs)
