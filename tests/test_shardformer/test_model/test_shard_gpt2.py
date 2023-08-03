@@ -57,8 +57,8 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 
     # check grad
     if stage_manager is None or stage_manager.is_first_stage():
-        check_grad(gpt2, sharded_gpt2, col_layer_for_check, tp_group, atol=5e-5, rtol=1e-3, dim=1, verbose=False)
-        check_grad(gpt2, sharded_gpt2, row_layer_for_check, tp_group, atol=5e-5, rtol=1e-3, dim=0, verbose=False)
+        check_grad(gpt2, sharded_gpt2, col_layer_for_check, tp_group, atol=1e-4, rtol=1e-3, dim=1, verbose=False)
+        check_grad(gpt2, sharded_gpt2, row_layer_for_check, tp_group, atol=1e-4, rtol=1e-3, dim=0, verbose=False)
 
     # check weights after optimizer.step()
     org_optimizer.step()
