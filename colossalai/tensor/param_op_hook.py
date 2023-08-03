@@ -4,9 +4,6 @@ from typing import Any, List, Tuple
 
 import torch
 
-from colossalai.tensor.colo_tensor import ColoTensor
-from colossalai.tensor.tensor_spec import ColoTensorSpec
-
 
 class ColoParamOpHook(ABC):
     """
@@ -82,26 +79,14 @@ class ColoParamOpHookManager:
     @staticmethod
     def pre_op(params: List[torch.Tensor], *args: Any) -> list:
         ColoParamOpHookManager._trigger_pre_forward(params)
-        grad_args, rear_args = _get_grad_args(*args)
-        colo_info = _get_colo_tensors_info(*grad_args)
-        rets = PreFwdPostBwd.apply(params, *grad_args)
-        update_args = _update_colo_tensors(colo_info, *rets)
-        if rear_args is None:
-            return update_args
-        else:
-            arg_zero = (tuple(update_args),)
-            return arg_zero + rear_args
+        grad_args, other_args, spec = _split_grad_args(*args)
+        new_grad_args = PreFwdPostBwd.apply(params, *grad_args)
+        return _merge_args(new_grad_args, other_args, spec)
 
     @staticmethod
     def post_op(params: List[torch.Tensor], arg: Any) -> Any:
         ColoParamOpHookManager._trigger_post_forward(params)
-        colo_info = _get_colo_tensors_info(arg)
-        ret = PostFwdPreBwd.apply(params, arg)
-        res = _update_colo_tensors(colo_info, ret)
-        if len(res) == 1:
-            return res[0]
-        else:
-            return res
+        return PostFwdPreBwd.apply(params, arg)
 
     @staticmethod
     def has_hook() -> bool:
@@ -156,42 +141,22 @@ def _has_grad_tensor(obj) -> bool:
         return _is_grad_tensor(obj)
 
 
-def _get_grad_args(*args):
-    # if there is no grad tensors, do nothing
-    if not _has_grad_tensor(args):
-        return args, None
-    # returns the identical args if there is a grad tensor
-    for obj in args:
-        if _is_grad_tensor(obj):
-            return args, None
-    # otherwise, the first argument should be a tuple of grad tensors
-    # if there is no grad tensor, the backward of PreFwdPostBwd can't be triggered
-    arg_zero = args[0]
-    if not isinstance(arg_zero, tuple):
-        raise NotImplementedError("Some torch function is incompatible because of its complicated inputs.")
-    check_grad_flag = False
-    for obj in arg_zero:
-        check_grad_flag |= _is_grad_tensor(obj)
-    if not check_grad_flag:
-        raise NotImplementedError("Some torch function is incompatible because of its complicated inputs.")
-    return arg_zero, args[1:]
-
-
-def _get_colo_tensors_info(*args) -> list:
-    info = []
+def _split_grad_args(*args):
+    spec = []
+    grad_args = []
+    other_args = []
     for arg in args:
-        if isinstance(arg, ColoTensor):
-            info.append((arg.__class__, ColoTensorSpec(arg.get_process_group(), arg.dist_spec, arg.compute_spec)))
+        flag = _has_grad_tensor(arg)
+        spec.append(flag)
+        if flag:
+            grad_args.append(arg)
         else:
-            info.append(None)
-    return info
+            other_args.append(arg)
+    assert len(grad_args) > 0
+    return grad_args, other_args, spec
 
 
-def _update_colo_tensors(info, *args) -> list:
-    ret = []
-    for t_info, arg in zip(info, args):
-        if t_info is not None:
-            t_cls, spec = t_info
-            arg = t_cls.from_torch_tensor(arg, spec=spec)
-        ret.append(arg)
-    return ret
+def _merge_args(grad_args, other_args, spec):
+    grad_iter = iter(grad_args)
+    other_iter = iter(other_args)
+    return [next(grad_iter) if flag else next(other_iter) for flag in spec]
