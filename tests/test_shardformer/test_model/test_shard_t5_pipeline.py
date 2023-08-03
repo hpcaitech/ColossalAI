@@ -43,7 +43,7 @@ def run_t5_test(enable_fused_normalization, enable_tensor_parallelism, use_lazy_
         position_bias_shape = (batch_size, num_heads, seq_len, seq_len)
 
         num_encoder_layers = len(sharded_model.encoder.block)
-        decoder = sharded_model.__dict__.get('decoder', None)
+        decoder = getattr(sharded_model, 'decoder', None)
         num_decoder_layers = len(decoder.block) if decoder else 0
 
         _, decoder_starting_stage = T5BasePolicy.distribute_t5_layers(num_encoder_layers, num_decoder_layers, PP_SIZE)
@@ -62,8 +62,7 @@ def run_t5_test(enable_fused_normalization, enable_tensor_parallelism, use_lazy_
             inputs['position_bias'] = position_bias
             inputs['encoder_decoder_position_bias'] = encoder_decoder_position_bias
         if in_decoder:
-            encoder_output_states = torch.zeros(*hidden_state_shape).cuda()
-            inputs['encoder_outputs'] = (encoder_output_states,)
+            inputs['encoder_hidden_states'] = torch.zeros(*hidden_state_shape).cuda()
 
         sharded_model.train()
         output = sharded_model(**inputs)
@@ -72,8 +71,7 @@ def run_t5_test(enable_fused_normalization, enable_tensor_parallelism, use_lazy_
                 assert output.loss is not None
             else:
                 if name != 'transformers_t5_encoder_model' and not in_decoder:
-                    output = output['encoder_outputs']
-                assert output[0].shape == hidden_state_shape
+                    assert output['encoder_hidden_states'].shape == hidden_state_shape
         else:
             assert output['hidden_states'].shape == hidden_state_shape
             # position_bias information should be passed in T5
