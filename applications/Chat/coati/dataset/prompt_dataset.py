@@ -1,20 +1,13 @@
-import copy
-import random
 from collections import defaultdict
-from dataclasses import dataclass, field
-from typing import Callable, Dict, Sequence
+from typing import Dict
 
 import torch
-import torch.distributed as dist
 import transformers
 from torch.utils.data import Dataset
-from tqdm import tqdm
 
 from colossalai.logging import get_dist_logger
 
-from .utils import is_rank_0, jload
-
-logger = get_dist_logger()
+from .utils import jload
 
 
 class PromptDataset(Dataset):
@@ -27,12 +20,13 @@ class PromptDataset(Dataset):
                  max_length: int = 96):
         super(PromptDataset, self).__init__()
         self.keyed_prompt = defaultdict(list)
-        logger.info("Loading data...")
+        self.logger = get_dist_logger()
+        self.logger.info("Loading data...")
         list_data_dict = jload(data_path)
-        logger.info(f"Loaded {len(list_data_dict)} examples.")
+        self.logger.info(f"Loaded {len(list_data_dict)} examples.")
 
         if max_datasets_size is not None:
-            logger.info(f"Limiting dataset to {max_datasets_size} examples.")
+            self.logger.info(f"Limiting dataset to {max_datasets_size} examples.")
             list_data_dict = list_data_dict[:max_datasets_size]
 
         instructions = [data_dict["instruction"] for data_dict in list_data_dict]

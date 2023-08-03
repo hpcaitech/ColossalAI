@@ -1,7 +1,6 @@
 import argparse
-
-import random
 import json
+import random
 
 random.seed(42)
 
@@ -10,8 +9,10 @@ def sample(args):
     with open(args.dataset_path, mode='r') as f:
         dataset_list = json.load(f)
 
-    sampled_dataset = [{"instruction": sample["instruction"], "id":idx}
-                       for idx, sample in enumerate(random.sample(dataset_list, args.sample_size))]
+    sampled_dataset = [
+        {"instruction": sample["instruction"], "id": idx}
+        for idx, sample in enumerate(random.sample(dataset_list, args.sample_size))
+    ]
 
     with open(args.save_path, mode='w') as f:
         json.dump(sampled_dataset, f, indent=4,
