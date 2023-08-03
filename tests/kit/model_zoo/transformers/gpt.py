@@ -61,7 +61,8 @@ def data_gen_for_sequence_classification():
 output_transform_fn = lambda x: x
 
 # define loss function
-loss_fn_for_gpt2_model = lambda x: x.last_hidden_state[0][0][0]
+loss_fn_for_gpt2_model = lambda x: torch.nn.functional.mse_loss(x.last_hidden_state, torch.ones_like(x.last_hidden_state
+                                                                                                    ))
 loss_fn = lambda x: x.loss
 
 config = transformers.GPT2Config(n_layer=2,

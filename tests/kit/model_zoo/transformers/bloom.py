@@ -67,7 +67,8 @@ def data_gen_for_question_answering():
 output_transform_fn = lambda x: x
 
 # define loss function
-loss_fn_for_bloom_model = lambda x: x.last_hidden_state[0][0][0] * 10
+loss_fn_for_bloom_model = lambda x: torch.nn.functional.mse_loss(x.last_hidden_state,
+                                                                 torch.ones_like(x.last_hidden_state))
 loss_fn_for_causal_lm = lambda x: x.loss
 loss_fn_for_classification = lambda x: x.loss
 loss_fn_for_question_answering = lambda x: x.loss
