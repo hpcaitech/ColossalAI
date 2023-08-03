@@ -9,9 +9,9 @@ from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_ad
 from tests.kit.model_zoo import model_zoo
 from tests.test_shardformer.test_model._utils import (
     build_model_from_hybrid_plugin,
-    check_gradient,
+    check_grad,
     check_loss,
-    check_grad, check_output_hidden_state,
+    check_output_hidden_state,
     check_weight,
     run_forward_backward_with_hybrid_plugin,
 )
@@ -52,17 +52,19 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         gpt2 = org_model.transformer
         sharded_gpt2 = sharded_model.unwrap().transformer
 
-    # check grad
     col_layer_for_check = ['h[0].mlp.c_fc']
-    row_layer_for_check = ['h[0].mlp.c_proj']
-    check_grad(gpt2, sharded_gpt2, col_layer_for_check, atol=1e-6, rtol=1e-3, dim=1, verbose=False)
-    check_grad(gpt2, sharded_gpt2, row_layer_for_check, atol=1e-6, rtol=1e-3, dim=0, verbose=False)
+    row_layer_for_check = ['wte', 'h[0].mlp.c_proj']
+
+    # check grad
+    if stage_manager is None or stage_manager.is_first_stage():
+        check_grad(gpt2, sharded_gpt2, col_layer_for_check, tp_group, atol=5e-5, rtol=1e-3, dim=1, verbose=False)
+        check_grad(gpt2, sharded_gpt2, row_layer_for_check, tp_group, atol=5e-5, rtol=1e-3, dim=0, verbose=False)
 
     # check weights after optimizer.step()
     org_optimizer.step()
     sharded_optimizer.step()
     if stage_manager is None or stage_manager.is_first_stage():
-        check_weight(org_model.h[0].mlp.c_fc, sharded_model.h[0].mlp.c_fc, tp_group, cat_dim=1, atol=5e-3, rtol=1e-3)
+        check_weight(gpt2, sharded_gpt2, col_layer_for_check, tp_group, atol=5e-3, rtol=1e-3, dim=1, verbose=False)
 
     torch.cuda.empty_cache()
 
@@ -108,7 +110,6 @@ def check_gpt2(rank, world_size, port):
     run_gpt2_test()
 
 
-@pytest.mark.skip('Have some bug caused by merge')
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()

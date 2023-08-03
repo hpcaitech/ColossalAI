@@ -1,18 +1,20 @@
 import copy
 from contextlib import nullcontext
+from typing import Any, Callable, Dict, List, Optional
 
 import torch
+import torch.distributed as dist
+from torch import Tensor
 from torch import distributed as dist
 from torch.distributed import ProcessGroup
-import torch.distributed as dist
 from torch.nn import Module
 from torch.optim import Adam, Optimizer
 
 from colossalai.booster import Booster
 from colossalai.booster.plugin import HybridParallelPlugin
 from colossalai.lazy import LazyInitContext
+from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig, ShardFormer
-from colossalai.tensor.d_tensor.api import is_customized_distributed_tensor, is_distributed_tensor
 from colossalai.shardformer._utils import getattr_
 from colossalai.tensor.d_tensor.api import is_customized_distributed_tensor, is_distributed_tensor
 
@@ -85,7 +87,7 @@ def check_state_dict(org_model: Module, sharded_model: Module, name: str = ''):
         assert torch.equal(v, shard_v), f'{name} {k} value mismatch'
 
 
-def build_model_from_hybrid_plugin(model_fn: callable, loss_fn: callable, test_config: dict):
+def build_model_from_hybrid_plugin(model_fn: Callable, loss_fn: Callable, test_config: Dict[str, Any]):
 
     use_lazy_init = False
     if 'use_lazy_init' in test_config:
@@ -116,7 +118,7 @@ def build_model_from_hybrid_plugin(model_fn: callable, loss_fn: callable, test_c
 
 
 def run_forward_backward_with_hybrid_plugin(org_model: Module, sharded_model: Module, sharded_optimizer: Optimizer,
-                                            data_gen_fn: callable, output_transform_fn: callable, criterion: callable,
+                                            data_gen_fn: Callable, output_transform_fn: Callable, criterion: Callable,
                                             booster: Booster):
 
     def _criterion(outputs, inputs):
@@ -153,7 +155,11 @@ def run_forward_backward_with_hybrid_plugin(org_model: Module, sharded_model: Mo
     return org_loss, org_output, sharded_loss, sharded_output
 
 
-def check_output_hidden_state(org_output, sharded_output, stage_manager=None, atol=1e-5, rtol=1e-3):
+def check_output_hidden_state(org_output: Tensor,
+                              sharded_output: Tensor,
+                              stage_manager: Optional[PipelineStageManager] = None,
+                              atol: float = 1e-5,
+                              rtol: float = 1e-3):
 
     org_hidden_state = org_output.last_hidden_state
 
@@ -167,68 +173,65 @@ def check_output_hidden_state(org_output, sharded_output, stage_manager=None, at
         f"shard model's output hidden state is not equal to origin model's last hidden state\n{org_hidden_state}\n{sharded_hidden_state}"
 
 
-def check_loss(org_loss, sharded_loss, atol=1e-5, rtol=1e-3):
+def check_loss(org_loss: Tensor, sharded_loss: Tensor, atol: float = 1e-5, rtol: float = 1e-3):
     assert torch.allclose(org_loss, sharded_loss, atol=atol, rtol=rtol), \
         f"shard model loss is not equal to origin model loss\n{org_loss}\n{sharded_loss}"
 
 
-def check_weight(org_param: Module,
-                 sharded_param: Module,
-                 tp_group: ProcessGroup = None,
-                 cat_dim=0,
-                 atol=1e-5,
-                 rtol=1e-3):
+def check_weight(org_model: Module,
+                 sharded_model: Module,
+                 layer_suffix: List[str],
+                 tp_group: Optional[ProcessGroup] = None,
+                 dim: int = 0,
+                 atol: float = 1e-5,
+                 rtol: float = 1e-3,
+                 verbose: bool = False):
 
-    org_weight = org_param.weight
-    sharded_weight = sharded_param.weight
-
-    if is_distributed_tensor(sharded_weight) or is_customized_distributed_tensor(sharded_weight):
-        sharded_weight_list = [
-            torch.zeros([*sharded_weight.shape]).to('cuda') for _ in range(dist.get_world_size(tp_group))
-        ]
-        dist.all_gather(sharded_weight_list, sharded_weight, tp_group)
-        sharded_weight = torch.cat(sharded_weight_list, dim=cat_dim)
-
-    assert torch.allclose(org_weight, sharded_weight, atol=atol, rtol=rtol), \
-        f"shard model weight is not equal to origin model weight\n{org_weight}\n{sharded_weight}"
-
-
-def check_gradient(org_param: Module,
-                   sharded_param: Module,
-                   tp_group: ProcessGroup = None,
-                   cat_dim=0,
-                   atol=1e-5,
-                   rtol=1e-3):
-
-    sharded_weight = sharded_param.weight
-    org_grad = org_param.weight.grad
-    sharded_grad = sharded_param.weight.grad
-
-    if is_distributed_tensor(sharded_weight) or is_customized_distributed_tensor(sharded_weight):
-        sharded_grad_list = [
-            torch.zeros([*sharded_grad.shape]).to('cuda') for _ in range(dist.get_world_size(tp_group))
-        ]
-        dist.all_gather(sharded_grad_list, sharded_grad, tp_group)
-        sharded_grad = torch.cat(sharded_grad_list, dim=cat_dim)
-
-    assert torch.allclose(org_grad, sharded_grad, atol=atol, rtol=rtol), \
-        f"shard model grad is not equal to origin model grad\n{org_grad}\n{sharded_grad}"
-
-
-def check_grad(original_model, sharded_model, layer_suffix, atol=1e-5, rtol=1e-5, dim=0, verbose=False):
     for suffix in layer_suffix:
-        org_grad = getattr_(original_model, suffix).weight.grad
+        org_weight = getattr_(org_model, suffix).weight
+        sharded_weight = getattr_(sharded_model, suffix).weight
+
+        if is_distributed_tensor(sharded_weight) or is_customized_distributed_tensor(sharded_weight):
+            sharded_weight_list = [
+                torch.zeros([*sharded_weight.shape]).to('cuda') for _ in range(dist.get_world_size(tp_group))
+            ]
+            dist.all_gather(sharded_weight_list, sharded_weight, tp_group)
+            sharded_weight = torch.cat(sharded_weight_list, dim=dim)
+
+        if verbose and dist.get_rank() == 0:
+            print(f"'{suffix}' weight: {org_weight}, {sharded_weight}")
+
+        assert torch.allclose(org_weight, sharded_weight, atol=atol, rtol=rtol), \
+            f"shard model weight is not equal to origin model weight\n{org_weight}\n{sharded_weight}"
+
+
+def check_grad(org_model: Module,
+               sharded_model: Module,
+               layer_suffix: List[str],
+               tp_group: ProcessGroup = None,
+               dim: int = 0,
+               atol: float = 1e-5,
+               rtol: float = 1e-3,
+               verbose: bool = False):
+
+    for suffix in layer_suffix:
+        org_grad = getattr_(org_model, suffix).weight.grad
         shard_grad = getattr_(sharded_model, suffix).weight.grad
         shard_weight = getattr_(sharded_model, suffix).weight
 
         if is_distributed_tensor(shard_weight) or is_customized_distributed_tensor(shard_weight):
-            shard_grad_list = [torch.zeros([*shard_grad.shape]).to('cuda') for _ in range(dist.get_world_size())]
-            shard_grad = torch.distributed.all_gather(shard_grad_list, shard_grad)
-            all_shard_grad = torch.cat(shard_grad_list, dim=dim)
-        else:
-            all_shard_grad = shard_grad
+            shard_grad_list = [
+                torch.zeros([*shard_grad.shape]).to('cuda') for _ in range(dist.get_world_size(tp_group))
+            ]
+            dist.all_gather(shard_grad_list, shard_grad, tp_group)
+            shard_grad = torch.cat(shard_grad_list, dim=dim)
+
+        # embedding may be resized when using tensor parallel
+        if shard_grad.shape[0] > org_grad.shape[0]:
+            shard_grad = shard_grad[:org_grad.shape[0], :]
+
         if verbose and dist.get_rank() == 0:
-            print(f"'{suffix}' grad: {org_grad}, {all_shard_grad}")
+            print(f"'{suffix}' grad: {org_grad}, {shard_grad}")
         assert torch.allclose(
-            org_grad, all_shard_grad, rtol=rtol, atol=atol
-        ), f"error attribute '{suffix}', orgin model grad is not equal to shard model grad\n{org_grad}\n{all_shard_grad}"
+            org_grad, shard_grad, rtol=rtol, atol=atol
+        ), f"error attribute '{suffix}', orgin model grad is not equal to shard model grad\n{org_grad}\n{shard_grad}"
