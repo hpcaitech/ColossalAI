@@ -1,9 +1,9 @@
+import json
 import re
 from threading import Lock
 from typing import Any, Callable, Generator, List, Optional
-import json
-import jieba
 
+import jieba
 import torch
 import torch.distributed as dist
 import torch.nn as nn
@@ -127,7 +127,7 @@ STOP_PAT = re.compile(r'(###|instruction:).*', flags=(re.I | re.S))
 class ChatPromptProcessor:
     SAFE_RESPONSE = 'The input/response contains inappropriate content, please rephrase your prompt.'
 
-    def __init__(self, tokenizer, context: str, max_len: int = 2048, censored_words: List[str]=[]):
+    def __init__(self, tokenizer, context: str, max_len: int = 2048, censored_words: List[str] = []):
         self.tokenizer = tokenizer
         self.context = context
         self.max_len = max_len
@@ -182,6 +182,7 @@ class ChatPromptProcessor:
         intersection = set(jieba.cut(text.lower())) & self.censored_words
         return len(intersection) > 0
 
+
 class LockedIterator:
 
     def __init__(self, it, lock: Lock) -> None:
@@ -194,6 +195,7 @@ class LockedIterator:
     def __next__(self):
         with self.lock:
             return next(self.it)
+
 
 def load_json(path: str):
     with open(path) as f:

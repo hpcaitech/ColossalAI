@@ -9,6 +9,7 @@ from torch.testing import assert_close
 import colossalai
 from colossalai.testing import spawn
 from colossalai.testing.random import seed_all
+from colossalai.utils import conditional_context
 from colossalai.zero import LowLevelZeroOptimizer
 
 
@@ -50,26 +51,27 @@ def exam_zero_1_2_grad_acc():
     input_data1 = torch.randn(32, 128).cuda()
     input_data2 = torch.randn(32, 128).cuda()
 
-    def fwd_bwd_func(number, cur_data):
+    def fwd_bwd_func(number, cur_data, check_flag):
         # zero-dp forward
         zero1_output = zero1_model(cur_data)
         zero2_output = zero2_model(cur_data)
         assert torch.equal(zero1_output, zero2_output)
 
         # zero-dp backward
-        zero1_optimizer.backward(zero1_output.sum().float(), sync_grad=False)
-        zero2_optimizer.backward(zero2_output.sum().float(), sync_grad=False)
+        no_sync = number == 0
+        with conditional_context(zero1_optimizer.no_sync(), no_sync):
+            zero1_optimizer.backward(zero1_output.sum().float())
+        with conditional_context(zero2_optimizer.no_sync(), no_sync):
+            zero2_optimizer.backward(zero2_output.sum().float())
 
-        for (n, z1p), z2p in zip(zero1_model.named_parameters(), zero2_model.parameters()):
-            if z2p.grad is not None:
-                # print(local_rank, n, z1p.shape, torch.max(z2p.grad), torch.max(torch.abs(z1p.grad - z2p.grad)))
-                assert torch.equal(z1p.grad, z2p.grad)
+        if check_flag:
+            for (n, z1p), z2p in zip(zero1_model.named_parameters(), zero2_model.parameters()):
+                if z2p.grad is not None:
+                    # print(local_rank, n, z1p.shape, torch.max(z2p.grad), torch.max(torch.abs(z1p.grad - z2p.grad)))
+                    assert torch.equal(z1p.grad, z2p.grad)
 
-        zero1_optimizer._sync_grad()
-        zero2_optimizer._sync_grad()
-
-    fwd_bwd_func(0, input_data1)
-    fwd_bwd_func(1, input_data2)
+    fwd_bwd_func(0, input_data1, True)
+    fwd_bwd_func(1, input_data2, False)
 
     # step
     zero1_optimizer.step()
@@ -111,25 +113,23 @@ def exam_zero_1_grad_acc():
     input_data2 = torch.randn(32, 128).cuda()
 
     def fwd_bwd_func(number, cur_data, check_flag):
-        # zero-dp forward
-        zero_output = zero_model(cur_data)
 
-        # torch-ddp forward
-        torch_output = torch_model(cur_data)
-        assert torch.equal(zero_output, torch_output)
+        no_sync = number == 0
+        # zero1 fwd and bwd
+        with conditional_context(zero_optimizer.no_sync(), no_sync):
+            zero_output = zero_model(cur_data)
+            zero_optimizer.backward(zero_output.sum().float())
 
-        # zero-dp backward
-        zero_optimizer.backward(zero_output.sum().float(), sync_grad=False)
-        # torch-ddp backward
-        torch_output.sum().backward()
+        # torch-ddp fwd and bwd
+        with conditional_context(torch_model.no_sync(), no_sync):
+            torch_output = torch_model(cur_data)
+            assert torch.equal(zero_output, torch_output)
+            torch_output.sum().backward()
 
         if check_flag:
             # check grad
             for (n, p), z1p in zip(torch_model.named_parameters(), zero_model.parameters()):
-                # print(n, p.shape, torch.max(torch.abs(p.grad - unscale_grad)))
                 assert torch.equal(p.grad, z1p.grad)
-
-        zero_optimizer._sync_grad()
 
     fwd_bwd_func(0, input_data1, True)
     fwd_bwd_func(1, input_data2, False)
@@ -148,7 +148,8 @@ def run_dist(rank, world_size, port):
     colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host='localhost')
 
     exam_zero_1_grad_acc()
-    exam_zero_1_2_grad_acc()
+    # gradient accumulation is not compatible with ZeRO-2
+    # exam_zero_1_2_grad_acc()
 
 
 @pytest.mark.dist

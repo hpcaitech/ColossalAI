@@ -4,7 +4,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
-from coati.replay_buffer import ReplayBuffer
+from coati.experience_buffer import ExperienceBuffer
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
@@ -45,7 +45,7 @@ class Strategy(ABC):
         pass
 
     @abstractmethod
-    def setup_dataloader(self, replay_buffer: ReplayBuffer, pin_memory: bool = False) -> DataLoader:
+    def setup_dataloader(self, data_buffer: ExperienceBuffer, pin_memory: bool = False) -> DataLoader:
         pass
 
     def model_init_context(self):

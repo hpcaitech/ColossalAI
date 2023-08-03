@@ -408,5 +408,5 @@ class GeminiPlugin(DPPluginBase):
     def get_checkpoint_io(self) -> CheckpointIO:
         return GeminiCheckpointIO()
 
-    def no_sync(self, model: nn.Module) -> Iterator[None]:
+    def no_sync(self, model: nn.Module, optimizer: OptimizerWrapper) -> Iterator[None]:
         raise NotImplementedError
