@@ -1,5 +1,6 @@
 import pytest
 import torch
+import torch.distributed as dist
 
 import colossalai
 from colossalai.context import MOE_CONTEXT
@@ -13,7 +14,55 @@ from colossalai.zero.legacy.sharded_model._utils import cast_tensor_to_fp16
 from colossalai.zero.legacy.sharded_model.utils import col_model_deepcopy
 from tests.components_to_test.registry import non_distributed_component_funcs
 from tests.test_moe.test_moe_zero_init import MoeModel
-from tests.test_zero.test_legacy.common import CONFIG, check_grads_padding, run_fwd_bwd
+
+def allclose(tensor_a: torch.Tensor, tensor_b: torch.Tensor, loose=False) -> bool:
+    if loose:
+        return torch.allclose(tensor_a, tensor_b, atol=1e-2, rtol=1e-3)
+    return torch.allclose(tensor_a, tensor_b)
+
+CONFIG = dict(fp16=dict(mode=None,),
+              zero=dict(level=3,
+                        verbose=False,
+                        offload_optimizer_config=dict(device='cpu', pin_memory=True, buffer_count=5, fast_init=False),
+                        offload_param_config=dict(device='cpu',
+                                                  pin_memory=True,
+                                                  buffer_count=5,
+                                                  buffer_size=1e8,
+                                                  max_in_cpu=1e9)),
+              parallel=dict(pipeline=dict(size=1), tensor=dict(size=1, mode=None)))
+
+def check_grads_padding(model, zero_model, loose=False):
+    rank = dist.get_rank()
+    for (name, p), (zero_name, zero_p) in zip(model.named_parameters(), zero_model.named_parameters()):
+        # zero_grad = zero_p.grad.clone().to(p.device)
+        if zero_p.colo_attr.is_replicated:
+            zero_grad = zero_p.colo_attr.grad_payload.clone().to(p.device)
+            chunks = torch.flatten(p.grad).chunk(dist.get_world_size())
+            if rank >= len(chunks):
+                continue
+            grad = chunks[rank].float()
+            if zero_grad.size(0) > grad.size(0):
+                zero_grad = zero_grad[:grad.size(0)]
+        else:
+            zero_grad = zero_p.colo_attr.grad_payload
+            grad = p.grad.to(zero_grad.dtype)
+
+        assert grad.dtype == zero_grad.dtype
+        assert allclose(grad, zero_grad, loose=loose), f'diff: {grad - zero_grad}'
+
+def run_fwd_bwd(model, data, label, criterion, enable_autocast=False):
+    model.train()
+    with torch.cuda.amp.autocast(enabled=enable_autocast):
+        if criterion:
+            y = model(data)
+            loss = criterion(y, label)
+        else:
+            loss = model(data, label)
+        loss = loss.float()
+    if isinstance(model, ShardedModelV2):
+        model.backward(loss)
+    else:
+        loss.backward()
 
 
 @parameterize("enable_autocast", [False])

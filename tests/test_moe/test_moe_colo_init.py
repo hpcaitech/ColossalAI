@@ -10,7 +10,6 @@ from colossalai.utils import get_current_device
 from colossalai.zero import ColoInitContext
 from tests.test_moe.test_moe_zero_init import MoeModel
 from tests.test_tensor.common_utils import debug_print
-from tests.test_zero.test_legacy.common import CONFIG
 
 
 @parameterize("init_device_type", ['cpu', 'cuda'])
@@ -40,7 +39,7 @@ def exam_moe_colo_init(init_device_type):
 
 
 def _run_dist(rank, world_size, port):
-    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.launch(config=dict(parallel=dict(data=2)), rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     MOE_CONTEXT.setup(seed=42)
     exam_moe_colo_init()
 

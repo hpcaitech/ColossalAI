@@ -11,8 +11,16 @@ from colossalai.testing import rerun_if_address_is_in_use, spawn
 from colossalai.utils import get_current_device
 from colossalai.zero import ColoInitContext
 from tests.test_moe.test_moe_zero_init import MoeModel
-from tests.test_zero.test_legacy.common import CONFIG
-
+CONFIG = dict(fp16=dict(mode=None,),
+              zero=dict(level=3,
+                        verbose=False,
+                        offload_optimizer_config=dict(device='cpu', pin_memory=True, buffer_count=5, fast_init=False),
+                        offload_param_config=dict(device='cpu',
+                                                  pin_memory=True,
+                                                  buffer_count=5,
+                                                  buffer_size=1e8,
+                                                  max_in_cpu=1e9)),
+              parallel=dict(pipeline=dict(size=1), tensor=dict(size=1, mode=None)))
 
 def exam_moe_checkpoint():
     with ColoInitContext(device=get_current_device()):
