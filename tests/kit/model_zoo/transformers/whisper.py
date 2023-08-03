@@ -22,7 +22,7 @@ def data_gen():
     # input_features = inputs.input_features
     # decoder_input_ids = torch.tensor([[1, 1]]) * model.config.decoder_start_token_id
 
-    input_features = torch.randn(1, 80, 3000)
+    input_features = torch.rand(1, 80, 3000)
     decoder_input_ids = torch.tensor([[1, 1]]) * 50258
     return dict(input_features=input_features, decoder_input_ids=decoder_input_ids)
 
@@ -53,7 +53,7 @@ def data_gen_for_audio_classification():
 output_transform_fn = lambda x: x
 
 # define loss funciton
-loss_fn = lambda x: x.last_hidden_state.mean()
+loss_fn = lambda x: torch.nn.functional.mse_loss(x.last_hidden_state, torch.ones_like(x.last_hidden_state))
 loss_fn_attr = lambda x: x.loss
 
 config = transformers.WhisperConfig(

@@ -3,7 +3,6 @@ import torch
 
 import colossalai
 from colossalai.logging import disable_existing_loggers
-from colossalai.tensor.d_tensor.api import is_customized_distributed_tensor, is_distributed_tensor
 from colossalai.testing import (
     assert_hf_output_close,
     clear_cache_before_run,
@@ -12,7 +11,7 @@ from colossalai.testing import (
     spawn,
 )
 from tests.kit.model_zoo import model_zoo
-from tests.test_shardformer.test_model._utils import build_model, check_state_dict, run_forward
+from tests.test_shardformer.test_model._utils import build_model, check_grad, check_state_dict, run_forward
 
 
 def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn):
@@ -26,7 +25,7 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
     shard_loss.backward()
 
     assert torch.allclose(org_loss, shard_loss,
-                          atol=1e-5), f"shard model loss is not equal to orgin model loss\n{org_loss}\n{shard_loss}"
+                          atol=1e-6), f"shard model loss is not equal to orgin model loss\n{org_loss}\n{shard_loss}"
 
     # unwrap model
     if org_model.__class__.__name__ == 'BloomModel':
@@ -36,35 +35,11 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
         bloom = org_model.transformer
         sharded_bloom = sharded_model.transformer
 
-    # check attention grad
-    org_grad = bloom.h[0].self_attention.query_key_value.weight.grad
-    shard_grad = sharded_bloom.h[0].self_attention.query_key_value.weight.grad
-    shard_weight = sharded_bloom.h[0].self_attention.query_key_value.weight
-
-    if is_distributed_tensor(shard_weight) or is_customized_distributed_tensor(shard_weight):
-        shard_grad_list = [torch.zeros([*shard_grad.shape]).to('cuda') for _ in range(2)]
-        torch.distributed.all_gather(shard_grad_list, shard_grad)
-        all_shard_grad = torch.cat(shard_grad_list, dim=0)
-    else:
-        all_shard_grad = shard_grad
-
-    assert torch.allclose(org_grad, all_shard_grad,
-                          atol=1e-5), f"shard model grad is not equal to orgin model grad\n{org_grad}\n{all_shard_grad}"
-
-    # check embedding weights
-    org_grad = bloom.word_embeddings.weight.grad
-    shard_grad = sharded_bloom.word_embeddings.weight.grad
-    shard_weight = sharded_bloom.word_embeddings.weight
-
-    if is_distributed_tensor(shard_weight) or is_customized_distributed_tensor(shard_weight):
-        shard_grad_list = [torch.zeros([*shard_grad.shape]).to('cuda') for _ in range(2)]
-        torch.distributed.all_gather(shard_grad_list, shard_grad)
-        all_shard_grad = torch.cat(shard_grad_list, dim=0)
-    else:
-        all_shard_grad = shard_grad
-
-    assert torch.allclose(org_grad, all_shard_grad,
-                          atol=1e-5), f"shard model grad is not equal to orgin model grad\n{org_grad}\n{all_shard_grad}"
+    # check grad
+    col_layer_for_check = ['h[0].self_attention.query_key_value']
+    row_layer_for_check = ['h[0].self_attention.dense']
+    check_grad(bloom, sharded_bloom, col_layer_for_check, atol=1e-6, rtol=1e-5, dim=0, verbose=False)
+    check_grad(bloom, sharded_bloom, row_layer_for_check, atol=1e-6, rtol=1e-5, dim=1, verbose=False)
 
 
 @parameterize('enable_fused_normalization', [True, False])
