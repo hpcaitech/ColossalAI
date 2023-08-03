@@ -15,8 +15,6 @@ from transformers.utils import logging
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
 
-__all__ = ['get_t5_flash_attention_forward']
-
 
 class T5PipelineForwards:
     '''
