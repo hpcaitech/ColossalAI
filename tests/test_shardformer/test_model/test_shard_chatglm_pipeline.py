@@ -31,7 +31,7 @@ def run_chatglm_test(enable_fused_normalization, enable_tensor_parallelism, use_
     stage_manager = PipelineStageManager(pg_mesh, PP_DIM)
     sub_model_zoo = model_zoo.get_sub_registry('transformers_chatglm')
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
-        # create new model
+        # create new model for test
         inputs = data_gen_fn()
         inputs = {k: v.cuda() for k, v in inputs.items()}
         input_ids = inputs['input_ids']
