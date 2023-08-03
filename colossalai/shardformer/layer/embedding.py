@@ -139,6 +139,16 @@ class Embedding1D(ParallelModule):
 
         return embedding
 
+    def reset_parameters(self, weight_initializer) -> None:
+        fan_in, fan_out = self.num_embeddings, self.embedding_dim
+        weight_initializer(self.weight, fan_in=fan_in, fan_out=fan_out)
+        self._fill_padding_idx_with_zero()
+
+    def _fill_padding_idx_with_zero(self) -> None:
+        if self.padding_idx is not None:
+            with torch.no_grad():
+                self.weight[self.padding_idx].fill_(0)
+
     def forward(self, input_: Tensor) -> Tensor:
         output_parallel = F.embedding(input_, self.weight, self.padding_idx, *self.embed_args, **self.embed_kwargs)
         if self.gather_output:
@@ -255,6 +265,18 @@ class VocabParallelEmbedding1D(ParallelModule):
                                                       **kwargs)
 
         return vocab_embedding_1d
+
+    def reset_parameters(self, weight_initializer) -> None:
+        with self.randomizer.fork_rng(enable_cpu=True):
+            fan_in, fan_out = self.num_embeddings, self.embedding_dim
+            weight_initializer(self.weight, fan_in=fan_in, fan_out=fan_out)
+            self._fill_padding_idx_with_zero()
+
+    def _fill_padding_idx_with_zero(self) -> None:
+        if self.padding_idx is not None and \
+                self.padding_idx >= self.vocab_start_index and self.padding_idx < self.vocab_end_index:
+            with torch.no_grad():
+                self.weight[self.padding_idx - self.vocab_start_index].fill_(0)
 
     def _select_padding_idx(self, padding_idx: int):
         # select padding index according to the rank
