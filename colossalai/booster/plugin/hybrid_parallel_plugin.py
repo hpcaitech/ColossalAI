@@ -37,7 +37,8 @@ class HybridParallelModule(ModelWrapper):
         self.shared_param_process_groups = []
         for shared_param in self.shared_params:
             if len(shared_param) > 0:
-                self.stage_manager.init_process_group_by_stages(list(shared_param.keys()))
+                self.shared_param_process_groups.append(
+                    self.stage_manager.init_process_group_by_stages(list(shared_param.keys())))
         if precision == 'fp16':
             module = module.half().cuda()
         elif precision == 'bf16':
