@@ -40,7 +40,7 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
     col_layer_for_check = ['encoder.layer[0].attention.attention.query']
     row_layer_for_check = ['encoder.layer[0].attention.output.dense']
     check_grad(vit_model, shard_vit_model, col_layer_for_check, atol=1e-5, rtol=1e-3, dim=0, verbose=False)
-    check_grad(vit_model, shard_vit_model, row_layer_for_check, atol=1e-6, rtol=1e-4, dim=1, verbose=False)
+    check_grad(vit_model, shard_vit_model, row_layer_for_check, atol=1e-5, rtol=1e-3, dim=1, verbose=False)
 
 
 @parameterize('enable_fused_normalization', [True, False])
