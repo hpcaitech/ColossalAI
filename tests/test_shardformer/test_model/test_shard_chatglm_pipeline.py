@@ -46,9 +46,9 @@ def run_chatglm_test(enable_fused_normalization, enable_tensor_parallelism, use_
                 inputs['input_ids'] = None
                 inputs['hidden_states'] = hidden_states
             outputs = sharded_model(**inputs)
-
             if stage_manager.is_last_stage():
                 assert outputs[0].shape == hidden_state_shape
+
             else:
                 assert outputs['hidden_states'].shape == hidden_state_shape
 
@@ -61,7 +61,6 @@ def run_chatglm_test(enable_fused_normalization, enable_tensor_parallelism, use_
                 inputs['input_ids'] = None
                 inputs['hidden_states'] = hidden_states
             outputs = sharded_model(**inputs)
-
             if stage_manager.is_last_stage():
                 assert outputs[0].shape == (batch_size, seq_len, 65024)
             else:

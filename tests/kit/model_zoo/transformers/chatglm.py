@@ -27,9 +27,10 @@ config = ChatGLMConfig(num_layers=1,
                        padded_vocab_size=65024,
                        hidden_size=64,
                        num_attention_heads=8,
-                       rmsnorm=False,
+                       rmsnorm=True,
                        original_rope=True,
-                       use_cache=True)
+                       use_cache=True,
+                       torch_dtype=torch.float32)
 
 model_zoo.register(name='transformers_chatglm',
                    model_fn=lambda: ChatGLMModel(config, empty_init=False),
