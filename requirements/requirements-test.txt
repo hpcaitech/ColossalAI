@@ -18,4 +18,3 @@ requests==2.27.1 # downgrade to avoid huggingface error https://github.com/huggi
 SentencePiece
 datasets
 ninja
-git+https://github.com/facebookresearch/xformers.git@main#egg=xformers
