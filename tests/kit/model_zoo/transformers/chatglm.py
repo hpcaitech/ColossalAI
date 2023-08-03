@@ -6,6 +6,7 @@ from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import ChatGLM
 
 from ..registry import ModelAttribute, model_zoo
 
+
 # ================================
 # Register single-sentence ChatGLM
 # ================================
@@ -23,6 +24,7 @@ output_transform_fn = lambda x: x
 # define loss function
 loss_fn_for_chatglm_model = lambda x: x.last_hidden_state.sum()
 loss_fn = lambda x: x.logits.sum()
+
 config = ChatGLMConfig(num_layers=1,
                        padded_vocab_size=65024,
                        hidden_size=64,
@@ -31,6 +33,7 @@ config = ChatGLMConfig(num_layers=1,
                        original_rope=True,
                        use_cache=True,
                        torch_dtype=torch.float32)
+
 
 model_zoo.register(name='transformers_chatglm',
                    model_fn=lambda: ChatGLMModel(config, empty_init=False),

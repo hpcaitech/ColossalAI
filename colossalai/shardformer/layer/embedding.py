@@ -202,7 +202,6 @@ class VocabParallelEmbedding1D(ParallelModule):
         super().__init__()
         self.num_embeddings = num_embeddings
         self.embedding_dim = embedding_dim
-        self.padding_idx = padding_idx
         self.embed_args = args
         self.embed_kwargs = kwargs
         self.process_group = process_group
@@ -214,6 +213,9 @@ class VocabParallelEmbedding1D(ParallelModule):
         self.num_embeddings = self.num_embeddings_per_partition
         self.vocab_start_index = tensor_parallel_rank * self.num_embeddings_per_partition
         self.vocab_end_index = self.vocab_start_index + self.num_embeddings_per_partition
+
+        # padding index
+        self.padding_idx = self._select_padding_idx(padding_idx)
 
         # offset the seed with randomizer index and rank
         seed = torch.random.initial_seed()
@@ -275,6 +277,15 @@ class VocabParallelEmbedding1D(ParallelModule):
                 self.padding_idx >= self.vocab_start_index and self.padding_idx < self.vocab_end_index:
             with torch.no_grad():
                 self.weight[self.padding_idx - self.vocab_start_index].fill_(0)
+
+    def _select_padding_idx(self, padding_idx: int):
+        # select padding index according to the rank
+        if padding_idx is None:
+            return None
+        elif padding_idx < self.vocab_end_index and padding_idx >= self.vocab_start_index:
+            return padding_idx - self.vocab_start_index
+        else:
+            return None
 
     def forward(self, input_: Tensor) -> Tensor:
         # Build the mask.

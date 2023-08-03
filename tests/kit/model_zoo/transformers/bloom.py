@@ -55,17 +55,23 @@ def data_gen_for_question_answering():
     input_ids = torch.tensor(
         [[57647, 1620, 23967, 620, 107373, 34, 91514, 620, 107373, 1620, 267, 35378, 48946, 18161]], dtype=torch.int64)
     attention_mask = torch.tensor([[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]], dtype=torch.int64)
-    return dict(input_ids=input_ids, attention_mask=attention_mask)
+    start_positions = torch.tensor([1], dtype=torch.int64)
+    end_positions = torch.tensor([10], dtype=torch.int64)
+    return dict(input_ids=input_ids,
+                attention_mask=attention_mask,
+                start_positions=start_positions,
+                end_positions=end_positions)
 
 
 # define output transform function
 output_transform_fn = lambda x: x
 
 # define loss function
-loss_fn_for_bloom_model = lambda x: x.last_hidden_state.mean()
+loss_fn_for_bloom_model = lambda x: torch.nn.functional.mse_loss(x.last_hidden_state,
+                                                                 torch.ones_like(x.last_hidden_state))
 loss_fn_for_causal_lm = lambda x: x.loss
-loss_fn_for_classification = lambda x: x.logits.mean()
-loss_fn_for_question_answering = lambda x: x.end_logits.mean()
+loss_fn_for_classification = lambda x: x.loss
+loss_fn_for_question_answering = lambda x: x.loss
 
 config = transformers.BloomConfig(n_layer=1,
                                   n_head=4,
