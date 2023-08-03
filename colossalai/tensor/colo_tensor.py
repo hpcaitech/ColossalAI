@@ -3,6 +3,13 @@ from typing import Callable, Set
 
 import torch
 
+INPALCE_MAPPING = {
+    torch.Tensor.add_: torch.Tensor.add,
+    torch.Tensor.sub_: torch.Tensor.sub,
+    torch.Tensor.mul_: torch.Tensor.mul,
+    torch.Tensor.div_: torch.Tensor.div
+}
+
 
 @lru_cache(None)
 def _get_my_nowrap_functions() -> Set[Callable]:
@@ -72,6 +79,9 @@ class ColoTensor(torch.Tensor):
                 tensor_kwargs = {k: torch.Tensor(v) if torch.is_tensor(v) else v for k, v in kwargs.items()}
                 return backward_tensor.backward(**tensor_kwargs)
 
+        # replace the in-place function
+        if func in INPALCE_MAPPING:
+            func = INPALCE_MAPPING[func]
         # set the 'inplace' kwargs to False
         if 'inplace' in kwargs:
             kwargs['inplace'] = False
