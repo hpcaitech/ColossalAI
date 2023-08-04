@@ -60,7 +60,7 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
     shard_weight = shard_chatglm_model.embedding.word_embeddings.weight
 
     if is_distributed_tensor(shard_weight) or is_customized_distributed_tensor(shard_weight):
-        shard_grad_list = [torch.zeros([*shard_grad.shape]).to('cuda') for _ in range(2)]
+        shard_grad_list = [torch.zeros_like(shard_grad) for _ in range(2)]
         torch.distributed.all_gather(shard_grad_list, shard_grad)
         all_shard_grad = torch.cat(shard_grad_list, dim=0)
     else:
