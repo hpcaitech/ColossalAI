@@ -4,11 +4,12 @@ from copy import deepcopy
 import pytest
 import torch
 import torch.distributed as dist
+from coati.experience_buffer import NaiveExperienceBuffer
 from coati.experience_maker import NaiveExperienceMaker
 from coati.models.base import RewardModel
 from coati.models.gpt import GPTActor, GPTCritic
-from coati.replay_buffer import NaiveReplayBuffer
 from coati.trainer.strategies import DDPStrategy, GeminiStrategy
+from coati.trainer.strategies.colossalai import LowLevelZeroStrategy
 from transformers.models.gpt2.configuration_gpt2 import GPT2Config
 
 from colossalai.testing import rerun_if_address_is_in_use, spawn
@@ -32,13 +33,15 @@ def gather_and_equal(tensor: torch.Tensor) -> bool:
     return True
 
 
-def run_test_data(strategy):
+def make_and_consume_experience(strategy):
     EXPERIENCE_BATCH_SIZE = 4
     SAMPLE_BATCH_SIZE = 2
 
     if strategy == 'ddp':
         strategy = DDPStrategy()
-    elif strategy == 'colossalai':
+    elif strategy == 'colossalai-zero2':
+        strategy = LowLevelZeroStrategy()
+    elif strategy == 'colossalai-gemini':
         strategy = GeminiStrategy(placement_policy='cuda')
     else:
         raise ValueError(f'Unsupported strategy "{strategy}"')
@@ -50,7 +53,7 @@ def run_test_data(strategy):
     reward_model = RewardModel(deepcopy(critic.model)).cuda()
 
     experience_maker = NaiveExperienceMaker(actor, critic, reward_model, initial_model)
-    replay_buffer = NaiveReplayBuffer(SAMPLE_BATCH_SIZE, cpu_offload=False)
+    data_buffer = NaiveExperienceBuffer(SAMPLE_BATCH_SIZE, cpu_offload=False)
 
     # experience of all ranks should be the same
     for _ in range(2):
@@ -69,12 +72,12 @@ def run_test_data(strategy):
         assert gather_and_equal(experience.advantages)
         assert gather_and_equal(experience.action_mask)
         assert gather_and_equal(experience.attention_mask)
-        replay_buffer.append(experience)
+        data_buffer.append(experience)
 
-    # replay buffer's data should be the same
-    buffer_size = torch.tensor([len(replay_buffer)], device='cuda')
+    # data buffer's data should be the same
+    buffer_size = torch.tensor([len(data_buffer)], device='cuda')
     assert gather_and_equal(buffer_size)
-    for item in replay_buffer.items:
+    for item in data_buffer.items:
         assert gather_and_equal(item.sequences)
         assert gather_and_equal(item.action_log_probs)
         assert gather_and_equal(item.values)
@@ -84,7 +87,7 @@ def run_test_data(strategy):
         assert gather_and_equal(item.attention_mask)
 
     # dataloader of each rank should have the same size and different batch
-    dataloader = strategy.setup_dataloader(replay_buffer)
+    dataloader = strategy.setup_dataloader(data_buffer)
     dataloader_size = torch.tensor([len(dataloader)], device='cuda')
     assert gather_and_equal(dataloader_size)
     for experience in dataloader:
@@ -102,17 +105,16 @@ def run_dist(rank, world_size, port, strategy):
     os.environ['WORLD_SIZE'] = str(world_size)
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = str(port)
-    run_test_data(strategy)
+    make_and_consume_experience(strategy)
 
 
-@pytest.mark.skip
 @pytest.mark.dist
 @pytest.mark.parametrize('world_size', [2])
-@pytest.mark.parametrize('strategy', ['ddp', 'colossalai'])
+@pytest.mark.parametrize('strategy', ['ddp', 'colossalai-zero2', 'colossalai-gemini'])
 @rerun_if_address_is_in_use()
-def test_data(world_size, strategy):
+def test_experience(world_size, strategy):
     spawn(run_dist, world_size, strategy=strategy)
 
 
 if __name__ == '__main__':
-    test_data(2, 'colossalai')
+    test_experience(2, 'colossalai')

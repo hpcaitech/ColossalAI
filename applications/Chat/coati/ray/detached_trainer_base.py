@@ -4,8 +4,8 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Union
 
 import ray
 import torch
+from coati.experience_buffer.utils import BufferItem
 from coati.experience_maker import Experience
-from coati.replay_buffer.utils import BufferItem
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
