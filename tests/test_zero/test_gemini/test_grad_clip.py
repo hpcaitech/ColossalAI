@@ -9,7 +9,7 @@ from colossalai.amp import convert_to_apex_amp
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.utils.cuda import get_current_device
-from colossalai.zero import ColoInitContext, ZeroDDP, ZeroOptimizer
+from colossalai.zero import ZeroDDP, ZeroOptimizer
 from colossalai.zero.gemini.chunk import ChunkManager, search_chunk_configuration
 from colossalai.zero.gemini.gemini_mgr import GeminiManager
 from tests.components_to_test import run_fwd_bwd
@@ -44,8 +44,7 @@ def exam_grad_clipping(placement_policy, model_name: str):
     torch_model = DDP(torch_model, device_ids=[dist.get_rank()])
 
     init_dev = get_current_device()
-    with ColoInitContext(device=init_dev):
-        model = model_builder()
+    model = model_builder()
 
     for torch_p, p in zip(torch_model.parameters(), model.parameters()):
         p.data.copy_(torch_p.data)

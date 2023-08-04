@@ -1,11 +1,9 @@
 import pytest
 import torch
-from torch.testing import assert_close
 
 import colossalai
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
-from colossalai.utils.cuda import get_current_device
-from colossalai.zero import ColoInitContext, ZeroDDP
+from colossalai.zero import ZeroDDP
 from colossalai.zero.gemini.chunk import ChunkManager, search_chunk_configuration
 from colossalai.zero.gemini.gemini_mgr import GeminiManager
 from tests.components_to_test.registry import non_distributed_component_funcs
@@ -17,8 +15,7 @@ def exam_state_dict(placement_policy, model_name: str):
     get_components_func = non_distributed_component_funcs.get_callable(model_name)
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
 
-    with ColoInitContext(device=get_current_device()):
-        model = model_builder()
+    model = model_builder()
 
     model_size = sum(p.numel() * p.element_size() for p in model.parameters()) / 1024**2
 

@@ -9,12 +9,12 @@ from colossalai.amp import convert_to_apex_amp
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.utils.cuda import get_current_device
-from colossalai.zero import ColoInitContext, ZeroDDP, ZeroOptimizer, post_process_colo_init_ctx
+from colossalai.zero import ZeroDDP, ZeroOptimizer
 from colossalai.zero.gemini.chunk import ChunkManager, init_chunk_manager, search_chunk_configuration
 from colossalai.zero.gemini.gemini_mgr import GeminiManager
 from tests.components_to_test import run_fwd_bwd
 from tests.components_to_test.registry import non_distributed_component_funcs
-from tests.test_tensor.common_utils import debug_print, set_seed
+from tests.test_tensor.common_utils import set_seed
 
 # this model is large enough to slice to chunks
 TEST_MODELS = ['gpt2']
@@ -65,9 +65,7 @@ def exam_model_step(placement_policy, model_name: str, mixed_precision: torch.dt
     torch_model, torch_optim = convert_to_apex_amp(torch_model, torch_optim, amp_config)
     torch_model = DDP(torch_model, device_ids=[dist.get_rank()])
 
-    init_dev = get_current_device()
-    with ColoInitContext(device=init_dev):
-        model = model_builder()
+    model = model_builder().cuda()
 
     for torch_p, p in zip(torch_model.parameters(), model.parameters()):
         p.data.copy_(torch_p.data)
@@ -123,9 +121,7 @@ def exam_tiny_example(placement_policy, model_name: str, mixed_precision: torch.
     torch_model, torch_optim = convert_to_apex_amp(torch_model, torch_optim, amp_config)
     torch_model = DDP(torch_model, device_ids=[dist.get_rank()])
 
-    init_dev = get_current_device()
-    with ColoInitContext(device=init_dev):
-        model = model_builder()
+    model = model_builder().cuda()
 
     for torch_p, p in zip(torch_model.parameters(), model.parameters()):
         p.data.copy_(torch_p.data)

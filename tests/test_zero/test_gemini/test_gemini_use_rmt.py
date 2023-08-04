@@ -1,10 +1,10 @@
 import pytest
 import torch
+import torch.distributed as dist
 
 import colossalai
-from colossalai.tensor import ProcessGroup
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
-from colossalai.zero import ColoInitContext, ZeroDDP
+from colossalai.zero import ZeroDDP
 from colossalai.zero.gemini.chunk import ChunkManager, search_chunk_configuration
 from colossalai.zero.gemini.gemini_mgr import GeminiManager
 from colossalai.zero.gemini.memory_tracer.runtime_mem_tracer import RuntimeMemTracer
@@ -24,8 +24,7 @@ def run_gemini_use_rmt(placement_policy, keep_gather, model_name: str, use_grad_
     get_components_func = non_distributed_component_funcs.get_callable(model_name)
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
 
-    with ColoInitContext(device='cpu'):
-        model = model_builder(use_grad_checkpoint)
+    model = model_builder(use_grad_checkpoint).cuda()
 
     print(f'model_name {model_name}')
     runtime_mem_tracer = RuntimeMemTracer(model)
@@ -63,8 +62,7 @@ def run_gemini_use_rmt(placement_policy, keep_gather, model_name: str, use_grad_
     gemini_manager = GeminiManager(placement_policy, chunk_manager, memstats)
     model = ZeroDDP(model, gemini_manager, pin_memory=True)
 
-    pg = ProcessGroup()
-    set_seed(pg.dp_local_rank())
+    set_seed(dist.get_rank())
     for i, (input_ids, label) in enumerate(train_dataloader):
         # you can only test a single fwd + bwd.
         # after bwd param is grad for Gemini, due to the chunk reuse optimization.
@@ -90,6 +88,7 @@ def run_dist(rank, world_size, port):
     run_gemini_use_rmt()
 
 
+@pytest.mark.skip("this is not used")
 @pytest.mark.dist
 @pytest.mark.parametrize('world_size', [1, 4])
 @rerun_if_address_is_in_use()

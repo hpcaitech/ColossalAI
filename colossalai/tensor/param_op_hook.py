@@ -3,6 +3,7 @@ from contextlib import contextmanager
 from typing import Any, List, Tuple
 
 import torch
+from torch.utils._pytree import TreeSpec, tree_flatten, tree_unflatten
 
 
 class ColoParamOpHook(ABC):
@@ -79,9 +80,13 @@ class ColoParamOpHookManager:
     @staticmethod
     def pre_op(params: List[torch.Tensor], *args: Any) -> list:
         ColoParamOpHookManager._trigger_pre_forward(params)
-        grad_args, other_args, spec = _split_grad_args(*args)
+        # auto grad function can only recognize torch.Tensor, thus we have to flatten the input
+        # if one of the input requires grad, all the output will be treated as requires grad
+        # and will have grad fn even the corresponding input does not require grad
+        # we have to extract tensors requiring grad into flat list and then merge them back
+        grad_args, other_args, grad_flags, spec = _flatten_grad_args(args)
         new_grad_args = PreFwdPostBwd.apply(params, *grad_args)
-        return _merge_args(new_grad_args, other_args, spec)
+        return _merge_args(new_grad_args, other_args, grad_flags, spec)
 
     @staticmethod
     def post_op(params: List[torch.Tensor], arg: Any) -> Any:
@@ -126,37 +131,24 @@ def _is_grad_tensor(obj) -> bool:
     return False
 
 
-def _has_grad_tensor(obj) -> bool:
-    if isinstance(obj, tuple) or isinstance(obj, list):
-        for x in obj:
-            if _has_grad_tensor(x):
-                return True
-        return False
-    elif isinstance(obj, dict):
-        for x in obj.values():
-            if _has_grad_tensor(x):
-                return True
-        return False
-    else:
-        return _is_grad_tensor(obj)
-
-
-def _split_grad_args(*args):
-    spec = []
+def _flatten_grad_args(args) -> Tuple[list, list, List[bool], TreeSpec]:
+    flat_args, spec = tree_flatten(args)
     grad_args = []
     other_args = []
-    for arg in args:
-        flag = _has_grad_tensor(arg)
-        spec.append(flag)
+    grad_flags = []
+    for arg in flat_args:
+        flag = _is_grad_tensor(arg)
+        grad_flags.append(flag)
         if flag:
             grad_args.append(arg)
         else:
             other_args.append(arg)
     assert len(grad_args) > 0
-    return grad_args, other_args, spec
+    return grad_args, other_args, grad_flags, spec
 
 
-def _merge_args(grad_args, other_args, spec):
+def _merge_args(grad_args, other_args, grad_flags, spec):
     grad_iter = iter(grad_args)
     other_iter = iter(other_args)
-    return [next(grad_iter) if flag else next(other_iter) for flag in spec]
+    flat_args = [next(grad_iter) if flag else next(other_iter) for flag in grad_flags]
+    return tree_unflatten(flat_args, spec)

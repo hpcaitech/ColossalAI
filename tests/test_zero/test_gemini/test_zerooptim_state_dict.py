@@ -5,12 +5,11 @@ import torch.distributed as dist
 import colossalai
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
-from colossalai.utils.cuda import get_current_device
-from colossalai.zero import ColoInitContext, ZeroDDP, ZeroOptimizer
+from colossalai.zero import ZeroDDP, ZeroOptimizer
 from colossalai.zero.gemini.chunk import ChunkManager, search_chunk_configuration
 from colossalai.zero.gemini.gemini_mgr import GeminiManager
 from tests.components_to_test.registry import non_distributed_component_funcs
-from tests.test_tensor.common_utils import debug_print, set_seed
+from tests.test_tensor.common_utils import set_seed
 
 
 @parameterize('placement_policy', ['cuda', 'cpu', 'auto'])
@@ -20,8 +19,7 @@ def exam_zero_optim_state_dict(placement_policy, keep_gathered):
     get_components_func = non_distributed_component_funcs.get_callable('gpt2')
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
 
-    with ColoInitContext(device=get_current_device()):
-        model = model_builder()
+    model = model_builder()
 
     set_seed(451)
     torch_model = model_builder()    # get a different model
