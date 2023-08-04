@@ -67,7 +67,7 @@ loss_fn = lambda x: x.loss
 
 config = transformers.GPT2Config(n_layer=2,
                                  n_head=4,
-                                 vocab_size=50258,
+                                 vocab_size=50260,
                                  attn_pdrop=0,
                                  embd_pdrop=0,
                                  resid_pdrop=0,

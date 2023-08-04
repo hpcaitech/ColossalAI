@@ -299,8 +299,7 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
         if self.seq_parallel:
             input_parallel = input_
             output_parallel = matmul_gather_forward_reducescatter_backward(input_parallel, self.weight, bias,
-                                                                           self.process_group, self.async_communication,
-                                                                           1)
+                                                                           self.process_group, True, 1)
         else:
             # Set up backprop all-reduce.
             input_parallel = reduce_backward(input_, self.process_group)
@@ -347,7 +346,7 @@ class GPT2FusedLinearConv1D_Row(ParallelModule):
                  dtype: torch.dtype = None,
                  device: torch.device = None,
                  process_group: ProcessGroup = None,
-                 seq_parallel: bool = True,
+                 seq_parallel: bool = False,
                  parallel_input: bool = True,
                  skip_bias_add: bool = False,
                  weight: Optional[Parameter] = None,

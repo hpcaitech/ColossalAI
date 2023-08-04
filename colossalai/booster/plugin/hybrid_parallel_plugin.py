@@ -147,6 +147,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         zero_stage: int = 0,
         cpu_offload: bool = False,
         enable_fused_normalization: bool = False,
+        enable_sequence_parallelism: bool = False,
         num_microbatches: Optional[int] = None,
         initial_scale: float = 2**16,
         min_scale: float = 1,
@@ -170,6 +171,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         self.zero_stage = zero_stage
         self.cpu_offload = cpu_offload
         self.enable_fused_normalization = enable_fused_normalization
+        self.enable_sequence_parallelism = enable_sequence_parallelism
         self.pg_mesh = ProcessGroupMesh(self.dp_size, self.pp_size, self.tp_size)
         self.stage_manager = None
         self.schedule = None
@@ -184,7 +186,8 @@ class HybridParallelPlugin(PipelinePluginBase):
         self.shard_config = ShardConfig(tensor_parallel_process_group=self.tp_group,
                                         pipeline_stage_manager=self.stage_manager,
                                         enable_tensor_parallelism=self.tp_size > 1,
-                                        enable_fused_normalization=self.enable_fused_normalization)
+                                        enable_fused_normalization=self.enable_fused_normalization,
+                                        enable_sequence_parallelism=enable_sequence_parallelism)
         self.amp_config = dict(
             initial_scale=initial_scale,
             growth_factor=growth_factor,

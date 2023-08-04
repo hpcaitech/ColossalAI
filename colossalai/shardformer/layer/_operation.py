@@ -307,7 +307,7 @@ class _MatmulWithGatherForwardReduceScatterBackward(torch.autograd.Function):
         if ctx.async_grad_reduce_scatter:
             handle.wait()
 
-        return grad_input, grad_weight, grad_bias, None, None, None
+        return output, grad_weight, grad_bias, None, None, None
 
 
 class _SplitForwardGatherBackward(torch.autograd.Function):

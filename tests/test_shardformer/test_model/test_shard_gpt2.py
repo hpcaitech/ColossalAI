@@ -53,7 +53,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         sharded_gpt2 = sharded_model.unwrap().transformer
 
     col_layer_for_check = ['h[0].mlp.c_fc']
-    row_layer_for_check = ['wte', 'h[0].mlp.c_proj']
+    row_layer_for_check = ['h[0].mlp.c_proj', 'wte']
 
     # check grad
     if stage_manager is None or stage_manager.is_first_stage():
@@ -85,6 +85,12 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     'pp_size': 1,
     'enable_fused_normalization': True,
     'use_lazy_init': False
+}, {
+    'tp_size': 4,
+    'pp_size': 1,
+    'enable_fused_normalization': True,
+    'use_lazy_init': True,
+    'enable_sequence_parallelism': True
 }])
 @clear_cache_before_run()
 def run_gpt2_test(test_config):

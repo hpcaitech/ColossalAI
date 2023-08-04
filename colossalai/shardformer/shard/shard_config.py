@@ -26,6 +26,7 @@ class ShardConfig:
     enable_tensor_parallelism: bool = True
     enable_fused_normalization: bool = False
     enable_all_optimization: bool = False
+    enable_sequence_parallelism: bool = False
 
     # TODO: add support for tensor parallel
     # pipeline_parallel_size: int
