@@ -1,3 +1,5 @@
+from typing import Any
+
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
@@ -240,6 +242,74 @@ class _LinearWithReduceScatterForwardGatherBackward(torch.autograd.Function):
         return _gather(grad_output, dim, process_group), None, None
 
 
+class _MatmulWithGatherForwardReduceScatterBackward(torch.autograd.Function):
+    """
+    This class is designed for matmul operation with gather forward and reduce-scatter backward.
+
+    Args:
+        input_ (`torch.Tensor`): input matrix.
+        dim (int): the dimension to perform split and gather
+        process_group (`torch.distributed.ProcessGroup`): the process group used for collective communication
+
+    """
+
+    @staticmethod
+    def forward(ctx, input_, weight, bias, process_group, async_grad_reduce_scatter, dim):
+        ctx.save_for_backward(input_, weight)
+        ctx.use_bias = bias is not None
+        ctx.process_group = process_group
+        ctx.async_grad_reduce_scatter = async_grad_reduce_scatter
+        ctx.dim = dim
+
+        input_parallel = _gather(input_, dim, process_group)
+
+        output = torch.matmul(input_parallel, weight)
+
+        if bias is not None:
+            output = output + bias
+        return output
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        input_, weight = ctx.saved_tensors
+        use_bias = ctx.use_bias
+        dim = ctx.dim
+        process_group = ctx.process_group
+
+        # TODO: overlap SP input with gradient computation
+        input_parallel = _gather(input_, dim, process_group)
+
+        total_input = input_parallel
+        grad_input = grad_output.matmul(weight.T)
+        grad_output = grad_output.contiguous()
+        # Convert the tensor shapes to 2D for execution compatibility
+        if len(grad_output.shape) > 2:
+            grad_output = grad_output.view(-1, grad_output.shape[-1])
+            total_input = total_input.view(-1, total_input.shape[-1])
+
+        # TODO: overlap SP input with gradient computation
+        if ctx.async_grad_reduce_scatter:
+            # Asynchronous reduce-scatter
+            new_shape = list(input_parallel.shape)
+            new_shape[dim] = new_shape[dim] // dist.get_world_size(process_group)
+            input_list = [
+                item.contiguous() for item in torch.chunk(grad_input, dist.get_world_size(process_group), dim=dim)
+            ]
+            output = torch.empty(new_shape, dtype=input_parallel.dtype, device=input_parallel.device).contiguous()
+            handle = dist.reduce_scatter(output, input_list, group=process_group, async_op=True)
+            # Delay the start of weight gradient computation shortly (3us) to have
+            # reduce-scatter scheduled first and have GPU resources allocated
+            _ = torch.empty(1, device=grad_output.device) + 1
+
+        grad_weight = total_input.t().matmul(grad_output)
+        grad_bias = grad_output.sum(dim=0) if use_bias else None
+
+        if ctx.async_grad_reduce_scatter:
+            handle.wait()
+
+        return grad_input, grad_weight, grad_bias, None, None, None
+
+
 class _SplitForwardGatherBackward(torch.autograd.Function):
     """
     Split the input and keep only the corresponding chuck to the rank.
@@ -395,13 +465,18 @@ def linear_with_async_comm(input_, weight, bias, process_group, async_grad_allre
     return LinearWithAsyncCommunication.apply(input_, weight, bias, process_group, async_grad_allreduce)
 
 
-def linear_gather_forward_reducescatter_backward(input_, weight, bias, process_group, async_grad_allreduce, dim):
+def linear_gather_forward_reducescatter_backward(input_, weight, bias, process_group, async_grad_reduce_scatter, dim):
     return _LinearWithGatherForwardReduceScatterBackward.apply(input_, weight, bias, process_group,
-                                                               async_grad_allreduce, dim)
+                                                               async_grad_reduce_scatter, dim)
 
 
 def linear_reducescatter_forward_gather_backward(input_, process_group, dim):
     return _LinearWithReduceScatterForwardGatherBackward.apply(input_, process_group, dim)
+
+
+def matmul_gather_forward_reducescatter_backward(input_, weight, bias, process_group, async_grad_reduce_scatter, dim):
+    return _MatmulWithGatherForwardReduceScatterBackward.apply(input_, weight, bias, process_group,
+                                                               async_grad_reduce_scatter, dim)
 
 
 def gather_forward_split_backward(input_, dim, process_group):
