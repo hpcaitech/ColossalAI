@@ -4,7 +4,6 @@ from typing import Optional
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
 import colossalai
 from colossalai.booster.plugin import GeminiPlugin, LowLevelZeroPlugin
@@ -44,7 +43,7 @@ class LowLevelZeroStrategy(DDPStrategy):
     """
 
     def __init__(self,
-                 stage: int = 3,
+                 stage: int = 2,
                  precision: str = 'fp16',
                  seed: int = 42,
                  placement_policy: str = 'cuda',
@@ -214,14 +213,3 @@ class GeminiStrategy(DDPStrategy):
         ddp_model = model.unwrap()
         assert isinstance(ddp_model, GeminiDDP)
         return ddp_model.module
-
-    def save_pretrained(self,
-                        model: nn.Module,
-                        path: str,
-                        only_rank0: bool = True,
-                        tokenizer: Optional[PreTrainedTokenizerBase] = None) -> None:
-        raise RuntimeError('ColossalAI strategy with stage-3 does not support save_pretrained() now')
-
-    def get_model_state_dict_shard(self, model: nn.Module, **config):
-        assert isinstance(self.plugin, GeminiPlugin)
-        yield from super().get_model_state_dict_shard(model, **config)

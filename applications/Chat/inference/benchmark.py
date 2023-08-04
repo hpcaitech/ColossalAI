@@ -4,8 +4,8 @@ import argparse
 from time import time
 
 import torch
-from llama_gptq import load_quant
-from transformers import AutoTokenizer, GenerationConfig, LlamaForCausalLM
+from coati.quant import llama_load_quant, low_resource_init
+from transformers import AutoTokenizer, GenerationConfig, LlamaConfig, LlamaForCausalLM
 
 
 def generate_prompt(instruction, input=None):
@@ -106,7 +106,10 @@ if __name__ == "__main__":
     tokenizer = AutoTokenizer.from_pretrained(args.pretrained)
 
     if args.quant == '4bit':
-        model = load_quant(args.pretrained, args.gptq_checkpoint, 4, args.gptq_group_size)
+        with low_resource_init():
+            config = LlamaConfig.from_pretrained(args.pretrained)
+            model = LlamaForCausalLM(config)
+        model = llama_load_quant(model, args.gptq_checkpoint, 4, args.gptq_group_size)
         model.cuda()
     else:
         model = LlamaForCausalLM.from_pretrained(

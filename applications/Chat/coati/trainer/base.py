@@ -4,8 +4,8 @@ from typing import List
 
 import torch.nn as nn
 import tqdm
+from coati.experience_buffer import NaiveExperienceBuffer
 from coati.experience_maker import Experience
-from coati.replay_buffer import NaiveReplayBuffer
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 
@@ -62,7 +62,7 @@ class OnPolicyTrainer(ABC):
 
     Args:
         strategy (Strategy):the strategy to use for training
-        buffer (NaiveReplayBuffer): the buffer to collect experiences
+        data_buffer (NaiveExperienceBuffer): the buffer to collect experiences
         sample_buffer (bool, defaults to False): whether to sample from buffer
         dataloader_pin_memory (bool, defaults to True): whether to pin memory for data loader
         callbacks (List[Callback], defaults to []): the callbacks to call during training process
@@ -70,13 +70,13 @@ class OnPolicyTrainer(ABC):
 
     def __init__(self,
                  strategy: Strategy,
-                 buffer: NaiveReplayBuffer,
+                 data_buffer: NaiveExperienceBuffer,
                  sample_buffer: bool,
                  dataloader_pin_memory: bool,
                  callbacks: List[Callback] = []) -> None:
         super().__init__()
         self.strategy = strategy
-        self.buffer = buffer
+        self.data_buffer = data_buffer
         self.sample_buffer = sample_buffer
         self.dataloader_pin_memory = dataloader_pin_memory
         self.callbacks = callbacks
@@ -144,7 +144,7 @@ class OnPolicyTrainer(ABC):
         self._on_make_experience_start()
         experience = self._make_experience(collect_step)
         self._on_make_experience_end(experience)
-        self.buffer.append(experience)
+        self.data_buffer.append(experience)
 
     def _update_phase(self, update_step: int):
         self._on_learn_epoch_start(update_step)
@@ -181,8 +181,8 @@ class OnPolicyTrainer(ABC):
                         # HACK(cwher): according to the design of boost API, dataloader should also be boosted,
                         #  but it is impractical to adapt this pattern in RL training. Thus, I left dataloader unboosted.
                         #  I only call strategy.setup_dataloader() to setup dataloader.
-                        self.dataloader = self.strategy.setup_dataloader(self.buffer, self.dataloader_pin_memory)
+                        self.dataloader = self.strategy.setup_dataloader(self.data_buffer, self.dataloader_pin_memory)
                     for update_step in tqdm.trange(num_update_steps, desc="Update steps", disable=not is_rank_0()):
                         self._update_phase(update_step)
                     # NOTE: this is for on-policy algorithms
-                    self.buffer.clear()
+                    self.data_buffer.clear()

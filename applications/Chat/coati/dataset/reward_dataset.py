@@ -20,44 +20,44 @@ class RmStaticDataset(Dataset):
 
     def __init__(self, dataset, tokenizer: Callable, max_length: int, special_token=None) -> None:
         super().__init__()
-        self.chosen = []
-        self.reject = []
-        if special_token is None:
-            self.end_token = tokenizer.eos_token
-        else:
-            self.end_token = special_token
-        for data in tqdm(dataset, disable=not is_rank_0()):
-            prompt = data['prompt']
+        self.end_token = tokenizer.eos_token \
+            if special_token is None else special_token
 
-            chosen = prompt + data['chosen'] + self.end_token
-            chosen_token = tokenizer(chosen,
-                                     max_length=max_length,
-                                     padding="max_length",
-                                     truncation=True,
-                                     return_tensors="pt")
-            self.chosen.append({
-                "input_ids": chosen_token['input_ids'],
-                "attention_mask": chosen_token['attention_mask']
-            })
+        chosen = [
+            data["prompt"] + data["chosen"] + self.end_token
+            for data in tqdm(dataset, disable=not is_rank_0())
+        ]
+        chosen_token = tokenizer(chosen,
+                                 max_length=max_length,
+                                 padding="max_length",
+                                 truncation=True,
+                                 return_tensors="pt")
+        self.chosen = {
+            "input_ids": chosen_token["input_ids"],
+            "attention_mask": chosen_token["attention_mask"]
+        }
 
-            reject = prompt + data['rejected'] + self.end_token
-            reject_token = tokenizer(reject,
-                                     max_length=max_length,
-                                     padding="max_length",
-                                     truncation=True,
-                                     return_tensors="pt")
-            self.reject.append({
-                "input_ids": reject_token['input_ids'],
-                "attention_mask": reject_token['attention_mask']
-            })
+        reject = [
+            data["prompt"] + data["rejected"] + self.end_token
+            for data in tqdm(dataset, disable=not is_rank_0())
+        ]
+        reject_token = tokenizer(reject,
+                                 max_length=max_length,
+                                 padding="max_length",
+                                 truncation=True,
+                                 return_tensors="pt")
+        self.reject = {
+            "input_ids": reject_token["input_ids"],
+            "attention_mask": reject_token["attention_mask"]
+        }
 
     def __len__(self):
-        length = len(self.chosen)
+        length = self.chosen["input_ids"].shape[0]
         return length
 
     def __getitem__(self, idx):
-        return self.chosen[idx]["input_ids"], self.chosen[idx]["attention_mask"], self.reject[idx][
-            "input_ids"], self.reject[idx]["attention_mask"]
+        return self.chosen["input_ids"][idx], self.chosen["attention_mask"][idx], \
+            self.reject["input_ids"][idx], self.reject["attention_mask"][idx]
 
 
 # Anthropic/hh-rlhf
@@ -74,39 +74,41 @@ class HhRlhfDataset(Dataset):
 
     def __init__(self, dataset, tokenizer: Callable, max_length: int, special_token=None) -> None:
         super().__init__()
-        self.chosen = []
-        self.reject = []
-        if special_token is None:
-            self.end_token = tokenizer.eos_token
-        else:
-            self.end_token = special_token
-        for data in tqdm(dataset, disable=not is_rank_0()):
-            chosen = data['chosen'] + self.end_token
-            chosen_token = tokenizer(chosen,
-                                     max_length=max_length,
-                                     padding="max_length",
-                                     truncation=True,
-                                     return_tensors="pt")
-            self.chosen.append({
-                "input_ids": chosen_token['input_ids'],
-                "attention_mask": chosen_token['attention_mask']
-            })
+        self.end_token = tokenizer.eos_token \
+            if special_token is None else special_token
 
-            reject = data['rejected'] + self.end_token
-            reject_token = tokenizer(reject,
-                                     max_length=max_length,
-                                     padding="max_length",
-                                     truncation=True,
-                                     return_tensors="pt")
-            self.reject.append({
-                "input_ids": reject_token['input_ids'],
-                "attention_mask": reject_token['attention_mask']
-            })
+        chosen = [
+            data["chosen"] + self.end_token
+            for data in tqdm(dataset, disable=not is_rank_0())
+        ]
+        chosen_token = tokenizer(chosen,
+                                 max_length=max_length,
+                                 padding="max_length",
+                                 truncation=True,
+                                 return_tensors="pt")
+        self.chosen = {
+            "input_ids": chosen_token["input_ids"],
+            "attention_mask": chosen_token["attention_mask"]
+        }
+
+        reject = [
+            data["rejected"] + self.end_token
+            for data in tqdm(dataset, disable=not is_rank_0())
+        ]
+        reject_token = tokenizer(reject,
+                                 max_length=max_length,
+                                 padding="max_length",
+                                 truncation=True,
+                                 return_tensors="pt")
+        self.reject = {
+            "input_ids": reject_token["input_ids"],
+            "attention_mask": reject_token["attention_mask"]
+        }
 
     def __len__(self):
-        length = len(self.chosen)
+        length = self.chosen["input_ids"].shape[0]
         return length
 
     def __getitem__(self, idx):
-        return self.chosen[idx]["input_ids"], self.chosen[idx]["attention_mask"], self.reject[idx][
-            "input_ids"], self.reject[idx]["attention_mask"]
+        return self.chosen["input_ids"][idx], self.chosen["attention_mask"][idx], \
+            self.reject["input_ids"][idx], self.reject["attention_mask"][idx]

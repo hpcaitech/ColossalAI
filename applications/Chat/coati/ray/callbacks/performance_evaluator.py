@@ -115,12 +115,12 @@ class ExperienceMakerPerformanceEvaluator(MakerCallback):
         avg_send_time_per_sample = (avg_send_duration + 1e-12) / (self.total_samples * self.world_size)
 
         print_rank_0(
-            'Making Experience Performance Summary:\n' + f'Throughput: {avg_throughput:.3f} samples/sec\n' +
-            f'TFLOPS per GPU: {avg_make_experience_tflops:.3f}\n' +
-            f'Sample time (overall): {avg_time_per_sample:.3f} s\n' +
-            f'Sample time (make experience): {avg_make_experience_time_per_sample:.3f} s, {avg_make_experience_time_per_sample/avg_time_per_sample*100:.2f}%\n'
-            +
-            f'Sample time (send): {avg_send_time_per_sample:.3f} s, {avg_send_time_per_sample/avg_time_per_sample*100:.2f}%\n'
+            'Making Experience Performance Summary:\n' + f'Throughput: {avg_throughput:.3f} samples/sec\n'
+            + f'TFLOPS per GPU: {avg_make_experience_tflops:.3f}\n'
+            + f'Sample time (overall): {avg_time_per_sample:.3f} s\n'
+            + f'Sample time (make experience): {avg_make_experience_time_per_sample:.3f} s, {avg_make_experience_time_per_sample/avg_time_per_sample*100:.2f}%\n'
+
+            + f'Sample time (send): {avg_send_time_per_sample:.3f} s, {avg_send_time_per_sample/avg_time_per_sample*100:.2f}%\n'
         )
 
 
@@ -204,9 +204,9 @@ class TrainerPerformanceEvaluator(TrainerCallback):
         avg_update_time_per_sample = (avg_update_duration + 1e-12) / (self.total_samples * self.world_size)
 
         print_rank_0(
-            'Learning Performance Summary:\n' + f'Throughput: {avg_throughput:.3f} samples/sec\n' +
-            f'TFLOPS per GPU: {avg_learn_tflops:.3f}\n' + f'Sample time (overall): {avg_time_per_sample:.3f} s\n' +
-            f'Sample time (train): {avg_train_time_per_sample:.3f} s, {avg_train_time_per_sample/avg_time_per_sample*100:.2f}%\n'
-            +
-            f'Sample time (update): {avg_update_time_per_sample:.3f} s, {avg_update_time_per_sample/avg_time_per_sample*100:.2f}%\n'
+            'Learning Performance Summary:\n' + f'Throughput: {avg_throughput:.3f} samples/sec\n'
+            + f'TFLOPS per GPU: {avg_learn_tflops:.3f}\n' + f'Sample time (overall): {avg_time_per_sample:.3f} s\n'
+            + f'Sample time (train): {avg_train_time_per_sample:.3f} s, {avg_train_time_per_sample/avg_time_per_sample*100:.2f}%\n'
+
+            + f'Sample time (update): {avg_update_time_per_sample:.3f} s, {avg_update_time_per_sample/avg_time_per_sample*100:.2f}%\n'
         )

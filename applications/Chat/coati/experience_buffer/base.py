@@ -4,8 +4,8 @@ from typing import Any
 from coati.experience_maker.base import Experience
 
 
-class ReplayBuffer(ABC):
-    """Replay buffer base class. It stores experience.
+class ExperienceBuffer(ABC):
+    """Experience buffer base class. It stores experience.
 
      Args:
          sample_batch_size (int): Batch size when sampling.

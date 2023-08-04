@@ -1,19 +1,19 @@
 import argparse
 import os
 from threading import Lock
-from typing import Dict, Generator, List, Optional
+from typing import Generator, List, Optional
 
 import torch
 import uvicorn
-from fastapi import FastAPI, HTTPException, Request
+from coati.quant import llama_load_quant, low_resource_init
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from llama_gptq import load_quant
 from pydantic import BaseModel, Field
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 from sse_starlette.sse import EventSourceResponse
-from transformers import AutoTokenizer, GenerationConfig, LlamaForCausalLM
+from transformers import AutoTokenizer, LlamaConfig, LlamaForCausalLM
 from utils import ChatPromptProcessor, Dialogue, LockedIterator, load_json, sample_streamingly, update_model_kwargs_fn
 
 CONTEXT = 'Below is an instruction that describes a task. Write a response that appropriately completes the request. Do not generate new instructions.'
@@ -56,7 +56,7 @@ app.add_middleware(
 
 def generate_streamingly(prompt, max_new_tokens, top_k, top_p, temperature):
     inputs = {k: v.cuda() for k, v in tokenizer(prompt, return_tensors="pt").items()}
-    #TODO(ver217): streaming generation does not support repetition_penalty now
+    # TODO(ver217): streaming generation does not support repetition_penalty now
     model_kwargs = {
         'max_generate_tokens': max_new_tokens,
         'early_stopping': True,
@@ -162,7 +162,10 @@ if __name__ == '__main__':
     prompt_processor = ChatPromptProcessor(tokenizer, CONTEXT, MAX_LEN, censored_words=censored_words)
 
     if args.quant == '4bit':
-        model = load_quant(args.pretrained, args.gptq_checkpoint, 4, args.gptq_group_size)
+        with low_resource_init():
+            config = LlamaConfig.from_pretrained(args.pretrained)
+            model = LlamaForCausalLM(config)
+        model = llama_load_quant(model, args.gptq_checkpoint, 4, args.gptq_group_size)
         model.cuda()
     else:
         model = LlamaForCausalLM.from_pretrained(
