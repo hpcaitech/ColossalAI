@@ -223,6 +223,8 @@ class RMSNorm(torch.nn.Module):
 
     def __init__(self, normalized_shape, eps=1e-5, device=None, dtype=None, **kwargs):
         super().__init__()
+        self.elementwise_affine = True
+        self.normalized_shape = normalized_shape
         self.weight = torch.nn.Parameter(torch.ones(normalized_shape, device=device, dtype=dtype))
         self.eps = eps
 
