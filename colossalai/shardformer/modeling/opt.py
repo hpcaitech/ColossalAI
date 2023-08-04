@@ -29,7 +29,6 @@ def get_opt_flash_attention_forward():
 
         attention_input_shape = (bsz, -1, self.num_heads, self.head_dim)
         # get query proj
-        # query_states = self._shape(self.q_proj(hidden_states), -1, bsz)
         query_states = self.q_proj(hidden_states).view(*attention_input_shape)
         # get key, value proj
         if is_cross_attention and past_key_value is not None:
