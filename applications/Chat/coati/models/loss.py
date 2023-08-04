@@ -68,31 +68,6 @@ class ValueLoss(nn.Module):
         return 0.5 * loss
 
 
-class PPOPtxActorLoss(nn.Module):
-    """
-    To Do:
-
-    PPO-ptx Actor Loss
-    """
-
-    def __init__(self, policy_clip_eps: float = 0.2, pretrain_coef: float = 0.0, pretrain_loss_fn=GPTLMLoss()) -> None:
-        super().__init__()
-        self.pretrain_coef = pretrain_coef
-        self.policy_loss_fn = PolicyLoss(clip_eps=policy_clip_eps)
-        self.pretrain_loss_fn = pretrain_loss_fn
-
-    def forward(self,
-                log_probs: torch.Tensor,
-                old_log_probs: torch.Tensor,
-                advantages: torch.Tensor,
-                lm_logits: torch.Tensor,
-                lm_input_ids: torch.Tensor,
-                action_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
-        policy_loss = self.policy_loss_fn(log_probs, old_log_probs, advantages, action_mask=action_mask)
-        lm_loss = self.pretrain_loss_fn(lm_logits, lm_input_ids)
-        return policy_loss + self.pretrain_coef * lm_loss
-
-
 class LogSigLoss(nn.Module):
     """
     Pairwise Loss for Reward Model
