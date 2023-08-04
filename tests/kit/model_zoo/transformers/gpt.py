@@ -72,7 +72,9 @@ config = transformers.GPT2Config(n_layer=2,
                                  embd_pdrop=0,
                                  resid_pdrop=0,
                                  summary_first_dropout=0,
-                                 hidden_dropout=0)
+                                 hidden_dropout=0,
+                                 problem_type="single_label_classification",
+                                 pad_token_id=50256)
 
 config_for_token_classification = copy.deepcopy(config)
 config_for_token_classification.num_labels = 2
