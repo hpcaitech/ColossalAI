@@ -46,11 +46,8 @@ class HostInfo:
         localhost = socket.gethostname()
         localaddrs = socket.getaddrinfo(localhost, port)
         targetaddrs = socket.getaddrinfo(hostname, port)
-        for (family, socktype, proto, canonname, sockaddr) in localaddrs:
-            for (rfamily, rsocktype, rproto, rcanonname, rsockaddr) in targetaddrs:
-                if rsockaddr[0] == sockaddr[0]:
-                    return True
-        return False
+
+        return localaddrs == targetaddrs
 
     def __str__(self):
         return f'hostname: {self.hostname}, port: {self.port}'

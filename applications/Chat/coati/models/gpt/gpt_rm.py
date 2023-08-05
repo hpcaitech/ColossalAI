@@ -14,7 +14,6 @@ class GPTRM(RewardModel):
     Args:
         pretrained (str): Pretrained model name or path.
         config (GPT2Config): Model config.
-        checkpoint (bool): Enable gradient checkpointing.
         lora_rank (int): Rank of the low-rank approximation.
         lora_train_bias (str): LoRA bias training mode.
     """
@@ -22,7 +21,6 @@ class GPTRM(RewardModel):
     def __init__(self,
                  pretrained: Optional[str] = None,
                  config: Optional[GPT2Config] = None,
-                 checkpoint: bool = False,
                  lora_rank: int = 0,
                  lora_train_bias: str = 'none') -> None:
         if pretrained is not None:
@@ -31,8 +29,6 @@ class GPTRM(RewardModel):
             model = GPT2Model(config)
         else:
             model = GPT2Model(GPT2Config())
-        if checkpoint:
-            model.gradient_checkpointing_enable()
 
         value_head = nn.Linear(model.config.n_embd, 1)
         value_head.weight.data.normal_(mean=0.0, std=1 / (model.config.n_embd + 1))

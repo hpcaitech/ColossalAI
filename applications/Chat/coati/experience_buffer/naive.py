@@ -4,12 +4,12 @@ from typing import List
 import torch
 from coati.experience_maker.base import Experience
 
-from .base import ReplayBuffer
+from .base import ExperienceBuffer
 from .utils import BufferItem, make_experience_batch, split_experience_batch
 
 
-class NaiveReplayBuffer(ReplayBuffer):
-    """Naive replay buffer class. It stores experience.
+class NaiveExperienceBuffer(ExperienceBuffer):
+    """Naive experience buffer class. It stores experience.
 
      Args:
          sample_batch_size (int): Batch size when sampling.
