@@ -8,7 +8,6 @@ import colossalai
 from colossalai.logging import disable_existing_loggers
 from colossalai.testing import (
     assert_hf_output_close,
-    check_state_dict_equal,
     clear_cache_before_run,
     parameterize,
     rerun_if_address_is_in_use,
