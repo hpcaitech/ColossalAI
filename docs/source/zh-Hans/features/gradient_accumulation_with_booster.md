@@ -106,10 +106,12 @@ for idx, (img, label) in enumerate(train_dataloader):
             with sync_context:
                 output = model(img)
                 train_loss = criterion(output, label)
+                train_loss = train_loss / GRADIENT_ACCUMULATION
                 booster.backward(train_loss, optimizer)
         else:
             output = model(img)
             train_loss = criterion(output, label)
+            train_loss = train_loss / GRADIENT_ACCUMULATION
             booster.backward(train_loss, optimizer)
             optimizer.step()
             optimizer.zero_grad()
