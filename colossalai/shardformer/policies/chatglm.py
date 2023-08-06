@@ -37,12 +37,11 @@ class ChatGLMPolicy(Policy):
                 new_vocab_size = vocab_size + world_size - vocab_size % world_size
                 self.model.resize_token_embeddings(new_vocab_size)
 
-
         return self.model
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
 
-        from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import ChatGLMModel, GLMBlock
+        from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import ChatGLMModel, CoreAttention, GLMBlock
 
         policy = {}
 
@@ -207,7 +206,6 @@ class ChatGLMModelPolicy(ChatGLMPolicy):
         return []
 
 
-
 class ChatGLMForConditionalGenerationPolicy(ChatGLMModelPolicy):
 
     def module_policy(self):
@@ -228,4 +226,3 @@ class ChatGLMForConditionalGenerationPolicy(ChatGLMModelPolicy):
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
         """No shared params in ChatGLMForConditionalGenerationModel."""
         return []
-
