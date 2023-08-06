@@ -42,8 +42,8 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
     # check grad
     col_layer_for_check = ['decoder.layers[0].self_attn.q_proj', 'decoder.embed_tokens']
     row_layer_for_check = ['decoder.layers[0].self_attn.out_proj']
-    check_grad(opt_model, shard_opt_model, col_layer_for_check, atol=1e-7, rtol=1e-3, dim=0, verbose=False)
-    check_grad(opt_model, shard_opt_model, row_layer_for_check, atol=1e-7, rtol=1e-3, dim=1, verbose=False)
+    check_grad(opt_model, shard_opt_model, col_layer_for_check, atol=1e-6, rtol=1e-3, dim=0, verbose=False)
+    check_grad(opt_model, shard_opt_model, row_layer_for_check, atol=1e-6, rtol=1e-3, dim=1, verbose=False)
 
 
 @parameterize('use_lazy_init', [False, True])

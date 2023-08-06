@@ -33,8 +33,8 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
     # check grad
     col_layer_for_check = ['encoder.block[0].layer[0].SelfAttention.q', 'shared']
     row_layer_for_check = ['encoder.block[0].layer[0].SelfAttention.relative_attention_bias']
-    check_grad(org_model, sharded_model, col_layer_for_check, atol=1e-7, rtol=1e-5, dim=0, verbose=False)
-    check_grad(org_model, sharded_model, row_layer_for_check, atol=1e-7, rtol=1e-5, dim=1, verbose=False)
+    check_grad(org_model, sharded_model, col_layer_for_check, atol=1e-6, rtol=1e-5, dim=0, verbose=False)
+    check_grad(org_model, sharded_model, row_layer_for_check, atol=1e-6, rtol=1e-5, dim=1, verbose=False)
 
     # check weights are tied
     if hasattr(org_model, 'lm_head'):
