@@ -94,23 +94,6 @@ class ViTPolicy(Policy):
                                                            ),
                                                        ])
 
-        if self.shard_config.enable_fused_normalization:
-            policy[ViTModel] = ModulePolicyDescription(attribute_replacement={},
-                                                       param_replacement=[],
-                                                       sub_module_replacement=[
-                                                           SubModuleReplacementDescription(
-                                                               suffix="layernorm",
-                                                               target_module=FusedLayerNorm,
-                                                           )
-                                                       ])
-
-            self.append_or_create_submodule_replacement(description=[
-                SubModuleReplacementDescription(suffix="layernorm_before", target_module=FusedLayerNorm),
-                SubModuleReplacementDescription(suffix="layernorm_after", target_module=FusedLayerNorm)
-            ],
-                                                        policy=policy,
-                                                        target_key=ViTLayer)
-
         # use flash attention
         if self.shard_config.enable_flash_attention:
             policy[ViTSelfAttention] = ModulePolicyDescription(method_replacement={
