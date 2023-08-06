@@ -24,7 +24,7 @@ def baseline_attention(Z, N_CTX, H, q, k, v, sm_scale):
 
 @pytest.mark.skipif(HAS_MEM_EFF_ATTN == False, reason="xformers is not available")
 @clear_cache_before_run()
-@parameterize('proj_shape', [(6, 8, 4, 16)])
+@parameterize('proj_shape', [(1, 128, 4, 16)])
 def test_attention_gpt(proj_shape, dtype=torch.float16):
     (B, S, H, D_HEAD) = proj_shape
     D = H * D_HEAD
@@ -50,7 +50,7 @@ def test_attention_gpt(proj_shape, dtype=torch.float16):
 
 @pytest.mark.skipif(HAS_MEM_EFF_ATTN == False, reason="xformers is not available")
 @clear_cache_before_run()
-@parameterize('proj_shape', [(6, 8, 4, 16)])
+@parameterize('proj_shape', [(1, 128, 4, 16)])
 def test_attention_bert(proj_shape, dtype=torch.float16):
     (B, S, H, D_HEAD) = proj_shape
     D = H * D_HEAD
@@ -75,7 +75,7 @@ def test_attention_bert(proj_shape, dtype=torch.float16):
 
 @pytest.mark.skipif(HAS_MEM_EFF_ATTN == False, reason="xformers is not available")
 @clear_cache_before_run()
-@parameterize('proj_shape', [(6, 8, 4, 16)])
+@parameterize('proj_shape', [(6, 128, 4, 16)])
 def test_attention_no_mask(proj_shape, dtype=torch.float16):
     (B, S, H, D_HEAD) = proj_shape
     D = H * D_HEAD
@@ -96,7 +96,7 @@ def test_attention_no_mask(proj_shape, dtype=torch.float16):
 
 @pytest.mark.skipif(HAS_MEM_EFF_ATTN == False, reason="xformers is not available")
 @clear_cache_before_run()
-@parameterize('proj_shape', [(6, 24, 8, 4, 16)])
+@parameterize('proj_shape', [(6, 128, 256, 4, 16)])
 def test_cross_attention(proj_shape, dtype=torch.float16):
     (B, S, T, H, D_HEAD) = proj_shape
     D = H * D_HEAD
