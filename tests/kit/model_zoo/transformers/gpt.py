@@ -79,9 +79,6 @@ config = transformers.GPT2Config(n_layer=2,
 config_for_token_classification = copy.deepcopy(config)
 config_for_token_classification.num_labels = 2
 
-config_for_token_classification = copy.deepcopy(config)
-config_for_token_classification.num_labels = 2
-
 # register the following models
 model_zoo.register(name='transformers_gpt',
                    model_fn=lambda: transformers.GPT2Model(config),

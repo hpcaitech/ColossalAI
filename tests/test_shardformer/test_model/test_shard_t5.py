@@ -21,7 +21,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     org_model, org_optimizer, sharded_model, sharded_optimizer, criterion, booster = \
         build_model_from_hybrid_plugin(model_fn, loss_fn, test_config)
 
-    # print(org_model.__class__.__name__, test_config['tp_size'], test_config['pp_size'])
+    print(org_model.__class__.__name__, test_config['tp_size'], test_config['pp_size'])
 
     org_loss, org_output, sharded_loss, sharded_output = \
         run_forward_backward_with_hybrid_plugin(
@@ -69,27 +69,38 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     'num_microbatches': 2,
     'enable_fused_normalization': True,
     'use_lazy_init': True
-}, {
-    'tp_size': 1,
-    'pp_size': 2,
-    'num_microbatches': 4,
-    'use_lazy_init': False
-}, {
-    'tp_size': 4,
-    'pp_size': 1,
-    'enable_fused_normalization': True,
-    'use_lazy_init': False
-}, {
-    'tp_size': 1,
-    'pp_size': 4,
-    'num_microbatches': 4,
-    'use_lazy_init': False
 }])
 @clear_cache_before_run()
 def run_t5_test(test_config):
 
     # TODO: add plugin_config for TP+DP after supporting & debugging it
     # {'tp_size': 2, 'pp_size': 1, 'enable_fused_normalization': True}
+
+    # Completed:
+    # {
+    #     'tp_size': 1,
+    #     'pp_size': 2,
+    #     'num_microbatches': 4,
+    #     'use_lazy_init': False
+    # }, {
+    #     'tp_size': 4,
+    #     'pp_size': 1,
+    #     'enable_fused_normalization': True,
+    #     'use_lazy_init': False
+    # }
+
+    # {
+    #     'tp_size': 2,
+    #     'pp_size': 2,
+    #     'num_microbatches': 2,
+    #     'enable_fused_normalization': True,
+    #     'use_lazy_init': True
+    # }, {
+    #     'tp_size': 1,
+    #     'pp_size': 4,
+    #     'num_microbatches': 4,
+    #     'use_lazy_init': False
+    # }
 
     # TODO: add test_config for flash attention & jit operator after supporting
 

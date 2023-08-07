@@ -48,8 +48,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     if org_model.__class__.__name__ == 'GPT2Model':
         gpt2 = org_model
         sharded_gpt2 = sharded_model.unwrap()
-        gpt2 = org_model
-        sharded_gpt2 = sharded_model.unwrap()
     else:
         gpt2 = org_model.transformer
         sharded_gpt2 = sharded_model.unwrap().transformer
@@ -69,6 +67,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         check_weight(gpt2, sharded_gpt2, col_layer_for_check, tp_group, atol=5e-3, rtol=1e-3, dim=1, verbose=False)
 
     torch.cuda.empty_cache()
+
 
 @parameterize('test_config', [{
     'tp_size': 2,
