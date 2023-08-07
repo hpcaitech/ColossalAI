@@ -6,7 +6,7 @@ from torch import Tensor, nn
 import colossalai.shardformer.layer as col_nn
 
 from ..modeling.gpt2 import GPT2PipelineForwards
-from ..modeling.gpt2_seq import seq_forward_fn
+from ..modeling.gpt2_seq import gpt2_sequence_parallel_forward_fn
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = [
@@ -57,7 +57,7 @@ class GPT2Policy(Policy):
                             target_module=col_nn.VocabParallelEmbedding1D,
                         ),
                     ],
-                    method_replacement={"forward": seq_forward_fn(self.shard_config)})
+                    method_replacement={"forward": gpt2_sequence_parallel_forward_fn(self.shard_config)})
 
             policy[GPT2Block] = ModulePolicyDescription(attribute_replacement={
                 "attn.embed_dim": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,

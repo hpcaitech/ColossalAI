@@ -53,7 +53,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         sharded_gpt2 = sharded_model.unwrap().transformer
 
     col_layer_for_check = ['h[0].mlp.c_fc']
-    row_layer_for_check = ['h[0].mlp.c_proj', 'wte']
+    row_layer_for_check = ['wte', 'h[0].mlp.c_proj']
 
     # check grad
     if stage_manager is None or stage_manager.is_first_stage():

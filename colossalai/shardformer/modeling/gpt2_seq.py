@@ -14,7 +14,7 @@ from colossalai.shardformer.shard import ShardConfig
 logger = logging.get_logger(__name__)
 
 
-def seq_forward_fn(shard_config: ShardConfig):
+def gpt2_sequence_parallel_forward_fn(shard_config: ShardConfig):
 
     def forward(
         self,

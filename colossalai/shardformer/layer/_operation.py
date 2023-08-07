@@ -191,6 +191,8 @@ class _LinearWithGatherForwardReduceScatterBackward(torch.autograd.Function):
         if ctx.async_grad_reduce_scatter:
             # Asynchronous reduce-scatter
             new_shape = list(input_parallel.shape)
+            assert new_shape[dim] % dist.get_world_size(process_group) == 0, \
+                f'The dimension to split ({new_shape[dim]}) is not a multiple of tensor parallel size ({dist.get_world_size(process_group)}). '
             new_shape[dim] = new_shape[dim] // dist.get_world_size(process_group)
             input_list = [
                 item.contiguous() for item in torch.chunk(grad_input, dist.get_world_size(process_group), dim=dim)
@@ -227,6 +229,8 @@ class _LinearWithReduceScatterForwardGatherBackward(torch.autograd.Function):
 
         # do reduce-scatter
         new_shape = list(input_.shape)
+        assert new_shape[dim] % dist.get_world_size(process_group) == 0, \
+            f'The dimension to split ({new_shape[dim]}) is not a multiple of tensor parallel size ({dist.get_world_size(process_group)}). '
         new_shape[dim] = new_shape[dim] // dist.get_world_size(process_group)
         input_list = [item.contiguous() for item in torch.chunk(input_, dist.get_world_size(process_group), dim=dim)]
         output = torch.empty(new_shape, dtype=input_.dtype, device=input_.device)
@@ -291,6 +295,8 @@ class _MatmulWithGatherForwardReduceScatterBackward(torch.autograd.Function):
         if ctx.async_grad_reduce_scatter:
             # Asynchronous reduce-scatter
             new_shape = list(input_parallel.shape)
+            assert new_shape[dim] % dist.get_world_size(process_group) == 0, \
+                f'The dimension to split ({new_shape[dim]}) is not a multiple of tensor parallel size ({dist.get_world_size(process_group)}). '
             new_shape[dim] = new_shape[dim] // dist.get_world_size(process_group)
             input_list = [
                 item.contiguous() for item in torch.chunk(grad_input, dist.get_world_size(process_group), dim=dim)
@@ -450,6 +456,8 @@ def _reduce_scatter(intput_, dim=1, process_group=None):
 
     # reduce-scatter
     new_shape = list(intput_.shape)
+    assert new_shape[dim] % dist.get_world_size(process_group) == 0, \
+        f'The dimension to split ({new_shape[dim]}) is not a multiple of tensor parallel size ({dist.get_world_size(process_group)}). '
     new_shape[dim] = new_shape[dim] // world_size
     output = torch.empty(new_shape, dtype=intput_.dtype, device=intput_.device)
     dist.reduce_scatter(output, intput_, group=process_group)
