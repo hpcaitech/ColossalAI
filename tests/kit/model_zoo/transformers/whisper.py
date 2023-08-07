@@ -76,14 +76,14 @@ model_zoo.register(name='transformers_whisper',
                    loss_fn=loss_fn,
                    model_attribute=ModelAttribute(has_control_flow=True))
 
-model_zoo.register(name='transformers_whisperForConditionalGeneration',
+model_zoo.register(name='transformers_whisper_for_conditional_generation',
                    model_fn=lambda: transformers.WhisperForConditionalGeneration(config),
                    data_gen_fn=data_gen_for_conditional_generation,
                    output_transform_fn=output_transform_fn,
                    loss_fn=loss_fn_attr,
                    model_attribute=ModelAttribute(has_control_flow=True))
 
-model_zoo.register(name='transformers_whisperWhisperForAudioClassification',
+model_zoo.register(name='transformers_whisper_for_audio_classification',
                    model_fn=lambda: transformers.WhisperForAudioClassification(config),
                    data_gen_fn=data_gen_for_audio_classification,
                    output_transform_fn=output_transform_fn,

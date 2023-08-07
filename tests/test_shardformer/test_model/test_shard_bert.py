@@ -46,14 +46,17 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
     check_grad(bert, sharded_bert, row_layer_for_check, atol=1e-7, rtol=1e-3, dim=1, verbose=False)
 
 
-@parameterize('enable_fused_normalization', [False, True])
-@parameterize('enable_tensor_parallelism', [False, True])
+@parameterize('enable_fused_normalization', [True, False])
+@parameterize('enable_tensor_parallelism', [True, False])
+@parameterize('enable_flash_attention', [True, False])
+@parameterize('enable_jit_fused', [True, False])
 @parameterize('use_lazy_init', [False, True])
-def run_bert_test(enable_fused_normalization, enable_tensor_parallelism, use_lazy_init):
+def run_bert_test(enable_fused_normalization, enable_tensor_parallelism, enable_flash_attention, enable_jit_fused,
+                  use_lazy_init):
     sub_model_zoo = model_zoo.get_sub_registry('transformers_bert')
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         org_model, sharded_model = build_model(model_fn, enable_fused_normalization, enable_tensor_parallelism,
-                                               use_lazy_init)
+                                               enable_flash_attention, enable_jit_fused, use_lazy_init)
         check_state_dict(org_model, sharded_model, name=name)
         check_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn)
 

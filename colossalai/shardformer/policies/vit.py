@@ -3,12 +3,21 @@ from typing import Callable, Dict, List, Union
 
 import torch.nn as nn
 
-import colossalai.shardformer.layer as col_nn
+from colossalai.shardformer.layer import (
+    DropoutForParallelInput,
+    DropoutForReplicatedInput,
+    FusedLayerNorm,
+    Linear1D_Col,
+    Linear1D_Row,
+)
 
+from ..modeling.jit import get_jit_fused_dropout_add_func
 from ..modeling.vit import (
     ViTForImageClassification_pipeline_forward,
     ViTForMaskedImageModeling_pipeline_forward,
     ViTModel_pipeline_forward,
+    get_jit_fused_vit_output_forward,
+    get_vit_flash_self_attention_forward,
 )
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
@@ -24,7 +33,8 @@ class ViTPolicy(Policy):
         return self.model
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
-        from transformers.models.vit.modeling_vit import ViTEmbeddings, ViTLayer
+
+        from transformers.models.vit.modeling_vit import ViTEmbeddings, ViTLayer, ViTModel, ViTOutput, ViTSelfAttention
 
         policy = {}
 
@@ -34,7 +44,7 @@ class ViTPolicy(Policy):
                                                             sub_module_replacement=[
                                                                 SubModuleReplacementDescription(
                                                                     suffix="dropout",
-                                                                    target_module=col_nn.DropoutForReplicatedInput,
+                                                                    target_module=DropoutForReplicatedInput,
                                                                 )
                                                             ])
 
@@ -48,42 +58,54 @@ class ViTPolicy(Policy):
                                                        sub_module_replacement=[
                                                            SubModuleReplacementDescription(
                                                                suffix="attention.attention.query",
-                                                               target_module=col_nn.Linear1D_Col,
+                                                               target_module=Linear1D_Col,
                                                            ),
                                                            SubModuleReplacementDescription(
                                                                suffix="attention.attention.key",
-                                                               target_module=col_nn.Linear1D_Col,
+                                                               target_module=Linear1D_Col,
                                                            ),
                                                            SubModuleReplacementDescription(
                                                                suffix="attention.attention.value",
-                                                               target_module=col_nn.Linear1D_Col,
+                                                               target_module=Linear1D_Col,
                                                            ),
                                                            SubModuleReplacementDescription(
                                                                suffix="attention.attention.dropout",
-                                                               target_module=col_nn.DropoutForParallelInput,
+                                                               target_module=DropoutForParallelInput,
                                                            ),
                                                            SubModuleReplacementDescription(
                                                                suffix="attention.output.dense",
-                                                               target_module=col_nn.Linear1D_Row,
+                                                               target_module=Linear1D_Row,
                                                            ),
                                                            SubModuleReplacementDescription(
                                                                suffix="attention.output.dropout",
-                                                               target_module=col_nn.DropoutForReplicatedInput,
+                                                               target_module=DropoutForReplicatedInput,
                                                            ),
                                                            SubModuleReplacementDescription(
                                                                suffix="intermediate.dense",
-                                                               target_module=col_nn.Linear1D_Col,
+                                                               target_module=Linear1D_Col,
                                                            ),
                                                            SubModuleReplacementDescription(
                                                                suffix="output.dense",
-                                                               target_module=col_nn.Linear1D_Row,
+                                                               target_module=Linear1D_Row,
                                                            ),
                                                            SubModuleReplacementDescription(
                                                                suffix="output.dropout",
-                                                               target_module=col_nn.DropoutForReplicatedInput,
+                                                               target_module=DropoutForReplicatedInput,
                                                            ),
                                                        ])
 
+        # use flash attention
+        if self.shard_config.enable_flash_attention:
+            policy[ViTSelfAttention] = ModulePolicyDescription(method_replacement={
+                'forward': get_vit_flash_self_attention_forward(),
+            })
+
+        # use jit fused operator
+        if self.shard_config.enable_jit_fused:
+            policy[ViTOutput] = ModulePolicyDescription(method_replacement={
+                'forward': get_jit_fused_vit_output_forward(),
+                'dropout_add': get_jit_fused_dropout_add_func(),
+            })
         return policy
 
     def new_model_class(self):
@@ -166,7 +188,7 @@ class ViTForImageClassificationPolicy(ViTPolicy):
                 ViTForImageClassification:
                     ModulePolicyDescription(sub_module_replacement=[
                         SubModuleReplacementDescription(
-                            suffix="classifier", target_module=col_nn.Linear1D_Col, kwargs=dict(gather_output=True))
+                            suffix="classifier", target_module=Linear1D_Col, kwargs=dict(gather_output=True))
                     ])
             }
             policy.update(new_item)

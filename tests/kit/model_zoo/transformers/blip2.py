@@ -38,6 +38,7 @@ output_transform_fn = lambda x: x
 loss_fn_blip2_model = lambda x: x.loss
 
 config = transformers.Blip2Config()
+config.vision_config.patch_size = 14
 config.text_config.num_hidden_layers = 1
 config.qformer_config.num_hidden_layers = 1
 config.vision_config.num_hidden_layers = 1

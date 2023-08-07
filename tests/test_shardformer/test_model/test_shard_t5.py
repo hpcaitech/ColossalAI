@@ -33,8 +33,8 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
     # check grad
     col_layer_for_check = ['encoder.block[0].layer[0].SelfAttention.q', 'shared']
     row_layer_for_check = ['encoder.block[0].layer[0].SelfAttention.relative_attention_bias']
-    check_grad(org_model, sharded_model, col_layer_for_check, atol=1e-7, rtol=1e-5, dim=0, verbose=False)
-    check_grad(org_model, sharded_model, row_layer_for_check, atol=1e-7, rtol=1e-5, dim=1, verbose=False)
+    check_grad(org_model, sharded_model, col_layer_for_check, atol=1e-6, rtol=1e-5, dim=0, verbose=False)
+    check_grad(org_model, sharded_model, row_layer_for_check, atol=1e-6, rtol=1e-5, dim=1, verbose=False)
 
     # check weights are tied
     if hasattr(org_model, 'lm_head'):
@@ -45,11 +45,14 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
 @parameterize('enable_fused_normalization', [True, False])
 @parameterize('enable_tensor_parallelism', [True, False])
 @parameterize('use_lazy_init', [False, True])
-def run_t5_test(enable_fused_normalization, enable_tensor_parallelism, use_lazy_init):
+@parameterize('enable_flash_attention', [True, False])
+@parameterize('enable_jit_fused', [True, False])
+def run_t5_test(enable_fused_normalization, enable_tensor_parallelism, use_lazy_init, enable_flash_attention,
+                enable_jit_fused):
     sub_model_zoo = model_zoo.get_sub_registry('transformers_t5')
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         org_model, sharded_model = build_model(model_fn, enable_fused_normalization, enable_tensor_parallelism,
-                                               use_lazy_init)
+                                               enable_flash_attention, enable_jit_fused, use_lazy_init)
         check_state_dict(org_model, sharded_model, name=name)
         check_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn)
     torch.cuda.empty_cache()

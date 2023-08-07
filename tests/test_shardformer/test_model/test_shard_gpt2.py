@@ -68,7 +68,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 
     torch.cuda.empty_cache()
 
-
 @parameterize('test_config', [{
     'tp_size': 1,
     'pp_size': 2,
