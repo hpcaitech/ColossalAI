@@ -63,23 +63,28 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     torch.cuda.empty_cache()
 
 
-@parameterize('test_config', [{'tp_size': 1, 'pp_size': 2, 'num_microbatches': 4, 'use_lazy_init': False}])
-#     'tp_size': 2,
-#     'pp_size': 2,
-#     'num_microbatches': 2,
-#     'enable_fused_normalization': False,
-#     'use_lazy_init': True
-# }, {
-#     'tp_size': 4,
-#     'pp_size': 1,
-#     'enable_fused_normalization': True,
-#     'use_lazy_init': False
-# }, {
-#     'tp_size': 1,
-#     'pp_size': 4,
-#     'num_microbatches': 4,
-#     'use_lazy_init': False
-# }
+@parameterize('test_config', [{
+    'tp_size': 2,
+    'pp_size': 2,
+    'num_microbatches': 2,
+    'enable_fused_normalization': True,
+    'use_lazy_init': True
+}, {
+    'tp_size': 1,
+    'pp_size': 2,
+    'num_microbatches': 4,
+    'use_lazy_init': False
+}, {
+    'tp_size': 4,
+    'pp_size': 1,
+    'enable_fused_normalization': True,
+    'use_lazy_init': False
+}, {
+    'tp_size': 1,
+    'pp_size': 4,
+    'num_microbatches': 4,
+    'use_lazy_init': False
+}])
 @clear_cache_before_run()
 def run_t5_test(test_config):
 
