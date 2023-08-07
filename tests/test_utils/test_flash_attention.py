@@ -24,8 +24,9 @@ def baseline_attention(Z, N_CTX, H, q, k, v, sm_scale):
 
 @pytest.mark.skipif(HAS_MEM_EFF_ATTN == False, reason="xformers is not available")
 @clear_cache_before_run()
-@parameterize('B, S, H, D_HEAD', [(1, 128, 4, 16)])
-def test_attention_gpt(B, S, H, D_HEAD, dtype=torch.float16):
+@parameterize('proj_shape', [(1, 128, 4, 16)])
+def test_attention_gpt(proj_shape, dtype=torch.float16):
+    (B, S, H, D_HEAD) = proj_shape
     D = H * D_HEAD
 
     c_attn = torch.nn.Linear(D, 3 * D, dtype=dtype, device="cuda")
@@ -35,7 +36,11 @@ def test_attention_gpt(B, S, H, D_HEAD, dtype=torch.float16):
 
     qkv = c_attn(x)
     q, k, v = rearrange(qkv, 'b s (n h d) -> n b s h d', n=3, h=H)
-    y = attn(q, k, v, attn_mask_type=AttnMaskType.causal)
+
+    mask = [torch.ones(S - i, dtype=dtype, device="cuda") for i in range(B)]
+    mask = torch.nn.utils.rnn.pad_sequence(mask, batch_first=True)
+
+    y = attn(q, k, v, attn_mask=mask, attn_mask_type=AttnMaskType.paddedcausal)
 
     assert list(y.shape) == [B, S, D]
 
@@ -45,8 +50,9 @@ def test_attention_gpt(B, S, H, D_HEAD, dtype=torch.float16):
 
 @pytest.mark.skipif(HAS_MEM_EFF_ATTN == False, reason="xformers is not available")
 @clear_cache_before_run()
-@parameterize('B, S, H, D_HEAD', [(1, 128, 4, 16)])
-def test_attention_bert(B, S, H, D_HEAD, dtype=torch.float16):
+@parameterize('proj_shape', [(1, 128, 4, 16)])
+def test_attention_bert(proj_shape, dtype=torch.float16):
+    (B, S, H, D_HEAD) = proj_shape
     D = H * D_HEAD
 
     c_attn = torch.nn.Linear(D, 3 * D, dtype=dtype, device="cuda")
@@ -69,8 +75,9 @@ def test_attention_bert(B, S, H, D_HEAD, dtype=torch.float16):
 
 @pytest.mark.skipif(HAS_MEM_EFF_ATTN == False, reason="xformers is not available")
 @clear_cache_before_run()
-@parameterize('B, S, H, D_HEAD', [(1, 128, 4, 16)])
-def test_attention_no_mask(B, S, H, D_HEAD, dtype=torch.float16):
+@parameterize('proj_shape', [(6, 128, 4, 16)])
+def test_attention_no_mask(proj_shape, dtype=torch.float16):
+    (B, S, H, D_HEAD) = proj_shape
     D = H * D_HEAD
 
     c_attn = torch.nn.Linear(D, 3 * D, dtype=dtype, device="cuda")
@@ -89,8 +96,9 @@ def test_attention_no_mask(B, S, H, D_HEAD, dtype=torch.float16):
 
 @pytest.mark.skipif(HAS_MEM_EFF_ATTN == False, reason="xformers is not available")
 @clear_cache_before_run()
-@parameterize('B, S, T, H, D_HEAD', [(1, 128, 8, 4, 16)])
-def test_cross_attention(B, S, T, H, D_HEAD, dtype=torch.float16):
+@parameterize('proj_shape', [(6, 128, 256, 4, 16)])
+def test_cross_attention(proj_shape, dtype=torch.float16):
+    (B, S, T, H, D_HEAD) = proj_shape
     D = H * D_HEAD
 
     q_attn = torch.nn.Linear(D, D, dtype=dtype, device="cuda")
