@@ -21,7 +21,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     org_model, org_optimizer, sharded_model, sharded_optimizer, criterion, booster = \
         build_model_from_hybrid_plugin(model_fn, loss_fn, test_config)
 
-    print(org_model.__class__.__name__, test_config['tp_size'], test_config['pp_size'])
+    # print(org_model.__class__.__name__, test_config['tp_size'], test_config['pp_size'])
 
     org_loss, org_output, sharded_loss, sharded_output = \
         run_forward_backward_with_hybrid_plugin(
@@ -48,7 +48,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     t5 = org_model
     sharded_t5 = sharded_model.unwrap()
 
-    # TODO: Check shared embedding layers
     row_layer_for_check = ['shared', 'encoder.block[0].layer[0].SelfAttention.q']
 
     # check weights and gradients
@@ -93,8 +92,11 @@ def run_t5_test(test_config):
     test_config['precision'] = 'float'    # Do not use fp16/bf16 in testing
 
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
-        if name != 'transformers_t5_encoder_model':
+
+        # skip 4-stage pp test for t5_encoder
+        if test_config['pp_size'] > 2 and name == 'transformers_t5_encoder_model':
             continue
+
         check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
 
     clear_layout_converter()

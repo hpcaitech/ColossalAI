@@ -238,7 +238,8 @@ class T5PipelineForwards:
             return {
                 'hidden_states': hidden_states,
                 'position_bias': position_bias,
-                'encoder_decoder_position_bias': encoder_decoder_position_bias
+                'encoder_decoder_position_bias': encoder_decoder_position_bias,
+                'backward_tensor_keys': ['hidden_states']
             }
 
     @staticmethod
@@ -264,6 +265,7 @@ class T5PipelineForwards:
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
         position_bias: Optional[torch.Tensor] = None,
         encoder_decoder_position_bias: Optional[torch.Tensor] = None,
+        backward_tensor_keys: Optional[List[str]] = None,
         stage_index: Optional[List[int]] = None,
         decoder_starting_stage: Optional[int] = None,
     ) -> Union[Tuple[torch.FloatTensor], Seq2SeqModelOutput]:
@@ -400,6 +402,7 @@ class T5PipelineForwards:
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
         position_bias: Optional[torch.Tensor] = None,
         encoder_decoder_position_bias: Optional[torch.Tensor] = None,
+        backward_tensor_keys: Optional[List[str]] = None,
         stage_index: Optional[List[int]] = None,
         decoder_starting_stage: Optional[int] = None,
     ) -> Union[Tuple[torch.FloatTensor], Seq2SeqLMOutput]:
@@ -549,6 +552,7 @@ class T5PipelineForwards:
         hidden_states: Optional[torch.FloatTensor] = None,
         position_bias: Optional[torch.Tensor] = None,
         encoder_decoder_position_bias: Optional[torch.Tensor] = None,
+        backward_tensor_keys: Optional[List[str]] = None,
         stage_index: Optional[List[int]] = None,
         decoder_starting_stage: Optional[int] = None,
     ) -> Union[Tuple[torch.FloatTensor], BaseModelOutput]:
