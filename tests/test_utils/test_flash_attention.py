@@ -89,7 +89,7 @@ def test_attention_no_mask(B, S, H, D_HEAD, dtype=torch.float16):
 
 @pytest.mark.skipif(HAS_MEM_EFF_ATTN == False, reason="xformers is not available")
 @clear_cache_before_run()
-@parameterize('B, S, T, H, D_HEAD', [(6, 24, 8, 4, 16)])
+@parameterize('B, S, T, H, D_HEAD', [(1, 128, 8, 4, 16)])
 def test_cross_attention(B, S, T, H, D_HEAD, dtype=torch.float16):
     D = H * D_HEAD
 
