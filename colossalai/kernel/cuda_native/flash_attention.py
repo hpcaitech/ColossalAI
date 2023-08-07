@@ -6,6 +6,7 @@ https://github.com/facebookresearch/xformers/tree/main/xformers/ops/fmha
 import math
 import os
 import subprocess
+import warnings
 
 import torch
 
@@ -14,7 +15,7 @@ try:
     HAS_MEM_EFF_ATTN = True
 except ImportError:
     HAS_MEM_EFF_ATTN = False
-    raise ImportError('please install xformers from https://github.com/facebookresearch/xformers')
+    warnings.warn(f'please install xformers from https://github.com/facebookresearch/xformers')
 
 if HAS_MEM_EFF_ATTN:
 

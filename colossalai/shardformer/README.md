@@ -31,7 +31,7 @@
 
 ### Quick Start
 
-The sample API usage is given below:
+The sample API usage is given below(If you enable the use of flash attention, please install xformers.):
 
 ``` python
 from colossalai.shardformer import ShardConfig, Shard
