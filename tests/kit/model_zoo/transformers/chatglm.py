@@ -6,7 +6,6 @@ from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import ChatGLM
 
 from ..registry import ModelAttribute, model_zoo
 
-
 # ================================
 # Register single-sentence ChatGLM
 # ================================

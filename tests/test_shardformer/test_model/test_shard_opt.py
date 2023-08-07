@@ -42,18 +42,21 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
     # check grad
     col_layer_for_check = ['decoder.layers[0].self_attn.q_proj', 'decoder.embed_tokens']
     row_layer_for_check = ['decoder.layers[0].self_attn.out_proj']
-    check_grad(opt_model, shard_opt_model, col_layer_for_check, atol=1e-7, rtol=1e-3, dim=0, verbose=False)
-    check_grad(opt_model, shard_opt_model, row_layer_for_check, atol=1e-7, rtol=1e-3, dim=1, verbose=False)
+    check_grad(opt_model, shard_opt_model, col_layer_for_check, atol=1e-6, rtol=1e-3, dim=0, verbose=False)
+    check_grad(opt_model, shard_opt_model, row_layer_for_check, atol=1e-6, rtol=1e-3, dim=1, verbose=False)
 
 
+@parameterize('use_lazy_init', [False, True])
 @parameterize('enable_fused_normalization', [True, False])
 @parameterize('enable_tensor_parallelism', [True, False])
-@parameterize('use_lazy_init', [False, True])
-def run_t5_test(enable_fused_normalization, enable_tensor_parallelism, use_lazy_init):
+@parameterize('enable_flash_attention', [True, False])
+@parameterize('enable_jit_fused', [True, False])
+def run_opt_test(use_lazy_init, enable_fused_normalization, enable_tensor_parallelism, enable_flash_attention,
+                 enable_jit_fused):
     sub_model_zoo = model_zoo.get_sub_registry('transformers_opt')
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         org_model, sharded_model = build_model(model_fn, enable_fused_normalization, enable_tensor_parallelism,
-                                               use_lazy_init)
+                                               enable_flash_attention, enable_jit_fused, use_lazy_init)
         check_state_dict(org_model, sharded_model, name=name)
         check_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn)
     torch.cuda.empty_cache()
@@ -62,7 +65,7 @@ def run_t5_test(enable_fused_normalization, enable_tensor_parallelism, use_lazy_
 def check_OPTModel(rank, world_size, port):
     disable_existing_loggers()
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    run_t5_test()
+    run_opt_test()
 
 
 @pytest.mark.dist

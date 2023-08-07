@@ -1,3 +1,4 @@
+import math
 from typing import Optional, Tuple, Union
 
 import torch
@@ -56,5 +57,64 @@ def forward_fn():
         outputs = (output, attention_probs) if output_attentions else (output, None)
 
         return outputs
+
+    return forward
+
+
+def get_blip2_flash_attention_forward():
+
+    from transformers.models.blip_2.modeling_blip_2 import Blip2Attention
+
+    from colossalai.kernel.cuda_native.flash_attention import AttnMaskType, ColoAttention
+
+    def forward(
+        self: Blip2Attention,
+        hidden_states: torch.Tensor,
+        head_mask: Optional[torch.Tensor] = None,
+        output_attentions: Optional[bool] = False,
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+        """Input shape: Batch x Time x Channel"""
+
+        bsz, tgt_len, embed_dim = hidden_states.size()
+        mixed_qkv = self.qkv(hidden_states)
+        mixed_qkv = mixed_qkv.reshape(bsz, tgt_len, 3, self.num_heads, -1).permute(2, 0, 1, 3, 4)
+        query_states, key_states, value_states = mixed_qkv[0], mixed_qkv[1], mixed_qkv[2]
+
+        attention = ColoAttention(embed_dim=self.embed_dim,
+                                  num_heads=self.num_heads,
+                                  dropout=self.dropout.p,
+                                  scale=self.scale)
+        context_layer = attention(query_states, key_states, value_states)
+
+        output = self.projection(context_layer)
+        outputs = (output, None)
+
+        return outputs
+
+    return forward
+
+
+def get_jit_fused_blip2_QFormer_self_output_forward():
+
+    from transformers.models.blip_2.modeling_blip_2 import Blip2QFormerSelfOutput
+
+    def forward(self: Blip2QFormerSelfOutput, hidden_states: torch.Tensor, input_tensor: torch.Tensor) -> torch.Tensor:
+        hidden_states = self.dense(hidden_states)
+        hidden_states = self.dropout_add(hidden_states, input_tensor, self.dropout.p, self.dropout.training)
+        hidden_states = self.LayerNorm(hidden_states)
+        return hidden_states
+
+    return forward
+
+
+def get_jit_fused_blip2_QFormer_output_forward():
+
+    from transformers.models.blip_2.modeling_blip_2 import Blip2QFormerOutput
+
+    def forward(self: Blip2QFormerOutput, hidden_states: torch.Tensor, input_tensor: torch.Tensor) -> torch.Tensor:
+        hidden_states = self.dense(hidden_states)
+        hidden_states = self.dropout_add(hidden_states, input_tensor, self.dropout.p, self.dropout.training)
+        hidden_states = self.LayerNorm(hidden_states)
+        return hidden_states
 
     return forward

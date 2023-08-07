@@ -3,6 +3,12 @@ import torch.nn as nn
 import colossalai.shardformer.layer as col_nn
 
 from .._utils import getattr_, setattr_
+from ..modeling.jit import get_jit_fused_dropout_add_func
+from ..modeling.whisper import (
+    get_jit_fused_whisper_decoder_layer_forward,
+    get_jit_fused_whisper_encoder_layer_forward,
+    get_whisper_flash_attention_forward,
+)
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = [
@@ -30,6 +36,7 @@ class WhisperPolicy(Policy):
 
     def module_policy(self):
         from transformers.models.whisper.modeling_whisper import (
+            WhisperAttention,
             WhisperDecoder,
             WhisperDecoderLayer,
             WhisperEncoder,
@@ -181,6 +188,24 @@ class WhisperPolicy(Policy):
             ],
                                                         policy=policy,
                                                         target_key=WhisperDecoder)
+
+        # enable flash attention
+        if self.shard_config.enable_flash_attention:
+            policy[WhisperAttention] = ModulePolicyDescription(method_replacement={
+                'forward': get_whisper_flash_attention_forward(),
+            })
+
+        # use jit fused operator
+        if self.shard_config.enable_jit_fused:
+            policy[WhisperEncoderLayer] = ModulePolicyDescription(method_replacement={
+                'forward': get_jit_fused_whisper_encoder_layer_forward(),
+                'dropout_add': get_jit_fused_dropout_add_func(),
+            })
+            policy[WhisperDecoderLayer] = ModulePolicyDescription(method_replacement={
+                'forward': get_jit_fused_whisper_decoder_layer_forward(),
+                'dropout_add': get_jit_fused_dropout_add_func(),
+            })
+
         return policy
 
     def add_lm_head_policy(self, base_policy):
