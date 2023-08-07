@@ -72,7 +72,9 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
 
 @parameterize('enable_fused_normalization', [True, False])
 @parameterize('enable_tensor_parallelism', [True, False])
-def run_chatglm_test(enable_fused_normalization, enable_tensor_parallelism):
+@parameterize('enable_flash_attention', [True, False])
+@parameterize('enable_jit_fused', [True, False])
+def run_chatglm_test(enable_fused_normalization, enable_tensor_parallelism, enable_flash_attention, enable_jit_fused):
     sub_model_zoo = model_zoo.get_sub_registry('transformers_chatglm')
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         # create new model
@@ -80,7 +82,9 @@ def run_chatglm_test(enable_fused_normalization, enable_tensor_parallelism):
 
         # shard model
         shard_config = ShardConfig(enable_fused_normalization=enable_fused_normalization,
-                                   enable_tensor_parallelism=enable_tensor_parallelism)
+                                   enable_tensor_parallelism=enable_tensor_parallelism,
+                                   enable_flash_attention=enable_flash_attention,
+                                   enable_jit_fused=enable_jit_fused)
         model_copy = copy.deepcopy(org_model)
         shard_former = ShardFormer(shard_config=shard_config)
         if name == "transformers_chatglm":

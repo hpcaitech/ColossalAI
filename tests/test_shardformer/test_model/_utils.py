@@ -21,7 +21,13 @@ from colossalai.shardformer._utils import getattr_
 from colossalai.tensor.d_tensor.api import is_customized_distributed_tensor, is_distributed_tensor
 
 
-def build_model(model_fn, enable_fused_normalization=True, enable_tensor_parallelism=True, use_lazy_init: bool = False):
+def build_model(model_fn,
+                enable_fused_normalization=True,
+                enable_tensor_parallelism=True,
+                enable_flash_attention=False,
+                enable_jit_fused=False,
+                use_lazy_init: bool = False):
+    # create new model
     ctx = LazyInitContext() if use_lazy_init else nullcontext()
     with ctx:
         # create new model
@@ -31,7 +37,10 @@ def build_model(model_fn, enable_fused_normalization=True, enable_tensor_paralle
         ctx.materialize(org_model)
     # shard model
     shard_config = ShardConfig(enable_fused_normalization=enable_fused_normalization,
-                               enable_tensor_parallelism=enable_tensor_parallelism)
+                               enable_tensor_parallelism=enable_tensor_parallelism,
+                               enable_flash_attention=enable_flash_attention,
+                               enable_jit_fused=enable_jit_fused)
+    model_copy = copy.deepcopy(org_model)
     shard_former = ShardFormer(shard_config=shard_config)
     sharded_model, shared_params = shard_former.optimize(model_copy)
     return org_model.cuda(), sharded_model.cuda()

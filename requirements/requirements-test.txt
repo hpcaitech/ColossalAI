@@ -18,3 +18,5 @@ SentencePiece
 ninja
 flash_attn>=2.0
 datasets
+ninja
+flash-attn

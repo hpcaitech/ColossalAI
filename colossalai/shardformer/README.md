@@ -30,7 +30,7 @@
 
 ### Quick Start
 
-The sample API usage is given below:
+The sample API usage is given below(If you enable the use of flash attention, please install xformers.):
 
 ```python
 from colossalai.shardformer import ShardConfig, Shard
@@ -106,6 +106,20 @@ We will follow this roadmap to develop Shardformer:
     - [ ] Multi-modal
       - [x] SAM
       - [x] BLIP-2
+- [ ] Flash Attention Support
+    - [ ] NLP
+      - [x] BERT
+      - [x] T5
+      - [x] LlaMa
+      - [x] GPT2
+      - [x] OPT
+      - [x] BLOOM
+      - [ ] GLM
+      - [ ] RoBERTa
+      - [ ] ALBERT
+      - [ ] ERNIE
+      - [ ] GPT Neo
+      - [ ] GPT-J
 
 ## 💡 API Design
 
@@ -373,11 +387,49 @@ pytest tests/test_shardformer
 
 ### System Performance
 
-To be added.
+We conducted [benchmark tests](./examples/performance_benchmark.py) to evaluate the performance improvement of Shardformer. We compared the training time between the original model and the shard model.
+
+We set the batch size to 4, the number of attention heads to 8, and the head dimension to 64. 'N_CTX' refers to the sequence length.
+
+In the case of using 2 GPUs, the training times are as follows.
+| N_CTX |   org_model    |  shard_model   |
+| :------: | :-----: | :-----: |
+| 256  | 11.2ms | 17.2ms |
+| 512  | 9.8ms | 19.5ms |
+| 1024  | 19.6ms | 18.9ms |
+| 2048  | 46.6ms | 30.8ms |
+| 4096  | 160.5ms | 90.4ms |
+
+
+<p align="center">
+   <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/shardformer/performance_benchmark_gpus2.png" width="600" />
+   <br/>
+</p>
+
+In the case of using 4 GPUs, the training times are as follows.
+
+| N_CTX |   org_model    |  shard_model   |
+| :------: | :-----: | :-----: |
+| 256  | 10.0ms | 21.1ms |
+| 512  | 11.5ms | 20.2ms |
+| 1024  | 22.1ms | 20.6ms |
+| 2048  | 46.9ms | 24.8ms |
+| 4096  | 160.4ms | 68.0ms |
+
+
+
+<p align="center">
+   <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/shardformer/performance_benchmark_gpus4.png" width="600" />
+   <br/>
+</p>
+
+
+As shown in the figures above, when the sequence length is around 1000 or greater, the parallel optimization of Shardformer for long sequences starts to become evident.
 
 ### Convergence
 
-To validate that training the model using shardformers does not impact its convergence. We [fine-tuned the BERT model](./examples/shardformer_benchmark.py) using both shardformer and non-shardformer approaches. We compared the accuracy, loss, F1 score of the training results.
+
+To validate that training the model using shardformers does not impact its convergence. We [fine-tuned the BERT model](./examples/convergence_benchmark.py) using both shardformer and non-shardformer approaches. We compared the accuracy, loss, F1 score of the training results.
 
 | accuracy |   f1    |  loss   | GPU number | model shard |
 | :------: | :-----: | :-----: | :--------: | :---------: |

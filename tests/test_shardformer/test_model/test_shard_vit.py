@@ -20,7 +20,9 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
     # check forward
     org_output, org_loss, shard_output, shard_loss = run_forward(org_model, sharded_model, data_gen_fn,
                                                                  output_transform_fn, loss_fn)
+
     assert_hf_output_close(org_output, shard_output, atol=1e-3, rtol=1e-3)
+
     # do backward
     org_loss.backward()
     shard_loss.backward()
@@ -45,10 +47,13 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
 
 @parameterize('enable_fused_normalization', [True, False])
 @parameterize('enable_tensor_parallelism', [True, False])
-def run_vit_test(enable_fused_normalization, enable_tensor_parallelism):
+@parameterize('enable_flash_attention', [True, False])
+@parameterize('enable_jit_fused', [True, False])
+def run_vit_test(enable_fused_normalization, enable_tensor_parallelism, enable_flash_attention, enable_jit_fused):
     sub_model_zoo = model_zoo.get_sub_registry('transformers_vit')
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
-        org_model, sharded_model = build_model(model_fn, enable_fused_normalization, enable_tensor_parallelism)
+        org_model, sharded_model = build_model(model_fn, enable_fused_normalization, enable_tensor_parallelism,
+                                               enable_flash_attention, enable_jit_fused)
         check_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn)
     torch.cuda.empty_cache()
 

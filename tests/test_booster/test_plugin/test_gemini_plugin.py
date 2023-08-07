@@ -93,7 +93,7 @@ def check_gemini_plugin(init_method: str = 'none', early_stop: bool = True):
                 'transformers_vit_for_image_classification', 'transformers_chatglm',
                 'transformers_chatglm_for_conditional_generation', 'transformers_blip2',
                 'transformers_blip2_conditional_gerneration', 'transformers_sam', 'transformers_whisper',
-                'transformers_whisperForConditionalGeneration', 'transformers_whisperWhisperForAudioClassification'
+                'transformers_whisper_for_conditional_generation', 'transformers_whisper_for_audio_classification'
         ]:
             continue
 
