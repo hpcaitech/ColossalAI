@@ -152,6 +152,7 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
         device (`torch.device`): The device of parameters, defaults to None.
         n_fused (int): The number items fused, defaults to 3 (QKV).
         process_group (`torch.distributed.ProcessGroup`): The process group to be used for weight sharding and communication, defaults to None.
+        seq_parallel (`bool`): If set to ``True``, it will use sequence parallel, defaults to False.
         gather_output (bool, optional): If true, call all-gather on output and make Y available
                     to all GPUs, otherwise, every GPU will have its output
                     which is :math:`Y_i = XA_i`, defaults to False
@@ -329,6 +330,7 @@ class GPT2FusedLinearConv1D_Row(ParallelModule):
         dtype (`torch.dtype`): The dtype of parameters, defaults to None.
         parallel_input (bool): If set to ``True``, it's assumed that the input is split, defaults to False.
         skip_bias_add (bool): If set to ``True``, it will skip bias add for linear layer,
+        seq_parallel (`bool`): If set to ``True``, it will use sequence parallel, defaults to False.
             which is preserved for kernel fusion, defaults to False
         weight_initializer (:class:`typing.Callable`, optional):
             The initializer of weight, defaults to kaiming uniform initializer.

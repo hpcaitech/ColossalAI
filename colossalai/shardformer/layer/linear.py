@@ -52,6 +52,7 @@ class Linear1D_Col(ParallelModule):
         gather_output (bool, optional): If true, call all-gather on output and make Y available
                     to all GPUs, otherwise, every GPU will have its output
                     which is :math:`Y_i = XA_i`, defaults to False
+        seq_parallel (`bool`): If set to ``True``, it will use sequence parallel, defaults to False.
         skip_bias_add (bool): If set to ``True``, it will skip bias add for linear layer,
             which is preserved for kernel fusion, defaults to False
         weight_initializer (`typing.Callable`):
@@ -203,6 +204,8 @@ class Linear1D_Row(ParallelModule):
         bias (bool, optional): If set to ``False``, the layer will not learn an additive bias, defaults to ``True``.
         dtype (`torch.dtype`): The dtype of parameters, defaults to None.
         parallel_input (bool): If set to ``True``, it's assumed that the input is split, defaults to False.
+        process_group (`torch.distributed.ProcessGroup`): The process group to be used for weight sharding and communication, defaults to None.
+        seq_parallel (`bool`): If set to ``True``, it will use sequence parallel, defaults to False.
         skip_bias_add (bool): If set to ``True``, it will skip bias add for linear layer,
             which is preserved for kernel fusion, defaults to False
         weight_initializer (:class:`typing.Callable`, optional):
