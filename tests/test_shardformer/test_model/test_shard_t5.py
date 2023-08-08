@@ -3,6 +3,7 @@ import torch
 
 import colossalai
 from colossalai.logging import disable_existing_loggers
+from colossalai.shardformer.layer.utils import Randomizer
 from colossalai.tensor.d_tensor.api import clear_layout_converter
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
 from tests.kit.model_zoo import model_zoo
@@ -69,38 +70,27 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     'num_microbatches': 2,
     'enable_fused_normalization': True,
     'use_lazy_init': True
+}, {
+    'tp_size': 1,
+    'pp_size': 2,
+    'num_microbatches': 4,
+    'use_lazy_init': False
+}, {
+    'tp_size': 4,
+    'pp_size': 1,
+    'enable_fused_normalization': True,
+    'use_lazy_init': False
+}, {
+    'tp_size': 1,
+    'pp_size': 4,
+    'num_microbatches': 4,
+    'use_lazy_init': False
 }])
 @clear_cache_before_run()
 def run_t5_test(test_config):
 
     # TODO: add plugin_config for TP+DP after supporting & debugging it
     # {'tp_size': 2, 'pp_size': 1, 'enable_fused_normalization': True}
-
-    # Completed:
-    # {
-    #     'tp_size': 1,
-    #     'pp_size': 2,
-    #     'num_microbatches': 4,
-    #     'use_lazy_init': False
-    # }, {
-    #     'tp_size': 4,
-    #     'pp_size': 1,
-    #     'enable_fused_normalization': True,
-    #     'use_lazy_init': False
-    # }
-
-    # {
-    #     'tp_size': 2,
-    #     'pp_size': 2,
-    #     'num_microbatches': 2,
-    #     'enable_fused_normalization': True,
-    #     'use_lazy_init': True
-    # }, {
-    #     'tp_size': 1,
-    #     'pp_size': 4,
-    #     'num_microbatches': 4,
-    #     'use_lazy_init': False
-    # }
 
     # TODO: add test_config for flash attention & jit operator after supporting
 
@@ -116,6 +106,7 @@ def run_t5_test(test_config):
         check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
 
     clear_layout_converter()
+    Randomizer.reset_index()
     torch.cuda.empty_cache()
 
 

@@ -276,20 +276,27 @@ class T5BasePolicy(Policy):
             if stage_manager.is_first_stage():
                 held_layers.append(model.shared)
                 held_layers.append(encoder.embed_tokens)
-                held_layers.append(encoder.dropout)
             if stage_manager.stage == decoder_starting_stage - 1:
                 held_layers.append(encoder.final_layer_norm)
                 held_layers.append(encoder.dropout)
-            held_layers.extend(encoder.block[start_idx:end_idx])
+            for i in range(start_idx, end_idx):
+                block = encoder.block[i]
+                held_layers.extend(block.layer)
+                held_layers.append(block.layer[0].SelfAttention)
+                held_layers.append(block.layer[1].DenseReluDense)
         else:
             # current stage is in t5's decoder
             if stage_manager.stage == decoder_starting_stage:
                 held_layers.append(decoder.embed_tokens)
-                held_layers.append(decoder.dropout)
             if stage_manager.is_last_stage():
                 held_layers.append(decoder.final_layer_norm)
                 held_layers.append(decoder.dropout)
-            held_layers.extend(decoder.block[start_idx:end_idx])
+            for i in range(start_idx, end_idx):
+                block = decoder.block[i]
+                held_layers.extend(block.layer)
+                held_layers.append(block.layer[0].SelfAttention)
+                held_layers.append(block.layer[1].EncDecAttention)
+                held_layers.append(block.layer[2].DenseReluDense)
         return held_layers
 
     def set_pipeline_forward(self, model_cls: nn.Module, new_forward: Callable, policy: Dict) -> None:
