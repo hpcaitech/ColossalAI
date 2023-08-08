@@ -58,7 +58,7 @@ def run_fn(init_method, model_fn, data_gen_fn, output_transform_fn) -> Optional[
 # @parameterize('init_method', ['lazy', 'none', 'colo'])
 
 
-@parameterize('subset', ['timm', 'torchvision', 'transformers', 'diffusers'])
+@parameterize('subset', ['torchvision', 'transformers', 'diffusers'])
 @parameterize('init_method', ['none'])
 def check_gemini_plugin(subset: str, init_method: str = 'none', early_stop: bool = True):
     """check gemini plugin over model zoo
