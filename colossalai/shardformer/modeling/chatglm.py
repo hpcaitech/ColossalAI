@@ -19,7 +19,7 @@ from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import (
 
 def get_flash_core_attention_forward():
 
-    from colossalai.kernel.cuda_native.flash_attention import AttnMaskType, ColoAttention
+    from colossalai.kernel.cuda_native import AttnMaskType, ColoAttention
 
     from .chatglm2_6b.modeling_chatglm import CoreAttention
 
@@ -124,7 +124,6 @@ def get_jit_fused_glm_block_forward():
         return output, kv_cache
 
     return forward
-
 
 
 class ChatGLMPipelineForwards:
