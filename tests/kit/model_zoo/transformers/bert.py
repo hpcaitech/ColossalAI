@@ -103,7 +103,7 @@ config = transformers.BertConfig(hidden_size=128,
 
 # register the BERT variants
 model_zoo.register(name='transformers_bert',
-                   model_fn=lambda: transformers.BertModel(config),
+                   model_fn=lambda: transformers.BertModel(config, add_pooling_layer=False),
                    data_gen_fn=data_gen,
                    output_transform_fn=output_transform_fn,
                    loss_fn=loss_fn_for_bert_model,

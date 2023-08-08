@@ -58,7 +58,7 @@ def run_fn(init_method, model_fn, data_gen_fn, output_transform_fn) -> Optional[
 # @parameterize('init_method', ['lazy', 'none', 'colo'])
 
 
-@parameterize('subset', ['diffusers', 'timm', 'torchvision', 'transformers'])
+@parameterize('subset', ['diffusers', 'torchvision', 'timm', 'transformers'])
 @parameterize('init_method', ['none'])
 def check_gemini_plugin(subset: str, init_method: str = 'none', early_stop: bool = True):
     """check gemini plugin over model zoo
@@ -76,14 +76,17 @@ def check_gemini_plugin(subset: str, init_method: str = 'none', early_stop: bool
     for name, (model_fn, data_gen_fn, output_transform_fn, _, _) in model_zoo.get_sub_registry(subset).items():
         # These models lead to CUDA error
         if name in ('diffusers_auto_encoder_kl', 'diffusers_vq_model', 'diffusers_unet2d_model', 'timm_resmlp',
-                    'timm_gmixer_12_224', 'timm_gmlp_b16_224', 'timm_mixer_b16_224', 'timm_convnext'):
+                    'timm_gmixer_12_224', 'timm_gmlp_b16_224', 'timm_mixer_b16_224', 'timm_convnext',
+                    'torchvision_convnext_base'):
             continue
         # These models are not compatible with gemini
         if name in [
-                'timm_beit', 'timm_beitv2', 'timm_convit', 'timm_dm_nfnet', 'torchvision_convnext_base',
-                'torchvision_vit_b_16', 'transformers_albert', 'transformers_albert_for_pretraining',
-                'transformers_bert', 'transformers_gpt_double_heads', 'transformers_t5',
-                'transformers_t5_for_conditional_generation', 'transformers_t5_encoder_model'
+                'timm_convit',
+                'timm_dm_nfnet',
+                'torchvision_vit_b_16',
+                'transformers_t5',
+                'transformers_t5_for_conditional_generation',
+                'transformers_t5_encoder_model'    # does not support apex rmsnorm
         ]:
             continue
 

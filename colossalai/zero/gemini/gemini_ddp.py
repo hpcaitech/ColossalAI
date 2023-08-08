@@ -2,7 +2,7 @@ import itertools
 from collections import OrderedDict
 from contextlib import nullcontext
 from functools import partial
-from typing import Dict, Iterator, List, Optional, Set, Tuple, Union
+from typing import Dict, Iterable, Iterator, List, Optional, Set, Tuple, Union
 
 import torch
 import torch.distributed as dist
@@ -11,10 +11,10 @@ from torch.distributed import ProcessGroup
 from torch.distributed.distributed_c10d import _get_default_group
 
 from colossalai.checkpoint_io.utils import calculate_tensor_size
+from colossalai.interface import ModelWrapper
 from colossalai.lazy import LazyTensor
 from colossalai.logging import get_dist_logger
-from colossalai.nn.parallel.data_parallel import ColoDDP, _cast_float, free_storage
-from colossalai.tensor import ProcessGroup as ColoProcessGroup
+from colossalai.nn.parallel.data_parallel import _cast_float, free_storage
 from colossalai.tensor.colo_parameter import ColoParameter
 from colossalai.tensor.param_op_hook import ColoParamOpHookManager
 from colossalai.utils import get_current_device, is_ddp_ignored
@@ -36,7 +36,7 @@ __all__ = [
 ]
 
 
-class ZeroDDP(ColoDDP):
+class ZeroDDP(ModelWrapper):
     """ZeRO DDP.
     Warning: Nested ZeroDDP is not supported now.
     It is designed to be used with ChunkManager and GeminiManager.
@@ -102,9 +102,56 @@ class ZeroDDP(ColoDDP):
             for p_name, p_var in m_var.named_parameters(recurse=False):
                 param_name = m_name + '.' + p_name if m_name else p_name
                 self.name2param[param_name] = p_var
-        super().__init__(module, process_group=ColoProcessGroup())
+        super().__init__(module)
         self._non_persistent_buffers_set = self._get_non_persistent_buffers_set(module)
         self._cast_buffers()
+        # register grad hook
+        for p in module.parameters():
+            if is_ddp_ignored(p):
+                continue
+            if p.requires_grad:
+                p.register_hook(partial(self.grad_handle, p))
+
+    def parameters(self, recurse: bool = True):
+        return self.module.parameters(recurse)
+
+    def named_parameters(self, prefix: str = '', recurse: bool = True):
+        return self.module.named_parameters(prefix, recurse)
+
+    def named_buffers(self, prefix: str = '', recurse: bool = True):
+        return self.module.named_buffers(prefix, recurse)
+
+    def named_children(self):
+        return self.module.named_children()
+
+    def named_modules(self,
+                      memo: Optional[Set[torch.nn.Module]] = None,
+                      prefix: str = '',
+                      remove_duplicate: bool = True):
+        return self.module.named_modules(memo, prefix, remove_duplicate)
+
+    @staticmethod
+    def set_params_to_ignore(params_to_ignore: Iterable[torch.Tensor]) -> None:
+        """Sets parameters to be ignored by DDP.
+        This method must be called before initializing ColoDDP.
+
+        Example:
+            >>> params_to_ignore = []
+            >>> for p in module.parameters():
+            >>>     if should_ignore(p):
+            >>>         params_to_ignore.append(p)
+            >>> ColoDDP.set_params_to_ignore(params_to_ignore)
+            >>> module = ColoDDP(module)
+
+        Args:
+            params_to_ignore (Iterable[torch.Tensor]): A list of parameters to be ignored.
+        """
+        for p in params_to_ignore:
+            p._ddp_to_ignore = True
+
+    def unwrap(self):
+        # as save/load state dict is overwrited, only return self
+        return self
 
     def _get_non_persistent_buffers_set(self,
                                         module,
@@ -230,6 +277,7 @@ class ZeroDDP(ColoDDP):
         self._post_backward()
 
     def grad_handle(self, p, grad):
+        setattr(p, "_gemini_reduced", True)
         empty_grad = torch.empty_like(grad)
         free_storage(empty_grad)
         with torch._C.DisableTorchFunction():
