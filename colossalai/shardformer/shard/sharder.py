@@ -201,6 +201,8 @@ class ModelSharder(object):
     def _get_recursive_held_layers(self, held_layers: Optional[List[nn.Module]]) -> Optional[List[nn.Module]]:
 
         def collect_sub_modules(module: nn.Module):
+            if module is None:
+                return
             recursive_held_layers.append(module)
             for name, child in module.named_children():
                 collect_sub_modules(child)
