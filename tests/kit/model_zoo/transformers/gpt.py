@@ -55,7 +55,7 @@ output_transform_fn = lambda x: x
 
 # define loss function
 loss_fn_for_gpt2_model = lambda x: x.last_hidden_state.mean()
-loss_fn = lambda x: x.loss
+loss_fn = lambda x: x['loss']
 
 config = transformers.GPT2Config(n_layer=2,
                                  n_head=4,

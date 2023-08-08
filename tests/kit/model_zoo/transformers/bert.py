@@ -91,7 +91,7 @@ def data_gen_for_mcq():
 output_transform_fn = lambda x: x
 
 # define loss funciton
-loss_fn_for_bert_model = lambda x: x.pooler_output.mean()
+loss_fn_for_bert_model = lambda x: x.last_hidden_state.mean()
 loss_fn = lambda x: x.loss
 
 config = transformers.BertConfig(hidden_size=128,
