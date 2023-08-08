@@ -3,6 +3,7 @@
 
 import io
 import pickle
+import re
 from typing import Any, List, Optional, Union
 
 import torch
@@ -31,7 +32,10 @@ def _cuda_safe_tensor_to_object(tensor: torch.Tensor, tensor_size: torch.Size) -
     if b'cuda' in buf:
         buf_array = bytearray(buf)
         device_index = torch.cuda.current_device()
-        buf_array[buf_array.find(b'cuda') + 5] = 48 + device_index
+        # There might be more than one output tensors during forward
+        for cuda_str in re.finditer(b'cuda', buf_array):
+            pos = cuda_str.start()
+            buf_array[pos + 5] = 48 + device_index
         buf = bytes(buf_array)
 
     io_bytes = io.BytesIO(buf)

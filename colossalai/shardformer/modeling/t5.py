@@ -238,7 +238,8 @@ class T5PipelineForwards:
             return {
                 'hidden_states': hidden_states,
                 'position_bias': position_bias,
-                'encoder_decoder_position_bias': encoder_decoder_position_bias
+                'encoder_decoder_position_bias': encoder_decoder_position_bias,
+                'backward_tensor_keys': ['hidden_states']
             }
 
     @staticmethod
@@ -261,8 +262,10 @@ class T5PipelineForwards:
         return_dict: Optional[bool] = None,
         stage_manager: Optional[PipelineStageManager] = None,
         hidden_states: Optional[torch.FloatTensor] = None,
+        encoder_hidden_states: Optional[torch.FloatTensor] = None,
         position_bias: Optional[torch.Tensor] = None,
         encoder_decoder_position_bias: Optional[torch.Tensor] = None,
+        backward_tensor_keys: Optional[List[str]] = None,
         stage_index: Optional[List[int]] = None,
         decoder_starting_stage: Optional[int] = None,
     ) -> Union[Tuple[torch.FloatTensor], Seq2SeqModelOutput]:
@@ -303,7 +306,6 @@ class T5PipelineForwards:
                 decoder_head_mask = head_mask
 
         in_decoder = stage_manager.stage >= decoder_starting_stage
-
         # Stage is in encoder, directly return the output of t5_stack_forward
         if not in_decoder:
             encoder_outputs = T5PipelineForwards.t5_stack_forward(
@@ -323,25 +325,18 @@ class T5PipelineForwards:
                 decoder_starting_stage=decoder_starting_stage)
             if stage_manager.stage == decoder_starting_stage - 1:
                 # last stage of encoder
-                return {'encoder_outputs': encoder_outputs}
+                return {'encoder_hidden_states': encoder_outputs[0]}
             else:
                 return encoder_outputs
 
         at_last_decoder_stage = stage_manager.is_last_stage()
         at_first_decoder_stage = stage_manager.stage == decoder_starting_stage
 
-        if encoder_outputs is None:
-            raise ValueError("Non-empty encoder_outputs should be passed in at decoder stages.")
+        if encoder_outputs is not None:
+            encoder_hidden_states = encoder_outputs[0]
+        elif encoder_hidden_states is None:
+            raise ValueError("Non-empty encoder_hidden_states should be passed in at decoder stages.")
 
-        encoder_hidden_states = encoder_outputs[0]
-        if return_dict and not isinstance(encoder_outputs, BaseModelOutput):
-            encoder_outputs = BaseModelOutput(
-                last_hidden_state=encoder_outputs[0],
-                hidden_states=encoder_outputs[1] if len(encoder_outputs) > 1 else None,
-                attentions=encoder_outputs[2] if len(encoder_outputs) > 2 else None,
-            )
-
-        # Stage is in decoder, we assume that the outputs of last stage of encoder will be passed in.
         if not at_first_decoder_stage and hidden_states is None:
             raise ValueError("If not at the first layer of decoder, non-empty hidden_states must be provided.")
 
@@ -360,6 +355,7 @@ class T5PipelineForwards:
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
+            stage_manager=stage_manager,
             hidden_states=hidden_states,
             position_bias=position_bias,
             encoder_decoder_position_bias=encoder_decoder_position_bias,
@@ -368,22 +364,19 @@ class T5PipelineForwards:
 
         # Directly return outputs of overloaded T5Stack forward if not at last stage.
         if not at_last_decoder_stage:
-            decoder_outputs['encoder_outputs'] = encoder_outputs    # encoder_outputs should be passed to the next stage
+            # encoder_hidden_states should be passed to the next stage
+            decoder_outputs['encoder_hidden_states'] = encoder_hidden_states
             return decoder_outputs
 
         if not return_dict:
-            return decoder_outputs + encoder_outputs
-
-        return Seq2SeqModelOutput(
-            last_hidden_state=decoder_outputs.last_hidden_state,
-            past_key_values=decoder_outputs.past_key_values,
-            decoder_hidden_states=decoder_outputs.hidden_states,
-            decoder_attentions=decoder_outputs.attentions,
-            cross_attentions=decoder_outputs.cross_attentions,
-            encoder_last_hidden_state=encoder_outputs.last_hidden_state,
-            encoder_hidden_states=encoder_outputs.hidden_states,
-            encoder_attentions=encoder_outputs.attentions,
-        )
+            return decoder_outputs + encoder_hidden_states
+        else:
+            return Seq2SeqModelOutput(last_hidden_state=decoder_outputs.last_hidden_state,
+                                      past_key_values=decoder_outputs.past_key_values,
+                                      decoder_hidden_states=decoder_outputs.hidden_states,
+                                      decoder_attentions=decoder_outputs.attentions,
+                                      cross_attentions=decoder_outputs.cross_attentions,
+                                      encoder_last_hidden_state=encoder_hidden_states)
 
     @staticmethod
     def t5_for_conditional_generation_forward(
@@ -406,8 +399,10 @@ class T5PipelineForwards:
         return_dict: Optional[bool] = None,
         stage_manager: Optional[PipelineStageManager] = None,
         hidden_states: Optional[torch.FloatTensor] = None,
+        encoder_hidden_states: Optional[torch.FloatTensor] = None,
         position_bias: Optional[torch.Tensor] = None,
         encoder_decoder_position_bias: Optional[torch.Tensor] = None,
+        backward_tensor_keys: Optional[List[str]] = None,
         stage_index: Optional[List[int]] = None,
         decoder_starting_stage: Optional[int] = None,
     ) -> Union[Tuple[torch.FloatTensor], Seq2SeqLMOutput]:
@@ -468,27 +463,24 @@ class T5PipelineForwards:
                 decoder_starting_stage=decoder_starting_stage)
             if stage_manager.stage == decoder_starting_stage - 1:
                 # last stage of encoder
-                return {'encoder_outputs': encoder_outputs}
+                return {'encoder_hidden_states': encoder_outputs[0]}
             else:
                 return encoder_outputs
 
         at_last_decoder_stage = stage_manager.is_last_stage()
         at_first_decoder_stage = stage_manager.stage == decoder_starting_stage
 
-        if encoder_outputs is None:
-            raise ValueError("Non-empty encoder_outputs should be passed in at decoder stages.")
+        if encoder_outputs is not None:
+            encoder_hidden_states = encoder_outputs[0]
+        elif encoder_hidden_states is None:
+            raise ValueError("Non-empty encoder_hidden_states should be passed in at decoder stages.")
 
-        encoder_hidden_states = encoder_outputs[0]
-        if return_dict and not isinstance(encoder_outputs, BaseModelOutput):
-            encoder_outputs = BaseModelOutput(
-                last_hidden_state=encoder_outputs[0],
-                hidden_states=encoder_outputs[1] if len(encoder_outputs) > 1 else None,
-                attentions=encoder_outputs[2] if len(encoder_outputs) > 2 else None,
-            )
-
-        # Stage is in decoder, we assume that the outputs of last stage of encoder will be passed in.
         if not at_first_decoder_stage and hidden_states is None:
             raise ValueError("If not at the first layer of decoder, non-empty hidden_states must be provided.")
+
+        if labels is not None and decoder_input_ids is None and decoder_inputs_embeds is None:
+            # get decoder inputs from shifting lm labels to the right
+            decoder_input_ids = self._shift_right(labels)
 
         # Decode
         decoder_outputs = T5PipelineForwards.t5_stack_forward(
@@ -505,6 +497,7 @@ class T5PipelineForwards:
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
+            stage_manager=stage_manager,
             hidden_states=hidden_states,
             position_bias=position_bias,
             encoder_decoder_position_bias=encoder_decoder_position_bias,
@@ -513,7 +506,8 @@ class T5PipelineForwards:
 
         # Directly return outputs of overloaded T5Stack forward if not at last stage.
         if not at_last_decoder_stage:
-            decoder_outputs['encoder_outputs'] = encoder_outputs    # encoder_outputs should be passed to the next stage
+            # encoder_hidden_states should be passed to the next stage
+            decoder_outputs['encoder_hidden_states'] = encoder_hidden_states
             return decoder_outputs
 
         sequence_output = decoder_outputs[0]
@@ -533,20 +527,16 @@ class T5PipelineForwards:
             loss = loss_fct(lm_logits.view(-1, lm_logits.size(-1)), labels.view(-1))
 
         if not return_dict:
-            output = (lm_logits,) + decoder_outputs[1:] + encoder_outputs
+            output = (lm_logits,) + decoder_outputs[1:] + encoder_hidden_states
             return ((loss,) + output) if loss is not None else output
 
-        return Seq2SeqLMOutput(
-            loss=loss,
-            logits=lm_logits,
-            past_key_values=decoder_outputs.past_key_values,
-            decoder_hidden_states=decoder_outputs.hidden_states,
-            decoder_attentions=decoder_outputs.attentions,
-            cross_attentions=decoder_outputs.cross_attentions,
-            encoder_last_hidden_state=encoder_outputs.last_hidden_state,
-            encoder_hidden_states=encoder_outputs.hidden_states,
-            encoder_attentions=encoder_outputs.attentions,
-        )
+        return Seq2SeqLMOutput(loss=loss,
+                               logits=lm_logits,
+                               past_key_values=decoder_outputs.past_key_values,
+                               decoder_hidden_states=decoder_outputs.hidden_states,
+                               decoder_attentions=decoder_outputs.attentions,
+                               cross_attentions=decoder_outputs.cross_attentions,
+                               encoder_last_hidden_state=encoder_hidden_states)
 
     @staticmethod
     def t5_encoder_model_forward(
@@ -562,6 +552,7 @@ class T5PipelineForwards:
         hidden_states: Optional[torch.FloatTensor] = None,
         position_bias: Optional[torch.Tensor] = None,
         encoder_decoder_position_bias: Optional[torch.Tensor] = None,
+        backward_tensor_keys: Optional[List[str]] = None,
         stage_index: Optional[List[int]] = None,
         decoder_starting_stage: Optional[int] = None,
     ) -> Union[Tuple[torch.FloatTensor], BaseModelOutput]:

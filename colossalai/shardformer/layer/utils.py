@@ -123,6 +123,13 @@ class Randomizer:
         Randomizer._INDEX += 1
 
     @staticmethod
+    def reset_index():
+        """
+        Reset the index to zero.
+        """
+        Randomizer._INDEX = 0
+
+    @staticmethod
     def is_randomizer_index_synchronized(process_group: ProcessGroup = None):
         """
         Return whether the randomizer index is synchronized across processes.
