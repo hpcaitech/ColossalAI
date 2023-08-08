@@ -260,7 +260,7 @@ class T5BasePolicy(Policy):
 
         model = self.model
         encoder = self.model.encoder
-        decoder = self.model.__dict__.get('decoder', None)
+        decoder = getattr(self.model, 'decoder', None)
 
         num_encoder_layers = len(encoder.block)
         num_decoder_layers = len(decoder.block) if decoder else 0
@@ -300,7 +300,7 @@ class T5BasePolicy(Policy):
         stage_manager = self.pipeline_stage_manager
 
         encoder = self.model.encoder
-        decoder = self.model.__dict__.get('decoder', None)
+        decoder = getattr(self.model, 'decoder', None)
 
         num_encoder_layers = len(encoder.block)
         num_decoder_layers = len(decoder.block) if decoder else 0
@@ -355,15 +355,6 @@ class T5ModelPolicy(T5BasePolicy):
                 return [{0: module.shared.weight, decoder_starting_stage: module.decoder.embed_tokens.weight}]
         return []
 
-    def postprocess(self):
-        if self.shard_config.enable_tensor_parallelism and self.pipeline_stage_manager is None:
-            binding_map = {"shared.weight": ["encoder.embed_tokens.weight", "decoder.embed_tokens.weight"]}
-            for k, v in binding_map.items():
-                src = getattr_(self.model, k)
-                for dst in v:
-                    setattr_(self.model, dst, src)
-        return self.model
-
 
 class T5ForConditionalGenerationPolicy(T5BasePolicy):
 
@@ -409,28 +400,21 @@ class T5ForConditionalGenerationPolicy(T5BasePolicy):
                                                                           stage_manager.num_stages)
 
             shared_params = []
+            shared_embedding = {}
             if id(module.decoder.embed_tokens.weight) == id(module.shared.weight):
-                shared_params.append({
-                    0: module.shared.weight,
-                    decoder_starting_stage: module.decoder.embed_tokens.weight
-                })
+                shared_embedding[0] = module.shared.weight
+                shared_embedding[decoder_starting_stage] = module.decoder.embed_tokens.weight
+
             if id(module.lm_head.weight) == id(module.shared.weight):
-                shared_params.append({0: module.shared.weight, stage_manager.num_stages - 1: module.lm_head.weight})
+                shared_embedding[0] = module.shared.weight
+                shared_embedding[stage_manager.num_stages - 1] = module.lm_head.weight
+
+            if len(shared_embedding) > 0:
+                shared_params.append(shared_embedding)
+
             return shared_params
+
         return []
-
-    def postprocess(self):
-        super().postprocess()
-        if self.shard_config.enable_tensor_parallelism and self.pipeline_stage_manager is None:
-            binding_map = {
-                "shared.weight": ["encoder.embed_tokens.weight", "decoder.embed_tokens.weight", "lm_head.weight"]
-            }
-            for k, v in binding_map.items():
-                src = getattr_(self.model, k)
-                for dst in v:
-                    setattr_(self.model, dst, src)
-
-        return self.model
 
 
 class T5EncoderPolicy(T5BasePolicy):
@@ -462,12 +446,3 @@ class T5EncoderPolicy(T5BasePolicy):
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
         return []
-
-    def postprocess(self):
-        if self.shard_config.enable_tensor_parallelism and self.pipeline_stage_manager is None:
-            binding_map = {"shared.weight": ["encoder.embed_tokens.weight"]}
-            for k, v in binding_map.items():
-                src = getattr_(self.model, k)
-                for dst in v:
-                    setattr_(self.model, dst, src)
-        return self.model

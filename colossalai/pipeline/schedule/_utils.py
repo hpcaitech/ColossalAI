@@ -86,7 +86,7 @@ def retain_grad(x: Any) -> None:
     Args:
         x (Any): Object to be called.
     """
-    if isinstance(x, torch.Tensor):
+    if isinstance(x, torch.Tensor) and x.requires_grad:
         x.retain_grad()
 
 
