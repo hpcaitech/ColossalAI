@@ -50,8 +50,10 @@ class HybridParallelModule(ModelWrapper):
 
     def sync_shared_params(self):
         for shared_param, group in zip(self.shared_params, self.shared_param_process_groups):
-            param = shared_param[self.stage_manager.stage]
-            dist.all_reduce(param.grad, group=group)
+            if self.stage_manager.stage in shared_param:
+                param = shared_param[self.stage_manager.stage]
+                dist.all_reduce(param.grad, group=group)
+            dist.barrier()
 
     def no_sync(self) -> Iterator[None]:
         # no sync grads across data parallel

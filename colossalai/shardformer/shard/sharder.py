@@ -198,6 +198,20 @@ class ModelSharder(object):
 
             setattr_(org_layer, suffix, replace_layer)
 
+    def _get_recursive_held_layers(self, held_layers: Optional[List[nn.Module]]) -> Optional[List[nn.Module]]:
+
+        def collect_sub_modules(module: nn.Module):
+            if module is None:
+                return
+            recursive_held_layers.append(module)
+            for name, child in module.named_children():
+                collect_sub_modules(child)
+
+        recursive_held_layers = []
+        for module in held_layers:
+            collect_sub_modules(module)
+        return recursive_held_layers
+
     def _release_unheld_layers(self) -> Optional[Set[nn.Module]]:
         r"""
         Release the unheld layers in the model
@@ -205,7 +219,7 @@ class ModelSharder(object):
         if self.shard_config and self.shard_config.pipeline_stage_manager:
             held_layers = self.policy.get_held_layers()
             set_tensors_to_none(self.model, exclude=set(held_layers))
-            return set(held_layers)
+            return set(self._get_recursive_held_layers(held_layers))
         return None
 
     def _materialize(self) -> None:
