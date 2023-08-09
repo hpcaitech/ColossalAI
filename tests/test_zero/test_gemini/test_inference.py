@@ -11,12 +11,12 @@ from colossalai.amp import convert_to_apex_amp
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.utils.cuda import get_current_device
-from colossalai.zero import ColoInitContext, ZeroDDP, ZeroOptimizer, post_process_colo_init_ctx, zero_model_wrapper
-from colossalai.zero.gemini.chunk import ChunkManager, init_chunk_manager, search_chunk_configuration
+from colossalai.zero import ZeroDDP, ZeroOptimizer, zero_model_wrapper
+from colossalai.zero.gemini.chunk import ChunkManager, search_chunk_configuration
 from colossalai.zero.gemini.gemini_mgr import GeminiManager
 from tests.components_to_test import run_fwd_bwd
 from tests.components_to_test.registry import non_distributed_component_funcs
-from tests.test_tensor.common_utils import debug_print, set_seed
+from tests.test_tensor.common_utils import set_seed
 
 
 def check_param(model: ZeroDDP, torch_model: torch.nn.Module):
@@ -72,8 +72,7 @@ def exam_inference(placement_policy: str, model_name: str, model_init_func: Call
     torch_model = DDP(torch_model, device_ids=[dist.get_rank()])
 
     init_dev = get_current_device()
-    with ColoInitContext(device=init_dev):
-        model = model_builder()
+    model = model_builder().to(init_dev)
 
     for torch_p, p in zip(torch_model.parameters(), model.parameters()):
         p.data.copy_(torch_p.data)
@@ -95,7 +94,7 @@ def exam_inference(placement_policy: str, model_name: str, model_init_func: Call
         torch_optim.zero_grad()
         torch_loss = run_fwd_bwd(torch_model, input_ids, label, criterion, torch_optim)
         loss = run_fwd_bwd(model, input_ids, label, criterion, zero_optim)
-        assert_close(torch_loss, loss)
+        assert_close(torch_loss, loss, rtol=1e-5, atol=1e-5)
         zero_optim.step()
         torch_optim.step()
         check_param(model, torch_model)

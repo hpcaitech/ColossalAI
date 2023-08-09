@@ -220,17 +220,6 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
             super().save_lr_scheduler(lr_scheduler, checkpoint)
 
 
-class GeminiModel(ModelWrapper):
-
-    def __init__(self, module: nn.Module, gemini_config: dict, verbose: bool = False) -> None:
-        super().__init__(module)
-        self.module = zero_model_wrapper(module, zero_stage=3, gemini_config=gemini_config, verbose=verbose)
-
-    def unwrap(self):
-        # as save/load state dict is coupled with the GeminiDDP, we only return GeminiDDP model
-        return self.module
-
-
 class GeminiOptimizer(OptimizerWrapper):
 
     def __init__(self,
@@ -393,7 +382,9 @@ class GeminiPlugin(DPPluginBase):
             # model = nn.SyncBatchNorm.convert_sync_batchnorm(model, None)
 
             # wrap the model with Gemini
-            model = GeminiModel(model, self.gemini_config, self.verbose)
+            model = GeminiDDP(model, **self.gemini_config, verbose=self.verbose)
+            # TODO(ver217): remove this line
+            model._colo_zero_stage = 3
 
         if optimizer is not None and \
                 not isinstance(optimizer, OptimizerWrapper):

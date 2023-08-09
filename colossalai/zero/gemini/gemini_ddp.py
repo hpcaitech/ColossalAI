@@ -2,19 +2,20 @@ import itertools
 from collections import OrderedDict
 from contextlib import nullcontext
 from functools import partial
-from typing import Dict, Iterator, List, Optional, Set, Tuple, Union
+from typing import Dict, Iterable, Iterator, List, Optional, Set, Tuple, Union
 
 import torch
 import torch.distributed as dist
 import torch.nn as nn
+from torch.distributed import ProcessGroup
+from torch.distributed.distributed_c10d import _get_default_group
 
 from colossalai.checkpoint_io.utils import calculate_tensor_size
+from colossalai.interface import ModelWrapper
 from colossalai.lazy import LazyTensor
 from colossalai.logging import get_dist_logger
-from colossalai.nn.parallel.data_parallel import ColoDDP, _cast_float, free_storage
-from colossalai.tensor import ProcessGroup as ColoProcessGroup
-from colossalai.tensor import ReplicaSpec
-from colossalai.tensor.colo_parameter import ColoParameter, ColoTensor, ColoTensorSpec
+from colossalai.nn.parallel.data_parallel import _cast_float, free_storage
+from colossalai.tensor.colo_parameter import ColoParameter
 from colossalai.tensor.param_op_hook import ColoParamOpHookManager
 from colossalai.utils import get_current_device, is_ddp_ignored
 
@@ -35,8 +36,8 @@ __all__ = [
 ]
 
 
-class ZeroDDP(ColoDDP):
-    """ZeRO DDP for ColoTensor.
+class ZeroDDP(ModelWrapper):
+    """ZeRO DDP.
     Warning: Nested ZeroDDP is not supported now.
     It is designed to be used with ChunkManager and GeminiManager.
     For more details, see the API reference of ``ChunkManager`` and ``GeminiManager``.
@@ -61,13 +62,14 @@ class ZeroDDP(ColoDDP):
                  force_outputs_fp32: bool = False,
                  strict_ddp_mode: bool = False,
                  scatter_after_inference: bool = True,
-                 mixed_precision: torch.dtype = torch.float16) -> None:
+                 mixed_precision: torch.dtype = torch.float16,
+                 process_group: Optional[ProcessGroup] = None) -> None:
         assert mixed_precision in (torch.float16, torch.bfloat16)
         self.gemini_manager = gemini_manager
         self.chunk_manager: ChunkManager = gemini_manager.chunk_manager
         self.force_outputs_fp32 = force_outputs_fp32
         self.param_op_hook = GeminiZeROHook(gemini_manager)
-        self.fp32_params: List[ColoTensor] = list()
+        self.fp32_params: List[torch.Tensor] = list()
         self.fp16_params: List[ColoParameter] = list()
         self.overflow_counter = 0
         self.grads_device: Dict[torch.Tensor, torch.device] = dict()
@@ -75,6 +77,7 @@ class ZeroDDP(ColoDDP):
         self.name2param: Dict[str, nn.Parameter] = dict()
         self.scatter_after_inference = scatter_after_inference
         self.mixed_precision = mixed_precision
+        self.dp_process_group = process_group or _get_default_group()
 
         self._logger = get_dist_logger()
 
@@ -99,9 +102,56 @@ class ZeroDDP(ColoDDP):
             for p_name, p_var in m_var.named_parameters(recurse=False):
                 param_name = m_name + '.' + p_name if m_name else p_name
                 self.name2param[param_name] = p_var
-        super().__init__(module, process_group=ColoProcessGroup())
+        super().__init__(module)
         self._non_persistent_buffers_set = self._get_non_persistent_buffers_set(module)
         self._cast_buffers()
+        # register grad hook
+        for p in module.parameters():
+            if is_ddp_ignored(p):
+                continue
+            if p.requires_grad:
+                p.register_hook(partial(self.grad_handle, p))
+
+    def parameters(self, recurse: bool = True):
+        return self.module.parameters(recurse)
+
+    def named_parameters(self, prefix: str = '', recurse: bool = True):
+        return self.module.named_parameters(prefix, recurse)
+
+    def named_buffers(self, prefix: str = '', recurse: bool = True):
+        return self.module.named_buffers(prefix, recurse)
+
+    def named_children(self):
+        return self.module.named_children()
+
+    def named_modules(self,
+                      memo: Optional[Set[torch.nn.Module]] = None,
+                      prefix: str = '',
+                      remove_duplicate: bool = True):
+        return self.module.named_modules(memo, prefix, remove_duplicate)
+
+    @staticmethod
+    def set_params_to_ignore(params_to_ignore: Iterable[torch.Tensor]) -> None:
+        """Sets parameters to be ignored by DDP.
+        This method must be called before initializing ColoDDP.
+
+        Example:
+            >>> params_to_ignore = []
+            >>> for p in module.parameters():
+            >>>     if should_ignore(p):
+            >>>         params_to_ignore.append(p)
+            >>> ColoDDP.set_params_to_ignore(params_to_ignore)
+            >>> module = ColoDDP(module)
+
+        Args:
+            params_to_ignore (Iterable[torch.Tensor]): A list of parameters to be ignored.
+        """
+        for p in params_to_ignore:
+            p._ddp_to_ignore = True
+
+    def unwrap(self):
+        # as save/load state dict is overwrited, only return self
+        return self
 
     def _get_non_persistent_buffers_set(self,
                                         module,
@@ -227,6 +277,7 @@ class ZeroDDP(ColoDDP):
         self._post_backward()
 
     def grad_handle(self, p, grad):
+        setattr(p, "_gemini_reduced", True)
         empty_grad = torch.empty_like(grad)
         free_storage(empty_grad)
         with torch._C.DisableTorchFunction():
@@ -557,16 +608,10 @@ class ZeroDDP(ColoDDP):
                         unexpected_keys.append(key)
 
     def _init_chunks(self, param_order, strict_ddp_mode: bool, cpu_offload: bool, pin_memory: bool):
-        ddp_pg = ColoProcessGroup()
+        dp_world_size = dist.get_world_size(self.dp_process_group)
         for p in param_order.generate():
             self._preprocess_param(p)
             assert type(p) is ColoParameter
-
-            # gather sharded parameters in the strict ddp mode
-            if strict_ddp_mode:
-                if not p.is_replicate():
-                    p.set_dist_spec(ReplicaSpec())
-                p.set_process_group(pg=ddp_pg)
 
             # ignore the parameters with no gradient
             if not p.requires_grad:
@@ -578,21 +623,21 @@ class ZeroDDP(ColoDDP):
                 continue
 
             # create a fp32 parameter
-            fp32_data = p.data.float()
-            fp32_p = ColoTensor(fp32_data, spec=ColoTensorSpec(p.process_group))
+            fp32_p = p.data.float()
             # create a fp16 parameter
             p.data = p.data.to(self.mixed_precision)
 
             # register the fp16 parameter and fp32 parameter in the chunk manager
-            dp_world_size = p.process_group.dp_world_size()
             self.chunk_manager.register_tensor(tensor=p,
                                                group_type='fp16_param',
                                                config_key=dp_world_size,
+                                               process_group=self.dp_process_group,
                                                cpu_offload=cpu_offload,
                                                pin_memory=pin_memory)
             self.chunk_manager.register_tensor(tensor=fp32_p,
                                                group_type='fp32_param',
                                                config_key=dp_world_size,
+                                               process_group=self.dp_process_group,
                                                cpu_offload=cpu_offload,
                                                pin_memory=pin_memory)
 
@@ -744,6 +789,7 @@ class GeminiDDP(ZeroDDP):
                  min_chunk_size_m: float = 32,
                  memstats: Optional[MemStats] = None,
                  mixed_precision: torch.dtype = torch.float16,
+                 process_group: Optional[ProcessGroup] = None,
                  verbose: bool = False) -> None:
         """
         A torch.Module wrapper using ZeRO-DP and Gemini.
@@ -782,6 +828,7 @@ class GeminiDDP(ZeroDDP):
                                            search_range_m=search_range_m,
                                            min_chunk_size_m=min_chunk_size_m,
                                            strict_ddp_flag=strict_ddp_mode,
+                                           process_group=process_group,
                                            verbose=verbose)
         gemini_manager = GeminiManager(placement_policy, chunk_manager, memstats)
         super().__init__(module,
@@ -790,4 +837,5 @@ class GeminiDDP(ZeroDDP):
                          force_outputs_fp32,
                          strict_ddp_mode,
                          scatter_after_inference,
-                         mixed_precision=mixed_precision)
+                         mixed_precision=mixed_precision,
+                         process_group=process_group)

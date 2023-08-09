@@ -44,12 +44,18 @@ def data_gen_for_sequence_classification():
     return data
 
 
+def date_gen_for_double_heads():
+    data = data_gen_for_lm()
+    data['mc_labels'] = torch.zeros(data['input_ids'].shape[0], dtype=torch.int64)
+    return data
+
+
 # define output transform function
 output_transform_fn = lambda x: x
 
 # define loss function
 loss_fn_for_gpt2_model = lambda x: x.last_hidden_state.mean()
-loss_fn = lambda x: x.loss
+loss_fn = lambda x: x['loss']
 
 config = transformers.GPT2Config(n_layer=2,
                                  n_head=4,
@@ -76,8 +82,8 @@ model_zoo.register(name='transformers_gpt_lm',
                    model_attribute=ModelAttribute(has_control_flow=True))
 model_zoo.register(name='transformers_gpt_double_heads',
                    model_fn=lambda: transformers.GPT2DoubleHeadsModel(config),
-                   data_gen_fn=data_gen_for_lm,
-                   output_transform_fn=output_transform_fn,
+                   data_gen_fn=date_gen_for_double_heads,
+                   output_transform_fn=lambda x: dict(loss=x.loss + x.mc_loss),
                    loss_fn=loss_fn,
                    model_attribute=ModelAttribute(has_control_flow=True))
 model_zoo.register(name='transformers_gpt_for_token_classification',

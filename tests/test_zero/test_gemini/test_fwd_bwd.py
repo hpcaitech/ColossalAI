@@ -1,15 +1,15 @@
 import pytest
 import torch
+import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.testing import assert_close
 
 import colossalai
 from colossalai.amp import convert_to_apex_amp
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.tensor import ProcessGroup
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.utils.cuda import get_current_device
-from colossalai.zero import ColoInitContext, ZeroDDP, ZeroOptimizer
+from colossalai.zero import ZeroDDP, ZeroOptimizer
 from colossalai.zero.gemini.chunk import ChunkManager, search_chunk_configuration
 from colossalai.zero.gemini.gemini_mgr import GeminiManager
 from tests.components_to_test import run_fwd, run_fwd_bwd
@@ -43,8 +43,7 @@ def exam_gpt_fwd_bwd(
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
 
     set_seed(42)
-    with ColoInitContext(device=init_device):
-        model = model_builder(use_grad_checkpoint)
+    model = model_builder(use_grad_checkpoint)
 
     set_seed(42)
     torch_model = model_builder(use_grad_checkpoint).cuda()
@@ -61,13 +60,13 @@ def exam_gpt_fwd_bwd(
     optimizer = HybridAdam(model.parameters(), lr=1e-3)
     zero_optim = ZeroOptimizer(optimizer, model, initial_scale=1)
 
-    pg = ProcessGroup()
+    rank = dist.get_rank()
     amp_config = dict(opt_level='O2', keep_batchnorm_fp32=False, loss_scale=1)
     torch_optim = torch.optim.Adam(torch_model.parameters(), lr=1e-3)
     torch_model, torch_optim = convert_to_apex_amp(torch_model, torch_optim, amp_config)
-    torch_model = DDP(torch_model, device_ids=[pg.rank()], process_group=pg.dp_process_group())
+    torch_model = DDP(torch_model, device_ids=[rank])
 
-    set_seed(pg.dp_local_rank())
+    set_seed(rank)
     for i, (input_ids, label) in enumerate(train_dataloader):
         # you can only test a single fwd + bwd.
         # after bwd param is grad for Gemini, due to the chunk reuse optimization.
@@ -104,8 +103,7 @@ def exam_gpt_inference(
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
 
     set_seed(42)
-    with ColoInitContext(device=init_device):
-        model = model_builder()
+    model = model_builder()
 
     set_seed(42)
     torch_model = model_builder().cuda()
@@ -120,13 +118,13 @@ def exam_gpt_inference(
     gemini_manager = GeminiManager(placement_policy, chunk_manager)
     model = ZeroDDP(model, gemini_manager, pin_memory=True, scatter_after_inference=scatter_after_inference)
 
-    pg = ProcessGroup()
+    rank = dist.get_rank()
     amp_config = dict(opt_level='O2', keep_batchnorm_fp32=False, loss_scale=1)
     torch_optim = torch.optim.Adam(torch_model.parameters(), lr=1e-3)
     torch_model, torch_optim = convert_to_apex_amp(torch_model, torch_optim, amp_config)
-    torch_model = DDP(torch_model, device_ids=[pg.rank()], process_group=pg.dp_process_group())
+    torch_model = DDP(torch_model, device_ids=[rank])
 
-    set_seed(pg.dp_local_rank())
+    set_seed(rank)
     model.eval()
     torch_model.eval()
     for i, (input_ids, label) in enumerate(train_dataloader):
