@@ -10,4 +10,4 @@ contexttimer
 ninja
 torch>=1.11
 safetensors
-flash-attn
+flash-attn>=2.0
