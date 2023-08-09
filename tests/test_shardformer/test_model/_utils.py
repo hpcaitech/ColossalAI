@@ -104,27 +104,22 @@ def build_model_from_hybrid_plugin(model_fn: Callable, loss_fn: Callable, test_c
     if 'use_lazy_init' in test_config:
         use_lazy_init = test_config.pop('use_lazy_init')
 
-    if use_lazy_init:
-        ctx = LazyInitContext()
-    else:
-        ctx = nullcontext()
-
-    plugin = HybridParallelPlugin(**test_config)
-    booster = Booster(plugin=plugin)
-
+    ctx = LazyInitContext() if use_lazy_init else nullcontext()
     with ctx:
-        org_model = model_fn().cuda()
-        sharded_model = copy.deepcopy(org_model)
-
+        org_model = model_fn()
     if use_lazy_init:
-        org_model = ctx.materialize(org_model)
+        ctx.materialize(org_model)
 
+    org_model = org_model.cuda()
+    sharded_model = copy.deepcopy(org_model)
     org_optimizer = Adam(org_model.parameters(), lr=1e-3)
     sharded_optimizer = Adam(sharded_model.parameters(), lr=1e-3)
     criterion = loss_fn
 
-    sharded_model, sharded_optimizer, criterion, _, _ = booster.boost(sharded_model, sharded_optimizer, criterion)
+    plugin = HybridParallelPlugin(**test_config)
+    booster = Booster(plugin=plugin)
 
+    sharded_model, sharded_optimizer, criterion, _, _ = booster.boost(sharded_model, sharded_optimizer, criterion)
     return org_model, org_optimizer, sharded_model, sharded_optimizer, criterion, booster
 
 
