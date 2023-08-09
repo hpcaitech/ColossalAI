@@ -57,7 +57,7 @@ from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.tensor import ProcessGroup
 from colossalai.utils import get_current_device, get_dataloader
-from colossalai.zero import ColoInitContext, ZeroDDP, ZeroOptimizer
+from colossalai.zero import ColoInitContext, GeminiOptimizer, ZeroDDP
 
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt")
 
@@ -536,7 +536,7 @@ def main():
     ]
 
     optimizer = HybridAdam(optimizer_grouped_parameters, lr=args.learning_rate)
-    optimizer = ZeroOptimizer(optimizer, model, initial_scale=2**14)
+    optimizer = GeminiOptimizer(optimizer, model, initial_scale=2**14)
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False

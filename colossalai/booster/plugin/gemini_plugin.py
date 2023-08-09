@@ -21,7 +21,7 @@ from colossalai.checkpoint_io.utils import (
 from colossalai.cluster import DistCoordinator
 from colossalai.interface import ModelWrapper, OptimizerWrapper
 from colossalai.utils import get_current_device
-from colossalai.zero import GeminiDDP, ZeroOptimizer
+from colossalai.zero import GeminiDDP, GeminiOptimizer
 from colossalai.zero.gemini.memory_tracer import MemStats
 
 from .dp_plugin_base import DPPluginBase
@@ -132,7 +132,7 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
         if isinstance(optimizer, OptimizerWrapper):
             optimizer = optimizer.unwrap()
 
-        assert isinstance(optimizer, ZeroOptimizer)
+        assert isinstance(optimizer, GeminiOptimizer)
 
         if os.path.isfile(checkpoint):
             logging.error(f"Provided path ({checkpoint}) should be a directory, not a file")
@@ -183,7 +183,7 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
         if isinstance(optimizer, OptimizerWrapper):
             optimizer = optimizer.unwrap()
 
-        assert isinstance(optimizer, ZeroOptimizer)
+        assert isinstance(optimizer, GeminiOptimizer)
 
         # Read checkpoint index file.
         ckpt_index_file = CheckpointIndexFile.from_file(checkpoint_index_file)
@@ -352,11 +352,11 @@ class GeminiPlugin(DPPluginBase):
 
         if optimizer is not None and \
                 not isinstance(optimizer, OptimizerWrapper):
-            optimizer = ZeroOptimizer(optimizer,
-                                      model.unwrap(),
-                                      **self.zero_optim_config,
-                                      **self.optim_kwargs,
-                                      verbose=self.verbose)
+            optimizer = GeminiOptimizer(optimizer,
+                                        model.unwrap(),
+                                        **self.zero_optim_config,
+                                        **self.optim_kwargs,
+                                        verbose=self.verbose)
 
         return model, optimizer, criterion, dataloader, lr_scheduler
 

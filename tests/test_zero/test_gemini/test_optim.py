@@ -9,7 +9,7 @@ from colossalai.amp import convert_to_apex_amp
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.utils.cuda import get_current_device
-from colossalai.zero import ZeroDDP, ZeroOptimizer
+from colossalai.zero import GeminiOptimizer, ZeroDDP
 from colossalai.zero.gemini.chunk import ChunkManager, init_chunk_manager, search_chunk_configuration
 from colossalai.zero.gemini.gemini_mgr import GeminiManager
 from tests.components_to_test import run_fwd_bwd
@@ -83,7 +83,7 @@ def exam_model_step(placement_policy, model_name: str, mixed_precision: torch.dt
     model = ZeroDDP(model, gemini_manager, pin_memory=True, mixed_precision=mixed_precision)
 
     optimizer = HybridAdam(model.parameters(), lr=1e-3)
-    zero_optim = ZeroOptimizer(optimizer, model, initial_scale=128)
+    zero_optim = GeminiOptimizer(optimizer, model, initial_scale=128)
 
     model.eval()
     torch_model.eval()
@@ -130,7 +130,7 @@ def exam_tiny_example(placement_policy, model_name: str, mixed_precision: torch.
     gemini_manager = GeminiManager(placement_policy, chunk_manager)
     model = ZeroDDP(model, gemini_manager, pin_memory=True, mixed_precision=mixed_precision)
     optimizer = HybridAdam(model.parameters(), lr=1e-3)
-    zero_optim = ZeroOptimizer(optimizer, model, initial_scale=2)
+    zero_optim = GeminiOptimizer(optimizer, model, initial_scale=2)
 
     model.eval()
     torch_model.eval()

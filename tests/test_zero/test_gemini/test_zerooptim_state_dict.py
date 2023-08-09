@@ -5,7 +5,7 @@ import torch.distributed as dist
 import colossalai
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
-from colossalai.zero import ZeroDDP, ZeroOptimizer
+from colossalai.zero import GeminiOptimizer, ZeroDDP
 from colossalai.zero.gemini.chunk import ChunkManager, search_chunk_configuration
 from colossalai.zero.gemini.gemini_mgr import GeminiManager
 from tests.components_to_test.registry import non_distributed_component_funcs
@@ -38,7 +38,7 @@ def exam_zero_optim_state_dict(placement_policy, keep_gathered):
     model = ZeroDDP(model, gemini_manager, pin_memory=True)
 
     optimizer = HybridAdam(model.parameters())
-    optim = ZeroOptimizer(optimizer, model, initial_scale=32)    # initialize the link between chunk16 and chunk32
+    optim = GeminiOptimizer(optimizer, model, initial_scale=32)    # initialize the link between chunk16 and chunk32
 
     set_seed(dist.get_rank() * 3 + 128)
     model.train()

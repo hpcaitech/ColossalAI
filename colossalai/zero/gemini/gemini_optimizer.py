@@ -21,7 +21,7 @@ from colossalai.utils import disposable, get_current_device, is_ddp_ignored
 from .chunk import Chunk, ChunkManager
 from .gemini_ddp import ZeroDDP
 
-__all__ = ['ZeroOptimizer', 'GeminiAdamOptimizer']
+__all__ = ['GeminiOptimizer', 'GeminiAdamOptimizer']
 
 _AVAIL_OPTIM_LIST = {FusedAdam, CPUAdam, HybridAdam}
 
@@ -48,11 +48,11 @@ class GeminiFP16MixedPrecisionMixin(FP16MixedPrecisionMixin):
         self.module.overflow_counter = 0
 
 
-class ZeroOptimizer(OptimizerWrapper):
-    """A wrapper for optimizer. ``ZeroDDP`` and ``ZeroOptimizer`` implement Zero Redundancy Optimizer (ZeRO state-3).
+class GeminiOptimizer(OptimizerWrapper):
+    """A wrapper for optimizer. ``ZeroDDP`` and ``GeminiOptimizer`` implement Zero Redundancy Optimizer (ZeRO state-3).
 
     Note:
-        You must use ``ZeroDDP`` with ``ZeroOptimizer``.
+        You must use ``ZeroDDP`` with ``GeminiOptimizer``.
 
     Note:
         Make sure you set ``placement_policy`` of ``GeminiManager`` to `"auto"`,
@@ -74,7 +74,7 @@ class ZeroOptimizer(OptimizerWrapper):
         max_scale (int, optional): Max_scale used by DynamicGradScaler. Defaults to 2**32.
         max_norm (float, optional): The norm value used to clip gradient. Defaults to 0.0.
         norm_type (float, optional): The type of norm used for gradient clipping. Currently, only L2-norm (norm_type=2.0)
-            is supported in ZeroOptimizer. Defaults to 2.0.
+            is supported in GeminiOptimizer. Defaults to 2.0.
         verbose (bool, optional): Whether to print verbose information, including grad overflow info. Defaults to False.
     """
 
@@ -113,7 +113,7 @@ class ZeroOptimizer(OptimizerWrapper):
         self.id_to_fake_params: Dict[int, Parameter] = dict()
 
         if self.clipping_flag:
-            assert norm_type == 2.0, "ZeroOptimizer only supports L2 norm now"
+            assert norm_type == 2.0, "GeminiOptimizer only supports L2 norm now"
 
         ddp_param_list = []
         for name, param in module.named_parameters():
@@ -754,7 +754,7 @@ class ZeroOptimizer(OptimizerWrapper):
         warnings.warn(f'Gemini controls grad clipping by itself, so you should not use clip_grad_by_norm')
 
 
-class GeminiAdamOptimizer(ZeroOptimizer):
+class GeminiAdamOptimizer(GeminiOptimizer):
 
     def __init__(self, model: torch.nn.Module, **defaults: Any) -> None:
         optimizer = HybridAdam(model.parameters(), **defaults)

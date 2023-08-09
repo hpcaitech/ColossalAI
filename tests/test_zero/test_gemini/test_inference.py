@@ -11,7 +11,7 @@ from colossalai.amp import convert_to_apex_amp
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.utils.cuda import get_current_device
-from colossalai.zero import ZeroDDP, ZeroOptimizer, zero_model_wrapper
+from colossalai.zero import GeminiOptimizer, ZeroDDP, zero_model_wrapper
 from colossalai.zero.gemini.chunk import ChunkManager, search_chunk_configuration
 from colossalai.zero.gemini.gemini_mgr import GeminiManager
 from tests.components_to_test import run_fwd_bwd
@@ -79,7 +79,7 @@ def exam_inference(placement_policy: str, model_name: str, model_init_func: Call
 
     model = model_init_func(model, placement_policy)
     optimizer = HybridAdam(model.parameters(), lr=1e-3)
-    zero_optim = ZeroOptimizer(optimizer, model, initial_scale=128)
+    zero_optim = GeminiOptimizer(optimizer, model, initial_scale=128)
 
     model.eval()
     torch_model.eval()
