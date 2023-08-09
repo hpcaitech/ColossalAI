@@ -1,13 +1,11 @@
 import gc
 import logging
 import os
-import warnings
 from pathlib import Path
-from typing import Callable, Iterator, List, Optional, Tuple, Union
+from typing import Callable, Iterator, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
-from torch import Tensor
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch.utils.data import DataLoader
@@ -16,7 +14,6 @@ from colossalai.checkpoint_io import CheckpointIndexFile, CheckpointIO, GeneralC
 from colossalai.checkpoint_io.utils import (
     get_model_base_filenames,
     get_optimizer_base_filenames,
-    get_shard_filename,
     load_shard_state_dict,
     save_state_dict,
     save_state_dict_shards,
@@ -24,8 +21,7 @@ from colossalai.checkpoint_io.utils import (
 from colossalai.cluster import DistCoordinator
 from colossalai.interface import ModelWrapper, OptimizerWrapper
 from colossalai.utils import get_current_device
-from colossalai.zero import GeminiDDP, zero_model_wrapper, zero_optim_wrapper
-from colossalai.zero.gemini import ZeroOptimizer
+from colossalai.zero import GeminiDDP, ZeroOptimizer
 from colossalai.zero.gemini.memory_tracer import MemStats
 
 from .dp_plugin_base import DPPluginBase
@@ -220,36 +216,6 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
             super().save_lr_scheduler(lr_scheduler, checkpoint)
 
 
-class GeminiOptimizer(OptimizerWrapper):
-
-    def __init__(self,
-                 module: GeminiDDP,
-                 optimizer: Optimizer,
-                 zero_optim_config: dict,
-                 optim_kwargs: dict,
-                 verbose: bool = False) -> None:
-        optimizer = zero_optim_wrapper(module,
-                                       optimizer,
-                                       optim_config=zero_optim_config,
-                                       **optim_kwargs,
-                                       verbose=verbose)
-        super().__init__(optimizer)
-
-    def backward(self, loss: Tensor, *args, **kwargs):
-        self.optim.backward(loss)
-
-    def clip_grad_by_norm(self,
-                          max_norm: Union[float, int],
-                          norm_type: Union[float, int] = 2,
-                          error_if_nonfinite: bool = False,
-                          *args,
-                          **kwargs) -> Tensor:
-        warnings.warn(f'Gemini controls grad clipping by itself, so you should not use clip_grad_by_norm')
-
-    def clip_grad_by_value(self, clip_value: float, *args, **kwargs) -> None:
-        raise NotImplementedError('Gemini does not support clip_grad_by_value')
-
-
 class GeminiPlugin(DPPluginBase):
     """
     Plugin for Gemini.
@@ -383,13 +349,14 @@ class GeminiPlugin(DPPluginBase):
 
             # wrap the model with Gemini
             model = GeminiDDP(model, **self.gemini_config, verbose=self.verbose)
-            # TODO(ver217): remove this line
-            model._colo_zero_stage = 3
 
         if optimizer is not None and \
                 not isinstance(optimizer, OptimizerWrapper):
-            optimizer = GeminiOptimizer(model.unwrap(), optimizer, self.zero_optim_config, self.optim_kwargs,
-                                        self.verbose)
+            optimizer = ZeroOptimizer(optimizer,
+                                      model.unwrap(),
+                                      **self.zero_optim_config,
+                                      **self.optim_kwargs,
+                                      verbose=self.verbose)
 
         return model, optimizer, criterion, dataloader, lr_scheduler
 

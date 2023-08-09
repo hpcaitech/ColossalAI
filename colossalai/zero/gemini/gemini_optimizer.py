@@ -3,7 +3,7 @@ import copy
 import gc
 import math
 import warnings
-from typing import Any, Dict, Iterator, OrderedDict, Set, Tuple
+from typing import Any, Dict, Iterator, OrderedDict, Set, Tuple, Union
 
 import torch
 import torch.distributed as dist
@@ -12,8 +12,9 @@ from torch.optim import Optimizer
 
 from colossalai.amp.naive_amp.mixed_precision_mixin import BF16MixedPrecisionMixin, FP16MixedPrecisionMixin
 from colossalai.checkpoint_io.utils import calculate_tensor_size
+from colossalai.interface import OptimizerWrapper
 from colossalai.logging import get_dist_logger
-from colossalai.nn.optimizer import ColossalaiOptimizer, CPUAdam, FusedAdam, HybridAdam
+from colossalai.nn.optimizer import CPUAdam, FusedAdam, HybridAdam
 from colossalai.tensor.d_tensor import is_distributed_tensor
 from colossalai.utils import disposable, get_current_device, is_ddp_ignored
 
@@ -47,7 +48,7 @@ class GeminiFP16MixedPrecisionMixin(FP16MixedPrecisionMixin):
         self.module.overflow_counter = 0
 
 
-class ZeroOptimizer(ColossalaiOptimizer):
+class ZeroOptimizer(OptimizerWrapper):
     """A wrapper for optimizer. ``ZeroDDP`` and ``ZeroOptimizer`` implement Zero Redundancy Optimizer (ZeRO state-3).
 
     Note:
@@ -71,7 +72,7 @@ class ZeroOptimizer(ColossalaiOptimizer):
         growth_interval (float, optional): Growth_interval used by DynamicGradScaler. Defaults to 1000.
         hysteresis (float, optional): Hysteresis used by DynamicGradScaler. Defaults to 2.
         max_scale (int, optional): Max_scale used by DynamicGradScaler. Defaults to 2**32.
-        clipping_norm (float, optional): The norm value used to clip gradient. Defaults to 0.0.
+        max_norm (float, optional): The norm value used to clip gradient. Defaults to 0.0.
         norm_type (float, optional): The type of norm used for gradient clipping. Currently, only L2-norm (norm_type=2.0)
             is supported in ZeroOptimizer. Defaults to 2.0.
         verbose (bool, optional): Whether to print verbose information, including grad overflow info. Defaults to False.
@@ -88,7 +89,7 @@ class ZeroOptimizer(ColossalaiOptimizer):
                  growth_interval: int = 1000,
                  hysteresis: int = 2,
                  max_scale: float = 2**32,
-                 clipping_norm: float = 0.0,
+                 max_norm: float = 0.0,
                  norm_type: float = 2.0,
                  verbose: bool = False,
                  **defaults: Any):
@@ -102,8 +103,8 @@ class ZeroOptimizer(ColossalaiOptimizer):
         self.param_to_range: Dict[Parameter, Tuple[int, int]] = dict()
         self.param_to_chunk32: Dict[Parameter, Chunk] = dict()
         self.chunk16_set: Set[Chunk] = set()
-        self.clipping_flag = clipping_norm > 0.0
-        self.max_norm = clipping_norm
+        self.clipping_flag = max_norm > 0.0
+        self.max_norm = max_norm
         self.verbose = verbose
         self.param_groups_backup = list()
 
@@ -740,6 +741,17 @@ class ZeroOptimizer(ColossalaiOptimizer):
                 yield ret_block, ret_block_size
 
         yield current_block, current_block_size
+
+    def clip_grad_by_value(self, clip_value: float, *args, **kwargs) -> None:
+        raise NotImplementedError('Gemini does not support clip_grad_by_value')
+
+    def clip_grad_by_norm(self,
+                          max_norm: Union[float, int],
+                          norm_type: Union[float, int] = 2,
+                          error_if_nonfinite: bool = False,
+                          *args,
+                          **kwargs) -> torch.Tensor:
+        warnings.warn(f'Gemini controls grad clipping by itself, so you should not use clip_grad_by_norm')
 
 
 class GeminiAdamOptimizer(ZeroOptimizer):
