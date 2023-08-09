@@ -392,7 +392,7 @@ def get_llama_flash_attention_forward():
 
     from transformers.models.llama.modeling_llama import LlamaAttention, apply_rotary_pos_emb
 
-    from colossalai.kernel.cuda_native.flash_attention import AttnMaskType, ColoAttention
+    from colossalai.kernel.cuda_native import AttnMaskType, ColoAttention
 
     def forward(
         self: LlamaAttention,

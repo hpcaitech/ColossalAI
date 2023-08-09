@@ -674,7 +674,7 @@ def get_gpt2_flash_attention_forward():
 
     from transformers.models.gpt2.modeling_gpt2 import GPT2Attention
 
-    from colossalai.kernel.cuda_native.flash_attention import AttnMaskType, ColoAttention
+    from colossalai.kernel.cuda_native import AttnMaskType, ColoAttention
 
     def split_heads(tensor, num_heads, attn_head_size):
         """
