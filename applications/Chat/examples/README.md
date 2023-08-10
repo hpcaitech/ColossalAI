@@ -118,7 +118,7 @@ torchrun --standalone --nproc_per_node=4 train_sft.py \
 
 **Note**: the supervised dataset follows the following format,
 
-```bash
+```json
 [
     {
         "instruction": "Provide a list of the top 10 most popular mobile games in Asia",
@@ -228,7 +228,7 @@ Pretrain dataset: the pretrain dataset including the instruction and correspondi
 
 **Note**: the required datasets follow the following format,
 
-```bash
+```json
 // pretrain dataset
 [
     {
@@ -241,7 +241,7 @@ Pretrain dataset: the pretrain dataset including the instruction and correspondi
 ]
 ```
 
-```bash
+```json
 // prompt dataset
 [
     {

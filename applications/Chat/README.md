@@ -129,7 +129,7 @@ You can run the `examples/train_sft.sh` to start a supervised instructs fine-tun
 
 **Note**: the supervised dataset follows the following format,
 
-```bash
+```json
 [
     {
         "instruction": "Provide a list of the top 10 most popular mobile games in Asia",
@@ -161,7 +161,7 @@ You can run the `examples/train_prompts.sh` to start training PPO with human fee
 
 **Note**: the required datasets follow the following format,
 
-```bash
+```json
 // pretrain dataset
 [
     {
@@ -174,7 +174,7 @@ You can run the `examples/train_prompts.sh` to start training PPO with human fee
 ]
 ```
 
-```bash
+```json
 // prompt dataset
 [
     {
