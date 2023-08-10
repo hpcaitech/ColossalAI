@@ -233,7 +233,6 @@ class _LinearWithGatherForwardReduceScatterBackward(torch.autograd.Function):
                 grad_bias = grad_output.sum(dim=0) if use_bias else None
 
                 # prepare data
-                new_shape = list(input_.shape)
                 input_list = [
                     item.contiguous() for item in torch.chunk(grad_input, dist.get_world_size(process_group), dim=dim)
                 ]
@@ -249,7 +248,7 @@ class _LinearWithGatherForwardReduceScatterBackward(torch.autograd.Function):
                 print(grad_output.shape, input_parallel.shape)
                 grad_weight = grad_output.t().matmul(input_parallel)
 
-            reducescatter_handle.wait()
+            torch.cuda.synchronize()
 
         return output, grad_weight, grad_bias, None, None, None, None
 
@@ -492,7 +491,11 @@ def _reduce_scatter(input_, dim=1, process_group=None):
         return input_
 
     # reduce-scatter
-    output = torch.empty(input_.shape, dtype=input_.dtype, device=input_.device)
+    new_shape = list(input_.shape)
+    assert new_shape[dim] % dist.get_world_size(process_group) == 0, \
+        f'The dimension to split ({new_shape[dim]}) is not a multiple of tensor parallel size ({dist.get_world_size(process_group)}). '
+    new_shape[dim] = new_shape[dim] // world_size
+    output = torch.empty(new_shape, dtype=input_.dtype, device=input_.device)
     dist.reduce_scatter(output, input_, group=process_group)
 
     return output
