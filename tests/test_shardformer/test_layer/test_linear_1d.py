@@ -111,7 +111,7 @@ def check_linear_1d_row(lazy_init: bool, seq_parallel: bool):
     assert_close(x_for_unshard.grad, x_for_shard.grad)
 
 
-def check_linear_col_plus_row(lazy_init: bool, seq_parallel: bool):
+def check_linear_col_plus_row(lazy_init: bool, seq_parallel: bool, overlap: bool):
     ctx = LazyInitContext() if lazy_init else nullcontext()
 
     linear_1 = nn.Linear(32, 128).cuda()
@@ -123,7 +123,8 @@ def check_linear_col_plus_row(lazy_init: bool, seq_parallel: bool):
     linear_col = Linear1D_Col.from_native_module(linear_1_copy,
                                                  process_group=None,
                                                  gather_output=False,
-                                                 seq_parallel=seq_parallel)
+                                                 seq_parallel=seq_parallel,
+                                                 overlap=overlap)
     linear_row = Linear1D_Row.from_native_module(linear_2_copy,
                                                  process_group=None,
                                                  parallel_input=True,
