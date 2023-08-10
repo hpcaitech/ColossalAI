@@ -1,9 +1,8 @@
 import torch
 import torch.nn as nn
 
-import col_flash_attn_2_lib as flash_attn_cuda
 from einops import rearrange
-
+import col_flash_attn_2_lib as flash_attn_cuda
 
 def _get_block_size(device, head_dim, is_dropout, is_causal):
     # This should match the block sizes in the CUDA kernel
