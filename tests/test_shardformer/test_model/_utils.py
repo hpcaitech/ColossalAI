@@ -168,7 +168,6 @@ def run_forward_backward_with_hybrid_plugin(org_model: Module, sharded_model: Mo
 
     org_model.train()
     org_output = org_model(**data)
-
     org_loss = criterion(org_output)
     org_loss.backward()
 

@@ -32,7 +32,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             output_transform_fn,
             criterion,
             booster)
-    print(org_model.__class__.__name__)
     stage_manager = booster.plugin.stage_manager
     tp_group = booster.plugin.tp_group
     # check last hidden state & loss
