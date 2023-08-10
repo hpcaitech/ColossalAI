@@ -19,4 +19,4 @@ ninja
 flash_attn>=2.0
 datasets
 ninja
-flash-attn
+flash-attn>=2.0
