@@ -70,7 +70,6 @@ class BucketStore(BaseStore):
         }
         """
         for param, padding_size in zip(self._param_list, self._padding_size):
-
             grad = param.grad.clone().detach().flatten()
             if padding_size > 0:
                 with torch.no_grad():
@@ -123,9 +122,9 @@ class BucketStore(BaseStore):
         """Reset the bucket storage after reduction, only release the tensors have been reduced
         """
         cur_offset = self.offset_list.pop(0)
-        self._param_list = self._param_list[:cur_offset]
-        self._padding_size = self._padding_size[:cur_offset]
+        self._param_list = self._param_list[cur_offset:]
+        self._padding_size = self._padding_size[cur_offset:]
         for _ in range(cur_offset):
             del self.grad_to_param_mapping[next(iter(self.grad_to_param_mapping))]
         for rank in range(self._world_size):
-            self._grad_in_bucket[rank] = self._grad_in_bucket[rank][:cur_offset]
+            self._grad_in_bucket[rank] = self._grad_in_bucket[rank][cur_offset:]
