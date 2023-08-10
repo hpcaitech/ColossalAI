@@ -265,7 +265,7 @@ class GeminiPlugin(DPPluginBase):
 
     def __init__(
         self,
-        device: Optional[torch.device] = None,
+        chunk_init_device: Optional[torch.device] = None,
         placement_policy: str = "cpu",
         precision: str = "fp16",
         pin_memory: bool = False,
@@ -290,7 +290,7 @@ class GeminiPlugin(DPPluginBase):
         super().__init__()
         assert precision in SUPPORTED_PRECISION, f'precision {precision} is not supported'
         self.gemini_config = dict(
-            device=(device or get_current_device()),
+            chunk_init_device=(chunk_init_device or get_current_device()),
             placement_policy=placement_policy,
             pin_memory=pin_memory,
             force_outputs_fp32=force_outputs_fp32,
