@@ -90,8 +90,6 @@ def run_bert_test(test_config):
     test_config['precision'] = 'float'
 
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
-        if name != "transformers_bert_for_masked_lm":
-            continue
         check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
 
     clear_layout_converter()
