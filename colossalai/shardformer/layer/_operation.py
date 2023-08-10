@@ -194,14 +194,11 @@ class _LinearWithGatherForwardReduceScatterBackward(torch.autograd.Function):
             # TODO: overlap SP input with gradient computation
             if ctx.async_grad_reduce_scatter:
                 # Asynchronous reduce-scatter
-                new_shape = list(input_parallel.shape)
-                assert new_shape[dim] % dist.get_world_size(process_group) == 0, \
-                    f'The dimension to split ({new_shape[dim]}) is not a multiple of tensor parallel size ({dist.get_world_size(process_group)}). '
-                new_shape[dim] = new_shape[dim] // dist.get_world_size(process_group)
                 input_list = [
                     item.contiguous() for item in torch.chunk(grad_input, dist.get_world_size(process_group), dim=dim)
                 ]
-                output = torch.empty(new_shape, dtype=input_parallel.dtype, device=input_parallel.device).contiguous()
+                output = torch.empty(input_.shape, dtype=input_parallel.dtype,
+                                     device=input_parallel.device).contiguous()
                 handle = dist.reduce_scatter(output, input_list, group=process_group, async_op=True)
                 # Delay the start of weight gradient computation shortly (3us) to have
                 # reduce-scatter scheduled first and have GPU resources allocated
@@ -338,14 +335,10 @@ class _MatmulWithGatherForwardReduceScatterBackward(torch.autograd.Function):
         # TODO: overlap SP input with gradient computation
         if ctx.async_grad_reduce_scatter:
             # Asynchronous reduce-scatter
-            new_shape = list(input_parallel.shape)
-            assert new_shape[dim] % dist.get_world_size(process_group) == 0, \
-                f'The dimension to split ({new_shape[dim]}) is not a multiple of tensor parallel size ({dist.get_world_size(process_group)}). '
-            new_shape[dim] = new_shape[dim] // dist.get_world_size(process_group)
             input_list = [
                 item.contiguous() for item in torch.chunk(grad_input, dist.get_world_size(process_group), dim=dim)
             ]
-            output = torch.empty(new_shape, dtype=input_parallel.dtype, device=input_parallel.device).contiguous()
+            output = torch.empty(input_.shape, dtype=input_parallel.dtype, device=input_parallel.device).contiguous()
             handle = dist.reduce_scatter(output, input_list, group=process_group, async_op=True)
             # Delay the start of weight gradient computation shortly (3us) to have
             # reduce-scatter scheduled first and have GPU resources allocated
@@ -486,7 +479,7 @@ def _gather(input_, dim=-1, process_group=None):
     return output
 
 
-def _reduce_scatter(intput_, dim=1, process_group=None):
+def _reduce_scatter(input_, dim=1, process_group=None):
     """ Do reduce-scatter operation.
 
     Args:
@@ -496,15 +489,11 @@ def _reduce_scatter(intput_, dim=1, process_group=None):
     """
     world_size = dist.get_world_size(process_group)
     if world_size == 1:
-        return intput_
+        return input_
 
     # reduce-scatter
-    new_shape = list(intput_.shape)
-    assert new_shape[dim] % dist.get_world_size(process_group) == 0, \
-        f'The dimension to split ({new_shape[dim]}) is not a multiple of tensor parallel size ({dist.get_world_size(process_group)}). '
-    new_shape[dim] = new_shape[dim] // world_size
-    output = torch.empty(new_shape, dtype=intput_.dtype, device=intput_.device)
-    dist.reduce_scatter(output, intput_, group=process_group)
+    output = torch.empty(input_.shape, dtype=input_.dtype, device=input_.device)
+    dist.reduce_scatter(output, input_, group=process_group)
 
     return output
 
