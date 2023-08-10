@@ -1,6 +1,5 @@
 import copy
 from contextlib import nullcontext
-from typing import Optional
 from typing import Any, Callable, Dict, List, Optional
 
 import torch
@@ -16,8 +15,8 @@ from colossalai.booster.plugin import HybridParallelPlugin
 from colossalai.lazy import LazyInitContext
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig, ShardFormer
-from colossalai.shardformer.policies.auto_policy import Policy
 from colossalai.shardformer._utils import getattr_
+from colossalai.shardformer.policies.auto_policy import Policy
 from colossalai.tensor.d_tensor.api import is_customized_distributed_tensor, is_distributed_tensor
 
 
@@ -134,6 +133,7 @@ def run_forward_backward_with_hybrid_plugin(org_model: Module, sharded_model: Mo
                                             booster: Booster):
     org_model.cuda()
     sharded_model.cuda()
+
     def _criterion(outputs, inputs):
         outputs = output_transform_fn(outputs)
         loss = criterion(outputs)
@@ -142,10 +142,16 @@ def run_forward_backward_with_hybrid_plugin(org_model: Module, sharded_model: Mo
     data = data_gen_fn()
     sharded_model.train()
     if booster.plugin.stage_manager is not None:
-        data = {
-            k: v.to('cuda').repeat(4, 1) if torch.is_tensor(v) or 'Tensor' in v.__class__.__name__ else v
-            for k, v in data.items()
-        }
+        if org_model.__class__.__name__ == 'BertForMultipleChoice':
+            for k, v in data.items():
+                repeat_size = [1] * v.dim()
+                repeat_size[0] = 4
+                data[k] = v.repeat(*repeat_size).to('cuda')
+        else:
+            data = {
+                k: v.to('cuda').repeat(4, 1) if torch.is_tensor(v) or 'Tensor' in v.__class__.__name__ else v
+                for k, v in data.items()
+            }
         data_iter = iter([data])
         sharded_output = booster.execute_pipeline(data_iter,
                                                   sharded_model,
@@ -162,6 +168,7 @@ def run_forward_backward_with_hybrid_plugin(org_model: Module, sharded_model: Mo
 
     org_model.train()
     org_output = org_model(**data)
+
     org_loss = criterion(org_output)
     org_loss.backward()
 
@@ -226,7 +233,6 @@ def check_grad(org_model: Module,
                atol: float = 1e-5,
                rtol: float = 1e-3,
                verbose: bool = False):
-
     for suffix in layer_suffix:
         org_grad = getattr_(org_model, suffix).weight.grad
         shard_grad = getattr_(sharded_model, suffix).weight.grad
@@ -242,7 +248,6 @@ def check_grad(org_model: Module,
         # embedding may be resized when using tensor parallel
         if shard_grad.shape[0] > org_grad.shape[0]:
             shard_grad = shard_grad[:org_grad.shape[0], :]
-
         if verbose and dist.get_rank() == 0:
             print(f"'{suffix}' grad: {org_grad}, {shard_grad}")
         assert torch.allclose(

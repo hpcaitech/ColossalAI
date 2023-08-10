@@ -4,6 +4,7 @@ from torch import distributed as dist
 
 import colossalai
 from colossalai.logging import disable_existing_loggers
+from colossalai.shardformer.layer.utils import Randomizer
 from colossalai.tensor.d_tensor.api import clear_layout_converter
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
 from tests.kit.model_zoo import model_zoo
@@ -31,7 +32,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             output_transform_fn,
             criterion,
             booster)
-
+    print(org_model.__class__.__name__)
     stage_manager = booster.plugin.stage_manager
     tp_group = booster.plugin.tp_group
     # check last hidden state & loss
@@ -40,7 +41,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             check_output_hidden_state(org_output, sharded_output, stage_manager, atol=1e-5, rtol=1e-3)
 
         check_loss(org_loss, sharded_loss, atol=1e-5, rtol=1e-3)
-
     # unwrap model
     if org_model.__class__.__name__ == 'BertModel':
         bert = org_model
@@ -49,68 +49,53 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         bert = org_model.bert
         sharded_bert = sharded_model.unwrap().bert
 
+    col_layer_for_check = ['encoder.layer[0].output.dense']
+    row_layer_for_check = ['embeddings.word_embeddings', 'encoder.layer[0].intermediate.dense']
+
     if stage_manager is None or stage_manager.is_first_stage():
-        # check_weight(bert.embeddings.word_embeddings, sharded_bert.embeddings.word_embeddings, tp_group, atol=1e-5, rtol=1e-3)
-        # check_gradient(bert.embeddings.word_embeddings, sharded_bert.embeddings.word_embeddings, tp_group, atol=1e-5, rtol=1e-3)
-
+        #check_weight(bert.embeddings.word_embeddings, sharded_bert.embeddings.word_embeddings, tp_group, atol=1e-5, rtol=1e-3)
         #check_weight(bert.encoder.layer[0].attention.self.query, sharded_bert.encoder.layer[0].attention.self.query, tp_group, atol=5e-3, rtol=1e-3)
-        check_grad(bert.encoder.layer[0].attention.self.query,
-                       sharded_bert.encoder.layer[0].attention.self.query,
-                       tp_group,
-                       atol=5e-3,
-                       rtol=1e-3)
-
-    # org_grad = bert.encoder.layer[0].attention.self.query.weight.grad
-    # shard_grad = sharded_bert.encoder.layer[0].attention.self.query.weight.grad
-    # shard_weight = sharded_bert.encoder.layer[0].attention.self.query.weight
+        check_grad(bert, sharded_bert, col_layer_for_check, tp_group, atol=1e-4, rtol=1e-3, dim=1, verbose=False)
+        check_grad(bert, sharded_bert, row_layer_for_check, tp_group, atol=1e-4, rtol=1e-3, dim=0, verbose=False)
 
     # check weights after optimizer.step()
     org_optimizer.step()
     sharded_optimizer.step()
     if stage_manager is None or stage_manager.is_first_stage():
-        #check_weight(bert.embeddings.word_embeddings, sharded_bert.embeddings.word_embeddings, tp_group, atol=1e-5, rtol=1e-3)
-        check_weight(bert.encoder.layer[0].attention.self.query,
-                     sharded_bert.encoder.layer[0].attention.self.query,
-                     tp_group,
-                     atol=5e-3,
-                     rtol=1e-3)
+        check_weight(bert, sharded_bert, col_layer_for_check, tp_group, atol=5e-3, rtol=1e-3, dim=1, verbose=False)
 
     torch.cuda.empty_cache()
 
 
-@parameterize(
-    'test_config',
-    [
-        {
-            'tp_size': 1,
-            'pp_size': 2,
-            'num_microbatches': 4,
-            'use_lazy_init': True
-        },
-        {
-            'tp_size': 2,
-            'pp_size': 2,
-            'num_microbatches': 4,
-            'enable_fused_normalization': False,
-            'use_lazy_init': False
-        },
-    # {
-    #     'tp_size': 4,
-    #     'pp_size': 1,
-    #     'enable_fused_normalization': True,
-    #     'use_lazy_init': False
-    # }
-    ])
+@parameterize('test_config', [{
+    'tp_size': 1,
+    'pp_size': 2,
+    'num_microbatches': 4,
+    'use_lazy_init': True
+}, {
+    'tp_size': 2,
+    'pp_size': 2,
+    'num_microbatches': 4,
+    'enable_fused_normalization': False,
+    'use_lazy_init': False
+}, {
+    'tp_size': 4,
+    'pp_size': 1,
+    'enable_fused_normalization': True,
+    'use_lazy_init': False
+}])
 def run_bert_test(test_config):
 
     sub_model_zoo = model_zoo.get_sub_registry('transformers_bert')
     test_config['precision'] = 'float'
 
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
-        if name != "transformers_bert_lm_head_model":
+        if name != "transformers_bert_for_masked_lm":
             continue
         check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
+
     clear_layout_converter()
+    Randomizer.reset_index()
     torch.cuda.empty_cache()
 
 
@@ -129,13 +114,3 @@ def test_bert():
 
 if __name__ == "__main__":
     test_bert()
-'''
-Questions recording:
-1. bert Embeddings weights 无法对齐, grad 爆0
-2. tp dim 0
-3. tp size =4 报错
-
-Failed to replace attention.self.query of type Linear with Linear1D_Col with the exception: We detect that the randomizer index is not synchronized across processes.This is not allowed when we want to create a randomizer with offset by index.Please call Randomizer.synchronize_index() first.. Please check your model configuration or sharding policy, you can set up an issue for us to help you as well.
-
-
-'''

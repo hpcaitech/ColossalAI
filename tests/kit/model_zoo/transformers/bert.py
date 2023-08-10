@@ -104,7 +104,8 @@ def data_gen_for_qa():
 output_transform_fn = lambda x: x
 
 # define loss funciton
-loss_fn_for_bert_model = lambda x: x.pooler_output.sum()
+loss_fn_for_bert_model = lambda x: torch.nn.functional.mse_loss(x.last_hidden_state, torch.ones_like(x.last_hidden_state
+                                                                                                    ))
 loss_fn = lambda x: x.loss
 
 config = transformers.BertConfig(hidden_size=128,
