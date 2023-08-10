@@ -236,18 +236,6 @@ inline __device__ void compute_attn_1rowblock(const Params &params, const int bi
     // Construct identity layout for sQ and sK
     Tensor cQ = make_identity_tensor(make_shape(size<0>(sQ), size<1>(sQ)));    // (BLK_M,BLK_K) -> (blk_m,blk_k)
     Tensor cKV = make_identity_tensor(make_shape(size<0>(sK), size<1>(sK)));    // (BLK_N,BLK_K) -> (blk_n,blk_k)
-    // Tensor tScQ = thr_mma.partition_A(cQ);                           // (MMA,MMA_M,MMA_K)
-    // if (cute::thread0()) {
-    //     print(tScQ.layout()); printf("\n");
-    //     for (int i = 0; i < size(tScQ); ++i) {
-    //         printf("%d ", get<0>(tScQ(i)));
-    //     }
-    //     printf("\n");
-    //     for (int i = 0; i < size(tScQ); ++i) {
-    //         printf("%d ", get<1>(tScQ(i)));
-    //     }
-    //     printf("\n");
-    // }
 
     // Repeat the partitioning with identity layouts
     Tensor tQcQ = gmem_thr_copy_QKV.partition_S(cQ);       // (ACPY,ACPY_M,ACPY_K) -> (blk_m,blk_k)
