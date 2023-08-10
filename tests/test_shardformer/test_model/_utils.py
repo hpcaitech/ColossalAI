@@ -142,16 +142,11 @@ def run_forward_backward_with_hybrid_plugin(org_model: Module, sharded_model: Mo
     data = data_gen_fn()
     sharded_model.train()
     if booster.plugin.stage_manager is not None:
-        if org_model.__class__.__name__ == 'BertForMultipleChoice':
-            for k, v in data.items():
-                repeat_size = [1] * v.dim()
-                repeat_size[0] = 4
-                data[k] = v.repeat(*repeat_size).to('cuda')
-        else:
-            data = {
-                k: v.to('cuda').repeat(4, 1) if torch.is_tensor(v) or 'Tensor' in v.__class__.__name__ else v
-                for k, v in data.items()
-            }
+        data = {
+            k: v.to('cuda').repeat(*([4] + [1] *
+                                     (v.dim() - 1))) if torch.is_tensor(v) or 'Tensor' in v.__class__.__name__ else v
+            for k, v in data.items()
+        }
         data_iter = iter([data])
         sharded_output = booster.execute_pipeline(data_iter,
                                                   sharded_model,
