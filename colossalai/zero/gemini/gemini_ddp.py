@@ -31,14 +31,13 @@ except ImportError:
     _EXTRA_STATE_KEY_SUFFIX = '_extra_state'
 
 __all__ = [
-    'ZeroDDP',
     'GeminiDDP',
 ]
 
 
-class ZeroDDP(ModelWrapper):
+class GeminiDDP(ModelWrapper):
     """ZeRO DDP.
-    Warning: Nested ZeroDDP is not supported now.
+    Warning: Nested GeminiDDP is not supported now.
     It is designed to be used with ChunkManager and GeminiManager.
     For more details, see the API reference of ``ChunkManager`` and ``GeminiManager``.
 
@@ -55,20 +54,42 @@ class ZeroDDP(ModelWrapper):
         mixed_precision (torch.dtype): If set to torch.float16, the model will be trained in fp16. Otherwise, the model will be trained in bf16. Defaults to torch.float16.
     """
 
-    def __init__(self,
-                 module: torch.nn.Module,
-                 gemini_manager: GeminiManager,
-                 pin_memory: bool = False,
-                 force_outputs_fp32: bool = False,
-                 strict_ddp_mode: bool = False,
-                 scatter_after_inference: bool = True,
-                 mixed_precision: torch.dtype = torch.float16,
-                 process_group: Optional[ProcessGroup] = None) -> None:
+    def __init__(
+            self,
+            module: torch.nn.Module,
+            chunk_config_dict: Optional[dict] = None,
+            chunk_init_device: torch.device = torch.device('cpu'),
+            placement_policy: str = "cpu",
+            search_range_m: int = 32,    # chunk search options
+            hidden_dim: Optional[int] = None,    # chunk search options
+            min_chunk_size_m: float = 32,    # chunk search options
+            pin_memory: bool = False,
+            force_outputs_fp32: bool = False,
+            strict_ddp_mode: bool = False,
+            scatter_after_inference: bool = True,
+            mixed_precision: torch.dtype = torch.float16,
+            process_group: Optional[ProcessGroup] = None,
+            memstats: Optional[MemStats] = None,    # genimi memory stats
+            verbose: bool = False) -> None:
         assert mixed_precision in (torch.float16, torch.bfloat16)
-        self.gemini_manager = gemini_manager
-        self.chunk_manager: ChunkManager = gemini_manager.chunk_manager
+        if chunk_config_dict is not None:
+            self.chunk_manager = ChunkManager(chunk_config_dict, chunk_init_device)
+        else:
+            # some ugly hotfix for the compatibility with Lightning
+            if search_range_m is None:
+                search_range_m = 32
+            self.chunk_manager = init_chunk_manager(model=module,
+                                                    init_device=chunk_init_device,
+                                                    hidden_dim=hidden_dim,
+                                                    search_range_m=search_range_m,
+                                                    min_chunk_size_m=min_chunk_size_m,
+                                                    strict_ddp_flag=strict_ddp_mode,
+                                                    process_group=process_group,
+                                                    verbose=verbose)
+        self.gemini_manager = GeminiManager(placement_policy, self.chunk_manager, memstats)
+
         self.force_outputs_fp32 = force_outputs_fp32
-        self.param_op_hook = GeminiZeROHook(gemini_manager)
+        self.param_op_hook = GeminiZeROHook(self.gemini_manager)
         self.fp32_params: List[torch.Tensor] = list()
         self.fp16_params: List[ColoParameter] = list()
         self.overflow_counter = 0
@@ -257,7 +278,7 @@ class ZeroDDP(ModelWrapper):
                     error_params.append(self.param2name[param])
             error_str = "\n\t".join(error_params)
             raise RuntimeError("ZERO DDP error: the synchronization of gradients doesn't exit properly.",
-                               "The most possible reason is that the model is not compatible with ZeroDDP.\n",
+                               "The most possible reason is that the model is not compatible with GeminiDDP.\n",
                                f"{error_str}")
         self._setup_grads_ptr()
         self._logger.debug(
@@ -772,70 +793,3 @@ class _StateDictSharder:
         self.current_block[name] = tensor
         self.current_block_size += tensor_size
         return ret_block, ret_block_size
-
-
-class GeminiDDP(ZeroDDP):
-
-    def __init__(self,
-                 module: torch.nn.Module,
-                 device: torch.device,
-                 placement_policy: str = "cpu",
-                 pin_memory: bool = False,
-                 force_outputs_fp32: bool = False,
-                 strict_ddp_mode: bool = False,
-                 scatter_after_inference: bool = True,
-                 search_range_m: int = 32,
-                 hidden_dim: Optional[int] = None,
-                 min_chunk_size_m: float = 32,
-                 memstats: Optional[MemStats] = None,
-                 mixed_precision: torch.dtype = torch.float16,
-                 process_group: Optional[ProcessGroup] = None,
-                 verbose: bool = False) -> None:
-        """
-        A torch.Module wrapper using ZeRO-DP and Gemini.
-        ZeRO is for parallel. Gemini is for memory management.
-        WARNING: The class will modify the module inline!
-
-        Example:
-            model is initialized under the context of ColoInitContext
-            >>> model = GeminiDDP(model, torch.cuda.current_device(), "cuda")
-            >>> logits = model(x)
-            >>> loss = criterion(logits, labels)
-            >>> model.backward(loss)
-
-        Args:
-            module (torch.nn.Module): the model to be wrapped.
-            device (torch.device): device to place the model.
-            placement_policy (str, optional): "cpu", "cuda", "auto". Defaults to "cpu".
-            pin_memory (bool, optional): use pin memory on CPU. Defaults to False.
-            force_outputs_fp32 (bool, optional): force outputs are fp32. Defaults to False.
-            search_range_m (int, optional): chunk size searching range divided by 2^20. Defaults to 32.
-            hidden_dim (int, optional): the hidden dimension of DNN.
-                Users can provide this argument to speed up searching.
-                If users do not know this argument before training, it is ok. We will use a default value 1024.
-            min_chunk_size_m (float, optional): the minimum chunk size divided by 2^20.
-                If the aggregate size of parameters is still smaller than the minimum chunk size,
-                all parameters will be compacted into one small chunk.
-            memstats (MemStats, optional) the memory statistics collector by a runtime memory tracer.
-        """
-        # some ugly hotfix for the compatibility with Lightning
-        if search_range_m is None:
-            search_range_m = 32
-
-        chunk_manager = init_chunk_manager(model=module,
-                                           init_device=device,
-                                           hidden_dim=hidden_dim,
-                                           search_range_m=search_range_m,
-                                           min_chunk_size_m=min_chunk_size_m,
-                                           strict_ddp_flag=strict_ddp_mode,
-                                           process_group=process_group,
-                                           verbose=verbose)
-        gemini_manager = GeminiManager(placement_policy, chunk_manager, memstats)
-        super().__init__(module,
-                         gemini_manager,
-                         pin_memory,
-                         force_outputs_fp32,
-                         strict_ddp_mode,
-                         scatter_after_inference,
-                         mixed_precision=mixed_precision,
-                         process_group=process_group)

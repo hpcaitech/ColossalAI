@@ -19,7 +19,7 @@ from colossalai.tensor.d_tensor import is_distributed_tensor
 from colossalai.utils import disposable, get_current_device, is_ddp_ignored
 
 from .chunk import Chunk, ChunkManager
-from .gemini_ddp import ZeroDDP
+from .gemini_ddp import GeminiDDP
 
 __all__ = ['GeminiOptimizer', 'GeminiAdamOptimizer']
 
@@ -29,7 +29,7 @@ _AVAIL_OPTIM_LIST = {FusedAdam, CPUAdam, HybridAdam}
 class GeminiFP16MixedPrecisionMixin(FP16MixedPrecisionMixin):
 
     def __init__(self,
-                 module: ZeroDDP,
+                 module: GeminiDDP,
                  initial_scale: float = 2**16,
                  min_scale: float = 1,
                  growth_factor: float = 2,
@@ -49,10 +49,10 @@ class GeminiFP16MixedPrecisionMixin(FP16MixedPrecisionMixin):
 
 
 class GeminiOptimizer(OptimizerWrapper):
-    """A wrapper for optimizer. ``ZeroDDP`` and ``GeminiOptimizer`` implement Zero Redundancy Optimizer (ZeRO state-3).
+    """A wrapper for optimizer. ``GeminiDDP`` and ``GeminiOptimizer`` implement Zero Redundancy Optimizer (ZeRO state-3).
 
     Note:
-        You must use ``ZeroDDP`` with ``GeminiOptimizer``.
+        You must use ``GeminiDDP`` with ``GeminiOptimizer``.
 
     Note:
         Make sure you set ``placement_policy`` of ``GeminiManager`` to `"auto"`,
@@ -60,7 +60,7 @@ class GeminiOptimizer(OptimizerWrapper):
 
     Args:
         optim (Optimizer): An Optimizer instance.
-        module (ZeroDDP): A ``ZeroDDP`` instance.
+        module (GeminiDDP): A ``GeminiDDP`` instance.
         gpu_margin_mem_ratio (float, optional): The ratio of GPU remaining memory (after the first forward-backward)
             which will be used when using hybrid CPU optimizer.
             This argument is meaningless when `placement_policy` of `GeminiManager` is not "auto".
@@ -80,7 +80,7 @@ class GeminiOptimizer(OptimizerWrapper):
 
     def __init__(self,
                  optim: Optimizer,
-                 module: ZeroDDP,
+                 module: GeminiDDP,
                  gpu_margin_mem_ratio: float = 0.0,
                  initial_scale: float = 2**32,
                  min_scale: float = 1,
@@ -94,7 +94,7 @@ class GeminiOptimizer(OptimizerWrapper):
                  verbose: bool = False,
                  **defaults: Any):
         super().__init__(optim)
-        assert isinstance(module, ZeroDDP)
+        assert isinstance(module, GeminiDDP)
         assert type(optim) in _AVAIL_OPTIM_LIST, "You should use an optimizer in the available list:\n" \
             f"{_AVAIL_OPTIM_LIST}"
         self.module = module

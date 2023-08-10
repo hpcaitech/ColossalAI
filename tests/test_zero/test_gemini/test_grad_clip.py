@@ -9,15 +9,14 @@ from colossalai.amp import convert_to_apex_amp
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.utils.cuda import get_current_device
-from colossalai.zero import GeminiOptimizer, ZeroDDP
-from colossalai.zero.gemini.chunk import ChunkManager, search_chunk_configuration
-from colossalai.zero.gemini.gemini_mgr import GeminiManager
+from colossalai.zero import GeminiDDP, GeminiOptimizer
+from colossalai.zero.gemini.chunk import search_chunk_configuration
 from tests.components_to_test import run_fwd_bwd
 from tests.components_to_test.registry import non_distributed_component_funcs
 from tests.test_tensor.common_utils import set_seed
 
 
-def check_param(model: ZeroDDP, torch_model: torch.nn.Module):
+def check_param(model: GeminiDDP, torch_model: torch.nn.Module):
     zero_dict = model.state_dict(only_rank_0=False)
     torch_dict = torch_model.state_dict()
 
@@ -43,7 +42,6 @@ def exam_grad_clipping(placement_policy, model_name: str):
     torch_model, torch_optim = convert_to_apex_amp(torch_model, torch_optim, amp_config)
     torch_model = DDP(torch_model, device_ids=[dist.get_rank()])
 
-    init_dev = get_current_device()
     model = model_builder()
 
     for torch_p, p in zip(torch_model.parameters(), model.parameters()):
@@ -57,9 +55,12 @@ def exam_grad_clipping(placement_policy, model_name: str):
         init_device = torch.device('cpu')
     else:
         init_device = None
-    chunk_manager = ChunkManager(config_dict, init_device=init_device)
-    gemini_manager = GeminiManager(placement_policy, chunk_manager)
-    model = ZeroDDP(model, gemini_manager, pin_memory=True)
+
+    model = GeminiDDP(model,
+                      chunk_config_dict=config_dict,
+                      chunk_init_device=init_device,
+                      placement_policy=placement_policy,
+                      pin_memory=True)
 
     optimizer = HybridAdam(model.parameters(), lr=1e-3)
     zero_optim = GeminiOptimizer(optimizer, model, initial_scale=32, clipping_norm=1.0)

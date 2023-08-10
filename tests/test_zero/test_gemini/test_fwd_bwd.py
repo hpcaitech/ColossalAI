@@ -9,15 +9,14 @@ from colossalai.amp import convert_to_apex_amp
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.utils.cuda import get_current_device
-from colossalai.zero import GeminiOptimizer, ZeroDDP
-from colossalai.zero.gemini.chunk import ChunkManager, search_chunk_configuration
-from colossalai.zero.gemini.gemini_mgr import GeminiManager
+from colossalai.zero import GeminiDDP, GeminiOptimizer
+from colossalai.zero.gemini.chunk import search_chunk_configuration
 from tests.components_to_test import run_fwd, run_fwd_bwd
 from tests.components_to_test.registry import non_distributed_component_funcs
 from tests.test_tensor.common_utils import set_seed
 
 
-def check_grad(model: ZeroDDP, torch_model: torch.nn.Module):
+def check_grad(model: GeminiDDP, torch_model: torch.nn.Module):
     chunk_manager = model.chunk_manager
     param_list = [p for p in model.parameters()]
     chunk_list = chunk_manager.get_chunks(param_list)
@@ -54,9 +53,7 @@ def exam_gpt_fwd_bwd(
     config_dict, *_ = search_chunk_configuration(model, search_range_m=1, search_interval=100)
     config_dict[world_size]['chunk_size'] = 5000
     config_dict[world_size]['keep_gathered'] = keep_gather
-    chunk_manager = ChunkManager(config_dict)
-    gemini_manager = GeminiManager(placement_policy, chunk_manager)
-    model = ZeroDDP(model, gemini_manager, pin_memory=True)
+    model = GeminiDDP(model, config_dict, placement_policy=placement_policy, pin_memory=True)
     optimizer = HybridAdam(model.parameters(), lr=1e-3)
     zero_optim = GeminiOptimizer(optimizer, model, initial_scale=1)
 
@@ -114,9 +111,7 @@ def exam_gpt_inference(
     config_dict, *_ = search_chunk_configuration(model, search_range_m=1, search_interval=100)
     config_dict[world_size]['chunk_size'] = 5000
     config_dict[world_size]['keep_gathered'] = keep_gather
-    chunk_manager = ChunkManager(config_dict)
-    gemini_manager = GeminiManager(placement_policy, chunk_manager)
-    model = ZeroDDP(model, gemini_manager, pin_memory=True, scatter_after_inference=scatter_after_inference)
+    model = GeminiDDP(model, config_dict, pin_memory=True, scatter_after_inference=scatter_after_inference)
 
     rank = dist.get_rank()
     amp_config = dict(opt_level='O2', keep_batchnorm_fp32=False, loss_scale=1)

@@ -3,7 +3,6 @@ from .gemini import (
     GeminiAdamOptimizer,
     GeminiDDP,
     GeminiOptimizer,
-    ZeroDDP,
     get_static_torch_model,
     post_process_colo_init_ctx,
 )
@@ -11,6 +10,6 @@ from .low_level import LowLevelZeroOptimizer
 from .wrapper import zero_model_wrapper, zero_optim_wrapper
 
 __all__ = [
-    'ZeroDDP', 'GeminiDDP', 'GeminiOptimizer', 'GeminiAdamOptimizer', 'zero_model_wrapper', 'zero_optim_wrapper',
+    'GeminiDDP', 'GeminiOptimizer', 'GeminiAdamOptimizer', 'zero_model_wrapper', 'zero_optim_wrapper',
     'LowLevelZeroOptimizer', 'ColoInitContext', 'post_process_colo_init_ctx', 'get_static_torch_model'
 ]

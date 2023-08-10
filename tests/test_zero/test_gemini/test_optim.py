@@ -9,9 +9,8 @@ from colossalai.amp import convert_to_apex_amp
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.utils.cuda import get_current_device
-from colossalai.zero import GeminiOptimizer, ZeroDDP
-from colossalai.zero.gemini.chunk import ChunkManager, init_chunk_manager, search_chunk_configuration
-from colossalai.zero.gemini.gemini_mgr import GeminiManager
+from colossalai.zero import GeminiDDP, GeminiOptimizer
+from colossalai.zero.gemini.chunk import search_chunk_configuration
 from tests.components_to_test import run_fwd_bwd
 from tests.components_to_test.registry import non_distributed_component_funcs
 from tests.test_tensor.common_utils import set_seed
@@ -29,7 +28,7 @@ BF16_IGNORED_KEYS = [
 ]
 
 
-def check_param(model: ZeroDDP, torch_model: torch.nn.Module, dtype: torch.dtype):
+def check_param(model: GeminiDDP, torch_model: torch.nn.Module, dtype: torch.dtype):
     zero_dict = model.state_dict(only_rank_0=False, dtype=dtype)
     torch_dict = torch_model.state_dict()
 
@@ -78,9 +77,7 @@ def exam_model_step(placement_policy, model_name: str, mixed_precision: torch.dt
         init_device = torch.device('cpu')
     else:
         init_device = None
-    chunk_manager = ChunkManager(config_dict, init_device=init_device)
-    gemini_manager = GeminiManager(placement_policy, chunk_manager)
-    model = ZeroDDP(model, gemini_manager, pin_memory=True, mixed_precision=mixed_precision)
+    model = GeminiDDP(model, config_dict, init_device, placement_policy, mixed_precision=mixed_precision)
 
     optimizer = HybridAdam(model.parameters(), lr=1e-3)
     zero_optim = GeminiOptimizer(optimizer, model, initial_scale=128)
@@ -126,9 +123,11 @@ def exam_tiny_example(placement_policy, model_name: str, mixed_precision: torch.
     for torch_p, p in zip(torch_model.parameters(), model.parameters()):
         p.data.copy_(torch_p.data)
 
-    chunk_manager = init_chunk_manager(model=model, init_device=get_current_device(), search_range_m=1)
-    gemini_manager = GeminiManager(placement_policy, chunk_manager)
-    model = ZeroDDP(model, gemini_manager, pin_memory=True, mixed_precision=mixed_precision)
+    model = GeminiDDP(model,
+                      chunk_init_device=get_current_device(),
+                      search_range_m=1,
+                      pin_memory=True,
+                      mixed_precision=mixed_precision)
     optimizer = HybridAdam(model.parameters(), lr=1e-3)
     zero_optim = GeminiOptimizer(optimizer, model, initial_scale=2)
 
