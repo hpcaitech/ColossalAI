@@ -251,6 +251,8 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
             if self._overlap_communication:
                 stream = self._comm_stream
+                # in case of the memory being reused in the default stream
+                flat_grads.record_stream(stream)
                 # waiting for ops in the default stream finishing
                 stream.wait_stream(torch.cuda.current_stream())
             else:
