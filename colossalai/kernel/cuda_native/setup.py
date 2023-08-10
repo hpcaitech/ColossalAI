@@ -15,9 +15,6 @@ from setuptools import setup
 from torch.utils.cpp_extension import BuildExtension, CUDAExtension, CUDA_HOME
 from torch.utils import cpp_extension
 
-with open("README.md", "r", encoding="utf-8") as fh:
-    long_description = fh.read()
-
 
 # ninja build does not work unless include_dirs are abs path
 this_dir = os.path.dirname(os.path.abspath(__file__))
@@ -125,7 +122,10 @@ setup(
     ext_modules=[
         CUDAExtension(
             name='col_fused_softmax_lib',
-            sources=['softmax/fused_softmax.cpp', 'softmax/scaled_masked_softmax_cuda.cu'],
+            sources=[
+                'csrc/attention_infer_kernels/softmax/fused_softmax.cpp', 
+                'csrc/attention_infer_kernels/softmax/scaled_masked_softmax_cuda.cu'
+                ],
             extra_compile_args={
                                'cxx': ['-O3',],
                                'nvcc': append_nvcc_threads(['-O3', '--use_fast_math'] + cc_flag)
@@ -134,7 +134,10 @@ setup(
         
         CUDAExtension(
             name="col_pos_encoding_ops",
-            sources=["rotary_embedding/pos_encoding.cpp", "rotary_embedding/pos_encoding_kernels.cu"],
+            sources=[
+                "csrc/attention_infer_kernels/rotary_embedding/pos_encoding.cpp", 
+                "csrc/attention_infer_kernels/rotary_embedding/pos_encoding_kernels.cu"
+                ],
             extra_compile_args={
                                'cxx': ['-O3',],
                                'nvcc': append_nvcc_threads(['-O3', '--use_fast_math'] + cc_flag)
@@ -143,23 +146,23 @@ setup(
         CUDAExtension(
                 name="col_flash_attn_2_lib",
                 sources=[
-                    "flash_attn/flash_api.cpp",
-                    "flash_attn/src/flash_fwd_hdim32_fp16_sm80.cu",
-                    "flash_attn/src/flash_fwd_hdim32_bf16_sm80.cu",
-                    "flash_attn/src/flash_fwd_hdim64_fp16_sm80.cu",
-                    "flash_attn/src/flash_fwd_hdim64_bf16_sm80.cu",
-                    "flash_attn/src/flash_fwd_hdim96_fp16_sm80.cu",
-                    "flash_attn/src/flash_fwd_hdim96_bf16_sm80.cu",
-                    "flash_attn/src/flash_fwd_hdim128_fp16_sm80.cu",
-                    "flash_attn/src/flash_fwd_hdim128_bf16_sm80.cu",
-                    "flash_attn/src/flash_fwd_hdim160_fp16_sm80.cu",
-                    "flash_attn/src/flash_fwd_hdim160_bf16_sm80.cu",
-                    "flash_attn/src/flash_fwd_hdim192_fp16_sm80.cu",
-                    "flash_attn/src/flash_fwd_hdim192_bf16_sm80.cu",
-                    "flash_attn/src/flash_fwd_hdim224_fp16_sm80.cu",
-                    "flash_attn/src/flash_fwd_hdim224_bf16_sm80.cu",
-                    "flash_attn/src/flash_fwd_hdim256_fp16_sm80.cu",
-                    "flash_attn/src/flash_fwd_hdim256_bf16_sm80.cu",
+                    "csrc/attention_infer_kernels/flash_attn/flash_api.cpp",
+                    "csrc/attention_infer_kernels/flash_attn/src/flash_fwd_hdim32_fp16_sm80.cu",
+                    "csrc/attention_infer_kernels/flash_attn/src/flash_fwd_hdim32_bf16_sm80.cu",
+                    "csrc/attention_infer_kernels/flash_attn/src/flash_fwd_hdim64_fp16_sm80.cu",
+                    "csrc/attention_infer_kernels/flash_attn/src/flash_fwd_hdim64_bf16_sm80.cu",
+                    "csrc/attention_infer_kernels/flash_attn/src/flash_fwd_hdim96_fp16_sm80.cu",
+                    "csrc/attention_infer_kernels/flash_attn/src/flash_fwd_hdim96_bf16_sm80.cu",
+                    "csrc/attention_infer_kernels/flash_attn/src/flash_fwd_hdim128_fp16_sm80.cu",
+                    "csrc/attention_infer_kernels/flash_attn/src/flash_fwd_hdim128_bf16_sm80.cu",
+                    "csrc/attention_infer_kernels/flash_attn/src/flash_fwd_hdim160_fp16_sm80.cu",
+                    "csrc/attention_infer_kernels/flash_attn/src/flash_fwd_hdim160_bf16_sm80.cu",
+                    "csrc/attention_infer_kernels/flash_attn/src/flash_fwd_hdim192_fp16_sm80.cu",
+                    "csrc/attention_infer_kernels/flash_attn/src/flash_fwd_hdim192_bf16_sm80.cu",
+                    "csrc/attention_infer_kernels/flash_attn/src/flash_fwd_hdim224_fp16_sm80.cu",
+                    "csrc/attention_infer_kernels/flash_attn/src/flash_fwd_hdim224_bf16_sm80.cu",
+                    "csrc/attention_infer_kernels/flash_attn/src/flash_fwd_hdim256_fp16_sm80.cu",
+                    "csrc/attention_infer_kernels/flash_attn/src/flash_fwd_hdim256_bf16_sm80.cu",
                 ],
             extra_compile_args={
                 "cxx": ["-O3", "-std=c++17"] + generator_flag,
@@ -182,8 +185,8 @@ setup(
                 ),
             },
             include_dirs=[
-                Path(this_dir) / 'csrc' /'flash_attn' ,
-                Path(this_dir) / 'csrc' /'flash_attn' / 'src',
+                Path(this_dir) / 'csrc'/'attention_infer_kernels'/'flash_attn' ,
+                Path(this_dir) / 'csrc'/ 'attention_infer_kernels'/'flash_attn' / 'src',
                 Path(this_dir)  / 'csrc'/'cutlass' / 'include',
             ],
         ),
@@ -191,8 +194,8 @@ setup(
         CUDAExtension(
                 name="col_linear_lib",
                 sources=[
-                    "linear/linear_op.cpp",
-                    "linear/gemm.cu",
+                    "csrc/attention_infer_kernels/linear/linear_op.cpp",
+                    "csrc/attention_infer_kernels/linear/gemm.cu",
                 ],
             extra_compile_args={
                 "cxx": ["-O3", "-std=c++17"] + generator_flag,
@@ -216,7 +219,7 @@ setup(
                 ),
             },
             include_dirs=[
-                Path(this_dir) / 'csrc' /'linear' ,
+                Path(this_dir) / 'csrc'/'attention_infer_kernels' /'linear' ,
                 Path(this_dir)  / 'csrc'/'cutlass' / 'include',
             ],
         ),
