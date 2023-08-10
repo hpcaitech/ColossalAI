@@ -30,7 +30,7 @@ from itertools import chain
 import datasets
 import torch
 import torch.distributed as dist
-import transformers
+import transformers.utils.logging as logging
 from accelerate.utils import set_seed
 from context import barrier_context
 from datasets import load_dataset
@@ -57,7 +57,7 @@ from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.tensor import ProcessGroup
 from colossalai.utils import get_current_device, get_dataloader
-from colossalai.zero import ColoInitContext, GeminiOptimizer, ZeroDDP
+from colossalai.zero import ColoInitContext, GeminiOptimizer
 
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt")
 
@@ -292,10 +292,10 @@ def main():
 
     if is_main_process:
         datasets.utils.logging.set_verbosity_warning()
-        transformers.utils.logging.set_verbosity_info()
+        logging.set_verbosity_info()
     else:
         datasets.utils.logging.set_verbosity_error()
-        transformers.utils.logging.set_verbosity_error()
+        logging.set_verbosity_error()
 
     if args.mem_cap > 0:
         colo_memory_cap(args.mem_cap)
@@ -412,7 +412,13 @@ def main():
     PLACEMENT_POLICY = 'auto'
     cai_version = colossalai.__version__
     logger.info(f'using Colossal-AI version {cai_version}')
-    if version.parse(cai_version) > version.parse("0.1.10"):
+    if version.parse(cai_version) >= version.parse("0.3.1"):
+        from colossalai.zero import GeminiDDP
+        model = GeminiDDP(model,
+                          chunk_init_device=get_current_device(),
+                          placement_policy=PLACEMENT_POLICY,
+                          pin_memory=True)
+    elif version.parse(cai_version) > version.parse("0.1.10"):
         try:
             from colossalai.nn.parallel import GeminiDDP
         except ImportError:
