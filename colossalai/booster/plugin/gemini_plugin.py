@@ -128,10 +128,6 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
         As there is communication when getting state dict, this must be called on all processes.
         """
 
-        # If optimizer is wrapped, unwrap it.
-        if isinstance(optimizer, OptimizerWrapper):
-            optimizer = optimizer.unwrap()
-
         assert isinstance(optimizer, GeminiOptimizer)
 
         if os.path.isfile(checkpoint):
@@ -178,10 +174,6 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
 
         if not os.path.isfile(checkpoint_index_file):
             logging.error(f"Provided path ({checkpoint_index_file}) should be a file")
-
-        # If optimizer is wrapped, unwrap it.
-        if isinstance(optimizer, OptimizerWrapper):
-            optimizer = optimizer.unwrap()
 
         assert isinstance(optimizer, GeminiOptimizer)
 
