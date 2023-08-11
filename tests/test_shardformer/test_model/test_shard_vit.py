@@ -112,8 +112,8 @@ def run_vit_test(test_config):
     # {'tp_size': 2, 'pp_size': 1, 'enable_fused_normalization': True}
 
     # TODO: add test_config for flash attention & jit operator after supporting
+    # TODO: fix bug when settign lazy_init for Conv2D Layers in ViT models
 
-    # ViT models don't support lazy_init
     sub_model_zoo = model_zoo.get_sub_registry('transformers_vit')
     test_config['precision'] = 'float'    # Do not use fp16/bf16 in testing
 

@@ -172,7 +172,8 @@ def check_output_hidden_state(org_output: Tensor,
                               sharded_output: Tensor,
                               stage_manager: Optional[PipelineStageManager] = None,
                               atol: float = 1e-5,
-                              rtol: float = 1e-3):
+                              rtol: float = 1e-3,
+                              dim: int = 0):
 
     org_hidden_state = org_output.last_hidden_state
 
@@ -180,7 +181,7 @@ def check_output_hidden_state(org_output: Tensor,
         sharded_hidden_state = sharded_output.last_hidden_state
 
     if stage_manager and stage_manager.is_last_stage():
-        sharded_hidden_state = torch.cat([output.last_hidden_state for output in sharded_output['outputs']], dim=0)
+        sharded_hidden_state = torch.cat([output.last_hidden_state for output in sharded_output['outputs']], dim=dim)
 
     assert torch.allclose(org_hidden_state.float(), sharded_hidden_state.float(), atol=atol, rtol=rtol), \
         f"shard model's output hidden state is not equal to origin model's last hidden state\n{org_hidden_state}\n{sharded_hidden_state}"
