@@ -57,7 +57,7 @@ from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.tensor import ProcessGroup
 from colossalai.utils import get_current_device, get_dataloader
-from colossalai.zero import ColoInitContext, GeminiOptimizer
+from colossalai.zero import GeminiOptimizer
 
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt")
 
@@ -392,15 +392,25 @@ def main():
         init_dev = get_current_device()
 
     # build model
+    if version.parse(cai_version) >= version.parse("0.3.1"):
+        from contextlib import nullcontext
+
+        from colossalai.lazy import LazyInitContext
+        ctx = LazyInitContext(
+            default_device=init_dev
+        ) if args.model_name_or_path is None or args.model_name_or_path == 'facebook/opt-13b' else nullcontext()
+    else:
+        from colossalai.zero import ColoInitContext
+        ctx = ColoInitContext(device=init_dev)
     if args.model_name_or_path is None or args.model_name_or_path == 'facebook/opt-13b':
         # currently, there has a bug in pretrained opt-13b
         # we can not import it until huggingface fix it
         logger.info("Train a new model from scratch", ranks=[0])
-        with ColoInitContext(device=init_dev):
+        with ctx:
             model = OPTForCausalLM(config)
     else:
         logger.info("Finetune a pre-trained model", ranks=[0])
-        with ColoInitContext(device=init_dev):
+        with ctx:
             model = OPTForCausalLM.from_pretrained(args.model_name_or_path,
                                                    from_tf=bool(".ckpt" in args.model_name_or_path),
                                                    config=config,
