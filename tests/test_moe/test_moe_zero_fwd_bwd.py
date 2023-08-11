@@ -12,13 +12,6 @@ from colossalai.testing import rerun_if_address_is_in_use, spawn
 from colossalai.testing.random import seed_all
 from tests.test_moe.test_moe_zero_init import MoeModel
 
-
-def allclose(tensor_a: torch.Tensor, tensor_b: torch.Tensor, loose=False) -> bool:
-    if loose:
-        return torch.allclose(tensor_a, tensor_b, atol=1e-2, rtol=1e-3)
-    return torch.allclose(tensor_a, tensor_b)
-
-
 CONFIG = dict(zero=dict(level=2), parallel=dict(pipeline=dict(size=1), tensor=dict(size=1, mode=None)))
 
 
