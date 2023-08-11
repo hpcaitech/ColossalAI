@@ -59,8 +59,8 @@ def run_moe_zero_init():
     # assert local expert number
     assert len(model.module.test_transform.moe.moe_layer.experts.experts) == 8 // MOE_CONTEXT.world_size
 
-    for name, param in model.named_parameters():
-        print(name, param)
+    # for name, param in model.named_parameters():
+    #     print(name, param)
 
 
 def _run_dist(rank, world_size, port):
