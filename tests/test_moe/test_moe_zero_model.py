@@ -64,7 +64,7 @@ def run_zero_test(local_rank, world_size, stage=1):
     grad_handler = MoeGradientHandler(torch_model)
 
     data = torch.randn(16, 4).cuda()
-    label = torch.randint(0, 4, (16,)).cuda()
+    label = torch.randint(0, 4, (16,)).cuda() 
 
     run_fwd_bwd(torch_model, data, label, criterion, None)
     run_fwd_bwd(zero_model, data, label, criterion, optimizer)
