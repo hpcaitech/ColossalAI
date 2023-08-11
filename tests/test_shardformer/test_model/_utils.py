@@ -107,11 +107,11 @@ def build_model_from_hybrid_plugin(model_fn: Callable, loss_fn: Callable, test_c
     ctx = LazyInitContext() if use_lazy_init else nullcontext()
     with ctx:
         org_model = model_fn()
+        sharded_model = copy.deepcopy(org_model)
     if use_lazy_init:
         ctx.materialize(org_model)
 
     org_model = org_model.cuda()
-    sharded_model = copy.deepcopy(org_model)
     org_optimizer = Adam(org_model.parameters(), lr=1e-3)
     sharded_optimizer = Adam(sharded_model.parameters(), lr=1e-3)
     criterion = loss_fn
