@@ -46,6 +46,7 @@ def run_fwd_bwd(model, data, label, criterion, optimizer, enable_autocast=False)
         optimizer.backward(loss)
     else:
         loss.backward()
+    return y
 
 
 def run_zero_test(local_rank, world_size, stage=1):
@@ -66,8 +67,9 @@ def run_zero_test(local_rank, world_size, stage=1):
     data = torch.randn(16, 4).cuda()
     label = torch.randint(0, 4, (16,)).cuda()
 
-    run_fwd_bwd(torch_model, data, label, criterion, None)
-    run_fwd_bwd(zero_model, data, label, criterion, optimizer)
+    torch_out = run_fwd_bwd(torch_model, data, label, criterion, None)
+    zero_out = run_fwd_bwd(zero_model, data, label, criterion, optimizer)
+    assert torch.allclose(torch_out, zero_out)
     grad_handler.handle_gradient()
 
     for (zero_name, zero_param), (torch_name, torch_param) in zip(zero_model.module.named_parameters(),
