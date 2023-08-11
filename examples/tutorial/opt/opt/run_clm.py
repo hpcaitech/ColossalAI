@@ -552,7 +552,6 @@ def main():
     ]
 
     optimizer = HybridAdam(optimizer_grouped_parameters, lr=args.learning_rate)
-    optimizer = GeminiOptimizer(optimizer, model, initial_scale=2**14)
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
@@ -567,6 +566,7 @@ def main():
         num_warmup_steps=args.num_warmup_steps,
         num_training_steps=args.max_train_steps,
     )
+    optimizer = GeminiOptimizer(optimizer, model, initial_scale=2**14)
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
