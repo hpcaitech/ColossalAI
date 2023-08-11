@@ -7,11 +7,7 @@ from ..registry import ModelAttribute, model_zoo
 # Register single-sentence VIT
 # ===============================
 
-config = transformers.ViTConfig(
-    num_hidden_layers=4,
-    # hidden_size=128,
-    # intermediate_size=256,
-    num_attention_heads=4)
+config = transformers.ViTConfig(num_hidden_layers=4, hidden_size=128, intermediate_size=256, num_attention_heads=4)
 
 
 # define data gen function

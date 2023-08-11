@@ -2,69 +2,139 @@ import os
 
 import pytest
 import torch
+from torch import distributed as dist
 
 import colossalai
 from colossalai.logging import disable_existing_loggers
-from colossalai.testing import (
-    assert_hf_output_close,
-    clear_cache_before_run,
-    parameterize,
-    rerun_if_address_is_in_use,
-    spawn,
-)
+from colossalai.tensor.d_tensor.api import clear_layout_converter
+from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
 from tests.kit.model_zoo import model_zoo
-from tests.test_shardformer.test_model._utils import build_model, check_grad, check_state_dict, run_forward
+from tests.test_shardformer.test_model._utils import (
+    build_model_from_hybrid_plugin,
+    check_grad,
+    check_loss,
+    check_output_hidden_state,
+    check_weight,
+    run_forward_backward_with_hybrid_plugin,
+)
 
 os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
 
 
-def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn):
-    org_output, org_loss, shard_output, shard_loss = run_forward(org_model, sharded_model, data_gen_fn,
-                                                                 output_transform_fn, loss_fn)
+def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config):
 
-    # forward check
-    assert_hf_output_close(org_output, shard_output, ignore_keys=['past_key_values'], rtol=1e-5)
+    org_model, org_optimizer, sharded_model, sharded_optimizer, criterion, booster = \
+        build_model_from_hybrid_plugin(model_fn, loss_fn, test_config)
 
-    # run backward
-    org_loss.backward()
-    shard_loss.backward()
+    org_loss, org_output, sharded_loss, sharded_output = \
+        run_forward_backward_with_hybrid_plugin(
+            org_model,
+            sharded_model,
+            sharded_optimizer,
+            data_gen_fn,
+            output_transform_fn,
+            criterion,
+            booster)
 
-    assert torch.allclose(org_loss, shard_loss,
-                          atol=1e-5), f"shard model loss is not equal to orgin model loss\n{org_loss}\n{shard_loss}"
+    stage_manager = booster.plugin.stage_manager
+    tp_group = booster.plugin.tp_group
+
+    # check last hidden state & loss
+    if stage_manager is None or stage_manager.is_last_stage():
+
+        if org_model.__class__.__name__ == 'LlamaModel':
+            check_output_hidden_state(org_output, sharded_output, stage_manager, atol=1e-5, rtol=1e-3)
+
+        check_loss(org_loss, sharded_loss, atol=1e-6, rtol=1e-3)
 
     # unwrap model
-    if hasattr(org_model, 'model'):
-        llama_model = org_model.model
-        shard_llama_model = sharded_model.model
-    else:
+    if org_model.__class__.__name__ == 'LlamaModel':
         llama_model = org_model
-        shard_llama_model = sharded_model
+        shard_llama_model = sharded_model.unwrap()
+    else:
+        llama_model = org_model.model
+        shard_llama_model = sharded_model.unwrap().model
 
     # check grad
-    col_layer_for_check = ['layers[0].self_attn.q_proj', 'embed_tokens']
-    row_layer_for_check = ['layers[0].self_attn.o_proj']
-    check_grad(llama_model, shard_llama_model, col_layer_for_check, atol=1e-6, rtol=1e-4, dim=0, verbose=False)
-    check_grad(llama_model, shard_llama_model, row_layer_for_check, atol=1e-6, rtol=1e-4, dim=1, verbose=False)
+    row_layer_for_check = ['layers[0].self_attn.q_proj', 'embed_tokens']
+    col_layer_for_check = ['layers[0].self_attn.o_proj']
+    if stage_manager is None or stage_manager.is_first_stage():
+        check_grad(llama_model,
+                   shard_llama_model,
+                   row_layer_for_check,
+                   tp_group,
+                   atol=1e-6,
+                   rtol=1e-4,
+                   dim=0,
+                   verbose=False)
+        check_grad(llama_model,
+                   shard_llama_model,
+                   col_layer_for_check,
+                   tp_group,
+                   atol=1e-6,
+                   rtol=1e-4,
+                   dim=1,
+                   verbose=False)
+
+    # check weights after optimizer.step()
+    org_optimizer.step()
+    sharded_optimizer.step()
+    if stage_manager is None or stage_manager.is_first_stage():
+        check_weight(llama_model,
+                     shard_llama_model,
+                     col_layer_for_check,
+                     tp_group,
+                     atol=1e-4,
+                     rtol=1e-3,
+                     dim=1,
+                     verbose=False)
+
+    torch.cuda.empty_cache()
 
 
-@parameterize('enable_fused_normalization', [True, False])
-@parameterize('enable_tensor_parallelism', [True, False])
-@parameterize('enable_flash_attention', [True, False])
-@parameterize('use_lazy_init', [False, True])
-def run_gpt2_llama(enable_fused_normalization, enable_tensor_parallelism, enable_flash_attention, use_lazy_init):
+@parameterize('test_config', [{
+    'tp_size': 2,
+    'pp_size': 2,
+    'num_microbatches': 2,
+    'enable_fused_normalization': True,
+    'use_lazy_init': True
+}, {
+    'tp_size': 1,
+    'pp_size': 2,
+    'num_microbatches': 4,
+    'use_lazy_init': False
+}, {
+    'tp_size': 4,
+    'pp_size': 1,
+    'enable_fused_normalization': True,
+    'use_lazy_init': False
+}, {
+    'tp_size': 1,
+    'pp_size': 4,
+    'num_microbatches': 4,
+    'use_lazy_init': False
+}])
+def run_llama_test(test_config):
+
+    # TODO: add test_config for TP+DP after supporting & debugging it
+    # {'tp_size': 2, 'pp_size': 1, 'enable_fused_normalization': True}
+
+    # TODO: add test_config for flash attention & jit operator after supporting
+
     sub_model_zoo = model_zoo.get_sub_registry('transformers_llama')
+    test_config['precision'] = 'float'    # Do not use fp16/bf16 in testing
+
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
-        org_model, sharded_model = build_model(model_fn, enable_fused_normalization, enable_tensor_parallelism,
-                                               enable_flash_attention, use_lazy_init)
-        check_state_dict(org_model, sharded_model, name=name)
-        check_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn)
+        check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
+
+    clear_layout_converter()
     torch.cuda.empty_cache()
 
 
 def check_llama(rank, world_size, port):
     disable_existing_loggers()
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    run_gpt2_llama()
+    run_llama_test()
 
 
 @pytest.mark.dist
