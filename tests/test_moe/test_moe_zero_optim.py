@@ -18,10 +18,14 @@ from colossalai.zero.legacy.sharded_optim import ShardedOptimizerV2
 from colossalai.zero.low_level._utils import has_inf_or_nan
 from tests.components_to_test.registry import non_distributed_component_funcs
 from tests.test_moe.test_moe_zero_init import MoeModel
+
+
 def allclose(tensor_a: torch.Tensor, tensor_b: torch.Tensor, loose=False) -> bool:
     if loose:
         return torch.allclose(tensor_a, tensor_b, atol=1e-2, rtol=1e-3)
     return torch.allclose(tensor_a, tensor_b)
+
+
 def check_sharded_model_params(model, zero_model, loose=False, reuse_fp16_shard=False):
     rank = dist.get_rank()
     for (name, p), (zero_name, zero_p) in zip(model.named_parameters(), zero_model.named_parameters()):
@@ -38,6 +42,8 @@ def check_sharded_model_params(model, zero_model, loose=False, reuse_fp16_shard=
 
         assert p.dtype == zero_p.dtype, "Parameter `{}`:\n{} vs {}".format(name, p.dtype, zero_p.dtype)
         assert allclose(p, zero_p, loose=loose), f'{p} vs {zero_p}'
+
+
 CONFIG = dict(fp16=dict(mode=None,),
               zero=dict(level=3,
                         verbose=False,
