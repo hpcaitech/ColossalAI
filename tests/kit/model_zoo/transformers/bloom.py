@@ -53,7 +53,8 @@ def data_gen_for_question_answering():
     # inputs = tokenizer(question, text, return_tensors="pt")
 
     input_ids = torch.tensor(
-        [[57647, 1620, 23967, 620, 107373, 34, 91514, 620, 107373, 1620, 267, 35378, 48946, 18161, 48946, 18161]], dtype=torch.int64)
+        [[57647, 1620, 23967, 620, 107373, 34, 91514, 620, 107373, 1620, 267, 35378, 48946, 18161, 48946, 18161]],
+        dtype=torch.int64)
     attention_mask = torch.tensor([[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]], dtype=torch.int64)
     start_positions = torch.tensor([1], dtype=torch.int64)
     end_positions = torch.tensor([10], dtype=torch.int64)
@@ -73,12 +74,13 @@ loss_fn_for_causal_lm = lambda x: x.loss
 loss_fn_for_classification = lambda x: x.loss
 loss_fn_for_question_answering = lambda x: x.loss
 
-config = transformers.BloomConfig(n_layer=1,
+config = transformers.BloomConfig(n_layer=2,
                                   n_head=4,
                                   vocab_size=250880,
                                   hidden_dropout=0,
                                   attention_dropout=0,
-                                  hidden_size=64)
+                                  hidden_size=64,
+                                  pad_token_id=50256)
 
 # register the following models
 model_zoo.register(name='transformers_bloom',
