@@ -46,10 +46,11 @@ class PipelineStageManager:
                 ranks_in_group = self.pg_mesh.get_ranks_in_group(group)
                 self.p2p_groups[tuple(ranks_in_group)] = group
 
-        if circle_stage and self.stage in [stages[0], stages[-1]]:
+        if self.circle_stage:
             group = self.pg_mesh.get_group_along_axis(self.pipeline_axis, [stages[0], stages[-1]])
-            ranks_in_group = self.pg_mesh.get_ranks_in_group(group)
-            self.p2p_groups[tuple(ranks_in_group)] = group
+            if self.stage in [stages[0], stages[-1]]:
+                ranks_in_group = self.pg_mesh.get_ranks_in_group(group)
+                self.p2p_groups[tuple(ranks_in_group)] = group
 
     def _none_circle_coord_init(self):
         # init prev and next coord
