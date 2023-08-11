@@ -1,26 +1,18 @@
 import pytest
-import torch
 import torch.nn as nn
 
 import colossalai
+from colossalai.booster import Booster
+from colossalai.booster.plugin import LowLevelZeroPlugin
 from colossalai.context import MOE_CONTEXT
-from colossalai.logging import get_dist_logger
 from colossalai.nn import CheckpointModule
 from colossalai.nn.layer import MoeModule
-from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
-from colossalai.utils import get_current_device
-from colossalai.zero.legacy.init_ctx import ZeroInitContext
-from colossalai.zero.legacy.shard_utils import BucketTensorShardStrategy, TensorShardStrategy
+from colossalai.testing import rerun_if_address_is_in_use, spawn
+
 CONFIG = dict(fp16=dict(mode=None,),
-              zero=dict(level=3,
-                        verbose=False,
-                        offload_optimizer_config=dict(device='cpu', pin_memory=True, buffer_count=5, fast_init=False),
-                        offload_param_config=dict(device='cpu',
-                                                  pin_memory=True,
-                                                  buffer_count=5,
-                                                  buffer_size=1e8,
-                                                  max_in_cpu=1e9)),
+              zero=dict(level=2),
               parallel=dict(pipeline=dict(size=1), tensor=dict(size=1, mode=None)))
+
 
 class MoeModel(nn.Module):
 
@@ -58,45 +50,17 @@ class MoeModel(nn.Module):
         return x
 
 
-@parameterize("init_device_type", ['cpu', 'cuda'])
-@parameterize("shard_strategy_class", [TensorShardStrategy, BucketTensorShardStrategy])
-def run_moe_zero_init(init_device_type, shard_strategy_class):
-    logger = get_dist_logger("test_moe_zero_init")
+def run_moe_zero_init():
+    model = MoeModel(checkpoint=True)
+    plugin = LowLevelZeroPlugin(initial_scale=2**5)
+    booster = Booster(plugin=plugin)
+    model = booster.boost(model)[0]
 
-    if init_device_type == 'cuda':
-        init_device = get_current_device()
-    elif init_device_type == 'cpu':
-        init_device = torch.device("cpu")
-    else:
-        raise NotImplementedError("Unknown device found.")
-
-    model_numel_tensor = torch.zeros(1, dtype=torch.int)
-    with ZeroInitContext(target_device=init_device,
-                         shard_strategy=shard_strategy_class(),
-                         shard_param=True,
-                         model_numel_tensor=model_numel_tensor):
-        model = MoeModel(checkpoint=True)
+    # assert local expert number
+    assert len(model.module.test_transform.moe.moe_layer.experts.experts) == 8 // MOE_CONTEXT.world_size
 
     for name, param in model.named_parameters():
-        assert hasattr(param, 'colo_attr')
-
-        # the parameters in moe experts and its gate should not be sharded
-        if ('experts' in name) or ('gate' in name) or ('residual_combine' in name):
-            assert not param.colo_attr.sharded_data_tensor.is_sharded, "`{}` parameter has problem".format(name)
-        else:
-            assert param.colo_attr.sharded_data_tensor.is_sharded
-
-        # the parameters in moe experts is not replicated
-        if 'experts' in name:
-            assert not param.colo_attr.is_replicated
-        else:
-            assert param.colo_attr.is_replicated
-
-        if param.colo_attr.param_is_sharded:
-            assert param.colo_attr.data_payload.device.type == init_device.type, \
-                f'{param.colo_attr.data_payload.device.type} vs. {init_device.type}'
-        else:
-            assert param.colo_attr.data_payload.device.type == 'cuda'
+        print(name, param)
 
 
 def _run_dist(rank, world_size, port):

@@ -1,56 +1,38 @@
 import pytest
 import torch
-import torch.distributed as dist
 
 import colossalai
+from colossalai.booster import Booster
+from colossalai.booster.plugin import LowLevelZeroPlugin
+from colossalai.booster.plugin.low_level_zero_plugin import LowLevelZeroModel
 from colossalai.context import MOE_CONTEXT
 from colossalai.engine.gradient_handler import MoeGradientHandler
 from colossalai.nn import MoeLoss
-from colossalai.testing import assert_equal_in_group, parameterize, rerun_if_address_is_in_use, spawn
-from colossalai.zero.legacy.init_ctx import ZeroInitContext
-from colossalai.zero.legacy.shard_utils import BucketTensorShardStrategy, TensorShardStrategy
-from colossalai.zero.legacy.sharded_model import ShardedModelV2
-from colossalai.zero.legacy.sharded_model._utils import cast_tensor_to_fp16
-from colossalai.zero.legacy.sharded_model.utils import col_model_deepcopy
-from tests.components_to_test.registry import non_distributed_component_funcs
+from colossalai.testing import rerun_if_address_is_in_use, spawn
+from colossalai.testing.random import seed_all
 from tests.test_moe.test_moe_zero_init import MoeModel
+
 
 def allclose(tensor_a: torch.Tensor, tensor_b: torch.Tensor, loose=False) -> bool:
     if loose:
         return torch.allclose(tensor_a, tensor_b, atol=1e-2, rtol=1e-3)
     return torch.allclose(tensor_a, tensor_b)
 
-CONFIG = dict(fp16=dict(mode=None,),
-              zero=dict(level=3,
-                        verbose=False,
-                        offload_optimizer_config=dict(device='cpu', pin_memory=True, buffer_count=5, fast_init=False),
-                        offload_param_config=dict(device='cpu',
-                                                  pin_memory=True,
-                                                  buffer_count=5,
-                                                  buffer_size=1e8,
-                                                  max_in_cpu=1e9)),
-              parallel=dict(pipeline=dict(size=1), tensor=dict(size=1, mode=None)))
 
-def check_grads_padding(model, zero_model, loose=False):
-    rank = dist.get_rank()
-    for (name, p), (zero_name, zero_p) in zip(model.named_parameters(), zero_model.named_parameters()):
-        # zero_grad = zero_p.grad.clone().to(p.device)
-        if zero_p.colo_attr.is_replicated:
-            zero_grad = zero_p.colo_attr.grad_payload.clone().to(p.device)
-            chunks = torch.flatten(p.grad).chunk(dist.get_world_size())
-            if rank >= len(chunks):
-                continue
-            grad = chunks[rank].float()
-            if zero_grad.size(0) > grad.size(0):
-                zero_grad = zero_grad[:grad.size(0)]
-        else:
-            zero_grad = zero_p.colo_attr.grad_payload
-            grad = p.grad.to(zero_grad.dtype)
+CONFIG = dict(zero=dict(level=2), parallel=dict(pipeline=dict(size=1), tensor=dict(size=1, mode=None)))
 
-        assert grad.dtype == zero_grad.dtype
-        assert allclose(grad, zero_grad, loose=loose), f'diff: {grad - zero_grad}'
 
-def run_fwd_bwd(model, data, label, criterion, enable_autocast=False):
+def split_ddp_grad(grad, world_size):
+    with torch.no_grad():
+        grad = grad.clone().detach().flatten()
+        padding_size = (world_size - grad.numel() % world_size) % world_size
+        if padding_size > 0:
+            grad = torch.nn.functional.pad(grad, [0, padding_size])
+        splited_grad = grad.split(grad.numel() // world_size)
+    return splited_grad
+
+
+def run_fwd_bwd(model, data, label, criterion, optimizer, enable_autocast=False):
     model.train()
     with torch.cuda.amp.autocast(enabled=enable_autocast):
         if criterion:
@@ -59,53 +41,57 @@ def run_fwd_bwd(model, data, label, criterion, enable_autocast=False):
         else:
             loss = model(data, label)
         loss = loss.float()
-    if isinstance(model, ShardedModelV2):
-        model.backward(loss)
+
+    if isinstance(model, LowLevelZeroModel):
+        optimizer.backward(loss)
     else:
         loss.backward()
 
 
-@parameterize("enable_autocast", [False])
-@parameterize("shard_strategy_class", [TensorShardStrategy, BucketTensorShardStrategy])
-def run_model_test(enable_autocast, shard_strategy_class):
-    shard_strategy = shard_strategy_class()
-
-    get_components_func = non_distributed_component_funcs.get_callable('hanging_param_model')
-    _, train_dataloader, _, optimizer_class, _ = get_components_func()
+def run_zero_test(local_rank, world_size, stage=1):
     criterion = MoeLoss(aux_weight=0.01, loss_fn=torch.nn.CrossEntropyLoss)
 
-    with ZeroInitContext(target_device=torch.device('cuda', torch.cuda.current_device()),
-                         shard_strategy=shard_strategy,
-                         shard_param=True):
-        zero_model = MoeModel(checkpoint=True)
-    zero_model = ShardedModelV2(zero_model, shard_strategy)
+    zero_model = MoeModel(checkpoint=True)
+    optimizer = torch.optim.Adam(zero_model.parameters())
+    plugin = LowLevelZeroPlugin(stage=stage, precision="fp32")
+    booster = Booster(plugin=plugin)
+    zero_model, optimizer, _, _, _ = booster.boost(zero_model, optimizer)
 
-    # check whether parameters are identical in ddp
-    for name, p in zero_model.named_parameters():
-        if not p.colo_attr.param_is_sharded and p.colo_attr.is_replicated:
-            assert_equal_in_group(p.colo_attr.data_payload)
+    torch_model = MoeModel(checkpoint=True)
+    for zero_param, torch_param in zip(zero_model.parameters(), torch_model.parameters()):
+        torch_param.data.copy_(zero_param.data)
+    torch_model = torch_model.cuda()
+    grad_handler = MoeGradientHandler(torch_model)
 
-    model = MoeModel(checkpoint=True).half()
-    col_model_deepcopy(zero_model, model)
-    model = model.cuda()
-    grad_handler = MoeGradientHandler(model)
+    data = torch.randn(16, 4).cuda()
+    label = torch.randint(0, 4, (16,)).cuda()
 
-    for i, (data, label) in enumerate(train_dataloader):
-        if i > 5:
-            break
+    run_fwd_bwd(torch_model, data, label, criterion, None)
+    run_fwd_bwd(zero_model, data, label, criterion, optimizer)
+    grad_handler.handle_gradient()
 
-        data, label = cast_tensor_to_fp16(data).cuda(), label.cuda()
-        run_fwd_bwd(model, data, label, criterion, enable_autocast)
-        run_fwd_bwd(zero_model, data, label, criterion, enable_autocast)
-        grad_handler.handle_gradient()
-
-        check_grads_padding(model, zero_model, loose=True)
+    for (zero_name, zero_param), (torch_name, torch_param) in zip(zero_model.module.named_parameters(),
+                                                                  torch_model.named_parameters()):
+        assert zero_name == torch_name
+        zero_grad_list = optimizer._grad_store.get_partitioned_gradients_by_param_id(0, id(zero_param))
+        if hasattr(zero_param, "moe_info"):
+            assert len(zero_grad_list) == 0
+            assert torch.allclose(zero_grad, torch_grad)
+        else:
+            assert len(zero_grad_list) > 0
+            torch_grad_list = split_ddp_grad(torch_param.grad, world_size)
+            if stage == 2:
+                torch_grad_list = torch_grad_list[local_rank:local_rank + 1]
+            for zero_grad, torch_grad in zip(zero_grad_list, torch_grad_list):
+                assert torch.allclose(zero_grad, torch_grad)
 
 
 def run_dist(rank, world_size, port):
     colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     MOE_CONTEXT.setup(seed=42)
-    run_model_test()
+    seed_all(42 + rank)
+    run_zero_test(rank, world_size, stage=1)
+    run_zero_test(rank, world_size, stage=2)
 
 
 @pytest.mark.dist
