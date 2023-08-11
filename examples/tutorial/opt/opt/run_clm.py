@@ -391,6 +391,8 @@ def main():
     else:
         init_dev = get_current_device()
 
+    cai_version = colossalai.__version__
+    logger.info(f'using Colossal-AI version {cai_version}')
     # build model
     if version.parse(cai_version) >= version.parse("0.3.1"):
         from contextlib import nullcontext
@@ -420,8 +422,6 @@ def main():
     model.gradient_checkpointing_enable()
 
     PLACEMENT_POLICY = 'auto'
-    cai_version = colossalai.__version__
-    logger.info(f'using Colossal-AI version {cai_version}')
     if version.parse(cai_version) >= version.parse("0.3.1"):
         from colossalai.zero import GeminiDDP
         model = GeminiDDP(model,
