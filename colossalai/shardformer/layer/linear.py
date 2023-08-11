@@ -53,6 +53,7 @@ class Linear1D_Col(ParallelModule):
                     to all GPUs, otherwise, every GPU will have its output
                     which is :math:`Y_i = XA_i`, defaults to False
         seq_parallel (`bool`): If set to ``True``, it will use sequence parallel, defaults to False.
+        overlap (`bool`): If set to ``True``, it will overlap input all-gather with gradient computation during backward, defaults to False.
         skip_bias_add (bool): If set to ``True``, it will skip bias add for linear layer,
             which is preserved for kernel fusion, defaults to False
         weight_initializer (`typing.Callable`):
@@ -73,6 +74,7 @@ class Linear1D_Col(ParallelModule):
                  process_group: ProcessGroup = None,
                  gather_output: bool = False,
                  seq_parallel: bool = False,
+                 overlap: bool = False,
                  skip_bias_add: bool = False,
                  weight: Optional[Parameter] = None,
                  bias_: Optional[Parameter] = None,
@@ -85,6 +87,7 @@ class Linear1D_Col(ParallelModule):
         self.out_features = out_features
         self.gather_output = gather_output
         self.seq_parallel = seq_parallel
+        self.overlap = overlap
         self.skip_bias_add = skip_bias_add
         self.device = device
         self.process_group = process_group
@@ -187,7 +190,7 @@ class Linear1D_Col(ParallelModule):
         bias = self.bias if not self.skip_bias_add else None
         if self.seq_parallel:
             output_parallel = linear_gather_forward_reducescatter_backward(input_parallel, self.weight, bias,
-                                                                           self.process_group, True, 1)
+                                                                           self.process_group, True, 1, self.overlap)
         else:
             output_parallel = linear_with_async_comm(input_parallel, self.weight, bias, self.process_group, True)
 
