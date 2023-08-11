@@ -104,27 +104,22 @@ def build_model_from_hybrid_plugin(model_fn: Callable, loss_fn: Callable, test_c
     if 'use_lazy_init' in test_config:
         use_lazy_init = test_config.pop('use_lazy_init')
 
-    if use_lazy_init:
-        ctx = LazyInitContext()
-    else:
-        ctx = nullcontext()
-
-    plugin = HybridParallelPlugin(**test_config)
-    booster = Booster(plugin=plugin)
-
+    ctx = LazyInitContext() if use_lazy_init else nullcontext()
     with ctx:
-        org_model = model_fn().cuda()
+        org_model = model_fn()
         sharded_model = copy.deepcopy(org_model)
-
     if use_lazy_init:
-        org_model = ctx.materialize(org_model)
+        ctx.materialize(org_model)
 
+    org_model = org_model.cuda()
     org_optimizer = Adam(org_model.parameters(), lr=1e-3)
     sharded_optimizer = Adam(sharded_model.parameters(), lr=1e-3)
     criterion = loss_fn
 
-    sharded_model, sharded_optimizer, criterion, _, _ = booster.boost(sharded_model, sharded_optimizer, criterion)
+    plugin = HybridParallelPlugin(**test_config)
+    booster = Booster(plugin=plugin)
 
+    sharded_model, sharded_optimizer, criterion, _, _ = booster.boost(sharded_model, sharded_optimizer, criterion)
     return org_model, org_optimizer, sharded_model, sharded_optimizer, criterion, booster
 
 
@@ -142,11 +137,12 @@ def run_forward_backward_with_hybrid_plugin(org_model: Module, sharded_model: Mo
     data = data_gen_fn()
     sharded_model.train()
     if booster.plugin.stage_manager is not None:
-        data = {
-            k: v.to('cuda').repeat(*([4] + [1] *
-                                     (v.dim() - 1))) if torch.is_tensor(v) or 'Tensor' in v.__class__.__name__ else v
-            for k, v in data.items()
-        }
+        for k, v in data.items():
+            if torch.is_tensor(v) or 'Tensor' in v.__class__.__name__:
+                new_shape = [1] * v.dim()
+                new_shape[0] = 4
+                data[k] = v.to('cuda').repeat(*new_shape)
+
         data_iter = iter([data])
         sharded_output = booster.execute_pipeline(data_iter,
                                                   sharded_model,
@@ -176,7 +172,8 @@ def check_output_hidden_state(org_output: Tensor,
                               sharded_output: Tensor,
                               stage_manager: Optional[PipelineStageManager] = None,
                               atol: float = 1e-5,
-                              rtol: float = 1e-3):
+                              rtol: float = 1e-3,
+                              dim: int = 0):
 
     org_hidden_state = org_output.last_hidden_state
 
@@ -184,7 +181,7 @@ def check_output_hidden_state(org_output: Tensor,
         sharded_hidden_state = sharded_output.last_hidden_state
 
     if stage_manager and stage_manager.is_last_stage():
-        sharded_hidden_state = torch.cat([output.last_hidden_state for output in sharded_output['outputs']], dim=0)
+        sharded_hidden_state = torch.cat([output.last_hidden_state for output in sharded_output['outputs']], dim=dim)
 
     assert torch.allclose(org_hidden_state.float(), sharded_hidden_state.float(), atol=atol, rtol=rtol), \
         f"shard model's output hidden state is not equal to origin model's last hidden state\n{org_hidden_state}\n{sharded_hidden_state}"
