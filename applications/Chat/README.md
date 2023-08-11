@@ -161,33 +161,35 @@ You can run the `examples/train_prompts.sh` to start training PPO with human fee
 
 **Note**: the required datasets follow the following format,
 
-```json
-// pretrain dataset
-[
-    {
-        "instruction": "Provide a list of the top 10 most popular mobile games in Asia",
-        "input": "",
-        "output": "The top 10 most popular mobile games in Asia are:\n1) PUBG Mobile\n2) Pokemon Go\n3) Candy Crush Saga\n4) Free Fire\n5) Clash of Clans\n6) Mario Kart Tour\n7) Arena of Valor\n8) Fantasy Westward Journey\n9) Subway Surfers\n10) ARK Survival Evolved",
-        "id": 0
-    },
-    ...
-]
-```
+- `pretrain dataset`
 
-```json
-// prompt dataset
-[
-    {
-        "instruction": "Edit this paragraph to make it more concise: \"Yesterday, I went to the store and bought some things. Then, I came home and put them away. After that, I went for a walk and met some friends.\"",
-        "id": 0
-    },
-    {
-        "instruction": "Write a descriptive paragraph about a memorable vacation you went on",
-        "id": 1
-    },
-    ...
-]
-```
+  ```json
+  [
+      {
+          "instruction": "Provide a list of the top 10 most popular mobile games in Asia",
+          "input": "",
+          "output": "The top 10 most popular mobile games in Asia are:\n1) PUBG Mobile\n2) Pokemon Go\n3) Candy Crush Saga\n4) Free Fire\n5) Clash of Clans\n6) Mario Kart Tour\n7) Arena of Valor\n8) Fantasy Westward Journey\n9) Subway Surfers\n10) ARK Survival Evolved",
+          "id": 0
+      },
+      ...
+  ]
+  ```
+
+- `prompt dataset`
+
+  ```json
+  [
+      {
+          "instruction": "Edit this paragraph to make it more concise: \"Yesterday, I went to the store and bought some things. Then, I came home and put them away. After that, I went for a walk and met some friends.\"",
+          "id": 0
+      },
+      {
+          "instruction": "Write a descriptive paragraph about a memorable vacation you went on",
+          "id": 1
+      },
+      ...
+  ]
+  ```
 
 For more details, see [`examples/`](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat/examples).
 
@@ -334,7 +336,7 @@ Here are some examples that can allow you to train a 7B model on a single or mul
 
 If you only have a single 24G GPU, you can use the following script. `batch_size`, `lora_rank` and `grad_checkpoint` are the most important parameters to successfully train the model.
 
-```python
+```bash
 // [INFO]: MAX GPU MEMORY ALLOCATED:  19148.9345703125 MB
 torchrun --standalone --nproc_per_node=1 train_sft.py \
     --pretrain "/path/to/LLaMa-7B/" \
@@ -353,7 +355,7 @@ torchrun --standalone --nproc_per_node=1 train_sft.py \
 
 `colossalai_gemini` strategy can enable a single 24G GPU to train the whole model without using LoRA if you have sufficient CPU memory. You can use the following script.
 
-```python
+```bash
 torchrun --standalone --nproc_per_node=1 train_sft.py \
     --pretrain "/path/to/LLaMa-7B/" \
     --model 'llama' \

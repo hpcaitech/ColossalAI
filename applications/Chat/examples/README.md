@@ -86,7 +86,7 @@ You can run the `examples/generate_conversation_dataset.py` to generate a conver
 
 You can use the following cmd to generate conversation dataset.
 
-```python
+```bash
 python generate_conversation_dataset.py \
     --dataset "All"
     --save_path "/path/to/dataset"
@@ -101,7 +101,7 @@ You can run the `examples/train_sft.sh` to start a supervised instructs fine-tun
 
 You can also use the following cmd to start a supervised instructs fine-tuning with your own settings.
 
-```python
+```bash
 torchrun --standalone --nproc_per_node=4 train_sft.py \
     --pretrain "/path/to/LLaMa-7B/" \
     --model 'llama' \
@@ -152,7 +152,7 @@ You can run the `examples/train_rm.sh` to start a reward model training.
 
 You can also use the following cmd to start training a reward model.
 
-```python
+```bash
 torchrun --standalone --nproc_per_node=4 train_reward_model.py \
     --pretrain "/path/to/LLaMa-7B/" \
     --model 'llama' \
@@ -212,7 +212,7 @@ You can run the `examples/train_prompts.sh` to start PPO training.
 You can also use the cmd following to start PPO training.
 [[Stage3 tutorial video]](https://www.youtube.com/watch?v=Z8wwSHxPL9g)
 
-```python
+```bash
 torchrun --standalone --nproc_per_node=4 train_prompts.py \
     --pretrain "/path/to/LLaMa-7B/" \
     --model 'llama' \
@@ -228,33 +228,35 @@ Pretrain dataset: the pretrain dataset including the instruction and correspondi
 
 **Note**: the required datasets follow the following format,
 
-```json
-// pretrain dataset
-[
-    {
-        "instruction": "Provide a list of the top 10 most popular mobile games in Asia",
-        "input": "",
-        "output": "The top 10 most popular mobile games in Asia are:\n1) PUBG Mobile\n2) Pokemon Go\n3) Candy Crush Saga\n4) Free Fire\n5) Clash of Clans\n6) Mario Kart Tour\n7) Arena of Valor\n8) Fantasy Westward Journey\n9) Subway Surfers\n10) ARK Survival Evolved",
-        "id": 0
-    },
-    ...
-]
-```
+- `pretrain dataset`
 
-```json
-// prompt dataset
-[
-    {
-        "instruction": "Edit this paragraph to make it more concise: \"Yesterday, I went to the store and bought some things. Then, I came home and put them away. After that, I went for a walk and met some friends.\"",
-        "id": 0
-    },
-    {
-        "instruction": "Write a descriptive paragraph about a memorable vacation you went on",
-        "id": 1
-    },
-    ...
-]
-```
+  ```json
+  [
+      {
+          "instruction": "Provide a list of the top 10 most popular mobile games in Asia",
+          "input": "",
+          "output": "The top 10 most popular mobile games in Asia are:\n1) PUBG Mobile\n2) Pokemon Go\n3) Candy Crush Saga\n4) Free Fire\n5) Clash of Clans\n6) Mario Kart Tour\n7) Arena of Valor\n8) Fantasy Westward Journey\n9) Subway Surfers\n10) ARK Survival Evolved",
+          "id": 0
+      },
+      ...
+  ]
+  ```
+
+- `prompt dataset`
+
+  ```json
+  [
+      {
+          "instruction": "Edit this paragraph to make it more concise: \"Yesterday, I went to the store and bought some things. Then, I came home and put them away. After that, I went for a walk and met some friends.\"",
+          "id": 0
+      },
+      {
+          "instruction": "Write a descriptive paragraph about a memorable vacation you went on",
+          "id": 1
+      },
+      ...
+  ]
+  ```
 
 ### Arg List
 
