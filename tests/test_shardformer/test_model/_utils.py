@@ -131,6 +131,8 @@ def build_model_from_hybrid_plugin(model_fn: Callable, loss_fn: Callable, test_c
 def run_forward_backward_with_hybrid_plugin(org_model: Module, sharded_model: Module, sharded_optimizer: Optimizer,
                                             data_gen_fn: Callable, output_transform_fn: Callable, criterion: Callable,
                                             booster: Booster):
+    org_model.cuda()
+    sharded_model.cuda()
 
     def _criterion(outputs, inputs):
         outputs = output_transform_fn(outputs)
@@ -141,7 +143,8 @@ def run_forward_backward_with_hybrid_plugin(org_model: Module, sharded_model: Mo
     sharded_model.train()
     if booster.plugin.stage_manager is not None:
         data = {
-            k: v.to('cuda').repeat(4, 1) if torch.is_tensor(v) or 'Tensor' in v.__class__.__name__ else v
+            k: v.to('cuda').repeat(*([4] + [1] *
+                                     (v.dim() - 1))) if torch.is_tensor(v) or 'Tensor' in v.__class__.__name__ else v
             for k, v in data.items()
         }
         data_iter = iter([data])
@@ -162,6 +165,7 @@ def run_forward_backward_with_hybrid_plugin(org_model: Module, sharded_model: Mo
     org_model.train()
     data = {k: v.cuda() for k, v in data.items()}
     org_output = org_model(**data)
+
     org_loss = criterion(org_output)
     org_loss.backward()
 
@@ -206,8 +210,7 @@ def check_weight(org_model: Module,
 
         if is_distributed_tensor(sharded_weight) or is_customized_distributed_tensor(sharded_weight):
             sharded_weight_list = [
-                torch.zeros([*sharded_weight.shape]).to(sharded_weight.dtype).to('cuda')
-                for _ in range(dist.get_world_size(tp_group))
+                torch.zeros_like(sharded_weight).to('cuda') for _ in range(dist.get_world_size(tp_group))
             ]
             dist.all_gather(sharded_weight_list, sharded_weight, tp_group)
             sharded_weight = torch.cat(sharded_weight_list, dim=dim)
@@ -227,24 +230,19 @@ def check_grad(org_model: Module,
                atol: float = 1e-5,
                rtol: float = 1e-3,
                verbose: bool = False):
-
     for suffix in layer_suffix:
         org_grad = getattr_(org_model, suffix).weight.grad
         shard_grad = getattr_(sharded_model, suffix).weight.grad
         shard_weight = getattr_(sharded_model, suffix).weight
 
         if is_distributed_tensor(shard_weight) or is_customized_distributed_tensor(shard_weight):
-            shard_grad_list = [
-                torch.zeros([*shard_grad.shape]).to(shard_grad.dtype).to('cuda')
-                for _ in range(dist.get_world_size(tp_group))
-            ]
+            shard_grad_list = [torch.zeros_like(shard_grad).to('cuda') for _ in range(dist.get_world_size(tp_group))]
             dist.all_gather(shard_grad_list, shard_grad, tp_group)
             shard_grad = torch.cat(shard_grad_list, dim=dim)
 
         # embedding may be resized when using tensor parallel
         if shard_grad.shape[0] > org_grad.shape[0]:
             shard_grad = shard_grad[:org_grad.shape[0], :]
-
         if verbose and dist.get_rank() == 0:
             print(f"'{suffix}' grad: {org_grad}, {shard_grad}")
 
