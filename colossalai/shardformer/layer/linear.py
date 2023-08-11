@@ -143,6 +143,14 @@ class Linear1D_Col(ParallelModule):
                 f'Expected only one process group, got {len(process_group)}.'
             process_group = process_group[0]
 
+        tp_size = dist.get_world_size(process_group)
+        if out_features < tp_size:
+            return module
+
+        if out_features % tp_size != 0:
+            raise ValueError(
+                f"The size of out_features:{out_features} is not integer multiples of tensor parallel size: {tp_size}!")
+
         linear_1d = Linear1D_Col(in_features=in_features,
                                  out_features=out_features,
                                  bias=bias,
