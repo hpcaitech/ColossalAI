@@ -5,8 +5,6 @@ import torch
 import torch.nn as nn
 from torch.cuda.amp import custom_bwd, custom_fwd
 from .gptq_op import CaiGPTQLinearOp
-from ..config import CaiInferenceConfig
-from .gptq_triton import gptq_linear_llama
 import triton
 
 class CaiQuantLinear(nn.Module):
@@ -34,9 +32,7 @@ class CaiQuantLinear(nn.Module):
         else:
             self.bias = None
 
-        cai_inf_config = CaiInferenceConfig(fp16=True,
-                                            gptq_group_size=self.groupsize)
-        self.gptq_linear = CaiGPTQLinearOp(cai_inf_config)
+        self.gptq_linear = CaiGPTQLinearOp(groupsize, bits)
         self.printed = False
         self.reorder_zeros = False
     def pack(self, linear, scales, zeros, g_idx=None):
@@ -113,19 +109,11 @@ class CaiQuantLinear(nn.Module):
 
     def forward(self, x):
 
-        # if self.reorder_zeros == False:
-        #     for i in range(self.g_idx.shape[0]):
-        #         idx = self.g_idx[i]
-        #         self.order_qzeros[i,:] = self.qzeros[idx,:]
-        # gptq_out = gptq_linear_llama(x, self.qweight, self.scales, self.qzeros, self.g_idx,
-        #                      self.bits, self.maxq)
-
         cai_out = self.gptq_linear(x,
                             self.qweight,
                             self.scales,
                             self.qzeros,
                             bias = self.bias)
-        print("shape is ", cai_out.shape)
         return cai_out
 
 def make_cai_quant_linear(module, names, bits, groupsize, name=''):

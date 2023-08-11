@@ -13,7 +13,6 @@ from colossalai.gptq.gptq_utils.quant import Quantizer
 from colossalai.gptq.cai_gptq.gptq_op import CaiGPTQLinearOp
 import math
 import numpy as np
-from colossalai.gptq import CaiInferenceConfig
 import csv  
 
 class MLinear(nn.Module):
@@ -322,9 +321,8 @@ if __name__ == "__main__":
     # qzeros = torch.cat((qzeros, qzeros, qzeros), dim=0).contiguous()
     # bias = torch.cat((bias, bias, bias), dim=0).contiguous()
     qkv_fused = False
-    cai_inf_config = CaiInferenceConfig(fp16=True)
 
-    cai_linear = CaiGPTQLinearOp(cai_inf_config)
+    cai_linear = CaiGPTQLinearOp(args.groupsize, args.wbits)
 
     print("cai linear")
     for i in range(0, warm_up_iter):

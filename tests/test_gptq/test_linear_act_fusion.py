@@ -13,7 +13,6 @@ from colossalai.gptq.gptq_utils.quant import Quantizer
 from colossalai.gptq.cai_gptq.gptq_op import CaiGPTQLinearOp
 import math
 import numpy as np
-from colossalai.gptq import CaiInferenceConfig
 import csv  
 
 class MLinear(nn.Module):
@@ -247,8 +246,8 @@ if __name__ == "__main__":
     gptq_model.to(torch.cuda.current_device())
     # gptq_model = linear
 
-    cai_inf_config = CaiInferenceConfig(fp16=True)
-    cai_linear = CaiGPTQLinearOp(cai_inf_config)
+
+    cai_linear = CaiGPTQLinearOp(args.groupsize, args.wbits)
 
 
     # qweight = torch.cat((qweight, qweight, qweight), dim=0).contiguous()
@@ -313,90 +312,3 @@ if __name__ == "__main__":
     mean_diff = torch.mean(torch.abs(batch_torch_out - batch_cai_out))
     max_diff = torch.max(torch.abs(batch_torch_out - batch_cai_out))
     print("batch torch vs cai: mean_diff=%.8f, max_diff=%.8f" % (mean_diff, max_diff))
-
-    # print("torch time: {:.8f}, gptq time:{:.8f}, cai time: {:.8f} ".format(torch_linear_time/benchmark_iter, gptq_linear_time/benchmark_iter, cai_linear_time/benchmark_iter))
-        #  print("torch time: {:.8f}, gptq time:{:.8f}, cai time: {:.8f} ".format(torch_linear_time/benchmark_iter, gptq_linear_time/benchmark_iter, cai_linear_time/benchmark_iter))
-
-
-
-
-
-    # linear = MLinear(infeature, outfeature)
-    # linear.to(torch.cuda.current_device())
-    # with torch.no_grad():
-    #     linear.linear.weight.data.copy_(weight)
-    #     linear.linear.bias.data.copy_(bias)
-    # inps = torch.ones(1, 1, infeature).to(torch.float16).to(torch.cuda.current_device())
-    # quantizers = model_quant(linear, inps, torch.cuda.current_device(), args)
-    # qweight, qscales, qzeros = model_cai_pack(linear, quantizers, qweight, qscales, qzeros, args.wbits, args.groupsize)
-    # cai_inf_config = CaiInferenceConfig(fp16=True, device=torch.cuda.current_device())
-
-    # cai_linear = GPTQActLinearOp(cai_inf_config)
-
-    # batch_inps = torch.randn(1, 4, infeature).to(torch.float16).to(torch.cuda.current_device())
-
-    # relu = nn.ReLU()
-    # # act_inps = relu(inps)
-    # # act_batch_inps = relu(batch_inps)
-    # # batch_inps = torch.ones(1, 2, infeature).to(torch.float16).to(torch.cuda.current_device())
-    # # inps = torch.ones(1, 1, infeature).to(torch.float16).to(torch.cuda.current_device())
-    #         # gptq_out = relu(inps)
-    # linear.to("cuda")
-    # with torch.no_grad():
-    #     torch_out = linear(inps)
-    #     torch_batch_out = linear(batch_inps)
-    #     # torch_out = relu(torch_out)
-    #     # torch_batch_out = relu(torch_batch_out)
-
-    # linear.to("cpu")
-
-    # gptq_model = model_pack(linear, quantizers, args.wbits, args.groupsize)
-    # gptq_model.to(torch.cuda.current_device())
-
-
-    # with torch.no_grad():
-    #     gptq_out = gptq_model(inps)
-    #     cai_out = cai_linear(inps,
-    #                         qweight,
-    #                         qscales,
-    #                         qzeros,
-    #                         act_type = 1,
-    #                         bias = bias)
-    #     gptq_batch_out = gptq_model(batch_inps)
-    #     cai_batch_out = cai_linear(batch_inps,
-    #                         qweight,
-    #                         qscales,
-    #                         qzeros,
-    #                         act_type = 1,
-    #                         bias = bias)
-
-    #     torch.cuda.synchronize()
-    #     # gptq_out = relu(gptq_out)
-    #     # re_gptq_batch_out = relu(gptq_batch_out)
-    # # print(f"cai out {cai_out}")
-    # # mean_diff = torch.mean(torch.abs(cai_out - gptq_out))
-    # # max_diff = torch.max(torch.abs(cai_out - gptq_out))
-    # # print("cai vs gptq: mean_diff=%.8f, max_diff=%.8f" % (mean_diff, max_diff))
-    # # mean_diff = torch.mean(torch.abs(torch_out - gptq_out))
-    # # max_diff = torch.max(torch.abs(torch_out - gptq_out))
-    # # print("torch vs gptq: mean_diff=%.8f, max_diff=%.8f" % (mean_diff, max_diff))
-    # # mean_diff = torch.mean(torch.abs(torch_out - cai_out))
-    # # max_diff = torch.max(torch.abs(torch_out - cai_out))
-    # # print("torch vs cai: mean_diff=%.8f, max_diff=%.8f" % (mean_diff, max_diff))
-
-    # print(f"cai batch out {cai_batch_out}")
-    # print(f"gptq batch out {gptq_batch_out}")
-    # print(f"torch batch out {torch_batch_out}")
-    # # print(f"gptq batch out {re_gptq_batch_out}")
-
-    # mean_diff = torch.mean(torch.abs(cai_batch_out - gptq_batch_out))
-    # max_diff = torch.max(torch.abs(cai_batch_out - gptq_batch_out))
-    # print("cai vs gptq batch 128: mean_diff=%.8f, max_diff=%.8f" % (mean_diff, max_diff))
-    # mean_diff = torch.mean(torch.abs(torch_batch_out - gptq_batch_out))
-    # max_diff = torch.max(torch.abs(torch_batch_out - gptq_batch_out))
-    # print("torch vs gptq batch 128: mean_diff=%.8f, max_diff=%.8f" % (mean_diff, max_diff))
-    # mean_diff = torch.mean(torch.abs(torch_batch_out - cai_batch_out))
-    # max_diff = torch.max(torch.abs(torch_batch_out - cai_batch_out))
-    # print("torch vs cai batch 128: mean_diff=%.8f, max_diff=%.8f" % (mean_diff, max_diff))
-
-

@@ -503,59 +503,60 @@ if __name__ == '__main__':
         safe_save(state_dict, args.save_safetensors)
 
     if args.benchmark:
-        # model = model.to(DEV)
-        # print(f"model config {model.config.num_key_value_heads}")
-
-        # if args.model_type == "cai":
-        #     cai_inf_config = CaiInferenceConfig(fp16=True, 
-        #                                         device=torch.cuda.current_device(), 
-        #                                         gptq=True,
-        #                                         gptq_group_size=128,
-        #                                         gptq_quant_bits=4)
-        #     model = convert_to_ds_model(model, cai_inf_config)
-        # model.cuda().to(torch.cuda.current_device())
-
-
-        torch_model = get_llama(args.model)
-        torch_model.half()
-        torch_model = torch_model.to(DEV)
-
-        gptq_model = gptq_load_quant(args.model, "llama7b-4bit-128g-gptq-nao.pt", args.wbits, args.groupsize)
-        gptq_model = gptq_model.to(DEV)
-
-        model = cai_load_quant(args.model, args.load, args.wbits, args.groupsize)
         model = model.to(DEV)
+        print(f"model config {model.config.num_key_value_heads}")
+
+        if args.model_type == "cai":
+            cai_inf_config = CaiInferenceConfig(fp16=True, 
+                                                device=torch.cuda.current_device(), 
+                                                gptq=True,
+                                                gptq_group_size=128,
+                                                gptq_quant_bits=4)
+            model = convert_to_ds_model(model, cai_inf_config)
+        model.cuda().to(torch.cuda.current_device())
+        benchmark(model)
 
 
-        test(torch_model, model)
-        test(gptq_model, None)
+        # torch_model = get_llama(args.model)
+        # torch_model.half()
+        # torch_model = torch_model.to(DEV)
 
-        print("torch_model ", torch_model)
-        print("gptq_model ", gptq_model)
-        print("cai_model ", model)
-        torch_qkv_out = torch_model.model.layers[0].self_attn.qkv_out
-        cai_qkv_out = model.model.layers[0].self_attn.qkv_out
-        gptq_qkv_out = gptq_model.model.layers[0].self_attn.qkv_out
+        # gptq_model = gptq_load_quant(args.model, "llama7b-4bit-128g-gptq-nao.pt", args.wbits, args.groupsize)
+        # gptq_model = gptq_model.to(DEV)
 
-        gptq_out = gptq_model.model.layers[0].self_attn.q_proj.scales
-        cai_out = model.model.layers[0].self_attn.q_proj.scales
+        # model = cai_load_quant(args.model, args.load, args.wbits, args.groupsize)
+        # model = model.to(DEV)
 
-        mean_diff = torch.mean(torch.abs(cai_out - gptq_out))
-        max_diff = torch.max(torch.abs(cai_out - gptq_out))
-        print("cai vs gptq: mean_diff=%.8f, max_diff=%.8f" % (mean_diff, max_diff))
-        for i in range(3):
-            cai_out = cai_qkv_out[i]
-            torch_out = torch_qkv_out[i]
-            gptq_out = gptq_qkv_out[i]
-            mean_diff = torch.mean(torch.abs(cai_out - gptq_out))
-            max_diff = torch.max(torch.abs(cai_out - gptq_out))
-            print("cai vs gptq: mean_diff=%.8f, max_diff=%.8f" % (mean_diff, max_diff))
-            mean_diff = torch.mean(torch.abs(torch_out - gptq_out))
-            max_diff = torch.max(torch.abs(torch_out - gptq_out))
-            print("torch vs gptq: mean_diff=%.8f, max_diff=%.8f" % (mean_diff, max_diff))
-            mean_diff = torch.mean(torch.abs(torch_out - cai_out))
-            max_diff = torch.max(torch.abs(torch_out - cai_out))
-            print("torch vs cai: mean_diff=%.8f, max_diff=%.8f" % (mean_diff, max_diff))
+
+        # test(torch_model, model)
+        # test(gptq_model, None)
+
+        # print("torch_model ", torch_model)
+        # print("gptq_model ", gptq_model)
+        # print("cai_model ", model)
+        # torch_qkv_out = torch_model.model.layers[0].self_attn.qkv_out
+        # cai_qkv_out = model.model.layers[0].self_attn.qkv_out
+        # gptq_qkv_out = gptq_model.model.layers[0].self_attn.qkv_out
+
+        # gptq_out = gptq_model.model.layers[0].self_attn.q_proj.scales
+        # cai_out = model.model.layers[0].self_attn.q_proj.scales
+
+        # mean_diff = torch.mean(torch.abs(cai_out - gptq_out))
+        # max_diff = torch.max(torch.abs(cai_out - gptq_out))
+        # print("cai vs gptq: mean_diff=%.8f, max_diff=%.8f" % (mean_diff, max_diff))
+        # for i in range(3):
+        #     cai_out = cai_qkv_out[i]
+        #     torch_out = torch_qkv_out[i]
+        #     gptq_out = gptq_qkv_out[i]
+        #     mean_diff = torch.mean(torch.abs(cai_out - gptq_out))
+        #     max_diff = torch.max(torch.abs(cai_out - gptq_out))
+        #     print("cai vs gptq: mean_diff=%.8f, max_diff=%.8f" % (mean_diff, max_diff))
+        #     mean_diff = torch.mean(torch.abs(torch_out - gptq_out))
+        #     max_diff = torch.max(torch.abs(torch_out - gptq_out))
+        #     print("torch vs gptq: mean_diff=%.8f, max_diff=%.8f" % (mean_diff, max_diff))
+        #     mean_diff = torch.mean(torch.abs(torch_out - cai_out))
+        #     max_diff = torch.max(torch.abs(torch_out - cai_out))
+        #     print("torch vs cai: mean_diff=%.8f, max_diff=%.8f" % (mean_diff, max_diff))
 
         # # for batch in [1, 2, 4, 8, 16, 32]:
         # for batch in [1]:
