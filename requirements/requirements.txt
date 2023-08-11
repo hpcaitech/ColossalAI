@@ -12,3 +12,4 @@ torch>=1.11
 safetensors
 flash_attn>=2.0
 einops
+texttable
