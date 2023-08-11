@@ -78,12 +78,13 @@ def run_zero_test(local_rank, world_size, stage=1):
         zero_grad_list = optimizer._grad_store.get_partitioned_gradients_by_param_id(0, id(zero_param))
         if hasattr(zero_param, "moe_info"):
             assert len(zero_grad_list) == 0
-            assert torch.allclose(zero_grad, torch_grad)
+            assert torch.allclose(zero_param.grad, torch_param.grad)
         else:
             assert len(zero_grad_list) > 0
             torch_grad_list = split_ddp_grad(torch_param.grad, world_size)
             if stage == 2:
                 torch_grad_list = torch_grad_list[local_rank:local_rank + 1]
+            assert len(zero_grad_list) == len(torch_grad_list)
             for zero_grad, torch_grad in zip(zero_grad_list, torch_grad_list):
                 assert torch.allclose(zero_grad, torch_grad)
 
