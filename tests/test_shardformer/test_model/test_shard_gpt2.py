@@ -23,7 +23,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     org_model, org_optimizer, sharded_model, sharded_optimizer, criterion, booster = \
         build_model_from_hybrid_plugin(model_fn, loss_fn, test_config)
 
-
     org_loss, org_output, sharded_loss, sharded_output = \
         run_forward_backward_with_hybrid_plugin(
             org_model,
@@ -47,7 +46,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         if org_model.__class__.__name__ == 'GPT2Model':
             check_output_hidden_state(org_output, sharded_output, stage_manager, atol=atol, rtol=rtol)
 
-        # check loss
         check_loss(org_loss, sharded_loss, atol=atol, rtol=rtol)
 
     def unwrap(module):
@@ -92,13 +90,14 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     'num_microbatches': 4,
     'enable_all_optimization': True,
     'use_lazy_init': True,
-    'precision': 'fp32',
+    'precision': 'fp16',
+    'initial_scale': 1,
 }, {
     'tp_size': 1,
     'pp_size': 2,
     'num_microbatches': 4,
     'enable_all_optimization': True,
-    'use_lazy_init': False,
+    'use_lazy_init': True,
     'precision': 'fp16',
     'initial_scale': 1,
 }, {
@@ -112,7 +111,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 def run_gpt2_test(test_config):
 
     # TODO: add test_config for TP+DP after supporting & debugging it
-    # TODO: check and debug TP+AMP
 
     sub_model_zoo = model_zoo.get_sub_registry('transformers_gpt')
 
