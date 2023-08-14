@@ -63,22 +63,22 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     row_layer_for_check = ['wte', 'h[0].mlp.c_proj']
 
     # check grad
-    if test_config['precision'] == 'fp32':
-        atol, rtol = 1e-4, 1e-3
-    else:
-        atol, rtol = 5e-3, 5e-3
     if stage_manager is None or stage_manager.is_first_stage():
+        if test_config['precision'] == 'fp32':
+            atol, rtol = 1e-4, 1e-3
+        else:
+            atol, rtol = 5e-3, 5e-3
         check_grad(gpt2, sharded_gpt2, col_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=1, verbose=False)
         check_grad(gpt2, sharded_gpt2, row_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=0, verbose=False)
 
     # check weights after optimizer.step()
     org_optimizer.step()
     sharded_optimizer.step()
-    if test_config['precision'] == 'fp32':
-        atol, rtol = 5e-3, 1e-3
-    else:
-        atol, rtol = 5e-3, 5e-3
     if stage_manager is None or stage_manager.is_first_stage():
+        if test_config['precision'] == 'fp32':
+            atol, rtol = 5e-3, 1e-3
+        else:
+            atol, rtol = 5e-3, 5e-3
         check_weight(gpt2, sharded_gpt2, col_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=1, verbose=False)
 
     torch.cuda.empty_cache()

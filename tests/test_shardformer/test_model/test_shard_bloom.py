@@ -36,11 +36,14 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 
     # check last hidden state & loss
     if stage_manager is None or stage_manager.is_last_stage():
-
+        if test_config['precision'] == 'fp32':
+            atol, rtol = 1e-5, 1e-3
+        else:
+            atol, rtol = 5e-3, 5e-3
         if org_model.__class__.__name__ == 'BloomModel':
-            check_output_hidden_state(org_output, sharded_output, stage_manager, atol=1e-5, rtol=1e-3)
+            check_output_hidden_state(org_output, sharded_output, stage_manager, atol=atol, rtol=rtol)
 
-        check_loss(org_loss, sharded_loss, atol=1e-6, rtol=1e-3)
+        check_loss(org_loss, sharded_loss, atol=atol, rtol=rtol)
 
     # unwrap model
     if org_model.__class__.__name__ == 'BloomModel':
@@ -54,14 +57,22 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     row_layer_for_check = ['h[0].self_attention.query_key_value', 'word_embeddings']
     col_layer_for_check = ['h[0].self_attention.dense']
     if stage_manager is None or stage_manager.is_first_stage():
-        check_grad(bloom, sharded_bloom, row_layer_for_check, tp_group, atol=1e-6, rtol=1e-5, dim=0, verbose=False)
-        check_grad(bloom, sharded_bloom, col_layer_for_check, tp_group, atol=1e-6, rtol=1e-5, dim=1, verbose=False)
+        if test_config['precision'] == 'fp32':
+            atol, rtol = 1e-6, 1e-5
+        else:
+            atol, rtol = 5e-3, 5e-3
+        check_grad(bloom, sharded_bloom, row_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=0, verbose=False)
+        check_grad(bloom, sharded_bloom, col_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=1, verbose=False)
 
     # check weights after optimizer.step()
     org_optimizer.step()
     sharded_optimizer.step()
     if stage_manager is None or stage_manager.is_first_stage():
-        check_weight(bloom, sharded_bloom, col_layer_for_check, tp_group, atol=1e-4, rtol=1e-3, dim=1, verbose=False)
+        if test_config['precision'] == 'fp32':
+            atol, rtol = 1e-4, 1e-3
+        else:
+            atol, rtol = 5e-3, 5e-3
+        check_weight(bloom, sharded_bloom, col_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=1, verbose=False)
 
     torch.cuda.empty_cache()
 
@@ -70,29 +81,29 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     'tp_size': 2,
     'pp_size': 2,
     'num_microbatches': 4,
-    'enable_fused_normalization': True,
-    'use_lazy_init': True
+    'enable_all_optimization': True,
+    'use_lazy_init': True,
+    'precision': 'fp16',
+    'initial_scale': 1,
 }, {
     'tp_size': 1,
     'pp_size': 2,
     'num_microbatches': 4,
-    'enable_fused_normalization': False,
-    'use_lazy_init': False
+    'enable_all_optimization': False,
+    'use_lazy_init': False,
+    'precision': 'fp32',
 }, {
     'tp_size': 4,
     'pp_size': 1,
-    'enable_fused_normalization': True,
-    'use_lazy_init': False
+    'enable_all_optimization': True,
+    'use_lazy_init': False,
+    'precision': 'fp32',
 }])
 def run_bloom_test(test_config):
 
     # TODO: add test_config for TP+DP after supporting & debugging it
-    # {'tp_size': 2, 'pp_size': 1, 'enable_fused_normalization': True}
-
-    # TODO: add test_config for flash attention & jit operator after supporting
 
     sub_model_zoo = model_zoo.get_sub_registry('transformers_bloom')
-    test_config['precision'] = 'float'    # Do not use fp16/bf16 in testing
 
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
