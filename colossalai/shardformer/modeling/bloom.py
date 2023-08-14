@@ -252,7 +252,7 @@ class BloomPipelineForwards:
             # Add last hidden state
             hidden_states = self.ln_f(hidden_states)
 
-        # TODO: deal with all_hidden_states, all_self_attentions, presents
+        # TODO(jianghai): deal with all_hidden_states, all_self_attentions, presents
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
 
@@ -307,7 +307,7 @@ class BloomPipelineForwards:
             raise ValueError(f"Got unexpected arguments: {deprecated_arguments}")
 
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-        # TODO: left the recording kv-value tensors as () or None type, this feature may be added in the future.
+        # TODO(jianghai): left the recording kv-value tensors as () or None type, this feature may be added in the future.
         if output_attentions:
             logger.warning_once('output_attentions=True is not supported for pipeline models at the moment.')
             output_attentions = False
@@ -402,7 +402,7 @@ class BloomPipelineForwards:
 
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        # TODO: left the recording kv-value tensors as () or None type, this feature may be added in the future.
+        # TODO(jianghai): left the recording kv-value tensors as () or None type, this feature may be added in the future.
         if output_attentions:
             logger.warning_once('output_attentions=True is not supported for pipeline models at the moment.')
             output_attentions = False
@@ -431,7 +431,7 @@ class BloomPipelineForwards:
         all_cross_attentions = None
         if stage_manager.is_last_stage():
             batch_size = hidden_states.shape[0]
-            #update batch size
+            # update batch size
             hidden_states = transformer_outputs[0]
             logits = self.score(hidden_states)
 
@@ -525,7 +525,7 @@ class BloomPipelineForwards:
 
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        # TODO: left the recording kv-value tensors as () or None type, this feature may be added in the future.
+        # TODO(jianghai): left the recording kv-value tensors as () or None type, this feature may be added in the future.
         if output_attentions:
             logger.warning_once('output_attentions=True is not supported for pipeline models at the moment.')
             output_attentions = False
@@ -611,7 +611,7 @@ class BloomPipelineForwards:
         logger = logging.get_logger(__name__)
 
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-        # TODO: left the recording kv-value tensors as () or None type, this feature may be added in the future.
+        # TODO(jianghai): left the recording kv-value tensors as () or None type, this feature may be added in the future.
         if output_attentions:
             logger.warning_once('output_attentions=True is not supported for pipeline models at the moment.')
             output_attentions = False

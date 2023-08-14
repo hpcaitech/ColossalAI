@@ -96,7 +96,7 @@ def ViTModel_pipeline_forward(stage_manager: PipelineStageManager, stage_index: 
             if pixel_values is None:
                 raise ValueError("You have to specify pixel_values")
 
-            # TODO: maybe have a cleaner way to cast the input (from `ImageProcessor` side?)
+            # TODO(FoolPlayer): maybe have a cleaner way to cast the input (from `ImageProcessor` side?)
             expected_dtype = self.embeddings.patch_embeddings.projection.weight.dtype
             if pixel_values.dtype != expected_dtype:
                 pixel_values = pixel_values.to(expected_dtype)
