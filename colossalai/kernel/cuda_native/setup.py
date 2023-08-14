@@ -143,6 +143,22 @@ setup(
                                'nvcc': append_nvcc_threads(['-O3', '--use_fast_math'] + cc_flag)
                                 },
         ),
+
+        CUDAExtension(
+            name="col_rms_norm_ops",
+            sources=[
+                "csrc/attention_infer_kernels/layernorm/layernorm.cpp", 
+                "csrc/attention_infer_kernels/layernorm/layernorm_kernels.cu"
+                ],
+            extra_compile_args={
+                               'cxx': ['-O3',],
+                               'nvcc': append_nvcc_threads(['-O3', '--use_fast_math'] + cc_flag)
+                                },
+            include_dirs=[
+                Path(this_dir)/'csrc'/'attention_infer_kernels'/'layernorm',
+            ],
+        ),
+
         CUDAExtension(
                 name="col_flash_attn_2_lib",
                 sources=[
