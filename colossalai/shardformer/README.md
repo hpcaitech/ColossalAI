@@ -30,7 +30,7 @@
 
 ### Quick Start
 
-The sample API usage is given below(If you enable the use of flash attention, please install xformers.):
+The sample API usage is given below(If you enable the use of flash attention, please install `flash_attn`. In addition, xformers's `cutlass_op` provide a supplementary optimization, It requires that the sequence length be a multiple of 8.):
 
 ```python
 from colossalai.shardformer import ShardConfig, Shard
