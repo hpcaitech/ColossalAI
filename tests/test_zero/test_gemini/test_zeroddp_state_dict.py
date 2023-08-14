@@ -4,9 +4,8 @@ from torch.testing import assert_close
 
 import colossalai
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
-from colossalai.zero import ZeroDDP
-from colossalai.zero.gemini.chunk import ChunkManager, search_chunk_configuration
-from colossalai.zero.gemini.gemini_mgr import GeminiManager
+from colossalai.zero import GeminiDDP
+from colossalai.zero.gemini.chunk import search_chunk_configuration
 from tests.components_to_test.registry import non_distributed_component_funcs
 from tests.test_tensor.common_utils import set_seed
 
@@ -14,7 +13,7 @@ from tests.test_tensor.common_utils import set_seed
 def ignore_the_first_parameter(model: torch.nn.Module):
     for name, param in model.named_parameters():
         print(f"parameter `{name}` is set ignored")
-        ZeroDDP.set_params_to_ignore([param])
+        GeminiDDP.set_params_to_ignore([param])
         return
 
 
@@ -36,9 +35,7 @@ def exam_state_dict(placement_policy, keep_gathered, model_name: str):
     config_dict, *_ = search_chunk_configuration(model, search_range_m=1, search_interval=100)
     config_dict[world_size]['chunk_size'] = 5000
     config_dict[world_size]['keep_gathered'] = keep_gathered
-    chunk_manager = ChunkManager(config_dict)
-    gemini_manager = GeminiManager(placement_policy, chunk_manager)
-    model = ZeroDDP(model, gemini_manager, pin_memory=True)
+    model = GeminiDDP(model, config_dict, placement_policy=placement_policy, pin_memory=True)
     model.train()
 
     zero_dict = model.state_dict(only_rank_0=False)
@@ -72,9 +69,7 @@ def exam_load_state_dict(placement_policy, keep_gathered, model_name: str):
         init_device = torch.device('cpu')
     else:
         init_device = None
-    chunk_manager = ChunkManager(config_dict, init_device=init_device)
-    gemini_manager = GeminiManager(placement_policy, chunk_manager)
-    model = ZeroDDP(model, gemini_manager, pin_memory=True)
+    model = GeminiDDP(model, config_dict, init_device, placement_policy, pin_memory=True)
 
     torch_dict = torch_model.state_dict()
     model.load_state_dict(torch_dict, strict=False)

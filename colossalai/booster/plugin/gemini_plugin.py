@@ -1,13 +1,11 @@
 import gc
 import logging
 import os
-import warnings
 from pathlib import Path
-from typing import Callable, Iterator, List, Optional, Tuple, Union
+from typing import Callable, Iterator, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
-from torch import Tensor
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch.utils.data import DataLoader
@@ -16,7 +14,6 @@ from colossalai.checkpoint_io import CheckpointIndexFile, CheckpointIO, GeneralC
 from colossalai.checkpoint_io.utils import (
     get_model_base_filenames,
     get_optimizer_base_filenames,
-    get_shard_filename,
     load_shard_state_dict,
     save_state_dict,
     save_state_dict_shards,
@@ -24,8 +21,7 @@ from colossalai.checkpoint_io.utils import (
 from colossalai.cluster import DistCoordinator
 from colossalai.interface import ModelWrapper, OptimizerWrapper
 from colossalai.utils import get_current_device
-from colossalai.zero import GeminiDDP, zero_model_wrapper, zero_optim_wrapper
-from colossalai.zero.gemini import ZeroOptimizer
+from colossalai.zero import GeminiDDP, GeminiOptimizer
 from colossalai.zero.gemini.memory_tracer import MemStats
 
 from .dp_plugin_base import DPPluginBase
@@ -132,11 +128,7 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
         As there is communication when getting state dict, this must be called on all processes.
         """
 
-        # If optimizer is wrapped, unwrap it.
-        if isinstance(optimizer, OptimizerWrapper):
-            optimizer = optimizer.unwrap()
-
-        assert isinstance(optimizer, ZeroOptimizer)
+        assert isinstance(optimizer, GeminiOptimizer)
 
         if os.path.isfile(checkpoint):
             logging.error(f"Provided path ({checkpoint}) should be a directory, not a file")
@@ -183,11 +175,7 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
         if not os.path.isfile(checkpoint_index_file):
             logging.error(f"Provided path ({checkpoint_index_file}) should be a file")
 
-        # If optimizer is wrapped, unwrap it.
-        if isinstance(optimizer, OptimizerWrapper):
-            optimizer = optimizer.unwrap()
-
-        assert isinstance(optimizer, ZeroOptimizer)
+        assert isinstance(optimizer, GeminiOptimizer)
 
         # Read checkpoint index file.
         ckpt_index_file = CheckpointIndexFile.from_file(checkpoint_index_file)
@@ -218,36 +206,6 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
         """
         if self.coordinator.is_master():
             super().save_lr_scheduler(lr_scheduler, checkpoint)
-
-
-class GeminiOptimizer(OptimizerWrapper):
-
-    def __init__(self,
-                 module: GeminiDDP,
-                 optimizer: Optimizer,
-                 zero_optim_config: dict,
-                 optim_kwargs: dict,
-                 verbose: bool = False) -> None:
-        optimizer = zero_optim_wrapper(module,
-                                       optimizer,
-                                       optim_config=zero_optim_config,
-                                       **optim_kwargs,
-                                       verbose=verbose)
-        super().__init__(optimizer)
-
-    def backward(self, loss: Tensor, *args, **kwargs):
-        self.optim.backward(loss)
-
-    def clip_grad_by_norm(self,
-                          max_norm: Union[float, int],
-                          norm_type: Union[float, int] = 2,
-                          error_if_nonfinite: bool = False,
-                          *args,
-                          **kwargs) -> Tensor:
-        warnings.warn(f'Gemini controls grad clipping by itself, so you should not use clip_grad_by_norm')
-
-    def clip_grad_by_value(self, clip_value: float, *args, **kwargs) -> None:
-        raise NotImplementedError('Gemini does not support clip_grad_by_value')
 
 
 class GeminiPlugin(DPPluginBase):
@@ -299,7 +257,7 @@ class GeminiPlugin(DPPluginBase):
 
     def __init__(
         self,
-        device: Optional[torch.device] = None,
+        chunk_init_device: Optional[torch.device] = None,
         placement_policy: str = "cpu",
         precision: str = "fp16",
         pin_memory: bool = False,
@@ -324,7 +282,7 @@ class GeminiPlugin(DPPluginBase):
         super().__init__()
         assert precision in SUPPORTED_PRECISION, f'precision {precision} is not supported'
         self.gemini_config = dict(
-            device=(device or get_current_device()),
+            chunk_init_device=(chunk_init_device or get_current_device()),
             placement_policy=placement_policy,
             pin_memory=pin_memory,
             force_outputs_fp32=force_outputs_fp32,
@@ -383,13 +341,14 @@ class GeminiPlugin(DPPluginBase):
 
             # wrap the model with Gemini
             model = GeminiDDP(model, **self.gemini_config, verbose=self.verbose)
-            # TODO(ver217): remove this line
-            model._colo_zero_stage = 3
 
         if optimizer is not None and \
                 not isinstance(optimizer, OptimizerWrapper):
-            optimizer = GeminiOptimizer(model.unwrap(), optimizer, self.zero_optim_config, self.optim_kwargs,
-                                        self.verbose)
+            optimizer = GeminiOptimizer(optimizer,
+                                        model.unwrap(),
+                                        **self.zero_optim_config,
+                                        **self.optim_kwargs,
+                                        verbose=self.verbose)
 
         return model, optimizer, criterion, dataloader, lr_scheduler
 

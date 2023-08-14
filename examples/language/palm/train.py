@@ -1,5 +1,4 @@
 import gzip
-import random
 from functools import partial
 from time import time
 
@@ -8,20 +7,17 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import tqdm
-from packaging import version
-
-from colossalai.nn import HybridAdam
 from palm_pytorch import PaLM
 from palm_pytorch.autoregressive_wrapper import AutoregressiveWrapper
 from torch.utils.data import DataLoader, Dataset
 
 import colossalai
-from colossalai.logging import disable_existing_loggers, get_dist_logger
-from colossalai.tensor import ColoParameter, ComputePattern, ComputeSpec, ProcessGroup, ReplicaSpec, ShardSpec
-from colossalai.utils import MultiTimer, get_current_device
-from colossalai.zero import ColoInitContext, GeminiAdamOptimizer, ZeroDDP
 from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin, LowLevelZeroPlugin, TorchDDPPlugin
+from colossalai.logging import disable_existing_loggers, get_dist_logger
+from colossalai.nn import HybridAdam
+from colossalai.tensor import ColoParameter, ComputePattern, ComputeSpec, ProcessGroup, ReplicaSpec, ShardSpec
+from colossalai.zero import ColoInitContext
 
 # constants
 
@@ -109,8 +105,6 @@ def get_model_size(model: nn.Module):
         for p in module.parameters(recurse=False):
             total_numel += p.numel()
     return total_numel
-
-
 
 
 # Parameter Sharding Strategies for Tensor Parallelism
@@ -212,9 +206,9 @@ if args.distplan == "colossalai":
     if args.plugin.startswith('torch_ddp'):
         plugin = TorchDDPPlugin()
     elif args.plugin == 'gemini':
-        plugin = GeminiPlugin(placement_policy=args.placement, strict_ddp_mode=True, initial_scale=2 ** 5)
+        plugin = GeminiPlugin(placement_policy=args.placement, strict_ddp_mode=True, initial_scale=2**5)
     elif args.plugin == 'low_level_zero':
-        plugin = LowLevelZeroPlugin(initial_scale=2 ** 5)
+        plugin = LowLevelZeroPlugin(initial_scale=2**5)
     logger.info(f"plugin: {plugin}")
     booster = Booster(plugin=plugin, **booster_kwargs)
 

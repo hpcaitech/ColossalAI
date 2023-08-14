@@ -3,9 +3,8 @@ import torch
 
 import colossalai
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
-from colossalai.zero import ZeroDDP
-from colossalai.zero.gemini.chunk import ChunkManager, search_chunk_configuration
-from colossalai.zero.gemini.gemini_mgr import GeminiManager
+from colossalai.zero import GeminiDDP
+from colossalai.zero.gemini.chunk import search_chunk_configuration
 from tests.components_to_test.registry import non_distributed_component_funcs
 
 
@@ -20,9 +19,7 @@ def exam_state_dict(placement_policy, model_name: str):
     model_size = sum(p.numel() * p.element_size() for p in model.parameters()) / 1024**2
 
     config_dict, *_ = search_chunk_configuration(model, search_range_m=1, search_interval=100)
-    chunk_manager = ChunkManager(config_dict)
-    gemini_manager = GeminiManager(placement_policy, chunk_manager)
-    model = ZeroDDP(model, gemini_manager)
+    model = GeminiDDP(model, config_dict, placement_policy=placement_policy)
     model.train()
 
     zero_dict = model.state_dict(only_rank_0=False)

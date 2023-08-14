@@ -4,9 +4,8 @@ import torch.distributed as dist
 
 import colossalai
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
-from colossalai.zero import ZeroDDP
-from colossalai.zero.gemini.chunk import ChunkManager, search_chunk_configuration
-from colossalai.zero.gemini.gemini_mgr import GeminiManager
+from colossalai.zero import GeminiDDP
+from colossalai.zero.gemini.chunk import search_chunk_configuration
 from colossalai.zero.gemini.memory_tracer.runtime_mem_tracer import RuntimeMemTracer
 from tests.components_to_test import run_fwd_bwd
 from tests.components_to_test.registry import non_distributed_component_funcs
@@ -58,9 +57,11 @@ def run_gemini_use_rmt(placement_policy, keep_gather, model_name: str, use_grad_
     config_dict, *_ = search_chunk_configuration(model, search_range_m=1, search_interval=100)
     config_dict[world_size]['chunk_size'] = 5000
     config_dict[world_size]['keep_gathered'] = keep_gather
-    chunk_manager = ChunkManager(config_dict)
-    gemini_manager = GeminiManager(placement_policy, chunk_manager, memstats)
-    model = ZeroDDP(model, gemini_manager, pin_memory=True)
+    model = GeminiDDP(model,
+                      chunk_config_dict=config_dict,
+                      placement_policy=placement_policy,
+                      pin_memory=True,
+                      memstats=memstats)
 
     set_seed(dist.get_rank())
     for i, (input_ids, label) in enumerate(train_dataloader):
@@ -74,7 +75,7 @@ def run_gemini_use_rmt(placement_policy, keep_gather, model_name: str, use_grad_
         set_seed(42)
         loss = run_fwd_bwd(model, input_ids, label, criterion, model)
 
-    gemini_non_model_data = gemini_manager._mem_stats_collector._memstats.non_model_data_list('cuda')
+    gemini_non_model_data = model.gemini_manager._mem_stats_collector._memstats.non_model_data_list('cuda')
 
     # print('gemini non model data:', gemini_non_model_data)
 
