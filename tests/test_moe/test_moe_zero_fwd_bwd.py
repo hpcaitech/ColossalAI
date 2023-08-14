@@ -6,11 +6,10 @@ from colossalai.booster import Booster
 from colossalai.booster.plugin import LowLevelZeroPlugin
 from colossalai.booster.plugin.low_level_zero_plugin import LowLevelZeroModel
 from colossalai.context import MOE_CONTEXT
-from colossalai.engine.gradient_handler import MoeGradientHandler
 from colossalai.nn import MoeLoss
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 from colossalai.testing.random import seed_all
-from tests.test_moe.moe_utils import MoeModel
+from tests.test_moe.moe_utils import MoeGradientHandler, MoeModel
 
 
 def split_ddp_grad(grad, world_size):

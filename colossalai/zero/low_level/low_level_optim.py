@@ -17,6 +17,7 @@ from colossalai.amp.naive_amp.mixed_precision_mixin import (
 )
 from colossalai.interface import OptimizerWrapper
 from colossalai.logging import get_dist_logger
+from colossalai.tensor.moe_tensor.api import is_moe_param
 # from colossalai.tensor import ColoParameter, ProcessGroup
 from colossalai.utils.cuda import get_current_device
 
@@ -129,16 +130,23 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         self._grad_store = GradientStore(self.dp_pg, partition_grad=partition_grad)
         self._bucket_store = BucketStore(self.dp_pg)
 
+        # moe param should not be stored in working_groups
+        # because they have different parallel strategy
+        # so we need to store them separately in param_groups
+        # instead of working_groups
+        moe_params = list()
+
         # iterate over the param group in the optimizer
         # partition these param groups for data parallel training
         # and add buffers to parameter store for future access
         for group_id, param_group in enumerate(self.optim.param_groups):
             group_params = list()
             for param in param_group['params']:
-                # skip moe param
-                if hasattr(param, "moe_info"):
-                    continue
                 if param.requires_grad:
+                    # skip moe param
+                    if is_moe_param(param):
+                        moe_params.append(param)
+                        continue
                     group_params.append(param)
 
             # add the working params to working_param_groups for bookkeeping
@@ -152,6 +160,15 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             # so that when the optimizer calls step(), it only updates the tensors
             # managed by this data parallel rank
             param_group['params'] = master_param_current_rank
+
+        # if there are moe params, store in addtional group in optim
+        if len(moe_params) > 0:
+            param_group = dict()
+            for key, value in self.optim.param_groups[0].items():
+                if key != 'params':
+                    param_group[key] = value
+            param_group['params'] = moe_params
+            self.optim.param_groups.append(param_group)
 
         # intialize communication stream for
         # communication-compuation overlapping
@@ -439,6 +456,11 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
         # update the parameters
         self.optim.step()
+
+        # release the moe grad
+        if len(self.param_groups) > len(self._working_param_groups):
+            for param in self.param_groups[-1]['params']:
+                param.grad = None
 
         # release the grad
         grad_partition_groups = []
