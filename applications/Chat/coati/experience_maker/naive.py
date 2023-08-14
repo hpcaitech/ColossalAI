@@ -1,6 +1,7 @@
 import torch
-from coati.models.generation import generate_with_actor
-from coati.models.utils import calc_action_log_probs, compute_reward, normalize
+import torch.nn.functional as F
+from coati.models.generation import generate
+from coati.models.utils import calc_action_log_probs, compute_reward
 
 from .base import Experience, ExperienceMaker
 
@@ -17,10 +18,27 @@ class NaiveExperienceMaker(ExperienceMaker):
         self.initial_model.eval()
         self.reward_model.eval()
 
-        sequences, attention_mask, action_mask = generate_with_actor(self.actor,
-                                                                     input_ids,
-                                                                     return_action_mask=True,
-                                                                     **generate_kwargs)
+        # generate sequences
+        sequences = generate(self.actor, input_ids, **generate_kwargs)
+
+        # calculate auxiliary tensors
+        attention_mask = None
+        pad_token_id = generate_kwargs.get('pad_token_id', None)
+        if pad_token_id is not None:
+            attention_mask = sequences.not_equal(pad_token_id)\
+                .to(dtype=torch.long, device=sequences.device)
+
+        input_len = input_ids.size(1)
+        eos_token_id = generate_kwargs.get('eos_token_id', None)
+        if eos_token_id is None:
+            action_mask = torch.ones_like(sequences, dtype=torch.bool)
+        else:
+            # left padding may be applied, only mask action
+            action_mask = (sequences[:, input_len:] == eos_token_id).cumsum(dim=-1) == 0
+            action_mask = F.pad(action_mask, (1 + input_len, -1), value=True)    # include eos token and input
+        action_mask[:, :input_len] = False
+        action_mask = action_mask[:, 1:]
+        action_mask = action_mask[:, -(sequences.size(1) - input_len):]
         num_actions = action_mask.size(1)
 
         actor_output = self.actor(sequences, attention_mask)
