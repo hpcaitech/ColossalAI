@@ -12,7 +12,7 @@ einops==0.3.0
 transformers
 webdataset==0.2.5
 open-clip-torch==2.7.0
-gradio==3.11
+gradio==3.34.0
 lightning==1.9.0
 datasets
 colossalai

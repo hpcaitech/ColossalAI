@@ -168,7 +168,7 @@ class Booster:
         """
         assert self.plugin is not None, f'no_sync is only enabled when a plugin is provided and the plugin supports no_sync.'
         assert self.plugin.support_no_sync(), f'The plugin {self.plugin.__class__.__name__} does not support no_sync.'
-        return self.plugin.no_sync(model)
+        return self.plugin.no_sync(model, optimizer)
 
     def load_model(self, model: Union[nn.Module, ModelWrapper], checkpoint: str, strict: bool = True):
         """Load model from checkpoint.

@@ -1,5 +1,3 @@
-from typing import List
-
 from torch import Tensor
 from torch.distributed import ProcessGroup
 
@@ -10,88 +8,43 @@ class ParameterStore(BaseStore):
 
     def __init__(self, torch_pg: ProcessGroup):
         super().__init__(torch_pg)
-        # param partitioning data structures
-        self._param_to_rank = dict()
-        self._rank_group_id_to_param_list = dict()
-        self._rank_group_id_to_flat_param = dict()
 
-        # param reduction data structures
-        self._is_param_reduced = dict()
-        self._reduced_param = []
+        # record the padding size of each param
+        self._padding_map = dict()
 
-    def set_param_to_rank(self, tensor: Tensor, rank: int) -> None:
-        """
-        Set the mapping between parameter to rank, each parameter should be owned by a rank.
+        # mapping working param and master param
+        self.master_to_working_param = dict()
+        self.working_to_master_param = dict()
 
-        :param tensor: A :class:`torch.Tensor` object
-        :type tensor: torch.Tensor
-        :param rank: The rank of which the process is responsible for updating the parameter
-        :type rank: int
+    def record_param_padding_size(self, param: Tensor, padding_size: int):
+        """Record the padding size of a param
+
+        Args:
+            param (Tensor): The parameter
+            padding_size (int): The padding size of the parameter
         """
 
-        self._param_to_rank[tensor] = rank
+        self._padding_map[id(param)] = padding_size
 
-    def get_param_rank(self, tensor: Tensor) -> int:
-        """
-        Gives the rank which the parameter belongs to
+    def get_param_padding_size(self, param: Tensor) -> int:
+        """Return the padding size of the parameter
 
-        :param tensor: A :class:`torch.Tensor` object
-        :type tensor: torch.Tensor
-        """
-        return self._param_to_rank[tensor]
+        Args:
+            param (Tensor): The parameter
 
-    def belongs_to_current_rank(self, tensor) -> bool:
-        """
-        Check whether a parameter is supposed to be updated by the process of the current rank
-
-        :param tensor: A :class:`torch.Tensor` object
-        :type tensor: torch.Tensor
-
-        :return: True if the parameter should be updated by the current rank. Otherwise false.
-        :rtype: bool
+        Returns:
+            int: the padding size of the parameter
         """
 
-        tensor_rank = self._param_to_rank[tensor]
-        return tensor_rank == self._local_rank
+        return self._padding_map[id(param)]
 
-    def add_param_list_by_rank_group(self, rank, group_id, tensor_list) -> None:
-        if rank not in self._rank_group_id_to_param_list:
-            self._rank_group_id_to_param_list[rank] = dict()
+    def link_master_and_working_param(self, master_param: Tensor, working_param: Tensor):
+        """Mapping master parameter and working parameter
 
-        if group_id not in self._rank_group_id_to_param_list[rank]:
-            self._rank_group_id_to_param_list[rank][group_id] = []
+        Args:
+            master_param (Tensor): The parameter copy in optimizer
+            working_param (Tensor): The parameter of the model
+        """
 
-        self._rank_group_id_to_param_list[rank][group_id].extend(tensor_list)
-
-    def get_params_by_rank_group(self, rank, group_id) -> List[Tensor]:
-        return self._rank_group_id_to_param_list[rank][group_id]
-
-    def add_flat_param_by_rank_group(self, rank, group_id, tensor) -> None:
-        if rank not in self._rank_group_id_to_flat_param:
-            self._rank_group_id_to_flat_param[rank] = dict()
-
-        self._rank_group_id_to_flat_param[rank][group_id] = tensor
-
-    def get_flat_param_by_rank_group(self, rank, group_id) -> Tensor:
-        return self._rank_group_id_to_flat_param[rank][group_id]
-
-    def is_param_reduced(self, tensor):
-        return self._is_param_reduced[tensor]
-
-    def set_param_reduction_state(self, tensor, state):
-        self._is_param_reduced[tensor] = state
-
-    def get_param_reduction_states(self):
-        return self._is_param_reduced
-
-    def reset_previous_reduced_params(self):
-        self._reduced_param = []
-
-    def add_previous_reduced_param(self, tensor):
-        self._reduced_param.append(tensor)
-
-    def clear_grads_of_previous_reduced_params(self):
-        if len(self._reduced_param) > 0:
-            for param in self._reduced_param:
-                param.grad = None
-            self.reset_previous_reduced_params()
+        self.master_to_working_param[id(master_param)] = working_param
+        self.working_to_master_param[id(working_param)] = master_param

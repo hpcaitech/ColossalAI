@@ -1,8 +1,9 @@
 import argparse
+import warnings
 
 import torch
 import torch.distributed as dist
-from coati.dataset import DataCollatorForSupervisedDataset, PromptDataset, SupervisedDataset
+from coati.dataset import PromptDataset, SupervisedDataset
 from coati.models.bloom import BLOOMRM, BLOOMActor, BLOOMCritic
 from coati.models.gpt import GPTRM, GPTActor, GPTCritic
 from coati.models.llama import LlamaActor, LlamaCritic, LlamaRM
@@ -29,6 +30,7 @@ def main(args):
         raise ValueError(f'Unsupported strategy "{args.strategy}"')
 
     if args.rm_path is not None:
+        warnings.warn('LoRA weights should be merged with the model weights')
         state_dict = torch.load(args.rm_path, map_location='cpu')
 
     with strategy.model_init_context():
@@ -50,18 +52,18 @@ def main(args):
             rm_model_name = args.rm_model
 
         if rm_model_name == 'gpt2':
-            reward_model = GPTRM(pretrained=args.rm_pretrain)
+            reward_model = GPTRM(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
         elif rm_model_name == 'bloom':
-            reward_model = BLOOMRM(pretrained=args.rm_pretrain)
+            reward_model = BLOOMRM(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
         elif rm_model_name == 'opt':
-            reward_model = OPTRM(pretrained=args.rm_pretrain)
+            reward_model = OPTRM(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
         elif rm_model_name == 'llama':
-            reward_model = LlamaRM(pretrained=args.rm_pretrain)
+            reward_model = LlamaRM(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
         else:
             raise ValueError(f'Unsupported reward model "{rm_model_name}"')
 
         if args.rm_path is not None:
-            reward_model.load_state_dict(state_dict)
+            reward_model.load_state_dict(state_dict, strict=False)
 
         initial_model.to(torch.float16).to(torch.cuda.current_device())
         reward_model.to(torch.float16).to(torch.cuda.current_device())
@@ -89,7 +91,7 @@ def main(args):
             raise ValueError(f'Unsupported reward model "{rm_model_name}"')
 
         if args.rm_path is not None:
-            critic.load_state_dict(state_dict)
+            critic.load_state_dict(state_dict, strict=False)
             del state_dict
 
     if args.strategy != 'colossalai_gemini':
@@ -106,22 +108,24 @@ def main(args):
 
     # configure tokenizer
     if args.model == 'gpt2':
-        tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
+        tokenizer = GPT2Tokenizer.from_pretrained(
+            'gpt2' if args.tokenizer is None else args.tokenizer)
         tokenizer.pad_token = tokenizer.eos_token
     elif args.model == 'bloom':
-        tokenizer = BloomTokenizerFast.from_pretrained('bigscience/bloom-560m')
+        tokenizer = BloomTokenizerFast.from_pretrained(
+            'bigscience/bloom-560m' if args.tokenizer is None else args.tokenizer)
         tokenizer.pad_token = tokenizer.eos_token
     elif args.model == 'opt':
-        tokenizer = AutoTokenizer.from_pretrained("facebook/opt-350m")
+        tokenizer = AutoTokenizer.from_pretrained(
+            "facebook/opt-350m" if args.tokenizer is None else args.tokenizer)
         tokenizer.pad_token = tokenizer.eos_token
     elif args.model == 'llama':
-        tokenizer = LlamaTokenizer.from_pretrained(args.pretrain)
+        tokenizer = LlamaTokenizer.from_pretrained(
+            "hf-internal-testing/llama-tokenizer" if args.tokenizer is None else args.tokenizer)
         tokenizer.eos_token = '<\s>'
         tokenizer.pad_token = tokenizer.unk_token
     else:
         raise ValueError(f'Unsupported model "{args.model}"')
-
-    data_collator = DataCollatorForSupervisedDataset(tokenizer=tokenizer)
 
     prompt_dataset = PromptDataset(tokenizer=tokenizer, data_path=args.prompt_dataset, max_datasets_size=16384)
     if dist.is_initialized() and dist.get_world_size() > 1:
@@ -144,8 +148,7 @@ def main(args):
     pretrain_dataloader = DataLoader(pretrain_dataset,
                                      shuffle=(pretrain_sampler is None),
                                      sampler=pretrain_sampler,
-                                     batch_size=args.ptx_batch_size,
-                                     collate_fn=data_collator)
+                                     batch_size=args.ptx_batch_size)
 
     # NOTE: For small models like opt-1.3b, reward model and initial model are not required to be parallelized.
     (actor, actor_optim), (critic, critic_optim), reward_model, initial_model = \
@@ -197,6 +200,7 @@ if __name__ == '__main__':
                         default='colossalai_zero2',
                         help='strategy to use')
     parser.add_argument('--model', default='gpt2', choices=['gpt2', 'bloom', 'opt', 'llama'])
+    parser.add_argument('--tokenizer', type=str, default=None)
     parser.add_argument('--pretrain', type=str, default=None)
     parser.add_argument('--rm_model', default=None, choices=['gpt2', 'bloom', 'opt', 'llama'])
     parser.add_argument('--rm_path', type=str, default=None)
