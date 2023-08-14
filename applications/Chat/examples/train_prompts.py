@@ -1,39 +1,36 @@
 import argparse
+import warnings
 
-import pandas as pd
 import torch
 import torch.distributed as dist
-from coati.dataset import DataCollatorForSupervisedDataset, PromptDataset, SupervisedDataset
+from coati.dataset import PromptDataset, SupervisedDataset
 from coati.models.bloom import BLOOMRM, BLOOMActor, BLOOMCritic
 from coati.models.gpt import GPTRM, GPTActor, GPTCritic
 from coati.models.llama import LlamaActor, LlamaCritic, LlamaRM
 from coati.models.opt import OPTRM, OPTActor, OPTCritic
-from coati.models.roberta import RoBERTaActor, RoBERTaCritic, RoBERTaRM
 from coati.trainer import PPOTrainer
-from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
-from coati.utils import prepare_llama_tokenizer_and_embedding
+from coati.trainer.strategies import DDPStrategy, GeminiStrategy, LowLevelZeroStrategy
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
-from transformers import AutoTokenizer, BloomTokenizerFast, GPT2Tokenizer, LlamaTokenizer, RobertaTokenizer
+from transformers import AutoTokenizer, BloomTokenizerFast, GPT2Tokenizer, LlamaTokenizer
 
 from colossalai.nn.optimizer import HybridAdam
 
 
 def main(args):
     # configure strategy
-    if args.strategy == 'naive':
-        strategy = NaiveStrategy()
-    elif args.strategy == 'ddp':
+    if args.strategy == 'ddp':
         strategy = DDPStrategy()
     elif args.strategy == 'colossalai_gemini':
-        strategy = ColossalAIStrategy(stage=3, placement_policy='cuda', initial_scale=2**5)
+        strategy = GeminiStrategy(placement_policy='cuda', initial_scale=2**5)
     elif args.strategy == 'colossalai_zero2':
-        strategy = ColossalAIStrategy(stage=2, placement_policy='cuda')
+        strategy = LowLevelZeroStrategy(stage=2, placement_policy='cuda')
     else:
         raise ValueError(f'Unsupported strategy "{args.strategy}"')
 
     if args.rm_path is not None:
+        warnings.warn('LoRA weights should be merged with the model weights')
         state_dict = torch.load(args.rm_path, map_location='cpu')
 
     with strategy.model_init_context():
@@ -46,31 +43,27 @@ def main(args):
             initial_model = OPTActor(pretrained=args.pretrain)
         elif args.model == 'llama':
             initial_model = LlamaActor(pretrained=args.pretrain)
-        elif args.model == 'roberta':
-            initial_model = RoBERTaActor(pretrained=args.pretrain)
         else:
             raise ValueError(f'Unsupported actor model "{args.model}"')
 
-        if args.rm_model == None:
+        if args.rm_model is None:
             rm_model_name = args.model
         else:
             rm_model_name = args.rm_model
 
         if rm_model_name == 'gpt2':
-            reward_model = GPTRM(pretrained=args.rm_pretrain)
+            reward_model = GPTRM(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
         elif rm_model_name == 'bloom':
-            reward_model = BLOOMRM(pretrained=args.rm_pretrain)
+            reward_model = BLOOMRM(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
         elif rm_model_name == 'opt':
-            reward_model = OPTRM(pretrained=args.rm_pretrain)
+            reward_model = OPTRM(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
         elif rm_model_name == 'llama':
-            reward_model = LlamaRM(pretrained=args.rm_pretrain)
-        elif rm_model_name == 'roberta':
-            reward_model = RoBERTaRM(pretrained=args.rm_pretrain)
+            reward_model = LlamaRM(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
         else:
             raise ValueError(f'Unsupported reward model "{rm_model_name}"')
 
         if args.rm_path is not None:
-            reward_model.load_state_dict(state_dict)
+            reward_model.load_state_dict(state_dict, strict=False)
 
         initial_model.to(torch.float16).to(torch.cuda.current_device())
         reward_model.to(torch.float16).to(torch.cuda.current_device())
@@ -83,8 +76,6 @@ def main(args):
             actor = OPTActor(pretrained=args.pretrain, lora_rank=args.lora_rank)
         elif args.model == 'llama':
             actor = LlamaActor(pretrained=args.pretrain, lora_rank=args.lora_rank)
-        elif args.model == 'roberta':
-            actor = RoBERTaActor(pretrained=args.pretrain, lora_rank=args.lora_rank)
         else:
             raise ValueError(f'Unsupported actor model "{args.model}"')
 
@@ -96,13 +87,11 @@ def main(args):
             critic = OPTCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank, use_action_mask=True)
         elif rm_model_name == 'llama':
             critic = LlamaCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank, use_action_mask=True)
-        elif rm_model_name == 'roberta':
-            critic = RoBERTaCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank, use_action_mask=True)
         else:
             raise ValueError(f'Unsupported reward model "{rm_model_name}"')
 
         if args.rm_path is not None:
-            critic.load_state_dict(state_dict)
+            critic.load_state_dict(state_dict, strict=False)
             del state_dict
 
     if args.strategy != 'colossalai_gemini':
@@ -119,25 +108,24 @@ def main(args):
 
     # configure tokenizer
     if args.model == 'gpt2':
-        tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
+        tokenizer = GPT2Tokenizer.from_pretrained(
+            'gpt2' if args.tokenizer is None else args.tokenizer)
+        tokenizer.pad_token = tokenizer.eos_token
     elif args.model == 'bloom':
-        tokenizer = BloomTokenizerFast.from_pretrained('bigscience/bloom-560m')
+        tokenizer = BloomTokenizerFast.from_pretrained(
+            'bigscience/bloom-560m' if args.tokenizer is None else args.tokenizer)
+        tokenizer.pad_token = tokenizer.eos_token
     elif args.model == 'opt':
-        tokenizer = AutoTokenizer.from_pretrained("facebook/opt-350m")
+        tokenizer = AutoTokenizer.from_pretrained(
+            "facebook/opt-350m" if args.tokenizer is None else args.tokenizer)
+        tokenizer.pad_token = tokenizer.eos_token
     elif args.model == 'llama':
-        tokenizer = LlamaTokenizer.from_pretrained(args.pretrain)
+        tokenizer = LlamaTokenizer.from_pretrained(
+            "hf-internal-testing/llama-tokenizer" if args.tokenizer is None else args.tokenizer)
         tokenizer.eos_token = '<\s>'
-    elif args.model == 'roberta':
-        tokenizer = RobertaTokenizer.from_pretrained("roberta-base")
+        tokenizer.pad_token = tokenizer.unk_token
     else:
         raise ValueError(f'Unsupported model "{args.model}"')
-
-    if args.model == 'llama':
-        tokenizer = prepare_llama_tokenizer_and_embedding(tokenizer, actor)
-    else:
-        tokenizer.pad_token = tokenizer.eos_token
-
-    data_collator = DataCollatorForSupervisedDataset(tokenizer=tokenizer)
 
     prompt_dataset = PromptDataset(tokenizer=tokenizer, data_path=args.prompt_dataset, max_datasets_size=16384)
     if dist.is_initialized() and dist.get_world_size() > 1:
@@ -160,10 +148,11 @@ def main(args):
     pretrain_dataloader = DataLoader(pretrain_dataset,
                                      shuffle=(pretrain_sampler is None),
                                      sampler=pretrain_sampler,
-                                     batch_size=args.ptx_batch_size,
-                                     collate_fn=data_collator)
+                                     batch_size=args.ptx_batch_size)
 
-    (actor, actor_optim), (critic, critic_optim) = strategy.prepare((actor, actor_optim), (critic, critic_optim))
+    # NOTE: For small models like opt-1.3b, reward model and initial model are not required to be parallelized.
+    (actor, actor_optim), (critic, critic_optim), reward_model, initial_model = \
+        strategy.prepare((actor, actor_optim), (critic, critic_optim), reward_model, initial_model)
 
     # configure trainer
     trainer = PPOTrainer(
@@ -176,7 +165,6 @@ def main(args):
         critic_optim,
         kl_coef=args.kl_coef,
         ptx_coef=args.ptx_coef,
-        max_epochs=args.max_epochs,
         train_batch_size=args.train_batch_size,
         max_length=args.max_seq_len,
         use_cache=True,
@@ -185,13 +173,14 @@ def main(args):
         top_k=50,
         pad_token_id=tokenizer.pad_token_id,
         eos_token_id=tokenizer.eos_token_id,
+        offload_inference_models=args.strategy != 'colossalai_gemini'
     )
 
     trainer.fit(prompt_dataloader=prompt_dataloader,
                 pretrain_dataloader=pretrain_dataloader,
                 num_episodes=args.num_episodes,
-                max_timesteps=args.max_timesteps,
-                update_timesteps=args.update_timesteps)
+                num_collect_steps=args.num_collect_steps,
+                num_update_steps=args.num_update_steps)
 
     # save model checkpoint after fitting
     strategy.save_model(actor, args.save_path, only_rank0=True)
@@ -207,20 +196,20 @@ if __name__ == '__main__':
     parser.add_argument('--prompt_dataset', type=str, default=None, help='path to the prompt dataset')
     parser.add_argument('--pretrain_dataset', type=str, default=None, help='path to the pretrained dataset')
     parser.add_argument('--strategy',
-                        choices=['naive', 'ddp', 'colossalai_gemini', 'colossalai_zero2'],
+                        choices=['ddp', 'colossalai_gemini', 'colossalai_zero2'],
                         default='colossalai_zero2',
                         help='strategy to use')
-    parser.add_argument('--model', default='gpt2', choices=['gpt2', 'bloom', 'opt', 'llama', 'roberta'])
+    parser.add_argument('--model', default='gpt2', choices=['gpt2', 'bloom', 'opt', 'llama'])
+    parser.add_argument('--tokenizer', type=str, default=None)
     parser.add_argument('--pretrain', type=str, default=None)
-    parser.add_argument('--rm_model', default=None, choices=['gpt2', 'bloom', 'opt', 'llama', 'roberta'])
+    parser.add_argument('--rm_model', default=None, choices=['gpt2', 'bloom', 'opt', 'llama'])
     parser.add_argument('--rm_path', type=str, default=None)
     parser.add_argument('--rm_pretrain', type=str, default=None)
     parser.add_argument('--save_path', type=str, default='actor_checkpoint_prompts')
     parser.add_argument('--need_optim_ckpt', type=bool, default=False)
     parser.add_argument('--num_episodes', type=int, default=10)
-    parser.add_argument('--max_timesteps', type=int, default=10)
-    parser.add_argument('--update_timesteps', type=int, default=10)
-    parser.add_argument('--max_epochs', type=int, default=5)
+    parser.add_argument('--num_collect_steps', type=int, default=10)
+    parser.add_argument('--num_update_steps', type=int, default=5)
     parser.add_argument('--train_batch_size', type=int, default=8)
     parser.add_argument('--ptx_batch_size', type=int, default=1)
     parser.add_argument('--experience_batch_size', type=int, default=8)

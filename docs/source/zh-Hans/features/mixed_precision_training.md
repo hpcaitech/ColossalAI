@@ -303,7 +303,7 @@ colossalai.launch_from_torch(config=args.config)
     # build loss
     criterion = torch.nn.CrossEntropyLoss()
 
-    # lr_scheduelr
+    # lr_scheduler
     lr_scheduler = LinearWarmupLR(optimizer, warmup_steps=50, total_steps=gpc.config.NUM_EPOCHS)
 ```
 

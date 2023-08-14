@@ -165,8 +165,13 @@ def test_sharded_optimizer_multiple_param_groups():
 
     # create a model and optimizer
     model = resnet18()
-    optimizer = Adam([{'params': model.layer1.parameters()}, \
-                      {'params': model.layer2.parameters(), 'lr': 0.002}], lr=0.001)
+    optimizer = Adam([{
+        'params': model.layer1.parameters()
+    }, {
+        'params': model.layer2.parameters(),
+        'lr': 0.002
+    }],
+                     lr=0.001)
 
     # create test data sample
     x = torch.randn(1, 3, 224, 224)
@@ -189,8 +194,13 @@ def test_sharded_optimizer_multiple_param_groups():
 
     # create new model
     new_model = resnet18()
-    new_optimizer = Adam([{'params': new_model.layer1.parameters()}, \
-                          {'params': new_model.layer2.parameters(), 'lr': 0.002}], lr=0.001)
+    new_optimizer = Adam([{
+        'params': new_model.layer1.parameters()
+    }, {
+        'params': new_model.layer2.parameters(),
+        'lr': 0.002
+    }],
+                         lr=0.001)
 
     ckpt_io.load_model(new_model, str(model_ckpt_dir.name), strict=True)
     ckpt_io.load_optimizer(new_optimizer, str(optimizer_ckpt_dir.name))

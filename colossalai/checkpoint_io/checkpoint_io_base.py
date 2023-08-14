@@ -148,7 +148,11 @@ class CheckpointIO(ABC):
         Args:
             optimizer (Optimizer): optimizer to be loaded.
             checkpoint (str): checkpoint path. This value is made compatibility with the model checkpoints in the
+            prefix (str, optional): A prefix added to parameter and buffer
+                names to compose the keys in state_dict. Defaults to None.
+            size_per_shard (int, optional): Maximum size of checkpoint shard file in MB. This is useful only when ``shard=True``. Defaults to 1024.
         """
+
         index_file_exists, index_file_path = has_index_file(checkpoint)
 
         if Path(checkpoint).is_dir() and not index_file_exists:
@@ -157,7 +161,7 @@ class CheckpointIO(ABC):
 
         if index_file_exists:
             # the existence of index file means it is a sharded checkpoint
-            self.load_sharded_optimizer(optimizer, index_file_path, prefix, size_per_shard)
+            self.load_sharded_optimizer(optimizer, index_file_path, prefix)
         else:
             self.load_unsharded_optimizer(optimizer, checkpoint)
 
@@ -183,6 +187,7 @@ class CheckpointIO(ABC):
             prefix (str): prefix for the optimizer checkpoint when shard = True. Default: None.
             size_per_shard (int): size per shard in MB. Default: 1024. This value is only used when shard is set to True.
         """
+
         if shard:
             self.save_sharded_optimizer(optimizer, checkpoint, gather_dtensor, prefix, size_per_shard)
         else:
@@ -251,7 +256,7 @@ class CheckpointIO(ABC):
     # ========================================================
 
     @abstractmethod
-    def load_sharded_optimizer(self, optimizer: Optimizer, index_file_path: str, prefix: str, size_per_shard: int):
+    def load_sharded_optimizer(self, optimizer: Optimizer, index_file_path: str, prefix: str):
         """
         Load optimizer from sharded checkpoint.
 
@@ -259,7 +264,6 @@ class CheckpointIO(ABC):
             optimizer (Optimizer): optimizer to be loaded.
             index_file_path (str): checkpoint path. It should be path to the .index.json file or a path to a directory which contains a .index.json file.
             prefix (str): prefix for the optimizer checkpoint.
-            size_per_shard (int): size per shard in MB.
         """
         pass
 

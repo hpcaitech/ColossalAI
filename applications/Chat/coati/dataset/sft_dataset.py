@@ -13,15 +13,12 @@
 #    limitations under the License.
 
 import copy
-import random
-from dataclasses import dataclass, field
-from typing import Callable, Dict, Sequence
+from typing import Dict, Sequence, Tuple
 
 import torch
-import torch.distributed as dist
-import transformers
 from torch.utils.data import Dataset
 from tqdm import tqdm
+from transformers import PreTrainedTokenizer
 
 from colossalai.logging import get_dist_logger
 
@@ -31,14 +28,47 @@ logger = get_dist_logger()
 
 IGNORE_INDEX = -100
 PROMPT_DICT = {
-    "prompt_input":
-        ("Below is an instruction that describes a task, paired with an input that provides further context. "
-         "Write a response that appropriately completes the request.\n\n"
-         "### Instruction:\n{instruction}\n\n### Input:\n{input}\n\n### Response:"),
+    "prompt_input": ("Below is an instruction that describes a task, paired with an input that provides further context. "
+                     "Write a response that appropriately completes the request.\n\n"
+                     "### Instruction:\n{instruction}\n\n### Input:\n{input}\n\n### Response:"),
     "prompt_no_input": ("Below is an instruction that describes a task. "
                         "Write a response that appropriately completes the request.\n\n"
                         "### Instruction:\n{instruction}\n\n### Response:"),
 }
+
+
+def _preprocess(sources: Sequence[str],
+                targets: Sequence[str],
+                tokenizer: PreTrainedTokenizer,
+                max_length: int,
+                ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Preprocess the data by tokenizing."""
+    sequences = [s + t for s, t in zip(sources, targets)]
+    sequences_token = tokenizer(sequences,
+                                max_length=max_length,
+                                padding="max_length",
+                                truncation=True,
+                                return_tensors="pt")
+    sources_token = tokenizer(sources,
+                              max_length=max_length,
+                              padding="max_length",
+                              truncation=True,
+                              return_tensors="pt")
+
+    labels = copy.deepcopy(sequences_token["input_ids"])
+    for i in range(labels.shape[0]):
+        source_len = sources_token["attention_mask"][i].sum().item()
+        pad_len = max_length - sequences_token["attention_mask"][i].sum().item()
+        if tokenizer.padding_side == "right":
+            # |prompt|completion|eos|pad|
+            labels[i][:source_len] = IGNORE_INDEX
+        elif tokenizer.padding_side == "left":
+            # |pad|prompt|completion|eos|
+            labels[i][pad_len:pad_len + source_len] = IGNORE_INDEX
+        else:
+            raise RuntimeError()
+
+    return sequences_token["input_ids"], labels, sequences_token["attention_mask"]
 
 
 class SFTDataset(Dataset):
@@ -51,73 +81,42 @@ class SFTDataset(Dataset):
         max_length: max length of input
     """
 
-    def __init__(self, dataset, tokenizer: Callable, max_length: int = 512) -> None:
+    def __init__(self,
+                 dataset: Dict,
+                 tokenizer: PreTrainedTokenizer,
+                 max_length: int = 512
+                 ) -> None:
         super().__init__()
         self.input_ids = []
 
-        for data in tqdm(dataset, disable=not is_rank_0()):
-            prompt = data['prompt'] + data['completion'] + tokenizer.eos_token
-            prompt_token = tokenizer(prompt,
-                                     max_length=max_length,
-                                     padding="max_length",
-                                     truncation=True,
-                                     return_tensors="pt")
+        sources = [data["prompt"] for data in dataset]
+        targets = [
+            data["completion"] + tokenizer.eos_token
+            for data in tqdm(dataset, disable=not is_rank_0())
+        ]
 
-            self.input_ids.append(prompt_token['input_ids'][0])
-        self.labels = copy.deepcopy(self.input_ids)
+        self.input_ids, self.labels, self.attention_mask = \
+            _preprocess(sources, targets, tokenizer, max_length)
 
     def __len__(self):
-        length = len(self.input_ids)
+        length = self.input_ids.shape[0]
         return length
 
     def __getitem__(self, idx):
-        return dict(input_ids=self.input_ids[idx], labels=self.labels[idx])
-
-
-def _tokenize_fn(strings: Sequence[str], tokenizer: transformers.PreTrainedTokenizer, max_length: int) -> Dict:
-    """Tokenize a list of strings."""
-    tokenized_list = [
-        tokenizer(
-            text,
-            return_tensors="pt",
-            padding="longest",
-            max_length=max_length,
-            truncation=True,
-        ) for text in strings
-    ]
-    input_ids = labels = [tokenized.input_ids[0] for tokenized in tokenized_list]
-    input_ids_lens = labels_lens = [
-        tokenized.input_ids.ne(tokenizer.pad_token_id).sum().item() for tokenized in tokenized_list
-    ]
-    return dict(
-        input_ids=input_ids,
-        labels=labels,
-        input_ids_lens=input_ids_lens,
-        labels_lens=labels_lens,
-    )
-
-
-def preprocess(
-    sources: Sequence[str],
-    targets: Sequence[str],
-    tokenizer: transformers.PreTrainedTokenizer,
-    max_length: int,
-) -> Dict:
-    """Preprocess the data by tokenizing."""
-    examples = [s + t for s, t in zip(sources, targets)]
-    examples_tokenized, sources_tokenized = [_tokenize_fn(strings, tokenizer, max_length) for strings in (examples, sources)]
-    input_ids = examples_tokenized["input_ids"]
-    labels = copy.deepcopy(input_ids)
-    for label, source_len in zip(labels, sources_tokenized["input_ids_lens"]):
-        label[:source_len] = IGNORE_INDEX
-    return dict(input_ids=input_ids, labels=labels)
+        return dict(input_ids=self.input_ids[idx],
+                    labels=self.labels[idx],
+                    attention_mask=self.attention_mask[idx])
 
 
 class SupervisedDataset(Dataset):
     """Dataset for supervised fine-tuning."""
 
-    def __init__(self, data_path: str, tokenizer: transformers.PreTrainedTokenizer, max_datasets_size: int = None, max_length: int = 512):
-        super(SupervisedDataset, self).__init__()
+    def __init__(self,
+                 data_path: str,
+                 tokenizer: PreTrainedTokenizer,
+                 max_datasets_size: int = None,
+                 max_length: int = 512):
+        super().__init__()
         logger.info("Loading data...")
         list_data_dict = jload(data_path)
         logger.info(f"Loaded {len(list_data_dict)} examples.")
@@ -129,38 +128,23 @@ class SupervisedDataset(Dataset):
         logger.info("Formatting inputs...")
         prompt_input, prompt_no_input = PROMPT_DICT["prompt_input"], PROMPT_DICT["prompt_no_input"]
         sources = [
-            prompt_input.format_map(example) if example.get("input", "") != "" else prompt_no_input.format_map(example)
+            prompt_input.format_map(example) if "input" in example else prompt_no_input.format_map(example)
             for example in list_data_dict
         ]
-        targets = [f"{example['output']}{tokenizer.eos_token}" for example in list_data_dict]
+        targets = [
+            example['output'] + tokenizer.eos_token
+            for example in list_data_dict
+        ]
 
         logger.info("Tokenizing inputs... This may take some time...")
-        data_dict = preprocess(sources, targets, tokenizer, max_length)
-
-        self.input_ids = data_dict["input_ids"]
-        self.labels = data_dict["labels"]
+        self.input_ids, self.labels, self.attention_mask = \
+            _preprocess(sources, targets, tokenizer, max_length)
 
     def __len__(self):
-        return len(self.input_ids)
+        length = self.input_ids.shape[0]
+        return length
 
-    def __getitem__(self, i) -> Dict[str, torch.Tensor]:
-        return dict(input_ids=self.input_ids[i], labels=self.labels[i])
-
-
-@dataclass
-class DataCollatorForSupervisedDataset(object):
-    """Collate examples for supervised fine-tuning."""
-
-    tokenizer: transformers.PreTrainedTokenizer
-
-    def __call__(self, instances: Sequence[Dict]) -> Dict[str, torch.Tensor]:
-        input_ids, labels = tuple([instance[key] for instance in instances] for key in ("input_ids", "labels"))
-        input_ids = torch.nn.utils.rnn.pad_sequence(input_ids,
-                                                    batch_first=True,
-                                                    padding_value=self.tokenizer.pad_token_id)
-        labels = torch.nn.utils.rnn.pad_sequence(labels, batch_first=True, padding_value=IGNORE_INDEX)
-        return dict(
-            input_ids=input_ids,
-            labels=labels,
-            attention_mask=input_ids.ne(self.tokenizer.pad_token_id),
-        )
+    def __getitem__(self, idx):
+        return dict(input_ids=self.input_ids[idx],
+                    labels=self.labels[idx],
+                    attention_mask=self.attention_mask[idx])
