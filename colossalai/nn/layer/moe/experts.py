@@ -8,7 +8,7 @@ import torch.nn as nn
 
 from colossalai.context import ParallelMode, seed
 from colossalai.context.moe_context import MOE_CONTEXT
-from colossalai.nn.layer.moe.moe_param import set_moe_param_info
+from colossalai.tensor.moe_tensor.api import set_moe_param_info
 from colossalai.utils import get_current_device
 from colossalai.zero.legacy.init_ctx import no_shard_zero_decrator
 

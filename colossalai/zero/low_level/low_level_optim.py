@@ -16,7 +16,7 @@ from colossalai.amp.naive_amp.mixed_precision_mixin import (
 )
 from colossalai.interface import OptimizerWrapper
 from colossalai.logging import get_dist_logger
-from colossalai.nn.layer.moe.moe_param import is_moe_param
+from colossalai.tensor.moe_tensor.api import is_moe_param
 # from colossalai.tensor import ColoParameter, ProcessGroup
 from colossalai.utils.cuda import get_current_device
 
