@@ -139,7 +139,7 @@ class Booster:
             loss (torch.Tensor): The loss to be backpropagated.
             optimizer (Optimizer): The optimizer to be updated.
         """
-        # TODO: implement this method with plugin
+        # TODO(frank lee): implement this method with plugin
         optimizer.backward(loss)
 
     def execute_pipeline(self,

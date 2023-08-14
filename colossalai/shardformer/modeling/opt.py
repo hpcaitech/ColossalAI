@@ -148,7 +148,7 @@ class OPTPipelineForwards:
                     "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`...")
                 use_cache = False
 
-        # TODO: left the recording kv-value tensors as () or None type, this feature may be added in the future.
+        # TODO(baizhou): left the recording kv-value tensors as () or None type, this feature may be added in the future.
         if past_key_values:
             logger.warning_once('Non-empty past_key_values is not supported for pipeline models at the moment.')
             past_key_values = None
