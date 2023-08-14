@@ -57,6 +57,11 @@ def run_zero_test(local_rank, world_size, stage=1):
     torch_model = torch_model.cuda()
     grad_handler = MoeGradientHandler(torch_model)
 
+    for (torch_name, torch_param), (zero_name, zero_param) in zip(torch_model.named_parameters(),
+                                                                  zero_model.module.named_parameters()):
+        assert zero_name == torch_name
+        assert torch.allclose(zero_param.data, torch_param.data)
+
     data = torch.randn(16, 4).cuda()
     label = torch.randint(0, 4, (16,)).cuda()
 
