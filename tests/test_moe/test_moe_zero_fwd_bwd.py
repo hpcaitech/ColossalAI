@@ -10,9 +10,7 @@ from colossalai.engine.gradient_handler import MoeGradientHandler
 from colossalai.nn import MoeLoss
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 from colossalai.testing.random import seed_all
-from tests.test_moe.test_moe_zero_init import MoeModel
-
-CONFIG = dict(zero=dict(level=2), parallel=dict(pipeline=dict(size=1), tensor=dict(size=1, mode=None)))
+from tests.test_moe.moe_utils import MoeModel
 
 
 def split_ddp_grad(grad, world_size):
@@ -57,6 +55,8 @@ def run_zero_test(local_rank, world_size, stage=1):
     torch_model = torch_model.cuda()
     grad_handler = MoeGradientHandler(torch_model)
 
+    # assert zero model
+    assert len(zero_model.module.test_transform.moe.moe_layer.experts.experts) == 8 // MOE_CONTEXT.world_size
     for (torch_name, torch_param), (zero_name, zero_param) in zip(torch_model.named_parameters(),
                                                                   zero_model.module.named_parameters()):
         assert zero_name == torch_name
@@ -88,7 +88,7 @@ def run_zero_test(local_rank, world_size, stage=1):
 
 
 def run_dist(rank, world_size, port):
-    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.launch(config=dict(), rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     MOE_CONTEXT.setup(seed=42)
     seed_all(42 + rank)
     run_zero_test(rank, world_size, stage=1)
