@@ -125,7 +125,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 }])
 def run_chatglm_test(test_config):
 
-    # TODO: add test_config for TP+DP after supporting & debugging it
+    # TODO(baizhou): add test_config for TP+DP after supporting & debugging it
 
     sub_model_zoo = model_zoo.get_sub_registry('transformers_chatglm')
 

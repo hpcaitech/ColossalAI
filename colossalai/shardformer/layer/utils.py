@@ -29,8 +29,6 @@ class Randomizer:
     _INDEX = 0
 
     def __init__(self, seed: int):
-        # TODO: remove colossalai.context.random
-
         self.seed = seed
 
         # Handle CUDA rng state

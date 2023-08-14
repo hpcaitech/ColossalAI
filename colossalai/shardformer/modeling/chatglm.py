@@ -152,7 +152,7 @@ class ChatGLMPipelineForwards:
                                 if output_hidden_states is not None else self.config.output_hidden_states)
         use_cache = use_cache if use_cache is not None else self.config.use_cache
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-        # TODO: left the recording kv-value tensors as () or None type, this feature may be added in the future.
+        # TODO(jianghai): left the recording kv-value tensors as () or None type, this feature may be added in the future.
         if past_key_values:
             logger.warning_once('Non-empty past_key_values is not supported for pipeline models at the moment.')
             past_key_values = None
