@@ -8,6 +8,7 @@ import torch.nn as nn
 
 from colossalai.context import ParallelMode, seed
 from colossalai.context.moe_context import MOE_CONTEXT
+from colossalai.nn.layer.moe.moe_param import set_moe_param_info
 from colossalai.utils import get_current_device
 from colossalai.zero.legacy.init_ctx import no_shard_zero_decrator
 
@@ -50,7 +51,7 @@ class Experts(MoeExperts):
         # Attach parallel information for all parameters in Experts
         for exp in self.experts:
             for param in exp.parameters():
-                param.__setattr__('moe_info', self.dist_info)
+                set_moe_param_info(param, self.dist_info)
 
     def forward(self, inputs: torch.Tensor):
         # Split inputs for each expert
