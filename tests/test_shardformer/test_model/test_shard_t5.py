@@ -111,7 +111,6 @@ def run_t5_test(test_config):
     # TODO: add test_config for flash attention & jit operator after supporting
 
     sub_model_zoo = model_zoo.get_sub_registry('transformers_t5')
-    # test_config['precision'] = 'float'    # Do not use fp16/bf16 in testing
 
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
 
