@@ -135,6 +135,9 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         for group_id, param_group in enumerate(self.optim.param_groups):
             group_params = list()
             for param in param_group['params']:
+                # skip moe param
+                if hasattr(param, "moe_info"):
+                    continue
                 if param.requires_grad:
                     group_params.append(param)
 
