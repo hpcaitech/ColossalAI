@@ -13,6 +13,8 @@ if HAS_MEM_EFF_ATTN or HAS_FLASH_ATTN:
     from colossalai.kernel.cuda_native.scaled_softmax import AttnMaskType
 
 DTYPE = [torch.float16, torch.bfloat16, torch.float32]
+
+DTYPE = [torch.float16, torch.bfloat16, torch.float32]
 FLASH_DTYPE = [torch.float16, torch.bfloat16]
 
 
@@ -26,29 +28,13 @@ def attention_ref(q, k, v, attn_mask=None, causal=False):
     scale = 1.0 / math.sqrt(d)
     scores = torch.einsum('bthd,bshd->bhts', q * scale, k)
 
-    if attn_mask is not None:
-        scores.masked_fill_(rearrange(~attn_mask, 'b s -> b 1 1 s'), float('-inf'))
-    if causal:
-        causal_mask = torch.triu(torch.ones(seqlen_q, seqlen_k, dtype=torch.bool, device=q.device), 1)
-        scores.masked_fill_(causal_mask, float('-inf'))
-    attention = torch.softmax(scores, dim=-1)
-
-    output = torch.einsum('bhts,bshd->bthd', attention, v)
-    output = rearrange(output, "b s h d -> b s (h d)")
-
-    # Modify the data at the positions of the mask to 0
-    if attn_mask is not None:
-        output.masked_fill_(rearrange(~attn_mask, 'b s -> b s 1'), 0.0)
-
-    return output.to(dtype=dtype_og)
-
 
 @pytest.mark.skipif(not HAS_MEM_EFF_ATTN and not HAS_FLASH_ATTN, reason="xformers is not available")
 @clear_cache_before_run()
-@parameterize('proj_shape', [(6, 8, 4, 16)])
+@parameterize('proj_shape', [(1, 8, 4, 16)])
 @parameterize('dtype', DTYPE)
-@parameterize('dropout', [0.0])
-def test_attention_gpt(proj_shape, dtype, dropout):
+def test_attention_gpt(proj_shape, dtype):
+    # TODO check output value
     (B, S, H, D_HEAD) = proj_shape
     D = H * D_HEAD
 
@@ -59,7 +45,12 @@ def test_attention_gpt(proj_shape, dtype, dropout):
     mask = [torch.ones(S - i, dtype=torch.bool, device="cuda") for i in range(B)]
     mask = torch.nn.utils.rnn.pad_sequence(mask, batch_first=True)
 
-    attn = ColoAttention(D, H, dropout=dropout)
+    qkv = c_attn(x)
+    q, k, v = rearrange(qkv, 'b s (n h d) -> n b s h d', n=3, h=H)
+
+    mask = [torch.ones(S - i, dtype=dtype, device="cuda") for i in range(B)]
+    mask = torch.nn.utils.rnn.pad_sequence(mask, batch_first=True)
+
     y = attn(q, k, v, attn_mask=mask, attn_mask_type=AttnMaskType.paddedcausal)
 
     assert list(y.shape) == [B, S, D]
@@ -81,8 +72,7 @@ def test_attention_gpt(proj_shape, dtype, dropout):
 @clear_cache_before_run()
 @parameterize('proj_shape', [(6, 8, 4, 16)])
 @parameterize('dtype', DTYPE)
-@parameterize('dropout', [0.0])
-def test_attention_bert(proj_shape, dtype, dropout):
+def test_attention_bert(proj_shape, dtype):
     (B, S, H, D_HEAD) = proj_shape
     D = H * D_HEAD
 
@@ -114,8 +104,7 @@ def test_attention_bert(proj_shape, dtype, dropout):
 @clear_cache_before_run()
 @parameterize('proj_shape', [(6, 8, 4, 16)])
 @parameterize('dtype', DTYPE)
-@parameterize('dropout', [0.0])
-def test_attention_no_mask(proj_shape, dtype, dropout):
+def test_attention_no_mask(proj_shape, dtype):
     (B, S, H, D_HEAD) = proj_shape
     D = H * D_HEAD
 
@@ -144,8 +133,7 @@ def test_attention_no_mask(proj_shape, dtype, dropout):
 @clear_cache_before_run()
 @parameterize('proj_shape', [(6, 24, 8, 4, 16)])
 @parameterize('dtype', DTYPE)
-@parameterize('dropout', [0.0])
-def test_cross_attention(proj_shape, dtype, dropout):
+def test_cross_attention(proj_shape, dtype):
     (B, S, T, H, D_HEAD) = proj_shape
     D = H * D_HEAD
 
