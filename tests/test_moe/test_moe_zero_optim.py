@@ -1,5 +1,6 @@
 import pytest
 import torch
+import torch.distributed as dist
 
 import colossalai
 from colossalai.context import MOE_CONTEXT
@@ -16,8 +17,31 @@ from colossalai.zero.legacy.sharded_model.utils import col_model_deepcopy
 from colossalai.zero.legacy.sharded_optim import ShardedOptimizerV2
 from colossalai.zero.low_level._utils import has_inf_or_nan
 from tests.components_to_test.registry import non_distributed_component_funcs
-from tests.test_moe.test_moe_zero_init import MoeModel
-from tests.test_zero.test_legacy.common import CONFIG, check_sharded_model_params
+from tests.test_moe.moe_utils import MoeModel
+
+
+def allclose(tensor_a: torch.Tensor, tensor_b: torch.Tensor, loose=False) -> bool:
+    if loose:
+        return torch.allclose(tensor_a, tensor_b, atol=1e-2, rtol=1e-3)
+    return torch.allclose(tensor_a, tensor_b)
+
+
+def check_sharded_model_params(model, zero_model, loose=False, reuse_fp16_shard=False):
+    rank = dist.get_rank()
+    for (name, p), (zero_name, zero_p) in zip(model.named_parameters(), zero_model.named_parameters()):
+        if zero_p.colo_attr.param_is_sharded:
+            zero_p = zero_p.colo_attr.data_payload.to(p.device).float()
+            chunks = torch.flatten(p).chunk(dist.get_world_size())
+            if rank >= len(chunks):
+                continue
+            p = chunks[rank].float()
+            if zero_p.size(0) > p.size(0):
+                zero_p = zero_p[:p.size(0)]
+        else:
+            zero_p = zero_p.colo_attr.data_payload.to(p.device)
+
+        assert p.dtype == zero_p.dtype, "Parameter `{}`:\n{} vs {}".format(name, p.dtype, zero_p.dtype)
+        assert allclose(p, zero_p, loose=loose), f'{p} vs {zero_p}'
 
 
 def _run_step(model, optimizer, data, label, criterion, grad_handler):
@@ -104,7 +128,7 @@ def _run_test_sharded_optim_v2(
 
 
 def _run_dist(rank, world_size, port):
-    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(config=dict(), rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     MOE_CONTEXT.setup(seed=42)
     _run_test_sharded_optim_v2()
 

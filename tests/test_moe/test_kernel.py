@@ -12,7 +12,6 @@ from colossalai.utils import get_current_device
 
 BATCH_SIZE = 16
 NUM_EXPERTS = 4
-CONFIG = dict()
 
 
 def check_equal(tensor_a, tensor_b, atol=1e-06):
@@ -23,7 +22,7 @@ def run_routing(rank, world_size, port, rs=2, hidden_size=128, data_type=torch.f
     # Here we do not need TF32, since it brings absolute error on results
     torch.backends.cuda.matmul.allow_tf32 = False
 
-    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(config=dict(), rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     local_rank = gpc.get_local_rank(ParallelMode.GLOBAL)
 
     MOE_CONTEXT.setup(42)  # MOE environment initialization

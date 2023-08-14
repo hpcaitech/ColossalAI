@@ -10,8 +10,7 @@ from colossalai.nn.layer.moe import load_moe_model, save_moe_model
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 from colossalai.utils import get_current_device
 from colossalai.zero import ColoInitContext
-from tests.test_moe.test_moe_zero_init import MoeModel
-from tests.test_zero.test_legacy.common import CONFIG
+from tests.test_moe.moe_utils import MoeModel
 
 
 def exam_moe_checkpoint():
@@ -34,7 +33,7 @@ def exam_moe_checkpoint():
 
 
 def _run_dist(rank, world_size, port):
-    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(config=dict(), rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     MOE_CONTEXT.setup(seed=42)
     exam_moe_checkpoint()
 

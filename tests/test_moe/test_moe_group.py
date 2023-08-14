@@ -11,12 +11,11 @@ from colossalai.utils.moe import sync_moe_model_param
 
 D_MODEL = 4
 D_FF = 8
-CONFIG = dict()
 
 
 def run_test(rank, world_size, port):
     world_size = 4
-    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(config=dict(), rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     expert_module = nn.Linear
     expert_factor = dict(in_features=D_MODEL, out_features=D_FF, device=get_current_device())
 
