@@ -370,6 +370,23 @@ torchrun --standalone --nproc_per_node=1 train_sft.py \
     --grad_checkpoint
 ```
 
+If you have 4x32 GB GPUs, you can even train the whole 7B model using our `colossalai_zero2_cpu` strategy! The script is given as follows.
+
+```bash
+torchrun --standalone --nproc_per_node=4 train_sft.py \
+    --pretrain "/path/to/LLaMa-7B/" \
+    --model 'llama' \
+    --strategy colossalai_zero2_cpu \
+    --save_path  /path/to/Coati-7B \
+    --dataset /path/to/data.json \
+    --batch_size 1 \
+    --accumulation_steps 8 \
+    --lr 2e-5 \
+    --max_datasets_size 512 \
+    --max_epochs 1 \
+    --grad_checkpoint
+```
+
 </details>
 
 ## The Plan
