@@ -1,4 +1,7 @@
-// Pytorch also has an implementation of Philox RNG: https://github.com/pytorch/pytorch/blob/8ca3c881db3e3510fcb7725389f6a0633c9b992c/torch/csrc/jit/tensorexpr/cuda_random.h
+/******************************************************************************
+ * The following codes are modified from the original FlashAttn library: https://github.com/Dao-AILab/flash-attention
+ ******************************************************************************/
+ 
 #pragma once
 // Philox CUDA.
 

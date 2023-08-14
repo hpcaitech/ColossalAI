@@ -1,5 +1,8 @@
 // Copyright (c) 2023, Tri Dao.
 
+/******************************************************************************
+ * The following codes are modified from the original FlashAttn library: https://github.com/Dao-AILab/flash-attention
+ ******************************************************************************/
 // Splitting the different head dimensions to different files to speed up compilation.
 
 #include "flash_fwd_launch_template.h"
