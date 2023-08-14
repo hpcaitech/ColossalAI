@@ -41,11 +41,14 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 
     # check last hidden state & loss
     if stage_manager is None or stage_manager.is_last_stage():
-
+        if test_config['precision'] == 'fp32':
+            atol, rtol = 1e-5, 1e-3
+        else:
+            atol, rtol = 5e-3, 5e-3
         if org_model.__class__.__name__ == 'OPTModel':
-            check_output_hidden_state(org_output, sharded_output, stage_manager, atol=1e-5, rtol=1e-3)
+            check_output_hidden_state(org_output, sharded_output, stage_manager, atol=atol, rtol=rtol)
 
-        check_loss(org_loss, sharded_loss, atol=1e-6, rtol=1e-3)
+        check_loss(org_loss, sharded_loss, atol=atol, rtol=rtol)
 
     # unwrap model
     if org_model.__class__.__name__ == 'OPTModel':
@@ -56,23 +59,27 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         shard_opt_model = sharded_model.unwrap().model
 
     # check grad
-    row_layer_for_check = ['decoder.layers[0].self_attn.q_proj', 'decoder.embed_tokens']
+    row_layer_for_check = ['decoder.layers[0].self_attn.q_proj', 'decoder.embed_tokens']    # 'decoder.embed_tokens'
     col_layer_for_check = ['decoder.layers[0].self_attn.out_proj']
     if stage_manager is None or stage_manager.is_first_stage():
+        if test_config['precision'] == 'fp32':
+            atol, rtol = 1e-6, 1e-3
+        else:
+            atol, rtol = 3e-2, 3e-2
         check_grad(opt_model,
                    shard_opt_model,
                    row_layer_for_check,
                    tp_group,
-                   atol=1e-6,
-                   rtol=1e-3,
+                   atol=atol,
+                   rtol=rtol,
                    dim=0,
                    verbose=False)
         check_grad(opt_model,
                    shard_opt_model,
                    col_layer_for_check,
                    tp_group,
-                   atol=1e-6,
-                   rtol=1e-3,
+                   atol=atol,
+                   rtol=rtol,
                    dim=1,
                    verbose=False)
 
@@ -80,12 +87,16 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     org_optimizer.step()
     sharded_optimizer.step()
     if stage_manager is None or stage_manager.is_first_stage():
+        if test_config['precision'] == 'fp32':
+            atol, rtol = 1e-3, 1e-3
+        else:
+            atol, rtol = 5e-3, 5e-3
         check_weight(opt_model,
                      shard_opt_model,
                      col_layer_for_check,
                      tp_group,
-                     atol=1e-3,
-                     rtol=1e-3,
+                     atol=atol,
+                     rtol=rtol,
                      dim=1,
                      verbose=False)
 
@@ -96,29 +107,29 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     'tp_size': 2,
     'pp_size': 2,
     'num_microbatches': 4,
-    'enable_fused_normalization': True,
-    'use_lazy_init': True
+    'enable_all_optimization': True,
+    'use_lazy_init': True,
+    'precision': 'fp16',
+    'initial_scale': 1,
 }, {
     'tp_size': 1,
     'pp_size': 2,
     'num_microbatches': 4,
-    'enable_fused_normalization': False,
-    'use_lazy_init': False
+    'enable_all_optimization': False,
+    'use_lazy_init': False,
+    'precision': 'fp32',
 }, {
     'tp_size': 4,
     'pp_size': 1,
-    'enable_fused_normalization': True,
-    'use_lazy_init': False
+    'enable_all_optimization': True,
+    'use_lazy_init': False,
+    'precision': 'fp32',
 }])
 def run_opt_test(test_config):
 
     # TODO: add test_config for TP+DP after supporting & debugging it
-    # {'tp_size': 2, 'pp_size': 1, 'enable_fused_normalization': True}
-
-    # TODO: add test_config for flash attention & jit operator after supporting
 
     sub_model_zoo = model_zoo.get_sub_registry('transformers_opt')
-    test_config['precision'] = 'float'    # Do not use fp16/bf16 in testing
 
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
