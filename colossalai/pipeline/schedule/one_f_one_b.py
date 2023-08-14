@@ -107,8 +107,15 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
         if output_obj_grad is None:
             optimizer.backward(output_obj)
         else:
-            for k, grad in output_obj_grad.items():
-                optimizer.backward_by_grad(output_obj[k], grad)
+            if "backward_tensor_keys" not in output_obj:
+                for k, grad in output_obj_grad.items():
+                    optimizer.backward_by_grad(output_obj[k], grad)
+            else:
+                for k, grad in output_obj_grad.items():
+                    output_obj[k].grad = grad
+                for k in output_obj["backward_tensor_keys"]:
+                    tensor_to_backward = output_obj[k]
+                    optimizer.backward_by_grad(tensor_to_backward, tensor_to_backward.grad)
 
         # Collect the grad of the input_obj.
         input_obj_grad = None

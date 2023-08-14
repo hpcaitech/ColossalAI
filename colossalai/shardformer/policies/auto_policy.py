@@ -122,6 +122,12 @@ _POLICY_LIST = {
         PolicyLocation(file_name="blip2", class_name="Blip2ModelPolicy"),
     "transformers.models.blip_2.modeling_blip_2.Blip2ForConditionalGeneration":
         PolicyLocation(file_name="blip2", class_name="Blip2ForConditionalGenerationPolicy"),
+
+    # ChatGLM
+    "colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm.ChatGLMModel":
+        PolicyLocation(file_name="chatglm", class_name="ChatGLMModelPolicy"),
+    "colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm.ChatGLMForConditionalGeneration":
+        PolicyLocation(file_name="chatglm", class_name="ChatGLMForConditionalGenerationPolicy"),
 }
 
 

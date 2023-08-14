@@ -27,7 +27,7 @@ def rearrange(tensor: torch.Tensor, dim: int):
     return rearanged_tensor
 
 
-# TODO: solve lazy_init True is not working
+# TODO(FoolPlayer): solve lazy_init True is not working
 @parameterize('lazy_init', [False])
 def check_linear_conv_1d_col(lazy_init: bool):
     ctx = LazyInitContext() if lazy_init else nullcontext()

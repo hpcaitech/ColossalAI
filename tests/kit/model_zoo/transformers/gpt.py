@@ -18,8 +18,8 @@ def data_gen():
     # tokenized_input = tokenizer(input, return_tensors='pt')
     # input_ids = tokenized_input['input_ids']
     # attention_mask = tokenized_input['attention_mask']
-    input_ids = torch.tensor([[15496, 11, 616, 3290, 318, 13779]], dtype=torch.int64)
-    attention_mask = torch.tensor([[1, 1, 1, 1, 1, 1]], dtype=torch.int64)
+    input_ids = torch.tensor([[15496, 11, 616, 3290, 318, 13779, 318, 13779]], dtype=torch.int64)
+    attention_mask = torch.tensor([[1, 1, 1, 1, 1, 1, 1, 1]], dtype=torch.int64)
     return dict(input_ids=input_ids, attention_mask=attention_mask)
 
 
@@ -46,7 +46,7 @@ def data_gen_for_token_classification():
     # token classification data gen
     # `labels` is the type not the token id for token classification, 0 or 1
     data = data_gen()
-    data['labels'] = torch.tensor([[0, 0, 0, 0, 0, 1]], dtype=torch.int64)
+    data['labels'] = torch.tensor([[0, 0, 0, 0, 0, 0, 0, 1]], dtype=torch.int64)
     return data
 
 

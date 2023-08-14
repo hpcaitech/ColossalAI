@@ -171,13 +171,13 @@ class PerformanceEvaluator(Callback):
         learn_time_per_sample = divide(avg_learn_duration, num_effective_samples)
 
         print_rank_0(
-            f'Performance summary:\n' +
-            f'Generate {self.make_experience_num_samples * self.world_size} samples, throughput: {avg_make_experience_throughput:.2f} samples/s, TFLOPS per GPU: {avg_make_experience_tflops:.2f}\n'
-            +
-            f'Train {self.learn_num_samples * self.world_size} samples, throughput: {avg_learn_throughput:.2f} samples/s, TFLOPS per GPU: {avg_learn_tflops:.2f}\n'
-            + f'Overall throughput: {avg_overall_throughput:.2f} samples/s\n' +
-            f'Overall time per sample: {overall_time_per_sample:.2f} s\n' +
-            f'Make experience time per sample: {make_experience_time_per_sample:.2f} s, {make_experience_time_per_sample/overall_time_per_sample*100:.2f}%\n'
-            +
-            f'Learn time per sample: {learn_time_per_sample:.2f} s, {learn_time_per_sample/overall_time_per_sample*100:.2f}%'
+            f'Performance summary:\n'
+            + f'Generate {self.make_experience_num_samples * self.world_size} samples, throughput: {avg_make_experience_throughput:.2f} samples/s, TFLOPS per GPU: {avg_make_experience_tflops:.2f}\n'
+
+            + f'Train {self.learn_num_samples * self.world_size} samples, throughput: {avg_learn_throughput:.2f} samples/s, TFLOPS per GPU: {avg_learn_tflops:.2f}\n'
+            + f'Overall throughput: {avg_overall_throughput:.2f} samples/s\n'
+            + f'Overall time per sample: {overall_time_per_sample:.2f} s\n'
+            + f'Make experience time per sample: {make_experience_time_per_sample:.2f} s, {make_experience_time_per_sample/overall_time_per_sample*100:.2f}%\n'
+
+            + f'Learn time per sample: {learn_time_per_sample:.2f} s, {learn_time_per_sample/overall_time_per_sample*100:.2f}%'
         )

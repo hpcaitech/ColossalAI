@@ -27,8 +27,9 @@ class ShardConfig:
     enable_fused_normalization: bool = False
     enable_all_optimization: bool = False
     enable_sequence_parallelism: bool = False
+    enable_flash_attention: bool = False
+    enable_jit_fused: bool = False
 
-    # TODO: add support for tensor parallel
     # pipeline_parallel_size: int
     # data_parallel_size: int
     # tensor_parallel_mode: Literal['1d', '2d', '2.5d', '3d']
@@ -45,7 +46,6 @@ class ShardConfig:
         else:
             # get the parallel size
             self._tensor_parallel_size = dist.get_world_size(self.tensor_parallel_process_group)
-
         # turn on all optimization if all_optimization is set to True
         if self.enable_all_optimization:
             self._turn_on_all_optimization()
@@ -56,3 +56,5 @@ class ShardConfig:
         """
         # you can add all the optimization flag here
         self.enable_fused_normalization = True
+        self.enable_flash_attention = True
+        self.enable_jit_fused = True

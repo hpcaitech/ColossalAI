@@ -57,7 +57,9 @@ def exam_zero_with_tp(overlap_flag, partition_flag):
                                          initial_scale=2,
                                          clip_grad_norm=1.0,
                                          overlap_communication=overlap_flag,
-                                         partition_grad=partition_flag)
+                                         partition_grad=partition_flag,
+                                         dp_process_group=tp_pg.dp_process_group(),
+                                         tp_process_group=tp_pg.tp_process_group())
 
     dp_local_rank = tp_pg.dp_local_rank()
     set_seed(255 + dp_local_rank)

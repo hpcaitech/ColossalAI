@@ -11,19 +11,9 @@ from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from tests.kit.model_zoo import model_zoo
 
 # These models are not compatible with AMP
-_AMP_ERR_MODELS = ['timm_convit', 'dlrm', 'deepfm_interactionarch', 'deepfm_simpledeepfmnn']
+_AMP_ERR_MODELS = ['timm_convit', 'deepfm_interactionarch']
 # These models have no parameters
-_LOW_LEVEL_ZERO_ERR_MODELS = [
-    'dlrm_interactionarch', 'deepfm_overarch', 'deepfm_sparsearch', 'dlrm_sparsearch',
-    'transformers_bert_lm_head_model', 'transformers_bert_for_masked_lm'
-]
-# These models will get stuck
-_STUCK_MODELS = [
-    'diffusers_vq_model', 'transformers_albert', 'transformers_albert_for_pretraining', 'transformers_bert',
-    'transformers_bert_for_pretraining', 'transformers_gpt_double_heads', 'transformers_vit',
-    'transformers_vit_for_masked_image_modeling', 'transformers_vit_for_image_classification', 'transformers_sam',
-    'transformers_chatglm', 'transformers_chatglm_for_conditional_generation'
-]
+_LOW_LEVEL_ZERO_ERR_MODELS = ['dlrm_interactionarch']
 
 
 def run_fn(stage, model_fn, data_gen_fn, output_transform_fn) -> Optional[str]:
@@ -63,7 +53,7 @@ def check_low_level_zero_plugin(stage: int, early_stop: bool = True):
     """
     passed_models = []
     failed_info = {}    # (model_name, error) pair
-    ignore_models = _AMP_ERR_MODELS + _LOW_LEVEL_ZERO_ERR_MODELS + _STUCK_MODELS
+    ignore_models = _AMP_ERR_MODELS + _LOW_LEVEL_ZERO_ERR_MODELS
     skipped_models = []
 
     for name, (model_fn, data_gen_fn, output_transform_fn, _, _) in model_zoo.items():

@@ -3,7 +3,13 @@ import torch.nn as nn
 import colossalai.shardformer.layer as col_nn
 
 from .._utils import getattr_, setattr_
-from ..modeling.blip2 import forward_fn
+from ..modeling.blip2 import (
+    forward_fn,
+    get_blip2_flash_attention_forward,
+    get_jit_fused_blip2_QFormer_output_forward,
+    get_jit_fused_blip2_QFormer_self_output_forward,
+)
+from ..modeling.jit import get_jit_fused_dropout_add_func
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = ['BlipPolicy', 'BlipModelPolicy']
@@ -33,6 +39,8 @@ class BlipPolicy(Policy):
             Blip2EncoderLayer,
             Blip2QFormerLayer,
             Blip2QFormerModel,
+            Blip2QFormerOutput,
+            Blip2QFormerSelfOutput,
             Blip2VisionModel,
         )
         from transformers.models.opt.modeling_opt import OPTDecoderLayer, OPTForCausalLM
@@ -274,6 +282,24 @@ class BlipPolicy(Policy):
             ],
                                                         policy=policy,
                                                         target_key=OPTDecoderLayer)
+
+        # use flash attention
+        if self.shard_config.enable_flash_attention:
+            policy[Blip2Attention] = ModulePolicyDescription(method_replacement={
+                'forward': get_blip2_flash_attention_forward(),
+            })
+
+        # use jit operator
+        if self.shard_config.enable_jit_fused:
+            policy[Blip2QFormerSelfOutput] = ModulePolicyDescription(
+                method_replacement={
+                    'forward': get_jit_fused_blip2_QFormer_self_output_forward(),
+                    'dropout_add': get_jit_fused_dropout_add_func(),
+                })
+            policy[Blip2QFormerOutput] = ModulePolicyDescription(method_replacement={
+                'forward': get_jit_fused_blip2_QFormer_output_forward(),
+                'dropout_add': get_jit_fused_dropout_add_func(),
+            })
 
         return policy
 
