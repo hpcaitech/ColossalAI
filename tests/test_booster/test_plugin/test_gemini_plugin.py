@@ -12,19 +12,16 @@ from colossalai.lazy.lazy_init import LazyInitContext
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.tensor.colo_parameter import ColoParameter
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
-from colossalai.zero import ColoInitContext
 from tests.kit.model_zoo import model_zoo
 
 
 def run_fn(init_method, model_fn, data_gen_fn, output_transform_fn) -> Optional[str]:
     try:
-        if init_method == 'colo':
-            ctx = ColoInitContext()
-        elif init_method == 'lazy':
+        if init_method == 'lazy':
             ctx = LazyInitContext()
         else:
             ctx = nullcontext()
-        plugin = GeminiPlugin(placement_policy='cuda', strict_ddp_mode=True, max_norm=1.0, initial_scale=2**5)
+        plugin = GeminiPlugin(max_norm=1.0, initial_scale=2**5)
         booster = Booster(plugin=plugin)
         with ctx:
             model = model_fn()
