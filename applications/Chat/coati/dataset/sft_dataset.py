@@ -13,7 +13,7 @@
 #    limitations under the License.
 
 import copy
-from typing import Dict, Sequence, Tuple
+from typing import Dict, Optional, Sequence, Tuple
 
 import torch
 from coati.models.chatglm.chatglm_tokenizer import ChatGLMTokenizer
@@ -23,7 +23,7 @@ from transformers import PreTrainedTokenizer
 
 from colossalai.logging import get_dist_logger
 
-from .utils import is_rank_0, jload
+from .utils import is_rank_0, jload, to_tensor
 
 logger = get_dist_logger()
 
@@ -48,15 +48,15 @@ def _preprocess(sources: Sequence[str],
     sequences_token = tokenizer(sequences,
                                 max_length=max_length,
                                 padding="max_length",
-                                truncation=True,
-                                return_tensors="pt")
+                                truncation=True)
+    sequences_token = to_tensor(sequences_token)
     sources_token = tokenizer(sources,
                               max_length=max_length,
                               padding="max_length",
-                              truncation=True,
-                              return_tensors="pt")
+                              truncation=True)
+    sources_token = to_tensor(sources_token)
 
-    assert sequences["attention_mask"].shape == 3, \
+    assert sequences_token["attention_mask"].dim() == 2, \
         "seq2seq model should be preprocessed differently"
     labels = copy.deepcopy(sequences_token["input_ids"])
     for i in range(labels.shape[0]):
@@ -85,8 +85,8 @@ def _preprocess_chatglm(sources: Sequence[str],
     sequences_token = tokenizer(sequences,
                                 max_length=max_length,
                                 padding="max_length",
-                                truncation=True,
-                                return_tensors="pt")
+                                truncation=True)
+    sequences_token = to_tensor(sequences_token)
 
     labels = copy.deepcopy(sequences_token["input_ids"])
     for i in range(labels.shape[0]):
@@ -143,7 +143,7 @@ class SupervisedDataset(Dataset):
     def __init__(self,
                  data_path: str,
                  tokenizer: PreTrainedTokenizer,
-                 max_datasets_size: int = None,
+                 max_datasets_size: Optional[int] = None,
                  max_length: int = 512):
         super().__init__()
         logger.info("Loading data...")
@@ -173,6 +173,8 @@ class SupervisedDataset(Dataset):
         else:
             self.input_ids, self.labels, self.attention_mask = \
                 _preprocess(sources, targets, tokenizer, max_length)
+
+        logger.info("Loaded dataset.")
 
     def __len__(self):
         length = self.input_ids.shape[0]
