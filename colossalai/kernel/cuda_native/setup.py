@@ -118,7 +118,7 @@ if bare_metal_version >= Version("11.8"):
     cc_flag.append("arch=compute_90,code=sm_90")
 
 setup(
-    name='colossal-cuda-kernels',
+    name='colossal-cuda-infer-kernels',
     ext_modules=[
         CUDAExtension(
             name='col_fused_softmax_lib',
@@ -147,8 +147,8 @@ setup(
         CUDAExtension(
             name="col_rms_norm_ops",
             sources=[
-                "csrc/attention_infer_kernels/layernorm/layernorm.cpp", 
-                "csrc/attention_infer_kernels/layernorm/layernorm_kernels.cu"
+                "csrc/attention_infer_kernels/rmsnorm/layernorm.cpp", 
+                "csrc/attention_infer_kernels/rmsnorm/layernorm_kernels.cu"
                 ],
             extra_compile_args={
                                'cxx': ['-O3',],
@@ -203,39 +203,6 @@ setup(
             include_dirs=[
                 Path(this_dir) / 'csrc'/'attention_infer_kernels'/'flash_attn' ,
                 Path(this_dir) / 'csrc'/ 'attention_infer_kernels'/'flash_attn' / 'src',
-                Path(this_dir)  / 'csrc'/'cutlass' / 'include',
-            ],
-        ),
-
-        CUDAExtension(
-                name="col_linear_lib",
-                sources=[
-                    "csrc/attention_infer_kernels/linear/linear_op.cpp",
-                    "csrc/attention_infer_kernels/linear/gemm.cu",
-                ],
-            extra_compile_args={
-                "cxx": ["-O3", "-std=c++17"] + generator_flag,
-                "nvcc": append_nvcc_threads(
-                    [
-                        "-O3",
-                        "-std=c++17",
-                        "-U__CUDA_NO_HALF_OPERATORS__",
-                        "-U__CUDA_NO_HALF_CONVERSIONS__",
-                        "-U__CUDA_NO_HALF2_OPERATORS__",
-                        "-U__CUDA_NO_BFLOAT16_CONVERSIONS__",
-                        "--expt-relaxed-constexpr",
-                        "--expt-extended-lambda",
-                        "--use_fast_math",
-                        "--ptxas-options=-v",
-                        "-lineinfo"
-                        "-lcublas"
-                    ]
-                    + generator_flag
-                    + cc_flag
-                ),
-            },
-            include_dirs=[
-                Path(this_dir) / 'csrc'/'attention_infer_kernels' /'linear' ,
                 Path(this_dir)  / 'csrc'/'cutlass' / 'include',
             ],
         ),
