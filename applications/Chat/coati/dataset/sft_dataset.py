@@ -87,9 +87,8 @@ def _preprocess_chatglm(sources: Sequence[str],
     labels = copy.deepcopy(sequences_token["input_ids"])
     for i in range(labels.shape[0]):
         assert tokenizer.padding_side == "left", "chatglm's tokenizer should be padded at left"
-        pad_len = torch.sum(sequences_token['input_ids'][1] == tokenizer.pad_token_id)
         context_len = torch.nonzero(sequences_token["input_ids"][i] == tokenizer.bos_token_id).squeeze()[0]
-        labels[i][pad_len:context_len] = IGNORE_INDEX
+        labels[i][:context_len] = IGNORE_INDEX
 
     return sequences_token["input_ids"], labels, sequences_token["attention_mask"]
 
