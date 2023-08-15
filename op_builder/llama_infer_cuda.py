@@ -1,4 +1,3 @@
-# Adapted from https://github.com/NVIDIA/apex/blob/master/setup.py
 import sys
 import warnings
 import os
@@ -70,21 +69,6 @@ if not torch.cuda.is_available():
             os.environ["TORCH_CUDA_ARCH_LIST"] = "6.0;6.1;6.2;7.0;7.5"
 
 
-print("\n\ntorch.__version__  = {}\n\n".format(torch.__version__))
-TORCH_MAJOR = int(torch.__version__.split(".")[0])
-TORCH_MINOR = int(torch.__version__.split(".")[1])
-
-cmdclass = {}
-ext_modules = []
-
-# Check, if ATen/CUDAGeneratorImpl.h is found, otherwise use ATen/cuda/CUDAGeneratorImpl.h
-# See https://github.com/pytorch/pytorch/pull/70650
-generator_flag = []
-torch_dir = torch.__path__[0]
-if os.path.exists(os.path.join(torch_dir, "include", "ATen", "CUDAGeneratorImpl.h")):
-    generator_flag = ["-DOLD_GENERATOR_PATH"]
-
-raise_if_cuda_home_none("flash_attn")
 # Check, if CUDA11 is installed for compute capability 8.0
 cc_flag = []
 _, bare_metal_version = get_cuda_bare_metal_version(CUDA_HOME)
