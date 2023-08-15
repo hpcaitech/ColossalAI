@@ -3,7 +3,7 @@ from typing import Callable
 from torch.utils.data import Dataset
 from tqdm import tqdm
 
-from .utils import is_rank_0
+from .utils import is_rank_0, to_tensor
 
 
 # Dahoas/rm-static
@@ -30,8 +30,8 @@ class RmStaticDataset(Dataset):
         chosen_token = tokenizer(chosen,
                                  max_length=max_length,
                                  padding="max_length",
-                                 truncation=True,
-                                 return_tensors="pt")
+                                 truncation=True)
+        chosen_token = to_tensor(chosen_token)
         self.chosen = {
             "input_ids": chosen_token["input_ids"],
             "attention_mask": chosen_token["attention_mask"]
@@ -44,8 +44,8 @@ class RmStaticDataset(Dataset):
         reject_token = tokenizer(reject,
                                  max_length=max_length,
                                  padding="max_length",
-                                 truncation=True,
-                                 return_tensors="pt")
+                                 truncation=True)
+        reject_token = to_tensor(reject_token)
         self.reject = {
             "input_ids": reject_token["input_ids"],
             "attention_mask": reject_token["attention_mask"]
@@ -84,8 +84,8 @@ class HhRlhfDataset(Dataset):
         chosen_token = tokenizer(chosen,
                                  max_length=max_length,
                                  padding="max_length",
-                                 truncation=True,
-                                 return_tensors="pt")
+                                 truncation=True)
+        chosen_token = to_tensor(chosen_token)
         self.chosen = {
             "input_ids": chosen_token["input_ids"],
             "attention_mask": chosen_token["attention_mask"]
@@ -98,8 +98,8 @@ class HhRlhfDataset(Dataset):
         reject_token = tokenizer(reject,
                                  max_length=max_length,
                                  padding="max_length",
-                                 truncation=True,
-                                 return_tensors="pt")
+                                 truncation=True)
+        reject_token = to_tensor(reject_token)
         self.reject = {
             "input_ids": reject_token["input_ids"],
             "attention_mask": reject_token["attention_mask"]

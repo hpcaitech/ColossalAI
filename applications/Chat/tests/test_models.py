@@ -9,6 +9,7 @@ from coati.models.bloom import BLOOMRM, BLOOMActor, BLOOMCritic
 from coati.models.generation import generate
 from coati.models.gpt import GPTRM, GPTActor, GPTCritic
 from coati.models.llama import LlamaActor, LlamaCritic, LlamaRM
+from coati.models.chatglm import ChatGLMActor
 from coati.models.lora import LoraLinear, convert_to_lora_module
 from coati.models.loss import GPTLMLoss, LogExpLoss, LogSigLoss, PolicyLoss, ValueLoss
 from coati.models.opt import OPTRM, OPTActor, OPTCritic
@@ -23,7 +24,8 @@ from coati.models.utils import calc_action_log_probs, compute_reward, masked_mea
     lambda: GPTActor(),
     # HACK: skip llama due to long execution time
     # lambda: LlamaActor(),
-    lambda: OPTActor()
+    lambda: OPTActor(),
+    lambda: ChatGLMActor(),
 ])
 @pytest.mark.parametrize("generate_kwargs", [{
     "max_length": 64,
@@ -129,6 +131,7 @@ def test_lora(lora_rank: int,
     # HACK: skip llama due to long execution time
     # lambda: (LlamaActor(), LlamaCritic(), LlamaRM()),
     lambda: (OPTActor(), OPTCritic(), OPTRM()),
+    lambda: (ChatGLMActor()),
 ])
 @torch.no_grad()
 def test_models(models_maker: Callable[[], Tuple[Actor, Critic, RewardModel]],
@@ -228,7 +231,8 @@ if __name__ == "__main__":
 
     test_models(models_maker=lambda: (BLOOMActor(),
                                       BLOOMCritic(),
-                                      BLOOMRM()),
+                                      BLOOMRM(),
+                                      ChatGLMActor()),
                 batch_size=8,
                 seq_len=128)
 

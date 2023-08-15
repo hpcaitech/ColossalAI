@@ -13,16 +13,17 @@
 #    limitations under the License.
 
 import copy
-from typing import Dict, Sequence, Tuple
+from typing import Dict, Optional, Sequence, Tuple
 
 import torch
+from coati.models.chatglm.chatglm_tokenizer import ChatGLMTokenizer
 from torch.utils.data import Dataset
 from tqdm import tqdm
 from transformers import PreTrainedTokenizer
-from coati.models.chatglm.chatglm_tokenizer import ChatGLMTokenizer 
+
 from colossalai.logging import get_dist_logger
 
-from .utils import is_rank_0, jload
+from .utils import is_rank_0, jload, to_tensor
 
 logger = get_dist_logger()
 
@@ -47,14 +48,16 @@ def _preprocess(sources: Sequence[str],
     sequences_token = tokenizer(sequences,
                                 max_length=max_length,
                                 padding="max_length",
-                                truncation=True,
-                                return_tensors="pt")
+                                truncation=True)
+    sequences_token = to_tensor(sequences_token)
     sources_token = tokenizer(sources,
                               max_length=max_length,
                               padding="max_length",
-                              truncation=True,
-                              return_tensors="pt")
+                              truncation=True)
+    sources_token = to_tensor(sources_token)
 
+    assert sequences_token["attention_mask"].dim() == 2, \
+        "seq2seq model should be preprocessed differently"
     labels = copy.deepcopy(sequences_token["input_ids"])
     for i in range(labels.shape[0]):
         source_len = sources_token["attention_mask"][i].sum().item()
@@ -62,9 +65,10 @@ def _preprocess(sources: Sequence[str],
         if tokenizer.padding_side == "right":
             # |prompt|completion|eos|pad|
             labels[i][:source_len] = IGNORE_INDEX
+            labels[i][-pad_len:] = IGNORE_INDEX
         elif tokenizer.padding_side == "left":
             # |pad|prompt|completion|eos|
-            labels[i][pad_len:pad_len + source_len] = IGNORE_INDEX
+            labels[i][:pad_len + source_len] = IGNORE_INDEX
         else:
             raise RuntimeError()
 
@@ -72,17 +76,18 @@ def _preprocess(sources: Sequence[str],
 
 
 def _preprocess_chatglm(sources: Sequence[str],
-                targets: Sequence[str],
-                tokenizer: PreTrainedTokenizer,
-                max_length: int,
-                ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+                        targets: Sequence[str],
+                        tokenizer: PreTrainedTokenizer,
+                        max_length: int,
+                        ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Preprocess the data by tokenizing."""
     sequences = [s + "[gMASK]" + tokenizer.bos_token + t for s, t in zip(sources, targets)]
+    
     sequences_token = tokenizer(sequences,
                                 max_length=max_length,
                                 padding="max_length",
-                                truncation=True,
-                                return_tensors="pt")
+                                truncation=True)
+    sequences_token = to_tensor(sequences_token)
 
     labels = copy.deepcopy(sequences_token["input_ids"])
     for i in range(labels.shape[0]):
@@ -117,6 +122,7 @@ class SFTDataset(Dataset):
             for data in tqdm(dataset, disable=not is_rank_0())
         ]
         if isinstance(tokenizer, ChatGLMTokenizer):
+            assert tokenizer.padding_side == "left", "ChatGLM's tokenizer should be padded at left"
             self.input_ids, self.labels, self.attention_mask = \
                 _preprocess_chatglm(sources, targets, tokenizer, max_length)
         else:
@@ -139,7 +145,7 @@ class SupervisedDataset(Dataset):
     def __init__(self,
                  data_path: str,
                  tokenizer: PreTrainedTokenizer,
-                 max_datasets_size: int = None,
+                 max_datasets_size: Optional[int] = None,
                  max_length: int = 512):
         super().__init__()
         logger.info("Loading data...")
@@ -163,11 +169,14 @@ class SupervisedDataset(Dataset):
 
         logger.info("Tokenizing inputs... This may take some time...")
         if isinstance(tokenizer, ChatGLMTokenizer):
+            assert tokenizer.padding_side == "left", "ChatGLM's tokenizer should be padded at left"
             self.input_ids, self.labels, self.attention_mask = \
                 _preprocess_chatglm(sources, targets, tokenizer, max_length)
         else:
             self.input_ids, self.labels, self.attention_mask = \
                 _preprocess(sources, targets, tokenizer, max_length)
+
+        logger.info("Loaded dataset.")
 
     def __len__(self):
         length = self.input_ids.shape[0]

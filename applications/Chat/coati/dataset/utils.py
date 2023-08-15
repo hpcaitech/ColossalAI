@@ -1,6 +1,9 @@
 import io
 import json
+from typing import Dict, List
 
+import numpy as np
+import torch
 import torch.distributed as dist
 
 
@@ -20,3 +23,7 @@ def jload(f, mode="r"):
     jdict = json.load(f)
     f.close()
     return jdict
+
+
+def to_tensor(d: Dict[str, List[np.ndarray]]) -> Dict[str, torch.Tensor]:
+    return {k: torch.as_tensor(np.array(v)) for k, v in d.items()}

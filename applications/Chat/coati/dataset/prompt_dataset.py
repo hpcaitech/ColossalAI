@@ -7,7 +7,7 @@ from torch.utils.data import Dataset
 
 from colossalai.logging import get_dist_logger
 
-from .utils import jload
+from .utils import jload, to_tensor
 
 
 class PromptDataset(Dataset):
@@ -31,10 +31,10 @@ class PromptDataset(Dataset):
 
         instructions = [data_dict["instruction"] for data_dict in list_data_dict]
         tokens = tokenizer(instructions,
-                           return_tensors='pt',
                            max_length=max_length,
                            padding='max_length',
                            truncation=True)
+        tokens = to_tensor(tokens)
         for k, tensor in tokens.items():
             self.keyed_prompt[k] = tensor.to(torch.cuda.current_device()).unbind()
 
