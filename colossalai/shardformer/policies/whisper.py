@@ -422,7 +422,10 @@ class WhisperForConditionalGenerationPolicy(WhisperPolicy):
         return self.model
 
     def get_held_layers(self) -> List[nn.Module]:
-        return super().get_held_layers()
+        held_layers = super().get_held_layers()
+        if self.pipeline_stage_manager.is_last_stage():
+            held_layers.append(self.model.proj_out)
+        return held_layers
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
         module = self.model

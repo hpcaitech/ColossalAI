@@ -773,3 +773,117 @@ class WhisperPipelineForwards:
             cross_attentions=decoder_outputs.cross_attentions,
             encoder_last_hidden_state=encoder_hidden_states,
         )
+
+    @staticmethod
+    def whisper_for_conditional_generation_forward(
+        self: WhisperForConditionalGeneration,
+        input_features: Optional[torch.FloatTensor] = None,
+        attention_mask: Optional[torch.LongTensor] = None,
+        decoder_input_ids: Optional[torch.LongTensor] = None,
+        decoder_attention_mask: Optional[torch.LongTensor] = None,
+        head_mask: Optional[torch.Tensor] = None,
+        decoder_head_mask: Optional[torch.Tensor] = None,
+        cross_attn_head_mask: Optional[torch.Tensor] = None,
+        encoder_outputs: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
+        past_key_values: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
+        decoder_inputs_embeds: Optional[Tuple[torch.FloatTensor]] = None,
+        labels: Optional[torch.LongTensor] = None,
+        use_cache: Optional[bool] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+        stage_manager: Optional[PipelineStageManager] = None,
+        hidden_states: Optional[torch.FloatTensor] = None,
+        encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        stage_index: Optional[List[int]] = None,
+        decoder_starting_stage: Optional[int] = None,
+    ) -> Union[Tuple[torch.Tensor], Seq2SeqLMOutput]:
+        r"""
+        labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
+            Labels for computing the language modeling loss. Indices should either be in `[0, ..., config.vocab_size]`
+            or -100 (see `input_ids` docstring). Tokens with indices set to `-100` are ignored (masked), the loss is
+            only computed for the tokens with labels in `[0, ..., config.vocab_size]`.
+
+        Returns:
+
+        Example:
+
+        ```python
+        >>> import torch
+        >>> from transformers import AutoProcessor, WhisperForConditionalGeneration
+        >>> from datasets import load_dataset
+
+        >>> processor = AutoProcessor.from_pretrained("openai/whisper-tiny.en")
+        >>> model = WhisperForConditionalGeneration.from_pretrained("openai/whisper-tiny.en")
+
+        >>> ds = load_dataset("hf-internal-testing/librispeech_asr_dummy", "clean", split="validation")
+
+        >>> inputs = processor(ds[0]["audio"]["array"], return_tensors="pt")
+        >>> input_features = inputs.input_features
+
+        >>> generated_ids = model.generate(inputs=input_features)
+
+        >>> transcription = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
+        >>> transcription
+        ' Mr. Quilter is the apostle of the middle classes, and we are glad to welcome his gospel.'
+        ```"""
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        if labels is not None:
+            if decoder_input_ids is None and decoder_inputs_embeds is None:
+                decoder_input_ids = shift_tokens_right(labels, self.config.pad_token_id,
+                                                       self.config.decoder_start_token_id)
+        in_decoder = stage_manager.stage >= decoder_starting_stage
+        at_last_decoder_stage = stage_manager.is_last_stage()
+        outputs = WhisperPipelineForwards.whisper_model_forward(self.model,
+                                                                input_features,
+                                                                attention_mask=attention_mask,
+                                                                decoder_input_ids=decoder_input_ids,
+                                                                encoder_outputs=encoder_outputs,
+                                                                decoder_attention_mask=decoder_attention_mask,
+                                                                head_mask=head_mask,
+                                                                decoder_head_mask=decoder_head_mask,
+                                                                cross_attn_head_mask=cross_attn_head_mask,
+                                                                past_key_values=past_key_values,
+                                                                decoder_inputs_embeds=decoder_inputs_embeds,
+                                                                use_cache=use_cache,
+                                                                output_attentions=output_attentions,
+                                                                output_hidden_states=output_hidden_states,
+                                                                return_dict=return_dict,
+                                                                stage_manager=stage_manager,
+                                                                hidden_states=hidden_states,
+                                                                encoder_hidden_states=encoder_hidden_states,
+                                                                stage_index=stage_index,
+                                                                decoder_starting_stage=decoder_starting_stage)
+        if not in_decoder:
+            return outputs
+
+        if not at_last_decoder_stage:
+            # encoder_hidden_states should be passed to the next stage
+            decoder_outputs['encoder_hidden_states'] = encoder_hidden_states
+            return decoder_outputs
+
+        lm_logits = self.proj_out(outputs[0])
+
+        loss = None
+        if labels is not None:
+            loss_fct = CrossEntropyLoss()
+            # move labels to correct device to enable PP
+            labels = labels.to(lm_logits.device)
+            loss = loss_fct(lm_logits.view(-1, self.config.vocab_size), labels.reshape(-1))
+
+        if not return_dict:
+            output = (lm_logits,) + outputs[1:]
+            return ((loss,) + output) if loss is not None else output
+
+        return Seq2SeqLMOutput(
+            loss=loss,
+            logits=lm_logits,
+            past_key_values=outputs.past_key_values,
+            decoder_hidden_states=outputs.decoder_hidden_states,
+            decoder_attentions=outputs.decoder_attentions,
+            cross_attentions=outputs.cross_attentions,
+            encoder_last_hidden_state=outputs.encoder_last_hidden_state,
+            encoder_hidden_states=outputs.encoder_hidden_states,
+            encoder_attentions=outputs.encoder_attentions,
+        )
