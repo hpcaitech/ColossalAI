@@ -155,7 +155,7 @@ setup(
                                'nvcc': append_nvcc_threads(['-O3', '--use_fast_math'] + cc_flag)
                                 },
             include_dirs=[
-                Path(this_dir)/'csrc'/'attention_infer_kernels'/'layernorm',
+                Path(this_dir)/'csrc'/'attention_infer_kernels'/'rmsnorm',
             ],
         ),
 
