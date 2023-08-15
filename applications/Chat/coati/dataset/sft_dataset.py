@@ -16,10 +16,11 @@ import copy
 from typing import Dict, Sequence, Tuple
 
 import torch
+from coati.models.chatglm.chatglm_tokenizer import ChatGLMTokenizer
 from torch.utils.data import Dataset
 from tqdm import tqdm
 from transformers import PreTrainedTokenizer
-from coati.models.chatglm.chatglm_tokenizer import ChatGLMTokenizer 
+
 from colossalai.logging import get_dist_logger
 
 from .utils import is_rank_0, jload
@@ -55,6 +56,8 @@ def _preprocess(sources: Sequence[str],
                               truncation=True,
                               return_tensors="pt")
 
+    assert sequences["attention_mask"].shape == 3, \
+        "seq2seq model should be preprocessed differently"
     labels = copy.deepcopy(sequences_token["input_ids"])
     for i in range(labels.shape[0]):
         source_len = sources_token["attention_mask"][i].sum().item()
@@ -62,9 +65,10 @@ def _preprocess(sources: Sequence[str],
         if tokenizer.padding_side == "right":
             # |prompt|completion|eos|pad|
             labels[i][:source_len] = IGNORE_INDEX
+            labels[i][-pad_len:] = IGNORE_INDEX
         elif tokenizer.padding_side == "left":
             # |pad|prompt|completion|eos|
-            labels[i][pad_len:pad_len + source_len] = IGNORE_INDEX
+            labels[i][:pad_len + source_len] = IGNORE_INDEX
         else:
             raise RuntimeError()
 
@@ -72,10 +76,10 @@ def _preprocess(sources: Sequence[str],
 
 
 def _preprocess_chatglm(sources: Sequence[str],
-                targets: Sequence[str],
-                tokenizer: PreTrainedTokenizer,
-                max_length: int,
-                ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+                        targets: Sequence[str],
+                        tokenizer: PreTrainedTokenizer,
+                        max_length: int,
+                        ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Preprocess the data by tokenizing."""
     sequences = [s + "[gMASK]" + tokenizer.bos_token + t for s, t in zip(sources, targets)]
     sequences_token = tokenizer(sequences,
@@ -86,10 +90,8 @@ def _preprocess_chatglm(sources: Sequence[str],
 
     labels = copy.deepcopy(sequences_token["input_ids"])
     for i in range(labels.shape[0]):
-        assert tokenizer.padding_side == "left", "chatglm's tokenizer should be padded at left"
-        pad_len = torch.sum(sequences_token['input_ids'][1] == tokenizer.pad_token_id)
         context_len = torch.nonzero(sequences_token["input_ids"][i] == tokenizer.bos_token_id).squeeze()[0]
-        labels[i][pad_len:context_len] = IGNORE_INDEX
+        labels[i][:context_len] = IGNORE_INDEX
 
     return sequences_token["input_ids"], labels, sequences_token["attention_mask"]
 
@@ -118,6 +120,7 @@ class SFTDataset(Dataset):
             for data in tqdm(dataset, disable=not is_rank_0())
         ]
         if isinstance(tokenizer, ChatGLMTokenizer):
+            assert tokenizer.padding_side == "left", "ChatGLM's tokenizer should be padded at left"
             self.input_ids, self.labels, self.attention_mask = \
                 _preprocess_chatglm(sources, targets, tokenizer, max_length)
         else:
@@ -164,6 +167,7 @@ class SupervisedDataset(Dataset):
 
         logger.info("Tokenizing inputs... This may take some time...")
         if isinstance(tokenizer, ChatGLMTokenizer):
+            assert tokenizer.padding_side == "left", "ChatGLM's tokenizer should be padded at left"
             self.input_ids, self.labels, self.attention_mask = \
                 _preprocess_chatglm(sources, targets, tokenizer, max_length)
         else:
