@@ -243,11 +243,13 @@ def test_sft_dataset(model: str,
             check_content(input_ids.masked_select(attention_mask), tokenizer, model)
             assert torch.all(attention_mask)
         ignore_mask = labels == IGNORE_INDEX
-        # check_content(input_ids.masked_select(ignore_mask), tokenizer, model)
+        prompt_mask = torch.logical_and(ignore_mask, attention_mask)
+        check_content(input_ids.masked_select(prompt_mask), tokenizer, model)
+        assert torch.all(input_ids.masked_select(ignore_mask ^ prompt_mask) == tokenizer.pad_token_id)
 
 
 if __name__ == "__main__":
-    test_sft_dataset(model="chatglm",
+    test_sft_dataset(model="bloom",
                      dataset_path="yizhongw/self_instruct",
                      max_dataset_size=2,
                      max_length=256)

@@ -6,18 +6,18 @@ import torch
 import torch.distributed as dist
 from coati.dataset import SFTDataset, SupervisedDataset
 from coati.models.bloom import BLOOMActor
+from coati.models.chatglm import ChatGLMActor
+from coati.models.chatglm.chatglm_tokenizer import ChatGLMTokenizer
 from coati.models.gpt import GPTActor
 from coati.models.llama import LlamaActor
 from coati.models.opt import OPTActor
-from coati.models.chatglm import ChatGLMActor
 from coati.trainer import SFTTrainer
 from coati.trainer.strategies import DDPStrategy, GeminiStrategy, LowLevelZeroStrategy
 from datasets import load_dataset
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
-from transformers import AutoTokenizer, BloomTokenizerFast, LlamaTokenizer, AutoModel
-from coati.models.chatglm.chatglm_tokenizer import ChatGLMTokenizer
+from transformers import AutoTokenizer, BloomTokenizerFast, LlamaTokenizer
 from transformers.models.gpt2.tokenization_gpt2 import GPT2Tokenizer
 from transformers.trainer import get_scheduler
 
@@ -61,7 +61,9 @@ def train(args):
                                lora_rank=args.lora_rank,
                                checkpoint=args.grad_checkpoint)
         elif args.model == 'chatglm':
-            model = ChatGLMActor(pretrained=args.pretrain)
+            model = ChatGLMActor(pretrained=args.pretrain,
+                                 lora_rank=args.lora_rank,
+                                 checkpoint=args.grad_checkpoint)
         else:
             raise ValueError(f'Unsupported model "{args.model}"')
 
@@ -106,7 +108,6 @@ def train(args):
         optim = HybridAdam(model.parameters(), lr=args.lr, clipping_norm=1.0)
     else:
         optim = Adam(model.parameters(), lr=args.lr)
-    logger = get_dist_logger()
 
     # configure dataset
     if args.dataset == 'yizhongw/self_instruct':
@@ -172,6 +173,7 @@ def train(args):
                          max_epochs=args.max_epochs,
                          accumulation_steps=args.accumulation_steps)
 
+    logger = get_dist_logger()
     trainer.fit(train_dataloader=train_dataloader,
                 eval_dataloader=eval_dataloader,
                 logger=logger,
