@@ -16,7 +16,5 @@ triton==2.0.0.dev20221202
 requests==2.27.1 # downgrade to avoid huggingface error https://github.com/huggingface/transformers/issues/17611
 SentencePiece
 ninja
-flash_attn>=2.0
+flash_attn==2.0.5
 datasets
-ninja
-flash-attn>=2.0
