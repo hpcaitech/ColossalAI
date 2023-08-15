@@ -1,4 +1,5 @@
 import os
+import pytest
 import numpy as np
 
 import torch
@@ -10,18 +11,18 @@ except:
     HAS_INFER_CUDA = False
     print("please install your cuda ")
 
-if HAS_INFER_CUDA:    
-    def test():
-        size = (17, 3, 1024, 256)
-        data = torch.randn(size = size, device="cuda", dtype=torch.float16)
-        mask = torch.zeros(size = (17, 1, 1024, 256), device="cuda", dtype=torch.uint8)
+@pytest.mark.skipif(not HAS_INFER_CUDA, reason="You need to install llama supported cuda kernels to run this test")    
+def test():
+    size = (17, 3, 1024, 256)
+    data = torch.randn(size = size, device="cuda", dtype=torch.float16)
+    mask = torch.zeros(size = (17, 1, 1024, 256), device="cuda", dtype=torch.uint8)
 
-        out_cuda = scaled_masked_softmax_forward(data, mask, 1)
+    out_cuda = scaled_masked_softmax_forward(data, mask, 1)
 
-        out_torch = F.softmax(data, dim = -1)
+    out_torch = F.softmax(data, dim = -1)
 
-        check = torch.allclose(out_cuda.cpu(), out_torch.cpu(), rtol=1e-3, atol=1e-3)
-        assert check is True, "the output from cuda softmax is not matched with output from torch"
+    check = torch.allclose(out_cuda.cpu(), out_torch.cpu(), rtol=1e-3, atol=1e-3)
+    assert check is True, "the output from cuda softmax is not matched with output from torch"
 
-    if __name__ == "__main__":
-        test()
+if __name__ == "__main__":
+    test()

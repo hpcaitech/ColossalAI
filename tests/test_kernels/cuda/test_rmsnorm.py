@@ -1,5 +1,7 @@
 import os
+import pytest
 import numpy as np
+from packaging import version
 
 import torch
 from torch import nn
@@ -41,7 +43,7 @@ def cuda_rmsnorm_forward(hidden_states, weight, variance_epsilon):
     )
     return out
 
-
+@pytest.mark.skipif(not HAS_INFER_CUDA, reason="You need to install llama supported cuda kernels to run this test")
 def test_rmsnorm():
     data = torch.randn((1024, 64), dtype=torch.float16, device="cuda")
     hg_rms = LlamaRMSNorm(64)
@@ -53,5 +55,4 @@ def test_rmsnorm():
     assert check is True, "cuda rmsnorm forward is not matched with torch rmsnorm forward"
 
 if __name__ == "__main__":
-    if HAS_INFER_CUDA:
-        test_rmsnorm()
+    test_rmsnorm()

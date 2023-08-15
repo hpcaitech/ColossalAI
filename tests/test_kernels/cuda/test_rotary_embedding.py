@@ -1,4 +1,6 @@
+import pytest
 from typing import Tuple
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -135,7 +137,7 @@ def run_rotary_embedding_neox(
     assert torch.allclose(out_query, ref_query, atol=1e-3, rtol=1e-5)
     assert torch.allclose(out_key, ref_key, atol=1e-3, rtol=1e-5)
 
-
+@pytest.mark.skipif(not HAS_INFER_CUDA, reason="You need to install llama supported cuda kernels to run this test")
 def test():
     run_rotary_embedding_neox(
         num_tokens=1024,
@@ -147,5 +149,4 @@ def test():
     )
 
 if __name__ == "__main__":
-    if HAS_INFER_CUDA:
-        test()
+    test()
