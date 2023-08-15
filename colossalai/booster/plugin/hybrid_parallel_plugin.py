@@ -6,7 +6,8 @@ import numpy as np
 import torch
 import torch.distributed as dist
 from torch.distributed import ProcessGroup
-from torch.nn import Module
+from torch.nn import Module, SyncBatchNorm
+from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch.utils.data import DataLoader
@@ -28,7 +29,8 @@ DP_AXIS, PP_AXIS, TP_AXIS = 0, 1, 2
 
 class HybridParallelModule(ModelWrapper):
 
-    def __init__(self, module: Module, precision: str, shard_config: ShardConfig, dp_group: ProcessGroup) -> None:
+    def __init__(self, module: Module, precision: str, shard_config: ShardConfig, dp_group: ProcessGroup,
+                 use_ddp: bool) -> None:
         self.stage_manager = shard_config.pipeline_stage_manager
         self.dp_group = dp_group
         shardformer = ShardFormer(shard_config)
@@ -45,7 +47,23 @@ class HybridParallelModule(ModelWrapper):
             module = module.to(dtype=torch.bfloat16).cuda()
         else:
             module = module.cuda()    # train without AMP
-        # TODO(ver217): support TP+DP
+
+        if use_ddp:
+
+            ddp_config = dict(process_group=dp_group,
+                              broadcast_buffers=True,
+                              bucket_cap_mb=25,
+                              find_unused_parameters=False,
+                              check_reduction=False,
+                              gradient_as_bucket_view=False,
+                              static_graph=False)
+
+            # convert model to sync bn
+            module = SyncBatchNorm.convert_sync_batchnorm(module, dp_group)
+
+            # wrap the model with PyTorch DDP
+            module = DDP(module, **ddp_config)
+
         super().__init__(module)
 
     def sync_shared_params(self):
@@ -238,7 +256,8 @@ class HybridParallelPlugin(PipelinePluginBase):
         lr_scheduler: Optional[LRScheduler] = None,
     ) -> Tuple[Module, OptimizerWrapper, Callable, DataLoader, LRScheduler]:
         if not isinstance(model, ModelWrapper):
-            model = HybridParallelModule(model, self.precision, self.shard_config, self.dp_group)
+            use_ddp = self.dp_size > 1 and self.pp_size == 1 and self.zero_stage == 0
+            model = HybridParallelModule(model, self.precision, self.shard_config, self.dp_group, use_ddp)
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
             if self.zero_stage == 0:
                 if self.precision in ['fp16', 'bf16']:

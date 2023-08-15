@@ -8,10 +8,12 @@ from torch import Tensor
 from torch import distributed as dist
 from torch.distributed import ProcessGroup
 from torch.nn import Module
+from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim import Adam, Optimizer
 
 from colossalai.booster import Booster
 from colossalai.booster.plugin import HybridParallelPlugin
+from colossalai.booster.plugin.hybrid_parallel_plugin import HybridParallelModule
 from colossalai.lazy import LazyInitContext
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig, ShardFormer
@@ -246,3 +248,13 @@ def check_grad(org_model: Module,
         assert torch.allclose(
             org_grad.float(), shard_grad.float(), rtol=rtol, atol=atol
         ), f"error attribute '{suffix}', orgin model grad is not equal to shard model grad\n{org_grad}\n{shard_grad}"
+
+
+def unwrap_model(module: Module, base_model_class_name: str, base_model_attribute_name: str):
+    if isinstance(module, HybridParallelModule):
+        module = module.unwrap()
+    if isinstance(module, DDP):
+        module = module.module
+    if module.__class__.__name__ == base_model_class_name:
+        return module
+    return getattr(module, base_model_attribute_name, None)
