@@ -227,11 +227,17 @@ class GeminiPlugin(DPPluginBase):
         chunk_config_dict (dict, optional): chunk configuration dictionary.
         chunk_init_device (torch.device, optional): device to initialize the chunk.
         placement_policy (str, optional): "static" and "auto". Defaults to "static".
-        shard_param_frac (float, optional): fraction of parameters to be sharded. Defaults to 1.0.
-        offload_optim_frac (float, optional): fraction of optimizer states to be offloaded. Defaults to 0.0.
-        offload_param_frac (float, optional): fraction of parameters to be offloaded. Defaults to 0.0.
-        warmup_non_model_data_ratio (float, optional): ratio of expected non-model data memory during warmup. Defaults to 0.8.
-        steady_cuda_cap_ratio (float, optional): ratio of allowed cuda capacity for model data during steady state. Defaults to 0.9.
+        shard_param_frac (float, optional): fraction of parameters to be sharded. Only for "static" placement.
+            If `shard_param_frac` is 1.0, it's equal to zero-3. If `shard_param_frac` is 0.0, it's equal to zero-2. Defaults to 1.0.
+        offload_optim_frac (float, optional): fraction of optimizer states to be offloaded. Only for "static" placement.
+            If `shard_param_frac` is 1.0 and `offload_optim_frac` is 0.0, it's equal to old "cuda" placement. Defaults to 0.0.
+        offload_param_frac (float, optional): fraction of parameters to be offloaded. Only for "static" placement.
+            For efficiency, this argument is useful only when `shard_param_frac` is 1.0 and `offload_optim_frac` is 1.0.
+            If `shard_param_frac` is 1.0, `offload_optim_frac` is 1.0 and `offload_param_frac` is 1.0, it's equal to old "cpu" placement.
+            When using static placement, we recommend users to tune `shard_param_frac` first and then `offload_optim_frac`.
+            Defaults to 0.0.
+        warmup_non_model_data_ratio (float, optional): ratio of expected non-model data memory during warmup. Only for "auto" placement. Defaults to 0.8.
+        steady_cuda_cap_ratio (float, optional): ratio of allowed cuda capacity for model data during steady state. Only for "auto" placement. Defaults to 0.9.
         precision (str, optional): precision. Support 'fp16' and 'bf16'. Defaults to 'fp16'.
         pin_memory (bool, optional): use pin memory on CPU. Defaults to False.
         force_outputs_fp32 (bool, optional): force outputs are fp32. Defaults to False.
