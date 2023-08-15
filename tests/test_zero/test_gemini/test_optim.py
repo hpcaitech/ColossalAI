@@ -15,6 +15,41 @@ from tests.components_to_test import run_fwd_bwd
 from tests.components_to_test.registry import non_distributed_component_funcs
 from tests.test_tensor.common_utils import set_seed
 
+PLACEMENT_CONFIGS = [
+    {
+        'placement_policy': 'static',
+        'shard_param_frac': 0.0,
+        'offload_optim_frac': 0.0
+    },    # zero2
+    {
+        'placement_policy': 'static',
+        'shard_param_frac': 0.0,
+        'offload_optim_frac': 1.0
+    },    # zero2-offload
+    {
+        'placement_policy': 'static',
+        'shard_param_frac': 0.0,
+        'offload_optim_frac': 0.5
+    },    # zero2-offload-half
+    {
+        'placement_policy': 'static',
+        'shard_param_frac': 1.0
+    },    # zero3
+    {
+        'placement_policy': 'static',
+        'shard_param_frac': 0.5
+    },    # zero3-half
+    {
+        'placement_policy': 'static',
+        'shard_param_frac': 1.0,
+        'offload_optim_frac': 1.0,
+        'offload_param_frac': 1.0
+    },    # zero3-offload-all
+    {
+        'placement_policy': 'auto'
+    }
+]
+
 # this model is large enough to slice to chunks
 TEST_MODELS = ['gpt2']
 # these models are too small, all parameters in these models are compacted into one chunk
@@ -50,10 +85,10 @@ def check_param(model: GeminiDDP, torch_model: torch.nn.Module, dtype: torch.dty
                      msg=lambda s: s + f'\n{key}\n{temp_zero_value.dtype}')
 
 
-@parameterize('placement_policy', ['cuda', 'cpu', 'auto', 'const'])
+@parameterize('placement_config', PLACEMENT_CONFIGS)
 @parameterize('model_name', TEST_MODELS)
 @parameterize('mixed_precision', [torch.half, torch.bfloat16])
-def exam_model_step(placement_policy, model_name: str, mixed_precision: torch.dtype):
+def exam_model_step(placement_config, model_name: str, mixed_precision: torch.dtype):
     set_seed(42)
     get_components_func = non_distributed_component_funcs.get_callable(model_name)
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
@@ -73,11 +108,7 @@ def exam_model_step(placement_policy, model_name: str, mixed_precision: torch.dt
     config_dict, *_ = search_chunk_configuration(model, search_range_m=1, search_interval=100)
     config_dict[world_size]['chunk_size'] = 5000
     config_dict[world_size]['keep_gathered'] = False
-    if placement_policy != 'cuda':
-        init_device = torch.device('cpu')
-    else:
-        init_device = None
-    model = GeminiDDP(model, config_dict, init_device, placement_policy, mixed_precision=mixed_precision)
+    model = GeminiDDP(model, config_dict, **placement_config, mixed_precision=mixed_precision)
 
     optimizer = HybridAdam(model.parameters(), lr=1e-3)
     zero_optim = GeminiOptimizer(optimizer, model, initial_scale=128)
@@ -104,10 +135,10 @@ def exam_model_step(placement_policy, model_name: str, mixed_precision: torch.dt
         check_param(model, torch_model, mixed_precision)
 
 
-@parameterize('placement_policy', ['cuda', 'cpu', 'auto', 'const'])
+@parameterize('placement_config', PLACEMENT_CONFIGS)
 @parameterize('model_name', EXAMPLE_MODELS)
 @parameterize('mixed_precision', [torch.half, torch.bfloat16])
-def exam_tiny_example(placement_policy, model_name: str, mixed_precision: torch.dtype):
+def exam_tiny_example(placement_config, model_name: str, mixed_precision: torch.dtype):
     set_seed(2008)
     get_components_func = non_distributed_component_funcs.get_callable(model_name)
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
@@ -127,7 +158,8 @@ def exam_tiny_example(placement_policy, model_name: str, mixed_precision: torch.
                       chunk_init_device=get_current_device(),
                       search_range_m=1,
                       pin_memory=True,
-                      mixed_precision=mixed_precision)
+                      mixed_precision=mixed_precision,
+                      **placement_config)
     optimizer = HybridAdam(model.parameters(), lr=1e-3)
     zero_optim = GeminiOptimizer(optimizer, model, initial_scale=2)
 

@@ -123,17 +123,17 @@ class GeminiDDP(ModelWrapper):
             for p in module.parameters():
                 param_order.append(p)
 
-        self._init_chunks(param_order=param_order,
-                          strict_ddp_mode=strict_ddp_mode,
-                          cpu_offload=self.gemini_manager.policy_name != 'cuda',
-                          pin_memory=pin_memory)
-
         for name, param in module.named_parameters():
             self.param2name[param] = name
         for m_name, m_var in module.named_modules():
             for p_name, p_var in m_var.named_parameters(recurse=False):
                 param_name = m_name + '.' + p_name if m_name else p_name
                 self.name2param[param_name] = p_var
+
+        self._init_chunks(param_order=param_order,
+                          strict_ddp_mode=strict_ddp_mode,
+                          cpu_offload=self.gemini_manager.policy_name != 'cuda',
+                          pin_memory=pin_memory)
         super().__init__(module)
         self._non_persistent_buffers_set = self._get_non_persistent_buffers_set(module)
         self._cast_buffers()
@@ -616,7 +616,7 @@ class GeminiDDP(ModelWrapper):
         for chunk_32 in chunk_list:
             chunk_16 = chunk_32.paired_chunk
             assert chunk_16 is not None
-            chunk_16.optim_update()
+            chunk_16.payload.copy_(chunk_32.payload)
 
         for name, buf in persistent_buffers.items():
             if buf is not None:
