@@ -28,6 +28,7 @@ MIN_PYTORCH_VERSION_MINOR = 10
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 BUILD_CUDA_EXT = int(os.environ.get('CUDA_EXT', '0')) == 1
 IS_NIGHTLY = int(os.environ.get('NIGHTLY', '0')) == 1
+LLAMA_INFER_CUDA = int(os.environ.get("LLAMA_INFER_CUDA", "0")) == 1
 
 # a variable to store the op builder
 ext_modules = []
@@ -137,6 +138,11 @@ if BUILD_CUDA_EXT:
     # show log
     op_name_list = ', '.join(op_names)
     print(f"[extension]  loaded builders for {op_name_list}")
+
+if LLAMA_INFER_CUDA:
+    from op_builder.llama_infer_cuda import llama_cuda_submodules
+    for sub_module in llama_cuda_submodules:
+        ext_modules.append(sub_module)
 
 # always put not nightly branch as the if branch
 # otherwise github will treat colossalai-nightly as the project name

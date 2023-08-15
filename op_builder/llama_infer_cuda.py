@@ -17,8 +17,7 @@ from torch.utils import cpp_extension
 
 
 # ninja build does not work unless include_dirs are abs path
-this_dir = os.path.dirname(os.path.abspath(__file__))
-
+this_dir = os.getcwd()
 
 def get_cuda_bare_metal_version(cuda_dir):
     raw_output = subprocess.check_output([cuda_dir + "/bin/nvcc", "-V"], universal_newlines=True)
@@ -27,24 +26,6 @@ def get_cuda_bare_metal_version(cuda_dir):
     bare_metal_version = parse(output[release_idx].split(",")[0])
 
     return raw_output, bare_metal_version
-
-
-def check_cuda_torch_binary_vs_bare_metal(cuda_dir):
-    raw_output, bare_metal_version = get_cuda_bare_metal_version(cuda_dir)
-    torch_binary_version = parse(torch.version.cuda)
-
-    print("\nCompiling cuda extensions with")
-    print(raw_output + "from " + cuda_dir + "/bin\n")
-
-    if (bare_metal_version != torch_binary_version):
-        raise RuntimeError(
-            "Cuda extensions are being compiled with a version of Cuda that does "
-            "not match the version used to compile Pytorch binaries.  "
-            "Pytorch binaries were compiled with Cuda {}.\n".format(torch.version.cuda)
-            + "In some cases, a minor-version mismatch will not cause later errors:  "
-            "https://github.com/NVIDIA/apex/pull/323#discussion_r287021798.  "
-            "You can try commenting out this check (at your own risk)."
-        )
 
 
 def raise_if_cuda_home_none(global_option: str) -> None:
@@ -117,14 +98,12 @@ if bare_metal_version >= Version("11.8"):
     cc_flag.append("-gencode")
     cc_flag.append("arch=compute_90,code=sm_90")
 
-setup(
-    name='colossal-cuda-infer-kernels',
-    ext_modules=[
+llama_cuda_submodules = [
         CUDAExtension(
             name='col_fused_softmax_lib',
             sources=[
-                'csrc/attention_infer_kernels/softmax/fused_softmax.cpp', 
-                'csrc/attention_infer_kernels/softmax/scaled_masked_softmax_cuda.cu'
+                this_dir + '/colossalai/kernel/cuda_native/csrc/attention_infer_kernels/softmax/fused_softmax.cpp', 
+                this_dir + '/colossalai/kernel/cuda_native/csrc/attention_infer_kernels/softmax/scaled_masked_softmax_cuda.cu'
                 ],
             extra_compile_args={
                                'cxx': ['-O3',],
@@ -135,8 +114,8 @@ setup(
         CUDAExtension(
             name="col_pos_encoding_ops",
             sources=[
-                "csrc/attention_infer_kernels/rotary_embedding/pos_encoding.cpp", 
-                "csrc/attention_infer_kernels/rotary_embedding/pos_encoding_kernels.cu"
+                this_dir + "/colossalai/kernel/cuda_native/csrc/attention_infer_kernels/rotary_embedding/pos_encoding.cpp", 
+                this_dir + "/colossalai/kernel/cuda_native/csrc/attention_infer_kernels/rotary_embedding/pos_encoding_kernels.cu"
                 ],
             extra_compile_args={
                                'cxx': ['-O3',],
@@ -147,22 +126,20 @@ setup(
         CUDAExtension(
             name="col_rms_norm_ops",
             sources=[
-                "csrc/attention_infer_kernels/rmsnorm/layernorm.cpp", 
-                "csrc/attention_infer_kernels/rmsnorm/layernorm_kernels.cu"
+                this_dir + "/colossalai/kernel/cuda_native/csrc/attention_infer_kernels/rmsnorm/layernorm.cpp", 
+                this_dir + "/colossalai/kernel/cuda_native/csrc/attention_infer_kernels/rmsnorm/layernorm_kernels.cu"
                 ],
             extra_compile_args={
                                'cxx': ['-O3',],
                                'nvcc': append_nvcc_threads(['-O3', '--use_fast_math'] + cc_flag)
                                 },
             include_dirs=[
-                Path(this_dir)/'csrc'/'attention_infer_kernels'/'rmsnorm',
+                this_dir + '/colossalai/kernel/cuda_native/csrc/attention_infer_kernels/rmsnorm',
             ],
         ),
 
-    ],
-    cmdclass={
-        'build_ext': BuildExtension
-})
+    ]
+
 
 
 
