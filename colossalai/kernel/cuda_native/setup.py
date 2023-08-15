@@ -159,54 +159,6 @@ setup(
             ],
         ),
 
-        CUDAExtension(
-                name="col_flash_attn_2_lib",
-                sources=[
-                    "csrc/attention_infer_kernels/flash_attn/flash_api.cpp",
-                    "csrc/attention_infer_kernels/flash_attn/src/flash_fwd_hdim32_fp16_sm80.cu",
-                    "csrc/attention_infer_kernels/flash_attn/src/flash_fwd_hdim32_bf16_sm80.cu",
-                    "csrc/attention_infer_kernels/flash_attn/src/flash_fwd_hdim64_fp16_sm80.cu",
-                    "csrc/attention_infer_kernels/flash_attn/src/flash_fwd_hdim64_bf16_sm80.cu",
-                    "csrc/attention_infer_kernels/flash_attn/src/flash_fwd_hdim96_fp16_sm80.cu",
-                    "csrc/attention_infer_kernels/flash_attn/src/flash_fwd_hdim96_bf16_sm80.cu",
-                    "csrc/attention_infer_kernels/flash_attn/src/flash_fwd_hdim128_fp16_sm80.cu",
-                    "csrc/attention_infer_kernels/flash_attn/src/flash_fwd_hdim128_bf16_sm80.cu",
-                    "csrc/attention_infer_kernels/flash_attn/src/flash_fwd_hdim160_fp16_sm80.cu",
-                    "csrc/attention_infer_kernels/flash_attn/src/flash_fwd_hdim160_bf16_sm80.cu",
-                    "csrc/attention_infer_kernels/flash_attn/src/flash_fwd_hdim192_fp16_sm80.cu",
-                    "csrc/attention_infer_kernels/flash_attn/src/flash_fwd_hdim192_bf16_sm80.cu",
-                    "csrc/attention_infer_kernels/flash_attn/src/flash_fwd_hdim224_fp16_sm80.cu",
-                    "csrc/attention_infer_kernels/flash_attn/src/flash_fwd_hdim224_bf16_sm80.cu",
-                    "csrc/attention_infer_kernels/flash_attn/src/flash_fwd_hdim256_fp16_sm80.cu",
-                    "csrc/attention_infer_kernels/flash_attn/src/flash_fwd_hdim256_bf16_sm80.cu",
-                ],
-            extra_compile_args={
-                "cxx": ["-O3", "-std=c++17"] + generator_flag,
-                "nvcc": append_nvcc_threads(
-                    [
-                        "-O3",
-                        "-std=c++17",
-                        "-U__CUDA_NO_HALF_OPERATORS__",
-                        "-U__CUDA_NO_HALF_CONVERSIONS__",
-                        "-U__CUDA_NO_HALF2_OPERATORS__",
-                        "-U__CUDA_NO_BFLOAT16_CONVERSIONS__",
-                        "--expt-relaxed-constexpr",
-                        "--expt-extended-lambda",
-                        "--use_fast_math",
-                        "--ptxas-options=-v",
-                        "-lineinfo"
-                    ]
-                    + generator_flag
-                    + cc_flag
-                ),
-            },
-            include_dirs=[
-                Path(this_dir) / 'csrc'/'attention_infer_kernels'/'flash_attn' ,
-                Path(this_dir) / 'csrc'/ 'attention_infer_kernels'/'flash_attn' / 'src',
-                Path(this_dir)  / 'csrc'/'cutlass' / 'include',
-            ],
-        ),
-
     ],
     cmdclass={
         'build_ext': BuildExtension
