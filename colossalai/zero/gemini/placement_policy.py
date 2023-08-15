@@ -44,8 +44,8 @@ class StaticPlacementPolicy(PlacementPolicy):
                  offload_param_frac: float = 0.0,
                  **kwargs) -> None:
         super().__init__(chunk_manager, mem_stats_collector=mem_stats_collector)
-        if offload_param_frac > 0.0 and (shard_param_frac != 1.0 or offload_optim_frac != 0.0):
-            warnings.warn('offload_param_frac is ignored when shard_param_frac != 1.0 or offload_optim_frac != 0.0')
+        if offload_param_frac > 0.0 and (shard_param_frac != 1.0 or offload_optim_frac != 1.0):
+            warnings.warn('offload_param_frac is ignored when shard_param_frac != 1.0 or offload_optim_frac != 1.0')
             offload_param_frac = 0.0
         self.shard_param_frac = shard_param_frac
         self.offload_optim_frac = offload_optim_frac
