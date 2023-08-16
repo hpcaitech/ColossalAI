@@ -15,7 +15,6 @@ from coati.models.opt import OPTRM, OPTActor, OPTCritic
 from coati.models.utils import calc_action_log_probs, compute_reward, masked_mean
 
 
-@pytest.mark.gpu
 @pytest.mark.parametrize("batch_size", [4])
 @pytest.mark.parametrize("seq_len", [32])
 @pytest.mark.parametrize(
