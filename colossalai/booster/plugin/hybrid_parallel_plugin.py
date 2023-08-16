@@ -6,7 +6,8 @@ import numpy as np
 import torch
 import torch.distributed as dist
 from torch.distributed import ProcessGroup
-from torch.nn import Module
+from torch.nn import Module, SyncBatchNorm
+from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch.utils.data import DataLoader
@@ -28,7 +29,8 @@ DP_AXIS, PP_AXIS, TP_AXIS = 0, 1, 2
 
 class HybridParallelModule(ModelWrapper):
 
-    def __init__(self, module: Module, precision: str, shard_config: ShardConfig, dp_group: ProcessGroup) -> None:
+    def __init__(self, module: Module, precision: str, shard_config: ShardConfig, dp_group: ProcessGroup, use_ddp: bool,
+                 ddp_config: dict) -> None:
         self.stage_manager = shard_config.pipeline_stage_manager
         self.dp_group = dp_group
         shardformer = ShardFormer(shard_config)
@@ -45,7 +47,15 @@ class HybridParallelModule(ModelWrapper):
             module = module.to(dtype=torch.bfloat16).cuda()
         else:
             module = module.cuda()    # train without AMP
-        # TODO(ver217): support TP+DP
+
+        if use_ddp:
+
+            # convert model to sync bn
+            module = SyncBatchNorm.convert_sync_batchnorm(module, dp_group)
+
+            # wrap the model with PyTorch DDP
+            module = DDP(module, process_group=dp_group, **ddp_config)
+
         super().__init__(module)
 
     def sync_shared_params(self):
@@ -67,6 +77,12 @@ class HybridParallelModule(ModelWrapper):
             if p.grad is not None:
                 dist.all_reduce(p.grad, group=self.dp_group)
                 p.grad.div_(self.dp_group.size())
+
+    def unwrap(self):
+        module = super().unwrap()
+        if isinstance(module, DDP):
+            module = module.module
+        return module
 
 
 def init_pipeline_optimizer(optim: Optimizer, model: Module):
@@ -141,28 +157,32 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
 
 class HybridParallelPlugin(PipelinePluginBase):
 
-    def __init__(
-        self,
-        tp_size: int,
-        pp_size: int,
-        precision: str = 'fp16',
-        zero_stage: int = 0,
-        cpu_offload: bool = False,
-        enable_all_optimization: bool = False,
-        enable_fused_normalization: bool = False,
-        enable_flash_attention: bool = False,
-        enable_jit_fused: bool = False,
-        enable_sequence_parallelism: bool = False,
-        num_microbatches: Optional[int] = None,
-        initial_scale: float = 2**16,
-        min_scale: float = 1,
-        growth_factor: float = 2,
-        backoff_factor: float = 0.5,
-        growth_interval: int = 1000,
-        hysteresis: int = 2,
-        max_scale: float = 2**32,
-        max_norm: float = 0,
-    ) -> None:
+    def __init__(self,
+                 tp_size: int,
+                 pp_size: int,
+                 precision: str = 'fp16',
+                 zero_stage: int = 0,
+                 cpu_offload: bool = False,
+                 enable_all_optimization: bool = False,
+                 enable_fused_normalization: bool = False,
+                 enable_flash_attention: bool = False,
+                 enable_jit_fused: bool = False,
+                 enable_sequence_parallelism: bool = False,
+                 num_microbatches: Optional[int] = None,
+                 initial_scale: float = 2**16,
+                 min_scale: float = 1,
+                 growth_factor: float = 2,
+                 backoff_factor: float = 0.5,
+                 growth_interval: int = 1000,
+                 hysteresis: int = 2,
+                 max_scale: float = 2**32,
+                 max_norm: float = 0,
+                 broadcast_buffers=True,
+                 bucket_cap_mb=25,
+                 find_unused_parameters=False,
+                 check_reduction=False,
+                 gradient_as_bucket_view=False,
+                 static_graph=False) -> None:
         super().__init__()
         assert dist.get_world_size() % (
             tp_size * pp_size
@@ -208,6 +228,13 @@ class HybridParallelPlugin(PipelinePluginBase):
             min_scale=min_scale,
             max_scale=max_scale,
         )
+
+        self.ddp_config = dict(broadcast_buffers=broadcast_buffers,
+                               bucket_cap_mb=bucket_cap_mb,
+                               find_unused_parameters=find_unused_parameters,
+                               check_reduction=check_reduction,
+                               gradient_as_bucket_view=gradient_as_bucket_view,
+                               static_graph=static_graph)
         self.max_norm = max_norm
 
     @property
@@ -241,7 +268,9 @@ class HybridParallelPlugin(PipelinePluginBase):
         lr_scheduler: Optional[LRScheduler] = None,
     ) -> Tuple[Module, OptimizerWrapper, Callable, DataLoader, LRScheduler]:
         if not isinstance(model, ModelWrapper):
-            model = HybridParallelModule(model, self.precision, self.shard_config, self.dp_group)
+            use_ddp = self.dp_size > 1 and self.pp_size == 1 and self.zero_stage == 0
+            model = HybridParallelModule(model, self.precision, self.shard_config, self.dp_group, use_ddp,
+                                         self.ddp_config)
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
             if self.zero_stage == 0:
                 if self.precision in ['fp16', 'bf16']:
