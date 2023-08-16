@@ -15,6 +15,7 @@ from tests.test_shardformer.test_model._utils import (
     check_output_hidden_state,
     check_weight,
     run_forward_backward_with_hybrid_plugin,
+    unwrap_model,
 )
 
 
@@ -44,13 +45,9 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             check_output_hidden_state(org_output, sharded_output, stage_manager, atol=atol, rtol=rtol)
 
         check_loss(org_loss, sharded_loss, atol=atol, rtol=rtol)
-    # unwrap model
-    if org_model.__class__.__name__ == 'BertModel':
-        bert = org_model
-        sharded_bert = sharded_model.unwrap()
-    else:
-        bert = org_model.bert
-        sharded_bert = sharded_model.unwrap().bert
+
+    bert = unwrap_model(org_model, 'BertModel', 'bert')
+    sharded_bert = unwrap_model(sharded_model, 'BertModel', 'bert')
 
     col_layer_for_check = ['encoder.layer[0].output.dense']
     row_layer_for_check = ['embeddings.word_embeddings', 'encoder.layer[0].intermediate.dense']
@@ -98,6 +95,12 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     'enable_all_optimization': True,
     'use_lazy_init': False,
     'precision': 'fp32',
+}, {
+    'tp_size': 2,
+    'pp_size': 1,
+    'enable_all_optimization': True,
+    'use_lazy_init': False,
+    'precision': 'fp32'
 }])
 def run_bert_test(test_config):
 
