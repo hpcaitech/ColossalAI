@@ -152,6 +152,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         enable_fused_normalization: bool = False,
         enable_flash_attention: bool = False,
         enable_jit_fused: bool = False,
+        enable_sequence_parallelism: bool = False,
         num_microbatches: Optional[int] = None,
         initial_scale: float = 2**16,
         min_scale: float = 1,
@@ -178,6 +179,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         self.enable_fused_normalization = enable_fused_normalization
         self.enable_flash_attention = enable_flash_attention
         self.enable_jit_fused = enable_jit_fused
+        self.enable_sequence_parallelism = enable_sequence_parallelism
         self.pg_mesh = ProcessGroupMesh(self.dp_size, self.pp_size, self.tp_size)
         self.stage_manager = None
         self.schedule = None
@@ -195,7 +197,8 @@ class HybridParallelPlugin(PipelinePluginBase):
                                         enable_all_optimization=self.enable_all_optimization,
                                         enable_fused_normalization=self.enable_fused_normalization,
                                         enable_flash_attention=self.enable_flash_attention,
-                                        enable_jit_fused=self.enable_jit_fused)
+                                        enable_jit_fused=self.enable_jit_fused,
+                                        enable_sequence_parallelism=enable_sequence_parallelism)
         self.amp_config = dict(
             initial_scale=initial_scale,
             growth_factor=growth_factor,
