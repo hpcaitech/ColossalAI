@@ -51,14 +51,7 @@ class GPT2Policy(Policy):
                 ),
             ])
             if self.shard_config.enable_sequence_parallelism:
-                policy[GPT2Model] = ModulePolicyDescription(
-                    sub_module_replacement=[
-                        SubModuleReplacementDescription(
-                            suffix="wte",
-                            target_module=col_nn.VocabParallelEmbedding1D,
-                        ),
-                    ],
-                    method_replacement={"forward": gpt2_sequence_parallel_forward_fn(self.shard_config)})
+                policy[GPT2Model].method_replacement = {"forward": gpt2_sequence_parallel_forward_fn(self.shard_config)}
 
             policy[GPT2Block] = ModulePolicyDescription(attribute_replacement={
                 "attn.embed_dim": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,

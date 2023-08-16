@@ -238,7 +238,7 @@ class _LinearWithGatherForwardReduceScatterBackward(torch.autograd.Function):
                 ]
                 output = torch.empty(input_.shape, dtype=input_.dtype, device=input_.device).contiguous()
 
-            torch.cuda.synchronize()
+            torch.cuda.current_stream().wait_stream(calculate_stream)
 
             reducescatter_handle = dist.reduce_scatter(output, input_list, group=process_group, async_op=True)
             with torch.cuda.stream(calculate_stream):
@@ -248,7 +248,7 @@ class _LinearWithGatherForwardReduceScatterBackward(torch.autograd.Function):
                 print(grad_output.shape, input_parallel.shape)
                 grad_weight = grad_output.t().matmul(input_parallel)
 
-            torch.cuda.synchronize()
+            torch.cuda.current_stream().wait_stream(calculate_stream)
 
         return output, grad_weight, grad_bias, None, None, None, None
 

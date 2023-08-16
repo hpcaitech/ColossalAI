@@ -14,6 +14,7 @@ from colossalai.shardformer.shard import ShardConfig
 logger = logging.get_logger(__name__)
 
 
+# TODO: put all contents in `gpt2.py` and make it compatible with pipeline
 def gpt2_sequence_parallel_forward_fn(shard_config: ShardConfig):
 
     def forward(
