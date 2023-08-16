@@ -44,7 +44,7 @@ jobs:
     name: Test for PyTorch Compatibility
     needs: matrix_preparation
     if: github.repository == 'hpcaitech/ColossalAI'
-    runs-on: [self-hosted, gpu]
+    runs-on: [self-hosted, 8-gpu]
     strategy:
       fail-fast: false
       matrix: ${{fromJson(needs.matrix_preparation.outputs.matrix)}}
