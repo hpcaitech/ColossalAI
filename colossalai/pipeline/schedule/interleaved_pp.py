@@ -46,8 +46,11 @@ class InterleavedSchedule(PipelineSchedule):
             "Batch size should divided by the number of microbatches"
         self.microbatch_size = self.batch_size // self.num_microbatches
 
-    def load_micro_batch(self, model_chunk_id) -> Any:
+    def load_micro_batch(self, model_chunk_id: int) -> Any:
         """Load a micro batch from the current batch.
+
+        Args:
+            microbatch_id (int): the current model chunk idx.
 
         Returns:
             Any: Micro batch.
@@ -213,8 +216,15 @@ class InterleavedSchedule(PipelineSchedule):
         if output_obj_grad is None:
             optimizer.backward(output_obj)
         else:
-            for k, grad in output_obj_grad.items():
-                optimizer.backward_by_grad(output_obj[k], grad)
+            if "backward_tensor_keys" not in output_obj:
+                for k, grad in output_obj_grad.items():
+                    optimizer.backward_by_grad(output_obj[k], grad)
+            else:
+                for k, grad in output_obj_grad.items():
+                    output_obj[k].grad = grad
+                for k in output_obj["backward_tensor_keys"]:
+                    tensor_to_backward = output_obj[k]
+                    optimizer.backward_by_grad(tensor_to_backward, tensor_to_backward.grad)
 
         # Collect the grad of the input_obj.
         input_obj_grad = None
