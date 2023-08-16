@@ -4,6 +4,7 @@ from typing import Dict, List, Optional, Set, Tuple, Union
 
 import torch
 from torch import nn
+from torch.nn import CrossEntropyLoss
 from transformers.modeling_outputs import (
     BaseModelOutput,
     BaseModelOutputWithPastAndCrossAttentions,
@@ -860,8 +861,8 @@ class WhisperPipelineForwards:
 
         if not at_last_decoder_stage:
             # encoder_hidden_states should be passed to the next stage
-            decoder_outputs['encoder_hidden_states'] = encoder_hidden_states
-            return decoder_outputs
+            outputs['encoder_hidden_states'] = encoder_hidden_states
+            return outputs
 
         lm_logits = self.proj_out(outputs[0])
 
@@ -886,4 +887,80 @@ class WhisperPipelineForwards:
             encoder_last_hidden_state=outputs.encoder_last_hidden_state,
             encoder_hidden_states=outputs.encoder_hidden_states,
             encoder_attentions=outputs.encoder_attentions,
+        )
+
+    @staticmethod
+    def whisper_for_audio_classification_forward(
+        self: WhisperForAudioClassification,
+        input_features: Optional[torch.LongTensor] = None,
+        head_mask: Optional[torch.Tensor] = None,
+        encoder_outputs: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
+        labels: Optional[torch.LongTensor] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+        stage_manager: Optional[PipelineStageManager] = None,
+        hidden_states: Optional[torch.FloatTensor] = None,
+        encoder_states=None,
+        all_attentions=None,
+        stage_index: Optional[List[int]] = None,
+        decoder_starting_stage: Optional[int] = None,
+    ):
+        r"""
+        This function is modified on the basis of transformers.models.whisper.modeling_whisper.WhisperForAudioClassification.forward.
+        Please refer to original code of transformers for more details.
+        """
+        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+        output_hidden_states = (output_hidden_states
+                                if output_hidden_states is not None else self.config.output_hidden_states)
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        # audio_classification only holds encoder
+        encoder_outputs = WhisperPipelineForwards.whisper_encoder_forward(
+            self.encoder,
+            input_features,
+            head_mask=head_mask,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+            stage_manager=stage_manager,
+            hidden_states=hidden_states,
+            stage_index=stage_index,
+            decoder_starting_stage=decoder_starting_stage,
+        )
+
+        if not stage_manager.is_last_stage():
+            return encoder_outputs
+
+        if self.config.use_weighted_layer_sum:
+            hidden_states = torch.stack(encoder_outputs, dim=1)
+            norm_weights = nn.functional.softmax(self.layer_weights, dim=-1)
+            hidden_states = (hidden_states * norm_weights.view(-1, 1, 1)).sum(dim=1)
+        else:
+            hidden_states = encoder_outputs[0]
+
+        hidden_states = self.projector(hidden_states)
+        pooled_output = hidden_states.mean(dim=1)
+
+        logits = self.classifier(pooled_output)
+
+        loss = None
+
+        if labels is not None:
+            loss_fct = CrossEntropyLoss()
+            # move labels to correct device to enable PP
+            labels = labels.to(logits.device)
+            loss = loss_fct(logits.view(-1, self.config.num_labels), labels.view(-1))
+
+        print('return dict', return_dict)
+        print('stage ', stage_manager.stage, 'encoder_outputs', encoder_outputs)
+        if not return_dict:
+            output = (logits,) + encoder_outputs[1:]
+            return ((loss,) + output) if loss is not None else output
+
+        return SequenceClassifierOutput(
+            loss=loss,
+            logits=logits,
+            hidden_states=encoder_outputs.hidden_states,
+            attentions=encoder_outputs.attentions,
         )

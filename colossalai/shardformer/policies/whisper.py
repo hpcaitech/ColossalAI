@@ -17,7 +17,8 @@ from ..modeling.whisper import (
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = [
-    'WhisperPolicy', 'WhisperModelPolicy', 'WhisperForConditionalGenerationPolicy', 'WhisperForAudioClassification'
+    'WhisperPolicy', 'WhisperModelPolicy', 'WhisperForConditionalGenerationPolicy',
+    'WhisperForAudioClassificationPolicy'
 ]
 
 
@@ -296,6 +297,7 @@ class WhisperPolicy(Policy):
             encoder = self.model.get_encoder()
             decoder = self.model.get_decoder()
         else:
+            # whisper for audio classification holds encoder only
             encoder = self.model.encoder
             decoder = None
 
@@ -464,3 +466,23 @@ class WhisperForAudioClassificationPolicy(WhisperPolicy):
 
     def __init__(self) -> None:
         super().__init__()
+
+    def module_policy(self):
+        from transformers import WhisperForAudioClassification
+        policy = super().module_policy()
+
+        if self.pipeline_stage_manager is not None:
+            self.set_pipeline_forward(model_cls=WhisperForAudioClassification,
+                                      new_forward=WhisperPipelineForwards.whisper_for_audio_classification_forward,
+                                      policy=policy)
+        return policy
+
+    def get_held_layers(self) -> List[nn.Module]:
+        held_layers = super().get_held_layers()
+        if self.pipeline_stage_manager.is_last_stage():
+            held_layers.append(self.model.projector)
+            held_layers.append(self.model.classifier)
+        return held_layers
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        return []

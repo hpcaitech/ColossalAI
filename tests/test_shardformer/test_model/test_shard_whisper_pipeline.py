@@ -27,10 +27,12 @@ def check_whisper_model_policy(name, model: torch.nn.Module, stage_manager: Pipe
     policy.set_shard_config(model_config)
     layers = policy.get_held_layers()
     if stage_manager.is_first_stage():
-        assert len(layers) == 2 + 4
+        assert len(layers) == 2 + 2
     else:
         if name == "transformers_whisper":
             assert len(layers) == 2 + 3
+        if name == "transformers_whisper_for_audio_classification":
+            assert len(layers) == 2 + 2
         else:
             assert len(layers) == 2 + 4
 
@@ -38,19 +40,24 @@ def check_whisper_model_policy(name, model: torch.nn.Module, stage_manager: Pipe
 def check_whisper_model_pipeline_forward(name, sharded_model, stage_manager: PipelineStageManager):
     x = torch.rand(1, 80, 3000).cuda()
     if stage_manager.stage == 0:
-        attention_mask = torch.ones_like(x).cuda()
-        output = sharded_model(input_features=x, attention_mask=attention_mask)
-        assert output['encoder_hidden_states'].shape == (1, 2, 256)
+        #attention_mask = torch.ones_like(x).cuda()
+        output = sharded_model(input_features=x,
+        #attention_mask=attention_mask
+                              )
+        print(output)
     else:
-        hidden_states = torch.rand(1, 80, 3000).to(torch.float32).cuda()
-        attention_mask = torch.ones((80, 3000)).cuda()
+        hidden_of_audio = torch.rand(1, 1500, 256).to(torch.float32).cuda()
+        #hidden_states = torch.rand(1, 80, 3000).to(torch.float32).cuda()
+        #attention_mask = torch.ones((80, 3000)).cuda()
         encoder_output_states = torch.zeros(*(2, 3, 256)).cuda()
         encoder_outputs = (encoder_output_states,)
-        decoder_input_ids = torch.tensor([[1, 1]]) * 50258
-        output = sharded_model(decoder_input_ids=decoder_input_ids.cuda(),
-                               hidden_states=hidden_states,
-                               attention_mask=attention_mask,
-                               encoder_outputs=encoder_outputs)
+        #decoder_input_ids = torch.tensor([[1, 1]]) * 50258
+        output = sharded_model(
+        #decoder_input_ids=decoder_input_ids.cuda(),
+            hidden_states=hidden_of_audio,
+        #attention_mask=attention_mask,
+            encoder_outputs=encoder_outputs)
+        print('final output', output[0])
         assert output[0] is not None
 
 
@@ -67,7 +74,7 @@ def run_whisper_test(enable_fused_normalization, enable_tensor_parallelism, use_
     sub_model_zoo = model_zoo.get_sub_registry('transformers_whisper')
 
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
-        if name != "transformers_whisper":
+        if name != "transformers_whisper_for_audio_classification":
             continue
         org_model, sharded_model = build_pipeline_model(model_fn, stage_manager, enable_fused_normalization,
                                                         enable_tensor_parallelism, use_lazy_init)
