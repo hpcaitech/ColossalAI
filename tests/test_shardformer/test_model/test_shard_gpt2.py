@@ -109,9 +109,10 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 }, {
     'tp_size': 4,
     'pp_size': 1,
-    'enable_fused_normalization': True,
+    'enable_all_optimization': False,
     'use_lazy_init': True,
-    'enable_sequence_parallelism': True
+    'enable_sequence_parallelism': True,
+    'precision': 'fp32',
 }])
 @clear_cache_before_run()
 def run_gpt2_test(test_config):
