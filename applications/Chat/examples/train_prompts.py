@@ -79,14 +79,14 @@ def main(args):
         else:
             raise ValueError(f'Unsupported actor model "{args.model}"')
 
-        if rm_model_name == "gpt2":
-            critic = GPTCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank, use_action_mask=True)
-        elif rm_model_name == "bloom":
-            critic = BLOOMCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank, use_action_mask=True)
-        elif rm_model_name == "opt":
-            critic = OPTCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank, use_action_mask=True)
-        elif rm_model_name == "llama":
-            critic = LlamaCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank, use_action_mask=True)
+        if rm_model_name == 'gpt2':
+            critic = GPTCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
+        elif rm_model_name == 'bloom':
+            critic = BLOOMCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
+        elif rm_model_name == 'opt':
+            critic = OPTCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
+        elif rm_model_name == 'llama':
+            critic = LlamaCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
         else:
             raise ValueError(f'Unsupported reward model "{rm_model_name}"')
 
