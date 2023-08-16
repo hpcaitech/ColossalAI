@@ -51,7 +51,7 @@ def test_rmsnorm():
     out_torch = hg_rms(data)
     out_cuda = cuda_rmsnorm_forward(data, hg_rms.weight.data, hg_rms.variance_epsilon)
 
-    check = torch.allclose(out_torch.cpu(), out_cuda.cpu(), rtol=1e-3, atol=1e-3)
+    check = torch.allclose(out_torch.cpu(), out_cuda.cpu(), rtol=1e-3, atol=1e-5)
     assert check is True, "cuda rmsnorm forward is not matched with torch rmsnorm forward"
 
 if __name__ == "__main__":
