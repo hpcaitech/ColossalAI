@@ -9,7 +9,6 @@ from torch import Tensor
 from torch import distributed as dist
 from torch.distributed import ProcessGroup
 from torch.nn import Module
-from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim import Adam, Optimizer
 
 from colossalai.booster import Booster
