@@ -47,11 +47,11 @@ class SLTrainer(ABC):
         raise NotImplementedError()
 
     def _before_fit(self):
-        self.no_epoch_bar = False
+        raise NotImplementedError()
 
     def fit(self, *args, **kwargs):
         self._before_fit(*args, **kwargs)
-        for epoch in tqdm.trange(self.max_epochs, desc="Epochs", disable=not is_rank_0() or self.no_epoch_bar):
+        for epoch in tqdm.trange(self.max_epochs, desc="Epochs", disable=not is_rank_0()):
             self._train(epoch)
             self._eval(epoch)
 
