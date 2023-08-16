@@ -20,8 +20,8 @@ from .utils import is_rank_0, to_device
 
 
 def _set_default_generate_kwargs(strategy: Strategy, generate_kwargs: dict, actor: Actor) -> Dict:
-    unwrapper_model = strategy.unwrap_model(actor)
-    hf_model = get_base_model(unwrapper_model)
+    unwrapped_model = strategy.unwrap_model(actor)
+    hf_model = get_base_model(unwrapped_model)
     new_kwargs = {**generate_kwargs}
     # use huggingface models method directly
     if "prepare_inputs_fn" not in generate_kwargs and hasattr(hf_model, "prepare_inputs_for_generation"):
@@ -112,33 +112,31 @@ class PPOTrainer(OnPolicyTrainer):
             # TODO(ver217): this may be controlled by strategy if they are prepared by strategy
             self.experience_maker.initial_model.to(self.device)
             self.experience_maker.reward_model.to(self.device)
-        if isinstance(prompts, Tensor):
-            return self.experience_maker.make_experience(prompts, **self.generate_kwargs)
-        elif isinstance(prompts, dict):
-            return self.experience_maker.make_experience(**prompts, **self.generate_kwargs)
-        else:
-            raise ValueError(f'Unsupported input type "{type(prompts)}"')
+        assert isinstance(prompts, dict), f'Unsupported input type "{type(prompts)}"'
+        return self.experience_maker.make_experience(**prompts, **self.generate_kwargs)
 
     def _training_step(self, experience: Experience) -> Dict[str, float]:
         self.actor.train()
         self.critic.train()
         # policy loss
-        num_actions = experience.action_mask.size(1)
-        actor_output = self.actor(experience.sequences, attention_mask=experience.attention_mask)
-        action_log_probs = calc_action_log_probs(actor_output, experience.sequences, num_actions)
-        actor_loss = self.actor_loss_fn(
-            action_log_probs, experience.action_log_probs, experience.advantages, action_mask=experience.action_mask
-        )
+        num_actions = experience.action_log_probs.size(1)
+        actor_logits = self.actor(experience.sequences, experience.attention_mask)["logits"]
+        action_log_probs = calc_action_log_probs(actor_logits, experience.sequences, num_actions)
+        actor_loss = self.actor_loss_fn(action_log_probs,
+                                        experience.action_log_probs,
+                                        experience.advantages,
+                                        action_mask=experience.action_mask)
+        actor_loss = (1 - self.ptx_coef) * actor_loss
+        self.strategy.backward(actor_loss, self.actor, self.actor_optim)
 
         # ptx loss
         if self.ptx_coef != 0:
             batch = self.pretrain_dataloader.next()
             batch = to_device(batch, self.device)
-            ptx_log_probs = self.actor(batch["input_ids"], attention_mask=batch["attention_mask"])["logits"]
-            ptx_loss = self.ptx_loss_fn(ptx_log_probs, batch["labels"])
-            actor_loss = ptx_loss * self.ptx_coef + actor_loss * (1 - self.ptx_coef)
+            ptx_log_probs = self.actor(batch['input_ids'], batch['attention_mask'])['logits']
+            ptx_loss = self.ptx_coef * self.ptx_loss_fn(ptx_log_probs, batch['labels'])
+            self.strategy.backward(ptx_loss, self.actor, self.actor_optim)
 
-        self.strategy.backward(actor_loss, self.actor, self.actor_optim)
         self.strategy.optimizer_step(self.actor_optim)
         self.actor_optim.zero_grad()
 

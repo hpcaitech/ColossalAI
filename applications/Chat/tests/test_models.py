@@ -72,7 +72,7 @@ def test_utils():
     num_labels = 10
     num_actions = 2
     fn_input = {
-        "output": {"logits": torch.randn((batch_size, seq_len, num_labels))},
+        "logits": torch.randn((batch_size, seq_len, num_labels)),
         "sequences": torch.randint(0, num_labels, (batch_size, seq_len)),
         "num_actions": num_actions,
     }
