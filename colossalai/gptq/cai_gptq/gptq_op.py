@@ -16,6 +16,7 @@ class CaiGPTQLinearOp(torch.nn.Module):
                 weight: torch.Tensor,
                 weight_scales: torch.Tensor,
                 weight_zeros: torch.Tensor,
+                g_idx: torch.Tensor = None,
                 act_type = 0,
                 bias: torch.Tensor = None,
                 residual: torch.Tensor=None,
@@ -32,9 +33,9 @@ class CaiGPTQLinearOp(torch.nn.Module):
             add_residual = False
         x = input.view(-1, input.shape[-1])
 
-
         out = gptq_fused_linear_triton(x, weight, weight_scales, weight_zeros, bias, residual,
-                    self.bits, self.maxq, self.group_size, qkv_fused, add_bias, add_residual, act_type=act_type)
+                    self.bits, self.maxq, self.group_size, qkv_fused, add_bias, add_residual, 
+                    act_type=act_type, g_idx=g_idx)
         if qkv_fused:
             out = out.view(3, input.shape[0], input.shape[1], weight.shape[-1])
         else:

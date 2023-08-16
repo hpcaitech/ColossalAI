@@ -13,3 +13,4 @@ safetensors
 flash_attn>=2.0
 einops
 texttable
+auto-gptq

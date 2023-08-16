@@ -1,7 +1,7 @@
 import triton
 import triton.language as tl
 import torch
-from ..gptq_utils.quant import custom_autotune
+from auto_gptq.nn_modules.triton_utils import custom_autotune
 # from ..ops.triton.kernels.activations_kernels import relu,  gelu, silu
 # code based https://github.com/fpgaminer/GPTQ-triton
         # triton.Config({
@@ -221,11 +221,11 @@ def cai_gptq_matmul_248_kernel(a_ptr, b_ptr, c_ptr, scales_ptr, zeros_ptr, bias_
 
     for k in range(0, num_pid_k):
         # g_idx = tl.load(g_ptrs)
-        if (k + 1) * BLOCK_SIZE_K > currend_group_end:
-            scales = tl.load(scales_ptrs + g_idx[:, None] * stride_scales)  # (BLOCK_SIZE_K, BLOCK_SIZE_N,)
-            zeros = tl.load(zeros_ptrs + g_idx[:, None] * stride_zeros)  # (BLOCK_SIZE_K, BLOCK_SIZE_N,)
-            zeros = (zeros >> zeros_shifter[None, :]) & maxq
-            zeros = (zeros + 1)
+        # if (k + 1) * BLOCK_SIZE_K > currend_group_end:
+        scales = tl.load(scales_ptrs + g_idx[:, None] * stride_scales)  # (BLOCK_SIZE_K, BLOCK_SIZE_N,)
+        zeros = tl.load(zeros_ptrs + g_idx[:, None] * stride_zeros)  # (BLOCK_SIZE_K, BLOCK_SIZE_N,)
+        zeros = (zeros >> zeros_shifter[None, :]) & maxq
+        zeros = (zeros + 1)
         # Fetch scales and zeros; these are per-outfeature and thus reused in the inner loop
         a = tl.load(a_ptrs, mask=a_mask, other=0.)  # (BLOCK_SIZE_M, BLOCK_SIZE_K)
         b = tl.load(b_ptrs)  # (BLOCK_SIZE_K, BLOCK_SIZE_N), but repeated
@@ -391,8 +391,7 @@ def cai_gptq_idx_matmul_248_kernel(a_ptr, b_ptr, c_ptr, scales_ptr, zeros_ptr, i
 
     for k in range(0, num_pid_k):
         # g_idx = tl.load(g_ptrs)
-        if (k + 1) * BLOCK_SIZE_K > currend_group_end:
-            scales = tl.load(scales_ptrs + g_idx[:, None] * stride_scales)  # (BLOCK_SIZE_K, BLOCK_SIZE_N,)
+        scales = tl.load(scales_ptrs + g_idx[:, None] * stride_scales)  # (BLOCK_SIZE_K, BLOCK_SIZE_N,)
         zeros = tl.load(zeros_ptrs + g_idx[:, None] * stride_zeros)  # (BLOCK_SIZE_K, BLOCK_SIZE_N,)
 
         zeros = (zeros >> zeros_shifter[None, :]) & maxq
@@ -438,7 +437,7 @@ def cai_gptq_idx_matmul_248_kernel(a_ptr, b_ptr, c_ptr, scales_ptr, zeros_ptr, i
 
 
 def gptq_fused_linear_triton(input, qweight, scales, qzeros, bias, residual,
-                             bits, maxq, gptq_group_size, qkv_fused, add_bias, add_residual, idx = None, act_type = 0):
+                             bits, maxq, gptq_group_size, qkv_fused, add_bias, add_residual, g_idx = None, act_type = 0):
     # print("gptq fused ", qkv_fused, add_bias, add_residual)
     with torch.cuda.device(input.device):
         if qkv_fused:
@@ -448,7 +447,7 @@ def gptq_fused_linear_triton(input, qweight, scales, qzeros, bias, residual,
             grid = lambda META: (triton.cdiv(input.shape[0], META['BLOCK_SIZE_M']) * triton.cdiv(qweight.shape[1], META['BLOCK_SIZE_N']), )
             output = torch.empty((input.shape[0], qweight.shape[1]), device=input.device, dtype=torch.float16)
         # print("dtype, ", qweight.dtype, output.dtype, scales.dtype, qzeros.dtype, bias.dtype, residual.dtype)
-        if idx is None:
+        if g_idx is None:
             cai_gptq_matmul_248_kernel[grid](input, qweight, output, scales, qzeros, bias, residual,
                                     input.shape[0], qweight.shape[1], input.shape[1], bits, maxq, 
                                     gptq_group_size, 
@@ -456,7 +455,7 @@ def gptq_fused_linear_triton(input, qweight, scales, qzeros, bias, residual,
                                     qweight.stride(1), output.stride(0), output.stride(1), scales.stride(0), qzeros.stride(0),
                                     QKV_FUSED=qkv_fused, ADD_BIAS=add_bias, ADD_RESIDUAL=add_residual, ACT_TYPE=act_type)
         else:
-            cai_gptq_idx_matmul_248_kernel[grid](input, qweight, output, scales, qzeros, idx, bias, residual,
+            cai_gptq_idx_matmul_248_kernel[grid](input, qweight, output, scales, qzeros, g_idx, bias, residual,
                                     input.shape[0], qweight.shape[1], input.shape[1], bits, maxq, 
                                     gptq_group_size, 
                                     input.stride(0), input.stride(1), qweight.stride(0),

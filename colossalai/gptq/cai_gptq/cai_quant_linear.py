@@ -3,7 +3,6 @@ import math
 import numpy as np
 import torch
 import torch.nn as nn
-from torch.cuda.amp import custom_bwd, custom_fwd
 from .gptq_op import CaiGPTQLinearOp
 import triton
 
@@ -22,10 +21,7 @@ class CaiQuantLinear(nn.Module):
         self.register_buffer('qweight', torch.zeros((infeatures // 64 * self.bits, outfeatures), dtype=torch.int64))
         self.register_buffer('qzeros', torch.zeros((math.ceil(infeatures / self.groupsize), outfeatures // 64 * self.bits), dtype=torch.int64))
         self.register_buffer('scales', torch.zeros((math.ceil(infeatures / self.groupsize), outfeatures), dtype=torch.float16))
-        # self.register_buffer('g_idx', torch.tensor([i // self.groupsize for i in range(infeatures)], dtype=torch.int64))
-        # self.order_qzeros = torch.zeros((math.ceil(infeatures / self.groupsize), outfeatures // 32 * self.bits), dtype=torch.int64)
-        # self.register_buffer('input_idx', torch.zeros(infeatures], dtype=torch.int32))
-
+        self.register_buffer('g_idx', torch.tensor([i // self.groupsize for i in range(infeatures)], dtype=torch.int32))
 
         if bias:
             self.register_buffer('bias', torch.zeros((outfeatures), dtype=torch.float16))
@@ -33,10 +29,9 @@ class CaiQuantLinear(nn.Module):
             self.bias = None
 
         self.gptq_linear = CaiGPTQLinearOp(groupsize, bits)
-        self.printed = False
-        self.reorder_zeros = False
-    def pack(self, linear, scales, zeros, g_idx=None):
 
+
+    def pack(self, linear, scales, zeros, g_idx=None):
 
         g_idx = g_idx.clone() if g_idx is not None else torch.tensor([i // self.groupsize for i in range(self.infeatures)], dtype=torch.int32)
 
@@ -103,8 +98,13 @@ class CaiQuantLinear(nn.Module):
                 raise NotImplementedError("Only 2,4,8 bits are supported.")
         qzeros = qzeros.astype(sign_type)
         qzeros = torch.from_numpy(qzeros)
-        qzeros = qzeros #.to(torch.cuda.current_device())
+        qzeros = qzeros
         self.qzeros.data.copy_(qzeros)
+        
+        if torch.equal(self.g_idx, g_idx):
+            self.g_idx = None
+        else:
+            self.g_idx = g_idx
 
 
     def forward(self, x):
@@ -113,7 +113,8 @@ class CaiQuantLinear(nn.Module):
                             self.qweight,
                             self.scales,
                             self.qzeros,
-                            bias = self.bias)
+                            g_idx = self.g_idx,
+                            bias = self.bias,)
         return cai_out
 
 def make_cai_quant_linear(module, names, bits, groupsize, name=''):
