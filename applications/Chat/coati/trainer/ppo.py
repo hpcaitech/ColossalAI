@@ -1,4 +1,4 @@
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import torch
 import torch.nn.functional as F
@@ -17,7 +17,7 @@ from colossalai.utils import get_current_device
 from .base import OnPolicyTrainer
 from .callbacks import Callback
 from .strategies import GeminiStrategy, Strategy
-from .utils import is_rank_0, to_device
+from .utils import CycledDataLoader, is_rank_0, to_device
 
 
 def _set_default_generate_kwargs(strategy: Strategy, generate_kwargs: dict, actor: Actor) -> Dict:
@@ -107,6 +107,32 @@ class PPOTrainer(OnPolicyTrainer):
 
         self.offload_inference_models = offload_inference_models
         self.device = get_current_device()
+
+    def _before_fit(self,
+                    prompt_dataloader: DataLoader,
+                    pretrain_dataloader: DataLoader,
+                    log_dir: Optional[str] = None,
+                    use_wandb: bool = False):
+        """
+        Args:
+            prompt_dataloader (DataLoader): the dataloader to use for prompt data
+            pretrain_dataloader (DataLoader): the dataloader to use for pretrain data
+        """
+        self.prompt_dataloader = CycledDataLoader(prompt_dataloader)
+        self.pretrain_dataloader = CycledDataLoader(pretrain_dataloader)
+
+        self.writer = None
+        if use_wandb and is_rank_0():
+            assert log_dir is not None, "log_dir must be provided when use_wandb is True"
+            import wandb
+            wandb.init(project="Coati-ppo", sync_tensorboard=True)
+        if log_dir is not None and is_rank_0():
+            import os
+            import time
+            from torch.utils.tensorboard import SummaryWriter
+            log_dir = os.path.join(log_dir, "ppo")
+            log_dir = os.path.join(log_dir, time.strftime("%Y-%m-%d_%H:%M:%S", time.localtime()))
+            self.writer = SummaryWriter(log_dir=log_dir)
 
     def _make_experience(self, collect_step: int) -> Experience:
         prompts = self.prompt_dataloader.next()
