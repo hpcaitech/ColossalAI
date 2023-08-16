@@ -1,22 +1,25 @@
-
 import torch
 import torch.nn as nn
 import pytest
 import time
-from argparse import ArgumentParser
-
 import transformers
 from auto_gptq.quantization import GPTQ
 from auto_gptq.modeling._utils import find_layers, pack_model
-# from auto_gptq import quant
 from auto_gptq.nn_modules.qlinear.qlinear_triton import QuantLinear
 
 from auto_gptq.quantization.quantizer import Quantizer
 from colossalai.gptq.cai_gptq.gptq_op import CaiGPTQLinearOp
 import math
 import numpy as np
-# import csv  
 
+
+wbits=4
+trits=False
+nsamples=1
+percdamp=.01
+groupsize=128
+act_order=False
+sym=False
 class MLinear(nn.Module):
     def __init__(self, infeature, outfeature):
         super(MLinear, self).__init__()
@@ -26,7 +29,7 @@ class MLinear(nn.Module):
         return out
     
 @torch.no_grad()
-def model_quant(model, inps, dev, args):
+def model_quant(model, inps, dev):
     print('Starting ...')
     layers = [model]
     layers[0] = layers[0].to(dev)
@@ -64,7 +67,7 @@ def model_quant(model, inps, dev, args):
         for name in subset:	
             gptq[name] = GPTQ(subset[name])	
             # gptq[name].quantizer = Quantizer()	
-            gptq[name].quantizer.configure(args.wbits, perchannel=True, sym=args.sym, mse=False, trits=args.trits)	
+            gptq[name].quantizer.configure(wbits, perchannel=True, sym=sym, mse=False, trits=trits)	
             
         def add_batch(name):	
             def tmp(_, inp, out):	
@@ -75,19 +78,19 @@ def model_quant(model, inps, dev, args):
         for name in subset:	
             handles.append(subset[name].register_forward_hook(add_batch(name)))	
            
-        for j in range(args.nsamples):	
+        for j in range(nsamples):	
             outs[j] = layer(inps[j].unsqueeze(0))[0]	
             
         for h in handles:	
             h.remove()	
         for name in subset:	
             print(f'Quantizing {name} in layer {i+1}/{len(layers)}...')
-            scale,zero,g_idx = gptq[name].fasterquant(percdamp=args.percdamp, group_size=args.groupsize, actorder=args.act_order)
+            scale,zero,g_idx = gptq[name].fasterquant(percdamp=percdamp, group_size=groupsize, actorder=act_order)
             # quantizers['%s' % (name)] = (gptq[name].quantizer.cpu(),scale.cpu(),zero.cpu(),g_idx.cpu())
             quantizers['%s' % (name)] = (gptq[name].layer.cpu(),scale.cpu(),zero.cpu(),g_idx.cpu())
 
             gptq[name].free()
-        for j in range(args.nsamples):
+        for j in range(nsamples):
             layer = layer.to(dev)
             outs[j] = layer(inps[j].unsqueeze(0))[0]
 
@@ -104,7 +107,6 @@ def model_quant(model, inps, dev, args):
 def model_pack(model, quantizers, wbits, groupsize):
     pack_model(model, quantizers, wbits, groupsize)
     return model
-
 
 
 def cai_linear_pack(linear, scales, zeros, 
@@ -194,15 +196,6 @@ def model_cai_pack(model, quantizers, qweight, qscales, qzeros, wbits, groupsize
 
 
 def test_gptq_linear():
-    parser = ArgumentParser()
-    parser.add_argument('--sym', action='store_true', help='Whether to perform symmetric quantization.')
-    parser.add_argument('--wbits', type=int, default=4, choices=[2, 3, 4, 8, 16], help='#bits to use for quantization; use 16 for evaluating base model.')
-    parser.add_argument('--trits', action='store_true', help='Whether to use trits for quantization.')
-    parser.add_argument('--nsamples', type=int, default=1, help='Number of calibration data samples.')
-    parser.add_argument('--percdamp', type=float, default=.01, help='Percent of the average Hessian diagonal to use for dampening.')
-    parser.add_argument('--groupsize', type=int, default=128, help='Groupsize to use for quantization; default uses full row.')
-    parser.add_argument('--act-order', action='store_true', help='Whether to apply the activation order GPTQ heuristic')
-    args = parser.parse_args()
 
     infeature = 5120
     outfeature = 5120
@@ -216,12 +209,10 @@ def test_gptq_linear():
     # ptype = torch.int32
 
     qweight = torch.zeros(infeature//wn, outfeature, dtype=ptype, device=torch.cuda.current_device()).contiguous()
-    qscales = torch.zeros(infeature//args.groupsize, outfeature, dtype=torch.float16, device=torch.cuda.current_device()).contiguous()
-    qzeros = torch.zeros(infeature//args.groupsize, outfeature//wn, dtype=ptype, device=torch.cuda.current_device()).contiguous()
+    qscales = torch.zeros(infeature//groupsize, outfeature, dtype=torch.float16, device=torch.cuda.current_device()).contiguous()
+    qzeros = torch.zeros(infeature//groupsize, outfeature//wn, dtype=ptype, device=torch.cuda.current_device()).contiguous()
 
-    # print(linear.linear.weight)
     act_func = nn.SiLU()
-
     inps = torch.ones(1, 1, infeature).to(torch.float16).to(torch.cuda.current_device())
     batch_inps = torch.randn(1, 4096, infeature).to(torch.float16).to(torch.cuda.current_device())
 
@@ -240,14 +231,14 @@ def test_gptq_linear():
 
 
     # linear.to("cuda")
-    quantizers = model_quant(linear, inps, torch.cuda.current_device(), args)
-    qweight, qscales, qzeros = model_cai_pack(linear, quantizers, qweight, qscales, qzeros, args.wbits, args.groupsize)
-    gptq_model = model_pack(linear, quantizers, args.wbits, args.groupsize)
+    quantizers = model_quant(linear, inps, torch.cuda.current_device())
+    qweight, qscales, qzeros = model_cai_pack(linear, quantizers, qweight, qscales, qzeros, wbits, groupsize)
+    gptq_model = model_pack(linear, quantizers, wbits, groupsize)
     gptq_model.to(torch.cuda.current_device())
     # gptq_model = linear
 
 
-    cai_linear = CaiGPTQLinearOp(args.groupsize, args.wbits)
+    cai_linear = CaiGPTQLinearOp(groupsize, wbits)
 
 
     # qweight = torch.cat((qweight, qweight, qweight), dim=0).contiguous()
@@ -255,7 +246,6 @@ def test_gptq_linear():
     # qzeros = torch.cat((qzeros, qzeros, qzeros), dim=0).contiguous()
     # bias = torch.cat((bias, bias, bias), dim=0).contiguous()
     qkv_fused=False
-    # inps[:, :, 256:] = 0
 
     with torch.no_grad():
         gptq_out = gptq_model(inps)
@@ -296,26 +286,27 @@ def test_gptq_linear():
 
     mean_diff = torch.mean(torch.abs(cai_out - gptq_out))
     max_diff = torch.max(torch.abs(cai_out - gptq_out))
-    print("cai vs gptq: mean_diff=%.8f, max_diff=%.8f" % (mean_diff, max_diff))
-    mean_diff = torch.mean(torch.abs(torch_out - gptq_out))
-    max_diff = torch.max(torch.abs(torch_out - gptq_out))
-    print("torch vs gptq: mean_diff=%.8f, max_diff=%.8f" % (mean_diff, max_diff))
-    mean_diff = torch.mean(torch.abs(torch_out - cai_out))
-    max_diff = torch.max(torch.abs(torch_out - cai_out))
-    print("torch vs cai: mean_diff=%.8f, max_diff=%.8f" % (mean_diff, max_diff))
+    assert mean_diff < 1 and max_diff < 1
+
+    # print("cai vs gptq: mean_diff=%.8f, max_diff=%.8f" % (mean_diff, max_diff))
+    # mean_diff = torch.mean(torch.abs(torch_out - gptq_out))
+    # max_diff = torch.max(torch.abs(torch_out - gptq_out))
+    # print("torch vs gptq: mean_diff=%.8f, max_diff=%.8f" % (mean_diff, max_diff))
+    # mean_diff = torch.mean(torch.abs(torch_out - cai_out))
+    # max_diff = torch.max(torch.abs(torch_out - cai_out))
+    # print("torch vs cai: mean_diff=%.8f, max_diff=%.8f" % (mean_diff, max_diff))
 
     mean_diff = torch.mean(torch.abs(batch_cai_out - batch_gptq_out))
     max_diff = torch.max(torch.abs(batch_cai_out - batch_gptq_out))
-    print("batch cai vs gptq: mean_diff=%.8f, max_diff=%.8f" % (mean_diff, max_diff))
-    mean_diff = torch.mean(torch.abs(batch_torch_out - batch_gptq_out))
-    max_diff = torch.max(torch.abs(batch_torch_out - batch_gptq_out))
-    print("batch torch vs gptq: mean_diff=%.8f, max_diff=%.8f" % (mean_diff, max_diff))
-    mean_diff = torch.mean(torch.abs(batch_torch_out - batch_cai_out))
-    max_diff = torch.max(torch.abs(batch_torch_out - batch_cai_out))
-    print("batch torch vs cai: mean_diff=%.8f, max_diff=%.8f" % (mean_diff, max_diff))
+    assert mean_diff < 1 and max_diff < 1
+    # print("batch cai vs gptq: mean_diff=%.8f, max_diff=%.8f" % (mean_diff, max_diff))
+    # mean_diff = torch.mean(torch.abs(batch_torch_out - batch_gptq_out))
+    # max_diff = torch.max(torch.abs(batch_torch_out - batch_gptq_out))
+    # print("batch torch vs gptq: mean_diff=%.8f, max_diff=%.8f" % (mean_diff, max_diff))
+    # mean_diff = torch.mean(torch.abs(batch_torch_out - batch_cai_out))
+    # max_diff = torch.max(torch.abs(batch_torch_out - batch_cai_out))
+    # print("batch torch vs cai: mean_diff=%.8f, max_diff=%.8f" % (mean_diff, max_diff))
 
 if __name__ == "__main__":
-
-
 
     test_gptq_linear()
