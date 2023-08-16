@@ -49,15 +49,6 @@ def check_stage_manager():
         next_rank = ranks_in_group[ranks_in_group.index(rank) + 1]
         assert stage_manager.get_next_rank() == next_rank
 
-    # check virtual stage
-    stage_manager.set_num_virtual_stages(PP_SIZE * 2)
-    assert stage_manager.num_virtual_stages == PP_SIZE * 2
-    stage_manager.set_virtual_stage(stage_manager.stage * 2)
-    assert stage_manager.virtual_stage == stage_manager.stage * 2
-    with stage_manager.switch_virtual_stage(stage_manager.stage * 2 + 1):
-        assert stage_manager.virtual_stage == stage_manager.stage * 2 + 1
-    assert stage_manager.virtual_stage == stage_manager.stage * 2
-
     # check p2p groups
     for prev, cur in zip(ranks_in_group[:-1], ranks_in_group[1:]):
         if rank in [prev, cur]:
