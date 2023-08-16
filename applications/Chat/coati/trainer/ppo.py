@@ -7,10 +7,10 @@ from coati.experience_maker import Experience, NaiveExperienceMaker
 from coati.models.base import Actor, Critic, RewardModel, get_base_model
 from coati.models.loss import GPTLMLoss, PolicyLoss, ValueLoss
 from coati.models.utils import calc_action_log_probs
-from torch import Tensor
 from torch.optim import Optimizer
 from torch.utils.data import DistributedSampler
 from tqdm import tqdm
+from transformers import PreTrainedTokenizerBase
 
 from colossalai.utils import get_current_device
 
@@ -42,7 +42,7 @@ class PPOTrainer(OnPolicyTrainer):
         strategy (Strategy): the strategy to use for training
         actor (Actor): the actor model in ppo algorithm
         critic (Critic): the critic model in ppo algorithm
-        reward_model (nn.Module): the reward model in rlhf algorithm to make reward of sentences
+        reward_model (RewardModel): the reward model in rlhf algorithm to make reward of sentences
         initial_model (Actor): the initial model in rlhf algorithm to generate reference logics to limit the update of actor
         actor_optim (Optimizer): the optimizer to use for actor model
         critic_optim (Optimizer): the optimizer to use for critic model
@@ -69,6 +69,7 @@ class PPOTrainer(OnPolicyTrainer):
                  initial_model: Actor,
                  actor_optim: Optimizer,
                  critic_optim: Optimizer,
+                 tokenizer: PreTrainedTokenizerBase,
                  kl_coef: float = 0.1,
                  ptx_coef: float = 0.9,
                  train_batch_size: int = 8,
@@ -91,10 +92,10 @@ class PPOTrainer(OnPolicyTrainer):
 
         self.generate_kwargs = _set_default_generate_kwargs(strategy, generate_kwargs, actor)
         self.experience_maker = NaiveExperienceMaker(actor, critic, reward_model, initial_model, kl_coef)
-        self.offload_inference_models = offload_inference_models
 
         self.actor = actor
         self.critic = critic
+        self.tokenizer = tokenizer
 
         self.actor_loss_fn = PolicyLoss(eps_clip)
         self.critic_loss_fn = ValueLoss(value_clip)
@@ -104,6 +105,7 @@ class PPOTrainer(OnPolicyTrainer):
         self.actor_optim = actor_optim
         self.critic_optim = critic_optim
 
+        self.offload_inference_models = offload_inference_models
         self.device = get_current_device()
 
     def _make_experience(self, collect_step: int) -> Experience:
