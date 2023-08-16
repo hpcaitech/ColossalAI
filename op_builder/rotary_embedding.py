@@ -8,6 +8,7 @@ from .utils import append_nvcc_threads, get_cuda_cc_flag
 
 from torch.utils.cpp_extension import BuildExtension, CUDAExtension, CUDA_HOME
 
+
 def add_cc_flags():
     def get_cuda_bare_metal_version(cuda_dir):
         raw_output = subprocess.check_output([cuda_dir + "/bin/nvcc", "-V"], universal_newlines=True)
