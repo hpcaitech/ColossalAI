@@ -155,6 +155,7 @@ class _LinearWithGatherForwardReduceScatterBackward(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, input_, weight, bias, process_group, async_grad_reduce_scatter, dim, overlap):
+        input_ = input_.clone()
         ctx.save_for_backward(input_, weight)
         ctx.use_bias = bias is not None
         ctx.process_group = process_group
