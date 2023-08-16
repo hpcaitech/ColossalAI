@@ -2,7 +2,7 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 
-from .experts import MoeExperts
+from .experts import BaseExperts
 
 
 def save_moe_model(model: nn.Module, save_path: str):
@@ -18,7 +18,7 @@ def load_moe_model(model: nn.Module, load_path: str):
     for prefix, module in model.named_modules():
         if prefix.endswith('.moe_layer.experts'):
             # this module should be an Experts instance
-            assert isinstance(module, MoeExperts)
+            assert isinstance(module, BaseExperts)
 
             ep_rank = dist.get_rank(module.dist_info.ep_group)
             num_local = module.num_local_experts

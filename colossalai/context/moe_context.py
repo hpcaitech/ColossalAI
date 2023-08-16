@@ -3,16 +3,8 @@ from typing import Tuple
 import torch
 import torch.distributed as dist
 
-from colossalai.context.parallel_mode import ParallelMode
 from colossalai.context.singleton_meta import SingletonMeta
 from colossalai.tensor import ProcessGroup
-
-
-def _check_sanity():
-    from colossalai.core import global_context as gpc
-    if gpc.tensor_parallel_size > 1 or gpc.pipeline_parallel_size > 1:
-        raise NotImplementedError("Moe is not compatible with tensor or "
-                                  "pipeline parallel at present.")
 
 
 class MoeParallelInfo:
@@ -20,7 +12,6 @@ class MoeParallelInfo:
     """
 
     def __init__(self, ep_size: int, dp_size: int):
-        _check_sanity()
         self.ep_size = ep_size
         self.dp_size = dp_size
         self.pg = ProcessGroup(tp_degree=ep_size, dp_degree=dp_size)
@@ -54,17 +45,15 @@ class MoeContext(metaclass=SingletonMeta):
     def is_initialized(self):
         return self.has_setup
 
-    def setup(self, seed: int, use_kernel_optim: bool = True):
+    def setup(self, seed: int, use_kernel_optim: bool = True, max_ep_size: int = None):
         assert not self.is_initialized, "MoE distributed context shouldn't be set up again"
-        _check_sanity()
         assert torch.cuda.is_available(), "MoE requires to enable CUDA first"
 
         self.world_size = dist.get_world_size()
 
-        from colossalai.core import global_context as gpc
-        self.max_ep_size = gpc.config.get('max_ep_size', self.world_size)
-        assert self.world_size % self.max_ep_size == 0, \
-            "Maximum expert parallel size must be a factor of the number of GPUs"
+        if max_ep_size is None:
+            # we dont limit max ep number by default
+            self.max_ep_size = self.world_size
         self.min_dp_size = self.world_size // self.max_ep_size
 
         # Enabling kernel optimization may raise error in some cases

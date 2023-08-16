@@ -8,12 +8,11 @@ import torch.nn as nn
 
 from colossalai.context import ParallelMode, seed
 from colossalai.context.moe_context import MOE_CONTEXT
-from colossalai.tensor.moe_tensor.api import set_moe_param_info
+from colossalai.tensor.moe_tensor.api import set_moe_tensor_info
 from colossalai.utils import get_current_device
-from colossalai.zero.legacy.init_ctx import no_shard_zero_decrator
 
 
-class MoeExperts(nn.Module):
+class BaseExperts(nn.Module):
     """Basic class for experts in MoE. It stores what kind of communication experts use
     to exchange tokens, how many experts in a single GPU and parallel information such as
     expert parallel size, data parallel size and their distributed communication groups.
@@ -29,8 +28,7 @@ class MoeExperts(nn.Module):
         self.num_local_experts, self.dist_info = MOE_CONTEXT.get_info(num_experts)
 
 
-@no_shard_zero_decrator(is_replicated=False)
-class Experts(MoeExperts):
+class Experts(BaseExperts):
     """A wrapper class to create experts. It will create E experts across the
     moe model parallel group, where E is the number of experts. Every expert
     is a instance of the class, 'expert' in initialization parameters.
@@ -51,7 +49,7 @@ class Experts(MoeExperts):
         # Attach parallel information for all parameters in Experts
         for exp in self.experts:
             for param in exp.parameters():
-                set_moe_param_info(param, self.dist_info)
+                set_moe_tensor_info(param, self.dist_info)
 
     def forward(self, inputs: torch.Tensor):
         # Split inputs for each expert
@@ -94,7 +92,7 @@ class Experts(MoeExperts):
         dist.barrier()
 
 
-class FFNExperts(MoeExperts):
+class FFNExperts(BaseExperts):
     """Use torch.bmm to speed up for multiple experts.
     """
 
@@ -120,7 +118,7 @@ class FFNExperts(MoeExperts):
         self.drop = nn.Dropout(p=drop_rate)
 
         for param in self.parameters():
-            param.__setattr__('moe_info', self.dist_info)
+            set_moe_tensor_info(param, self.dist_info)
 
     def forward(self, inputs):    # inputs [g, el, c, h]
 
@@ -145,7 +143,7 @@ class FFNExperts(MoeExperts):
         return outputs
 
 
-class TPExperts(MoeExperts):
+class TPExperts(BaseExperts):
     """Use tensor parallelism to split each expert evenly, which can deploy experts in
     case that the number of experts can't be divide by maximum expert parallel size or
     maximum expert parallel size can't be divide by the number of experts.
@@ -178,9 +176,8 @@ class TPExperts(MoeExperts):
         self.act = nn.GELU() if activation is None else activation
         self.drop = nn.Dropout(p=drop_rate)
 
-        self.w1.__setattr__('moe_info', self.dist_info)
-        self.w2.__setattr__('moe_info', self.dist_info)
-        self.b1.__setattr__('moe_info', self.dist_info)
+        for param in [self.w1, self.b1, self.w2]:
+            set_moe_tensor_info(param, self.dist_info)
 
     def forward(self, inputs):    # inputs [g, e, c, h]
 
