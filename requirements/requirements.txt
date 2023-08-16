@@ -10,5 +10,5 @@ contexttimer
 ninja
 torch>=1.11
 safetensors
-flash_attn>=2.0.5
+flash_attn==2.0.5
 einops
