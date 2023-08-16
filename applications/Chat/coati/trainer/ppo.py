@@ -91,7 +91,7 @@ class PPOTrainer(OnPolicyTrainer):
         super().__init__(strategy, data_buffer, sample_buffer, dataloader_pin_memory, callbacks)
 
         self.generate_kwargs = _set_default_generate_kwargs(strategy, generate_kwargs, actor)
-        self.experience_maker = NaiveExperienceMaker(actor, critic, reward_model, initial_model, kl_coef)
+        self.experience_maker = NaiveExperienceMaker(actor, critic, reward_model, initial_model, tokenizer, kl_coef)
 
         self.actor = actor
         self.critic = critic

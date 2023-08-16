@@ -126,6 +126,8 @@ def main(args):
         tokenizer.pad_token = tokenizer.unk_token
     else:
         raise ValueError(f'Unsupported model "{args.model}"')
+    # NOTE: generate() requires padding_side to be "left"
+    tokenizer.padding_side = "left"
 
     prompt_dataset = PromptDataset(tokenizer=tokenizer,
                                    data_path=args.prompt_dataset,
