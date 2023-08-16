@@ -1,6 +1,3 @@
-/*This code from Vllm : https://github.com/vllm-project/vllm
- *     with minor changes. */
-
 #include <torch/extension.h>
 
 void rotary_embedding_neox(

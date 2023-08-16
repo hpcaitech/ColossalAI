@@ -1,6 +1,3 @@
-/*This code from Vllm : https://github.com/vllm-project/vllm
- *     with minor changes. */
- 
 #include <torch/extension.h>
 #include <ATen/cuda/CUDAContext.h>
 

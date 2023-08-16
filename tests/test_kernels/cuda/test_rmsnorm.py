@@ -7,7 +7,9 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 try:
-    from col_rms_norm_ops import rms_norm
+    from colossalai.kernel.op_builder import RMSNORMBuilder
+    rmsnorm = RMSNORMBuilder().load()
+    rms_norm = rmsnorm.rms_norm
     HAS_INFER_CUDA = True
 except:
     HAS_INFER_CUDA = False
@@ -29,8 +31,6 @@ class LlamaRMSNorm(nn.Module):
         variance = hidden_states.pow(2).mean(-1, keepdim=True)
         hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
         return self.weight * hidden_states.to(input_dtype)
-
-
 
 def cuda_rmsnorm_forward(hidden_states, weight, variance_epsilon):
     x = hidden_states

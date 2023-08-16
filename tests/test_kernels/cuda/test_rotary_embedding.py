@@ -7,7 +7,9 @@ import torch.nn.functional as F
 from transformers.models.llama.modeling_llama import apply_rotary_pos_emb, rotate_half
 
 try:
-    from col_pos_encoding_ops import rotary_embedding_neox
+    from colossalai.kernel.op_builder import ROTARYEMBEDDINGBuilder
+    rotary_embedding = ROTARYEMBEDDINGBuilder().load()
+    rotary_embedding_neox = rotary_embedding.rotary_embedding_neox
     HAS_INFER_CUDA = True
 except:
     HAS_INFER_CUDA = False
