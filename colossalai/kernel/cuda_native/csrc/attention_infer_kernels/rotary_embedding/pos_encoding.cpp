@@ -1,3 +1,6 @@
+/* ---------------- LICENSE FOR Colossal-AI ----------------
+Copyright 2021- HPC-AI Technology Inc.
+*/
 #include <torch/extension.h>
 
 void rotary_embedding_neox(

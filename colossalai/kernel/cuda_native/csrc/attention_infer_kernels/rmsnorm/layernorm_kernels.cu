@@ -1,3 +1,6 @@
+/* ---------------- LICENSE FOR Colossal-AI ----------------
+Copyright 2021- HPC-AI Technology Inc.
+*/
 #include <torch/extension.h>
 #include <ATen/cuda/CUDAContext.h>
 
