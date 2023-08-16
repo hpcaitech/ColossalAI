@@ -59,7 +59,12 @@ class GeminiDDP(ModelWrapper):
             module: torch.nn.Module,
             chunk_config_dict: Optional[dict] = None,
             chunk_init_device: torch.device = torch.device('cpu'),
-            placement_policy: str = "cpu",
+            placement_policy: str = "static",
+            shard_param_frac: float = 1.0,    # only for static placement
+            offload_optim_frac: float = 0.0,    # only for static placement
+            offload_param_frac: float = 0.0,    # only for static placement
+            warmup_non_model_data_ratio: float = 0.8,    # only for auto placement
+            steady_cuda_cap_ratio: float = 0.9,    # only for auto placement
             search_range_m: int = 32,    # chunk search options
             hidden_dim: Optional[int] = None,    # chunk search options
             min_chunk_size_m: float = 32,    # chunk search options
@@ -86,8 +91,14 @@ class GeminiDDP(ModelWrapper):
                                                     strict_ddp_flag=strict_ddp_mode,
                                                     process_group=process_group,
                                                     verbose=verbose)
-        self.gemini_manager = GeminiManager(placement_policy, self.chunk_manager, memstats)
-
+        self.gemini_manager = GeminiManager(placement_policy,
+                                            self.chunk_manager,
+                                            memstats,
+                                            shard_param_frac=shard_param_frac,
+                                            offload_optim_frac=offload_optim_frac,
+                                            offload_param_frac=offload_param_frac,
+                                            warmup_non_model_data_ratio=warmup_non_model_data_ratio,
+                                            steady_cuda_cap_ratio=steady_cuda_cap_ratio)
         self.force_outputs_fp32 = force_outputs_fp32
         self.param_op_hook = GeminiZeROHook(self.gemini_manager)
         self.fp32_params: List[torch.Tensor] = list()
@@ -112,17 +123,17 @@ class GeminiDDP(ModelWrapper):
             for p in module.parameters():
                 param_order.append(p)
 
-        self._init_chunks(param_order=param_order,
-                          strict_ddp_mode=strict_ddp_mode,
-                          cpu_offload=self.gemini_manager.policy_name != 'cuda',
-                          pin_memory=pin_memory)
-
         for name, param in module.named_parameters():
             self.param2name[param] = name
         for m_name, m_var in module.named_modules():
             for p_name, p_var in m_var.named_parameters(recurse=False):
                 param_name = m_name + '.' + p_name if m_name else p_name
                 self.name2param[param_name] = p_var
+
+        self._init_chunks(param_order=param_order,
+                          strict_ddp_mode=strict_ddp_mode,
+                          cpu_offload=self.gemini_manager.policy_name != 'cuda',
+                          pin_memory=pin_memory)
         super().__init__(module)
         self._non_persistent_buffers_set = self._get_non_persistent_buffers_set(module)
         self._cast_buffers()
@@ -605,7 +616,7 @@ class GeminiDDP(ModelWrapper):
         for chunk_32 in chunk_list:
             chunk_16 = chunk_32.paired_chunk
             assert chunk_16 is not None
-            chunk_16.optim_update()
+            chunk_16.payload.copy_(chunk_32.payload)
 
         for name, buf in persistent_buffers.items():
             if buf is not None:
@@ -664,18 +675,17 @@ class GeminiDDP(ModelWrapper):
 
             self.fp16_params.append(p)
             self.fp32_params.append(fp32_p)
-            self.grads_device[p] = self.gemini_manager.default_device
 
         self.chunk_manager.close_all_groups()
 
+        self.gemini_manager.setup_grads_device(self.fp16_params, self.grads_device)
+        # move master weights to corresponding device and setup paired chunks
         for p, fp32_p in zip(self.fp16_params, self.fp32_params):
             chunk_16 = self.chunk_manager.get_chunk(p)
             chunk_32 = self.chunk_manager.get_chunk(fp32_p)
             chunk_32.init_pair(chunk_16)
-
-            # keep gathered chunks are in CUDA
-            if chunk_16.keep_gathered:
-                self.grads_device[p] = get_current_device()
+            if chunk_32.device_type != self.grads_device[p].type:
+                self.chunk_manager.move_chunk(chunk_32, self.grads_device[p])
 
     def _cast_buffers(self):
         for buffer in self.module.buffers():

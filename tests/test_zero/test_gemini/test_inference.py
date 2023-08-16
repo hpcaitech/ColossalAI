@@ -17,6 +17,24 @@ from tests.components_to_test import run_fwd_bwd
 from tests.components_to_test.registry import non_distributed_component_funcs
 from tests.test_tensor.common_utils import set_seed
 
+PLACEMENT_CONFIGS = [
+    {
+        'placement_policy': 'static',
+        'shard_param_frac': 0.0
+    },    # zero2
+    {
+        'placement_policy': 'static',
+        'shard_param_frac': 1.0
+    },    # zero3
+    {
+        'placement_policy': 'static',
+        'shard_param_frac': 0.5
+    },    # zero3-half
+    {
+        'placement_policy': 'auto'
+    }
+]
+
 
 def check_param(model: GeminiDDP, torch_model: torch.nn.Module):
     zero_dict = model.state_dict(only_rank_0=False)
@@ -31,28 +49,24 @@ def check_param(model: GeminiDDP, torch_model: torch.nn.Module):
         assert_close(value, temp_zero_value, rtol=1e-3, atol=4e-3)
 
 
-def multi_chunk_init(model: torch.nn.Module, placement_policy: str):
+def multi_chunk_init(model: torch.nn.Module, placement_config: dict):
     world_size = dist.get_world_size()
     config_dict, *_ = search_chunk_configuration(model, search_range_m=1, search_interval=100)
     config_dict[world_size]['chunk_size'] = 5000
     config_dict[world_size]['keep_gathered'] = False
-    if placement_policy != 'cuda':
-        init_device = torch.device('cpu')
-    else:
-        init_device = None
-    model = GeminiDDP(model, config_dict, init_device, placement_policy=placement_policy, pin_memory=True)
+    model = GeminiDDP(model, config_dict, pin_memory=True, **placement_config)
     return model
 
 
-def single_chunk_init(model: torch.nn.Module, placement_policy: str):
-    model = GeminiDDP(model, chunk_init_device=get_current_device(), placement_policy=placement_policy, pin_memory=True)
+def single_chunk_init(model: torch.nn.Module, placement_config: dict):
+    model = GeminiDDP(model, chunk_init_device=get_current_device(), pin_memory=True, **placement_config)
     return model
 
 
-@parameterize('placement_policy', ['cuda', 'cpu', 'auto', 'const'])
+@parameterize('placement_config', PLACEMENT_CONFIGS)
 @parameterize('model_name', ['gpt2'])
 @parameterize('model_init_func', [single_chunk_init, multi_chunk_init])
-def exam_inference(placement_policy: str, model_name: str, model_init_func: Callable):
+def exam_inference(placement_config: dict, model_name: str, model_init_func: Callable):
     set_seed(19360226)
     get_components_func = non_distributed_component_funcs.get_callable(model_name)
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
@@ -62,14 +76,13 @@ def exam_inference(placement_policy: str, model_name: str, model_init_func: Call
     torch_optim = torch.optim.Adam(torch_model.parameters(), lr=1e-3)
     torch_model, torch_optim = convert_to_apex_amp(torch_model, torch_optim, amp_config)
     torch_model = DDP(torch_model, device_ids=[dist.get_rank()])
-
     init_dev = get_current_device()
     model = model_builder().to(init_dev)
 
     for torch_p, p in zip(torch_model.parameters(), model.parameters()):
         p.data.copy_(torch_p.data)
 
-    model = model_init_func(model, placement_policy)
+    model = model_init_func(model, placement_config)
     optimizer = HybridAdam(model.parameters(), lr=1e-3)
     zero_optim = GeminiOptimizer(optimizer, model, initial_scale=128)
 
