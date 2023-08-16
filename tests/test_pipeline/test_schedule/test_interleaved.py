@@ -76,7 +76,7 @@ def examine_pp(num_micro_batches):
 
     DP_DIM, PP_DIM, TP_DIM = 0, 1, 2
     pg_mesh = ProcessGroupMesh(1, world_size, 1)
-    stage_manager = PipelineStageManager(pg_mesh, PP_DIM)
+    stage_manager = PipelineStageManager(pg_mesh, PP_DIM, is_virtual=True)
     schedule = InterleavedSchedule(NUM_MICRO_BATCHS, NUM_CHUNKS, stage_manager)
 
     sharded_model = torch.nn.ModuleList()
