@@ -1,9 +1,10 @@
 from typing import Dict, List
 
-import torch.nn as nn
+import torch
+import torch.nn.functional as F
 from coati.experience_buffer import NaiveExperienceBuffer
 from coati.experience_maker import Experience, NaiveExperienceMaker
-from coati.models.base import Actor, Critic, get_base_model
+from coati.models.base import Actor, Critic, RewardModel, get_base_model
 from coati.models.loss import GPTLMLoss, PolicyLoss, ValueLoss
 from coati.models.utils import calc_action_log_probs
 from torch import Tensor
@@ -60,29 +61,28 @@ class PPOTrainer(OnPolicyTrainer):
         generate_kwargs (dict, optional): the kwargs to use while model generating
     """
 
-    def __init__(
-        self,
-        strategy: Strategy,
-        actor: Actor,
-        critic: Critic,
-        reward_model: nn.Module,
-        initial_model: Actor,
-        actor_optim: Optimizer,
-        critic_optim: Optimizer,
-        kl_coef: float = 0.1,
-        ptx_coef: float = 0.9,
-        train_batch_size: int = 8,
-        buffer_limit: int = 0,
-        buffer_cpu_offload: bool = True,
-        eps_clip: float = 0.2,
-        vf_coef: float = 1.0,
-        value_clip: float = 0.4,
-        sample_buffer: bool = False,
-        dataloader_pin_memory: bool = True,
-        offload_inference_models: bool = True,
-        callbacks: List[Callback] = [],
-        **generate_kwargs,
-    ) -> None:
+    def __init__(self,
+                 strategy: Strategy,
+                 actor: Actor,
+                 critic: Critic,
+                 reward_model: RewardModel,
+                 initial_model: Actor,
+                 actor_optim: Optimizer,
+                 critic_optim: Optimizer,
+                 kl_coef: float = 0.1,
+                 ptx_coef: float = 0.9,
+                 train_batch_size: int = 8,
+                 buffer_limit: int = 0,
+                 buffer_cpu_offload: bool = True,
+                 eps_clip: float = 0.2,
+                 vf_coef: float = 1.0,
+                 value_clip: float = 0.4,
+                 sample_buffer: bool = False,
+                 dataloader_pin_memory: bool = True,
+                 offload_inference_models: bool = True,
+                 callbacks: List[Callback] = [],
+                 **generate_kwargs
+                 ) -> None:
         if isinstance(strategy, GeminiStrategy):
             assert not offload_inference_models, "GeminiPlugin is not compatible with manual model.to('cpu')"
 
