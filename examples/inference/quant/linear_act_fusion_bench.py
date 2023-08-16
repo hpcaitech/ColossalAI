@@ -7,14 +7,12 @@ from argparse import ArgumentParser
 import transformers
 from auto_gptq.quantization import GPTQ
 from auto_gptq.modeling._utils import find_layers, pack_model
-# from auto_gptq import quant
 from auto_gptq.nn_modules.qlinear.qlinear_triton import QuantLinear
 
 from auto_gptq.quantization.quantizer import Quantizer
-from colossalai.gptq.cai_gptq.gptq_op import CaiGPTQLinearOp
+from colossalai.gptq import CaiGPTQLinearOp
 import math
 import numpy as np
-# import csv  
 
 class MLinear(nn.Module):
     def __init__(self, infeature, outfeature):

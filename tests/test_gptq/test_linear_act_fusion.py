@@ -8,7 +8,7 @@ from auto_gptq.modeling._utils import find_layers, pack_model
 from auto_gptq.nn_modules.qlinear.qlinear_triton import QuantLinear
 
 from auto_gptq.quantization.quantizer import Quantizer
-from colossalai.gptq.cai_gptq.gptq_op import CaiGPTQLinearOp
+from colossalai.gptq import CaiGPTQLinearOp
 import math
 import numpy as np
 
@@ -52,9 +52,6 @@ def model_quant(model, inps, dev):
         pass
     layers[0] = layers[0].module
 
-    # layers[0] = layers[0].cpu()
-
-    # outs = torch.zeros_like(inps)
     outs = torch.zeros(inps.shape[0], layers[0].linear.weight.shape[0])
 
     print('Ready.')
