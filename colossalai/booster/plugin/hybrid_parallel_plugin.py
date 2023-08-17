@@ -235,6 +235,10 @@ class HybridParallelPlugin(PipelinePluginBase):
         assert dist.get_world_size() % (
             tp_size * pp_size
         ) == 0, f'world size {dist.get_world_size()} is not divisible by tp_size {tp_size} * pp_size {pp_size}'
+
+        if enable_sequence_parallelism:
+            assert tp_size > 1, 'Sequence parallelism must be enabled when using tensor parallelism'
+
         # TODO(ver217): support zero
         assert zero_stage == 0, 'zero is not support yet'
         self.tp_size = tp_size
