@@ -14,19 +14,17 @@ from colossalai.utils.moe import get_moe_epsize_param_dict
 
 class MoeModel(nn.Module):
 
-    def __init__(self, checkpoint: bool = False):
+    def __init__(self, checkpoint: bool = False, expert_parallel: str = "EP"):
 
         class TestSubModule(CheckpointModule):
 
             def __init__(self):
                 super().__init__(checkpoint)
-                expert_cls = nn.Linear
-                expert_args_dict = dict(in_features=16, out_features=16)
-                self.moe = MoeModule(dim_model=16,
-                                     num_experts=8,
-                                     use_residual=True,
-                                     expert_cls=expert_cls,
-                                     **expert_args_dict)
+                self.moe = MoeModule(num_experts=8,
+                                     use_residual=False,
+                                     expert_parallel=expert_parallel,
+                                     hidden_size=16,
+                                     intermediate_size=32)
                 self.proj = nn.Linear(16, 4)
 
             def _forward(self, x):

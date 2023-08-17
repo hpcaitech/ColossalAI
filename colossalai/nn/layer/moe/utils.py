@@ -1,8 +1,10 @@
 import torch
 import torch.nn.functional as F
-from colossalai.utils import get_current_device
+
 from colossalai.context.moe_context import MOE_CONTEXT
-from .experts import FFNExperts, TPExperts
+from colossalai.utils import get_current_device
+
+from .experts import EPExperts, TPExperts
 
 
 class ForceFP32Parameter(torch.nn.Parameter):
@@ -61,7 +63,7 @@ def autocast_softmax(logit: torch.Tensor, dim: int):
 def build_ffn_experts(num_experts: int, d_model: int, d_ff: int, activation=None, drop_rate: float = 0):
     mep_size = MOE_CONTEXT.max_ep_size
     if num_experts % mep_size == 0 or mep_size % num_experts == 0:
-        return FFNExperts(num_experts, d_model, d_ff, activation, drop_rate)
+        return EPExperts(num_experts, d_model, d_ff, activation, drop_rate)
     elif d_ff % mep_size == 0:
         return TPExperts(num_experts, d_model, d_ff, activation, drop_rate)
     else:

@@ -5,7 +5,7 @@ import torch.nn as nn
 
 import colossalai
 from colossalai.context.moe_context import MOE_CONTEXT
-from colossalai.nn.layer.moe import MoEExperts, MoeLayer, Top1Router, UniformNoiseGenerator
+from colossalai.nn.layer.moe import MoeExperts, MoeLayer, Top1Router, UniformNoiseGenerator
 from colossalai.testing import assert_equal_in_group, rerun_if_address_is_in_use, spawn
 from colossalai.utils import get_current_device
 from colossalai.utils.moe import sync_moe_model_param
@@ -26,7 +26,7 @@ def run_test(rank, world_size, port):
     num_experts_list = [1, 2, 4]
     layer_list = []
     for num_experts in num_experts_list:
-        exp = MoEExperts(expert_module, num_experts, **expert_factor)
+        exp = MoeExperts(expert_module, num_experts, **expert_factor)
         moe_layer = MoeLayer(DIM, num_experts, router, exp)
         layer_list.append(moe_layer)
 
