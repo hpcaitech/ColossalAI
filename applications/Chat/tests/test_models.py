@@ -15,40 +15,38 @@ from coati.models.lora import LoraLinear, convert_to_lora_module
 from coati.models.loss import GPTLMLoss, LogExpLoss, LogSigLoss, PolicyLoss, ValueLoss
 from coati.models.opt import OPTRM, OPTActor, OPTCritic
 from coati.models.utils import calc_action_log_probs, masked_mean
-from transformers import PreTrainedTokenizer
 
 
 @pytest.mark.parametrize("batch_size", [4])
 @pytest.mark.parametrize("seq_len", [32])
-@pytest.mark.parametrize(
-    "actor_maker",
-    [
-        lambda: BLOOMActor(),
-        lambda: GPTActor(),
-        # HACK: skip llama due to long execution time
-        # lambda: LlamaActor(),
-        lambda: OPTActor(),
-        # lambda: ChatGLMActor(),
-    ],
-)
-@pytest.mark.parametrize(
-    "generate_kwargs",
-    [
-        {
-            "max_length": 64,
-            "use_cache": True,
-            "do_sample": True,
-            "temperature": 1.0,
-            "top_k": 50,
-        }
-    ],
-)
-def test_generation(actor_maker: Callable[[], Actor], batch_size: int, seq_len: int, generate_kwargs: Dict[str, Any]):
+@pytest.mark.parametrize("actor_maker", [
+    lambda: BLOOMActor(),
+    lambda: GPTActor(),
+    # HACK: skip llama due to long execution time
+    # lambda: LlamaActor(),
+    lambda: OPTActor()
+])
+@pytest.mark.parametrize("generate_kwargs", [{
+    "max_length": 64,
+    "use_cache": True,
+    "do_sample": True,
+    "temperature": 1.0,
+    "top_k": 50,
+}])
+def test_generation(actor_maker: Callable[[], Actor],
+                    batch_size: int,
+                    seq_len: int,
+                    generate_kwargs: Dict[str, Any]
+                    ):
+    class MockTokenizer():
+        def __init__(self):
+            self.padding_side = "left"
+            self.pad_token_id = 0
+            self.eos_token_id = 0
+
     actor = actor_maker()
     input_ids = torch.randint(0, 100, (batch_size, seq_len)).cuda()
-    tokenizer = PreTrainedTokenizer()
-    tokenizer.padding_side = "left"
-    tokenizer.pad_token = tokenizer.eos_token
+    tokenizer = MockTokenizer()
     sequences = generate(actor.cuda(), input_ids, tokenizer, **generate_kwargs)
     assert sequences.shape == (batch_size, generate_kwargs["max_length"])
 
