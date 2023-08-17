@@ -44,7 +44,8 @@ def data_gen_for_question_answering():
 
 
 output_transform_fn = lambda x: x
-loss_fn_for_opt_model = lambda x: x.last_hidden_state.mean()
+loss_fn_for_opt_model = lambda x: torch.nn.functional.mse_loss(x.last_hidden_state, torch.ones_like(x.last_hidden_state)
+                                                              )
 loss_fn_for_lm = lambda x: x.loss
 config = transformers.OPTConfig(
     hidden_size=128,

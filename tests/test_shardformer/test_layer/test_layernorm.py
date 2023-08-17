@@ -1,17 +1,27 @@
+from contextlib import nullcontext
+
 import torch
 import torch.nn as nn
 from torch.testing import assert_close
 
 import colossalai
+from colossalai.lazy import LazyInitContext
 from colossalai.shardformer.layer import FusedLayerNorm
-from colossalai.testing import rerun_if_address_is_in_use, spawn
+from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 
 
-def check_layernorm():
+@parameterize('lazy_init', [False, True])
+def check_layernorm(lazy_init: bool):
+    ctx = LazyInitContext() if lazy_init else nullcontext()
+
     norm = nn.LayerNorm(128, 0.00001).cuda()
-    norm1d = FusedLayerNorm.from_native_module(norm, process_group=None)
+    with ctx:
+        norm_copy = nn.LayerNorm(128, 0.00001).cuda()
+    norm1d = FusedLayerNorm.from_native_module(norm_copy, process_group=None)
 
     assert norm1d.weight.shape == torch.Size([128])
+    assert norm_copy.weight is norm1d.weight
+    assert norm_copy.bias is norm1d.bias
 
     # ensure state dict is reversibly loadable
     norm.load_state_dict(norm1d.state_dict())
@@ -41,4 +51,4 @@ def test_layernorm():
 
 
 if __name__ == '__main__':
-    test_layernorm_1d()
+    test_layernorm()
