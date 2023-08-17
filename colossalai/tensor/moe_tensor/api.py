@@ -1,5 +1,9 @@
 import torch
 
+from colossalai.tensor import ProcessGroup
+
+from .moe_info import MoeParallelInfo
+
 
 def is_moe_tensor(tensor: torch.Tensor) -> bool:
     """
@@ -14,7 +18,7 @@ def is_moe_tensor(tensor: torch.Tensor) -> bool:
     return hasattr(tensor, "moe_info")
 
 
-def set_moe_tensor_info(tensor: torch.Tensor, moe_info: dict) -> None:
+def set_moe_tensor_info(tensor: torch.Tensor, moe_info: MoeParallelInfo) -> None:
     """
     Set moe info for the given tensor.
 
@@ -24,3 +28,55 @@ def set_moe_tensor_info(tensor: torch.Tensor, moe_info: dict) -> None:
 
     """
     tensor.__setattr__('moe_info', moe_info)
+
+
+def get_moe_info(ep_size: int, dp_size: int) -> MoeParallelInfo:
+    """
+    Get moe info for the given tensor.
+
+    Args:
+        tensor (torch.Tensor): The tensor to be checked.
+
+    Returns:
+        dict: The moe info of the given tensor.
+    """
+    return MoeParallelInfo(ep_size, dp_size)
+
+
+def get_ep_group(tensor: torch.Tensor) -> ProcessGroup:
+    """
+    Get the expert parallel group of the given tensor.
+
+    Args:
+        tensor (torch.Tensor): The tensor to be checked.
+
+    Returns:
+        torch.distributed.ProcessGroup: The expert parallel group of the given tensor.
+    """
+    return tensor.moe_info.ep_group
+
+
+def get_ep_size(tensor: torch.Tensor) -> int:
+    """
+    Get the expert parallel size of the given tensor.
+
+    Args:
+        tensor (torch.Tensor): The tensor to be checked.
+
+    Returns:
+        int: The expert parallel size of the given tensor.
+    """
+    return tensor.moe_info.ep_size
+
+
+def get_dp_group(tensor: torch.Tensor) -> ProcessGroup:
+    """
+    Get the data parallel group of the given tensor.
+
+    Args:
+        tensor (torch.Tensor): The tensor to be checked.
+
+    Returns:
+        torch.distributed.ProcessGroup: The data parallel group of the given tensor.
+    """
+    return tensor.moe_info.dp_group

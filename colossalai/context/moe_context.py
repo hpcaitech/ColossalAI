@@ -4,19 +4,8 @@ import torch
 import torch.distributed as dist
 
 from colossalai.context.singleton_meta import SingletonMeta
-from colossalai.tensor import ProcessGroup
-
-
-class MoeParallelInfo:
-    """Moe parallelism information, storing parallel sizes and groups.
-    """
-
-    def __init__(self, ep_size: int, dp_size: int):
-        self.ep_size = ep_size
-        self.dp_size = dp_size
-        self.pg = ProcessGroup(tp_degree=ep_size, dp_degree=dp_size)
-        self.ep_group = self.pg.tp_process_group()
-        self.dp_group = self.pg.dp_process_group()
+from colossalai.tensor.moe_tensor.api import get_moe_info
+from colossalai.tensor.moe_tensor.moe_info import MoeParallelInfo
 
 
 class MoeContext(metaclass=SingletonMeta):
@@ -25,12 +14,12 @@ class MoeContext(metaclass=SingletonMeta):
     """
 
     def __init__(self):
-        self.world_size = 1
+        self.world_size = None
         # Users may want to set maximum expert parallel size smaller than the world size
         # since very low bandwidth across nodes may constrain the performance of MoE
         # When we have a maximum expert parallel size, we have a minimum data parallel size naturally
-        self.max_ep_size = 1
-        self.min_dp_size = 1
+        self.max_ep_size = None
+        self.min_dp_size = None
         self.aux_loss = None
         self.use_kernel_optim = True
 
@@ -45,15 +34,12 @@ class MoeContext(metaclass=SingletonMeta):
     def is_initialized(self):
         return self.has_setup
 
-    def setup(self, seed: int, use_kernel_optim: bool = True, max_ep_size: int = None):
+    def setup(self, seed: int, use_kernel_optim: bool = True, max_ep_size: int = 8):
         assert not self.is_initialized, "MoE distributed context shouldn't be set up again"
         assert torch.cuda.is_available(), "MoE requires to enable CUDA first"
 
         self.world_size = dist.get_world_size()
-
-        if max_ep_size is None:
-            # we dont limit max ep number by default
-            self.max_ep_size = self.world_size
+        self.max_ep_size = min(max_ep_size, dist.get_world_size())
         self.min_dp_size = self.world_size // self.max_ep_size
 
         # Enabling kernel optimization may raise error in some cases
@@ -98,7 +84,7 @@ class MoeContext(metaclass=SingletonMeta):
         # Don't forget to multiply minimum data parallel size
         dp_size *= self.min_dp_size
         if not (ep_size in self.parallel_info_dict):
-            self.parallel_info_dict[ep_size] = MoeParallelInfo(ep_size, dp_size)
+            self.parallel_info_dict[ep_size] = get_moe_info(ep_size, dp_size)
 
         return num_local_experts, self.parallel_info_dict[ep_size]
 

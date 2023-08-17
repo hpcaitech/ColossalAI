@@ -17,6 +17,7 @@ from colossalai.nn.layer.moe._operation import (
 from colossalai.nn.layer.moe.experts import BaseExperts, get_expert_class
 from colossalai.nn.layer.moe.routers import MoeRouter, Top1Router, Top2Router
 from colossalai.nn.layer.moe.utils import NormalNoiseGenerator, UniformNoiseGenerator
+from colossalai.tensor.moe_tensor.api import get_ep_group, get_ep_size
 from colossalai.utils import get_current_device
 
 
@@ -41,8 +42,8 @@ class MoeLayer(nn.Module):
         self.router: MoeRouter = router
         self.experts: BaseExperts = experts
         self.use_kernel = True if COL_MOE_KERNEL_FLAG and MOE_CONTEXT.use_kernel_optim else False
-        self.ep_group = experts.dist_info.ep_group
-        self.ep_size = experts.dist_info.ep_size
+        self.ep_group = get_ep_group(experts)
+        self.ep_size = get_ep_size(experts)
         self.num_local_experts = experts.num_local_experts
 
         nn.init.trunc_normal_(self.gate_weight, std=math.sqrt(0.1 / dim_model))

@@ -1,11 +1,13 @@
 import math
+from copy import deepcopy
 
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 
 from colossalai.context import ParallelMode, seed
 from colossalai.context.moe_context import MOE_CONTEXT
-from colossalai.tensor.moe_tensor.api import set_moe_tensor_info
+from colossalai.tensor.moe_tensor.api import get_dp_group, get_ep_group, get_ep_size, set_moe_tensor_info
 from colossalai.utils import get_current_device
 
 
@@ -22,7 +24,7 @@ class BaseExperts(nn.Module):
         self.comm_name = comm_name
         self.num_total_experts = num_experts
         # Get the configuration of experts' deployment and parallel information from moe context
-        self.num_local_experts, self.dist_info = MOE_CONTEXT.get_info(num_experts)
+        self.num_local_experts, self.moe_info = MOE_CONTEXT.get_info(num_experts)
 
 
 class EPExperts(BaseExperts):
@@ -58,7 +60,7 @@ class EPExperts(BaseExperts):
         self.drop = nn.Dropout(p=drop_rate)
 
         for param in self.parameters():
-            set_moe_tensor_info(param, self.dist_info)
+            set_moe_tensor_info(param, self.moe_info)
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:    # inputs [g, el, c, h]
 
@@ -81,6 +83,29 @@ class EPExperts(BaseExperts):
         outputs = outputs.reshape(inshape)
         outputs = outputs.transpose(0, 1).contiguous()
         return outputs
+
+    def state_dict(self, destination=None, prefix='', keep_vars=False):
+        dp_rank = dist.get_rank(get_dp_group(self))
+        ep_rank = dist.get_rank(get_ep_group(self))
+        ep_size = get_ep_size(self)
+        # dp rank 0 will save the state dict
+        if dp_rank == 0:
+            for name, module in self.named_parameters():
+                if module is self:
+                    continue
+                # create buffer
+                buffer_module = deepcopy(module)
+                # gather param from every ep rank
+                for source_rank in range(ep_size):
+                    current_prefix = f"{prefix}{source_rank}."
+                    if ep_rank == source_rank:
+                        dist.broadcast(module.data, src=source_rank, group=self.moe_info.ep_group)
+                    else:
+                        dist.broadcast(buffer_module.data, src=source_rank, group=self.moe_info.ep_group)
+                    if ep_rank == 0:
+                        destination[current_prefix + name] = buffer_module.data.cpu()
+
+        dist.barrier()
 
 
 class TPExperts(BaseExperts):
@@ -122,7 +147,7 @@ class TPExperts(BaseExperts):
         self.drop = nn.Dropout(p=drop_rate)
 
         for param in [self.w1, self.b1, self.w2]:
-            set_moe_tensor_info(param, self.dist_info)
+            set_moe_tensor_info(param, self.moe_info)
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:    # inputs [g, e, c, h]
 
