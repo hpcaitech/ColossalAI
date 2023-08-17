@@ -403,12 +403,7 @@ class WhisperPipelineForwards:
                                    attentions=all_attentions)
 
         else:
-            return {
-                'hidden_states': hidden_states,
-                'encoder_states': encoder_states,
-                'all_attentions': all_attentions,
-                'head_mask': head_mask
-            }
+            return {'hidden_states': hidden_states, 'head_mask': head_mask}
 
     @staticmethod
     def whisper_decoder_forward(
@@ -510,6 +505,9 @@ class WhisperPipelineForwards:
                     f"The `{mask_name}` should be specified for {len(self.layers)} layers, but it is for"
                     f" {head_mask.size()[0]}.")
 
+        # past_key_values_length
+        past_key_values_length = past_key_values[0][0].shape[2] if past_key_values is not None else 0
+
         if at_first_stage:
             # retrieve input_ids and inputs_embeds
             if input_ids is not None and inputs_embeds is not None:
@@ -522,9 +520,6 @@ class WhisperPipelineForwards:
             else:
                 raise ValueError("You have to specify either decoder_input_ids or decoder_inputs_embeds")
 
-            # past_key_values_length
-            past_key_values_length = past_key_values[0][0].shape[2] if past_key_values is not None else 0
-
             if inputs_embeds is None:
                 inputs_embeds = self.embed_tokens(input_ids)
 
@@ -533,6 +528,9 @@ class WhisperPipelineForwards:
                 positions = self.embed_positions(input_ids, past_key_values_length=past_key_values_length)
             else:
                 positions = self.embed_positions(inputs_embeds, past_key_values_length=past_key_values_length)
+
+            attention_mask = self._prepare_decoder_attention_mask(attention_mask, input_shape, inputs_embeds,
+                                                                  past_key_values_length)
 
             hidden_states = inputs_embeds + positions
             hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
@@ -545,13 +543,14 @@ class WhisperPipelineForwards:
                     use_cache = False
 
         else:
+
             if hidden_states is None:
                 raise ValueError(
                     "hidden_states shouldn't be None for stages other than the first stage of encoder/decoder.")
             input_shape = hidden_states.size()[:-1]
 
-        attention_mask = self._prepare_decoder_attention_mask(attention_mask, input_shape, inputs_embeds,
-                                                              past_key_values_length)
+            attention_mask = self._prepare_decoder_attention_mask(attention_mask, input_shape, hidden_states,
+                                                                  past_key_values_length)
 
         start_idx, end_idx = stage_index[0], stage_index[1]
 
@@ -730,7 +729,6 @@ class WhisperPipelineForwards:
 
         at_last_decoder_stage = stage_manager.is_last_stage()
         at_first_decoder_stage = stage_manager.stage == decoder_starting_stage
-        print(stage_manager.stage)
         if encoder_outputs is not None:
             encoder_hidden_states = encoder_outputs[0]
         elif encoder_hidden_states is None:
@@ -952,8 +950,6 @@ class WhisperPipelineForwards:
             labels = labels.to(logits.device)
             loss = loss_fct(logits.view(-1, self.config.num_labels), labels.view(-1))
 
-        print('return dict', return_dict)
-        print('stage ', stage_manager.stage, 'encoder_outputs', encoder_outputs)
         if not return_dict:
             output = (logits,) + encoder_outputs[1:]
             return ((loss,) + output) if loss is not None else output

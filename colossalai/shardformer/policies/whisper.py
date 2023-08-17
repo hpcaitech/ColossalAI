@@ -316,9 +316,9 @@ class WhisperPolicy(Policy):
         if stage_manager.stage < decoder_starting_stage:
             # current stage is in whisper's encoder
             if stage_manager.is_first_stage():
+                held_layers.append(encoder.embed_positions)
                 held_layers.append(encoder.conv1)
                 held_layers.append(encoder.conv2)
-                held_layers.append(encoder.embed_positions)
             if stage_manager.stage == decoder_starting_stage - 1:
                 held_layers.append(encoder.layer_norm)
             held_layers.extend(encoder.layers[start_idx:end_idx])
@@ -417,10 +417,6 @@ class WhisperForConditionalGenerationPolicy(WhisperPolicy):
         return policy
 
     def postprocess(self):
-        binding_map = {"model.decoder.embed_tokens.weight": "proj_out.weight"}
-        for k, v in binding_map.items():
-            param = getattr_(self.model, k)
-            setattr_(self.model, v, param)
         return self.model
 
     def get_held_layers(self) -> List[nn.Module]:
@@ -466,6 +462,9 @@ class WhisperForAudioClassificationPolicy(WhisperPolicy):
 
     def __init__(self) -> None:
         super().__init__()
+
+    def preprocess(self):
+        return self.model
 
     def module_policy(self):
         from transformers import WhisperForAudioClassification
