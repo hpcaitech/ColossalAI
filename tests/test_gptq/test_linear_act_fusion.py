@@ -281,10 +281,11 @@ def test_gptq_linear():
     # print("batch_gptq out ", batch_gptq_out)
     # print("batch_cai out ", batch_cai_out)
 
-    mean_diff = torch.mean(torch.abs(cai_out - gptq_out))
-    max_diff = torch.max(torch.abs(cai_out - gptq_out))
-    assert mean_diff < 1 and max_diff < 1
+    assert torch.allclose(cai_out, gptq_out, rtol=1e-01, atol=1e-02)
+    assert torch.allclose(batch_cai_out, batch_gptq_out, rtol=1e-01, atol=1e-02)
 
+    # mean_diff = torch.mean(torch.abs(cai_out - gptq_out))
+    # max_diff = torch.max(torch.abs(cai_out - gptq_out))
     # print("cai vs gptq: mean_diff=%.8f, max_diff=%.8f" % (mean_diff, max_diff))
     # mean_diff = torch.mean(torch.abs(torch_out - gptq_out))
     # max_diff = torch.max(torch.abs(torch_out - gptq_out))
@@ -293,9 +294,8 @@ def test_gptq_linear():
     # max_diff = torch.max(torch.abs(torch_out - cai_out))
     # print("torch vs cai: mean_diff=%.8f, max_diff=%.8f" % (mean_diff, max_diff))
 
-    mean_diff = torch.mean(torch.abs(batch_cai_out - batch_gptq_out))
-    max_diff = torch.max(torch.abs(batch_cai_out - batch_gptq_out))
-    assert mean_diff < 1 and max_diff < 1
+    # mean_diff = torch.mean(torch.abs(batch_cai_out - batch_gptq_out))
+    # max_diff = torch.max(torch.abs(batch_cai_out - batch_gptq_out))
     # print("batch cai vs gptq: mean_diff=%.8f, max_diff=%.8f" % (mean_diff, max_diff))
     # mean_diff = torch.mean(torch.abs(batch_torch_out - batch_gptq_out))
     # max_diff = torch.max(torch.abs(batch_torch_out - batch_gptq_out))
