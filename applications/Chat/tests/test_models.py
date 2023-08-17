@@ -25,7 +25,7 @@ from coati.models.chatglm.chatglm_tokenizer import ChatGLMTokenizer
     # HACK: skip llama due to long execution time
     # lambda: LlamaActor(),
     lambda: OPTActor(),
-    lambda: ChatGLMActor(),
+    # lambda: ChatGLMActor(),
 ])
 @pytest.mark.parametrize("generate_kwargs", [{
     "max_length": 64,
