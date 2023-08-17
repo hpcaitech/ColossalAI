@@ -1,10 +1,23 @@
+from functools import partial
+from typing import Callable, Dict, List, Optional, Tuple, Union
+
 import torch.nn as nn
+from torch import Tensor
+from torch.nn import Module
 
 import colossalai.shardformer.layer as col_nn
 
 from .._utils import getattr_, setattr_
-from ..modeling.bloom import build_bloom_alibi_tensor_fn
-from .basepolicy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
+from ..modeling.bloom import (
+    BloomPipelineForwards,
+    build_bloom_alibi_tensor_fn,
+    get_bloom_flash_attention_forward,
+    get_jit_fused_bloom_attention_forward,
+    get_jit_fused_bloom_gelu_forward,
+    get_jit_fused_bloom_mlp_forward,
+)
+from ..modeling.jit import get_dropout_add_func, get_jit_fused_dropout_add_func, get_jit_fused_gelu_forward_func
+from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 
 class BloomPolicy(Policy):
@@ -17,15 +30,16 @@ class BloomPolicy(Policy):
         r"""
         Reshape the Embedding layer to make the embedding dimension divisible by world_size
         """
-        vocab_size = self.model.config.vocab_size
-        world_size = self.shard_config.tensor_parallel_size
-        if vocab_size % world_size != 0:
-            new_vocab_size = vocab_size + world_size - vocab_size % world_size
-            self.model.resize_token_embeddings(new_vocab_size)
+        if self.shard_config.enable_tensor_parallelism:
+            vocab_size = self.model.config.vocab_size
+            world_size = self.shard_config.tensor_parallel_size
+            if vocab_size % world_size != 0:
+                new_vocab_size = vocab_size + world_size - vocab_size % world_size
+                self.model.resize_token_embeddings(new_vocab_size)
         return self.model
 
     def module_policy(self):
-        from transformers.models.bloom.modeling_bloom import BloomBlock, BloomModel
+        from transformers.models.bloom.modeling_bloom import BloomAttention, BloomBlock, BloomGelu, BloomMLP, BloomModel
 
         policy = {}
 
@@ -102,14 +116,97 @@ class BloomPolicy(Policy):
                                                         policy=policy,
                                                         target_key=BloomBlock)
 
+        if self.shard_config.enable_flash_attention:
+            policy[BloomAttention] = ModulePolicyDescription(method_replacement={
+                'forward': get_bloom_flash_attention_forward(),
+                'dropout_add': get_dropout_add_func()
+            })
+
+        # enable jit fused operator
+        if self.shard_config.enable_jit_fused:
+            policy[BloomAttention] = ModulePolicyDescription(method_replacement={
+                'forward': get_jit_fused_bloom_attention_forward(),
+                'dropout_add': get_jit_fused_dropout_add_func(),
+            })
+            policy[BloomMLP] = ModulePolicyDescription(method_replacement={
+                'forward': get_jit_fused_bloom_mlp_forward(),
+                'dropout_add': get_jit_fused_dropout_add_func(),
+            })
+            policy[BloomGelu] = ModulePolicyDescription(method_replacement={
+                'forward': get_jit_fused_bloom_gelu_forward(),
+                'bloom_gelu_forward': get_jit_fused_gelu_forward_func(),
+            })
+
         return policy
 
     def postprocess(self):
         return self.model
 
+    def set_pipeline_forward(self, model_cls: nn.Module, new_forward: Callable, policy: Dict) -> None:
+        """If under pipeline parallel setting, replacing the original forward method of huggingface
+           to customized forward method, and add this changing to policy."""
+        if self.pipeline_stage_manager:
+            stage_manager = self.pipeline_stage_manager
+            if self.model.__class__.__name__ == "BloomModel":
+                module = self.model
+            else:
+                module = self.model.transformer
+
+            layers_per_stage = Policy.distribute_layers(len(module.h), stage_manager.num_stages)
+            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
+            method_replacement = {'forward': partial(new_forward, stage_manager=stage_manager, stage_index=stage_index)}
+            self.append_or_create_method_replacement(description=method_replacement,
+                                                     policy=policy,
+                                                     target_key=model_cls)
+        return
+
+    def get_held_layers(self) -> List[Module]:
+        """Get pipeline layers for current stage."""
+        assert self.pipeline_stage_manager is not None
+
+        if self.model.__class__.__name__ == 'BloomModel':
+            module = self.model
+        else:
+            module = self.model.transformer
+        stage_manager = self.pipeline_stage_manager
+
+        held_layers = []
+        layers_per_stage = self.distribute_layers(len(module.h), stage_manager.num_stages)
+        if stage_manager.is_first_stage():
+            held_layers.append(module.word_embeddings)
+            held_layers.append(module.word_embeddings_layernorm)
+        start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
+        held_layers.extend(module.h[start_idx:end_idx])
+        if stage_manager.is_last_stage():
+            held_layers.append(module.ln_f)
+
+        return held_layers
+
 
 class BloomModelPolicy(BloomPolicy):
-    pass
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    def module_policy(self):
+        policy = super().module_policy()
+        from transformers.models.bloom.modeling_bloom import BloomModel
+        if self.pipeline_stage_manager:
+            self.set_pipeline_forward(model_cls=BloomModel,
+                                      new_forward=BloomPipelineForwards.bloom_model_forward,
+                                      policy=policy)
+        return policy
+
+    def get_held_layers(self) -> List[Module]:
+        """
+        get pipeline layers for current stage
+        """
+        held_layers = super().get_held_layers()
+        return held_layers
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        '''no shared params in bloom model'''
+        return []
 
 
 class BloomForCausalLMPolicy(BloomPolicy):
@@ -124,21 +221,30 @@ class BloomForCausalLMPolicy(BloomPolicy):
                 suffix="lm_head", target_module=col_nn.Linear1D_Col, kwargs=dict(gather_output=True)),
                                                         policy=policy,
                                                         target_key=BloomForCausalLM)
-
+        if self.pipeline_stage_manager:
+            self.set_pipeline_forward(model_cls=BloomForCausalLM,
+                                      new_forward=BloomPipelineForwards.bloom_for_causal_lm_forward,
+                                      policy=policy)
         return policy
 
-    def postprocess(self):
-        binding_map = {"transformer.word_embeddings.weight": "lm_head.weight"}
+    def get_held_layers(self) -> List[Module]:
+        """Get pipeline layers for current stage."""
+        stage_manager = self.pipeline_stage_manager
+        held_layers = super().get_held_layers()
+        if stage_manager.is_last_stage():
+            held_layers.append(self.model.lm_head)
+        return held_layers
 
-        for k, v in binding_map.items():
-            param = getattr_(self.model, k)
-
-            if not isinstance(param, nn.Parameter):
-                param = nn.Parameter(param)
-
-            # tie weights
-            setattr_(self.model, v, param)
-        return self.model
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        bloom_model = self.model
+        if self.pipeline_stage_manager and self.pipeline_stage_manager.num_stages > 1:
+            if id(bloom_model.transformer.word_embeddings.weight) == id(bloom_model.lm_head.weight):
+                # tie weights
+                return [{
+                    0: bloom_model.transformer.word_embeddings.weight,
+                    self.pipeline_stage_manager.num_stages - 1: bloom_model.lm_head.weight
+                }]
+        return []
 
 
 class BloomForSequenceClassificationPolicy(BloomPolicy):
@@ -153,8 +259,23 @@ class BloomForSequenceClassificationPolicy(BloomPolicy):
                 suffix="score", target_module=col_nn.Linear1D_Col, kwargs=dict(gather_output=True)),
                                                         policy=policy,
                                                         target_key=BloomForSequenceClassification)
-
+        if self.pipeline_stage_manager:
+            self.set_pipeline_forward(model_cls=BloomForSequenceClassification,
+                                      new_forward=BloomPipelineForwards.bloom_for_sequence_classification_forward,
+                                      policy=policy)
         return policy
+
+    def get_held_layers(self) -> List[Module]:
+        """Get pipeline layers for current stage."""
+        stage_manager = self.pipeline_stage_manager
+        held_layers = super().get_held_layers()
+        if stage_manager.is_last_stage():
+            held_layers.append(self.model.score)
+        return held_layers
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        """No shared params in bloom for sequence classification model"""
+        return []
 
 
 class BloomForTokenClassificationPolicy(BloomPolicy):
@@ -176,10 +297,46 @@ class BloomForTokenClassificationPolicy(BloomPolicy):
             ],
                                                         policy=policy,
                                                         target_key=BloomForTokenClassification)
+        if self.pipeline_stage_manager:
+            self.set_pipeline_forward(model_cls=BloomForTokenClassification,
+                                      new_forward=BloomPipelineForwards.bloom_for_token_classification_forward,
+                                      policy=policy)
 
         return policy
+
+    def get_held_layers(self) -> List[Module]:
+        """Get pipeline layers for current stage."""
+        stage_manager = self.pipeline_stage_manager
+        held_layers = super().get_held_layers()
+        if stage_manager.is_last_stage():
+            held_layers.append(self.model.dropout)
+            held_layers.append(self.model.classifier)
+        return held_layers
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        """No shared params in bloom for token classification model"""
+        return []
 
 
 class BloomForQuestionAnsweringPolicy(BloomPolicy):
     # No head sharding as the output features is only 2
-    pass
+    def module_policy(self):
+        from transformers.models.bloom.modeling_bloom import BloomForQuestionAnswering
+        policy = super().module_policy()
+        if self.pipeline_stage_manager:
+            self.set_pipeline_forward(model_cls=BloomForQuestionAnswering,
+                                      new_forward=BloomPipelineForwards.bloom_for_question_answering_forward,
+                                      policy=policy)
+        return policy
+
+    def get_held_layers(self) -> List[Module]:
+        """Get pipeline layers for current stage."""
+        held_layers = super().get_held_layers()
+        stage_manager = self.pipeline_stage_manager
+        if stage_manager.is_last_stage():
+            held_layers.append(self.model.qa_outputs)
+        return held_layers
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        """No shared params in bloom for question answering model"""
+        return []
