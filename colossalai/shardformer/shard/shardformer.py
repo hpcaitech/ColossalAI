@@ -1,8 +1,11 @@
+from typing import Dict, List, Tuple
+
 import torch.nn as nn
+from torch import Tensor
 
 from colossalai.cluster import DistCoordinator
 
-from ..policies.basepolicy import Policy
+from ..policies.base_policy import Policy
 from .shard_config import ShardConfig
 from .sharder import ModelSharder
 
@@ -24,7 +27,7 @@ class ShardFormer:
     org_model = BertForMaskedLM.from_pretrained('bert-base-uncased')
     shard_config = ShardConfig()
     shard_former = ShardFormer(shard_config=shard_config)
-    model = shard_former.optimize(org_model)
+    model, shared_params = shard_former.optimize(org_model)
     ```
     """
 
@@ -32,7 +35,7 @@ class ShardFormer:
         self.coordinator = DistCoordinator()
         self.shard_config = shard_config
 
-    def optimize(self, model: nn.Module, policy: Policy = None):
+    def optimize(self, model: nn.Module, policy: Policy = None) -> Tuple[nn.Module, List[Dict[int, Tensor]]]:
         r"""
         This method will optimize the model based on the given policy.
 
@@ -40,7 +43,9 @@ class ShardFormer:
             model (`torch.nn.Model`): the origin huggingface model
             shard_config (`ShardConfig`): the config for distribute information
             policy (`Policy`): the custom policy for sharding
+
+        Returns: the sharded model and the shared parameters
         """
         sharder = ModelSharder(model=model, shard_config=self.shard_config, policy=policy)
-        sharder.shard()
-        return model
+        shared_params = sharder.shard()
+        return model, shared_params

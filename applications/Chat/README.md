@@ -4,7 +4,6 @@
   <span>ColossalChat</span>
 </h1>
 
-
 ## Table of Contents
 
 - [Table of Contents](#table-of-contents)
@@ -34,7 +33,9 @@
 - [Authors](#authors)
 - [Citations](#citations)
 - [Licenses](#licenses)
+
 ---
+
 ## What is ColossalChat and Coati ?
 
 [ColossalChat](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat) is the project to implement LLM with RLHF, powered by the [Colossal-AI](https://github.com/hpcaitech/ColossalAI) project.
@@ -42,6 +43,7 @@
 Coati stands for `ColossalAI Talking Intelligence`. It is the name for the module implemented in this project and is also the name of the large language model developed by the ColossalChat project.
 
 The Coati package provides a unified large language model framework that has implemented the following functions
+
 - Supports comprehensive large-model training acceleration capabilities for ColossalAI, without requiring knowledge of complex distributed training algorithms
 - Supervised datasets collection
 - Supervised instructions fine-tuning
@@ -56,17 +58,19 @@ The Coati package provides a unified large language model framework that has imp
     <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chatgpt/chatgpt.png" width=700/>
   </p>
 
-   Image source: https://openai.com/blog/chatgpt
+Image source: https://openai.com/blog/chatgpt
+
 </div>
 
 **As Colossal-AI is undergoing some major updates, this project will be actively maintained to stay in line with the Colossal-AI project.**
 
-
 More details can be found in the latest news.
-* [2023/03] [ColossalChat: An Open-Source Solution for Cloning ChatGPT With a Complete RLHF Pipeline](https://medium.com/@yangyou_berkeley/colossalchat-an-open-source-solution-for-cloning-chatgpt-with-a-complete-rlhf-pipeline-5edf08fb538b)
-* [2023/02] [Open Source Solution Replicates ChatGPT Training Process! Ready to go with only 1.6GB GPU Memory](https://www.hpc-ai.tech/blog/colossal-ai-chatgpt)
+
+- [2023/03] [ColossalChat: An Open-Source Solution for Cloning ChatGPT With a Complete RLHF Pipeline](https://medium.com/@yangyou_berkeley/colossalchat-an-open-source-solution-for-cloning-chatgpt-with-a-complete-rlhf-pipeline-5edf08fb538b)
+- [2023/02] [Open Source Solution Replicates ChatGPT Training Process! Ready to go with only 1.6GB GPU Memory](https://www.hpc-ai.tech/blog/colossal-ai-chatgpt)
 
 ## Online demo
+
 <div align="center">
    <a href="https://www.youtube.com/watch?v=HcTiHzApHm0">
    <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/ColossalChat%20YouTube.png" width="700" />
@@ -83,13 +87,13 @@ More details can be found in the latest news.
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/ColossalChat%20Speed.jpg" width=450/>
 </p>
 
-> DeepSpeedChat performance comes from its blog on 2023 April 12, ColossalChat performance can be reproduced on an AWS p4d.24xlarge node with 8 A100-40G GPUs with the following command: torchrun --standalone --nproc_per_node 8 benchmark_opt_lora_dummy.py --num_collect_steps 1 --use_kernels --strategy colossalai_zero2 --experience_batch_size 64 --train_batch_size 32
+> DeepSpeedChat performance comes from its blog on 2023 April 12, ColossalChat performance can be reproduced on an AWS p4d.24xlarge node with 8 A100-40G GPUs with the following command: `torchrun --standalone --nproc_per_node 8 benchmark_opt_lora_dummy.py --num_collect_steps 1 --use_kernels --strategy colossalai_zero2 --experience_batch_size 64 --train_batch_size 32`
 
 ## Install
 
 ### Install the environment
 
-```shell
+```bash
 conda create -n coati
 conda activate coati
 git clone https://github.com/hpcaitech/ColossalAI.git
@@ -99,7 +103,7 @@ pip install .
 
 ### Install the Transformers
 
-```shell
+```bash
 pip install transformers==4.30.2
 ```
 
@@ -107,10 +111,11 @@ pip install transformers==4.30.2
 
 ### Supervised datasets collection
 
-we collected 104K bilingual datasets of Chinese and English, and you can find the datasets in this repo
-[InstructionWild](https://github.com/XueFuzhao/InstructionWild)
+We collected 104K bilingual datasets of Chinese and English, and you can find the datasets in this repo
+[InstructionWild](https://github.com/XueFuzhao/InstructionWild) and in this [file](https://github.com/XueFuzhao/InstructionWild/blob/main/data/README.md).
 
 Here is how we collected the data
+
 <p align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/data-collect.png" width=500/>
 </p>
@@ -121,6 +126,20 @@ Stage1 is supervised instructs fine-tuning, which uses the datasets mentioned ea
 
 You can run the `examples/train_sft.sh` to start a supervised instructs fine-tuning.
 [[Stage1 tutorial video]](https://www.youtube.com/watch?v=-qFBZFmOJfg)
+
+**Note**: the supervised dataset follows the following format,
+
+```json
+[
+    {
+        "instruction": "Provide a list of the top 10 most popular mobile games in Asia",
+        "input": "",
+        "output": "The top 10 most popular mobile games in Asia are:\n1) PUBG Mobile\n2) Pokemon Go\n3) Candy Crush Saga\n4) Free Fire\n5) Clash of Clans\n6) Mario Kart Tour\n7) Arena of Valor\n8) Fantasy Westward Journey\n9) Subway Surfers\n10) ARK Survival Evolved",
+        "id": 0
+    },
+    ...
+]
+```
 
 ### RLHF Training Stage2 - Training reward model
 
@@ -140,13 +159,46 @@ Stage3 uses reinforcement learning algorithm, which is the most complex part of 
 You can run the `examples/train_prompts.sh` to start training PPO with human feedback.
 [[Stage3 tutorial video]](https://www.youtube.com/watch?v=Z8wwSHxPL9g)
 
+**Note**: the required datasets follow the following format,
+
+- `pretrain dataset`
+
+  ```json
+  [
+      {
+          "instruction": "Provide a list of the top 10 most popular mobile games in Asia",
+          "input": "",
+          "output": "The top 10 most popular mobile games in Asia are:\n1) PUBG Mobile\n2) Pokemon Go\n3) Candy Crush Saga\n4) Free Fire\n5) Clash of Clans\n6) Mario Kart Tour\n7) Arena of Valor\n8) Fantasy Westward Journey\n9) Subway Surfers\n10) ARK Survival Evolved",
+          "id": 0
+      },
+      ...
+  ]
+  ```
+
+- `prompt dataset`
+
+  ```json
+  [
+      {
+          "instruction": "Edit this paragraph to make it more concise: \"Yesterday, I went to the store and bought some things. Then, I came home and put them away. After that, I went for a walk and met some friends.\"",
+          "id": 0
+      },
+      {
+          "instruction": "Write a descriptive paragraph about a memorable vacation you went on",
+          "id": 1
+      },
+      ...
+  ]
+  ```
+
 For more details, see [`examples/`](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat/examples).
 
 ### Inference Quantization and Serving - After Training
 
 We provide an online inference server and a benchmark. We aim to run inference on single GPU, so quantization is essential when using large models.
 
-We support 8-bit quantization (RTN), 4-bit quantization (GPTQ), and  FP16 inference. You can
+We support 8-bit quantization (RTN), 4-bit quantization (GPTQ), and FP16 inference.
+
 Online inference server scripts can help you deploy your own services.
 
 For more details, see [`inference/`](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat/inference).
@@ -158,6 +210,7 @@ For more details, see [`inference/`](https://github.com/hpcaitech/ColossalAI/tre
 <details><summary><b>E-mail</b></summary>
 
 ![phd](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/Phd.png)
+
 </details>
 
 <details><summary><b>coding</b></summary>
@@ -191,6 +244,7 @@ For more details, see [`inference/`](https://github.com/hpcaitech/ColossalAI/tre
 </details>
 
 ### Open QA
+
 <details><summary><b>Game</b></summary>
 
 ![Game](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/game.png)
@@ -224,6 +278,7 @@ For more details, see [`inference/`](https://github.com/hpcaitech/ColossalAI/tre
 You can find more examples in this [repo](https://github.com/XueFuzhao/InstructionWild/blob/main/comparison.md).
 
 ### Limitation
+
 <details><summary><b>Limitation for LLaMA-finetuned models</b></summary>
 - Both Alpaca and ColossalChat are based on LLaMA. It is hard to compensate for the missing knowledge in the pre-training stage.
 - Lack of counting ability: Cannot count the number of items in a list.
@@ -247,7 +302,7 @@ You can find more examples in this [repo](https://github.com/XueFuzhao/Instructi
 
 We have integrated the Transformers save and load pipeline, allowing users to freely call Hugging Face's language models and save them in the HF format.
 
-```
+```python
 from coati.models.llama import LlamaLM
 from coati.trainer import SFTTrainer
 
@@ -256,20 +311,20 @@ tokenizer = AutoTokenizer.from_pretrained(args.pretrain)
 
 (model, optim) = strategy.prepare((model, optim))
 trainer = SFTTrainer(model=model,
-    strategy=strategy,
-    optim=optim,
-    train_dataloader=train_dataloader,
-    eval_dataloader=eval_dataloader,
-    batch_size=args.batch_size,
-    max_epochs=args.max_epochs,
-    accumulation_steps = args.accumulation_steps
-)
+                     strategy=strategy,
+                     optim=optim,
+                     train_dataloader=train_dataloader,
+                     eval_dataloader=eval_dataloader,
+                     batch_size=args.batch_size,
+                     max_epochs=args.max_epochs,
+                     accumulation_steps=args.accumulation_steps
+                     )
 
 trainer.fit()
 # this saves in pytorch format
 strategy.save_model(model, args.save_path, only_rank0=True)
 
-# this saves in HF format. ColossalAI strategy with stage-3 doesn't support this method
+# this saves in HF format
 strategy.save_pretrained(model, args.save_path, only_rank0=True, tokenizer=tokenizer)
 ```
 
@@ -280,12 +335,13 @@ strategy.save_pretrained(model, args.save_path, only_rank0=True, tokenizer=token
 Here are some examples that can allow you to train a 7B model on a single or multiple consumer-grade GPUs.
 
 If you only have a single 24G GPU, you can use the following script. `batch_size`, `lora_rank` and `grad_checkpoint` are the most important parameters to successfully train the model.
-```
+
+```bash
+// [INFO]: MAX GPU MEMORY ALLOCATED:  19148.9345703125 MB
 torchrun --standalone --nproc_per_node=1 train_sft.py \
     --pretrain "/path/to/LLaMa-7B/" \
     --model 'llama' \
     --strategy ddp \
-    --log_interval 10 \
     --save_path  /path/to/Coati-7B \
     --dataset /path/to/data.json \
     --batch_size 1 \
@@ -298,12 +354,12 @@ torchrun --standalone --nproc_per_node=1 train_sft.py \
 ```
 
 `colossalai_gemini` strategy can enable a single 24G GPU to train the whole model without using LoRA if you have sufficient CPU memory. You can use the following script.
-```
+
+```bash
 torchrun --standalone --nproc_per_node=1 train_sft.py \
     --pretrain "/path/to/LLaMa-7B/" \
     --model 'llama' \
     --strategy colossalai_gemini \
-    --log_interval 10 \
     --save_path  /path/to/Coati-7B \
     --dataset /path/to/data.json \
     --batch_size 1 \
@@ -315,12 +371,12 @@ torchrun --standalone --nproc_per_node=1 train_sft.py \
 ```
 
 If you have 4x32 GB GPUs, you can even train the whole 7B model using our `colossalai_zero2_cpu` strategy! The script is given as follows.
-```
+
+```bash
 torchrun --standalone --nproc_per_node=4 train_sft.py \
     --pretrain "/path/to/LLaMa-7B/" \
     --model 'llama' \
     --strategy colossalai_zero2_cpu \
-    --log_interval 10 \
     --save_path  /path/to/Coati-7B \
     --dataset /path/to/data.json \
     --batch_size 1 \
@@ -330,8 +386,8 @@ torchrun --standalone --nproc_per_node=4 train_sft.py \
     --max_epochs 1 \
     --grad_checkpoint
 ```
-</details>
 
+</details>
 
 ## The Plan
 
@@ -346,24 +402,26 @@ torchrun --standalone --nproc_per_node=4 train_sft.py \
 - [ ] support chain-of-thought by [langchain](https://github.com/hwchase17/langchain)
 
 ### Real-time progress
-You will find our progress in github project broad
 
-[Coati](https://github.com/orgs/hpcaitech/projects/17/views/1)
+You will find our progress in github [project broad](https://github.com/orgs/hpcaitech/projects/17/views/1).
 
 ## Invitation to open-source contribution
+
 Referring to the successful attempts of [BLOOM](https://bigscience.huggingface.co/) and [Stable Diffusion](https://en.wikipedia.org/wiki/Stable_Diffusion), any and all developers and partners with computing powers, datasets, models are welcome to join and build the Colossal-AI community, making efforts towards the era of big AI models from the starting point of replicating ChatGPT!
 
 You may contact us or participate in the following ways:
+
 1. [Leaving a Star ⭐](https://github.com/hpcaitech/ColossalAI/stargazers) to show your like and support. Thanks!
 2. Posting an [issue](https://github.com/hpcaitech/ColossalAI/issues/new/choose), or submitting a PR on GitHub follow the guideline in [Contributing](https://github.com/hpcaitech/ColossalAI/blob/main/CONTRIBUTING.md).
 3. Join the Colossal-AI community on
-[Slack](https://join.slack.com/t/colossalaiworkspace/shared_invite/zt-z7b26eeb-CBp7jouvu~r0~lcFzX832w),
-and [WeChat(微信)](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/WeChat.png "qrcode") to share your ideas.
+   [Slack](https://join.slack.com/t/colossalaiworkspace/shared_invite/zt-z7b26eeb-CBp7jouvu~r0~lcFzX832w),
+   and [WeChat(微信)](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/WeChat.png "qrcode") to share your ideas.
 4. Send your official proposal to email contact@hpcaitech.com
 
 Thanks so much to all of our amazing contributors!
 
 ## Quick Preview
+
 <div align="center">
    <a href="https://chat.colossalai.org/">
    <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/Chat-demo.png" width="700" />
@@ -397,18 +455,22 @@ Thanks so much to all of our amazing contributors!
 | Better Cases  |     38 ⚔ **41**      |     **45** ⚔ 33      |
 |   Win Rate    |    48% ⚔ **52%**     |    **58%** ⚔ 42%     |
 | Average Score |   7.06 ⚔ **7.13**    |   **7.31** ⚔ 6.82    |
+
 - Our Coati-7B model performs better than Alpaca-7B when using GPT-4 to evaluate model performance. The Coati-7B model we evaluate is an old version we trained a few weeks ago and the new version is around the corner.
 
 ## Authors
 
 Coati is developed by ColossalAI Team:
+
 - [Fazzie](https://fazzie-key.cool/about/index.html)
 - [FrankLeeeee](https://github.com/FrankLeeeee)
 - [BlueRum](https://github.com/ht-zhou)
 - [ver217](https://github.com/ver217)
 - [ofey404](https://github.com/ofey404)
+- [Wenhao Chen](https://github.com/CWHer)
 
 The Phd student from [(HPC-AI) Lab](https://ai.comp.nus.edu.sg/) also contributed a lot to this project.
+
 - [Zangwei Zheng](https://github.com/zhengzangw)
 - [Xue Fuzhao](https://github.com/XueFuzhao)
 
