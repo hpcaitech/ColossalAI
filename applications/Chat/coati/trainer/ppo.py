@@ -169,12 +169,11 @@ class PPOTrainer(OnPolicyTrainer):
         self.actor_optim.zero_grad()
 
         # value loss
-        values = self.critic(
-            experience.sequences, action_mask=experience.action_mask, attention_mask=experience.attention_mask
-        )
-        critic_loss = self.critic_loss_fn(
-            values, experience.values, experience.reward, action_mask=experience.action_mask
-        )
+        values = self.critic(experience.sequences,
+                             attention_mask=experience.attention_mask)
+        critic_loss = self.critic_loss_fn(values,
+                                          experience.values,
+                                          experience.reward)
         critic_loss = critic_loss * self.vf_coef
         self.strategy.backward(critic_loss, self.critic, self.critic_optim)
         self.strategy.optimizer_step(self.critic_optim)
