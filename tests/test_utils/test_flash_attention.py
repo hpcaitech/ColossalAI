@@ -13,7 +13,6 @@ if HAS_MEM_EFF_ATTN or HAS_FLASH_ATTN:
     from colossalai.kernel.cuda_native.scaled_softmax import AttnMaskType
 
 DTYPE = [torch.float16, torch.bfloat16, torch.float32]
-FLASH_DTYPE = [torch.float16, torch.bfloat16]
 
 
 def attention_ref(q, k, v, attn_mask=None, causal=False):

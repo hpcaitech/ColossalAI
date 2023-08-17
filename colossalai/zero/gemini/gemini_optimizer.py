@@ -1,6 +1,5 @@
 # this code is inspired by the DeepSpeed library and implemented with our own design from scratch
 import copy
-import gc
 import math
 import warnings
 from typing import Any, Dict, Iterator, OrderedDict, Set, Tuple
@@ -467,11 +466,6 @@ class ZeroOptimizer(ColossalaiOptimizer):
                     continue
                 self.load_from_compacted_states(compacted_states, collected_states, state_names, shard_offset,
                                                 shard_size)
-
-        # Clean gathered states
-        for state_shard in gathered_state_shards:
-            del state_shard[0]
-            gc.collect()
 
         # Reshape tensors
         if is_collector:
