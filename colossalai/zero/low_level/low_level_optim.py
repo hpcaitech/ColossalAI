@@ -242,10 +242,19 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
     def _run_reduction(self):
         if self._bucket_store.num_elements_in_bucket() > 0:
             self._bucket_store.build_grad_in_bucket()
+
             flat_grads = self._bucket_store.get_flatten_grad()
             flat_grads /= self._world_size
+
+            # ready to add other tensors to bucket
+            self._bucket_store.reset_num_elements_in_bucket()
+
             if self._overlap_communication:
                 stream = self._comm_stream
+                # in case of the memory being reused in the default stream
+                flat_grads.record_stream(stream)
+                # waiting for ops in the default stream finishing
+                stream.wait_stream(torch.cuda.current_stream())
             else:
                 stream = torch.cuda.current_stream()
 
