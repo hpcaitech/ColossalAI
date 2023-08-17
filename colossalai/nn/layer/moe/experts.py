@@ -28,7 +28,7 @@ class BaseExperts(nn.Module):
         self.num_local_experts, self.dist_info = MOE_CONTEXT.get_info(num_experts)
 
 
-class Experts(BaseExperts):
+class MoEExperts(BaseExperts):
     """A wrapper class to create experts. It will create E experts across the
     moe model parallel group, where E is the number of experts. Every expert
     is a instance of the class, 'expert' in initialization parameters.

@@ -6,7 +6,7 @@ import colossalai
 from colossalai.context import ParallelMode
 from colossalai.context.moe_context import MOE_CONTEXT
 from colossalai.core import global_context as gpc
-from colossalai.nn.layer.moe import Experts, MoeLayer, Top1Router, Top2Router
+from colossalai.nn.layer.moe import MoEExperts, MoeLayer, Top1Router, Top2Router
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 from colossalai.utils import get_current_device
 
@@ -34,7 +34,7 @@ def run_routing(rank, world_size, port, rs=2, hidden_size=128, data_type=torch.f
 
     expert_module = nn.Linear
     expert_factor = dict(in_features=hidden_size, out_features=hidden_size, device=get_current_device())
-    expert = Experts(expert_module, NUM_EXPERTS, **expert_factor)
+    expert = MoEExperts(expert_module, NUM_EXPERTS, **expert_factor)
     layer = MoeLayer(hidden_size, NUM_EXPERTS, router(capacity_factor_train=1.0), expert)
     layer = layer.to(get_current_device())
     if data_type == torch.float16:

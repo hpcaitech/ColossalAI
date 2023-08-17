@@ -4,7 +4,7 @@ import torch.nn as nn
 
 import colossalai
 from colossalai.context.moe_context import MOE_CONTEXT
-from colossalai.nn.layer.moe import Experts
+from colossalai.nn.layer.moe import MoEExperts
 from colossalai.testing import assert_equal_in_group, rerun_if_address_is_in_use, spawn
 from colossalai.utils import get_current_device
 from colossalai.utils.moe import sync_moe_model_param
@@ -20,10 +20,10 @@ def run_test(rank, world_size, port):
     expert_factor = dict(in_features=D_MODEL, out_features=D_FF, device=get_current_device())
 
     MOE_CONTEXT.setup(42)    # MOE environment initialization
-    exp0 = Experts(expert_module, 1, **expert_factor)
-    exp1 = Experts(expert_module, 2, **expert_factor)
-    exp2 = Experts(expert_module, 4, **expert_factor)
-    exp3 = Experts(expert_module, 8, **expert_factor)
+    exp0 = MoEExperts(expert_module, 1, **expert_factor)
+    exp1 = MoEExperts(expert_module, 2, **expert_factor)
+    exp2 = MoEExperts(expert_module, 4, **expert_factor)
+    exp3 = MoEExperts(expert_module, 8, **expert_factor)
 
     assert exp0.num_local_experts == 1
     assert exp1.num_local_experts == 1
