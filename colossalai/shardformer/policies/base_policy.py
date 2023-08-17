@@ -2,9 +2,14 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Type, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
+import numpy as np
 import torch.nn as nn
+from torch import Tensor
+from torch.nn import Module
+
+from colossalai.pipeline.stage_manager import PipelineStageManager
 
 from ..shard.shard_config import ShardConfig
 
@@ -71,9 +76,8 @@ class Policy(ABC):
     """
 
     def __init__(self) -> None:
-        self.shard_config = None
-        self.model = None
-        self.shard_config = None
+        self.shard_config: Optional[ShardConfig] = None
+        self.model: Optional[Module] = None
 
     def set_model(self, model: nn.Module) -> None:
         r"""
@@ -93,6 +97,12 @@ class Policy(ABC):
         """
         self.shard_config = shard_config
         self.config_sanity_check()
+
+    @property
+    def pipeline_stage_manager(self) -> Optional[PipelineStageManager]:
+        if self.shard_config is not None:
+            return self.shard_config.pipeline_stage_manager
+        return None
 
     @abstractmethod
     def config_sanity_check(self):
@@ -146,8 +156,78 @@ class Policy(ABC):
 
         # append or create a new description
         if target_key in policy:
-            policy[target_key].sub_module_replacement.extend(description)
+            if policy[target_key].sub_module_replacement is None:
+                policy[target_key].sub_module_replacement = description
+            else:
+                policy[target_key].sub_module_replacement.extend(description)
         else:
             policy[target_key] = ModulePolicyDescription(sub_module_replacement=description)
 
         return policy
+
+    def append_or_create_method_replacement(
+            self, description: Dict[str, Callable], policy: Dict[Union[str, nn.Module], ModulePolicyDescription],
+            target_key: Union[str, nn.Module]) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
+        r"""
+        Append or create a new method replacement description to the policy for the given key.
+
+        Args:
+            description (Union[SubModuleReplacementDescription, List[SubModuleReplacementDescription]]): the submodule replacement description to be appended
+            policy (Dict[Union[str, nn.Module], ModulePolicyDescription]): the policy to be updated
+            target_key (Union[str, nn.Module]): the key of the policy to be updated
+        """
+        if target_key in policy:
+            if policy[target_key].method_replacement is None:
+                policy[target_key].method_replacement = description
+            else:
+                policy[target_key].method_replacement.update(description)
+        else:
+            policy[target_key] = ModulePolicyDescription(method_replacement=description)
+
+        return policy
+
+    def get_held_layers(self) -> List[Module]:
+        """Get layers that should be held in current stage. This method should be implemented by subclass.
+
+        Returns:
+            List[Module]: List of layers that should be hold in current stage
+        """
+        raise NotImplementedError
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        """Get parameters that should be shared across stages. This method should be implemented by subclass.
+
+        Returns:
+            List[Dict[int, Tensor]]: List of parameters that should be shared across stages. E.g. [{0: module.model.embed_tokens.weight, 3: module.lm_head.weight}]
+        """
+        return []
+
+    @staticmethod
+    def distribute_layers(num_layers: int, num_stages: int) -> List[int]:
+        """Divide layers into stages
+
+        """
+        quotient = num_layers // num_stages
+        remainder = num_layers % num_stages
+
+        # calculate the num_layers per stage
+        layers_per_stage = [quotient] * num_stages
+
+        # deal with the rest layers
+        if remainder > 0:
+            start_position = num_stages // 2 - remainder // 2
+            for i in range(start_position, start_position + remainder):
+                layers_per_stage[i] += 1
+        return layers_per_stage
+
+    @staticmethod
+    def get_stage_index(layers_per_stage: List[int], stage: int) -> List[int]:
+        """
+        get the start index and end index of layers for each stage.
+        """
+        num_layers_per_stage_accumulated = np.insert(np.cumsum(layers_per_stage), 0, 0)
+
+        start_idx = num_layers_per_stage_accumulated[stage]
+        end_idx = num_layers_per_stage_accumulated[stage + 1]
+
+        return [start_idx, end_idx]

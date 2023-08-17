@@ -29,8 +29,6 @@ class Randomizer:
     _INDEX = 0
 
     def __init__(self, seed: int):
-        # TODO: remove colossalai.context.random
-
         self.seed = seed
 
         # Handle CUDA rng state
@@ -121,6 +119,13 @@ class Randomizer:
         Increment the index of the randomizer by one.
         """
         Randomizer._INDEX += 1
+
+    @staticmethod
+    def reset_index():
+        """
+        Reset the index to zero.
+        """
+        Randomizer._INDEX = 0
 
     @staticmethod
     def is_randomizer_index_synchronized(process_group: ProcessGroup = None):
