@@ -58,6 +58,8 @@ class LlamaPolicy(Policy):
                         self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
                     "self_attn.num_heads":
                         self.model.config.num_attention_heads // self.shard_config.tensor_parallel_size,
+                    "self_attn.num_key_value_heads":
+                        self.model.config.num_key_value_heads // self.shard_config.tensor_parallel_size,
                 },
                 sub_module_replacement=[
                     SubModuleReplacementDescription(
