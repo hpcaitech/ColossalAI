@@ -137,7 +137,7 @@ def exam_zero_1_torch_ddp(world_size, dtype: torch.dtype):
     zero_optimizer = LowLevelZeroOptimizer(zero_optimizer,
                                            overlap_communication=True,
                                            initial_scale=1,
-                                           reduce_bucket_size=262144)
+                                           reduce_bucket_size=1024 * 1024)
 
     torch_optimizer = torch.optim.SGD(torch_model.parameters(), lr=1)
 
