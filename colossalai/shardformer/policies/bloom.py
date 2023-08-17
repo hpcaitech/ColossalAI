@@ -12,6 +12,7 @@ from ..modeling.bloom import (
     BloomPipelineForwards,
     build_bloom_alibi_tensor_fn,
     get_bloom_flash_attention_forward,
+    get_bloom_sequence_parallel_forward_fn,
     get_jit_fused_bloom_attention_forward,
     get_jit_fused_bloom_gelu_forward,
     get_jit_fused_bloom_mlp_forward,
@@ -43,6 +44,7 @@ class BloomPolicy(Policy):
 
         policy = {}
 
+        use_sequence_parallel = self.shard_config.enable_sequence_parallelism
         if self.shard_config.enable_tensor_parallelism:
             policy[BloomBlock] = ModulePolicyDescription(attribute_replacement={
                 "self_attention.hidden_size": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
@@ -53,11 +55,11 @@ class BloomPolicy(Policy):
                                                              SubModuleReplacementDescription(
                                                                  suffix="self_attention.query_key_value",
                                                                  target_module=col_nn.Linear1D_Col,
-                                                             ),
+                                                                 kwargs={'seq_parallel': use_sequence_parallel}),
                                                              SubModuleReplacementDescription(
                                                                  suffix="self_attention.dense",
                                                                  target_module=col_nn.Linear1D_Row,
-                                                             ),
+                                                                 kwargs={'seq_parallel': use_sequence_parallel}),
                                                              SubModuleReplacementDescription(
                                                                  suffix="self_attention.attention_dropout",
                                                                  target_module=col_nn.DropoutForParallelInput,
@@ -65,11 +67,11 @@ class BloomPolicy(Policy):
                                                              SubModuleReplacementDescription(
                                                                  suffix="mlp.dense_h_to_4h",
                                                                  target_module=col_nn.Linear1D_Col,
-                                                             ),
+                                                                 kwargs={'seq_parallel': use_sequence_parallel}),
                                                              SubModuleReplacementDescription(
                                                                  suffix="mlp.dense_4h_to_h",
                                                                  target_module=col_nn.Linear1D_Row,
-                                                             ),
+                                                                 kwargs={'seq_parallel': use_sequence_parallel}),
                                                          ])
 
             policy[BloomModel] = ModulePolicyDescription(
@@ -116,6 +118,12 @@ class BloomPolicy(Policy):
                                                         policy=policy,
                                                         target_key=BloomBlock)
 
+        if use_sequence_parallel:
+            self.append_or_create_method_replacement(
+                description={'forward': get_bloom_sequence_parallel_forward_fn(self.shard_config)},
+                policy=policy,
+                target_key=BloomModel)
+
         if self.shard_config.enable_flash_attention:
             policy[BloomAttention] = ModulePolicyDescription(method_replacement={
                 'forward': get_bloom_flash_attention_forward(),
@@ -154,7 +162,13 @@ class BloomPolicy(Policy):
 
             layers_per_stage = Policy.distribute_layers(len(module.h), stage_manager.num_stages)
             stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
-            method_replacement = {'forward': partial(new_forward, stage_manager=stage_manager, stage_index=stage_index)}
+            method_replacement = {
+                'forward':
+                    partial(new_forward,
+                            stage_manager=stage_manager,
+                            stage_index=stage_index,
+                            shard_config=self.shard_config)
+            }
             self.append_or_create_method_replacement(description=method_replacement,
                                                      policy=policy,
                                                      target_key=model_cls)
