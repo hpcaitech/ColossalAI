@@ -23,7 +23,6 @@ from transformers.trainer import get_scheduler
 
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.tensor import ColoParameter
 
 
 def train(args):
@@ -84,27 +83,20 @@ def train(args):
     else:
         raise ValueError(f'Unsupported model "{args.model}"')
 
-    if args.model == "llama" and args.strategy == "colossalai_gemini":
-        # this is a hack to deal with the resized embedding
-        # to make sure all parameters are ColoParameter for Colossal-AI Gemini Compatibility
-        for name, param in model.named_parameters():
-            if not isinstance(param, ColoParameter):
-                sub_module_name = ".".join(name.split(".")[:-1])
-                weight_name = name.split(".")[-1]
-                sub_module = model.get_submodule(sub_module_name)
-                setattr(sub_module, weight_name, ColoParameter(param))
-
     # configure optimizer
     if args.strategy.startswith("colossalai"):
         optim = HybridAdam(model.parameters(), lr=args.lr, clipping_norm=1.0)
     else:
         optim = Adam(model.parameters(), lr=args.lr)
-    logger = get_dist_logger()
 
     # configure dataset
     if args.dataset == "yizhongw/self_instruct":
         train_data = load_dataset(args.dataset, "super_natural_instructions", split="train")
         eval_data = load_dataset(args.dataset, "super_natural_instructions", split="test")
+
+        if args.max_datasets_size is not None:
+            train_data = train_data.select(range(min(args.max_datasets_size, len(train_data))))
+            eval_data = eval_data.select(range(min(args.max_datasets_size, len(eval_data))))
 
         train_dataset = SFTDataset(train_data, tokenizer, args.max_len)
         eval_dataset = SFTDataset(eval_data, tokenizer, args.max_len)
@@ -174,6 +166,7 @@ def train(args):
                          max_epochs=args.max_epochs,
                          accumulation_steps=args.accumulation_steps)
 
+    logger = get_dist_logger()
     trainer.fit(train_dataloader=train_dataloader,
                 eval_dataloader=eval_dataloader,
                 logger=logger,
