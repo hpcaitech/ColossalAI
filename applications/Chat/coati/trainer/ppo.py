@@ -112,13 +112,14 @@ class PPOTrainer(OnPolicyTrainer):
         self.offload_inference_models = offload_inference_models
         self.device = get_current_device()
 
-    def _before_fit(
-        self,
-        prompt_dataloader: DataLoader,
-        pretrain_dataloader: DataLoader,
-        log_dir: Optional[str] = None,
-        use_wandb: bool = False,
-    ):
+        self.num_collect_step = 0
+        self.num_update_step = 0
+
+    def _before_fit(self,
+                    prompt_dataloader: DataLoader,
+                    pretrain_dataloader: DataLoader,
+                    log_dir: Optional[str] = None,
+                    use_wandb: bool = False):
         """
         Args:
             prompt_dataloader (DataLoader): the dataloader to use for prompt data
@@ -150,7 +151,12 @@ class PPOTrainer(OnPolicyTrainer):
             self.experience_maker.initial_model.to(self.device)
             self.experience_maker.reward_model.to(self.device)
         assert isinstance(prompts, dict), f'Unsupported input type "{type(prompts)}"'
-        return self.experience_maker.make_experience(**prompts, **self.generate_kwargs)
+        experience, metrics = self.experience_maker.make_experience(**prompts, **self.generate_kwargs)
+        if self.writer:
+            for k, v in metrics.items():
+                self.writer.add_scalar(f'collect/{k}', v, self.num_collect_step)
+        self.num_collect_step += 1
+        return experience
 
     def _training_step(self, experience: Experience):
         self.actor.train()
@@ -158,6 +164,8 @@ class PPOTrainer(OnPolicyTrainer):
 
         step_mask = experience.step_mask
         num_samples = torch.sum(step_mask)
+        assert self.chunk_size == self.experience_maker.chunk_size, \
+            "chunk_size of trainer and experience_maker must be the same"
 
         # policy loss
         num_actions = experience.action_log_probs.size(1)
@@ -168,7 +176,7 @@ class PPOTrainer(OnPolicyTrainer):
                                         experience.advantages,
                                         action_mask=experience.action_mask,
                                         chunk_size=self.experience_maker.chunk_size)
-        actor_loss = (1 - self.ptx_coef) * torch.sum(actor_loss * step_mask) / num_samples
+        actor_loss = (1 - self.ptx_coef) * torch.sum(actor_loss * step_mask / num_samples)
         self.strategy.backward(actor_loss, self.actor, self.actor_optim)
 
         # ptx loss
@@ -196,11 +204,20 @@ class PPOTrainer(OnPolicyTrainer):
             )
             values = self.critic(sequence_with_eos, sequence_with_eos_mask)
             critic_loss = self.critic_loss_fn(values, experience.values[:, i], experience.returns[:, i])
-            critic_loss = torch.sum(critic_loss * step_mask[:, i]) / num_samples
+            critic_loss = torch.sum(critic_loss * step_mask[:, i] / num_samples)
             self.strategy.backward(critic_loss, self.critic, self.critic_optim)
 
         self.strategy.optimizer_step(self.critic_optim)
         self.critic_optim.zero_grad()
+
+        if self.writer:
+            self.writer.add_scalar('update/actor_loss', actor_loss.item(), self.num_update_step)
+            self.writer.add_scalar('update/critic_loss', critic_loss.item(), self.num_update_step)
+            if self.ptx_coef != 0:
+                self.writer.add_scalar('update/ptx_loss', ptx_loss.item(), self.num_update_step)
+        self.num_update_step += 1
+
+        return {'reward': experience.reward.mean().item()}
 
     def _learn(self, update_step: int):
         if self.offload_inference_models:
