@@ -217,8 +217,6 @@ class PPOTrainer(OnPolicyTrainer):
                 self.writer.add_scalar('update/ptx_loss', ptx_loss.item(), self.num_update_step)
         self.num_update_step += 1
 
-        return {'reward': experience.reward.mean().item()}
-
     def _learn(self, update_step: int):
         if self.offload_inference_models:
             self.experience_maker.initial_model.to("cpu")
