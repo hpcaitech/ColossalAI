@@ -41,16 +41,18 @@ class NaiveExperienceMaker(ExperienceMaker):
         # calculate auxiliary tensors
         attention_mask = None
         pad_token_id = self.tokenizer.pad_token_id
-        assert pad_token_id is not None
-        attention_mask = sequences.not_equal(pad_token_id)\
-            .to(dtype=torch.long, device=sequences.device)
+        if pad_token_id is not None:
+            attention_mask = sequences.not_equal(pad_token_id)\
+                .to(dtype=torch.long, device=sequences.device)
 
         input_len = input_ids.size(1)
         eos_token_id = self.tokenizer.eos_token_id
-        assert eos_token_id is not None
-        # left padding may be applied, only mask action
-        action_mask = (sequences[:, input_len:] == eos_token_id).cumsum(dim=-1) == 0
-        action_mask = F.pad(action_mask, (1 + input_len, -1), value=True)    # include eos token and input
+        if eos_token_id is None:
+            action_mask = torch.ones_like(sequences, dtype=torch.bool)
+        else:
+            # left padding may be applied, only mask action
+            action_mask = (sequences[:, input_len:] == eos_token_id).cumsum(dim=-1) == 0
+            action_mask = F.pad(action_mask, (1 + input_len, -1), value=True)    # include eos token and input
         action_mask[:, :input_len] = False
         action_mask = action_mask[:, 1:]
         action_mask = action_mask[:, -(sequences.size(1) - input_len) :]

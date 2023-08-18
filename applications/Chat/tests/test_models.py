@@ -15,6 +15,7 @@ from coati.models.lora import LoraLinear, convert_to_lora_module
 from coati.models.loss import GPTLMLoss, LogExpLoss, LogSigLoss, PolicyLoss, ValueLoss
 from coati.models.opt import OPTRM, OPTActor, OPTCritic
 from coati.models.utils import calc_action_log_probs, masked_mean
+from transformers import PreTrainedTokenizer
 
 
 @pytest.mark.parametrize("batch_size", [4])
@@ -38,15 +39,10 @@ def test_generation(actor_maker: Callable[[], Actor],
                     seq_len: int,
                     generate_kwargs: Dict[str, Any]
                     ):
-    class MockTokenizer():
-        def __init__(self):
-            self.padding_side = "left"
-            self.pad_token_id = 0
-            self.eos_token_id = 0
-
     actor = actor_maker()
     input_ids = torch.randint(0, 100, (batch_size, seq_len)).cuda()
-    tokenizer = MockTokenizer()
+    tokenizer = PreTrainedTokenizer()
+    tokenizer.padding_side = "left"
     sequences = generate(actor.cuda(), input_ids, tokenizer, **generate_kwargs)
     assert sequences.shape == (batch_size, generate_kwargs["max_length"])
 
