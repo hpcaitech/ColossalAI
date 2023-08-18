@@ -257,8 +257,7 @@ class WhisperPolicy(Policy):
         def objective(num_encoder_stages):
             return abs(num_encoder_layers / num_encoder_stages - num_decoder_layers / (num_stages - num_encoder_stages))
 
-        diff = range(1, num_stages)
-        num_encoder_stages = np.argmin([objective(i) for i in diff]) + 1
+        num_encoder_stages = np.argmin([objective(i) for i in range(1, num_stages)]) + 1
         num_decoder_stages = num_stages - num_encoder_stages
 
         encoder_distribution = Policy.distribute_layers(num_encoder_layers, num_encoder_stages)
@@ -320,6 +319,8 @@ class WhisperPolicy(Policy):
             held_layers.extend(encoder.layers[start_idx:end_idx])
         else:
             # current stage is in whisper's decoder
+            # TODO:(Jianghai) We divide encoder and decoder layers into different parts here,
+            # the case encoder and decoder put in same stage should be add in the future.
             if stage_manager.stage == decoder_starting_stage:
                 held_layers.append(decoder.embed_tokens)
                 held_layers.append(decoder.embed_positions)
