@@ -12,6 +12,7 @@ class InferenceConfig:
     Args:
         pp_size (int): the number of pipeline stages.
         stage_unit (List[str]): the unit module name can be sliced as a stage, should be `nn.Module`.
+        micro_batch_size (int): the micro batch size.
         target_length (int): the target length of the input sequence.
         padding_token_id (int): the token id for padding.
 
@@ -21,11 +22,13 @@ class InferenceConfig:
         self,
         pp_size: int,
         stage_unit: List[str],
+        micro_batch_size: int = 1,
         target_length: int = 32,
         padding_token_id: int = 0,
     ):
         assert isinstance(pp_size, int), f'pp_size must be an integer, got {type(pp_size)}'
         self.pp_size = pp_size
         self.stage_unit = stage_unit
+        self.micro_batch_size = micro_batch_size
         self.target_length = target_length
         self.padding_token_id = padding_token_id

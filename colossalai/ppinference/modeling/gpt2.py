@@ -183,7 +183,6 @@ class GPT2PipelineForwards:
                     encoder_attention_mask,
                 )
             else:
-                print(torch.distributed.get_rank(), "forward", i)
                 outputs = block(
                     hidden_states,
                     layer_past=layer_past,

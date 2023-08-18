@@ -38,7 +38,7 @@ class PPInferEngine:
 
     def inference(self, input_list):
         out = self.schedule.generate_step(self.model, iter(input_list))
-
+        return out
         # print(out)
 
     def _inject_fwd(self, pp_fwd: Callable):

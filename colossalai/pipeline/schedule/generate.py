@@ -21,12 +21,12 @@ class GenerateSchedule(PipelineSchedule):
     def __init__(self, stage_manager: PipelineStageManager, mb_manager: MicroBatchManager) -> None:
         super().__init__(stage_manager)
         self.comm = PipelineP2PCommunication(stage_manager)
-        self.num_microbatches = stage_manager.num_stages
         self.mb_manager = mb_manager
+        self.microbatch_size = mb_manager.pp_inference_config.micro_batch_size
         self.batch: Optional[Any] = None
         self.batch_size: Optional[int] = None
         self.microbatch_offset: Optional[int] = None
-        self.microbatch_size: Optional[int] = None
+        self.num_microbatches: Optional[int] = None
 
     def load_batch(self, data_iter: Iterable, device: Optional[torch.device] = None) -> None:
         """Load a batch from data iterator.
@@ -41,9 +41,9 @@ class GenerateSchedule(PipelineSchedule):
         self.batch = batch
         self.batch_size = get_batch_size(batch)
         self.microbatch_offset = 0
-        assert self.batch_size % self.num_microbatches == 0, \
+        assert self.batch_size % self.microbatch_size == 0, \
             f"Batch size should divided by the number of microbatches, {self.batch_size}, {self.num_microbatches}"
-        self.microbatch_size = self.batch_size // self.num_microbatches
+        self.num_microbatches = self.batch_size // self.microbatch_size
 
     def load_micro_batch(self) -> Any:
         """Load a micro batch from the current batch.
@@ -55,6 +55,7 @@ class GenerateSchedule(PipelineSchedule):
         self.microbatch_offset += self.microbatch_size
         return tree_map(partial(to_device, device=get_current_device()), micro_batch)
 
+    @torch.no_grad()
     def generate_step(self,
                       model: Module,
                       data_iter: Iterable,
@@ -73,6 +74,7 @@ class GenerateSchedule(PipelineSchedule):
         """
         output_sequence = []
         self.load_batch(data_iter)
+        model.eval()
 
         # prepare for warmup
         num_warmup_microbatch = self.stage_manager.num_stages - self.stage_manager.stage
@@ -80,9 +82,9 @@ class GenerateSchedule(PipelineSchedule):
         num_microbatch_remaining = self.num_microbatches - num_warmup_microbatch
 
         # run warmup round
-        for _ in range(num_warmup_microbatch):
+        for _ in range(self.num_microbatches):
             micro_batch = None
-            if self.stage_manager.is_first_stage:
+            if self.stage_manager.is_first_stage():
                 micro_batch = self.load_micro_batch()
             input_obj = self.comm.recv_forward()
             # if self.stage_manager.is_first_stage:
@@ -90,7 +92,7 @@ class GenerateSchedule(PipelineSchedule):
             hidden_states = None if input_obj is None else {'hidden_states': input_obj.get('hidden_states', None)}
             output_obj = model_forward(model, micro_batch, hidden_states)
             self.comm.send_forward(output_obj)
-            if self.stage_manager.is_last_stage:
-                output_sequence.append(output_obj)
+            if self.stage_manager.is_last_stage():
+                output_sequence.append(output_obj['hidden_states'])
 
         return output_sequence
