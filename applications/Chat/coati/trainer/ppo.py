@@ -1,7 +1,7 @@
 from typing import Dict, List, Optional
 
 from coati.experience_buffer import NaiveExperienceBuffer
-from coati.experience_maker import Experience, NaiveExperienceMaker
+from coati.experience_maker import ChunkedExperienceMaker, Experience
 from coati.models.base import Actor, Critic, RewardModel, get_base_model
 from coati.models.loss import GPTLMLoss, PolicyLoss, ValueLoss
 from coati.models.utils import calc_action_log_probs
@@ -45,6 +45,7 @@ class PPOTrainer(OnPolicyTrainer):
         actor_optim (Optimizer): the optimizer to use for actor model
         critic_optim (Optimizer): the optimizer to use for critic model
         kl_coef (float, defaults to 0.1): the coefficient of kl divergence loss
+        chunk_size (int, defaults to 8): the chunk size to use for chunked experience maker
         train_batch_size (int, defaults to 8): the batch size to use for training
         buffer_limit (int, defaults to 0): the max_size limitation of buffer
         buffer_cpu_offload (bool, defaults to True): whether to offload buffer to cpu
@@ -59,30 +60,30 @@ class PPOTrainer(OnPolicyTrainer):
         generate_kwargs (dict, optional): the kwargs to use while model generating
     """
 
-    def __init__(
-        self,
-        strategy: Strategy,
-        actor: Actor,
-        critic: Critic,
-        reward_model: RewardModel,
-        initial_model: Actor,
-        actor_optim: Optimizer,
-        critic_optim: Optimizer,
-        tokenizer: PreTrainedTokenizerBase,
-        kl_coef: float = 0.1,
-        ptx_coef: float = 0.9,
-        train_batch_size: int = 8,
-        buffer_limit: int = 0,
-        buffer_cpu_offload: bool = True,
-        eps_clip: float = 0.2,
-        vf_coef: float = 1.0,
-        value_clip: float = 0.4,
-        sample_buffer: bool = False,
-        dataloader_pin_memory: bool = True,
-        offload_inference_models: bool = True,
-        callbacks: List[Callback] = [],
-        **generate_kwargs,
-    ) -> None:
+    def __init__(self,
+                 strategy: Strategy,
+                 actor: Actor,
+                 critic: Critic,
+                 reward_model: RewardModel,
+                 initial_model: Actor,
+                 actor_optim: Optimizer,
+                 critic_optim: Optimizer,
+                 tokenizer: PreTrainedTokenizerBase,
+                 kl_coef: float = 0.1,
+                 chunk_size: int = 8,
+                 ptx_coef: float = 0.9,
+                 train_batch_size: int = 8,
+                 buffer_limit: int = 0,
+                 buffer_cpu_offload: bool = True,
+                 eps_clip: float = 0.2,
+                 vf_coef: float = 1.0,
+                 value_clip: float = 0.4,
+                 sample_buffer: bool = False,
+                 dataloader_pin_memory: bool = True,
+                 offload_inference_models: bool = True,
+                 callbacks: List[Callback] = [],
+                 **generate_kwargs
+                 ) -> None:
         if isinstance(strategy, GeminiStrategy):
             assert not offload_inference_models, "GeminiPlugin is not compatible with manual model.to('cpu')"
 
@@ -90,7 +91,10 @@ class PPOTrainer(OnPolicyTrainer):
         super().__init__(strategy, data_buffer, sample_buffer, dataloader_pin_memory, callbacks)
 
         self.generate_kwargs = _set_default_generate_kwargs(strategy, generate_kwargs, actor)
-        self.experience_maker = NaiveExperienceMaker(actor, critic, reward_model, initial_model, tokenizer, kl_coef)
+        self.experience_maker = ChunkedExperienceMaker(
+            actor, critic, reward_model, initial_model,
+            tokenizer, chunk_size, kl_coef
+        )
 
         self.actor = actor
         self.critic = critic
@@ -98,6 +102,7 @@ class PPOTrainer(OnPolicyTrainer):
 
         self.actor_loss_fn = PolicyLoss(eps_clip)
         self.critic_loss_fn = ValueLoss(value_clip)
+        self.chunk_size = chunk_size
         self.vf_coef = vf_coef
         self.ptx_loss_fn = GPTLMLoss()
         self.ptx_coef = ptx_coef
@@ -150,14 +155,20 @@ class PPOTrainer(OnPolicyTrainer):
     def _training_step(self, experience: Experience):
         self.actor.train()
         self.critic.train()
+
+        step_mask = experience.step_mask
+        num_samples = torch.sum(step_mask)
+
         # policy loss
         num_actions = experience.action_log_probs.size(1)
         actor_logits = self.actor(experience.sequences, experience.attention_mask)["logits"]
         action_log_probs = calc_action_log_probs(actor_logits, experience.sequences, num_actions)
-        actor_loss = self.actor_loss_fn(
-            action_log_probs, experience.action_log_probs, experience.advantages, action_mask=experience.action_mask
-        )
-        actor_loss = (1 - self.ptx_coef) * actor_loss
+        actor_loss = self.actor_loss_fn(action_log_probs,
+                                        experience.action_log_probs,
+                                        experience.advantages,
+                                        action_mask=experience.action_mask,
+                                        chunk_size=self.experience_maker.chunk_size)
+        actor_loss = (1 - self.ptx_coef) * torch.sum(actor_loss * step_mask) / num_samples
         self.strategy.backward(actor_loss, self.actor, self.actor_optim)
 
         # ptx loss
@@ -172,10 +183,22 @@ class PPOTrainer(OnPolicyTrainer):
         self.actor_optim.zero_grad()
 
         # value loss
-        values = self.critic(experience.sequences, attention_mask=experience.attention_mask)
-        critic_loss = self.critic_loss_fn(values, experience.values, experience.reward)
-        critic_loss = critic_loss * self.vf_coef
-        self.strategy.backward(critic_loss, self.critic, self.critic_optim)
+        input_len = experience.sequences.size(1) - num_actions
+        num_steps = (num_actions + self.chunk_size - 1) // self.chunk_size
+        for i in range(num_steps):
+            seq_len = input_len + min(i * self.chunk_size, num_actions)
+            sequence_with_eos = F.pad(experience.sequences[:, :seq_len], (0, 1), value=self.tokenizer.eos_token_id)
+            sequence_with_eos_mask = F.pad(experience.attention_mask[:, :seq_len], (0, 1), value=False)
+            # NOTE: sequences[:, :seq_len] must contain <eos> if sequences[:, seq_len - 1] is {<eos>, padding token}
+            sequence_with_eos_mask[:, -1] = torch.logical_and(
+                experience.sequences[:, seq_len - 1] != self.tokenizer.pad_token_id,
+                experience.sequences[:, seq_len - 1] != self.tokenizer.eos_token_id
+            )
+            values = self.critic(sequence_with_eos, sequence_with_eos_mask)
+            critic_loss = self.critic_loss_fn(values, experience.values[:, i], experience.returns[:, i])
+            critic_loss = torch.sum(critic_loss * step_mask[:, i]) / num_samples
+            self.strategy.backward(critic_loss, self.critic, self.critic_optim)
+
         self.strategy.optimizer_step(self.critic_optim)
         self.critic_optim.zero_grad()
 
