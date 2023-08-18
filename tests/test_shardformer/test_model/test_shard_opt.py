@@ -16,6 +16,7 @@ from tests.test_shardformer.test_model._utils import (
     check_output_hidden_state,
     check_weight,
     run_forward_backward_with_hybrid_plugin,
+    unwrap_model,
 )
 
 os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
@@ -51,12 +52,8 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         check_loss(org_loss, sharded_loss, atol=atol, rtol=rtol)
 
     # unwrap model
-    if org_model.__class__.__name__ == 'OPTModel':
-        opt_model = org_model
-        shard_opt_model = sharded_model.unwrap()
-    else:
-        opt_model = org_model.model
-        shard_opt_model = sharded_model.unwrap().model
+    opt_model = unwrap_model(org_model, 'OPTModel', 'model')
+    shard_opt_model = unwrap_model(sharded_model, 'OPTModel', 'model')
 
     # check grad
     row_layer_for_check = ['decoder.layers[0].self_attn.q_proj', 'decoder.embed_tokens']    # 'decoder.embed_tokens'
@@ -123,14 +120,17 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     'pp_size': 1,
     'enable_all_optimization': True,
     'use_lazy_init': False,
-    'precision': 'fp32',
+    'precision': 'fp32'
+}, {
+    'tp_size': 2,
+    'pp_size': 1,
+    'enable_all_optimization': True,
+    'use_lazy_init': False,
+    'precision': 'fp32'
 }])
 def run_opt_test(test_config):
 
-    # TODO(baizhou): add test_config for TP+DP after supporting & debugging it
-
     sub_model_zoo = model_zoo.get_sub_registry('transformers_opt')
-
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
 

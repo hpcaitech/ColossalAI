@@ -143,7 +143,6 @@ def run_dist(rank, world_size, port, backend, port_list, host):
         reset_seeds()
 
 
-@pytest.mark.cpu
 @rerun_if_address_is_in_use()
 def test_context():
     """

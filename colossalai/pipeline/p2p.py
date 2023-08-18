@@ -173,14 +173,10 @@ class PipelineP2PCommunication:
         Returns:
             Any: The input tensor or input tensor list.
         """
-        if self.stage_manager.is_first_stage():
-            input_tensor = None
-        else:
-            if prev_rank is None:
-                prev_rank = self.stage_manager.get_prev_rank()
-            cur_rank = self.stage_manager.get_rank()
-            input_tensor = _recv_object(prev_rank, cur_rank,
-                                        self.stage_manager.get_p2p_process_group(prev_rank, cur_rank))
+        if prev_rank is None:
+            prev_rank = self.stage_manager.get_prev_rank()
+        cur_rank = self.stage_manager.get_rank()
+        input_tensor = _recv_object(prev_rank, cur_rank, self.stage_manager.get_p2p_process_group(prev_rank, cur_rank))
 
         return input_tensor
 
@@ -193,14 +189,11 @@ class PipelineP2PCommunication:
         Returns:
             Any: The input gradient tensor or gradient tensor list.
         """
-        if self.stage_manager.is_last_stage():
-            output_tensor_grad = None
-        else:
-            if next_rank is None:
-                next_rank = self.stage_manager.get_next_rank()
-            cur_rank = self.stage_manager.get_rank()
-            output_tensor_grad = _recv_object(next_rank, cur_rank,
-                                              self.stage_manager.get_p2p_process_group(next_rank, cur_rank))
+        if next_rank is None:
+            next_rank = self.stage_manager.get_next_rank()
+        cur_rank = self.stage_manager.get_rank()
+        output_tensor_grad = _recv_object(next_rank, cur_rank,
+                                          self.stage_manager.get_p2p_process_group(next_rank, cur_rank))
 
         return output_tensor_grad
 
@@ -211,12 +204,10 @@ class PipelineP2PCommunication:
             output_object (Any): Object to be sent.
             next_rank (int, optional): The rank of the recipient of the tensor.
         """
-        if not self.stage_manager.is_last_stage():
-            if next_rank is None:
-                next_rank = self.stage_manager.get_next_rank()
-            cur_rank = self.stage_manager.get_rank()
-            _send_object(output_object, cur_rank, next_rank,
-                         self.stage_manager.get_p2p_process_group(cur_rank, next_rank))
+        if next_rank is None:
+            next_rank = self.stage_manager.get_next_rank()
+        cur_rank = self.stage_manager.get_rank()
+        _send_object(output_object, cur_rank, next_rank, self.stage_manager.get_p2p_process_group(cur_rank, next_rank))
 
     def send_backward(self, input_object: Any, prev_rank: int = None) -> None:
         """Sends the gradient tensor to the previous stage in pipeline.
@@ -225,9 +216,7 @@ class PipelineP2PCommunication:
             input_object (Any): Object to be sent.
             prev_rank (int, optional): The rank of the recipient of the tensor
         """
-        if not self.stage_manager.is_first_stage():
-            if prev_rank is None:
-                prev_rank = self.stage_manager.get_prev_rank()
-            cur_rank = self.stage_manager.get_rank()
-            _send_object(input_object, cur_rank, prev_rank,
-                         self.stage_manager.get_p2p_process_group(cur_rank, prev_rank))
+        if prev_rank is None:
+            prev_rank = self.stage_manager.get_prev_rank()
+        cur_rank = self.stage_manager.get_rank()
+        _send_object(input_object, cur_rank, prev_rank, self.stage_manager.get_p2p_process_group(cur_rank, prev_rank))
