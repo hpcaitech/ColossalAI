@@ -131,21 +131,15 @@ def test_lora(lora_rank: int,
     # HACK: skip llama due to long execution time
     # lambda: (LlamaActor(), LlamaCritic(), LlamaRM()),
     lambda: (OPTActor(), OPTCritic(), OPTRM()),
-    lambda: (ChatGLMActor()),
+    lambda: (ChatGLMActor(), None, None),
 ])
 @torch.no_grad()
 def test_models(models_maker: Callable[[], Tuple[Actor, Critic, RewardModel, Actor]],
                 batch_size: int,
                 seq_len: int):
-    tokenizer = ChatGLMTokenizer.from_pretrained( "THUDM/chatglm-6b", trust_remote_code=True)
-    chatglm_special_token = torch.tensor([tokenizer.gmask_token_id, tokenizer.bos_token_id]).repeat(batch_size, 1)
     actor_input = {
         "input_ids": torch.randint(0, 100, (batch_size, seq_len)),
         "attention_mask": torch.randint(0, 2, (batch_size, seq_len))
-    }
-    chatglm_actor_input ={
-        "input_ids": torch.cat((torch.randint(0, 100, (batch_size, seq_len//2)), chatglm_special_token, torch.randint(0, 100, (batch_size, seq_len//2 - 2))), dim=1),
-        "attention_mask": torch.randint(0, 2, (batch_size, 1, seq_len, seq_len))
     }
     critic_input = {
         "sequences": torch.randint(0, 100, (batch_size, seq_len)),
@@ -157,25 +151,31 @@ def test_models(models_maker: Callable[[], Tuple[Actor, Critic, RewardModel, Act
         "attention_mask": torch.randint(0, 2, (batch_size, seq_len))
     }
 
-    bloom_actor, critic, rm, chatglm_actor = models_maker()
-    assert isinstance(bloom_actor, Actor)
-    assert isinstance(chatglm_actor, Actor)
-    bloom_base_actor_model = get_base_model(bloom_actor)
-    chatglm_base_actor_model = get_base_model(chatglm_actor)
-    assert isinstance(critic, Critic)
-    base_critic_model = get_base_model(critic)
-    assert isinstance(rm, RewardModel)
-    base_rm_model = get_base_model(rm)
-    chatglm_actor = chatglm_actor.float()
-    bloom_actor_output = bloom_actor(**actor_input)
-    chatglm_actor_output = chatglm_actor(**chatglm_actor_input)
-    critic_output = critic(**critic_input)
-    rm_output = rm(**rm_input)
+    actor, critic, rm = models_maker()
+    if isinstance(actor, ChatGLMActor):
+        actor = actor.float()
+        tokenizer = ChatGLMTokenizer.from_pretrained( "THUDM/chatglm-6b", trust_remote_code=True)
+        chatglm_special_token = torch.tensor([tokenizer.gmask_token_id, tokenizer.bos_token_id]).repeat(batch_size, 1)
+        actor_input ={
+        "input_ids": torch.cat((torch.randint(0, 100, (batch_size, seq_len//2)), chatglm_special_token, torch.randint(0, 100, (batch_size, seq_len//2 - 2))), dim=1),
+        "attention_mask": torch.randint(0, 2, (batch_size, 1, seq_len, seq_len))
+    }
+    assert isinstance(actor, Actor)
+    base_actor_model = get_base_model(actor)
+    actor_output = actor(**actor_input)
+    assert actor_output.logits.shape[:2] == (batch_size, seq_len)
 
-    assert bloom_actor_output.logits.shape[:2] == (batch_size, seq_len)
-    assert chatglm_actor_output.logits.shape[:2] == (batch_size, seq_len)
-    assert critic_output.shape == (batch_size, )
-    assert rm_output.shape == (batch_size, )
+    if critic:
+        assert isinstance(critic, Critic)
+        base_critic_model = get_base_model(critic)
+        critic_output = critic(**critic_input)
+        assert critic_output.shape == (batch_size, )
+    
+    if rm:
+        assert isinstance(rm, RewardModel)
+        base_rm_model = get_base_model(rm)
+        rm_output = rm(**rm_input)
+        assert rm_output.shape == (batch_size, )
 
 
 @pytest.mark.cpu
@@ -240,8 +240,7 @@ if __name__ == "__main__":
 
     test_models(models_maker=lambda: (BLOOMActor(),
                                       BLOOMCritic(),
-                                      BLOOMRM(),
-                                      ChatGLMActor()),
+                                      BLOOMRM()),
                 batch_size=8,
                 seq_len=128)
 
