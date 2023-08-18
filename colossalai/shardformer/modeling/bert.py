@@ -58,7 +58,7 @@ class BertPipelineForwards:
         stage_manager: Optional[PipelineStageManager] = None,
         hidden_states: Optional[torch.FloatTensor] = None,    # this is from the previous stage
         stage_index: Optional[List[int]] = None,
-        tp_shard_config: ShardConfig = None,
+        shard_config: ShardConfig = None,
     ):
         # TODO(jianghai): add explaination of the output here.
         r"""
@@ -183,10 +183,10 @@ class BertPipelineForwards:
 
         # split the input tensor along sequence dimension
         # [batch_size, seq_len, hidden_size] -> [batch_size, seq_len/TP_size, hidden_size]
-        if tp_shard_config is not None and tp_shard_config.enable_sequence_parallelism:
+        if shard_config is not None and shard_config.enable_sequence_parallelism:
             hidden_states = split_forward_gather_backward(hidden_states,
                                                           dim=1,
-                                                          process_group=tp_shard_config.tensor_parallel_process_group)
+                                                          process_group=shard_config.tensor_parallel_process_group)
 
         for idx, encoder_layer in enumerate(self.encoder.layer[start_idx:end_idx], start=start_idx):
             if stage_manager.is_first_stage() and idx == 0:
@@ -235,10 +235,10 @@ class BertPipelineForwards:
                         (layer_outputs[2],)
 
         # When sequence parallelism done, gather the output tensor in forward and split it in backward
-        if tp_shard_config is not None and tp_shard_config.enable_sequence_parallelism:
+        if shard_config is not None and shard_config.enable_sequence_parallelism:
             hidden_states = gather_forward_split_backward(hidden_states,
                                                           dim=1,
-                                                          process_group=tp_shard_config.tensor_parallel_process_group)
+                                                          process_group=shard_config.tensor_parallel_process_group)
 
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
@@ -285,7 +285,7 @@ class BertPipelineForwards:
         hidden_states: Optional[torch.FloatTensor] = None,
         stage_manager: Optional[PipelineStageManager] = None,
         stage_index: Optional[List[int]] = None,
-        tp_shard_config: ShardConfig = None,
+        shard_config: ShardConfig = None,
     ):
         logger = logging.get_logger(__name__)
 
@@ -312,7 +312,7 @@ class BertPipelineForwards:
             stage_manager=stage_manager,
             hidden_states=hidden_states if hidden_states is not None else None,
             stage_index=stage_index,
-            tp_shard_config=tp_shard_config,
+            shard_config=shard_config,
         )
         past_key_values = None
         all_hidden_states = None
@@ -369,7 +369,7 @@ class BertPipelineForwards:
         hidden_states: Optional[torch.FloatTensor] = None,
         stage_manager: Optional[PipelineStageManager] = None,
         stage_index: Optional[List[int]] = None,
-        tp_shard_config: ShardConfig = None,
+        shard_config: ShardConfig = None,
     ):
         r"""
             encoder_hidden_states  (`torch.FloatTensor` of shape `(batch_size, sequence_length, hidden_size)`, *optional*):
@@ -425,7 +425,7 @@ class BertPipelineForwards:
             stage_manager=stage_manager,
             hidden_states=hidden_states if hidden_states is not None else None,
             stage_index=stage_index,
-            tp_shard_config=tp_shard_config)
+            shard_config=shard_config)
         past_key_values = None
         all_hidden_states = None
         all_self_attentions = None
@@ -478,7 +478,7 @@ class BertPipelineForwards:
         hidden_states: Optional[torch.Tensor] = None,
         stage_manager: Optional[PipelineStageManager] = None,
         stage_index: Optional[List[int]] = None,
-        tp_shard_config: ShardConfig = None,
+        shard_config: ShardConfig = None,
     ):
         r"""
             labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
@@ -513,7 +513,7 @@ class BertPipelineForwards:
             hidden_states=hidden_states,
             stage_manager=stage_manager,
             stage_index=stage_index,
-            tp_shard_config=tp_shard_config,
+            shard_config=shard_config,
         )
 
         if stage_manager.is_last_stage():
@@ -555,7 +555,7 @@ class BertPipelineForwards:
         hidden_states: Optional[torch.Tensor] = None,
         stage_manager: Optional[PipelineStageManager] = None,
         stage_index: Optional[List[int]] = None,
-        tp_shard_config: ShardConfig = None,
+        shard_config: ShardConfig = None,
         **kwargs,
     ):
         # -> Union[Tuple[torch.Tensor], NextSentencePredictorOutput]:
@@ -619,7 +619,7 @@ class BertPipelineForwards:
                                                           hidden_states=hidden_states,
                                                           stage_manager=stage_manager,
                                                           stage_index=stage_index,
-                                                          tp_shard_config=tp_shard_config)
+                                                          shard_config=shard_config)
 
         if stage_manager.is_last_stage():
             pooled_output = outputs[1]
@@ -661,7 +661,7 @@ class BertPipelineForwards:
         hidden_states: Optional[torch.Tensor] = None,
         stage_manager: Optional[PipelineStageManager] = None,
         stage_index: Optional[List[int]] = None,
-        tp_shard_config: ShardConfig = None,
+        shard_config: ShardConfig = None,
     ):
         r"""
         labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
@@ -693,7 +693,7 @@ class BertPipelineForwards:
                                                           hidden_states=hidden_states,
                                                           stage_manager=stage_manager,
                                                           stage_index=stage_index,
-                                                          tp_shard_config=tp_shard_config)
+                                                          shard_config=shard_config)
 
         if stage_manager.is_last_stage():
             pooled_output = outputs[1]
@@ -753,7 +753,7 @@ class BertPipelineForwards:
         hidden_states: Optional[torch.Tensor] = None,
         stage_manager: Optional[PipelineStageManager] = None,
         stage_index: Optional[List[int]] = None,
-        tp_shard_config: ShardConfig = None,
+        shard_config: ShardConfig = None,
     ):
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
@@ -783,7 +783,7 @@ class BertPipelineForwards:
                                                           hidden_states=hidden_states,
                                                           stage_manager=stage_manager,
                                                           stage_index=stage_index,
-                                                          tp_shard_config=tp_shard_config)
+                                                          shard_config=shard_config)
 
         if stage_manager.is_last_stage():
             sequence_output = outputs[0]
@@ -826,7 +826,7 @@ class BertPipelineForwards:
         hidden_states: Optional[torch.Tensor] = None,
         stage_manager: Optional[PipelineStageManager] = None,
         stage_index: Optional[List[int]] = None,
-        tp_shard_config: ShardConfig = None,
+        shard_config: ShardConfig = None,
     ):
         r"""
         labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
@@ -871,7 +871,7 @@ class BertPipelineForwards:
             hidden_states=hidden_states,
             stage_manager=stage_manager,
             stage_index=stage_index,
-            tp_shard_config=tp_shard_config,
+            shard_config=shard_config,
         )
         if stage_manager.is_last_stage():
             pooled_output = outputs[1]
@@ -915,7 +915,7 @@ class BertPipelineForwards:
         hidden_states: Optional[torch.Tensor] = None,
         stage_manager: Optional[PipelineStageManager] = None,
         stage_index: Optional[List[int]] = None,
-        tp_shard_config: ShardConfig = None,
+        shard_config: ShardConfig = None,
     ):
         # NOTE: the arg start_position and end_position are used only for the last stage
         r"""
@@ -952,7 +952,7 @@ class BertPipelineForwards:
                                                           hidden_states=hidden_states,
                                                           stage_manager=stage_manager,
                                                           stage_index=stage_index,
-                                                          tp_shard_config=tp_shard_config)
+                                                          shard_config=shard_config)
         if stage_manager.is_last_stage():
             sequence_output = outputs[0]
 

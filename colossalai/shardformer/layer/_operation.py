@@ -155,7 +155,6 @@ class _LinearWithGatherForwardReduceScatterBackward(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, input_, weight, bias, process_group, async_grad_reduce_scatter, dim, overlap):
-        input_ = input_.clone()
         ctx.save_for_backward(input_, weight)
         ctx.use_bias = bias is not None
         ctx.process_group = process_group
@@ -468,9 +467,7 @@ def _gather(input_, dim=-1, process_group=None):
 
     # all gather
     input_ = input_.contiguous()
-    rank = dist.get_rank(process_group)
     tensor_list = [torch.empty_like(input_) for _ in range(world_size)]
-    tensor_list[rank] = input_
     torch.distributed.all_gather(tensor_list, input_, group=process_group)
 
     # concat

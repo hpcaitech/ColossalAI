@@ -224,7 +224,7 @@ class BertPolicy(Policy):
                     partial(new_forward,
                             stage_manager=stage_manager,
                             stage_index=stage_index,
-                            tp_shard_config=self.shard_config)
+                            shard_config=self.shard_config)
             }
             self.append_or_create_method_replacement(description=method_replacement,
                                                      policy=policy,
