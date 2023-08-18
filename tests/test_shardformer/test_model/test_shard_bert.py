@@ -56,9 +56,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         atol, rtol = 1e-4, 1e-3
     else:
         atol, rtol = 5e-3, 5e-3
-    if stage_manager is None or stage_manager.is_first_stage():
-        #check_weight(bert.embeddings.word_embeddings, sharded_bert.embeddings.word_embeddings, tp_group, atol=1e-5, rtol=1e-3)
-        #check_weight(bert.encoder.layer[0].attention.self.query, sharded_bert.encoder.layer[0].attention.self.query, tp_group, atol=5e-3, rtol=1e-3)
+    if (stage_manager is None or stage_manager.is_first_stage()) and booster.plugin.zero_stage == 0:
         check_grad(bert, sharded_bert, col_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=1, verbose=False)
         check_grad(bert, sharded_bert, row_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=0, verbose=False)
 
@@ -101,6 +99,14 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     'enable_all_optimization': True,
     'use_lazy_init': False,
     'precision': 'fp32'
+}, {
+    'tp_size': 2,
+    'pp_size': 1,
+    'enable_all_optimization': True,
+    'use_lazy_init': True,
+    'zero_stage': 2,
+    'precision': 'fp16',
+    'initial_scale': 1
 }])
 def run_bert_test(test_config):
 
