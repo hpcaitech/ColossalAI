@@ -74,7 +74,7 @@ def make_and_consume_experience(strategy):
         data = get_data(EXPERIENCE_BATCH_SIZE)
         assert gather_and_equal(data['input_ids'])
         assert gather_and_equal(data['attention_mask'])
-        experience = experience_maker.make_experience(**data, **generate_kwargs)
+        experience, _ = experience_maker.make_experience(**data, **generate_kwargs)
         num_actions = experience.action_log_probs.size(1)
         chunk_size = experience_maker.chunk_size
         num_steps = experience.advantages.size(1)
