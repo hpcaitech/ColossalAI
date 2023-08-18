@@ -56,7 +56,7 @@ def make_and_consume_experience(strategy):
 
     actor, critic, initial_model, reward_model = strategy.prepare(actor, critic, initial_model, reward_model)
 
-    class MockTokenizer:
+    class MockTokenizer():
         def __init__(self):
             self.padding_side = "left"
             self.eos_token_id = 0

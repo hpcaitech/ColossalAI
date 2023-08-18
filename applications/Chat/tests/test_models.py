@@ -19,30 +19,27 @@ from coati.models.utils import calc_action_log_probs, masked_mean
 
 @pytest.mark.parametrize("batch_size", [4])
 @pytest.mark.parametrize("seq_len", [32])
-@pytest.mark.parametrize(
-    "actor_maker",
-    [
-        lambda: BLOOMActor(),
-        lambda: GPTActor(),
-        # HACK: skip llama due to long execution time
-        # lambda: LlamaActor(),
-        lambda: OPTActor(),
-    ],
-)
-@pytest.mark.parametrize(
-    "generate_kwargs",
-    [
-        {
-            "max_length": 64,
-            "use_cache": True,
-            "do_sample": True,
-            "temperature": 1.0,
-            "top_k": 50,
-        }
-    ],
-)
-def test_generation(actor_maker: Callable[[], Actor], batch_size: int, seq_len: int, generate_kwargs: Dict[str, Any]):
-    class MockTokenizer:
+@pytest.mark.parametrize("actor_maker", [
+    lambda: BLOOMActor(),
+    lambda: GPTActor(),
+    # HACK: skip llama due to long execution time
+    # lambda: LlamaActor(),
+    lambda: OPTActor()
+])
+@pytest.mark.parametrize("generate_kwargs", [{
+    "max_length": 64,
+    "use_cache": True,
+    "do_sample": True,
+    "temperature": 1.0,
+    "top_k": 50,
+}])
+def test_generation(actor_maker: Callable[[], Actor],
+                    batch_size: int,
+                    seq_len: int,
+                    generate_kwargs: Dict[str, Any]
+                    ):
+
+    class MockTokenizer():
         def __init__(self):
             self.padding_side = "left"
             self.eos_token_id = 0
