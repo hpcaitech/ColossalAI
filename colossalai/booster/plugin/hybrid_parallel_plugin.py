@@ -220,12 +220,13 @@ class HybridParallelPlugin(PipelinePluginBase):
         hysteresis (int, optional):  The number of overflows before decreasing loss scale when using AMP. Defaults to 2.
         max_scale (float, optional): The maximum loss scale of AMP. Defaults to 2**32.
         max_norm (float, optional): Maximum norm for gradient clipping. Defaults to 0.
-        bucket_cap_mb (int, optional): The bucket size in MB when using DDP or ZeRO. Defaults to 25.
         broadcast_buffers (bool, optional): Whether to broadcast buffers in the beginning of training when using DDP. Defaults to True.
+        ddp_bucket_cap_mb (int, optional): The bucket size in MB when using DDP. Defaults to 25.
         find_unused_parameters (bool, optional): Whether to find unused parameters when using DDP. Defaults to False.
         check_reduction (bool, optional): Whether to check reduction when using DDP. Defaults to False.
         gradient_as_bucket_view (bool, optional): Whether to use gradient as bucket view when using DDP. Defaults to False.
         static_graph (bool, optional): Whether to use static graph when using DDP. Defaults to False.
+        zero_bucket_size_in_m (int, optional): Gradient reduce bucket size in million elements when using ZeRO. Defaults to 12.
         cpu_offload (bool, optional): Whether to open cpu_offload when using ZeRO. Defaults to False.
         communication_dtype (torch.dtype, optional): Communication dtype when using ZeRO. If not specified, the dtype of param will be used. Defaults to None.
         overlap_communication (bool, optional): Whether to overlap communication and computation when using ZeRO. Defaults to True.
@@ -251,11 +252,12 @@ class HybridParallelPlugin(PipelinePluginBase):
                  max_scale: float = 2**32,
                  max_norm: float = 0,
                  broadcast_buffers: bool = True,
-                 bucket_cap_mb: int = 25,
+                 ddp_bucket_cap_mb: int = 25,
                  find_unused_parameters: bool = False,
                  check_reduction: bool = False,
                  gradient_as_bucket_view: bool = False,
                  static_graph: bool = False,
+                 zero_bucket_size_in_m: int = 12,
                  cpu_offload: bool = False,
                  communication_dtype: Optional[torch.dtype] = None,
                  overlap_communication: bool = True) -> None:
@@ -309,13 +311,13 @@ class HybridParallelPlugin(PipelinePluginBase):
         )
 
         self.ddp_config = dict(broadcast_buffers=broadcast_buffers,
-                               bucket_cap_mb=bucket_cap_mb,
+                               bucket_cap_mb=ddp_bucket_cap_mb,
                                find_unused_parameters=find_unused_parameters,
                                check_reduction=check_reduction,
                                gradient_as_bucket_view=gradient_as_bucket_view,
                                static_graph=static_graph)
 
-        self.zero_config = dict(reduce_bucket_size=bucket_cap_mb * 1024 * 1024,
+        self.zero_config = dict(reduce_bucket_size=zero_bucket_size_in_m * 1024 * 1024,
                                 communication_dtype=communication_dtype,
                                 overlap_communication=overlap_communication,
                                 cpu_offload=cpu_offload,
