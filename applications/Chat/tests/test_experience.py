@@ -11,7 +11,6 @@ from coati.models.gpt import GPTActor, GPTCritic
 from coati.trainer.ppo import _set_default_generate_kwargs
 from coati.trainer.strategies import DDPStrategy, GeminiStrategy
 from coati.trainer.strategies.colossalai import LowLevelZeroStrategy
-from transformers import PreTrainedTokenizer
 from transformers.models.gpt2.configuration_gpt2 import GPT2Config
 
 from colossalai.testing import rerun_if_address_is_in_use, spawn
@@ -58,8 +57,13 @@ def make_and_consume_experience(strategy):
     actor, critic, initial_model, reward_model = \
         strategy.prepare(actor, critic, initial_model, reward_model)
 
-    tokenizer = PreTrainedTokenizer()
-    tokenizer.padding_side = "left"
+    class MockTokenizer():
+        def __init__(self):
+            self.padding_side = "left"
+            self.eos_token_id = 0
+            self.pad_token_id = 0
+
+    tokenizer = MockTokenizer()
     experience_maker = NaiveExperienceMaker(actor, critic, reward_model, initial_model, tokenizer)
     data_buffer = NaiveExperienceBuffer(SAMPLE_BATCH_SIZE, cpu_offload=False)
 
