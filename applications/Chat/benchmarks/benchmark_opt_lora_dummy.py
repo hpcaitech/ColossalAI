@@ -138,6 +138,7 @@ def main(args):
 
     tokenizer = AutoTokenizer.from_pretrained("facebook/opt-350m")
     tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.padding_side = "left"
 
     (actor, actor_optim), (critic, critic_optim) = strategy.prepare((actor, actor_optim), (critic, critic_optim))
 
