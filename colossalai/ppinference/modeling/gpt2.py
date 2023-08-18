@@ -8,8 +8,6 @@ from transformers.utils import logging
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
 
-from ..microbatch_manager import MicroBatchManager
-
 
 class GPT2PipelineForwards:
     '''
@@ -149,7 +147,7 @@ class GPT2PipelineForwards:
 
         # Going through held blocks.
         start_idx, end_idx = stage_index[0], stage_index[1]
-        for i, (block, layer_past) in enumerate(zip(range(start_idx, end_idx), past_key_values)):
+        for i, layer_past in zip(range(start_idx, end_idx), past_key_values):
             block = self.h[i]
             # Model parallel
             if self.model_parallel:
@@ -185,6 +183,7 @@ class GPT2PipelineForwards:
                     encoder_attention_mask,
                 )
             else:
+                print(torch.distributed.get_rank(), "forward", i)
                 outputs = block(
                     hidden_states,
                     layer_past=layer_past,
@@ -220,13 +219,7 @@ class GPT2PipelineForwards:
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
 
-        return BaseModelOutputWithPastAndCrossAttentions(
-            last_hidden_state=hidden_states,
-            past_key_values=presents,
-            hidden_states=all_hidden_states,
-            attentions=all_self_attentions,
-            cross_attentions=all_cross_attentions,
-        )
+        return {'hidden_states': hidden_states, 'past_kv_cache': presents}
 
     @staticmethod
     def gpt2_lmhead_model_forward(
@@ -281,7 +274,7 @@ class GPT2PipelineForwards:
         if not stage_manager.is_last_stage():
             return outputs
 
-        hidden_states = outputs[0]
+        hidden_states = outputs['hidden_states']
         lm_logits = self.lm_head(hidden_states)
         loss = None
         if labels is not None:
@@ -297,11 +290,4 @@ class GPT2PipelineForwards:
             output = (lm_logits,) + outputs[1:]
             return ((loss,) + output) if loss is not None else output
 
-        return CausalLMOutputWithCrossAttentions(
-            loss=loss,
-            logits=lm_logits,
-            past_key_values=outputs.past_key_values,
-            hidden_states=outputs.hidden_states,
-            attentions=outputs.attentions,
-            cross_attentions=outputs.cross_attentions,
-        )
+        return {'hidden_states': lm_logits, 'past_kv_cache': outputs['past_kv_cache']}

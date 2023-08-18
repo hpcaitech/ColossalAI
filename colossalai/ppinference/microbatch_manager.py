@@ -2,6 +2,10 @@ from .inference_config import InferenceConfig
 
 __all__ = 'MicroBatchManager'
 
+BEGIN = 1
+GENERATE = 2
+DONE = 3
+
 
 class MicroBatchManager():
 
@@ -44,3 +48,9 @@ class MicroBatchManager():
     @property
     def cur_kvcache(self):
         return self.mb_to_kvcache[self.cur_mb]
+
+    # @property
+    # def mb_state(self):
+    #     if len(self.cur_kvcache) == 0:
+    #         return BEGIN
+    #     elif len(self.cur_kvcache) ==

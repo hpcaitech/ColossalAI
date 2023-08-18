@@ -1,18 +1,19 @@
+import re
 from functools import partial
 from types import MethodType
-from typing import List, Optional, Set
+from typing import Callable, List, Optional, Set
 
 import torch
 import torch.distributed as dist
 import torch.nn as nn
 
 from colossalai.cluster import ProcessGroupMesh
+from colossalai.pipeline.schedule.generate import GenerateSchedule
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer._utils import getattr_
 
 from .inference_config import InferenceConfig
 from .microbatch_manager import MicroBatchManager
-from .modeling.gpt2 import GPT2PipelineForwards
 from .utils import get_suffix_name, set_tensors_to_none
 
 
@@ -22,6 +23,7 @@ class PPInferEngine:
         self,
         gerneration_config: InferenceConfig,
         model: nn.Module,
+        pp_fwd: Callable,
     ) -> None:
         self.gerneration_config = gerneration_config
         self.model = model
@@ -29,18 +31,20 @@ class PPInferEngine:
         self.stage_manager = PipelineStageManager(self.pg_mesh, 0, True)
         self.held_layer = None
         self.mb_manager = MicroBatchManager(self.gerneration_config)
+        self.schedule = GenerateSchedule(self.stage_manager, self.mb_manager)
 
         self._partion_model()
-        self._inject_fwd()
+        self._inject_fwd(pp_fwd)
 
-    def inference(self, **kwargs):
-        output = self.model(**kwargs)
-        return output
+    def inference(self, input_list):
+        out = self.schedule.generate_step(self.model, iter(input_list))
 
-    def _inject_fwd(self):
-        new_fwd = partial(GPT2PipelineForwards.gpt2_lmhead_model_forward,
-                          stage_manager=self.stage_manager,
-                          stage_index=[0, 1])
+        # print(out)
+
+    def _inject_fwd(self, pp_fwd: Callable):
+        stage_index = self._get_stage_index()
+        print(stage_index)
+        new_fwd = partial(pp_fwd, stage_manager=self.stage_manager, stage_index=stage_index)
         bound_method = MethodType(new_fwd, self.model)
         setattr(self.model, 'forward', bound_method)
 
@@ -83,3 +87,15 @@ class PPInferEngine:
         """
         held_layers = self.held_layer
         set_tensors_to_none(self.model, include=set(module_list) - set(held_layers))
+
+    def _get_stage_index(self):
+        re_pattern = r'\[\d+\]'
+        prog = re.compile(re_pattern)
+        stage_idx = []
+        for item in self.held_layer:
+            result = prog.search(item)
+            if result:
+                idx = result.group().replace('[', '').replace(']', '')
+                stage_idx.append(int(idx))
+
+        return [min(stage_idx), max(stage_idx) + 1]
