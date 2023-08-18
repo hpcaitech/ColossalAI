@@ -122,9 +122,9 @@ class OnPolicyTrainer(ABC):
         for callback in self.callbacks:
             callback.on_learn_batch_start()
 
-    def _on_learn_batch_end(self, metrics: dict, experience: Experience) -> None:
+    def _on_learn_batch_end(self, experience: Experience) -> None:
         for callback in self.callbacks:
-            callback.on_learn_batch_end(metrics, experience)
+            callback.on_learn_batch_end(experience)
 
     @abstractmethod
     def _make_experience(self, collect_step: int):

@@ -143,7 +143,7 @@ class PPOTrainer(OnPolicyTrainer):
         assert isinstance(prompts, dict), f'Unsupported input type "{type(prompts)}"'
         return self.experience_maker.make_experience(**prompts, **self.generate_kwargs)
 
-    def _training_step(self, experience: Experience) -> Dict[str, float]:
+    def _training_step(self, experience: Experience):
         self.actor.train()
         self.critic.train()
         # policy loss
@@ -179,8 +179,6 @@ class PPOTrainer(OnPolicyTrainer):
         self.strategy.optimizer_step(self.critic_optim)
         self.critic_optim.zero_grad()
 
-        return {"reward": experience.reward.mean().item()}
-
     def _learn(self, update_step: int):
         if self.offload_inference_models:
             self.experience_maker.initial_model.to("cpu")
@@ -191,8 +189,8 @@ class PPOTrainer(OnPolicyTrainer):
             experience = self.data_buffer.sample()
             self._on_learn_batch_start()
             experience.to_device(self.device)
-            metrics = self._training_step(experience)
-            self._on_learn_batch_end(metrics, experience)
+            self._training_step(experience)
+            self._on_learn_batch_end(experience)
         else:
             if isinstance(self.dataloader.sampler, DistributedSampler):
                 self.dataloader.sampler.set_epoch(update_step)
@@ -200,6 +198,5 @@ class PPOTrainer(OnPolicyTrainer):
             for experience in pbar:
                 self._on_learn_batch_start()
                 experience.to_device(self.device)
-                metrics = self._training_step(experience)
-                self._on_learn_batch_end(metrics, experience)
-                pbar.set_postfix(metrics)
+                self._training_step(experience)
+                self._on_learn_batch_end(experience)
