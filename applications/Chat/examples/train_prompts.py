@@ -175,6 +175,7 @@ def main(args):
         ptx_coef=args.ptx_coef,
         train_batch_size=args.train_batch_size,
         max_length=args.max_seq_len,
+        chunk_size=args.seq_chunk_size,
         use_cache=True,
         do_sample=True,
         temperature=1.0,
@@ -209,37 +210,35 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--prompt_dataset", type=str, default=None, help="path to the prompt dataset")
-    parser.add_argument("--pretrain_dataset", type=str, default=None, help="path to the pretrained dataset")
-    parser.add_argument("--max_datasets_size", type=int, default=50000)
-    parser.add_argument(
-        "--strategy",
-        choices=["ddp", "colossalai_gemini", "colossalai_zero2"],
-        default="colossalai_zero2",
-        help="strategy to use",
-    )
-    parser.add_argument("--model", default="gpt2", choices=["gpt2", "bloom", "opt", "llama"])
-    parser.add_argument("--tokenizer", type=str, default=None)
-    parser.add_argument("--pretrain", type=str, default=None)
-    parser.add_argument("--rm_model", default=None, choices=["gpt2", "bloom", "opt", "llama"])
-    parser.add_argument("--rm_path", type=str, default=None)
-    parser.add_argument("--rm_pretrain", type=str, default=None)
-    parser.add_argument("--save_path", type=str, default="actor_checkpoint_prompts")
-    parser.add_argument("--need_optim_ckpt", type=bool, default=False)
-    parser.add_argument("--num_episodes", type=int, default=10)
-    parser.add_argument("--num_collect_steps", type=int, default=10)
-    parser.add_argument("--num_update_steps", type=int, default=5)
-    parser.add_argument("--train_batch_size", type=int, default=8)
-    parser.add_argument("--ptx_batch_size", type=int, default=1)
-    parser.add_argument("--experience_batch_size", type=int, default=8)
-    parser.add_argument("--lora_rank", type=int, default=0, help="low-rank adaptation matrices rank")
-    parser.add_argument("--merge_lora_weights", type=bool, default=True)
-    parser.add_argument("--lr", type=float, default=1e-7)
-    parser.add_argument("--kl_coef", type=float, default=0.1)
-    parser.add_argument("--ptx_coef", type=float, default=0.9)
-    parser.add_argument("--max_input_len", type=int, default=96)
-    parser.add_argument("--max_seq_len", type=int, default=128)
-    parser.add_argument("--log_dir", default="logs", type=str)
-    parser.add_argument("--use_wandb", default=False, action="store_true")
+    parser.add_argument('--prompt_dataset', type=str, default=None, help='path to the prompt dataset')
+    parser.add_argument('--pretrain_dataset', type=str, default=None, help='path to the pretrained dataset')
+    parser.add_argument('--max_datasets_size', type=int, default=50000)
+    parser.add_argument('--strategy',
+                        choices=['ddp', 'colossalai_gemini', 'colossalai_zero2'],
+                        default='colossalai_zero2',
+                        help='strategy to use')
+    parser.add_argument('--model', default='gpt2', choices=['gpt2', 'bloom', 'opt', 'llama'])
+    parser.add_argument('--tokenizer', type=str, default=None)
+    parser.add_argument('--pretrain', type=str, default=None)
+    parser.add_argument('--rm_model', default=None, choices=['gpt2', 'bloom', 'opt', 'llama'])
+    parser.add_argument('--rm_path', type=str, default=None)
+    parser.add_argument('--rm_pretrain', type=str, default=None)
+    parser.add_argument('--save_path', type=str, default='actor_checkpoint_prompts')
+    parser.add_argument('--need_optim_ckpt', type=bool, default=False)
+    parser.add_argument('--num_episodes', type=int, default=10)
+    parser.add_argument('--num_collect_steps', type=int, default=10)
+    parser.add_argument('--num_update_steps', type=int, default=5)
+    parser.add_argument('--train_batch_size', type=int, default=8)
+    parser.add_argument('--ptx_batch_size', type=int, default=1)
+    parser.add_argument('--experience_batch_size', type=int, default=8)
+    parser.add_argument('--lora_rank', type=int, default=0, help="low-rank adaptation matrices rank")
+    parser.add_argument('--lr', type=float, default=1e-7)
+    parser.add_argument('--kl_coef', type=float, default=0.1)
+    parser.add_argument('--ptx_coef', type=float, default=0.9)
+    parser.add_argument('--max_input_len', type=int, default=96)
+    parser.add_argument('--max_seq_len', type=int, default=128)
+    parser.add_argument('--seq_chunk_size', type=int, default=8)
+    parser.add_argument('--log_dir', default='logs', type=str)
+    parser.add_argument('--use_wandb', default=False, action='store_true')
     args = parser.parse_args()
     main(args)
