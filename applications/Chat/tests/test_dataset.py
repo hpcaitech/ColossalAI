@@ -83,12 +83,19 @@ def check_content(input_ids_stripped: torch.Tensor,
     elif model == "llama":
         assert input_ids_stripped[0] == tokenizer.bos_token_id
         input_ids_stripped = input_ids_stripped[1:]
+    elif model == "chatglm":
+        assert input_ids_stripped[0] == tokenizer.bos_token_id
+        assert input_ids_stripped[-1] == tokenizer.eos_token_id
+        input_ids_stripped = input_ids_stripped[1:-1]
     assert torch.all(input_ids_stripped != tokenizer.pad_token_id)
     assert torch.all(input_ids_stripped != tokenizer.bos_token_id)
     assert torch.all(input_ids_stripped != tokenizer.eos_token_id)
     assert input_ids_stripped != tokenizer.sep_token_id
     assert input_ids_stripped != tokenizer.cls_token_id
-    assert input_ids_stripped != tokenizer.mask_token_id
+    if model == "chatglm":
+        assert torch.all(input_ids_stripped != tokenizer.mask_token_id)
+    else:
+        assert input_ids_stripped != tokenizer.mask_token_id
 
 
 @pytest.mark.cpu
@@ -217,15 +224,14 @@ def test_sft_dataset(model: str,
     if isinstance(tokenizer, ChatGLMTokenizer):
         for i in range(max_dataset_size):
             assert isinstance(sft_dataset[i], dict)
-            assert list(sft_dataset[i].keys()) == ["input_ids", "labels", "attention_mask"]
+            assert list(sft_dataset[i].keys()) == ["input_ids", "labels"]
             input_ids = sft_dataset[i]["input_ids"]
             labels = sft_dataset[i]["labels"]
-            attention_mask = sft_dataset[i]["attention_mask"].to(torch.bool)
             assert input_ids.shape == labels.shape == torch.Size([max_length])
-            assert attention_mask.shape[1] == attention_mask.shape[2] == max_length
             
             ignore_mask = labels == IGNORE_INDEX
             assert input_ids.masked_select(torch.logical_not(ignore_mask))[0] == tokenizer.bos_token_id
+            check_content(input_ids.masked_select(torch.logical_not(ignore_mask)), tokenizer, model)
             return
         
     for i in range(max_dataset_size):
@@ -247,7 +253,7 @@ def test_sft_dataset(model: str,
 
 
 if __name__ == "__main__":
-    test_sft_dataset(model="bloom",
+    test_sft_dataset(model="chatglm",
                      dataset_path="yizhongw/self_instruct",
                      max_dataset_size=2,
                      max_length=256)

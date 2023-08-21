@@ -346,7 +346,7 @@ class ChatGLMTokenizer(PreTrainedTokenizer):
         eos_id = self.sp_tokenizer[self.eos_token]
         token_ids_0 = token_ids_0 + [gmask_id, self.sp_tokenizer[self.bos_token]]
         if token_ids_1 is not None:
-            token_ids_0 = token_ids_0 + token_ids_1 + [eos_id]
+            token_ids_0 = token_ids_0 + token_ids_1
         return token_ids_0
 
     def _pad(
