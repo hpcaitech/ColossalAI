@@ -1,5 +1,5 @@
 from functools import partial
-from typing import Any, Callable, Iterable, List, Optional, Union
+from typing import Any, Iterable, Optional, Union
 
 import torch
 import torch.cuda
@@ -44,6 +44,7 @@ class GenerateSchedule(PipelineSchedule):
         assert self.batch_size % self.microbatch_size == 0, \
             f"Batch size should divided by the number of microbatches, {self.batch_size}, {self.num_microbatches}"
         self.num_microbatches = self.batch_size // self.microbatch_size
+        self.round = self.num_microbatches // self.stage_manager.num_stages
 
     def load_micro_batch(self) -> Any:
         """Load a micro batch from the current batch.
@@ -69,10 +70,7 @@ class GenerateSchedule(PipelineSchedule):
         return input_ids
 
     @torch.no_grad()
-    def generate_step(self,
-                      model: Module,
-                      data_iter: Iterable,
-                      outputs: Optional[List[Any]] = None) -> Union[torch.Tensor, dict]:
+    def generate_step(self, model: Module, data_iter: Iterable) -> Union[torch.Tensor, dict]:
         """Forward one step of the pipeline
 
         Args:
@@ -89,14 +87,11 @@ class GenerateSchedule(PipelineSchedule):
         self.load_batch(data_iter)
         model.eval()
 
-        # prepare for warmup
-        num_warmup_microbatch = self.stage_manager.num_stages - self.stage_manager.stage
-        num_warmup_microbatch = min(num_warmup_microbatch, self.num_microbatches)
-        num_microbatch_remaining = self.num_microbatches - num_warmup_microbatch
-
-        # run warmup round
-        for gen_word in range(self.mb_manager.pp_inference_config.new_length):
-            for mb in range(self.num_microbatches):
+        # run by round
+        for _ in range(self.round):
+            state = PREFILL
+            step = 1
+            while self.mb_manager.is_micro_batch_done() is False:
                 # first stage and in prefill phase
                 if self.stage_manager.is_first_stage() and self.mb_manager.cur_state is PREFILL:
                     input_obj = None
@@ -110,21 +105,21 @@ class GenerateSchedule(PipelineSchedule):
                 # not first stage and in gererate phase
                 else:
                     input_obj = self.comm.recv_forward()
-                    micro_batch = None
+                    micro_batch = {
+                        'past_key_values': self.mb_manager.cur_kv_cache
+                    } if self.mb_manager.cur_kv_cache is not None else None
                     hidden_states = input_obj
 
-                print(
-                    f"stage:{self.stage_manager.stage}, micro batch id:{self.mb_manager.idx}, new token id:{gen_word}")
                 output_obj = model_forward(model, micro_batch, hidden_states)
 
                 past_kv_cache = output_obj.get('past_kv_cache', None)
                 state = self.mb_manager.step(micro_batch, input_obj, past_kv_cache)
                 if self.stage_manager.is_last_stage():
                     new_token = self.get_token_id(output_obj['hidden_states'])
-                    output_sequence.append(new_token)
+                    self.mb_manager.add_new_tokens(new_token)
                     if state is not DONE:
                         self.comm.send_forward({'new_token': new_token})
                 else:
                     self.comm.send_forward({'hidden_states': output_obj['hidden_states']})
-                self.mb_manager.next()
+            output_sequence.extend(self.mb_manager.export_new_tokens())
         return output_sequence

@@ -39,11 +39,9 @@ class PPInferEngine:
     def inference(self, input_list):
         out = self.schedule.generate_step(self.model, iter(input_list))
         return out
-        # print(out)
 
     def _inject_fwd(self, pp_fwd: Callable):
         stage_index = self._get_stage_index()
-        print(stage_index)
         new_fwd = partial(pp_fwd, stage_manager=self.stage_manager, stage_index=stage_index)
         bound_method = MethodType(new_fwd, self.model)
         setattr(self.model, 'forward', bound_method)
@@ -65,7 +63,6 @@ class PPInferEngine:
 
         # load model to cuda
         self.model = self.model.cuda()
-        print(dist.get_rank(), torch.cuda.memory_allocated())
 
     def _recursive_partion(self, module: nn.Module, module_list: List[str], suffix: str):
         if len(list(module.children())) == 0:

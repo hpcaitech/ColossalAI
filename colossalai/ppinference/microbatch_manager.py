@@ -16,7 +16,7 @@ class MicroBatchDescription():
     def __init__(
         self,
         mb_inputs: torch.Tensor,
-        inter_inputs,
+        interval_inputs,
         new_length: int,
     ) -> None:
         if mb_inputs is not None:
@@ -25,12 +25,11 @@ class MicroBatchDescription():
             self.attn_mask = mb_inputs['attention_mask']
             self.input_ids = mb_inputs['input_ids']
 
-        elif inter_inputs is not None:
-            assert inter_inputs.get('hidden_states') is not None
-            # print(inter_inputs['hidden_states'].shape)
-            self.mb_length = inter_inputs['hidden_states'].shape[-2]
+        elif interval_inputs is not None:
+            assert interval_inputs.get('hidden_states') is not None
+            self.mb_length = interval_inputs['hidden_states'].shape[-2]
         else:
-            raise ValueError('mb_inputs and inter_inputs can not be None at the same time')
+            raise ValueError('mb_inputs and interval_inputs can not be None at the same time')
 
         self.target_length = self.mb_length + new_length
         self.kv_cache = ()
@@ -70,6 +69,7 @@ class MicroBatchManager():
     ):
         self.pp_inference_config = pp_inference_config
         self.mb_descrption_buffer = {}
+        self.new_tokens_buffer = {}
         self.buffer_size = pp_inference_config.micro_batch_buffer_size
         self.idx = 0
 
@@ -96,12 +96,32 @@ class MicroBatchManager():
             self._add_descrption(mb_inputs, inter_inputs)
         self._update_descrption(present_kv)
         state = self.cur_state
-        if state == DONE:
-            self._remove_descrption()
+        self.next()
         return state
 
     def next(self):
         self.idx = (self.idx + 1) % self.buffer_size
+
+    def is_micro_batch_done(self):
+        if len(self.mb_descrption_buffer) == 0:
+            return False
+        for mb in self.mb_descrption_buffer.values():
+            if mb.state != DONE:
+                return False
+        self.mb_descrption_buffer.clear()
+        return True
+
+    def add_new_tokens(self, new_token):
+        if self.idx not in self.new_tokens_buffer:
+            self.new_tokens_buffer[self.idx] = new_token
+        else:
+            self.new_tokens_buffer[self.idx] = torch.cat([self.new_tokens_buffer[self.idx], new_token], dim=-1)
+
+    def export_new_tokens(self):
+        list = [item.tolist() for item in self.new_tokens_buffer.values()]
+        flat_list = [item for sublist in list for item in sublist]
+        self.new_tokens_buffer.clear()
+        return flat_list
 
     @property
     def cur_descrption(self) -> MicroBatchDescription:
@@ -109,6 +129,8 @@ class MicroBatchManager():
 
     @property
     def cur_kv_cache(self):
+        if self.cur_descrption is None:
+            return None
         return self.cur_descrption.kv_cache
 
     @property
