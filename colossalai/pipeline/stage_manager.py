@@ -13,7 +13,7 @@ class PipelineStageManager:
     Args:
         pg_mesh (ProcessGroupMesh): Process group mesh.
         pipeline_axis (int): The axis along which the pipeline is constructed.
-        circle_p2p (bool): Whether to use circle p2p communication, it will make the first and last stage communicate with each other.
+        circle_stage (bool): Whether to use circle p2p communication, it will make the first and last stage communicate with each other.
 
     Attributes:
         num_stages (int): Number of stages in the pipeline.
@@ -135,7 +135,8 @@ class PipelineStageManager:
         Returns:
             int: Rank of the previous stage.
         """
-        assert not self.is_first_stage(), "Cannot get previous rank in the first stage."
+        if not self.circle_stage:
+            assert not self.is_first_stage(), "Cannot get previous rank in the first stage."
         return self.prev_rank
 
     def get_next_rank(self) -> int:
@@ -144,7 +145,8 @@ class PipelineStageManager:
         Returns:
             int: Rank of the next stage.
         """
-        assert not self.is_last_stage(), "Cannot get next rank in the last stage."
+        if not self.circle_stage:
+            assert not self.is_last_stage(), "Cannot get next rank in the last stage."
         return self.next_rank
 
     def set_num_virtual_stages(self, num_virtual_stages: int) -> None:

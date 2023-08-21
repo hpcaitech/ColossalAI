@@ -1,10 +1,65 @@
+from typing import Dict
+
+import torch
+
 from .inference_config import InferenceConfig
 
 __all__ = 'MicroBatchManager'
 
-BEGIN = 1
+PREFILL = 1
 GENERATE = 2
 DONE = 3
+
+
+class MicroBatchDescription():
+
+    def __init__(
+        self,
+        mb_inputs: torch.Tensor,
+        inter_inputs,
+        new_length: int,
+    ) -> None:
+        if mb_inputs is not None:
+            assert mb_inputs.get('input_ids') is not None and mb_inputs.get('attention_mask') is not None
+            self.mb_length = mb_inputs['input_ids'].shape[-1]
+            self.attn_mask = mb_inputs['attention_mask']
+            self.input_ids = mb_inputs['input_ids']
+
+        elif inter_inputs is not None:
+            assert inter_inputs.get('hidden_states') is not None
+            # print(inter_inputs['hidden_states'].shape)
+            self.mb_length = inter_inputs['hidden_states'].shape[-2]
+        else:
+            raise ValueError('mb_inputs and inter_inputs can not be None at the same time')
+
+        self.target_length = self.mb_length + new_length
+        self.kv_cache = ()
+
+    def update(self, kv_cache):
+        self.kv_cache = kv_cache
+
+    @property
+    def cur_length(self):
+        """
+        Return the current sequnence length of micro batch, when there is no kv_cache, the length is mb_length,
+        otherwise the sequence length is `kv_cache[0][0].shape[-2]` plus 1
+
+        """
+        if len(self.kv_cache) == 0:
+            return self.mb_length
+        return self.kv_cache[0][0].shape[-2] + 1
+
+    @property
+    def state(self):
+        """
+        Return the state of current micro batch, when current length is equal to target length,
+        the state is DONE, otherwise GENERATE
+
+        """
+        if self.cur_length == self.target_length:
+            return DONE
+        else:
+            return GENERATE
 
 
 class MicroBatchManager():
@@ -14,43 +69,54 @@ class MicroBatchManager():
         pp_inference_config: InferenceConfig,
     ):
         self.pp_inference_config = pp_inference_config
-        self.mb_to_kvcache = self._init_kvcache()
-        self.cur_mb = 0
+        self.mb_descrption_buffer = {}
+        self.buffer_size = pp_inference_config.micro_batch_buffer_size
+        self.idx = 0
 
-    def step(self, present_kv=None):
-        self._update_kvcahe(present_kv)
-        self.cur_mb = self.next_mb
+    def _add_descrption(self, mb_inputs: Dict[str, torch.Tensor], inter_inputs: Dict[str, torch.Tensor]):
+        self.mb_descrption_buffer[self.idx] = MicroBatchDescription(mb_inputs, inter_inputs,
+                                                                    self.pp_inference_config.new_length)
 
-    def _init_kvcache(self):
-        mb_to_kvcache = {i: () for i in range(self.pp_inference_config.pp_size)}
-        return mb_to_kvcache
+    def _update_descrption(self, present_kv):
+        self.mb_descrption_buffer[self.idx].update(present_kv)
 
-    def _update_kvcahe(self, present_kv):
-        self.mb_to_kvcache[self.cur_mb] += (present_kv,)
+    def _remove_descrption(self):
+        self.mb_descrption_buffer.pop(self.idx)
 
-        if self.mb_to_kvcache[self.cur_mb][0][0][-2] == self.pp_inference_config.target_length:
-            self.mb_to_kvcache.pop(self.cur_mb)
+    def step(self, mb_inputs=None, inter_inputs=None, present_kv=None):
+        """
+        Update the state if microbatch manager
+
+        Args:
+            mb_inputs (int, optional): The input of first stage when in prefill, should be a dict like {'input_ids': torch.Tensor, 'attention_mask': torch.Tensor}.
+            inter_inputs ([type], optional): The input of intermediate stage (the output of previous stage), should be a dict like {'hidden_state': torch.Tensor}.
+            present_kv ([type], optional): The kvcache of current microbatch in current stage.
+        """
+        if self.mb_descrption_buffer.get(self.idx) is None:
+            self._add_descrption(mb_inputs, inter_inputs)
+        self._update_descrption(present_kv)
+        state = self.cur_state
+        if state == DONE:
+            self._remove_descrption()
+        return state
+
+    def next(self):
+        self.idx = (self.idx + 1) % self.buffer_size
 
     @property
-    def is_done(self):
-        return len(self.mb_to_kvcache) == 0
+    def cur_descrption(self) -> MicroBatchDescription:
+        return self.mb_descrption_buffer.get(self.idx)
 
     @property
-    def next_mb(self):
-        if self.is_done:
-            return None
-
-        nxt_mb = (self.cur_mb + 1) % self.pp_inference_config.pp_size
-        while nxt_mb % self.pp_inference_config.pp_size not in self.mb_to_kvcache:
-            nxt_mb = (nxt_mb + 1) % self.pp_inference_config.pp_size
-        return nxt_mb
+    def cur_kv_cache(self):
+        return self.cur_descrption.kv_cache
 
     @property
-    def cur_kvcache(self):
-        return self.mb_to_kvcache[self.cur_mb]
+    def cur_state(self):
+        """
+        Return the state of current micro batch, when current descrption is None, the state is PREFILL
 
-    # @property
-    # def mb_state(self):
-    #     if len(self.cur_kvcache) == 0:
-    #         return BEGIN
-    #     elif len(self.cur_kvcache) ==
+        """
+        if self.cur_descrption is None:
+            return PREFILL
+        return self.cur_descrption.state

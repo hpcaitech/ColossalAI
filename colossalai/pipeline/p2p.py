@@ -173,7 +173,7 @@ class PipelineP2PCommunication:
         Returns:
             Any: The input tensor or input tensor list.
         """
-        if self.stage_manager.is_first_stage():
+        if self.stage_manager.is_first_stage() and not self.stage_manager.circle_stage:
             input_tensor = None
         else:
             if prev_rank is None:
@@ -211,7 +211,7 @@ class PipelineP2PCommunication:
             output_object (Any): Object to be sent.
             next_rank (int, optional): The rank of the recipient of the tensor.
         """
-        if not self.stage_manager.is_last_stage():
+        if not self.stage_manager.is_last_stage() or self.stage_manager.circle_stage:
             if next_rank is None:
                 next_rank = self.stage_manager.get_next_rank()
             cur_rank = self.stage_manager.get_rank()

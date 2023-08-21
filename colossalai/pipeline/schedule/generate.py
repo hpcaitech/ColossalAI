@@ -9,7 +9,7 @@ from torch.utils._pytree import tree_map
 from colossalai.interface import OptimizerWrapper
 from colossalai.pipeline.p2p import PipelineP2PCommunication
 from colossalai.pipeline.stage_manager import PipelineStageManager
-from colossalai.ppinference.microbatch_manager import MicroBatchManager
+from colossalai.ppinference.microbatch_manager import DONE, GENERATE, PREFILL, MicroBatchManager
 from colossalai.utils.cuda import get_current_device
 
 from ._utils import detach, get_batch_size, get_micro_batch, merge_batch, model_forward, retain_grad, to_device
@@ -55,6 +55,19 @@ class GenerateSchedule(PipelineSchedule):
         self.microbatch_offset += self.microbatch_size
         return tree_map(partial(to_device, device=get_current_device()), micro_batch)
 
+    def postprocess_new_inputs(self, input_ids):
+        new_mask = self.mb_manager.cur_descrption.attn_mask
+        new_mask = torch.cat((new_mask, torch.ones((new_mask.shape[0], 1), dtype=torch.int64).cuda()), dim=-1)
+        self.mb_manager.cur_descrption.attn_mask = new_mask
+        past_key_values = self.mb_manager.cur_descrption.kv_cache
+
+        return dict(input_ids=input_ids['new_token'], attention_mask=new_mask, past_key_values=past_key_values)
+
+    def get_token_id(self, hidden_state: torch.Tensor) -> torch.Tensor:
+        last_hidden_state = hidden_state[:, -1]
+        input_ids = torch.argmax(last_hidden_state, dim=-1).unsqueeze(1)
+        return input_ids
+
     @torch.no_grad()
     def generate_step(self,
                       model: Module,
@@ -82,17 +95,36 @@ class GenerateSchedule(PipelineSchedule):
         num_microbatch_remaining = self.num_microbatches - num_warmup_microbatch
 
         # run warmup round
-        for _ in range(self.num_microbatches):
-            micro_batch = None
-            if self.stage_manager.is_first_stage():
-                micro_batch = self.load_micro_batch()
-            input_obj = self.comm.recv_forward()
-            # if self.stage_manager.is_first_stage:
-            # print("warmup",self.microbatch_offset,micro_batch, input_obj)
-            hidden_states = None if input_obj is None else {'hidden_states': input_obj.get('hidden_states', None)}
-            output_obj = model_forward(model, micro_batch, hidden_states)
-            self.comm.send_forward(output_obj)
-            if self.stage_manager.is_last_stage():
-                output_sequence.append(output_obj['hidden_states'])
+        for gen_word in range(self.mb_manager.pp_inference_config.new_length):
+            for mb in range(self.num_microbatches):
+                # first stage and in prefill phase
+                if self.stage_manager.is_first_stage() and self.mb_manager.cur_state is PREFILL:
+                    input_obj = None
+                    micro_batch = self.load_micro_batch()
+                    hidden_states = None
+                # first stage and in generate phase
+                elif self.stage_manager.is_first_stage():
+                    input_obj = self.comm.recv_forward()
+                    micro_batch = self.postprocess_new_inputs(input_obj)
+                    hidden_states = None
+                # not first stage and in gererate phase
+                else:
+                    input_obj = self.comm.recv_forward()
+                    micro_batch = None
+                    hidden_states = input_obj
 
+                print(
+                    f"stage:{self.stage_manager.stage}, micro batch id:{self.mb_manager.idx}, new token id:{gen_word}")
+                output_obj = model_forward(model, micro_batch, hidden_states)
+
+                past_kv_cache = output_obj.get('past_kv_cache', None)
+                state = self.mb_manager.step(micro_batch, input_obj, past_kv_cache)
+                if self.stage_manager.is_last_stage():
+                    new_token = self.get_token_id(output_obj['hidden_states'])
+                    output_sequence.append(new_token)
+                    if state is not DONE:
+                        self.comm.send_forward({'new_token': new_token})
+                else:
+                    self.comm.send_forward({'hidden_states': output_obj['hidden_states']})
+                self.mb_manager.next()
         return output_sequence
