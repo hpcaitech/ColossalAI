@@ -55,7 +55,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     # check grad
     row_layer_for_check = ['encoder.layers[0].self_attention.query_key_value', 'embedding.word_embeddings']
     col_layer_for_check = ['encoder.layers[0].self_attention.dense']
-    if stage_manager is None or stage_manager.is_first_stage():
+    if (stage_manager is None or stage_manager.is_first_stage()) and booster.plugin.zero_stage == 0:
         if test_config['precision'] == 'fp32':
             atol, rtol = 1e-6, 1e-3
         else:
@@ -125,6 +125,14 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     'enable_all_optimization': True,
     'use_lazy_init': False,
     'precision': 'fp32'
+}, {
+    'tp_size': 2,
+    'pp_size': 1,
+    'enable_all_optimization': True,
+    'use_lazy_init': True,
+    'zero_stage': 2,
+    'precision': 'fp16',
+    'initial_scale': 1
 }])
 def run_chatglm_test(test_config):
 
