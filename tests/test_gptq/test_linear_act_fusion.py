@@ -283,6 +283,7 @@ def test_gptq_linear():
     assert torch.allclose(cai_out, gptq_out, rtol=1e-01, atol=1e-02)
     assert torch.allclose(batch_cai_out, batch_gptq_out, rtol=1e-01, atol=1e-02)
 
+
     # mean_diff = torch.mean(torch.abs(cai_out - gptq_out))
     # max_diff = torch.max(torch.abs(cai_out - gptq_out))
     # print("cai vs gptq: mean_diff=%.8f, max_diff=%.8f" % (mean_diff, max_diff))

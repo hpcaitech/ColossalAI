@@ -17,4 +17,4 @@ requests==2.27.1 # downgrade to avoid huggingface error https://github.com/huggi
 SentencePiece
 ninja
 flash_attn==2.0.5
-auto-gptq
+#auto-gptq now not support torch1.12
