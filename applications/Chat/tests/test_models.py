@@ -134,7 +134,7 @@ def test_lora(lora_rank: int,
     lambda: (ChatGLMActor(), None, None),
 ])
 @torch.no_grad()
-def test_models(models_maker: Callable[[], Tuple[Actor, Critic, RewardModel, Actor]],
+def test_models(models_maker: Callable[[], Tuple[Actor, Critic, RewardModel]],
                 batch_size: int,
                 seq_len: int):
     actor_input = {

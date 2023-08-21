@@ -1,3 +1,6 @@
+"""
+This code is copied from https://huggingface.co/THUDM/chatglm-6b/blob/main/tokenization_chatglm.py
+"""
 """Tokenization classes for ChatGLM."""
 from typing import List, Optional, Union
 import os
