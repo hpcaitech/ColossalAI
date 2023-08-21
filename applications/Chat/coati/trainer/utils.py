@@ -21,9 +21,13 @@ class CycledDataLoader:
         self.dataloader = dataloader
 
         self.count = 0
-        self.dataloader_iter = iter(dataloader)
+        self.dataloader_iter = None
 
     def next(self):
+        # defer initialization
+        if self.dataloader_iter is None:
+            self.dataloader_iter = iter(self.dataloader)
+
         self.count += 1
         try:
             return next(self.dataloader_iter)
