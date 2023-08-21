@@ -76,22 +76,30 @@ def _preprocess_chatglm(sources: Sequence[str],
                 tokenizer: PreTrainedTokenizer,
                 max_length: int,
                 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Preprocess the data by tokenizing."""
-    sequences = [s + "[gMASK]" + tokenizer.bos_token + t for s, t in zip(sources, targets)]
-    sequences_token = tokenizer(sequences,
-                                max_length=max_length,
-                                padding="max_length",
-                                truncation=True,
-                                return_tensors="pt")
+    """
+    Preprocess the data by tokenizing.
+    None for attention mask, ChatGLM will calculate attention mask according to input ids
+    """
+  
+    labels = []
+    input_ids = []
+    for source, target in zip(sources, targets):
+        source_id = tokenizer.encode(text=source, add_special_tokens=False)
+        target_id = tokenizer.encode(text=target, add_special_tokens=False)
+        # from IPython import embed
+        # embed()
+        input_id = tokenizer.build_inputs_with_special_tokens(source_id, target_id)
+        
+        context_length = input_id.index(tokenizer.bos_token_id)
+        mask_position = context_length - 1
+        label = [IGNORE_INDEX] * context_length + input_id[mask_position+1:]
+        
+        pad_len = max_length - len(input_id)
+        input_id = input_id + [tokenizer.pad_token_id] * pad_len
+        input_ids.append(input_id)
+        labels.append(label + [IGNORE_INDEX] * pad_len)
 
-    labels = copy.deepcopy(sequences_token["input_ids"])
-    for i in range(labels.shape[0]):
-        assert tokenizer.padding_side == "left", "chatglm's tokenizer should be padded at left"
-        bos_loc = torch.nonzero(sequences_token["input_ids"][i] == tokenizer.bos_token_id).squeeze()
-        context_len = bos_loc[0] if len(bos_loc.shape) > 0 else bos_loc.item()
-        labels[i][:context_len] = IGNORE_INDEX
-
-    return sequences_token["input_ids"], labels, sequences_token["attention_mask"]
+    return torch.tensor(input_ids), torch.tensor(labels), None
 
 
 class SFTDataset(Dataset):
@@ -129,9 +137,13 @@ class SFTDataset(Dataset):
         return length
 
     def __getitem__(self, idx):
-        return dict(input_ids=self.input_ids[idx],
-                    labels=self.labels[idx],
-                    attention_mask=self.attention_mask[idx])
+        if self.attention_mask:
+            return dict(input_ids=self.input_ids[idx],
+                        labels=self.labels[idx],
+                        attention_mask=self.attention_mask[idx] if self.attention_mask else None)
+        else:
+            return dict(input_ids=self.input_ids[idx],
+                        labels=self.labels[idx])
 
 
 class SupervisedDataset(Dataset):
@@ -175,6 +187,10 @@ class SupervisedDataset(Dataset):
         return length
 
     def __getitem__(self, idx):
-        return dict(input_ids=self.input_ids[idx],
-                    labels=self.labels[idx],
-                    attention_mask=self.attention_mask[idx])
+        if self.attention_mask:
+            return dict(input_ids=self.input_ids[idx],
+                        labels=self.labels[idx],
+                        attention_mask=self.attention_mask[idx] if self.attention_mask else None)
+        else:
+            return dict(input_ids=self.input_ids[idx],
+                        labels=self.labels[idx])
