@@ -267,7 +267,6 @@ def test_gptq_linear():
         batch_gptq_out = act_func(batch_gptq_out)
         gptq_out = act_func(gptq_out)
 
-
     # cai_out = cai_out[1]
     # batch_cai_out = batch_cai_out[1]
     # a = torch.sum(qscales, 0)
