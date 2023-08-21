@@ -133,6 +133,7 @@ class ChatGLMPolicy(Policy):
                                                                 target_key=ChatGLMModel)
 
         # use flash attention
+
         if self.shard_config.enable_flash_attention:
             self.append_or_create_method_replacement(description={
                 'forward': get_flash_core_attention_forward(),
