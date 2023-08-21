@@ -86,8 +86,10 @@ def _preprocess_chatglm(sources: Sequence[str],
     for source, target in zip(sources, targets):
         source_id = tokenizer.encode(text=source, add_special_tokens=False)
         target_id = tokenizer.encode(text=target, add_special_tokens=False)
-        # from IPython import embed
-        # embed()
+        if len(source_id) + len(target_id) >= max_length - 2:
+            source_id = source_id[ : max(0, max_length - len(target_id) - 2)]
+        if len(target_id) > max_length - len(source_id) - 2:
+            target_id = target_id[: max(0, max_length - len(source_id) - 3)] + [target_id[-1]]
         input_id = tokenizer.build_inputs_with_special_tokens(source_id, target_id)
         
         context_length = input_id.index(tokenizer.bos_token_id)
@@ -98,7 +100,6 @@ def _preprocess_chatglm(sources: Sequence[str],
         input_id = input_id + [tokenizer.pad_token_id] * pad_len
         input_ids.append(input_id)
         labels.append(label + [IGNORE_INDEX] * pad_len)
-
     return torch.tensor(input_ids), torch.tensor(labels), None
 
 
@@ -137,10 +138,10 @@ class SFTDataset(Dataset):
         return length
 
     def __getitem__(self, idx):
-        if self.attention_mask:
+        if self.attention_mask is not None:
             return dict(input_ids=self.input_ids[idx],
                         labels=self.labels[idx],
-                        attention_mask=self.attention_mask[idx] if self.attention_mask else None)
+                        attention_mask=self.attention_mask[idx])
         else:
             return dict(input_ids=self.input_ids[idx],
                         labels=self.labels[idx])
@@ -187,10 +188,10 @@ class SupervisedDataset(Dataset):
         return length
 
     def __getitem__(self, idx):
-        if self.attention_mask:
+        if self.attention_mask is not None:
             return dict(input_ids=self.input_ids[idx],
                         labels=self.labels[idx],
-                        attention_mask=self.attention_mask[idx] if self.attention_mask else None)
+                        attention_mask=self.attention_mask[idx])
         else:
             return dict(input_ids=self.input_ids[idx],
                         labels=self.labels[idx])

@@ -253,7 +253,7 @@ def test_sft_dataset(model: str,
 
 
 if __name__ == "__main__":
-    test_sft_dataset(model="chatglm",
+    test_sft_dataset(model="bloom",
                      dataset_path="yizhongw/self_instruct",
                      max_dataset_size=2,
                      max_length=256)
