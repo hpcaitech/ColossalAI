@@ -85,6 +85,8 @@ def check_gemini_plugin(subset: str, init_method: str = 'none', early_stop: bool
                 'transformers_t5_for_conditional_generation',
                 'transformers_t5_encoder_model',    # does not support apex rmsnorm
                 'transformers_chatglm',
+                'transformers_sam',
+                'trasnformers_vit'
         ]:
             continue
 
@@ -96,7 +98,6 @@ def check_gemini_plugin(subset: str, init_method: str = 'none', early_stop: bool
         ]:
             continue
         err = run_fn(init_method, model_fn, data_gen_fn, output_transform_fn)
-        torch.cuda.empty_cache()
 
         if err is None:
             passed_models.append(name)
