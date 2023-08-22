@@ -83,7 +83,8 @@ def check_gemini_plugin(subset: str, init_method: str = 'none', early_stop: bool
                 'torchvision_vit_b_16',
                 'transformers_t5',
                 'transformers_t5_for_conditional_generation',
-                'transformers_t5_encoder_model'    # does not support apex rmsnorm
+                'transformers_t5_encoder_model',    # does not support apex rmsnorm
+                'transformers_chatglm',
         ]:
             continue
 
