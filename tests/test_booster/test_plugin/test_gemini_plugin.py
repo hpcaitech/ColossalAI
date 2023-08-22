@@ -86,7 +86,7 @@ def check_gemini_plugin(subset: str, init_method: str = 'none', early_stop: bool
                 'transformers_t5_encoder_model',    # does not support apex rmsnorm
                 'transformers_chatglm',
                 'transformers_sam',
-                'trasnformers_vit'
+                'transformers_vit'
         ]:
             continue
 
