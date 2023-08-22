@@ -6,18 +6,19 @@ import torch.distributed as dist
 
 import colossalai
 from colossalai.context import MOE_CONTEXT
-from colossalai.nn.layer.moe import load_moe_model, save_moe_model
+from colossalai.nn.layer.moe import MoeCheckpintIO
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 from colossalai.utils import get_current_device
 from tests.test_moe.moe_utils import MoeModel
 
 
 def exam_moe_checkpoint():
+    ckpt = MoeCheckpintIO()
     model = MoeModel(checkpoint=True).to(get_current_device())
-    save_moe_model(model, 'temp_path.pth')
+    ckpt.save_model(model, 'temp_path.pth')
 
     other_model = MoeModel(checkpoint=True).to(get_current_device())
-    load_moe_model(other_model, 'temp_path.pth')
+    ckpt.load_model(other_model, 'temp_path.pth')
 
     state_0 = model.state_dict()
     state_1 = other_model.state_dict()
