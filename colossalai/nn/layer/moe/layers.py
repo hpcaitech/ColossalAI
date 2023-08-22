@@ -228,3 +228,24 @@ class SparseMLP(nn.Module):
         expert_out = self.experts(expert_in)
         expert_out = ReduceScatter.apply(expert_out, self.ep_group)
         return expert_out
+
+
+class MoEModule(nn.Module):
+    """
+    For other dependency
+    """
+
+    def __init__(self,
+                 num_experts: int,
+                 top_k: int = 1,
+                 capacity_factor_train: float = 1.25,
+                 capacity_factor_eval: float = 2.0,
+                 min_capacity: int = 4,
+                 noisy_policy: Optional[str] = None,
+                 drop_tks: bool = True,
+                 expert_parallel: str = "EP",
+                 hidden_size: int = 2048,
+                 intermediate_size: int = 2048,
+                 activation: str = None):
+        super().__init__(num_experts, top_k, capacity_factor_train, capacity_factor_eval, min_capacity, noisy_policy,
+                         drop_tks, expert_parallel, hidden_size, intermediate_size, activation)
