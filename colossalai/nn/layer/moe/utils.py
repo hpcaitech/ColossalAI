@@ -57,9 +57,7 @@ class UniformNoiseGenerator:
 
 
 def autocast_softmax(logit: torch.Tensor, dim: int):
-    if logit.dtype != torch.float32:
-        logit = logit.float()
-    return F.softmax(logit, dim=dim)
+    return F.softmax(logit, dim=dim, detype=torch.float32)
 
 
 def build_ffn_experts(num_experts: int, d_model: int, d_ff: int, activation=None, drop_rate: float = 0):
