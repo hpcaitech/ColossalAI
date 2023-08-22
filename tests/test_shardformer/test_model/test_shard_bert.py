@@ -120,10 +120,38 @@ def run_bert_test(test_config):
     torch.cuda.empty_cache()
 
 
+@parameterize('test_config', [
+    {
+        'tp_size': 2,
+        'pp_size': 2,
+        'num_microbatches': 4,
+        'enable_all_optimization': False,
+        'use_lazy_init': False,
+        'precision': 'fp32',
+        'initial_scale': 1,
+    },
+])
+def run_bert_3d_test(test_config):
+    sub_model_zoo = model_zoo.get_sub_registry('transformers_bert')
+
+    for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
+        check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
+
+    clear_layout_converter()
+    Randomizer.reset_index()
+    torch.cuda.empty_cache()
+
+
 def check_bert(rank, world_size, port):
     disable_existing_loggers()
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     run_bert_test()
+
+
+def check_bert_3d(rank, world_size, port):
+    disable_existing_loggers()
+    colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    run_bert_3d_test()
 
 
 @pytest.mark.dist
@@ -133,5 +161,13 @@ def test_bert():
     spawn(check_bert, 4)
 
 
+@pytest.mark.largedist
+@rerun_if_address_is_in_use()
+@clear_cache_before_run()
+def test_bert_3d():
+    spawn(check_bert_3d, 8)
+
+
 if __name__ == "__main__":
     test_bert()
+    test_bert_3d()
