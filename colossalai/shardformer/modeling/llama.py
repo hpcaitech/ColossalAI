@@ -7,7 +7,7 @@ from transformers.modeling_outputs import (
     CausalLMOutputWithPast,
     SequenceClassifierOutputWithPast,
 )
-from transformers.models.llama.modeling_llama import LlamaForCausalLM, LlamaForSequenceClassification, LlamaModel
+from transformers.models.llama.modeling_llama import LlamaForCausalLM, LlamaForSequenceClassification, LlamaModel, LlamaRMSNorm
 from transformers.utils import logging
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
@@ -391,8 +391,17 @@ class LlamaPipelineForwards:
 def get_llama_flash_attention_forward():
 
     from transformers.models.llama.modeling_llama import LlamaAttention, apply_rotary_pos_emb
-
     from colossalai.kernel.cuda_native import AttnMaskType, ColoAttention
+    
+    try:
+        from vllm import pos_encoding_ops
+        rotary_embedding_neox = pos_encoding_ops.rotary_embedding_neox
+        HAS_VLLM_KERNERL = True
+    except: 
+        print("fall back to original rotary_embedding_neox of huggingface")
+        print("install vllm from https://github.com/vllm-project/vllm to accelerate your inference")
+        HAS_VLLM_KERNERL = False
+        
 
     def forward(
         self: LlamaAttention,
@@ -415,7 +424,12 @@ def get_llama_flash_attention_forward():
             kv_seq_len += past_key_value[0].shape[-2]
 
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
+        
+        if HAS_VLLM_KERNERL:
+            cos_sin_cache = torch.cat((cos, sin), dim=-1)
+            rotary_embedding_neox(position_ids, query_states, key_states, self.head_dim, cos_sin_cache)
+        else:
+            query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
 
         if past_key_value is not None:
             # reuse k, v, self_attention
@@ -450,3 +464,31 @@ def get_llama_flash_attention_forward():
         return attn_output, None, past_key_value
 
     return forward
+
+
+def get_llama_vllm_rmsnorm_forward():
+    try: 
+        from vllm import layernorm_ops
+        rms_norm = layernorm_ops.rms_norm
+        HAS_VLLM_KERNERL = True
+    except:
+        print("please install vllm kernels to install rmsnorm")
+        print("install vllm from https://github.com/vllm-project/vllm to accelerate your inference")
+        HAS_VLLM_KERNERL = False
+        
+    if HAS_VLLM_KERNERL:
+        def _vllm_rmsnorm_forward(self: LlamaRMSNorm, hidden_states: torch.Tensor):
+            x = hidden_states
+            out = torch.empty_like(x)
+            rms_norm(
+                out,
+                x,
+                self.weight.data,
+                self.variance_epsilon,
+            )
+
+            return out
+
+        return _vllm_rmsnorm_forward
+    else:
+        return None
