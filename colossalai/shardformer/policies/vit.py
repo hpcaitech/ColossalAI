@@ -90,16 +90,20 @@ class ViTPolicy(Policy):
 
         # use flash attention
         if self.shard_config.enable_flash_attention:
-            policy[ViTSelfAttention] = ModulePolicyDescription(method_replacement={
+            self.append_or_create_method_replacement(description={
                 'forward': get_vit_flash_self_attention_forward(),
-            })
+            },
+                                                     policy=policy,
+                                                     target_key=ViTSelfAttention)
 
         # use jit fused operator
         if self.shard_config.enable_jit_fused:
-            policy[ViTOutput] = ModulePolicyDescription(method_replacement={
+            self.append_or_create_method_replacement(description={
                 'forward': get_jit_fused_vit_output_forward(),
                 'dropout_add': get_jit_fused_dropout_add_func(),
-            })
+            },
+                                                     policy=policy,
+                                                     target_key=ViTOutput)
         return policy
 
     def new_model_class(self):

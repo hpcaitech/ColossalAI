@@ -105,9 +105,11 @@ class LlamaPolicy(Policy):
                                                         target_key=LlamaModel)
 
         if self.shard_config.enable_flash_attention:
-            policy[LlamaAttention] = ModulePolicyDescription(method_replacement={
+            self.append_or_create_method_replacement(description={
                 'forward': get_llama_flash_attention_forward(),
-            })
+            },
+                                                     policy=policy,
+                                                     target_key=LlamaAttention)
 
         return policy
 
