@@ -125,9 +125,9 @@ _POLICY_LIST = {
 
     # ChatGLM
     "colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm.ChatGLMModel":
-        PolicyLocation(file_name="chatglm", class_name="ChatGLMModelPolicy"),
+        PolicyLocation(file_name="chatglm2", class_name="ChatGLMModelPolicy"),
     "colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm.ChatGLMForConditionalGeneration":
-        PolicyLocation(file_name="chatglm", class_name="ChatGLMForConditionalGenerationPolicy"),
+        PolicyLocation(file_name="chatglm2", class_name="ChatGLMForConditionalGenerationPolicy"),
 }
 
 

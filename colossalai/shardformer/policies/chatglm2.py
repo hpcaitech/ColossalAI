@@ -7,7 +7,7 @@ from transformers.modeling_outputs import BaseModelOutputWithPast
 
 import colossalai.shardformer.layer as col_nn
 from colossalai.pipeline.stage_manager import PipelineStageManager
-from colossalai.shardformer.modeling.chatglm import ChatGLMPipelineForwards
+from colossalai.shardformer.modeling.chatglm2 import ChatGLMPipelineForwards
 from colossalai.shardformer.modeling.chatglm2_6b.configuration_chatglm import ChatGLMConfig
 from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import (
     ChatGLMForConditionalGeneration,
@@ -15,7 +15,7 @@ from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import (
     GLMBlock,
 )
 
-from ..modeling.chatglm import (
+from ..modeling.chatglm2 import (
     get_chatglm_sequence_parallel_forward_fn,
     get_flash_core_attention_forward,
     get_jit_fused_glm_block_forward,
