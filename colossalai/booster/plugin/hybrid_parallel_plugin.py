@@ -1,11 +1,13 @@
 import random
 from contextlib import nullcontext
 from functools import partial
+from pathlib import Path
 from typing import Any, Callable, Iterator, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
 import torch.distributed as dist
+import torch.nn as nn
 from torch.distributed import ProcessGroup
 from torch.nn import Module, SyncBatchNorm
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -16,8 +18,8 @@ from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 
 from colossalai.amp.naive_amp.mixed_precision_optimizer import MixedPrecisionOptimizer
-from colossalai.checkpoint_io import CheckpointIO
-from colossalai.cluster import ProcessGroupMesh
+from colossalai.checkpoint_io import CheckpointIO, GeneralCheckpointIO
+from colossalai.cluster import DistCoordinator, ProcessGroupMesh
 from colossalai.interface import ModelWrapper, OptimizerWrapper
 from colossalai.pipeline.schedule import OneForwardOneBackwardSchedule
 from colossalai.pipeline.stage_manager import PipelineStageManager
@@ -292,6 +294,7 @@ class HybridParallelPlugin(PipelinePluginBase):
             self.schedule = OneForwardOneBackwardSchedule(num_microbatches, self.stage_manager)
         self.tp_group = self.pg_mesh.get_group_along_axis(TP_AXIS)
         self.dp_group = self.pg_mesh.get_group_along_axis(DP_AXIS)
+        self.pp_group = self.pg_mesh.get_group_along_axis(PP_AXIS)
         self.shard_config = ShardConfig(tensor_parallel_process_group=self.tp_group,
                                         pipeline_stage_manager=self.stage_manager,
                                         enable_tensor_parallelism=self.tp_size > 1,
@@ -460,7 +463,71 @@ class HybridParallelPlugin(PipelinePluginBase):
                           **_kwargs)
 
     def get_checkpoint_io(self) -> CheckpointIO:
-        return None
+        return HypridParallelCheckpointIO()
 
     def no_sync(self, model: Module) -> Iterator[None]:
         raise NotImplementedError
+
+
+class HypridParallelCheckpointIO(GeneralCheckpointIO):
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.coordinator = DistCoordinator()
+
+    def load_unsharded_model(self, model: nn.Module, checkpoint: str, strict: bool = True):
+        # TODO(Baizhou): support this feature after implementing state_dict and load_state_dict
+        raise NotImplementedError
+
+    def save_unsharded_model(self, model: nn.Module, checkpoint: str, gather_dtensor: bool, use_safetensors: bool):
+        # TODO(Baizhou): support this feature after implementing state_dict and load_state_dict
+        raise NotImplementedError
+
+    def save_unsharded_optimizer(self, optimizer: Optimizer, checkpoint: str, gather_dtensor: bool):
+        # TODO(Baizhou): support this feature after implementing state_dict and load_state_dict
+        raise NotImplementedError
+
+    def load_unsharded_optimizer(self, optimizer: Optimizer, checkpoint: str, gather_dtensor: bool):
+        # TODO(Baizhou): support this feature after implementing state_dict and load_state_dict
+        raise NotImplementedError
+
+    def save_lr_scheduler(self, lr_scheduler: LRScheduler, checkpoint: str):
+        """
+        Save lr scheduler to checkpoint but only on master process.
+        """
+        if self.coordinator.is_master():
+            super().save_lr_scheduler(lr_scheduler, checkpoint)
+
+    def save_sharded_model(self,
+                           model: nn.Module,
+                           checkpoint_path: str,
+                           gather_dtensor: bool = True,
+                           prefix: Optional[str] = None,
+                           max_shard_size: int = 1024,
+                           use_safetensors: bool = False):
+        """
+        TODO (Baizhou): Add docstrings.
+        """
+        pass
+
+    def load_sharded_model(self,
+                           model: nn.Module,
+                           checkpoint_index_file: Path,
+                           strict: bool = False,
+                           use_safetensors: bool = False,
+                           load_sub_module: bool = True):
+        """
+        TODO (Baizhou): Add docstrings.
+        """
+        pass
+
+    def save_sharded_optimizer(self,
+                               optimizer: Optimizer,
+                               checkpoint: str,
+                               gather_dtensor: bool = True,
+                               prefix: Optional[str] = None,
+                               size_per_shard: int = 1024):
+        pass
+
+    def load_sharded_optimizer(self, optimizer: Optimizer, index_file_path: str, prefix: str):
+        pass
