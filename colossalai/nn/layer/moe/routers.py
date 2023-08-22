@@ -1,15 +1,16 @@
 import math
 from abc import ABC
+from typing import Callable, Optional
 
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.distributed as dist
-from colossalai.utils import get_current_device
+from torch.distributed import ProcessGroup
+
 from colossalai.context import MOE_CONTEXT
 from colossalai.nn.layer.moe._operation import moe_cumsum
-from typing import Callable, Optional
-from torch.distributed import ProcessGroup
+from colossalai.utils import get_current_device
 
 
 class MoeRouter(nn.Module, ABC):
@@ -224,3 +225,13 @@ class Top2Router(MoeRouter):
             sec_mask = cb_weight.bool()
 
             return cb_weight, sec_mask
+
+
+def get_router_cls(top_k: int) -> MoeRouter:
+    if top_k == 1:
+        router_cls = Top1Router
+    elif top_k == 2:
+        router_cls = Top2Router
+    else:
+        raise NotImplementedError("top_k > 2 is not supported yet")
+    return router_cls

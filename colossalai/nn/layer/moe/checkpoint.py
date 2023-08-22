@@ -16,11 +16,11 @@ def load_moe_model(model: nn.Module, load_path: str):
     state_dict = torch.load(load_path)
 
     for name, module in model.named_parameters():
-        if '.moe_layer.experts.' in name:
+        if '.experts.' in name:
             ep_rank = dist.get_rank(get_ep_group(module))
             ep_size = dist.get_world_size(get_ep_group(module))
             for rank in range(ep_size):
-                new_name = name.replace('.moe_layer.experts.', f'.moe_layer.experts.{rank}.')
+                new_name = name.replace('.experts.', f'.experts.{rank}.')
                 if rank == ep_rank:
                     state_dict[name] = state_dict.pop(new_name)
                 else:

@@ -5,7 +5,7 @@ import torch.nn as nn
 
 import colossalai
 from colossalai.context.moe_context import MOE_CONTEXT
-from colossalai.nn.layer.moe import EPExperts, MoeLayer, Top1Router, UniformNoiseGenerator
+from colossalai.nn.layer.moe import EPMLPExperts, MoeLayer, Top1Router, UniformNoiseGenerator
 from colossalai.testing import assert_equal_in_group, rerun_if_address_is_in_use, spawn
 from colossalai.utils import get_current_device
 from colossalai.utils.moe import sync_moe_model_param
@@ -25,7 +25,7 @@ def run_test(rank, world_size, port):
     num_experts_list = [1, 2, 4]
     layer_list = []
     for num_experts in num_experts_list:
-        exp = EPExperts(num_experts, **expert_factor)
+        exp = EPMLPExperts(num_experts, **expert_factor)
         moe_layer = MoeLayer(DIM, num_experts, router, exp)
         layer_list.append(moe_layer)
 
@@ -34,8 +34,10 @@ def run_test(rank, world_size, port):
     sync_moe_model_param(model)
 
     dist_dict = MOE_CONTEXT.parallel_info_dict
-    assert_equal_in_group(layer_list[0].experts.w1.data, dist_dict[1].dp_group)
-    assert_equal_in_group(layer_list[1].experts.w1.data, dist_dict[2].dp_group)
+    assert_equal_in_group(layer_list[0].experts.wi.data, dist_dict[1].dp_group)
+    assert_equal_in_group(layer_list[0].experts.wo.data, dist_dict[1].dp_group)
+    assert_equal_in_group(layer_list[1].experts.wi.data, dist_dict[2].dp_group)
+    assert_equal_in_group(layer_list[1].experts.wo.data, dist_dict[2].dp_group)
     # MoE model synchronization passed
 
     grad_handler = MoeGradientHandler(model, 0)
@@ -51,11 +53,10 @@ def run_test(rank, world_size, port):
     data.backward(grad)
     grad_handler.handle_gradient()
 
-    assert_equal_in_group(layer_list[0].experts.w1.grad, dist_dict[1].dp_group)
-    assert_equal_in_group(layer_list[0].experts.b1.grad, dist_dict[1].dp_group)
-
-    assert_equal_in_group(layer_list[1].experts.w1.grad, dist_dict[2].dp_group)
-    assert_equal_in_group(layer_list[1].experts.b1.grad, dist_dict[2].dp_group)
+    assert_equal_in_group(layer_list[0].experts.wi.grad, dist_dict[1].dp_group)
+    assert_equal_in_group(layer_list[0].experts.wo.grad, dist_dict[1].dp_group)
+    assert_equal_in_group(layer_list[1].experts.wi.grad, dist_dict[2].dp_group)
+    assert_equal_in_group(layer_list[1].experts.wo.grad, dist_dict[2].dp_group)
     # MoE grad handler test passed
 
 

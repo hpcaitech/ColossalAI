@@ -50,7 +50,7 @@ class MoeContext(metaclass=SingletonMeta):
         moe_set_seed(seed)
         self.has_setup = True
 
-    def get_info(self, num_experts: int) -> Tuple[int, MoeParallelInfo]:
+    def get_info(self, num_experts: int, use_tp: bool = False) -> Tuple[int, MoeParallelInfo]:
         """Calculate the Data Parallel Group and Expert Parallel Group.
 
         Parameters
@@ -79,7 +79,10 @@ class MoeContext(metaclass=SingletonMeta):
         ep_size = self.max_ep_size // dp_size
 
         # Calculate the number of experts for each GPU
-        num_local_experts = 1 if lt_flag else num_experts // self.max_ep_size
+        if use_tp:
+            num_local_experts = num_experts
+        else:
+            num_local_experts = 1 if lt_flag else num_experts // self.max_ep_size
 
         # Don't forget to multiply minimum data parallel size
         dp_size *= self.min_dp_size

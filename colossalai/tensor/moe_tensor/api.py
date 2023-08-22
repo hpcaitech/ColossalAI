@@ -1,4 +1,5 @@
 import torch
+import torch.distributed as dist
 
 from colossalai.tensor import ProcessGroup
 
@@ -80,3 +81,29 @@ def get_dp_group(tensor: torch.Tensor) -> ProcessGroup:
         torch.distributed.ProcessGroup: The data parallel group of the given tensor.
     """
     return tensor.moe_info.dp_group
+
+
+def get_ep_rank(tensor: torch.Tensor) -> int:
+    """
+    Get the expert parallel rank of the given tensor.
+
+    Args:
+        tensor (torch.Tensor): The tensor to be checked.
+
+    Returns:
+        int: The expert parallel rank of the given tensor.
+    """
+    return dist.get_rank(get_ep_group(tensor))
+
+
+def get_dp_rank(tensor: torch.Tensor) -> int:
+    """
+    Get the data parallel rank of the given tensor.
+
+    Args:
+        tensor (torch.Tensor): The tensor to be checked.
+
+    Returns:
+        int: The data parallel rank of the given tensor.
+    """
+    return dist.get_rank(get_dp_group(tensor))
