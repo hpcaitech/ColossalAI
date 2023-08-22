@@ -230,7 +230,7 @@ class SparseMLP(nn.Module):
         return expert_out
 
 
-class MoEModule(nn.Module):
+class MoeModule(nn.Module):
     """
     For other dependency
     """

@@ -1,4 +1,4 @@
-from colossalai.tensor import ProcessGroup
+from colossalai.cluster import ProcessGroupMesh
 
 
 class MoeParallelInfo:
@@ -6,8 +6,10 @@ class MoeParallelInfo:
     """
 
     def __init__(self, ep_size: int, dp_size: int):
-        self.ep_size = ep_size
+        self.dp_axis = 0
         self.dp_size = dp_size
-        self.pg = ProcessGroup(tp_degree=ep_size, dp_degree=dp_size)
-        self.ep_group = self.pg.tp_process_group()
-        self.dp_group = self.pg.dp_process_group()
+        self.ep_axis = 1
+        self.ep_size = ep_size
+        self.pg = ProcessGroupMesh(self.dp_size, self.ep_size)
+        self.ep_group = self.pg.get_group_along_axis(self.ep_axis)
+        self.dp_group = self.pg.get_group_along_axis(self.dp_axis)
