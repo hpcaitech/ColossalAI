@@ -23,10 +23,8 @@ for k, v in inputs.items():
         inputs[k] = v.to('cuda').repeat(*new_shape)
 
 model = transformers.GPT2LMHeadModel(transformers.GPT2Config(n_layer=8))
-infer_config = InferenceConfig(pp_size=4, new_length=8, micro_batch_size=2, stage_unit=['GPT2Block'])
+infer_config = InferenceConfig(pp_size=4, new_length=8, micro_batch_size=2)
 engine = PPInferEngine(infer_config, model, GPT2PipelineForwards.gpt2_lmhead_model_forward)
-
-print(engine.held_layer)
 
 output = engine.inference([inputs])
 if dist.get_rank() == 3:

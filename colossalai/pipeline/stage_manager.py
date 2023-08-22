@@ -13,7 +13,7 @@ class PipelineStageManager:
     Args:
         pg_mesh (ProcessGroupMesh): Process group mesh.
         pipeline_axis (int): The axis along which the pipeline is constructed.
-        circle_stage (bool): Whether to use circle p2p communication, it will make the first and last stage communicate with each other.
+        is_virtual (bool): Whether to use circle p2p communication, it will make the first and last stage communicate with each other.
 
     Attributes:
         num_stages (int): Number of stages in the pipeline.
@@ -28,27 +28,6 @@ class PipelineStageManager:
         self.p2p_groups: Dict[Tuple[int, int], ProcessGroup] = {}
 
         # init prev and next coord
-        if self.circle_stage:
-            self._circle_coord_init()
-        else:
-            self._none_circle_coord_init()
-
-        # init p2p process groups
-        stages = list(range(self.num_stages))
-        for prev, cur in zip(stages[:-1], stages[1:]):
-            group = self.pg_mesh.get_group_along_axis(self.pipeline_axis, [prev, cur])
-            if self.stage in [prev, cur]:
-                ranks_in_group = self.pg_mesh.get_ranks_in_group(group)
-                self.p2p_groups[tuple(ranks_in_group)] = group
-
-        if self.circle_stage:
-            group = self.pg_mesh.get_group_along_axis(self.pipeline_axis, [stages[0], stages[-1]])
-            if self.stage in [stages[0], stages[-1]]:
-                ranks_in_group = self.pg_mesh.get_ranks_in_group(group)
-                self.p2p_groups[tuple(ranks_in_group)] = group
-
-    def _none_circle_coord_init(self):
-        # init prev and next coord
         coord = self.pg_mesh.coordinate()
         # the prev rank of rank0 is the last rank
         prev_coord = coord[: self.pipeline_axis] + \
@@ -59,16 +38,13 @@ class PipelineStageManager:
             (coord[self.pipeline_axis] + 1,) + coord[self.pipeline_axis + 1:]
         self.next_rank = self.pg_mesh.ravel(next_coord, self.pg_mesh.shape, mode='wrap')
 
-    def _circle_coord_init(self):
-        # init prev and next coord cyclically
-        coord = self.pg_mesh.coordinate()
-        prev_coord = coord[: self.pipeline_axis] + \
-            ((coord[self.pipeline_axis] + self.num_stages - 1 )% self.num_stages,) + coord[self.pipeline_axis + 1:]
-        self.prev_rank = self.pg_mesh.ravel(prev_coord, self.pg_mesh.shape)
-
-        next_coord = coord[: self.pipeline_axis] + \
-            ((coord[self.pipeline_axis] + self.num_stages + 1 )% self.num_stages,) + coord[self.pipeline_axis + 1:]
-        self.next_rank = self.pg_mesh.ravel(next_coord, self.pg_mesh.shape)
+        # init p2p process groups
+        stages = list(range(self.num_stages))
+        for prev, cur in zip(stages[:-1], stages[1:]):
+            group = self.pg_mesh.get_group_along_axis(self.pipeline_axis, [prev, cur])
+            if self.stage in [prev, cur]:
+                ranks_in_group = self.pg_mesh.get_ranks_in_group(group)
+                self.p2p_groups[tuple(ranks_in_group)] = group
 
         if is_virtual:
             # add the process group of the first rank and the last rank

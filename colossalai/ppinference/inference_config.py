@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import List
 
 import torch
@@ -11,7 +12,6 @@ class InferenceConfig:
 
     Args:
         pp_size (int): the number of pipeline stages.
-        stage_unit (List[str]): the unit module name can be sliced as a stage, should be `nn.Module`.
         micro_batch_size (int): the micro batch size.
         new_length (int): the new length of the input sequence.
         padding_token_id (int): the token id for padding.
@@ -21,7 +21,6 @@ class InferenceConfig:
     def __init__(
         self,
         pp_size: int,
-        stage_unit: List[str],
         micro_batch_size: int = 1,
         micro_batch_buffer_size: int = None,
         new_length: int = 32,
@@ -29,7 +28,6 @@ class InferenceConfig:
     ):
         assert isinstance(pp_size, int), f'pp_size must be an integer, got {type(pp_size)}'
         self.pp_size = pp_size
-        self.stage_unit = stage_unit
         self.micro_batch_size = micro_batch_size
         self.micro_batch_buffer_size = pp_size if micro_batch_buffer_size is None else micro_batch_buffer_size
         self.new_length = new_length
