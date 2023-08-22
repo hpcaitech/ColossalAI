@@ -14,6 +14,7 @@ from tests.test_shardformer.test_model._utils import (
     check_output_hidden_state,
     check_weight,
     run_forward_backward_with_hybrid_plugin,
+    unwrap_model,
 )
 
 
@@ -48,17 +49,13 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         check_loss(org_loss, sharded_loss, atol=atol, rtol=rtol)
 
     # unwrap model
-    if org_model.__class__.__name__ == 'ChatGLMModel':
-        chatglm_model = org_model
-        shard_chatglm_model = sharded_model.unwrap()
-    else:
-        chatglm_model = org_model.transformer
-        shard_chatglm_model = sharded_model.unwrap().transformer
+    chatglm_model = unwrap_model(org_model, 'ChatGLMModel', 'transformer')
+    shard_chatglm_model = unwrap_model(sharded_model, 'ChatGLMModel', 'transformer')
 
     # check grad
     row_layer_for_check = ['encoder.layers[0].self_attention.query_key_value', 'embedding.word_embeddings']
     col_layer_for_check = ['encoder.layers[0].self_attention.dense']
-    if stage_manager is None or stage_manager.is_first_stage():
+    if (stage_manager is None or stage_manager.is_first_stage()) and booster.plugin.zero_stage == 0:
         if test_config['precision'] == 'fp32':
             atol, rtol = 1e-6, 1e-3
         else:
@@ -121,11 +118,23 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     'pp_size': 1,
     'enable_all_optimization': True,
     'use_lazy_init': False,
-    'precision': 'fp32',
+    'precision': 'fp32'
+}, {
+    'tp_size': 2,
+    'pp_size': 1,
+    'enable_all_optimization': True,
+    'use_lazy_init': False,
+    'precision': 'fp32'
+}, {
+    'tp_size': 2,
+    'pp_size': 1,
+    'enable_all_optimization': True,
+    'use_lazy_init': True,
+    'zero_stage': 2,
+    'precision': 'fp16',
+    'initial_scale': 1
 }])
 def run_chatglm_test(test_config):
-
-    # TODO(baizhou): add test_config for TP+DP after supporting & debugging it
 
     sub_model_zoo = model_zoo.get_sub_registry('transformers_chatglm')
 

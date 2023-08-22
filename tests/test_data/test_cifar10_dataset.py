@@ -5,11 +5,10 @@ import os
 from pathlib import Path
 
 import pytest
-from torchvision import transforms, datasets
 from torch.utils.data import DataLoader
+from torchvision import datasets, transforms
 
 
-@pytest.mark.cpu
 def test_cifar10_dataset():
     # build transform
     transform_pipeline = [transforms.ToTensor()]

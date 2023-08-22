@@ -11,15 +11,10 @@ from torch.nn import Module
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
 
+from ..layer.parallel_module import ParallelModule
 from ..shard.shard_config import ShardConfig
 
 __all__ = ["ParallelModule", "SubModuleReplacementDescription", "ModulePolicyDescription", "Policy"]
-
-
-class ParallelModule():
-
-    def __init__(self):
-        pass
 
 
 @dataclass
@@ -231,3 +226,22 @@ class Policy(ABC):
         end_idx = num_layers_per_stage_accumulated[stage + 1]
 
         return [start_idx, end_idx]
+
+    def append_seq_parallel_to_policy(
+        self,
+        suffix_list: List[str],
+        module_policy_description: ModulePolicyDescription,
+    ):
+        r"""
+        Append the sequence parallel policy to the policy for the given key.
+
+        Args:
+            suffix_list (List[str]): the suffix list of the module to be parallelized
+            policy (Dict[Union[str, nn.Module], ModulePolicyDescription]): the policy to be updated
+        """
+
+        for sub_description in module_policy_description.sub_module_replacement:
+            if (sub_description.suffix in suffix_list):
+                if sub_description.kwargs is None:
+                    sub_description.kwargs = {}
+                sub_description.kwargs["seq_parallel"] = True

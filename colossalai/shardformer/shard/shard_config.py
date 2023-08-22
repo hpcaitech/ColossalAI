@@ -28,6 +28,7 @@ class ShardConfig:
     enable_all_optimization: bool = False
     enable_flash_attention: bool = False
     enable_jit_fused: bool = False
+    enable_sequence_parallelism: bool = False
 
     # pipeline_parallel_size: int
     # data_parallel_size: int
@@ -57,3 +58,4 @@ class ShardConfig:
         self.enable_fused_normalization = True
         self.enable_flash_attention = True
         self.enable_jit_fused = True
+        self.enable_sequence_parallelism = True

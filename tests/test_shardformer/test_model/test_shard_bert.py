@@ -15,6 +15,7 @@ from tests.test_shardformer.test_model._utils import (
     check_output_hidden_state,
     check_weight,
     run_forward_backward_with_hybrid_plugin,
+    unwrap_model,
 )
 
 
@@ -44,13 +45,9 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             check_output_hidden_state(org_output, sharded_output, stage_manager, atol=atol, rtol=rtol)
 
         check_loss(org_loss, sharded_loss, atol=atol, rtol=rtol)
-    # unwrap model
-    if org_model.__class__.__name__ == 'BertModel':
-        bert = org_model
-        sharded_bert = sharded_model.unwrap()
-    else:
-        bert = org_model.bert
-        sharded_bert = sharded_model.unwrap().bert
+
+    bert = unwrap_model(org_model, 'BertModel', 'bert')
+    sharded_bert = unwrap_model(sharded_model, 'BertModel', 'bert')
 
     col_layer_for_check = ['encoder.layer[0].output.dense']
     row_layer_for_check = ['embeddings.word_embeddings', 'encoder.layer[0].intermediate.dense']
@@ -59,9 +56,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         atol, rtol = 1e-4, 1e-3
     else:
         atol, rtol = 5e-3, 5e-3
-    if stage_manager is None or stage_manager.is_first_stage():
-        #check_weight(bert.embeddings.word_embeddings, sharded_bert.embeddings.word_embeddings, tp_group, atol=1e-5, rtol=1e-3)
-        #check_weight(bert.encoder.layer[0].attention.self.query, sharded_bert.encoder.layer[0].attention.self.query, tp_group, atol=5e-3, rtol=1e-3)
+    if (stage_manager is None or stage_manager.is_first_stage()) and booster.plugin.zero_stage == 0:
         check_grad(bert, sharded_bert, col_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=1, verbose=False)
         check_grad(bert, sharded_bert, row_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=0, verbose=False)
 
@@ -98,6 +93,20 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     'enable_all_optimization': True,
     'use_lazy_init': False,
     'precision': 'fp32',
+}, {
+    'tp_size': 2,
+    'pp_size': 1,
+    'enable_all_optimization': True,
+    'use_lazy_init': False,
+    'precision': 'fp32'
+}, {
+    'tp_size': 2,
+    'pp_size': 1,
+    'enable_all_optimization': True,
+    'use_lazy_init': True,
+    'zero_stage': 2,
+    'precision': 'fp16',
+    'initial_scale': 1
 }])
 def run_bert_test(test_config):
 

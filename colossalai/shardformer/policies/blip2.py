@@ -304,15 +304,6 @@ class BlipPolicy(Policy):
         return policy
 
     def postprocess(self):
-        binding_map = {
-            'language_model.model.decoder.embed_tokens': 'language_model.lm_head',
-        }
-
-        for k, v in binding_map.items():
-            src_mod = getattr_(self.model, k)
-            dst_mod = getattr_(self.model, v)
-            dst_mod.weight = src_mod.weight
-
         return self.model
 
 
