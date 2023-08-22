@@ -285,21 +285,26 @@ class BlipPolicy(Policy):
 
         # use flash attention
         if self.shard_config.enable_flash_attention:
-            policy[Blip2Attention] = ModulePolicyDescription(method_replacement={
+            self.append_or_create_method_replacement(description={
                 'forward': get_blip2_flash_attention_forward(),
-            })
+            },
+                                                     policy=policy,
+                                                     target_key=Blip2Attention)
 
         # use jit operator
         if self.shard_config.enable_jit_fused:
-            policy[Blip2QFormerSelfOutput] = ModulePolicyDescription(
-                method_replacement={
-                    'forward': get_jit_fused_blip2_QFormer_self_output_forward(),
-                    'dropout_add': get_jit_fused_dropout_add_func(),
-                })
-            policy[Blip2QFormerOutput] = ModulePolicyDescription(method_replacement={
+            self.append_or_create_method_replacement(description={
+                'forward': get_jit_fused_blip2_QFormer_self_output_forward(),
+                'dropout_add': get_jit_fused_dropout_add_func(),
+            },
+                                                     policy=policy,
+                                                     target_key=Blip2QFormerSelfOutput)
+            self.append_or_create_method_replacement(description={
                 'forward': get_jit_fused_blip2_QFormer_output_forward(),
                 'dropout_add': get_jit_fused_dropout_add_func(),
-            })
+            },
+                                                     policy=policy,
+                                                     target_key=Blip2QFormerOutput)
 
         return policy
 

@@ -125,25 +125,33 @@ class BloomPolicy(Policy):
                 target_key=BloomModel)
 
         if self.shard_config.enable_flash_attention:
-            policy[BloomAttention] = ModulePolicyDescription(method_replacement={
+            self.append_or_create_method_replacement(description={
                 'forward': get_bloom_flash_attention_forward(),
-                'dropout_add': get_dropout_add_func()
-            })
+                'dropout_add': get_dropout_add_func(),
+            },
+                                                     policy=policy,
+                                                     target_key=BloomAttention)
 
         # enable jit fused operator
         if self.shard_config.enable_jit_fused:
-            policy[BloomAttention] = ModulePolicyDescription(method_replacement={
+            self.append_or_create_method_replacement(description={
                 'forward': get_jit_fused_bloom_attention_forward(),
                 'dropout_add': get_jit_fused_dropout_add_func(),
-            })
-            policy[BloomMLP] = ModulePolicyDescription(method_replacement={
+            },
+                                                     policy=policy,
+                                                     target_key=BloomAttention)
+            self.append_or_create_method_replacement(description={
                 'forward': get_jit_fused_bloom_mlp_forward(),
                 'dropout_add': get_jit_fused_dropout_add_func(),
-            })
-            policy[BloomGelu] = ModulePolicyDescription(method_replacement={
+            },
+                                                     policy=policy,
+                                                     target_key=BloomMLP)
+            self.append_or_create_method_replacement(description={
                 'forward': get_jit_fused_bloom_gelu_forward(),
                 'bloom_gelu_forward': get_jit_fused_gelu_forward_func(),
-            })
+            },
+                                                     policy=policy,
+                                                     target_key=BloomGelu)
 
         return policy
 

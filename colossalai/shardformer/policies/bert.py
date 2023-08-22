@@ -155,20 +155,26 @@ class BertPolicy(Policy):
 
         # use flash attention
         if self.shard_config.enable_flash_attention:
-            policy[BertSelfAttention] = ModulePolicyDescription(method_replacement={
+            self.append_or_create_method_replacement(description={
                 'forward': get_bert_flash_attention_forward(),
-            })
+            },
+                                                     policy=policy,
+                                                     target_key=BertSelfAttention)
 
         # use jit operator
         if self.shard_config.enable_jit_fused:
-            policy[BertSelfOutput] = ModulePolicyDescription(method_replacement={
+            self.append_or_create_method_replacement(description={
                 'forward': get_jit_fused_bert_self_output_forward(),
                 'dropout_add': get_jit_fused_dropout_add_func(),
-            })
-            policy[BertOutput] = ModulePolicyDescription(method_replacement={
+            },
+                                                     policy=policy,
+                                                     target_key=BertSelfOutput)
+            self.append_or_create_method_replacement(description={
                 'forward': get_jit_fused_bert_output_forward(),
                 'dropout_add': get_jit_fused_dropout_add_func(),
-            })
+            },
+                                                     policy=policy,
+                                                     target_key=BertOutput)
 
         return policy
 

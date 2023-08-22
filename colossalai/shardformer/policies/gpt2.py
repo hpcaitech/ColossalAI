@@ -118,9 +118,11 @@ class GPT2Policy(Policy):
                                                         target_key=GPT2Block)
 
         if self.shard_config.enable_flash_attention:
-            policy[GPT2Attention] = ModulePolicyDescription(method_replacement={
+            self.append_or_create_method_replacement(description={
                 'forward': get_gpt2_flash_attention_forward(),
-            })
+            },
+                                                     policy=policy,
+                                                     target_key=GPT2Attention)
 
         if self.shard_config.enable_sequence_parallelism:
             policy[GPT2Model].method_replacement = {"forward": gpt2_sequence_parallel_forward_fn(self.shard_config)}

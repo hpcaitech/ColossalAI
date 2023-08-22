@@ -15,7 +15,11 @@ from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import (
     GLMBlock,
 )
 
-from ..modeling.chatglm2 import get_flash_core_attention_forward, get_jit_fused_glm_block_forward
+from ..modeling.chatglm2 import (
+    get_chatglm_sequence_parallel_forward_fn,
+    get_flash_core_attention_forward,
+    get_jit_fused_glm_block_forward,
+)
 from ..modeling.jit import get_jit_fused_dropout_add_func
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
@@ -45,8 +49,8 @@ class ChatGLMPolicy(Policy):
 
         policy = {}
 
+        use_sequence_parallel = self.shard_config.enable_sequence_parallelism
         if self.shard_config.enable_tensor_parallelism:
-
             policy[ChatGLMModel] = ModulePolicyDescription(attribute_replacement={},
                                                            sub_module_replacement=[
                                                                SubModuleReplacementDescription(
@@ -55,36 +59,42 @@ class ChatGLMPolicy(Policy):
                                                                )
                                                            ])
 
-            policy[GLMBlock] = ModulePolicyDescription(attribute_replacement={
-                "self_attention.num_attention_heads_per_partition":
-                    self.model.config.num_attention_heads // self.shard_config.tensor_parallel_size,
-                "self_attention.projection_size":
-                    (self.model.config.kv_channels * self.model.config.num_attention_heads) //
-                    self.shard_config.tensor_parallel_size,
-                "self_attention.qkv_hidden_size":
-                    (self.model.config.kv_channels * self.model.config.num_attention_heads * 3) //
-                    self.shard_config.tensor_parallel_size,
-                "self_attention.core_attention.num_attention_heads_per_partition":
-                    self.model.config.num_attention_heads // self.shard_config.tensor_parallel_size,
-                "self_attention.core_attention.hidden_size_per_partition":
-                    self.model.config.kv_channels * self.model.config.num_attention_heads //
-                    self.shard_config.tensor_parallel_size,
-            },
-                                                       param_replacement=[],
-                                                       sub_module_replacement=[
-                                                           SubModuleReplacementDescription(
-                                                               suffix="self_attention.query_key_value",
-                                                               target_module=col_nn.Linear1D_Col,
-                                                           ),
-                                                           SubModuleReplacementDescription(
-                                                               suffix="self_attention.dense",
-                                                               target_module=col_nn.Linear1D_Row,
-                                                           ),
-                                                           SubModuleReplacementDescription(
-                                                               suffix="self_attention.core_attention.attention_dropout",
-                                                               target_module=col_nn.DropoutForParallelInput,
-                                                           ),
-                                                       ])
+            policy[GLMBlock] = ModulePolicyDescription(
+                attribute_replacement={
+                    "self_attention.num_attention_heads_per_partition":
+                        self.model.config.num_attention_heads // self.shard_config.tensor_parallel_size,
+                    "self_attention.projection_size":
+                        (self.model.config.kv_channels * self.model.config.num_attention_heads) //
+                        self.shard_config.tensor_parallel_size,
+                    "self_attention.qkv_hidden_size":
+                        (self.model.config.kv_channels * self.model.config.num_attention_heads * 3) //
+                        self.shard_config.tensor_parallel_size,
+                    "self_attention.core_attention.num_attention_heads_per_partition":
+                        self.model.config.num_attention_heads // self.shard_config.tensor_parallel_size,
+                    "self_attention.core_attention.hidden_size_per_partition":
+                        self.model.config.kv_channels * self.model.config.num_attention_heads //
+                        self.shard_config.tensor_parallel_size,
+                },
+                param_replacement=[],
+                sub_module_replacement=[
+                    SubModuleReplacementDescription(suffix="self_attention.query_key_value",
+                                                    target_module=col_nn.Linear1D_Col,
+                                                    kwargs={
+                                                        'seq_parallel': use_sequence_parallel,
+                                                        'seq_parallel_dim': 0
+                                                    }),
+                    SubModuleReplacementDescription(suffix="self_attention.dense",
+                                                    target_module=col_nn.Linear1D_Row,
+                                                    kwargs={
+                                                        'seq_parallel': use_sequence_parallel,
+                                                        'seq_parallel_dim': 0
+                                                    }),
+                    SubModuleReplacementDescription(
+                        suffix="self_attention.core_attention.attention_dropout",
+                        target_module=col_nn.DropoutForParallelInput,
+                    ),
+                ])
+
         # optimization configuration
         if self.shard_config.enable_fused_normalization:
             if not self.model.config.rmsnorm:
@@ -124,16 +134,27 @@ class ChatGLMPolicy(Policy):
 
         # use flash attention
         if self.shard_config.enable_flash_attention:
-            policy[CoreAttention] = ModulePolicyDescription(method_replacement={
+            self.append_or_create_method_replacement(description={
                 'forward': get_flash_core_attention_forward(),
-            })
+            },
+                                                     policy=policy,
+                                                     target_key=CoreAttention)
+
+        # use sequence parallel
+        if use_sequence_parallel:
+            self.append_or_create_method_replacement(
+                description={'forward': get_chatglm_sequence_parallel_forward_fn(self.shard_config)},
+                policy=policy,
+                target_key=ChatGLMModel)
 
         # use jit fused operator
         if self.shard_config.enable_jit_fused:
-            policy[GLMBlock] = ModulePolicyDescription(method_replacement={
+            self.append_or_create_method_replacement(description={
                 'forward': get_jit_fused_glm_block_forward(),
                 'dropout_add': get_jit_fused_dropout_add_func(),
-            })
+            },
+                                                     policy=policy,
+                                                     target_key=GLMBlock)
 
         return policy
 
@@ -178,7 +199,13 @@ class ChatGLMPolicy(Policy):
 
         layers_per_stage = Policy.distribute_layers(module.num_layers, stage_manager.num_stages)
         stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
-        method_replacement = {'forward': partial(new_forward, stage_manager=stage_manager, stage_index=stage_index)}
+        method_replacement = {
+            'forward':
+                partial(new_forward,
+                        stage_manager=stage_manager,
+                        stage_index=stage_index,
+                        shard_config=self.shard_config)
+        }
         self.append_or_create_method_replacement(description=method_replacement, policy=policy, target_key=model_cls)
 
 
