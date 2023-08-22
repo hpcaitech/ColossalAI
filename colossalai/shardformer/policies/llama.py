@@ -263,3 +263,7 @@ class LlamaForSequenceClassificationPolicy(LlamaPolicy):
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
         """No shared params in llama for sequence classification model"""
         return []
+
+
+class LlamaInferPolicy(LlamaPolicy):
+    pass
