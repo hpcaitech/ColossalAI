@@ -2,7 +2,7 @@ from .albert import *
 from .bert import *
 from .blip2 import *
 from .bloom import *
-from .chatglm import *
+from .chatglm2 import *
 from .gpt import *
 from .llama import *
 from .opt import *
