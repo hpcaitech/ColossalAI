@@ -168,12 +168,12 @@ def cai_gptq_matmul_248_kernel(a_ptr, b_ptr, c_ptr, scales_ptr, zeros_ptr, bias_
     """
     Compute the matrix multiplication C = A x B.
     A is of shape (M, K) float16
-    B is of shape (K//16, N) int64
+    B is of shape (K//8, N) int32
     C is of shape (M, N) float16
     scales is of shape (G, N) float16
     zeros is of shape (G, N) float16
     """
-    infearure_per_bits = 64 // bits
+    infearure_per_bits = 32 // bits
 
     pid = tl.program_id(axis=0)
     NK = K
@@ -334,12 +334,12 @@ def cai_gptq_idx_matmul_248_kernel(a_ptr, b_ptr, c_ptr, scales_ptr, zeros_ptr, i
     """
     Compute the matrix multiplication C = A x B.
     A is of shape (M, K) float16
-    B is of shape (K//16, N) int64
+    B is of shape (K//8, N) int32
     C is of shape (M, N) float16
     scales is of shape (G, N) float16
     zeros is of shape (G, N) float16
     """
-    infearure_per_bits = 64 // bits
+    infearure_per_bits = 32 // bits
 
     pid = tl.program_id(axis=0)
     NK = K
@@ -439,6 +439,11 @@ def cai_gptq_idx_matmul_248_kernel(a_ptr, b_ptr, c_ptr, scales_ptr, zeros_ptr, i
 def gptq_fused_linear_triton(input, qweight, scales, qzeros, bias, residual,
                              bits, maxq, gptq_group_size, qkv_fused, add_bias, add_residual, g_idx = None, act_type = 0):
     # print("gptq fused ", qkv_fused, add_bias, add_residual)
+    assert input.is_cuda, "input is not in cuda"
+    assert qweight.is_cuda, "qweight is not in cuda"
+    assert scales.is_cuda, "scales is not in cuda"
+    assert qzeros.is_cuda, "qzeros is not in cuda"
+
     with torch.cuda.device(input.device):
         if qkv_fused:
             grid = lambda META: (triton.cdiv(input.shape[0], META['BLOCK_SIZE_M']) * triton.cdiv(qweight.shape[1], META['BLOCK_SIZE_N']) * 3, )

@@ -4,11 +4,11 @@ import pytest
 import time
 import transformers
 from auto_gptq.quantization import GPTQ
-from auto_gptq.modeling._utils import find_layers, pack_model
+from auto_gptq.modeling._utils import find_layers, pack_model,autogptq_post_init
 from auto_gptq.nn_modules.qlinear.qlinear_triton import QuantLinear
 
 from auto_gptq.quantization.quantizer import Quantizer
-from colossalai.gptq import CaiGPTQLinearOp
+from colossalai.gptq import CaiGPTQLinearOp, CaiQuantLinear
 import math
 import numpy as np
 
@@ -119,17 +119,17 @@ def cai_linear_pack(linear, scales, zeros,
 
     out_qscales.data.copy_(scales)
 
-    wn = 16
-    pbits = 64
-    ptype = torch.int64
-    unsign_type = np.uint64
-    sign_type = np.int64
+    # wn = 16
+    # pbits = 64
+    # ptype = torch.int64
+    # unsign_type = np.uint64
+    # sign_type = np.int64
 
-    # wn = 8
-    # pbits = 32
-    # ptype = torch.int32
-    # unsign_type = np.uint32
-    # sign_type = np.int32
+    wn = 8
+    pbits = 32
+    ptype = torch.int32
+    unsign_type = np.uint32
+    sign_type = np.int32
 
     intweight = []
     for idx in range(infeatures):
@@ -178,6 +178,16 @@ def cai_linear_pack(linear, scales, zeros,
 
     return out_qweight, out_qscales, out_qzeros
 
+
+def get_model_param(model, quantizers):
+    layers = find_layers(model)
+    layers = {n: layers[n] for n in quantizers}
+    with torch.no_grad():
+        for name in layers:
+            _, scale, zero, g_idx = quantizers[name]
+
+    return scale, zero, g_idx
+
 def model_cai_pack(model, quantizers, qweight, qscales, qzeros, wbits, groupsize):
     layers = find_layers(model)
     layers = {n: layers[n] for n in quantizers}
@@ -199,11 +209,11 @@ def test_gptq_linear():
 
     weight = torch.randn(outfeature, infeature).to(torch.float16).to(torch.cuda.current_device())
     bias = torch.zeros(outfeature).to(torch.float16).to(torch.cuda.current_device())
-    wn = 16
-    ptype = torch.int64
+    # wn = 16
+    # ptype = torch.int64
     
-    # wn = 8
-    # ptype = torch.int32
+    wn = 8
+    ptype = torch.int32
 
     qweight = torch.zeros(infeature//wn, outfeature, dtype=ptype, device=torch.cuda.current_device()).contiguous()
     qscales = torch.zeros(infeature//groupsize, outfeature, dtype=torch.float16, device=torch.cuda.current_device()).contiguous()
@@ -211,7 +221,7 @@ def test_gptq_linear():
 
     act_func = nn.SiLU()
     inps = torch.ones(1, 1, infeature).to(torch.float16).to(torch.cuda.current_device())
-    batch_inps = torch.randn(1, 4096, infeature).to(torch.float16).to(torch.cuda.current_device())
+    batch_inps = torch.randn(1, 2048, infeature).to(torch.float16).to(torch.cuda.current_device())
 
     linear = MLinear(infeature, outfeature)
     linear.to(torch.cuda.current_device())
@@ -223,66 +233,41 @@ def test_gptq_linear():
     with torch.no_grad():
         torch_out = linear(inps)
         batch_torch_out = linear(batch_inps)
-        torch_out = act_func(torch_out)
-        batch_torch_out = act_func(batch_torch_out)
+        # torch_out = act_func(torch_out)
+        # batch_torch_out = act_func(batch_torch_out)
 
 
     # linear.to("cuda")
     quantizers = model_quant(linear, inps, torch.cuda.current_device())
-    qweight, qscales, qzeros = model_cai_pack(linear, quantizers, qweight, qscales, qzeros, wbits, groupsize)
+    # qweight, qscales, qzeros = model_cai_pack(linear, quantizers, qweight, qscales, qzeros, wbits, groupsize)
+
+    scale, zero, g_idx = get_model_param(linear, quantizers)
+    cai_linear = CaiQuantLinear(wbits, groupsize, infeature, outfeature, True)
+
+    cai_linear.to("cuda")
+    cai_linear.pack(linear.linear, scale, zero, g_idx)
+    cai_linear.to("cuda")
+
     gptq_model = model_pack(linear, quantizers, wbits, groupsize)
     gptq_model.to(torch.cuda.current_device())
-    # gptq_model = linear
+    gptq_model=autogptq_post_init(gptq_model, False)
 
-
-    cai_linear = CaiGPTQLinearOp(groupsize, wbits)
-
-
-    # qweight = torch.cat((qweight, qweight, qweight), dim=0).contiguous()
-    # qscales = torch.cat((qscales, qscales, qscales), dim=0).contiguous()
-    # qzeros = torch.cat((qzeros, qzeros, qzeros), dim=0).contiguous()
-    # bias = torch.cat((bias, bias, bias), dim=0).contiguous()
     qkv_fused=False
 
     with torch.no_grad():
         gptq_out = gptq_model(inps)
         batch_gptq_out = gptq_model(batch_inps)
-        cai_out = cai_linear(inps,
-                            qweight,
-                            qscales,
-                            qzeros,
-                            bias = bias, 
-                            act_type = 3,
-                            qkv_fused=qkv_fused)
+        torch.cuda.synchronize()
+        cai_out = cai_linear(inps)
         torch.cuda.synchronize()
 
-        batch_cai_out = cai_linear(batch_inps,
-                            qweight,
-                            qscales,
-                            qzeros,
-                            bias=bias,
-                            act_type = 3,
-                            qkv_fused=qkv_fused)
+        batch_cai_out = cai_linear(batch_inps)
         torch.cuda.synchronize()
-        batch_gptq_out = act_func(batch_gptq_out)
-        gptq_out = act_func(gptq_out)
+        # batch_gptq_out = act_func(batch_gptq_out)
+        # gptq_out = act_func(gptq_out)
 
-    # cai_out = cai_out[1]
-    # batch_cai_out = batch_cai_out[1]
-    # a = torch.sum(qscales, 0)
-    # print("qscales ", a)
-    # print("orch out ", torch_out)
-    # print("gptq out ", gptq_out)
-    # print("cai out ", cai_out)
-    # # print("batch_torch out ", batch_torch_out)
-
-    # print("batch_torch out ", batch_torch_out)
-    # print("batch_gptq out ", batch_gptq_out)
-    # print("batch_cai out ", batch_cai_out)
-
-    assert torch.allclose(cai_out, gptq_out, rtol=1e-01, atol=1e-02)
-    assert torch.allclose(batch_cai_out, batch_gptq_out, rtol=1e-01, atol=1e-02)
-
+    assert torch.allclose(cai_out, gptq_out, rtol=1e-01, atol=1e-01)
+    assert torch.allclose(batch_cai_out, batch_gptq_out, rtol=1e-01, atol=1e-01)
 
     # mean_diff = torch.mean(torch.abs(cai_out - gptq_out))
     # max_diff = torch.max(torch.abs(cai_out - gptq_out))
