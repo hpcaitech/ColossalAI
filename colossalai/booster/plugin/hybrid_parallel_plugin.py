@@ -510,7 +510,7 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
         self.dp_rank = dist.get_rank(self.dp_group)
         self.tp_rank = dist.get_rank(self.tp_group)
         self.pp_rank = dist.get_rank(self.pp_group)
-        self.dp_size, self.pp_size, self.tp_size = pg_mesh.size
+        self.dp_size, self.pp_size, self.tp_size = pg_mesh.shape
 
     @staticmethod
     def _model_sharder(model: nn.Module,
@@ -633,7 +633,7 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
             weights_name = weights_name.replace(".bin", f"-stage-{self.pp_rank:05d}-shard.bin")
             weights_name = weights_name.replace(".safetensors", f"-stage-{self.pp_rank:05d}-shard.safetensors")
             save_index_file = save_index_file.replace(".json", f"-stage-{self.pp_rank:05d}.json")
-            save_index_file = os.path.join(tmp_index_file_folder, save_index_file)
+            save_index_file = os.path.join("tmp_index_files", save_index_file)
 
             total_size = save_state_dict_shards(sharded_state_dict=state_dict_shard,
                                                 checkpoint=checkpoint,
