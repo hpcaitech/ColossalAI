@@ -13,7 +13,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 from sse_starlette.sse import EventSourceResponse
-from transformers import AutoTokenizer, LlamaConfig, LlamaForCausalLM
+from transformers import AutoTokenizer, LlamaConfig, LlamaForCausalLM, AutoModel
 from utils import ChatPromptProcessor, Dialogue, LockedIterator, load_json, sample_streamingly, update_model_kwargs_fn
 
 CONTEXT = 'Below is an instruction that describes a task. Write a response that appropriately completes the request. Do not generate new instructions.'
@@ -131,6 +131,9 @@ if __name__ == '__main__':
     parser.add_argument(
         'pretrained',
         help='Path to pretrained model. Can be a local path or a model name from the HuggingFace model hub.')
+    parser.add_argument('--model',
+                        choices=['llama', 'chatglm'],
+                        default='llama')
     parser.add_argument('--quant',
                         choices=['8bit', '4bit'],
                         default=None,
@@ -150,10 +153,15 @@ if __name__ == '__main__':
                         help='Path to profanity words list. It should be a JSON file containing a list of words.')
     args = parser.parse_args()
 
-    if args.quant == '4bit':
+    if args.quant == '4bit' and args.model == 'llama':
         assert args.gptq_checkpoint is not None, 'Please specify a GPTQ checkpoint.'
 
-    tokenizer = AutoTokenizer.from_pretrained(args.pretrained)
+    if args.model == "llama":
+        tokenizer = AutoTokenizer.from_pretrained(args.pretrained)
+    elif args.model == "chatglm":
+        tokenizer = AutoTokenizer.from_pretrained("THUDM/chatglm-6b", trust_remote_code=True)
+    else:
+        raise ValueError(f'Unsupported model "{args.model}"')
 
     if args.profanity_file is not None:
         censored_words = load_json(args.profanity_file)
@@ -162,18 +170,30 @@ if __name__ == '__main__':
     prompt_processor = ChatPromptProcessor(tokenizer, CONTEXT, MAX_LEN, censored_words=censored_words)
 
     if args.quant == '4bit':
-        with low_resource_init():
-            config = LlamaConfig.from_pretrained(args.pretrained)
-            model = LlamaForCausalLM(config)
-        model = llama_load_quant(model, args.gptq_checkpoint, 4, args.gptq_group_size)
+        if args.model == 'llama':
+            with low_resource_init():
+                config = LlamaConfig.from_pretrained(args.pretrained)
+                model = LlamaForCausalLM(config)
+            model = llama_load_quant(model, args.gptq_checkpoint, 4, args.gptq_group_size)
+        elif args.model == 'chatglm':
+            model = AutoModel.from_pretrained(args.pretrained, torch_dtype=torch.float16, device_map="auto", trust_remote_code=True).quantize(4).half()
+        else:
+            raise ValueError(f'Unsupported model "{args.model}"')
         model.cuda()
     else:
-        model = LlamaForCausalLM.from_pretrained(
+        if args.model == 'llama':
+            model = LlamaForCausalLM.from_pretrained(
             args.pretrained,
             load_in_8bit=(args.quant == '8bit'),
             torch_dtype=torch.float16,
             device_map="auto",
         )
+        elif args.model == 'chatglm':
+            model = AutoModel.from_pretrained(args.pretrained, torch_dtype=torch.float16, device_map="auto", trust_remote_code=True)
+            if args.quant == '8bit':
+                model = model.quantize(8).half().cuda()
+        else:
+            raise ValueError(f'Unsupported model "{args.model}"')
         if args.quant != '8bit':
             model.half()    # seems to fix bugs for some users.
         model.eval()

@@ -11,3 +11,4 @@ git+https://github.com/huggingface/transformers
 accelerate
 bitsandbytes
 jieba
+cpm_kernels
