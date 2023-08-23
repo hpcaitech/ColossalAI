@@ -148,7 +148,7 @@ class GPT2PipelineForwards:
             if token_type_ids is not None:
                 token_type_embeds = self.wte(token_type_ids)
                 hidden_states = hidden_states + token_type_embeds
-                hidden_states = self.drop(hidden_states)
+            hidden_states = self.drop(hidden_states)
 
         output_shape = input_shape + (hidden_states.size(-1),)
 
