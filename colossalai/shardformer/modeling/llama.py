@@ -400,6 +400,7 @@ def get_llama_flash_attention_forward():
     except: 
         print("fall back to original rotary_embedding_neox of huggingface")
         print("install vllm from https://github.com/vllm-project/vllm to accelerate your inference")
+        print("if falied to install vllm, please use this branch to install: https://github.com/tiandiao123/vllm/tree/setup_branch")
         HAS_VLLM_KERNERL = False
         
 
@@ -474,6 +475,7 @@ def get_llama_vllm_rmsnorm_forward():
     except:
         print("please install vllm kernels to install rmsnorm")
         print("install vllm from https://github.com/vllm-project/vllm to accelerate your inference")
+        print("if falied to install vllm, please use this branch to install: https://github.com/tiandiao123/vllm/tree/setup_branch")
         HAS_VLLM_KERNERL = False
         
     if HAS_VLLM_KERNERL:
