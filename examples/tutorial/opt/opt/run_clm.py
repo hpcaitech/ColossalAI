@@ -424,10 +424,7 @@ def main():
     PLACEMENT_POLICY = 'auto'
     if version.parse(cai_version) >= version.parse("0.3.1"):
         from colossalai.zero import GeminiDDP
-        model = GeminiDDP(model,
-                          chunk_init_device=get_current_device(),
-                          placement_policy=PLACEMENT_POLICY,
-                          pin_memory=True)
+        model = GeminiDDP(model, offload_optim_frac=1.0, pin_memory=True)
     elif version.parse(cai_version) > version.parse("0.1.10"):
         try:
             from colossalai.nn.parallel import GeminiDDP
