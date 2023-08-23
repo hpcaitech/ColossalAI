@@ -211,8 +211,6 @@ class WhisperPolicy(Policy):
             },
                                                      policy=policy,
                                                      target_key=WhisperAttention)
-<<<<<<< HEAD
-=======
 
         # use jit fused operator, fix WhisperEncoderLayer enable jit fused.
         if self.shard_config.enable_jit_fused:
@@ -222,8 +220,6 @@ class WhisperPolicy(Policy):
             },
                                                      policy=policy,
                                                      target_key=WhisperDecoderLayer)
->>>>>>> [shardformer] jit fused fix
-
         return policy
 
     def add_lm_head_policy(self, base_policy):

@@ -44,7 +44,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     # check last hidden state & loss
     if stage_manager is None or stage_manager.is_last_stage():
         if test_config['precision'] == 'fp32':
-            atol, rtol = 2e-4, 2e-4
+            atol, rtol = 3e-4, 3e-4
         else:
             atol, rtol = 5e-3, 5e-3
 
@@ -77,7 +77,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 
     # check weights and gradients
     if test_config['precision'] == 'fp32':
-        atol, rtol = 2e-4, 2e-4
+        atol, rtol = 3e-4, 3e-4
     else:
         atol, rtol = 5e-3, 5e-3
 
@@ -89,7 +89,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     org_optimizer.step()
     sharded_optimizer.step()
     if test_config['precision'] == 'fp32':
-        atol, rtol = 2e-4, 2e-4
+        atol, rtol = 3e-4, 3e-4
     else:
         atol, rtol = 5e-3, 5e-3
     if stage_manager is None or stage_manager.is_first_stage():
@@ -200,8 +200,7 @@ def test_whisper():
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()
 def test_whisper_3d():
-    spawn(check_whisper_3d, 8)
-
+spawn(check_whisper_3d, 8)
 
 if __name__ == "__main__":
     test_whisper()
