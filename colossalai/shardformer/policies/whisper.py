@@ -1,3 +1,4 @@
+import warnings
 from functools import partial
 from typing import Callable, Dict, List, Tuple
 
@@ -50,6 +51,11 @@ class WhisperPolicy(Policy):
         )
 
         policy = {}
+
+        if self.shard_config.enable_sequence_parallelism:
+            self.shard_config.enable_sequence_parallelism = False
+            warnings.warn(
+                "Whisper dosen't support sequence parallelism now, will ignore the sequence parallelism flag.")
 
         if self.shard_config.enable_tensor_parallelism:
             policy[WhisperEncoderLayer] = ModulePolicyDescription(attribute_replacement={
