@@ -23,7 +23,6 @@ def build_model(
     enable_tensor_parallelism=False,
     enable_flash_attention=False,
     enable_jit_fused=False,
-    enable_sequence_parallelism=False,
 ):
     # create new model
     org_model = model_fn()
@@ -33,7 +32,6 @@ def build_model(
                                enable_tensor_parallelism=enable_tensor_parallelism,
                                enable_flash_attention=enable_flash_attention,
                                enable_jit_fused=enable_jit_fused,
-                               enable_sequence_parallelism=enable_sequence_parallelism,
                                inference_only=True)
     model_copy = copy.deepcopy(org_model)
     shard_former = ShardFormer(shard_config=shard_config)
