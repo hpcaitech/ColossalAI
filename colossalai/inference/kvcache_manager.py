@@ -17,19 +17,21 @@
 # limitations under the License.
 
 import torch
+
 from colossalai.logging import get_dist_logger
 
 
 class MemoryManager:
+
     def __init__(self, size, dtype, head_num, head_dim, layer_num, device=None):
         device = torch.cuda.current_device() if device is None else device
         self.logger = get_dist_logger(__name__)
         self.available_size = size
         self.past_key_values_length = 0
-        
+
         self._init_mem_states(size, device)
         self._init_kv_buffers(size, device, dtype, head_num, head_dim, layer_num)
-    
+
     def _init_mem_states(self, size, dev):
         self.mem_state = torch.ones((size,), dtype=torch.bool, device=dev)
         self._mem_cum_sum = torch.empty((size,), dtype=torch.int32, device=dev)
@@ -38,47 +40,50 @@ class MemoryManager:
     def _init_kv_buffers(self, size, dev, dtype, head_num, head_dim, layer_num):
         self.key_buffer = [torch.empty((size, head_num, head_dim), dtype=dtype, device=dev) for _ in range(layer_num)]
         self.value_buffer = [torch.empty((size, head_num, head_dim), dtype=dtype, device=dev) for _ in range(layer_num)]
-    
+
     @torch.no_grad()
     def alloc(self, required_size):
         if required_size > self.available_size:
             self.logger.warning(f"warn no enough cache required_size {required_size} left_size {self.available_size}")
             return None
-        
+
         torch.cumsum(self.mem_state, dim=0, dtype=torch.int32, out=self._mem_cum_sum)
         select_index = torch.logical_and(self._mem_cum_sum <= required_size, self.mem_state == 1)
         select_index = self.indexes[select_index]
         self.mem_state[select_index] = 0
         self.available_size -= len(select_index)
         return select_index
-    
+
     @torch.no_grad()
     def alloc_contiguous(self, required_size):
         if required_size > self.available_size:
             self.logger.warning(f"warn no enough cache required_size {required_size} left_size {self.available_size}")
             return None
-        
+
         torch.cumsum(self.mem_state, dim=0, dtype=torch.int32, out=self._mem_cum_sum)
         sum_size = len(self._mem_cum_sum)
-        loc_sums = self._mem_cum_sum[required_size - 1:] - self._mem_cum_sum[0:sum_size - required_size + 1] + self.mem_state[0:sum_size - required_size + 1]
+        loc_sums = self._mem_cum_sum[required_size - 1:] - self._mem_cum_sum[0:sum_size - required_size +
+                                                                             1] + self.mem_state[0:sum_size -
+                                                                                                 required_size + 1]
         can_used_loc = self.indexes[0:sum_size - required_size + 1][loc_sums == required_size]
         if can_used_loc.shape[0] == 0:
-            self.logger.info(f"Not enough contiguous cache: required_size {required_size} left_size {self.available_size}")
+            self.logger.info(
+                f"Not enough contiguous cache: required_size {required_size} left_size {self.available_size}")
             return None
         start_loc = can_used_loc[0]
-        select_index = self.indexes[start_loc : start_loc + required_size]
-        
+        select_index = self.indexes[start_loc:start_loc + required_size]
+
         self.mem_state[select_index] = 0
         self.available_size -= len(select_index)
         start = start_loc.item()
         end = start + required_size
         return select_index, start, end
-    
+
     @torch.no_grad()
     def free(self, free_index):
         self.available_size += free_index.shape[0]
         self.mem_state[free_index] = 1
-    
+
     @torch.no_grad()
     def free_all(self):
         self.available_size = len(self.mem_state)
