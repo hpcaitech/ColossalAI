@@ -8,7 +8,7 @@ from torch.nn import functional as F
 
 
 from tests.test_kernels.triton.utils import benchmark, torch_context_attention
-from colossalai.kernel.triton.bloom_context_attention import bloom_context_flash_attention_fwd as bloom_context_attn_fwd
+from colossalai.kernel.triton.context_attention import bloom_context_attn_fwd
 
 try:
     import triton
@@ -42,13 +42,13 @@ def test_bloom_context_attention():
     
     o = torch.randn((bs*seq_len, head_num, head_dim), dtype=torch.float16, device="cuda")
     alibi = torch.zeros((head_num,), dtype=torch.float32, device="cuda")
-    bloom_context_attn_fwd(query.clone(), k.clone(), v.clone(), o, alibi, b_start, b_len,max_input_len)
+    bloom_context_attn_fwd(query.clone(), k.clone(), v.clone(), o, b_start, b_len, max_input_len, alibi)
     
     torch_out = torch_context_attention(query.clone(), k.clone(), v.clone(), bs, seq_len, head_num, head_dim)
     
     assert torch.allclose(torch_out.cpu(), o.cpu(), rtol=1e-3, atol=1e-2), "outputs from triton and torch are not matched"
     
-    latency_1 = benchmark(bloom_context_attn_fwd, query, k, v, o, alibi, b_start, b_len, max_input_len)
+    latency_1 = benchmark(bloom_context_attn_fwd, query, k, v, o, b_start, b_len, max_input_len, alibi)
     latency_2 = benchmark(torch_context_attention, query, k, v, bs, seq_len, head_num, head_dim)
     
     print("the triton op latency is {} ms".format(str(latency_1)))

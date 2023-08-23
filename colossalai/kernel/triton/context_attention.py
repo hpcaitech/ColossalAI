@@ -11,11 +11,11 @@ except ImportError:
 
 if HAS_TRITON:
     @triton.jit
-    def _bloom_context_flash_attention_kernel(
+    def _context_flash_attention_kernel(
         Q, K, V, sm_scale,
-        Alibi, 
         B_Start_Loc, B_Seqlen,
         TMP,  # NOTE: TMP is a scratchpad buffer to workaround a compiler bug
+        alibi_ptr,
         Out,
         stride_qbs, stride_qh, stride_qd,
         stride_kbs, stride_kh, stride_kd,
@@ -51,11 +51,13 @@ if HAS_TRITON:
         m_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float("inf")
         l_i = tl.zeros([BLOCK_M], dtype=tl.float32)
         acc = tl.zeros([BLOCK_M, BLOCK_DMODEL], dtype=tl.float32)
-
-        alibi_m = tl.load(Alibi + cur_head)
+        
+        if alibi_ptr is not None:
+            alibi_m = tl.load(alibi_ptr + cur_head)
 
         block_mask = tl.where(block_start_loc < cur_batch_seq_len, 1, 0)
 
+        # modify from 
         for start_n in range(0, block_mask * (start_m + 1) * BLOCK_M, BLOCK_N):
             start_n = tl.multiple_of(start_n, BLOCK_N)
             # -- compute qk ----
@@ -66,8 +68,10 @@ if HAS_TRITON:
             qk += tl.dot(q, k)
             qk *= sm_scale
 
-            alibi_loc = offs_m[:, None] - (start_n + offs_n[None, :])
-            qk -= alibi_loc * alibi_m
+            if alibi_ptr is not None:
+                
+                alibi_loc = offs_m[:, None] - (start_n + offs_n[None, :])
+                qk -= alibi_loc * alibi_m
 
             qk = tl.where(offs_m[:, None] >= (start_n + offs_n[None, :]), qk, float("-inf"))
 
@@ -105,7 +109,7 @@ if HAS_TRITON:
     
     
     @torch.no_grad()
-    def bloom_context_flash_attention_fwd(q, k, v, o, alibi, b_start_loc, b_seq_len, max_input_len):
+    def bloom_context_attn_fwd(q, k, v, o, b_start_loc, b_seq_len, max_input_len, alibi=None):
         BLOCK = 128
         # shape constraints
         Lq, Lk, Lv = q.shape[-1], k.shape[-1], v.shape[-1]
@@ -121,9 +125,46 @@ if HAS_TRITON:
 
         tmp = torch.empty((batch, head, max_input_len + 256), device=q.device, dtype=torch.float32)
 
-        _bloom_context_flash_attention_kernel[grid](
-            q, k, v, sm_scale, alibi, b_start_loc, b_seq_len,
+        _context_flash_attention_kernel[grid](
+            q, k, v, sm_scale, 
+            b_start_loc, b_seq_len,
             tmp,
+            alibi,
+            o,
+            q.stride(0), q.stride(1), q.stride(2),
+            k.stride(0), k.stride(1), k.stride(2),
+            v.stride(0), v.stride(1), v.stride(2),
+            o.stride(0), o.stride(1), o.stride(2),
+            tmp.stride(0), tmp.stride(1), tmp.stride(2),
+            # manually setting this blcok num, we can use tuning config to futher speed-up 
+            BLOCK_M=BLOCK,
+            BLOCK_DMODEL=Lk,
+            BLOCK_N=BLOCK,
+            num_warps=num_warps,
+            num_stages=1,
+        )
+        return
+    
+    @torch.no_grad()
+    def llama_context_attn_fwd(q, k, v, o, b_start_loc, b_seq_len, max_input_len):
+        BLOCK = 128
+        # shape constraints
+        Lq, Lk, Lv = q.shape[-1], k.shape[-1], v.shape[-1]
+        assert Lq == Lk and Lk == Lv
+        assert Lk in {16, 32, 64, 128}
+
+        sm_scale = 1.0 / math.sqrt(Lk)
+        batch, head = b_seq_len.shape[0], q.shape[1]
+
+        grid = (batch, head, triton.cdiv(max_input_len, BLOCK))
+
+        tmp = torch.empty((batch, head, max_input_len + 256), device=q.device, dtype=torch.float32)
+        num_warps = 4 if Lk <= 64 else 8
+        # num_warps = 4
+        _context_flash_attention_kernel[grid](
+            q, k, v, sm_scale, b_start_loc, b_seq_len,
+            tmp,
+            None,
             o,
             q.stride(0), q.stride(1), q.stride(2),
             k.stride(0), k.stride(1), k.stride(2),

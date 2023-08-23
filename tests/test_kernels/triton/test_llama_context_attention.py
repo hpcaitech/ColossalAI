@@ -8,8 +8,7 @@ from torch.nn import functional as F
 
 
 from tests.test_kernels.triton.utils import benchmark, torch_context_attention
-from colossalai.kernel.triton.llama_context_attention import llama_context_attention_fwd
-
+from colossalai.kernel.triton.context_attention import llama_context_attn_fwd
 try:
     import triton
     import triton.language as tl
@@ -42,13 +41,13 @@ def test_llama_context_attention():
         b_len[i] = seq_len
     
     o = torch.randn((bs*seq_len, head_num, head_dim), dtype=torch.float16, device="cuda")
-    llama_context_attention_fwd(query.clone(), k.clone(), v.clone(), o, b_start, b_len,max_input_len)
+    llama_context_attn_fwd(query.clone(), k.clone(), v.clone(), o, b_start, b_len, max_input_len)
     
     torch_out = torch_context_attention(query.clone(), k.clone(), v.clone(), bs, seq_len, head_num, head_dim)
     
     assert torch.allclose(torch_out.cpu(), o.cpu(), rtol=1e-3, atol=1e-2), "outputs from triton and torch are not matched"
     
-    latency_1 = benchmark(llama_context_attention_fwd, query, k, v, o, b_start, b_len, max_input_len)
+    latency_1 = benchmark(llama_context_attn_fwd, query, k, v, o, b_start, b_len, max_input_len)
     latency_2 = benchmark(torch_context_attention, query, k, v, bs, seq_len, head_num, head_dim)
     
     print("the triton op latency is {} ms".format(str(latency_1)))
