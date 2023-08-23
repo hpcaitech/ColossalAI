@@ -114,7 +114,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 
 
 # TODO（jianghai) fix fp16
-#TODO fix jit fused operator with WhisperForConditionalGeneration
+#TODO fix WhisperForConditionalGeneration enable jit fused operator
 @parameterize('test_config', [{
     'tp_size': 2,
     'pp_size': 2,
