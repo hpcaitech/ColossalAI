@@ -1,4 +1,5 @@
 import torch
+import math
 try:
     import triton
     import triton.language as tl
@@ -10,27 +11,18 @@ except ImportError:
 
 if HAS_TRITON:
     @triton.jit
-    def _context_fwd_kernel(
-        Q, K, V, sm_scale, bias, B_Start_Loc, B_Seqlen,
+    def _bloom_context_flash_attention_kernel(
+        Q, K, V, sm_scale,
+        Alibi, 
+        B_Start_Loc, B_Seqlen,
         TMP,  # NOTE: TMP is a scratchpad buffer to workaround a compiler bug
         Out,
-        stride_qbs, 
-        stride_qh, 
-        stride_qd,
-        stride_kbs, 
-        stride_kh, 
-        stride_kd,
-        stride_vbs, 
-        stride_vh, 
-        stride_vd,
-        stride_obs, 
-        stride_oh, 
-        stride_od,
-        stride_tmp_b, 
-        stride_tmp_h, 
-        stride_tmp_s,
-        BLOCK_M: tl.constexpr, 
-        BLOCK_DMODEL: tl.constexpr,
+        stride_qbs, stride_qh, stride_qd,
+        stride_kbs, stride_kh, stride_kd,
+        stride_vbs, stride_vh, stride_vd,
+        stride_obs, stride_oh, stride_od,
+        stride_tmp_b, stride_tmp_h, stride_tmp_s,
+        BLOCK_M: tl.constexpr, BLOCK_DMODEL: tl.constexpr,
         BLOCK_N: tl.constexpr,
     ):
         cur_batch = tl.program_id(0)
@@ -60,7 +52,7 @@ if HAS_TRITON:
         l_i = tl.zeros([BLOCK_M], dtype=tl.float32)
         acc = tl.zeros([BLOCK_M, BLOCK_DMODEL], dtype=tl.float32)
 
-        alibi_m = tl.load(bias + cur_head)
+        alibi_m = tl.load(Alibi + cur_head)
 
         block_mask = tl.where(block_start_loc < cur_batch_seq_len, 1, 0)
 
@@ -109,4 +101,39 @@ if HAS_TRITON:
         off_o = (cur_batch_in_all_start_index + offs_m[:, None]) * stride_obs + cur_head * stride_oh + offs_d[None, :] * stride_od
         out_ptrs = Out + off_o
         tl.store(out_ptrs, acc, mask=offs_m[:, None] < cur_batch_seq_len)
+        return
+    
+    
+    @torch.no_grad()
+    def bloom_context_flash_attention_fwd(q, k, v, o, alibi, b_start_loc, b_seq_len, max_input_len):
+        BLOCK = 128
+        # shape constraints
+        Lq, Lk, Lv = q.shape[-1], k.shape[-1], v.shape[-1]
+        assert Lq == Lk and Lk == Lv, "context process only supports equal query, key, value length"
+        assert Lk in {16, 32, 64, 128}
+
+        sm_scale = 1.0 / math.sqrt(Lk)
+        batch, head = b_seq_len.shape[0], q.shape[1]
+
+        grid = (batch, head, triton.cdiv(max_input_len, BLOCK))
+
+        num_warps = 4 if Lk <= 64 else 8
+
+        tmp = torch.empty((batch, head, max_input_len + 256), device=q.device, dtype=torch.float32)
+
+        _bloom_context_flash_attention_kernel[grid](
+            q, k, v, sm_scale, alibi, b_start_loc, b_seq_len,
+            tmp,
+            o,
+            q.stride(0), q.stride(1), q.stride(2),
+            k.stride(0), k.stride(1), k.stride(2),
+            v.stride(0), v.stride(1), v.stride(2),
+            o.stride(0), o.stride(1), o.stride(2),
+            tmp.stride(0), tmp.stride(1), tmp.stride(2),
+            BLOCK_M=BLOCK,
+            BLOCK_DMODEL=Lk,
+            BLOCK_N=BLOCK,
+            num_warps=num_warps,
+            num_stages=1,
+        )
         return
