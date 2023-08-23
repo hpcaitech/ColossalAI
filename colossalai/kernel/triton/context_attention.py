@@ -36,15 +36,16 @@ if HAS_TRITON:
         cur_head = tl.program_id(1)
         start_m = tl.program_id(2)
 
-        cur_batch_seq_len = tl.load(B_Seqlen + batch_id)
-        cur_batch_start_index = tl.load(B_Start_Loc + batch_id)
-
-        block_start_loc = BLOCK_M * start_m
-
         # initialize offsets
         offs_n = tl.arange(0, BLOCK_N)
         offs_d = tl.arange(0, BLOCK_DMODEL)
         offs_m = start_m * BLOCK_M + tl.arange(0, BLOCK_M)
+        
+        # get batch info 
+        cur_batch_seq_len = tl.load(B_Seqlen + batch_id)
+        cur_batch_start_index = tl.load(B_Start_Loc + batch_id)
+        block_start_loc = BLOCK_M * start_m
+        
         load_p_ptrs = Q + (cur_batch_start_index + offs_m[:, None]) * stride_qbs + cur_head * stride_qh + offs_d[None, :] * stride_qd
         q = tl.load(load_p_ptrs, mask=offs_m[:, None] < cur_batch_seq_len, other=0.0)
 
