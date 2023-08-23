@@ -18,7 +18,7 @@ if HAS_TRITON:
     def _context_flash_attention_kernel(
         Q, K, V, sm_scale,
         B_Start_Loc, B_Seqlen,
-        TMP,  # NOTE: TMP is a scratchpad buffer to workaround a compiler bug
+        TMP, 
         alibi_ptr,
         Out,
         stride_qbs, stride_qh, stride_qd,
@@ -26,16 +26,18 @@ if HAS_TRITON:
         stride_vbs, stride_vh, stride_vd,
         stride_obs, stride_oh, stride_od,
         stride_tmp_b, stride_tmp_h, stride_tmp_s,
-        BLOCK_M: tl.constexpr, BLOCK_DMODEL: tl.constexpr,
+        # suggtest set-up 128, 256, 512, 1024
+        BLOCK_M: tl.constexpr, 
+        BLOCK_DMODEL: tl.constexpr,
         BLOCK_N: tl.constexpr,
     ):
 
-        cur_batch = tl.program_id(0)
+        batch_id = tl.program_id(0)
         cur_head = tl.program_id(1)
         start_m = tl.program_id(2)
 
-        cur_batch_seq_len = tl.load(B_Seqlen + cur_batch)
-        cur_batch_in_all_start_index = tl.load(B_Start_Loc + cur_batch)
+        cur_batch_seq_len = tl.load(B_Seqlen + batch_id)
+        cur_batch_start_index = tl.load(B_Start_Loc + batch_id)
 
         block_start_loc = BLOCK_M * start_m
 
@@ -43,12 +45,12 @@ if HAS_TRITON:
         offs_n = tl.arange(0, BLOCK_N)
         offs_d = tl.arange(0, BLOCK_DMODEL)
         offs_m = start_m * BLOCK_M + tl.arange(0, BLOCK_M)
-        load_p_ptrs = Q + (cur_batch_in_all_start_index + offs_m[:, None]) * stride_qbs + cur_head * stride_qh + offs_d[None, :] * stride_qd
+        load_p_ptrs = Q + (cur_batch_start_index + offs_m[:, None]) * stride_qbs + cur_head * stride_qh + offs_d[None, :] * stride_qd
         q = tl.load(load_p_ptrs, mask=offs_m[:, None] < cur_batch_seq_len, other=0.0)
 
         k_ptrs = K + offs_n[None, :] * stride_kbs + cur_head * stride_kh + offs_d[:, None] * stride_kd
         v_ptrs = V + offs_n[:, None] * stride_vbs + cur_head * stride_vh + offs_d[None, :] * stride_vd
-        t_ptrs = TMP + cur_batch * stride_tmp_b + cur_head * stride_tmp_h + offs_m * stride_tmp_s
+        t_ptrs = TMP + batch_id * stride_tmp_b + cur_head * stride_tmp_h + offs_m * stride_tmp_s
 
         m_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float("inf")
         l_i = tl.zeros([BLOCK_M], dtype=tl.float32)
@@ -62,8 +64,7 @@ if HAS_TRITON:
         # modify from 
         for start_n in range(0, block_mask * (start_m + 1) * BLOCK_M, BLOCK_N):
             start_n = tl.multiple_of(start_n, BLOCK_N)
-            # -- compute qk ----
-            k = tl.load(k_ptrs + (cur_batch_in_all_start_index + start_n) * stride_kbs,
+            k = tl.load(k_ptrs + (cur_batch_start_index + start_n) * stride_kbs,
                         mask=(start_n + offs_n[None, :]) < cur_batch_seq_len, other=0.0)
 
             qk = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
@@ -94,7 +95,7 @@ if HAS_TRITON:
             acc_scale = tl.load(t_ptrs)
             acc = acc * acc_scale[:, None]
             # update acc
-            v = tl.load(v_ptrs + (cur_batch_in_all_start_index + start_n) * stride_vbs,
+            v = tl.load(v_ptrs + (cur_batch_start_index + start_n) * stride_vbs,
                         mask=(start_n + offs_n[:, None]) < cur_batch_seq_len, other=0.0)
 
             p = p.to(v.dtype)
@@ -103,8 +104,7 @@ if HAS_TRITON:
             l_i = l_i_new
             m_i = m_i_new
             
-        # initialize pointers to output
-        off_o = (cur_batch_in_all_start_index + offs_m[:, None]) * stride_obs + cur_head * stride_oh + offs_d[None, :] * stride_od
+        off_o = (cur_batch_start_index + offs_m[:, None]) * stride_obs + cur_head * stride_oh + offs_d[None, :] * stride_od
         out_ptrs = Out + off_o
         tl.store(out_ptrs, acc, mask=offs_m[:, None] < cur_batch_seq_len)
         return
