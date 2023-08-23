@@ -166,6 +166,27 @@ def run_opt_3d_test(test_config):
     torch.cuda.empty_cache()
 
 
+@parameterize('test_config', [
+    {
+        'tp_size': 2,
+        'pp_size': 2,
+        'num_microbatches': 4,
+        'enable_all_optimization': False,
+        'use_lazy_init': False,
+        'precision': 'fp32',
+        'initial_scale': 1,
+    },
+])
+def run_opt_3d_test(test_config):
+    sub_model_zoo = model_zoo.get_sub_registry('transformers_opt')
+
+    for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
+        check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
+
+    clear_layout_converter()
+    torch.cuda.empty_cache()
+
+
 def check_OPTModel(rank, world_size, port):
     disable_existing_loggers()
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
