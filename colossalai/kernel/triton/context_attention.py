@@ -10,6 +10,10 @@ except ImportError:
 
 
 if HAS_TRITON:
+    '''
+        this function is modified from 
+        https://github.com/ModelTC/lightllm/blob/f093edc20683ac3ea1bca3fb5d8320a0dd36cf7b/lightllm/models/llama/triton_kernel/context_flashattention_nopad.py#L10
+    '''
     @triton.jit
     def _context_flash_attention_kernel(
         Q, K, V, sm_scale,
@@ -25,6 +29,7 @@ if HAS_TRITON:
         BLOCK_M: tl.constexpr, BLOCK_DMODEL: tl.constexpr,
         BLOCK_N: tl.constexpr,
     ):
+
         cur_batch = tl.program_id(0)
         cur_head = tl.program_id(1)
         start_m = tl.program_id(2)
@@ -38,14 +43,11 @@ if HAS_TRITON:
         offs_n = tl.arange(0, BLOCK_N)
         offs_d = tl.arange(0, BLOCK_DMODEL)
         offs_m = start_m * BLOCK_M + tl.arange(0, BLOCK_M)
-        off_q = (cur_batch_in_all_start_index + offs_m[:, None]) * stride_qbs + cur_head * stride_qh + offs_d[None, :] * stride_qd
-        off_k = offs_n[None, :] * stride_kbs + cur_head * stride_kh + offs_d[:, None] * stride_kd
-        off_v = offs_n[:, None] * stride_vbs + cur_head * stride_vh + offs_d[None, :] * stride_vd
+        load_p_ptrs = Q + (cur_batch_in_all_start_index + offs_m[:, None]) * stride_qbs + cur_head * stride_qh + offs_d[None, :] * stride_qd
+        q = tl.load(load_p_ptrs, mask=offs_m[:, None] < cur_batch_seq_len, other=0.0)
 
-        q = tl.load(Q + off_q, mask=offs_m[:, None] < cur_batch_seq_len, other=0.0)
-
-        k_ptrs = K + off_k
-        v_ptrs = V + off_v
+        k_ptrs = K + offs_n[None, :] * stride_kbs + cur_head * stride_kh + offs_d[:, None] * stride_kd
+        v_ptrs = V + offs_n[:, None] * stride_vbs + cur_head * stride_vh + offs_d[None, :] * stride_vd
         t_ptrs = TMP + cur_batch * stride_tmp_b + cur_head * stride_tmp_h + offs_m * stride_tmp_s
 
         m_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float("inf")
@@ -69,7 +71,6 @@ if HAS_TRITON:
             qk *= sm_scale
 
             if alibi_ptr is not None:
-                
                 alibi_loc = offs_m[:, None] - (start_n + offs_n[None, :])
                 qk -= alibi_loc * alibi_m
 
@@ -101,6 +102,7 @@ if HAS_TRITON:
             # update m_i and l_i
             l_i = l_i_new
             m_i = m_i_new
+            
         # initialize pointers to output
         off_o = (cur_batch_in_all_start_index + offs_m[:, None]) * stride_obs + cur_head * stride_oh + offs_d[None, :] * stride_od
         out_ptrs = Out + off_o
@@ -113,7 +115,8 @@ if HAS_TRITON:
         BLOCK = 128
         # shape constraints
         Lq, Lk, Lv = q.shape[-1], k.shape[-1], v.shape[-1]
-        assert Lq == Lk and Lk == Lv, "context process only supports equal query, key, value length"
+        assert Lq == Lk, "context process only supports equal query, key, value length"
+        assert Lk == Lv, "context process only supports equal query, key, value length"
         assert Lk in {16, 32, 64, 128}
 
         sm_scale = 1.0 / math.sqrt(Lk)
@@ -150,7 +153,8 @@ if HAS_TRITON:
         BLOCK = 128
         # shape constraints
         Lq, Lk, Lv = q.shape[-1], k.shape[-1], v.shape[-1]
-        assert Lq == Lk and Lk == Lv
+        assert Lq == Lk, "context process only supports equal query, key, value length"
+        assert Lk == Lv, "context process only supports equal query, key, value length"
         assert Lk in {16, 32, 64, 128}
 
         sm_scale = 1.0 / math.sqrt(Lk)
