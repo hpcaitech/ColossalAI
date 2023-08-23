@@ -131,7 +131,7 @@ class CaiQuantLinear(nn.Module):
 
         if self.g_idx is not None:
             CaiQuantLinear.max_inner_outer_dim = max(CaiQuantLinear.max_inner_outer_dim, self.infeatures, self.outfeatures)
-            max_input_len=4096
+            CaiQuantLinear.max_input_len=4096
 
 
     def prepare_buffers(self):
