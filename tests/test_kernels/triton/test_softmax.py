@@ -3,7 +3,7 @@ from packaging import version
 import torch
 from torch import nn
 
-from colossalai.kernel.triton.ops import softmax
+from colossalai.kernel.triton.softmax import softmax
 
 TRITON_CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse('11.4')
 

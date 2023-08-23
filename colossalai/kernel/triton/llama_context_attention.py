@@ -10,8 +10,8 @@ except ImportError:
 
 if HAS_TRITON:
     @triton.jit
-    def _context_fwd_kernel(
-        Q, K, V, sm_scale, Alibi, B_Start_Loc, B_Seqlen,
+    def _fwd_kernel(
+        Q, K, V, sm_scale, B_Start_Loc, B_Seqlen,
         TMP,  # NOTE: TMP is a scratchpad buffer to workaround a compiler bug
         Out,
         stride_qbs, stride_qh, stride_qd,
@@ -38,18 +38,16 @@ if HAS_TRITON:
         off_q = (cur_batch_in_all_start_index + offs_m[:, None]) * stride_qbs + cur_head * stride_qh + offs_d[None, :] * stride_qd
         off_k = offs_n[None, :] * stride_kbs + cur_head * stride_kh + offs_d[:, None] * stride_kd
         off_v = offs_n[:, None] * stride_vbs + cur_head * stride_vh + offs_d[None, :] * stride_vd
-
         q = tl.load(Q + off_q, mask=offs_m[:, None] < cur_batch_seq_len, other=0.0)
 
         k_ptrs = K + off_k
         v_ptrs = V + off_v
-        t_ptrs = TMP + cur_batch * stride_tmp_b + cur_head * stride_tmp_h + offs_m * stride_tmp_s
 
+        t_ptrs = TMP + cur_batch * stride_tmp_b + cur_head * stride_tmp_h + offs_m * stride_tmp_s
+        # t_ptrs = TMP + offs_m
         m_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float("inf")
         l_i = tl.zeros([BLOCK_M], dtype=tl.float32)
         acc = tl.zeros([BLOCK_M, BLOCK_DMODEL], dtype=tl.float32)
-
-        alibi_m = tl.load(Alibi + cur_head)
 
         block_mask = tl.where(block_start_loc < cur_batch_seq_len, 1, 0)
 
@@ -62,10 +60,6 @@ if HAS_TRITON:
             qk = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
             qk += tl.dot(q, k)
             qk *= sm_scale
-
-            alibi_loc = offs_m[:, None] - (start_n + offs_n[None, :])
-            qk -= alibi_loc * alibi_m
-
             qk = tl.where(offs_m[:, None] >= (start_n + offs_n[None, :]), qk, float("-inf"))
 
             m_ij = tl.max(qk, 1)
@@ -83,7 +77,7 @@ if HAS_TRITON:
             # scale acc
             acc_scale = l_i / l_i_new * alpha
             tl.store(t_ptrs, acc_scale)
-            acc_scale = tl.load(t_ptrs)
+            acc_scale = tl.load(t_ptrs)  # BUG: have to store and immediately load
             acc = acc * acc_scale[:, None]
             # update acc
             v = tl.load(v_ptrs + (cur_batch_in_all_start_index + start_n) * stride_vbs,
@@ -98,4 +92,5 @@ if HAS_TRITON:
         off_o = (cur_batch_in_all_start_index + offs_m[:, None]) * stride_obs + cur_head * stride_oh + offs_d[None, :] * stride_od
         out_ptrs = Out + off_o
         tl.store(out_ptrs, acc, mask=offs_m[:, None] < cur_batch_seq_len)
+
         return
