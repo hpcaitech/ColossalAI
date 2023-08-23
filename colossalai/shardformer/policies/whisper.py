@@ -198,20 +198,20 @@ class WhisperPolicy(Policy):
 
         # enable flash attention
         if self.shard_config.enable_flash_attention:
-            policy[WhisperAttention] = ModulePolicyDescription(method_replacement={
+            self.append_or_create_method_replacement(description={
                 'forward': get_whisper_flash_attention_forward(),
-            })
+            },
+                                                     policy=policy,
+                                                     target_key=WhisperAttention)
 
-        # use jit fused operator
+        # use jit fused operator, fix WhisperEncoderLayer enable jit fused.
         if self.shard_config.enable_jit_fused:
-            policy[WhisperEncoderLayer] = ModulePolicyDescription(method_replacement={
-                'forward': get_jit_fused_whisper_encoder_layer_forward(),
-                'dropout_add': get_jit_fused_dropout_add_func(),
-            })
-            policy[WhisperDecoderLayer] = ModulePolicyDescription(method_replacement={
+            self.append_or_create_method_replacement(description={
                 'forward': get_jit_fused_whisper_decoder_layer_forward(),
                 'dropout_add': get_jit_fused_dropout_add_func(),
-            })
+            },
+                                                     policy=policy,
+                                                     target_key=WhisperDecoderLayer)
 
         return policy
 
