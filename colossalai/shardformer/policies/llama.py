@@ -7,7 +7,7 @@ from torch.nn import Module
 
 from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col, Linear1D_Row, VocabParallelEmbedding1D
 
-from ..modeling.llama import LlamaPipelineForwards, get_llama_flash_attention_forward
+from ..modeling.llama import LlamaInferenceForwards, LlamaPipelineForwards, get_llama_flash_attention_forward
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = ['LlamaPolicy', 'LlamaForCausalLMPolicy', 'LlamaForSequenceClassificationPolicy']
@@ -265,5 +265,24 @@ class LlamaForSequenceClassificationPolicy(LlamaPolicy):
         return []
 
 
-class LlamaInferPolicy(LlamaPolicy):
-    pass
+class LlamaModelInferPolicy(LlamaPolicy):
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    def module_policy(self):
+        from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecoderLayer, LlamaModel
+        policy = super().module_policy()
+        self.shard_config._infer()
+
+        # example for replace layer or decoder
+        # if self.shard_config.enable_flash_attention:
+        #     policy[LlamaAttention] = ModulePolicyDescription(method_replacement={
+        #         'forward': get_llama_flash_attention_forward(),
+        #     })
+
+        infer_forward = LlamaInferenceForwards.llama_model_forward
+        method_replacement = {'forward': partial(infer_forward)}
+        self.append_or_create_method_replacement(description=method_replacement, policy=policy, target_key=LlamaModel)
+
+        return policy
