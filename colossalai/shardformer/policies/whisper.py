@@ -211,6 +211,18 @@ class WhisperPolicy(Policy):
             },
                                                      policy=policy,
                                                      target_key=WhisperAttention)
+<<<<<<< HEAD
+=======
+
+        # use jit fused operator, fix WhisperEncoderLayer enable jit fused.
+        if self.shard_config.enable_jit_fused:
+            self.append_or_create_method_replacement(description={
+                'forward': get_jit_fused_whisper_decoder_layer_forward(),
+                'dropout_add': get_jit_fused_dropout_add_func(),
+            },
+                                                     policy=policy,
+                                                     target_key=WhisperDecoderLayer)
+>>>>>>> [shardformer] jit fused fix
 
         return policy
 
