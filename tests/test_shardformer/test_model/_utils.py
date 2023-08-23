@@ -245,7 +245,6 @@ def check_grad(org_model: Module,
         org_grad = getattr_(org_model, suffix).weight.grad
         shard_grad = getattr_(sharded_model, suffix).weight.grad
         shard_weight = getattr_(sharded_model, suffix).weight
-
         if is_distributed_tensor(shard_weight) or is_customized_distributed_tensor(shard_weight):
             shard_grad_list = [torch.zeros_like(shard_grad).to('cuda') for _ in range(dist.get_world_size(tp_group))]
             dist.all_gather(shard_grad_list, shard_grad, tp_group)
