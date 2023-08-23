@@ -33,7 +33,6 @@ class WhisperPolicy(Policy):
         r"""
         Reshape the Embedding layer to make the embedding dimension divisible by world_size
         """
-        # TODO:
         vocab_size = self.model.config.vocab_size
         world_size = self.shard_config.tensor_parallel_size
         if vocab_size % world_size != 0:
@@ -195,23 +194,6 @@ class WhisperPolicy(Policy):
             ],
                                                         policy=policy,
                                                         target_key=WhisperDecoder)
-
-        # enable flash attention
-        if self.shard_config.enable_flash_attention:
-            self.append_or_create_method_replacement(description={
-                'forward': get_whisper_flash_attention_forward(),
-            },
-                                                     policy=policy,
-                                                     target_key=WhisperAttention)
-
-        # use jit fused operator, fix WhisperEncoderLayer enable jit fused.
-        if self.shard_config.enable_jit_fused:
-            self.append_or_create_method_replacement(description={
-                'forward': get_jit_fused_whisper_decoder_layer_forward(),
-                'dropout_add': get_jit_fused_dropout_add_func(),
-            },
-                                                     policy=policy,
-                                                     target_key=WhisperDecoderLayer)
 
         return policy
 
