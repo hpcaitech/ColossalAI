@@ -195,6 +195,18 @@ class WhisperPolicy(Policy):
                                                         policy=policy,
                                                         target_key=WhisperDecoder)
 
+        # enable flash attention
+        # if self.shard_config.enable_flash_attention:
+        #     policy[WhisperAttention] = ModulePolicyDescription(method_replacement={
+        #         'forward': get_whisper_flash_attention_forward(),
+        #     })
+        if self.shard_config.enable_flash_attention:
+            self.append_or_create_method_replacement(description={
+                'forward': get_whisper_flash_attention_forward(),
+            },
+                                                     policy=policy,
+                                                     target_key=WhisperAttention)
+
         return policy
 
     def add_lm_head_policy(self, base_policy):
