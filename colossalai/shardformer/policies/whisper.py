@@ -56,9 +56,9 @@ class WhisperPolicy(Policy):
             self.shard_config.enable_sequence_parallelism = False
             warnings.warn(
                 "Whisper dosen't support sequence parallelism now, will ignore the sequence parallelism flag.")
-        # if self.shard_config.enable_jit_fused:
-        #     self.shard_config.enable_jit_fused = False
-        #     warnings.warn("Whisper dosen't support jit fused operator now, will ignore the jit fused flag.")
+        if self.shard_config.enable_jit_fused:
+            self.shard_config.enable_jit_fused = False
+            warnings.warn("Whisper dosen't support jit fused operator now, will ignore the jit fused flag.")
 
         if self.shard_config.enable_tensor_parallelism:
             policy[WhisperEncoderLayer] = ModulePolicyDescription(attribute_replacement={
@@ -213,13 +213,13 @@ class WhisperPolicy(Policy):
                                                      target_key=WhisperAttention)
 
         # use jit fused operator, fix WhisperEncoderLayer enable jit fused.
-        if self.shard_config.enable_jit_fused:
-            self.append_or_create_method_replacement(description={
-                'forward': get_jit_fused_whisper_decoder_layer_forward(),
-                'dropout_add': get_jit_fused_dropout_add_func(),
-            },
-                                                     policy=policy,
-                                                     target_key=WhisperDecoderLayer)
+        # if self.shard_config.enable_jit_fused:
+        #     self.append_or_create_method_replacement(description={
+        #         'forward': get_jit_fused_whisper_decoder_layer_forward(),
+        #         'dropout_add': get_jit_fused_dropout_add_func(),
+        #     },
+        #                                              policy=policy,
+        #                                              target_key=WhisperDecoderLayer)
         return policy
 
     def add_lm_head_policy(self, base_policy):

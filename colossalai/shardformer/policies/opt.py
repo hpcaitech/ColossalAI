@@ -102,24 +102,6 @@ class OPTPolicy(Policy):
                                                         policy=policy,
                                                         target_key=OPTDecoderLayer)
 
-<<<<<<< HEAD
-        # # use flash attention
-        # if self.shard_config.enable_flash_attention:
-        #     self.append_or_create_method_replacement(description={
-        #         'forward': get_opt_flash_attention_forward(),
-        #     },
-        #                                              policy=policy,
-        #                                              target_key=OPTAttention)
-
-        # # use jit fused operator
-        # if self.shard_config.enable_jit_fused:
-        #     self.append_or_create_method_replacement(description={
-        #         'forward': get_jit_fused_opt_decoder_layer_forward(),
-        #         'dropout_add': get_jit_fused_dropout_add_func(),
-        #     },
-        #                                              policy=policy,
-        #                                              target_key=OPTDecoderLayer)
-=======
         # use flash attention
         if self.shard_config.enable_flash_attention:
             self.append_or_create_method_replacement(description={
@@ -136,7 +118,6 @@ class OPTPolicy(Policy):
             },
                                                      policy=policy,
                                                      target_key=OPTDecoderLayer)
->>>>>>> [shardformer] jit fused fix
 
         return policy
 
