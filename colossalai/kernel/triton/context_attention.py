@@ -26,7 +26,7 @@ if HAS_TRITON:
         stride_vbs, stride_vh, stride_vd,
         stride_obs, stride_oh, stride_od,
         stride_tmp_b, stride_tmp_h, stride_tmp_s,
-        # suggtest set-up 128, 256, 512, 1024
+        # suggtest set-up 64, 128, 256, 512
         BLOCK_M: tl.constexpr, 
         BLOCK_DMODEL: tl.constexpr,
         BLOCK_N: tl.constexpr,
