@@ -265,7 +265,6 @@ def test_gptq_linear():
     gptq_model.to(torch.cuda.current_device())
     gptq_model = autogptq_post_init(gptq_model, False)
 
-    qkv_fused = False
 
     with torch.no_grad():
         gptq_out = gptq_model(inps)
