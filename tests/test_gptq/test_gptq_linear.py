@@ -1,33 +1,38 @@
+import math
+import time
+
+import numpy as np
+import pytest
 import torch
 import torch.nn as nn
-import pytest
-import time
 import transformers
-from auto_gptq.quantization import GPTQ
-from auto_gptq.modeling._utils import find_layers, pack_model,autogptq_post_init
+from auto_gptq.modeling._utils import autogptq_post_init, find_layers, pack_model
 from auto_gptq.nn_modules.qlinear.qlinear_triton import QuantLinear
-
+from auto_gptq.quantization import GPTQ
 from auto_gptq.quantization.quantizer import Quantizer
+
 from colossalai.gptq import CaiGPTQLinearOp, CaiQuantLinear
-import math
-import numpy as np
+
+wbits = 4
+trits = False
+nsamples = 1
+percdamp = .01
+groupsize = 128
+act_order = False
+sym = False
 
 
-wbits=4
-trits=False
-nsamples=1
-percdamp=.01
-groupsize=128
-act_order=False
-sym=False
 class MLinear(nn.Module):
+
     def __init__(self, infeature, outfeature):
         super(MLinear, self).__init__()
         self.linear = torch.nn.Linear(infeature, outfeature, dtype=torch.float16)
+
     def forward(self, x):
         out = self.linear(x)
         return out
-    
+
+
 @torch.no_grad()
 def model_quant(model, inps, dev):
     print('Starting ...')
@@ -36,14 +41,18 @@ def model_quant(model, inps, dev):
 
     dtype = next(iter(model.parameters())).dtype
     cache = {'i': 0}
+
     class Catcher(nn.Module):
+
         def __init__(self, module):
             super().__init__()
             self.module = module
+
         def forward(self, inp, **kwargs):
             inps[cache['i']] = inp
             cache['i'] += 1
             raise ValueError
+
     layers[0] = Catcher(layers[0])
     # for batch in inps:
     try:
@@ -59,32 +68,34 @@ def model_quant(model, inps, dev):
     quantizers = {}
     for i in range(len(layers)):
         layer = layers[i].to(dev)
-        subset = find_layers(layer)	
-        gptq = {}	
-        for name in subset:	
-            gptq[name] = GPTQ(subset[name])	
-            # gptq[name].quantizer = Quantizer()	
-            gptq[name].quantizer.configure(wbits, perchannel=True, sym=sym, mse=False, trits=trits)	
-            
-        def add_batch(name):	
-            def tmp(_, inp, out):	
-                gptq[name].add_batch(inp[0].data, out.data)	
-            return tmp	
-            
-        handles = []	
-        for name in subset:	
-            handles.append(subset[name].register_forward_hook(add_batch(name)))	
-           
-        for j in range(nsamples):	
-            outs[j] = layer(inps[j].unsqueeze(0))[0]	
-            
-        for h in handles:	
-            h.remove()	
-        for name in subset:	
+        subset = find_layers(layer)
+        gptq = {}
+        for name in subset:
+            gptq[name] = GPTQ(subset[name])
+            # gptq[name].quantizer = Quantizer()
+            gptq[name].quantizer.configure(wbits, perchannel=True, sym=sym, mse=False, trits=trits)
+
+        def add_batch(name):
+
+            def tmp(_, inp, out):
+                gptq[name].add_batch(inp[0].data, out.data)
+
+            return tmp
+
+        handles = []
+        for name in subset:
+            handles.append(subset[name].register_forward_hook(add_batch(name)))
+
+        for j in range(nsamples):
+            outs[j] = layer(inps[j].unsqueeze(0))[0]
+
+        for h in handles:
+            h.remove()
+        for name in subset:
             print(f'Quantizing {name} in layer {i+1}/{len(layers)}...')
-            scale,zero,g_idx = gptq[name].fasterquant(percdamp=percdamp, group_size=groupsize, actorder=act_order)
+            scale, zero, g_idx = gptq[name].fasterquant(percdamp=percdamp, group_size=groupsize, actorder=act_order)
             # quantizers['%s' % (name)] = (gptq[name].quantizer.cpu(),scale.cpu(),zero.cpu(),g_idx.cpu())
-            quantizers['%s' % (name)] = (gptq[name].layer.cpu(),scale.cpu(),zero.cpu(),g_idx.cpu())
+            quantizers['%s' % (name)] = (gptq[name].layer.cpu(), scale.cpu(), zero.cpu(), g_idx.cpu())
 
             gptq[name].free()
         for j in range(nsamples):
@@ -93,11 +104,11 @@ def model_quant(model, inps, dev):
 
         layers[i] = layer.cpu()
         del layer
-        del gptq 
+        del gptq
         torch.cuda.empty_cache()
 
         inps, outs = outs, inps
-    
+
     return quantizers
 
 
@@ -106,10 +117,9 @@ def model_pack(model, quantizers, wbits, groupsize):
     return model
 
 
-def cai_linear_pack(linear, scales, zeros, 
-                    out_qweight, out_qscales, out_qzeros, qg_idx, 
-                    infeatures, groupsize, bits):
-    g_idx = qg_idx.clone() if qg_idx is not None else torch.tensor([i // groupsize for i in range(infeatures)], dtype=torch.int32)
+def cai_linear_pack(linear, scales, zeros, out_qweight, out_qscales, out_qzeros, qg_idx, infeatures, groupsize, bits):
+    g_idx = qg_idx.clone() if qg_idx is not None else torch.tensor([i // groupsize for i in range(infeatures)],
+                                                                   dtype=torch.int32)
 
     scales = scales.t().contiguous()
     zeros = zeros.t().contiguous()
@@ -133,7 +143,9 @@ def cai_linear_pack(linear, scales, zeros,
 
     intweight = []
     for idx in range(infeatures):
-        intweight.append(torch.round((linear.weight.data[:, idx] + scale_zeros[g_idx[idx]]) / half_scales[g_idx[idx]]).to(ptype)[:, None])
+        intweight.append(
+            torch.round(
+                (linear.weight.data[:, idx] + scale_zeros[g_idx[idx]]) / half_scales[g_idx[idx]]).to(ptype)[:, None])
     intweight = torch.cat(intweight, dim=1)
     intweight = intweight.t().contiguous()
     intweight = intweight.numpy().astype(unsign_type)
@@ -188,18 +200,18 @@ def get_model_param(model, quantizers):
 
     return scale, zero, g_idx
 
+
 def model_cai_pack(model, quantizers, qweight, qscales, qzeros, wbits, groupsize):
     layers = find_layers(model)
     layers = {n: layers[n] for n in quantizers}
     with torch.no_grad():
         for name in layers:
             _, scale, zero, g_idx = quantizers[name]
-            qweight, qscales, qzeros = cai_linear_pack(layers[name], scale, zero, 
-                        qweight, qscales, qzeros, g_idx, 
-                        layers[name].weight.shape[-1], groupsize, wbits)
+            qweight, qscales, qzeros = cai_linear_pack(layers[name], scale, zero, qweight, qscales, qzeros, g_idx,
+                                                       layers[name].weight.shape[-1], groupsize, wbits)
 
     # print("cai pack", layers)
-    return qweight, qscales, qzeros 
+    return qweight, qscales, qzeros
 
 
 def test_gptq_linear():
@@ -211,17 +223,19 @@ def test_gptq_linear():
     bias = torch.zeros(outfeature).to(torch.float16).to(torch.cuda.current_device())
     # wn = 16
     # ptype = torch.int64
-    
+
     wn = 8
     ptype = torch.int32
 
-    qweight = torch.zeros(infeature//wn, outfeature, dtype=ptype, device=torch.cuda.current_device()).contiguous()
-    qscales = torch.zeros(infeature//groupsize, outfeature, dtype=torch.float16, device=torch.cuda.current_device()).contiguous()
-    qzeros = torch.zeros(infeature//groupsize, outfeature//wn, dtype=ptype, device=torch.cuda.current_device()).contiguous()
+    qweight = torch.zeros(infeature // wn, outfeature, dtype=ptype, device=torch.cuda.current_device()).contiguous()
+    qscales = torch.zeros(infeature // groupsize, outfeature, dtype=torch.float16,
+                          device=torch.cuda.current_device()).contiguous()
+    qzeros = torch.zeros(infeature // groupsize, outfeature // wn, dtype=ptype,
+                         device=torch.cuda.current_device()).contiguous()
 
     act_func = nn.SiLU()
     inps = torch.ones(1, 1, infeature).to(torch.float16).to(torch.cuda.current_device())
-    batch_inps = torch.randn(1, 2048, infeature).to(torch.float16).to(torch.cuda.current_device())
+    batch_inps = torch.randn(1, 4096, infeature).to(torch.float16).to(torch.cuda.current_device())
 
     linear = MLinear(infeature, outfeature)
     linear.to(torch.cuda.current_device())
@@ -236,7 +250,6 @@ def test_gptq_linear():
         # torch_out = act_func(torch_out)
         # batch_torch_out = act_func(batch_torch_out)
 
-
     # linear.to("cuda")
     quantizers = model_quant(linear, inps, torch.cuda.current_device())
     # qweight, qscales, qzeros = model_cai_pack(linear, quantizers, qweight, qscales, qzeros, wbits, groupsize)
@@ -250,9 +263,9 @@ def test_gptq_linear():
 
     gptq_model = model_pack(linear, quantizers, wbits, groupsize)
     gptq_model.to(torch.cuda.current_device())
-    gptq_model=autogptq_post_init(gptq_model, False)
+    gptq_model = autogptq_post_init(gptq_model, False)
 
-    qkv_fused=False
+    qkv_fused = False
 
     with torch.no_grad():
         gptq_out = gptq_model(inps)
@@ -288,6 +301,7 @@ def test_gptq_linear():
     # mean_diff = torch.mean(torch.abs(batch_torch_out - batch_cai_out))
     # max_diff = torch.max(torch.abs(batch_torch_out - batch_cai_out))
     # print("batch torch vs cai: mean_diff=%.8f, max_diff=%.8f" % (mean_diff, max_diff))
+
 
 if __name__ == "__main__":
 
