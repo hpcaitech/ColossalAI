@@ -8,7 +8,11 @@ from colossalai.inference.kvcache_manager import MemoryManager
 
 
 @dataclass
-class InferenceState:
+class BatchInferState:
+    r"""
+    Information to be passed and used for a batch of inputs during
+    a single model forward
+    """
     batch_size: int
     max_len_in_batch: int
 
@@ -35,6 +39,7 @@ class InferenceState:
         self.cache_manager = manager
 
     def step_inference_state(self):
+        """ update indexes used for kv cache management at the end of model forward """
         self.start_loc = self.start_loc + torch.arange(0, self.batch_size, dtype=torch.int32, device=self.device)
         self.seq_len += 1
 
