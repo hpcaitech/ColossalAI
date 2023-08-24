@@ -1,3 +1,5 @@
+# Adapted from ModelTC https://github.com/ModelTC/lightllm
+
 import math
 
 import torch
