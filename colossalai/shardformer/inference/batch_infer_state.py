@@ -4,7 +4,7 @@ from typing import Any
 
 import torch
 
-from colossalai.inference.kvcache_manager import MemoryManager
+from .kvcache_manager import MemoryManager
 
 
 @dataclass
