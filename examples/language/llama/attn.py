@@ -22,6 +22,16 @@ except ImportError:
 
 SUPPORT_FLASH = SUPPORT_XFORMERS or SUPPORT_FLASH2
 
+def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
+    """
+    This is the equivalent of torch.repeat_interleave(x, dim=1, repeats=n_rep). The hidden states go from (batch,
+    num_key_value_heads, seqlen, head_dim) to (batch, num_attention_heads, seqlen, head_dim)
+    """
+    batch, num_key_value_heads, slen, head_dim = hidden_states.shape
+    if n_rep == 1:
+        return hidden_states
+    hidden_states = hidden_states[:, :, None, :, :].expand(batch, num_key_value_heads, n_rep, slen, head_dim)
+    return hidden_states.reshape(batch, num_key_value_heads * n_rep, slen, head_dim)
 
 def llama_flash_attention(
     self: LlamaAttention,
@@ -34,9 +44,13 @@ def llama_flash_attention(
 ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
     bsz, q_len, _ = hidden_states.size()
 
+    if hasattr(self,'num_key_value_heads'):
+        num_key_value_heads = self.num_key_value_heads
+    else:
+        num_key_value_heads = self.num_heads
     query_states = self.q_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
-    key_states = self.k_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
-    value_states = self.v_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
+    key_states = self.k_proj(hidden_states).view(bsz, q_len, num_key_value_heads, self.head_dim).transpose(1, 2)
+    value_states = self.v_proj(hidden_states).view(bsz, q_len, num_key_value_heads, self.head_dim).transpose(1, 2)
 
     kv_seq_len = key_states.shape[-2]
     if past_key_value is not None:
@@ -53,6 +67,13 @@ def llama_flash_attention(
     past_key_value = (key_states, value_states) if use_cache else None
 
     # q, k, v is [B, H, S, K] and xformers need [B, S, H, K]. returns [B, S, H, K]
+    if hasattr(self,'num_key_value_groups'):
+        num_key_value_groups = self.num_key_value_groups
+    else:
+        num_key_value_groups = 1
+    key_states = repeat_kv(key_states, num_key_value_groups)
+    value_states = repeat_kv(value_states, num_key_value_groups)
+
     query_states = query_states.transpose(1, 2)
     key_states = key_states.transpose(1, 2)
     value_states = value_states.transpose(1, 2)
