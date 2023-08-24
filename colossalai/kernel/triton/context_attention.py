@@ -62,7 +62,6 @@ if HAS_TRITON:
 
         block_mask = tl.where(block_start_loc < cur_batch_seq_len, 1, 0)
 
-        # modify from 
         for start_n in range(0, block_mask * (start_m + 1) * BLOCK_M, BLOCK_N):
             start_n = tl.multiple_of(start_n, BLOCK_N)
             k = tl.load(k_ptrs + (cur_batch_start_index + start_n) * stride_kbs,
