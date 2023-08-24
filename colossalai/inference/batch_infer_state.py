@@ -28,6 +28,7 @@ class BatchInferState:
     decode_mem_start: int = None
     decode_mem_end: int = None
     decode_mem_index: torch.Tensor = None
+    decode_layer_id: int = None
 
     device: torch.device = torch.device('cuda')
 
@@ -37,11 +38,6 @@ class BatchInferState:
 
     def set_cache_manager(self, manager: MemoryManager):
         self.cache_manager = manager
-
-    def step_inference_state(self):
-        """ update indexes used for kv cache management at the end of model forward """
-        self.start_loc = self.start_loc + torch.arange(0, self.batch_size, dtype=torch.int32, device=self.device)
-        self.seq_len += 1
 
     @staticmethod
     def init_block_loc(b_loc: torch.Tensor, seq_len: torch.Tensor, max_len_in_batch: int,
