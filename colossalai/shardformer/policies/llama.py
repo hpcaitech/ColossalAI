@@ -273,13 +273,8 @@ class LlamaModelInferPolicy(LlamaPolicy):
     def module_policy(self):
         from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecoderLayer, LlamaModel
         policy = super().module_policy()
+        # configure default shard config for inference
         self.shard_config._infer()
-
-        # example for replace layer or decoder
-        # if self.shard_config.enable_flash_attention:
-        #     policy[LlamaAttention] = ModulePolicyDescription(method_replacement={
-        #         'forward': get_llama_flash_attention_forward(),
-        #     })
 
         infer_forward = LlamaInferenceForwards.llama_model_forward
         method_replacement = {'forward': partial(infer_forward)}

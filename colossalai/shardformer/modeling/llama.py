@@ -393,7 +393,7 @@ class LlamaPipelineForwards:
 
 class LlamaInferenceForwards:
     """
-    This class holds forwards for llama infer
+    This class holds forwards for llama inference.
     """
 
     @staticmethod
