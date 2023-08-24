@@ -1,3 +1,4 @@
+import math
 import warnings
 from typing import List, Optional, Tuple, Union
 
@@ -14,6 +15,8 @@ from transformers.modeling_outputs import (
     TokenClassifierOutput,
 )
 from transformers.models.bloom.modeling_bloom import (
+    BloomAttention,
+    BloomBlock,
     BloomForCausalLM,
     BloomForQuestionAnswering,
     BloomForSequenceClassification,
@@ -22,7 +25,11 @@ from transformers.models.bloom.modeling_bloom import (
 )
 from transformers.utils import logging
 
+from colossalai.kernel.triton.context_attention import bloom_context_attn_fwd
+from colossalai.kernel.triton.copy_kv_cache_dest import copy_kv_cache_to_dest
+from colossalai.kernel.triton.token_attention_kernel import token_attention_fwd
 from colossalai.pipeline.stage_manager import PipelineStageManager
+from colossalai.shardformer.inference import BatchInferState
 
 
 def build_bloom_alibi_tensor_fn(process_group: ProcessGroup) -> torch.Tensor:
@@ -89,6 +96,67 @@ def build_bloom_alibi_tensor_fn(process_group: ProcessGroup) -> torch.Tensor:
             return alibi.reshape(batch_size * num_heads, 1, seq_length).to(dtype)
 
     return build_bloom_alibi_tensor
+
+
+def generate_alibi(n_head, dtype=torch.float16):
+    """
+    This method is originally the `build_alibi_tensor` function
+    in `transformers/models/bloom/modeling_bloom.py`
+    of the huggingface/transformers GitHub repository.
+
+    Copyright 2023 ModelTC Team
+    Copyright 2022 HuggingFace Inc. team and BigScience workshop
+
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+    """
+
+    def get_slopes(n):
+
+        def get_slopes_power_of_2(n):
+            start = 2**(-(2**-(math.log2(n) - 3)))
+            ratio = start
+            return [start * ratio**i for i in range(n)]
+
+        if math.log2(n).is_integer():
+            return get_slopes_power_of_2(n)
+        else:
+            closest_power_of_2 = 2**math.floor(math.log2(n))
+            return (get_slopes_power_of_2(closest_power_of_2) +
+                    get_slopes(2 * closest_power_of_2)[0::2][:n - closest_power_of_2])
+
+    slopes = torch.Tensor(get_slopes(n_head))
+    head_alibi = slopes.to(dtype)
+    return head_alibi    # 1 * num_heads
+
+
+def generate_alibi_2(n_head, dtype=torch.float16):
+
+    def get_slopes_power_of_2(n):
+        start = 2**(-(2**-(math.log2(n) - 3)))
+        return [start * start**i for i in range(n)]
+
+    def get_slopes(n):
+        if math.log2(n).is_integer():
+            return get_slopes_power_of_2(n)
+        else:
+            closest_power_of_2 = 2**math.floor(math.log2(n))
+            slopes_power_of_2 = get_slopes_power_of_2(closest_power_of_2)
+            slopes_double = get_slopes(2 * closest_power_of_2)
+            slopes_combined = slopes_power_of_2 + slopes_double[0::2][:n - closest_power_of_2]
+            return slopes_combined
+
+    slopes = torch.tensor(get_slopes(n_head), dtype=dtype)
+    return slopes
 
 
 class BloomPipelineForwards:
@@ -676,6 +744,371 @@ class BloomPipelineForwards:
         else:
             hidden_states = outputs.get('hidden_states')
             return {'hidden_states': hidden_states}
+
+
+class BloomInferenceForwards:
+    """
+    This class serves a micro library for bloom inference forwards
+    """
+
+    @staticmethod
+    def bloom_model_forward(
+        self,
+        input_ids: Optional[torch.LongTensor] = None,
+        past_key_values: Optional[Tuple[Tuple[torch.Tensor, torch.Tensor], ...]] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        head_mask: Optional[torch.LongTensor] = None,
+        inputs_embeds: Optional[torch.LongTensor] = None,
+        use_cache: Optional[bool] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+        **deprecated_arguments,
+    ) -> Union[Tuple[torch.Tensor, ...], BaseModelOutputWithPastAndCrossAttentions]:
+
+        logger = logging.get_logger(__name__)
+
+        if deprecated_arguments.pop("position_ids", False) is not False:
+            # `position_ids` could have been `torch.Tensor` or `None` so defaulting pop to `False` allows to detect if users were passing explicitly `None`
+            warnings.warn(
+                "`position_ids` have no functionality in BLOOM and will be removed in v5.0.0. You can safely ignore"
+                " passing `position_ids`.",
+                FutureWarning,
+            )
+        if len(deprecated_arguments) > 0:
+            raise ValueError(f"Got unexpected arguments: {deprecated_arguments}")
+
+        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+        output_hidden_states = (output_hidden_states
+                                if output_hidden_states is not None else self.config.output_hidden_states)
+        use_cache = use_cache if use_cache is not None else self.config.use_cache
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        if input_ids is not None and inputs_embeds is not None:
+            raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
+        elif input_ids is not None:
+            batch_size, seq_length = input_ids.shape
+        elif inputs_embeds is not None:
+            batch_size, seq_length, _ = inputs_embeds.shape
+        else:
+            raise ValueError("You have to specify either input_ids or inputs_embeds")
+
+        # initialize BatchInferState to track necessary states during current model forward
+        infer_state = BatchInferState()
+        infer_state.batch_size = batch_size
+        # TODO: dummy implementation here for testing, assume all inputs same length
+        infer_state.total_token_num = batch_size * seq_length
+        infer_state.block_loc = self.block_loc
+        infer_state.start_loc = self.b_start_loc
+        infer_state.seq_len = self.b_seq_len
+
+        # still need to keep past_key_values to fit original forward flow
+        if past_key_values is None:
+            past_key_values = tuple([None] * len(self.h))
+
+        # Prepare head mask if needed
+        # 1.0 in head_mask indicate we keep the head
+        # attention_probs has shape batch_size x num_heads x N x N
+        # head_mask has shape n_layer x batch x num_heads x N x N
+        head_mask = self.get_head_mask(head_mask, self.config.n_layer)
+
+        if inputs_embeds is None:
+            inputs_embeds = self.word_embeddings(input_ids)
+
+        hidden_states = self.word_embeddings_layernorm(inputs_embeds)
+
+        presents = () if use_cache else None
+        all_self_attentions = () if output_attentions else None
+        all_hidden_states = () if output_hidden_states else None
+
+        if self.gradient_checkpointing and self.training:
+            if use_cache:
+                logger.warning_once(
+                    "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`...")
+                use_cache = False
+
+        # Compute alibi tensor: check build_alibi_tensor documentation
+        seq_length_with_past = seq_length
+        past_key_values_length = 0
+        if self.cache_manager.past_key_values_length > 0:
+            # TODO dummy but work, revise it
+            past_key_values_length = self.cache_manager.past_key_values_length
+            # past_key_values_length = past_key_values[0][0].shape[2]
+            seq_length_with_past = seq_length_with_past + past_key_values_length
+
+        infer_state.cache_manager = self.cache_manager
+
+        if use_cache and seq_length != 1:
+            # NOTE assuem prefill stage
+            # allocate memory block
+            infer_state.is_context_stage = True    # set prefill stage, notify attention layer
+            infer_state.context_mem_index = infer_state.cache_manager.alloc(infer_state.total_token_num)
+            BatchInferState.init_block_loc(infer_state.block_loc, infer_state.seq_len, seq_length,
+                                           infer_state.prefill_mem_index)
+        else:
+            # TODO handle the condition that no contiguous memory presents
+            alloc_mem = infer_state.cache_manager.alloc_contiguous(batch_size)
+            if alloc_mem is not None:
+                infer_state.decode_is_contiguous = True
+                infer_state.decode_mem_index = alloc_mem[0]
+                infer_state.decode_mem_start = alloc_mem[1]
+                infer_state.decode_mem_end = alloc_mem[2]
+                infer_state.block_loc[:, seq_length_with_past - 1] = infer_state.decode_mem_index
+            else:
+                print(f" *** Encountered allocation non-contiguous")
+                print(
+                    f"    infer_state.cache_manager.past_key_values_length: {infer_state.cache_manager.past_key_values_length}"
+                )
+                infer_state.decode_is_contiguous = False
+                alloc_mem = infer_state.cache_manager.alloc(batch_size)
+                infer_state.decode_mem_index = alloc_mem
+                # infer_state.decode_key_buffer = torch.empty((batch_size, self.tp_head_num_, self.head_dim_), dtype=torch.float16, device="cuda")
+                # infer_state.decode_value_buffer = torch.empty((batch_size, self.tp_head_num_, self.head_dim_), dtype=torch.float16, device="cuda")
+                infer_state.block_loc[:, seq_length_with_past - 1] = infer_state.decode_mem_index
+
+        if attention_mask is None:
+            attention_mask = torch.ones((batch_size, seq_length_with_past), device=hidden_states.device)
+        else:
+            attention_mask = attention_mask.to(hidden_states.device)
+
+        # NOTE we might want to store a single 1D alibi(length is #heads) in model
+        alibi = generate_alibi(self.num_heads).contiguous().cuda()
+        # alibi = self.build_alibi_tensor(attention_mask, self.num_heads, dtype=hidden_states.dtype)
+
+        causal_mask = self._prepare_attn_mask(
+            attention_mask,
+            input_shape=(batch_size, seq_length),
+            past_key_values_length=past_key_values_length,
+        )
+
+        for i, (block, layer_past) in enumerate(zip(self.h, past_key_values)):
+            if output_hidden_states:
+                all_hidden_states = all_hidden_states + (hidden_states,)
+
+            if self.gradient_checkpointing and self.training:
+                # FIXME: currently our KV cache manager does not handle this condition
+                def create_custom_forward(module):
+
+                    def custom_forward(*inputs):
+                        # None for past_key_value
+                        return module(*inputs, use_cache=use_cache, output_attentions=output_attentions)
+
+                    return custom_forward
+
+                outputs = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(block),
+                    hidden_states,
+                    alibi,
+                    causal_mask,
+                    layer_past,
+                    head_mask[i],
+                )
+            else:
+                outputs = block(
+                    hidden_states,
+                    layer_past=layer_past,
+                    attention_mask=causal_mask,
+                    head_mask=head_mask[i],
+                    use_cache=use_cache,
+                    output_attentions=output_attentions,
+                    alibi=alibi,
+                    infer_state=infer_state,
+                )
+
+            hidden_states = outputs[0]
+            if use_cache is True:
+                presents = presents + (outputs[1],)
+
+            if output_attentions:
+                all_self_attentions = all_self_attentions + (outputs[2 if use_cache else 1],)
+
+        # Add last hidden state
+        hidden_states = self.ln_f(hidden_states)
+
+        if output_hidden_states:
+            all_hidden_states = all_hidden_states + (hidden_states,)
+
+        # NOTE: remember to update indices of kv cache block
+        self.b_start_loc = self.b_start_loc + torch.arange(0, batch_size, dtype=torch.int32, device="cuda")
+        self.b_seq_len += 1
+
+        if not return_dict:
+            return tuple(v for v in [hidden_states, presents, all_hidden_states, all_self_attentions] if v is not None)
+
+        return BaseModelOutputWithPastAndCrossAttentions(
+            last_hidden_state=hidden_states,
+            past_key_values=presents,    # should always be (None, None, ..., None)
+            hidden_states=all_hidden_states,
+            attentions=all_self_attentions,
+        )
+
+    # replace decoder layer forward:
+    #   used to replace BloomBlock.forward
+    def bloom_block_forward(
+        self,
+        hidden_states: torch.Tensor,
+        alibi: torch.Tensor,
+        attention_mask: torch.Tensor,
+        layer_past: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        head_mask: Optional[torch.Tensor] = None,
+        use_cache: bool = False,
+        output_attentions: bool = False,
+        infer_state: Optional[BatchInferState] = None,
+    ):
+        # hidden_states: [batch_size, seq_length, hidden_size]
+
+        # Layer norm at the beginning of the transformer layer.
+        layernorm_output = self.input_layernorm(hidden_states)
+
+        # Layer norm post the self attention.
+        if self.apply_residual_connection_post_layernorm:
+            residual = layernorm_output
+        else:
+            residual = hidden_states
+
+        # Self attention.
+        attn_outputs = self.self_attention(
+            layernorm_output,
+            residual,
+            layer_past=layer_past,
+            attention_mask=attention_mask,
+            alibi=alibi,
+            head_mask=head_mask,
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+            infer_state=infer_state,
+        )
+
+        attention_output = attn_outputs[0]
+
+        outputs = attn_outputs[1:]
+
+        layernorm_output = self.post_attention_layernorm(attention_output)
+
+        # Get residual
+        if self.apply_residual_connection_post_layernorm:
+            residual = layernorm_output
+        else:
+            residual = attention_output
+
+        # MLP.
+        output = self.mlp(layernorm_output, residual)
+
+        if use_cache:
+            outputs = (output,) + outputs
+        else:
+            outputs = (output,) + outputs[1:]
+
+        return outputs    # hidden_states, present, attentions
+
+    # replace attention forward:
+    #   used to replace BloomAttention.forward
+    def bloom_attention_forward(
+        self,
+        hidden_states: torch.Tensor,
+        residual: torch.Tensor,
+        alibi: torch.Tensor,
+        attention_mask: torch.Tensor,
+        layer_past: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        head_mask: Optional[torch.Tensor] = None,
+        use_cache: bool = False,
+        output_attentions: bool = False,
+        infer_state: Optional[BatchInferState] = None,
+    ):
+
+        fused_qkv = self.query_key_value(hidden_states)    # [batch_size, seq_length, 3 x hidden_size]
+
+        # 3 x [batch_size, seq_length, num_heads, head_dim]
+        (query_layer, key_layer, value_layer) = self._split_heads(fused_qkv)
+        batch_size, q_length, H, D_HEAD = query_layer.shape
+        k = key_layer.reshape(-1, H, D_HEAD)    # batch_size * q_length, H, D_HEAD, q_lenth == 1
+        v = value_layer.reshape(-1, H, D_HEAD)    # batch_size * q_length, H, D_HEAD, q_lenth == 1
+
+        mem_manager = infer_state.cache_manager
+
+        if infer_state.is_context_stage:
+            # context process
+            max_input_len = q_length
+            b_start_loc = infer_state.start_loc
+            b_seq_len = infer_state.seq_len[:batch_size]
+            q = query_layer.reshape(-1, H, D_HEAD)
+
+            copy_kv_cache_to_dest(k, infer_state.context_mem_index, mem_manager.key_buffer[self.layer_id])
+            copy_kv_cache_to_dest(v, infer_state.context_mem_index, mem_manager.value_buffer[self.layer_id])
+
+            # output = self.output[:batch_size*q_length, :, :]
+            output = torch.empty_like(q)
+
+            context_attention_fwd(q, k, v, output, alibi, b_start_loc, b_seq_len, max_input_len)
+
+            context_layer = output.view(batch_size, q_length, H * D_HEAD)
+            # FIXME might want to revise
+            #   need some way to record the length of past key values cache
+            #   since we won't return past_key_value_cache right now
+            if self.layer_id == 0:    # once per model.forward
+                infer_state.cache_manager.past_key_values_length = q_length    # seq_len
+        else:
+            # query_layer = query_layer.transpose(1, 2).reshape(batch_size * self.num_heads, q_length, self.head_dim)
+            # need shape: batch_size, H, D_HEAD (q_length == 1), input q shape : (batch_size, q_length(1), H, D_HEAD)
+            assert q_length == 1, "for non-context process, we only support q_length == 1"
+            q = query_layer.reshape(-1, H, D_HEAD)
+
+            if infer_state.decode_is_contiguous:
+                # if decode is contiguous, then we copy to key cache and value cache in cache manager directly
+                cache_k = infer_state.cache_manager.key_buffer[self.layer_id][
+                    infer_state.decode_mem_start:infer_state.decode_mem_end, :, :]
+                cache_v = infer_state.cache_manager.value_buffer[self.layer_id][
+                    infer_state.decode_mem_start:infer_state.decode_mem_end, :, :]
+                cache_k.copy_(k)
+                cache_v.copy_(v)
+            else:
+                # if decode is not contiguous, use triton kernel to copy key and value cache
+                # k, v shape: [batch_size, num_heads, head_dim/embed_size_per_head]
+                # TODO clean comments
+                # destindex_copy_kv(k, infer_state.decode_mem_index, mem_manager.key_buffer[self.layer_id])
+                # destindex_copy_kv(v, infer_state.decode_mem_index, mem_manager.value_buffer[self.layer_id])
+                copy_kv_cache_to_dest(k, infer_state.decode_mem_index, mem_manager.key_buffer[self.layer_id])
+                copy_kv_cache_to_dest(v, infer_state.decode_mem_index, mem_manager.value_buffer[self.layer_id])
+
+            b_start_loc = infer_state.start_loc[:batch_size]
+            b_loc = infer_state.block_loc[:batch_size, :]
+            b_seq_len = infer_state.seq_len[:batch_size]
+            max_len_in_batch = mem_manager.past_key_values_length + q_length
+            output = torch.empty_like(q)
+            token_attention_fwd(q, mem_manager.key_buffer[self.layer_id], mem_manager.value_buffer[self.layer_id],
+                                output, alibi, b_loc, b_start_loc, b_seq_len, max_len_in_batch)
+
+            context_layer = output.view(batch_size, q_length, H * D_HEAD)
+            # FIXME might want to revise (same as above one)
+            #   need some way to record the length of past key values cache
+            #   since we won't return past_key_value_cache right now
+            if self.layer_id == 0:    # once per model.forward
+                assert infer_state.cache_manager.past_key_values_length != 0
+                infer_state.cache_manager.past_key_values_length += q_length    # += 1
+
+        # NOTE: always set present as none for now, instead of returning past key value to the next decoding,
+        #       we create the past key value pair from the cache manager
+        present = None
+
+        # aggregate results across tp ranks. See here: https://github.com/pytorch/pytorch/issues/76232
+        if self.pretraining_tp > 1 and self.slow_but_exact:
+            slices = self.hidden_size / self.pretraining_tp
+            output_tensor = torch.zeros_like(context_layer)
+            for i in range(self.pretraining_tp):
+                output_tensor = output_tensor + F.linear(
+                    context_layer[:, :, int(i * slices):int((i + 1) * slices)],
+                    self.dense.weight[:, int(i * slices):int((i + 1) * slices)],
+                )
+        else:
+            output_tensor = self.dense(context_layer)
+
+        # dropout is not required here during inference
+        output_tensor = residual + output_tensor
+
+        outputs = (output_tensor, present)
+        assert output_attentions is False, "we do not support output_attentions at this time"
+
+        return outputs
 
 
 def get_bloom_flash_attention_forward(enabel_jit_fused=False):

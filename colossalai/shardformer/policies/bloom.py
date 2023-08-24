@@ -9,6 +9,7 @@ import colossalai.shardformer.layer as col_nn
 
 from .._utils import getattr_, setattr_
 from ..modeling.bloom import (
+    BloomInferenceForwards,
     BloomPipelineForwards,
     build_bloom_alibi_tensor_fn,
     get_bloom_flash_attention_forward,
@@ -207,6 +208,28 @@ class BloomModelPolicy(BloomPolicy):
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
         '''no shared params in bloom model'''
         return []
+
+
+class BloomModelInferPolicy(BloomPolicy):
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    def module_policy(self):
+        from transformers.models.bloom.modeling_bloom import BloomAttention, BloomBlock, BloomModel
+        policy = super().module_policy()
+        # TODO might want to set inference config to shard config
+
+        # NOTE ignore tp, pp at this moment?
+        if self.shard_config.enable_tensor_parallelism:
+            policy[BloomModel] = ModulePolicyDescription(
+                method_replacement={"forward": BloomInferenceForwards.bloom_model_forward})
+            policy[BloomBlock] = ModulePolicyDescription(
+                method_replacement={"forward": BloomInferenceForwards.bloom_block_forward})
+            policy[BloomAttention] = ModulePolicyDescription(
+                method_replacement={"forward": BloomInferenceForwards.bloom_attention_forward})
+
+        return policy
 
 
 class BloomForCausalLMPolicy(BloomPolicy):
