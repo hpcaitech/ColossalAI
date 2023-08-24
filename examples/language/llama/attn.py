@@ -1,10 +1,9 @@
-import math
 from types import MethodType
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import torch
 import torch.nn as nn
-from transformers.models.llama.modeling_llama import LlamaAttention, apply_rotary_pos_emb
+from transformers.models.llama.modeling_llama import LlamaAttention, apply_rotary_pos_emb, repeat_kv
 
 SUPPORT_XFORMERS = False
 SUPPORT_FLASH2 = False
@@ -15,7 +14,7 @@ except ImportError:
     pass
 
 try:
-    from flash_attn import flash_attn_func, flash_attn_qkvpacked_func
+    from flash_attn import flash_attn_func
     SUPPORT_FLASH2 = True
 except ImportError:
     pass
@@ -35,8 +34,8 @@ def llama_flash_attention(
     bsz, q_len, _ = hidden_states.size()
 
     query_states = self.q_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
-    key_states = self.k_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
-    value_states = self.v_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
+    key_states = self.k_proj(hidden_states).view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
+    value_states = self.v_proj(hidden_states).view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
 
     kv_seq_len = key_states.shape[-2]
     if past_key_value is not None:
@@ -51,6 +50,10 @@ def llama_flash_attention(
         value_states = torch.cat([past_key_value[1], value_states], dim=2)
 
     past_key_value = (key_states, value_states) if use_cache else None
+
+    # repeat k/v heads if n_kv_heads < n_heads
+    key_states = repeat_kv(key_states, self.num_key_value_groups)
+    value_states = repeat_kv(value_states, self.num_key_value_groups)
 
     # q, k, v is [B, H, S, K] and xformers need [B, S, H, K]. returns [B, S, H, K]
     query_states = query_states.transpose(1, 2)
