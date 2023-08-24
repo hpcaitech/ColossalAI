@@ -229,12 +229,12 @@ def token_attn_softmax_fwd(softmax_logics, kv_cache_start_loc, kv_cache_seqlen, 
 def _token_attn_2_kernel(Prob, V, attn_out, kv_cache_loc, kv_cache_start_loc, kv_cache_seqlen, max_kv_cache_len,
                          kv_cache_loc_b_stride, kv_cache_loc_s_stride, prob_head_dim_stride, prob_batch_stride,
                          v_batch_stride, v_head_stride, v_head_dim_stride, attn_out_batch_stride, attn_out_head_stride,
-                         attn_out_head_dim_stride, BLOCK_DMODEL: tl.constexpr, BLOCK_N: tl.constexpr):
+                         attn_out_head_dim_stride, HEAD_DIM: tl.constexpr, BLOCK_N: tl.constexpr):
     current_batch = tl.program_id(0)
     current_head = tl.program_id(1)
 
     offs_n = tl.arange(0, BLOCK_N)
-    offs_d = tl.arange(0, BLOCK_DMODEL)
+    offs_d = tl.arange(0, HEAD_DIM)
     current_batch_seq_len = tl.load(kv_cache_seqlen + current_batch)
     current_batch_start_index = max_kv_cache_len - current_batch_seq_len
     current_batch_end_index = current_batch_seq_len
@@ -244,7 +244,7 @@ def _token_attn_2_kernel(Prob, V, attn_out, kv_cache_loc, kv_cache_start_loc, kv
     p_offs = current_head * prob_head_dim_stride + (current_batch_in_all_start_index + offs_n) * prob_batch_stride
     v_offs = current_head * v_head_stride + offs_d[None, :] * v_head_dim_stride
 
-    acc = tl.zeros([BLOCK_DMODEL], dtype=tl.float32)
+    acc = tl.zeros([HEAD_DIM], dtype=tl.float32)
     for start_n in range(0, current_batch_seq_len, BLOCK_N):
         start_n = tl.multiple_of(start_n, BLOCK_N)
         p_value = tl.load(Prob + p_offs + start_n * kv_cache_loc_s_stride,
@@ -294,7 +294,7 @@ def token_attn_fwd_2(prob, v, attn_out, kv_cache_loc, kv_cache_start_loc, kv_cac
         attn_out.stride(0),
         attn_out.stride(1),
         attn_out.stride(2),
-        BLOCK_DMODEL=dim,
+        HEAD_DIM=dim,
         BLOCK_N=BLOCK,
         num_warps=num_warps,
         num_stages=1,
