@@ -5,7 +5,7 @@ import torch.nn as nn
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.inference.kvcache_manager import MemoryManager
-from colossalai.shardformer.policies.llama import LlamaModelInferPolicy
+from colossalai.shardformer.policies.llama import LlamaModelInferPolicy, LlamaPolicy
 from transformers import LlamaForCausalLM, LlamaTokenizer
 import time
 from torch.profiler import profile, record_function, ProfilerActivity
@@ -144,7 +144,14 @@ class TPCacheManagerInferenceEngine:
             enable_tensor_parallelism=True,
         )
         shardformer = ShardFormer(shard_config=shardconfig)
-        shard_model, _ = shardformer.optimize(self.model, LlamaModelInferPolicy())
+        
+        if self.bs >= 4:
+            self.init_and_insert_cache_manager()
+            policy = LlamaModelInferPolicy()
+        else:
+            policy = LlamaPolicy()
+        
+        shard_model, _ = shardformer.optimize(self.model, policy)
         return org_model.cuda(), shard_model.cuda()
     
     def generate_data(self):
@@ -169,11 +176,6 @@ class TPCacheManagerInferenceEngine:
                     **generate_kwargs, early_stopping=False)
             torch.cuda.synchronize()
 
-            # manually clear the cache manager bounded to the model
-            # TODO: add post-process of model generate
-            #   we might want to replace model.generate
-            #   QUESTION: model.generate, or model.model.generate
-
             end = time.time()
             self.model.model.cache_manager.free_all()
             num_tokens_generation = outputs.shape[1] - self.input_len
@@ -182,8 +184,6 @@ class TPCacheManagerInferenceEngine:
             time_spend = (end-start)/num_tokens_generation
             times.append(time_spend)
             
-            # print(outputs.shape)
-            # reset params
             block_loc = torch.empty(self.bs, self.input_len + self.output_len, dtype=torch.long, device="cuda")
             start_loc = torch.zeros(self.bs, dtype=torch.int32, device="cuda")
             seq_len = torch.zeros(self.bs, dtype=torch.int32, device="cuda")
