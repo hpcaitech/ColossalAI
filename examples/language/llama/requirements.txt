@@ -1,6 +1,7 @@
 colossalai>=0.3.0
 datasets
 numpy
-torch
+torch>=1.12.0,<=2.0.0
 tqdm
 transformers
+flash-attn>=2.0.0,<=2.0.5
