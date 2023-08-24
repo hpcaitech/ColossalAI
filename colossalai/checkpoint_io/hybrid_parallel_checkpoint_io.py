@@ -19,7 +19,8 @@ from colossalai.tensor.d_tensor import (
     to_global_for_customized_distributed_tensor,
 )
 
-from . import CheckpointIndexFile, GeneralCheckpointIO
+from .general_checkpoint_io import GeneralCheckpointIO
+from .index_file import CheckpointIndexFile
 from .utils import (
     calculate_tensor_size,
     get_model_base_filenames,
