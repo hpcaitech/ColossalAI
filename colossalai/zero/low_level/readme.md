@@ -31,7 +31,7 @@ outputs = model(input)
 loss = SomeLoss(outputs)
 # ZeRO2 split the gradients and can NOT accumulate gradient with syncing.
 booster.backward(loss, optimizer)
-if (idx + 1) % ACCUMULATE_STEP != 0:
+if (idx + 1) % ACCUMULATE_STEP == 0:
     optimizer.step()
 ...
 ```
