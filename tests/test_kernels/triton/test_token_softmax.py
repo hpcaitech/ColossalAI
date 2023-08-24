@@ -1,6 +1,22 @@
-from colossalai.kernel.triton.token_attention_kernel import token_attn_softmax_fwd
+import pytest
+import torch
+from packaging import version
+
+try:
+    import triton
+    import triton.language as tl
+
+    from colossalai.kernel.triton.token_attention_kernel import token_attn_softmax_fwd
+    HAS_TRITON = True
+except ImportError:
+    HAS_TRITON = False
+    print("please install triton from https://github.com/openai/triton")
+
+TRITON_CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse('11.4')
 
 
+@pytest.mark.skipif(not TRITON_CUDA_SUPPORT or not HAS_TRITON,
+                    reason="triton requires cuda version to be higher than 11.4")
 def test_softmax():
 
     import torch

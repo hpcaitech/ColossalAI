@@ -1,8 +1,20 @@
 import math
 
+import pytest
 import torch
+from packaging import version
 
-from colossalai.kernel.triton.token_attention_kernel import token_attn_fwd_1
+try:
+    import triton
+    import triton.language as tl
+
+    from colossalai.kernel.triton.token_attention_kernel import token_attn_fwd_1
+    HAS_TRITON = True
+except ImportError:
+    HAS_TRITON = False
+    print("please install triton from https://github.com/openai/triton")
+
+TRITON_CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse('11.4')
 
 
 def torch_attn(xq, xk, bs, seqlen, num_head, head_dim):
@@ -13,7 +25,6 @@ def torch_attn(xq, xk, bs, seqlen, num_head, head_dim):
     keys = keys.transpose(1, 2)
     scores = (torch.matmul(xq, keys.transpose(2, 3)) / math.sqrt(head_dim)).squeeze().transpose(0, 1).reshape(
         num_head, -1)
-    # print("s  ", scores.shape)
     return scores
 
 
@@ -26,6 +37,8 @@ def torch_attn_1(xq, xk, seqlen, num_head, head_dim):
     return logics
 
 
+@pytest.mark.skipif(not TRITON_CUDA_SUPPORT or not HAS_TRITON,
+                    reason="triton requires cuda version to be higher than 11.4")
 def test_attn_1():
     import time
 
@@ -37,8 +50,6 @@ def test_attn_1():
     k = torch.empty((batch_size * seq_len, head_num, head_dim), dtype=dtype, device="cuda").normal_(mean=0.1, std=0.2)
     attn_out = torch.empty((head_num, batch_size * seq_len), dtype=dtype, device="cuda")
 
-    # print(attn_out)
-
     b_loc = torch.zeros((batch_size, seq_len), dtype=torch.int32, device="cuda")
     kv_cache_start_loc = torch.zeros((batch_size,), dtype=torch.int32, device="cuda")
     kv_cache_seq_len = torch.zeros((batch_size,), dtype=torch.int32, device="cuda")
@@ -47,7 +58,6 @@ def test_attn_1():
         kv_cache_start_loc[i] = i * seq_len
         kv_cache_seq_len[i] = seq_len
         b_loc[i] = i * seq_len + torch.arange(0, seq_len, dtype=torch.int32, device="cuda")
-        # print(b_loc[i])
 
     # Warm up
     for _ in range(10):
