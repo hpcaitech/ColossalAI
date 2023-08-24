@@ -26,10 +26,9 @@
     "chat": {
       "GPT": [
         "language organization",
-        "relevance",
         "naturalness",
         "engagingness",
-        "reasonableness"
+        "fidelity"
       ],
       "Metrics": [
         "Distinct"
@@ -45,7 +44,6 @@
     },
     "classification": {
       "GPT": [
-        "language organization",
         "relevance",
         "correctness"
       ],
@@ -63,7 +61,6 @@
     },
     "closed_qa": {
       "GPT": [
-        "language organization",
         "relevance",
         "correctness"
       ],
@@ -81,7 +78,6 @@
     },
     "extraction": {
       "GPT": [
-        "language organization",
         "relevance",
         "correctness"
       ],
@@ -112,6 +108,21 @@
         "summarization-fluency",
         "data2text-naturalness",
         "data2text-informativeness"
+      ]
+    },
+    "logical_reasoning": {
+      "GPT": [
+        "correctness",
+        "relevance",
+        "reasonableness"
+      ],
+      "Metrics": [
+        "BLEU",
+        "ROUGE",
+        "BERTScore",
+        "CHRF"
+      ],
+      "UniEval": [
       ]
     },
     "open_qa": {
@@ -176,12 +187,96 @@
         "CHRF"
       ],
       "UniEval": [
-        "summarization-coherence",
-        "summarization-consistency",
-        "summarization-fluency",
-        "summarization-relevance",
-        "data2text-naturalness",
-        "data2text-informativeness"
+      ]
+    },
+    "Finance": {
+      "GPT": [
+        "relevance",
+        "correctness"
+      ],
+      "Metrics": [
+      ],
+      "UniEval": [
+      ]
+    },
+    "Law": {
+      "GPT": [
+        "relevance",
+        "correctness"
+      ],
+      "Metrics": [
+      ],
+      "UniEval": [
+      ]
+    },
+    "Education": {
+      "GPT": [
+        "relevance",
+        "correctness"
+      ],
+      "Metrics": [
+      ],
+      "UniEval": [
+      ]
+    },
+    "Medical": {
+      "GPT": [
+        "relevance",
+        "correctness"
+      ],
+      "Metrics": [
+      ],
+      "UniEval": [
+      ]
+    },
+    "STEM": {
+      "GPT": [
+        "relevance",
+        "correctness"
+      ],
+      "Metrics": [
+      ],
+      "UniEval": [
+      ]
+    },
+    "SocialScience": {
+      "GPT": [
+        "relevance",
+        "correctness"
+      ],
+      "Metrics": [
+      ],
+      "UniEval": [
+      ]
+    },
+    "Humanity": {
+      "GPT": [
+        "relevance",
+        "correctness"
+      ],
+      "Metrics": [
+      ],
+      "UniEval": [
+      ]
+    },
+    "Other": {
+      "GPT": [
+        "relevance",
+        "correctness"
+      ],
+      "Metrics": [
+      ],
+      "UniEval": [
+      ]
+    },
+    "ethics": {
+      "GPT": [
+        "relevance",
+        "correctness"
+      ],
+      "Metrics": [
+      ],
+      "UniEval": [
       ]
     }
   }
