@@ -6,7 +6,7 @@ import torch
 import colossalai
 from colossalai.logging import disable_existing_loggers
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
-from llama_infer_eigine import TPCacheManagerInferenceEngine
+from llama_infer_engine import TPCacheManagerInferenceEngine
 
 os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
 
@@ -17,7 +17,7 @@ def run_llama_test(test_config):
     input_len = 1024
     output_len = 128
     bs = 8
-    engine = TPCacheManagerInferenceEngine(input_len, output_len, bs, 2)
+    engine = TPCacheManagerInferenceEngine(input_len, output_len, bs, test_config["tp_size"])
     engine.generate_data()
     engine.prepare_model()
     

@@ -12,6 +12,7 @@ from torch.profiler import profile, record_function, ProfilerActivity
 
 GIGABYTE = 1024 ** 3
 torch.backends.cudnn.enabled = True
+DP_DIM, PP_DIM, TP_DIM = 0, 1, 2
 
 def print_device_memory():
      if torch.cuda.is_available():
@@ -116,9 +117,6 @@ class TPCacheManagerInferenceEngine:
             block_loc[i, 0:self.input_len] = i * self.input_len + torch.arange(0, self.input_len, dtype=torch.int32, device="cuda")
             start_loc[i] = i * self.input_len
             seq_len[i] = self.input_len
-        print(block_loc.shape)
-        print(start_loc.shape)
-        print(seq_len.shape)
         setattr(self.model.model, 'block_loc', block_loc)
         setattr(self.model.model, 'start_loc', start_loc)
         setattr(self.model.model, 'seq_len', seq_len)
@@ -140,8 +138,9 @@ class TPCacheManagerInferenceEngine:
         # create new model
         self.orgin_model = self.model
         shardconfig = ShardConfig(
-            tensor_parallel_process_group=self.pg_mesh.get_group_along_axis(2),
+            tensor_parallel_process_group=self.pg_mesh.get_group_along_axis(TP_DIM),
             enable_tensor_parallelism=True,
+            inference_only=True,
         )
         shardformer = ShardFormer(shard_config=shardconfig)
         

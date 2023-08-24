@@ -11,6 +11,9 @@ from transformers.modeling_outputs import (
 from transformers.models.llama.modeling_llama import LlamaForCausalLM, LlamaForSequenceClassification, LlamaModel, LlamaRMSNorm, LlamaAttention
 from transformers.utils import logging
 from colossalai.shardformer.inference import BatchInferState
+from colossalai.kernel.triton.copy_kv_cache_dest import copy_kv_cache_to_dest
+from colossalai.kernel.triton.context_attention import llama_context_attn_fwd
+from colossalai.kernel.triton.token_attention_kernel import token_attention_fwd
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
 
@@ -625,15 +628,13 @@ class LlamaInferenceForwards:
         
         rotary_embedding_neox(position_ids, query_states, key_states_transposed, self.head_dim, cos_sin_cache)
         
-        from inference.ops.triton.k_copy_kv import destindex_copy_kv
-        
         def _copy_kv_to_mem_cache(layer_id, key_buffer, value_buffer, context_mem_index, mem_manager):
             num_heads = key_buffer.shape[2]
             head_dim = key_buffer.shape[3]
             key_buffer = key_buffer.view(-1, num_heads, head_dim)
             value_buffer = value_buffer.view(-1, num_heads, head_dim)
-            destindex_copy_kv(key_buffer, context_mem_index, mem_manager.key_buffer[layer_id])
-            destindex_copy_kv(value_buffer, context_mem_index, mem_manager.value_buffer[layer_id])
+            copy_kv_cache_to_dest(key_buffer, context_mem_index, mem_manager.key_buffer[layer_id])
+            copy_kv_cache_to_dest(value_buffer, context_mem_index, mem_manager.value_buffer[layer_id])
             return
 
         # copy key and value calculated in current step to memory manager
@@ -669,10 +670,8 @@ class LlamaInferenceForwards:
 
             # calcu_shape for context_attention_fwd
             calcu_shape1 = (-1, self.num_heads, self.head_dim)
-            
-            from inference.lightllm.llama.triton_kernel.context_flashattention_nopad import context_attention_fwd
 
-            context_attention_fwd(query_states.view(calcu_shape1),
+            llama_context_attn_fwd(query_states.view(calcu_shape1),
                                 key_states.view(calcu_shape1),
                                 value_states.view(calcu_shape1),
                                 attn_output.view(calcu_shape1),
@@ -684,36 +683,16 @@ class LlamaInferenceForwards:
             # second token and follows
             # kv = torch.stack((key_states, value_states), dim=2)
             # (batch_size, seqlen, nheads, headdim)
-            calcu_shape1 = (-1, self.num_heads, self.head_dim)
-            att_m_tensor = torch.empty((self.num_heads, infer_info.total_token_num), dtype=query_states.dtype, device="cuda")
-
-            from inference.lightllm.llama.triton_kernel.token_attention_nopad_att1 import token_att_fwd
-            from inference.lightllm.llama.triton_kernel.token_attention_nopad_reduceV import token_att_fwd2
-            from inference.lightllm.llama.triton_kernel.token_attention_nopad_softmax import token_softmax_fwd
-
-            # q*k
-            token_att_fwd(query_states.view(calcu_shape1),
-                        infer_info.cache_manager.key_buffer[infer_info.decode_layer_id],
-                        att_m_tensor,
-                        infer_info.block_loc,
-                        infer_info.start_loc,
-                        infer_info.seq_len,
-                        infer_info.max_len_in_batch)
-            
-            prob = torch.empty_like(att_m_tensor)
-            token_softmax_fwd(att_m_tensor, infer_info.start_loc, infer_info.seq_len, prob, infer_info.max_len_in_batch)
-            att_m_tensor = None
-
             attn_output = torch.empty_like(query_states)
-
-            token_att_fwd2(prob,
-                        infer_info.cache_manager.value_buffer[infer_info.decode_layer_id],
-                        attn_output.view(calcu_shape1),
-                        infer_info.block_loc,
-                        infer_info.start_loc,
-                        infer_info.seq_len,
-                        infer_info.max_len_in_batch)
-        
+            
+            token_attention_fwd(query_states,
+                                infer_info.cache_manager.key_buffer[infer_info.decode_layer_id],
+                                infer_info.cache_manager.value_buffer[infer_info.decode_layer_id],
+                                attn_output,
+                                infer_info.block_loc,
+                                infer_info.start_loc,
+                                infer_info.seq_len,
+                                infer_info.max_len_in_batch)
 
         attn_output = attn_output.view(bsz, q_len, self.hidden_size)
 
