@@ -10,7 +10,7 @@ from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col, Linear1D_Ro
 from ..modeling.llama import LlamaInferenceForwards, LlamaPipelineForwards, get_llama_flash_attention_forward
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
-__all__ = ['LlamaPolicy', 'LlamaForCausalLMPolicy', 'LlamaForSequenceClassificationPolicy']
+__all__ = ['LlamaPolicy', 'LlamaForCausalLMPolicy', 'LlamaForSequenceClassificationPolicy', "LlamaForCausalLMPolicy"]
 
 
 class LlamaPolicy(Policy):
@@ -265,7 +265,7 @@ class LlamaForSequenceClassificationPolicy(LlamaPolicy):
         return []
 
 
-class LlamaModelInferPolicy(LlamaPolicy):
+class LlamaModelInferPolicy(LlamaForCausalLMPolicy):
 
     def __init__(self) -> None:
         super().__init__()

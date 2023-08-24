@@ -1,11 +1,12 @@
 
+import copy
 import torch.distributed as dist
 import torch
 import torch.nn as nn
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.shardformer.inference import MemoryManager
-from colossalai.shardformer.policies.llama import LlamaModelInferPolicy, LlamaPolicy
+from colossalai.shardformer.policies.llama import LlamaModelInferPolicy, LlamaForCausalLMPolicy
 from transformers import LlamaForCausalLM, LlamaTokenizer
 import time
 from torch.profiler import profile, record_function, ProfilerActivity
@@ -136,7 +137,7 @@ class TPCacheManagerInferenceEngine:
 
     def build_model(self):
         # create new model
-        self.orgin_model = self.model
+        self.orgin_model = copy.deepcopy(self.model)
         shardconfig = ShardConfig(
             tensor_parallel_process_group=self.pg_mesh.get_group_along_axis(TP_DIM),
             enable_tensor_parallelism=True,
@@ -148,7 +149,7 @@ class TPCacheManagerInferenceEngine:
             self.init_and_insert_cache_manager()
             policy = LlamaModelInferPolicy()
         else:
-            policy = LlamaPolicy()
+            policy = LlamaForCausalLMPolicy()
         
         self.model, _ = shardformer.optimize(self.model, policy)
     
@@ -189,7 +190,7 @@ class TPCacheManagerInferenceEngine:
             time_spend = (end-start)/num_tokens_generation
             times.append(time_spend)
             
-            if test_origin:
+            if not test_origin:
                 model.model.cache_manager.free_all()
                 block_loc = torch.empty(self.bs, self.input_len + self.output_len, dtype=torch.long, device="cuda")
                 start_loc = torch.zeros(self.bs, dtype=torch.int32, device="cuda")

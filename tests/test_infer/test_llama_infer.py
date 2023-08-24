@@ -9,9 +9,10 @@ from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_ad
 from llama_infer_engine import TPCacheManagerInferenceEngine
 
 os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
+TPSIZE = 2
 
 @parameterize('test_config', [{
-    'tp_size': 2,
+    'tp_size': TPSIZE,
 }])
 def run_llama_test(test_config):
     input_len = 1024
@@ -23,7 +24,7 @@ def run_llama_test(test_config):
     
     engine.build_model()
     
-    engine.run_infer(test_origin=True)
+    engine.run_infer(test_origin=False)
 
     torch.cuda.empty_cache()
 
@@ -38,7 +39,7 @@ def check_llama(rank, world_size, port):
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()
 def test_llama():
-    spawn(check_llama, 2)
+    spawn(check_llama, TPSIZE)
 
 
 if __name__ == "__main__":
