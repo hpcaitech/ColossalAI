@@ -690,16 +690,48 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
 
         # Read checkpoint index file.
         ckpt_index_file = CheckpointIndexFile.from_file(checkpoint_index_file)
-        checkpoint_files, _ = ckpt_index_file.get_checkpoint_filenames()
-        missing_keys = []
+        ckpt_root_path = ckpt_index_file.root_path
+        weight_map = ckpt_index_file.weight_map
+        strict = False
 
         # Load params & buffers to model.
         # Keep a record of loaded files so that file will not be repeatedly loaded.
-        strict = False
-        for shard_file in checkpoint_files:
-            state_dict = load_shard_state_dict(Path(shard_file), use_safetensors)
-            load_state_dict_into_model(model, state_dict, missing_keys, strict=strict, load_sub_module=True)
-            del state_dict
+        loaded_file = set()
+
+        def _load(name: str):
+            if name not in weight_map:
+                raise ValueError(f"{name} is not stored in checkpoint, please check your checkpointing configuration!")
+            filename = weight_map[name]
+
+            # If this param/buffer has been loaded before, directly return.
+            if filename in loaded_file:
+                return
+
+            file_path = os.path.join(ckpt_root_path, filename)
+            state_dict = load_shard_state_dict(Path(file_path), use_safetensors)
+            missing_keys = []
+
+            load_state_dict_into_model(model,
+                                       state_dict,
+                                       missing_keys=missing_keys,
+                                       strict=strict,
+                                       load_sub_module=True)
+            loaded_file.add(filename)
+
+        # Load parameters.
+        for name, _ in model.named_parameters():
+            _load(name)
+
+        # Load buffers.
+        for name, buf in model.named_buffers():
+            if buf is not None and name not in model._non_persistent_buffers_set:
+                _load(name)
+
+        # Load extra states.
+        extra_state_key = _EXTRA_STATE_KEY_SUFFIX
+        if getattr(model.__class__, "get_extra_state",
+                   torch.nn.Module.get_extra_state) is not torch.nn.Module.get_extra_state:
+            _load(extra_state_key)
 
     def save_sharded_optimizer(self,
                                optimizer: Optimizer,

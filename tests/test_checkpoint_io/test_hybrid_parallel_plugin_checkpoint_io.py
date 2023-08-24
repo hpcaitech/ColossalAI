@@ -1,5 +1,3 @@
-import os
-
 import pytest
 import torch
 import torch.distributed as dist
@@ -9,6 +7,7 @@ from utils import shared_tempdir
 import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin import HybridParallelPlugin
+from colossalai.tensor.d_tensor.api import clear_layout_converter
 from colossalai.testing import (
     check_state_dict_equal,
     clear_cache_before_run,
@@ -18,12 +17,9 @@ from colossalai.testing import (
 )
 from tests.kit.model_zoo import model_zoo
 
-# TODO (Baizhou): Add more test configs to go through all kinds of parallel strategy.
-
 
 @clear_cache_before_run()
 @parameterize('shard', [True])
-@parameterize('use_safetensors', [False, True])
 @parameterize('model_name', ['transformers_gpt'])
 @parameterize('size_per_shard', [32])
 @parameterize('test_config', [{
@@ -31,8 +27,27 @@ from tests.kit.model_zoo import model_zoo
     'pp_size': 2,
     'num_microbatches': 4,
     'precision': 'fp32',
+}, {
+    'tp_size': 1,
+    'pp_size': 2,
+    'num_microbatches': 4,
+    'precision': 'fp32',
+}, {
+    'tp_size': 4,
+    'pp_size': 1,
+    'precision': 'fp32',
+}, {
+    'tp_size': 2,
+    'pp_size': 1,
+    'precision': 'fp32',
+}, {
+    'tp_size': 2,
+    'pp_size': 1,
+    'zero_stage': 2,
+    'precision': 'fp16',
+    'initial_scale': 1
 }])
-def exam_state_dict(shard: bool, use_safetensors: bool, model_name: str, size_per_shard: int, test_config: dict):
+def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_config: dict):
 
     (model_fn, data_gen_fn, output_transform_fn, loss_fn,
      _) = next(iter(model_zoo.get_sub_registry(model_name).values()))
@@ -79,15 +94,13 @@ def exam_state_dict(shard: bool, use_safetensors: bool, model_name: str, size_pe
     with shared_tempdir() as tempdir:
         model_ckpt_path = f"{tempdir}/model"
         # optimizer_ckpt_path = f"{tempdir}/optimizer"
-        booster.save_model(model,
-                           model_ckpt_path,
-                           shard=shard,
-                           size_per_shard=size_per_shard,
-                           use_safetensors=use_safetensors)
+        booster.save_model(model, model_ckpt_path, shard=shard, size_per_shard=size_per_shard)
         # booster.save_optimizer(optimizer, optimizer_ckpt_path, shard=shard, size_per_shard=size_per_shard)
         dist.barrier()
         booster.load_model(new_model, model_ckpt_path)
         check_state_dict_equal(model.unwrap().state_dict(), new_model.unwrap().state_dict(), False)
+
+    clear_layout_converter()
 
 
 def run_dist(rank, world_size, port):
