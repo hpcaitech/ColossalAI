@@ -1,0 +1,6 @@
+colossalai>=0.3.0
+datasets
+numpy
+torch
+tqdm
+transformers
