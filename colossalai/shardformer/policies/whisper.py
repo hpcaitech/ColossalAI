@@ -56,6 +56,9 @@ class WhisperPolicy(Policy):
             self.shard_config.enable_sequence_parallelism = False
             warnings.warn(
                 "Whisper dosen't support sequence parallelism now, will ignore the sequence parallelism flag.")
+        if self.shard_config.enable_jit_fused:
+            self.shard_config.enable_jit_fused = False
+            warnings.warn("Whisper dosen't support jit fused operator now, will ignore the jit fused flag.")
 
         if self.shard_config.enable_tensor_parallelism:
             policy[WhisperEncoderLayer] = ModulePolicyDescription(attribute_replacement={
