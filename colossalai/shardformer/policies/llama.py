@@ -284,5 +284,13 @@ class LlamaModelInferPolicy(LlamaPolicy):
         infer_forward = LlamaInferenceForwards.llama_model_forward
         method_replacement = {'forward': partial(infer_forward)}
         self.append_or_create_method_replacement(description=method_replacement, policy=policy, target_key=LlamaModel)
+        
+        infer_forward = LlamaInferenceForwards.llama_decoder_layer_forward
+        method_replacement = {'forward': partial(infer_forward)}
+        self.append_or_create_method_replacement(description=method_replacement, policy=policy, target_key=LlamaDecoderLayer)
+        
+        infer_forward = LlamaInferenceForwards.llama_flash_attn_kvcache_forward
+        method_replacement = {'forward': partial(infer_forward)}
+        self.append_or_create_method_replacement(description=method_replacement, policy=policy, target_key=LlamaAttention)
 
         return policy
