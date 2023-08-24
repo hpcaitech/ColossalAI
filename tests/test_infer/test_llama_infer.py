@@ -20,12 +20,10 @@ def run_llama_test(test_config):
     engine = TPCacheManagerInferenceEngine(input_len, output_len, bs, 2)
     engine.generate_data()
     engine.prepare_model()
-    engine.init_and_insert_cache_manager()
     
-    org_model, sharded_model = engine.build_model()
-    engine.model = sharded_model
+    engine.build_model()
     
-    engine.run_infer()
+    engine.run_infer(test_origin=True)
 
     torch.cuda.empty_cache()
 

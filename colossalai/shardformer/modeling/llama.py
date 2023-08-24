@@ -8,13 +8,9 @@ from transformers.modeling_outputs import (
     CausalLMOutputWithPast,
     SequenceClassifierOutputWithPast,
 )
-<<<<<<< HEAD
-from transformers.models.llama.modeling_llama import LlamaForCausalLM, LlamaForSequenceClassification, LlamaModel, LlamaAttention
-=======
-from transformers.models.llama.modeling_llama import LlamaForCausalLM, LlamaForSequenceClassification, LlamaModel, LlamaRMSNorm
->>>>>>> 7d7ea2ef41486c3c6f8c3595d482c6e15b403bff
+from transformers.models.llama.modeling_llama import LlamaForCausalLM, LlamaForSequenceClassification, LlamaModel, LlamaRMSNorm, LlamaAttention
 from transformers.utils import logging
-from colossalai.inference.batch_infer_state import BatchInferState
+from colossalai.shardformer.inference import BatchInferState
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
 

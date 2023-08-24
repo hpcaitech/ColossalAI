@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.shardformer import ShardConfig, ShardFormer
-from colossalai.inference.kvcache_manager import MemoryManager
+from colossalai.shardformer.inference import MemoryManager
 from colossalai.shardformer.policies.llama import LlamaModelInferPolicy, LlamaPolicy
 from transformers import LlamaForCausalLM, LlamaTokenizer
 import time
@@ -138,7 +138,7 @@ class TPCacheManagerInferenceEngine:
 
     def build_model(self):
         # create new model
-        org_model = self.model
+        self.orgin_model = self.model
         shardconfig = ShardConfig(
             tensor_parallel_process_group=self.pg_mesh.get_group_along_axis(2),
             enable_tensor_parallelism=True,
@@ -151,8 +151,7 @@ class TPCacheManagerInferenceEngine:
         else:
             policy = LlamaPolicy()
         
-        shard_model, _ = shardformer.optimize(self.model, policy)
-        return org_model.cuda(), shard_model.cuda()
+        self.model, _ = shardformer.optimize(self.model, policy)
     
     def generate_data(self):
         self.input_tokens={"input_ids":torch.randint(1, 1000, (self.bs, self.input_len))}
@@ -163,40 +162,49 @@ class TPCacheManagerInferenceEngine:
                 self.input_len = self.input_tokens[t].shape[1]
                 print(f" input_len: {self.input_len}")
             
-    def run_infer(self):
+    def run_infer(self, test_origin=True):
+        
+        if test_origin:
+            model = self.orgin_model
+        else:
+            model = self.model
+        
         generate_kwargs = dict(max_new_tokens=self.output_len, do_sample=False)
         
         iters = 10
         times = []
+        outputs_list = []
         warmup = 3
         for i in range(iters):
             torch.cuda.synchronize()
             start = time.time()
-            outputs = self.model.generate(**self.input_tokens, 
+            outputs = model.generate(**self.input_tokens, 
                     **generate_kwargs, early_stopping=False)
+            outputs_list.append(outputs)
             torch.cuda.synchronize()
 
             end = time.time()
-            self.model.model.cache_manager.free_all()
             num_tokens_generation = outputs.shape[1] - self.input_len
             print(f"num_tokens_generation: {num_tokens_generation}")
             print(f"generation time is {(end - start) * 1000} ms")
             time_spend = (end-start)/num_tokens_generation
             times.append(time_spend)
             
-            block_loc = torch.empty(self.bs, self.input_len + self.output_len, dtype=torch.long, device="cuda")
-            start_loc = torch.zeros(self.bs, dtype=torch.int32, device="cuda")
-            seq_len = torch.zeros(self.bs, dtype=torch.int32, device="cuda")
-            max_len_in_batch = self.input_len 
-            for i in range(self.bs):
-                block_loc[i, 0:self.input_len] = i * self.input_len + torch.arange(0, self.input_len, dtype=torch.int32, device="cuda")
-                start_loc[i] = i * self.input_len
-                seq_len[i] = self.input_len
-    
-            setattr(self.model.model, 'block_loc', block_loc)
-            setattr(self.model.model, 'start_loc', start_loc)
-            setattr(self.model.model, 'seq_len', seq_len)
-            setattr(self.model.model,'max_len_in_batch',max_len_in_batch)
+            if test_origin:
+                model.model.cache_manager.free_all()
+                block_loc = torch.empty(self.bs, self.input_len + self.output_len, dtype=torch.long, device="cuda")
+                start_loc = torch.zeros(self.bs, dtype=torch.int32, device="cuda")
+                seq_len = torch.zeros(self.bs, dtype=torch.int32, device="cuda")
+                max_len_in_batch = self.input_len 
+                for i in range(self.bs):
+                    block_loc[i, 0:self.input_len] = i * self.input_len + torch.arange(0, self.input_len, dtype=torch.int32, device="cuda")
+                    start_loc[i] = i * self.input_len
+                    seq_len[i] = self.input_len
+        
+                setattr(model.model, 'block_loc', block_loc)
+                setattr(model.model, 'start_loc', start_loc)
+                setattr(model.model, 'seq_len', seq_len)
+                setattr(model.model,'max_len_in_batch',max_len_in_batch)
 
         print_device_memory()
         total_time = (end - start) * 1000
@@ -204,33 +212,8 @@ class TPCacheManagerInferenceEngine:
         print(outputs.shape)
         print('per_token_latency',token_latency,'ms')
         print_perf_stats(times, self.model.config, self.bs, warmup=warmup)
-
         
-        # reset params for profile
-        block_loc = torch.empty(self.bs, self.input_len + self.output_len, dtype=torch.long, device="cuda")
-        start_loc = torch.zeros(self.bs, dtype=torch.int32, device="cuda")
-        seq_len = torch.zeros(self.bs, dtype=torch.int32, device="cuda")
-        max_len_in_batch = self.input_len 
-        for i in range(self.bs):
-            block_loc[i, 0:self.input_len] = i * self.input_len + torch.arange(0, self.input_len, dtype=torch.int32, device="cuda")
-            start_loc[i] = i * self.input_len
-            seq_len[i] = self.input_len
-        
-            setattr(self.model.model, 'block_loc', block_loc)
-            setattr(self.model.model, 'start_loc', start_loc)
-            setattr(self.model.model, 'seq_len', seq_len)
-            setattr(self.model.model,'max_len_in_batch',max_len_in_batch)
-
-
-        with profile(activities=[
-                ProfilerActivity.CPU, ProfilerActivity.CUDA], record_shapes=True) as prof:
-            with record_function("model_inference"):
-                torch.cuda.synchronize()
-                outputs = self.model.generate(**self.input_tokens,
-                    **generate_kwargs,early_stopping=False)
-                torch.cuda.synchronize()
-
-        print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=10))
+        return outputs_list
         
 
         
