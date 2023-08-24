@@ -56,7 +56,27 @@ class GenerateSchedule(PipelineSchedule):
         self.microbatch_offset += self.microbatch_size
         return tree_map(partial(to_device, device=get_current_device()), micro_batch)
 
-    def postprocess_new_inputs(self, input_ids):
+    def _prepare_stage_inputs(self):
+        # first stage and in prefill phase
+        if self.stage_manager.is_first_stage() and self.mb_manager.cur_state is PREFILL:
+            pre_stage_out = None
+            model_inputs = self.load_micro_batch()
+            hidden_states = None
+        # first stage and in generate phase
+        elif self.stage_manager.is_first_stage():
+            pre_stage_out = self.comm.recv_forward()
+            model_inputs = self._prepare_next_token(pre_stage_out)
+            hidden_states = None
+        # not first stage and in gererate phase
+        else:
+            pre_stage_out = self.comm.recv_forward()
+            model_inputs = {
+                'past_key_values': self.mb_manager.cur_kv_cache
+            } if self.mb_manager.cur_kv_cache is not None else None
+            hidden_states = pre_stage_out
+        return pre_stage_out, model_inputs, hidden_states
+
+    def _prepare_next_token(self, input_ids):
         new_mask = self.mb_manager.cur_descrption.attn_mask
         new_mask = torch.cat((new_mask, torch.ones((new_mask.shape[0], 1), dtype=torch.int64).cuda()), dim=-1)
         self.mb_manager.cur_descrption.attn_mask = new_mask
@@ -90,30 +110,13 @@ class GenerateSchedule(PipelineSchedule):
         # run by round
         for _ in range(self.round):
             state = PREFILL
-            step = 1
             while self.mb_manager.is_micro_batch_done() is False:
-                # first stage and in prefill phase
-                if self.stage_manager.is_first_stage() and self.mb_manager.cur_state is PREFILL:
-                    input_obj = None
-                    micro_batch = self.load_micro_batch()
-                    hidden_states = None
-                # first stage and in generate phase
-                elif self.stage_manager.is_first_stage():
-                    input_obj = self.comm.recv_forward()
-                    micro_batch = self.postprocess_new_inputs(input_obj)
-                    hidden_states = None
-                # not first stage and in gererate phase
-                else:
-                    input_obj = self.comm.recv_forward()
-                    micro_batch = {
-                        'past_key_values': self.mb_manager.cur_kv_cache
-                    } if self.mb_manager.cur_kv_cache is not None else None
-                    hidden_states = input_obj
+                pre_stage_out, model_inputs, hidden_states = self._prepare_stage_inputs()
 
-                output_obj = model_forward(model, micro_batch, hidden_states)
+                output_obj = model_forward(model, model_inputs, hidden_states)
 
-                past_kv_cache = output_obj.get('past_kv_cache', None)
-                state = self.mb_manager.step(micro_batch, input_obj, past_kv_cache)
+                past_key_values = output_obj.get('past_key_values', None)
+                state = self.mb_manager.step(model_inputs, pre_stage_out, past_key_values)
                 if self.stage_manager.is_last_stage():
                     new_token = self.get_token_id(output_obj['hidden_states'])
                     self.mb_manager.add_new_tokens(new_token)

@@ -218,7 +218,7 @@ class GPT2PipelineForwards:
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
 
-        return {'hidden_states': hidden_states, 'past_kv_cache': presents}
+        return {'hidden_states': hidden_states, 'past_key_values': presents}
 
     @staticmethod
     def gpt2_lmhead_model_forward(
@@ -289,4 +289,4 @@ class GPT2PipelineForwards:
             output = (lm_logits,) + outputs[1:]
             return ((loss,) + output) if loss is not None else output
 
-        return {'hidden_states': lm_logits, 'past_kv_cache': outputs['past_kv_cache']}
+        return {'hidden_states': lm_logits, 'past_key_values': outputs['past_key_values']}
