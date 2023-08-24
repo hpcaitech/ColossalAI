@@ -1,11 +1,16 @@
 #!/bin/bash
 
+# TODO: fix this
+echo "3D parallel for LLaMA-2 is not ready yet"
+exit 1
+
 ################
 #Load your environments and modules here
 ################
 
+HOSTFILE=$(realpath hosts.txt)
 
-cd ../../..
+cd ../..
 
 # NCCL IB environment variables
 export NCCL_IB_HCA=mlx5_1:1,mlx5_2:1,mlx5_3:1,mlx5_4:1
@@ -14,5 +19,6 @@ export NCCL_SOCKET_IFNAME=eth0
 export NCCL_IB_GID_INDEX=3
 export NCCL_IB_TIMEOUT=23
 export NCCL_IB_RETRY_CNT=7
+export OMP_NUM_THREADS=8
 
-colossalai run --nproc_per_node 8 --hostfile YOUR_HOST_FILE --master_addr YOUR_MASTER_ADDR benchmark.py -c '7b' --plugin "gemini_cuda" -l 512 -g -b 16
+colossalai run --nproc_per_node 8 --hostfile $HOSTFILE benchmark.py -c 70b -p 3d -g -x -b 8 --tp 4 --pp 2 --mbs 4
