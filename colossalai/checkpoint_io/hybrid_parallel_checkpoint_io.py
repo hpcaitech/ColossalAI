@@ -120,7 +120,7 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
         """
         Save sharded model checkpoint under the given checkpointing path.
         The following files will be created under the path:
-        - An index file (pytorch_optim.bin.index.json) containing a map between model params/buffers and file names.
+        - An index file (pytorch_model.bin.index.json) containing a map between model params/buffers and file names.
         - Multiple files that store state tensors of models.
           If pipeline parallelism is used, the filenames are in the form of "pytorch_model.<prefix>-stage-000XX-shard-000XX.bin".
           If pipeline parallelism is not used, "pytorch_model.<prefix>-000XX.bin"
@@ -128,7 +128,7 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
 
         Args:
             model (nn.Module): Model on local device to be saved.
-            checkpoint_path (str): Checkpointing path which should be a directory path.
+            checkpoint (str): Checkpointing path which should be a directory path.
             gather_dtensor (bool, optional): Whether to gather_dtensor, currently not used. Defaults to True.
             prefix (str, optional): Perfix of file to save. Defaults to None.
             size_per_shard (int, optional): Size per shard in MB. Defaults to 1024.
