@@ -84,8 +84,7 @@ def save(booster: Booster, model: nn.Module, optimizer: Optimizer, lr_scheduler:
     os.makedirs(os.path.join(save_dir, 'model'), exist_ok=True)
 
     booster.save_model(model, os.path.join(save_dir, 'model'), shard=True)
-    # TODO: sharded optimizer is not supported yet
-    booster.save_optimizer(optimizer, os.path.join(save_dir, 'optimizer'), shard=False)
+    booster.save_optimizer(optimizer, os.path.join(save_dir, 'optimizer'), shard=True)
     booster.save_lr_scheduler(lr_scheduler, os.path.join(save_dir, 'lr_scheduler'))
     running_states = {
         'epoch': epoch,
