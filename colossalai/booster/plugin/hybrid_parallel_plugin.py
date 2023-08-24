@@ -3,7 +3,7 @@ import logging
 import os
 import random
 from contextlib import nullcontext
-from functools import partial
+from functools import partial, reduce
 from pathlib import Path
 from shutil import rmtree
 from typing import Any, Callable, Iterator, List, Optional, OrderedDict, Tuple, Union
@@ -28,7 +28,9 @@ from colossalai.checkpoint_io.utils import (
     get_model_base_filenames,
     get_optimizer_base_filenames,
     get_shard_filename,
+    is_safetensors_available,
     load_shard_state_dict,
+    load_state_dict_into_model,
     save_param_groups,
     save_state_dict,
     save_state_dict_shards,
@@ -622,8 +624,8 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
 
         else:
             # When pipeline is used, each stage produces its own shard files and index files.
-            # Index files belonging to each stage are saved under a tmp folder ./tmp_index_files/
-            # After all the state_dicts have been saved, the master rank integrates all the index files into one final index file and deletes the folder.
+            # Index files belonging to each stage are saved under a temporary folder ./tmp_index_files/
+            # After all the state_dicts have been saved, the master rank integrates all the index files into one final index file and deletes the tmp folder.
 
             final_index_file_path = copy.deepcopy(save_index_file)
             tmp_index_file_folder = os.path.join(checkpoint, "tmp_index_files")
@@ -667,16 +669,37 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
                              f"You can find where each parameters has been saved in the "
                              f"index located at {final_index_file_path}.")
 
-    def load_sharded_model(self,
-                           model: nn.Module,
-                           checkpoint_index_file: Path,
-                           strict: bool = False,
-                           use_safetensors: bool = False,
-                           load_sub_module: bool = True):
+    def load_sharded_model(self, model: nn.Module, checkpoint_index_file: Path, strict: bool = False):
         """
-        TODO (Baizhou): Add docstrings.
+        Load sharded model with the given path to index file of checkpoint folder.
+
+        Args:
+            model (nn.Module): The model to be loaded.
+            index_file_path (str): Path to the index file of checkpointing folder.
+            strict (bool, optional): For name matching during loading state_dict. Defaults to False.
+                                     This argument should be manually set to False since params on same device might be stored in different files.
         """
-        pass
+
+        # Check whether the checkpoint uses safetensors.
+        use_safetensors = False
+        if "safetensors" in checkpoint_index_file.name:
+            use_safetensors = True
+
+        if use_safetensors and not is_safetensors_available():
+            raise ImportError("`safe_serialization` requires the `safetensors` library: `pip install safetensors`.")
+
+        # Read checkpoint index file.
+        ckpt_index_file = CheckpointIndexFile.from_file(checkpoint_index_file)
+        checkpoint_files, _ = ckpt_index_file.get_checkpoint_filenames()
+        missing_keys = []
+
+        # Load params & buffers to model.
+        # Keep a record of loaded files so that file will not be repeatedly loaded.
+        strict = False
+        for shard_file in checkpoint_files:
+            state_dict = load_shard_state_dict(Path(shard_file), use_safetensors)
+            load_state_dict_into_model(model, state_dict, missing_keys, strict=strict, load_sub_module=True)
+            del state_dict
 
     def save_sharded_optimizer(self,
                                optimizer: Optimizer,
