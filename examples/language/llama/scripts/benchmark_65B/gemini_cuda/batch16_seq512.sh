@@ -5,7 +5,7 @@
 ################
 
 
-cd ../..
+cd ../../..
 
 # NCCL IB environment variables
 export NCCL_IB_HCA=mlx5_1:1,mlx5_2:1,mlx5_3:1,mlx5_4:1
