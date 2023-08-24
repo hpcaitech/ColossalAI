@@ -1,3 +1,4 @@
+import warnings
 from functools import partial
 from typing import Callable, Dict, List, Tuple
 
@@ -33,7 +34,6 @@ class WhisperPolicy(Policy):
         r"""
         Reshape the Embedding layer to make the embedding dimension divisible by world_size
         """
-        # TODO:
         vocab_size = self.model.config.vocab_size
         world_size = self.shard_config.tensor_parallel_size
         if vocab_size % world_size != 0:
@@ -51,6 +51,14 @@ class WhisperPolicy(Policy):
         )
 
         policy = {}
+
+        if self.shard_config.enable_sequence_parallelism:
+            self.shard_config.enable_sequence_parallelism = False
+            warnings.warn(
+                "Whisper dosen't support sequence parallelism now, will ignore the sequence parallelism flag.")
+        if self.shard_config.enable_jit_fused:
+            self.shard_config.enable_jit_fused = False
+            warnings.warn("Whisper dosen't support jit fused operator now, will ignore the jit fused flag.")
 
         if self.shard_config.enable_tensor_parallelism:
             policy[WhisperEncoderLayer] = ModulePolicyDescription(attribute_replacement={
@@ -198,20 +206,11 @@ class WhisperPolicy(Policy):
 
         # enable flash attention
         if self.shard_config.enable_flash_attention:
-            policy[WhisperAttention] = ModulePolicyDescription(method_replacement={
+            self.append_or_create_method_replacement(description={
                 'forward': get_whisper_flash_attention_forward(),
-            })
-
-        # use jit fused operator
-        if self.shard_config.enable_jit_fused:
-            policy[WhisperEncoderLayer] = ModulePolicyDescription(method_replacement={
-                'forward': get_jit_fused_whisper_encoder_layer_forward(),
-                'dropout_add': get_jit_fused_dropout_add_func(),
-            })
-            policy[WhisperDecoderLayer] = ModulePolicyDescription(method_replacement={
-                'forward': get_jit_fused_whisper_decoder_layer_forward(),
-                'dropout_add': get_jit_fused_dropout_add_func(),
-            })
+            },
+                                                     policy=policy,
+                                                     target_key=WhisperAttention)
 
         return policy
 

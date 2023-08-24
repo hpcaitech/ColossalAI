@@ -1,3 +1,4 @@
+import warnings
 from functools import partial
 from typing import Callable, Dict, List, Optional, Tuple
 
@@ -58,6 +59,10 @@ class T5BasePolicy(Policy):
         )
 
         policy = {}
+
+        if self.shard_config.enable_sequence_parallelism:
+            self.shard_config.enable_sequence_parallelism = False
+            warnings.warn("T5 dosen't support sequence parallelism now, will ignore the sequence parallelism flag.")
 
         if self.shard_config.enable_tensor_parallelism:
             policy[T5Stack] = ModulePolicyDescription(sub_module_replacement=[
