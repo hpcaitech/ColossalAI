@@ -44,28 +44,10 @@ def _token_attn_1_kernel(Q, K, sm_scale, kv_cache_loc, kv_cache_start_loc, kv_ca
 
 
 @triton.jit
-def _token_attn_1_alibi_kernel(
-        Q,
-        K,
-        sm_scale,
-        alibi,
-        kv_cache_loc,
-        kv_cache_start_loc,
-        kv_cache_seqlen,
-        max_kv_cache_len,    # kv_cache_start_loc 保存的是如果连续存储时候的累加输入和
-        attn_out,
-        kv_cache_loc_b_stride,
-        kv_cache_loc_s_stride,
-        q_batch_stride,
-        q_head_stride,
-        q_head_dim_stride,
-        k_batch_stride,
-        k_head_stride,
-        k_head_dim_stride,
-        attn_head_stride,
-        attn_batch_stride,
-        HEAD_DIM: tl.constexpr,
-        BLOCK_N: tl.constexpr):
+def _token_attn_1_alibi_kernel(Q, K, sm_scale, alibi, kv_cache_loc, kv_cache_start_loc, kv_cache_seqlen,
+                               max_kv_cache_len, attn_out, kv_cache_loc_b_stride, kv_cache_loc_s_stride, q_batch_stride,
+                               q_head_stride, q_head_dim_stride, k_batch_stride, k_head_stride, k_head_dim_stride,
+                               attn_head_stride, attn_batch_stride, HEAD_DIM: tl.constexpr, BLOCK_N: tl.constexpr):
     current_batch = tl.program_id(0)
     current_head = tl.program_id(1)
     start_n = tl.program_id(2)
@@ -84,7 +66,7 @@ def _token_attn_1_alibi_kernel(
     block_stard_index = start_n * BLOCK_N
     block_mask = tl.where(block_stard_index < current_batch_seq_len, 1, 0)
 
-    for start_mark in range(0, block_mask, 1):    # 用来判断当前 mask 是否需要计算
+    for start_mark in range(0, block_mask, 1):
         alibi_m = tl.load(alibi + current_head)
         q = tl.load(Q + off_q + start_mark)
         offs_n_new = current_batch_start_index + offs_n
