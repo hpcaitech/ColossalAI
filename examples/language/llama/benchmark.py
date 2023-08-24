@@ -14,12 +14,11 @@ from transformers.models.llama.modeling_llama import LlamaForCausalLM
 
 import colossalai
 from colossalai.booster import Booster
-from colossalai.booster.plugin import GeminiPlugin, ThreeDimParallelPlugin, TorchFSDPPlugin
+from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, TorchFSDPPlugin
 from colossalai.cluster import DistCoordinator
 from colossalai.lazy import LazyInitContext
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.utils import get_current_device
-from colossalai.zero.gemini.placement_policy import AutoPlacementPolicy, ConstPlacementPolicy
 
 # ==============================
 # Constants
@@ -52,20 +51,26 @@ def main():
     parser.add_argument('-c', '--config', type=str, default='7b', help='Model configuration')
     parser.add_argument('-p',
                         '--plugin',
-                        choices=['gemini', 'gemini_cuda', 'gemini_cpu', 'fsdp', 'fsdp_cpu', '3d', '3d_cpu'],
+                        choices=['gemini', 'gemini_auto', 'fsdp', 'fsdp_cpu', '3d', '3d_cpu'],
                         default='gemini',
                         help='Choose which plugin to use')
     parser.add_argument('-b', '--batch_size', type=int, default=2, help='Batch size')
     parser.add_argument('-s', '--num_steps', type=int, default=5, help='Number of steps to run')
     parser.add_argument('-i', '--ignore_steps', type=int, default=2, help='Number of steps to ignore')
     parser.add_argument('-g', '--grad_checkpoint', action='store_true', help='Use gradient checkpointing')
-    parser.add_argument('-l', '--max_length', type=int, default=2048, help='Max sequence length')
-    parser.add_argument('-w', '--warmup_ratio', type=float, default=0.8, help='warm up ratio for auto placement policy')
+    parser.add_argument('-l', '--max_length', type=int, default=4096, help='Max sequence length')
+    parser.add_argument('-w',
+                        '--warmup_ratio',
+                        type=float,
+                        default=0.8,
+                        help='warm up ratio of non-model data. Only for gemini-auto')
     parser.add_argument('-m', '--memory_limit', type=int, help='Gemini memory limit in mb')
     parser.add_argument('-x', '--xformers', action='store_true', help='Use xformers')
+    parser.add_argument('--shard_param_frac', type=float, default=1.0, help='Shard param fraction. Only for gemini')
+    parser.add_argument('--offload_optim_frac', type=float, default=0.0, help='Offload optim fraction. Only for gemini')
+    parser.add_argument('--offload_param_frac', type=float, default=0.0, help='Offload param fraction. Only for gemini')
     parser.add_argument('--tp', type=int, default=1, help='Tensor parallel size')
     parser.add_argument('--pp', type=int, default=1, help='Pipeline parallel size')
-    parser.add_argument('--edp', type=int, default=1, help='Extra data parallel size')
     parser.add_argument('--mbs', type=int, default=1)
     parser.add_argument('--zero', type=int, default=0)
     args = parser.parse_args()
@@ -81,15 +86,12 @@ def main():
     # ==============================
     use_empty_init = True
     if args.plugin == 'gemini':
-        AutoPlacementPolicy.set_warmup_non_model_data_ratio(args.warmup_ratio)
-        plugin = GeminiPlugin(placement_policy='auto', precision='bf16', extra_dp_size=args.edp)
-    elif args.plugin == 'gemini_cuda':
-        plugin = GeminiPlugin(placement_policy='cuda', precision='bf16', extra_dp_size=args.edp)
-    elif args.plugin == 'gemini_cpu':
-        plugin = GeminiPlugin(placement_policy='cpu', precision='bf16', extra_dp_size=args.edp)
-    elif args.plugin == 'const':
-        ConstPlacementPolicy.set_const_memory_boundary(args.memory_limit)
-        plugin = GeminiPlugin(placement_policy='const', precision='bf16')
+        plugin = GeminiPlugin(precision='bf16',
+                              shard_param_frac=args.shard_param_frac,
+                              offload_optim_frac=args.offload_optim_frac,
+                              offload_param_frac=args.offload_param_frac)
+    elif args.plugin == 'gemini_auto':
+        plugin = GeminiPlugin(placement_policy='auto', precision='bf16', warmup_non_model_data_ratio=args.warmup_ratio)
     elif args.plugin == 'fsdp':
         if use_empty_init:
             plugin = TorchFSDPPlugin(
@@ -116,21 +118,21 @@ def main():
                                                                     buffer_dtype=torch.float16),
                                      cpu_offload=CPUOffload(offload_params=True))
     elif args.plugin == '3d':
-        plugin = ThreeDimParallelPlugin(tp_size=args.tp,
-                                        pp_size=args.pp,
-                                        zero_stage=args.zero,
-                                        enable_fused_normalization=True,
-                                        num_microbatches=args.mbs,
-                                        precision='bf16')
+        plugin = HybridParallelPlugin(tp_size=args.tp,
+                                      pp_size=args.pp,
+                                      zero_stage=args.zero,
+                                      enable_fused_normalization=True,
+                                      num_microbatches=args.mbs,
+                                      precision='bf16')
     elif args.plugin == '3d_cpu':
-        plugin = ThreeDimParallelPlugin(tp_size=args.tp,
-                                        pp_size=args.pp,
-                                        zero_stage=args.zero,
-                                        cpu_offload=True,
-                                        enable_fused_normalization=True,
-                                        num_microbatches=args.mbs,
-                                        initial_scale=2**8,
-                                        precision='bf16')
+        plugin = HybridParallelPlugin(tp_size=args.tp,
+                                      pp_size=args.pp,
+                                      zero_stage=args.zero,
+                                      cpu_offload=True,
+                                      enable_fused_normalization=True,
+                                      num_microbatches=args.mbs,
+                                      initial_scale=2**8,
+                                      precision='bf16')
     else:
         raise ValueError(f'Unknown plugin {args.plugin}')
 
@@ -139,7 +141,7 @@ def main():
     # ==============================
     # Initialize Dataset and Dataloader
     # ==============================
-    dp_size = plugin.dp_size if isinstance(plugin, ThreeDimParallelPlugin) else coordinator.world_size
+    dp_size = plugin.dp_size if isinstance(plugin, HybridParallelPlugin) else coordinator.world_size
 
     config = MODEL_CONFIGS[args.config]
     dataset = RandomDataset(num_samples=args.batch_size * args.num_steps * dp_size,
@@ -152,7 +154,7 @@ def main():
     # ==============================
     init_ctx = LazyInitContext(
         default_device=get_current_device()) if isinstance(plugin,
-                                                           (GeminiPlugin, ThreeDimParallelPlugin)) else nullcontext()
+                                                           (GeminiPlugin, HybridParallelPlugin)) else nullcontext()
 
     with init_ctx:
         model = LlamaForCausalLM(config)
@@ -179,7 +181,7 @@ def main():
     coordinator.print_on_master(
         f'Booster init max CPU memory: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024:.2f} MB')
 
-    if isinstance(plugin, ThreeDimParallelPlugin) and args.pp > 1:
+    if isinstance(plugin, HybridParallelPlugin) and args.pp > 1:
         data_iter = iter(dataloader)
         for step in tqdm(range(len(dataloader)), desc='Step', disable=not coordinator.is_master()):
             performance_evaluator.on_step_start(step)

@@ -29,10 +29,21 @@ from colossalai.nn.optimizer import HybridAdam
 from colossalai.utils import get_current_device
 
 MODEL_CONFIGS = {
-    '7b': LlamaConfig(),
-    '13b': LlamaConfig(hidden_size=5120, intermediate_size=13760, num_hidden_layers=40, num_attention_heads=40),
-    '30b': LlamaConfig(hidden_size=6656, intermediate_size=17888, num_hidden_layers=60, num_attention_heads=52),
-    '65b': LlamaConfig(hidden_size=8192, intermediate_size=22016, num_hidden_layers=80, num_attention_heads=64),
+    '7b':
+        LlamaConfig(max_position_embeddings=4096),
+    '13b':
+        LlamaConfig(hidden_size=5120,
+                    intermediate_size=13824,
+                    num_hidden_layers=40,
+                    num_attention_heads=40,
+                    max_position_embeddings=4096),
+    '70b':
+        LlamaConfig(hidden_size=8192,
+                    intermediate_size=28672,
+                    num_hidden_layers=80,
+                    num_attention_heads=64,
+                    max_position_embeddings=4096,
+                    num_key_value_heads=8),
 }
 
 
@@ -102,7 +113,7 @@ def main():
     parser.add_argument('-c', '--config', type=str, default='7b', help='Model configuration')
     parser.add_argument('-p',
                         '--plugin',
-                        choices=['gemini', 'gemini_cuda', 'gemini_cpu', 'zero2', 'zero2_cpu'],
+                        choices=['gemini', 'gemini_auto', 'zero2', 'zero2_cpu'],
                         default='gemini',
                         help='Choose which plugin to use')
     parser.add_argument('-d',
@@ -143,18 +154,10 @@ def main():
     # Initialize Booster
     # ==============================
     if args.plugin == 'gemini':
+        plugin = GeminiPlugin(precision=args.mixed_precision, initial_scale=2**16, max_norm=args.grad_clip)
+    elif args.plugin == 'gemini_auto':
         plugin = GeminiPlugin(precision=args.mixed_precision,
                               placement_policy='auto',
-                              initial_scale=2**16,
-                              max_norm=args.grad_clip)
-    elif args.plugin == 'gemini_cuda':
-        plugin = GeminiPlugin(precision=args.mixed_precision,
-                              placement_policy='cuda',
-                              initial_scale=2**16,
-                              max_norm=args.grad_clip)
-    elif args.plugin == 'gemini_cpu':
-        plugin = GeminiPlugin(precision=args.mixed_precision,
-                              placement_policy='cpu',
                               initial_scale=2**16,
                               max_norm=args.grad_clip)
     elif args.plugin == 'zero2':
