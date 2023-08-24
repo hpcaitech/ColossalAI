@@ -2,11 +2,12 @@ import pytest
 from packaging import version
 import torch
 from torch import nn
-from colossalai.kernel.triton.softmax import softmax
+
 
 try:
     import triton
     import triton.language as tl
+    from colossalai.kernel.triton.softmax import softmax
     HAS_TRITON = True
 except ImportError:
     HAS_TRITON = False

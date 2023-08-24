@@ -4,12 +4,11 @@ from packaging import version
 import torch
 from torch import nn
 
-from tests.test_kernels.triton.utils import benchmark
-from colossalai.kernel.triton.copy_kv_cache_dest import copy_kv_cache_to_dest
-
 try:
     import triton
     import triton.language as tl
+    from tests.test_kernels.triton.utils import benchmark
+    from colossalai.kernel.triton.copy_kv_cache_dest import copy_kv_cache_to_dest
     HAS_TRITON = True
 except ImportError:
     HAS_TRITON = False

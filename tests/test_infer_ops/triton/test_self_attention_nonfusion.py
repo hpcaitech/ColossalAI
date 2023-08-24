@@ -4,12 +4,11 @@ import torch
 from torch import nn 
 import torch.nn.functional as F
 
-from colossalai.kernel.triton.self_attention_nofusion import self_attention_compute_using_triton
-from colossalai.kernel.triton.qkv_matmul_kernel import qkv_gemm_4d_kernel
-
 try:
     import triton
     import triton.language as tl
+    from colossalai.kernel.triton.self_attention_nofusion import self_attention_compute_using_triton
+    from colossalai.kernel.triton.qkv_matmul_kernel import qkv_gemm_4d_kernel
     HAS_TRITON = True
 except ImportError:
     HAS_TRITON = False
