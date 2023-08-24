@@ -3,11 +3,19 @@ from packaging import version
 import torch
 from torch import nn
 
-from colossalai.kernel.triton.ops import softmax
+
+try:
+    import triton
+    import triton.language as tl
+    from colossalai.kernel.triton.softmax import softmax
+    HAS_TRITON = True
+except ImportError:
+    HAS_TRITON = False
+    print("please install triton from https://github.com/openai/triton")
 
 TRITON_CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse('11.4')
 
-@pytest.mark.skipif(not TRITON_CUDA_SUPPORT, reason="triton requires cuda version to be higher than 11.4")
+@pytest.mark.skipif(not TRITON_CUDA_SUPPORT or not HAS_TRITON, reason="triton requires cuda version to be higher than 11.4")
 def test_softmax_op():
     data_samples = [
                         torch.randn((3, 4, 5, 32), device = "cuda", dtype = torch.float32),
