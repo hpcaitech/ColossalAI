@@ -6,13 +6,11 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-
-from tests.test_kernels.triton.utils import benchmark, torch_context_attention
-from colossalai.kernel.triton.context_attention import bloom_context_attn_fwd
-
 try:
     import triton
     import triton.language as tl
+    from tests.test_kernels.triton.utils import benchmark, torch_context_attention
+    from colossalai.kernel.triton.context_attention import bloom_context_attn_fwd
     HAS_TRITON = True
 except ImportError:
     HAS_TRITON = False
