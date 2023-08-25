@@ -187,6 +187,9 @@ class BertPipelineForwards:
             hidden_states = split_forward_gather_backward(hidden_states,
                                                           dim=1,
                                                           process_group=shard_config.tensor_parallel_process_group)
+            if encoder_hidden_states is not None:
+                encoder_hidden_states = split_forward_gather_backward(
+                    encoder_hidden_states, dim=1, process_group=shard_config.tensor_parallel_process_group)
 
         for idx, encoder_layer in enumerate(self.encoder.layer[start_idx:end_idx], start=start_idx):
             if stage_manager.is_first_stage() and idx == 0:
@@ -1241,6 +1244,9 @@ def bert_sequence_parallel_forward_fn(shard_config: ShardConfig):
         embedding_output = split_forward_gather_backward(embedding_output,
                                                          dim=1,
                                                          process_group=shard_config.tensor_parallel_process_group)
+        if encoder_hidden_states is not None:
+            encoder_hidden_states = split_forward_gather_backward(
+                encoder_hidden_states, dim=1, process_group=shard_config.tensor_parallel_process_group)
 
         encoder_outputs = self.encoder(
             embedding_output,

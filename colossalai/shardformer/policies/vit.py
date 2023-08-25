@@ -1,3 +1,4 @@
+import warnings
 from typing import Callable, Dict, List, Union
 
 import torch.nn as nn
@@ -31,6 +32,10 @@ class ViTPolicy(Policy):
         from transformers.models.vit.modeling_vit import ViTEmbeddings, ViTLayer, ViTModel, ViTOutput, ViTSelfAttention
 
         policy = {}
+
+        if self.shard_config.enable_sequence_parallelism:
+            self.shard_config.enable_sequence_parallelism = False
+            warnings.warn("Vit dosen't support sequence parallelism now, will ignore the sequence parallelism flag.")
 
         if self.shard_config.enable_tensor_parallelism:
             policy[ViTEmbeddings] = ModulePolicyDescription(attribute_replacement={},
