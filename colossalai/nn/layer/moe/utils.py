@@ -1,8 +1,12 @@
+from typing import Callable
+
 import torch
 import torch.nn.functional as F
-from colossalai.utils import get_current_device
+
 from colossalai.context.moe_context import MOE_CONTEXT
-from .experts import FFNExperts, TPExperts
+from colossalai.utils import get_current_device
+
+from .experts import EPMLPExperts, TPMLPExperts
 
 
 class ForceFP32Parameter(torch.nn.Parameter):
@@ -53,16 +57,26 @@ class UniformNoiseGenerator:
 
 
 def autocast_softmax(logit: torch.Tensor, dim: int):
-    if logit.dtype != torch.float32:
-        logit = logit.float()
-    return F.softmax(logit, dim=dim)
+    return F.softmax(logit, dim=dim, detype=torch.float32)
 
 
 def build_ffn_experts(num_experts: int, d_model: int, d_ff: int, activation=None, drop_rate: float = 0):
     mep_size = MOE_CONTEXT.max_ep_size
     if num_experts % mep_size == 0 or mep_size % num_experts == 0:
-        return FFNExperts(num_experts, d_model, d_ff, activation, drop_rate)
+        return EPMLPExperts(num_experts, d_model, d_ff, activation, drop_rate)
     elif d_ff % mep_size == 0:
-        return TPExperts(num_experts, d_model, d_ff, activation, drop_rate)
+        return TPMLPExperts(num_experts, d_model, d_ff, activation, drop_rate)
     else:
         raise NotImplementedError(f"Can not build {num_experts} experts in {mep_size} GPUS.")
+
+
+def get_noise_generator(noise_type: str, num_experts: int) -> Callable:
+    if noise_type is None:
+        return None
+    elif noise_type == 'Jitter':
+        noisy_func = UniformNoiseGenerator()
+    elif noise_type == 'Gaussian':
+        noisy_func = NormalNoiseGenerator(num_experts)
+    else:
+        raise NotImplementedError("Unsupported input noisy policy")
+    return noisy_func
