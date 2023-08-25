@@ -110,6 +110,30 @@ class HybridParallelModule(ModelWrapper):
         return module
 
 
+def get_param_info(optim: Optimizer):
+    # Get a backup of necessary information of optimizer for future use, which includes:
+    # 1. A complete param_group, with params in the form of param_id
+    # 2. A mapping from param address to param_id
+    # 3. A mapping from param_id to param address
+
+    param_info = {'param_groups': [], 'param2id': {}, 'id2param': {}}
+    start_index = 0
+    for group in optim.param_groups:
+
+        packed_group = {k: v for k, v in group.items() if k != 'params'}
+        packed_group['params'] = []
+
+        for param_id, param in enumerate(group['params'], start_index):
+            packed_group['params'].append(param_id)
+            param_info['param2id'][id(param)] = param_id
+            param_info['id2param'][param_id] = id(param)
+
+        param_info['param_groups'].append(packed_group)
+        start_index += len(group['params'])
+
+    return param_info
+
+
 def init_pipeline_optimizer(optim: Optimizer, model: Module):
     params = set(model.parameters())
     new_param_groups = []
@@ -122,6 +146,7 @@ def init_pipeline_optimizer(optim: Optimizer, model: Module):
 class HybridParallelNaiveOptimizer(OptimizerWrapper):
 
     def __init__(self, optim: Optimizer, model: Module, use_pipeline: bool):
+        self.param_info = get_param_info(optim)
         if use_pipeline:
             init_pipeline_optimizer(optim, model)
         super().__init__(optim)
@@ -142,6 +167,7 @@ class HybridParallelAMPOptimizer(MixedPrecisionOptimizer):
                  hysteresis: int = 2,
                  max_scale: float = 2**32,
                  max_norm: float = 0):
+        self.param_info = get_param_info(optim)
         if use_pipeline:
             init_pipeline_optimizer(optim, model)
         super().__init__(optim, precision, initial_scale, min_scale, growth_factor, backoff_factor, growth_interval,
@@ -172,6 +198,7 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
             dp_process_group: Optional[ProcessGroup] = None,    # the dp pg for comm
             tp_process_group: Optional[ProcessGroup] = None,    # if using tp
             forced_dtype: Optional[torch.dtype] = None):
+        self.param_info = get_param_info(optimizer)
         if use_pipeline:
             init_pipeline_optimizer(optimizer, model)
         super().__init__(optimizer, initial_scale, min_scale, growth_factor, backoff_factor, growth_interval,
@@ -461,7 +488,7 @@ class HybridParallelPlugin(PipelinePluginBase):
                           **_kwargs)
 
     def get_checkpoint_io(self) -> CheckpointIO:
-        return HypridParallelCheckpointIO(self.dp_group, self.pp_group, self.tp_group)
+        return HypridParallelCheckpointIO(self.dp_group, self.pp_group, self.tp_group, self.zero_stage)
 
     def no_sync(self, model: Module) -> Iterator[None]:
         raise NotImplementedError

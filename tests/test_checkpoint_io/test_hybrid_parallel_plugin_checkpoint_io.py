@@ -18,6 +18,8 @@ from colossalai.testing import (
 )
 from tests.kit.model_zoo import model_zoo
 
+# TODO (Baizhou): Add test cases for: shard=False/PP+Zero
+
 
 @clear_cache_before_run()
 @parameterize('shard', [True])
