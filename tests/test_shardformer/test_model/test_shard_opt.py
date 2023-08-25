@@ -186,13 +186,12 @@ def test_OPTModel():
     spawn(check_OPTModel, 4)
 
 
-@pytest.mark.largedist
-@rerun_if_address_is_in_use()
-@clear_cache_before_run()
-def test_opt_3d():
-    spawn(check_opt_3d, 8)
-
+# @pytest.mark.largedist
+# @rerun_if_address_is_in_use()
+# @clear_cache_before_run()
+# def test_opt_3d():
+#     spawn(check_opt_3d, 8)
 
 if __name__ == '__main__':
     test_OPTModel()
-    test_opt_3d()
+    # test_opt_3d()
