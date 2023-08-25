@@ -86,11 +86,15 @@ def _preprocess_chatglm(sources: Sequence[str],
     for source, target in zip(sources, targets):
         source_id = tokenizer.encode(text=source, add_special_tokens=False)
         target_id = tokenizer.encode(text=target, add_special_tokens=False)
-        if len(source_id) + len(target_id) >= max_length - 2:
-            source_id = source_id[ : max(0, max_length - len(target_id) - 2)]
-        if len(target_id) > max_length - len(source_id) - 2:
-            target_id = target_id[: max(0, max_length - len(source_id) - 3)] + [target_id[-1]]
         input_id = tokenizer.build_inputs_with_special_tokens(source_id, target_id)
+        # truncate
+        sp_token_list = [tokenizer.gmask_token_id, tokenizer.bos_token_id]
+        truncate_length = max(0, len(input_id) - max_length)
+        input_id = input_id[truncate_length: ]
+        if truncate_length == len(source_id) + 1:
+            input_id = sp_token_list + input_id[1: ]
+        elif truncate_length > len(source_id) + 1:
+            input_id = sp_token_list + input_id[2: ]
         
         context_length = input_id.index(tokenizer.bos_token_id)
         mask_position = context_length - 1

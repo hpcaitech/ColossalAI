@@ -2,9 +2,9 @@ import argparse
 import hashlib
 import math
 import os
+import shutil
 from pathlib import Path
 from typing import Optional
-import shutil
 
 import torch
 import torch.nn.functional as F
@@ -21,6 +21,8 @@ from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
 
 import colossalai
+from colossalai.booster import Booster
+from colossalai.booster.plugin import GeminiPlugin, LowLevelZeroPlugin, TorchDDPPlugin
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.logging import disable_existing_loggers, get_dist_logger
@@ -28,8 +30,6 @@ from colossalai.nn.optimizer import HybridAdam
 from colossalai.utils import get_current_device
 from colossalai.zero import ColoInitContext, GeminiAdamOptimizer
 from colossalai.zero.gemini import get_static_torch_model
-from colossalai.booster import Booster
-from colossalai.booster.plugin import GeminiPlugin, LowLevelZeroPlugin, TorchDDPPlugin
 
 disable_existing_loggers()
 logger = get_dist_logger()
@@ -459,18 +459,17 @@ def main(args):
         revision=args.revision,
     )
 
-
     if args.externel_unet_path is None:
         logger.info(f"Loading UNet2DConditionModel from {args.pretrained_model_name_or_path}", ranks=[0])
         unet = UNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path,
-                                                subfolder="unet",
-                                                revision=args.revision,
-                                                low_cpu_mem_usage=False)
+                                                    subfolder="unet",
+                                                    revision=args.revision,
+                                                    low_cpu_mem_usage=False)
     else:
         logger.info(f"Loading UNet2DConditionModel from {args.externel_unet_path}", ranks=[0])
         unet = UNet2DConditionModel.from_pretrained(args.externel_unet_path,
-                                                revision=args.revision,
-                                                low_cpu_mem_usage=False)
+                                                    revision=args.revision,
+                                                    low_cpu_mem_usage=False)
     unet = UNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path,
                                                 subfolder="unet",
                                                 revision=args.revision,
@@ -490,8 +489,7 @@ def main(args):
             block_id = int(name[len("down_blocks.")])
             hidden_size = unet.config.block_out_channels[block_id]
 
-        lora_attn_procs[name] = LoRACrossAttnProcessor(hidden_size=hidden_size,
-                                                       cross_attention_dim=cross_attention_dim)
+        lora_attn_procs[name] = LoRACrossAttnProcessor(hidden_size=hidden_size, cross_attention_dim=cross_attention_dim)
 
     unet.set_attn_processor(lora_attn_procs)
     lora_layers = AttnProcsLayers(unet.attn_processors)
@@ -513,14 +511,17 @@ def main(args):
     if args.plugin.startswith('torch_ddp'):
         plugin = TorchDDPPlugin()
     elif args.plugin == 'gemini':
-        plugin = GeminiPlugin(placement_policy='cuda', strict_ddp_mode=True, initial_scale=2 ** 5)
+        plugin = GeminiPlugin(strict_ddp_mode=True, initial_scale=2**5)
     elif args.plugin == 'low_level_zero':
-        plugin = LowLevelZeroPlugin(initial_scale=2 ** 5)
+        plugin = LowLevelZeroPlugin(initial_scale=2**5)
 
     booster = Booster(plugin=plugin, **booster_kwargs)
 
     # config optimizer for colossalai zero
-    optimizer = HybridAdam(unet.parameters(), lr=args.learning_rate, initial_scale=2**5, clipping_norm=args.max_grad_norm)
+    optimizer = HybridAdam(unet.parameters(),
+                           lr=args.learning_rate,
+                           initial_scale=2**5,
+                           clipping_norm=args.max_grad_norm)
 
     # load noise_scheduler
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
@@ -710,6 +711,7 @@ def main(args):
             shutil.copy(os.path.join(args.pretrained_model_name_or_path, "unet/config.json"), args.output_dir)
         if args.push_to_hub:
             repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
+
 
 if __name__ == "__main__":
     args = parse_args()
