@@ -59,6 +59,7 @@ class ModelSharder(object):
             model (:class:`torch.nn.Module`): The model to shard
         """
         module_descriptions = self.policy.module_policy()
+        print(str(module_descriptions))
         for layer_cls, module_description in module_descriptions.items():
             attr_replacement = module_description.attribute_replacement
             param_replacement = module_description.param_replacement
