@@ -118,6 +118,15 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     'zero_stage': 2,
     'precision': 'fp16',
     'initial_scale': 1
+}, {
+    'tp_size': 1,
+    'pp_size': 2,
+    'num_microbatches': 2,
+    'enable_all_optimization': True,
+    'use_lazy_init': True,
+    'zero_stage': 1,
+    'precision': 'fp16',
+    'initial_scale': 1
 }])
 @clear_cache_before_run()
 def run_t5_test(test_config):

@@ -73,56 +73,50 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     torch.cuda.empty_cache()
 
 
-@parameterize(
-    'test_config',
-    [
-    #     {
-    #     'tp_size': 1,
-    #     'pp_size': 2,
-    #     'num_microbatches': 4,
-    #     'use_lazy_init': True,
-    #     'precision': 'fp32',
-    # },
-    # {
-    #     'tp_size': 2,
-    #     'pp_size': 2,
-    #     'num_microbatches': 2,
-    #     'enable_all_optimization': True,
-    #     'use_lazy_init': True,
-    #     'precision': 'fp16',
-    #     'initial_scale': 1,
-    # }, {
-    #     'tp_size': 4,
-    #     'pp_size': 1,
-    #     'enable_all_optimization': True,
-    #     'use_lazy_init': False,
-    #     'precision': 'fp32',
-    # }, {
-    #     'tp_size': 2,
-    #     'pp_size': 1,
-    #     'enable_all_optimization': True,
-    #     'use_lazy_init': False,
-    #     'precision': 'fp32'
-    # }, {
-    #     'tp_size': 2,
-    #     'pp_size': 1,
-    #     'enable_all_optimization': True,
-    #     'use_lazy_init': True,
-    #     'zero_stage': 2,
-    #     'precision': 'fp16',
-    #     'initial_scale': 1
-    # },
-        {
-            'tp_size': 1,
-            'pp_size': 2,
-            'num_microbatches': 2,
-            'enable_all_optimization': True,
-            'use_lazy_init': True,
-            'zero_stage': 1,
-            'precision': 'fp16',
-            'initial_scale': 1
-        }
-    ])
+@parameterize('test_config', [{
+    'tp_size': 1,
+    'pp_size': 2,
+    'num_microbatches': 4,
+    'use_lazy_init': True,
+    'precision': 'fp32',
+}, {
+    'tp_size': 2,
+    'pp_size': 2,
+    'num_microbatches': 2,
+    'enable_all_optimization': True,
+    'use_lazy_init': True,
+    'precision': 'fp16',
+    'initial_scale': 1,
+}, {
+    'tp_size': 4,
+    'pp_size': 1,
+    'enable_all_optimization': True,
+    'use_lazy_init': False,
+    'precision': 'fp32',
+}, {
+    'tp_size': 2,
+    'pp_size': 1,
+    'enable_all_optimization': True,
+    'use_lazy_init': False,
+    'precision': 'fp32'
+}, {
+    'tp_size': 2,
+    'pp_size': 1,
+    'enable_all_optimization': True,
+    'use_lazy_init': True,
+    'zero_stage': 2,
+    'precision': 'fp16',
+    'initial_scale': 1
+}, {
+    'tp_size': 1,
+    'pp_size': 2,
+    'num_microbatches': 2,
+    'enable_all_optimization': True,
+    'use_lazy_init': True,
+    'zero_stage': 1,
+    'precision': 'fp16',
+    'initial_scale': 1
+}])
 def run_bert_test(test_config):
 
     sub_model_zoo = model_zoo.get_sub_registry('transformers_bert')
@@ -150,8 +144,6 @@ def run_bert_3d_test(test_config):
     sub_model_zoo = model_zoo.get_sub_registry('transformers_bert')
 
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
-        if name != "transformer_bert":
-            continue
         check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
 
     clear_layout_converter()
@@ -187,4 +179,4 @@ def test_bert_3d():
 
 if __name__ == "__main__":
     test_bert()
-    #test_bert_3d()
+    test_bert_3d()
