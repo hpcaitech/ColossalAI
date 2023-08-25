@@ -107,7 +107,10 @@ class EPMLPExperts(BaseMLPExperts):
                     else:
                         dist.broadcast(buffer_module.data, src=source_rank, group=self.moe_info.ep_group)
                     if ep_rank == 0:
-                        destination[current_prefix + name] = buffer_module.data.cpu()
+                        if keep_vars:
+                            destination[current_prefix + name] = buffer_module.cpu()
+                        else:
+                            destination[current_prefix + name] = buffer_module.data.cpu()
 
         dist.barrier()
 
