@@ -94,16 +94,16 @@ class EPMLPExperts(BaseMLPExperts):
         ep_size = get_ep_size(self)
         # dp rank 0 will save the state dict
         if dp_rank == 0:
-            for name, module in self.named_parameters():
-                if module is self:
+            for name, param in self.named_parameters():
+                if param is self:
                     continue
                 # create buffer
-                buffer_module = deepcopy(module)
+                buffer_module = deepcopy(param)
                 # gather param from every ep rank
                 for source_rank in range(ep_size):
                     current_prefix = f"{prefix}{source_rank}."
                     if ep_rank == source_rank:
-                        dist.broadcast(module.data, src=source_rank, group=self.moe_info.ep_group)
+                        dist.broadcast(param.data, src=source_rank, group=self.moe_info.ep_group)
                     else:
                         dist.broadcast(buffer_module.data, src=source_rank, group=self.moe_info.ep_group)
                     if ep_rank == 0:
