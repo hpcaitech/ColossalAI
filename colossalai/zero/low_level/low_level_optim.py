@@ -18,7 +18,7 @@ from colossalai.amp.naive_amp.mixed_precision_mixin import (
 )
 from colossalai.interface import OptimizerWrapper
 from colossalai.logging import get_dist_logger
-from colossalai.tensor.moe_tensor.api import is_moe_param
+from colossalai.tensor.moe_tensor.api import is_moe_tensor
 # from colossalai.tensor import ColoParameter, ProcessGroup
 from colossalai.utils.cuda import get_current_device
 
@@ -140,7 +140,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             for param in param_group['params']:
                 if param.requires_grad:
                     # skip moe param
-                    if is_moe_param(param):
+                    if is_moe_tensor(param):
                         moe_params.append(param)
                         continue
                     group_params.append(param)
