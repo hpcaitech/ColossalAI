@@ -10,6 +10,7 @@ from colossalai.shardformer.policies.llama import LlamaModelInferPolicy, LlamaFo
 from transformers import LlamaForCausalLM, LlamaTokenizer
 import time
 from torch.profiler import profile, record_function, ProfilerActivity
+import PyNVTX as nvtx
 
 GIGABYTE = 1024 ** 3
 torch.backends.cudnn.enabled = True
@@ -146,9 +147,11 @@ class TPCacheManagerInferenceEngine:
         shardformer = ShardFormer(shard_config=shardconfig)
         
         if self.bs >= 4:
+            self.use_cache_manager = True
             self.init_and_insert_cache_manager()
             policy = LlamaModelInferPolicy()
         else:
+            self.use_cache_manager = False
             policy = LlamaForCausalLMPolicy()
         
         self.model, _ = shardformer.optimize(self.model, policy)
@@ -178,8 +181,10 @@ class TPCacheManagerInferenceEngine:
         for i in range(iters):
             torch.cuda.synchronize()
             start = time.time()
+            nvtx.RangePushA("generate")
             outputs = model.generate(**self.input_tokens, 
                     **generate_kwargs, early_stopping=False)
+            nvtx.RangePop()
             outputs_list.append(outputs)
             torch.cuda.synchronize()
 
@@ -190,7 +195,7 @@ class TPCacheManagerInferenceEngine:
             time_spend = (end-start)/num_tokens_generation
             times.append(time_spend)
             
-            if not test_origin:
+            if not test_origin and self.use_cache_manager:
                 model.model.cache_manager.free_all()
                 block_loc = torch.empty(self.bs, self.input_len + self.output_len, dtype=torch.long, device="cuda")
                 start_loc = torch.zeros(self.bs, dtype=torch.int32, device="cuda")

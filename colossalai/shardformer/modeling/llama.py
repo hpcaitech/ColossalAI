@@ -16,6 +16,7 @@ from colossalai.kernel.triton.context_attention import llama_context_attn_fwd
 from colossalai.kernel.triton.token_attention_kernel import token_attention_fwd
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
+import PyNVTX as nvtx
 
 
 class LlamaPipelineForwards:
@@ -402,6 +403,7 @@ class LlamaInferenceForwards:
     """
 
     @staticmethod
+    @nvtx.annotate("llama_model_forward")
     def llama_model_forward(
         self: LlamaModel,
         input_ids: torch.LongTensor = None,
@@ -549,6 +551,7 @@ class LlamaInferenceForwards:
         )
         
     @staticmethod
+    @nvtx.annotate("llama_decoder_layer_forward")
     def llama_decoder_layer_forward(
         self,
         hidden_states: torch.Tensor,
@@ -595,6 +598,7 @@ class LlamaInferenceForwards:
 
     
     @staticmethod
+    @nvtx.annotate("llama_flash_attn_kvcache_forward")
     def llama_flash_attn_kvcache_forward(
         self: LlamaAttention,
         hidden_states: torch.Tensor,

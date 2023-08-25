@@ -2,6 +2,7 @@ import os
 
 import pytest
 import torch
+import numpy as np
 
 import colossalai
 from colossalai.logging import disable_existing_loggers
@@ -9,7 +10,7 @@ from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_ad
 from llama_infer_engine import TPCacheManagerInferenceEngine
 
 os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
-TPSIZE = 2
+TPSIZE = 1
 
 @parameterize('test_config', [{
     'tp_size': TPSIZE,
@@ -24,8 +25,8 @@ def run_llama_test(test_config):
     
     engine.build_model()
     
-    engine.run_infer(test_origin=False)
-
+    outputs_list = engine.run_infer(test_origin=False)
+    
     torch.cuda.empty_cache()
 
 
