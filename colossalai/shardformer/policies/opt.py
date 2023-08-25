@@ -118,6 +118,7 @@ class OPTPolicy(Policy):
             },
                                                      policy=policy,
                                                      target_key=OPTDecoderLayer)
+
         return policy
 
     def postprocess(self):
