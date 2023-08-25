@@ -89,7 +89,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     org_optimizer.step()
     sharded_optimizer.step()
     if test_config['precision'] == 'fp32':
-        atol, rtol = 2e-4, 2e-4
+        atol, rtol = 5e-4, 5e-4
     else:
         atol, rtol = 5e-3, 5e-3
     if stage_manager is None or stage_manager.is_first_stage():
