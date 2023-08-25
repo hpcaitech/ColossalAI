@@ -216,7 +216,7 @@ class BloomModelInferPolicy(BloomPolicy):
         super().__init__()
 
     def module_policy(self):
-        from transformers.models.bloom.modeling_bloom import BloomAttention, BloomBlock, BloomModel
+        from transformers.models.bloom.modeling_bloom import BloomAttention, BloomBlock, BloomForCausalLM, BloomModel
         policy = super().module_policy()
         # TODO might want to set inference config to shard config
 
@@ -224,11 +224,17 @@ class BloomModelInferPolicy(BloomPolicy):
         if self.shard_config.enable_tensor_parallelism:
             policy[BloomModel] = ModulePolicyDescription(
                 method_replacement={"forward": BloomInferenceForwards.bloom_model_forward})
+            policy[BloomForCausalLM] = ModulePolicyDescription(
+                method_replacement={"forward": BloomInferenceForwards.bloom_for_causal_lm_forward})
             policy[BloomBlock] = ModulePolicyDescription(
-                method_replacement={"forward": BloomInferenceForwards.bloom_block_forward})
+                method_replacement={
+                    "forward":
+                        BloomInferenceForwards.bloom_block_forward,
+                    "prepare_inputs_for_generation":
+                        BloomInferenceForwards.bloom_for_causal_lm_prepare_inputs_for_generation
+                })
             policy[BloomAttention] = ModulePolicyDescription(
                 method_replacement={"forward": BloomInferenceForwards.bloom_attention_forward})
-
         return policy
 
 

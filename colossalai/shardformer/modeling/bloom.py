@@ -753,7 +753,7 @@ class BloomInferenceForwards:
 
     @staticmethod
     def bloom_model_forward(
-        self,
+        self: BloomModel,
         input_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[Tuple[Tuple[torch.Tensor, torch.Tensor], ...]] = None,
         attention_mask: Optional[torch.Tensor] = None,
@@ -763,6 +763,7 @@ class BloomInferenceForwards:
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        infer_state: Optional[BatchInferState] = None,
         **deprecated_arguments,
     ) -> Union[Tuple[torch.Tensor, ...], BaseModelOutputWithPastAndCrossAttentions]:
 
@@ -793,16 +794,16 @@ class BloomInferenceForwards:
         else:
             raise ValueError("You have to specify either input_ids or inputs_embeds")
 
-        # initialize BatchInferState to track necessary states during current model forward
-        infer_state = BatchInferState()
-        infer_state.batch_size = batch_size
-        # TODO: dummy implementation here for testing, assume all inputs same length
-        infer_state.total_token_num = batch_size * seq_length
-        infer_state.block_loc = self.block_loc
-        infer_state.start_loc = self.b_start_loc
-        infer_state.seq_len = self.b_seq_len
+        # # initialize BatchInferState to track necessary states during current model forward
+        # infer_state = BatchInferState()
+        # infer_state.batch_size = batch_size
+        # # TODO: dummy implementation here for testing, assume all inputs same length
+        # infer_state.total_token_num = batch_size * seq_length
+        # infer_state.block_loc = self.block_loc
+        # infer_state.start_loc = self.b_start_loc
+        # infer_state.seq_len = self.b_seq_len
 
-        # still need to keep past_key_values to fit original forward flow
+        # still need to keep past_key_values to fit original forward flow·
         if past_key_values is None:
             past_key_values = tuple([None] * len(self.h))
 
@@ -836,7 +837,7 @@ class BloomInferenceForwards:
             # past_key_values_length = past_key_values[0][0].shape[2]
             seq_length_with_past = seq_length_with_past + past_key_values_length
 
-        infer_state.cache_manager = self.cache_manager
+        # infer_state.cache_manager = self.cache_manager
 
         if use_cache and seq_length != 1:
             # NOTE assuem prefill stage
@@ -942,10 +943,116 @@ class BloomInferenceForwards:
             attentions=all_self_attentions,
         )
 
+    @staticmethod
+    def bloom_for_causal_lm_forward(self: BloomForCausalLM,
+                                    input_ids: Optional[torch.LongTensor] = None,
+                                    past_key_values: Optional[Tuple[Tuple[torch.Tensor, torch.Tensor], ...]] = None,
+                                    attention_mask: Optional[torch.Tensor] = None,
+                                    head_mask: Optional[torch.Tensor] = None,
+                                    inputs_embeds: Optional[torch.Tensor] = None,
+                                    labels: Optional[torch.Tensor] = None,
+                                    use_cache: Optional[bool] = None,
+                                    output_attentions: Optional[bool] = None,
+                                    output_hidden_states: Optional[bool] = None,
+                                    return_dict: Optional[bool] = None,
+                                    infer_state: Optional[BatchInferState] = None,
+                                    **deprecated_arguments):
+        r"""
+        labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
+            Labels for language modeling. Note that the labels **are shifted** inside the model, i.e. you can set
+            `labels = input_ids` Indices are selected in `[-100, 0, ..., config.vocab_size]` All labels set to `-100`
+            are ignored (masked), the loss is only computed for labels in `[0, ..., config.vocab_size]`
+        """
+        logger = logging.get_logger(__name__)
+
+        if deprecated_arguments.pop("position_ids", False) is not False:
+            # `position_ids` could have been `torch.Tensor` or `None` so defaulting pop to `False` allows to detect if users were passing explicitly `None`
+            warnings.warn(
+                "`position_ids` have no functionality in BLOOM and will be removed in v5.0.0. You can safely ignore"
+                " passing `position_ids`.",
+                FutureWarning,
+            )
+        if len(deprecated_arguments) > 0:
+            raise ValueError(f"Got unexpected arguments: {deprecated_arguments}")
+
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        transformer_outputs = BloomInferenceForwards.bloom_model_forward(self.transformer,
+                                                                         input_ids,
+                                                                         past_key_values=past_key_values,
+                                                                         attention_mask=attention_mask,
+                                                                         head_mask=head_mask,
+                                                                         inputs_embeds=inputs_embeds,
+                                                                         use_cache=use_cache,
+                                                                         output_attentions=output_attentions,
+                                                                         output_hidden_states=output_hidden_states,
+                                                                         return_dict=return_dict,
+                                                                         infer_state=infer_state)
+        hidden_states = transformer_outputs[0]
+
+        lm_logits = self.lm_head(hidden_states)
+
+        loss = None
+        if labels is not None:
+            # move labels to correct device to enable model parallelism
+            labels = labels.to(lm_logits.device)
+            # Shift so that tokens < n predict n
+            shift_logits = lm_logits[..., :-1, :].contiguous()
+            shift_labels = labels[..., 1:].contiguous()
+            batch_size, seq_length, vocab_size = shift_logits.shape
+            # Flatten the tokens
+            loss_fct = CrossEntropyLoss()
+            loss = loss_fct(shift_logits.view(batch_size * seq_length, vocab_size),
+                            shift_labels.view(batch_size * seq_length))
+
+        if not return_dict:
+            output = (lm_logits,) + transformer_outputs[1:]
+            return ((loss,) + output) if loss is not None else output
+
+        return CausalLMOutputWithCrossAttentions(
+            loss=loss,
+            logits=lm_logits,
+            past_key_values=transformer_outputs.past_key_values,
+            hidden_states=transformer_outputs.hidden_states,
+            attentions=transformer_outputs.attentions,
+        )
+
+    @staticmethod
+    def bloom_for_causal_lm_prepare_inputs_for_generation(
+        self: BloomForCausalLM,
+        input_ids: torch.LongTensor,
+        past_key_values: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        inputs_embeds: Optional[torch.Tensor] = None,
+        **kwargs,
+    ) -> dict:
+        # only last token for input_ids if past is not None
+        if past_key_values:
+            input_ids = input_ids[:, -1].unsqueeze(-1)
+
+            # NOTE we won't use past key values here
+            # the cache may be in the stardard format (e.g. in contrastive search), convert to bloom's format if needed
+            # if past_key_values[0][0].shape[0] == input_ids.shape[0]:
+            #     past_key_values = self._convert_to_bloom_cache(past_key_values)
+
+        # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
+        if inputs_embeds is not None and past_key_values is None:
+            model_inputs = {"inputs_embeds": inputs_embeds}
+        else:
+            model_inputs = {"input_ids": input_ids}
+
+        model_inputs.update({
+            "past_key_values": past_key_values,
+            "use_cache": kwargs.get("use_cache"),
+            "attention_mask": attention_mask,
+        })
+        return model_inputs
+
     # replace decoder layer forward:
     #   used to replace BloomBlock.forward
+    @staticmethod
     def bloom_block_forward(
-        self,
+        self: BloomBlock,
         hidden_states: torch.Tensor,
         alibi: torch.Tensor,
         attention_mask: torch.Tensor,
@@ -1003,8 +1110,9 @@ class BloomInferenceForwards:
 
     # replace attention forward:
     #   used to replace BloomAttention.forward
+    @staticmethod
     def bloom_attention_forward(
-        self,
+        self: BloomAttention,
         hidden_states: torch.Tensor,
         residual: torch.Tensor,
         alibi: torch.Tensor,
