@@ -17,10 +17,10 @@ class MoeCheckpintIO(CheckpointIO):
 
     def load_unsharded_model(self, model: nn.Module, checkpoint: str, strict: bool):
         state_dict = torch.load(checkpoint)
-        for name, module in model.named_parameters():
+        for name, param in model.named_parameters():
             if '.experts.' in name:
-                ep_rank = dist.get_rank(get_ep_group(module))
-                ep_size = dist.get_world_size(get_ep_group(module))
+                ep_rank = dist.get_rank(get_ep_group(param))
+                ep_size = dist.get_world_size(get_ep_group(param))
                 for rank in range(ep_size):
                     new_name = name.replace('.experts.', f'.experts.{rank}.')
                     if rank == ep_rank:
