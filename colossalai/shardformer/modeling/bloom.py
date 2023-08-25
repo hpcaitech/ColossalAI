@@ -828,12 +828,19 @@ class BloomInferenceForwards:
                     "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`...")
                 use_cache = False
 
+        # NOTE determine if BatchInferState is passed in via arg
+        #      if not, get the attr binded to the model
+        # We might wantto remove setattr later
+        if infer_state is None:
+            infer_state = self.infer_state
+
         # Compute alibi tensor: check build_alibi_tensor documentation
         seq_length_with_past = seq_length
         past_key_values_length = 0
-        if self.cache_manager.past_key_values_length > 0:
+        # if self.cache_manager.past_key_values_length > 0:
+        if infer_state.cache_manager.past_key_values_length > 0:
             # TODO dummy but work, revise it
-            past_key_values_length = self.cache_manager.past_key_values_length
+            past_key_values_length = infer_state.cache_manager.past_key_values_length
             # past_key_values_length = past_key_values[0][0].shape[2]
             seq_length_with_past = seq_length_with_past + past_key_values_length
 
@@ -845,7 +852,7 @@ class BloomInferenceForwards:
             infer_state.is_context_stage = True    # set prefill stage, notify attention layer
             infer_state.context_mem_index = infer_state.cache_manager.alloc(infer_state.total_token_num)
             BatchInferState.init_block_loc(infer_state.block_loc, infer_state.seq_len, seq_length,
-                                           infer_state.prefill_mem_index)
+                                           infer_state.context_mem_index)
         else:
             # TODO handle the condition that no contiguous memory presents
             alloc_mem = infer_state.cache_manager.alloc_contiguous(batch_size)
@@ -874,6 +881,7 @@ class BloomInferenceForwards:
 
         # NOTE we might want to store a single 1D alibi(length is #heads) in model
         alibi = generate_alibi(self.num_heads).contiguous().cuda()
+        print(f"    self.num_heads = {self.num_heads}")
         # alibi = self.build_alibi_tensor(attention_mask, self.num_heads, dtype=hidden_states.dtype)
 
         causal_mask = self._prepare_attn_mask(
@@ -929,9 +937,12 @@ class BloomInferenceForwards:
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
 
-        # NOTE: remember to update indices of kv cache block
-        self.b_start_loc = self.b_start_loc + torch.arange(0, batch_size, dtype=torch.int32, device="cuda")
-        self.b_seq_len += 1
+        # NOTE: here we still to update indices of kv cache block
+        # TODO: remove this part, instead, better to pass the BatchInferState from model forward,
+        #       and update these information in engine.generate after model foward called
+        infer_state.start_loc = infer_state.start_loc + torch.arange(0, batch_size, dtype=torch.int32, device="cuda")
+        infer_state.seq_len += 1
+        infer_state.decode_layer_id = 0
 
         if not return_dict:
             return tuple(v for v in [hidden_states, presents, all_hidden_states, all_self_attentions] if v is not None)
@@ -1133,6 +1144,7 @@ class BloomInferenceForwards:
         v = value_layer.reshape(-1, H, D_HEAD)    # batch_size * q_length, H, D_HEAD, q_lenth == 1
 
         mem_manager = infer_state.cache_manager
+        layer_id = infer_state.decode_layer_id
 
         if infer_state.is_context_stage:
             # context process
@@ -1141,19 +1153,22 @@ class BloomInferenceForwards:
             b_seq_len = infer_state.seq_len[:batch_size]
             q = query_layer.reshape(-1, H, D_HEAD)
 
-            copy_kv_cache_to_dest(k, infer_state.context_mem_index, mem_manager.key_buffer[self.layer_id])
-            copy_kv_cache_to_dest(v, infer_state.context_mem_index, mem_manager.value_buffer[self.layer_id])
+            print(f"    k.shape: {k.shape}")
+            print(f"    infer_state.context_mem_index: {infer_state.context_mem_index}")
+            print(f"    mem_manager.key_buffer[layer_id].shape: {mem_manager.key_buffer[layer_id].shape}")
+            copy_kv_cache_to_dest(k, infer_state.context_mem_index, mem_manager.key_buffer[layer_id])
+            copy_kv_cache_to_dest(v, infer_state.context_mem_index, mem_manager.value_buffer[layer_id])
 
             # output = self.output[:batch_size*q_length, :, :]
             output = torch.empty_like(q)
 
-            context_attention_fwd(q, k, v, output, alibi, b_start_loc, b_seq_len, max_input_len)
+            bloom_context_attn_fwd(q, k, v, output, b_start_loc, b_seq_len, max_input_len, alibi)
 
             context_layer = output.view(batch_size, q_length, H * D_HEAD)
             # FIXME might want to revise
             #   need some way to record the length of past key values cache
             #   since we won't return past_key_value_cache right now
-            if self.layer_id == 0:    # once per model.forward
+            if layer_id == 0:    # once per model.forward
                 infer_state.cache_manager.past_key_values_length = q_length    # seq_len
         else:
             # query_layer = query_layer.transpose(1, 2).reshape(batch_size * self.num_heads, q_length, self.head_dim)
@@ -1163,9 +1178,9 @@ class BloomInferenceForwards:
 
             if infer_state.decode_is_contiguous:
                 # if decode is contiguous, then we copy to key cache and value cache in cache manager directly
-                cache_k = infer_state.cache_manager.key_buffer[self.layer_id][
+                cache_k = infer_state.cache_manager.key_buffer[layer_id][
                     infer_state.decode_mem_start:infer_state.decode_mem_end, :, :]
-                cache_v = infer_state.cache_manager.value_buffer[self.layer_id][
+                cache_v = infer_state.cache_manager.value_buffer[layer_id][
                     infer_state.decode_mem_start:infer_state.decode_mem_end, :, :]
                 cache_k.copy_(k)
                 cache_v.copy_(v)
@@ -1173,26 +1188,29 @@ class BloomInferenceForwards:
                 # if decode is not contiguous, use triton kernel to copy key and value cache
                 # k, v shape: [batch_size, num_heads, head_dim/embed_size_per_head]
                 # TODO clean comments
-                # destindex_copy_kv(k, infer_state.decode_mem_index, mem_manager.key_buffer[self.layer_id])
-                # destindex_copy_kv(v, infer_state.decode_mem_index, mem_manager.value_buffer[self.layer_id])
-                copy_kv_cache_to_dest(k, infer_state.decode_mem_index, mem_manager.key_buffer[self.layer_id])
-                copy_kv_cache_to_dest(v, infer_state.decode_mem_index, mem_manager.value_buffer[self.layer_id])
+                # destindex_copy_kv(k, infer_state.decode_mem_index, mem_manager.key_buffer[layer_id])
+                # destindex_copy_kv(v, infer_state.decode_mem_index, mem_manager.value_buffer[layer_id])
+                copy_kv_cache_to_dest(k, infer_state.decode_mem_index, mem_manager.key_buffer[layer_id])
+                copy_kv_cache_to_dest(v, infer_state.decode_mem_index, mem_manager.value_buffer[layer_id])
 
             b_start_loc = infer_state.start_loc[:batch_size]
             b_loc = infer_state.block_loc[:batch_size, :]
             b_seq_len = infer_state.seq_len[:batch_size]
             max_len_in_batch = mem_manager.past_key_values_length + q_length
             output = torch.empty_like(q)
-            token_attention_fwd(q, mem_manager.key_buffer[self.layer_id], mem_manager.value_buffer[self.layer_id],
-                                output, alibi, b_loc, b_start_loc, b_seq_len, max_len_in_batch)
+            token_attention_fwd(q, mem_manager.key_buffer[layer_id], mem_manager.value_buffer[layer_id], output, b_loc,
+                                b_start_loc, b_seq_len, max_len_in_batch, alibi)
 
             context_layer = output.view(batch_size, q_length, H * D_HEAD)
             # FIXME might want to revise (same as above one)
             #   need some way to record the length of past key values cache
             #   since we won't return past_key_value_cache right now
-            if self.layer_id == 0:    # once per model.forward
+            if layer_id == 0:    # once per model.forward
                 assert infer_state.cache_manager.past_key_values_length != 0
                 infer_state.cache_manager.past_key_values_length += q_length    # += 1
+
+        # update layer id
+        infer_state.decode_layer_id += 1
 
         # NOTE: always set present as none for now, instead of returning past key value to the next decoding,
         #       we create the past key value pair from the cache manager

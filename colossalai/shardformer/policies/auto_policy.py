@@ -136,7 +136,9 @@ _INFER_POLICY_LIST = {
     "transformers.models.llama.modeling_llama.LlamaModel":
         PolicyLocation(file_name="llama", class_name="LlamaModelInferPolicy"),
     "transformers.models.bloom.modeling_bloom.BloomModel":
-        PolicyLocation(file_name="bloom", class_name="BloomModelInferPolicy")
+        PolicyLocation(file_name="bloom", class_name="BloomModelInferPolicy"),
+    "transformers.models.bloom.modeling_bloom.BloomForCausalLM":
+        PolicyLocation(file_name="bloom", class_name="BloomModelInferPolicy"),
 }
 
 

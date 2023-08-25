@@ -44,6 +44,11 @@ class BloomPolicy(Policy):
 
         policy = {}
 
+        print(f"  BloomPolicyt.module_policy:")
+        print(f"    self.shard_config.enable_tensor_parallelism: {self.shard_config.enable_tensor_parallelism}")
+        print(f"    self.shard_config.tensor_parallel_size: {self.shard_config.tensor_parallel_size}")
+        print(f"    self.model.config.n_head: {self.model.config.n_head}")
+
         if self.shard_config.enable_tensor_parallelism:
             policy[BloomBlock] = ModulePolicyDescription(attribute_replacement={
                 "self_attention.hidden_size": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
