@@ -104,16 +104,20 @@ class OPTPolicy(Policy):
 
         # use flash attention
         if self.shard_config.enable_flash_attention:
-            policy[OPTAttention] = ModulePolicyDescription(method_replacement={
+            self.append_or_create_method_replacement(description={
                 'forward': get_opt_flash_attention_forward(),
-            })
+            },
+                                                     policy=policy,
+                                                     target_key=OPTAttention)
 
         # use jit fused operator
         if self.shard_config.enable_jit_fused:
-            policy[OPTDecoderLayer] = ModulePolicyDescription(method_replacement={
+            self.append_or_create_method_replacement(description={
                 'forward': get_jit_fused_opt_decoder_layer_forward(),
                 'dropout_add': get_jit_fused_dropout_add_func(),
-            })
+            },
+                                                     policy=policy,
+                                                     target_key=OPTDecoderLayer)
 
         return policy
 

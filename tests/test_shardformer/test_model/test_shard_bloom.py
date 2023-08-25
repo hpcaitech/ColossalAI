@@ -3,6 +3,7 @@ import torch
 
 import colossalai
 from colossalai.logging import disable_existing_loggers
+from colossalai.shardformer.layer.utils import Randomizer
 from colossalai.tensor.d_tensor.api import clear_layout_converter
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
 from tests.kit.model_zoo import model_zoo
@@ -118,6 +119,29 @@ def run_bloom_test(test_config):
         check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
 
     clear_layout_converter()
+    Randomizer.reset_index()
+    torch.cuda.empty_cache()
+
+
+@parameterize('test_config', [
+    {
+        'tp_size': 2,
+        'pp_size': 2,
+        'num_microbatches': 4,
+        'enable_all_optimization': False,
+        'use_lazy_init': False,
+        'precision': 'fp32',
+        'initial_scale': 1,
+    },
+])
+def run_bloom_3d_test(test_config):
+    sub_model_zoo = model_zoo.get_sub_registry('transformers_bloom')
+
+    for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
+        check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
+
+    clear_layout_converter()
+    Randomizer.reset_index()
     torch.cuda.empty_cache()
 
 
@@ -127,6 +151,12 @@ def check_bloom(rank, world_size, port):
     run_bloom_test()
 
 
+def check_bloom_3d(rank, world_size, port):
+    disable_existing_loggers()
+    colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    run_bloom_3d_test()
+
+
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()
@@ -134,5 +164,13 @@ def test_bloom():
     spawn(check_bloom, 4)
 
 
+@pytest.mark.largedist
+@rerun_if_address_is_in_use()
+@clear_cache_before_run()
+def test_bloom_3d():
+    spawn(check_bloom_3d, 8)
+
+
 if __name__ == "__main__":
     test_bloom()
+    test_bloom_3d()

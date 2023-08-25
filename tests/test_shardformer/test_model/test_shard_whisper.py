@@ -44,7 +44,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     # check last hidden state & loss
     if stage_manager is None or stage_manager.is_last_stage():
         if test_config['precision'] == 'fp32':
-            atol, rtol = 1e-3, 1e-3
+            atol, rtol = 2e-4, 2e-4
         else:
             atol, rtol = 5e-3, 5e-3
 
@@ -77,19 +77,19 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 
     # check weights and gradients
     if test_config['precision'] == 'fp32':
-        atol, rtol = 1e-3, 1e-3
+        atol, rtol = 2e-4, 2e-4
     else:
         atol, rtol = 5e-3, 5e-3
 
     if stage_manager is None or stage_manager.is_first_stage():
-        check_grad(whisper, sharded_whisper, row_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=0)
-        check_grad(whisper, sharded_whisper, col_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=1)
+        check_grad(whisper, sharded_whisper, row_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=1)
+        check_grad(whisper, sharded_whisper, col_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=0)
 
     # check weights after optimizer.step()
     org_optimizer.step()
     sharded_optimizer.step()
     if test_config['precision'] == 'fp32':
-        atol, rtol = 1e-3, 1e-3
+        atol, rtol = 2e-4, 2e-4
     else:
         atol, rtol = 5e-3, 5e-3
     if stage_manager is None or stage_manager.is_first_stage():
@@ -99,7 +99,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
                      tp_group,
                      atol=atol,
                      rtol=rtol,
-                     dim=0,
+                     dim=1,
                      verbose=False)
         check_weight(whisper,
                      sharded_whisper,
@@ -114,6 +114,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 
 
 # TODO（jianghai) fix fp16
+#TODO fix WhisperForConditionalGeneration enable jit fused operator
 @parameterize('test_config', [{
     'tp_size': 2,
     'pp_size': 2,
@@ -155,10 +156,37 @@ def run_whisper_test(test_config):
     torch.cuda.empty_cache()
 
 
+@parameterize('test_config', [
+    {
+        'tp_size': 2,
+        'pp_size': 2,
+        'num_microbatches': 4,
+        'enable_all_optimization': False,
+        'use_lazy_init': False,
+        'precision': 'fp32',
+        'initial_scale': 1,
+    },
+])
+def run_whisper_3d_test(test_config):
+    sub_model_zoo = model_zoo.get_sub_registry('transformers_whisper')
+
+    for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
+        check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
+
+    clear_layout_converter()
+    torch.cuda.empty_cache()
+
+
 def check_whisper(rank, world_size, port):
     disable_existing_loggers()
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     run_whisper_test()
+
+
+def check_whisper_3d(rank, world_size, port):
+    disable_existing_loggers()
+    colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    run_whisper_3d_test()
 
 
 @pytest.mark.dist
@@ -168,5 +196,13 @@ def test_whisper():
     spawn(check_whisper, 4)
 
 
+@pytest.mark.largedist
+@rerun_if_address_is_in_use()
+@clear_cache_before_run()
+def test_whisper_3d():
+    spawn(check_whisper_3d, 8)
+
+
 if __name__ == "__main__":
     test_whisper()
+    test_whisper_3d()
