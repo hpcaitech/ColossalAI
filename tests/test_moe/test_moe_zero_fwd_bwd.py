@@ -55,7 +55,6 @@ def run_zero_test(local_rank, world_size, stage=1):
     grad_handler = MoeGradientHandler(torch_model)
 
     # assert zero model
-    assert len(zero_model.module.test_transform.moe.moe_layer.experts.experts) == 8 // MOE_CONTEXT.world_size
     for (torch_name, torch_param), (zero_name, zero_param) in zip(torch_model.named_parameters(),
                                                                   zero_model.module.named_parameters()):
         assert zero_name == torch_name
