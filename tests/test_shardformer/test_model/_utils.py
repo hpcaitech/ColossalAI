@@ -130,7 +130,6 @@ def build_model_from_hybrid_plugin(model_fn: Callable, loss_fn: Callable, test_c
 def run_forward_backward_with_hybrid_plugin(org_model: Module, sharded_model: Module, sharded_optimizer: Optimizer,
                                             data_gen_fn: Callable, output_transform_fn: Callable, criterion: Callable,
                                             booster: Booster):
-    print("shard model forward")
     org_model.cuda()
     sharded_model.cuda()
 
@@ -151,7 +150,6 @@ def run_forward_backward_with_hybrid_plugin(org_model: Module, sharded_model: Mo
                 data[k] = v.repeat(1, times)
 
     sharded_model.train()
-
     if booster.plugin.stage_manager is not None:
         for k, v in data.items():
             if torch.is_tensor(v) or 'Tensor' in v.__class__.__name__:
@@ -174,13 +172,11 @@ def run_forward_backward_with_hybrid_plugin(org_model: Module, sharded_model: Mo
         sharded_loss = criterion(sharded_output)
         sharded_optimizer.backward(sharded_loss)
 
-    print("origin model forward")
     org_model.train()
     data = {k: v.cuda() for k, v in data.items()}
     org_output = org_model(**data)
 
     org_loss = criterion(org_output)
-    print("origin model backward")
     org_loss.backward()
 
     return org_loss, org_output, sharded_loss, sharded_output
@@ -193,7 +189,6 @@ def check_output_hidden_state(org_output: Tensor,
                               rtol: float = 1e-3,
                               dim: int = 0):
 
-    print("check output hidden state")
     org_hidden_state = org_output.last_hidden_state
 
     if stage_manager is None:
@@ -207,7 +202,6 @@ def check_output_hidden_state(org_output: Tensor,
 
 
 def check_loss(org_loss: Tensor, sharded_loss: Tensor, atol: float = 1e-5, rtol: float = 1e-3):
-    print("check loss")
     assert torch.allclose(org_loss.float(), sharded_loss.float(), atol=atol, rtol=rtol), \
         f"shard model loss is not equal to origin model loss\n{org_loss}\n{sharded_loss}"
 
@@ -220,8 +214,8 @@ def check_weight(org_model: Module,
                  atol: float = 1e-5,
                  rtol: float = 1e-3,
                  verbose: bool = False):
+
     for suffix in layer_suffix:
-        print(str(suffix) + "check weight")
         org_weight = getattr_(org_model, suffix).weight
         sharded_weight = getattr_(sharded_model, suffix).weight
 
@@ -248,7 +242,6 @@ def check_grad(org_model: Module,
                rtol: float = 1e-3,
                verbose: bool = False):
     for suffix in layer_suffix:
-        print(str(suffix) + "check grad")
         org_grad = getattr_(org_model, suffix).weight.grad
         shard_grad = getattr_(sharded_model, suffix).weight.grad
         shard_weight = getattr_(sharded_model, suffix).weight
