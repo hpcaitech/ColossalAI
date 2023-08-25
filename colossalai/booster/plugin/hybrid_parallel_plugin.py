@@ -292,6 +292,7 @@ class HybridParallelPlugin(PipelinePluginBase):
             self.schedule = OneForwardOneBackwardSchedule(num_microbatches, self.stage_manager)
         self.tp_group = self.pg_mesh.get_group_along_axis(TP_AXIS)
         self.dp_group = self.pg_mesh.get_group_along_axis(DP_AXIS)
+        self.pp_group = self.pg_mesh.get_group_along_axis(PP_AXIS)
         self.shard_config = ShardConfig(tensor_parallel_process_group=self.tp_group,
                                         pipeline_stage_manager=self.stage_manager,
                                         enable_tensor_parallelism=self.tp_size > 1,
@@ -460,7 +461,7 @@ class HybridParallelPlugin(PipelinePluginBase):
                           **_kwargs)
 
     def get_checkpoint_io(self) -> CheckpointIO:
-        return HypridParallelCheckpointIO(self.pg_mesh)
+        return HypridParallelCheckpointIO(self.dp_group, self.pp_group, self.tp_group)
 
     def no_sync(self, model: Module) -> Iterator[None]:
         raise NotImplementedError

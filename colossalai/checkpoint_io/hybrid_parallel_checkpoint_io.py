@@ -1,4 +1,5 @@
 import copy
+import gc
 import logging
 import os
 from pathlib import Path
@@ -8,6 +9,7 @@ from typing import Any, Callable, Iterator, List, Optional, OrderedDict, Tuple, 
 import torch
 import torch.distributed as dist
 import torch.nn as nn
+from torch.distributed import ProcessGroup
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 
@@ -22,7 +24,9 @@ from colossalai.tensor.d_tensor import (
 from .general_checkpoint_io import GeneralCheckpointIO
 from .index_file import CheckpointIndexFile
 from .utils import (
+    StateDictSharder,
     calculate_tensor_size,
+    gather_distributed_param,
     get_model_base_filenames,
     get_optimizer_base_filenames,
     get_shard_filename,
@@ -47,18 +51,22 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
     CheckpointIO for Hybrid Parallel Training.
 
     Args:
-        pg_mesh (ProcessGroupMesh): Process group mesh containing information of process groups along different dimensions.
+        dp_group (ProcessGroup): Process group along data parallel dimension.
+        pp_group (ProcessGroup): Process group along pipeline parallel dimension.
+        tp_group (ProcessGroup): Process group along tensor parallel dimension.
     """
 
-    def __init__(self, pg_mesh: ProcessGroupMesh) -> None:
+    def __init__(self, dp_group: ProcessGroup, pp_group: ProcessGroup, tp_group: ProcessGroup) -> None:
         super().__init__()
-        self.dp_group = pg_mesh.get_group_along_axis(DP_AXIS)
-        self.pp_group = pg_mesh.get_group_along_axis(PP_AXIS)
-        self.tp_group = pg_mesh.get_group_along_axis(TP_AXIS)
+        self.dp_group = dp_group
+        self.pp_group = pp_group
+        self.tp_group = tp_group
         self.dp_rank = dist.get_rank(self.dp_group)
         self.tp_rank = dist.get_rank(self.tp_group)
         self.pp_rank = dist.get_rank(self.pp_group)
-        self.dp_size, self.pp_size, self.tp_size = pg_mesh.shape
+        self.dp_size = dist.get_world_size(dp_group)
+        self.pp_size = dist.get_world_size(pp_group)
+        self.tp_size = dist.get_world_size(tp_group)
 
     @staticmethod
     def _model_sharder(model: nn.Module,
@@ -67,19 +75,14 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
                        size_per_shard: int = 1024) -> Iterator[Tuple[OrderedDict, int]]:
         # An internel method that breaks state_dict of model into shards within limited size.
 
-        state_dict_sharder = _StateDictSharder(size_per_shard)
+        state_dict_sharder = StateDictSharder(size_per_shard)
 
         # Save parameters.
         for name, param in model.named_parameters():
             if param is None:
                 continue
             # Gather tensor pieces when using tensor parallel.
-            param_ = param if keep_vars else param.detach()
-            if is_distributed_tensor(param_):
-                param_ = to_global(param_)
-            elif is_customized_distributed_tensor(param_):
-                param_ = to_global_for_customized_distributed_tensor(param_)
-
+            param_ = gather_distributed_param(param, keep_vars=False)
             block, block_size = state_dict_sharder.append(prefix + name, param_)
             if block is not None:
                 yield block, block_size
@@ -262,6 +265,7 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
                                        missing_keys=missing_keys,
                                        strict=strict,
                                        load_sub_module=True)
+            del state_dict
             loaded_file.add(filename)
 
         # Load parameters.
@@ -312,28 +316,3 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
         """
         if self.coordinator.is_master():
             super().save_lr_scheduler(lr_scheduler, checkpoint)
-
-
-class _StateDictSharder:
-
-    def __init__(self, size_per_shard: int) -> None:
-        self.max_shard_size = size_per_shard
-        self.current_block = OrderedDict()
-        self.current_block_size = 0
-
-    def append(self, name: str, tensor: torch.Tensor) -> Tuple[Optional[OrderedDict], int]:
-        tensor_size = calculate_tensor_size(tensor)
-        ret_block = None
-        ret_block_size = 0
-
-        # before we return the current block and create a new block,
-        # we need to ensure that the current block is not empty
-        if self.current_block_size + tensor_size > self.max_shard_size and self.current_block_size > 0:
-            ret_block = self.current_block
-            ret_block_size = self.current_block_size
-            self.current_block = OrderedDict()
-            self.current_block_size = 0
-
-        self.current_block[name] = tensor
-        self.current_block_size += tensor_size
-        return ret_block, ret_block_size
