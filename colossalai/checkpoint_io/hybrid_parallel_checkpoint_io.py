@@ -43,8 +43,6 @@ try:
 except ImportError:
     _EXTRA_STATE_KEY_SUFFIX = '_extra_state'
 
-DP_AXIS, PP_AXIS, TP_AXIS = 0, 1, 2
-
 
 class HypridParallelCheckpointIO(GeneralCheckpointIO):
     """

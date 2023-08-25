@@ -176,9 +176,10 @@ def save_state_dict_shards(sharded_state_dict: Iterator[Tuple[OrderedDict, int]]
 
     total_size = 0
     for idx, shard_pair in enumerate(sharded_state_dict):
-        if not is_master:
-            continue
         shard, current_size = shard_pair
+        if not is_master:
+            del shard
+            continue
         shard_file = get_shard_filename(base_filename, idx)
         total_size = total_size + current_size
         for key in shard.keys():
