@@ -204,4 +204,4 @@ def test_vit_3d():
 
 if __name__ == "__main__":
     test_vit()
-    #test_vit_3d()
+    test_vit_3d()
