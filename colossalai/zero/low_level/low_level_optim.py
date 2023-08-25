@@ -277,7 +277,11 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                         sync_tensor(flat_grads_per_rank[rank], grad_list)
                         for grad in grad_list:
                             param_id = self._bucket_store.get_param_id_of_grad(grad)
-                            self._grad_store.append_gradients_by_param_id(grad, group_id, param_id)
+                            if len(self._grad_store.get_partitioned_gradients_by_param_id(group_id,
+                                                                                          param_id)) < self._world_size:
+                                self._grad_store.append_gradients_by_param_id(grad, group_id, param_id)
+                            else:
+                                self._grad_store.add_gradients_by_param_id(grad, rank, group_id, param_id)
 
                 else:
                     flat_grads_list = list(flat_grads.split(len(flat_grads) // self._world_size))
@@ -291,7 +295,10 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                     sync_tensor(recieved_grad, grad_in_bucket_current_rank)
                     for grad in grad_in_bucket_current_rank:
                         param_id = self._bucket_store.get_param_id_of_grad(grad)
-                        self._grad_store.append_gradients_by_param_id(grad, group_id, param_id)
+                        if len(self._grad_store.get_partitioned_gradients_by_param_id(group_id, param_id)) < 1:
+                            self._grad_store.append_gradients_by_param_id(grad, group_id, param_id)
+                        else:
+                            self._grad_store.add_gradients_by_param_id(grad, 0, group_id, param_id)
 
                 self._bucket_store.reset()
 
@@ -315,7 +322,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
     def backward(self, loss, retain_graph=False):
         assert not(self._partition_grads and not self.require_grad_sync), \
-            "ZeRO2(partition_grads) and gradient accumulation(no_sync) are not compatible"
+            "ZeRO2(partition_grads) and no_sync are not compatible"
 
         if self.mixed_precision_mixin is not None:
             loss = self.mixed_precision_mixin.pre_backward(loss)

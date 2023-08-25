@@ -1,5 +1,41 @@
 # Low Level ZeRO
 >Low Level ZeRO == ZeRO-DP stage 1 and 2, we would denote it as ZeRO.
+## Examples of ZeRO and gradient accumulation
+
+The code below only shows a typical gradient accumulation process, and it drops a lot of details, such as the processing of loss.
+
+```python
+# examples of ZeRO1 with gradient accumulation
+...
+outputs = model(input)
+loss = SomeLoss(outputs)
+if (idx + 1) % ACCUMULATE_STEP != 0:
+    with booster.no_sync(model, optimizer):
+        # under this context, the gradient would not sync when backward,
+        # left each rank having different gradient.
+        # It saves the backward time
+        booster.backward(loss, optimizer)
+        continue
+else:
+    # need to sync all the accumulated gradient
+    booster.backward(loss, optimizer):
+    optimizer.step()
+    ...
+```
+
+```python
+# example of ZeRO2 with gradient accumulation
+
+...
+outputs = model(input)
+loss = SomeLoss(outputs)
+# ZeRO2 split the gradients and can NOT accumulate gradient with syncing.
+booster.backward(loss, optimizer)
+if (idx + 1) % ACCUMULATE_STEP == 0:
+    optimizer.step()
+...
+```
+
 
 ## Design:
 ### Notion
@@ -25,11 +61,11 @@ The data structure looks like this:
 ```
 After that, the gradients would be flattened by rank, and the data structure looks like this:
 ```
-# g-0 means flatten([g-00, g-10])
+# g-X0 means flatten([g-00, g-10])
 {
-0: [g-0],
-1: [g-1],
-2: [g-2]
+0: [g-X0],
+1: [g-X1],
+2: [g-X2]
 }
 ```
 For zero1, we iterate the dictionary and do `all_reduce`. For zero2, we can just do `reduce-scatter`.
