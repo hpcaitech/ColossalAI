@@ -137,7 +137,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     'initial_scale': 1
 }])
 def run_opt_test(test_config):
-    print(test_config)
     sub_model_zoo = model_zoo.get_sub_registry('transformers_opt')
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
@@ -168,7 +167,7 @@ def run_opt_3d_test(test_config):
 
 
 def check_OPTModel(rank, world_size, port):
-    # disable_existing_loggers()
+    disable_existing_loggers()
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     run_opt_test()
 
