@@ -111,13 +111,14 @@ class OPTPolicy(Policy):
         #                                              target_key=OPTAttention)
 
         # use jit fused operator
-        if self.shard_config.enable_jit_fused:
-            self.append_or_create_method_replacement(description={
-                'forward': get_jit_fused_opt_decoder_layer_forward(),
-                'dropout_add': get_jit_fused_dropout_add_func(),
-            },
-                                                     policy=policy,
-                                                     target_key=OPTDecoderLayer)
+        # if self.shard_config.enable_jit_fused:
+        #     self.append_or_create_method_replacement(description={
+        #         'forward': get_jit_fused_opt_decoder_layer_forward(),
+        #         'dropout_add': get_jit_fused_dropout_add_func(),
+        #     },
+        #                                              policy=policy,
+        #                                              target_key=OPTDecoderLayer)
+
         return policy
 
     def postprocess(self):

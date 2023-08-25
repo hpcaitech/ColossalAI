@@ -100,50 +100,42 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     torch.cuda.empty_cache()
 
 
-@parameterize(
-    'test_config',
-    [
-        {
-            'tp_size': 2,
-            'pp_size': 2,
-            'num_microbatches': 4,
-            'enable_all_optimization': True,
-            'use_lazy_init': True,
-            'precision': 'fp16',
-            'initial_scale': 1,
-        },
-        {
-            'tp_size': 1,
-            'pp_size': 2,
-            'num_microbatches': 4,
-            'enable_all_optimization': False,
-            'use_lazy_init': False,
-            'precision': 'fp32',
-        },
-        {
-            'tp_size': 4,
-            'pp_size': 1,
-            'enable_all_optimization': True,
-            'use_lazy_init': False,
-            'precision': 'fp32'
-        },
-    # {
-    #     'tp_size': 2,
-    #     'pp_size': 1,
-    #     'enable_all_optimization': True,
-    #     'use_lazy_init': False,
-    #     'precision': 'fp32'
-    # },
-        {
-            'tp_size': 2,
-            'pp_size': 1,
-            'enable_all_optimization': True,
-            'use_lazy_init': True,
-            'zero_stage': 2,
-            'precision': 'fp16',
-            'initial_scale': 1
-        }
-    ])
+@parameterize('test_config', [{
+    'tp_size': 2,
+    'pp_size': 2,
+    'num_microbatches': 4,
+    'enable_all_optimization': True,
+    'use_lazy_init': True,
+    'precision': 'fp16',
+    'initial_scale': 1,
+}, {
+    'tp_size': 1,
+    'pp_size': 2,
+    'num_microbatches': 4,
+    'enable_all_optimization': False,
+    'use_lazy_init': False,
+    'precision': 'fp32',
+}, {
+    'tp_size': 4,
+    'pp_size': 1,
+    'enable_all_optimization': True,
+    'use_lazy_init': False,
+    'precision': 'fp32'
+}, {
+    'tp_size': 2,
+    'pp_size': 1,
+    'enable_all_optimization': True,
+    'use_lazy_init': False,
+    'precision': 'fp32'
+}, {
+    'tp_size': 2,
+    'pp_size': 1,
+    'enable_all_optimization': True,
+    'use_lazy_init': True,
+    'zero_stage': 2,
+    'precision': 'fp16',
+    'initial_scale': 1
+}])
 def run_opt_test(test_config):
     print(test_config)
     sub_model_zoo = model_zoo.get_sub_registry('transformers_opt')
@@ -194,12 +186,13 @@ def test_OPTModel():
     spawn(check_OPTModel, 4)
 
 
-# @pytest.mark.largedist
-# @rerun_if_address_is_in_use()
-# @clear_cache_before_run()
-# def test_opt_3d():
-#     spawn(check_opt_3d, 8)
+@pytest.mark.largedist
+@rerun_if_address_is_in_use()
+@clear_cache_before_run()
+def test_opt_3d():
+    spawn(check_opt_3d, 8)
+
 
 if __name__ == '__main__':
     test_OPTModel()
-    # test_opt_3d()
+    test_opt_3d()
