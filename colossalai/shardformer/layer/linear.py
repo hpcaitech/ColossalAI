@@ -75,7 +75,7 @@ class Linear1D_Col(ParallelModule):
                  gather_output: bool = False,
                  seq_parallel: bool = False,
                  seq_parallel_dim: int = 1,
-                 overlap: bool = False,
+                 overlap: torch.cuda.Stream = None,
                  skip_bias_add: bool = False,
                  weight: Optional[Parameter] = None,
                  bias_: Optional[Parameter] = None,
