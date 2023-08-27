@@ -1,16 +1,13 @@
 
 import copy
-import torch.distributed as dist
 import torch
-import torch.nn as nn
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.shardformer.inference import MemoryManager
-from colossalai.shardformer.policies.llama import LlamaModelInferPolicy, LlamaForCausalLMPolicy
+from colossalai.shardformer.policies.llama import LlamaForCausalLMPolicy
+from colossalai.tensor_parallel.tpinference.pollcies.llama import LlamaModelInferPolicy
 from transformers import LlamaForCausalLM, LlamaTokenizer
 import time
-from torch.profiler import profile, record_function, ProfilerActivity
-import PyNVTX as nvtx
 
 GIGABYTE = 1024 ** 3
 torch.backends.cudnn.enabled = True
@@ -181,10 +178,8 @@ class TPCacheManagerInferenceEngine:
         for i in range(iters):
             torch.cuda.synchronize()
             start = time.time()
-            nvtx.RangePushA("generate")
             outputs = model.generate(**self.input_tokens, 
                     **generate_kwargs, early_stopping=False)
-            nvtx.RangePop()
             outputs_list.append(outputs)
             torch.cuda.synchronize()
 
