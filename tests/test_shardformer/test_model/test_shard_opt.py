@@ -143,8 +143,6 @@ def run_opt_test(test_config):
 
     clear_layout_converter()
     torch.cuda.empty_cache()
-
-
 @parameterize('test_config', [
     {
         'tp_size': 2,
