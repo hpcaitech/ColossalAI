@@ -13,21 +13,13 @@ from torch.distributed import ProcessGroup
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 
-from colossalai.cluster import ProcessGroupMesh
 from colossalai.interface import OptimizerWrapper
-from colossalai.tensor.d_tensor import (
-    is_customized_distributed_tensor,
-    is_distributed_tensor,
-    to_global,
-    to_global_for_customized_distributed_tensor,
-)
-from colossalai.zero.low_level import LowLevelZeroOptimizer
 
 from .general_checkpoint_io import GeneralCheckpointIO
 from .index_file import CheckpointIndexFile
 from .utils import (
     StateDictSharder,
-    calculate_tensor_size,
+    gather_distributed_optimizer_states,
     gather_distributed_param,
     get_model_base_filenames,
     get_optimizer_base_filenames,
@@ -85,7 +77,7 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
                 continue
             # Gather tensor pieces when using tensor parallel.
             param_ = gather_distributed_param(param, keep_vars=False)
-            block, block_size = state_dict_sharder.append(prefix + name, param_)
+            block, block_size = state_dict_sharder.append_param(prefix + name, param_)
             if block is not None:
                 yield block, block_size
 
@@ -93,7 +85,7 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
         for name, buf in model.named_buffers():
             if buf is not None and name not in model._non_persistent_buffers_set:
                 buffer = buf if keep_vars else buf.detach()
-                block, block_size = state_dict_sharder.append(prefix + name, buffer)
+                block, block_size = state_dict_sharder.append_param(prefix + name, buffer)
                 if block is not None:
                     yield block, block_size
 
@@ -102,7 +94,7 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
         if getattr(model.__class__, "get_extra_state",
                    torch.nn.Module.get_extra_state) is not torch.nn.Module.get_extra_state:
             extra_state = model.get_extra_state()
-            block, block_size = state_dict_sharder.append(extra_state_key, extra_state)
+            block, block_size = state_dict_sharder.append_param(extra_state_key, extra_state)
             if block is not None:
                 yield block, block_size
 
@@ -113,6 +105,7 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
     def _optimizer_sharder(optimizer: OptimizerWrapper,
                            use_zero: bool,
                            dp_group: ProcessGroup,
+                           tp_group: ProcessGroup,
                            size_per_shard: int = 1024):
 
         # An internel method that breaks state_dict of optimizer into shards within limited size.
@@ -129,6 +122,8 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
 
             # First handle Zero shards. Working params in fp16 should first be obtained.
             if use_zero:
+                # Zero optimizer has replaced params in param_groups with sharded master params in fp32,
+                # so we have to first target working params in fp16 using stored mapping.
                 working_param = optimizer._param_store.master_to_working_param[id(param)]
                 for k, v in state.items():
                     if isinstance(v, torch.Tensor) and k != 'step':
@@ -138,21 +133,16 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
                         param_state = torch.stack(gather_tensor).view(-1)[:working_param.numel()].reshape_as(
                             working_param)
                         state_[k] = param_state.detach().cpu()
+                param = working_param
                 param_id = optimizer.param_info['param2id'][id(working_param)]
             else:
                 param_id = optimizer.param_info['param2id'][id(param)]
 
             # Then hanlde TP Shards
-            use_tp = is_distributed_tensor(param) or is_customized_distributed_tensor(param)
-            if use_tp:
-                # TODO: solve the tensor parallel case
-                # Either collect shape information from dtensor.ShardSpec
-                # Or collect shape information before sharder.optimize
-                # I think the second way is more reasonable
-                pass
-
+            original_shape = optimizer.param_info['param2shape'][id(param)]
+            state_ = gather_distributed_optimizer_states(state_, param, original_shape, tp_group)
             state_ = {k: v.detach().cpu() for k, v in state_.items()}
-            block, block_size = state_dict_sharder.append(param_id, state_)
+            block, block_size = state_dict_sharder.append_optim_state(param_id, state_)
             if block is not None:
                 yield block, block_size
 
@@ -367,6 +357,7 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
         state_dict_shard = HypridParallelCheckpointIO._optimizer_sharder(optimizer,
                                                                          use_zero=(self.zero_stage > 0),
                                                                          dp_group=self.dp_group,
+                                                                         tp_group=self.tp_group,
                                                                          size_per_shard=size_per_shard)
         states_name, save_index_file, param_group_file = get_optimizer_base_filenames(prefix)
         index_file = CheckpointIndexFile(checkpoint)

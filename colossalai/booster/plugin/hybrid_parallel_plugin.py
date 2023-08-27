@@ -113,10 +113,11 @@ class HybridParallelModule(ModelWrapper):
 def get_param_info(optim: Optimizer):
     # Get a backup of necessary information of parameters for future use, which includes:
     # 1. A complete param_group, with params in the form of param_id
-    # 2. A mapping from param address to param_id
-    # 3. A mapping from param_id to param address, as well as the original shape of parameter.
+    # 2. A mapping from param address (obtained using id(param)) to integer param_id
+    # 3. A mapping from integer param_id to param address.
+    # 4. A mapping from param_address (obtained using id(param)) to the original shape of parameter before sharding.
 
-    param_info = {'param_groups': [], 'param2id': {}, 'id2param': {}}
+    param_info = {'param_groups': [], 'param2id': {}, 'id2param': {}, 'param2shape': {}}
     start_index = 0
     for group in optim.param_groups:
 
@@ -127,7 +128,8 @@ def get_param_info(optim: Optimizer):
             original_shape = param.shape if isinstance(param, torch.Tensor) else None
             packed_group['params'].append(param_id)
             param_info['param2id'][id(param)] = param_id
-            param_info['id2param'][param_id] = {'id': id(param), 'original_shape': original_shape}
+            param_info['id2param'][param_id] = id(param)
+            param_info['param2shape'][id(param)] = original_shape
 
         param_info['param_groups'].append(packed_group)
         start_index += len(group['params'])

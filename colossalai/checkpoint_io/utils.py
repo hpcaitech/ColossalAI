@@ -1,4 +1,5 @@
 # coding=utf-8
+import copy
 import os
 import re
 from collections import abc as container_abcs
@@ -8,7 +9,9 @@ from pathlib import Path
 from typing import Iterator, List, Mapping, Optional, OrderedDict, Tuple
 
 import torch
+import torch.distributed as dist
 import torch.nn as nn
+from torch.distributed import ProcessGroup
 from torch.optim import Optimizer
 
 from colossalai.interface import OptimizerWrapper
@@ -93,26 +96,6 @@ def is_safetensor_checkpoint(checkpoint_file_path: str) -> bool:
         return False
 
 
-def gather_distributed_param(param: torch.Tensor, keep_vars: bool = False):
-    """
-    Gather the complete parameter for saving if passed in param is distributed.
-
-    Args:
-        param (torch.Tensor): A model parameter, might be d_tensor.
-        keep_vars (bool, optional): Whether to return the parameter in calculation graph. Defaults to False.
-
-    Returns:
-        torch.Tensor: the complete parameter
-    """
-    param_ = param if keep_vars else param.detach()
-    if is_distributed_tensor(param_):
-        return to_global(param_)
-    elif is_customized_distributed_tensor(param_):
-        return to_global_for_customized_distributed_tensor(param_)
-    else:
-        return param_
-
-
 # ======================================
 # Helper classes and functions for saving shard file
 # ======================================
@@ -136,7 +119,8 @@ class StateDictSharder:
         self.current_block = OrderedDict()
         self.current_block_size = 0
 
-    def append(self, name: str, tensor: torch.Tensor) -> Tuple[Optional[OrderedDict], int]:
+    def append_param(self, name: str, tensor: torch.Tensor) -> Tuple[Optional[OrderedDict], int]:
+
         tensor_size = calculate_tensor_size(tensor)
         ret_block = None
         ret_block_size = 0
@@ -152,6 +136,111 @@ class StateDictSharder:
         self.current_block[name] = tensor
         self.current_block_size += tensor_size
         return ret_block, ret_block_size
+
+    def append_optim_state(self, param_id: int, state: OrderedDict) -> Tuple[Optional[OrderedDict], int]:
+
+        state_size = 0
+        for k, v in state.items():
+            if isinstance(v, torch.Tensor):
+                state_size += calculate_tensor_size(v)
+        ret_block = None
+        ret_block_size = 0
+
+        # before we return the current block and create a new block,
+        # we need to ensure that the current block is not empty
+        if self.current_block_size + state_size > self.max_shard_size and self.current_block_size > 0:
+            ret_block = self.current_block
+            ret_block_size = self.current_block_size
+            self.current_block = OrderedDict()
+            self.current_block_size = 0
+
+        self.current_block[param_id] = state
+        self.current_block_size += state_size
+        return ret_block, ret_block_size
+
+
+def gather_distributed_param(param: torch.Tensor, keep_vars: bool = False) -> torch.Tensor:
+    """
+    Gather the complete parameter for saving if passed in param is distributed under tp setting.
+
+    Args:
+        param (torch.Tensor): A model parameter, might be d_tensor.
+        keep_vars (bool, optional): Whether to return the parameter in calculation graph. Defaults to False.
+
+    Returns:
+        torch.Tensor: the complete parameter
+    """
+    param_ = param if keep_vars else param.detach()
+    if is_distributed_tensor(param_):
+        return to_global(param_)
+    elif is_customized_distributed_tensor(param_):
+        return to_global_for_customized_distributed_tensor(param_)
+    else:
+        return param_
+
+
+def search_tp_partition_dim(current_shape: torch.Size, original_shape: torch.Size, tp_size: int) -> Optional[int]:
+    """
+    Given the current shape of parameter and the shape of parameter before sharding,
+    return the dimension along which the parameter is sharded when using tensor parallel.
+    If tensor parallel is not used, return None.
+
+    Args:
+        current_shape (torch.Size): The current shape of parameter after sharding.
+        original_shape (torch.Size): The shape of parameter before sharding.
+        tp_size (int): The size of tp group.
+
+    Returns:
+        Optional[int]: The dimension along which parameter is partitioned.
+    """
+    partition_dim = None
+    for dim, length in enumerate(original_shape):
+        if length > current_shape[dim]:
+            partition_dim = dim
+            break
+    if partition_dim is not None:
+        assert original_shape[partition_dim] == tp_size * current_shape[partition_dim], \
+            f"The parameter isn't evenly distributed among tensor parallel group: \
+                shape before sharding {original_shape}, shape after sharding {current_shape}"
+
+    return partition_dim
+
+
+def gather_distributed_optimizer_states(state: OrderedDict,
+                                        param: torch.Tensor,
+                                        original_shape: torch.Size,
+                                        tp_group: ProcessGroup,
+                                        inplace: bool = True) -> OrderedDict:
+    """
+    With given parameter and its optimizer states,
+    gather the complete optimizer state for saving
+    if the passed in param is distributed under tp setting.
+
+    Args:
+        state (OrderedDict): Optimizer states of given parameter, might be distributed among tp group if tp is used.
+        param (torch.Tensor): The given parameter, might be d_tensor.
+        original_shape (torch.Size): The size of parameter before sharding.
+        tp_group (ProcessGroup): The process group of tensor parallel.
+        inplace (bool, optional): If set to True, will update the values of passed in state dict to the gathered states. Defaults to True.
+
+    Returns:
+        OrderedDict: The complete optimizer state of given parameter.
+    """
+    state_ = state if inplace else copy.deepcopy(state)
+    if is_distributed_tensor(param) or is_customized_distributed_tensor(param):
+        tp_size = dist.get_world_size(tp_group)
+        partition_dim = search_tp_partition_dim(param.shape, original_shape, tp_size)
+        if partition_dim is not None:
+            for k, v in state.items():
+                if isinstance(v, torch.Tensor) and k != 'step':
+                    v = v.cuda()
+                    gather_tensor = [torch.zeros_like(v) for _ in range(tp_size)]
+                    dist.all_gather(gather_tensor, v, group=tp_group)
+                    param_state = torch.stack(gather_tensor, dim=partition_dim)
+                    state_[k] = param_state.detach().cpu()
+                    if inplace:
+                        del v
+    return state_
 
 
 def save_state_dict_shards(sharded_state_dict: Iterator[Tuple[OrderedDict, int]],
