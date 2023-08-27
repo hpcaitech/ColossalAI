@@ -106,23 +106,6 @@ class OPTPolicy(Policy):
                                                                ),
                                                            ])
 
-        # optimization configuration
-        if self.shard_config.enable_fused_normalization:
-            self.append_or_create_submodule_replacement(description=SubModuleReplacementDescription(
-                suffix="final_layer_norm", target_module=FusedLayerNorm, ignore_if_not_exist=True),
-                                                        policy=policy,
-                                                        target_key=OPTDecoder)
-            self.append_or_create_submodule_replacement(description=[
-                SubModuleReplacementDescription(suffix="self_attn_layer_norm",
-                                                target_module=FusedLayerNorm,
-                                                ignore_if_not_exist=True),
-                SubModuleReplacementDescription(suffix="final_layer_norm",
-                                                target_module=FusedLayerNorm,
-                                                ignore_if_not_exist=True)
-            ],
-                                                        policy=policy,
-                                                        target_key=OPTDecoderLayer)
-
         # use flash attention
         if self.shard_config.enable_flash_attention:
             self.append_or_create_method_replacement(description={
@@ -139,6 +122,23 @@ class OPTPolicy(Policy):
             },
                                                      policy=policy,
                                                      target_key=OPTDecoderLayer)
+
+        # optimization configuration
+        if self.shard_config.enable_fused_normalization:
+            self.append_or_create_submodule_replacement(description=SubModuleReplacementDescription(
+                suffix="final_layer_norm", target_module=FusedLayerNorm, ignore_if_not_exist=True),
+                                                        policy=policy,
+                                                        target_key=OPTDecoder)
+            self.append_or_create_submodule_replacement(description=[
+                SubModuleReplacementDescription(suffix="self_attn_layer_norm",
+                                                target_module=FusedLayerNorm,
+                                                ignore_if_not_exist=True),
+                SubModuleReplacementDescription(suffix="final_layer_norm",
+                                                target_module=FusedLayerNorm,
+                                                ignore_if_not_exist=True)
+            ],
+                                                        policy=policy,
+                                                        target_key=OPTDecoderLayer)
 
         return policy
 
