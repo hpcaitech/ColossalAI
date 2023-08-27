@@ -51,60 +51,60 @@ class OPTPolicy(Policy):
                     target_module=VocabParallelEmbedding1D,
                 )
             ])
-            policy[OPTDecoderLayer] = ModulePolicyDescription(attribute_replacement={
-                "self_attn.embed_dim": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
-                "self_attn.num_heads": self.model.config.num_attention_heads // self.shard_config.tensor_parallel_size
-            },
-                                                              sub_module_replacement=[
-                                                                  SubModuleReplacementDescription(
-                                                                      suffix="self_attn.q_proj",
-                                                                      target_module=Linear1D_Col,
-                                                                  ),
-                                                                  SubModuleReplacementDescription(
-                                                                      suffix="self_attn.k_proj",
-                                                                      target_module=Linear1D_Col,
-                                                                  ),
-                                                                  SubModuleReplacementDescription(
-                                                                      suffix="self_attn.v_proj",
-                                                                      target_module=Linear1D_Col,
-                                                                  ),
-                                                                  SubModuleReplacementDescription(
-                                                                      suffix="self_attn.out_proj",
-                                                                      target_module=Linear1D_Row,
-                                                                  ),
-                                                                  SubModuleReplacementDescription(
-                                                                      suffix="fc1",
-                                                                      target_module=Linear1D_Col,
-                                                                  ),
-                                                                  SubModuleReplacementDescription(
-                                                                      suffix="fc2",
-                                                                      target_module=Linear1D_Row,
-                                                                  ),
-                                                              ])
-
-            # policy[OPTAttention] = ModulePolicyDescription(
+            policy[OPTDecoderLayer] = ModulePolicyDescription(
             #     attribute_replacement={
-            #     "embed_dim": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
-            #     "num_heads": self.model.config.num_attention_heads // self.shard_config.tensor_parallel_size
+            #     "self_attn.embed_dim": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
+            #     "self_attn.num_heads": self.model.config.num_attention_heads // self.shard_config.tensor_parallel_size
             # },
-            #                                                sub_module_replacement=[
-            #                                                    SubModuleReplacementDescription(
-            #                                                        suffix="q_proj",
-            #                                                        target_module=Linear1D_Col,
-            #                                                    ),
-            #                                                    SubModuleReplacementDescription(
-            #                                                        suffix="k_proj",
-            #                                                        target_module=Linear1D_Col,
-            #                                                    ),
-            #                                                    SubModuleReplacementDescription(
-            #                                                        suffix="v_proj",
-            #                                                        target_module=Linear1D_Col,
-            #                                                    ),
-            #                                                    SubModuleReplacementDescription(
-            #                                                        suffix="out_proj",
-            #                                                        target_module=Linear1D_Row,
-            #                                                    ),
-            #                                                ])
+                sub_module_replacement=[
+            #   SubModuleReplacementDescription(
+            #       suffix="self_attn.q_proj",
+            #       target_module=Linear1D_Col,
+            #   ),
+            #   SubModuleReplacementDescription(
+            #       suffix="self_attn.k_proj",
+            #       target_module=Linear1D_Col,
+            #   ),
+            #   SubModuleReplacementDescription(
+            #       suffix="self_attn.v_proj",
+            #       target_module=Linear1D_Col,
+            #   ),
+            #   SubModuleReplacementDescription(
+            #       suffix="self_attn.out_proj",
+            #       target_module=Linear1D_Row,
+            #   ),
+                    SubModuleReplacementDescription(
+                        suffix="fc1",
+                        target_module=Linear1D_Col,
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="fc2",
+                        target_module=Linear1D_Row,
+                    ),
+                ])
+
+            policy[OPTAttention] = ModulePolicyDescription(attribute_replacement={
+                "embed_dim": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
+                "num_heads": self.model.config.num_attention_heads // self.shard_config.tensor_parallel_size
+            },
+                                                           sub_module_replacement=[
+                                                               SubModuleReplacementDescription(
+                                                                   suffix="q_proj",
+                                                                   target_module=Linear1D_Col,
+                                                               ),
+                                                               SubModuleReplacementDescription(
+                                                                   suffix="k_proj",
+                                                                   target_module=Linear1D_Col,
+                                                               ),
+                                                               SubModuleReplacementDescription(
+                                                                   suffix="v_proj",
+                                                                   target_module=Linear1D_Col,
+                                                               ),
+                                                               SubModuleReplacementDescription(
+                                                                   suffix="out_proj",
+                                                                   target_module=Linear1D_Row,
+                                                               ),
+                                                           ])
 
         # optimization configuration
         if self.shard_config.enable_fused_normalization:
