@@ -530,7 +530,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                     ]
                     dist.all_gather(gather_tensor, v.cuda(), group=self.dp_pg)
                     param_state = torch.stack(gather_tensor).view(-1)[:working_param.numel()].reshape_as(
-                        working_param).to(v.device)
+                        working_param).cpu()
                     zero_state[param][k] = param_state
 
         states_dict = self._pack_state(zero_state)
@@ -589,7 +589,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                     state_tensor = [torch.zeros(v.shape, device='cuda', dtype=v.dtype) for _ in range(self._world_size)]
                     dist.all_gather(state_tensor, v.cuda(), group=self.dp_pg)
                     state_tensor = torch.stack(state_tensor).view(-1)[:working_param.numel()].reshape_as(
-                        working_param).to(v.device)
+                        working_param).cpu()
                     current_block_size += state_tensor.numel()
                     current_block[k] = state_tensor
 
