@@ -1,5 +1,4 @@
 import copy
-import gc
 import logging
 import os
 from pathlib import Path
@@ -112,6 +111,7 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
 
         state_dict_sharder = StateDictSharder(size_per_shard)
         dp_size = dist.get_world_size(dp_group)
+        param_info = optimizer.param_info
 
         for param, state in optimizer.optim.state.items():
 
@@ -134,12 +134,11 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
                             working_param)
                         state_[k] = param_state.detach().cpu()
                 param = working_param
-                param_id = optimizer.param_info['param2id'][id(working_param)]
-            else:
-                param_id = optimizer.param_info['param2id'][id(param)]
+
+            param_id = param_info['param2id'][id(param)]
 
             # Then hanlde TP Shards
-            original_shape = optimizer.param_info['param2shape'][id(param)]
+            original_shape = param_info['param2shape'][id(param)]
             state_ = gather_distributed_optimizer_states(state_, param, original_shape, tp_group)
             state_ = {k: v.detach().cpu() for k, v in state_.items()}
             block, block_size = state_dict_sharder.append_optim_state(param_id, state_)
@@ -421,8 +420,13 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
                 for filename in os.listdir(tmp_index_file_folder):
                     stage_index_file = CheckpointIndexFile.from_file(os.path.join(tmp_index_file_folder, filename))
                     final_index_file.metadata["total_size"] += stage_index_file.metadata["total_size"]
-                    for states, states_filename in stage_index_file.weight_map.items():
-                        final_index_file.append_weight_map(states, states_filename)
+                    for param_id, state_filename in stage_index_file.weight_map.items():
+                        if param_id not in final_index_file.weight_map:
+                            final_index_file.append_weight_map(param_id, state_filename)
+                        else:
+                            # If parameter is shared with other stage, delete this copy of optimizer state.
+                            # For example: only save one copy of optimizer states between embedding weight & lm_head.
+                            os.remove(os.path.join(checkpoint, state_filename))
 
                 # Store param groups.
                 final_index_file.append_meta_data("param_groups", param_group_file)

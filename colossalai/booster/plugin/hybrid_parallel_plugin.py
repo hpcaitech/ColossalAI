@@ -1,7 +1,7 @@
 import random
 from contextlib import nullcontext
 from functools import partial
-from typing import Any, Callable, Iterator, List, Optional, Tuple, Union
+from typing import Any, Callable, Iterator, List, Optional, OrderedDict, Tuple, Union
 
 import numpy as np
 import torch
@@ -116,7 +116,8 @@ def get_param_info(optim: Optimizer):
     # 2. A mapping from param address (obtained using id(param)) to integer param_id
     # 3. A mapping from integer param_id to param address.
     # 4. A mapping from param_address (obtained using id(param)) to the original shape of parameter before sharding.
-
+    if optim is None:
+        return {}
     param_info = {'param_groups': [], 'param2id': {}, 'id2param': {}, 'param2shape': {}}
     start_index = 0
     for group in optim.param_groups:
@@ -148,8 +149,8 @@ def init_pipeline_optimizer(optim: Optimizer, model: Module):
 
 class HybridParallelNaiveOptimizer(OptimizerWrapper):
 
-    def __init__(self, optim: Optimizer, model: Module, use_pipeline: bool):
-        self.param_info = get_param_info(optim)
+    def __init__(self, optim: Optimizer, model: Module, use_pipeline: bool, param_info: OrderedDict):
+        self.param_info = param_info
         if use_pipeline:
             init_pipeline_optimizer(optim, model)
         super().__init__(optim)
@@ -161,6 +162,7 @@ class HybridParallelAMPOptimizer(MixedPrecisionOptimizer):
                  optim: Optimizer,
                  model: Module,
                  use_pipeline: bool,
+                 param_info: OrderedDict,
                  precision: str = 'fp16',
                  initial_scale: float = 2**16,
                  min_scale: float = 1,
@@ -170,7 +172,7 @@ class HybridParallelAMPOptimizer(MixedPrecisionOptimizer):
                  hysteresis: int = 2,
                  max_scale: float = 2**32,
                  max_norm: float = 0):
-        self.param_info = get_param_info(optim)
+        self.param_info = param_info
         if use_pipeline:
             init_pipeline_optimizer(optim, model)
         super().__init__(optim, precision, initial_scale, min_scale, growth_factor, backoff_factor, growth_interval,
@@ -184,6 +186,7 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
             optimizer: Optimizer,
             model: Module,
             use_pipeline: bool,
+            param_info: OrderedDict,
             initial_scale: int = 2**16,    # grad scaler config
             min_scale: int = 1,
             growth_factor: float = 2.,
@@ -201,7 +204,7 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
             dp_process_group: Optional[ProcessGroup] = None,    # the dp pg for comm
             tp_process_group: Optional[ProcessGroup] = None,    # if using tp
             forced_dtype: Optional[torch.dtype] = None):
-        self.param_info = get_param_info(optimizer)
+        self.param_info = param_info
         if use_pipeline:
             init_pipeline_optimizer(optimizer, model)
         super().__init__(optimizer, initial_scale, min_scale, growth_factor, backoff_factor, growth_interval,
@@ -386,6 +389,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         dataloader: Optional[DataLoader] = None,
         lr_scheduler: Optional[LRScheduler] = None,
     ) -> Tuple[Module, OptimizerWrapper, Callable, DataLoader, LRScheduler]:
+        param_info = get_param_info(optimizer)
         if not isinstance(model, ModelWrapper):
             use_ddp = self.dp_size > 1 and self.pp_size == 1 and self.zero_stage == 0
             model = HybridParallelModule(model, self.precision, self.shard_config, self.dp_group, use_ddp,
@@ -396,19 +400,22 @@ class HybridParallelPlugin(PipelinePluginBase):
                     optimizer = HybridParallelAMPOptimizer(optimizer,
                                                            model,
                                                            use_pipeline=self.enable_pipeline_parallelism,
+                                                           param_info=param_info,
                                                            precision=self.precision,
                                                            max_norm=self.max_norm,
                                                            **self.amp_config)
                 else:
                     optimizer = HybridParallelNaiveOptimizer(optimizer,
                                                              model,
-                                                             use_pipeline=self.enable_pipeline_parallelism)
+                                                             use_pipeline=self.enable_pipeline_parallelism,
+                                                             param_info=param_info)
             else:
                 assert self.dp_size > 1, "Please use Zero when data parallel size is greater than 1."
                 assert self.precision != 'fp32', "Please set precision to 'fp16' or 'bf16' when using ZeRO."
                 optimizer = HybridParallelZeroOptimizer(optimizer,
                                                         model,
                                                         use_pipeline=self.enable_pipeline_parallelism,
+                                                        param_info=param_info,
                                                         dp_process_group=self.dp_group,
                                                         tp_process_group=self.tp_group,
                                                         verbose=True,
