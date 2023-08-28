@@ -7,7 +7,7 @@ from transformers.modeling_outputs import (
     CausalLMOutputWithPast,
     SequenceClassifierOutputWithPast,
 )
-from transformers.models.llama.modeling_llama import LlamaForCausalLM, LlamaForSequenceClassification, LlamaModel
+from transformers.models.llama.modeling_llama import LlamaForCausalLM, LlamaForSequenceClassification, LlamaModel, LlamaRMSNorm
 from transformers.utils import logging
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
@@ -19,6 +19,7 @@ class LlamaPipelineForwards:
     under pipeline setting.
     '''
 
+    @staticmethod
     def llama_model_forward(
         self: LlamaModel,
         input_ids: torch.LongTensor = None,
@@ -169,6 +170,7 @@ class LlamaPipelineForwards:
         # always return dict for imediate stage
         return {'hidden_states': hidden_states}
 
+    @staticmethod
     def llama_for_causal_lm_forward(
         self: LlamaForCausalLM,
         input_ids: torch.LongTensor = None,
@@ -276,6 +278,7 @@ class LlamaPipelineForwards:
             hidden_states = outputs.get('hidden_states')
             return {'hidden_states': hidden_states}
 
+    @staticmethod
     def llama_for_sequence_classification_forward(
         self: LlamaForSequenceClassification,
         input_ids: torch.LongTensor = None,
@@ -388,11 +391,99 @@ class LlamaPipelineForwards:
             return {'hidden_states': hidden_states}
 
 
+class LlamaInferenceForwards:
+    """
+    This class holds forwards for llama inference.
+    """
+
+    @staticmethod
+    def llama_model_forward(
+        self: LlamaModel,
+        input_ids: torch.LongTensor = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[
+            torch.LongTensor] = None,    # TODO: this can also be removed if we got sin,cos cached in inferinfo
+        past_key_values: Optional[List[
+            torch.FloatTensor]] = None,    #TODO: maybe removed after memory cache manager is done.
+        inputs_embeds: Optional[torch.FloatTensor] = None,
+        return_dict: Optional[bool] = None,
+        inferinfo=None,
+    ):
+        # only keep the basic items
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        # retrieve input_ids and inputs_embeds
+        if input_ids is not None and inputs_embeds is not None:
+            raise ValueError("You cannot specify both decoder_input_ids and decoder_inputs_embeds at the same time")
+        elif input_ids is not None:
+            batch_size, seq_length = input_ids.shape
+        elif inputs_embeds is not None:
+            batch_size, seq_length, _ = inputs_embeds.shape
+        else:
+            raise ValueError("You have to specify either decoder_input_ids or decoder_inputs_embeds")
+
+        seq_length_with_past = seq_length
+        past_key_values_length = 0
+
+        if past_key_values is not None:
+            past_key_values_length = past_key_values[0][0].shape[2]
+            seq_length_with_past = seq_length_with_past + past_key_values_length
+
+        if position_ids is None:
+            device = input_ids.device if input_ids is not None else inputs_embeds.device
+            position_ids = torch.arange(past_key_values_length,
+                                        seq_length + past_key_values_length,
+                                        dtype=torch.long,
+                                        device=device)
+            position_ids = position_ids.unsqueeze(0).view(-1, seq_length)
+        else:
+            position_ids = position_ids.view(-1, seq_length).long()
+
+        if inputs_embeds is None:
+            inputs_embeds = self.embed_tokens(input_ids)
+        # embed positions
+        if attention_mask is None:
+            attention_mask = torch.ones((batch_size, seq_length_with_past),
+                                        dtype=torch.bool,
+                                        device=inputs_embeds.device)
+        attention_mask = self._prepare_decoder_attention_mask(attention_mask, (batch_size, seq_length), inputs_embeds,
+                                                              past_key_values_length)
+
+        hidden_states = inputs_embeds
+
+        for idx, decoder_layer in enumerate(self.layers):
+            past_key_value = past_key_values[idx] if past_key_values is not None else None
+            layer_outputs = decoder_layer(
+                hidden_states,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                past_key_value=past_key_value,
+            )
+
+            hidden_states = layer_outputs[0]
+
+        hidden_states = self.norm(hidden_states)
+
+        if not return_dict:
+            return hidden_states
+        return BaseModelOutputWithPast(last_hidden_state=hidden_states,)
+
+
 def get_llama_flash_attention_forward():
 
     from transformers.models.llama.modeling_llama import LlamaAttention, apply_rotary_pos_emb
-
     from colossalai.kernel.cuda_native import AttnMaskType, ColoAttention
+    
+    try:
+        from vllm import pos_encoding_ops
+        rotary_embedding_neox = pos_encoding_ops.rotary_embedding_neox
+        HAS_VLLM_KERNERL = True
+    except: 
+        print("fall back to original rotary_embedding_neox of huggingface")
+        print("install vllm from https://github.com/vllm-project/vllm to accelerate your inference")
+        print("if falied to install vllm, please use this branch to install: https://github.com/tiandiao123/vllm/tree/setup_branch")
+        HAS_VLLM_KERNERL = False
+        
 
     def forward(
         self: LlamaAttention,
@@ -415,7 +506,12 @@ def get_llama_flash_attention_forward():
             kv_seq_len += past_key_value[0].shape[-2]
 
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
+        
+        if HAS_VLLM_KERNERL:
+            cos_sin_cache = torch.cat((cos, sin), dim=-1)
+            rotary_embedding_neox(position_ids, query_states, key_states, self.head_dim, cos_sin_cache)
+        else:
+            query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
 
         if past_key_value is not None:
             # reuse k, v, self_attention
@@ -450,3 +546,32 @@ def get_llama_flash_attention_forward():
         return attn_output, None, past_key_value
 
     return forward
+
+
+def get_llama_vllm_rmsnorm_forward():
+    try: 
+        from vllm import layernorm_ops
+        rms_norm = layernorm_ops.rms_norm
+        HAS_VLLM_KERNERL = True
+    except:
+        print("please install vllm kernels to install rmsnorm")
+        print("install vllm from https://github.com/vllm-project/vllm to accelerate your inference")
+        print("if falied to install vllm, please use this branch to install: https://github.com/tiandiao123/vllm/tree/setup_branch")
+        HAS_VLLM_KERNERL = False
+        
+    if HAS_VLLM_KERNERL:
+        def _vllm_rmsnorm_forward(self: LlamaRMSNorm, hidden_states: torch.Tensor):
+            x = hidden_states
+            out = torch.empty_like(x)
+            rms_norm(
+                out,
+                x,
+                self.weight.data,
+                self.variance_epsilon,
+            )
+
+            return out
+
+        return _vllm_rmsnorm_forward
+    else:
+        return None

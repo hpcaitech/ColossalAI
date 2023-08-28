@@ -1,5 +1,6 @@
 import importlib
 from dataclasses import dataclass
+from typing import Optional
 
 import torch.nn as nn
 
@@ -130,6 +131,12 @@ _POLICY_LIST = {
         PolicyLocation(file_name="chatglm", class_name="ChatGLMForConditionalGenerationPolicy"),
 }
 
+_INFER_POLICY_LIST = {
+    # LlaMa
+    "transformers.models.llama.modeling_llama.LlamaModel":
+        PolicyLocation(file_name="llama", class_name="LlamaModelInferPolicy")
+}
+
 
 def import_policy(policy_location: PolicyLocation) -> Policy:
     """
@@ -151,7 +158,7 @@ def _fullname(obj):
     return module + '.' + klass.__qualname__
 
 
-def get_autopolicy(model: nn.Module) -> Policy:
+def get_autopolicy(model: nn.Module, inference_only: Optional[bool] = False) -> Policy:
     r"""
     Return the auto policy for the model
 
@@ -162,7 +169,10 @@ def get_autopolicy(model: nn.Module) -> Policy:
         :class:`Policy`: The auto policy for the model
     """
     full_name = _fullname(model)
-    policy_location = _POLICY_LIST.get(full_name, None)
+    if inference_only:
+        policy_location = _INFER_POLICY_LIST.get(full_name, None)
+    else:
+        policy_location = _POLICY_LIST.get(full_name, None)
 
     if policy_location is None:
         raise NotImplementedError(
