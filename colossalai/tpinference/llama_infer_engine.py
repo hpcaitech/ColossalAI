@@ -5,7 +5,7 @@ from colossalai.cluster import ProcessGroupMesh
 from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.shardformer.inference import MemoryManager
 from colossalai.shardformer.policies.llama import LlamaForCausalLMPolicy
-from colossalai.tensor_parallel.tpinference.pollcies.llama import LlamaModelInferPolicy
+from colossalai.tpinference.pollcies.llama import LlamaModelInferPolicy
 from transformers import LlamaForCausalLM, LlamaTokenizer
 import time
 
