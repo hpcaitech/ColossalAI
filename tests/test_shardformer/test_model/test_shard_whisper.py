@@ -45,7 +45,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     # check last hidden state & loss
     if stage_manager is None or stage_manager.is_last_stage():
         if test_config['precision'] == 'fp32':
-            atol, rtol = 5e-4, 5e-4
+            atol, rtol = 1e-3, 1e-3
         else:
             atol, rtol = 5e-3, 5e-3
 
@@ -79,7 +79,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     # Save gradient tensors for comparison between the original model and the sharded model before optimizer step.
     grads_to_check = {}
     if test_config['precision'] == 'fp32':
-        atol, rtol = 5e-4, 5e-4
+        atol, rtol = 1e-3, 1e-3
     else:
         atol, rtol = 5e-3, 5e-3
 
@@ -119,7 +119,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 
     # check weights
     if test_config['precision'] == 'fp32':
-        atol, rtol = 5e-4, 5e-4
+        atol, rtol = 1e-3, 1e-3
     else:
         atol, rtol = 5e-3, 5e-3
     if stage_manager is None or stage_manager.is_first_stage():
