@@ -50,6 +50,7 @@ class ChatGLMPolicy(Policy):
         policy = {}
 
         use_sequence_parallel = self.shard_config.enable_sequence_parallelism
+        overlap = self.shard_config.enable_sequence_overlap
         if self.shard_config.enable_tensor_parallelism:
             policy[ChatGLMModel] = ModulePolicyDescription(attribute_replacement={},
                                                            sub_module_replacement=[
@@ -81,7 +82,8 @@ class ChatGLMPolicy(Policy):
                                                     target_module=col_nn.Linear1D_Col,
                                                     kwargs={
                                                         'seq_parallel': use_sequence_parallel,
-                                                        'seq_parallel_dim': 0
+                                                        'seq_parallel_dim': 0,
+                                                        'overlap': overlap
                                                     }),
                     SubModuleReplacementDescription(suffix="self_attention.dense",
                                                     target_module=col_nn.Linear1D_Row,
