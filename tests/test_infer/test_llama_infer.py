@@ -7,7 +7,7 @@ import numpy as np
 import colossalai
 from colossalai.logging import disable_existing_loggers
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
-from colossalai.tpinference.llama_infer_engine import TPCacheManagerInferenceEngine
+from colossalai.inference.tensor_parallel.llama_infer_engine import TPCacheManagerInferenceEngine
 
 os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
 TPSIZE = 1

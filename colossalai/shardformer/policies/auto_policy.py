@@ -134,17 +134,21 @@ _POLICY_LIST = {
 _INFER_POLICY_LIST = {
     # LlaMa
     "transformers.models.llama.modeling_llama.LlamaModel":
-        PolicyLocation(file_name="colossalai.tpinference.pollcies.llama", class_name="LlamaModelInferPolicy"),
-    "transformers.models.llama.modeling_llama.LlamaForCausalLMPolicy":
-        PolicyLocation(file_name="colossalai.tpinference.pollcies.llama", class_name="LlamaModelInferPolicy"),
+        PolicyLocation(file_name="llama", class_name="LlamaModelInferPolicy"),
+    "transformers.models.llama.modeling_llama.LlamaForCausalLM":
+        PolicyLocation(file_name="llama", class_name="LlamaModelInferPolicy"),
 }
 
 
-def import_policy(policy_location: PolicyLocation) -> Policy:
+def import_policy(policy_location: PolicyLocation, inference_only: Optional[bool] = False) -> Policy:
     """
     Dynamically import a Policy class based on the policy location.
     """
-    module_name = f"colossalai.shardformer.policies.{policy_location.file_name}"
+    
+    if inference_only:
+        module_name = f"colossalai.inference.tensor_parallel.pollcies.{policy_location.file_name}"
+    else:
+        module_name = f"colossalai.shardformer.policies.{policy_location.file_name}"
     module = importlib.import_module(module_name)
     return getattr(module, policy_location.class_name)
 
@@ -181,5 +185,5 @@ def get_autopolicy(model: nn.Module, inference_only: Optional[bool] = False) -> 
             f"Auto policy for {model.__class__.__qualname__} is not implemented\n. Supported models are {list(_POLICY_LIST.keys())}"
         )
     else:
-        policy = import_policy(policy_location)
+        policy = import_policy(policy_location, inference_only)
     return policy()

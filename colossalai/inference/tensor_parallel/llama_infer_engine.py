@@ -5,7 +5,8 @@ from colossalai.cluster import ProcessGroupMesh
 from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.shardformer.inference import MemoryManager
 from colossalai.shardformer.policies.llama import LlamaForCausalLMPolicy
-from colossalai.tpinference.pollcies.llama import LlamaModelInferPolicy
+from colossalai.inference.tensor_parallel.pollcies.llama import LlamaModelInferPolicy
+from colossalai.shardformer.policies.auto_policy import get_autopolicy
 from transformers import LlamaForCausalLM, LlamaTokenizer
 import time
 
@@ -146,7 +147,7 @@ class TPCacheManagerInferenceEngine:
         if self.bs >= 4:
             self.use_cache_manager = True
             self.init_and_insert_cache_manager()
-            policy = LlamaModelInferPolicy()
+            policy = get_autopolicy(self.model, inference_only=True)
         else:
             self.use_cache_manager = False
             policy = LlamaForCausalLMPolicy()
