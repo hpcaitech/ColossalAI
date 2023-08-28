@@ -21,6 +21,7 @@ class BatchInferState:
     block_loc: torch.Tensor = None
     start_loc: torch.Tensor = None
     seq_len: torch.Tensor = None
+    past_key_values_len: int = None
 
     is_context_stage: bool = False
     context_mem_index: torch.Tensor = None
@@ -34,7 +35,9 @@ class BatchInferState:
 
     @property
     def total_token_num(self):
-        return self.batch_size * self.max_len_in_batch
+        # return self.batch_size * self.max_len_in_batch
+        assert self.seq_len is not None and self.seq_len.size(0) > 0
+        return int(torch.sum(self.seq_len))
 
     def set_cache_manager(self, manager: MemoryManager):
         self.cache_manager = manager
