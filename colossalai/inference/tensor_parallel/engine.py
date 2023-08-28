@@ -20,7 +20,7 @@ from .kvcache_manager import MemoryManager
 DP_AXIS, PP_AXIS, TP_AXIS = 0, 1, 2
 
 
-class InferenceEngine:
+class TPInferEngine:
 
     def __init__(self, model: nn.Module, max_batch_size, max_input_len, max_output_len, tp_size=1) -> None:
         self.model = model
