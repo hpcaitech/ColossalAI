@@ -17,10 +17,11 @@ from colossalai.testing import (
 
 
 @clear_cache_before_run()
-@parameterize('stage', [2])
+@parameterize('stage', [1, 2])
 @parameterize('shard', [True, False])
-def check_low_level_zero_checkpointIO(stage: int, shard: bool):
-    plugin = LowLevelZeroPlugin(stage=stage, max_norm=1.0, initial_scale=32)
+@parameterize('offload', [True])
+def check_low_level_zero_checkpointIO(stage: int, shard: bool, offload: bool):
+    plugin = LowLevelZeroPlugin(stage=stage, max_norm=1.0, initial_scale=32, cpu_offload=offload)
     booster = Booster(plugin=plugin)
     model = resnet18()
     criterion = lambda x: x.mean()
@@ -50,7 +51,7 @@ def check_low_level_zero_checkpointIO(stage: int, shard: bool):
         check_state_dict_equal(model.state_dict(), new_model.state_dict(), False)
 
         booster.load_optimizer(new_optimizer, optimizer_ckpt_path)
-        check_state_dict_equal(optimizer.state_dict(), new_optimizer.state_dict(), False)
+        check_state_dict_equal(optimizer.optim.state_dict(), new_optimizer.optim.state_dict(), False)
 
 
 def run_dist(rank, world_size, port):
