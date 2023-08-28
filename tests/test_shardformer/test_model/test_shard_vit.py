@@ -45,7 +45,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 
         if org_model.__class__.__name__ == 'ViTModel':
             check_output_hidden_state(org_output, sharded_output, stage_manager, atol=atol, rtol=rtol)
-
         check_loss(org_loss, sharded_loss, atol=atol, rtol=rtol)
 
     # unwrap model
@@ -97,6 +96,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     torch.cuda.empty_cache()
 
 
+#TODO: num_microbatch size = 2 inf loss
 @parameterize('test_config', [{
     'tp_size': 2,
     'pp_size': 2,
@@ -130,6 +130,15 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     'enable_all_optimization': True,
     'use_lazy_init': False,
     'zero_stage': 2,
+    'precision': 'fp16',
+    'initial_scale': 1
+}, {
+    'tp_size': 1,
+    'pp_size': 2,
+    'num_microbatches': 4,
+    'enable_all_optimization': True,
+    'use_lazy_init': False,
+    'zero_stage': 1,
     'precision': 'fp16',
     'initial_scale': 1
 }])

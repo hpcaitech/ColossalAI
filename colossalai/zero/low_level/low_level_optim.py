@@ -316,7 +316,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
     def backward(self, loss, retain_graph=False):
         assert not(self._partition_grads and not self.require_grad_sync), \
             "ZeRO2(partition_grads) and gradient accumulation(no_sync) are not compatible"
-
         if self.mixed_precision_mixin is not None:
             loss = self.mixed_precision_mixin.pre_backward(loss)
 
@@ -332,6 +331,13 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             torch.cuda.synchronize()
 
         self.zero_grad()
+
+    def backward_by_grad(self, tensor, grad):
+        # in lower stage which grad is transfered by higher stage
+        # we need to pass the optim state down.
+        if self.mixed_precision_mixin is not None:
+            grad = self.mixed_precision_mixin.pre_backward_by_grad(tensor, grad)
+        torch.autograd.backward(tensor, grad)
 
     def zero_grad(self, set_to_none=True):
         """
@@ -358,7 +364,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
     def step(self, closure=None):
         assert closure is None, 'closure is not supported by step()'
-
         if not self.require_grad_sync:
             return
 
