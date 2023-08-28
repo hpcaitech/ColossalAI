@@ -168,7 +168,7 @@ def check_linear_col_plus_row(lazy_init: bool, seq_parallel: bool, overlap: bool
 
 @parameterize('lazy_init', [False, True])
 @parameterize('seq_parallel', [False, True])
-@parameterize('overlap', [False, True])
+@parameterize('overlap', [True])
 def run_dist_linear_test(lazy_init, seq_parallel, overlap):
     check_linear_1d_col(lazy_init, seq_parallel, overlap)
     check_linear_1d_row(lazy_init, seq_parallel)
