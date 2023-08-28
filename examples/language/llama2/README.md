@@ -109,11 +109,26 @@ This experiment was performed on 4 computing nodes with 32 A800 GPUs in total. T
 connected with RDMA and GPUs within one node are fully connected with NVLink.
 
 #### b. Running command
+
 ```bash
 cd scripts/benchmark_7B
-# First, modify hosts.txt with your real host ip or host name.
-# Then, add the system environment variables and load the running Python environment to the shell
-# if needed.
+```
+
+First, put your host file (`hosts.txt`) in this directory with your real host ip or host name.
+
+Here is a sample `hosts.txt`:
+```text
+hostname1
+hostname2
+hostname3
+hostname4
+```
+
+Then add environment variables to script if needed.
+
+Finally, run the following command to start training:
+
+```bash
 bash gemini.sh
 ```
 #### c. Results
