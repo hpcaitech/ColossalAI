@@ -1,22 +1,23 @@
+from enum import Enum
 from typing import Dict
 
 import torch
 
-from .inference_config import InferenceConfig
-
 __all__ = 'MicroBatchManager'
 
-PREFILL = 1
-GENERATE = 2
-DONE = 3
+
+class Status(Enum):
+    PREFILL = 1
+    GENERATE = 2
+    DONE = 3
 
 
 class MicroBatchDescription():
 
     def __init__(
         self,
-        mb_inputs: torch.Tensor,
-        interval_inputs,
+        mb_inputs: Dict[str, torch.Tensor],
+        interval_inputs: Dict[str, torch.Tensor],
         new_length: int,
     ) -> None:
         if mb_inputs is not None:
@@ -56,26 +57,31 @@ class MicroBatchDescription():
 
         """
         if self.cur_length == self.target_length:
-            return DONE
+            return Status.DONE
         else:
-            return GENERATE
+            return Status.GENERATE
 
 
 class MicroBatchManager():
+    '''
+    MicroBatchManager is a class that manages the micro batch.
 
-    def __init__(
-        self,
-        pp_inference_config: InferenceConfig,
-    ):
-        self.pp_inference_config = pp_inference_config
+    Args:
+        new_length (int): the new length of the input sequence.
+        micro_batch_size (int): the micro batch size.
+        micro_batch_buffer_size (int): the buffer size for micro batch. Normally, it should be the same as the number of pipeline stages.
+    '''
+
+    def __init__(self, new_length: int, micro_batch_size: int, micro_batch_buffer_size: int):
+        self.new_length = new_length
+        self.micro_batch_size = micro_batch_size
+        self.buffer_size = micro_batch_buffer_size
         self.mb_descrption_buffer = {}
         self.new_tokens_buffer = {}
-        self.buffer_size = pp_inference_config.micro_batch_buffer_size
         self.idx = 0
 
     def _add_descrption(self, mb_inputs: Dict[str, torch.Tensor], inter_inputs: Dict[str, torch.Tensor]):
-        self.mb_descrption_buffer[self.idx] = MicroBatchDescription(mb_inputs, inter_inputs,
-                                                                    self.pp_inference_config.new_length)
+        self.mb_descrption_buffer[self.idx] = MicroBatchDescription(mb_inputs, inter_inputs, self.new_length)
 
     def _update_descrption(self, present_kv):
         self.mb_descrption_buffer[self.idx].update(present_kv)
@@ -106,7 +112,7 @@ class MicroBatchManager():
         if len(self.mb_descrption_buffer) == 0:
             return False
         for mb in self.mb_descrption_buffer.values():
-            if mb.state != DONE:
+            if mb.state != Status.DONE:
                 return False
         self.mb_descrption_buffer.clear()
         return True
@@ -140,5 +146,5 @@ class MicroBatchManager():
 
         """
         if self.cur_descrption is None:
-            return PREFILL
+            return Status.PREFILL
         return self.cur_descrption.state

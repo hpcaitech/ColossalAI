@@ -1,10 +1,10 @@
 import torch
 import torch.distributed as dist
 import transformers
-from modeling.gpt2 import GPT2PipelineForwards
 
 import colossalai
-from colossalai.ppinference import InferenceConfig, PPInferEngine
+from colossalai.inference import PPInferEngine
+from colossalai.inference.pipeline.policy.gpt2_ppinfer import GPT2LMHeadModelPipelinePolicy
 
 colossalai.launch_from_torch(config={})
 
@@ -23,8 +23,7 @@ for k, v in inputs.items():
         inputs[k] = v.to('cuda').repeat(*new_shape)
 
 model = transformers.GPT2LMHeadModel(transformers.GPT2Config(n_layer=8))
-infer_config = InferenceConfig(pp_size=4, new_length=8, micro_batch_size=2)
-engine = PPInferEngine(infer_config, model, GPT2PipelineForwards.gpt2_lmhead_model_forward)
+engine = PPInferEngine(pp_size=4, model=model, model_policy=GPT2LMHeadModelPipelinePolicy(), new_length=8)
 
 output = engine.inference([inputs])
 if dist.get_rank() == 3:

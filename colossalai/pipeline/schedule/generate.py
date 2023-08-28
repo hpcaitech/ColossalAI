@@ -1,18 +1,17 @@
 from functools import partial
-from typing import Any, Iterable, Optional, Union
+from typing import Any, Dict, Iterable, Optional, Union
 
 import torch
 import torch.cuda
 from torch.nn import Module
 from torch.utils._pytree import tree_map
 
-from colossalai.interface import OptimizerWrapper
+from colossalai.inference.pipeline.microbatch_manager import MicroBatchManager, Status
 from colossalai.pipeline.p2p import PipelineP2PCommunication
 from colossalai.pipeline.stage_manager import PipelineStageManager
-from colossalai.ppinference.microbatch_manager import DONE, GENERATE, PREFILL, MicroBatchManager
 from colossalai.utils.cuda import get_current_device
 
-from ._utils import detach, get_batch_size, get_micro_batch, merge_batch, model_forward, retain_grad, to_device
+from ._utils import get_batch_size, get_micro_batch, model_forward, to_device
 from .base import PipelineSchedule
 
 
@@ -22,7 +21,7 @@ class GenerateSchedule(PipelineSchedule):
         super().__init__(stage_manager)
         self.comm = PipelineP2PCommunication(stage_manager)
         self.mb_manager = mb_manager
-        self.microbatch_size = mb_manager.pp_inference_config.micro_batch_size
+        self.microbatch_size = mb_manager.micro_batch_size
         self.batch: Optional[Any] = None
         self.batch_size: Optional[int] = None
         self.microbatch_offset: Optional[int] = None
@@ -58,7 +57,7 @@ class GenerateSchedule(PipelineSchedule):
 
     def _prepare_stage_inputs(self):
         # first stage and in prefill phase
-        if self.stage_manager.is_first_stage() and self.mb_manager.cur_state is PREFILL:
+        if self.stage_manager.is_first_stage() and self.mb_manager.cur_state is Status.PREFILL:
             pre_stage_out = None
             model_inputs = self.load_micro_batch()
             hidden_states = None
@@ -76,13 +75,13 @@ class GenerateSchedule(PipelineSchedule):
             hidden_states = pre_stage_out
         return pre_stage_out, model_inputs, hidden_states
 
-    def _prepare_next_token(self, input_ids):
+    def _prepare_next_token(self, inputs: Dict[str, torch.Tensor]):
         new_mask = self.mb_manager.cur_descrption.attn_mask
-        new_mask = torch.cat((new_mask, torch.ones((new_mask.shape[0], 1), dtype=torch.int64).cuda()), dim=-1)
+        new_mask = torch.cat((new_mask, torch.ones((new_mask.shape[0], 1), dtype=torch.int64, device='cuda')), dim=-1)
         self.mb_manager.cur_descrption.attn_mask = new_mask
         past_key_values = self.mb_manager.cur_descrption.kv_cache
 
-        return dict(input_ids=input_ids['new_token'], attention_mask=new_mask, past_key_values=past_key_values)
+        return dict(input_ids=inputs['new_token'], attention_mask=new_mask, past_key_values=past_key_values)
 
     def get_token_id(self, hidden_state: torch.Tensor) -> torch.Tensor:
         last_hidden_state = hidden_state[:, -1]
@@ -109,7 +108,7 @@ class GenerateSchedule(PipelineSchedule):
 
         # run by round
         for _ in range(self.round):
-            state = PREFILL
+            state = Status.PREFILL
             while self.mb_manager.is_micro_batch_done() is False:
                 pre_stage_out, model_inputs, hidden_states = self._prepare_stage_inputs()
 
@@ -120,7 +119,7 @@ class GenerateSchedule(PipelineSchedule):
                 if self.stage_manager.is_last_stage():
                     new_token = self.get_token_id(output_obj['hidden_states'])
                     self.mb_manager.add_new_tokens(new_token)
-                    if state is not DONE:
+                    if state is not Status.DONE:
                         self.comm.send_forward({'new_token': new_token})
                 else:
                     self.comm.send_forward({'hidden_states': output_obj['hidden_states']})
