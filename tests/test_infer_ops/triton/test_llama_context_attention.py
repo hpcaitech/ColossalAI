@@ -10,7 +10,7 @@ try:
     import triton
     import triton.language as tl
     from tests.test_infer_ops.triton.utils import benchmark, torch_context_attention
-    from colossalai.kernel.triton.context_attention import llama_context_attn_fwd
+    from colossalai.kernel.triton import llama_context_attn_fwd
     HAS_TRITON = True
 except ImportError:
     HAS_TRITON = False
