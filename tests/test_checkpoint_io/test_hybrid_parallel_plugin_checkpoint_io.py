@@ -18,20 +18,14 @@ from colossalai.testing import (
 )
 from tests.kit.model_zoo import model_zoo
 
-# TODO (Baizhou): Add test cases for: shard=False/PP+Zero
 
-
+# TODO (Baizhou): Add test cases for shard=False
 @clear_cache_before_run()
 @parameterize('shard', [True])
-@parameterize('model_name', ['transformers_gpt'])
+@parameterize('model_name', ['transformers_gpt', 'transformers_bert'])
 @parameterize('size_per_shard', [32])
 @parameterize('test_config', [{
     'tp_size': 2,
-    'pp_size': 2,
-    'num_microbatches': 4,
-    'precision': 'fp32',
-}, {
-    'tp_size': 1,
     'pp_size': 2,
     'num_microbatches': 4,
     'precision': 'fp32',
@@ -42,11 +36,14 @@ from tests.kit.model_zoo import model_zoo
 }, {
     'tp_size': 2,
     'pp_size': 1,
-    'precision': 'fp32',
-}, {
-    'tp_size': 2,
-    'pp_size': 1,
     'zero_stage': 2,
+    'precision': 'fp16',
+    'initial_scale': 1
+}, {
+    'tp_size': 1,
+    'pp_size': 2,
+    'num_microbatches': 4,
+    'zero_stage': 1,
     'precision': 'fp16',
     'initial_scale': 1
 }])
