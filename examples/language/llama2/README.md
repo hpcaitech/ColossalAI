@@ -1,13 +1,4 @@
-# Pretraining LLaMA: best practices for building LLaMA-like base models
-
-<p id="ColossalChat-Speed" align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/examples/images/LLaMA_pretraining.png" width=450/>
-</p>
-
-- 65-billion-parameter large model pretraining accelerated by 38%
-[[code]](https://github.com/hpcaitech/ColossalAI/tree/example/llama/examples/language/llama)
-[[blog]](https://www.hpc-ai.tech/blog/large-model-pretraining)
-
+# Pretraining LLaMA-2: best practices for building LLaMA-2-like base models
 
 ## Dataset
 
@@ -43,16 +34,10 @@ We follow the hyperparameter settings from the original LLaMA paper. We use Adam
 
 ### 1. Installation
 
-You should install ColossalAI of this branch from source.
+Please install the latest ColossalAI from source.
 
 ```bash
-git clone -b example/llama https://github.com/hpcaitech/ColossalAI.git
-```
-
-At the root directory of ColossalAI, run
-
-```bash
-CUDA_EXT=1 pip install .
+CUDA_EXT=1 pip install -U git+https://github.com/hpcaitech/ColossalAI
 ```
 
 Then install other dependencies.
@@ -61,12 +46,7 @@ Then install other dependencies.
 pip install -r requirements.txt
 ```
 
-If you want to use flash attention, which can accelerate training while saving memory, you should install:
-```bash
-pip install xformers
-```
-
-Additionally, we recommend you to use torch 1.13.1. We've tested our code on torch 1.13.1 and found it's compatible with our code and xformers.
+Additionally, we recommend you to use torch 1.13.1. We've tested our code on torch 1.13.1 and found it's compatible with our code and flash attention.
 
 ### 2. Download the dataset
 
@@ -77,7 +57,7 @@ The dataset can be automatically downloaded by using `huggingface/datasets`. You
 Yon can use colossalai run to launch multi-nodes training:
 ```bash
 colossalai run --nproc_per_node YOUR_GPU_PER_NODE --hostfile YOUR_HOST_FILE \
---master_addr YOUR_MASTER_ADDR pretrain.py --OTHER_CONFIGURATIONS
+pretrain.py --OTHER_CONFIGURATIONS
 ```
 
 Here is a sample hostfile:
@@ -94,7 +74,7 @@ Make sure master node can access all nodes (including itself) by ssh without pas
 Here is details about CLI arguments:
 
 - Model configuration: `-c`, `--config`. `7b`, `13b`, `30b` and `65b` are supported.
-- Booster plugin: `-p`, `--plugin`. `gemini`, `gemini_cpu`, `zero2` and `zero2_cpu` are supported. For more details, please refer to [Booster plugins](https://colossalai.org/docs/basics/booster_plugins).
+- Booster plugin: `-p`, `--plugin`. `gemini`, `gemini_auto`, `zero2` and `zero2_cpu` are supported. For more details, please refer to [Booster plugins](https://colossalai.org/docs/basics/booster_plugins).
 - Dataset path: `-d`, `--dataset`. The default dataset is `togethercomputer/RedPajama-Data-1T-Sample`. It support any dataset from `datasets` with the same data format as RedPajama.
 - Number of epochs: `-e`, `--num_epochs`. The default value is 1.
 - Local batch size: `-b`, `--batch_size`. Batch size per GPU. The default value is 2.
@@ -102,26 +82,27 @@ Here is details about CLI arguments:
 - Weight decay: `-w`, `--weight_decay`. The default value is 0.1.
 - Warmup steps: `-s`, `--warmup_steps`. The default value is 2000.
 - Gradient checkpointing: `-g`, `--gradient_checkpoint`. The default value is `False`. This saves memory at the cost of speed. You'd better enable this option when training with a large batch size.
-- Max length: `-l`, `--max_length`. The default value is 2048.
+- Max length: `-l`, `--max_length`. The default value is 4096.
 - Mixed precision: `-x`, `--mixed_precision`. The default value is "fp16". "fp16" and "bf16" are supported.
 - Save interval: `-i`, `--save_interval`. The interval (steps) of saving checkpoints. The default value is 1000.
 - Checkpoint directory: `-o`, `--save_dir`. The directoty path to save checkpoints. The default value is `checkpoint`.
 - Checkpoint to load: `-f`, `--load`. The checkpoint path to load. The default value is `None`.
 - Gradient clipping: `--gradient_clipping`. The default value is 1.0.
 - Tensorboard log directory: `-t`, `--tensorboard_dir`. The directory path to save tensorboard logs. The default value is `tb_logs`.
-- Flash attention: `-a`, `--flash_attention`. If you want to use flash attention, you must install [xformers](https://github.com/facebookresearch/xformers) first. The default value is `False`. This is helpful to accelerate training while saving memory. We recommend you always use flash attention.
+- Flash attention: `-a`, `--flash_attention`. If you want to use flash attention, you must install `flash-attn`. The default value is `False`. This is helpful to accelerate training while saving memory. We recommend you always use flash attention.
 
 
 ### 4. Shell Script Examples
 
-For your convenience, we provide some shell scripts to run benchmark with various gemini configurations.
-You can find them in `benchmark_65B` and `benchmark_7B` directory. The main command should be in the format of:
+For your convenience, we provide some shell scripts to run benchmark with various configurations.
+
+You can find them in `scripts/benchmark_7B` and `scripts/benchmark_70B` directory. The main command should be in the format of:
 ```bash
 colossalai run --nproc_per_node YOUR_GPU_PER_NODE --hostfile YOUR_HOST_FILE \
---master_addr YOUR_MASTER_ADDR benchmark.py --OTHER_CONFIGURATIONS
+benchmark.py --OTHER_CONFIGURATIONS
 ```
 Here we will show an example of how to run training
-llama pretraining with `gemini(gemini_auto plugin), batch_size=12, sequence_length=2048, gradient_checkpoint=True`.
+llama pretraining with `gemini, batch_size=16, sequence_length=4096, gradient_checkpoint=True, flash_attn=True`.
 
 #### a. Running environment
 This experiment was performed on 4 computing nodes with 32 A800 GPUs in total. The nodes are
@@ -129,16 +110,15 @@ connected with RDMA and GPUs within one node are fully connected with NVLink.
 
 #### b. Running command
 ```bash
-cd examples/language/llama/benchmark_65B/gemini_auto/
-# First, modify hostfile_example.txt with your real host ip or host name.
-# Second, replace the hostfile path and the master address in the shell.
-# Third, add the system environment variables and load the running Python environment to the shell
+cd scripts/benchmark_7B
+# First, modify hosts.txt with your real host ip or host name.
+# Then, add the system environment variables and load the running Python environment to the shell
 # if needed.
-bash batch12_seq2048_flash_attn.sh
+bash gemini.sh
 ```
 #### c. Results
 If you run the above command successfully, you will get the following results:
-`max memory usage:  58500.20 MB, throughput:  5.29 samples/s, TFLOPS/GPU:  176.84`.
+`max memory usage:  55491.10 MB, throughput:  24.26 samples/s, TFLOPS/GPU:  167.43`.
 
 
 ## Reference

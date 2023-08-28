@@ -126,7 +126,7 @@ def main():
     parser.add_argument('-w', '--weigth_decay', type=float, default=0.1, help='Weight decay')
     parser.add_argument('-s', '--warmup_steps', type=int, default=2000, help='Warmup steps')
     parser.add_argument('-g', '--grad_checkpoint', action='store_true', help='Use gradient checkpointing')
-    parser.add_argument('-l', '--max_length', type=int, default=2048, help='Max sequence length')
+    parser.add_argument('-l', '--max_length', type=int, default=4096, help='Max sequence length')
     parser.add_argument('-x', '--mixed_precision', default='fp16', choices=['fp16', 'bf16'], help='Mixed precision')
     parser.add_argument('-i', '--save_interval', type=int, default=1000, help='Save interval')
     parser.add_argument('-o', '--save_dir', type=str, default='checkpoint', help='Checkpoint directory')
