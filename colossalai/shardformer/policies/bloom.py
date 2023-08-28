@@ -215,34 +215,6 @@ class BloomModelPolicy(BloomPolicy):
         return []
 
 
-class BloomModelInferPolicy(BloomPolicy):
-
-    def __init__(self) -> None:
-        super().__init__()
-
-    def module_policy(self):
-        from transformers.models.bloom.modeling_bloom import BloomAttention, BloomBlock, BloomForCausalLM, BloomModel
-        policy = super().module_policy()
-        # TODO might want to set inference config to shard config
-
-        # NOTE ignore tp, pp at this moment?
-        if self.shard_config.enable_tensor_parallelism:
-            policy[BloomModel] = ModulePolicyDescription(
-                method_replacement={"forward": BloomInferenceForwards.bloom_model_forward})
-            policy[BloomForCausalLM] = ModulePolicyDescription(
-                method_replacement={"forward": BloomInferenceForwards.bloom_for_causal_lm_forward})
-            policy[BloomBlock] = ModulePolicyDescription(
-                method_replacement={
-                    "forward":
-                        BloomInferenceForwards.bloom_block_forward,
-                    "prepare_inputs_for_generation":
-                        BloomInferenceForwards.bloom_for_causal_lm_prepare_inputs_for_generation
-                })
-            policy[BloomAttention] = ModulePolicyDescription(
-                method_replacement={"forward": BloomInferenceForwards.bloom_attention_forward})
-        return policy
-
-
 class BloomForCausalLMPolicy(BloomPolicy):
 
     def module_policy(self):
@@ -279,6 +251,47 @@ class BloomForCausalLMPolicy(BloomPolicy):
                     self.pipeline_stage_manager.num_stages - 1: bloom_model.lm_head.weight
                 }]
         return []
+
+
+class BloomModelInferPolicy(BloomForCausalLMPolicy):
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    def module_policy(self):
+        from transformers.models.bloom.modeling_bloom import BloomAttention, BloomBlock, BloomForCausalLM, BloomModel
+        policy = super().module_policy()
+        # NOTE set inference mode to shard config
+        self.shard_config._infer()
+
+        if self.shard_config.enable_tensor_parallelism:
+
+            method_replacement = {
+                'forward':
+                    BloomInferenceForwards.bloom_for_causal_lm_forward,
+                'prepare_inputs_for_generation':
+                    BloomInferenceForwards.bloom_for_causal_lm_prepare_inputs_for_generation
+            }
+            self.append_or_create_method_replacement(description=method_replacement,
+                                                     policy=policy,
+                                                     target_key=BloomForCausalLM)
+
+            method_replacement = {'forward': BloomInferenceForwards.bloom_model_forward}
+            self.append_or_create_method_replacement(description=method_replacement,
+                                                     policy=policy,
+                                                     target_key=BloomModel)
+
+            method_replacement = {'forward': BloomInferenceForwards.bloom_block_forward}
+            self.append_or_create_method_replacement(description=method_replacement,
+                                                     policy=policy,
+                                                     target_key=BloomBlock)
+
+            method_replacement = {'forward': BloomInferenceForwards.bloom_attention_forward}
+            self.append_or_create_method_replacement(description=method_replacement,
+                                                     policy=policy,
+                                                     target_key=BloomAttention)
+
+        return policy
 
 
 class BloomForSequenceClassificationPolicy(BloomPolicy):

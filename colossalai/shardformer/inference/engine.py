@@ -11,9 +11,11 @@ from transformers.tokenization_utils_base import BatchEncoding
 
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.shardformer import ShardConfig, ShardFormer
-from colossalai.shardformer.inference import BatchInferState, MemoryManager
 # from colossalai.shardformer.policies.bloom import BloomModelInferPolicy
 from colossalai.shardformer.policies.auto_policy import get_autopolicy
+
+from .batch_infer_state import BatchInferState
+from .kvcache_manager import MemoryManager
 
 DP_AXIS, PP_AXIS, TP_AXIS = 0, 1, 2
 
@@ -189,18 +191,20 @@ class InferenceEngine:
         else:
             batch_size = inputs.shape[0]
 
-        block_loc = torch.empty(batch_size, self.max_input_len + self.max_output_len, dtype=torch.long, device="cuda")
+        # block_loc = torch.empty(batch_size, self.max_input_len + self.max_output_len, dtype=torch.long, device="cuda")
         seq_start_indexes = torch.zeros(batch_size, dtype=torch.int32, device="cuda")
         seq_lengths = torch.zeros(batch_size, dtype=torch.int32, device="cuda")
         start_index = 0
+
+        max_len_in_batch = -1
         if isinstance(inputs, BatchEncoding):
             for i, attn_mask in enumerate(attn_masks):
                 curr_seq_len = torch.sum(attn_mask)
                 seq_lengths[i] = curr_seq_len
                 seq_start_indexes[i] = start_index
                 start_index += curr_seq_len
+                max_len_in_batch = curr_seq_len if curr_seq_len > max_len_in_batch else max_len_in_batch
         else:
-            max_len_in_batch = -1
             for i, input_ids in enumerate(inputs):
                 curr_seq_len = len(input_ids)
                 seq_lengths[i] = curr_seq_len
@@ -208,6 +212,7 @@ class InferenceEngine:
                 start_index += curr_seq_len
                 max_len_in_batch = curr_seq_len if curr_seq_len > max_len_in_batch else max_len_in_batch
 
+        block_loc = torch.empty((batch_size, self.max_input_len + self.max_output_len), dtype=torch.long, device="cuda")
         batch_infer_state = BatchInferState(batch_size, max_len_in_batch)
         batch_infer_state.seq_len = seq_lengths.to('cuda')    # might want to assign specific device
         batch_infer_state.start_loc = seq_start_indexes.to('cuda')

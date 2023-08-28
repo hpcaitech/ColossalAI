@@ -881,7 +881,6 @@ class BloomInferenceForwards:
 
         # NOTE we might want to store a single 1D alibi(length is #heads) in model
         alibi = generate_alibi(self.num_heads).contiguous().cuda()
-        print(f"    self.num_heads = {self.num_heads}")
         # alibi = self.build_alibi_tensor(attention_mask, self.num_heads, dtype=hidden_states.dtype)
 
         causal_mask = self._prepare_attn_mask(
@@ -1153,14 +1152,23 @@ class BloomInferenceForwards:
             b_seq_len = infer_state.seq_len[:batch_size]
             q = query_layer.reshape(-1, H, D_HEAD)
 
-            print(f"    k.shape: {k.shape}")
-            print(f"    infer_state.context_mem_index: {infer_state.context_mem_index}")
-            print(f"    mem_manager.key_buffer[layer_id].shape: {mem_manager.key_buffer[layer_id].shape}")
             copy_kv_cache_to_dest(k, infer_state.context_mem_index, mem_manager.key_buffer[layer_id])
             copy_kv_cache_to_dest(v, infer_state.context_mem_index, mem_manager.value_buffer[layer_id])
 
             # output = self.output[:batch_size*q_length, :, :]
             output = torch.empty_like(q)
+
+            # temp for testing
+            if not dist.is_initialized() or dist.get_rank() == 0:
+                print(f"  cp3")
+                print(f"  q.shape: {q.shape}")
+                print(f"  k.shape: {k.shape}")
+                print(f"  v.shape: {v.shape}")
+                print(f"  output.shape: {output.shape}")
+                print(f"  b_start_loc: {b_start_loc}")
+                print(f"  b_seq_len: {b_seq_len}")
+                print(f"  max_input_len: {max_input_len}")
+                print(f"  alibi: {alibi}")
 
             bloom_context_attn_fwd(q, k, v, output, b_start_loc, b_seq_len, max_input_len, alibi)
 
