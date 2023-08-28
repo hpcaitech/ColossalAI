@@ -24,6 +24,7 @@ from .utils import (
     get_optimizer_base_filenames,
     get_shard_filename,
     is_safetensors_available,
+    load_param_groups_into_optimizer,
     load_shard_state_dict,
     load_state_dict_into_model,
     save_param_groups,
@@ -259,7 +260,7 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
 
         Args:
             model (nn.Module): The model to be loaded.
-            index_file_path (str): Path to the index file of checkpointing folder.
+            checkpoint_index_file (str): Path to the index file of checkpointing folder.
             strict (bool, optional): For name matching during loading state_dict. Defaults to False.
                                      This argument should be manually set to False since params on same device might be stored in different files.
         """
@@ -440,16 +441,43 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
                              f"You can find where each parameters has been saved in the "
                              f"index located at {final_index_file_path}.")
 
-    def load_sharded_optimizer(self, optimizer: Optimizer, index_file_path: str, prefix: str = ""):
+    def load_sharded_optimizer(self, optimizer: OptimizerWrapper, checkpoint_index_file: str, prefix: str = ""):
         """
         Load sharded optimizer with the given path to index file of checkpoint folder.
 
         Args:
             optimizer (OptimizerWrapper): The optimizer to be loaded.
-            index_file_path (str): Path to the index file of checkpointing folder.
+            checkpoint_index_file (str): Path to the index file of checkpointing folder.
             prefix (str): Not used.
         """
-        pass
+        # Read checkpoint index file.
+        ckpt_index_file = CheckpointIndexFile.from_file(checkpoint_index_file)
+
+        # Load param_groups
+        param_group_path = ckpt_index_file.get_param_group_filename()
+        if param_group_path is None:
+            raise RuntimeError(f'Invalid index file path {checkpoint_index_file} for an optimizer. \
+                               Lacking param group file under current directory.')
+        saved_groups = torch.load(param_group_path)
+
+        updated_groups = []
+
+        # A mapping from integer id to parameter object.
+        # IDs should be obtained through saved param2id mapping in optimizer.param_info.
+        id_map = {}
+
+        for old_pg, saved_pg in zip(optimizer.optim.param_groups, saved_groups):
+
+            # update id_map
+            for param in old_pg['params']:
+                param_id = optimizer.param_info['param2id'][id(param)]
+                id_map[param_id] = param
+
+            # obtain updated param group
+            new_pg = copy.deepcopy(saved_pg)
+            new_pg['params'] = old_pg['params']    # The parameters in the same group shouln't change.
+            updated_groups.append(new_pg)
+        optimizer.optim.__dict__.update({'param_groups': updated_groups})
 
     def load_unsharded_model(self, model: nn.Module, checkpoint: str, strict: bool = True):
         # TODO(Baizhou): support this feature after implementing complete state_dict collection
