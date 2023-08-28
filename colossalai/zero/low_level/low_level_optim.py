@@ -80,9 +80,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             tp_process_group: Optional[ProcessGroup] = None,    # if using tp
             forced_dtype: Optional[torch.dtype] = None):
 
-        # TODO:
-        # 1. state_dict for checkpoint IO
-
         super(LowLevelZeroOptimizer, self).__init__(optim=optimizer)
         self._dtype = self.optim.param_groups[0]['params'][0].dtype
         self._logger = get_dist_logger()
@@ -556,7 +553,8 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                         if padding_size > 0:
                             v = torch.nn.functional.pad(v, [0, padding_size])
                         v_list = v.split(v.numel() // self._world_size)
-                        zero_state_dict['state'][param_idx][k] = v_list[self._local_rank].detach()
+                        device = 'cpu' if self._cpu_offload else 'cuda'
+                        zero_state_dict['state'][param_idx][k] = v_list[self._local_rank].to(device).detach()
 
         self.optim.load_state_dict(zero_state_dict)
         zero_state_dict = dict()

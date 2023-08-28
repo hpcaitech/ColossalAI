@@ -19,7 +19,7 @@ from colossalai.testing import (
 @clear_cache_before_run()
 @parameterize('stage', [1, 2])
 @parameterize('shard', [True, False])
-@parameterize('offload', [True])
+@parameterize('offload', [False, True])
 def check_low_level_zero_checkpointIO(stage: int, shard: bool, offload: bool):
     plugin = LowLevelZeroPlugin(stage=stage, max_norm=1.0, initial_scale=32, cpu_offload=offload)
     booster = Booster(plugin=plugin)
