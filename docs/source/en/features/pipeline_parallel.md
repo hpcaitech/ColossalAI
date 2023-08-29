@@ -81,7 +81,7 @@ from colossalai.core import global_context as gpc
 from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.trainer import Trainer, hooks
 from colossalai.utils import MultiTimer, get_dataloader
-from colossalai.context import ParallelMode
+from colossalai.legacy.context import ParallelMode
 from colossalai.pipeline.pipelinable import PipelinableContext
 
 from titans.dataloader.cifar10 import build_cifar

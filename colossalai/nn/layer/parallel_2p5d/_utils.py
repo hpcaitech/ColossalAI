@@ -1,6 +1,6 @@
-from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.global_variables import tensor_parallel_env as env
+from colossalai.legacy.context.parallel_mode import ParallelMode
 
 
 def get_tesseract_dim_dep_from_env():
@@ -18,8 +18,8 @@ def get_tesseract_dim_dep_from_env():
 
 def assert_tesseract_initialization():
     assert gpc.is_initialized(ParallelMode.PARALLEL_2P5D_COL) and \
-           gpc.is_initialized(ParallelMode.PARALLEL_2P5D_ROW) and \
-           gpc.is_initialized(ParallelMode.PARALLEL_2P5D_DEP) and \
-           gpc.is_initialized(ParallelMode.PARALLEL_2P5D_XZ), \
-           'Both PARALLEL_2P5D_COL, PARALLEL_2P5D_ROW, PARALLEL_2P5D_DEP and PARALLEL_2P5D_XZ ' \
-           'must be initialized by the process group initializer'
+        gpc.is_initialized(ParallelMode.PARALLEL_2P5D_ROW) and \
+        gpc.is_initialized(ParallelMode.PARALLEL_2P5D_DEP) and \
+        gpc.is_initialized(ParallelMode.PARALLEL_2P5D_XZ), \
+        'Both PARALLEL_2P5D_COL, PARALLEL_2P5D_ROW, PARALLEL_2P5D_DEP and PARALLEL_2P5D_XZ ' \
+        'must be initialized by the process group initializer'

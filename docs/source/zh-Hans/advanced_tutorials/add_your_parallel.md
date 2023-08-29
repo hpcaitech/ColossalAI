@@ -24,7 +24,7 @@
 并行通常由进程组来管理，参与相同并行算法的进程被置于同一进程组。对于不同的并行算法，需要创建不同的进程组。
 Colossal-AI 为用户提供了一个全局 context，使他们能够轻松地管理进程组。如果你想添加新的进程组，你可以很容易地定义一个新的类并在你的配置文件中设置它。为了定义你自己的进程组创建方式，你可以按照下面的步骤来创建一个新的分布式初始化。
 
-1. 在 `colossalai.context.parallel_mode.ParallelMode` 中添加你自己的并行模式。
+1. 在 `colossalai.legacy.context.parallel_mode.ParallelMode` 中添加你自己的并行模式。
     ```python
     class ParallelMode(Enum):
         GLOBAL = 'global'
@@ -35,7 +35,7 @@ Colossal-AI 为用户提供了一个全局 context，使他们能够轻松地管
         NEW_MODE = 'new_mode'  # define your mode here
     ```
 
-2. 创建一个 `ProcessGroupInitializer`。 你可以参考 `colossalai.context.dist_group_initializer` 中给出的例子，前六个参数是固定的。
+2. 创建一个 `ProcessGroupInitializer`。 你可以参考 `colossalai.legacy.context.dist_group_initializer` 中给出的例子，前六个参数是固定的。
 `ParallelContext` 将为你传入这些参数。如果你需要设置其他参数，可以像下面的例子中的 `arg1, arg2` 一样，在后面添加它。
 最后，通过添加装饰器 `@DIST_GROUP_INITIALIZER.register_module` 将你的初始化程序注册到注册表。
     ```python

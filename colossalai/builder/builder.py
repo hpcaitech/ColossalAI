@@ -35,7 +35,7 @@ def build_from_registry(config, registry: Registry):
         `registry <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/registry/__init__.py>`_.
 
     Args:
-        config (dict or :class:`colossalai.context.colossalai.context.Config`): information
+        config (dict or :class:`colossalai.legacy.context.colossalai.legacy.context.Config`): information
             used in the construction of the return object.
         registry (:class:`Registry`): A registry specifying the type of the return object
 
@@ -64,8 +64,8 @@ def build_gradient_handler(config, model, optimizer):
     `model` and `optimizer`.
 
     Args:
-        config (dict or :class:`colossalai.context.Config`): A python dict or
-            a :class:`colossalai.context.Config` object containing information
+        config (dict or :class:`colossalai.legacy.context.Config`): A python dict or
+            a :class:`colossalai.legacy.context.Config` object containing information
             used in the construction of the ``GRADIENT_HANDLER``.
         model (:class:`nn.Module`): A model containing parameters for the gradient handler
         optimizer (:class:`torch.optim.Optimizer`): An optimizer object containing parameters for the gradient handler

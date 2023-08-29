@@ -1,8 +1,10 @@
-import torch.nn as nn
-import torch.distributed as dist
 from typing import List, Tuple, Union
-from colossalai.context import ParallelMode
+
+import torch.distributed as dist
+import torch.nn as nn
+
 from colossalai.core import global_context as gpc
+from colossalai.legacy.context import ParallelMode
 
 
 class PipelineSharedModuleWrapper:

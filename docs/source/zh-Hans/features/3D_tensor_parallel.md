@@ -130,7 +130,7 @@ Weight of the second linear layer: torch.Size([512, 64])
 我们可以用一些随机输入来运行这个模型。
 
 ```python
-from colossalai.context import ParallelMode
+from colossalai.legacy.context import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.utils import get_current_device
 

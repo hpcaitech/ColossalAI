@@ -1,6 +1,6 @@
 import click
 
-from colossalai.context import Config
+from colossalai.legacy.context import Config
 
 from .run import launch_multi_processes
 

@@ -74,7 +74,7 @@ dali = dict(
 - Colossal-AI related modules
 ```python
 import colossalai
-from colossalai.context import ParallelMode
+from colossalai.legacy.context import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.nn.lr_scheduler import LinearWarmupLR
@@ -287,7 +287,7 @@ from colossalai import nn as col_nn
 from colossalai.registry import LAYERS, MODELS
 from colossalai.logging import get_dist_logger
 from colossalai.core import global_context as gpc
-from colossalai.context import ParallelMode
+from colossalai.legacy.context import ParallelMode
 from colossalai.builder.pipeline import partition_uniform
 from torch import dtype, nn
 from model_zoo.vit.vit import ViTBlock, ViTEmbedding, ViTHead
@@ -423,7 +423,7 @@ import os
 import colossalai
 
 import torch
-from colossalai.context import ParallelMode
+from colossalai.legacy.context import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.logging import get_dist_logger
 from colossalai.nn import CrossEntropyLoss

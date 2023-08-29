@@ -6,9 +6,9 @@ import torch.multiprocessing as mp
 
 import colossalai
 from colossalai.cli.benchmark.utils import find_all_configs, get_batch_data, profile_model
-from colossalai.context import Config
-from colossalai.context.random import reset_seeds
 from colossalai.core import global_context as gpc
+from colossalai.legacy.context import Config
+from colossalai.legacy.context.random import reset_seeds
 from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.testing import free_port
 from colossalai.utils import MultiTimer

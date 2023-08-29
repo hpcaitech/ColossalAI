@@ -7,8 +7,8 @@ from contextlib import contextmanager
 import torch.cuda
 from torch import Tensor
 
-from .seed_manager import SeedManager
 from ..parallel_mode import ParallelMode
+from .seed_manager import SeedManager
 
 _SEED_MANAGER = SeedManager()
 
@@ -53,11 +53,11 @@ def add_seed(parallel_mode: ParallelMode, seed: int, overwrite: bool = False):
     """Adds a seed to the seed manager for `parallel_mode`.
 
     Args:
-        parallel_mode (:class:`colossalai.context.ParallelMode`): The chosen parallel mode.
+        parallel_mode (:class:`colossalai.legacy.context.ParallelMode`): The chosen parallel mode.
         seed (int): The seed to be added
     Raises:
         AssertionError: Raises an AssertionError if `parallel_mode` is not an instance of
-            :class:`colossalai.context.ParallelMode` or the seed for `parallel_mode` has been added.
+            :class:`colossalai.legacy.context.ParallelMode` or the seed for `parallel_mode` has been added.
 
     Note:
         The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
@@ -70,7 +70,7 @@ def set_mode(parallel_mode: ParallelMode):
     """Sets the current mode of the seed manager.
 
     Args:
-        parallel_mode (:class:`colossalai.context.ParallelMode`): The chosen parallel mode.
+        parallel_mode (:class:`colossalai.legacy.context.ParallelMode`): The chosen parallel mode.
 
     Note:
         The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
@@ -83,7 +83,7 @@ def set_seed_states(parallel_mode: ParallelMode, state: Tensor):
     """Sets the state of the seed manager for `parallel_mode`.
 
     Args:
-        parallel_mode (:class:`colossalai.context.ParallelMode`): The chosen parallel mode.
+        parallel_mode (:class:`colossalai.legacy.context.ParallelMode`): The chosen parallel mode.
         state (:class:`torch.Tensor`): the state to be set.
 
     Raises:

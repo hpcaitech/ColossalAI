@@ -11,8 +11,8 @@ from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 from torch.distributed import ReduceOp
 from torch.optim import Optimizer
 
-from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
+from colossalai.legacy.context import ParallelMode
 from colossalai.nn.optimizer import ColossalaiOptimizer
 
 from ._fp16_optimizer import FP16Optimizer
@@ -57,7 +57,7 @@ class NaiveAMPModel(nn.Module):
     Args:
         model (torch.nn.Module): torch.nn.Module to be wrapped.
         output_to_fp32 (bool, optional): Whether cast output of this module into fp32. (Default: True)
-        parallel_mode (:class:`colossalai.context.ParallelMode`): Parallel group mode used in this module.
+        parallel_mode (:class:`colossalai.legacy.context.ParallelMode`): Parallel group mode used in this module.
                                                                   (Default: ``ParallelMode.DATA``)
         sync_buffer (bool, optional): whether to synchronize buffer. (Default: True)
 

@@ -4,8 +4,9 @@
 import math
 
 import torch.distributed as dist
-from colossalai.context import Config
+
 from colossalai.global_variables import tensor_parallel_env as env
+from colossalai.legacy.context import Config
 from colossalai.registry import DIST_GROUP_INITIALIZER
 
 from ..parallel_mode import ParallelMode

@@ -5,7 +5,7 @@ from contextlib import contextmanager
 import torch.distributed as dist
 from torch.distributed import ProcessGroup
 
-from colossalai.context.singleton_meta import SingletonMeta
+from colossalai.legacy.context.singleton_meta import SingletonMeta
 
 
 class DistCoordinator(metaclass=SingletonMeta):

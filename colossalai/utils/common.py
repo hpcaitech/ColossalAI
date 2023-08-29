@@ -16,9 +16,9 @@ from torch import inf
 from torch.nn.parameter import Parameter
 
 from colossalai.constants import IS_TENSOR_PARALLEL, NUM_PARTITIONS, TENSOR_PARALLEL_ATTRIBUTES
-from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.global_variables import tensor_parallel_env as env
+from colossalai.legacy.context.parallel_mode import ParallelMode
 from colossalai.tensor import ColoParameter, ProcessGroup
 
 from .multi_tensor_apply import multi_tensor_applier
@@ -56,7 +56,7 @@ def sync_model_param(model, parallel_mode):
 
     Args:
         model (:class:`torch.nn.Module`): A pyTorch model on whose parameters you check the consistency.
-        parallel_mode (:class:`colossalai.context.ParallelMode`): Parallel mode to be checked.
+        parallel_mode (:class:`colossalai.legacy.context.ParallelMode`): Parallel mode to be checked.
 
     Note:
         The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found

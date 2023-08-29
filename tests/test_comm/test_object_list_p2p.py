@@ -9,9 +9,9 @@ from colossalai.communication.p2p import (
     send_forward,
     send_forward_recv_backward,
 )
-from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.initialize import launch
+from colossalai.legacy.context import ParallelMode
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 CONFIG = dict(parallel=dict(pipeline=2))

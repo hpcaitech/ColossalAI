@@ -5,7 +5,7 @@ import torch.nn as nn
 from torch.nn.modules.loss import _Loss
 from torch.optim import Optimizer
 
-from colossalai.context import Config
+from colossalai.legacy.context import Config
 
 from .amp_type import AMP_TYPE
 from .apex_amp import convert_to_apex_amp
@@ -23,7 +23,7 @@ def convert_to_amp(model: nn.Module, optimizer: Optimizer, criterion: _Loss, mod
         optimizer (:class:`torch.optim.Optimizer`): your optimizer object.
         criterion (:class:`torch.nn.modules.loss._Loss`): your loss function object.
         mode (:class:`colossalai.amp.AMP_TYPE`): amp mode.
-        amp_config (Union[:class:`colossalai.context.Config`, dict]): configuration for different amp modes.
+        amp_config (Union[:class:`colossalai.legacy.context.Config`, dict]): configuration for different amp modes.
 
     Returns:
         A tuple (model, optimizer, criterion).

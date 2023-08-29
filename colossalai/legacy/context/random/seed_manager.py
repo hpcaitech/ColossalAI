@@ -4,7 +4,7 @@
 import torch
 from torch import Tensor
 
-from colossalai.context.parallel_mode import ParallelMode
+from colossalai.legacy.context.parallel_mode import ParallelMode
 
 
 class SeedManager:
@@ -36,7 +36,7 @@ class SeedManager:
         """Sets the state of the seed manager for `parallel_mode`.
 
         Args:
-            parallel_mode (:class:`colossalai.context.ParallelMode`): The chosen parallel mode.
+            parallel_mode (:class:`colossalai.legacy.context.ParallelMode`): The chosen parallel mode.
             state (:class:`torch.Tensor`): the state to be set.
 
         Raises:
@@ -49,7 +49,7 @@ class SeedManager:
         """Sets the current mode of the seed manager.
 
         Args:
-            parallel_mode (:class:`colossalai.context.ParallelMode`): The chosen parallel mode.
+            parallel_mode (:class:`colossalai.legacy.context.ParallelMode`): The chosen parallel mode.
         """
         if self.current_mode:
             # save the current state for current mode
@@ -63,12 +63,12 @@ class SeedManager:
         """Adds a seed to the seed manager for `parallel_mode`.
 
         Args:
-            parallel_mode (:class:`colossalai.context.ParallelMode`): The chosen parallel mode.
+            parallel_mode (:class:`colossalai.legacy.context.ParallelMode`): The chosen parallel mode.
             seed (int): The seed to be added.
             overwrite (bool, optional): Whether allows to overwrite the seed that has been set already
 
         Raises:
-            AssertionError: Raises an AssertionError if `parallel_mode` is not an instance of :class:`colossalai.context.ParallelMode`
+            AssertionError: Raises an AssertionError if `parallel_mode` is not an instance of :class:`colossalai.legacy.context.ParallelMode`
                 or the seed for `parallel_mode` has been added.
         """
         assert isinstance(parallel_mode, ParallelMode), 'A valid ParallelMode must be provided'

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import List, Union
 
 import colossalai
-from colossalai.context.parallel_mode import ParallelMode
+from colossalai.legacy.context.parallel_mode import ParallelMode
 
 
 class DistributedLogger:
@@ -145,7 +145,7 @@ class DistributedLogger:
 
         Args:
             message (str): The message to be logged.
-            parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`):
+            parallel_mode (:class:`colossalai.legacy.context.parallel_mode.ParallelMode`):
                 The parallel mode used for logging. Defaults to ParallelMode.GLOBAL.
             ranks (List[int]): List of parallel ranks.
         """
@@ -158,7 +158,7 @@ class DistributedLogger:
 
         Args:
             message (str): The message to be logged.
-            parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`):
+            parallel_mode (:class:`colossalai.legacy.context.parallel_mode.ParallelMode`):
                 The parallel mode used for logging. Defaults to ParallelMode.GLOBAL.
             ranks (List[int]): List of parallel ranks.
         """
@@ -171,7 +171,7 @@ class DistributedLogger:
 
         Args:
             message (str): The message to be logged.
-            parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`):
+            parallel_mode (:class:`colossalai.legacy.context.parallel_mode.ParallelMode`):
                 The parallel mode used for logging. Defaults to ParallelMode.GLOBAL.
             ranks (List[int]): List of parallel ranks.
         """
@@ -184,7 +184,7 @@ class DistributedLogger:
 
         Args:
             message (str): The message to be logged.
-            parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`):
+            parallel_mode (:class:`colossalai.legacy.context.parallel_mode.ParallelMode`):
                 The parallel mode used for logging. Defaults to ParallelMode.GLOBAL.
             ranks (List[int]): List of parallel ranks.
         """

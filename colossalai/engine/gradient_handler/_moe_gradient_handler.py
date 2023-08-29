@@ -1,5 +1,5 @@
-from colossalai.context.moe_context import MOE_CONTEXT
 from colossalai.core import global_context as gpc
+from colossalai.legacy.context.moe_context import MOE_CONTEXT
 from colossalai.registry import GRADIENT_HANDLER
 from colossalai.utils.moe import get_moe_epsize_param_dict
 

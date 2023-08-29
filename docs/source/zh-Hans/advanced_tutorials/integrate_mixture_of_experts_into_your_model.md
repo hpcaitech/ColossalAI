@@ -60,7 +60,7 @@ from colossalai.global_variables import moe_env
 您可以从`colossalai.nn.moe`创建MoE层。但在此之前，您应该为所有进程设置随机种子。
 
 ```python
-from colossalai.context.random import moe_set_seed
+from colossalai.legacy.context.random import moe_set_seed
 from model_zoo.moe.models import Widenet
 
 moe_set_seed(42)

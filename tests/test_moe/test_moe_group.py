@@ -3,7 +3,7 @@ import torch.distributed as dist
 import torch.nn as nn
 
 import colossalai
-from colossalai.context.moe_context import MOE_CONTEXT
+from colossalai.legacy.context.moe_context import MOE_CONTEXT
 from colossalai.nn.layer.moe import Experts
 from colossalai.testing import assert_equal_in_group, rerun_if_address_is_in_use, spawn
 from colossalai.utils import get_current_device

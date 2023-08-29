@@ -7,8 +7,8 @@ import torch.cuda
 
 import colossalai.communication.p2p_v2 as comm
 from colossalai import engine
-from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
+from colossalai.legacy.context.parallel_mode import ParallelMode
 from colossalai.utils.cuda import get_current_device
 
 from ._pipeline_schedule import PipelineSchedule

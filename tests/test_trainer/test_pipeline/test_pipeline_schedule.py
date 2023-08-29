@@ -11,9 +11,9 @@ from torchvision.datasets import CIFAR10
 from torchvision.models import resnet18
 
 import colossalai
-from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.initialize import launch
+from colossalai.legacy.context import ParallelMode
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 from colossalai.utils import get_dataloader, print_rank_0
 

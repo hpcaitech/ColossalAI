@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from colossalai.context.config import Config
+from colossalai.legacy.context.config import Config
 
 
 @pytest.mark.cpu

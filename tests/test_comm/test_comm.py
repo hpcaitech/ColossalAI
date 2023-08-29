@@ -3,9 +3,9 @@ import torch
 import torch.distributed as dist
 
 from colossalai.communication import all_gather, all_reduce, reduce_scatter
-from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.initialize import launch
+from colossalai.legacy.context import ParallelMode
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 from colossalai.utils import get_current_device
 

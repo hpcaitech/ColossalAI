@@ -5,7 +5,7 @@ from typing import Dict, List, Tuple
 
 import torch
 
-from colossalai.context.singleton_meta import SingletonMeta
+from colossalai.legacy.context.singleton_meta import SingletonMeta
 from colossalai.tensor.d_tensor.comm_spec import *
 from colossalai.tensor.d_tensor.layout import Layout
 from colossalai.tensor.d_tensor.misc import LayoutException

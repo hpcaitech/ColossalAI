@@ -1,6 +1,6 @@
 import click
 
-from colossalai.context import Config
+from colossalai.legacy.context import Config
 
 from .benchmark import run_benchmark
 from .utils import *

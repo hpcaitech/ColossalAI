@@ -6,8 +6,8 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 
-from colossalai.context import ParallelMode, seed
-from colossalai.context.moe_context import MOE_CONTEXT
+from colossalai.legacy.context import ParallelMode, seed
+from colossalai.legacy.context.moe_context import MOE_CONTEXT
 from colossalai.utils import get_current_device
 from colossalai.zero.legacy.init_ctx import no_shard_zero_decrator
 

@@ -5,7 +5,7 @@ import torch
 import torch.distributed as dist
 
 import colossalai
-from colossalai.context import MOE_CONTEXT
+from colossalai.legacy.context import MOE_CONTEXT
 from colossalai.nn.layer.moe import load_moe_model, save_moe_model
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 from colossalai.utils import get_current_device

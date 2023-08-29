@@ -3,7 +3,7 @@ import torch
 import torch.distributed as dist
 
 import colossalai
-from colossalai.context import MOE_CONTEXT
+from colossalai.legacy.context import MOE_CONTEXT
 from colossalai.tensor import ColoParameter
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.utils import get_current_device

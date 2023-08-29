@@ -12,8 +12,8 @@ from torch.nn.parameter import Parameter
 from torch.optim import Optimizer
 
 from colossalai.amp.naive_amp.grad_scaler import DynamicGradScaler
-from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
+from colossalai.legacy.context.parallel_mode import ParallelMode
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import ColossalaiOptimizer
 from colossalai.zero.legacy.gemini.stateful_tensor import StatefulTensor, TensorState

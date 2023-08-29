@@ -3,7 +3,7 @@
 
 from abc import ABC, abstractmethod
 
-from colossalai.context import Config
+from colossalai.legacy.context import Config
 
 
 class ProcessGroupInitializer(ABC):

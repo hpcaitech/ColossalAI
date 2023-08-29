@@ -87,7 +87,7 @@ You can create a MoE layer from `colossalai.nn.moe`.
 But before doing that, you should set up random seeds for all processes like this.
 
 ```python
-from colossalai.context.random import moe_set_seed
+from colossalai.legacy.context.random import moe_set_seed
 from model_zoo.moe.models import Widenet
 
 moe_set_seed(42)

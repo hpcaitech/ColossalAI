@@ -4,7 +4,7 @@ import torch.nn as nn
 from torch.nn.modules.loss import _Loss
 from torch.optim import Optimizer
 
-from colossalai.context import Config
+from colossalai.legacy.context import Config
 
 from .torch_amp import TorchAMPLoss, TorchAMPModel, TorchAMPOptimizer
 
@@ -19,7 +19,7 @@ def convert_to_torch_amp(model: nn.Module,
         model (:class:`torch.nn.Module`): your model object.
         optimizer (:class:`torch.optim.Optimizer`): your optimizer object
         criterion (:class:`torch.nn.modules.loss._Loss`, optional): your loss function object
-        amp_config (:class:`colossalai.context.Config` or dict, optional): configuration for Pytorch AMP.
+        amp_config (:class:`colossalai.legacy.context.Config` or dict, optional): configuration for Pytorch AMP.
 
     The ``amp_config`` should include parameters below:
     ::

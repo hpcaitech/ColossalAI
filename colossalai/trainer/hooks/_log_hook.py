@@ -3,17 +3,17 @@
 
 import os
 import os.path as osp
-
 from typing import List
-from colossalai.context import ParallelMode
+
 from colossalai.core import global_context as gpc
-from colossalai.registry import HOOKS
+from colossalai.legacy.context import ParallelMode
 from colossalai.logging import DistributedLogger
-from colossalai.utils import report_memory_usage, is_dp_rank_0, \
-    is_tp_rank_0, is_no_pp_or_last_stage, MultiTimer
+from colossalai.registry import HOOKS
+from colossalai.trainer.hooks._metric_hook import ThroughputMetric
+from colossalai.utils import MultiTimer, is_dp_rank_0, is_no_pp_or_last_stage, is_tp_rank_0, report_memory_usage
+
 from ._base_hook import BaseHook
 from ._commons_ import _format_number
-from colossalai.trainer.hooks._metric_hook import ThroughputMetric
 
 
 class LogByEpochHook(BaseHook):
@@ -112,8 +112,8 @@ class TensorboardHook(BaseHook):
     Args:
         log_dir (str): Directory of log.
         ranks (list): Ranks of processors.
-        parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`, optional): Parallel mode used in trainer,
-            defaults to colossalai.context.parallel_mode.ParallelMode.GLOBAL.
+        parallel_mode (:class:`colossalai.legacy.context.parallel_mode.ParallelMode`, optional): Parallel mode used in trainer,
+            defaults to colossalai.legacy.context.parallel_mode.ParallelMode.GLOBAL.
         priority (int, optional): Priority in the printing, hooks with small priority will be printed in front,
             defaults to 10. If different hooks share same priority, the order of printing would
             depend on the hooks order in the hook list.

@@ -20,8 +20,6 @@ from torch.utils.data import DataLoader
 from colossalai.amp import AMP_TYPE, convert_to_amp
 from colossalai.amp.naive_amp import NaiveAMPModel
 from colossalai.builder.builder import build_gradient_handler
-from colossalai.context import Config, ConfigException, ParallelMode
-from colossalai.context.moe_context import MOE_CONTEXT
 from colossalai.core import global_context as gpc
 from colossalai.engine import Engine
 from colossalai.engine.gradient_accumulation import accumulate_gradient
@@ -31,6 +29,8 @@ from colossalai.engine.schedule import (
     PipelineSchedule,
     get_tensor_shape,
 )
+from colossalai.legacy.context import Config, ConfigException, ParallelMode
+from colossalai.legacy.context.moe_context import MOE_CONTEXT
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer.colossalai_optimizer import ColossalaiOptimizer
 from colossalai.utils import (

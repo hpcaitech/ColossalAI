@@ -31,7 +31,7 @@ global context for users to easily manage their process groups. If you wish to a
 define a new class and set it in your configuration file. To define your own way of creating process groups, you can
 follow the steps below to create a new distributed initialization.
 
-1. Add your parallel mode in `colossalai.context.parallel_mode.ParallelMode`.
+1. Add your parallel mode in `colossalai.legacy.context.parallel_mode.ParallelMode`.
     ```python
     class ParallelMode(Enum):
         GLOBAL = 'global'
@@ -42,7 +42,7 @@ follow the steps below to create a new distributed initialization.
         NEW_MODE = 'new_mode'  # define your mode here
     ```
 
-2. Create a `ProcessGroupInitializer`. You can refer to examples given in `colossalai.context.dist_group_initializer`. The
+2. Create a `ProcessGroupInitializer`. You can refer to examples given in `colossalai.legacy.context.dist_group_initializer`. The
    first six arguments are fixed. `ParallelContext` will pass in these arguments for you. If you need to set other
    arguments, you can add it behind like the `arg1, arg2` in the example below. Lastly, register your initializer to the
    registry by adding the decorator `@DIST_GROUP_INITIALIZER.register_module`.

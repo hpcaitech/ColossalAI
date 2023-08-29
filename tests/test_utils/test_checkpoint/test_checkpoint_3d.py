@@ -8,9 +8,9 @@ import torch
 import torch.nn as nn
 
 import colossalai.nn as col_nn
-from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.initialize import launch
+from colossalai.legacy.context.parallel_mode import ParallelMode
 from colossalai.logging import disable_existing_loggers
 from colossalai.testing import rerun_if_address_is_in_use, skip_if_not_enough_gpus, spawn
 from colossalai.utils import is_using_pp

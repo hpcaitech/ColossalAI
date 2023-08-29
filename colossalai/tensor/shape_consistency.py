@@ -7,7 +7,7 @@ import numpy as np
 import torch
 
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import MemoryCost, TrainCycleItem
-from colossalai.context.singleton_meta import SingletonMeta
+from colossalai.legacy.context.singleton_meta import SingletonMeta
 from colossalai.tensor.sharding_spec import ShardingSpec, ShardingSpecException
 from colossalai.tensor.utils import all_gather_simulator, all_to_all_simulator, mix_gather_simulator, shard_simulator
 

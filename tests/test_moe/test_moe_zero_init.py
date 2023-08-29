@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 
 import colossalai
-from colossalai.context import MOE_CONTEXT
+from colossalai.legacy.context import MOE_CONTEXT
 from colossalai.logging import get_dist_logger
 from colossalai.nn import CheckpointModule
 from colossalai.nn.layer import MoeModule

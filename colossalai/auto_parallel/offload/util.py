@@ -3,8 +3,8 @@ from typing import List
 
 import torch
 
-from colossalai.context.singleton_meta import SingletonMeta
 from colossalai.fx.profiler import calculate_fwd_out, calculate_fwd_tmp
+from colossalai.legacy.context.singleton_meta import SingletonMeta
 
 from .region import Region
 
@@ -51,7 +51,7 @@ def compute_act_peak_mem(region_list: List[Region]) -> float:
     for region in region_list:
         for node in region.nodes:
             runtime_mem = runtime_mem + \
-                          calculate_fwd_tmp(node) + calculate_fwd_out(node)
+                calculate_fwd_tmp(node) + calculate_fwd_out(node)
             act_peak_mem = max(runtime_mem, act_peak_mem)
     # backward
     bwd_deps = {}
@@ -59,12 +59,12 @@ def compute_act_peak_mem(region_list: List[Region]) -> float:
         for node in region.nodes.__reversed__():
             runtime_mem -= calculate_fwd_out(node)
             runtime_mem = runtime_mem + \
-                          node.meta['bwd_mem_tmp'] + node.meta['bwd_mem_out']
+                node.meta['bwd_mem_tmp'] + node.meta['bwd_mem_out']
 
             act_peak_mem = max(runtime_mem, act_peak_mem)
 
             runtime_mem = runtime_mem - \
-                          node.meta['bwd_mem_tmp'] - calculate_fwd_tmp(node)
+                node.meta['bwd_mem_tmp'] - calculate_fwd_tmp(node)
 
             # free bwd_mem_out
             bwd_deps[node] = len(node.all_input_nodes)

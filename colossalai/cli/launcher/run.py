@@ -6,7 +6,7 @@ import click
 import torch
 from packaging import version
 
-from colossalai.context import Config
+from colossalai.legacy.context import Config
 
 from .hostinfo import HostInfo, HostInfoList
 from .multinode_runner import MultiNodeRunner

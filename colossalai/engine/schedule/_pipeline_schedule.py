@@ -8,8 +8,8 @@ import torch.cuda
 
 import colossalai.communication as comm
 from colossalai.amp.naive_amp import NaiveAMPModel
-from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
+from colossalai.legacy.context.parallel_mode import ParallelMode
 from colossalai.logging import get_dist_logger
 from colossalai.utils import switch_virtual_pipeline_parallel_rank
 from colossalai.utils.cuda import get_current_device

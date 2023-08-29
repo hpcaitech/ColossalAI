@@ -1,6 +1,6 @@
-from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.global_variables import tensor_parallel_env as env
+from colossalai.legacy.context.parallel_mode import ParallelMode
 
 
 def get_summa_dim_from_env() -> int:
@@ -16,5 +16,5 @@ def get_summa_dim_from_env() -> int:
 
 def assert_summa_initialization():
     assert gpc.is_initialized(ParallelMode.PARALLEL_2D_COL) and \
-           gpc.is_initialized(ParallelMode.PARALLEL_2D_ROW), \
+        gpc.is_initialized(ParallelMode.PARALLEL_2D_ROW), \
         'Both TWO_DIMENSION_COL and TWO_DIMENSION_ROW must be initialized by the process group initializer'

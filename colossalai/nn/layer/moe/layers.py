@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from colossalai.context.moe_context import MOE_CONTEXT
+from colossalai.legacy.context.moe_context import MOE_CONTEXT
 from colossalai.nn.layer.moe._operation import (
     COL_MOE_KERNEL_FLAG,
     AllGather,

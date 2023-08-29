@@ -2,7 +2,7 @@ from typing import List, Optional
 
 import torch
 
-from colossalai.context.singleton_meta import SingletonMeta
+from colossalai.legacy.context.singleton_meta import SingletonMeta
 from colossalai.logging import get_dist_logger
 
 

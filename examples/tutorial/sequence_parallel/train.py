@@ -9,10 +9,10 @@ from model.bert import BertForPretrain, build_pipeline_bert
 
 import colossalai
 from colossalai.amp import AMP_TYPE
-from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.engine.schedule import PipelineSchedule
 from colossalai.kernel import LayerNorm
+from colossalai.legacy.context.parallel_mode import ParallelMode
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import FusedAdam
 from colossalai.utils import MultiTimer, is_using_pp
