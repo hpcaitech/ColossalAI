@@ -96,6 +96,33 @@ def is_safetensor_checkpoint(checkpoint_file_path: str) -> bool:
         return False
 
 
+def search_tp_partition_dim(current_shape: torch.Size, original_shape: torch.Size, tp_size: int) -> Optional[int]:
+    """
+    Given the current shape of parameter and the shape of parameter before sharding,
+    return the dimension along which the parameter is sharded when using tensor parallel.
+    If tensor parallel is not used, return None.
+
+    Args:
+        current_shape (torch.Size): The current shape of parameter after sharding.
+        original_shape (torch.Size): The shape of parameter before sharding.
+        tp_size (int): The size of tp group.
+
+    Returns:
+        Optional[int]: The dimension along which parameter is partitioned.
+    """
+    partition_dim = None
+    for dim, length in enumerate(original_shape):
+        if length > current_shape[dim]:
+            partition_dim = dim
+            break
+    if partition_dim is not None:
+        assert original_shape[partition_dim] == tp_size * current_shape[partition_dim], \
+            f"The parameter isn't evenly distributed among tensor parallel group: \
+                shape before sharding {original_shape}, shape after sharding {current_shape}"
+
+    return partition_dim
+
+
 # ======================================
 # Helper classes and functions for saving shard file
 # ======================================
@@ -179,33 +206,6 @@ def gather_distributed_param(param: torch.Tensor, keep_vars: bool = False) -> to
         return param_
 
 
-def search_tp_partition_dim(current_shape: torch.Size, original_shape: torch.Size, tp_size: int) -> Optional[int]:
-    """
-    Given the current shape of parameter and the shape of parameter before sharding,
-    return the dimension along which the parameter is sharded when using tensor parallel.
-    If tensor parallel is not used, return None.
-
-    Args:
-        current_shape (torch.Size): The current shape of parameter after sharding.
-        original_shape (torch.Size): The shape of parameter before sharding.
-        tp_size (int): The size of tp group.
-
-    Returns:
-        Optional[int]: The dimension along which parameter is partitioned.
-    """
-    partition_dim = None
-    for dim, length in enumerate(original_shape):
-        if length > current_shape[dim]:
-            partition_dim = dim
-            break
-    if partition_dim is not None:
-        assert original_shape[partition_dim] == tp_size * current_shape[partition_dim], \
-            f"The parameter isn't evenly distributed among tensor parallel group: \
-                shape before sharding {original_shape}, shape after sharding {current_shape}"
-
-    return partition_dim
-
-
 def gather_distributed_optimizer_states(state: OrderedDict,
                                         param: torch.Tensor,
                                         original_shape: torch.Size,
@@ -236,7 +236,7 @@ def gather_distributed_optimizer_states(state: OrderedDict,
                     v = v.cuda()
                     gather_tensor = [torch.zeros_like(v) for _ in range(tp_size)]
                     dist.all_gather(gather_tensor, v, group=tp_group)
-                    param_state = torch.stack(gather_tensor, dim=partition_dim)
+                    param_state = torch.cat(gather_tensor, dim=partition_dim)
                     state_[k] = param_state.detach().cpu()
                     if inplace:
                         del v

@@ -14,6 +14,7 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 
 from colossalai.interface import OptimizerWrapper
+from colossalai.tensor.d_tensor import is_customized_distributed_tensor, is_distributed_tensor
 
 from .general_checkpoint_io import GeneralCheckpointIO
 from .index_file import CheckpointIndexFile
@@ -473,6 +474,7 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
         ckpt_index_file = CheckpointIndexFile.from_file(checkpoint_index_file)
         ckpt_root_path = ckpt_index_file.root_path
         weight_map = ckpt_index_file.weight_map
+        weight_map = {int(k): v for k, v in weight_map.items()}    # convert saved id from str to int
 
         # Load param_groups
         param_group_path = ckpt_index_file.get_param_group_filename()
@@ -494,11 +496,7 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
         loaded_file = set()
         for pg in optimizer.optim.param_groups:
             for param in pg['params']:
-                param_id = str(_get_param_id_from_optimizer_param(param, self.use_zero))
-                if param_id not in weight_map:
-                    raise ValueError(
-                        f"Parameter with ID:{param_id} is not stored in checkpoint, please check your checkpointing configuration!"
-                    )
+                param_id = _get_param_id_from_optimizer_param(param, self.use_zero)
                 filename = weight_map[param_id]
 
                 # If this param's states has been loaded before, directly return.
@@ -507,14 +505,21 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
 
                 file_path = os.path.join(ckpt_root_path, filename)
                 state_dict = load_shard_state_dict(Path(file_path), use_safetensors=False)
+                state_dict = {int(k): v for k, v in state_dict.items()}
                 load_states_into_optimizer(optimizer.optim, state_dict, id_map, strict=True)
                 del state_dict
                 gc.collect()
                 loaded_file.add(filename)
 
+        # for param, state in optimizer.optim.state.items():
+        #     param_id = _get_param_id_from_optimizer_param(param, self.use_zero)
+        #     print(dist.get_rank(), param_id, param.shape,
+        #           param.dtype, param.device, state['exp_avg'].shape, state['exp_avg'].dtype, state['exp_avg'].device)
+
         # Shard the states along tensor parallel group.
 
         # Shard the states along data parallel group when Zero is used.
+
         sharded_optimizer_loading_epilogue(optimizer.optim)
 
     def load_unsharded_model(self, model: nn.Module, checkpoint: str, strict: bool = True):

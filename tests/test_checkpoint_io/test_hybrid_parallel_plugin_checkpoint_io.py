@@ -64,6 +64,7 @@ def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_conf
     optimizer = Adam(model.parameters(), lr=1e-3)
     model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
 
+    # TODO: If testing stepping accuracy, remember to copy new_model from model, not call model_fn()
     new_model = model_fn().cuda()
     new_optimizer = Adam(new_model.parameters(), lr=1e-3)
     new_model, new_optimizer, criterion, _, _ = booster.boost(new_model, new_optimizer, criterion)
