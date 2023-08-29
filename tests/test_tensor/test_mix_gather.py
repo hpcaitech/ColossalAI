@@ -1,9 +1,9 @@
 import pytest
 import torch
 
-from colossalai.core import global_context as gpc
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.initialize import launch
+from colossalai.legacy.core import global_context as gpc
 from colossalai.logging import disable_existing_loggers
 from colossalai.tensor.shape_consistency import CollectiveCommPattern, CommSpec
 from colossalai.tensor.sharding_spec import ShardingSpec

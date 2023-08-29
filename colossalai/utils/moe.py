@@ -3,9 +3,9 @@ from typing import Dict, List
 import torch.distributed as dist
 import torch.nn as nn
 
-from colossalai.core import global_context as gpc
 from colossalai.legacy.context import ParallelMode
 from colossalai.legacy.context.moe_context import MOE_CONTEXT
+from colossalai.legacy.core import global_context as gpc
 
 from .common import is_using_ddp
 

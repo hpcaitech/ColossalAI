@@ -9,8 +9,8 @@ from torch.cuda.amp import custom_bwd, custom_fwd
 
 from colossalai.communication import all_gather, all_reduce, broadcast, reduce, reduce_scatter
 from colossalai.constants import INPUT_GROUP_3D, WEIGHT_GROUP_3D
-from colossalai.core import global_context as gpc
 from colossalai.legacy.context.parallel_mode import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 
 from ._utils import get_parallel_mode_from_env, push_async_grad
 

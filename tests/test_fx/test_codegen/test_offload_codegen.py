@@ -5,9 +5,9 @@ import torch
 from torch.fx import GraphModule
 
 import colossalai
-from colossalai.core import global_context as gpc
 from colossalai.fx import ColoTracer
 from colossalai.fx.graph_module import ColoGraphModule
+from colossalai.legacy.core import global_context as gpc
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 try:
@@ -100,14 +100,14 @@ def _run_offload_codegen(rank, world_size, port):
     # assert we have all the components
     code = graph.python_code("self").src
     assert "def pack_hook_input(self, x):" in code and \
-    "def unpack_hook(self, packed):" in code and \
-    "def pack_hook_no_input(self, x):" in code and \
-    "setattr(x, 'offload', True)" in code and \
-    "setattr(linear3, 'offload', False)" in code and \
-    "with torch.autograd.graph.saved_tensors_hooks(self.pack_hook_input, self.unpack_hook):" in code and \
-    "with torch.autograd.graph.save_on_cpu(pin_memory=True):" in code and \
-    "with torch.autograd.graph.saved_tensors_hooks(self.pack_hook_no_input, self.unpack_hook):" in code and \
-    "colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_0, True, linear4, use_reentrant=False)" in code
+        "def unpack_hook(self, packed):" in code and \
+        "def pack_hook_no_input(self, x):" in code and \
+        "setattr(x, 'offload', True)" in code and \
+        "setattr(linear3, 'offload', False)" in code and \
+        "with torch.autograd.graph.saved_tensors_hooks(self.pack_hook_input, self.unpack_hook):" in code and \
+        "with torch.autograd.graph.save_on_cpu(pin_memory=True):" in code and \
+        "with torch.autograd.graph.saved_tensors_hooks(self.pack_hook_no_input, self.unpack_hook):" in code and \
+        "colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_0, True, linear4, use_reentrant=False)" in code
 
     _test_fwd_and_bwd(model, gm, data)
     gpc.destroy()
@@ -156,14 +156,14 @@ def _run_offload_codegen_torch11(rank, world_size, port):
     # assert we have all the components
     code = graph.python_code("self").src
     assert "def pack_hook_input(self, x):" in code and \
-    "def unpack_hook(self, packed):" in code and \
-    "def pack_hook_no_input(self, x):" in code and \
-    "setattr(x, 'offload', True)" in code and \
-    "setattr(linear3, 'offload', False)" in code and \
-    "with torch.autograd.graph.saved_tensors_hooks(self.pack_hook_input, self.unpack_hook):" in code and \
-    "with torch.autograd.graph.save_on_cpu(pin_memory=True):" in code and \
-    "with torch.autograd.graph.saved_tensors_hooks(self.pack_hook_no_input, self.unpack_hook):" in code and \
-    "colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_0, True, linear4, use_reentrant=False)" in code
+        "def unpack_hook(self, packed):" in code and \
+        "def pack_hook_no_input(self, x):" in code and \
+        "setattr(x, 'offload', True)" in code and \
+        "setattr(linear3, 'offload', False)" in code and \
+        "with torch.autograd.graph.saved_tensors_hooks(self.pack_hook_input, self.unpack_hook):" in code and \
+        "with torch.autograd.graph.save_on_cpu(pin_memory=True):" in code and \
+        "with torch.autograd.graph.saved_tensors_hooks(self.pack_hook_no_input, self.unpack_hook):" in code and \
+        "colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_0, True, linear4, use_reentrant=False)" in code
 
     _test_fwd_and_bwd(model, gm, data)
     gpc.destroy()

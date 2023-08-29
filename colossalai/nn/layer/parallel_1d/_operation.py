@@ -1,7 +1,7 @@
 import torch
 import torch.distributed as dist
 
-from colossalai.core import global_context as gpc
+from colossalai.legacy.core import global_context as gpc
 
 try:
     import fused_mix_prec_layer_norm_cuda
@@ -40,10 +40,10 @@ class FusedLayerNormAffineFunction1D(torch.autograd.Function):
         input_, weight_, bias_, mean, invvar = ctx.saved_tensors
         grad_input = grad_weight = grad_bias = None
         grad_input, grad_weight, grad_bias \
-          = fused_mix_prec_layer_norm_cuda.backward_affine(
-            grad_output.contiguous(), mean, invvar,
-            input_, ctx.normalized_shape,
-            weight_, bias_, ctx.eps)
+            = fused_mix_prec_layer_norm_cuda.backward_affine(
+                grad_output.contiguous(), mean, invvar,
+                input_, ctx.normalized_shape,
+                weight_, bias_, ctx.eps)
 
         return grad_input, grad_weight, grad_bias, None, None
 

@@ -6,8 +6,8 @@ from torch import distributed as dist
 from torch.cuda.amp import custom_bwd, custom_fwd
 
 from colossalai.communication import ring_forward
-from colossalai.core import global_context as gpc
 from colossalai.legacy.context.parallel_mode import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 from colossalai.nn.layer.parallel_sequence._utils import _calc_current_device_range, _calc_incoming_device_range
 from colossalai.utils import get_current_device
 

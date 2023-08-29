@@ -11,10 +11,10 @@ from torch import Tensor
 from torch.nn.parameter import Parameter
 
 from colossalai.communication import broadcast
-from colossalai.core import global_context as gpc
 from colossalai.global_variables import tensor_parallel_env as env
 from colossalai.kernel import LayerNorm
 from colossalai.legacy.context import ParallelMode, seed
+from colossalai.legacy.core import global_context as gpc
 from colossalai.nn import init as init
 from colossalai.registry import LAYERS
 from colossalai.utils.checkpointing import (

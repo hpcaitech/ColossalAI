@@ -7,10 +7,10 @@ import pytest
 import torch
 
 from colossalai import launch
-from colossalai.core import global_context as gpc
 from colossalai.global_variables import tensor_parallel_env as tp_env
 from colossalai.legacy.context import reset_seeds
 from colossalai.legacy.context.parallel_mode import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 from colossalai.testing import free_port, rerun_if_address_is_in_use, spawn
 
 CONFIG_PATH_LIST = list(Path(__file__).parent.glob('configs/*.py'))

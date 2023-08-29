@@ -8,9 +8,9 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 
-from colossalai.core import global_context as gpc
 from colossalai.legacy.context.parallel_mode import ParallelMode
 from colossalai.legacy.context.singleton_meta import SingletonMeta
+from colossalai.legacy.core import global_context as gpc
 from colossalai.logging import get_dist_logger
 from colossalai.utils.model.utils import InsertPostInitMethodToModuleSubClasses
 from colossalai.zero.legacy.shard_utils import BaseShardStrategy

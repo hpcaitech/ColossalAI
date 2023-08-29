@@ -10,7 +10,7 @@ from torchvision.datasets import CIFAR10
 from torchvision.models import resnet18
 
 import colossalai
-from colossalai.core import global_context as gpc
+from colossalai.legacy.core import global_context as gpc
 from colossalai.logging import get_dist_logger
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 from colossalai.utils import get_dataloader

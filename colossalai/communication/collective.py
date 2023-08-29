@@ -6,8 +6,8 @@ import torch.distributed as dist
 from torch import Tensor
 from torch.distributed import ReduceOp
 
-from colossalai.core import global_context as gpc
 from colossalai.legacy.context import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 
 _all_gather_func = dist._all_gather_base \
     if "all_gather_into_tensor" not in dir(dist) else dist.all_gather_into_tensor

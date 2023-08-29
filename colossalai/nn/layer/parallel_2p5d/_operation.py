@@ -6,8 +6,8 @@ from torch import Tensor
 from torch.cuda.amp import custom_bwd, custom_fwd
 
 from colossalai.communication.collective import all_gather, all_reduce, reduce_scatter
-from colossalai.core import global_context as gpc
 from colossalai.legacy.context.parallel_mode import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 from colossalai.utils import get_current_device
 
 

@@ -8,8 +8,8 @@ import torch
 import torch.distributed as dist
 
 from colossalai.communication import all_reduce
-from colossalai.core import global_context as gpc
 from colossalai.legacy.context import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 from colossalai.registry import HOOKS
 from colossalai.utils import get_current_device, is_no_pp_or_last_stage
 

@@ -11,8 +11,8 @@ import torch.nn as nn
 from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
 
-from colossalai.core import global_context as gpc
 from colossalai.legacy.context.parallel_mode import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 from colossalai.logging import get_dist_logger
 from colossalai.utils import disposable, get_current_device
 from colossalai.utils.memory import colo_device_memory_capacity

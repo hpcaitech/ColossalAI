@@ -16,9 +16,9 @@ from torch import inf
 from torch.nn.parameter import Parameter
 
 from colossalai.constants import IS_TENSOR_PARALLEL, NUM_PARTITIONS, TENSOR_PARALLEL_ATTRIBUTES
-from colossalai.core import global_context as gpc
 from colossalai.global_variables import tensor_parallel_env as env
 from colossalai.legacy.context.parallel_mode import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 from colossalai.tensor import ColoParameter, ProcessGroup
 
 from .multi_tensor_apply import multi_tensor_applier

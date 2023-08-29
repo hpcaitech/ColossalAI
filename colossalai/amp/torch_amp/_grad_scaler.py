@@ -13,8 +13,8 @@ import torch.distributed as dist
 from packaging import version
 from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 
-from colossalai.core import global_context as gpc
 from colossalai.legacy.context import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 
 
 class _MultiDeviceReplicator(object):

@@ -16,8 +16,8 @@ from utils.global_vars import get_tensorboard_writer, get_timers, set_global_var
 from utils.logger import Logger
 
 import colossalai
-from colossalai.core import global_context as gpc
 from colossalai.legacy.context import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 from colossalai.nn.parallel import GeminiDDP, zero_model_wrapper, zero_optim_wrapper
 from colossalai.tensor import ColoParameter, ComputePattern, ComputeSpec, ProcessGroup, ReplicaSpec, ShardSpec
 from colossalai.utils import get_current_device

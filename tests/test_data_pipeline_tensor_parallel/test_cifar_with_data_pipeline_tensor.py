@@ -8,8 +8,8 @@ from torchvision.datasets import CIFAR10
 
 import colossalai
 from colossalai.amp import AMP_TYPE
-from colossalai.core import global_context as gpc
 from colossalai.legacy.context import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 from colossalai.logging import get_dist_logger
 from colossalai.nn import CrossEntropyLoss
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR

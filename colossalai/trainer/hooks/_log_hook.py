@@ -5,8 +5,8 @@ import os
 import os.path as osp
 from typing import List
 
-from colossalai.core import global_context as gpc
 from colossalai.legacy.context import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 from colossalai.logging import DistributedLogger
 from colossalai.registry import HOOKS
 from colossalai.trainer.hooks._metric_hook import ThroughputMetric

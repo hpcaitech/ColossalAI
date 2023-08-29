@@ -5,8 +5,8 @@ import psutil
 import torch
 from packaging import version
 
-from colossalai.core import global_context as gpc
 from colossalai.legacy.context.parallel_mode import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 from colossalai.logging import get_dist_logger
 from colossalai.utils import get_current_device
 

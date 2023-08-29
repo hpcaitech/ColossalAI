@@ -5,7 +5,7 @@ import shutil
 import psutil
 import torch
 
-from colossalai.core import global_context as gpc
+from colossalai.legacy.core import global_context as gpc
 
 
 def logging(s, log_path, print_=True, log_=True):
@@ -77,7 +77,7 @@ def throughput_calculator(numel, args, config, iteration_time, total_iterations,
     elapsed_time_per_iter = iteration_time / total_iterations
     samples_per_second = batch_size / elapsed_time_per_iter
 
-    #flops calculator
+    # flops calculator
     hidden_size = config.hidden_size
     num_layers = config.num_hidden_layers
     vocab_size = config.vocab_size

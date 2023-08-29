@@ -11,8 +11,8 @@ from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 from torch.distributed import ReduceOp
 from torch.optim import Optimizer
 
-from colossalai.core import global_context as gpc
 from colossalai.legacy.context import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 from colossalai.nn.optimizer import ColossalaiOptimizer
 
 from ._fp16_optimizer import FP16Optimizer

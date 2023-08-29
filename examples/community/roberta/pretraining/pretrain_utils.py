@@ -1,9 +1,13 @@
 import logging
 import os
 import sys
+from collections import OrderedDict
 
 import torch
+import torch.nn as nn
 import transformers
+from model.bert import BertForMaskedLM
+from model.deberta_v2 import DebertaV2ForMaskedLM
 from torch.optim import AdamW
 from transformers import (
     AutoModelForMaskedLM,
@@ -16,16 +20,11 @@ from transformers import (
     get_linear_schedule_with_warmup,
 )
 
-from colossalai.core import global_context as gpc
+from colossalai.legacy.core import global_context as gpc
 from colossalai.nn.lr_scheduler import LinearWarmupLR
 from colossalai.nn.optimizer import FusedAdam, HybridAdam
 
 sys.path.append(os.getcwd())
-from collections import OrderedDict
-
-import torch.nn as nn
-from model.bert import BertForMaskedLM
-from model.deberta_v2 import DebertaV2ForMaskedLM
 
 __all__ = ['get_model', 'get_optimizer', 'get_lr_scheduler', 'get_dataloader_for_pretraining']
 
@@ -118,7 +117,7 @@ def save_ckpt(model, optimizer, lr_scheduler, path, epoch, shard, global_step):
     checkpoint['epoch'] = epoch
     checkpoint['shard'] = shard
     checkpoint['global_step'] = global_step
-    model_state = model.state_dict()    #each process must run model.state_dict()
+    model_state = model.state_dict()    # each process must run model.state_dict()
     if gpc.get_global_rank() == 0:
         torch.save(checkpoint, optimizer_lr_path)
         torch.save(model_state, model_path)

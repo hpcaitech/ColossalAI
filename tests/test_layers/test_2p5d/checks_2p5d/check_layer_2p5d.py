@@ -1,8 +1,8 @@
 import torch
 from torch.nn import Parameter
 
-from colossalai.core import global_context as gpc
 from colossalai.legacy.context.parallel_mode import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 from colossalai.nn import (
     Classifier2p5D,
     CrossEntropyLoss2p5D,

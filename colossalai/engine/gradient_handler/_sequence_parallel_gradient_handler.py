@@ -1,7 +1,7 @@
-from colossalai.core import global_context as gpc
+from colossalai.legacy.context import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 from colossalai.registry import GRADIENT_HANDLER
 
-from ...context.parallel_mode import ParallelMode
 from ._base_gradient_handler import BaseGradientHandler
 from .utils import bucket_allreduce
 
