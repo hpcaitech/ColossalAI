@@ -37,7 +37,7 @@ def loose_close(a, b, dtype: torch.dtype = torch.float32):
         atol = 4e-3
 
     a = a.detach().to(dtype)
-    b = b.detach().to(dtype)
+    b = b.detach().to(dtype).to(a.device)
 
     assert_close(a, b, rtol=rtol, atol=atol)
 
@@ -90,6 +90,7 @@ def exam_zero_1_torch_ddp_ckpt():
     # examine the original state dict
     for torch_state, zero_state in zip(torch_state_dict['state'].values(), zero_state_dict['state'].values()):
         for t_v, z_v in zip(torch_state.values(), zero_state.values()):
+            print(t_v, z_v)
             loose_close(t_v, z_v)
 
     # empty the optimzer state
