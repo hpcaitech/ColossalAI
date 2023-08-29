@@ -208,7 +208,7 @@ jobs:
 
       - name: Execute Unit Testing
         run: |
-          CURL_CA_BUNDLE="" CUDA_LAUNCH_BLOCKING=1 PYTHONPATH=$PWD pytest -ms "not largedist" --testmon --testmon-cov=. --durations=10 tests/test_shardformer/test_model/test_shard_opt.py
+          CURL_CA_BUNDLE="" CUDA_LAUNCH_BLOCKING=1 PYTHONPATH=$PWD pytest -m "not largedist" -s --testmon --testmon-cov=. --durations=10 tests/test_shardformer/test_model/test_shard_opt.py
         env:
           DATA: /data/scratch/cifar-10
           NCCL_SHM_DISABLE: 1
