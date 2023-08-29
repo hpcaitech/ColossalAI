@@ -64,7 +64,6 @@ def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_conf
     optimizer = Adam(model.parameters(), lr=1e-3)
     model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
 
-    # TODO: If testing stepping accuracy, remember to copy new_model from model, not call model_fn()
     new_model = model_fn().cuda()
     new_optimizer = Adam(new_model.parameters(), lr=1e-3)
     new_model, new_optimizer, criterion, _, _ = booster.boost(new_model, new_optimizer, criterion)
@@ -93,11 +92,13 @@ def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_conf
     optimizer.step()
 
     with shared_tempdir() as tempdir:
+
         model_ckpt_path = f"{tempdir}/model"
-        # optimizer_ckpt_path = f"{tempdir}/optimizer"
+        optimizer_ckpt_path = f"{tempdir}/optimizer"
         booster.save_model(model, model_ckpt_path, shard=shard, size_per_shard=size_per_shard)
-        # booster.save_optimizer(optimizer, optimizer_ckpt_path, shard=shard, size_per_shard=size_per_shard)
+        booster.save_optimizer(optimizer, optimizer_ckpt_path, shard=shard, size_per_shard=size_per_shard)
         dist.barrier()
+
         booster.load_model(new_model, model_ckpt_path)
         check_state_dict_equal(model.unwrap().state_dict(), new_model.unwrap().state_dict(), False)
 

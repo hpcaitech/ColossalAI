@@ -14,13 +14,11 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 
 from colossalai.interface import OptimizerWrapper
-from colossalai.tensor.d_tensor import is_customized_distributed_tensor, is_distributed_tensor
 
 from .general_checkpoint_io import GeneralCheckpointIO
 from .index_file import CheckpointIndexFile
 from .utils import (
     StateDictSharder,
-    gather_distributed_optimizer_states,
     gather_distributed_param,
     get_model_base_filenames,
     get_optimizer_base_filenames,
@@ -30,6 +28,7 @@ from .utils import (
     load_states_into_optimizer,
     save_param_groups,
     save_state_dict_shards,
+    search_tp_partition_dim,
     sharded_optimizer_loading_epilogue,
 )
 
@@ -120,30 +119,23 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
             if param is None:
                 continue
 
-            state_ = copy.deepcopy(state)
-
-            # First handle Zero shards. Working params in fp16 should first be obtained.
+            working_param = param
             if use_zero:
                 # Zero optimizer has replaced params in param_groups with sharded master params in fp32,
-                # so we have to first target working params in fp16 using stored mapping.
+                # so we have to first target working params in fp16 using mapping stored in Zero Optimizer.
                 working_param = optimizer._param_store.master_to_working_param[id(param)]
-                for k, v in state.items():
-                    if isinstance(v, torch.Tensor) and k != 'step':
-                        v = v.cuda()
-                        gather_tensor = [torch.zeros_like(v) for _ in range(dp_size)]
-                        dist.all_gather(gather_tensor, v, group=dp_group)
-                        param_state = torch.stack(gather_tensor).view(-1)[:working_param.numel()].reshape_as(
-                            working_param)
-                        state_[k] = param_state.detach().cpu()
-                param = working_param
 
-            param_id = param_info['param2id'][id(param)]
+            param_id = param_info['param2id'][id(working_param)]
+            original_shape = param_info['param2shape'][id(working_param)]
+            state_ = HypridParallelCheckpointIO.gather_from_sharded_optimizer_state(state,
+                                                                                    working_param,
+                                                                                    original_shape=original_shape,
+                                                                                    dp_group=dp_group,
+                                                                                    tp_group=tp_group,
+                                                                                    use_zero=use_zero,
+                                                                                    inplace=False)
 
-            # Then hanlde TP Shards
-            original_shape = param_info['param2shape'][id(param)]
-            state_ = gather_distributed_optimizer_states(state_, param, original_shape, tp_group)
-            state_ = {k: v.detach().cpu() for k, v in state_.items()}
-            block, block_size = state_dict_sharder.append_optim_state(str(param_id), state_)
+            block, block_size = state_dict_sharder.append_optim_state(param_id, state_)
             if block is not None:
                 yield block, block_size
 
@@ -505,20 +497,30 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
 
                 file_path = os.path.join(ckpt_root_path, filename)
                 state_dict = load_shard_state_dict(Path(file_path), use_safetensors=False)
-                state_dict = {int(k): v for k, v in state_dict.items()}
                 load_states_into_optimizer(optimizer.optim, state_dict, id_map, strict=True)
                 del state_dict
                 gc.collect()
                 loaded_file.add(filename)
 
-        # for param, state in optimizer.optim.state.items():
-        #     param_id = _get_param_id_from_optimizer_param(param, self.use_zero)
-        #     print(dist.get_rank(), param_id, param.shape,
-        #           param.dtype, param.device, state['exp_avg'].shape, state['exp_avg'].dtype, state['exp_avg'].device)
+        # Then shard the loaded optimizer states if using tp/zero.
+        for param, state in optimizer.optim.state.items():
+            device = param.device
+            working_param = param
+            if self.use_zero:
+                working_param = optimizer._param_store.master_to_working_param[id(param)]
 
-        # Shard the states along tensor parallel group.
+            original_shape = optimizer.param_info['param2shape'][id(working_param)]
+            sharded_state = self.shard_from_complete_optimizer_state(state,
+                                                                     current_shape=working_param.shape,
+                                                                     original_shape=original_shape,
+                                                                     device=device,
+                                                                     inplace=True)
+            optimizer.optim.state[param] = sharded_state
 
-        # Shard the states along data parallel group when Zero is used.
+        for param, state in optimizer.optim.state.items():
+            param_id = _get_param_id_from_optimizer_param(param, self.use_zero)
+            print(dist.get_rank(), param_id, param.shape, param.dtype, param.device, state['exp_avg'].shape,
+                  state['exp_avg'].dtype, state['exp_avg'].device)
 
         sharded_optimizer_loading_epilogue(optimizer.optim)
 
@@ -544,3 +546,92 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
         """
         if self.coordinator.is_master():
             super().save_lr_scheduler(lr_scheduler, checkpoint)
+
+    @staticmethod
+    def gather_from_sharded_optimizer_state(state: OrderedDict, param: torch.Tensor, original_shape: torch.Size,
+                                            dp_group: ProcessGroup, tp_group: ProcessGroup, use_zero: bool,
+                                            inplace: bool) -> OrderedDict:
+        """
+        With given parameter and its optimizer states, gather the complete optimizer state for saving.
+
+        Args:
+            state (OrderedDict): Optimizer states of given parameter, might be distributed among tp/dp group if using TP/Zero.
+            param (torch.Tensor): The given parameter. It should be working_param when using Zero.
+            original_shape (torch.Size): The size of parameter before sharding.
+            dp_group (ProcessGroup): The process group of data parallel.
+            tp_group (ProcessGroup): The process group of tensor parallel.
+            use_zero (bool): Whether Zero is used.
+            inplace (bool): If set to True, will update the values of argument 'state' in place. Else will make a copy of state.
+
+        Returns:
+            OrderedDict: The complete optimizer state of given parameter.
+        """
+        dp_size = dist.get_world_size(dp_group)
+        tp_size = dist.get_world_size(tp_group)
+        current_shape = param.shape
+        state_ = state if inplace else copy.deepcopy(state)
+
+        for k, v in state_.items():
+            if isinstance(v, torch.Tensor) and k != 'step':
+
+                # First gather Zero shards.
+                if use_zero:
+                    v = v.cuda()
+                    gather_tensor = [torch.zeros_like(v) for _ in range(dp_size)]
+                    dist.all_gather(gather_tensor, v, group=dp_group)
+                    v = torch.stack(gather_tensor).view(-1)[:param.numel()].reshape_as(param)
+
+                # Then gather TP shards.
+                partition_dim = search_tp_partition_dim(current_shape, original_shape, tp_size)
+                if partition_dim is not None:
+                    gather_tensor = [torch.zeros_like(v) for _ in range(tp_size)]
+                    dist.all_gather(gather_tensor, v, group=tp_group)
+                    v = torch.cat(gather_tensor, dim=partition_dim)
+
+            state_[k] = v.detach().clone().cpu()
+            del v
+
+        return state_
+
+    def shard_from_complete_optimizer_state(self, state: OrderedDict, current_shape: torch.Size,
+                                            original_shape: torch.Size, device: torch.device,
+                                            inplace: bool) -> OrderedDict:
+        """
+        With complete optimizer states of a specific parameter loaded from checkpoint,
+        slice out the sharded optimizer states kept by current device.
+
+        Args:
+            state (OrderedDict): Complete optimizer states of a given parameter, loaded from checkpoint.
+            current_shape (torch.Size): The size of parameter after sharding.
+            original_shape (torch.Size): The size of parameter before sharding.
+            device (torch.device): The destination device of loaded optimizer states.
+            inplace (bool): If set to True, will update the values of argument 'state' in place. Else will make a copy of state.
+
+        Returns:
+            OrderedDict: The sharded optimizer state of the given parameter.
+        """
+        state_ = state if inplace else copy.deepcopy(state)
+
+        for k, v in state_.items():
+            if isinstance(v, torch.Tensor) and k != 'step':
+
+                # Shard state along tensor parallel group.
+                partition_dim = search_tp_partition_dim(current_shape, original_shape, self.tp_size)
+                if partition_dim is not None:
+                    slice_size = current_shape[partition_dim]
+                    v = v.split(slice_size, dim=partition_dim)[self.tp_rank]
+
+                # Shard state along data parallel group when using Zero.
+                if self.use_zero:
+                    padding_size = (self.dp_size - v.numel() % self.dp_size) % self.dp_size
+                    with torch.no_grad():
+                        v = v.flatten()
+                        if padding_size > 0:
+                            v = torch.nn.functional.pad(v, [0, padding_size])
+                        slice_size = v.numel() // self.dp_size
+                        v = v.split(slice_size, dim=partition_dim)[self.tp_rank]
+
+                state_[k] = v.detach().clone().to(device)
+                del v
+
+        return state_

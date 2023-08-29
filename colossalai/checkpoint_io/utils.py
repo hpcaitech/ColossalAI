@@ -206,43 +206,6 @@ def gather_distributed_param(param: torch.Tensor, keep_vars: bool = False) -> to
         return param_
 
 
-def gather_distributed_optimizer_states(state: OrderedDict,
-                                        param: torch.Tensor,
-                                        original_shape: torch.Size,
-                                        tp_group: ProcessGroup,
-                                        inplace: bool = True) -> OrderedDict:
-    """
-    With given parameter and its optimizer states,
-    gather the complete optimizer state for saving
-    if the passed in param is distributed under tp setting.
-
-    Args:
-        state (OrderedDict): Optimizer states of given parameter, might be distributed among tp group if tp is used.
-        param (torch.Tensor): The given parameter, might be d_tensor.
-        original_shape (torch.Size): The size of parameter before sharding.
-        tp_group (ProcessGroup): The process group of tensor parallel.
-        inplace (bool, optional): If set to True, will update the values of passed in state dict to the gathered states. Defaults to True.
-
-    Returns:
-        OrderedDict: The complete optimizer state of given parameter.
-    """
-    state_ = state if inplace else copy.deepcopy(state)
-    if is_distributed_tensor(param) or is_customized_distributed_tensor(param):
-        tp_size = dist.get_world_size(tp_group)
-        partition_dim = search_tp_partition_dim(param.shape, original_shape, tp_size)
-        if partition_dim is not None:
-            for k, v in state.items():
-                if isinstance(v, torch.Tensor) and k != 'step':
-                    v = v.cuda()
-                    gather_tensor = [torch.zeros_like(v) for _ in range(tp_size)]
-                    dist.all_gather(gather_tensor, v, group=tp_group)
-                    param_state = torch.cat(gather_tensor, dim=partition_dim)
-                    state_[k] = param_state.detach().cpu()
-                    if inplace:
-                        del v
-    return state_
-
-
 def save_state_dict_shards(sharded_state_dict: Iterator[Tuple[OrderedDict, int]],
                            checkpoint: str,
                            index_file: "CheckpointIndexFile",
@@ -483,6 +446,9 @@ def load_states_into_optimizer(optimizer: Optimizer, state_dict: dict, id_map: d
             to its corresponding parameter (a tensor) whose states will be updated.
         strict(bool, optional): If set to True, only load the parameters with its id in id_map. Defaults to False.
     """
+
+    # Ensure that the keys of state_dict are integers.
+    state_dict = {int(k): v for k, v in state_dict.items()}
 
     def cast(param, value, key=None):
         r"""Make a deep copy of value, casting all tensors to device of param."""
