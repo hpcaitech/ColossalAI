@@ -150,7 +150,6 @@ class CaiQuantLinear(nn.Module):
     def prepare_buffers(self):
         assert self.qweight.device.type == "cuda"
         device = self.qweight.device
-        print(self.g_idx)
         if self.g_idx is not None:
             if self.row_split and torch.equal(
                     self.g_idx,
