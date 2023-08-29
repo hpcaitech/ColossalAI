@@ -180,7 +180,7 @@ class TPInferEngine:
         max_len_in_batch = -1
         if isinstance(inputs, (BatchEncoding, dict)):
             for i, attn_mask in enumerate(attn_masks):
-                curr_seq_len = torch.sum(attn_mask)
+                curr_seq_len = int(torch.sum(attn_mask))
                 seq_lengths[i] = curr_seq_len
                 seq_start_indexes[i] = start_index
                 start_index += curr_seq_len
