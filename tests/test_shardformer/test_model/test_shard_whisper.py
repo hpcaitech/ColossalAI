@@ -112,37 +112,44 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 
     torch.cuda.empty_cache()
 
-
+#TODO fix WhisperForConditionalGeneration enable jit fused operato
 # TODO（jianghai) fix fp16
-#TODO fix WhisperForConditionalGeneration enable jit fused operator
-@parameterize('test_config', [{
-    'tp_size': 2,
-    'pp_size': 2,
-    'num_microbatches': 2,
-    'enable_all_optimization': True,
-    'use_lazy_init': True,
-    'precision': 'fp32',
-    'initial_scale': 1,
-}, {
-    'tp_size': 1,
-    'pp_size': 2,
-    'num_microbatches': 4,
-    'use_lazy_init': False,
-    'precision': 'fp32',
-    'initial_scale': 1,
-}, {
-    'tp_size': 4,
-    'pp_size': 1,
-    'enable_all_optimization': True,
-    'use_lazy_init': False,
-    'precision': 'fp32',
-}, {
-    'tp_size': 1,
-    'pp_size': 4,
-    'num_microbatches': 4,
-    'use_lazy_init': False,
-    'precision': 'fp32',
-}])
+@parameterize(
+    'test_config',
+    [
+        {
+            'tp_size': 2,
+            'pp_size': 2,
+            'num_microbatches': 2,
+            'enable_all_optimization': True,
+            'use_lazy_init': True,
+            'precision': 'fp32',
+            'initial_scale': 1,
+        },
+        {
+            'tp_size': 1,
+            'pp_size': 2,
+            'num_microbatches': 4,
+            'use_lazy_init': False,
+            'precision': 'fp32',
+            'initial_scale': 1,
+        },
+        {
+            'tp_size': 4,
+            'pp_size': 1,
+            'enable_all_optimization': True,
+            'use_lazy_init': False,
+            'precision': 'fp32',
+        },
+        {
+            'tp_size': 1,
+            'pp_size': 4,
+            'num_microbatches': 4,
+            'use_lazy_init': False,
+            'precision': 'fp32',
+        },
+    # whisper is not supported fp16 for now.
+    ])
 def run_whisper_test(test_config):
     sub_model_zoo = model_zoo.get_sub_registry('transformers_whisper')
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
