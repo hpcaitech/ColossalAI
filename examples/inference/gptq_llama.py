@@ -28,11 +28,11 @@ examples = [
         "auto-gptq is an easy-to-use model quantization library with user-friendly apis, based on GPTQ algorithm.")
 ]
 
-quantize_config = BaseQuantizeConfig(
-    bits=4,    # quantize model to 4-bit
-    group_size=128,    # it is recommended to set the value to 128
-    desc_act=True,    # set to False can significantly speed up inference but the perplexity may slightly bad
-)
+# quantize_config = BaseQuantizeConfig(
+#     bits=4,    # quantize model to 4-bit
+#     group_size=128,    # it is recommended to set the value to 128
+#     desc_act=False,    # set to False can significantly speed up inference but the perplexity may slightly bad
+# )
 
 # # load un-quantized model, by default, the model will always be loaded into CPU memory
 # model = AutoGPTQForCausalLM.from_pretrained(pretrained_model_dir, quantize_config)
