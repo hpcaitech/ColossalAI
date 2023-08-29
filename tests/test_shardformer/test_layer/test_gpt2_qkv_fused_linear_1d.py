@@ -131,8 +131,8 @@ def check_linear_conv_1d_row(lazy_init: bool, seq_parallel: bool):
 @parameterize('lazy_init', [False, True])
 @parameterize('seq_parallel', [False, True])
 @parameterize('overlap', [True])
-def check_gpt2_qkv_fused_linear_1d(lazy_init: bool, seq_parallel: bool):
-    check_linear_conv_1d_col(lazy_init, seq_parallel)
+def check_gpt2_qkv_fused_linear_1d(lazy_init: bool, seq_parallel: bool, overlap: bool):
+    check_linear_conv_1d_col(lazy_init, seq_parallel, overlap)
     check_linear_conv_1d_row(lazy_init, seq_parallel)
 
 
