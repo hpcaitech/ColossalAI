@@ -9,6 +9,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Union
 
+import numpy as np
 import torch
 import torch.distributed as dist
 from torch import inf
@@ -470,3 +471,9 @@ def disposable(func: Callable) -> Callable:
             return func(*args, **kwargs)
 
     return wrapper
+
+
+def set_seed(seed: int) -> None:
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)

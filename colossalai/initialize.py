@@ -4,10 +4,12 @@
 import argparse
 import os
 import pprint
+import warnings
 from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 from torch.nn.modules.loss import _Loss
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -31,7 +33,15 @@ from colossalai.engine.schedule import (
 )
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer.colossalai_optimizer import ColossalaiOptimizer
-from colossalai.utils import get_current_device, is_using_ddp, is_using_pp, is_using_sequence, sync_model_param
+from colossalai.utils import (
+    get_current_device,
+    is_using_ddp,
+    is_using_pp,
+    is_using_sequence,
+    set_cuda_device,
+    set_seed,
+    sync_model_param,
+)
 from colossalai.utils.moe import sync_moe_model_param
 from colossalai.zero.legacy import ShardedOptimizerV2, convert_to_zero_v2
 from colossalai.zero.legacy.gemini.ophooks import BaseOpHook
@@ -83,40 +93,17 @@ def launch(config: Union[str, Path, Config, Dict],
     Raises:
         Exception: Raise exception when config type is wrong
     """
-    gpc.verbose = verbose
-
-    # set config
-    assert isinstance(config, (Config, str, Path, dict)), \
-        f'expected argument config to be Config, str or Path, but got {type(config)}'
-    if not isinstance(config, Config) and isinstance(config, dict):
-        config = Config(config)
-    if isinstance(config, (str, Path)):
-        config = Config.from_file(config)
-    gpc.load_config(config)
-
+    warnings.warn('config argument will be deprecated soon', DeprecationWarning)
     # init default process group
-    gpc.init_global_dist(rank, world_size, backend, host, port)
-
-    # init process groups for different parallel modes from config
-    gpc.init_parallel_groups()
-
+    dist.init_process_group(rank=rank, world_size=world_size, backend=backend, init_method=f'tcp://[{host}]:{port}')
     # set cuda device
     if torch.cuda.is_available():
-        # if local rank is not given, calculate automatically
-        gpc.set_device(local_rank)
-
-    # set the number of processes running on the same node
-    gpc.detect_num_processes_on_current_node()
-
-    gpc.set_seed(seed)
+        set_cuda_device(local_rank)
+    set_seed(seed)
 
     if verbose:
         logger = get_dist_logger()
-        logger.info(
-            f'Distributed environment is initialized, '
-            f'data parallel size: {gpc.data_parallel_size}, pipeline parallel size: {gpc.pipeline_parallel_size}, '
-            f'tensor parallel size: {gpc.tensor_parallel_size}',
-            ranks=[0])
+        logger.info(f'Distributed environment is initialized, world size: {world_size}', ranks=[0])
 
 
 def launch_from_slurm(config: Union[str, Path, Config, Dict],
@@ -252,6 +239,8 @@ def initialize(model: nn.Module,
             A tuple of ``(engine, train_dataloader, test_dataloader, lr_scheduler)``
             where only ``engine`` could not be None.
     """
+    warnings.warn('colossalai.initialize will be deprecated soon', DeprecationWarning)
+
     # get logger
     logger = get_dist_logger()
     gpc.verbose = verbose

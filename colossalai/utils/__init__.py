@@ -18,10 +18,11 @@ from .common import (
     multi_tensor_applier,
     param_is_not_tensor_parallel_duplicate,
     print_rank_0,
+    set_seed,
     switch_virtual_pipeline_parallel_rank,
     sync_model_param,
 )
-from .cuda import empty_cache, get_current_device, set_to_cuda, synchronize
+from .cuda import empty_cache, get_current_device, set_cuda_device, set_to_cuda, synchronize
 from .data_sampler import DataParallelSampler, get_dataloader
 from .memory import (
     colo_device_memory_capacity,
@@ -72,4 +73,6 @@ __all__ = [
     'disposable',
     'colo_set_cpu_memory_capacity',
     'colo_get_cpu_memory_capacity',
+    'set_cuda_device',
+    'set_seed',
 ]
