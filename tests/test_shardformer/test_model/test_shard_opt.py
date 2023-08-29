@@ -1,5 +1,4 @@
 import os
-from copy import deepcopy
 
 import pytest
 import torch
@@ -24,7 +23,7 @@ from tests.test_shardformer.test_model._utils import (
 os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
 
 
-def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config, name):
+def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config):
 
     org_model, org_optimizer, sharded_model, sharded_optimizer, criterion, booster = \
         build_model_from_hybrid_plugin(model_fn, loss_fn, test_config)
@@ -56,7 +55,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             atol, rtol = 1e-6, 1e-3
         else:
             atol, rtol = 4e-2, 4e-2
-        print(f"check grad {name}, {dist.get_rank()}")
         row_layer_grads = get_grad_tensors_for_check(opt_model,
                                                      shard_opt_model,
                                                      row_layer_for_check,
@@ -64,8 +62,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
                                                      atol=atol,
                                                      rtol=rtol,
                                                      dim=0,
-                                                     verbose=False,
-                                                     name=name)
+                                                     verbose=False)
         col_layer_grads = get_grad_tensors_for_check(opt_model,
                                                      shard_opt_model,
                                                      col_layer_for_check,
@@ -73,8 +70,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
                                                      atol=atol,
                                                      rtol=rtol,
                                                      dim=1,
-                                                     verbose=False,
-                                                     name=name)
+                                                     verbose=False)
         grads_to_check.update(col_layer_grads)
         grads_to_check.update(row_layer_grads)
 
@@ -89,7 +85,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         else:
             atol, rtol = 5e-3, 5e-3
         if org_model.__class__.__name__ == 'OPTModel':
-            print(f"check output {name}, {dist.get_rank()}")
             check_output_hidden_state(org_output, sharded_output, stage_manager, atol=atol, rtol=rtol)
 
         check_loss(org_loss, sharded_loss, atol=atol, rtol=rtol)
@@ -109,8 +104,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
                      dim=1,
                      verbose=False)
 
-
-# check grads
+    # check grads
     check_all_grad_tensors(grads_to_check)
 
     torch.cuda.empty_cache()
@@ -164,7 +158,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 def run_opt_test(test_config):
     sub_model_zoo = model_zoo.get_sub_registry('transformers_opt')
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
-        check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config, name)
+        check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
 
     clear_layout_converter()
     torch.cuda.empty_cache()

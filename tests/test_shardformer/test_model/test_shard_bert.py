@@ -22,7 +22,6 @@ from tests.test_shardformer.test_model._utils import (
 
 def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config):
 
-    # build
     org_model, org_optimizer, sharded_model, sharded_optimizer, criterion, booster = \
         build_model_from_hybrid_plugin(model_fn, loss_fn, test_config)
 
@@ -45,7 +44,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     col_layer_for_check = ['encoder.layer[0].output.dense']
     row_layer_for_check = ['embeddings.word_embeddings', 'encoder.layer[0].intermediate.dense']
 
-    # Save gradient tensors for comparison between the original model and the sharded model.
+    # Save gradient tensors for comparison between the original model and the sharded model before optimizer step.
     grads_to_check = {}
     if test_config['precision'] == 'fp32':
         atol, rtol = 1e-4, 1e-3
@@ -184,10 +183,10 @@ def check_bert(rank, world_size, port):
     run_bert_test()
 
 
-# def check_bert_3d(rank, world_size, port):
-#     disable_existing_loggers()
-#     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-#     run_bert_3d_test()
+def check_bert_3d(rank, world_size, port):
+    disable_existing_loggers()
+    colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    run_bert_3d_test()
 
 
 @pytest.mark.dist
@@ -197,11 +196,12 @@ def test_bert():
     spawn(check_bert, 4)
 
 
-# @pytest.mark.largedist
-# @rerun_if_address_is_in_use()
-# @clear_cache_before_run()
-# def test_bert_3d():
-#     spawn(check_bert_3d, 8)
+@pytest.mark.largedist
+@rerun_if_address_is_in_use()
+@clear_cache_before_run()
+def test_bert_3d():
+    spawn(check_bert_3d, 8)
+
 
 if __name__ == "__main__":
     test_bert()
