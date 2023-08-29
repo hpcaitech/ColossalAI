@@ -30,7 +30,7 @@ class CaiQuantLinear(nn.Module):
         "temp_dq": None,
     }
 
-    def __init__(self, bits, groupsize, infeatures, outfeatures, bias):
+    def __init__(self, bits, groupsize, infeatures, outfeatures, bias, tp_size=1, tp_rank=0, row_split=False):
         super().__init__()
         if bits not in [2, 4, 8]:
             raise NotImplementedError("Only 2,4,8 bits are supported.")
@@ -46,7 +46,14 @@ class CaiQuantLinear(nn.Module):
             torch.zeros((math.ceil(infeatures / self.groupsize), outfeatures // 32 * self.bits), dtype=torch.int32))
         self.register_buffer('scales',
                              torch.zeros((math.ceil(infeatures / self.groupsize), outfeatures), dtype=torch.float16))
-        self.register_buffer('g_idx', torch.tensor([i // self.groupsize for i in range(infeatures)], dtype=torch.int32))
+        if row_split:
+            self.register_buffer(
+                'g_idx',
+                torch.tensor([(i + (tp_rank * self.infeatures)) // self.groupsize for i in range(infeatures)],
+                             dtype=torch.int32))
+        else:
+            self.register_buffer('g_idx',
+                                 torch.tensor([i // self.groupsize for i in range(infeatures)], dtype=torch.int32))
 
         if bias:
             self.register_buffer('bias', torch.zeros((outfeatures), dtype=torch.float16))
@@ -57,6 +64,9 @@ class CaiQuantLinear(nn.Module):
 
         self.q4 = None
         self.empty_tensor = torch.empty((1, 1), device="meta")
+        self.tp_size = tp_size
+        self.tp_rank = tp_rank
+        self.row_split = row_split
 
     def pack(self, linear, scales, zeros, g_idx=None):
 
@@ -137,17 +147,31 @@ class CaiQuantLinear(nn.Module):
         else:
             self.g_idx = g_idx
 
+    def prepare_buffers(self):
+        assert self.qweight.device.type == "cuda"
+        device = self.qweight.device
+        print(self.g_idx)
+        if self.g_idx is not None:
+            if self.row_split and torch.equal(
+                    self.g_idx,
+                    torch.tensor(
+                        [(i + (self.tp_rank * self.infeatures)) // self.groupsize for i in range(self.infeatures)],
+                        dtype=torch.int32,
+                        device=self.g_idx.device)):
+                self.g_idx = None
+            elif torch.equal(
+                    self.g_idx,
+                    torch.tensor([i // self.groupsize for i in range(self.infeatures)],
+                                 dtype=torch.int32,
+                                 device=self.g_idx.device)):
+                self.g_idx = None
+
         CaiQuantLinear.max_dq_buffer_size = max(CaiQuantLinear.max_dq_buffer_size, self.qweight.numel() * 8)
 
         if self.g_idx is not None:
             CaiQuantLinear.max_inner_outer_dim = max(CaiQuantLinear.max_inner_outer_dim, self.infeatures,
                                                      self.outfeatures)
             CaiQuantLinear.max_input_len = 4096
-
-    def prepare_buffers(self):
-        assert self.qweight.device.type == "cuda"
-        device = self.qweight.device
-
         # The temp_state buffer is required to reorder X in the act-order case.
         # The temp_dq buffer is required to dequantize weights when using cuBLAS, typically for the prefill.
         CaiQuantLinear.device_to_buffers['temp_state'] = torch.zeros(
@@ -171,6 +195,21 @@ class CaiQuantLinear(nn.Module):
         assert self.qweight.device.type == "cuda"
         self.q4_width = self.qweight.shape[1]
         if self.g_idx is not None:
+            if self.row_split and torch.equal(
+                    self.g_idx,
+                    torch.tensor(
+                        [(i + (self.tp_rank * self.infeatures)) // self.groupsize for i in range(self.infeatures)],
+                        dtype=torch.int32,
+                        device=self.g_idx.device)):
+                self.g_idx = None
+            elif torch.equal(
+                    self.g_idx,
+                    torch.tensor([i // self.groupsize for i in range(self.infeatures)],
+                                 dtype=torch.int32,
+                                 device=self.g_idx.device)):
+                self.g_idx = None
+
+        if self.g_idx is not None:
             g_idx = self.g_idx.to("cpu")
         else:
             g_idx = self.empty_tensor
@@ -192,16 +231,20 @@ class CaiQuantLinear(nn.Module):
             x = x.view(-1, x.shape[-1])
             output = torch.empty((x.shape[0], self.outfeatures), dtype=torch.float16, device=x.device)
             gptq_cuda.q4_matmul(x, self.q4, output)
-            if self.bias is not None:
+            if (self.bias is not None and not self.row_split) or self.tp_size == 1:
                 output.add_(self.bias)
         else:
+            if (self.bias is not None and not self.row_split) or self.tp_size == 1:
+                bias = self.bias
+            else:
+                bias = None
             output = self.gptq_linear(
                 x,
                 self.qweight,
                 self.scales,
                 self.qzeros,
                 g_idx=self.g_idx,
-                bias=self.bias,
+                bias=bias,
             )
         return output.view(outshape)
 
