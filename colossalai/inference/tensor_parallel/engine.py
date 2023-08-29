@@ -1,8 +1,8 @@
-from typing import Any, Callable, List, Optional, Set, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Union
 
 import torch
-import torch.distributed as dist
 import torch.nn as nn
+from transformers import BloomForCausalLM, LlamaForCausalLM
 from transformers.generation import GenerationConfig
 from transformers.generation.stopping_criteria import StoppingCriteriaList
 from transformers.tokenization_utils_base import BatchEncoding
@@ -16,7 +16,7 @@ from .kvcache_manager import MemoryManager
 
 DP_AXIS, PP_AXIS, TP_AXIS = 0, 1, 2
 
-_supported_models = ['LlamaForCausalLM', 'LlamaModel', 'BloomForCausalLM']
+_supported_models = ['LlamaForCausalLM', 'BloomForCausalLM']
 
 
 class TPInferEngine:
@@ -27,7 +27,7 @@ class TPInferEngine:
                  max_input_len: int,
                  max_output_len: int,
                  dtype: torch.dtype = torch.float16,
-                 device: str = 'cuda') -> None:
+                 device: torch.device = torch.cuda.current_device()) -> None:
         self.model = model
         self.sharded_model = None
 
@@ -37,22 +37,18 @@ class TPInferEngine:
         self.max_total_token_num = self.max_batch_size * (self.max_input_len + self.max_output_len)
 
         # Constraints relatable with specs of devices
-        assert self.max_batch_size <= 64
-        assert self.max_input_len + self.max_output_len <= 2048
+        assert self.max_batch_size <= 64, "Max batch size exceeds the constraint"
+        assert self.max_input_len + self.max_output_len <= 2048, "Max length exceeds the constraint"
 
-        # NOTE For now, we focus on tensor parallel.
-        # We might want to merge pp and dp inference in future.
-        # self.tp_size = tp_size
-        # self.pp_size = 1
-        # self.dp_size = 1
-        torch.cuda.set_device(device=device)
+        self.device = device
         self.dtype = dtype
 
         self.head_dim = self.model.config.hidden_size // self.model.config.num_attention_heads
         self.head_num = self.model.config.num_attention_heads
         self.layer_num = self.model.config.num_hidden_layers
 
-        self.tp_size = -1    # toe be set with given shard config in self.prepare_shard_config
+        self.tp_size = -1    # to be set with given shard config in self.prepare_shard_config
+        self.cache_manager = None
 
     def _init_manager(self) -> None:
         assert self.tp_size >= 1, "TP size not initialized without providing a valid ShardConfig"
@@ -63,6 +59,7 @@ class TPInferEngine:
 
     def prepare_with_shard_config(self, shard_config: Optional[ShardConfig] = None) -> ShardConfig:
         """ Prepare the engine with a given ShardConfig, or create a default one with tp size 1 """
+        self.tp_size = 1
         if shard_config is None:
             shard_config = ShardConfig(
                 tensor_parallel_process_group=None,
@@ -74,13 +71,11 @@ class TPInferEngine:
                 enable_jit_fused=False,
                 inference_only=True,
             )
-            self.tp_size = 1
         else:
             shard_config.inference_only = True
             shard_config.pipeline_stage_manager = None
             if shard_config.enable_tensor_parallelism:
-                world_size = dist.get_world_size(shard_config.tensor_parallel_process_group)
-                self.tp_size = world_size
+                self.tp_size = shard_config.tensor_parallel_size
         self._init_manager()
 
         return shard_config
@@ -90,22 +85,31 @@ class TPInferEngine:
         assert self.tp_size == shardformer.shard_config.tensor_parallel_size, \
             "Discrepancy between the tp size of TPInferEngine and the tp size of shard config"
         model_name = self.model.__class__.__name__
-        assert model_name in self._supported_model(), f"Unsupported model cls {model_name} for TP inference."
+        assert model_name in self._supported_models(), f"Unsupported model cls {model_name} for TP inference."
         policy = get_autopolicy(self.model, inference_only=True)
         self.sharded_model, _ = shardformer.optimize(self.model, policy)
-        self.sharded_model = self.sharded_model.cuda()
+        self.sharded_model = self.sharded_model.to(self.device)
 
-    def _supported_model(self) -> List[str]:
+    @staticmethod
+    def _supported_models() -> List[str]:
         return _supported_models
 
+    def generate(self, input_tokens, generate_kwargs) -> torch.Tensor:
+        if isinstance(input_tokens, torch.Tensor):
+            input_tokens = dict(input_ids=input_tokens, attention_mask=torch.ones_like(input_tokens, dtype=torch.bool))
+        if self.sharded_model is not None:
+            return self.generate_by_set_infer_state(input_tokens, generate_kwargs)
+
+        return self.model.generate(**input_tokens, **generate_kwargs)
+
     @torch.no_grad()
-    def generate_by_set_infer_state(self, input_tokens, generate_kwargs, early_stopping=False) -> torch.Tensor:
+    def generate_by_set_infer_state(self, input_tokens, generate_kwargs) -> torch.Tensor:
         """
         Generate output tokens by setting BatchInferState as an attribute to the model and calling model.generate
 
         Args:
             inputs: should be one of the following types
-                1. BatchEncoding (e.g. tokenizer batch_encode)
+                1. BatchEncoding or dict (e.g. tokenizer batch_encode)
                 2. list of input token ids (e.g. appended result of tokenizer encode)
                 3. torch.Tensor (e.g. tokenizer encode with return_tensors='pt')
         """
@@ -120,9 +124,10 @@ class TPInferEngine:
         # NOTE this is not an expectable way to pass BatchInferState during inference
         #   we might want to rewrite generate function (e.g. generate_by_pass_infer_state)
         #   and pass BatchInferState via model forward
-        if hasattr(self.sharded_model, 'model'):
+        model = self.sharded_model
+        if isinstance(model, LlamaForCausalLM):
             model = self.sharded_model.model
-        elif hasattr(self.sharded_model, 'transformer'):
+        elif isinstance(model, BloomForCausalLM):
             model = self.sharded_model.transformer
         setattr(model, 'infer_state', batch_infer_state)
 
@@ -132,21 +137,21 @@ class TPInferEngine:
             input_tokens = dict(input_ids=input_tokens)
         for t in input_tokens:
             if torch.is_tensor(input_tokens[t]):
-                input_tokens[t] = input_tokens[t].to(torch.cuda.current_device())
+                input_tokens[t] = input_tokens[t].to(self.device)
 
-        outputs = self.sharded_model.generate(**input_tokens, **generate_kwargs, early_stopping=early_stopping)
+        outputs = self.sharded_model.generate(**input_tokens, **generate_kwargs, early_stopping=False)
 
         print(f"outputs.shape {outputs.shape}")
         return outputs
 
-    def prepare_batch_state(self, inputs: [BatchEncoding, torch.Tensor]) -> BatchInferState:
+    def prepare_batch_state(self, inputs) -> BatchInferState:
         """
         Create and prepare BatchInferState used for inference during model forwrad,
         by processing each sequence of the given inputs
 
         Args:
             inputs: should be one of the following types
-                1. BatchEncoding (e.g. tokenizer batch_encode)
+                1. BatchEncoding or dict (e.g. tokenizer batch_encode)
                 2. list of input token ids (e.g. appended result of tokenizer encode)
                 3. torch.Tensor (e.g. tokenizer encode with return_tensors='pt')
                 NOTE For torch.Tensor inputs representing a batch of inputs, we are unable to retrieve
@@ -156,10 +161,10 @@ class TPInferEngine:
         Returns:
             BatchInferState: the states for the current batch during inference
         """
-        if not isinstance(inputs, (BatchEncoding, list, torch.Tensor)):
+        if not isinstance(inputs, (BatchEncoding, dict, list, torch.Tensor)):
             raise TypeError(f"inputs type {type(inputs)} is not supported in prepare_batch_state")
 
-        if isinstance(inputs, BatchEncoding):
+        if isinstance(inputs, (BatchEncoding, dict)):
             attn_masks = inputs['attention_mask']
             batch_size = attn_masks.shape[0]
             max_len_in_batch = attn_masks.shape[1]
@@ -168,12 +173,12 @@ class TPInferEngine:
         else:
             batch_size = inputs.shape[0]
 
-        seq_start_indexes = torch.zeros(batch_size, dtype=torch.int32, device="cuda")
-        seq_lengths = torch.zeros(batch_size, dtype=torch.int32, device="cuda")
+        seq_start_indexes = torch.zeros(batch_size, dtype=torch.int32, device=self.device)
+        seq_lengths = torch.zeros(batch_size, dtype=torch.int32, device=self.device)
         start_index = 0
 
         max_len_in_batch = -1
-        if isinstance(inputs, BatchEncoding):
+        if isinstance(inputs, (BatchEncoding, dict)):
             for i, attn_mask in enumerate(attn_masks):
                 curr_seq_len = torch.sum(attn_mask)
                 seq_lengths[i] = curr_seq_len
@@ -188,10 +193,14 @@ class TPInferEngine:
                 start_index += curr_seq_len
                 max_len_in_batch = curr_seq_len if curr_seq_len > max_len_in_batch else max_len_in_batch
 
-        block_loc = torch.empty((batch_size, self.max_input_len + self.max_output_len), dtype=torch.long, device="cuda")
+        print(" 666 ", max_len_in_batch)
+
+        block_loc = torch.empty((batch_size, self.max_input_len + self.max_output_len),
+                                dtype=torch.long,
+                                device=self.device)
         batch_infer_state = BatchInferState(batch_size, max_len_in_batch)
-        batch_infer_state.seq_len = seq_lengths.to('cuda')    # might want to assign specific device
-        batch_infer_state.start_loc = seq_start_indexes.to('cuda')
+        batch_infer_state.seq_len = seq_lengths.to(self.device)    # might want to assign specific device
+        batch_infer_state.start_loc = seq_start_indexes.to(self.device)
         batch_infer_state.block_loc = block_loc
         batch_infer_state.decode_layer_id = 0
         batch_infer_state.past_key_values_len = 0
@@ -210,12 +219,8 @@ class TPInferEngine:
                                      stopping_criteria: Optional[StoppingCriteriaList] = None,
                                      prepare_inputs_fn: Optional[Callable[[torch.Tensor, Any], dict]] = None,
                                      **model_kwargs) -> torch.Tensor:
-
-        # input_ids = input_tokens['input_ids']
-
         # if batch_size >= 4:
         #     assert self.sharded_model is not None, "sharded model does not exist"
-
         #     batch_infer_state = self.prepare_batch_state(input_tokens)
         #     batch_size = batch_infer_state.batch_size
         #     assert batch_infer_state.max_len_in_batch <= self.max_input_len
@@ -224,8 +229,7 @@ class TPInferEngine:
         #         # ...
         #         self.sharded_model.forward(..., **model_kwargs)
         # else:
-        #     # Use original model
-        #     orig_model = self.model
+        #     Use original model to generate
         raise NotImplementedError("generate by passing BatchInferState is not implemented.")
 
     # NOTE might want to use in rewritten generate method: use after model.forward

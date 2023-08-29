@@ -134,7 +134,9 @@ _POLICY_LIST = {
 _INFER_POLICY_LIST = {
     # LlaMa
     "transformers.models.llama.modeling_llama.LlamaModel":
-        PolicyLocation(file_name="llama", class_name="LlamaModelInferPolicy")
+        PolicyLocation(file_name="llama", class_name="LlamaModelInferPolicy"),
+    "transformers.models.llama.modeling_llama.LlamaForCausalLM":
+        PolicyLocation(file_name="llama", class_name="LlamaModelInferPolicy"),
 }
 
 

@@ -1,40 +1,70 @@
 import pytest
-import torch.distributed as dist
-from transformers import AutoTokenizer, BloomForCausalLM
+import torch
+from transformers import AutoTokenizer, LlamaConfig, LlamaForCausalLM
 
 import colossalai
 from colossalai.inference.tensor_parallel import TPInferEngine
 from colossalai.logging import disable_existing_loggers
 from colossalai.shardformer import ShardConfig, ShardFormer
+from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
 
 TP_SIZE = 2
+BATCH_SIZE = 4
+MAX_INPUT_LEN = 16
+MAX_OUTPUT_LEN = 8
 
 
-def test_tp_infer():
+def test_orig_generate():
+    input_ids = torch.randint(low=10, high=1000, size=(BATCH_SIZE, MAX_INPUT_LEN))
 
-    model_path = "/data3/data/model_eval_for_commerical_use/phoenix-inst-chat-7b"
-    tokenizer = AutoTokenizer.from_pretrained(model_path)
-    tokenizer.pad_token = tokenizer.eos_token
-    model = BloomForCausalLM.from_pretrained(model_path, pad_token_id=tokenizer.eos_token_id)
+    model_config = LlamaConfig()
+    model = LlamaForCausalLM(model_config)
+    shard_config = ShardConfig(enable_tensor_parallelism=False)
 
-    text = "Introduce some landmarks in Beijing"
-    input_ids = tokenizer.encode(text, return_tensors='pt')
+    # init TPInferEngine and
+    infer_engine = TPInferEngine(model, BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
+    infer_engine.prepare_with_shard_config(shard_config)
 
-    tp_process_group = dist.new_group([0, 1])
+    # original model generate
+    generate_kwargs = dict(do_sample=False)
+    infer_engine.generate(input_ids, generate_kwargs)
 
-    infer_engine = TPInferEngine(model.half(), 4, 12, 8)
-    shard_config = ShardConfig(enable_tensor_parallelism=True, tensor_parallel_process_group=tp_process_group)
+
+def run():
+    model_config = LlamaConfig()
+    model = LlamaForCausalLM(model_config)
+    shard_config = ShardConfig(enable_tensor_parallelism=True, inference_only=True)
     shardformer = ShardFormer(shard_config=shard_config)
 
-    infer_engine.prepare_with_shard_config(shard_config)
+    infer_engine = TPInferEngine(model, BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
+    infer_engine.prepare_with_shard_config(shard_config=shard_config)
     infer_engine.shard_model_by(shardformer)
 
-    generate_kwargs = dict(do_sample=False)
-    outputs = infer_engine.generate_by_set_infer_state(input_ids, generate_kwargs)
+    assert infer_engine.cache_manager is not None
+    assert infer_engine.tp_size == TP_SIZE
+    assert infer_engine.head_num == model_config.num_attention_heads // TP_SIZE
 
-    output_text = tokenizer.decode(outputs)
-    print(output_text)
+    # TODO After adding forward replacement for CausalLM,
+    #      uncomment these lines to test sharded model generate
+    # generate_kwargs = dict(do_sample=False)
+    # infer_engine.generate(input_ids, generate_kwargs)
+
+    torch.cuda.empty_cache()
+
+
+def check_engine(rank, world_size, port):
+    disable_existing_loggers()
+    colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    run()
+
+
+@pytest.mark.dist
+@rerun_if_address_is_in_use()
+@clear_cache_before_run()
+def test_engine_infer():
+    spawn(check_engine, TP_SIZE)
 
 
 if __name__ == '__main__':
-    test_tp_infer()
+    test_orig_generate()
+    test_engine_infer()
