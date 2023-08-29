@@ -1,4 +1,5 @@
 import pytest
+import torch.distributed as dist
 from transformers import AutoTokenizer, BloomForCausalLM
 
 import colossalai
@@ -19,9 +20,13 @@ def test_tp_infer():
     text = "Introduce some landmarks in Beijing"
     input_ids = tokenizer.encode(text, return_tensors='pt')
 
-    infer_engine = TPInferEngine(model.half(), 4, 12, 8, tp_size=TP_SIZE)
-    shard_config = infer_engine.create_shard_config()
+    tp_process_group = dist.new_group([0, 1])
+
+    infer_engine = TPInferEngine(model.half(), 4, 12, 8)
+    shard_config = ShardConfig(enable_tensor_parallelism=True, tensor_parallel_process_group=tp_process_group)
     shardformer = ShardFormer(shard_config=shard_config)
+
+    infer_engine.prepare_with_shard_config(shard_config)
     infer_engine.shard_model_by(shardformer)
 
     generate_kwargs = dict(do_sample=False)

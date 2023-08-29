@@ -1,6 +1,7 @@
 from typing import Any, Callable, List, Optional, Set, Union
 
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 from transformers.generation import GenerationConfig
 from transformers.generation.stopping_criteria import StoppingCriteriaList
@@ -15,16 +16,18 @@ from .kvcache_manager import MemoryManager
 
 DP_AXIS, PP_AXIS, TP_AXIS = 0, 1, 2
 
+_supported_models = ['LlamaForCausalLM', 'LlamaModel', 'BloomForCausalLM']
+
 
 class TPInferEngine:
 
     def __init__(self,
                  model: nn.Module,
-                 max_batch_size,
-                 max_input_len,
-                 max_output_len,
-                 dtype=torch.float16,
-                 tp_size=1) -> None:
+                 max_batch_size: int,
+                 max_input_len: int,
+                 max_output_len: int,
+                 dtype: torch.dtype = torch.float16,
+                 device: str = 'cuda') -> None:
         self.model = model
         self.sharded_model = None
 
@@ -39,34 +42,47 @@ class TPInferEngine:
 
         # NOTE For now, we focus on tensor parallel.
         # We might want to merge pp and dp inference in future.
-        self.tp_size = tp_size
-        self.pp_size = 1
-        self.dp_size = 1
+        # self.tp_size = tp_size
+        # self.pp_size = 1
+        # self.dp_size = 1
+        torch.cuda.set_device(device=device)
         self.dtype = dtype
 
         self.head_dim = self.model.config.hidden_size // self.model.config.num_attention_heads
-        self.head_num = self.model.config.num_attention_heads // self.tp_size
+        self.head_num = self.model.config.num_attention_heads
         self.layer_num = self.model.config.num_hidden_layers
+
+        self.tp_size = -1    # toe be set with given shard config in self.prepare_shard_config
+
+    def _init_manager(self) -> None:
+        assert self.tp_size >= 1, "TP size not initialized without providing a valid ShardConfig"
+        assert self.head_num % self.tp_size == 0, f"Cannot shard {self.head_num} heads with tp size {self.tp_size}"
+        self.head_num //= self.tp_size    # update sharded number of heads
         self.cache_manager = MemoryManager(self.max_total_token_num, self.dtype, self.head_num, self.head_dim,
                                            self.layer_num)
-        self.pg_mesh = ProcessGroupMesh(self.dp_size, self.pp_size, self.tp_size)
 
-    def create_shard_config(self) -> ShardConfig:
-        """ create a ShardConfig consistent with configs and attributes of the engine """
-        shard_config = ShardConfig(
-            tensor_parallel_process_group=None,
-            pipeline_stage_manager=None,
-            enable_tensor_parallelism=False,
-            enable_fused_normalization=False,
-            enable_all_optimization=False,
-            enable_flash_attention=False,
-            enable_jit_fused=False,
-            inference_only=True,
-        )
-        if self.tp_size > 1:
-            shard_config.enable_tensor_parallelism = True
-            tp_process_group = self.pg_mesh.get_group_along_axis(TP_AXIS)
-            shard_config.tensor_parallel_process_group = tp_process_group
+    def prepare_with_shard_config(self, shard_config: Optional[ShardConfig] = None) -> ShardConfig:
+        """ Prepare the engine with a given ShardConfig, or create a default one with tp size 1 """
+        if shard_config is None:
+            shard_config = ShardConfig(
+                tensor_parallel_process_group=None,
+                pipeline_stage_manager=None,
+                enable_tensor_parallelism=False,
+                enable_fused_normalization=False,
+                enable_all_optimization=False,
+                enable_flash_attention=False,
+                enable_jit_fused=False,
+                inference_only=True,
+            )
+            self.tp_size = 1
+        else:
+            shard_config.inference_only = True
+            shard_config.pipeline_stage_manager = None
+            if shard_config.enable_tensor_parallelism:
+                world_size = dist.get_world_size(shard_config.tensor_parallel_process_group)
+                self.tp_size = world_size
+        self._init_manager()
+
         return shard_config
 
     def shard_model_by(self, shardformer: ShardFormer) -> None:
@@ -80,8 +96,7 @@ class TPInferEngine:
         self.sharded_model = self.sharded_model.cuda()
 
     def _supported_model(self) -> List[str]:
-        supported_models = ['LlamaForCausalLM', 'LlamaModel', 'BloomForCausalLM']
-        return supported_models
+        return _supported_models
 
     @torch.no_grad()
     def generate_by_set_infer_state(self, input_tokens, generate_kwargs, early_stopping=False) -> torch.Tensor:
