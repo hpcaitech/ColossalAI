@@ -1,4 +1,5 @@
 import os
+from copy import deepcopy
 
 import pytest
 import torch
@@ -11,10 +12,11 @@ from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_ad
 from tests.kit.model_zoo import model_zoo
 from tests.test_shardformer.test_model._utils import (
     build_model_from_hybrid_plugin,
-    check_grad,
+    check_all_grad_tensors,
     check_loss,
     check_output_hidden_state,
     check_weight,
+    get_grad_tensors_for_check,
     run_forward_backward_with_hybrid_plugin,
     unwrap_model,
 )
@@ -22,7 +24,7 @@ from tests.test_shardformer.test_model._utils import (
 os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
 
 
-def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config):
+def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config, name):
 
     org_model, org_optimizer, sharded_model, sharded_optimizer, criterion, booster = \
         build_model_from_hybrid_plugin(model_fn, loss_fn, test_config)
@@ -40,6 +42,46 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     stage_manager = booster.plugin.stage_manager
     tp_group = booster.plugin.tp_group
 
+    # unwrap model
+    opt_model = unwrap_model(org_model, 'OPTModel', 'model')
+    shard_opt_model = unwrap_model(sharded_model, 'OPTModel', 'model')
+
+    row_layer_for_check = ['decoder.layers[0].self_attn.q_proj', 'decoder.embed_tokens']    # 'decoder.embed_tokens'
+    col_layer_for_check = ['decoder.layers[0].self_attn.out_proj']
+
+    # Save gradient tensors for comparison between the original model and the sharded model.
+    grads_to_check = {}
+    if (stage_manager is None or stage_manager.is_first_stage()) and booster.plugin.zero_stage == 0:
+        if test_config['precision'] == 'fp32':
+            atol, rtol = 1e-6, 1e-3
+        else:
+            atol, rtol = 4e-2, 4e-2
+        print(f"check grad {name}, {dist.get_rank()}")
+        row_layer_grads = get_grad_tensors_for_check(opt_model,
+                                                     shard_opt_model,
+                                                     row_layer_for_check,
+                                                     tp_group,
+                                                     atol=atol,
+                                                     rtol=rtol,
+                                                     dim=0,
+                                                     verbose=False,
+                                                     name=name)
+        col_layer_grads = get_grad_tensors_for_check(opt_model,
+                                                     shard_opt_model,
+                                                     col_layer_for_check,
+                                                     tp_group,
+                                                     atol=atol,
+                                                     rtol=rtol,
+                                                     dim=1,
+                                                     verbose=False,
+                                                     name=name)
+        grads_to_check.update(col_layer_grads)
+        grads_to_check.update(row_layer_grads)
+
+    # optimizer executes step
+    org_optimizer.step()
+    sharded_optimizer.step()
+
     # check last hidden state & loss
     if stage_manager is None or stage_manager.is_last_stage():
         if test_config['precision'] == 'fp32':
@@ -47,51 +89,17 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         else:
             atol, rtol = 5e-3, 5e-3
         if org_model.__class__.__name__ == 'OPTModel':
-            print("check output")
+            print(f"check output {name}, {dist.get_rank()}")
             check_output_hidden_state(org_output, sharded_output, stage_manager, atol=atol, rtol=rtol)
 
-        print("check loss")
         check_loss(org_loss, sharded_loss, atol=atol, rtol=rtol)
 
-    # unwrap model
-    opt_model = unwrap_model(org_model, 'OPTModel', 'model')
-    shard_opt_model = unwrap_model(sharded_model, 'OPTModel', 'model')
-
-    # check grad
-    row_layer_for_check = ['decoder.layers[0].self_attn.q_proj', 'decoder.embed_tokens']    # 'decoder.embed_tokens'
-    col_layer_for_check = ['decoder.layers[0].self_attn.out_proj']
-    if (stage_manager is None or stage_manager.is_first_stage()) and booster.plugin.zero_stage == 0:
-        if test_config['precision'] == 'fp32':
-            atol, rtol = 1e-6, 1e-3
-        else:
-            atol, rtol = 3e-2, 3e-2
-        print("check grad")
-        check_grad(opt_model,
-                   shard_opt_model,
-                   row_layer_for_check,
-                   tp_group,
-                   atol=atol,
-                   rtol=rtol,
-                   dim=0,
-                   verbose=False)
-        check_grad(opt_model,
-                   shard_opt_model,
-                   col_layer_for_check,
-                   tp_group,
-                   atol=atol,
-                   rtol=rtol,
-                   dim=1,
-                   verbose=False)
-
-    # check weights after optimizer.step()
-    org_optimizer.step()
-    sharded_optimizer.step()
+    # check weights
     if stage_manager is None or stage_manager.is_first_stage():
         if test_config['precision'] == 'fp32':
             atol, rtol = 1e-3, 1e-3
         else:
             atol, rtol = 5e-3, 5e-3
-        print("check weight")
         check_weight(opt_model,
                      shard_opt_model,
                      col_layer_for_check,
@@ -100,6 +108,10 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
                      rtol=rtol,
                      dim=1,
                      verbose=False)
+
+
+# check grads
+    check_all_grad_tensors(grads_to_check)
 
     torch.cuda.empty_cache()
 
@@ -152,9 +164,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 def run_opt_test(test_config):
     sub_model_zoo = model_zoo.get_sub_registry('transformers_opt')
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
-        print(name)
-        print(test_config)
-        check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
+        check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config, name)
 
     clear_layout_converter()
     torch.cuda.empty_cache()
@@ -200,12 +210,13 @@ def test_OPTModel():
     spawn(check_OPTModel, 4)
 
 
-# @pytest.mark.largedist
-# @rerun_if_address_is_in_use()
-# @clear_cache_before_run()
-# def test_opt_3d():
-#     spawn(check_opt_3d, 8)
+@pytest.mark.largedist
+@rerun_if_address_is_in_use()
+@clear_cache_before_run()
+def test_opt_3d():
+    spawn(check_opt_3d, 8)
+
 
 if __name__ == '__main__':
     test_OPTModel()
-    # test_opt_3d()
+    test_opt_3d()

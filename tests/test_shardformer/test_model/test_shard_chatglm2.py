@@ -9,10 +9,11 @@ from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_ad
 from tests.kit.model_zoo import model_zoo
 from tests.test_shardformer.test_model._utils import (
     build_model_from_hybrid_plugin,
-    check_grad,
+    check_all_grad_tensors,
     check_loss,
     check_output_hidden_state,
     check_weight,
+    get_grad_tensors_for_check,
     run_forward_backward_with_hybrid_plugin,
     unwrap_model,
 )
@@ -36,6 +37,44 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     stage_manager = booster.plugin.stage_manager
     tp_group = booster.plugin.tp_group
 
+    # unwrap model
+    chatglm_model = unwrap_model(org_model, 'ChatGLMModel', 'transformer')
+    shard_chatglm_model = unwrap_model(sharded_model, 'ChatGLMModel', 'transformer')
+
+    row_layer_for_check = ['encoder.layers[0].self_attention.query_key_value', 'embedding.word_embeddings']
+    col_layer_for_check = ['encoder.layers[0].self_attention.dense']
+
+    # Save gradient tensors for comparison between the original model and the sharded model.
+    grads_to_check = {}
+    if (stage_manager is None or stage_manager.is_first_stage()) and booster.plugin.zero_stage == 0:
+        if test_config['precision'] == 'fp32':
+            atol, rtol = 1e-6, 1e-3
+        else:
+            atol, rtol = 5e-3, 5e-3
+        row_layer_grads = get_grad_tensors_for_check(chatglm_model,
+                                                     shard_chatglm_model,
+                                                     row_layer_for_check,
+                                                     tp_group,
+                                                     atol=atol,
+                                                     rtol=rtol,
+                                                     dim=0,
+                                                     verbose=False)
+
+        col_layer_grads = get_grad_tensors_for_check(chatglm_model,
+                                                     shard_chatglm_model,
+                                                     col_layer_for_check,
+                                                     tp_group,
+                                                     atol=atol,
+                                                     rtol=rtol,
+                                                     dim=1,
+                                                     verbose=False)
+        grads_to_check.update(col_layer_grads)
+        grads_to_check.update(row_layer_grads)
+
+    # optimizer executes step
+    org_optimizer.step()
+    sharded_optimizer.step()
+
     # check last hidden state & loss
     if stage_manager is None or stage_manager.is_last_stage():
         if test_config['precision'] == 'fp32':
@@ -48,39 +87,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 
         check_loss(org_loss, sharded_loss, atol=atol, rtol=rtol)
 
-    # unwrap model
-    chatglm_model = unwrap_model(org_model, 'ChatGLMModel', 'transformer')
-    shard_chatglm_model = unwrap_model(sharded_model, 'ChatGLMModel', 'transformer')
-
-    # check grad
-    row_layer_for_check = ['encoder.layers[0].self_attention.query_key_value', 'embedding.word_embeddings']
-    col_layer_for_check = ['encoder.layers[0].self_attention.dense']
-    if (stage_manager is None or stage_manager.is_first_stage()) and booster.plugin.zero_stage == 0:
-        if test_config['precision'] == 'fp32':
-            atol, rtol = 1e-6, 1e-3
-        else:
-            atol, rtol = 5e-3, 5e-3
-        check_grad(chatglm_model,
-                   shard_chatglm_model,
-                   row_layer_for_check,
-                   tp_group,
-                   atol=atol,
-                   rtol=rtol,
-                   dim=0,
-                   verbose=False)
-
-        check_grad(chatglm_model,
-                   shard_chatglm_model,
-                   col_layer_for_check,
-                   tp_group,
-                   atol=atol,
-                   rtol=rtol,
-                   dim=1,
-                   verbose=False)
-
-    # check weights after optimizer.step()
-    org_optimizer.step()
-    sharded_optimizer.step()
+    # check weights
     if stage_manager is None or stage_manager.is_first_stage():
         if test_config['precision'] == 'fp32':
             atol, rtol = 1e-4, 1e-3
@@ -94,6 +101,9 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
                      rtol=rtol,
                      dim=1,
                      verbose=False)
+
+    # check grads
+    check_all_grad_tensors(grads_to_check)
 
     torch.cuda.empty_cache()
 
