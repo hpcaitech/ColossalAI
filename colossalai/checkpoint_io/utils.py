@@ -472,15 +472,16 @@ def load_param_groups_into_optimizer(optimizer: Optimizer, param_group_path: str
     return id_map
 
 
-def load_states_into_optimizer(optimizer: Optimizer, state_dict: dict, id_map: dict):
+def load_states_into_optimizer(optimizer: Optimizer, state_dict: dict, id_map: dict, strict: bool = False):
     r"""Copies states from `state_dict` into an Optimizer object.
 
     Args:
         optimizer(Optimizer): An initialized Optimizer object to be loaded
-        state_dict(dict): a mapping from tensor index (an integer)
+        state_dict(dict): A mapping from tensor index (an integer)
             to its states to be loaded (a mapping from state name to a tensor).
-        id_map(dict): a mapping from tensor index (an integer)
+        id_map(dict): A mapping from tensor index (an integer)
             to its corresponding parameter (a tensor) whose states will be updated.
+        strict(bool, optional): If set to True, only load the parameters with its id in id_map. Defaults to False.
     """
 
     def cast(param, value, key=None):
@@ -509,7 +510,7 @@ def load_states_into_optimizer(optimizer: Optimizer, state_dict: dict, id_map: d
         if k in id_map:
             param = id_map[k]
             new_states[param] = cast(param, v)
-        else:
+        elif not strict:
             new_states[k] = v
 
     optimizer.state.update(new_states)

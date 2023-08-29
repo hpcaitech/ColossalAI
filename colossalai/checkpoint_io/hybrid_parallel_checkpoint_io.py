@@ -1,4 +1,5 @@
 import copy
+import gc
 import logging
 import os
 from pathlib import Path
@@ -22,14 +23,13 @@ from .utils import (
     gather_distributed_param,
     get_model_base_filenames,
     get_optimizer_base_filenames,
-    get_shard_filename,
     is_safetensors_available,
-    load_param_groups_into_optimizer,
     load_shard_state_dict,
     load_state_dict_into_model,
+    load_states_into_optimizer,
     save_param_groups,
-    save_state_dict,
     save_state_dict_shards,
+    sharded_optimizer_loading_epilogue,
 )
 
 try:
@@ -60,7 +60,7 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
         self.dp_size = dist.get_world_size(dp_group)
         self.pp_size = dist.get_world_size(pp_group)
         self.tp_size = dist.get_world_size(tp_group)
-        self.zero_stage = zero_stage
+        self.use_zero = (zero_stage > 0)
 
     @staticmethod
     def _model_sharder(model: nn.Module,
@@ -142,7 +142,7 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
             original_shape = param_info['param2shape'][id(param)]
             state_ = gather_distributed_optimizer_states(state_, param, original_shape, tp_group)
             state_ = {k: v.detach().cpu() for k, v in state_.items()}
-            block, block_size = state_dict_sharder.append_optim_state(param_id, state_)
+            block, block_size = state_dict_sharder.append_optim_state(str(param_id), state_)
             if block is not None:
                 yield block, block_size
 
@@ -302,6 +302,7 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
                                        strict=strict,
                                        load_sub_module=True)
             del state_dict
+            gc.collect()
             loaded_file.add(filename)
 
         # Load parameters.
@@ -349,13 +350,13 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
 
         # Devices along the same dp_group share the same copies of states when zero is not used.
         # In this case only let the device with dp_rank == 0 save the model.
-        if self.zero_stage == 0 and self.dp_rank != 0:
+        if not self.use_zero and self.dp_rank != 0:
             return
 
         # Then collect the sharded states along dp_group(if using zero)/tp_group.
         # Only devices with (dp_rank == 0 and tp_rank == 0) are responsible for states saving.
         state_dict_shard = HypridParallelCheckpointIO._optimizer_sharder(optimizer,
-                                                                         use_zero=(self.zero_stage > 0),
+                                                                         use_zero=self.use_zero,
                                                                          dp_group=self.dp_group,
                                                                          tp_group=self.tp_group,
                                                                          size_per_shard=size_per_shard)
@@ -450,8 +451,28 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
             checkpoint_index_file (str): Path to the index file of checkpointing folder.
             prefix (str): Not used.
         """
+
+        def _get_param_id_from_optimizer_param(param: torch.Tensor, use_zero: bool):
+            if use_zero:
+                working_param = optimizer._param_store.master_to_working_param[id(param)]
+                param_id = optimizer.param_info['param2id'][id(working_param)]
+            else:
+                param_id = optimizer.param_info['param2id'][id(param)]
+            return param_id
+
+        # id_map is a mapping from param ids kept by current pipeline, to their corresponding parameter objects.
+        # When Zero is used, the mapped parameter objects should be fp32 master parameters.
+        # IDs should be obtained through saved param2id mapping earlier saved in optimizer.param_info.
+        id_map = {}
+        for pg in optimizer.optim.param_groups:
+            for param in pg['params']:
+                param_id = _get_param_id_from_optimizer_param(param, self.use_zero)
+                id_map[param_id] = param
+
         # Read checkpoint index file.
         ckpt_index_file = CheckpointIndexFile.from_file(checkpoint_index_file)
+        ckpt_root_path = ckpt_index_file.root_path
+        weight_map = ckpt_index_file.weight_map
 
         # Load param_groups
         param_group_path = ckpt_index_file.get_param_group_filename()
@@ -461,23 +482,40 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
         saved_groups = torch.load(param_group_path)
 
         updated_groups = []
-
-        # A mapping from integer id to parameter object.
-        # IDs should be obtained through saved param2id mapping in optimizer.param_info.
-        id_map = {}
-
         for old_pg, saved_pg in zip(optimizer.optim.param_groups, saved_groups):
-
-            # update id_map
-            for param in old_pg['params']:
-                param_id = optimizer.param_info['param2id'][id(param)]
-                id_map[param_id] = param
-
             # obtain updated param group
             new_pg = copy.deepcopy(saved_pg)
             new_pg['params'] = old_pg['params']    # The parameters in the same group shouln't change.
             updated_groups.append(new_pg)
         optimizer.optim.__dict__.update({'param_groups': updated_groups})
+
+        # Load saved states to optimizer.
+        # Keep a record of loaded files so that file will not be repeatedly loaded.
+        loaded_file = set()
+        for pg in optimizer.optim.param_groups:
+            for param in pg['params']:
+                param_id = str(_get_param_id_from_optimizer_param(param, self.use_zero))
+                if param_id not in weight_map:
+                    raise ValueError(
+                        f"Parameter with ID:{param_id} is not stored in checkpoint, please check your checkpointing configuration!"
+                    )
+                filename = weight_map[param_id]
+
+                # If this param's states has been loaded before, directly return.
+                if filename in loaded_file:
+                    continue
+
+                file_path = os.path.join(ckpt_root_path, filename)
+                state_dict = load_shard_state_dict(Path(file_path), use_safetensors=False)
+                load_states_into_optimizer(optimizer.optim, state_dict, id_map, strict=True)
+                del state_dict
+                gc.collect()
+                loaded_file.add(filename)
+
+        # Shard the states along tensor parallel group.
+
+        # Shard the states along data parallel group when Zero is used.
+        sharded_optimizer_loading_epilogue(optimizer.optim)
 
     def load_unsharded_model(self, model: nn.Module, checkpoint: str, strict: bool = True):
         # TODO(Baizhou): support this feature after implementing complete state_dict collection

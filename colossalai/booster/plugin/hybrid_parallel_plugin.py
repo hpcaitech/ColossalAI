@@ -116,6 +116,8 @@ def get_param_info(optim: Optimizer):
     # 2. A mapping from param address (obtained using id(param)) to integer param_id
     # 3. A mapping from integer param_id to param address.
     # 4. A mapping from param_address (obtained using id(param)) to the original shape of parameter before sharding.
+    # When Zero is used, the params here are fp16/bf16 model params rather than fp32 master params in optimizer.
+
     if optim is None:
         return {}
     param_info = {'param_groups': [], 'param2id': {}, 'id2param': {}, 'param2shape': {}}
