@@ -111,7 +111,6 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
         # An internel method that breaks state_dict of optimizer into shards within limited size.
 
         state_dict_sharder = StateDictSharder(size_per_shard)
-        dp_size = dist.get_world_size(dp_group)
         param_info = optimizer.param_info
 
         for param, state in optimizer.optim.state.items():
@@ -303,8 +302,11 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
             _load(name)
 
         # Load buffers.
+        non_persistent_buffers = set()
+        for n, m in model.named_modules():
+            non_persistent_buffers |= set('.'.join((n, b)) for b in m._non_persistent_buffers_set)
         for name, buf in model.named_buffers():
-            if buf is not None and name not in model._non_persistent_buffers_set:
+            if buf is not None and name not in non_persistent_buffers:
                 _load(name)
 
         # Load extra states.
@@ -416,12 +418,7 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
                     stage_index_file = CheckpointIndexFile.from_file(os.path.join(tmp_index_file_folder, filename))
                     final_index_file.metadata["total_size"] += stage_index_file.metadata["total_size"]
                     for param_id, state_filename in stage_index_file.weight_map.items():
-                        if param_id not in final_index_file.weight_map:
-                            final_index_file.append_weight_map(param_id, state_filename)
-                        else:
-                            # If parameter is shared with other stage, delete this copy of optimizer state.
-                            # For example: only save one copy of optimizer states between embedding weight & lm_head.
-                            os.remove(os.path.join(checkpoint, state_filename))
+                        final_index_file.append_weight_map(param_id, state_filename)
 
                 # Store param groups.
                 final_index_file.append_meta_data("param_groups", param_group_file)
@@ -488,7 +485,11 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
         loaded_file = set()
         for pg in optimizer.optim.param_groups:
             for param in pg['params']:
+                if param is None:
+                    continue
                 param_id = _get_param_id_from_optimizer_param(param, self.use_zero)
+                if param_id not in weight_map:
+                    continue
                 filename = weight_map[param_id]
 
                 # If this param's states has been loaded before, directly return.
@@ -516,11 +517,6 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
                                                                      device=device,
                                                                      inplace=True)
             optimizer.optim.state[param] = sharded_state
-
-        for param, state in optimizer.optim.state.items():
-            param_id = _get_param_id_from_optimizer_param(param, self.use_zero)
-            print(dist.get_rank(), param_id, param.shape, param.dtype, param.device, state['exp_avg'].shape,
-                  state['exp_avg'].dtype, state['exp_avg'].device)
 
         sharded_optimizer_loading_epilogue(optimizer.optim)
 
@@ -629,7 +625,7 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
                         if padding_size > 0:
                             v = torch.nn.functional.pad(v, [0, padding_size])
                         slice_size = v.numel() // self.dp_size
-                        v = v.split(slice_size, dim=partition_dim)[self.tp_rank]
+                        v = v.split(slice_size, dim=0)[self.dp_rank]
 
                 state_[k] = v.detach().clone().to(device)
                 del v

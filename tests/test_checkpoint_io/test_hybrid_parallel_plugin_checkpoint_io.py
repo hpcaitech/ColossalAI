@@ -25,13 +25,13 @@ from tests.kit.model_zoo import model_zoo
 @parameterize('model_name', ['transformers_gpt', 'transformers_bert'])
 @parameterize('size_per_shard', [32])
 @parameterize('test_config', [{
+    'tp_size': 4,
+    'pp_size': 1,
+    'precision': 'fp32',
+}, {
     'tp_size': 2,
     'pp_size': 2,
     'num_microbatches': 4,
-    'precision': 'fp32',
-}, {
-    'tp_size': 4,
-    'pp_size': 1,
     'precision': 'fp32',
 }, {
     'tp_size': 2,
@@ -60,6 +60,17 @@ def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_conf
         loss = criterion(outputs)
         return loss
 
+    def _preprocess_data(data):
+        if booster.plugin.stage_manager is not None:
+            for k, v in data.items():
+                if torch.is_tensor(v) or 'Tensor' in v.__class__.__name__:
+                    new_shape = [1] * v.dim()
+                    new_shape[0] = 4
+                    data[k] = v.to('cuda').repeat(*new_shape)
+            return iter([data])
+        else:
+            return {k: v.cuda() for k, v in data.items()}
+
     model = model_fn().cuda()
     optimizer = Adam(model.parameters(), lr=1e-3)
     model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
@@ -71,21 +82,14 @@ def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_conf
     data = data_gen_fn()
     model.train()
     if booster.plugin.stage_manager is not None:
-        for k, v in data.items():
-            if torch.is_tensor(v) or 'Tensor' in v.__class__.__name__:
-                new_shape = [1] * v.dim()
-                new_shape[0] = 4
-                data[k] = v.to('cuda').repeat(*new_shape)
-        data_iter = iter([data])
-        output = booster.execute_pipeline(data_iter,
-                                          model,
-                                          _criterion,
-                                          optimizer,
-                                          return_loss=True,
-                                          return_outputs=False)
+        booster.execute_pipeline(_preprocess_data(data),
+                                 model,
+                                 _criterion,
+                                 optimizer,
+                                 return_loss=True,
+                                 return_outputs=False)
     else:
-        data = {k: v.cuda() for k, v in data.items()}
-        output = model(**data)
+        output = model(**_preprocess_data(data))
         loss = criterion(output)
         optimizer.backward(loss)
 
@@ -101,6 +105,9 @@ def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_conf
 
         booster.load_model(new_model, model_ckpt_path)
         check_state_dict_equal(model.unwrap().state_dict(), new_model.unwrap().state_dict(), False)
+        booster.load_optimizer(new_optimizer, optimizer_ckpt_path)
+        check_state_dict_equal(optimizer.unwrap().state_dict(), new_optimizer.unwrap().state_dict(), False)
+        dist.barrier()
 
     Randomizer.reset_index()
     clear_layout_converter()
