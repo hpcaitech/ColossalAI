@@ -345,7 +345,6 @@ class _MatmulWithGatherForwardReduceScatterBackward(torch.autograd.Function):
                 handle.wait()
 
         else:
-            print("sdadasd")
             world_size = dist.get_world_size(process_group)
             tensor_list = [torch.empty_like(input_) for _ in range(world_size)]
 
