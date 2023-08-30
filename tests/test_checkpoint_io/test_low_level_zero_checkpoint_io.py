@@ -51,6 +51,7 @@ def check_low_level_zero_checkpointIO(stage: int, shard: bool):
 
         booster.load_optimizer(new_optimizer, optimizer_ckpt_path)
         check_state_dict_equal(optimizer.state_dict(), new_optimizer.state_dict(), False)
+    torch.cuda.empty_cache()
 
 
 def run_dist(rank, world_size, port):
@@ -59,6 +60,7 @@ def run_dist(rank, world_size, port):
 
 
 @rerun_if_address_is_in_use()
+@clear_cache_before_run()
 def test_low_level_zero_checkpointIO():
     spawn(run_dist, 2)
 
