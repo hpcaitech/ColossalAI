@@ -60,6 +60,7 @@ def run_dist(rank, world_size, port):
 
 
 @rerun_if_address_is_in_use()
+@clear_cache_before_run()
 def test_low_level_zero_checkpointIO():
     spawn(run_dist, 2)
 
