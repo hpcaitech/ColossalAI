@@ -47,9 +47,15 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
         pp_group (ProcessGroup): Process group along pipeline parallel dimension.
         tp_group (ProcessGroup): Process group along tensor parallel dimension.
         zero_stage (int): The zero stage of plugin. Should be in [0, 1, 2].
+        verbose (bool, optional): Whether to print logging massage when saving/loading has been succesfully executed. Defaults to True.
     """
 
-    def __init__(self, dp_group: ProcessGroup, pp_group: ProcessGroup, tp_group: ProcessGroup, zero_stage: int) -> None:
+    def __init__(self,
+                 dp_group: ProcessGroup,
+                 pp_group: ProcessGroup,
+                 tp_group: ProcessGroup,
+                 zero_stage: int,
+                 verbose: bool = True) -> None:
         super().__init__()
         self.dp_group = dp_group
         self.pp_group = pp_group
@@ -61,6 +67,7 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
         self.pp_size = dist.get_world_size(pp_group)
         self.tp_size = dist.get_world_size(tp_group)
         self.use_zero = (zero_stage > 0)
+        self.verbose = verbose
 
     @staticmethod
     def _model_sharder(model: nn.Module,
@@ -195,9 +202,10 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
             if control_saving:
                 index_file.append_meta_data("total_size", total_size)
                 index_file.write_index_file(save_index_file)
-                logging.info(f"The model is split into checkpoint shards. "
-                             f"You can find where each parameters has been saved in the "
-                             f"index located at {save_index_file}.")
+                if self.verbose:
+                    logging.info(f"The model is split into checkpoint shards. "
+                                 f"You can find where each parameters has been saved in the "
+                                 f"index located at {save_index_file}.")
 
         else:
             # When pipeline is used, each stage produces its own shard files and index files.
@@ -242,9 +250,10 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
 
                 final_index_file.write_index_file(final_index_file_path)
                 rmtree(tmp_index_file_folder)
-                logging.info(f"The model is split into checkpoint shards. "
-                             f"You can find where each parameters has been saved in the "
-                             f"index located at {final_index_file_path}.")
+                if self.verbose:
+                    logging.info(f"The model is split into checkpoint shards. "
+                                 f"You can find where each parameters has been saved in the "
+                                 f"index located at {final_index_file_path}.")
 
     def load_sharded_model(self, model: nn.Module, checkpoint_index_file: Path, strict: bool = False):
         """
@@ -293,8 +302,6 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
                                        missing_keys=missing_keys,
                                        strict=strict,
                                        load_sub_module=True)
-            del state_dict
-            gc.collect()
             loaded_file.add(filename)
 
         # Load parameters.
@@ -314,6 +321,9 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
         if getattr(model.__class__, "get_extra_state",
                    torch.nn.Module.get_extra_state) is not torch.nn.Module.get_extra_state:
             _load(extra_state_key)
+
+        if self.verbose:
+            logging.info(f"The model has been successfully loaded from sharded checkpoint: {ckpt_root_path}.")
 
     def save_sharded_optimizer(self,
                                optimizer: OptimizerWrapper,
@@ -375,9 +385,10 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
                 # Store index file.
                 index_file.append_meta_data("total_size", total_size)
                 index_file.write_index_file(save_index_file)
-                logging.info(f"The optimizer is going to be split to checkpoint shards. "
-                             f"You can find where each parameters has been saved in the "
-                             f"index located at {save_index_file}.")
+                if self.verbose:
+                    logging.info(f"The optimizer is going to be split to checkpoint shards. "
+                                 f"You can find where each parameters has been saved in the "
+                                 f"index located at {save_index_file}.")
 
         else:
             # When pipeline is used, each stage produces its own shard files and index files.
@@ -426,11 +437,12 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
                 save_param_groups(optimizer.param_info, group_file_path)
 
                 final_index_file.write_index_file(final_index_file_path)
-
                 rmtree(tmp_index_file_folder)
-                logging.info(f"The model is split into checkpoint shards. "
-                             f"You can find where each parameters has been saved in the "
-                             f"index located at {final_index_file_path}.")
+
+                if self.verbose:
+                    logging.info(f"The model is split into checkpoint shards. "
+                                 f"You can find where each parameters has been saved in the "
+                                 f"index located at {final_index_file_path}.")
 
     def load_sharded_optimizer(self, optimizer: OptimizerWrapper, checkpoint_index_file: str, prefix: str = ""):
         """
@@ -499,8 +511,6 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
                 file_path = os.path.join(ckpt_root_path, filename)
                 state_dict = load_shard_state_dict(Path(file_path), use_safetensors=False)
                 load_states_into_optimizer(optimizer.optim, state_dict, id_map, strict=True)
-                del state_dict
-                gc.collect()
                 loaded_file.add(filename)
 
         # Then shard the loaded optimizer states if using tp/zero.
@@ -519,6 +529,8 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
             optimizer.optim.state[param] = sharded_state
 
         sharded_optimizer_loading_epilogue(optimizer.optim)
+        if self.verbose:
+            logging.info(f"The optimizer has been successfully loaded from sharded checkpoint: {ckpt_root_path}.")
 
     def load_unsharded_model(self, model: nn.Module, checkpoint: str, strict: bool = True):
         # TODO(Baizhou): support this feature after implementing complete state_dict collection
@@ -585,7 +597,6 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
                     v = torch.cat(gather_tensor, dim=partition_dim)
 
             state_[k] = v.detach().clone().cpu()
-            del v
 
         return state_
 
@@ -628,6 +639,5 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
                         v = v.split(slice_size, dim=0)[self.dp_rank]
 
                 state_[k] = v.detach().clone().to(device)
-                del v
 
         return state_
