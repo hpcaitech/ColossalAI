@@ -127,7 +127,7 @@ Similarly, the second layer partitions the weight `[1024, 256]` into `[512, 64]`
 We can run the model with some random inputs.
 ```python
 from colossalai.legacy.context import ParallelMode
-from colossalai.core import global_context as gpc
+from colossalai.legacy.core import global_context as gpc
 from colossalai.utils import get_current_device
 
 x = torch.randn((16, 256), device=get_current_device())

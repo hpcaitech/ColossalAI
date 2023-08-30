@@ -38,7 +38,7 @@ from colossalai import nn as col_nn
 from colossalai.amp import AMP_TYPE
 from colossalai.builder.pipeline import partition_uniform
 from colossalai.legacy.context.parallel_mode import ParallelMode
-from colossalai.core import global_context as gpc
+from colossalai.legacy.core import global_context as gpc
 from colossalai.engine.schedule import (InterleavedPipelineSchedule,
                                         PipelineSchedule)
 from colossalai.logging import disable_existing_loggers, get_dist_logger

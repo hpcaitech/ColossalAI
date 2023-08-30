@@ -198,7 +198,7 @@ from pathlib import Path
 from colossalai.logging import get_dist_logger
 import torch
 import os
-from colossalai.core import global_context as gpc
+from colossalai.legacy.core import global_context as gpc
 from colossalai.utils import get_dataloader
 from torchvision import transforms
 from colossalai.nn.lr_scheduler import CosineAnnealingLR
@@ -384,3 +384,4 @@ python -m torch.distributed.launch --nproc_per_node <num_gpus> --master_addr loc
 # with trainer
 python -m torch.distributed.launch --nproc_per_node <num_gpus> --master_addr localhost --master_port 29500 run_resnet_cifar10_with_trainer.py
 ```
+<!-- doc-test-command: echo  -->

@@ -264,7 +264,7 @@ import os
 import colossalai
 import torch
 from pathlib import Path
-from colossalai.core import global_context as gpc
+from colossalai.legacy.core import global_context as gpc
 from colossalai.logging import get_dist_logger
 from colossalai.utils import get_dataloader
 from colossalai.trainer import Trainer, hooks

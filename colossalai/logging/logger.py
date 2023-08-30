@@ -110,10 +110,10 @@ class DistributedLogger:
         path.mkdir(parents=True, exist_ok=True)
 
         # set the default file name if path is a directory
-        if not colossalai.core.global_context.is_initialized(ParallelMode.GLOBAL):
+        if not colossalai.legacy.core.global_context.is_initialized(ParallelMode.GLOBAL):
             rank = 0
         else:
-            rank = colossalai.core.global_context.get_global_rank()
+            rank = colossalai.legacy.core.global_context.get_global_rank()
 
         if suffix is not None:
             log_file_name = f'rank_{rank}_{suffix}.log'
@@ -136,7 +136,7 @@ class DistributedLogger:
         if ranks is None:
             getattr(self._logger, level)(message)
         else:
-            local_rank = colossalai.core.global_context.get_local_rank(parallel_mode)
+            local_rank = colossalai.legacy.core.global_context.get_local_rank(parallel_mode)
             if local_rank in ranks:
                 getattr(self._logger, level)(message)
 

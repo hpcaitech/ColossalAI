@@ -131,7 +131,7 @@ Weight of the second linear layer: torch.Size([512, 64])
 
 ```python
 from colossalai.legacy.context import ParallelMode
-from colossalai.core import global_context as gpc
+from colossalai.legacy.core import global_context as gpc
 from colossalai.utils import get_current_device
 
 x = torch.randn((16, 256), device=get_current_device())

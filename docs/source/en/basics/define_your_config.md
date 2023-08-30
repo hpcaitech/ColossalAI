@@ -75,7 +75,7 @@ After launch, you are able to access your hyper-parameters through global parall
 
 ```python
 import colossalai
-from colossalai.core import global_context as gpc
+from colossalai.legacy.core import global_context as gpc
 
 colossalai.launch(config='./config.py', ...)
 
@@ -83,3 +83,4 @@ colossalai.launch(config='./config.py', ...)
 print(gpc.config.BATCH_SIZE)
 
 ```
+<!-- doc-test-command: echo  -->

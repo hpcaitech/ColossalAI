@@ -70,7 +70,7 @@ dali = dict(
 ```python
 import colossalai
 from colossalai.legacy.context import ParallelMode
-from colossalai.core import global_context as gpc
+from colossalai.legacy.core import global_context as gpc
 from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.nn.lr_scheduler import LinearWarmupLR
 from colossalai.nn.metric import Accuracy
@@ -100,7 +100,7 @@ disable_existing_loggers()
 logger = get_dist_logger()
 ```
 
-初始化后，您可以使用 `colossalai.core.global_context` 访问配置文件中的变量。
+初始化后，您可以使用 `colossalai.legacy.core.global_context` 访问配置文件中的变量。
 
 ```python
 #access parameters
@@ -268,7 +268,7 @@ import torch
 from colossalai import nn as col_nn
 from colossalai.registry import LAYERS, MODELS
 from colossalai.logging import get_dist_logger
-from colossalai.core import global_context as gpc
+from colossalai.legacy.core import global_context as gpc
 from colossalai.legacy.context import ParallelMode
 from colossalai.builder.pipeline import partition_uniform
 from torch import dtype, nn
@@ -387,7 +387,7 @@ import os
 import colossalai
 import torch
 from colossalai.legacy.context import ParallelMode
-from colossalai.core import global_context as gpc
+from colossalai.legacy.core import global_context as gpc
 from colossalai.logging import get_dist_logger
 from colossalai.nn import CrossEntropyLoss
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
