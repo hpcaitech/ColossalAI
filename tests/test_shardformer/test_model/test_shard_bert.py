@@ -10,10 +10,11 @@ from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_ad
 from tests.kit.model_zoo import model_zoo
 from tests.test_shardformer.test_model._utils import (
     build_model_from_hybrid_plugin,
-    check_grad,
+    check_all_grad_tensors,
     check_loss,
     check_output_hidden_state,
     check_weight,
+    get_grad_tensors_for_check,
     run_forward_backward_with_hybrid_plugin,
     unwrap_model,
 )
@@ -33,8 +34,46 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             output_transform_fn,
             criterion,
             booster)
+
     stage_manager = booster.plugin.stage_manager
     tp_group = booster.plugin.tp_group
+
+    bert = unwrap_model(org_model, 'BertModel', 'bert')
+    sharded_bert = unwrap_model(sharded_model, 'BertModel', 'bert')
+
+    col_layer_for_check = ['encoder.layer[0].output.dense']
+    row_layer_for_check = ['embeddings.word_embeddings', 'encoder.layer[0].intermediate.dense']
+
+    # Save gradient tensors for comparison between the original model and the sharded model before optimizer step.
+    grads_to_check = {}
+    if test_config['precision'] == 'fp32':
+        atol, rtol = 1e-4, 1e-3
+    else:
+        atol, rtol = 5e-3, 5e-3
+    if (stage_manager is None or stage_manager.is_first_stage()) and booster.plugin.zero_stage == 0:
+        col_layer_grads = get_grad_tensors_for_check(bert,
+                                                     sharded_bert,
+                                                     col_layer_for_check,
+                                                     tp_group,
+                                                     atol=atol,
+                                                     rtol=rtol,
+                                                     dim=1,
+                                                     verbose=False)
+        row_layer_grads = get_grad_tensors_for_check(bert,
+                                                     sharded_bert,
+                                                     row_layer_for_check,
+                                                     tp_group,
+                                                     atol=atol,
+                                                     rtol=rtol,
+                                                     dim=0,
+                                                     verbose=False)
+        grads_to_check.update(col_layer_grads)
+        grads_to_check.update(row_layer_grads)
+
+    # optimizer executes step
+    org_optimizer.step()
+    sharded_optimizer.step()
+
     # check last hidden state & loss
     if stage_manager is None or stage_manager.is_last_stage():
         if test_config['precision'] == 'fp32':
@@ -46,29 +85,16 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 
         check_loss(org_loss, sharded_loss, atol=atol, rtol=rtol)
 
-    bert = unwrap_model(org_model, 'BertModel', 'bert')
-    sharded_bert = unwrap_model(sharded_model, 'BertModel', 'bert')
-
-    col_layer_for_check = ['encoder.layer[0].output.dense']
-    row_layer_for_check = ['embeddings.word_embeddings', 'encoder.layer[0].intermediate.dense']
-
-    if test_config['precision'] == 'fp32':
-        atol, rtol = 1e-4, 1e-3
-    else:
-        atol, rtol = 5e-3, 5e-3
-    if (stage_manager is None or stage_manager.is_first_stage()) and booster.plugin.zero_stage == 0:
-        check_grad(bert, sharded_bert, col_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=1, verbose=False)
-        check_grad(bert, sharded_bert, row_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=0, verbose=False)
-
-    # check weights after optimizer.step()
-    org_optimizer.step()
-    sharded_optimizer.step()
+    # check weights
     if test_config['precision'] == 'fp32':
         atol, rtol = 5e-3, 1e-3
     else:
         atol, rtol = 5e-3, 5e-3
     if stage_manager is None or stage_manager.is_first_stage():
         check_weight(bert, sharded_bert, col_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=1, verbose=False)
+
+    # check grads
+    check_all_grad_tensors(grads_to_check)
 
     torch.cuda.empty_cache()
 
