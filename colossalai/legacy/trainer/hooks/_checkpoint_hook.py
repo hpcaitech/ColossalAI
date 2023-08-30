@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 import torch
-from colossalai.logging import get_dist_logger
 
+from colossalai.legacy.trainer.hooks import BaseHook
+from colossalai.logging import get_dist_logger
 from colossalai.registry import HOOKS
-from colossalai.trainer.hooks import BaseHook
 from colossalai.utils.checkpointing import save_checkpoint
+
 from ._lr_scheduler_hook import LRSchedulerHook
 
 

@@ -6,6 +6,7 @@ from typing import Callable
 
 import torch
 import torch.distributed as dist
+
 from colossalai.communication import all_reduce
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
@@ -19,8 +20,8 @@ from ._commons_ import _format_number
 class Metric(ABC):
     """A basic class of metric collectors. It collects a specific
     metric during training or evaluation and would always be used with
-    :class:`MetricHook` to help it update its states and show the 
-    metric. So please use corresponding hook class to make the metric 
+    :class:`MetricHook` to help it update its states and show the
+    metric. So please use corresponding hook class to make the metric
     collector works.
 
     Args:
@@ -220,9 +221,9 @@ class AccuracyMetric(Metric):
 
 
 class MetricHook(BaseHook):
-    """Specialized hook classes for :class:`Metric`. 
-    Some help metric collectors initialize, reset and 
-    update their states. Others are used to display and 
+    """Specialized hook classes for :class:`Metric`.
+    Some help metric collectors initialize, reset and
+    update their states. Others are used to display and
     record the metric.
 
     Args:
