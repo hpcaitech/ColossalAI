@@ -94,8 +94,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             atol, rtol = 5e-3, 5e-3
         check_weight(gpt2, sharded_gpt2, col_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=1, verbose=False)
 
-
-# check grads
+    # check grads
     check_all_grad_tensors(grads_to_check)
 
     torch.cuda.empty_cache()

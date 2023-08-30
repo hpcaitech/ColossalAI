@@ -56,7 +56,6 @@ class FP16MixedPrecisionMixin(MixedPrecisionMixin):
         self.found_overflow.fill_(0.0)
         if self.check_local_overflow():
             self.found_overflow.fill_(1.0)
-        print(f"begin all_reduce {dist.get_rank()} {self.found_overflow}")
         dist.all_reduce(self.found_overflow, op=dist.ReduceOp.MAX)
         return self.found_overflow.item() > 0
 
@@ -70,7 +69,6 @@ class FP16MixedPrecisionMixin(MixedPrecisionMixin):
         return grad
 
     def should_skip_step(self) -> bool:
-        print(f"check overflow {dist.get_rank()}")
         found_inf = self.check_overflow()
         self.grad_scaler.update(found_inf)
         if found_inf:

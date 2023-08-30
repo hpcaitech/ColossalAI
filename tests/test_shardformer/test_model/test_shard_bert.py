@@ -205,4 +205,4 @@ def test_bert_3d():
 
 if __name__ == "__main__":
     test_bert()
-    # test_bert_3d()
+    test_bert_3d()

@@ -140,7 +140,6 @@ class MixedPrecisionOptimizer(OptimizerWrapper):
         total_norm = self._compute_grad_norm()
         self._unscale_and_clip_grads(total_norm)
         self.optim.step(*args, **kwargs)
-
         # update working params
         for group in self.optim.param_groups:
             for p in group['params']:
