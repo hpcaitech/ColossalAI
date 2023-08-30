@@ -1,3 +1,3 @@
 from .pipeline import PPInferEngine
 
-__all__ = "pipeline"
+__all__ = "PPInferEngine"

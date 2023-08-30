@@ -10,7 +10,6 @@ from tests.kit.model_zoo import model_zoo
 def test_torchvision_models_lazy_init(subset, default_device):
     sub_model_zoo = model_zoo.get_sub_registry(subset)
     for name, entry in sub_model_zoo.items():
-        print(subset, default_device, name)
         # TODO(ver217): lazy init does not support weight norm, skip these models
         if name in ('torchaudio_wav2vec2_base',
                     'torchaudio_hubert_base') or name.startswith('transformers_llama') or name.startswith(
