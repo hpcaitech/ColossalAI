@@ -10,7 +10,7 @@ from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_ad
 from colossalai.inference.tensor_parallel.llama_infer_engine import TPCacheManagerInferenceEngine
 
 os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
-TPSIZE = 1
+TPSIZE = 2
 
 @parameterize('test_config', [{
     'tp_size': TPSIZE,
