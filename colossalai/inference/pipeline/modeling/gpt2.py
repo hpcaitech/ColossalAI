@@ -251,6 +251,12 @@ class GPT2PipelineForwards:
             """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
+        # # If is first stage and after warmup, go throught lm_head first
+        # if stage_manager.is_first_stage() and hidden_states is not None:
+        #     lm_logits = self.lm_head(hidden_states)
+        #     return {'hidden_states': lm_logits}
+
+        # # Not first stage or before warmup, go through gpt2 model
         outputs = GPT2PipelineForwards.gpt2_model_forward(self.transformer,
                                                           input_ids,
                                                           past_key_values=past_key_values,

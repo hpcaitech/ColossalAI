@@ -72,6 +72,7 @@ class PPInferEngine:
         self.mb_manager = MicroBatchManager(new_length, micro_batch_size, micro_batch_buffer_size or pp_size)
         self.schedule = GenerateSchedule(self.stage_manager, self.mb_manager)
         self.model = pp_model or self._shardformer(model, model_policy)
+        print(dist.get_rank(), torch.cuda.memory_allocated())
 
     def inference(self, input_list):
         out = self.schedule.generate_step(self.model, iter(input_list))

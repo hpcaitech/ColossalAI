@@ -34,9 +34,16 @@ class MicroBatchDescription():
 
         self.target_length = self.mb_length + new_length
         self.kv_cache = ()
+        self.new_tokens = None
 
-    def update(self, kv_cache):
+    def update_kvcache(self, kv_cache):
         self.kv_cache = kv_cache
+
+    def update_newtokens(self, new_token: torch.Tensor):
+        if self.new_tokens is None:
+            self.new_tokens = new_token
+        else:
+            self.new_tokens = torch.cat([self.new_tokens, new_token], dim=-1)
 
     @property
     def cur_length(self):
@@ -84,7 +91,7 @@ class MicroBatchManager():
         self.mb_descrption_buffer[self.idx] = MicroBatchDescription(mb_inputs, inter_inputs, self.new_length)
 
     def _update_descrption(self, present_kv):
-        self.mb_descrption_buffer[self.idx].update(present_kv)
+        self.mb_descrption_buffer[self.idx].update_kvcache(present_kv)
 
     def _remove_descrption(self):
         self.mb_descrption_buffer.pop(self.idx)
@@ -102,7 +109,7 @@ class MicroBatchManager():
             self._add_descrption(mb_inputs, inter_inputs)
         self._update_descrption(present_kv)
         state = self.cur_state
-        self.next()
+        # self.next()
         return state
 
     def next(self):
@@ -118,16 +125,11 @@ class MicroBatchManager():
         return True
 
     def add_new_tokens(self, new_token):
-        if self.idx not in self.new_tokens_buffer:
-            self.new_tokens_buffer[self.idx] = new_token
-        else:
-            self.new_tokens_buffer[self.idx] = torch.cat([self.new_tokens_buffer[self.idx], new_token], dim=-1)
+        self.cur_descrption.update_newtokens(new_token)
 
     def export_new_tokens(self):
-        list = [item.tolist() for item in self.new_tokens_buffer.values()]
-        flat_list = [item for sublist in list for item in sublist]
-        self.new_tokens_buffer.clear()
-        return flat_list
+        list = self.cur_descrption.new_tokens.tolist()
+        return list
 
     @property
     def cur_descrption(self) -> MicroBatchDescription:

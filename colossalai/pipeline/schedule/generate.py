@@ -16,6 +16,15 @@ from .base import PipelineSchedule
 
 
 class GenerateSchedule(PipelineSchedule):
+    '''
+    GenerateSchedule is a class that handles the pipeline parallel inference.
+    In our schedule, we place tie weight layer, embedding and lm_head in the same device to save space, so in
+    this schedule, the out for each encoding progress is on rank0.
+
+    Args:
+        stage_manager (PipelineStageManager): Pipeline stage manager.
+        mb_manager (MicroBatchManager): Micro batch manager.
+    '''
 
     def __init__(self, stage_manager: PipelineStageManager, mb_manager: MicroBatchManager) -> None:
         super().__init__(stage_manager)
@@ -93,11 +102,8 @@ class GenerateSchedule(PipelineSchedule):
         """Forward one step of the pipeline
 
         Args:
-            model (Module): Model to be run
-            input_obj (Optional[dict]): The output from the previous stage. If it is the first stage, the `input_obj` is None.
-            criterion (Callable): Criterion to calculate loss.
-            accum_loss (Optional[torch.Tensor], optional): Accumulated loss. Defaults to None.
-            outputs (Optional[List[Any]], optional): List to store the output of the last stage (final output). Defaults to None.
+            model (Module): Model to be run.
+            data_iter (Iterable): Data iterator.
 
         Returns:
             Union[torch.Tensor, dict]: The intermediate output (dict) of the current stage. If it is the last stage, the output is the loss (Tensor).
@@ -121,7 +127,9 @@ class GenerateSchedule(PipelineSchedule):
                     self.mb_manager.add_new_tokens(new_token)
                     if state is not Status.DONE:
                         self.comm.send_forward({'new_token': new_token})
+                    elif state is Status.DONE:
+                        output_sequence.extend(self.mb_manager.export_new_tokens())
                 else:
                     self.comm.send_forward({'hidden_states': output_obj['hidden_states']})
-            output_sequence.extend(self.mb_manager.export_new_tokens())
+                self.mb_manager.next()
         return output_sequence
