@@ -1,5 +1,6 @@
 import pytest
 import torch
+import torch.distributed as dist
 from transformers import AutoModelForCausalLM, AutoTokenizer, BloomForCausalLM
 
 import colossalai
@@ -37,8 +38,9 @@ def run():
     generate_kwargs = dict(do_sample=False)
     outputs = infer_engine.generate(input_ids, generate_kwargs)
 
-    output_text = tokenizer.decode(outputs[0])
-    print(output_text)
+    if not dist.is_initialized() or dist.get_rank() == 0:
+        output_text = tokenizer.decode(outputs[0])
+        print(output_text)
 
 
 def check_engine(rank, world_size, port):
