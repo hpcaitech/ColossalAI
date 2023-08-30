@@ -137,7 +137,7 @@ class TPInferEngine:
             input_tokens = dict(input_ids=input_tokens)
         for t in input_tokens:
             if torch.is_tensor(input_tokens[t]):
-                input_tokens[t] = input_tokens[t].to(torch.cuda.current_device())
+                input_tokens[t] = input_tokens[t].cuda()
 
         outputs = self.sharded_model.generate(**input_tokens, **generate_kwargs, early_stopping=False)
 
