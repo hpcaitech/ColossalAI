@@ -8,8 +8,6 @@ import torch.nn as nn
 import transformers
 from packaging import version
 
-from colossalai.gptq import CaiGPTQLinearOp, CaiQuantLinear
-
 try:
     import triton
     import triton.language as tl
@@ -23,6 +21,8 @@ try:
     from auto_gptq.nn_modules.qlinear.qlinear_triton import QuantLinear
     from auto_gptq.quantization import GPTQ
     from auto_gptq.quantization.quantizer import Quantizer
+
+    from colossalai.gptq import CaiGPTQLinearOp, CaiQuantLinear
     HAS_AUTO_GPTQ = True
 except:
     HAS_AUTO_GPTQ = False
