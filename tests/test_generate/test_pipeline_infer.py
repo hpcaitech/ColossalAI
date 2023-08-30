@@ -44,6 +44,7 @@ def pipeline_inference_test(pp_size, new_length, micro_batch_size):
 @clear_cache_before_run()
 def run_pipeline_inference_test(pp_size, new_length, micro_batch_size):
     pipeline_inference_test(pp_size, new_length, micro_batch_size)
+    torch.cuda.empty_cache()
 
 
 def check_pipeline_inference(rank, world_size, port):
