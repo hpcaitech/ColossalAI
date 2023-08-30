@@ -141,6 +141,7 @@ class TPInferEngine:
 
         outputs = self.sharded_model.generate(**input_tokens, **generate_kwargs, early_stopping=False)
 
+        print(f"outputs.shape {outputs.shape}")
         return outputs
 
     def prepare_batch_state(self, inputs) -> BatchInferState:
@@ -192,7 +193,11 @@ class TPInferEngine:
                 start_index += curr_seq_len
                 max_len_in_batch = curr_seq_len if curr_seq_len > max_len_in_batch else max_len_in_batch
 
-        block_loc = torch.empty((batch_size, self.max_input_len + self.max_output_len), dtype=torch.long, device='cuda')
+        print(" 666 ", max_len_in_batch)
+
+        block_loc = torch.empty((batch_size, self.max_input_len + self.max_output_len),
+                                dtype=torch.long,
+                                device='cuda')
         batch_infer_state = BatchInferState(batch_size, max_len_in_batch)
         batch_infer_state.seq_len = seq_lengths.to('cuda')    # might want to assign specific device
         batch_infer_state.start_loc = seq_start_indexes.to('cuda')
