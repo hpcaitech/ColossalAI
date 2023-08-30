@@ -184,24 +184,33 @@ class T5BasePolicy(Policy):
 
         # use flash attention
         if self.shard_config.enable_flash_attention:
-            policy[T5Attention] = ModulePolicyDescription(method_replacement={
+            self.append_or_create_method_replacement(description={
                 'forward': get_t5_flash_attention_forward(),
-            })
+            },
+                                                     policy=policy,
+                                                     target_key=T5Attention)
 
         # use jit operator
         if self.shard_config.enable_jit_fused:
-            policy[T5LayerFF] = ModulePolicyDescription(method_replacement={
+            self.append_or_create_method_replacement(description={
                 'forward': get_jit_fused_T5_layer_ff_forward(),
                 'dropout_add': get_jit_fused_dropout_add_func(),
-            })
-            policy[T5LayerSelfAttention] = ModulePolicyDescription(method_replacement={
+            },
+                                                     policy=policy,
+                                                     target_key=T5LayerFF)
+            self.append_or_create_method_replacement(description={
                 'forward': get_T5_layer_self_attention_forward(),
                 'dropout_add': get_jit_fused_dropout_add_func(),
-            })
-            policy[T5LayerCrossAttention] = ModulePolicyDescription(method_replacement={
+            },
+                                                     policy=policy,
+                                                     target_key=T5LayerSelfAttention)
+            self.append_or_create_method_replacement(description={
                 'forward': get_T5_layer_cross_attention_forward(),
                 'dropout_add': get_jit_fused_dropout_add_func(),
-            })
+            },
+                                                     policy=policy,
+                                                     target_key=T5LayerCrossAttention)
+
         return policy
 
     def postprocess(self):
