@@ -193,8 +193,6 @@ class TPInferEngine:
                 start_index += curr_seq_len
                 max_len_in_batch = curr_seq_len if curr_seq_len > max_len_in_batch else max_len_in_batch
 
-        print(" 666 ", max_len_in_batch)
-
         block_loc = torch.empty((batch_size, self.max_input_len + self.max_output_len),
                                 dtype=torch.long,
                                 device='cuda')

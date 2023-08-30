@@ -15,9 +15,9 @@ import torch.distributed as dist
 
 os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
 TPSIZE = 2
-BATCH_SIZE = 1
-MAX_INPUT_LEN = 11
-MAX_OUTPUT_LEN = 5
+BATCH_SIZE = 8
+MAX_INPUT_LEN = 12
+MAX_OUTPUT_LEN = 100
 
 def init_to_get_rotary(self, base=10000):
     self.config.head_dim_ = self.config.hidden_size // self.config.num_attention_heads
@@ -54,10 +54,6 @@ def run_llama_test(test_config):
     
     text = "how is weather today?"
     input_ids = tokenizer.encode(text, return_tensors='pt', device='cuda')
-    input_ids.to('cuda:0')
-    
-    # input_ids_1 = torch.randint(low=10, high=1000, size=(BATCH_SIZE, MAX_INPUT_LEN), device='cuda')
-    # print("input_ids_1: ", input_ids_1)
     
     infer_engine = TPInferEngine(model.half(), BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
     shard_config = ShardConfig(enable_tensor_parallelism=True, inference_only=True)
