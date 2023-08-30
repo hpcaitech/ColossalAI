@@ -15,6 +15,9 @@ import torch.distributed as dist
 
 os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
 TPSIZE = 2
+BATCH_SIZE = 1
+MAX_INPUT_LEN = 11
+MAX_OUTPUT_LEN = 5
 
 def init_to_get_rotary(self, base=10000):
     self.config.head_dim_ = self.config.hidden_size // self.config.num_attention_heads
@@ -48,21 +51,24 @@ def run_llama_test(test_config):
     model = LlamaForCausalLM.from_pretrained(llama_model_path, pad_token_id=tokenizer.eos_token_id)
     init_to_get_rotary(model.model, base=10000)
     model = model.half()
-    model.to(torch.cuda.current_device())
     
-    text = "Introduce some landmarks in Beijing"
-    input_ids = tokenizer.encode(text, return_tensors='pt')
-    # pg_mesh = ProcessGroupMesh(1, 1, test_config["tp_size"])
+    text = "how is weather today?"
+    input_ids = tokenizer.encode(text, return_tensors='pt', device='cuda')
+    input_ids.to('cuda:0')
     
-    infer_engine = TPInferEngine(model.half(), 4, 12, 8)
+    # input_ids_1 = torch.randint(low=10, high=1000, size=(BATCH_SIZE, MAX_INPUT_LEN), device='cuda')
+    # print("input_ids_1: ", input_ids_1)
+    
+    infer_engine = TPInferEngine(model.half(), BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
     shard_config = ShardConfig(enable_tensor_parallelism=True, inference_only=True)
     shardformer = ShardFormer(shard_config=shard_config)
 
     infer_engine.prepare_with_shard_config(shard_config)
     infer_engine.shard_model_by(shardformer)
 
-    generate_kwargs = dict(do_sample=False)
+    generate_kwargs = dict(max_new_tokens=MAX_OUTPUT_LEN, do_sample=False)
     outputs = infer_engine.generate(input_ids, generate_kwargs)
+    print("outputs.shape: ", outputs.shape)
     
     print("outputs: ", outputs)
 
