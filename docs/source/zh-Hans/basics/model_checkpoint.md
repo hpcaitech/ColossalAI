@@ -61,3 +61,4 @@ model = ...
 load_checkpoint('xxx.pt', model)
 ... # train or test
 ```
+<!-- doc-test-command: echo  -->

@@ -245,3 +245,4 @@ def train():
                 hooks=hook_list,
                 display_progress=True)
 ```
+<!-- doc-test-command: echo  -->

@@ -273,3 +273,4 @@ def train():
         return_output_label=False,
     )
 ```
+<!-- doc-test-command: echo  -->

@@ -157,3 +157,4 @@ trainer.fit(train_dataloader=train_dataloader,
 ```
 
 We use `2` pipeline stages and the batch will be split into `4` micro batches.
+<!-- doc-test-command: echo  -->

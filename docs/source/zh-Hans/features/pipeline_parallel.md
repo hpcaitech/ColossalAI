@@ -156,3 +156,4 @@ trainer.fit(train_dataloader=train_dataloader,
 ```
 
 我们使用 `2` 个流水段，并且 batch 将被切分为 `4` 个 micro batches。
+<!-- doc-test-command: echo  -->
