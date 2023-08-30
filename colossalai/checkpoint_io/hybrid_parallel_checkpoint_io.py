@@ -4,7 +4,7 @@ import logging
 import os
 from pathlib import Path
 from shutil import rmtree
-from typing import Iterator, Mapping, Optional, OrderedDict, Tuple, Union
+from typing import Dict, Iterator, Optional, OrderedDict, Tuple, Union
 
 import torch
 import torch.distributed as dist
@@ -575,14 +575,14 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
         if self.coordinator.is_master():
             super().save_lr_scheduler(lr_scheduler, checkpoint)
 
-    def create_working_to_master_map(self, working_to_master_map: Mapping[Union[int, torch.Tensor], torch.Tensor]):
+    def create_working_to_master_map(self, working_to_master_map: Dict[Union[int, torch.Tensor], torch.Tensor]):
         """
         Create current checkpoint IO's working_to_master_map with passed in mapping.
         This mapping can only be created when mixied precision is used.
         The created mapping should be a mapping from address of working parameters to master parameter objects.
 
         Args:
-            working_to_master_map (Mapping[Union[int, torch.Tensor], torch.Tensor]): A mapping from working parameters objects/addresses to master parameter objects.
+            working_to_master_map (Dict[Union[int, torch.Tensor], torch.Tensor]): A mapping from working parameters objects/addresses to master parameter objects.
         """
         self.working_to_master_map = dict()
         for k, v in working_to_master_map.items():
