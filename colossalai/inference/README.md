@@ -23,7 +23,7 @@ Colossal Inference is composed of two main components:
 
 In this section we discuss how the colossal inference works and integrates with the `Shardformer` . The details can be found in our codes.
 
-![Colossal-inference-2.png](https://s3-us-west-2.amazonaws.com/secure.notion-static.com/1747151c-bfac-4f31-b780-828dd517fa96/Colossal-inference-2.png)
+![Colossal-Inference](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference/Colossal-inference.png)
 
 ## Roadmap of our implementation
 
