@@ -182,6 +182,7 @@ class BloomInferenceForwards:
             BatchInferState.init_block_loc(infer_state.block_loc, infer_state.seq_len, seq_length,
                                            infer_state.context_mem_index)
         else:
+            infer_state.is_context_stage = False
             alloc_mem = infer_state.cache_manager.alloc_contiguous(batch_size)
             if alloc_mem is not None:
                 infer_state.decode_is_contiguous = True
@@ -214,6 +215,9 @@ class BloomInferenceForwards:
         curr_tp_rank = dist.get_rank()
         alibi = generate_alibi(self.num_heads * tp_size).contiguous()[curr_tp_rank * self.num_heads:(curr_tp_rank + 1) *
                                                                       self.num_heads].cuda()
+        print(f"  bloom_model_forward:")
+        print(f"    alibi.shape: {alibi.shape}")
+        print(alibi)
 
         causal_mask = self._prepare_attn_mask(
             attention_mask,
