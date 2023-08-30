@@ -24,6 +24,9 @@ from colossalai.kernel.triton.token_attention_kernel import token_attention_fwd
 
 def generate_alibi(n_head, dtype=torch.float16):
     """
+    This method is adapted from `_generate_alibi` function
+    in `lightllm/models/bloom/layer_weights/transformer_layer_weight.py`
+    of the ModelTC/lightllm GitHub repository.
     This method is originally the `build_alibi_tensor` function
     in `transformers/models/bloom/modeling_bloom.py`
     of the huggingface/transformers GitHub repository.
@@ -44,27 +47,6 @@ def generate_alibi(n_head, dtype=torch.float16):
     limitations under the License.
     """
 
-    def get_slopes(n):
-
-        def get_slopes_power_of_2(n):
-            start = 2**(-(2**-(math.log2(n) - 3)))
-            ratio = start
-            return [start * ratio**i for i in range(n)]
-
-        if math.log2(n).is_integer():
-            return get_slopes_power_of_2(n)
-        else:
-            closest_power_of_2 = 2**math.floor(math.log2(n))
-            return (get_slopes_power_of_2(closest_power_of_2) +
-                    get_slopes(2 * closest_power_of_2)[0::2][:n - closest_power_of_2])
-
-    slopes = torch.Tensor(get_slopes(n_head))
-    head_alibi = slopes.to(dtype)
-    return head_alibi    # 1 * num_heads
-
-
-def generate_alibi_2(n_head, dtype=torch.float16):
-
     def get_slopes_power_of_2(n):
         start = 2**(-(2**-(math.log2(n) - 3)))
         return [start * start**i for i in range(n)]
@@ -79,8 +61,8 @@ def generate_alibi_2(n_head, dtype=torch.float16):
             slopes_combined = slopes_power_of_2 + slopes_double[0::2][:n - closest_power_of_2]
             return slopes_combined
 
-    slopes = torch.tensor(get_slopes(n_head), dtype=dtype)
-    return slopes
+    slopes = get_slopes(n_head)
+    return torch.tensor(slopes, dtype=dtype)
 
 
 class BloomInferenceForwards:
