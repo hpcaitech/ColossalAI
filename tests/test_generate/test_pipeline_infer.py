@@ -1,5 +1,6 @@
 from copy import deepcopy
 
+import pytest
 import torch
 import torch.distributed as dist
 import torch.nn as nn
@@ -8,7 +9,7 @@ import transformers
 import colossalai
 from colossalai.inference.pipeline.engine import PPInferEngine
 from colossalai.inference.pipeline.policy.gpt2_ppinfer import GPT2LMHeadModelPipelinePolicy
-from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
+from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
 
 
 def data_gen():
@@ -40,6 +41,7 @@ def pipeline_inference_test(pp_size, new_length, micro_batch_size):
 @parameterize('pp_size', [4])
 @parameterize('new_length', [4, 8, 16])
 @parameterize('micro_batch_size', [1, 4])
+@clear_cache_before_run()
 def run_pipeline_inference_test(pp_size, new_length, micro_batch_size):
     pipeline_inference_test(pp_size, new_length, micro_batch_size)
 
@@ -49,7 +51,9 @@ def check_pipeline_inference(rank, world_size, port):
     run_pipeline_inference_test()
 
 
+@pytest.mark.dist
 @rerun_if_address_is_in_use()
+@clear_cache_before_run()
 def test_pipeline_inference():
     spawn(check_pipeline_inference, nprocs=4)
 
