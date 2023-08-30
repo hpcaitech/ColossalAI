@@ -131,16 +131,7 @@ class BloomInferenceForwards:
         else:
             raise ValueError("You have to specify either input_ids or inputs_embeds")
 
-        # # initialize BatchInferState to track necessary states during current model forward
-        # infer_state = BatchInferState()
-        # infer_state.batch_size = batch_size
-        # # TODO: dummy implementation here for testing, assume all inputs same length
-        # infer_state.total_token_num = batch_size * seq_length
-        # infer_state.block_loc = self.block_loc
-        # infer_state.start_loc = self.b_start_loc
-        # infer_state.seq_len = self.b_seq_len
-
-        # still need to keep past_key_values to fit original forward flow·
+        # still need to keep past_key_values to fit original forward flow
         if past_key_values is None:
             past_key_values = tuple([None] * len(self.h))
 
@@ -169,6 +160,7 @@ class BloomInferenceForwards:
         #      if not, get the attr binded to the model
         # We might wantto remove setattr later
         if infer_state is None:
+            assert hasattr(self, 'infer_state')
             infer_state = self.infer_state
 
         # Compute alibi tensor: check build_alibi_tensor documentation
@@ -176,22 +168,20 @@ class BloomInferenceForwards:
         past_key_values_length = 0
         # if self.cache_manager.past_key_values_length > 0:
         if infer_state.cache_manager.past_key_values_length > 0:
-            # TODO dummy but work, revise it
+            # update the past key values length in cache manager,
+            # TODO use BatchInferState.past_key_values_length instead the one in cache manager
             past_key_values_length = infer_state.cache_manager.past_key_values_length
-            # past_key_values_length = past_key_values[0][0].shape[2]
             seq_length_with_past = seq_length_with_past + past_key_values_length
 
         # infer_state.cache_manager = self.cache_manager
 
         if use_cache and seq_length != 1:
-            # NOTE assuem prefill stage
-            # allocate memory block
+            # prefill stage
             infer_state.is_context_stage = True    # set prefill stage, notify attention layer
             infer_state.context_mem_index = infer_state.cache_manager.alloc(infer_state.total_token_num)
             BatchInferState.init_block_loc(infer_state.block_loc, infer_state.seq_len, seq_length,
                                            infer_state.context_mem_index)
         else:
-            # TODO handle the condition that no contiguous memory presents
             alloc_mem = infer_state.cache_manager.alloc_contiguous(batch_size)
             if alloc_mem is not None:
                 infer_state.decode_is_contiguous = True
@@ -216,9 +206,14 @@ class BloomInferenceForwards:
         else:
             attention_mask = attention_mask.to(hidden_states.device)
 
-        # NOTE we might want to store a single 1D alibi(length is #heads) in model
-        alibi = generate_alibi(self.num_heads).contiguous().cuda()
-        # alibi = self.build_alibi_tensor(attention_mask, self.num_heads, dtype=hidden_states.dtype)
+        # TODO revise: we might want to store a single 1D alibi(length is #heads) in model,
+        #      or store to BatchInferState to prevent re-calculating
+        #      When we have multiple process group (e.g. dp together with tp), we need to pass the pg to here
+        # alibi = generate_alibi(self.num_heads).contiguous().cuda()
+        tp_size = dist.get_world_size()
+        curr_tp_rank = dist.get_rank()
+        alibi = generate_alibi(self.num_heads * tp_size).contiguous()[curr_tp_rank * self.num_heads:(curr_tp_rank + 1) *
+                                                                      self.num_heads].cuda()
 
         causal_mask = self._prepare_attn_mask(
             attention_mask,
@@ -273,8 +268,8 @@ class BloomInferenceForwards:
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
 
-        # NOTE: here we still to update indices of kv cache block
-        # TODO: remove this part, instead, better to pass the BatchInferState from model forward,
+        # update indices of kv cache block
+        # TODO: might want to remove this part, instead, better to pass the BatchInferState from model forward,
         #       and update these information in engine.generate after model foward called
         infer_state.start_loc = infer_state.start_loc + torch.arange(0, batch_size, dtype=torch.int32, device="cuda")
         infer_state.seq_len += 1
@@ -510,9 +505,8 @@ class BloomInferenceForwards:
             bloom_context_attn_fwd(q, k, v, output, b_start_loc, b_seq_len, max_input_len, alibi)
 
             context_layer = output.view(batch_size, q_length, H * D_HEAD)
-            # FIXME might want to revise
-            #   need some way to record the length of past key values cache
-            #   since we won't return past_key_value_cache right now
+            # record the length of past key values cache when entering the first attention layer in bloom block,
+            # since we won't return past_key_value_cache right now
             if layer_id == 0:    # once per model.forward
                 infer_state.cache_manager.past_key_values_length = q_length    # seq_len
         else:
@@ -532,9 +526,6 @@ class BloomInferenceForwards:
             else:
                 # if decode is not contiguous, use triton kernel to copy key and value cache
                 # k, v shape: [batch_size, num_heads, head_dim/embed_size_per_head]
-                # TODO clean comments
-                # destindex_copy_kv(k, infer_state.decode_mem_index, mem_manager.key_buffer[layer_id])
-                # destindex_copy_kv(v, infer_state.decode_mem_index, mem_manager.value_buffer[layer_id])
                 copy_kv_cache_to_dest(k, infer_state.decode_mem_index, mem_manager.key_buffer[layer_id])
                 copy_kv_cache_to_dest(v, infer_state.decode_mem_index, mem_manager.value_buffer[layer_id])
 
@@ -547,9 +538,7 @@ class BloomInferenceForwards:
                                 b_start_loc, b_seq_len, max_len_in_batch, alibi)
 
             context_layer = output.view(batch_size, q_length, H * D_HEAD)
-            # FIXME might want to revise (same as above one)
-            #   need some way to record the length of past key values cache
-            #   since we won't return past_key_value_cache right now
+
             if layer_id == 0:    # once per model.forward
                 assert infer_state.cache_manager.past_key_values_length != 0
                 infer_state.cache_manager.past_key_values_length += q_length    # += 1
