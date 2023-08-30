@@ -4,7 +4,7 @@ import logging
 import os
 from pathlib import Path
 from shutil import rmtree
-from typing import Any, Callable, Iterator, List, Optional, OrderedDict, Tuple, Union
+from typing import Iterator, Mapping, Optional, OrderedDict, Tuple, Union
 
 import torch
 import torch.distributed as dist
@@ -68,6 +68,7 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
         self.tp_size = dist.get_world_size(tp_group)
         self.use_zero = (zero_stage > 0)
         self.verbose = verbose
+        self.working_to_master_map = None
 
     @staticmethod
     def _model_sharder(model: nn.Module,
@@ -322,6 +323,25 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
                    torch.nn.Module.get_extra_state) is not torch.nn.Module.get_extra_state:
             _load(extra_state_key)
 
+        # Update master params if mixed-precision training is enabled.
+        with torch.no_grad():
+            if self.working_to_master_map is not None:
+                for param in model.parameters():
+                    if (param is None) or (id(param) not in self.working_to_master_map):
+                        continue
+                    master_param = self.working_to_master_map[id(param)]
+                    if self.use_zero:
+                        # master_param is sharded under Zero setting
+                        padding_size = (self.dp_size - param.numel() % self.dp_size) % self.dp_size
+                        if padding_size > 0:
+                            padded_param = torch.nn.functional.pad(param.data.view(-1), [0, padding_size])
+                        else:
+                            padded_param = param.data.view(-1)
+                        sharded_param = padded_param.split(padded_param.numel() // self.dp_size)[self.dp_rank]
+                        master_param.data.copy_(sharded_param.data)
+                    else:
+                        master_param.data.copy_(param.data)
+
         if self.verbose:
             logging.info(f"The model has been successfully loaded from sharded checkpoint: {ckpt_root_path}.")
 
@@ -554,6 +574,25 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
         """
         if self.coordinator.is_master():
             super().save_lr_scheduler(lr_scheduler, checkpoint)
+
+    def create_working_to_master_map(self, working_to_master_map: Mapping[Union[int, torch.Tensor], torch.Tensor]):
+        """
+        Create current checkpoint IO's working_to_master_map with passed in mapping.
+        This mapping can only be created when mixied precision is used.
+        The created mapping should be a mapping from address of working parameters to master parameter objects.
+
+        Args:
+            working_to_master_map (Mapping[Union[int, torch.Tensor], torch.Tensor]): A mapping from working parameters objects/addresses to master parameter objects.
+        """
+        self.working_to_master_map = dict()
+        for k, v in working_to_master_map.items():
+            if isinstance(k, torch.Tensor):
+                self.working_to_master_map[id(k)] = v
+            elif isinstance(k, int):
+                self.working_to_master_map[k] = v
+            else:
+                raise ValueError(
+                    f"The passed in mapping should have keys of type 'int' or 'torch.Tensor', but got {type(k)}!")
 
     @staticmethod
     def gather_from_sharded_optimizer_state(state: OrderedDict, param: torch.Tensor, original_shape: torch.Size,

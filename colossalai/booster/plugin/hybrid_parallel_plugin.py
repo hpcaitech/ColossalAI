@@ -406,6 +406,7 @@ class HybridParallelPlugin(PipelinePluginBase):
                                                            precision=self.precision,
                                                            max_norm=self.max_norm,
                                                            **self.amp_config)
+                    self.checkpoint_io.create_working_to_master_map(optimizer.working_to_master_map)
                 else:
                     optimizer = HybridParallelNaiveOptimizer(optimizer,
                                                              model,
@@ -424,6 +425,8 @@ class HybridParallelPlugin(PipelinePluginBase):
                                                         clip_grad_norm=self.max_norm,
                                                         **self.zero_config,
                                                         **self.amp_config)
+                self.checkpoint_io.create_working_to_master_map(optimizer._param_store.working_to_master_param)
+
         return model, optimizer, criterion, dataloader, lr_scheduler
 
     def execute_pipeline(self,
@@ -500,7 +503,8 @@ class HybridParallelPlugin(PipelinePluginBase):
                           **_kwargs)
 
     def get_checkpoint_io(self) -> CheckpointIO:
-        return HypridParallelCheckpointIO(self.dp_group, self.pp_group, self.tp_group, self.zero_stage)
+        self.checkpoint_io = HypridParallelCheckpointIO(self.dp_group, self.pp_group, self.tp_group, self.zero_stage)
+        return self.checkpoint_io
 
     def no_sync(self, model: Module) -> Iterator[None]:
         raise NotImplementedError

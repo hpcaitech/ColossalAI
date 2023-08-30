@@ -10,6 +10,7 @@ from colossalai.booster.plugin import HybridParallelPlugin
 from colossalai.shardformer.layer.utils import Randomizer
 from colossalai.tensor.d_tensor.api import clear_layout_converter
 from colossalai.testing import (
+    assert_close_loose,
     check_state_dict_equal,
     clear_cache_before_run,
     parameterize,
@@ -22,7 +23,7 @@ from tests.kit.model_zoo import model_zoo
 # TODO (Baizhou): Add test cases for shard=False
 @clear_cache_before_run()
 @parameterize('shard', [True])
-@parameterize('model_name', ['transformers_gpt', 'transformers_bert'])
+@parameterize('model_name', ['transformers_gpt'])
 @parameterize('size_per_shard', [32])
 @parameterize('test_config', [{
     'tp_size': 4,
@@ -109,6 +110,42 @@ def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_conf
         check_state_dict_equal(optimizer.unwrap().state_dict(), new_optimizer.unwrap().state_dict(), False)
         dist.barrier()
 
+    # Check whether the loaded model & optimizer works smoothly.
+    model.train()
+    new_model.train()
+    if booster.plugin.stage_manager is not None:
+        booster.execute_pipeline(_preprocess_data(data),
+                                 model,
+                                 _criterion,
+                                 optimizer,
+                                 return_loss=True,
+                                 return_outputs=False)
+        booster.execute_pipeline(_preprocess_data(data),
+                                 new_model,
+                                 _criterion,
+                                 new_optimizer,
+                                 return_loss=True,
+                                 return_outputs=False)
+    else:
+        old_model_loss = criterion(model(**_preprocess_data(data)))
+        optimizer.backward(old_model_loss)
+        new_model_loss = criterion(new_model(**_preprocess_data(data)))
+        new_optimizer.backward(new_model_loss)
+
+    optimizer.step()
+    new_optimizer.step()
+
+    # Check updated weights.
+    stage_manager = booster.plugin.stage_manager
+
+    if stage_manager is None or stage_manager.is_first_stage():
+        assert_close_loose(model.unwrap().wte.weight.data, new_model.unwrap().wte.weight.data, atol=5e-3, rtol=5e-3)
+        assert_close_loose(model.unwrap().h[0].mlp.c_fc.weight.data,
+                           new_model.unwrap().h[0].mlp.c_fc.weight.data,
+                           atol=5e-3,
+                           rtol=5e-3)
+
+    dist.barrier()
     Randomizer.reset_index()
     clear_layout_converter()
 
