@@ -2,8 +2,7 @@ from functools import partial
 
 from colossalai.shardformer.policies.llama import LlamaForCausalLMPolicy
 
-from ..modeling.llama import LlamaInferenceForwards
-
+from ..modeling.llama import LlamaInferenceForwards 
 
 class LlamaModelInferPolicy(LlamaForCausalLMPolicy):
 
@@ -24,17 +23,13 @@ class LlamaModelInferPolicy(LlamaForCausalLMPolicy):
         infer_forward = LlamaInferenceForwards.llama_model_forward
         method_replacement = {'forward': partial(infer_forward)}
         self.append_or_create_method_replacement(description=method_replacement, policy=policy, target_key=LlamaModel)
-
+        
         infer_forward = LlamaInferenceForwards.llama_decoder_layer_forward
         method_replacement = {'forward': partial(infer_forward)}
-        self.append_or_create_method_replacement(description=method_replacement,
-                                                 policy=policy,
-                                                 target_key=LlamaDecoderLayer)
-
+        self.append_or_create_method_replacement(description=method_replacement, policy=policy, target_key=LlamaDecoderLayer)
+        
         infer_forward = LlamaInferenceForwards.llama_flash_attn_kvcache_forward
         method_replacement = {'forward': partial(infer_forward)}
-        self.append_or_create_method_replacement(description=method_replacement,
-                                                 policy=policy,
-                                                 target_key=LlamaAttention)
+        self.append_or_create_method_replacement(description=method_replacement, policy=policy, target_key=LlamaAttention)
 
         return policy
