@@ -2,40 +2,74 @@ import os
 
 import pytest
 import torch
-from torch import distributed as dist
+import numpy as np
 
 import colossalai
 from colossalai.logging import disable_existing_loggers
-from colossalai.shardformer.layer.utils import Randomizer
-from colossalai.tensor.d_tensor.api import clear_layout_converter
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
-from tests.kit.model_zoo import model_zoo
-from tests.test_infer._utils import build_model, run_infer
+from transformers import LlamaForCausalLM, LlamaTokenizer
+from colossalai.cluster import ProcessGroupMesh
+from colossalai.shardformer import ShardConfig, ShardFormer
+from colossalai.inference.tensor_parallel.engine import TPInferEngine
+import torch.distributed as dist
 
 os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
+TPSIZE = 2
+BATCH_SIZE = 8
+MAX_INPUT_LEN = 12
+MAX_OUTPUT_LEN = 100
 
+def init_to_get_rotary(self, base=10000):
+    self.config.head_dim_ = self.config.hidden_size // self.config.num_attention_heads
+    if not hasattr(self.config, "rope_scaling"):
+        rope_scaling_factor = 1.0
+    else:
+        rope_scaling_factor = self.config.rope_scaling.factor if self.config.rope_scaling is not None else 1.0
+    if hasattr(self.config,"max_sequence_length"):
+        max_seq_len = self.config.max_sequence_length
+    elif hasattr(self.config,"max_position_embeddings"):
+        max_seq_len = self.config.max_position_embeddings * rope_scaling_factor
+    else:
+        max_seq_len =  2048 * rope_scaling_factor
+    base = float(base)
+    inv_freq = 1.0 / (base ** (torch.arange(0, self.config.head_dim_, 2, device="cpu", dtype=torch.float32) / self.config.head_dim_))
+    t = torch.arange(max_seq_len + 1024 * 64, device="cpu", dtype=torch.float32) / rope_scaling_factor
+    freqs = torch.outer(t, inv_freq)
 
-def check_infer(model_fn, data_gen_fn, output_transform_fn, test_config):
-    org_model, sharded_model = build_model(model_fn, **test_config)
-
-    org_output, infer_output = run_infer(org_model, sharded_model, data_gen_fn, output_transform_fn)
-
-    print('original output', org_output[0])
-    print('infer output', infer_output[0])
-
+    self._cos_cached = torch.cos(freqs).to(torch.float16).cuda()
+    self._sin_cached = torch.sin(freqs).to(torch.float16).cuda()
+    return
 
 @parameterize('test_config', [{
-    'enable_flash_attention': False,
+    'tp_size': TPSIZE,
 }])
 def run_llama_test(test_config):
+    
+    llama_model_path = "/data/scratch/llama-7b-hf"
+    tokenizer = LlamaTokenizer.from_pretrained(llama_model_path)
+    tokenizer.pad_token_id = tokenizer.unk_token_id
+    model = LlamaForCausalLM.from_pretrained(llama_model_path, pad_token_id=tokenizer.eos_token_id)
+    init_to_get_rotary(model.model, base=10000)
+    model = model.half()
+    
+    text = "how is weather today?"
+    input_ids = tokenizer.encode(text, return_tensors='pt', device='cuda')
+    
+    infer_engine = TPInferEngine(model.half(), BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
+    shard_config = ShardConfig(enable_tensor_parallelism=True, inference_only=True)
+    shardformer = ShardFormer(shard_config=shard_config)
 
-    sub_model_zoo = model_zoo.get_sub_registry('transformers_llama')
+    infer_engine.prepare_with_shard_config(shard_config)
+    infer_engine.shard_model_by(shardformer)
 
-    for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
-        if name != "transformers_llama":
-            continue
-        check_infer(model_fn, data_gen_fn, output_transform_fn, test_config)
-    torch.cuda.empty_cache()
+    generate_kwargs = dict(max_new_tokens=MAX_OUTPUT_LEN, do_sample=False)
+    outputs = infer_engine.generate(input_ids, generate_kwargs)
+    print("outputs.shape: ", outputs.shape)
+    
+    print("outputs: ", outputs)
+
+    output_text = tokenizer.decode(outputs[0])
+    print(output_text)
 
 
 def check_llama(rank, world_size, port):
@@ -48,7 +82,7 @@ def check_llama(rank, world_size, port):
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()
 def test_llama():
-    spawn(check_llama, 1)
+    spawn(check_llama, TPSIZE)
 
 
 if __name__ == "__main__":
