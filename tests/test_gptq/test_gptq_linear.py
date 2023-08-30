@@ -6,12 +6,29 @@ import pytest
 import torch
 import torch.nn as nn
 import transformers
-from auto_gptq.modeling._utils import autogptq_post_init, find_layers, pack_model
-from auto_gptq.nn_modules.qlinear.qlinear_triton import QuantLinear
-from auto_gptq.quantization import GPTQ
-from auto_gptq.quantization.quantizer import Quantizer
+from packaging import version
 
 from colossalai.gptq import CaiGPTQLinearOp, CaiQuantLinear
+
+try:
+    import triton
+    import triton.language as tl
+    HAS_TRITON = True
+except ImportError:
+    HAS_TRITON = False
+    print("please install triton from https://github.com/openai/triton")
+
+try:
+    from auto_gptq.modeling._utils import autogptq_post_init, find_layers, pack_model
+    from auto_gptq.nn_modules.qlinear.qlinear_triton import QuantLinear
+    from auto_gptq.quantization import GPTQ
+    from auto_gptq.quantization.quantizer import Quantizer
+    HAS_AUTO_GPTQ = True
+except:
+    HAS_AUTO_GPTQ = False
+    print("please install triton from https://github.com/PanQiWei/AutoGPTQ")
+
+TRITON_CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse('11.4')
 
 wbits = 4
 trits = False
@@ -214,6 +231,8 @@ def model_cai_pack(model, quantizers, qweight, qscales, qzeros, wbits, groupsize
     return qweight, qscales, qzeros
 
 
+@pytest.mark.skipif(not TRITON_CUDA_SUPPORT or not HAS_TRITON or not HAS_AUTO_GPTQ,
+                    reason="triton requires cuda version to be higher than 11.4 or not install auto-gptq")
 def test_gptq_linear():
 
     infeature = 5120
@@ -264,7 +283,6 @@ def test_gptq_linear():
     gptq_model = model_pack(linear, quantizers, wbits, groupsize)
     gptq_model.to(torch.cuda.current_device())
     gptq_model = autogptq_post_init(gptq_model, False)
-
 
     with torch.no_grad():
         gptq_out = gptq_model(inps)
