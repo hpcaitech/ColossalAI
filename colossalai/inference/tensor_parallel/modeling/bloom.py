@@ -215,10 +215,6 @@ class BloomInferenceForwards:
         curr_tp_rank = dist.get_rank()
         alibi = generate_alibi(self.num_heads * tp_size).contiguous()[curr_tp_rank * self.num_heads:(curr_tp_rank + 1) *
                                                                       self.num_heads].cuda()
-        print(f"  bloom_model_forward:")
-        print(f"    alibi.shape: {alibi.shape}")
-        print(alibi)
-
         causal_mask = self._prepare_attn_mask(
             attention_mask,
             input_shape=(batch_size, seq_length),
@@ -493,18 +489,6 @@ class BloomInferenceForwards:
 
             # output = self.output[:batch_size*q_length, :, :]
             output = torch.empty_like(q)
-
-            # temp for testing
-            if not dist.is_initialized() or dist.get_rank() == 0:
-                print(f"  cp3")
-                print(f"  q.shape: {q.shape}")
-                print(f"  k.shape: {k.shape}")
-                print(f"  v.shape: {v.shape}")
-                print(f"  output.shape: {output.shape}")
-                print(f"  b_start_loc: {b_start_loc}")
-                print(f"  b_seq_len: {b_seq_len}")
-                print(f"  max_input_len: {max_input_len}")
-                print(f"  alibi: {alibi}")
 
             bloom_context_attn_fwd(q, k, v, output, b_start_loc, b_seq_len, max_input_len, alibi)
 

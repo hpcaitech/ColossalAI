@@ -6,12 +6,12 @@ import colossalai
 from colossalai.inference.tensor_parallel import TPInferEngine
 from colossalai.logging import disable_existing_loggers
 from colossalai.shardformer import ShardConfig, ShardFormer
-from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
+from colossalai.testing import clear_cache_before_run, rerun_if_address_is_in_use, spawn
 
 TP_SIZE = 2
 MAX_BATCH_SIZE = 4
 MAX_INPUT_LEN = 16
-MAX_OUTPUT_LEN = 8
+MAX_OUTPUT_LEN = 32
 
 
 def run():
@@ -21,11 +21,8 @@ def run():
     tokenizer.pad_token = tokenizer.eos_token
 
     text = "Introduce some landmarks in Beijing"
-    input_ids = tokenizer.encode(text, return_tensors='pt')
+    input_ids = tokenizer.batch_encode_plus([text], return_tensors='pt')
 
-    # model_config = BloomConfig()
-    # model = BloomForCausalLM(model_config)
-    # model = AutoModelForCausalLM.from_pretrained(model_path, pad_token_id=tokenizer.eos_token_id)
     model = BloomForCausalLM.from_pretrained(model_path, pad_token_id=tokenizer.eos_token_id)
     model = model.half()
     model.to(torch.cuda.current_device())
@@ -40,7 +37,6 @@ def run():
     generate_kwargs = dict(do_sample=False)
     outputs = infer_engine.generate(input_ids, generate_kwargs)
 
-    print(outputs)
     output_text = tokenizer.decode(outputs[0])
     print(output_text)
 
