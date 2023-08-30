@@ -336,8 +336,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         assert not(self._partition_grads and not self.require_grad_sync), \
             "ZeRO2(partition_grads) and gradient accumulation(no_sync) are not compatible"
 
-        # in lower stage which grad is transfered by higher stage
-        # we need to pass the optim state down.
         if self.mixed_precision_mixin is not None:
             grad = self.mixed_precision_mixin.pre_backward_by_grad(tensor, grad)
         torch.autograd.backward(tensor, grad)
