@@ -1,5 +1,6 @@
 from .modeling.llama import LlamaInferenceForwards
 from .pollcies.llama import LlamaModelInferPolicy
-from .llama_infer_engine import TPCacheManagerInferenceEngine
+from .engine import TPInferEngine
+from .kvcache_manager import MemoryManager
  
-__all__ = ['LlamaInferenceForwards', 'LlamaModelInferPolicy', 'TPCacheManagerInferenceEngine']
+__all__ = ['LlamaInferenceForwards', 'LlamaModelInferPolicy', 'MemoryManager', 'TPInferEngine']
