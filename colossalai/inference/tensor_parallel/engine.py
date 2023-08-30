@@ -16,7 +16,7 @@ from .kvcache_manager import MemoryManager
 
 DP_AXIS, PP_AXIS, TP_AXIS = 0, 1, 2
 
-_supported_models = ['LlamaForCausalLM', 'BloomForCausalLM']
+_supported_models = ['LlamaForCausalLM', 'LlamaModel', 'BloomForCausalLM']
 
 
 class TPInferEngine:
@@ -27,7 +27,7 @@ class TPInferEngine:
                  max_input_len: int,
                  max_output_len: int,
                  dtype: torch.dtype = torch.float16,
-                 device: torch.device = torch.cuda.current_device()) -> None:
+                 device: str = 'cuda') -> None:
         self.model = model
         self.sharded_model = None
 
@@ -40,7 +40,7 @@ class TPInferEngine:
         assert self.max_batch_size <= 64, "Max batch size exceeds the constraint"
         assert self.max_input_len + self.max_output_len <= 2048, "Max length exceeds the constraint"
 
-        self.device = device
+        torch.device(device=device)
         self.dtype = dtype
 
         self.head_dim = self.model.config.hidden_size // self.model.config.num_attention_heads
@@ -88,7 +88,7 @@ class TPInferEngine:
         assert model_name in self._supported_models(), f"Unsupported model cls {model_name} for TP inference."
         policy = get_autopolicy(self.model, inference_only=True)
         self.sharded_model, _ = shardformer.optimize(self.model, policy)
-        self.sharded_model = self.sharded_model.to(self.device)
+        self.sharded_model = self.sharded_model.cuda()
 
     @staticmethod
     def _supported_models() -> List[str]:
@@ -137,7 +137,7 @@ class TPInferEngine:
             input_tokens = dict(input_ids=input_tokens)
         for t in input_tokens:
             if torch.is_tensor(input_tokens[t]):
-                input_tokens[t] = input_tokens[t].to(self.device)
+                input_tokens[t] = input_tokens[t].to(torch.cuda.current_device())
 
         outputs = self.sharded_model.generate(**input_tokens, **generate_kwargs, early_stopping=False)
 
@@ -173,8 +173,8 @@ class TPInferEngine:
         else:
             batch_size = inputs.shape[0]
 
-        seq_start_indexes = torch.zeros(batch_size, dtype=torch.int32, device=self.device)
-        seq_lengths = torch.zeros(batch_size, dtype=torch.int32, device=self.device)
+        seq_start_indexes = torch.zeros(batch_size, dtype=torch.int32, device='cuda')
+        seq_lengths = torch.zeros(batch_size, dtype=torch.int32, device='cuda')
         start_index = 0
 
         max_len_in_batch = -1
@@ -197,10 +197,10 @@ class TPInferEngine:
 
         block_loc = torch.empty((batch_size, self.max_input_len + self.max_output_len),
                                 dtype=torch.long,
-                                device=self.device)
+                                device='cuda')
         batch_infer_state = BatchInferState(batch_size, max_len_in_batch)
-        batch_infer_state.seq_len = seq_lengths.to(self.device)    # might want to assign specific device
-        batch_infer_state.start_loc = seq_start_indexes.to(self.device)
+        batch_infer_state.seq_len = seq_lengths.to('cuda')    # might want to assign specific device
+        batch_infer_state.start_loc = seq_start_indexes.to('cuda')
         batch_infer_state.block_loc = block_loc
         batch_infer_state.decode_layer_id = 0
         batch_infer_state.past_key_values_len = 0
