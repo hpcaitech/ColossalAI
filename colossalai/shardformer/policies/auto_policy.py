@@ -148,7 +148,7 @@ def import_policy(policy_location: PolicyLocation, inference_only: Optional[bool
     Dynamically import a Policy class based on the policy location.
     """
     if inference_only:
-        module_name = f"colossalai.inference.tensor_parallel.pollcies.{policy_location.file_name}"
+        module_name = f"colossalai.inference.tensor_parallel.policies.{policy_location.file_name}"
     else:
         module_name = f"colossalai.shardformer.policies.{policy_location.file_name}"
     module = importlib.import_module(module_name)
