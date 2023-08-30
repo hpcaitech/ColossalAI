@@ -185,6 +185,16 @@ def run_llama_test(test_config):
         'precision': 'fp32',
         'initial_scale': 1,
     },
+    {
+        'tp_size': 2,
+        'pp_size': 2,
+        'num_microbatches': 4,
+        'enable_all_optimization': False,
+        'use_lazy_init': False,
+        'precision': 'fp16',
+        'zero_stage': 1,
+        'initial_scale': 1,
+    },
 ])
 def run_llama_3d_test(test_config):
     sub_model_zoo = model_zoo.get_sub_registry('transformers_llama')
