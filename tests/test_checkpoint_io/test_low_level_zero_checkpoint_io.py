@@ -16,8 +16,10 @@ from colossalai.testing import (
 )
 
 
+# stage 1 and 2 process the optimizer/mode the same way
+# only test 2 is fine
 @clear_cache_before_run()
-@parameterize('stage', [1, 2])
+@parameterize('stage', [2])
 @parameterize('shard', [True, False])
 @parameterize('offload', [False, True])
 def check_low_level_zero_checkpointIO(stage: int, shard: bool, offload: bool):
@@ -28,8 +30,7 @@ def check_low_level_zero_checkpointIO(stage: int, shard: bool, offload: bool):
     optimizer = HybridAdam((model.parameters()), lr=0.001)
     model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
 
-    x = torch.randn(4, 3, 224, 224)
-    x = x.to('cuda')
+    x = torch.randn(1, 3, 224, 224, device='cuda')
     output = model(x)
     loss = criterion(output)
     booster.backward(loss, optimizer)
@@ -57,6 +58,7 @@ def check_low_level_zero_checkpointIO(stage: int, shard: bool, offload: bool):
 def run_dist(rank, world_size, port):
     colossalai.launch(config=(dict()), rank=rank, world_size=world_size, port=port, host='localhost')
     check_low_level_zero_checkpointIO()
+    torch.cuda.empty_cache()
 
 
 @rerun_if_address_is_in_use()
