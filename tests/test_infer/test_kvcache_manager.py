@@ -3,8 +3,8 @@ import os
 import pytest
 import torch
 
+from colossalai.inference.tensor_parallel import MemoryManager
 from colossalai.logging import disable_existing_loggers
-from colossalai.shardformer.inference import MemoryManager
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 BATCH_SIZE = 4
