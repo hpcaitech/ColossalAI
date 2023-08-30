@@ -122,3 +122,5 @@ gradient_handlers = [
 Schedule entails how to execute a forward and backward pass. Currently, Colossal-AI provides pipeline and non-pipeline
 schedules. If you want to modify how the forward and backward passes are executed, you can
 inherit `colossalai.engine.schedule.BaseSchedule` and implement the `forward_back_step` function.
+
+<!-- doc-test-command: echo  -->

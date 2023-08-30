@@ -140,3 +140,5 @@ Output of the second linear layer: torch.Size([8, 128])
 ```
 The activation tensors in 2D parallelism are all split in both row and column.
 E.g. the output of the first linear layer has the shape `[8, 512]`, while the second layer has the output of `[8, 128]`.
+
+<!-- doc-test-command: echo  -->

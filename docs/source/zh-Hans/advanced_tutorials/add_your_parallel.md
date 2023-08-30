@@ -110,3 +110,5 @@ gradient_handlers = [
 
 Schedule 包含了如何执行前向和后向计算。目前， Colossal-AI 提供了流水和非流水的 schedule。
 如果你想修改前向和后向计算的执行方式，你可以继承 `colossalai.engine.schedule.BaseSchedule` 并实现 `forward_back_step` 函数。
+
+<!-- doc-test-command: echo  -->

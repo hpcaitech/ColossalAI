@@ -149,3 +149,5 @@ Output of the second linear layer: torch.Size([4, 128])
 The activation tensors in 3D parallelism are all split by $q^2$ in the row and $q$ in the column.
 E.g. the output of the first linear layer has the shape `[4, 512]`), while the second layer has the output of `[4, 128]`.
 Note, although the results of 3D parallelism have the same shape as that of 2.5D parallelism for weights here, the content of each partition is different.
+
+<!-- doc-test-command: echo  -->

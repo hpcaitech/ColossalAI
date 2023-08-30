@@ -143,3 +143,5 @@ Output of the second linear layer: torch.Size([4, 128])
 ```
 2.5D并行中的 activation 张量都是同时在$d \times q$行和$q$列分割的。例如，第一个线性层的输出是 `[4, 512]`, 而第二层的输出为 `[4, 128]`。
 注意，2.5D并行使用与2D并行相同的划分方法来处理权重，区别在于对输入的划分。
+
+<!-- doc-test-command: echo  -->

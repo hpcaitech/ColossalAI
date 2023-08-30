@@ -141,3 +141,5 @@ Output of the second linear layer: torch.Size([4, 128])
 The activation tensors in 2.5D parallelism are all split by $d \times q$ in the row and $q$ in the column.
 E.g. the output of the first linear layer has the shape `[4, 512]`), while the second layer has the output of `[4, 128]`.
 Note, 2.5D parallelism use the same partition method as 2D parallelism for weights, where the difference is the partition of input.
+
+<!-- doc-test-command: echo  -->

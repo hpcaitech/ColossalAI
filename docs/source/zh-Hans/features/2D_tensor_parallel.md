@@ -139,3 +139,5 @@ Output of the first linear layer: torch.Size([8, 512])
 Output of the second linear layer: torch.Size([8, 128])
 ```
 2D并行中的 activation 张量都是同时在行和列分割的。例如，第一个线性层的输出是 `[8, 512]`, 而第二层的输出为 `[8, 128]`。
+
+<!-- doc-test-command: echo  -->

@@ -152,3 +152,5 @@ Output of the second linear layer: torch.Size([4, 128])
 ```
 3D并行中的 activation 张量都是同时在$q^2$行和$q$列分割的。例如，第一个线性层的输出是 `[4, 512]`, 而第二层的输出为 `[4, 128]`。
 注意，虽然这里3D并行的结果与2.5D并行的结果形状相同，但每个划分的内容是不同的。
+
+<!-- doc-test-command: echo  -->
