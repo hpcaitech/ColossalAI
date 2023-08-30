@@ -21,8 +21,8 @@ jobs:
       anyChanged: ${{ steps.setup-matrix.outputs.anyChanged }}
     name: Detect changed example files
     concurrency:
-      group: ${{ github.head_ref }}
-      cancel-in-progress: false
+      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v3
         with:
@@ -81,8 +81,8 @@ jobs:
       options: --gpus all --rm -v /data/scratch/examples-data:/data/
     timeout-minutes: 10
     concurrency:
-      group: ${{ github.head_ref }}
-      cancel-in-progress: false
+      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v3
 
