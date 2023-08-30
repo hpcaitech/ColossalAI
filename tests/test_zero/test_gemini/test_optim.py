@@ -9,12 +9,46 @@ from colossalai.amp import convert_to_apex_amp
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.utils.cuda import get_current_device
-from colossalai.zero import ColoInitContext, ZeroDDP, ZeroOptimizer, post_process_colo_init_ctx
-from colossalai.zero.gemini.chunk import ChunkManager, init_chunk_manager, search_chunk_configuration
-from colossalai.zero.gemini.gemini_mgr import GeminiManager
+from colossalai.zero import GeminiDDP, GeminiOptimizer
+from colossalai.zero.gemini.chunk import search_chunk_configuration
 from tests.components_to_test import run_fwd_bwd
 from tests.components_to_test.registry import non_distributed_component_funcs
-from tests.test_tensor.common_utils import debug_print, set_seed
+from tests.test_tensor.common_utils import set_seed
+
+PLACEMENT_CONFIGS = [
+    {
+        'placement_policy': 'static',
+        'shard_param_frac': 0.0,
+        'offload_optim_frac': 0.0
+    },    # zero2
+    {
+        'placement_policy': 'static',
+        'shard_param_frac': 0.0,
+        'offload_optim_frac': 1.0
+    },    # zero2-offload
+    {
+        'placement_policy': 'static',
+        'shard_param_frac': 0.0,
+        'offload_optim_frac': 0.5
+    },    # zero2-offload-half
+    {
+        'placement_policy': 'static',
+        'shard_param_frac': 1.0
+    },    # zero3
+    {
+        'placement_policy': 'static',
+        'shard_param_frac': 0.5
+    },    # zero3-half
+    {
+        'placement_policy': 'static',
+        'shard_param_frac': 1.0,
+        'offload_optim_frac': 1.0,
+        'offload_param_frac': 1.0
+    },    # zero3-offload-all
+    {
+        'placement_policy': 'auto'
+    }
+]
 
 # this model is large enough to slice to chunks
 TEST_MODELS = ['gpt2']
@@ -29,7 +63,7 @@ BF16_IGNORED_KEYS = [
 ]
 
 
-def check_param(model: ZeroDDP, torch_model: torch.nn.Module, dtype: torch.dtype):
+def check_param(model: GeminiDDP, torch_model: torch.nn.Module, dtype: torch.dtype):
     zero_dict = model.state_dict(only_rank_0=False, dtype=dtype)
     torch_dict = torch_model.state_dict()
 
@@ -51,10 +85,10 @@ def check_param(model: ZeroDDP, torch_model: torch.nn.Module, dtype: torch.dtype
                      msg=lambda s: s + f'\n{key}\n{temp_zero_value.dtype}')
 
 
-@parameterize('placement_policy', ['cuda', 'cpu', 'auto', 'const'])
+@parameterize('placement_config', PLACEMENT_CONFIGS)
 @parameterize('model_name', TEST_MODELS)
 @parameterize('mixed_precision', [torch.half, torch.bfloat16])
-def exam_model_step(placement_policy, model_name: str, mixed_precision: torch.dtype):
+def exam_model_step(placement_config, model_name: str, mixed_precision: torch.dtype):
     set_seed(42)
     get_components_func = non_distributed_component_funcs.get_callable(model_name)
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
@@ -65,9 +99,7 @@ def exam_model_step(placement_policy, model_name: str, mixed_precision: torch.dt
     torch_model, torch_optim = convert_to_apex_amp(torch_model, torch_optim, amp_config)
     torch_model = DDP(torch_model, device_ids=[dist.get_rank()])
 
-    init_dev = get_current_device()
-    with ColoInitContext(device=init_dev):
-        model = model_builder()
+    model = model_builder().cuda()
 
     for torch_p, p in zip(torch_model.parameters(), model.parameters()):
         p.data.copy_(torch_p.data)
@@ -76,16 +108,10 @@ def exam_model_step(placement_policy, model_name: str, mixed_precision: torch.dt
     config_dict, *_ = search_chunk_configuration(model, search_range_m=1, search_interval=100)
     config_dict[world_size]['chunk_size'] = 5000
     config_dict[world_size]['keep_gathered'] = False
-    if placement_policy != 'cuda':
-        init_device = torch.device('cpu')
-    else:
-        init_device = None
-    chunk_manager = ChunkManager(config_dict, init_device=init_device)
-    gemini_manager = GeminiManager(placement_policy, chunk_manager)
-    model = ZeroDDP(model, gemini_manager, pin_memory=True, mixed_precision=mixed_precision)
+    model = GeminiDDP(model, config_dict, **placement_config, mixed_precision=mixed_precision)
 
     optimizer = HybridAdam(model.parameters(), lr=1e-3)
-    zero_optim = ZeroOptimizer(optimizer, model, initial_scale=128)
+    zero_optim = GeminiOptimizer(optimizer, model, initial_scale=128)
 
     model.eval()
     torch_model.eval()
@@ -109,10 +135,10 @@ def exam_model_step(placement_policy, model_name: str, mixed_precision: torch.dt
         check_param(model, torch_model, mixed_precision)
 
 
-@parameterize('placement_policy', ['cuda', 'cpu', 'auto', 'const'])
+@parameterize('placement_config', PLACEMENT_CONFIGS)
 @parameterize('model_name', EXAMPLE_MODELS)
 @parameterize('mixed_precision', [torch.half, torch.bfloat16])
-def exam_tiny_example(placement_policy, model_name: str, mixed_precision: torch.dtype):
+def exam_tiny_example(placement_config, model_name: str, mixed_precision: torch.dtype):
     set_seed(2008)
     get_components_func = non_distributed_component_funcs.get_callable(model_name)
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
@@ -123,18 +149,19 @@ def exam_tiny_example(placement_policy, model_name: str, mixed_precision: torch.
     torch_model, torch_optim = convert_to_apex_amp(torch_model, torch_optim, amp_config)
     torch_model = DDP(torch_model, device_ids=[dist.get_rank()])
 
-    init_dev = get_current_device()
-    with ColoInitContext(device=init_dev):
-        model = model_builder()
+    model = model_builder().cuda()
 
     for torch_p, p in zip(torch_model.parameters(), model.parameters()):
         p.data.copy_(torch_p.data)
 
-    chunk_manager = init_chunk_manager(model=model, init_device=get_current_device(), search_range_m=1)
-    gemini_manager = GeminiManager(placement_policy, chunk_manager)
-    model = ZeroDDP(model, gemini_manager, pin_memory=True, mixed_precision=mixed_precision)
+    model = GeminiDDP(model,
+                      chunk_init_device=get_current_device(),
+                      search_range_m=1,
+                      pin_memory=True,
+                      mixed_precision=mixed_precision,
+                      **placement_config)
     optimizer = HybridAdam(model.parameters(), lr=1e-3)
-    zero_optim = ZeroOptimizer(optimizer, model, initial_scale=2)
+    zero_optim = GeminiOptimizer(optimizer, model, initial_scale=2)
 
     model.eval()
     torch_model.eval()
