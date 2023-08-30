@@ -137,6 +137,11 @@ _INFER_POLICY_LIST = {
         PolicyLocation(file_name="llama", class_name="LlamaModelInferPolicy"),
     "transformers.models.llama.modeling_llama.LlamaForCausalLM":
         PolicyLocation(file_name="llama", class_name="LlamaModelInferPolicy"),
+    # Bloom
+    "transformers.models.bloom.modeling_bloom.BloomModel":
+        PolicyLocation(file_name="bloom", class_name="BloomModelInferPolicy"),
+    "transformers.models.bloom.modeling_bloom.BloomForCausalLM":
+        PolicyLocation(file_name="bloom", class_name="BloomModelInferPolicy"),
 }
 
 
@@ -144,7 +149,6 @@ def import_policy(policy_location: PolicyLocation, inference_only: Optional[bool
     """
     Dynamically import a Policy class based on the policy location.
     """
-    
     if inference_only:
         module_name = f"colossalai.inference.tensor_parallel.policies.{policy_location.file_name}"
     else:
