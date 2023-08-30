@@ -4,7 +4,7 @@
 
 ## Introduction
 
-`Colossal Inference` is a module that contains colossal-ai designed inference framework, featuring high performance, steady and easy usability. `Colossal Inference` incorporated the advantages of the latest open-source inference systems, including TGI, vLLM, FasterTransformer, Lightly and flash attention. while combining the design of Colossal AI, especially Shardformer, to reduce the learning curve for users.
+`Colossal Inference` is a module that contains colossal-ai designed inference framework, featuring high performance, steady and easy usability. `Colossal Inference` incorporated the advantages of the latest open-source inference systems, including TGI, vLLM, FasterTransformer, LightLLM and flash attention. while combining the design of Colossal AI, especially Shardformer, to reduce the learning curve for users.
 
 ## Design
 
@@ -14,10 +14,10 @@ Colossal Inference is composed of two main components:
 2. Efficient memory management mechanism：which includes the key-value cache manager, allowing for zero memory waste during inference.
    1. `cache manager`: serves as a memory manager to help manage the key-value cache, it integrates functions such as memory allocation, indexing and release.
    2. `batch_infer_info`: holds all essential elements of a batch inference, which is updated every batch.
-3. High-level inference engine combined with `Shardformer`: it allows the our inference framework to easily invoke and utilize various parallel methods.
+3. High-level inference engine combined with `Shardformer`: it allows our inference framework to easily invoke and utilize various parallel methods.
    1. `engine.TPInferEngine`: it is a high level interface that integrates with shardformer, especially for multi-card (tensor parallel) inference:
    2. `modeling.llama.LlamaInferenceForwards`: contains the `forward` methods for llama inference. (in this case : llama)
-   3. `policies.llama.LlamaModelInferPolicy` : contains the policies for `llama` models, which is used to call `shardformer` and segmentation the model forward in tensor parallelism way.
+   3. `policies.llama.LlamaModelInferPolicy` : contains the policies for `llama` models, which is used to call `shardformer` and segmentate the model forward in tensor parallelism way.
 
 ## Pipeline of inference:
 
@@ -30,7 +30,7 @@ In this section we discuss how the colossal inference works and integrates with 
 - [x] Design cache manager and batch infer state
 - [x] Design TpInference engine to integrates with `Shardformer`
 - [x] Register corresponding high-performance `kernel` and `ops`
-- [x] Design policies and forwards (e.g. `Llama` and `Bloom`
+- [x] Design policies and forwards (e.g. `Llama` and `Bloom`)
   - [x] policy
   - [x] context forward
   - [x] token forward
@@ -41,7 +41,7 @@ In this section we discuss how the colossal inference works and integrates with 
   - [ ] Chatglm2
 - [ ] Benchmarking for all models
 
-## Get stated
+## Get started
 
 ### Installation
 
@@ -61,12 +61,12 @@ vllm=
 flash-attention=
 ```
 
-### Doker
+### Docker
 
-You can use our official doker container as well.
+You can use our official docker container as well.
 
 ```bash
-doker..
+docker..
 ```
 
 ### Dive into fast-inference!
