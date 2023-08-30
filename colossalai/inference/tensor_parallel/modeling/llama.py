@@ -81,7 +81,7 @@ class LlamaInferenceForwards:
             infer_state.context_mem_index = infer_state.cache_manager.alloc(infer_state.total_token_num)
             infer_state.init_block_loc(infer_state.block_loc, infer_state.seq_len, seq_length, infer_state.context_mem_index)
         else:
-            # TODO handle the condition that no contiguous memory presents 
+            infer_state.is_context_stage = False
             alloc_mem = infer_state.cache_manager.alloc_contiguous(batch_size)
             if alloc_mem is not None:
                 infer_state.decode_is_contiguous = True
