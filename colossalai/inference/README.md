@@ -55,18 +55,24 @@ dependencies
 
 ```bash
 pytorch= 1.13.1 (gpu)
+cuda>= 11.6 
 transformers= 4.30.2
 triton==2.0.0.dev20221202
-vllm=
-flash-attention=
+# for install vllm, please use this branch to install https://github.com/tiandiao123/vllm/tree/setup_branch
+vllm
+# for install flash-attention, please use commit hash: 67ae6fd74b4bc99c36b2ce524cf139c35663793c
+flash-attention
 ```
 
 ### Docker
 
-You can use our official docker container as well.
+You can use docker run to use docker container to set-up environment 
 
-```bash
-docker..
+```
+# env: python==3.8, cuda 11.6, pytorch == 1.13.1 triton==2.0.0.dev20221202, vllm kernels support, flash-attention-2 kernels support 
+docker pull hpcaitech/colossalai-inference:v2 
+docker run -it --gpus all --name ANY_NAME -v $PWD:/workspace -w /workspace hpcaitech/colossalai-inference:v2 /bin/bash
+
 ```
 
 ### Dive into fast-inference!
