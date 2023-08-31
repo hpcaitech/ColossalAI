@@ -457,6 +457,9 @@ class BloomInferenceForwards:
             # output = self.output[:batch_size*q_length, :, :]
             output = torch.empty_like(q)
 
+            print(self.num_heads)
+            print(k.shape)
+
             bloom_context_attn_fwd(q, k, v, output, b_start_loc, b_seq_len, max_input_len, alibi)
 
             context_layer = output.view(batch_size, q_length, H * D_HEAD)

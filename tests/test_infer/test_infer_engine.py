@@ -72,8 +72,11 @@ def test_prepare_data():
 def test_orig_generate():
     input_ids = torch.randint(low=10, high=1000, size=(MAX_BATCH_SIZE, MAX_INPUT_LEN))
 
-    model_config = BloomConfig()
-    model = BloomForCausalLM(model_config)
+    model_config = LlamaConfig()
+    model = LlamaForCausalLM(model_config)
+    model = model.half()
+    model.to(torch.cuda.current_device())
+
     shard_config = ShardConfig(enable_tensor_parallelism=False)
 
     # init TPInferEngine and
@@ -84,12 +87,17 @@ def test_orig_generate():
     generate_kwargs = dict(do_sample=False)
     infer_engine.generate(input_ids, generate_kwargs)
 
+    torch.cuda.empty_cache()
+
 
 def run():
     input_ids = torch.tensor([[80540, 15473, 3331, 11970, 90472, 361, 61335]], dtype=torch.int64)
 
     model_config = BloomConfig()
     model = BloomForCausalLM(model_config)
+    model = model.half()
+    model.to(torch.cuda.current_device())
+
     shard_config = ShardConfig(enable_tensor_parallelism=True, inference_only=True)
     shardformer = ShardFormer(shard_config=shard_config)
 
