@@ -54,7 +54,7 @@ class NonPipelineSchedule(BaseSchedule):
         The returned labels and loss will None if :attr:`return_loss` is False.
 
         Args:
-            engine (colossalai.engine.Engine): Colossalai engine for training and inference.
+            engine (colossalai.legacy.engine.Engine): Colossalai engine for training and inference.
             data_iter (Iterable): Dataloader as the form of an iterator, obtained by calling iter(dataloader).
             forward_only (bool, optional):
                 If True, the model is run for the forward pass, else back propagation will be executed.

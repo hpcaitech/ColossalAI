@@ -4,7 +4,7 @@ import torch.nn as nn
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 
-from colossalai.engine import BaseGradientHandler
+from colossalai.legacy.engine import BaseGradientHandler
 
 from ._gradient_accumulation import (
     GradAccumDataloader,
@@ -33,7 +33,7 @@ def accumulate_gradient(model: nn.Module,
         dataloader (:class:`torch.utils.data.DataLoader` or iterable objects):
             your dataloader object, would be called like iter(dataloader)
         accumulate_size (int): the number of steps to accumulate gradients
-        gradient_handlers (List[:class:`colossalai.engine.BaseGradientHandler`]):
+        gradient_handlers (List[:class:`colossalai.legacy.engine.BaseGradientHandler`]):
             list of gradient handler objects. Default is None.
         lr_scheduler (`torch.optim.lr_scheduler` or `colossalai.nn.lr_scheduler`):
             your ``lr_scheduler`` object for gradient accumulation. Defaults to None.

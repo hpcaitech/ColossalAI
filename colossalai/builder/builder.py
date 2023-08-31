@@ -71,7 +71,7 @@ def build_gradient_handler(config, model, optimizer):
         optimizer (:class:`torch.optim.Optimizer`): An optimizer object containing parameters for the gradient handler
 
     Returns:
-        An object of :class:`colossalai.engine.BaseGradientHandler`
+        An object of :class:`colossalai.legacy.engine.BaseGradientHandler`
     """
     config_ = config.copy()
     config_['model'] = model

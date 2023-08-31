@@ -29,7 +29,7 @@ To implement a customized gradient handler, you need to follow these steps.
 
 ```python
 from colossalai.registry import GRADIENT_HANDLER
-from colossalai.engine.gradient_handler import BaseGradientHandler
+from colossalai.legacy.engine.gradient_handler import BaseGradientHandler
 
 
 @GRADIENT_HANDLER.register_module
@@ -61,3 +61,4 @@ to demonstrate the use of gradient handler. In this example, we used `DataParall
 ```shell
 python -m torch.distributed.launch --nproc_per_node 4 --master_addr localhost --master_port 29500  train_with_engine.py
 ```
+<!-- doc-test-command: echo  -->

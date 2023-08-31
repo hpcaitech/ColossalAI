@@ -69,7 +69,7 @@ class PipelineScheduleV2(PipelineSchedule):
         Returns a tuple with losses if the last stage, an empty tuple otherwise.
 
         Args:
-            engine (colossalai.engine.Engine): Colossalai engine for training and inference.
+            engine (colossalai.legacy.engine.Engine): Colossalai engine for training and inference.
             data_iter (Iterable): Dataloader as the form of an iterator, obtained by calling iter(dataloader).
             forward_only (bool, optional):
                 Whether run forward step only. Default is false. If true, no backward will be run.

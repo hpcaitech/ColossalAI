@@ -21,9 +21,9 @@ from colossalai.builder.builder import build_gradient_handler
 from colossalai.context import Config, ConfigException, ParallelMode
 from colossalai.context.moe_context import MOE_CONTEXT
 from colossalai.core import global_context as gpc
-from colossalai.engine import Engine
-from colossalai.engine.gradient_accumulation import accumulate_gradient
-from colossalai.engine.schedule import (
+from colossalai.legacy.engine import Engine
+from colossalai.legacy.engine.gradient_accumulation import accumulate_gradient
+from colossalai.legacy.engine.schedule import (
     InterleavedPipelineSchedule,
     NonPipelineSchedule,
     PipelineSchedule,
