@@ -69,6 +69,7 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
         self.use_zero = (zero_stage > 0)
         self.verbose = verbose
         self.working_to_master_map = None
+        self.master_to_working_map = None
 
     @staticmethod
     def _model_sharder(model: nn.Module,
@@ -114,6 +115,7 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
                            use_zero: bool,
                            dp_group: ProcessGroup,
                            tp_group: ProcessGroup,
+                           master_to_working_map: Optional[Dict[int, torch.Tensor]] = None,
                            size_per_shard: int = 1024):
 
         # An internel method that breaks state_dict of optimizer into shards within limited size.
@@ -126,11 +128,10 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
             if param is None:
                 continue
 
-            working_param = param
-            if use_zero:
-                # Zero optimizer has replaced params in param_groups with sharded master params in fp32,
-                # so we have to first target working params in fp16 using mapping stored in Zero Optimizer.
-                working_param = optimizer._param_store.master_to_working_param[id(param)]
+            if master_to_working_map is not None:
+                working_param = master_to_working_map[id(param)]
+            else:
+                working_param = param
 
             param_id = param_info['param2id'][id(working_param)]
             original_shape = param_info['param2shape'][id(working_param)]
@@ -380,11 +381,13 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
 
         # Then collect the sharded states along dp_group(if using zero)/tp_group.
         # Only devices with (dp_rank == 0 and tp_rank == 0) are responsible for states saving.
-        state_dict_shard = HypridParallelCheckpointIO._optimizer_sharder(optimizer,
-                                                                         use_zero=self.use_zero,
-                                                                         dp_group=self.dp_group,
-                                                                         tp_group=self.tp_group,
-                                                                         size_per_shard=size_per_shard)
+        state_dict_shard = HypridParallelCheckpointIO._optimizer_sharder(
+            optimizer,
+            use_zero=self.use_zero,
+            dp_group=self.dp_group,
+            tp_group=self.tp_group,
+            master_to_working_map=self.master_to_working_map,
+            size_per_shard=size_per_shard)
         states_name, save_index_file, param_group_file = get_optimizer_base_filenames(prefix)
         index_file = CheckpointIndexFile(checkpoint)
         control_saving = (self.dp_rank == 0 and self.tp_rank == 0)
@@ -474,13 +477,13 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
             prefix (str): Not used.
         """
 
-        def _get_param_id_from_optimizer_param(param: torch.Tensor, use_zero: bool):
-            if use_zero:
-                working_param = optimizer._param_store.master_to_working_param[id(param)]
-                param_id = optimizer.param_info['param2id'][id(working_param)]
+        def _get_param_id_from_optimizer_param(param: torch.Tensor,
+                                               master_to_working_map: Optional[Dict[int, torch.Tensor]] = None):
+            if master_to_working_map is not None:
+                working_param = master_to_working_map[id(param)]
             else:
-                param_id = optimizer.param_info['param2id'][id(param)]
-            return param_id
+                working_param = param
+            return optimizer.param_info['param2id'][id(working_param)]
 
         # id_map is a mapping from param ids kept by current pipeline, to their corresponding parameter objects.
         # When Zero is used, the mapped parameter objects should be fp32 master parameters.
@@ -488,7 +491,7 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
         id_map = {}
         for pg in optimizer.optim.param_groups:
             for param in pg['params']:
-                param_id = _get_param_id_from_optimizer_param(param, self.use_zero)
+                param_id = _get_param_id_from_optimizer_param(param, self.master_to_working_map)
                 id_map[param_id] = param
 
         # Read checkpoint index file.
@@ -519,7 +522,7 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
             for param in pg['params']:
                 if param is None:
                     continue
-                param_id = _get_param_id_from_optimizer_param(param, self.use_zero)
+                param_id = _get_param_id_from_optimizer_param(param, self.master_to_working_map)
                 if param_id not in weight_map:
                     continue
                 filename = weight_map[param_id]
@@ -536,10 +539,10 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
         # Then shard the loaded optimizer states if using tp/zero.
         for param, state in optimizer.optim.state.items():
             device = param.device
-            working_param = param
-            if self.use_zero:
-                working_param = optimizer._param_store.master_to_working_param[id(param)]
-
+            if self.master_to_working_map is not None:
+                working_param = self.master_to_working_map[id(param)]
+            else:
+                working_param = param
             original_shape = optimizer.param_info['param2shape'][id(working_param)]
             sharded_state = self.shard_from_complete_optimizer_state(state,
                                                                      current_shape=working_param.shape,
@@ -575,14 +578,16 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
         if self.coordinator.is_master():
             super().save_lr_scheduler(lr_scheduler, checkpoint)
 
-    def create_working_to_master_map(self, working_to_master_map: Dict[Union[int, torch.Tensor], torch.Tensor]):
+    def link_master_and_working_param(self, working_to_master_map: Dict[Union[int, torch.Tensor], torch.Tensor],
+                                      master_to_working_map: Dict[Union[int, torch.Tensor], torch.Tensor]):
         """
-        Create current checkpoint IO's working_to_master_map with passed in mapping.
+        Create mappings between working params (for forward/backward) and master params (for optimizer update) with passed in mappings.
         This mapping can only be created when mixied precision is used.
-        The created mapping should be a mapping from address of working parameters to master parameter objects.
+        The created mappings should be mappings from integer parameter addresses to parameter objects.
 
         Args:
             working_to_master_map (Dict[Union[int, torch.Tensor], torch.Tensor]): A mapping from working parameters objects/addresses to master parameter objects.
+            master_to_working_map (Dict[Union[int, torch.Tensor], torch.Tensor]): A mapping from master parameters objects/addresses to working parameter objects.
         """
         self.working_to_master_map = dict()
         for k, v in working_to_master_map.items():
@@ -590,6 +595,16 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
                 self.working_to_master_map[id(k)] = v
             elif isinstance(k, int):
                 self.working_to_master_map[k] = v
+            else:
+                raise ValueError(
+                    f"The passed in mapping should have keys of type 'int' or 'torch.Tensor', but got {type(k)}!")
+
+        self.master_to_working_map = dict()
+        for k, v in master_to_working_map.items():
+            if isinstance(k, torch.Tensor):
+                self.master_to_working_map[id(k)] = v
+            elif isinstance(k, int):
+                self.master_to_working_map[k] = v
             else:
                 raise ValueError(
                     f"The passed in mapping should have keys of type 'int' or 'torch.Tensor', but got {type(k)}!")

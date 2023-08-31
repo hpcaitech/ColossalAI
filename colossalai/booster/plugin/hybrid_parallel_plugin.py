@@ -406,7 +406,8 @@ class HybridParallelPlugin(PipelinePluginBase):
                                                            precision=self.precision,
                                                            max_norm=self.max_norm,
                                                            **self.amp_config)
-                    self.checkpoint_io.create_working_to_master_map(optimizer.working_to_master_map)
+                    self.checkpoint_io.link_master_and_working_param(optimizer.working_to_master_map,
+                                                                     optimizer.master_to_working_map)
                 else:
                     optimizer = HybridParallelNaiveOptimizer(optimizer,
                                                              model,
@@ -425,7 +426,8 @@ class HybridParallelPlugin(PipelinePluginBase):
                                                         clip_grad_norm=self.max_norm,
                                                         **self.zero_config,
                                                         **self.amp_config)
-                self.checkpoint_io.create_working_to_master_map(optimizer._param_store.working_to_master_param)
+                self.checkpoint_io.link_master_and_working_param(optimizer._param_store.working_to_master_param,
+                                                                 optimizer._param_store.master_to_working_param)
 
         return model, optimizer, criterion, dataloader, lr_scheduler
 

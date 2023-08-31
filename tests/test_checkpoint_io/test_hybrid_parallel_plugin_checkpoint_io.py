@@ -33,7 +33,8 @@ from tests.kit.model_zoo import model_zoo
     'tp_size': 2,
     'pp_size': 2,
     'num_microbatches': 4,
-    'precision': 'fp32',
+    'precision': 'fp16',
+    'initial_scale': 1
 }, {
     'tp_size': 2,
     'pp_size': 1,
@@ -76,10 +77,6 @@ def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_conf
     optimizer = Adam(model.parameters(), lr=1e-3)
     model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
 
-    new_model = model_fn().cuda()
-    new_optimizer = Adam(new_model.parameters(), lr=1e-3)
-    new_model, new_optimizer, criterion, _, _ = booster.boost(new_model, new_optimizer, criterion)
-
     data = data_gen_fn()
     model.train()
     if booster.plugin.stage_manager is not None:
@@ -103,6 +100,10 @@ def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_conf
         booster.save_model(model, model_ckpt_path, shard=shard, size_per_shard=size_per_shard)
         booster.save_optimizer(optimizer, optimizer_ckpt_path, shard=shard, size_per_shard=size_per_shard)
         dist.barrier()
+
+        new_model = model_fn().cuda()
+        new_optimizer = Adam(new_model.parameters(), lr=1e-3)
+        new_model, new_optimizer, criterion, _, _ = booster.boost(new_model, new_optimizer, criterion)
 
         booster.load_model(new_model, model_ckpt_path)
         check_state_dict_equal(model.unwrap().state_dict(), new_model.unwrap().state_dict(), False)
