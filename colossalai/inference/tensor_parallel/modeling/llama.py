@@ -3,7 +3,7 @@ from typing import List, Optional, Tuple
 import numpy as np
 import torch
 from transformers.modeling_outputs import BaseModelOutputWithPast
-from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecoderLayer, LlamaModel
+from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecoderLayer, LlamaModel, apply_rotary_pos_emb
 
 from colossalai.inference.tensor_parallel.batch_infer_state import BatchInferState
 from colossalai.kernel.triton.context_attention import llama_context_attn_fwd
