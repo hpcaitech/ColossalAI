@@ -26,6 +26,7 @@ from .utils import (
     load_shard_state_dict,
     load_state_dict_into_model,
     load_states_into_optimizer,
+    save_config_file,
     save_param_groups,
     save_state_dict_shards,
     search_tp_partition_dim,
@@ -204,6 +205,7 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
             if control_saving:
                 index_file.append_meta_data("total_size", total_size)
                 index_file.write_index_file(save_index_file)
+                save_config_file(model, checkpoint)
                 if self.verbose:
                     logging.info(f"The model is split into checkpoint shards. "
                                  f"You can find where each parameters has been saved in the "
@@ -251,6 +253,7 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
                         final_index_file.append_weight_map(weight, weight_filename)
 
                 final_index_file.write_index_file(final_index_file_path)
+                save_config_file(model, checkpoint)
                 rmtree(tmp_index_file_folder)
                 if self.verbose:
                     logging.info(f"The model is split into checkpoint shards. "

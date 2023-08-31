@@ -9,12 +9,12 @@ from pathlib import Path
 from typing import Iterator, List, Mapping, Optional, OrderedDict, Tuple
 
 import torch
-import torch.distributed as dist
 import torch.nn as nn
-from torch.distributed import ProcessGroup
 from torch.optim import Optimizer
+from transformers.modeling_utils import PreTrainedModel, get_parameter_dtype
+from transformers.modeling_utils import unwrap_model as unwrap_huggingface_model
 
-from colossalai.interface import OptimizerWrapper
+from colossalai.interface import ModelWrapper, OptimizerWrapper
 from colossalai.nn.optimizer import ColossalaiOptimizer
 from colossalai.tensor.d_tensor import (
     is_customized_distributed_tensor,
@@ -333,6 +333,29 @@ def save_param_groups(state_dict: dict, group_file_path: str) -> None:
     """
     param_groups = state_dict["param_groups"]
     torch.save(param_groups, group_file_path)
+
+
+def save_config_file(model: nn.Module, checkpoint_path: str, is_master: bool = True):
+    """
+    Save config.json/generation_config.json if model is a Huggingface pretrained model.
+    """
+    if not isinstance(model, PreTrainedModel):
+        return
+
+    model = unwrap_huggingface_model(model)
+
+    # save the string version of dtype to the config, e.g. convert torch.float32 => "float32"
+    dtype = get_parameter_dtype(model)
+    model.config.torch_dtype = str(dtype).split(".")[1]
+
+    # Attach architecture to the config
+    model.config.architectures = [model.__class__.__name__]
+
+    # Save the config
+    if is_master:
+        model.config.save_pretrained(checkpoint_path)
+        if model.can_generate():
+            model.generation_config.save_pretrained(checkpoint_path)
 
 
 def save_dtensor(name: str, tensor: torch.Tensor, index_file: "CheckpointIndexFile", use_safetensors: bool) -> None:
@@ -709,5 +732,5 @@ def get_shard_filename(weights_name: str, idx: int):
     get shard file name
     """
     shard_file = weights_name.replace(".bin", f"-{idx+1:05d}.bin")
-    shard_file = shard_file.replace(".safetensors", f"-{idx + 1:05d}.safetensors")
+    shard_file = shard_file.replace(".safetensors", f"-{idx+1:05d}.safetensors")
     return shard_file
