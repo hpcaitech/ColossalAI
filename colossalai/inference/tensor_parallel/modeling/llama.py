@@ -314,9 +314,8 @@ class LlamaInferenceForwards:
         return attn_output, None, None
 
 def get_llama_vllm_rmsnorm_forward():
-
+    
     if HAS_VLLM_KERNERL:
-
         def _vllm_rmsnorm_forward(self: LlamaRMSNorm, hidden_states: torch.Tensor):
             x = hidden_states
             out = torch.empty_like(x)
