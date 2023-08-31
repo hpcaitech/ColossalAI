@@ -1,4 +1,5 @@
 # coding=utf-8
+import copy
 import os
 import re
 from collections import abc as container_abcs
@@ -8,7 +9,9 @@ from pathlib import Path
 from typing import Iterator, List, Mapping, Optional, OrderedDict, Tuple
 
 import torch
+import torch.distributed as dist
 import torch.nn as nn
+from torch.distributed import ProcessGroup
 from torch.optim import Optimizer
 
 from colossalai.interface import OptimizerWrapper
@@ -93,24 +96,31 @@ def is_safetensor_checkpoint(checkpoint_file_path: str) -> bool:
         return False
 
 
-def gather_distributed_param(param: torch.Tensor, keep_vars: bool = False):
+def search_tp_partition_dim(current_shape: torch.Size, original_shape: torch.Size, tp_size: int) -> Optional[int]:
     """
-    Gather the complete parameter for saving if passed in param is distributed.
+    Given the current shape of parameter and the shape of parameter before sharding,
+    return the dimension along which the parameter is sharded when using tensor parallel.
+    If tensor parallel is not used, return None.
 
     Args:
-        param (torch.Tensor): A model parameter, might be d_tensor.
-        keep_vars (bool, optional): Whether to return the parameter in calculation graph. Defaults to False.
+        current_shape (torch.Size): The current shape of parameter after sharding.
+        original_shape (torch.Size): The shape of parameter before sharding.
+        tp_size (int): The size of tp group.
 
     Returns:
-        torch.Tensor: the complete parameter
+        Optional[int]: The dimension along which parameter is partitioned.
     """
-    param_ = param if keep_vars else param.detach()
-    if is_distributed_tensor(param_):
-        return to_global(param_)
-    elif is_customized_distributed_tensor(param_):
-        return to_global_for_customized_distributed_tensor(param_)
-    else:
-        return param_
+    partition_dim = None
+    for dim, length in enumerate(original_shape):
+        if length > current_shape[dim]:
+            partition_dim = dim
+            break
+    if partition_dim is not None:
+        assert original_shape[partition_dim] == tp_size * current_shape[partition_dim], \
+            f"The parameter isn't evenly distributed among tensor parallel group: \
+                shape before sharding {original_shape}, shape after sharding {current_shape}"
+
+    return partition_dim
 
 
 # ======================================
@@ -136,7 +146,8 @@ class StateDictSharder:
         self.current_block = OrderedDict()
         self.current_block_size = 0
 
-    def append(self, name: str, tensor: torch.Tensor) -> Tuple[Optional[OrderedDict], int]:
+    def append_param(self, name: str, tensor: torch.Tensor) -> Tuple[Optional[OrderedDict], int]:
+
         tensor_size = calculate_tensor_size(tensor)
         ret_block = None
         ret_block_size = 0
@@ -152,6 +163,64 @@ class StateDictSharder:
         self.current_block[name] = tensor
         self.current_block_size += tensor_size
         return ret_block, ret_block_size
+
+    def append_optim_state(self, param_id: int, state: OrderedDict) -> Tuple[Optional[OrderedDict], int]:
+
+        # A state might contain more than one tensors.
+        # e.g. each Adam state includes: 'step', 'exp_avg', 'exp_avg_sq'
+        state_size = 0
+        isDTensor = False
+        for state_tensor in state.values():
+
+            # When state_tensor is not of Tensor class,
+            # e.g., a SGD optimizer with momentum set to 0 can have None as state
+            # The calculation of tensor size should be skipped to avoid error.
+            if not isinstance(state_tensor, torch.Tensor):
+                continue
+
+            # If the states are stored as DTensors, mark isDTensor as true.
+            if is_distributed_tensor(state_tensor):
+                isDTensor = True
+            state_size += calculate_tensor_size(state_tensor)
+
+        ret_block = None
+        ret_block_size = 0
+
+        # directly return if state is stored as distributed tensor
+        if isDTensor:
+            return ret_block, ret_block_size
+
+        # before we return the current block and create a new block,
+        # we need to ensure that the current block is not empty
+        if self.current_block_size + state_size > self.max_shard_size and self.current_block_size > 0:
+            ret_block = self.current_block
+            ret_block_size = self.current_block_size
+            self.current_block = OrderedDict()
+            self.current_block_size = 0
+
+        self.current_block[param_id] = state
+        self.current_block_size += state_size
+        return ret_block, ret_block_size
+
+
+def gather_distributed_param(param: torch.Tensor, keep_vars: bool = False) -> torch.Tensor:
+    """
+    Gather the complete parameter for saving if passed in param is distributed under tp setting.
+
+    Args:
+        param (torch.Tensor): A model parameter, might be d_tensor.
+        keep_vars (bool, optional): Whether to return the parameter in calculation graph. Defaults to False.
+
+    Returns:
+        torch.Tensor: the complete parameter
+    """
+    param_ = param if keep_vars else param.detach()
+    if is_distributed_tensor(param_):
+        return to_global(param_)
+    elif is_customized_distributed_tensor(param_):
+        return to_global_for_customized_distributed_tensor(param_)
+    else:
+        return param_
 
 
 def save_state_dict_shards(sharded_state_dict: Iterator[Tuple[OrderedDict, int]],
@@ -198,28 +267,17 @@ def shard_model_checkpoint(state_dict: torch.Tensor, max_shard_size: int = 1024)
     Splits a model state dictionary in sub-checkpoints so that the final size of each sub-checkpoint does not exceed a
     given size.
     """
-    current_block = {}
-    current_block_size = 0
+    state_dict_sharder = StateDictSharder(max_shard_size)
 
     for key, weight in state_dict.items():
-        ret_block = None
-        ret_block_size = 0
         if not is_distributed_tensor(weight):
-            weight_size = calculate_tensor_size(weight)
+            block, block_size = state_dict_sharder.append_param(key, weight)
 
-            # If this weight is going to tip up over the maximal size, we split.
-            if current_block_size + weight_size > max_shard_size and current_block_size > 0:
-                ret_block = current_block
-                ret_block_size = current_block_size
-                current_block = {}
-                current_block_size = 0
-            current_block[key] = weight
-            current_block_size += weight_size
+        if block != None:
+            yield block, block_size
 
-        if ret_block != None:
-            yield ret_block, ret_block_size
-
-    yield current_block, current_block_size
+    # Return the last block in sharder.
+    yield state_dict_sharder.current_block, state_dict_sharder.current_block_size
 
 
 def shard_optimizer_checkpoint(state_dict: dict, max_shard_size: int = 1024) -> Iterator[Tuple[OrderedDict, int]]:
@@ -230,212 +288,15 @@ def shard_optimizer_checkpoint(state_dict: dict, max_shard_size: int = 1024) -> 
 
     # Only split state_dict['state']; state_dict['param_group'] is not considered in this function.
     states = state_dict['state']
-
-    current_block = {}
-    current_block_size = 0
+    state_dict_sharder = StateDictSharder(max_shard_size)
 
     for param_id, state in states.items():
+        block, block_size = state_dict_sharder.append_optim_state(param_id, state)
+        if block != None:
+            yield block, block_size
 
-        ret_block = None
-        ret_block_size = 0
-
-        # A state might contain more than one tensors.
-        # e.g. each Adam state includes: 'step', 'exp_avg', 'exp_avg_sq'
-        state_size = 0
-        isDTensor = False
-        for state_tensor in state.values():
-
-            # When state_tensor is not of Tensor class,
-            # e.g., a SGD optimizer with momentum set to 0 can have None as state
-            # The calculation of tensor size should be skipped to avoid error.
-            if not isinstance(state_tensor, torch.Tensor):
-                continue
-
-            # If the states are stored as DTensors, mark isDTensor as true.
-            if is_distributed_tensor(state_tensor):
-                isDTensor = True
-            state_size += calculate_tensor_size(state_tensor)
-
-        if not isDTensor:
-
-            if current_block_size + state_size > max_shard_size and current_block_size > 0:
-                ret_block = current_block
-                ret_block_size = current_block_size
-                current_block = {}
-                current_block_size = 0
-
-            current_block[param_id] = state
-            current_block_size += state_size
-
-        if ret_block != None:
-            yield ret_block, ret_block_size
-
-    yield current_block, current_block_size
-
-
-def load_shard_state_dict(checkpoint_file: Path, use_safetensors: bool = False):
-    """
-    load shard state dict into model
-    """
-    if use_safetensors and not checkpoint_file.suffix == ".safetensors":
-        raise Exception("load the model using `safetensors`, but no file endwith .safetensors")
-    if use_safetensors:
-        from safetensors.torch import load_file as safe_load_file
-        from safetensors.torch import safe_open
-        with safe_open(checkpoint_file, framework="pt") as f:
-            metadata = f.metadata()
-        if metadata["format"] != "pt":
-            raise NotImplementedError(
-                f"Conversion from a {metadata['format']} safetensors archive to PyTorch is not implemented yet.")
-        return safe_load_file(checkpoint_file)
-    else:
-        return torch.load(checkpoint_file)
-
-
-def load_state_dict_into_model(model: nn.Module,
-                               state_dict: torch.Tensor,
-                               missing_keys: List,
-                               strict: bool = False,
-                               load_sub_module: bool = True):
-    r"""Copies parameters and buffers from :attr:`state_dict` into
-    this module and its descendants.
-
-    Args:
-        state_dict (dict): a dict containing parameters and
-            persistent buffers.
-    """
-    if not isinstance(state_dict, Mapping):
-        raise TypeError("Expected state_dict to be dict-like, got {}.".format(type(state_dict)))
-
-    unexpected_keys: List[str] = []
-    sub_missing_keys: List[str] = []
-    error_msgs: List[str] = []
-
-    # copy state_dict so _load_from_state_dict can modify it
-    metadata = getattr(state_dict, '_metadata', None)
-    state_dict = OrderedDict(state_dict)
-    if metadata is not None:
-        state_dict._metadata = metadata
-
-    def load(module: nn.Module, state_dict, prefix="", load_sub_module: bool = True):
-        local_metadata = {} if metadata is None else metadata.get(prefix[:-1], {})
-        args = (state_dict, prefix, local_metadata, True, sub_missing_keys, [], error_msgs)
-        # Parameters of module and children will start with prefix. We can exit early if there are none in this
-        # state_dict
-        if len([key for key in state_dict if key.startswith(prefix)]) > 0:
-            module._load_from_state_dict(*args)
-        if load_sub_module:
-            for name, child in module._modules.items():
-                if child is not None:
-                    load(child, state_dict, prefix + name + ".")
-
-    load(model, state_dict, "", load_sub_module)
-    del load
-
-    missing_keys = missing_keys.append(sub_missing_keys)
-
-    if strict:
-        if len(unexpected_keys) > 0:
-            error_msgs = 'Unexpected key(s) in state_dict: {}. '.format(', '.join(
-                '"{}"'.format(k) for k in unexpected_keys))
-            raise RuntimeError('Error(s) in loading state_dict for {}:\n\t{}'.format(
-                model.__class__.__name__, "\n\t".join(error_msgs)))
-
-
-def load_param_groups_into_optimizer(optimizer: Optimizer, param_group_path: str) -> dict:
-    """
-    Load information of param_groups into an initialized optimizer.
-    """
-
-    # Load list of param_groups from given file path.
-    # The params in saved_groups are in the form of integer indices.
-    saved_groups = torch.load(param_group_path)
-    if not isinstance(saved_groups, List):
-        raise ValueError(f'The param_groups saved at {param_group_path} is not of List type')
-
-    # The params in param_groups are in the form of pytorch tensors.
-    # For more details, please view source code of Optimizer class in pytorch.
-    param_groups = optimizer.param_groups
-
-    # Check the compatibility of saved_groups and param_groups.
-    if len(param_groups) != len(saved_groups):
-        raise ValueError("loaded state dict has a different number of original parameter groups")
-    param_lens = (len(g['params']) for g in param_groups)
-    saved_lens = (len(g['params']) for g in saved_groups)
-    if any(p_len != s_len for p_len, s_len in zip(param_lens, saved_lens)):
-        raise ValueError("loaded state dict contains a parameter group "
-                         "that doesn't match the size of optimizer's group")
-
-    # Creating mapping from id to parameters.
-    id_map = {
-        old_id: p for old_id, p in zip(chain.from_iterable((g['params'] for g in saved_groups
-                                                           )), chain.from_iterable((g['params'] for g in param_groups)))
-    }
-
-    # Update parameter groups, setting their 'params' value.
-    def update_group(group, new_group):
-        new_group['params'] = group['params']
-        return new_group
-
-    updated_groups = [update_group(g, ng) for g, ng in zip(param_groups, saved_groups)]
-
-    optimizer.__dict__.update({'param_groups': updated_groups})
-    return id_map
-
-
-def load_states_into_optimizer(optimizer: Optimizer, state_dict: dict, id_map: dict):
-    r"""Copies states from `state_dict` into an Optimizer object.
-
-    Args:
-        optimizer(Optimizer): An initialized Optimizer object to be loaded
-        state_dict(dict): a mapping from tensor index (an integer)
-            to its states to be loaded (a mapping from state name to a tensor).
-        id_map(dict): a mapping from tensor index (an integer)
-            to its corresponding parameter (a tensor) whose states will be updated.
-    """
-
-    def cast(param, value, key=None):
-        r"""Make a deep copy of value, casting all tensors to device of param."""
-        if isinstance(value, torch.Tensor):
-            # Floating-point types are a bit special here. They are the only ones
-            # that are assumed to always match the type of params.
-            # Make sure state['step'] is not casted https://github.com/pytorch/pytorch/issues/74424
-            if (key != "step"):
-                if param.is_floating_point():
-                    value = value.to(param.dtype)
-                value = value.to(param.device)
-            return value
-        elif isinstance(value, dict):
-            return {k: cast(param, v, key=k) for k, v in value.items()}
-        elif isinstance(value, container_abcs.Iterable):
-            return type(value)(cast(param, v) for v in value)
-        else:
-            return value
-
-    # Copy state assigned to params (and cast tensors to appropriate types).
-    # State that is not assigned to params is copied as is (needed for
-    # backward compatibility).
-    new_states = defaultdict(dict)
-    for k, v in state_dict.items():
-        if k in id_map:
-            param = id_map[k]
-            new_states[param] = cast(param, v)
-        else:
-            new_states[k] = v
-
-    optimizer.state.update(new_states)
-
-
-def sharded_optimizer_loading_epilogue(optimizer: Optimizer):
-    r"""Do the cleaning up work after state_dict has been loaded into optimizer
-
-    Args:
-        optimizer(Optimizer): An optimizer object whose state has just been loaded.
-    """
-
-    # Do the cleaning up as in src code of Pytorch.
-    optimizer._hook_for_profile()    # To support multiprocessing pickle/unpickle.
-    optimizer.defaults.setdefault('differentiable', False)
+    # Return the last block in sharder.
+    yield state_dict_sharder.current_block, state_dict_sharder.current_block_size
 
 
 # ======================================
@@ -565,36 +426,178 @@ def generate_dtensor_file_name(param_name: str, index: int, use_safetensors: boo
     return f'{param_name}.{index}.{suffix}'
 
 
-def save_state_dict_as_shard(
-    state_dict: dict,
-    checkpoint_path: str,
-    index: int,
-    total_number: int,
-    use_safetensors: bool,
-    prefix: str = None,
-) -> None:
-    """
-    Save state dict as shard.
-
-    Args:
-        state_dict (dict): state dict.
-        checkpoint_path (str): path to the checkpoint file.
-        index (int): index of the shard.
-        total_number (int): total number of shards.
-        prefix (str): prefix of the shard file name.
-        use_safetensors (bool): whether to use safetensors to save the checkpoint.
-    """
-    # generate the shard name
-    shard_file_name = generate_checkpoint_shard_file_name(index, total_number, use_safetensors, prefix)
-    shard_file_path = Path(checkpoint_path).joinpath(shard_file_name).absolute()
-
-    # save the shard
-    save_state_dict(state_dict, str(shard_file_path), use_safetensors)
-
-
 # ========================================
 # Helper functions for loading state dict
 # ========================================
+
+
+def load_shard_state_dict(checkpoint_file: Path, use_safetensors: bool = False):
+    """
+    load shard state dict into model
+    """
+    if use_safetensors and not checkpoint_file.suffix == ".safetensors":
+        raise Exception("load the model using `safetensors`, but no file endwith .safetensors")
+    if use_safetensors:
+        from safetensors.torch import load_file as safe_load_file
+        from safetensors.torch import safe_open
+        with safe_open(checkpoint_file, framework="pt") as f:
+            metadata = f.metadata()
+        if metadata["format"] != "pt":
+            raise NotImplementedError(
+                f"Conversion from a {metadata['format']} safetensors archive to PyTorch is not implemented yet.")
+        return safe_load_file(checkpoint_file)
+    else:
+        return torch.load(checkpoint_file)
+
+
+def load_state_dict_into_model(model: nn.Module,
+                               state_dict: torch.Tensor,
+                               missing_keys: List,
+                               strict: bool = False,
+                               load_sub_module: bool = True):
+    r"""Copies parameters and buffers from :attr:`state_dict` into
+    this module and its descendants.
+
+    Args:
+        state_dict (dict): a dict containing parameters and
+            persistent buffers.
+    """
+    if not isinstance(state_dict, Mapping):
+        raise TypeError("Expected state_dict to be dict-like, got {}.".format(type(state_dict)))
+
+    unexpected_keys: List[str] = []
+    sub_missing_keys: List[str] = []
+    error_msgs: List[str] = []
+
+    # copy state_dict so _load_from_state_dict can modify it
+    metadata = getattr(state_dict, '_metadata', None)
+    state_dict = OrderedDict(state_dict)
+    if metadata is not None:
+        state_dict._metadata = metadata
+
+    def load(module: nn.Module, state_dict, prefix="", load_sub_module: bool = True):
+        local_metadata = {} if metadata is None else metadata.get(prefix[:-1], {})
+        args = (state_dict, prefix, local_metadata, True, sub_missing_keys, [], error_msgs)
+        # Parameters of module and children will start with prefix. We can exit early if there are none in this
+        # state_dict
+        if len([key for key in state_dict if key.startswith(prefix)]) > 0:
+            module._load_from_state_dict(*args)
+        if load_sub_module:
+            for name, child in module._modules.items():
+                if child is not None:
+                    load(child, state_dict, prefix + name + ".")
+
+    load(model, state_dict, "", load_sub_module)
+    del load
+
+    missing_keys = missing_keys.append(sub_missing_keys)
+
+    if strict:
+        if len(unexpected_keys) > 0:
+            error_msgs = 'Unexpected key(s) in state_dict: {}. '.format(', '.join(
+                '"{}"'.format(k) for k in unexpected_keys))
+            raise RuntimeError('Error(s) in loading state_dict for {}:\n\t{}'.format(
+                model.__class__.__name__, "\n\t".join(error_msgs)))
+
+
+def load_param_groups_into_optimizer(optimizer: Optimizer, param_group_path: str) -> dict:
+    """
+    Load information of param_groups into an initialized optimizer.
+    """
+
+    # Load list of param_groups from given file path.
+    # The params in saved_groups are in the form of integer indices.
+    saved_groups = torch.load(param_group_path)
+    if not isinstance(saved_groups, List):
+        raise ValueError(f'The param_groups saved at {param_group_path} is not of List type')
+
+    # The params in param_groups are in the form of pytorch tensors.
+    # For more details, please view source code of Optimizer class in pytorch.
+    param_groups = optimizer.param_groups
+
+    # Check the compatibility of saved_groups and param_groups.
+    if len(param_groups) != len(saved_groups):
+        raise ValueError("loaded state dict has a different number of original parameter groups")
+    param_lens = (len(g['params']) for g in param_groups)
+    saved_lens = (len(g['params']) for g in saved_groups)
+    if any(p_len != s_len for p_len, s_len in zip(param_lens, saved_lens)):
+        raise ValueError("loaded state dict contains a parameter group "
+                         "that doesn't match the size of optimizer's group")
+
+    # Creating mapping from id to parameters.
+    id_map = {
+        old_id: p for old_id, p in zip(chain.from_iterable((g['params'] for g in saved_groups
+                                                           )), chain.from_iterable((g['params'] for g in param_groups)))
+    }
+
+    # Update parameter groups, setting their 'params' value.
+    def update_group(group, new_group):
+        new_group['params'] = group['params']
+        return new_group
+
+    updated_groups = [update_group(g, ng) for g, ng in zip(param_groups, saved_groups)]
+
+    optimizer.__dict__.update({'param_groups': updated_groups})
+    return id_map
+
+
+def load_states_into_optimizer(optimizer: Optimizer, state_dict: dict, id_map: dict, strict: bool = False):
+    r"""Copies states from `state_dict` into an Optimizer object.
+
+    Args:
+        optimizer(Optimizer): An initialized Optimizer object to be loaded
+        state_dict(dict): A mapping from tensor index (an integer)
+            to its states to be loaded (a mapping from state name to a tensor).
+        id_map(dict): A mapping from tensor index (an integer)
+            to its corresponding parameter (a tensor) whose states will be updated.
+        strict(bool, optional): If set to True, only load the parameters with its id in id_map. Defaults to False.
+    """
+
+    # Ensure that the keys of state_dict are integers.
+    state_dict = {int(k): v for k, v in state_dict.items()}
+
+    def cast(param, value, key=None):
+        r"""Make a deep copy of value, casting all tensors to device of param."""
+        if isinstance(value, torch.Tensor):
+            # Floating-point types are a bit special here. They are the only ones
+            # that are assumed to always match the type of params.
+            # Make sure state['step'] is not casted https://github.com/pytorch/pytorch/issues/74424
+            if (key != "step"):
+                if param.is_floating_point():
+                    value = value.to(param.dtype)
+                value = value.to(param.device)
+            return value
+        elif isinstance(value, dict):
+            return {k: cast(param, v, key=k) for k, v in value.items()}
+        elif isinstance(value, container_abcs.Iterable):
+            return type(value)(cast(param, v) for v in value)
+        else:
+            return value
+
+    # Copy state assigned to params (and cast tensors to appropriate types).
+    # State that is not assigned to params is copied as is (needed for
+    # backward compatibility).
+    new_states = defaultdict(dict)
+    for k, v in state_dict.items():
+        if k in id_map:
+            param = id_map[k]
+            new_states[param] = cast(param, v)
+        elif not strict:
+            new_states[k] = v
+
+    optimizer.state.update(new_states)
+
+
+def sharded_optimizer_loading_epilogue(optimizer: Optimizer):
+    r"""Do the cleaning up work after state_dict has been loaded into optimizer
+
+    Args:
+        optimizer(Optimizer): An optimizer object whose state has just been loaded.
+    """
+
+    # Do the cleaning up as in src code of Pytorch.
+    optimizer._hook_for_profile()    # To support multiprocessing pickle/unpickle.
+    optimizer.defaults.setdefault('differentiable', False)
 
 
 def has_index_file(checkpoint_path: str) -> Tuple[bool, Optional[Path]]:
