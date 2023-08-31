@@ -69,8 +69,10 @@ flash-attention
 You can use docker run to use docker container to set-up environment 
 
 ```
-docker pull colossal-inference:v2 
-docker run -it --gpus all --name ANY_NAME -v $PWD:/workspace -w /workspace colosssal-inference:v2 /bin/bash
+# env: python==3.8, cuda 11.6, triton==2.0.0, vllm kernels support, flash-attention-2 kernels support 
+docker pull hpcaitech/colossalai-inference:v2 
+docker run -it --gpus all --name ANY_NAME -v $PWD:/workspace -w /workspace hpcaitech/colossalai-inference:v2 /bin/bash
+
 
 ```
 
