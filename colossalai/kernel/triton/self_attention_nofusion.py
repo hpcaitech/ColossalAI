@@ -11,7 +11,7 @@ except ImportError:
 
 if HAS_TRITON:
     from .qkv_matmul_kernel import qkv_gemm_4d_kernel
-    from .softmax_kernel import softmax_kernel
+    from .softmax import softmax_kernel
 
     def self_attention_forward_without_fusion(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, input_mask: torch.Tensor, scale: float):
         r""" A function to do QKV Attention calculation by calling GEMM and softmax triton kernels 
@@ -156,54 +156,3 @@ if HAS_TRITON:
             q, k, v, input_mask, scale)
 
         return data_output_triton
-
-
-    def softmax(input: torch.Tensor, mask: torch.Tensor = None, dim=-1) -> torch.Tensor:
-        if mask is not None:
-            assert input[-1] == mask[-1], "the last dimentions should be the same for input and mask"
-        assert dim == -1 or dim == len(input.shape)-1, "currently softmax layer only support last dimention"
-        
-        hidden_dim = input.shape[-1]
-        output = torch.empty_like(input)
-        input = input.view(-1, hidden_dim)
-        if mask is not None: 
-            mask = mask.view(-1, hidden_dim)
-            assert input.shape[0] == mask.shape[0], "the fist dimention of mask and input should be the same"
-
-        num_rows, num_cols = input.shape
-        block_size = max(triton.next_power_of_2(num_cols), 2)
-        num_warps = 16
-        if block_size >= 4096:
-            num_warps = 16
-        elif block_size >= 2048:
-            num_warps = 8
-        else:
-            num_warps = 4
-
-        if num_rows <= 350000: 
-            grid = (num_rows,)
-            softmax_kernel[grid](output, input, input.stride(0), num_cols, mask, BLOCK_SIZE = block_size, num_warps=num_warps)
-        else:
-            grid = lambda meta: ()
-
-            grid = lambda meta: (
-                triton.cdiv(num_rows, meta["BLOCK_M"]),
-            )
-
-            BLOCK_M = 32
-            if block_size >= 4096:
-                BLOCK_M = 4
-            elif block_size >= 2048:
-                BLOCK_M = 8
-
-            softmax_kernel_2[grid](output_ptr = output, 
-                            input_ptr = input, 
-                            row_stride = input.stride(0), 
-                            n_rows = num_rows, 
-                            n_cols = num_cols, 
-                            mask_ptr = mask, 
-                            # currently manually setting up size
-                            BLOCK_M = 32, 
-                            BLOCK_SIZE = block_size)
-
-        return output
