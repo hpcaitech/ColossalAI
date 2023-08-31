@@ -4,7 +4,7 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.distributed as dist
-from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
+from torch.nn import CrossEntropyLoss
 from torch.nn import functional as F
 from transformers.models.bloom.modeling_bloom import (
     BaseModelOutputWithPastAndCrossAttentions,
@@ -30,21 +30,6 @@ def generate_alibi(n_head, dtype=torch.float16):
     This method is originally the `build_alibi_tensor` function
     in `transformers/models/bloom/modeling_bloom.py`
     of the huggingface/transformers GitHub repository.
-
-    Copyright 2023 ModelTC Team
-    Copyright 2022 HuggingFace Inc. team and BigScience workshop
-
-    Licensed under the Apache License, Version 2.0 (the "License");
-    you may not use this file except in compliance with the License.
-    You may obtain a copy of the License at
-
-        http://www.apache.org/licenses/LICENSE-2.0
-
-    Unless required by applicable law or agreed to in writing, software
-    distributed under the License is distributed on an "AS IS" BASIS,
-    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-    See the License for the specific language governing permissions and
-    limitations under the License.
     """
 
     def get_slopes_power_of_2(n):
@@ -67,7 +52,11 @@ def generate_alibi(n_head, dtype=torch.float16):
 
 class BloomInferenceForwards:
     """
-    This class serves a micro library for bloom inference forwards
+    This class serves a micro library for bloom inference forwards.
+    We intend to replace the forward methods for BloomForCausalLM, BloomModel, BloomBlock, and BloomAttention,
+    as well as prepare_inputs_for_generation method for BloomForCausalLM.
+    For future improvement, we might want to skip replacing methods for BloomForCausalLM,
+    and call BloomModel.forward iteratively in TpInferEngine
     """
 
     @staticmethod
@@ -372,8 +361,6 @@ class BloomInferenceForwards:
         })
         return model_inputs
 
-    # replace decoder layer forward:
-    #   used to replace BloomBlock.forward
     @staticmethod
     def bloom_block_forward(
         self: BloomBlock,
@@ -432,8 +419,6 @@ class BloomInferenceForwards:
 
         return outputs    # hidden_states, present, attentions
 
-    # replace attention forward:
-    #   used to replace BloomAttention.forward
     @staticmethod
     def bloom_attention_forward(
         self: BloomAttention,
