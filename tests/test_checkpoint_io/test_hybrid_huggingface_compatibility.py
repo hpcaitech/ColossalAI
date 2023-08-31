@@ -19,7 +19,13 @@ from colossalai.testing import (
 from tests.kit.model_zoo import model_zoo
 
 
-def run_check(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config, shard=True, size_per_shard=32):
+def exam_from_pretrained(model_fn,
+                         data_gen_fn,
+                         output_transform_fn,
+                         loss_fn,
+                         test_config,
+                         shard=True,
+                         size_per_shard=32):
 
     def _criterion(outputs, inputs):
         outputs = output_transform_fn(outputs)
@@ -67,7 +73,10 @@ def run_check(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config, 
         booster.save_model(model, model_ckpt_path, shard=shard, size_per_shard=size_per_shard)
         dist.barrier()
 
-        new_model = model.__class__.from_pretrained(model_ckpt_path)
+        new_model = model.unwrap().__class__.from_pretrained(model_ckpt_path)
+        new_optimizer = Adam(new_model.parameters(), lr=1e-3)
+        new_model, new_optimizer, criterion, _, _ = booster.boost(new_model, new_optimizer, criterion)
+
         check_state_dict_equal(model.unwrap().state_dict(), new_model.unwrap().state_dict(), False)
 
     Randomizer.reset_index()
@@ -75,8 +84,6 @@ def run_check(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config, 
 
 
 @clear_cache_before_run()
-@parameterize('shard', [True])
-@parameterize('size_per_shard', [32])
 @parameterize('test_config', [{
     'tp_size': 4,
     'pp_size': 1,
@@ -101,23 +108,22 @@ def run_check(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config, 
     'precision': 'fp16',
     'initial_scale': 1
 }])
-def test_compatibility(shard, size_per_shard, test_config):
-
+def run_test(test_config):
     sub_model_zoo = model_zoo.get_sub_registry('transformers_gpt')
-
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
-        run_check(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
-
+        exam_from_pretrained(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
     clear_layout_converter()
     torch.cuda.empty_cache()
 
 
 def run_dist(rank, world_size, port):
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    test_compatibility()
+    config = {}
+    colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    run_test()
 
 
 @pytest.mark.dist
+@pytest.mark.parametrize('world_size', [4])
 @rerun_if_address_is_in_use()
-def test_hybrid_IO_huggingface_compability():
-    spawn(run_dist, 4)
+def test_huggingface_compatibility(world_size):
+    spawn(run_dist, world_size)
