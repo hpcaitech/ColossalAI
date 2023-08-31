@@ -12,27 +12,12 @@ from transformers.models.llama.modeling_llama import (
     LlamaForCausalLM,
     LlamaForSequenceClassification,
     LlamaModel,
-    LlamaRMSNorm,
     apply_rotary_pos_emb,
 )
 from transformers.utils import logging
 
 from colossalai.kernel.cuda_native import AttnMaskType, ColoAttention
 from colossalai.pipeline.stage_manager import PipelineStageManager
-
-try:
-    from vllm import layernorm_ops, pos_encoding_ops
-    rms_norm = layernorm_ops.rms_norm
-    rotary_embedding_neox = pos_encoding_ops.rotary_embedding_neox
-    rms_norm = layernorm_ops.rms_norm
-    HAS_VLLM_KERNERL = True
-except:
-    print("fall back to original rotary_embedding_neox of huggingface")
-    print("install vllm from https://github.com/vllm-project/vllm to accelerate your inference")
-    print(
-        "if falied to install vllm, please use this branch to install: https://github.com/tiandiao123/vllm/tree/setup_branch"
-    )
-    HAS_VLLM_KERNERL = False
 
 
 class LlamaPipelineForwards:
@@ -437,11 +422,7 @@ def get_llama_flash_attention_forward():
 
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
 
-        if HAS_VLLM_KERNERL:
-            cos_sin_cache = torch.cat((cos, sin), dim=-1)
-            rotary_embedding_neox(position_ids, query_states, key_states, self.head_dim, cos_sin_cache)
-        else:
-            query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
+        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
 
         if past_key_value is not None:
             # reuse k, v, self_attention
@@ -476,24 +457,3 @@ def get_llama_flash_attention_forward():
         return attn_output, None, past_key_value
 
     return forward
-
-
-def get_llama_vllm_rmsnorm_forward():
-
-    if HAS_VLLM_KERNERL:
-
-        def _vllm_rmsnorm_forward(self: LlamaRMSNorm, hidden_states: torch.Tensor):
-            x = hidden_states
-            out = torch.empty_like(x)
-            rms_norm(
-                out,
-                x,
-                self.weight.data,
-                self.variance_epsilon,
-            )
-
-            return out
-
-        return _vllm_rmsnorm_forward
-    else:
-        return None

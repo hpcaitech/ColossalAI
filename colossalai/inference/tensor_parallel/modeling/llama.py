@@ -3,7 +3,13 @@ from typing import List, Optional, Tuple
 import numpy as np
 import torch
 from transformers.modeling_outputs import BaseModelOutputWithPast
-from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecoderLayer, LlamaModel, apply_rotary_pos_emb
+from transformers.models.llama.modeling_llama import (
+    LlamaAttention,
+    LlamaDecoderLayer,
+    LlamaModel,
+    LlamaRMSNorm,
+    apply_rotary_pos_emb,
+)
 
 from colossalai.inference.tensor_parallel.batch_infer_state import BatchInferState
 from colossalai.kernel.triton.context_attention import llama_context_attn_fwd
@@ -11,7 +17,8 @@ from colossalai.kernel.triton.copy_kv_cache_dest import copy_kv_cache_to_dest
 from colossalai.kernel.triton.token_attention_kernel import token_attention_fwd
 
 try:
-    from vllm import pos_encoding_ops
+    from vllm import layernorm_ops, pos_encoding_ops
+    rms_norm = layernorm_ops.rms_norm
     rotary_embedding_neox = pos_encoding_ops.rotary_embedding_neox
     HAS_VLLM_KERNERL = True
 except:
@@ -44,14 +51,6 @@ class LlamaInferenceForwards:
     ):
 
         batch_size = input_ids.shape[0]    # input_ids.shape[0]
-
-        # infer_state = BatchInferState(batch_size, input_ids.shape[1])
-        # infer_state.batch_size = batch_size
-        # # NOTE: dummy implementation here for testing, just assume all inputs same length
-        # infer_state.block_loc = self.block_loc
-        # infer_state.start_loc = self.start_loc
-        # infer_state.seq_len = self.seq_len
-        # infer_state.max_len_in_batch = self.max_len_in_batch
 
         infer_state = self.infer_state
         b_seq_len_numpy = infer_state.seq_len.cpu().numpy()
@@ -254,8 +253,9 @@ class LlamaInferenceForwards:
             cos, sin = infer_state.position_cos, infer_state.position_sin
             cos_sin_cache = torch.cat((cos, sin), dim=-1)
             rotary_embedding_neox(position_ids, query_states, key_states_transposed, self.head_dim, cos_sin_cache)
+            key_states = key_states_transposed.transpose(1, 2)
         else:
-            # TODO apply_rotary_pos_emb needed to be fixed.
+            # TODO: there are some issues for original rotary_embedding_neox of huggingface
             raise("Llame forward has to use vllm kernels, please install vllm kernels")
             # cos, sin = self.rotary_emb(key_states_transposed, seq_len=infer_state.past_key_values_len + q_len)
             # query_states, key_states = apply_rotary_pos_emb(query_states, key_states_transposed, cos, sin, position_ids)
@@ -277,10 +277,6 @@ class LlamaInferenceForwards:
             _copy_kv_to_mem_cache(infer_state.decode_layer_id, key_states, value_states, infer_state.decode_mem_index,
                                   infer_state.cache_manager)
 
-        # this is worse than destcopy
-        # torch.Tensor.copy_(infer_state.cache_manager.key_buffer[infer_state.decode_layer_id][infer_state.decode_mem_start:infer_state.decode_mem_end, :, :],key_states)
-        # torch.Tensor.copy_(infer_state.cache_manager.value_buffer[infer_state.decode_layer_id][infer_state.decode_mem_start:infer_state.decode_mem_end, :, :],value_states)
-
         # FIXME might want to revise
         #   need some way to record the length of past key values cache
         #   since we won't return past_key_value_cache right now
@@ -291,14 +287,6 @@ class LlamaInferenceForwards:
 
         if infer_state.is_context_stage:
             # first token generation
-
-            # attn_output, q, k, v, out_padded, softmax_lse, S_dmask, rng_state = _flash_attn_forward(query_states,
-            #                                 key_states,
-            #                                 value_states,
-            #                                 0,
-            #                                 1/math.sqrt(self.head_dim),
-            #                                 causal,
-            #                                 False)
 
             attn_output = torch.empty_like(query_states)
 
@@ -326,3 +314,24 @@ class LlamaInferenceForwards:
 
         # return past_key_value as None
         return attn_output, None, None
+
+
+def get_llama_vllm_rmsnorm_forward():
+
+    if HAS_VLLM_KERNERL:
+
+        def _vllm_rmsnorm_forward(self: LlamaRMSNorm, hidden_states: torch.Tensor):
+            x = hidden_states
+            out = torch.empty_like(x)
+            rms_norm(
+                out,
+                x,
+                self.weight.data,
+                self.variance_epsilon,
+            )
+
+            return out
+
+        return _vllm_rmsnorm_forward
+    else:
+        return None

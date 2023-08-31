@@ -163,14 +163,19 @@ class TPInferEngine:
         if not isinstance(inputs, (BatchEncoding, dict, list, torch.Tensor)):
             raise TypeError(f"inputs type {type(inputs)} is not supported in prepare_batch_state")
 
+        input_ids_list = None
+        attention_mask = None
+
         if isinstance(inputs, (BatchEncoding, dict)):
-            attn_masks = inputs['attention_mask']
-            batch_size = attn_masks.shape[0]
-            max_len_in_batch = attn_masks.shape[1]
-        elif isinstance(inputs, list):
-            batch_size = len(inputs)
+            input_ids_list = inputs['input_ids']
+            attention_mask = inputs['attention_mask']
         else:
-            batch_size = inputs.shape[0]
+            input_ids_list = inputs
+        if isinstance(input_ids_list[0], int):    # for a single input
+            input_ids_list = [input_ids_list]
+            attention_mask = [attention_mask] if attention_mask is not None else attention_mask
+
+        batch_size = len(input_ids_list)
 
         seq_start_indexes = torch.zeros(batch_size, dtype=torch.int32, device='cuda')
         seq_lengths = torch.zeros(batch_size, dtype=torch.int32, device='cuda')
@@ -178,14 +183,17 @@ class TPInferEngine:
 
         max_len_in_batch = -1
         if isinstance(inputs, (BatchEncoding, dict)):
-            for i, attn_mask in enumerate(attn_masks):
-                curr_seq_len = int(torch.sum(attn_mask))
+            for i, attn_mask in enumerate(attention_mask):
+                if isinstance(attn_mask, torch.Tensor):
+                    curr_seq_len = int(torch.sum(attn_mask))
+                else:
+                    curr_seq_len = int(sum(attn_mask))
                 seq_lengths[i] = curr_seq_len
                 seq_start_indexes[i] = start_index
                 start_index += curr_seq_len
                 max_len_in_batch = curr_seq_len if curr_seq_len > max_len_in_batch else max_len_in_batch
         else:
-            for i, input_ids in enumerate(inputs):
+            for i, input_ids in enumerate(input_ids_list):
                 curr_seq_len = len(input_ids)
                 seq_lengths[i] = curr_seq_len
                 seq_start_indexes[i] = start_index
