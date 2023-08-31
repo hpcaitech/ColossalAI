@@ -10,9 +10,9 @@ import colossalai
 import colossalai.utils as utils
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
+from colossalai.legacy.trainer import Trainer, hooks
 from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.nn import LinearWarmupLR
-from colossalai.trainer import Trainer, hooks
 from colossalai.utils import colo_set_process_memory_fraction, is_using_pp
 from colossalai.utils.timer import MultiTimer
 from colossalai.zero.legacy.init_ctx import ZeroInitContext
