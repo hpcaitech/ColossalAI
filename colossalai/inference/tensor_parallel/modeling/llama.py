@@ -4,11 +4,11 @@ import numpy as np
 import torch
 from transformers.modeling_outputs import BaseModelOutputWithPast
 from transformers.models.llama.modeling_llama import (
-    LlamaAttention, 
-    LlamaDecoderLayer, 
-    LlamaModel, 
-    apply_rotary_pos_emb, 
-    LlamaRMSNorm
+    LlamaAttention,
+    LlamaDecoderLayer,
+    LlamaModel,
+    LlamaRMSNorm,
+    apply_rotary_pos_emb,
 )
 
 from colossalai.inference.tensor_parallel.batch_infer_state import BatchInferState
@@ -17,7 +17,7 @@ from colossalai.kernel.triton.copy_kv_cache_dest import copy_kv_cache_to_dest
 from colossalai.kernel.triton.token_attention_kernel import token_attention_fwd
 
 try:
-    from vllm import pos_encoding_ops, layernorm_ops
+    from vllm import layernorm_ops, pos_encoding_ops
     rms_norm = layernorm_ops.rms_norm
     rotary_embedding_neox = pos_encoding_ops.rotary_embedding_neox
     HAS_VLLM_KERNERL = True
@@ -255,7 +255,9 @@ class LlamaInferenceForwards:
         if HAS_VLLM_KERNERL:
             cos_sin_cache = torch.cat((cos, sin), dim=-1)
             rotary_embedding_neox(position_ids, query_states, key_states_transposed, self.head_dim, cos_sin_cache)
+            key_states = key_states_transposed.transpose(1, 2)
         else:
+            # TODO: there are some issues for original rotary_embedding_neox of huggingface
             query_states, key_states = apply_rotary_pos_emb(query_states, key_states_transposed, cos, sin, position_ids)
 
         def _copy_kv_to_mem_cache(layer_id, key_buffer, value_buffer, context_mem_index, mem_manager):
@@ -313,9 +315,11 @@ class LlamaInferenceForwards:
         # return past_key_value as None
         return attn_output, None, None
 
+
 def get_llama_vllm_rmsnorm_forward():
-    
+
     if HAS_VLLM_KERNERL:
+
         def _vllm_rmsnorm_forward(self: LlamaRMSNorm, hidden_states: torch.Tensor):
             x = hidden_states
             out = torch.empty_like(x)
