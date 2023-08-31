@@ -12,7 +12,6 @@ from transformers.models.llama.modeling_llama import (
     LlamaForCausalLM,
     LlamaForSequenceClassification,
     LlamaModel,
-    LlamaRMSNorm,
     apply_rotary_pos_emb,
 )
 from transformers.utils import logging
@@ -21,10 +20,8 @@ from colossalai.kernel.cuda_native import AttnMaskType, ColoAttention
 from colossalai.pipeline.stage_manager import PipelineStageManager
 
 try:
-    from vllm import layernorm_ops, pos_encoding_ops
-    rms_norm = layernorm_ops.rms_norm
+    from vllm import pos_encoding_ops  
     rotary_embedding_neox = pos_encoding_ops.rotary_embedding_neox
-    rms_norm = layernorm_ops.rms_norm
     HAS_VLLM_KERNERL = True
 except:
     print("fall back to original rotary_embedding_neox of huggingface")
@@ -477,23 +474,3 @@ def get_llama_flash_attention_forward():
 
     return forward
 
-
-def get_llama_vllm_rmsnorm_forward():
-
-    if HAS_VLLM_KERNERL:
-
-        def _vllm_rmsnorm_forward(self: LlamaRMSNorm, hidden_states: torch.Tensor):
-            x = hidden_states
-            out = torch.empty_like(x)
-            rms_norm(
-                out,
-                x,
-                self.weight.data,
-                self.variance_epsilon,
-            )
-
-            return out
-
-        return _vllm_rmsnorm_forward
-    else:
-        return None
