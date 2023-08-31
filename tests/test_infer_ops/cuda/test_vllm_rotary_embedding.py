@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
-import pytest
 from typing import Tuple
 
+import pytest
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -12,9 +12,9 @@ try:
     from vllm import pos_encoding_ops
     rotary_embedding_neox = pos_encoding_ops.rotary_embedding_neox
     HAS_VLLM_KERNERL = True
-except: 
+except:
     HAS_VLLM_KERNERL = False
-    
+
 if not HAS_VLLM_KERNERL:
     try:
         from colossalai.kernel.op_builder.colossal_inference import ColossalInferenceBuilder
@@ -24,8 +24,11 @@ if not HAS_VLLM_KERNERL:
     except:
         print("fall back to original rotary_embedding_neox of huggingface")
         print("install vllm from https://github.com/vllm-project/vllm to accelerate your inference")
-        print("if falied to install vllm, please use this branch to install: https://github.com/tiandiao123/vllm/tree/setup_branch")
-        HAS_VLLM_KERNERL = False   
+        print(
+            "if falied to install vllm, please use this branch to install: https://github.com/tiandiao123/vllm/tree/setup_branch"
+        )
+        HAS_VLLM_KERNERL = False
+
 
 def rotate_half(x: torch.Tensor) -> torch.Tensor:
     x1 = x[..., :x.shape[-1] // 2]
@@ -68,10 +71,10 @@ class RefRotaryEmbeddingNeox(nn.Module):
         self.register_buffer("sin_cached", sin, persistent=False)
 
     def forward(
-        self,
-        positions: torch.Tensor,  # [num_tokens]
-        query: torch.Tensor,  # [num_tokens, num_heads, head_size]
-        key: torch.Tensor,  # [num_tokens, num_heads, head_size]
+            self,
+            positions: torch.Tensor,    # [num_tokens]
+            query: torch.Tensor,    # [num_tokens, num_heads, head_size]
+            key: torch.Tensor,    # [num_tokens, num_heads, head_size]
     ) -> Tuple[torch.Tensor, torch.Tensor]:
 
         query_rot = query[..., :self.rotary_dim]
@@ -93,6 +96,7 @@ class RefRotaryEmbeddingNeox(nn.Module):
         # Output query/key shape: [num_tokens, num_tokens, head_size]
         return query, key
 
+
 def run_rotary_embedding_neox(
     num_tokens: int,
     num_heads: int,
@@ -102,15 +106,9 @@ def run_rotary_embedding_neox(
     dtype: torch.dtype,
     base: int = 10000,
 ) -> None:
-    positions = torch.randint(0, max_position, (num_tokens, ), device='cuda')
-    query = torch.randn(num_tokens,
-                        num_heads * head_size,
-                        dtype=dtype,
-                        device='cuda')
-    key = torch.randn(num_tokens,
-                      num_heads * head_size,
-                      dtype=dtype,
-                      device='cuda')
+    positions = torch.randint(0, max_position, (num_tokens,), device='cuda')
+    query = torch.randn(num_tokens, num_heads * head_size, dtype=dtype, device='cuda')
+    key = torch.randn(num_tokens, num_heads * head_size, dtype=dtype, device='cuda')
 
     # Create the rotary embedding.
     inv_freq = 1.0 / (base**(torch.arange(0, rotary_dim, 2) / rotary_dim))
@@ -150,6 +148,7 @@ def run_rotary_embedding_neox(
     assert torch.allclose(out_query, ref_query, atol=1e-3, rtol=1e-5)
     assert torch.allclose(out_key, ref_key, atol=1e-3, rtol=1e-5)
 
+
 @pytest.mark.skipif(not HAS_VLLM_KERNERL, reason="You need to install llama supported cuda kernels to run this test")
 def test_rotary_embedding():
     run_rotary_embedding_neox(
@@ -158,8 +157,9 @@ def test_rotary_embedding():
         head_size=64,
         max_position=8192,
         rotary_dim=64,
-        dtype=torch.float16,        
+        dtype=torch.float16,
     )
+
 
 if __name__ == "__main__":
     test_rotary_embedding()

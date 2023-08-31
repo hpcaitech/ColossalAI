@@ -9,10 +9,14 @@ class ColossalInferenceBuilder(Builder):
     PREBUILT_IMPORT_PATH = "colossalai._C.colossal_inference"
 
     def __init__(self):
-        super().__init__(name=ColossalInferenceBuilder.NAME, prebuilt_import_path=ColossalInferenceBuilder.PREBUILT_IMPORT_PATH)
+        super().__init__(name=ColossalInferenceBuilder.NAME,
+                         prebuilt_import_path=ColossalInferenceBuilder.PREBUILT_IMPORT_PATH)
 
     def sources_files(self):
-        ret = [self.csrc_abs_path(fname) for fname in ['inference/inference_cuda.cpp', 'inference/layernorm_kernels.cu', 'inference/pos_encoding_kernels.cu']]
+        ret = [
+            self.csrc_abs_path(fname) for fname in
+            ['inference/inference_cuda.cpp', 'inference/layernorm_kernels.cu', 'inference/pos_encoding_kernels.cu']
+        ]
         return ret
 
     def include_dirs(self):
