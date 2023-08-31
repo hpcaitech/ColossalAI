@@ -6,6 +6,7 @@ from torch import distributed as dist
 
 import colossalai
 from colossalai.logging import disable_existing_loggers
+from colossalai.shardformer.layer.utils import Randomizer
 from colossalai.tensor.d_tensor.api import clear_layout_converter
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
 from tests.kit.model_zoo import model_zoo
@@ -107,6 +108,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     # check grads
     check_all_grad_tensors(grads_to_check)
 
+    Randomizer.reset_index()
     torch.cuda.empty_cache()
 
 
