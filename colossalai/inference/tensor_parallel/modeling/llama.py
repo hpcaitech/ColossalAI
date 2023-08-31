@@ -250,14 +250,15 @@ class LlamaInferenceForwards:
         key_states_transposed = key_states.transpose(1, 2)
         value_states = self.v_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim)
 
-        # cos, sin = self.rotary_emb(value_states_transposed, seq_len=kv_seq_len)
-        cos, sin = infer_state.position_cos, infer_state.position_sin
-
         if HAS_VLLM_KERNERL:
+            cos, sin = infer_state.position_cos, infer_state.position_sin
             cos_sin_cache = torch.cat((cos, sin), dim=-1)
             rotary_embedding_neox(position_ids, query_states, key_states_transposed, self.head_dim, cos_sin_cache)
         else:
-            query_states, key_states = apply_rotary_pos_emb(query_states, key_states_transposed, cos, sin, position_ids)
+            # TODO apply_rotary_pos_emb needed to be fixed.
+            raise("Llame forward has to use vllm kernels, please install vllm kernels")
+            # cos, sin = self.rotary_emb(key_states_transposed, seq_len=infer_state.past_key_values_len + q_len)
+            # query_states, key_states = apply_rotary_pos_emb(query_states, key_states_transposed, cos, sin, position_ids)
 
         def _copy_kv_to_mem_cache(layer_id, key_buffer, value_buffer, context_mem_index, mem_manager):
             num_heads = key_buffer.shape[2]
