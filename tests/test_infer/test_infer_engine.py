@@ -71,6 +71,7 @@ def test_prepare_data():
 
 def test_orig_generate():
     input_ids = torch.randint(low=10, high=1000, size=(MAX_BATCH_SIZE, MAX_INPUT_LEN))
+    input_ids = input_ids.cuda()
 
     model_config = LlamaConfig()
     model = LlamaForCausalLM(model_config)
