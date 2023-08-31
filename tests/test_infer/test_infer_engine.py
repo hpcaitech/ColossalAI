@@ -3,7 +3,7 @@ from itertools import accumulate
 import pytest
 import torch
 import torch.nn as nn
-from transformers import AutoTokenizer, LlamaConfig, LlamaForCausalLM, LlamaTokenizer
+from transformers import BloomConfig, BloomForCausalLM, LlamaConfig, LlamaForCausalLM
 from transformers.tokenization_utils_base import BatchEncoding
 
 import colossalai
@@ -72,8 +72,8 @@ def test_prepare_data():
 def test_orig_generate():
     input_ids = torch.randint(low=10, high=1000, size=(MAX_BATCH_SIZE, MAX_INPUT_LEN))
 
-    model_config = LlamaConfig()
-    model = LlamaForCausalLM(model_config)
+    model_config = BloomConfig()
+    model = BloomForCausalLM(model_config)
     shard_config = ShardConfig(enable_tensor_parallelism=False)
 
     # init TPInferEngine and
@@ -88,8 +88,8 @@ def test_orig_generate():
 def run():
     input_ids = torch.tensor([[80540, 15473, 3331, 11970, 90472, 361, 61335]], dtype=torch.int64)
 
-    model_config = LlamaConfig()
-    model = LlamaForCausalLM(model_config)
+    model_config = BloomConfig()
+    model = BloomForCausalLM(model_config)
     shard_config = ShardConfig(enable_tensor_parallelism=True, inference_only=True)
     shardformer = ShardFormer(shard_config=shard_config)
 
