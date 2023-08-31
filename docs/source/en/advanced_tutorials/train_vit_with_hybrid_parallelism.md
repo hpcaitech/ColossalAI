@@ -79,7 +79,7 @@ from colossalai.core import global_context as gpc
 from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.nn.lr_scheduler import LinearWarmupLR
 from colossalai.nn.metric import Accuracy
-from colossalai.trainer import Trainer, hooks
+from colossalai.legacy.trainer import Trainer, hooks
 ```
 
 - Other modules
@@ -644,3 +644,4 @@ torchrun --standalone --nproc_per_node <NUM_GPUs>  train_hybrid.py --config ./co
 # If your torch >= 1.9.0
 # python -m torch.distributed.run --standalone --nproc_per_node= <NUM_GPUs> train_hybrid.py --config ./configs/config_hybrid_parallel.py
 ```
+<!-- doc-test-command: echo  -->

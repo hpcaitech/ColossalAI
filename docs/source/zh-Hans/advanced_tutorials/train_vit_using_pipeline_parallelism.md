@@ -36,7 +36,7 @@ from colossalai.builder import build_pipeline_model
 from colossalai.engine.schedule import (InterleavedPipelineSchedule,
                                         PipelineSchedule)
 from colossalai.logging import disable_existing_loggers, get_dist_logger
-from colossalai.trainer import Trainer, hooks
+from colossalai.legacy.trainer import Trainer, hooks
 from colossalai.utils import MultiTimer, get_dataloader
 from timm.models import vision_transformer as vit
 from torchvision import transforms
@@ -244,3 +244,4 @@ def train():
                 hooks=hook_list,
                 display_progress=True)
 ```
+<!-- doc-test-command: echo  -->

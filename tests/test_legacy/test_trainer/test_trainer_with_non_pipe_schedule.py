@@ -3,9 +3,9 @@ import torch
 
 import colossalai
 from colossalai.amp.amp_type import AMP_TYPE
+from colossalai.legacy.trainer import Trainer
 from colossalai.logging import get_dist_logger
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
-from colossalai.trainer import Trainer
 from colossalai.utils import MultiTimer
 from tests.components_to_test.registry import non_distributed_component_funcs
 

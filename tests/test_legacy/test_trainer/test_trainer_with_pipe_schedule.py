@@ -12,9 +12,9 @@ from torchvision.models import resnet18
 import colossalai
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
+from colossalai.legacy.trainer import Trainer
 from colossalai.logging import get_dist_logger
 from colossalai.testing import rerun_if_address_is_in_use, spawn
-from colossalai.trainer import Trainer
 from colossalai.utils import MultiTimer, get_dataloader
 
 BATCH_SIZE = 4
