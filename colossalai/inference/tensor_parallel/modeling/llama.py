@@ -12,6 +12,26 @@ from colossalai.kernel.triton.context_attention import llama_context_attn_fwd
 from colossalai.kernel.triton.token_attention_kernel import token_attention_fwd
 from typing import List, Optional, Tuple
 from transformers.modeling_outputs import BaseModelOutputWithPast
+from transformers.models.llama.modeling_llama import LlamaAttention, apply_rotary_pos_emb
+ 
+try:
+    from vllm import pos_encoding_ops
+    rotary_embedding_neox = pos_encoding_ops.rotary_embedding_neox
+    HAS_VLLM_KERNERL = True
+except: 
+    HAS_VLLM_KERNERL = False
+    
+if not HAS_VLLM_KERNERL:
+    try:
+        from colossalai.kernel.op_builder.colossal_inference import ColossalInferenceBuilder
+        colossal_inference_ops = ColossalInferenceBuilder().load()
+        rotary_embedding_neox = colossal_inference_ops.rotary_embedding_neox
+        HAS_VLLM_KERNERL = True
+    except:
+        print("fall back to original rotary_embedding_neox of huggingface")
+        print("install vllm from https://github.com/vllm-project/vllm to accelerate your inference")
+        print("if falied to install vllm, please use this branch to install: https://github.com/tiandiao123/vllm/tree/setup_branch")
+        HAS_VLLM_KERNERL = False   
 
 class LlamaInferenceForwards:
     """
@@ -34,14 +54,6 @@ class LlamaInferenceForwards:
     ):
         
         batch_size = input_ids.shape[0] # input_ids.shape[0]
-
-        # infer_state = BatchInferState(batch_size, input_ids.shape[1])
-        # infer_state.batch_size = batch_size
-        # # NOTE: dummy implementation here for testing, just assume all inputs same length
-        # infer_state.block_loc = self.block_loc
-        # infer_state.start_loc = self.start_loc
-        # infer_state.seq_len = self.seq_len
-        # infer_state.max_len_in_batch = self.max_len_in_batch
 
         infer_state = self.infer_state
         b_seq_len_numpy = infer_state.seq_len.cpu().numpy()
@@ -240,12 +252,12 @@ class LlamaInferenceForwards:
         
         # cos, sin = self.rotary_emb(value_states_transposed, seq_len=kv_seq_len)
         cos ,sin = infer_state.position_cos, infer_state.position_sin
-    
-        cos_sin_cache = torch.cat((cos, sin), dim=-1)
-        
-        from vllm.pos_encoding_ops import rotary_embedding_neox
-        
-        rotary_embedding_neox(position_ids, query_states, key_states_transposed, self.head_dim, cos_sin_cache)
+
+        if HAS_VLLM_KERNERL:
+            cos_sin_cache = torch.cat((cos, sin), dim=-1)
+            rotary_embedding_neox(position_ids, query_states, key_states_transposed, self.head_dim, cos_sin_cache)
+        else:
+            query_states, key_states = apply_rotary_pos_emb(query_states, key_states_transposed, cos, sin, position_ids)
         
         def _copy_kv_to_mem_cache(layer_id, key_buffer, value_buffer, context_mem_index, mem_manager):
             num_heads = key_buffer.shape[2]

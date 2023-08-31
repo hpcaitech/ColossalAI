@@ -14,9 +14,18 @@ try:
     rms_norm = layernorm_ops.rms_norm
     HAS_VLLM_KERNERL = True
 except:
-    print("please install vllm kernels to install rmsnorm")
-    print("install vllm from https://github.com/vllm-project/vllm to accelerate your inference")
     HAS_VLLM_KERNERL = False
+
+if not HAS_VLLM_KERNERL:
+    try:
+        from colossalai.kernel.op_builder.colossal_inference import ColossalInferenceBuilder
+        colossal_inference_ops = ColossalInferenceBuilder().load()
+        rms_norm = colossal_inference_ops.rms_norm
+        HAS_VLLM_KERNERL = True
+    except:
+        HAS_VLLM_KERNERL = False
+        print("please install vllm kernels to install rmsnorm")
+        print("install vllm from https://github.com/vllm-project/vllm to accelerate your inference")
 
 class LlamaRMSNorm(nn.Module):
     def __init__(self, hidden_size, eps=1e-6):

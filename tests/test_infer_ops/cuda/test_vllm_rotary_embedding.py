@@ -13,10 +13,19 @@ try:
     rotary_embedding_neox = pos_encoding_ops.rotary_embedding_neox
     HAS_VLLM_KERNERL = True
 except: 
-    print("fall back to original rotary_embedding_neox of huggingface")
-    print("install vllm from https://github.com/vllm-project/vllm to accelerate your inference")
     HAS_VLLM_KERNERL = False
-
+    
+if not HAS_VLLM_KERNERL:
+    try:
+        from colossalai.kernel.op_builder.colossal_inference import ColossalInferenceBuilder
+        colossal_inference_ops = ColossalInferenceBuilder().load()
+        rotary_embedding_neox = colossal_inference_ops.rotary_embedding_neox
+        HAS_VLLM_KERNERL = True
+    except:
+        print("fall back to original rotary_embedding_neox of huggingface")
+        print("install vllm from https://github.com/vllm-project/vllm to accelerate your inference")
+        print("if falied to install vllm, please use this branch to install: https://github.com/tiandiao123/vllm/tree/setup_branch")
+        HAS_VLLM_KERNERL = False   
 
 def rotate_half(x: torch.Tensor) -> torch.Tensor:
     x1 = x[..., :x.shape[-1] // 2]

@@ -401,11 +401,19 @@ def get_llama_flash_attention_forward():
         rotary_embedding_neox = pos_encoding_ops.rotary_embedding_neox
         HAS_VLLM_KERNERL = True
     except: 
-        print("fall back to original rotary_embedding_neox of huggingface")
-        print("install vllm from https://github.com/vllm-project/vllm to accelerate your inference")
-        print("if falied to install vllm, please use this branch to install: https://github.com/tiandiao123/vllm/tree/setup_branch")
         HAS_VLLM_KERNERL = False
         
+    if not HAS_VLLM_KERNERL:
+        try:
+            from colossalai.kernel.op_builder.colossal_inference import ColossalInferenceBuilder
+            colossal_inference_ops = ColossalInferenceBuilder().load()
+            rotary_embedding_neox = colossal_inference_ops.rotary_embedding_neox
+            HAS_VLLM_KERNERL = True
+        except:
+            print("fall back to original rotary_embedding_neox of huggingface")
+            print("install vllm from https://github.com/vllm-project/vllm to accelerate your inference")
+            print("if falied to install vllm, please use this branch to install: https://github.com/tiandiao123/vllm/tree/setup_branch")
+            HAS_VLLM_KERNERL = False            
 
     def forward(
         self: LlamaAttention,
@@ -476,11 +484,21 @@ def get_llama_vllm_rmsnorm_forward():
         rms_norm = layernorm_ops.rms_norm
         HAS_VLLM_KERNERL = True
     except:
-        print("please install vllm kernels to install rmsnorm")
-        print("install vllm from https://github.com/vllm-project/vllm to accelerate your inference")
-        print("if falied to install vllm, please use this branch to install: https://github.com/tiandiao123/vllm/tree/setup_branch")
         HAS_VLLM_KERNERL = False
-        
+
+    if not HAS_VLLM_KERNERL:
+        try:
+            from colossalai.kernel.op_builder.colossal_inference import ColossalInferenceBuilder
+            colossal_inference_ops = ColossalInferenceBuilder().load()
+            rms_norm = colossal_inference_ops.rms_norm
+            HAS_VLLM_KERNERL = True
+        except:
+            print("please install vllm kernels to install rmsnorm")
+            print("install vllm from https://github.com/vllm-project/vllm to accelerate your inference")
+            print("if falied to install vllm, please use this branch to install: https://github.com/tiandiao123/vllm/tree/setup_branch")
+            HAS_VLLM_KERNERL = False
+
+
     if HAS_VLLM_KERNERL:
         def _vllm_rmsnorm_forward(self: LlamaRMSNorm, hidden_states: torch.Tensor):
             x = hidden_states
