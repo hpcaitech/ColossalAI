@@ -73,7 +73,6 @@ You can use docker run to use docker container to set-up environment
 docker pull hpcaitech/colossalai-inference:v2 
 docker run -it --gpus all --name ANY_NAME -v $PWD:/workspace -w /workspace hpcaitech/colossalai-inference:v2 /bin/bash
 
-
 ```
 
 ### Dive into fast-inference!
