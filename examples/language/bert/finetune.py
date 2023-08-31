@@ -195,7 +195,7 @@ def main():
         plugin = HybridParallelPlugin(tp_size=1, 
                                     pp_size=2, 
                                     num_microbatches=2,
-                                    enable_all_optimization=True,
+                                    enable_all_optimization=False,
                                     #enable_sequence_parallelism=True,
                                     zero_stage=1,
                                     precision='fp16',
@@ -239,8 +239,18 @@ def main():
             "weight_decay": 0.0,
         },
     ]
+    
+    # lazy_init
+    use_lazy_init = args.use_lazy_init
+    ctx = LazyInitContext() if use_lazy_init else nullcontext()
+    with ctx:
+        org_model = model
+        sharded_model = copy.deepcopy(org_model)
+    if use_lazy_init:
+        ctx.materialize(org_model)
 
     optimizer = Adam(model.parameters(), lr=lr, eps=1e-8)
+    sharded_optimizer = Adam(sharded_model.parameters(), lr=lr, eps=1e-8)
 
     # lr scheduler
     total_steps = len(train_dataloader) * NUM_EPOCHS
@@ -251,21 +261,10 @@ def main():
         num_training_steps=total_steps,
     )
     
-    # lazy_init
-    use_lazy_init = args.use_lazy_init
-    ctx = LazyInitContext() if use_lazy_init else nullcontext()
-    with ctx:
-        org_model = model
-        sharded_model = copy.deepcopy(org_model)
-    if use_lazy_init:
-        ctx.materialize(org_model)
-    
     # ==============================
     # Boost with ColossalAI
     # ==============================
-    print("===before boost===")
-    print(optimizer.param_groups[0]['params'][0].dtype)
-    sharded_model, optimizer, _, _, lr_scheduler = booster.boost(sharded_model, optimizer, lr_scheduler=lr_scheduler)
+    sharded_model, optimizer, _, _, lr_scheduler = booster.boost(sharded_model, sharded_optimizer, lr_scheduler=lr_scheduler)
 
     # ==============================
     # Train model
