@@ -91,8 +91,6 @@ def test_orig_generate():
 
 
 def run():
-    input_ids = torch.tensor([[80540, 15473, 3331, 11970, 90472, 361, 61335]], dtype=torch.int64)
-
     model_config = BloomConfig()
     model = BloomForCausalLM(model_config)
     model = model.half()
@@ -108,11 +106,6 @@ def run():
     assert infer_engine.cache_manager is not None
     assert infer_engine.tp_size == TP_SIZE
     assert infer_engine.head_num == model_config.num_attention_heads // TP_SIZE
-
-    # TODO After adding forward replacement for CausalLM,
-    #      uncomment these lines to test sharded model generate
-    generate_kwargs = dict(do_sample=False)
-    infer_engine.generate(input_ids, generate_kwargs)
 
     torch.cuda.empty_cache()
 
