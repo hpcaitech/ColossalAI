@@ -11,7 +11,7 @@ class LlamaModelInferPolicy(LlamaForCausalLMPolicy):
         super().__init__()
 
     def module_policy(self):
-        from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecoderLayer, LlamaModel
+        from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecoderLayer, LlamaModel, LlamaRMSNorm
         policy = super().module_policy()
         self.shard_config._infer()
 
@@ -36,5 +36,12 @@ class LlamaModelInferPolicy(LlamaForCausalLMPolicy):
         self.append_or_create_method_replacement(description=method_replacement,
                                                  policy=policy,
                                                  target_key=LlamaAttention)
+        
+        infer_forward = LlamaInferenceForwards.get_llama_vllm_rmsnorm_forward
+        if infer_forward is not None:
+            method_replacement = {'forward': partial(infer_forward)}
+            self.append_or_create_method_replacement(description=method_replacement,
+                                                     policy=policy,
+                                                     target_key=LlamaRMSNorm)
 
         return policy
