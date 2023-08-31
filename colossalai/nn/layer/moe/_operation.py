@@ -173,3 +173,44 @@ def moe_cumsum(inputs: Tensor):
         return moe.cumsum_sub_one(inputs)
     else:
         return torch.cumsum(inputs, dim=0) - 1
+
+
+class MoeInGradScaler(torch.autograd.Function):
+    """
+    Scale the gradient back by the number of experts
+    because the batch size increases in the moe stage
+    """
+
+    @staticmethod
+    def forward(ctx: Any, inputs: Tensor, ep_size: int) -> Tensor:
+        if ctx is not None:
+            ctx.ep_size = ep_size
+        return inputs
+
+    @staticmethod
+    def backward(ctx: Any, *grad_outputs: Tensor) -> Tuple[Tensor, None]:
+        assert len(grad_outputs) == 1
+        grad = grad_outputs[0]
+        if ctx.ep_size != 1:
+            grad = grad * ctx.ep_size
+        return grad, None
+
+
+class MoeOutGradScaler(torch.autograd.Function):
+    """
+    Scale the gradient by the number of experts
+    because the batch size increases in the moe stage
+    """
+
+    @staticmethod
+    def forward(ctx: Any, inputs: Tensor, ep_size: int) -> Tensor:
+        ctx.ep_size = ep_size
+        return inputs
+
+    @staticmethod
+    def backward(ctx: Any, *grad_outputs: Tensor) -> Tuple[Tensor, None]:
+        assert len(grad_outputs) == 1
+        grad = grad_outputs[0]
+        if ctx.ep_size != 1:
+            grad = grad / ctx.ep_size
+        return grad, None

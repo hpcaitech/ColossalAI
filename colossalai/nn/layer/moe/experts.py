@@ -7,6 +7,7 @@ import torch.nn as nn
 
 from colossalai.context import ParallelMode, seed
 from colossalai.context.moe_context import MOE_CONTEXT
+from colossalai.nn.layer.moe._operation import MoeInGradScaler, MoeOutGradScaler
 from colossalai.tensor.moe_tensor.api import get_dp_group, get_ep_group, get_ep_size, set_moe_tensor_info
 
 
@@ -20,27 +21,31 @@ class BaseMLPExperts(nn.Module):
         num_experts: int,
         hidden_size: int,
         intermediate_size: int,
-        expert_parallel: str,
+        expert_parallel: str = None,
         activation: str = None,
         drop_rate: float = 0,
     ):
         super().__init__()
-        assert expert_parallel in ["EP", "TP"]
+        assert expert_parallel in ["EP", "TP", None]
         self.expert_parallel = expert_parallel
-
-        # get local and total experts
         self.num_total_experts = num_experts
-        self.num_local_experts, self.moe_info = MOE_CONTEXT.get_info(num_experts,
-                                                                     use_tp=True if expert_parallel == "TP" else False)
 
-        # get settings for different parallel
-        if expert_parallel == "TP":
-            assert intermediate_size % MOE_CONTEXT.max_ep_size == 0, \
-                "intermediate_size should be divide by maximum expert parallel size"
-            intermediate_size = intermediate_size // MOE_CONTEXT.max_ep_size
-            num_experts = self.num_total_experts
+        # get expert parallel info
+        if expert_parallel is not None:
+            self.num_local_experts, self.moe_info = MOE_CONTEXT.get_info(
+                num_experts, use_tp=True if expert_parallel == "TP" else False)
+            # get settings for different parallel
+            if expert_parallel == "TP":
+                assert intermediate_size % MOE_CONTEXT.max_ep_size == 0, \
+                    "intermediate_size should be divide by maximum expert parallel size"
+                intermediate_size = intermediate_size // MOE_CONTEXT.max_ep_size
+                num_experts = self.num_total_experts
+            else:
+                num_experts = self.num_local_experts
+            self.ep_size = get_ep_size(self)
         else:
-            num_experts = self.num_local_experts
+            self.num_local_experts = self.num_total_experts
+            self.ep_size = 1
 
         self.wi = nn.Parameter(torch.empty(num_experts, hidden_size, intermediate_size))
         self.wo = nn.Parameter(torch.empty(num_experts, intermediate_size, hidden_size))
@@ -52,10 +57,12 @@ class BaseMLPExperts(nn.Module):
         self.act = nn.GELU() if activation is None else activation
         self.drop = nn.Dropout(p=drop_rate)
 
-        for param in self.parameters():
-            set_moe_tensor_info(param, self.moe_info)
+        if expert_parallel is not None:
+            for param in self.parameters():
+                set_moe_tensor_info(param, self.moe_info)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:    # inputs [g, e, c, h]
+        x = MoeInGradScaler.apply(x, self.ep_size)
 
         e = x.size(1)
         h = x.size(-1)
@@ -72,6 +79,7 @@ class BaseMLPExperts(nn.Module):
 
         x = x.reshape(inshape)
         x = x.transpose(0, 1).contiguous()
+        x = MoeOutGradScaler.apply(x, self.ep_size)
         return x    # outputs [g, e, c, h]
 
 
@@ -135,5 +143,7 @@ def get_expert_class(name: str) -> BaseMLPExperts:
         return TPMLPExperts
     elif name == "EP":
         return EPMLPExperts
+    elif name is None:
+        return BaseMLPExperts
     else:
         raise ValueError(f"Unknown expert class name: {name}")

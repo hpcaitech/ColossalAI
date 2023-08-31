@@ -111,7 +111,7 @@ class Top1Router(MoeRouter):
         l_aux = num_experts * torch.sum(me * ce)
         self.set_routing_loss(l_aux)
 
-        if not self.training and not self.drop_tks:
+        if not self.training and not self.drop_tks and ep_group is not None:
             max_num = torch.max(torch.sum(mask, dim=0))
             dist.all_reduce(max_num, op=dist.ReduceOp.MAX, group=ep_group)
             capacity = max_num.item()
@@ -190,7 +190,7 @@ class Top2Router(MoeRouter):
         l_aux = num_experts * torch.sum(me * ce) / 2.0    # div 2 to normalize it to 1
         self.set_routing_loss(l_aux)
 
-        if not self.training and not self.drop_tks:
+        if not self.training and not self.drop_tks and ep_group is not None:
             max_num = torch.max(torch.sum(cmask, dim=0))
             dist.all_reduce(max_num, op=dist.ReduceOp.MAX, group=ep_group)
             capacity = max_num.item()
