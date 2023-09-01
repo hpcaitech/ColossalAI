@@ -14,6 +14,15 @@ from colossalai.tensor.moe_tensor.api import get_ep_size, set_moe_tensor_info
 class BaseMLPExperts(nn.Module):
     """
     SparseMLP is a multi-layer perceptron with sparse expert parallel layers.
+
+    Args:
+        num_experts (int): The number of experts
+        forward: hidden_size --> intermediate_size --> hidden_size
+            hidden_size (int): The hidden size of MLP
+            intermediate_size (int): The intermediate size of MLP
+        expert_parallel (str, optional): The parallelism of experts. Now we have 'EP' and 'TP'.
+        activation (optional): The activation function of MLP
+        drop_rate (float, optional): The drop rate of MLP
     """
 
     def __init__(
