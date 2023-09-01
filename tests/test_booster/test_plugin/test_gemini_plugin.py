@@ -97,10 +97,8 @@ def check_gemini_plugin(subset: str, init_method: str = 'none', early_stop: bool
                 'torchvision_shufflenet_v2_x0_5', 'torchvision_efficientnet_v2_s'
         ]:
             continue
-        if dist.get_rank() == 0:
-            print(f'Running {name}...')
         err = run_fn(init_method, model_fn, data_gen_fn, output_transform_fn)
-
+        torch.cuda.empty_cache()
         if err is None:
             passed_models.append(name)
         else:
