@@ -77,12 +77,13 @@ class LlamaInferenceForwards:
         past_key_values_length = 0
 
         if past_key_values is not None:
-            # TODO dummy but work, revise it
+            #  NOT READY FOR PRIME TIME
+            #  dummy but work, revise it
             past_key_values_length = infer_state.cache_manager.past_key_values_length
             # past_key_values_length = past_key_values[0][0].shape[2]
             seq_length_with_past = seq_length_with_past + past_key_values_length
 
-        # FIXME: differentiate with prefill stage
+        # NOTE: differentiate with prefill stage
         #       block_loc require different value-assigning method for two different stage
         if use_cache and seq_length != 1:
             # NOTE assuem prefill stage

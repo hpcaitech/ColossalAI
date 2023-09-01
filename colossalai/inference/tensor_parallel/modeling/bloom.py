@@ -197,7 +197,7 @@ class BloomInferenceForwards:
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
             if self.gradient_checkpointing and self.training:
-                # FIXME: currently our KV cache manager does not handle this condition
+                # NOTE: currently our KV cache manager does not handle this condition
                 def create_custom_forward(module):
 
                     def custom_forward(*inputs):
@@ -240,7 +240,8 @@ class BloomInferenceForwards:
             all_hidden_states = all_hidden_states + (hidden_states,)
 
         # update indices of kv cache block
-        # TODO: might want to remove this part, instead, better to pass the BatchInferState from model forward,
+        # NOT READY FOR PRIME TIME
+        # might want to remove this part, instead, better to pass the BatchInferState from model forward,
         #       and update these information in engine.generate after model foward called
         infer_state.start_loc = infer_state.start_loc + torch.arange(0, batch_size, dtype=torch.int32, device="cuda")
         infer_state.seq_len += 1
