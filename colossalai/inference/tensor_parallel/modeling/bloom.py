@@ -444,6 +444,9 @@ class BloomInferenceForwards:
         mem_manager = infer_state.cache_manager
         layer_id = infer_state.decode_layer_id
 
+        if layer_id == 0:    # once per model.forward
+            infer_state.cache_manager.past_key_values_length += q_length    # += 1
+
         if infer_state.is_context_stage:
             # context process
             max_input_len = q_length
@@ -460,10 +463,6 @@ class BloomInferenceForwards:
             bloom_context_attn_fwd(q, k, v, output, b_start_loc, b_seq_len, max_input_len, alibi)
 
             context_layer = output.view(batch_size, q_length, H * D_HEAD)
-            # record the length of past key values cache when entering the first attention layer in bloom block,
-            # since we won't return past_key_value_cache right now
-            if layer_id == 0:    # once per model.forward
-                infer_state.cache_manager.past_key_values_length = q_length    # seq_len
         else:
             # query_layer = query_layer.transpose(1, 2).reshape(batch_size * self.num_heads, q_length, self.head_dim)
             # need shape: batch_size, H, D_HEAD (q_length == 1), input q shape : (batch_size, q_length(1), H, D_HEAD)
@@ -484,19 +483,14 @@ class BloomInferenceForwards:
                 copy_kv_cache_to_dest(k, infer_state.decode_mem_index, mem_manager.key_buffer[layer_id])
                 copy_kv_cache_to_dest(v, infer_state.decode_mem_index, mem_manager.value_buffer[layer_id])
 
-            b_start_loc = infer_state.start_loc[:batch_size]
-            b_loc = infer_state.block_loc[:batch_size, :]
-            b_seq_len = infer_state.seq_len[:batch_size]
-            max_len_in_batch = mem_manager.past_key_values_length + q_length
+            b_start_loc = infer_state.start_loc
+            b_loc = infer_state.block_loc
+            b_seq_len = infer_state.seq_len
             output = torch.empty_like(q)
             token_attention_fwd(q, mem_manager.key_buffer[layer_id], mem_manager.value_buffer[layer_id], output, b_loc,
-                                b_start_loc, b_seq_len, max_len_in_batch, alibi)
+                                b_start_loc, b_seq_len, infer_state.cache_manager.past_key_values_length, alibi)
 
             context_layer = output.view(batch_size, q_length, H * D_HEAD)
-
-            if layer_id == 0:    # once per model.forward
-                assert infer_state.cache_manager.past_key_values_length != 0
-                infer_state.cache_manager.past_key_values_length += q_length    # += 1
 
         # update layer id
         infer_state.decode_layer_id += 1
