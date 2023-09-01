@@ -1,9 +1,9 @@
 import math
 from contextlib import nullcontext
+from typing import Callable, Optional
 
 import torch
 import torch.nn as nn
-
 from colossalai.moe._operation import MoeInGradScaler, MoeOutGradScaler
 from colossalai.moe.manager import MOE_MANAGER
 from colossalai.moe.utils import get_activation
@@ -21,8 +21,8 @@ class BaseMLPExperts(nn.Module):
         num_experts: int,
         hidden_size: int,
         intermediate_size: int,
-        expert_parallel: str = None,
-        activation: str = None,
+        expert_parallel: Optional[str] = None,
+        activation: Optional[Callable] = None,
         drop_rate: float = 0,
         gated: bool = False,
     ):
@@ -76,7 +76,14 @@ class BaseMLPExperts(nn.Module):
             for param in self.parameters():
                 set_moe_tensor_info(param, self.moe_info)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:    # inputs [g, e, c, h]
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            x (torch.Tensor): The input tensor of shape (num_groups, num_experts, capacity, hidden_size)
+
+        Returns:
+            torch.Tensor: The output tensor of shape (num_groups, num_experts, capacity, hidden_size)
+        """
         x = MoeInGradScaler.apply(x, self.ep_size)
 
         e = x.size(1)
@@ -97,7 +104,7 @@ class BaseMLPExperts(nn.Module):
         x = x.reshape(inshape)
         x = x.transpose(0, 1).contiguous()
         x = MoeOutGradScaler.apply(x, self.ep_size)
-        return x    # outputs [g, e, c, h]
+        return x
 
 
 class EPMLPExperts(BaseMLPExperts):
