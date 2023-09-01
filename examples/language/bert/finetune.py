@@ -29,7 +29,7 @@ from colossalai.utils import get_current_device
 # ==============================
 # Prepare Hyperparameters
 # ==============================
-NUM_EPOCHS = 1
+NUM_EPOCHS = 3
 BATCH_SIZE = 32
 LEARNING_RATE = 2.4e-5
 WEIGHT_DECAY = 0.01
