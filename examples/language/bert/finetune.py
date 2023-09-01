@@ -298,11 +298,6 @@ def main():
     results = evaluate_model(model, optimizer, _criterion, test_dataloader, data_builder.num_labels, args.task,
                              data_builder.eval_splits, booster, coordinator)
 
-    # if booster.plugin.stage_manager is not None:
-    #     if booster.plugin.stage_manager.is_last_stage():
-    #         print(results)
-    #         if args.target_f1 is not None and 'f1' in results:
-    #             assert results['f1'] >= args.target_f1, f'f1 score {results["f1"]} is lower than target {args.target_f1}'
     if coordinator.is_master():
         print(results)
         if args.target_f1 is not None and 'f1' in results:
