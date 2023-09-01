@@ -55,7 +55,7 @@ dependencies
 
 ```bash
 pytorch= 1.13.1 (gpu)
-cuda>= 11.6 
+cuda>= 11.6
 transformers= 4.30.2
 triton==2.0.0.dev20221202
 # for install vllm, please use this branch to install https://github.com/tiandiao123/vllm/tree/setup_branch
@@ -66,11 +66,11 @@ flash-attention
 
 ### Docker
 
-You can use docker run to use docker container to set-up environment 
+You can use docker run to use docker container to set-up environment
 
 ```
-# env: python==3.8, cuda 11.6, pytorch == 1.13.1 triton==2.0.0.dev20221202, vllm kernels support, flash-attention-2 kernels support 
-docker pull hpcaitech/colossalai-inference:v2 
+# env: python==3.8, cuda 11.6, pytorch == 1.13.1 triton==2.0.0.dev20221202, vllm kernels support, flash-attention-2 kernels support
+docker pull hpcaitech/colossalai-inference:v2
 docker run -it --gpus all --name ANY_NAME -v $PWD:/workspace -w /workspace hpcaitech/colossalai-inference:v2 /bin/bash
 
 ```
@@ -88,10 +88,28 @@ python xx
 
 ### environment:
 
-We conducted [benchmark tests](https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/shardformer/examples/performance_benchmark.py) to evaluate the performance. We compared the inference `latency` and `throughputs` between `colossal-inference` and `torch`.
+We conducted multiple benchmark tests to evaluate the performance. We compared the inference `latency` and `throughputs` between `colossal-inference` and original `hugging-face torch fp16`.
 
-We set the batch size to 4, the number of attention heads to 8, and the head dimension to 64. `N_CTX` refers to the sequence length.
+For various models, experiments were conducted using multiple batch sizes under the consistent model configuration of `7 billion(7b)` parameters, `1024` input length, and 128 output length. The obtained results are as follows (due to time constraints, the evaluation has currently been performed solely on the `A100` single GPU performance; multi-GPU performance will be addressed in the future):
 
-In the case of using 2 GPUs, the results are as follows.
+### Single GPU Performance:
+
+#### Llama
+
+|       batch_size        |   8    |   16   |   32   |
+| :---------------------: | :----: | :----: | :----: |
+| hugging-face torch fp16 | 199.12 | 246.56 | 246.56 |
+|   colossal-inference    | 241.12 | 451.84 | 643.52 |
+
+![llama](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference/Infer-llama.png)
 
 ###
+
+|       batch_size        |   4    |   4    |
+| :---------------------: | :----: | :----: |
+| hugging-face torch fp16 | 145.28 | 189.68 |
+|   colossal-inference    | 187.48 | 323.28 |
+
+![bloom](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference/Infer-bloom.png)
+
+The results of more models are coming soon!
