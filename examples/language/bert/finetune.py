@@ -95,16 +95,16 @@ def evaluate_model(
                     elif num_labels == 1:
                         preds = logits.squeeze()
 
-                    dist.broadcast(preds, src=current_rank)
-                    dist.broadcast(val_loss, src=current_rank)
+                    dist.broadcast(preds, src=current_rank, group=pp_group)
+                    dist.broadcast(val_loss, src=current_rank, group=pp_group)
 
                     metric.add_batch(predictions=preds, references=labels)
                 elif current_rank in current_pp_group_ranks:
                     val_loss = torch.empty((1,), device=get_current_device())
                     preds = torch.empty((batch_size,), dtype=torch.int64, device=get_current_device())
 
-                    dist.broadcast(preds, src=current_pp_group_ranks[-1])
-                    dist.broadcast(val_loss, src=current_pp_group_ranks[-1])
+                    dist.broadcast(preds, src=current_pp_group_ranks[-1], group=pp_group)
+                    dist.broadcast(val_loss, src=current_pp_group_ranks[-1], group=pp_group)
 
                     accum_loss.add_(val_loss)
                     metric.add_batch(predictions=preds, references=labels)
