@@ -105,7 +105,7 @@ For various models, experiments were conducted using multiple batch sizes under 
 
 ###
 
-|       batch_size        |   4    |   4    |
+|       batch_size        |   4    |   8    |
 | :---------------------: | :----: | :----: |
 | hugging-face torch fp16 | 145.28 | 189.68 |
 |   colossal-inference    | 187.48 | 323.28 |
