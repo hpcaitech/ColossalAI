@@ -208,7 +208,7 @@ jobs:
 
       - name: Execute Unit Testing
         run: |
-          CURL_CA_BUNDLE="" PYTHONPATH=$PWD pytest -s --durations=10 tests/test_booster/test_plugin/test_gemini_plugin.py
+          CURL_CA_BUNDLE="" PYTHONPATH=$PWD pytest -s --testmon --testmon-cov=. --durations=10 tests/test_booster/test_plugin
         env:
           DATA: /data/scratch/cifar-10
           NCCL_SHM_DISABLE: 1
