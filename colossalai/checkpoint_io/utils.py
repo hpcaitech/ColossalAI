@@ -228,7 +228,8 @@ def save_state_dict_shards(sharded_state_dict: Iterator[Tuple[OrderedDict, int]]
                            index_file: "CheckpointIndexFile",
                            base_filename: str,
                            is_master: bool,
-                           use_safetensors: bool = False) -> int:
+                           use_safetensors: bool = False,
+                           use_pp_format: bool = False) -> int:
     '''
     Save sharded state dict only on master rank, this method can be used by both model and optimizer states.
     Args:
@@ -236,14 +237,16 @@ def save_state_dict_shards(sharded_state_dict: Iterator[Tuple[OrderedDict, int]]
         checkpoint (str): The path of checkpoint directory as string.
         index_file (CheckpointIndexFile): The index file object to be updated.
         base_filename (str): Decides the prefix of filenames of shards.
-        is_master (bool): Whether current rank is master.
-        use_safetensors (bool): Whether to use safetensors to save checkpoint.
+        is_master (bool): Whether current rank is main process.
+        use_safetensors (bool, optional): Whether to use safetensors to save checkpoint. Defaults to False.
+        use_pp_format: (bool, optional): Whether to save the files in pipeline format including stage information. Defaults to False.
 
     Returns:
         int: the total size of shards
     '''
 
     total_size = 0
+    shard_filenames = []
     for idx, shard_pair in enumerate(sharded_state_dict):
         shard, current_size = shard_pair
         if not is_master:
@@ -257,7 +260,11 @@ def save_state_dict_shards(sharded_state_dict: Iterator[Tuple[OrderedDict, int]]
 
         # Only save on master rank.
         save_state_dict(shard, checkpoint_file_path, use_safetensors=use_safetensors)
+        shard_filenames.append(shard_file)
         del shard
+
+    # Clean folder, deleted unneeded files.
+    clean_folder(checkpoint, base_filename, shard_filenames, is_master=is_master, use_pp_format=use_pp_format)
 
     return total_size
 
@@ -335,9 +342,46 @@ def save_param_groups(state_dict: dict, group_file_path: str) -> None:
     torch.save(param_groups, group_file_path)
 
 
+def clean_folder(checkpoint_path: str,
+                 weights_name: str,
+                 shard_filenames: List[str],
+                 is_master: bool = True,
+                 use_pp_format: bool = False):
+    """
+    Clean the unneeded files in checkpoint directory after shards of state_dict have been saved.
+
+    Args:
+        checkpoint_path (str): Path to the checkpoint directory.
+        weights_name (str): Decides the prefix of filenames of weight shards.
+        shard_filenames (List[str]): The list of saved shard filenames which should not be removed.
+        is_master (bool, optional): Whether current rank is main process. Defaults to True.
+        use_pp_format: (bool, optional): Whether to save the files in pipeline format including stage information. Defaults to False.
+
+    """
+    if is_master:
+        for filename in os.listdir(checkpoint_path):
+            full_filename = os.path.join(checkpoint_path, filename)
+            weights_no_suffix = weights_name.replace(".bin", "").replace(".safetensors", "")
+            filename_no_suffix = filename.replace(".bin", "").replace(".safetensors", "")
+            if not use_pp_format:
+                reg = re.compile(r"(.*?)-\d{5}")
+            else:
+                # When this checkpoint is created by pipeline parallel process, the pattern is a little different.
+                reg = re.compile(r"(.*?)-stage-\d{5}-shard-\d{5}")
+            if (filename.startswith(weights_no_suffix) and os.path.isfile(full_filename)
+                    and filename not in shard_filenames and reg.fullmatch(filename_no_suffix) is not None):
+                os.remove(full_filename)
+
+
 def save_config_file(model: nn.Module, checkpoint_path: str, is_master: bool = True):
     """
     Save config.json/generation_config.json if model is a Huggingface pretrained model.
+    This method can only be called when a model is saved in a sharded way.
+
+    Args:
+        model (nn.Module): The model whose config should be saved if it's a huggingface model.
+        checkpoint_path (str): Path to the checkpoint directory.
+        is_master (bool): Whether current rank is main process.
     """
     if not isinstance(model, PreTrainedModel):
         return
