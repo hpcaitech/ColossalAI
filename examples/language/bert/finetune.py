@@ -1,16 +1,13 @@
 import argparse
-import copy
 from contextlib import nullcontext
-from typing import List, Union
+from typing import Callable, List, Union
 
 import evaluate
 import torch
-import torch.distributed as dist
 import torch.nn as nn
-import transformers
 from data import GLUEDataBuilder
-from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 from torch.optim import Adam, Optimizer
+from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import (
@@ -37,14 +34,26 @@ LEARNING_RATE = 2.4e-5
 WEIGHT_DECAY = 0.01
 WARMUP_FRACTION = 0.1
 
+output_transform_fn = lambda x: x
+criterion = lambda x: x.loss
+
 
 def move_to_cuda(batch):
     return {k: v.cuda() for k, v in batch.items()}
 
 
 @torch.no_grad()
-def evaluate_model(model: nn.Module, optimizer, criterion, test_dataloader: Union[DataLoader, List[DataLoader]],
-                   num_labels: int, task_name: str, eval_splits: List[str], coordinator: DistCoordinator, booster):
+def evaluate_model(
+    model: nn.Module,
+    optimizer,
+    criterion,
+    test_dataloader: Union[DataLoader, List[DataLoader]],
+    num_labels: int,
+    task_name: str,
+    eval_splits: List[str],
+    booster: Booster,
+    coordinator: DistCoordinator,
+):
     metric = evaluate.load("glue", task_name, process_id=coordinator.rank, num_process=coordinator.world_size)
     model.eval()
 
@@ -57,8 +66,10 @@ def evaluate_model(model: nn.Module, optimizer, criterion, test_dataloader: Unio
         for batch in dataloader:
             batch = move_to_cuda(batch)
             labels = batch["labels"]
-
+            # print(batch)
+            # print(batch["input_ids"].shape)
             if booster.plugin.stage_manager is not None:
+                #TODO padding when len(batch) can't be divided by the number of microbatches.
                 batch = iter([batch])
                 outputs = booster.execute_pipeline(batch,
                                                    model,
@@ -68,11 +79,16 @@ def evaluate_model(model: nn.Module, optimizer, criterion, test_dataloader: Unio
                                                    return_outputs=True)
 
                 if booster.plugin.stage_manager.is_last_stage():
-                    print(outputs)
+                    # print(outputs)
                     val_loss = outputs["loss"]
 
                     #TODO get merged output
-                    logits = outputs["outputs"].logits
+                    #logits = outputs["outputs"].logits
+                    logits = outputs["outputs"][0].logits
+                    shape = logits.shape
+                    # print(str(logits)+str(logits.shape))
+                    logits = logits.repeat((2, 1))
+                    ####
 
                     accum_loss.add_(val_loss)
 
@@ -119,7 +135,7 @@ def evaluate_model(model: nn.Module, optimizer, criterion, test_dataloader: Unio
         return final_results
 
 
-def train_epoch(epoch: int, model: nn.Module, optimizer: Optimizer, _criterion, lr_scheduler,
+def train_epoch(epoch: int, model: nn.Module, optimizer: Optimizer, _criterion: Callable, lr_scheduler: LRScheduler,
                 train_dataloader: DataLoader, booster: Booster, coordinator: DistCoordinator):
 
     model.train()
@@ -136,15 +152,15 @@ def train_epoch(epoch: int, model: nn.Module, optimizer: Optimizer, _criterion, 
                                                    return_loss=True,
                                                    return_outputs=True)
                 # Backward and optimize
-                loss = outputs['loss']
                 if booster.plugin.stage_manager.is_last_stage():
+                    loss = outputs['loss']
                     pbar.set_postfix({'loss': loss})
             else:
                 outputs = model(**batch)
                 loss = _criterion(outputs, None)
                 # Backward
                 booster.backward(loss, optimizer)
-                pbar.set_postfix({'loss': loss})
+                pbar.set_postfix({'loss': loss.item()})
 
             optimizer.step()
             optimizer.zero_grad()
@@ -203,8 +219,8 @@ def main():
     elif args.plugin == 'hybrid_parallel':
 
         # modify the param accordingly for finetuning test cases
-        plugin = HybridParallelPlugin(tp_size=2,
-                                      pp_size=1,
+        plugin = HybridParallelPlugin(tp_size=1,
+                                      pp_size=2,
                                       num_microbatches=2,
                                       enable_all_optimization=True,
                                       zero_stage=1,
@@ -255,7 +271,9 @@ def main():
         },
     ]
 
-    optimizer = HybridAdam(optimizer_grouped_parameters, lr=lr, eps=1e-8)
+    #TODO something wrong with HybridAdam when using pp
+    # optimizer = HybridAdam(optimizer_grouped_parameters, lr=lr, eps=1e-8)
+    optimizer = Adam(model.parameters(), lr=1e-3)
 
     # lr scheduler
     total_steps = len(train_dataloader) * NUM_EPOCHS
@@ -265,9 +283,6 @@ def main():
         num_warmup_steps=num_warmup_steps,
         num_training_steps=total_steps,
     )
-
-    output_transform_fn = lambda x: x
-    criterion = lambda x: x.loss
 
     def _criterion(outputs, inputs):
         outputs = output_transform_fn(outputs)
@@ -283,7 +298,6 @@ def main():
                                                                   criterion=_criterion,
                                                                   lr_scheduler=lr_scheduler)
 
-    # print(model)
     # ==============================
     # Train model
     # ==============================
@@ -291,7 +305,7 @@ def main():
         train_epoch(epoch, model, optimizer, _criterion, lr_scheduler, train_dataloader, booster, coordinator)
 
     results = evaluate_model(model, optimizer, _criterion, test_dataloader, data_builder.num_labels, args.task,
-                             data_builder.eval_splits, coordinator, booster)
+                             data_builder.eval_splits, booster, coordinator)
 
     if coordinator.is_master():
         print(results)
