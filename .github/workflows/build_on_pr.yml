@@ -208,7 +208,7 @@ jobs:
 
       - name: Execute Unit Testing
         run: |
-          CURL_CA_BUNDLE="" PYTHONPATH=$PWD pytest -m "not largedist" --testmon --testmon-cov=. --durations=10 tests/
+          CURL_CA_BUNDLE="" PYTHONPATH=$PWD pytest -m "not largedist" --testmon --testmon-forceselect --testmon-cov=. --durations=10 tests/
         env:
           DATA: /data/scratch/cifar-10
           NCCL_SHM_DISABLE: 1
