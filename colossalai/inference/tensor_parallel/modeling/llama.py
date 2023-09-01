@@ -258,7 +258,7 @@ class LlamaInferenceForwards:
             rotary_embedding_neox(position_ids, query_states, key_states_transposed, self.head_dim, cos_sin_cache)
             key_states = key_states_transposed.transpose(1, 2)
         else:
-            # TODO: there are some issues for original rotary_embedding_neox of huggingface
+            # NOTE: there are some issues for original rotary_embedding_neox of huggingface
             query_states, key_states = apply_rotary_pos_emb(query_states, key_states_transposed, cos, sin, position_ids)
 
         def _copy_kv_to_mem_cache(layer_id, key_buffer, value_buffer, context_mem_index, mem_manager):
