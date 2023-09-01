@@ -94,6 +94,8 @@ For various models, experiments were conducted using multiple batch sizes under 
 
 ### Single GPU Performance:
 
+Currently the stats below are calculated based on A100 (single GPU), and we calculate token latency based average values of context-forward and decoding forward process, which means we combine both of process to calculate results. We are actively developing new features and methods to furthur optimize the performance of LLM models. Please stay tuned. 
+
 #### Llama
 
 |       batch_size        |   8    |   16   |   32   |
@@ -103,7 +105,7 @@ For various models, experiments were conducted using multiple batch sizes under 
 
 ![llama](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference/Infer-llama.png)
 
-###
+### Bloom
 
 |       batch_size        |   4    |   8    |
 | :---------------------: | :----: | :----: |
