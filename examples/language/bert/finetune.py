@@ -1,12 +1,16 @@
 import argparse
+import copy
+from contextlib import nullcontext
 from typing import List, Union
 
 import evaluate
 import torch
 import torch.distributed as dist
 import torch.nn as nn
+import transformers
 from data import GLUEDataBuilder
-from torch.optim import Optimizer
+from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
+from torch.optim import Adam, Optimizer
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import (
@@ -18,15 +22,16 @@ from transformers import (
 
 import colossalai
 from colossalai.booster import Booster
-from colossalai.booster.plugin import GeminiPlugin, LowLevelZeroPlugin, TorchDDPPlugin
+from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLevelZeroPlugin, TorchDDPPlugin
 from colossalai.cluster import DistCoordinator
+from colossalai.lazy import LazyInitContext
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.utils import get_current_device
 
 # ==============================
 # Prepare Hyperparameters
 # ==============================
-NUM_EPOCHS = 3
+NUM_EPOCHS = 1
 BATCH_SIZE = 32
 LEARNING_RATE = 2.4e-5
 WEIGHT_DECAY = 0.01
@@ -38,31 +43,68 @@ def move_to_cuda(batch):
 
 
 @torch.no_grad()
-def evaluate_model(model: nn.Module, test_dataloader: Union[DataLoader, List[DataLoader]], num_labels: int, task_name: str,
-             eval_splits: List[str], coordinator: DistCoordinator):
+def evaluate_model(model: nn.Module, optimizer, criterion, test_dataloader: Union[DataLoader, List[DataLoader]],
+                   num_labels: int, task_name: str, eval_splits: List[str], coordinator: DistCoordinator, booster):
     metric = evaluate.load("glue", task_name, process_id=coordinator.rank, num_process=coordinator.world_size)
     model.eval()
+
+    def dummy_add_batch(metric):
+        if metric.writer is None:
+            metric._init_writer()
 
     def evaluate_subset(dataloader: DataLoader):
         accum_loss = torch.zeros(1, device=get_current_device())
         for batch in dataloader:
             batch = move_to_cuda(batch)
-            outputs = model(**batch)
-            val_loss, logits = outputs[:2]
-            accum_loss.add_(val_loss)
-
-            if num_labels > 1:
-                preds = torch.argmax(logits, axis=1)
-            elif num_labels == 1:
-                preds = logits.squeeze()
-
             labels = batch["labels"]
 
-            metric.add_batch(predictions=preds, references=labels)
+            if booster.plugin.stage_manager is not None:
+                batch = iter([batch])
+                outputs = booster.execute_pipeline(batch,
+                                                   model,
+                                                   criterion,
+                                                   optimizer,
+                                                   return_loss=True,
+                                                   return_outputs=True)
 
-        results = metric.compute()
-        dist.all_reduce(accum_loss.div_(len(dataloader)))
-        if coordinator.is_master():
+                if booster.plugin.stage_manager.is_last_stage():
+                    print(outputs)
+                    val_loss = outputs["loss"]
+
+                    #TODO get merged output
+                    logits = outputs["outputs"].logits
+
+                    accum_loss.add_(val_loss)
+
+                    if num_labels > 1:
+                        preds = torch.argmax(logits, axis=1)
+                    elif num_labels == 1:
+                        preds = logits.squeeze()
+                    metric.add_batch(predictions=preds, references=labels)
+                else:
+                    dummy_add_batch(metric)
+
+            else:
+                batch = move_to_cuda(batch)
+                outputs = model(**batch)
+                val_loss, logits = outputs[:2]
+                accum_loss.add_(val_loss)
+
+                if num_labels > 1:
+                    preds = torch.argmax(logits, axis=1)
+                elif num_labels == 1:
+                    preds = logits.squeeze()
+
+                metric.add_batch(predictions=preds, references=labels)
+
+        results = None
+        if booster.plugin.stage_manager is not None:
+            if booster.plugin.stage_manager.is_last_stage():
+                results = metric.compute()
+        else:
+            results = metric.compute()
+
+        if coordinator.is_master() and results is not None:
             results['loss'] = accum_loss.item() / coordinator.world_size
         return results
 
@@ -77,24 +119,36 @@ def evaluate_model(model: nn.Module, test_dataloader: Union[DataLoader, List[Dat
         return final_results
 
 
-def train_epoch(epoch: int, model: nn.Module, optimizer: Optimizer, lr_scheduler, train_dataloader: DataLoader,
-                booster: Booster, coordinator: DistCoordinator):
+def train_epoch(epoch: int, model: nn.Module, optimizer: Optimizer, _criterion, lr_scheduler,
+                train_dataloader: DataLoader, booster: Booster, coordinator: DistCoordinator):
+
     model.train()
     with tqdm(train_dataloader, desc=f'Epoch [{epoch + 1}/{NUM_EPOCHS}]', disable=not coordinator.is_master()) as pbar:
         for batch in pbar:
             # Forward pass
             batch = move_to_cuda(batch)
-            outputs = model(**batch)
-            loss = outputs[0]
+            if booster.plugin.stage_manager is not None:
+                batch = iter([batch])
+                outputs = booster.execute_pipeline(batch,
+                                                   model,
+                                                   _criterion,
+                                                   optimizer,
+                                                   return_loss=True,
+                                                   return_outputs=True)
+                # Backward and optimize
+                loss = outputs['loss']
+                if booster.plugin.stage_manager.is_last_stage():
+                    pbar.set_postfix({'loss': loss})
+            else:
+                outputs = model(**batch)
+                loss = _criterion(outputs, None)
+                # Backward
+                booster.backward(loss, optimizer)
+                pbar.set_postfix({'loss': loss})
 
-            # Backward and optimize
-            booster.backward(loss, optimizer)
             optimizer.step()
             optimizer.zero_grad()
             lr_scheduler.step()
-
-            # Print log info
-            pbar.set_postfix({'loss': loss.item()})
 
 
 def main():
@@ -107,7 +161,7 @@ def main():
                         '--plugin',
                         type=str,
                         default='torch_ddp',
-                        choices=['torch_ddp', 'torch_ddp_fp16', 'gemini', 'low_level_zero'],
+                        choices=['torch_ddp', 'torch_ddp_fp16', 'gemini', 'low_level_zero', 'hybrid_parallel'],
                         help="plugin to use")
     parser.add_argument(
         "--model_type",
@@ -116,6 +170,7 @@ def main():
         help="bert or albert",
     )
     parser.add_argument('--target_f1', type=float, default=None, help="target f1 score. Raise exception if not reached")
+    parser.add_argument('--use_lazy_init', type=bool, default=False, help="for initiating lazy init context")
     args = parser.parse_args()
 
     if args.model_type == 'bert':
@@ -145,6 +200,16 @@ def main():
         plugin = GeminiPlugin(placement_policy='cuda', strict_ddp_mode=True, initial_scale=2**5)
     elif args.plugin == 'low_level_zero':
         plugin = LowLevelZeroPlugin(initial_scale=2**5)
+    elif args.plugin == 'hybrid_parallel':
+
+        # modify the param accordingly for finetuning test cases
+        plugin = HybridParallelPlugin(tp_size=2,
+                                      pp_size=1,
+                                      num_microbatches=2,
+                                      enable_all_optimization=True,
+                                      zero_stage=1,
+                                      precision='fp16',
+                                      initial_scale=1)
 
     booster = Booster(plugin=plugin, **booster_kwargs)
 
@@ -165,12 +230,17 @@ def main():
     # bert pretrained model
 
     cfg = AutoConfig.from_pretrained(model_name, num_labels=data_builder.num_labels)
-    if model_name == "bert-base-uncased":
-        model = BertForSequenceClassification.from_pretrained(model_name, config=cfg)
-    elif model_name == "albert-xxlarge-v2":
-        model = AlbertForSequenceClassification.from_pretrained(model_name, config=cfg)
-    else:
-        raise RuntimeError
+
+    # lazy_init
+    use_lazy_init = args.use_lazy_init
+    ctx = LazyInitContext() if use_lazy_init else nullcontext()
+    with ctx:
+        if model_name == "bert-base-uncased":
+            model = BertForSequenceClassification.from_pretrained(model_name, config=cfg).cuda()
+        elif model_name == "albert-xxlarge-v2":
+            model = AlbertForSequenceClassification.from_pretrained(model_name, config=cfg)
+        else:
+            raise RuntimeError
 
     # optimizer
     no_decay = ["bias", "LayerNorm.weight"]
@@ -196,19 +266,32 @@ def main():
         num_training_steps=total_steps,
     )
 
+    output_transform_fn = lambda x: x
+    criterion = lambda x: x.loss
+
+    def _criterion(outputs, inputs):
+        outputs = output_transform_fn(outputs)
+        loss = criterion(outputs)
+        return loss
+
     # ==============================
     # Boost with ColossalAI
     # ==============================
-    model, optimizer, _, _, lr_scheduler = booster.boost(model, optimizer, lr_scheduler=lr_scheduler)
+    print("===before boost===")
+    model, optimizer, _criterion, _, lr_scheduler = booster.boost(model,
+                                                                  optimizer,
+                                                                  criterion=_criterion,
+                                                                  lr_scheduler=lr_scheduler)
 
+    # print(model)
     # ==============================
     # Train model
     # ==============================
     for epoch in range(NUM_EPOCHS):
-        train_epoch(epoch, model, optimizer, lr_scheduler, train_dataloader, booster, coordinator)
+        train_epoch(epoch, model, optimizer, _criterion, lr_scheduler, train_dataloader, booster, coordinator)
 
-    results = evaluate_model(model, test_dataloader, data_builder.num_labels, args.task, data_builder.eval_splits,
-                       coordinator)
+    results = evaluate_model(model, optimizer, _criterion, test_dataloader, data_builder.num_labels, args.task,
+                             data_builder.eval_splits, coordinator, booster)
 
     if coordinator.is_master():
         print(results)
