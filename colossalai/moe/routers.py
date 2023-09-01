@@ -270,11 +270,116 @@ class Top2Router(MoeRouter):
             return cb_weight, sec_mask
 
 
-def get_router_cls(top_k: int) -> MoeRouter:
-    if top_k == 1:
-        router_cls = Top1Router
-    elif top_k == 2:
-        router_cls = Top2Router
+class TopKRouter(MoeRouter):
+    """Masked matmul router using tokens choose top-k experts assignment.
+
+    NOTE: this is modified from flaxformer.
+    This router uses the same mechanism as in Switch Transformer
+    (https://arxiv.org/abs/2101.03961) and V-MoE
+    (https://arxiv.org/abs/2106.05974): tokens choose their top experts. Items are
+    sorted by router_probs and then routed to their choice of expert until the
+    expert's expert_capacity is reached. There is no guarantee that each token is
+    processed by an expert, or that each expert receives at least one token.
+
+    Attributes:
+      num_selected_experts: Maximum number of experts to which each token is
+        routed. Tokens may be routed to fewer experts if particular experts are
+        oversubscribed / reach capacity.
+    """
+
+    def __init__(self,
+                 num_selected_experts: int,
+                 capacity_factor_train: float = 1.25,
+                 capacity_factor_eval: float = 2.0,
+                 min_capacity: int = 4,
+                 noisy_func: Optional[Callable] = None,
+                 drop_tks: bool = True):
+        super().__init__(num_selected_experts,
+                         capacity_factor_train,
+                         capacity_factor_eval,
+                         min_capacity,
+                         noisy_func,
+                         drop_tks)
+
+    def forward(self,
+                router_probs: torch.Tensor,
+                expert_capacity: int,
+                ) -> Tuple:
+        """Computes masks for the top-k experts per token.
+
+        Args:
+            router_probs: <float32>[num_groups, tokens_per_group, num_experts]
+                probabilities used to determine the routing of tokens to the experts.
+
+        Returns:
+            Dispatch and combine arrays for routing with masked matmuls.
+        """
+        num_groups, _, num_experts = router_probs.shape
+
+        # Top-k router probability and corresponding expert indices for each token.
+        # Shape: [num_groups, tokens_per_group, num_selected_experts].
+        expert_gate, expert_index = torch.topk(router_probs, self.k_value)
+
+        # TODO
+        # auxiliary_loss = _load_balancing_loss(router_probs, expert_index)
+
+        # Make num_selected_experts the leading axis to ensure that top-1 choices
+        # have priority over top-2 choices, which have priority over top-3 choices,
+        # etc.
+        expert_index = torch.transpose(expert_index, 1, 2)
+        # Shape: [num_groups, num_selected_experts * tokens_per_group]
+        expert_index = expert_index.reshape(num_groups, -1)
+
+        # Create mask out of indices.
+        # Shape: [num_groups, tokens_per_group * num_selected_experts, num_experts].
+        expert_mask = F.one_hot(expert_index, num_experts).to(torch.int32)
+
+        # Experts have a fixed capacity that we cannot exceed. A token's priority
+        # within the expert's buffer is given by the masked, cumulative capacity of
+        # its target expert.
+        # Shape: [num_groups, tokens_per_group * num_selected_experts, num_experts].
+        token_priority = torch.cumsum(expert_mask, dim=1) * expert_mask - 1
+        # Shape: [num_groups, num_selected_experts, tokens_per_group, num_experts].
+        token_priority = token_priority.reshape((num_groups, self.k_value, -1, num_experts))
+        # Shape: [num_groups, tokens_per_group, num_selected_experts, num_experts].
+        token_priority = torch.transpose(token_priority, 1, 2)
+        # For each token, across all selected experts, select the only non-negative
+        # (unmasked) priority. Now, for group G routing to expert E, token T has
+        # non-negative priority (i.e. token_priority[G,T,E] >= 0) if and only if E
+        # is its targeted expert.
+        # Shape: [num_groups, tokens_per_group, num_experts].
+        token_priority = torch.max(token_priority, dim=2)[0]
+
+        # Token T can only be routed to expert E if its priority is positive and
+        # less than the expert capacity. One-hot matrix will ignore indices outside
+        # the range [0, expert_capacity).
+        # Shape: [num_groups, tokens_per_group, num_experts, expert_capacity].
+        valid_mask = torch.logical_and(token_priority >= 0, token_priority < expert_capacity)
+        token_priority = torch.masked_fill(token_priority, ~valid_mask, 0)
+        dispatch_mask = F.one_hot(token_priority, expert_capacity).to(torch.bool)
+        valid_mask = valid_mask.unsqueeze(-1).expand(-1, -1, -1, expert_capacity)
+        dispatch_mask = torch.masked_fill(dispatch_mask, ~valid_mask, 0)
+
+        # The combine array will be used for combining expert outputs, scaled by the
+        # router probabilities. Shape: [num_groups, tokens_per_group, num_experts,
+        # expert_capacity].
+        combine_array = torch.einsum(
+            '...te,...tec->...tec',
+            router_probs,
+            dispatch_mask)
+
+        return dispatch_mask, combine_array
+
+
+def get_router_cls(top_k: int,
+                   grouped: bool = False
+                   ) -> MoeRouter:
+    if not grouped:
+        if top_k == 1:
+            return Top1Router
+        elif top_k == 2:
+            return Top2Router
+        else:
+            raise NotImplementedError("top_k > 2 is not supported yet")
     else:
-        raise NotImplementedError("top_k > 2 is not supported yet")
-    return router_cls
+        return TopKRouter
