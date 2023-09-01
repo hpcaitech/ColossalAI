@@ -4,6 +4,7 @@ from typing import Callable, List, Union
 
 import evaluate
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 from data import GLUEDataBuilder
 from torch.optim import Adam, Optimizer
@@ -57,19 +58,13 @@ def evaluate_model(
     metric = evaluate.load("glue", task_name, process_id=coordinator.rank, num_process=coordinator.world_size)
     model.eval()
 
-    def dummy_add_batch(metric):
-        if metric.writer is None:
-            metric._init_writer()
-
     def evaluate_subset(dataloader: DataLoader):
         accum_loss = torch.zeros(1, device=get_current_device())
         for batch in dataloader:
             batch = move_to_cuda(batch)
             labels = batch["labels"]
-            # print(batch)
-            # print(batch["input_ids"].shape)
+            batch_size = batch["input_ids"].shape[0]
             if booster.plugin.stage_manager is not None:
-                #TODO padding when len(batch) can't be divided by the number of microbatches.
                 batch = iter([batch])
                 outputs = booster.execute_pipeline(batch,
                                                    model,
@@ -78,15 +73,12 @@ def evaluate_model(
                                                    return_loss=True,
                                                    return_outputs=True)
 
-                if booster.plugin.stage_manager.is_last_stage():
-                    # print(outputs)
+                if dist.get_rank() == dist.get_world_size() - 1:
                     val_loss = outputs["loss"]
 
                     #TODO get merged output
                     #logits = outputs["outputs"].logits
                     logits = outputs["outputs"][0].logits
-                    shape = logits.shape
-                    # print(str(logits)+str(logits.shape))
                     logits = logits.repeat((2, 1))
                     ####
 
@@ -96,9 +88,12 @@ def evaluate_model(
                         preds = torch.argmax(logits, axis=1)
                     elif num_labels == 1:
                         preds = logits.squeeze()
+                    dist.broadcast(preds, src=dist.get_world_size() - 1)
                     metric.add_batch(predictions=preds, references=labels)
                 else:
-                    dummy_add_batch(metric)
+                    preds = torch.empty((batch_size,), dtype=torch.int64, device=get_current_device())
+                    dist.broadcast(preds, src=dist.get_world_size() - 1)
+                    metric.add_batch(predictions=preds, references=labels)
 
             else:
                 batch = move_to_cuda(batch)
@@ -113,15 +108,11 @@ def evaluate_model(
 
                 metric.add_batch(predictions=preds, references=labels)
 
-        results = None
-        if booster.plugin.stage_manager is not None:
-            if booster.plugin.stage_manager.is_last_stage():
-                results = metric.compute()
-        else:
-            results = metric.compute()
+        results = metric.compute()
 
         if coordinator.is_master() and results is not None:
             results['loss'] = accum_loss.item() / coordinator.world_size
+
         return results
 
     if isinstance(test_dataloader, DataLoader):
@@ -307,6 +298,11 @@ def main():
     results = evaluate_model(model, optimizer, _criterion, test_dataloader, data_builder.num_labels, args.task,
                              data_builder.eval_splits, booster, coordinator)
 
+    # if booster.plugin.stage_manager is not None:
+    #     if booster.plugin.stage_manager.is_last_stage():
+    #         print(results)
+    #         if args.target_f1 is not None and 'f1' in results:
+    #             assert results['f1'] >= args.target_f1, f'f1 score {results["f1"]} is lower than target {args.target_f1}'
     if coordinator.is_master():
         print(results)
         if args.target_f1 is not None and 'f1' in results:
