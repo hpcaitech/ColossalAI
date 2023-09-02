@@ -1,7 +1,7 @@
 import os
-
 import pytest
 import torch
+from packaging import version
 import numpy as np
 import torch.distributed as dist
 from transformers import LlamaForCausalLM, LlamaTokenizer
@@ -19,6 +19,8 @@ TPSIZE = 2
 BATCH_SIZE = 8
 MAX_INPUT_LEN = 12
 MAX_OUTPUT_LEN = 100
+
+CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse('11.5')
 
 def init_to_get_rotary(self, base=10000):
     self.config.head_dim_ = self.config.hidden_size // self.config.num_attention_heads
@@ -81,7 +83,7 @@ def check_llama(rank, world_size, port):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     run_llama_test()
 
-
+@pytest.mark.skipif(not CUDA_SUPPORT, reason="kv-cache manager engine requires cuda version to be higher than 11.5")
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()
