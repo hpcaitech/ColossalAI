@@ -1,3 +1,4 @@
+import os
 import pytest
 import torch
 import torch.distributed as dist
@@ -18,6 +19,9 @@ MAX_OUTPUT_LEN = 32
 def run():
 
     model_path = "/data3/data/model_eval_for_commerical_use/phoenix-inst-chat-7b"
+    if os.path.isdir(model_path) is False:
+        return 
+    
     tokenizer = AutoTokenizer.from_pretrained(model_path)
     tokenizer.pad_token = tokenizer.eos_token
 
