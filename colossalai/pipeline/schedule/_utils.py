@@ -163,4 +163,5 @@ def merge_batch(data: List[Any], batch_size_dim=0) -> Any:
                 merged_data.append(torch.cat(elem_batch, dim=batch_size_dim))
         else:
             merged_data.append(list(elem_batch))
+    print("merged_data: ", merged_data)
     return tree_unflatten(merged_data, tree_spec)
