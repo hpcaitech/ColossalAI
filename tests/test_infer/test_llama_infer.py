@@ -3,15 +3,16 @@ import os
 import pytest
 import torch
 import numpy as np
+import torch.distributed as dist
+from transformers import LlamaForCausalLM, LlamaTokenizer
 
 import colossalai
 from colossalai.logging import disable_existing_loggers
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
-from transformers import LlamaForCausalLM, LlamaTokenizer
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.inference.tensor_parallel.engine import TPInferEngine
-import torch.distributed as dist
+
 
 os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
 TPSIZE = 2
@@ -25,12 +26,12 @@ def init_to_get_rotary(self, base=10000):
         rope_scaling_factor = 1.0
     else:
         rope_scaling_factor = self.config.rope_scaling.factor if self.config.rope_scaling is not None else 1.0
-    if hasattr(self.config,"max_sequence_length"):
+    if hasattr(self.config, "max_sequence_length"):
         max_seq_len = self.config.max_sequence_length
-    elif hasattr(self.config,"max_position_embeddings"):
+    elif hasattr(self.config, "max_position_embeddings"):
         max_seq_len = self.config.max_position_embeddings * rope_scaling_factor
     else:
-        max_seq_len =  2048 * rope_scaling_factor
+        max_seq_len = 2048 * rope_scaling_factor
     base = float(base)
     inv_freq = 1.0 / (base ** (torch.arange(0, self.config.head_dim_, 2, device="cpu", dtype=torch.float32) / self.config.head_dim_))
     t = torch.arange(max_seq_len + 1024 * 64, device="cpu", dtype=torch.float32) / rope_scaling_factor

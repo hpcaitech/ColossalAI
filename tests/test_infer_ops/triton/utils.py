@@ -36,6 +36,7 @@ def torch_context_attention(xq, xk, xv, bs, seqlen, num_head, head_dim):
     xv = xv.view(bs, seqlen, num_head, head_dim)
     mask = torch.tril(torch.ones(seqlen, seqlen), diagonal=0).unsqueeze(0).unsqueeze(0).cuda()
     mask[mask == 0.] = -100000000.0
+    # mask[mask==1.0] = 0
     mask = mask.repeat(bs, num_head, 1, 1)
     keys = xk
     values = xv
