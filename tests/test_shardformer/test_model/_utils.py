@@ -192,6 +192,7 @@ def check_output_hidden_state(org_output: Tensor,
     org_hidden_state = org_output.last_hidden_state
 
     if stage_manager and stage_manager.is_last_stage():
+        print(sharded_output['outputs'])
         sharded_hidden_state = sharded_output['outputs']['last_hidden_state']
     else:
         sharded_hidden_state = sharded_output.last_hidden_state
