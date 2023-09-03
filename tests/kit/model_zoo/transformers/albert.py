@@ -17,6 +17,13 @@ def data_gen_fn():
     return dict(input_ids=input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask)
 
 
+def data_gen_for_pretrain():
+    inputs = data_gen_fn()
+    inputs['labels'] = inputs['input_ids'].clone()
+    inputs['sentence_order_label'] = torch.zeros(BATCH_SIZE, dtype=torch.int64)
+    return inputs
+
+
 output_transform_fn = lambda x: x
 
 config = transformers.AlbertConfig(embedding_size=128,
@@ -26,14 +33,14 @@ config = transformers.AlbertConfig(embedding_size=128,
                                    intermediate_size=256)
 
 model_zoo.register(name='transformers_albert',
-                   model_fn=lambda: transformers.AlbertModel(config),
+                   model_fn=lambda: transformers.AlbertModel(config, add_pooling_layer=False),
                    data_gen_fn=data_gen_fn,
                    output_transform_fn=output_transform_fn,
                    model_attribute=ModelAttribute(has_control_flow=True))
 model_zoo.register(name='transformers_albert_for_pretraining',
                    model_fn=lambda: transformers.AlbertForPreTraining(config),
-                   data_gen_fn=data_gen_fn,
-                   output_transform_fn=output_transform_fn,
+                   data_gen_fn=data_gen_for_pretrain,
+                   output_transform_fn=lambda x: dict(loss=x.loss),
                    model_attribute=ModelAttribute(has_control_flow=True))
 model_zoo.register(name='transformers_albert_for_masked_lm',
                    model_fn=lambda: transformers.AlbertForMaskedLM(config),

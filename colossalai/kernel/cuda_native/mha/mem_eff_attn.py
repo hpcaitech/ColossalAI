@@ -2,7 +2,13 @@ import warnings
 
 HAS_MEM_EFF_ATTN = False
 try:
-    from xformers.ops.fmha import memory_efficient_attention
+    from xformers.ops.fmha import MemoryEfficientAttentionCutlassOp, memory_efficient_attention
+    from xformers.ops.fmha.attn_bias import (
+        BlockDiagonalCausalMask,
+        BlockDiagonalMask,
+        LowerTriangularMask,
+        LowerTriangularMaskWithTensorBias,
+    )
     HAS_MEM_EFF_ATTN = True
 except ImportError:
     warnings.warn('please install xformers from https://github.com/facebookresearch/xformers')
@@ -16,13 +22,6 @@ if HAS_MEM_EFF_ATTN:
     from typing import Optional
 
     import torch
-    from xformers.ops.fmha import MemoryEfficientAttentionCutlassOp
-    from xformers.ops.fmha.attn_bias import (
-        BlockDiagonalCausalMask,
-        BlockDiagonalMask,
-        LowerTriangularMask,
-        LowerTriangularMaskWithTensorBias,
-    )
 
     from .utils import SeqLenInfo
 

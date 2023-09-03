@@ -4,9 +4,9 @@ set -xue
 
 pip install -r requirements.txt
 
-BS=8
+BS=4
 MEMCAP=0
-GPUNUM=2
+GPUNUM=4
 MODLE="facebook/opt-125m"
 
 torchrun \
