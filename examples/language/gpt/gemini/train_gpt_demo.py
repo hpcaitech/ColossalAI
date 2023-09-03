@@ -1,4 +1,5 @@
 import os
+from contextlib import nullcontext
 from functools import partial
 from time import time
 
@@ -13,11 +14,10 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin, LowLevelZeroPlugin, TorchDDPPlugin
+from colossalai.lazy import LazyInitContext
 from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.tensor import ColoParameter, ComputePattern, ComputeSpec, ProcessGroup, ReplicaSpec, ShardSpec
 from colossalai.utils import get_current_device
-from colossalai.zero import ColoInitContext
 
 CAI_VERSION = colossalai.__version__
 
@@ -29,24 +29,6 @@ def parse_args():
         type=str,
         default='CAI_Gemini',
         help="The distributed plan [colossalai, zero1, zero2, torch_ddp, torch_zero].",
-    )
-    parser.add_argument(
-        "--tp_degree",
-        type=int,
-        default=1,
-        help="Tensor Parallelism Degree. Valid when using colossalai as dist plan.",
-    )
-    parser.add_argument(
-        "--placement",
-        type=str,
-        default='cpu',
-        help="Placement Policy for Gemini. Valid when using colossalai as dist plan.",
-    )
-    parser.add_argument(
-        "--shardinit",
-        action='store_true',
-        help=
-        "Shard the tensors when init the model to shrink peak memory size on the assigned device. Valid when using colossalai as dist plan.",
     )
     parser.add_argument(
         "--batch_size",
@@ -69,20 +51,6 @@ def parse_args():
 
     args = parser.parse_args()
     return args
-
-
-# Parameter Sharding Strategies for Tensor Parallelism
-def split_param_single_dim_tp1d(dim: int, param: ColoParameter, pg: ProcessGroup):
-    spec = (ShardSpec([dim], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
-    param.set_tensor_spec(*spec)
-
-
-def split_param_row_tp1d(param: ColoParameter, pg: ProcessGroup):
-    split_param_single_dim_tp1d(0, param, pg)
-
-
-def split_param_col_tp1d(param: ColoParameter, pg: ProcessGroup):
-    split_param_single_dim_tp1d(-1, param, pg)
 
 
 class GPTLMLoss(nn.Module):
@@ -140,47 +108,6 @@ def set_cpu_maximum_parallelism():
     print(f"environmental variable OMP_NUM_THREADS is set to {max_concurrency}.")
 
 
-# Tensor Parallel
-def tensor_parallelize(model: torch.nn.Module, pg: ProcessGroup):
-    """tensor_parallelize
-    Sharding the Model Parameters.
-
-    Args:
-        model (torch.nn.Module): a torch module to be sharded
-    """
-    for mn, module in model.named_modules():
-        for pn, param in module.named_parameters(recurse=False):
-            # NOTE() a param maybe shared by two modules
-            if hasattr(param, 'visited'):
-                continue
-
-            # if shard init, then convert param to replica and use the dp-only ProcessGroup
-            param: ColoParameter = param
-            param.set_dist_spec(ReplicaSpec())
-            param.set_process_group(pg)
-
-            # shard it w.r.t tp pattern
-            if 'mlp.c_fc' in mn:
-                if 'weight' in pn or 'bias' in pn:
-                    split_param_col_tp1d(param, pg)    # column slice
-                    # keep the shape of the output from c_fc
-                    param.compute_spec.set_output_replicate(False)
-                else:
-                    param.set_dist_spec(ReplicaSpec())
-            elif 'mlp.c_proj' in mn:
-                if 'weight' in pn:
-                    split_param_row_tp1d(param, pg)    # row slice
-                else:
-                    param.set_dist_spec(ReplicaSpec())
-            elif 'wte' in mn or 'wpe' in mn:
-                split_param_col_tp1d(param, pg)    # column slice
-            elif 'c_attn' in mn or 'c_proj' in mn:
-                split_param_col_tp1d(param, pg)    # column slice
-            else:
-                param.set_dist_spec(ReplicaSpec())
-            param.visited = True
-
-
 def main():
     # version check
     # this example is supposed to work for versions greater than 0.2.0
@@ -213,29 +140,12 @@ def main():
 
     # build criterion
     criterion = GPTLMLoss()
-
     torch.manual_seed(123)
     if args.distplan.startswith("CAI"):
-        # all param must use the same process group.
-        world_size = torch.distributed.get_world_size()
-        shard_pg = ProcessGroup(tp_degree=world_size) if args.shardinit else None
-        default_dist_spec = ShardSpec([-1], [world_size]) if args.shardinit else None
-
-        if args.shardinit and args.distplan != "CAI_Gemini":
-            raise RuntimeError("You can only use shardinit with CAI_Gemini")
-
+        ctx = LazyInitContext(default_device=get_current_device()) if args.distplan == "CAI_Gemini" else nullcontext()
         # build GPT model
-        with ColoInitContext(device=get_current_device(),
-                             dtype=torch.half,
-                             default_dist_spec=default_dist_spec,
-                             default_pg=shard_pg):
+        with ctx:
             model = model_builder(args.model_type)(checkpoint=True)
-
-        tp_pg = ProcessGroup(tp_degree=args.tp_degree)
-        # Tensor Parallelism (TP)
-        # You should notice that v0.1.10 is not compatible with TP degree > 1
-        if args.tp_degree > 1:
-            tensor_parallelize(model, tp_pg)
 
         # assign running configurations
         if args.distplan == "CAI_ZeRO1":
@@ -254,13 +164,7 @@ def main():
                                         overlap_communication=True,
                                         verbose=True)
         elif args.distplan == "CAI_Gemini":
-            plugin = GeminiPlugin(device=get_current_device(),
-                                  placement_policy=args.placement,
-                                  pin_memory=True,
-                                  strict_ddp_mode=args.tp_degree == 1,
-                                  search_range_m=128,
-                                  hidden_dim=model.config.n_embd,
-                                  gpu_margin_mem_ratio=0.)
+            plugin = GeminiPlugin(search_range_m=128, hidden_dim=model.config.n_embd)
         else:
             raise RuntimeError
 

@@ -11,15 +11,32 @@ from colossalai.amp import convert_to_apex_amp
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.utils.cuda import get_current_device
-from colossalai.zero import ColoInitContext, ZeroDDP, ZeroOptimizer, post_process_colo_init_ctx, zero_model_wrapper
-from colossalai.zero.gemini.chunk import ChunkManager, init_chunk_manager, search_chunk_configuration
-from colossalai.zero.gemini.gemini_mgr import GeminiManager
+from colossalai.zero import GeminiDDP, GeminiOptimizer
+from colossalai.zero.gemini.chunk import search_chunk_configuration
 from tests.components_to_test import run_fwd_bwd
 from tests.components_to_test.registry import non_distributed_component_funcs
-from tests.test_tensor.common_utils import debug_print, set_seed
+from tests.test_tensor.common_utils import set_seed
+
+PLACEMENT_CONFIGS = [
+    {
+        'placement_policy': 'static',
+        'shard_param_frac': 0.0
+    },    # zero2
+    {
+        'placement_policy': 'static',
+        'shard_param_frac': 1.0
+    },    # zero3
+    {
+        'placement_policy': 'static',
+        'shard_param_frac': 0.5
+    },    # zero3-half
+    {
+        'placement_policy': 'auto'
+    }
+]
 
 
-def check_param(model: ZeroDDP, torch_model: torch.nn.Module):
+def check_param(model: GeminiDDP, torch_model: torch.nn.Module):
     zero_dict = model.state_dict(only_rank_0=False)
     torch_dict = torch_model.state_dict()
 
@@ -32,35 +49,24 @@ def check_param(model: ZeroDDP, torch_model: torch.nn.Module):
         assert_close(value, temp_zero_value, rtol=1e-3, atol=4e-3)
 
 
-def multi_chunk_init(model: torch.nn.Module, placement_policy: str):
+def multi_chunk_init(model: torch.nn.Module, placement_config: dict):
     world_size = dist.get_world_size()
     config_dict, *_ = search_chunk_configuration(model, search_range_m=1, search_interval=100)
     config_dict[world_size]['chunk_size'] = 5000
     config_dict[world_size]['keep_gathered'] = False
-    if placement_policy != 'cuda':
-        init_device = torch.device('cpu')
-    else:
-        init_device = None
-    chunk_manager = ChunkManager(config_dict, init_device=init_device)
-    gemini_manager = GeminiManager(placement_policy, chunk_manager)
-    model = ZeroDDP(model, gemini_manager, pin_memory=True)
+    model = GeminiDDP(model, config_dict, pin_memory=True, **placement_config)
     return model
 
 
-def single_chunk_init(model: torch.nn.Module, placement_policy: str):
-    gemini_config = dict(
-        device=get_current_device(),
-        placement_policy=placement_policy,
-        pin_memory=True,
-    )
-    model = zero_model_wrapper(model=model, zero_stage=3, gemini_config=gemini_config)
+def single_chunk_init(model: torch.nn.Module, placement_config: dict):
+    model = GeminiDDP(model, chunk_init_device=get_current_device(), pin_memory=True, **placement_config)
     return model
 
 
-@parameterize('placement_policy', ['cuda', 'cpu', 'auto', 'const'])
+@parameterize('placement_config', PLACEMENT_CONFIGS)
 @parameterize('model_name', ['gpt2'])
 @parameterize('model_init_func', [single_chunk_init, multi_chunk_init])
-def exam_inference(placement_policy: str, model_name: str, model_init_func: Callable):
+def exam_inference(placement_config: dict, model_name: str, model_init_func: Callable):
     set_seed(19360226)
     get_components_func = non_distributed_component_funcs.get_callable(model_name)
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
@@ -70,17 +76,15 @@ def exam_inference(placement_policy: str, model_name: str, model_init_func: Call
     torch_optim = torch.optim.Adam(torch_model.parameters(), lr=1e-3)
     torch_model, torch_optim = convert_to_apex_amp(torch_model, torch_optim, amp_config)
     torch_model = DDP(torch_model, device_ids=[dist.get_rank()])
-
     init_dev = get_current_device()
-    with ColoInitContext(device=init_dev):
-        model = model_builder()
+    model = model_builder().to(init_dev)
 
     for torch_p, p in zip(torch_model.parameters(), model.parameters()):
         p.data.copy_(torch_p.data)
 
-    model = model_init_func(model, placement_policy)
+    model = model_init_func(model, placement_config)
     optimizer = HybridAdam(model.parameters(), lr=1e-3)
-    zero_optim = ZeroOptimizer(optimizer, model, initial_scale=128)
+    zero_optim = GeminiOptimizer(optimizer, model, initial_scale=128)
 
     model.eval()
     torch_model.eval()
@@ -95,7 +99,7 @@ def exam_inference(placement_policy: str, model_name: str, model_init_func: Call
         torch_optim.zero_grad()
         torch_loss = run_fwd_bwd(torch_model, input_ids, label, criterion, torch_optim)
         loss = run_fwd_bwd(model, input_ids, label, criterion, zero_optim)
-        assert_close(torch_loss, loss)
+        assert_close(torch_loss, loss, rtol=1e-5, atol=1e-5)
         zero_optim.step()
         torch_optim.step()
         check_param(model, torch_model)

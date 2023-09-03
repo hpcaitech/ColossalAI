@@ -12,19 +12,16 @@ from colossalai.lazy.lazy_init import LazyInitContext
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.tensor.colo_parameter import ColoParameter
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
-from colossalai.zero import ColoInitContext
 from tests.kit.model_zoo import model_zoo
 
 
 def run_fn(init_method, model_fn, data_gen_fn, output_transform_fn) -> Optional[str]:
     try:
-        if init_method == 'colo':
-            ctx = ColoInitContext()
-        elif init_method == 'lazy':
+        if init_method == 'lazy':
             ctx = LazyInitContext()
         else:
             ctx = nullcontext()
-        plugin = GeminiPlugin(placement_policy='cuda', strict_ddp_mode=True, max_norm=1.0, initial_scale=2**5)
+        plugin = GeminiPlugin(max_norm=1.0, initial_scale=2**5)
         booster = Booster(plugin=plugin)
         with ctx:
             model = model_fn()
@@ -50,6 +47,7 @@ def run_fn(init_method, model_fn, data_gen_fn, output_transform_fn) -> Optional[
         optimizer.step()
 
     except Exception as e:
+        # raise e
         return repr(e)
 
 
@@ -57,8 +55,9 @@ def run_fn(init_method, model_fn, data_gen_fn, output_transform_fn) -> Optional[
 # @parameterize('init_method', ['lazy', 'none', 'colo'])
 
 
+@parameterize('subset', ['torchvision', 'transformers', 'diffusers'])
 @parameterize('init_method', ['none'])
-def check_gemini_plugin(init_method: str = 'none', early_stop: bool = True):
+def check_gemini_plugin(subset: str, init_method: str = 'none', early_stop: bool = True):
     """check gemini plugin over model zoo
 
     Args:
@@ -71,29 +70,23 @@ def check_gemini_plugin(init_method: str = 'none', early_stop: bool = True):
     passed_models = []
     failed_info = {}    # (model_name, error) pair
 
-    for name, (model_fn, data_gen_fn, output_transform_fn, _, _) in model_zoo.items():
+    for name, (model_fn, data_gen_fn, output_transform_fn, _, _) in model_zoo.get_sub_registry(subset).items():
         # These models lead to CUDA error
         if name in ('diffusers_auto_encoder_kl', 'diffusers_vq_model', 'diffusers_unet2d_model', 'timm_resmlp',
-                    'timm_gmixer_12_224', 'timm_gmlp_b16_224', 'timm_mixer_b16_224', 'timm_convnext'):
+                    'timm_gmixer_12_224', 'timm_gmlp_b16_224', 'timm_mixer_b16_224', 'timm_convnext',
+                    'torchvision_convnext_base'):
             continue
         # These models are not compatible with gemini
         if name in [
-                'diffusers_clip_vision_model', 'timm_resnet', 'timm_beit', 'timm_beitv2', 'timm_eca_nfnet',
-                'timm_efficientformer', 'timm_hrnet_w18_small', 'timm_nf_ecaresnet101', 'timm_nf_regnet_b0',
-                'timm_skresnet18', 'timm_wide_resnet50_2', 'timm_convit', 'timm_dm_nfnet', 'timm_swin_transformer',
-                'torchaudio_conformer', 'torchaudio_deepspeech', 'torchaudio_wavernn', 'torchaudio_tacotron',
-                'deepfm_interactionarch', 'deepfm_simpledeepfmnn', 'dlrm', 'dlrm_interactionarch',
-                'torchvision_googlenet', 'torchvision_inception_v3', 'torchvision_mobilenet_v3_small',
-                'torchvision_resnet18', 'torchvision_resnext50_32x4d', 'torchvision_wide_resnet50_2',
-                'torchvision_vit_b_16', 'torchvision_convnext_base', 'torchvision_swin_s', 'transformers_albert',
-                'transformers_albert_for_pretraining', 'transformers_bert', 'transformers_bert_for_pretraining',
-                'transformers_gpt_double_heads', 'torchaudio_hubert_base', 'torchaudio_wav2vec2_base',
-                'transformers_t5_for_conditional_generation', 'transformers_t5', 'transformers_t5_encoder_model',
-                'transformers_vit', 'transformers_vit_for_masked_image_modeling',
-                'transformers_vit_for_image_classification', 'transformers_chatglm',
-                'transformers_chatglm_for_conditional_generation', 'transformers_blip2',
-                'transformers_blip2_conditional_gerneration', 'transformers_sam', 'transformers_whisper',
-                'transformers_whisper_for_conditional_generation', 'transformers_whisper_for_audio_classification'
+                'timm_convit',
+                'timm_dm_nfnet',
+                'torchvision_vit_b_16',
+                'transformers_t5',
+                'transformers_t5_for_conditional_generation',
+                'transformers_t5_encoder_model',    # does not support apex rmsnorm
+                'transformers_chatglm',
+                'transformers_sam',
+                'transformers_vit'
         ]:
             continue
 
@@ -105,7 +98,6 @@ def check_gemini_plugin(init_method: str = 'none', early_stop: bool = True):
         ]:
             continue
         err = run_fn(init_method, model_fn, data_gen_fn, output_transform_fn)
-        torch.cuda.empty_cache()
 
         if err is None:
             passed_models.append(name)

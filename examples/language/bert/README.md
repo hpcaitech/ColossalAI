@@ -7,6 +7,14 @@ This directory includes two parts: Using the Booster API finetune Huggingface Be
 bash test_ci.sh
 ```
 
+### Results on 2-GPU
+
+| Plugin         | Accuracy | F1-score |
+| -------------- | -------- | -------- |
+| torch_ddp      | 84.4%    | 88.6%    |
+| torch_ddp_fp16 | 84.7%    | 88.8%    |
+| gemini         | 84.0%    | 88.4%    |
+
 ## Benchmark
 ```
 bash benchmark.sh
@@ -14,9 +22,9 @@ bash benchmark.sh
 
 Now include these metrics in benchmark: CUDA mem occupy, throughput and the number of model parameters. If you have custom metrics, you can add them to benchmark_util.
 
-## Results
+### Results
 
-### Bert
+#### Bert
 
 |       | max cuda mem | throughput(sample/s) | params |
 | :-----| -----------: | :--------: | :----: |
@@ -25,7 +33,7 @@ Now include these metrics in benchmark: CUDA mem occupy, throughput and the numb
 | gemini | 11.0 GB | 12.9 | 82M |
 | low_level_zero | 11.29 G | 14.7 | 82M |
 
-### AlBert
+#### AlBert
 |       | max cuda mem | throughput(sample/s) | params |
 | :-----| -----------: | :--------: | :----: |
 | ddp | OOM |  | |
