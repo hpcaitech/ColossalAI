@@ -127,3 +127,37 @@ def sync_tp_from_ep(tp_model: SparseMLP, ep_model: SparseMLP, assert_grad_flag: 
             assert torch.allclose(tp_param.grad, new_grad)
         else:
             tp_param.data.copy_(new_tp_param.data)
+
+
+def sync_local_from_ep(local_model: SparseMLP, ep_model: SparseMLP, assert_grad_flag: bool = False) -> None:
+    """Sync the parameters of tp model from ep model
+
+    Args:
+        tp_model (MoeModule)
+        ep_model (MoeModule)
+    """
+    for (local_name, local_param), (ep_name, ep_param) in zip(local_model.named_parameters(),
+                                                              ep_model.named_parameters()):
+        assert local_name == ep_name
+        if "experts" not in local_name:
+            if assert_grad_flag:
+                assert torch.allclose(local_param, ep_param)
+                assert torch.allclose(local_param.grad, ep_param.grad)
+            else:
+                local_param.data.copy_(ep_param.data)
+            continue
+
+        # gather param from ep model
+        param_list = [torch.zeros_like(ep_param) for _ in range(get_ep_size(ep_param))]
+        dist.all_gather(param_list, ep_param, group=get_ep_group(ep_param))
+        all_param = torch.cat(param_list, dim=0)
+        if assert_grad_flag:
+            grad_list = [torch.zeros_like(ep_param) for _ in range(get_ep_size(ep_param))]
+            dist.all_gather(grad_list, ep_param.grad, group=get_ep_group(ep_param))
+            all_grad = torch.cat(grad_list, dim=0)
+
+        if assert_grad_flag:
+            assert torch.allclose(local_param, all_param)
+            assert torch.allclose(local_param.grad, all_grad)
+        else:
+            local_param.data.copy_(all_param.data)
