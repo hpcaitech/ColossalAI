@@ -29,7 +29,7 @@ from colossalai.utils import get_current_device
 # ==============================
 # Prepare Hyperparameters
 # ==============================
-NUM_EPOCHS = 3
+NUM_EPOCHS = 1
 BATCH_SIZE = 32
 LEARNING_RATE = 2.4e-5
 WEIGHT_DECAY = 0.01
@@ -69,6 +69,8 @@ def evaluate_model(
                 pp_group = booster.plugin.pp_group
                 current_pp_group_ranks = pg_mesh.get_ranks_in_group(pp_group)
                 current_rank = dist.get_rank()
+
+                print(current_pp_group_ranks)
 
                 batch = iter([batch])
 
@@ -144,9 +146,12 @@ def train_epoch(epoch: int, model: nn.Module, optimizer: Optimizer, _criterion: 
                 train_dataloader: DataLoader, booster: Booster, coordinator: DistCoordinator):
 
     model.train()
+    is_pp_last_stage = hasattr(
+        booster.plugin,
+        "stage_manager") and booster.plugin.stage_manager is not None and booster.plugin.stage_manager.is_last_stage()
     with tqdm(train_dataloader,
               desc=f'Epoch [{epoch + 1}/{NUM_EPOCHS}]',
-              disable=not (coordinator.is_master() or booster.plugin.stage_manager.is_last_stage())) as pbar:
+              disable=not (coordinator.is_master() or is_pp_last_stage)) as pbar:
         for batch in pbar:
             # Forward pass
             batch = move_to_cuda(batch)
@@ -226,7 +231,7 @@ def main():
     elif args.plugin == 'hybrid_parallel':
 
         # modify the param accordingly for finetuning test cases
-        plugin = HybridParallelPlugin(tp_size=1,
+        plugin = HybridParallelPlugin(tp_size=2,
                                       pp_size=2,
                                       num_microbatches=2,
                                       enable_all_optimization=True,
@@ -274,9 +279,7 @@ def main():
         },
     ]
 
-    #TODO something wrong with HybridAdam when using pp
-    # optimizer = HybridAdam(optimizer_grouped_parameters, lr=lr, eps=1e-8)
-    optimizer = Adam(model.parameters(), lr=1e-3)
+    optimizer = HybridAdam(optimizer_grouped_parameters, lr=lr, eps=1e-8)
 
     # lr scheduler
     total_steps = len(train_dataloader) * NUM_EPOCHS
