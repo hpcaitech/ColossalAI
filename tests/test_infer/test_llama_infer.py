@@ -15,7 +15,7 @@ from colossalai.inference.tensor_parallel.engine import TPInferEngine
 
 
 os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
-TPSIZE = 2
+TPSIZE = 1
 BATCH_SIZE = 8
 MAX_INPUT_LEN = 12
 MAX_OUTPUT_LEN = 100
@@ -58,7 +58,7 @@ def run_llama_test(test_config):
     init_to_get_rotary(model.model, base=10000)
     model = model.half()
     
-    text = "how is weather today?"
+    text = "where is the location of the capital of france?"
     input_ids = tokenizer.encode(text, return_tensors='pt', device='cuda')
     
     infer_engine = TPInferEngine(model.half(), BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
