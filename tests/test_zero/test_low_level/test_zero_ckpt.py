@@ -37,7 +37,7 @@ def loose_close(a, b, dtype: torch.dtype = torch.float32):
         atol = 4e-3
 
     a = a.detach().to(dtype)
-    b = b.detach().to(dtype)
+    b = b.detach().to(dtype).to(a.device)
 
     assert_close(a, b, rtol=rtol, atol=atol)
 

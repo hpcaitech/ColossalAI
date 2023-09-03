@@ -109,6 +109,6 @@ def zero_optim_wrapper(model: nn.Module,
         config_dict['clip_grad_norm'] = max_norm
         return LowLevelZeroOptimizer(optimizer, **config_dict, verbose=verbose)
     else:
-        from colossalai.zero.gemini.gemini_optimizer import ZeroOptimizer
+        from colossalai.zero.gemini.gemini_optimizer import GeminiOptimizer
         config_dict['clipping_norm'] = max_norm
-        return ZeroOptimizer(optimizer, model, **config_dict, verbose=verbose)
+        return GeminiOptimizer(optimizer, model, **config_dict, verbose=verbose)

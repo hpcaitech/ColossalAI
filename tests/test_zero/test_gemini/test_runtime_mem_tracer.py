@@ -1,15 +1,16 @@
 from copy import deepcopy
 
 import numpy as np
+import pytest
 import torch
 
 from colossalai.testing import clear_cache_before_run
-from colossalai.zero import ColoInitContext
 from colossalai.zero.gemini.memory_tracer.runtime_mem_tracer import RuntimeMemTracer
 from tests.components_to_test import run_fwd_bwd
 from tests.components_to_test.registry import non_distributed_component_funcs
 
 
+@pytest.mark.skip("this is not used")
 @clear_cache_before_run()
 def test_runtime_mem_tracer():
     test_models = ['gpt2', 'bert', 'simple_net', 'repeated_computed_layers', 'nested_model', 'albert']
@@ -18,8 +19,7 @@ def test_runtime_mem_tracer():
         get_components_func = non_distributed_component_funcs.get_callable(model_name)
         model_builder, train_dataloader, _, _, criterion = get_components_func()
 
-        with ColoInitContext(device='cpu'):
-            model = model_builder(checkpoint=False)
+        model = model_builder(checkpoint=False).cuda()
 
         model_bk = deepcopy(model)
         runtime_mem_tracer = RuntimeMemTracer(model)

@@ -2,9 +2,9 @@ import argparse
 import hashlib
 import math
 import os
+import shutil
 from pathlib import Path
 from typing import Optional
-import shutil
 
 import torch
 import torch.nn.functional as F
@@ -19,6 +19,8 @@ from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
 
 import colossalai
+from colossalai.booster import Booster
+from colossalai.booster.plugin import GeminiPlugin, LowLevelZeroPlugin, TorchDDPPlugin
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.logging import disable_existing_loggers, get_dist_logger
@@ -26,8 +28,6 @@ from colossalai.nn.optimizer import HybridAdam
 from colossalai.utils import get_current_device
 from colossalai.zero import ColoInitContext
 from colossalai.zero.gemini import get_static_torch_model
-from colossalai.booster import Booster
-from colossalai.booster.plugin import GeminiPlugin, LowLevelZeroPlugin, TorchDDPPlugin
 
 disable_existing_loggers()
 logger = get_dist_logger()
@@ -138,10 +138,10 @@ def parse_args(input_args=None):
               " resolution"),
     )
     parser.add_argument(
-        "--placement",
-        type=str,
-        default="cpu",
-        help="Placement Policy for Gemini. Valid when using colossalai as dist plan.",
+        "--offload_optim_frac",
+        type=float,
+        default=1.0,
+        help="Fraction of optimizer states to be offloaded. Valid when using colossalai as dist plan.",
     )
     parser.add_argument(
         "--center_crop",
@@ -461,18 +461,17 @@ def main(args):
         revision=args.revision,
     )
 
-
     if args.externel_unet_path is None:
         logger.info(f"Loading UNet2DConditionModel from {args.pretrained_model_name_or_path}", ranks=[0])
         unet = UNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path,
-                                                subfolder="unet",
-                                                revision=args.revision,
-                                                low_cpu_mem_usage=False)
+                                                    subfolder="unet",
+                                                    revision=args.revision,
+                                                    low_cpu_mem_usage=False)
     else:
         logger.info(f"Loading UNet2DConditionModel from {args.externel_unet_path}", ranks=[0])
         unet = UNet2DConditionModel.from_pretrained(args.externel_unet_path,
-                                                revision=args.revision,
-                                                low_cpu_mem_usage=False)
+                                                    revision=args.revision,
+                                                    low_cpu_mem_usage=False)
 
     vae.requires_grad_(False)
     text_encoder.requires_grad_(False)
@@ -491,30 +490,31 @@ def main(args):
     if args.plugin.startswith('torch_ddp'):
         plugin = TorchDDPPlugin()
     elif args.plugin == 'gemini':
-        plugin = GeminiPlugin(placement_policy=args.placement, strict_ddp_mode=True, initial_scale=2 ** 5)
+        plugin = GeminiPlugin(offload_optim_frac=args.offload_optim_frac, strict_ddp_mode=True, initial_scale=2**5)
     elif args.plugin == 'low_level_zero':
-        plugin = LowLevelZeroPlugin(initial_scale=2 ** 5)
+        plugin = LowLevelZeroPlugin(initial_scale=2**5)
 
     booster = Booster(plugin=plugin, **booster_kwargs)
 
     # config optimizer for colossalai zero
-    optimizer = HybridAdam(unet.parameters(), lr=args.learning_rate, initial_scale=2**5, clipping_norm=args.max_grad_norm)
+    optimizer = HybridAdam(unet.parameters(),
+                           lr=args.learning_rate,
+                           initial_scale=2**5,
+                           clipping_norm=args.max_grad_norm)
 
     # load noise_scheduler
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
 
     # prepare dataset
     logger.info(f"Prepare dataset from {args.instance_data_dir}", ranks=[0])
-    train_dataset = DreamBoothDataset(
-        instance_data_root=args.instance_data_dir,
-        instance_prompt=args.instance_prompt,
-        class_data_root=args.class_data_dir if args.with_prior_preservation else None,
-        class_prompt=args.class_prompt,
-        tokenizer=tokenizer,
-        size=args.resolution,
-        center_crop=args.center_crop,
-        test=args.test_run
-    )
+    train_dataset = DreamBoothDataset(instance_data_root=args.instance_data_dir,
+                                      instance_prompt=args.instance_prompt,
+                                      class_data_root=args.class_data_dir if args.with_prior_preservation else None,
+                                      class_prompt=args.class_prompt,
+                                      tokenizer=tokenizer,
+                                      size=args.resolution,
+                                      center_crop=args.center_crop,
+                                      test=args.test_run)
 
     def collate_fn(examples):
         input_ids = [example["instance_prompt_ids"] for example in examples]
@@ -689,6 +689,7 @@ def main(args):
             shutil.copy(os.path.join(args.pretrained_model_name_or_path, "unet/config.json"), args.output_dir)
         if args.push_to_hub:
             repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
+
 
 if __name__ == "__main__":
     args = parse_args()

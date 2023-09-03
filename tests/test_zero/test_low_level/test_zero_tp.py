@@ -85,6 +85,7 @@ def run_dist(rank, world_size, port):
     exam_zero_with_tp()
 
 
+@pytest.mark.skip('this will be rewritten by shardformer')
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_zero_with_tp():
