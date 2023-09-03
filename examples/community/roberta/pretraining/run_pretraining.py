@@ -22,7 +22,7 @@ from colossalai.nn.parallel import GeminiDDP, zero_model_wrapper, zero_optim_wra
 from colossalai.tensor import ColoParameter, ComputePattern, ComputeSpec, ProcessGroup, ReplicaSpec, ShardSpec
 from colossalai.utils import get_current_device
 from colossalai.utils.model.colo_init_context import ColoInitContext
-from colossalai.zero import ZeroOptimizer
+from colossalai.zero import GeminiOptimizer
 
 
 def main():
@@ -46,7 +46,7 @@ def main():
         args.local_rank = -1
         args.log_interval = 1
     else:
-        colossalai.launch_from_torch(config={})    #args.colossal_config
+        colossalai.launch_from_torch(config={})    # args.colossal_config
         args.local_rank = int(os.environ["LOCAL_RANK"])
         logger.info(
             f'launch_from_torch, world size: {torch.distributed.get_world_size()} | ' +
@@ -123,7 +123,8 @@ def main():
     get_tflops_func = partial(get_tflops, numel, args.train_micro_batch_size_per_gpu, args.max_seq_length)
 
     # 144003367 is is the length of the entire dataset
-    steps_per_epoch = 144003367 // world_size // args.train_micro_batch_size_per_gpu // args.gradient_accumulation_steps // args.refresh_bucket_size    #len(dataloader)
+    # len(dataloader)
+    steps_per_epoch = 144003367 // world_size // args.train_micro_batch_size_per_gpu // args.gradient_accumulation_steps // args.refresh_bucket_size
     total_steps = steps_per_epoch * args.epoch
 
     lr_scheduler = get_lr_scheduler(optimizer, total_steps=total_steps, last_epoch=-1)
