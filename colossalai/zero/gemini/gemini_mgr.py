@@ -1,6 +1,6 @@
 import functools
 from time import time
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import torch
 
@@ -26,7 +26,11 @@ class GeminiManager:
         memstats (MemStats, optional): a mem stats collected by a runtime mem tracer. if None then GeminiManager will collect it during a warmup iteration.
     """
 
-    def __init__(self, placement_policy: str, chunk_manager: ChunkManager, memstats: Optional[MemStats] = None) -> None:
+    def __init__(self,
+                 placement_policy: str,
+                 chunk_manager: ChunkManager,
+                 memstats: Optional[MemStats] = None,
+                 **placement_kwargs) -> None:
 
         assert placement_policy in PlacementPolicyFactory.get_policy_names()
         self.policy_name = placement_policy
@@ -37,7 +41,7 @@ class GeminiManager:
         self._memstats = memstats
         self._mem_stats_collector = ChunkMemStatsCollector(chunk_manager,
                                                            self._memstats) if policy_cls.need_mem_stats else None
-        self._placement_policy = policy_cls(chunk_manager, self._mem_stats_collector)
+        self._placement_policy = policy_cls(chunk_manager, self._mem_stats_collector, **placement_kwargs)
         self._compute_list: List[Tuple[Chunk, ...]] = []
         self._compute_idx: int = -1
 
@@ -133,10 +137,6 @@ class GeminiManager:
         if self._warmup and self._placement_policy.need_mem_stats:
             self._compute_list.append(chunks)
 
-    @property
-    def default_device(self):
-        return self._placement_policy.get_default_device()
-
     def sample_overall_data(self):
         if self._mem_stats_collector:
             self._mem_stats_collector.sample_overall_data()
@@ -159,6 +159,6 @@ class GeminiManager:
     def is_cuda_margin_mem_avail(self) -> bool:
         return self._placement_policy.need_mem_stats
 
-    @staticmethod
-    def get_default_device(policy_name: str) -> torch.device:
-        return PlacementPolicyFactory.get_default_device(policy_name)
+    def setup_grads_device(self, params: List[torch.Tensor], grads_device_map: Dict[torch.Tensor,
+                                                                                    torch.device]) -> None:
+        self._placement_policy.setup_grads_device(params, grads_device_map)
