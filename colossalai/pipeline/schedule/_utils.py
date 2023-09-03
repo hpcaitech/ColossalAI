@@ -150,6 +150,7 @@ def merge_batch(data: List[Any], batch_size_dim=0) -> Any:
     flattened_data = []
     tree_spec = None
     for d in data:
+        print('d: ', d)
         # elems should be an instance of OrderedDict
         elems, tree_spec = tree_flatten_hf(d)
         flattened_data.append(elems)
