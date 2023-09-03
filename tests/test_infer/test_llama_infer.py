@@ -90,6 +90,5 @@ def check_llama(rank, world_size, port):
 def test_llama():
     spawn(check_llama, TPSIZE)
 
-
 if __name__ == "__main__":
     test_llama()
