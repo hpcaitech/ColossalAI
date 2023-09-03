@@ -284,18 +284,25 @@ class LlamaInferenceForwards:
             infer_state.cache_manager.past_key_values_length += q_len    # seq_len
 
         if HAS_VLLM_KERNERL:
-            # cos, sin = infer_state.position_cos, infer_state.position_sin
-            value_states_transposed = value_states.transpose(1, 2)
+            # NOTE: fix rotatry embedding precision problem
+            cos, sin = infer_state.position_cos, infer_state.position_sin
+            
+            # value_states_transposed = value_states.transpose(1, 2)
 
-            cos, sin = self.rotary_emb(value_states_transposed,
-                            seq_len=infer_state.cache_manager.past_key_values_length)
+            # cos, sin = self.rotary_emb(value_states_transposed,
+            #                 seq_len=infer_state.cache_manager.past_key_values_length)
             
             cos_sin_cache = torch.cat((cos, sin), dim=-1)
-            rotary_embedding_neox(position_ids, query_states, key_states_transposed, self.head_dim, cos_sin_cache)
-            key_states = key_states_transposed.transpose(1, 2)
+            
+            key_states = key_states.view(-1, self.num_heads * self.head_dim)
+            query_states = query_states.transpose(1, 2).reshape(-1, self.num_heads * self.head_dim)
+            rotary_embedding_neox(position_ids.squeeze(1), query_states, key_states, self.head_dim, cos_sin_cache)
+            
+            
+            query_states = query_states.reshape(-1, self.num_heads, self.head_dim)
             key_states = key_states.reshape(-1, self.num_heads, self.head_dim)
             value_states = value_states.reshape(-1, self.num_heads, self.head_dim)
-            query_states = query_states.transpose(1, 2).reshape(-1, self.num_heads, self.head_dim)
+            
         else:
             # NOTE: there are some issues for original rotary_embedding_neox of huggingface
 
