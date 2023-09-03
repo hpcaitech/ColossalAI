@@ -4,7 +4,7 @@ import torch
 import colossalai
 from colossalai.context.moe_context import MOE_CONTEXT
 from colossalai.core import global_context as gpc
-from colossalai.nn.layer.moe import EPMLPExperts, MoeLayer, Top1Router, Top2Router
+from colossalai.nn.layer.moe import SparseMLP
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 from colossalai.utils import get_current_device
 
@@ -16,7 +16,7 @@ def check_equal(tensor_a, tensor_b, atol=1e-06):
     assert torch.allclose(tensor_a, tensor_b, rtol=0, atol=atol) is True
 
 
-def run_routing(rank, world_size, port, rs=2, hidden_size=128, data_type=torch.float32, router=Top2Router):
+def run_routing(rank, world_size, port, rs=2, hidden_size=128, data_type=torch.float32, topk=1):
     # Here we do not need TF32, since it brings absolute error on results
     torch.backends.cuda.matmul.allow_tf32 = False
 
@@ -30,9 +30,12 @@ def run_routing(rank, world_size, port, rs=2, hidden_size=128, data_type=torch.f
     # get randomized data
     tokens = torch.randn(BATCH_SIZE, hidden_size, dtype=data_type, device=get_current_device(), requires_grad=True)
 
-    expert_factor = dict(hidden_size=hidden_size, intermediate_size=hidden_size * 2)
-    expert = EPMLPExperts(NUM_EXPERTS, **expert_factor)
-    layer = MoeLayer(hidden_size, NUM_EXPERTS, router(capacity_factor_train=1.0), expert)
+    layer = SparseMLP(hidden_size=hidden_size,
+                      intermediate_size=hidden_size * 2,
+                      num_experts=NUM_EXPERTS,
+                      top_k=topk,
+                      expert_parallel="EP",
+                      capacity_factor_train=1.0)
     layer = layer.to(get_current_device())
     if data_type == torch.float16:
         layer = layer.half()
@@ -82,11 +85,11 @@ def run_routing(rank, world_size, port, rs=2, hidden_size=128, data_type=torch.f
 @pytest.mark.parametrize("rs", [131])
 @pytest.mark.parametrize("hidden_size", [32, 144])
 @pytest.mark.parametrize("data_type", [torch.float32, torch.float16])
-@pytest.mark.parametrize("router", [Top1Router, Top2Router])
+@pytest.mark.parametrize("topk", [1, 2])
 @rerun_if_address_is_in_use()
-def test_moe_kernel(rs, hidden_size, data_type, router):
-    spawn(run_routing, 4, rs=rs, hidden_size=hidden_size, data_type=data_type, router=router)
+def test_moe_kernel(rs, hidden_size, data_type, topk):
+    spawn(run_routing, 4, rs=rs, hidden_size=hidden_size, data_type=data_type, topk=topk)
 
 
-if __name__ == "__main__":
-    test_moe_kernel(2, 256, torch.float16, Top2Router)
+if __name__ == '__main__':
+    test_moe_kernel(2, 256, torch.float16, 2)

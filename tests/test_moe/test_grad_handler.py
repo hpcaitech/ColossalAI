@@ -5,7 +5,7 @@ import torch.nn as nn
 
 import colossalai
 from colossalai.context.moe_context import MOE_CONTEXT
-from colossalai.nn.layer.moe import EPMLPExperts, MoeLayer, Top1Router, UniformNoiseGenerator
+from colossalai.nn.layer.moe import SparseMLP
 from colossalai.testing import assert_equal_in_group, rerun_if_address_is_in_use, spawn
 from colossalai.utils import get_current_device
 from colossalai.utils.moe import sync_moe_model_param
@@ -17,16 +17,17 @@ DIM = 16
 
 def run_test(rank, world_size, port):
     colossalai.launch(config=dict(), rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    expert_factor = dict(hidden_size=DIM, intermediate_size=DIM * 2)
 
-    MOE_CONTEXT.setup(42)  # MOE initialization
-    noisy_func = UniformNoiseGenerator()
-    router = Top1Router(noisy_func=noisy_func)
+    MOE_CONTEXT.setup(42)    # MOE initialization
     num_experts_list = [1, 2, 4]
     layer_list = []
     for num_experts in num_experts_list:
-        exp = EPMLPExperts(num_experts, **expert_factor)
-        moe_layer = MoeLayer(DIM, num_experts, router, exp)
+        moe_layer = SparseMLP(hidden_size=DIM,
+                              intermediate_size=DIM * 4,
+                              num_experts=num_experts,
+                              top_k=1,
+                              expert_parallel="EP",
+                              noisy_policy="Jitter")
         layer_list.append(moe_layer)
 
     model = nn.ModuleList(layer_list)
