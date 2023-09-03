@@ -61,7 +61,7 @@ def examine_pp():
     DP_DIM, PP_DIM, TP_DIM = 0, 1, 2
     pg_mesh = ProcessGroupMesh(1, world_size, 1)
     stage_manager = PipelineStageManager(pg_mesh, PP_DIM)
-    schedule = OneForwardOneBackwardSchedule(NUM_MICRO_BATCHS, stage_manager)
+    schedule = OneForwardOneBackwardSchedule(stage_manager, num_microbatches=NUM_MICRO_BATCHS)
 
     for idx, (_, sub_model) in enumerate(pp_model.named_children()):
         if idx % (world_size) == local_rank:
