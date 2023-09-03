@@ -41,10 +41,16 @@ def is_rank_0() -> bool:
     return not dist.is_initialized() or dist.get_rank() == 0
 
 
-def to_device(x: Any, device: torch.device) -> Any:
+from transformers.tokenization_utils_base import BatchEncoding
 
+def to_device(x: Any, device: torch.device) -> Any:
+    
     def _to(t: Any):
-        if isinstance(t, torch.Tensor):
+        if isinstance(t, BatchEncoding):
+            for k in t.keys():
+                t[k] = t[k].to(device)
+            return t
+        elif isinstance(t, torch.Tensor):
             return t.to(device)
         return t
 
