@@ -17,10 +17,8 @@ def tree_flatten_hf(pytree: Any) -> Tuple[List[Any], TreeSpec]:
     """Flattens a pytree into a list of values and a TreeSpec that can be used
     to reconstruct the pytree.
     """
-    if _is_leaf(pytree):
-        return [pytree], LeafSpec()
-
     if isinstance(pytree, OrderedDict):
+        print("pytree: ")
         node_type = OrderedDict
         flatten_fn = SUPPORTED_NODES[node_type].flatten_fn
         child_pytrees, context = flatten_fn(pytree)
