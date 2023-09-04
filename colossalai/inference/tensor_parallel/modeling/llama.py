@@ -283,7 +283,6 @@ class LlamaInferenceForwards:
         if infer_state.decode_layer_id == 0:    # once per model.forward
             infer_state.cache_manager.past_key_values_length += q_len    # seq_len
 
-        HAS_VLLM_KERNERL = False
         if HAS_VLLM_KERNERL:
             # NOTE: fix rotatry embedding precision problem
             cos, sin = infer_state.position_cos, infer_state.position_sin
