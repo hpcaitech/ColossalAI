@@ -3,7 +3,7 @@
 
 import inspect
 
-from colossalai.registry import *
+from colossalai.legacy.registry import *
 
 
 def build_from_config(module, config: dict):

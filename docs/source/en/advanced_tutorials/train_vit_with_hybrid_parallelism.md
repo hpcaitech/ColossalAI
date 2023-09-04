@@ -273,8 +273,8 @@ SEQ_LENGTH = (IMG_SIZE // PATCH_SIZE) ** 2 + 1  # add 1 for cls token
 
 ### Build pipeline model (`/hybrid_parallel/model/vit.py`)
 Colossal-AI provides two methods to build a pipeline model from the existing model.
-- `colossalai.builder.build_pipeline_model_from_cfg`
-- `colossalai.builder.build_pipeline_model`
+- `colossalai.legacy.builder.build_pipeline_model_from_cfg`
+- `colossalai.legacy.builder.build_pipeline_model`
 
 Besides, you can also build a pipeline model from scratch with Colossal-AI.
 ```python
@@ -284,11 +284,11 @@ from typing import Callable
 import inspect
 import torch
 from colossalai import nn as col_nn
-from colossalai.registry import LAYERS, MODELS
+from colossalai.legacy.registry import LAYERS, MODELS
 from colossalai.logging import get_dist_logger
 from colossalai.core import global_context as gpc
 from colossalai.context import ParallelMode
-from colossalai.builder.pipeline import partition_uniform
+from colossalai.legacy.builder.pipeline import partition_uniform
 from torch import dtype, nn
 from model_zoo.vit.vit import ViTBlock, ViTEmbedding, ViTHead
 

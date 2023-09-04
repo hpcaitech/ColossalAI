@@ -25,7 +25,7 @@
 3. 实现 `handle_gradient`
 
 ```python
-from colossalai.registry import GRADIENT_HANDLER
+from colossalai.legacy.registry import GRADIENT_HANDLER
 from colossalai.legacy.engine.gradient_handler import BaseGradientHandler
 
 

@@ -32,7 +32,7 @@ import colossalai
 import colossalai.nn as col_nn
 import torch
 import torch.nn as nn
-from colossalai.builder import build_pipeline_model
+from colossalai.legacy.builder import build_pipeline_model
 from colossalai.legacy.engine.schedule import (InterleavedPipelineSchedule,
                                         PipelineSchedule)
 from colossalai.logging import disable_existing_loggers, get_dist_logger
@@ -48,17 +48,17 @@ from torchvision.datasets import CIFAR10
 
 总的来说, 我们提供3种方法来建立一个流水并行的模型:
 
-1. `colossalai.builder.build_pipeline_model_from_cfg`
-2. `colossalai.builder.build_pipeline_model`
+1. `colossalai.legacy.builder.build_pipeline_model_from_cfg`
+2. `colossalai.legacy.builder.build_pipeline_model`
 3. 自己按阶段拆分模型
 
 当你的内存能够容纳模型时，你可以使用前两种方法来建立你的模型，否则你必须自己分割模型。前两种方法首先在 CPU 上建立整个模型，然后分割模型，最后你可以直接把模型的相应部分移到 GPU 上。
 
-`colossalai.builder.build_pipeline_model_from_cfg()` 接收一个模型的配置文件，它可以均匀地（按层）或平衡地（按参数大小）分割模型。
+`colossalai.legacy.builder.build_pipeline_model_from_cfg()` 接收一个模型的配置文件，它可以均匀地（按层）或平衡地（按参数大小）分割模型。
 
-如果你熟悉 `PyTorch`, 你可以使用 `colossalai.builder.build_pipeline_model()` 它接收一个 `torch.nn.Sequential` 模型并按层均匀分割。
+如果你熟悉 `PyTorch`, 你可以使用 `colossalai.legacy.builder.build_pipeline_model()` 它接收一个 `torch.nn.Sequential` 模型并按层均匀分割。
 
-在本教程中，我们将修改 [TIMM/ViT](https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision_transformer.py) to `torch.nn.Sequential`，然后使用 `colossalai.builder.build_pipeline_model()` 来建立流水线模型。
+在本教程中，我们将修改 [TIMM/ViT](https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision_transformer.py) to `torch.nn.Sequential`，然后使用 `colossalai.legacy.builder.build_pipeline_model()` 来建立流水线模型。
 
 当数据是 **一个** `Tensor`, 你可以使用你的模型 `forward()` 中的位置参数来获得数据张量。对于流水线的第一阶段，`forward()` 的第一个位置参数是从数据加载器加载的数据张量。对于其他阶段，`forward()` 的第一个位置参数是上一阶段的输出张量。注意，如果该阶段不是最后一个阶段，则 `forward()` 的返回必须是一个 `Tensor`。
 
