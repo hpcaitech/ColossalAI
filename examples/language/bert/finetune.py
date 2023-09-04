@@ -225,9 +225,10 @@ def main():
     elif args.plugin == 'hybrid_parallel':
 
         # modify the param accordingly for finetuning test cases
-        plugin = HybridParallelPlugin(tp_size=2,
+        plugin = HybridParallelPlugin(tp_size=1,
                                       pp_size=2,
-                                      num_microbatches=2,
+                                      num_microbatches=None,
+                                      microbatch_size=1,
                                       enable_all_optimization=True,
                                       zero_stage=1,
                                       precision='fp16',
