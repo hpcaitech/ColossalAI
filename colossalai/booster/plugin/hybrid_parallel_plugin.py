@@ -325,7 +325,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         self.schedule = None
         assert zero_stage in (0, 1, 2)
         if self.pp_size > 1:
-            assert num_microbatches is not None, 'num_microbatches must be specified when using pipeline parallelism'
+            assert num_microbatches is not None or microbatch_size is not None, 'num_microbatches or microbatch_size must be specified when using pipeline parallelism'
             assert self.zero_stage <= 1, 'zero stage must be 0 or 1 when using pipeline parallelism'
             self.stage_manager = PipelineStageManager(self.pg_mesh, PP_AXIS)
             self.schedule = OneForwardOneBackwardSchedule(self.stage_manager,

@@ -46,6 +46,7 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
         self.batch: Optional[Any] = None
         self.batch_size: Optional[int] = None
         self.microbatch_offset: Optional[int] = None
+        self._use_microbatch_size = num_microbatches is None
 
     def load_batch(self, data_iter: Iterable, device: Optional[torch.device] = None) -> None:
         """Load a batch from data iterator.
@@ -60,7 +61,7 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
         self.batch = batch
         self.batch_size = get_batch_size(batch)
         self.microbatch_offset = 0
-        if self.num_microbatches is not None:
+        if not self._use_microbatch_size:
             assert self.batch_size % self.num_microbatches == 0, \
                 "Batch size should divided by the number of microbatches"
             self.microbatch_size = self.batch_size // self.num_microbatches
