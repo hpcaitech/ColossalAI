@@ -10,7 +10,7 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import DataLoader
 
-from colossalai.engine import BaseGradientHandler
+from colossalai.legacy.engine import BaseGradientHandler
 from colossalai.nn.optimizer import ColossalaiOptimizer
 from colossalai.utils import conditional_context
 
@@ -262,7 +262,7 @@ class GradAccumGradientHandler:
     before accumulation size is reached.
 
     Args:
-        grad_handler (:class:`colossalai.engine.BaseGradientHandler`):
+        grad_handler (:class:`colossalai.legacy.engine.BaseGradientHandler`):
             Your ``gradient_handler`` object for gradient accumulation, would be called when achieving `accumulate_size`.
         accumulate_size (int): The number of steps to accumulate gradients.
 
