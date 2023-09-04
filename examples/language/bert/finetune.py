@@ -118,7 +118,7 @@ def evaluate_model(
                 metric.add_batch(predictions=preds, references=labels)
 
         results = metric.compute()
-
+        dist.all_reduce(accum_loss.div_(len(dataloader)))
         if coordinator.is_master() and results is not None:
             results['loss'] = accum_loss.item() / coordinator.world_size
 
