@@ -7,7 +7,7 @@ from transformers.modeling_outputs import BaseModelOutputWithPast
 
 import colossalai.shardformer.layer as col_nn
 from colossalai.pipeline.stage_manager import PipelineStageManager
-from colossalai.shardformer.modeling.chatglm import ChatGLMPipelineForwards
+from colossalai.shardformer.modeling.chatglm2 import ChatGLMPipelineForwards
 from colossalai.shardformer.modeling.chatglm2_6b.configuration_chatglm import ChatGLMConfig
 from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import (
     ChatGLMForConditionalGeneration,
@@ -15,7 +15,7 @@ from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import (
     GLMBlock,
 )
 
-from ..modeling.chatglm import get_flash_core_attention_forward, get_jit_fused_glm_block_forward
+from ..modeling.chatglm2 import get_flash_core_attention_forward, get_jit_fused_glm_block_forward
 from ..modeling.jit import get_jit_fused_dropout_add_func
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
