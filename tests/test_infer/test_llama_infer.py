@@ -1,24 +1,26 @@
 import os
-
-import numpy as np
 import pytest
 import torch
+from packaging import version
+import numpy as np
 import torch.distributed as dist
 from transformers import LlamaForCausalLM, LlamaTokenizer
 
 import colossalai
-from colossalai.cluster import ProcessGroupMesh
-from colossalai.inference.tensor_parallel.engine import TPInferEngine
 from colossalai.logging import disable_existing_loggers
-from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
+from colossalai.cluster import ProcessGroupMesh
+from colossalai.shardformer import ShardConfig, ShardFormer
+from colossalai.inference.tensor_parallel.engine import TPInferEngine
+
 
 os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
-TPSIZE = 2
+TPSIZE = 1
 BATCH_SIZE = 8
 MAX_INPUT_LEN = 12
 MAX_OUTPUT_LEN = 100
 
+CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse('11.5')
 
 def init_to_get_rotary(self, base=10000):
     self.config.head_dim_ = self.config.hidden_size // self.config.num_attention_heads
@@ -33,8 +35,7 @@ def init_to_get_rotary(self, base=10000):
     else:
         max_seq_len = 2048 * rope_scaling_factor
     base = float(base)
-    inv_freq = 1.0 / (base**(torch.arange(0, self.config.head_dim_, 2, device="cpu", dtype=torch.float32) /
-                             self.config.head_dim_))
+    inv_freq = 1.0 / (base ** (torch.arange(0, self.config.head_dim_, 2, device="cpu", dtype=torch.float32) / self.config.head_dim_))
     t = torch.arange(max_seq_len + 1024 * 64, device="cpu", dtype=torch.float32) / rope_scaling_factor
     freqs = torch.outer(t, inv_freq)
 
@@ -42,33 +43,35 @@ def init_to_get_rotary(self, base=10000):
     self._sin_cached = torch.sin(freqs).to(torch.float16).cuda()
     return
 
-
 @parameterize('test_config', [{
     'tp_size': TPSIZE,
 }])
 def run_llama_test(test_config):
-
+    
     llama_model_path = "/data/scratch/llama-7b-hf"
+    if os.path.isdir(llama_model_path) is False:
+        return
+    
     tokenizer = LlamaTokenizer.from_pretrained(llama_model_path)
     tokenizer.pad_token_id = tokenizer.unk_token_id
     model = LlamaForCausalLM.from_pretrained(llama_model_path, pad_token_id=tokenizer.eos_token_id)
     init_to_get_rotary(model.model, base=10000)
     model = model.half()
-
-    text = "how is weather today?"
+    
+    text = "where is the location of the capital of france?"
     input_ids = tokenizer.encode(text, return_tensors='pt', device='cuda')
-
+    
     infer_engine = TPInferEngine(model.half(), BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
     shard_config = ShardConfig(enable_tensor_parallelism=True, inference_only=True)
     shardformer = ShardFormer(shard_config=shard_config)
-
+    
     infer_engine.prepare_with_shard_config(shard_config)
     infer_engine.shard_model_by(shardformer)
 
     generate_kwargs = dict(max_new_tokens=MAX_OUTPUT_LEN, do_sample=False)
     outputs = infer_engine.generate(input_ids, generate_kwargs)
     print("outputs.shape: ", outputs.shape)
-
+    
     print("outputs: ", outputs)
 
     output_text = tokenizer.decode(outputs[0])
@@ -80,13 +83,12 @@ def check_llama(rank, world_size, port):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     run_llama_test()
 
-
+@pytest.mark.skipif(not CUDA_SUPPORT, reason="kv-cache manager engine requires cuda version to be higher than 11.5")
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()
 def test_llama():
     spawn(check_llama, TPSIZE)
-
 
 if __name__ == "__main__":
     test_llama()

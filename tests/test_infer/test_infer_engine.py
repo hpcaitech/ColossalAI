@@ -1,6 +1,7 @@
-from itertools import accumulate
-
 import pytest
+from itertools import accumulate
+from packaging import version
+
 import torch
 import torch.nn as nn
 from transformers import BloomConfig, BloomForCausalLM, LlamaConfig, LlamaForCausalLM
@@ -18,7 +19,9 @@ MAX_BATCH_SIZE = 4
 MAX_INPUT_LEN = 16
 MAX_OUTPUT_LEN = 8
 
+CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse('11.5')
 
+@pytest.mark.skipif(not CUDA_SUPPORT, reason="kv-cache manager engine requires cuda version to be higher than 11.5")
 def test_prepare_data():
     # dummy module used for testing
     class DummyModule(nn.Module):
@@ -68,7 +71,7 @@ def test_prepare_data():
     assert torch.equal(batch_state_out1.start_loc.to(start_loc.device), start_loc)
     assert torch.equal(batch_state_out2.start_loc.to(start_loc.device), start_loc)
 
-
+@pytest.mark.skipif(not CUDA_SUPPORT, reason="kv-cache manager engine requires cuda version to be higher than 11.5")
 def test_orig_generate():
     input_ids = torch.randint(low=10, high=1000, size=(MAX_BATCH_SIZE, MAX_INPUT_LEN))
 
@@ -116,6 +119,7 @@ def check_engine(rank, world_size, port):
     run()
 
 
+@pytest.mark.skipif(not CUDA_SUPPORT, reason="kv-cache manager engine requires cuda version to be higher than 11.5")
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()

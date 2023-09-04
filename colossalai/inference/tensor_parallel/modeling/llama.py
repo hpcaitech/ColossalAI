@@ -8,7 +8,6 @@ from transformers.models.llama.modeling_llama import (
     LlamaDecoderLayer,
     LlamaModel,
     LlamaRMSNorm,
-    apply_rotary_pos_emb,
 )
 
 from colossalai.inference.tensor_parallel.batch_infer_state import BatchInferState
@@ -28,6 +27,29 @@ except:
         "if falied to install vllm, please use this branch to install: https://github.com/tiandiao123/vllm/tree/setup_branch"
     )
     HAS_VLLM_KERNERL = False
+
+def rotate_half(x):
+    """Rotates half the hidden dims of the input."""
+    x1 = x[..., : x.shape[-1] // 2]
+    x2 = x[..., x.shape[-1] // 2 :]
+    return torch.cat((-x2, x1), dim=-1)
+
+
+def apply_rotary_pos_emb(q, k, cos, sin, position_ids):
+    # The first two dimensions of cos and sin are always 1, so we can `squeeze` them.
+    cos = cos.squeeze(1).squeeze(0)  # [seq_len, dim]
+    sin = sin.squeeze(1).squeeze(0)  # [seq_len, dim]
+    cos = cos[position_ids].unsqueeze(1)  # [bs, 1, seq_len, dim]
+    sin = sin[position_ids].unsqueeze(1)  # [bs, 1, seq_len, dim]
+    
+    q_embed = (q * cos) + (rotate_half(q) * sin)
+    k_embed = (k * cos) + (rotate_half(k) * sin)
+    return q_embed, k_embed
+
+def _copy_kv_to_mem_cache(layer_id, key_buffer, value_buffer, context_mem_index, mem_manager):
+    copy_kv_cache_to_dest(key_buffer, context_mem_index, mem_manager.key_buffer[layer_id])
+    copy_kv_cache_to_dest(value_buffer, context_mem_index, mem_manager.value_buffer[layer_id])
+    return
 
 
 class LlamaInferenceForwards:
@@ -251,8 +273,9 @@ class LlamaInferenceForwards:
 
         query_states = self.q_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
         key_states = self.k_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim)
-        value_states = self.v_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim)
         key_states_transposed = key_states.transpose(1, 2)
+        value_states = self.v_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim)
+        
 
         # NOTE might want to revise
         #   need some way to record the length of past key values cache
@@ -261,26 +284,42 @@ class LlamaInferenceForwards:
             infer_state.cache_manager.past_key_values_length += q_len    # seq_len
 
         if HAS_VLLM_KERNERL:
+            # NOTE: fix rotatry embedding precision problem
             cos, sin = infer_state.position_cos, infer_state.position_sin
+            
+            # value_states_transposed = value_states.transpose(1, 2)
+
+            # cos, sin = self.rotary_emb(value_states_transposed,
+            #                 seq_len=infer_state.cache_manager.past_key_values_length)
+            
             cos_sin_cache = torch.cat((cos, sin), dim=-1)
-            rotary_embedding_neox(position_ids, query_states, key_states_transposed, self.head_dim, cos_sin_cache)
-            key_states = key_states_transposed.transpose(1, 2)
+            
+            key_states = key_states.view(-1, self.num_heads * self.head_dim)
+            query_states = query_states.transpose(1, 2).reshape(-1, self.num_heads * self.head_dim)
+            rotary_embedding_neox(position_ids.squeeze(1), query_states, key_states, self.head_dim, cos_sin_cache)
+            
+            
+            query_states = query_states.reshape(-1, self.num_heads, self.head_dim)
+            key_states = key_states.reshape(-1, self.num_heads, self.head_dim)
+            value_states = value_states.reshape(-1, self.num_heads, self.head_dim)
+            
         else:
             # NOTE: there are some issues for original rotary_embedding_neox of huggingface
+
             value_states_transposed = value_states.transpose(1, 2)
             cos, sin = self.rotary_emb(value_states_transposed,
-                                       seq_len=infer_state.cache_manager.past_key_values_length)
-            query_states, key_states = apply_rotary_pos_emb(query_states, key_states_transposed, cos, sin, position_ids)
-            key_states = key_states_transposed.transpose(1, 2)
+                                        seq_len=infer_state.cache_manager.past_key_values_length)
 
-        def _copy_kv_to_mem_cache(layer_id, key_buffer, value_buffer, context_mem_index, mem_manager):
-            copy_kv_cache_to_dest(key_buffer, context_mem_index, mem_manager.key_buffer[layer_id])
-            copy_kv_cache_to_dest(value_buffer, context_mem_index, mem_manager.value_buffer[layer_id])
-            return
-
-        key_states = key_states.reshape(-1, self.num_heads, self.head_dim)
-        value_states = value_states.reshape(-1, self.num_heads, self.head_dim)
-        query_states = query_states.transpose(1, 2).reshape(-1, self.num_heads, self.head_dim)
+            rotary_positions_ids = position_ids
+            idx = position_ids.shape[0] - 1
+            if idx >= 1:
+                rotary_positions_ids = [[idx]]
+                
+            query_states, key_states = apply_rotary_pos_emb(query_states, key_states_transposed, cos, sin, rotary_positions_ids)
+            
+            query_states = query_states.transpose(1, 2).reshape(-1, self.num_heads, self.head_dim)
+            key_states = key_states.transpose(1, 2).reshape(-1, self.num_heads, self.head_dim)
+            value_states = value_states.reshape(-1, self.num_heads, self.head_dim)
 
         if infer_state.is_context_stage:
             # first token generation
