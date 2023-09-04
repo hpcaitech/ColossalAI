@@ -3,6 +3,7 @@ import os
 import warnings
 from functools import partial
 from pathlib import Path
+from types import MethodType
 from typing import Callable, Iterator, List, Optional, Tuple, Union
 
 import torch
@@ -25,7 +26,7 @@ from colossalai.checkpoint_io.utils import (
     sharded_optimizer_loading_epilogue,
     unwrap_optimizer,
 )
-from colossalai.interface import ModelWrapper, OptimizerWrapper
+from colossalai.interface import AMPModelMixin, ModelWrapper, OptimizerWrapper
 from colossalai.utils import get_current_device
 from colossalai.zero import LowLevelZeroOptimizer, zero_model_wrapper, zero_optim_wrapper
 
@@ -42,6 +43,31 @@ def _convert_floating_point(x, dtype: torch.dtype = torch.float16):
 
 
 SUPPORTED_PRECISION = ['fp16', 'bf16', 'fp32']
+
+
+class LowLevelZeroModel(ModelWrapper, AMPModelMixin):
+
+    def __init__(self, module: nn.Module, stage: int, precision: str) -> None:
+        super().__init__(module)
+        self.dtype = None
+        if precision == 'fp16':
+            self.dtype = torch.float16
+        elif precision == 'bf16':
+            self.dtype = torch.bfloat16
+        module = zero_model_wrapper(module, zero_stage=stage)
+        if self.dtype is not None:
+            module = module.to(self.dtype)
+        module = module.to(get_current_device())
+        self.module = module
+        self.convert_fn = None
+        if self.dtype is not None:
+            self.convert_fn = partial(_convert_floating_point, dtype=self.dtype)
+
+    def forward(self, *args, **kwargs):
+        if self.convert_fn is not None:
+            args = tree_map(self.convert_fn, args)
+            kwargs = tree_map(self.convert_fn, kwargs)
+        return super().forward(*args, **kwargs)
 
 
 class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
@@ -165,30 +191,20 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
 
         sharded_optimizer_loading_epilogue(optimizer)
 
+    def load_unsharded_model(self, model: LowLevelZeroModel, checkpoint: str, strict: bool = True):
+        assert isinstance(model, LowLevelZeroModel)
+        super().load_unsharded_model(model, checkpoint, strict)
+        model.update_master_params()
 
-class LowLevelZeroModel(ModelWrapper):
-
-    def __init__(self, module: nn.Module, stage: int, precision: str) -> None:
-        super().__init__(module)
-        self.dtype = None
-        if precision == 'fp16':
-            self.dtype = torch.float16
-        elif precision == 'bf16':
-            self.dtype = torch.bfloat16
-        module = zero_model_wrapper(module, zero_stage=stage)
-        if self.dtype is not None:
-            module = module.to(self.dtype)
-        module = module.to(get_current_device())
-        self.module = module
-        self.convert_fn = None
-        if self.dtype is not None:
-            self.convert_fn = partial(_convert_floating_point, dtype=self.dtype)
-
-    def forward(self, *args, **kwargs):
-        if self.convert_fn is not None:
-            args = tree_map(self.convert_fn, args)
-            kwargs = tree_map(self.convert_fn, kwargs)
-        return super().forward(*args, **kwargs)
+    def load_sharded_model(self,
+                           model: LowLevelZeroModel,
+                           checkpoint_index_file: Path,
+                           strict: bool = False,
+                           use_safetensors: bool = False,
+                           load_sub_module: bool = True):
+        assert isinstance(model, LowLevelZeroModel)
+        super().load_sharded_model(model, checkpoint_index_file, strict, use_safetensors, load_sub_module)
+        model.update_master_params()
 
 
 class LowLevelZeroPlugin(DPPluginBase):
@@ -298,11 +314,13 @@ class LowLevelZeroPlugin(DPPluginBase):
 
         if optimizer is not None and \
                 not isinstance(optimizer, OptimizerWrapper):
-            optimizer = zero_optim_wrapper(model.unwrap(),
-                                           optimizer,
-                                           optim_config=self.zero_optim_config,
-                                           **self.optim_kwargs,
-                                           verbose=self.verbose)
+            optimizer: LowLevelZeroOptimizer = zero_optim_wrapper(model.unwrap(),
+                                                                  optimizer,
+                                                                  optim_config=self.zero_optim_config,
+                                                                  **self.optim_kwargs,
+                                                                  verbose=self.verbose)
+            # inject update_master_params
+            model.update_master_params = MethodType(optimizer.update_master_params, model)
 
         return model, optimizer, criterion, dataloader, lr_scheduler
 
