@@ -69,7 +69,7 @@ def evaluate_model(
                 pp_group = booster.plugin.pp_group
                 current_pp_group_ranks = pg_mesh.get_ranks_in_group(pp_group)
                 current_rank = dist.get_rank()
-
+                #TODO pass dataloader to execute_pipeline directly
                 batch = iter([batch])
 
                 outputs = booster.execute_pipeline(batch,
@@ -150,6 +150,7 @@ def train_epoch(epoch: int, model: nn.Module, optimizer: Optimizer, _criterion: 
             # Forward pass
             batch = move_to_cuda(batch)
             if hasattr(booster.plugin, "stage_manager") and booster.plugin.stage_manager is not None:
+                #TODO pass train_dataloader to execute_pipeline directly
                 batch = iter([batch])
                 outputs = booster.execute_pipeline(batch,
                                                    model,
@@ -292,7 +293,6 @@ def main():
     # ==============================
     # Boost with ColossalAI
     # ==============================
-    print("===before boost===")
     model, optimizer, _criterion, _, lr_scheduler = booster.boost(model,
                                                                   optimizer,
                                                                   criterion=_criterion,
