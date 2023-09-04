@@ -98,7 +98,7 @@ parallel gradient handler is added to the engine automatically if data parallel 
 gradient handler like below:
 
 ```python
-from colossalai.registry import GRADIENT_HANDLER
+from colossalai.legacy.registry import GRADIENT_HANDLER
 from colossalai.legacy.engine import BaseGradientHandler
 
 @GRADIENT_HANDLER.register_module

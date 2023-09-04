@@ -10,7 +10,7 @@ import torch.distributed as dist
 from colossalai.communication import all_reduce
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.registry import HOOKS
+from colossalai.legacy.registry import HOOKS
 from colossalai.utils import get_current_device, is_no_pp_or_last_stage
 
 from ._base_hook import BaseHook
@@ -356,7 +356,7 @@ class ThroughputMetric(Metric):
             self.last_step_num_samples *= gpc.get_world_size(ParallelMode.DATA)
         else:
             self.last_step_used_time = all_reduce(self.last_step_used_time, ParallelMode.DATA) / \
-                 gpc.get_world_size(ParallelMode.DATA)
+                gpc.get_world_size(ParallelMode.DATA)
             self.last_step_num_samples = all_reduce(self.last_step_num_samples, ParallelMode.DATA)
 
         sample_per_sec = _format_number(self.last_step_num_samples / (self.last_step_used_time + 1e-12).item())
@@ -367,7 +367,7 @@ class ThroughputMetric(Metric):
             self.last_step_num_samples *= gpc.get_world_size(ParallelMode.DATA)
         else:
             self.last_step_used_time = all_reduce(self.last_step_used_time, ParallelMode.DATA) / \
-                 gpc.get_world_size(ParallelMode.DATA)
+                gpc.get_world_size(ParallelMode.DATA)
             self.last_step_num_samples = all_reduce(self.last_step_num_samples, ParallelMode.DATA)
 
         sample_per_sec = _format_number(self.last_step_num_samples / (self.last_step_used_time + 1e-12).item())
