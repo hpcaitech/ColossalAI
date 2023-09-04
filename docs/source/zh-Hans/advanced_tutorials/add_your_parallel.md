@@ -87,7 +87,7 @@ Colossal-AI 为用户提供了一个全局 context，使他们能够轻松地管
 你可以添加你自己的梯度 handler，如下所示：
 
 ```python
-from colossalai.registry import GRADIENT_HANDLER
+from colossalai.legacy.registry import GRADIENT_HANDLER
 from colossalai.legacy.engine import BaseGradientHandler
 
 @GRADIENT_HANDLER.register_module

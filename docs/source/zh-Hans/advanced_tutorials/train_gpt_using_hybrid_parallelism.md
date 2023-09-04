@@ -36,7 +36,7 @@ import torch
 import torch.nn as nn
 from colossalai import nn as col_nn
 from colossalai.amp import AMP_TYPE
-from colossalai.builder.pipeline import partition_uniform
+from colossalai.legacy.builder.pipeline import partition_uniform
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.legacy.engine.schedule import (InterleavedPipelineSchedule,

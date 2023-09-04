@@ -28,7 +28,7 @@ To implement a customized gradient handler, you need to follow these steps.
 3. implement `handle_gradient` method.
 
 ```python
-from colossalai.registry import GRADIENT_HANDLER
+from colossalai.legacy.registry import GRADIENT_HANDLER
 from colossalai.legacy.engine.gradient_handler import BaseGradientHandler
 
 

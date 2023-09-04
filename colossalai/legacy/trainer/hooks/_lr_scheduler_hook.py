@@ -1,6 +1,6 @@
 from torch import Tensor
 
-from colossalai.registry import HOOKS
+from colossalai.legacy.registry import HOOKS
 
 from ._metric_hook import LearningRateMetric, MetricHook
 
