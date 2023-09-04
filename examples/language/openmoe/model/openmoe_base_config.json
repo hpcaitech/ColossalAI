@@ -1,6 +1,6 @@
 {
   "architectures": [
-    "OpenLlamaForCausalLM"
+    "OpenMoeForCausalLM"
   ],
   "intermediate_size": 2048,
   "hidden_size": 768,

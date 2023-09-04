@@ -33,7 +33,7 @@ import collections
 
 import torch
 from flax import traverse_util
-from modeling_openmoe import OpenLlamaForCausalLM
+from modeling_openmoe import OpenMoeForCausalLM
 from t5x import checkpoints
 from transformers import LlamaConfig
 from transformers.utils import logging
@@ -184,7 +184,7 @@ def convert_t5x_checkpoint_to_pytorch(t5x_checkpoint_path, config_file, pytorch_
     print(f"Building PyTorch model from configuration: {config}")
     # Non-v1.1 checkpoints could also use T5Model, but this works for all.
     # The v1.0 checkpoints will simply have an LM head that is the word embeddings.
-    model = OpenLlamaForCausalLM(config)
+    model = OpenMoeForCausalLM(config)
 
     # Load weights from tf checkpoint
     load_t5x_weights_in_t5(model, config, t5x_checkpoint_path)

@@ -60,7 +60,8 @@ class SparseMLP(nn.Module):
                  expert_parallel: str = "EP",
                  hidden_size: int = 2048,
                  intermediate_size: int = 2048,
-                 activation: str = None):
+                 activation: str = None,
+                 gated: bool = False):
         super().__init__()
         self.hidden_size = hidden_size
         self.num_experts = num_experts
@@ -82,7 +83,8 @@ class SparseMLP(nn.Module):
         self.experts: BaseMLPExperts = expert_cls(num_experts=num_experts,
                                                   hidden_size=hidden_size,
                                                   intermediate_size=intermediate_size,
-                                                  activation=activation)
+                                                  activation=activation,
+                                                  gated=gated)
         if expert_parallel is not None:
             self.ep_group = get_ep_group(self.experts)
             self.ep_size = get_ep_size(self.experts)

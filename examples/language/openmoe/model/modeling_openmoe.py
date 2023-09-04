@@ -17,21 +17,16 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-""" PyTorch LLaMA model."""
-import math
+""" PyTorch OpenMoE model."""
 from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
 from torch import nn
-from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
+from torch.nn import CrossEntropyLoss
 from transformers.activations import ACT2FN
-from transformers.modeling_outputs import (
-    BaseModelOutputWithPast,
-    CausalLMOutputWithPast,
-    SequenceClassifierOutputWithPast,
-)
+from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.modeling_utils import PreTrainedModel
 from transformers.models.llama import LlamaConfig
 from transformers.models.t5.modeling_t5 import T5LayerNorm
@@ -41,6 +36,8 @@ from transformers.utils import (
     logging,
     replace_return_docstrings,
 )
+
+from colossalai.nn.layer.moe.layers import SparseMLP
 
 logger = logging.get_logger(__name__)
 
@@ -94,11 +91,11 @@ def generate_fixed_pos_embedding(features, length, min_timescale=1.0, max_timesc
       output_sin: a float32 Tensor with shape [length, features]
       output_cos: a float32 Tensor with shape [length, features]
     """
-    fraction = torch.arange(0, features, 2, dtype=torch.float32).cuda() / features
+    fraction = torch.arange(0, features, 2, dtype=torch.float64).cuda() / features
     timescale = min_timescale * (max_timescale / min_timescale)**fraction
     rotational_frequency = 1. / timescale
 
-    sinusoid_inp = torch.einsum('i,j->ij', torch.arange(length, dtype=torch.float32).cuda(), rotational_frequency)
+    sinusoid_inp = torch.einsum('i,j->ij', torch.arange(length, dtype=torch.float64).cuda(), rotational_frequency)
 
     sinusoid_inp = torch.cat([sinusoid_inp, sinusoid_inp], dim=-1)
 
@@ -119,10 +116,10 @@ def apply_rotary_embedding(q, k, cos, sin, decode=False, rotary_index=None):
     assert batch == kbatch, f'{batch} != {kbatch}'
     assert d == kd, f'{d} != {kd}'
     if decode and qlen == 1 and rotary_index is not None:
-        qcos = cos[rotary_index, :]
-        qsin = sin[rotary_index, :]
-        qcos = qcos.unsqueeze(1).unsqueeze(2).expand(batch, qlen, qheads, d)
-        qsin = qsin.unsqueeze(1).unsqueeze(2).expand(batch, qlen, qheads, d)
+        qcos = cos[rotary_index + 1, :]
+        qsin = sin[rotary_index + 1, :]
+        qcos = qcos.unsqueeze(2).expand(batch, qlen, qheads, d)
+        qsin = qsin.unsqueeze(2).expand(batch, qlen, qheads, d)
     else:
         qcos, qsin = cos[:qlen, :], sin[:qlen, :]
         qcos = qcos.unsqueeze(0).unsqueeze(2).expand(batch, qlen, qheads, d)
@@ -444,10 +441,27 @@ class LlamaDecoderLayer(nn.Module):
     def __init__(self, config: LlamaConfig, moe: bool):
         super().__init__()
         self.hidden_size = config.hidden_size
+        self.moe = moe
         self.self_attn = LlamaAttention(config=config)
-        self.mlp = LlamaMLP(config)
         self.input_layernorm = T5LayerNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.post_attention_layernorm = T5LayerNorm(config.hidden_size, eps=config.rms_norm_eps)
+        if self.moe:
+            self.mlp = SparseMLP(num_experts=16,
+                                 top_k=2,
+                                 capacity_factor_train=1.25,
+                                 capacity_factor_eval=2.,
+                                 min_capacity=4,
+                                 noisy_policy=None,
+                                 drop_tks=True,
+                                 expert_parallel=None,
+                                 hidden_size=config.hidden_size,
+                                 intermediate_size=config.intermediate_size,
+                                 activation=config.hidden_act,
+                                 gated=True)
+            self.pre_extra_mlp_layernorm = T5LayerNorm(config.hidden_size, eps=config.rms_norm_eps)
+            self.extra_mlp = LlamaMLP(config)
+        else:
+            self.mlp = LlamaMLP(config)
 
     def forward(
         self,
@@ -491,7 +505,15 @@ class LlamaDecoderLayer(nn.Module):
         residual = hidden_states
         hidden_states = self.post_attention_layernorm(hidden_states)
         hidden_states = self.mlp(hidden_states)
+        if self.moe:
+            hidden_states = hidden_states[0]
         hidden_states = residual + hidden_states
+
+        if self.moe:
+            residual = hidden_states
+            hidden_states = self.pre_extra_mlp_layernorm(hidden_states)
+            hidden_states = self.extra_mlp(hidden_states)
+            hidden_states = residual + hidden_states
 
         outputs = (hidden_states,)
 
@@ -796,7 +818,7 @@ class LlamaModel(LlamaPreTrainedModel):
         )
 
 
-class OpenLlamaForCausalLM(LlamaPreTrainedModel):
+class OpenMoeForCausalLM(LlamaPreTrainedModel):
     # _tied_weights_keys = ["lm_head.weight"]
 
     def __init__(self, config):
