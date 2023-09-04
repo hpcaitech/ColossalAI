@@ -33,7 +33,7 @@ import collections
 
 import torch
 from flax import traverse_util
-from inference.moe.modeling_openllama import OpenLlamaForCausalLM
+from modeling_openmoe import OpenLlamaForCausalLM
 from t5x import checkpoints
 from transformers import LlamaConfig
 from transformers.utils import logging
@@ -61,6 +61,37 @@ def t5x_mlp_lookup(params, i, prefix, split_mlp_wi=False):
 
     wo = params[f"{prefix}/layers_{i}/mlp/wo/kernel"]
     return wi, wo
+
+
+def t5x_extra_mlp_lookup(params, i, prefix, split_mlp_wi=False):
+    """Returns the MLP parameters of a layer. Does not transpose."""
+    if split_mlp_wi:
+        wi_0 = params[f"{prefix}/layers_{i}/extra_mlp/wi_0/kernel"]
+        wi_1 = params[f"{prefix}/layers_{i}/extra_mlp/wi_1/kernel"]
+        wi = (wi_0, wi_1)
+    else:
+        wi = params[f"{prefix}/layers_{i}/extra_mlp/wi/kernel"]
+
+    wo = params[f"{prefix}/layers_{i}/extra_mlp/wo/kernel"]
+    return wi, wo
+
+
+def t5x_experts_lookup(params, i, prefix, split_mlp_wi=False):
+    """Returns the MLP parameters of a layer. Does not transpose."""
+    if split_mlp_wi:
+        wi_0 = params[f"{prefix}/layers_{i}/mlp/expert/wi_0/kernel"]
+        wi_1 = params[f"{prefix}/layers_{i}/mlp/expert/wi_1/kernel"]
+        wi = (wi_0, wi_1)
+    else:
+        wi = params[f"{prefix}/layers_{i}/mlp/expert/wi/kernel"]
+
+    wo = params[f"{prefix}/layers_{i}/mlp/expert/wo/kernel"]
+    return wi, wo
+
+
+def t5x_gate_lookup(params, i, prefix, split_mlp_wi=False):
+    """Returns the MLP parameters of a layer. Does not transpose."""
+    return params[f"{prefix}/layers_{i}/mlp/router/router_weights/w/kernel"]
 
 
 def t5x_layer_norm_lookup(params, i, prefix, layer_name):
@@ -98,11 +129,28 @@ def convert_t5x_to_pytorch(variables: dict, *, num_layers: int):
 
         # Block i, layer 2 (MLP).
         layer_norm = t5x_layer_norm_lookup(old, i, "decoder", "pre_mlp_layer_norm")
-        wi, wo = t5x_mlp_lookup(old, i, "decoder", split_mlp_wi)
         new[f"model.layers.{i}.post_attention_layernorm.weight"] = layer_norm
-        new[f"model.layers.{i}.mlp.gate_proj.weight"] = wi[0].T
-        new[f"model.layers.{i}.mlp.up_proj.weight"] = wi[1].T
-        new[f"model.layers.{i}.mlp.down_proj.weight"] = wo.T
+
+        if (i + 1) % 4 == 0:
+            # moe
+            gate = t5x_gate_lookup(old, i, "decoder", split_mlp_wi)
+            new[f"model.layers.{i}.mlp.gate_weight"] = gate.T
+            wi, wo = t5x_experts_lookup(old, i, "decoder", split_mlp_wi)
+            new[f"model.layers.{i}.mlp.experts.wi_gate"] = wi[0]
+            new[f"model.layers.{i}.mlp.experts.wi_up"] = wi[1]
+            new[f"model.layers.{i}.mlp.experts.wo"] = wo
+            # extra
+            layer_norm = t5x_layer_norm_lookup(old, i, "decoder", "pre_extra_mlp_layer_norm")
+            new[f"model.layers.{i}.pre_extra_mlp_layernorm.weight"] = layer_norm
+            wi, wo = t5x_extra_mlp_lookup(old, i, "decoder", split_mlp_wi)
+            new[f"model.layers.{i}.extra_mlp.gate_proj.weight"] = wi[0].T
+            new[f"model.layers.{i}.extra_mlp.up_proj.weight"] = wi[1].T
+            new[f"model.layers.{i}.extra_mlp.down_proj.weight"] = wo.T
+        else:
+            wi, wo = t5x_mlp_lookup(old, i, "decoder", split_mlp_wi)
+            new[f"model.layers.{i}.mlp.gate_proj.weight"] = wi[0].T
+            new[f"model.layers.{i}.mlp.up_proj.weight"] = wi[1].T
+            new[f"model.layers.{i}.mlp.down_proj.weight"] = wo.T
 
     new["model.norm.weight"] = old["decoder/decoder_norm/scale"]
 
