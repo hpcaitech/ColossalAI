@@ -71,7 +71,6 @@ def evaluate_model(
                 current_rank = dist.get_rank()
                 #TODO pass dataloader to execute_pipeline directly
                 batch = iter([batch])
-
                 outputs = booster.execute_pipeline(batch,
                                                    model,
                                                    criterion,
