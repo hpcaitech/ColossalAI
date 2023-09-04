@@ -55,9 +55,10 @@ def run_llama_test(test_config):
     init_to_get_rotary(model.model, base=10000)
     model = model.half()
 
-    text = "how is weather today?"
-    input_ids = tokenizer.encode(text, return_tensors='pt', device='cuda')
+    text = ["how is weather today?", "i am "]
+    input_ids = tokenizer.batch_encode_plus(text, return_tensors='pt', padding=True, device='cuda')
 
+    print("input ids ", input_ids)
     infer_engine = TPInferEngine(model.half(), BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
     shard_config = ShardConfig(enable_tensor_parallelism=True, inference_only=True)
     shardformer = ShardFormer(shard_config=shard_config)
@@ -70,9 +71,10 @@ def run_llama_test(test_config):
     print("outputs.shape: ", outputs.shape)
 
     print("outputs: ", outputs)
-
-    output_text = tokenizer.decode(outputs[0])
-    print(output_text)
+    if not dist.is_initialized() or dist.get_rank() == 0:
+        for o in outputs:
+            output_text = tokenizer.decode(o)
+            print(output_text)
 
 
 def check_llama(rank, world_size, port):
