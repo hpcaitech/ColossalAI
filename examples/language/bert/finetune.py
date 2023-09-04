@@ -81,7 +81,7 @@ def evaluate_model(
                 if booster.plugin.stage_manager.is_last_stage():
                     val_loss = outputs["loss"]
 
-                    logits = outputs["outputs"].logits
+                    logits = outputs["outputs"]["logits"]
 
                     accum_loss.add_(val_loss)
 
