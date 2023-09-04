@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Dict
+from typing import Dict, Tuple
 
 import torch
 
@@ -16,45 +16,22 @@ class MicroBatchDescription():
 
     def __init__(
         self,
-        mb_inputs: Dict[str, torch.Tensor],
-        interval_inputs: Dict[str, torch.Tensor],
+        inputs_dict: Dict[str, torch.Tensor],
+        output_dict: Dict[str, torch.Tensor],
         new_length: int,
     ) -> None:
-        if mb_inputs is not None:
-            assert mb_inputs.get('input_ids') is not None and mb_inputs.get('attention_mask') is not None
-            self.mb_length = mb_inputs['input_ids'].shape[-1]
-            self.attn_mask = mb_inputs['attention_mask']
-            self.input_ids = mb_inputs['input_ids']
-
-        elif interval_inputs is not None:
-            assert interval_inputs.get('hidden_states') is not None
-            self.mb_length = interval_inputs['hidden_states'].shape[-2]
-        else:
-            raise ValueError('mb_inputs and interval_inputs can not be None at the same time')
-
+        assert output_dict.get('hidden_states') is not None
+        self.mb_length = output_dict['hidden_states'].shape[-2]
         self.target_length = self.mb_length + new_length
         self.kv_cache = ()
-        self.new_tokens = None
 
-    def update_kvcache(self, kv_cache):
+    def update(self, output_dict: Dict[str, torch.Tensor] = None, new_token: torch.Tensor = None):
+        if output_dict is not None:
+            self._update_kvcache(output_dict['past_key_values'])
+
+    def _update_kvcache(self, kv_cache: Tuple):
+        assert type(kv_cache) == tuple
         self.kv_cache = kv_cache
-
-    def update_newtokens(self, new_token: torch.Tensor):
-        if self.new_tokens is None:
-            self.new_tokens = new_token
-        else:
-            self.new_tokens = torch.cat([self.new_tokens, new_token], dim=-1)
-
-    @property
-    def cur_length(self):
-        """
-        Return the current sequnence length of micro batch, when there is no kv_cache, the length is mb_length,
-        otherwise the sequence length is `kv_cache[0][0].shape[-2]` plus 1
-
-        """
-        if len(self.kv_cache) == 0:
-            return self.mb_length
-        return self.kv_cache[0][0].shape[-2] + 1
 
     @property
     def state(self):
@@ -68,18 +45,90 @@ class MicroBatchDescription():
         else:
             return Status.GENERATE
 
+    @property
+    def cur_length(self):
+        """
+        Return the current sequnence length of micro batch
+
+        """
+        pass
+
+
+class HeadMicroBatchDescription(MicroBatchDescription):
+
+    def __init__(self, inputs_dict: Dict[str, torch.Tensor], output_dict: Dict[str, torch.Tensor],
+                 new_length: int) -> None:
+        super().__init__(inputs_dict, output_dict, new_length)
+        assert inputs_dict is not None
+        assert inputs_dict.get('input_ids') is not None and inputs_dict.get('attention_mask') is not None
+        self.input_ids = inputs_dict['input_ids']
+        self.attn_mask = inputs_dict['attention_mask']
+        self.new_tokens = None
+
+    def update(self, output_dict: Dict[str, torch.Tensor] = None, new_token: torch.Tensor = None):
+        super().update(output_dict, new_token)
+        if new_token is not None:
+            self._update_newtokens(new_token)
+        if self.state is not Status.DONE and new_token is not None:
+            self._update_attnmask()
+
+    def _update_newtokens(self, new_token: torch.Tensor):
+        if self.new_tokens is None:
+            self.new_tokens = new_token
+        else:
+            self.new_tokens = torch.cat([self.new_tokens, new_token], dim=-1)
+
+    def _update_attnmask(self):
+        self.attn_mask = torch.cat(
+            (self.attn_mask, torch.ones((self.attn_mask.shape[0], 1), dtype=torch.int64, device='cuda')), dim=-1)
+
+    @property
+    def cur_length(self):
+        """
+        When there is no new_token, the length is mb_length, otherwise the sequence length is `mb_length` plus the length of new_token
+
+        """
+        if self.new_tokens is None:
+            return self.mb_length
+        else:
+            return self.mb_length + len(self.new_tokens[0])
+
+
+class BodyMicroBatchDescription(MicroBatchDescription):
+
+    def __init__(self, inputs_dict: Dict[str, torch.Tensor], output_dict: Dict[str, torch.Tensor],
+                 new_length: int) -> None:
+        super().__init__(inputs_dict, output_dict, new_length)
+
+    def update(self, output_dict: Dict[str, torch.Tensor] = None, new_token: torch.Tensor = None):
+        super().update(output_dict, new_token)
+
+    @property
+    def cur_length(self):
+        """
+        When there is no kv_cache, the length is mb_length, otherwise the sequence length is `kv_cache[0][0].shape[-2]` plus 1
+
+        """
+        if len(self.kv_cache) == 0:
+            return self.mb_length
+        else:
+            return self.kv_cache[0][0].shape[-2] + 1
+
 
 class MicroBatchManager():
     '''
     MicroBatchManager is a class that manages the micro batch.
 
     Args:
+        stage (int): stage id of current stage.
         new_length (int): the new length of the input sequence.
         micro_batch_size (int): the micro batch size.
         micro_batch_buffer_size (int): the buffer size for micro batch. Normally, it should be the same as the number of pipeline stages.
+
     '''
 
-    def __init__(self, new_length: int, micro_batch_size: int, micro_batch_buffer_size: int):
+    def __init__(self, stage: int, new_length: int, micro_batch_size: int, micro_batch_buffer_size: int):
+        self.stage = stage
         self.new_length = new_length
         self.micro_batch_size = micro_batch_size
         self.buffer_size = micro_batch_buffer_size
@@ -87,33 +136,28 @@ class MicroBatchManager():
         self.new_tokens_buffer = {}
         self.idx = 0
 
-    def _add_descrption(self, mb_inputs: Dict[str, torch.Tensor], inter_inputs: Dict[str, torch.Tensor]):
-        self.mb_descrption_buffer[self.idx] = MicroBatchDescription(mb_inputs, inter_inputs, self.new_length)
-
-    def _update_descrption(self, present_kv):
-        self.mb_descrption_buffer[self.idx].update_kvcache(present_kv)
-
-    def _remove_descrption(self):
-        self.mb_descrption_buffer.pop(self.idx)
-
-    def step(self, mb_inputs=None, inter_inputs=None, present_kv=None):
+    def step(self, inputs_dict=None, output_dict: Dict[str, torch.Tensor] = None, new_token: torch.Tensor = None):
         """
-        Update the state if microbatch manager
+        Update the state if microbatch manager, 2 conditions.
+        1. For first stage in PREFILL, receive inputs and outputs, `_add_descrption` will save its inputs.
+        2. For other conditon, only receive the output of previous stage, and update the descrption.
 
         Args:
-            mb_inputs (int, optional): The input of first stage when in prefill, should be a dict like {'input_ids': torch.Tensor, 'attention_mask': torch.Tensor}.
-            inter_inputs ([type], optional): The input of intermediate stage (the output of previous stage), should be a dict like {'hidden_state': torch.Tensor}.
-            present_kv ([type], optional): The kvcache of current microbatch in current stage.
+            inputs_dict (Dict[str, torch.Tensor]): the inputs of current stage. The key should have `input_ids` and `attention_mask`.
+            output_dict (Dict[str, torch.Tensor]): the outputs of previous stage. The key should have `hidden_states` and `past_key_values`.
+            new_token (torch.Tensor): the new token generated by current stage.
         """
+        # Add descrption first if the descrption is None
+        if inputs_dict is None and output_dict is None and new_token is None:
+            return Status.PREFILL
         if self.mb_descrption_buffer.get(self.idx) is None:
-            self._add_descrption(mb_inputs, inter_inputs)
-        self._update_descrption(present_kv)
-        state = self.cur_state
-        # self.next()
-        return state
+            self._add_descrption(inputs_dict, output_dict)
+        self.cur_descrption.update(output_dict, new_token)
+        return self.cur_state
 
-    def next(self):
-        self.idx = (self.idx + 1) % self.buffer_size
+    def export_new_tokens(self):
+        list = [i.new_tokens.tolist()[0] for i in self.mb_descrption_buffer.values()]
+        return list
 
     def is_micro_batch_done(self):
         if len(self.mb_descrption_buffer) == 0:
@@ -121,15 +165,22 @@ class MicroBatchManager():
         for mb in self.mb_descrption_buffer.values():
             if mb.state != Status.DONE:
                 return False
-        self.mb_descrption_buffer.clear()
         return True
 
-    def add_new_tokens(self, new_token):
-        self.cur_descrption.update_newtokens(new_token)
+    def clear(self):
+        self.mb_descrption_buffer.clear()
 
-    def export_new_tokens(self):
-        list = self.cur_descrption.new_tokens.tolist()
-        return list
+    def next(self):
+        self.idx = (self.idx + 1) % self.buffer_size
+
+    def _add_descrption(self, inputs_dict: Dict[str, torch.Tensor], output_dict: Dict[str, torch.Tensor]):
+        if self.stage == 0:
+            self.mb_descrption_buffer[self.idx] = HeadMicroBatchDescription(inputs_dict, output_dict, self.new_length)
+        else:
+            self.mb_descrption_buffer[self.idx] = BodyMicroBatchDescription(inputs_dict, output_dict, self.new_length)
+
+    def _remove_descrption(self):
+        self.mb_descrption_buffer.pop(self.idx)
 
     @property
     def cur_descrption(self) -> MicroBatchDescription:

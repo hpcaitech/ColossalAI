@@ -40,7 +40,7 @@ class GPT2LMHeadModelPipelinePolicy(GPT2Policy):
         held_layers = super().get_held_layers()
         # make the tie weight lm_head and embedding in the same device to save memory
         # if self.pipeline_stage_manager.is_first_stage():
-        if self.pipeline_stage_manager.is_last_stage():
+        if self.pipeline_stage_manager.is_first_stage():
             held_layers.append(self.model.lm_head)
         return held_layers
 
