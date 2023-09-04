@@ -80,9 +80,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             tp_process_group: Optional[ProcessGroup] = None,    # if using tp
             forced_dtype: Optional[torch.dtype] = None):
 
-        # TODO:
-        # 1. state_dict for checkpoint IO
-
         super(LowLevelZeroOptimizer, self).__init__(optim=optimizer)
         self._dtype = self.optim.param_groups[0]['params'][0].dtype
         self._logger = get_dist_logger()
@@ -277,7 +274,11 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                         sync_tensor(flat_grads_per_rank[rank], grad_list)
                         for grad in grad_list:
                             param_id = self._bucket_store.get_param_id_of_grad(grad)
-                            self._grad_store.append_gradients_by_param_id(grad, group_id, param_id)
+                            if len(self._grad_store.get_partitioned_gradients_by_param_id(group_id,
+                                                                                          param_id)) < self._world_size:
+                                self._grad_store.append_gradients_by_param_id(grad, group_id, param_id)
+                            else:
+                                self._grad_store.add_gradients_by_param_id(grad, rank, group_id, param_id)
 
                 else:
                     flat_grads_list = list(flat_grads.split(len(flat_grads) // self._world_size))
@@ -291,7 +292,10 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                     sync_tensor(recieved_grad, grad_in_bucket_current_rank)
                     for grad in grad_in_bucket_current_rank:
                         param_id = self._bucket_store.get_param_id_of_grad(grad)
-                        self._grad_store.append_gradients_by_param_id(grad, group_id, param_id)
+                        if len(self._grad_store.get_partitioned_gradients_by_param_id(group_id, param_id)) < 1:
+                            self._grad_store.append_gradients_by_param_id(grad, group_id, param_id)
+                        else:
+                            self._grad_store.add_gradients_by_param_id(grad, 0, group_id, param_id)
 
                 self._bucket_store.reset()
 
@@ -303,7 +307,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         # or got a grad of param from another group
         # after reduction, the bucket will be empty
         if self._bucket_store.num_elements_in_bucket() + param_size > self._reduce_bucket_size or \
-            group_id != self._bucket_store.current_group_id:
+                group_id != self._bucket_store.current_group_id:
             self._run_reduction()
 
         padding_size = self._param_store.get_param_padding_size(param)
@@ -315,7 +319,8 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
     def backward(self, loss, retain_graph=False):
         assert not(self._partition_grads and not self.require_grad_sync), \
-            "ZeRO2(partition_grads) and gradient accumulation(no_sync) are not compatible"
+            "ZeRO2(partition_grads) and no_sync are not compatible"
+
         if self.mixed_precision_mixin is not None:
             loss = self.mixed_precision_mixin.pre_backward(loss)
 
@@ -537,9 +542,12 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             for k, v in state.items():
                 if isinstance(v, torch.Tensor) and k != 'step':
                     working_param = self._param_store.master_to_working_param[id(param)]
-                    gather_tensor = [torch.zeros_like(v) for _ in range(self._world_size)]
-                    dist.all_gather(gather_tensor, v, group=self.dp_pg)
-                    param_state = torch.stack(gather_tensor).view(-1)[:working_param.numel()].reshape_as(working_param)
+                    gather_tensor = [
+                        torch.zeros(v.shape, device='cuda', dtype=v.dtype) for _ in range(self._world_size)
+                    ]
+                    dist.all_gather(gather_tensor, v.cuda(), group=self.dp_pg)
+                    param_state = torch.stack(gather_tensor).view(-1)[:working_param.numel()].reshape_as(
+                        working_param).cpu()
                     zero_state[param][k] = param_state
 
         states_dict = self._pack_state(zero_state)
@@ -562,10 +570,9 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                         if padding_size > 0:
                             v = torch.nn.functional.pad(v, [0, padding_size])
                         v_list = v.split(v.numel() // self._world_size)
-                        zero_state_dict['state'][param_idx][k] = v_list[self._local_rank].detach()
+                        zero_state_dict['state'][param_idx][k] = v_list[self._local_rank].detach().clone()
 
         self.optim.load_state_dict(zero_state_dict)
-        zero_state_dict = dict()
 
     def state_dict_shard(self, max_shard_size: int = 1024) -> Iterator[Tuple[Dict, int]]:
         """Returns dictionaries containing a whole state of the module one by one. The max size of dictionary shard is specified by ``max_shard_size``.
@@ -594,9 +601,10 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
             for k, v in states.items():
                 if isinstance(v, torch.Tensor) and k != 'step':
-                    state_tensor = [torch.zeros_like(v) for _ in range(self._world_size)]
-                    dist.all_gather(state_tensor, v, group=self.dp_pg)
-                    state_tensor = torch.stack(state_tensor).view(-1)[:working_param.numel()].reshape_as(working_param)
+                    state_tensor = [torch.zeros(v.shape, device='cuda', dtype=v.dtype) for _ in range(self._world_size)]
+                    dist.all_gather(state_tensor, v.cuda(), group=self.dp_pg)
+                    state_tensor = torch.stack(state_tensor).view(-1)[:working_param.numel()].reshape_as(
+                        working_param).cpu()
                     current_block_size += state_tensor.numel()
                     current_block[k] = state_tensor
 

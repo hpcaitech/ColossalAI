@@ -1,25 +1,20 @@
 import time
 
-import torch
 import datasets
+import torch
 import transformers
-from transformers import AutoConfig, OPTForCausalLM, AutoTokenizer
-from transformers import get_linear_schedule_with_warmup
-from transformers.utils.versions import require_version
+from args import parse_demo_args
+from data import NetflixDataset, netflix_collator
 from tqdm import tqdm
+from transformers import AutoConfig, AutoTokenizer, OPTForCausalLM, get_linear_schedule_with_warmup
+from transformers.utils.versions import require_version
 
 import colossalai
-from colossalai.nn.optimizer import HybridAdam
-from colossalai.logging import disable_existing_loggers, get_dist_logger
-from colossalai.tensor import ProcessGroup, ShardSpec
-from colossalai.utils import get_current_device
-from colossalai.zero import ColoInitContext
 from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin, LowLevelZeroPlugin, TorchDDPPlugin
 from colossalai.cluster import DistCoordinator
-
-from args import parse_demo_args
-from data import NetflixDataset, netflix_collator
+from colossalai.logging import disable_existing_loggers, get_dist_logger
+from colossalai.nn.optimizer import HybridAdam
 
 require_version("datasets>=1.8.0", "To fix: pip install -r requirements.txt")
 require_version("transformers>=4.20.0", "To fix: pip install -r requirements.txt")
@@ -30,18 +25,18 @@ def move_to_cuda(batch, device):
 
 
 def train_epoch(epoch, model, optimizer, lr_scheduler, dataloader, booster, coordinator):
-        
+
     torch.cuda.synchronize()
     model.train()
 
     with tqdm(dataloader, desc=f'Epoch [{epoch + 1}]', disable=not coordinator.is_master()) as pbar:
-        
+
         for batch in pbar:
 
             # Forward
             optimizer.zero_grad()
             batch = move_to_cuda(batch, torch.cuda.current_device())
-            
+
             outputs = model(use_cache=False, **batch)
             loss = outputs['loss']
 
@@ -72,7 +67,7 @@ def main():
     else:
         datasets.utils.logging.set_verbosity_error()
         transformers.utils.logging.set_verbosity_error()
-    
+
     # Build OPT model
     config = AutoConfig.from_pretrained(args.model_name_or_path)
     model = OPTForCausalLM.from_pretrained(args.model_name_or_path, config=config)
@@ -88,43 +83,35 @@ def main():
     if args.plugin.startswith('torch_ddp'):
         plugin = TorchDDPPlugin()
     elif args.plugin == 'gemini':
-        plugin = GeminiPlugin(device=get_current_device(),
-                        placement_policy='cpu',
-                        pin_memory=True,
-                        strict_ddp_mode=True,
-                        initial_scale=2**5)
+        plugin = GeminiPlugin(offload_optim_frac=1.0, pin_memory=True, initial_scale=2**5)
     elif args.plugin == 'low_level_zero':
         plugin = LowLevelZeroPlugin(initial_scale=2**5)
     logger.info(f"Set plugin as {args.plugin}", ranks=[0])
 
     # Prepare tokenizer and dataloader
-    tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path)   
+    tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path)
     dataset = NetflixDataset(tokenizer)
     dataloader = plugin.prepare_dataloader(dataset,
                                            batch_size=args.batch_size,
                                            shuffle=True,
                                            drop_last=True,
                                            collate_fn=netflix_collator)
-    
+
     # Set optimizer
-    optimizer = HybridAdam(model.parameters(), 
-                           lr=(args.learning_rate * world_size),
-                           weight_decay=args.weight_decay)
+    optimizer = HybridAdam(model.parameters(), lr=(args.learning_rate * world_size), weight_decay=args.weight_decay)
 
     # Set lr scheduler
     total_steps = len(dataloader) * args.num_epoch
     num_warmup_steps = int(args.warmup_ratio * total_steps)
-    lr_scheduler = get_linear_schedule_with_warmup(
-        optimizer,
-        num_warmup_steps=num_warmup_steps,
-        num_training_steps=len(dataloader) * args.num_epoch
-    )
+    lr_scheduler = get_linear_schedule_with_warmup(optimizer,
+                                                   num_warmup_steps=num_warmup_steps,
+                                                   num_training_steps=len(dataloader) * args.num_epoch)
 
     # Set booster
     booster = Booster(plugin=plugin, **booster_kwargs)
-    model, optimizer, _, dataloader, lr_scheduler = booster.boost(model=model, 
-                                                                  optimizer=optimizer, 
-                                                                  dataloader=dataloader, 
+    model, optimizer, _, dataloader, lr_scheduler = booster.boost(model=model,
+                                                                  optimizer=optimizer,
+                                                                  dataloader=dataloader,
                                                                   lr_scheduler=lr_scheduler)
 
     # Start finetuning
