@@ -39,7 +39,6 @@ def tree_flatten_hf(pytree: Any) -> Tuple[List[Any], TreeSpec]:
     to reconstruct the pytree.
     """
     if isinstance(pytree, OrderedDict):
-        print("pytree: Ordered dict")
         node_type = OrderedDict
         flatten_fn = SUPPORTED_NODES[node_type].flatten_fn
         child_pytrees, context = flatten_fn(pytree)
@@ -48,7 +47,7 @@ def tree_flatten_hf(pytree: Any) -> Tuple[List[Any], TreeSpec]:
         result: List[Any] = []
         children_specs: List['TreeSpec'] = []
         for child in child_pytrees:
-            flat, child_spec = tree_flatten(child)
+            flat, child_spec = tree_flatten_hf(child)
             result += flat
             children_specs.append(child_spec)
         return result, TreeSpec(node_type, context, children_specs)
@@ -169,7 +168,6 @@ def merge_batch(data: List[Any], batch_size_dim=0) -> Any:
     flattened_data = []
     tree_spec = None
     for d in data:
-        print('d: ', d)
         # elems should be an instance of OrderedDict
         elems, tree_spec = tree_flatten_hf(d)
         flattened_data.append(elems)
