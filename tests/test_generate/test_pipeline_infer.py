@@ -34,7 +34,7 @@ def pipeline_inference_test(pp_size, new_length, micro_batch_size):
                            new_length=new_length,
                            micro_batch_size=micro_batch_size)
     output = engine.inference([inputs])
-    if dist.get_rank() == dist.get_world_size() - 1:
+    if dist.get_rank() == 0:
         assert len(output[0]) == new_length, f"{len(output)}, {new_length}"
 
 
