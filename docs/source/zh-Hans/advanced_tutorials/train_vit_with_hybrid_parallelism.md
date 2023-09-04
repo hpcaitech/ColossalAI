@@ -380,7 +380,7 @@ def build_pipeline_vit(num_layers, num_chunks, device=torch.device('cuda'), **kw
 
 #### 导入模块
 ```python
-from colossalai.engine.schedule import (InterleavedPipelineSchedule,
+from colossalai.legacy.engine.schedule import (InterleavedPipelineSchedule,
                                         PipelineSchedule)
 from colossalai.utils import MultiTimer
 import os

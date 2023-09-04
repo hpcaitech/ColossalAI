@@ -236,7 +236,7 @@ class PipelineSchedule(BaseSchedule):
         Returns output tensor. This is a helper function and can be ignored by users.
 
         Args:
-            engine (colossalai.engine.Engine): Colossalai engine for training and inference.
+            engine (colossalai.legacy.engine.Engine): Colossalai engine for training and inference.
             input_obj (Union[:class:`torch.Tensor`, List[:class:`torch.Tensor`]]): Input tensor for this pipeline stage.
             return_tensors (List[:class:`torch.Tensor`]): A list of tensors to return.
             return_output_label (bool, optional): Whether returns output labels.
@@ -274,7 +274,7 @@ class PipelineSchedule(BaseSchedule):
         This is a helper function and can be ignored by users.
 
         Args:
-            engine (colossalai.engine.Engine): Colossalai engine for training and inference.
+            engine (colossalai.legacy.engine.Engine): Colossalai engine for training and inference.
             input_obj (Union[:class:`torch.Tensor`, List[:class:`torch.Tensor`]]): input tensor for this pipeline stage.
             output_obj (Union[:class:`torch.Tensor`, List[:class:`torch.Tensor`]]): output tensor for this pipeline stage.
             output_obj_grad (Union[:class:`torch.Tensor`, List[:class:`torch.Tensor`]]): gradient of output tensor for this pipeline stage.
@@ -314,7 +314,7 @@ class PipelineSchedule(BaseSchedule):
         Returns a tuple with losses if the last stage, an empty tuple otherwise.
 
         Args:
-            engine (colossalai.engine.Engine): Colossalai engine for training and inference.
+            engine (colossalai.legacy.engine.Engine): Colossalai engine for training and inference.
             data_iter (Iterable): Dataloader as the form of an iterator, obtained by calling iter(dataloader).
             forward_only (bool, optional):
                 Whether run forward step only. Default is false. If true, no backward will be run.
@@ -518,7 +518,7 @@ class InterleavedPipelineSchedule(PipelineSchedule):
         Returns output tensor. This is a helper function and can be ignored by users.
 
         Args:
-            engine (colossalai.engine.Engine): Colossalai engine for training and inference.
+            engine (colossalai.legacy.engine.Engine): Colossalai engine for training and inference.
             model_chunk_id (int): The id of model chunks.
             input_obj (Union[:class:`torch.Tensor`, List[:class:`torch.Tensor`]]): Input tensor for this pipeline stage.
             return_tensors (List[:class:`torch.Tensor`]): A list of tensors to return.
@@ -555,7 +555,7 @@ class InterleavedPipelineSchedule(PipelineSchedule):
         communication between pipeline stages as needed.
 
         Args:
-            engine (colossalai.engine.Engine): Colossalai engine for training and inference.
+            engine (colossalai.legacy.engine.Engine): Colossalai engine for training and inference.
             data_iter (Iterable): Dataloader as the form of an iterator, obtained by calling iter(dataloader).
             forward_only (bool, optional):
                 Whether run forward step only. Default is false. If true, no backward will be run.

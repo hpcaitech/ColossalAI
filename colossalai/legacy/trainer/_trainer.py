@@ -4,7 +4,7 @@ import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from colossalai.engine import Engine
+from colossalai.legacy.engine import Engine
 from colossalai.legacy.trainer.hooks import BaseHook
 from colossalai.logging import DistributedLogger
 from colossalai.utils import MultiTimer, is_dp_rank_0, is_no_pp_or_last_stage, is_tp_rank_0

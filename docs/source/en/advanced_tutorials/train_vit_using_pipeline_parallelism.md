@@ -35,7 +35,7 @@ import colossalai.nn as col_nn
 import torch
 import torch.nn as nn
 from colossalai.builder import build_pipeline_model
-from colossalai.engine.schedule import (InterleavedPipelineSchedule,
+from colossalai.legacy.engine.schedule import (InterleavedPipelineSchedule,
                                         PipelineSchedule)
 from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.legacy.trainer import Trainer, hooks

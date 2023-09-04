@@ -95,7 +95,7 @@ class BaseSchedule(ABC):
         """The process function over a batch of dataset for training or evaluation.
 
         Args:
-            engine (colossalai.engine.Engine): Colossalai engine for training and inference.
+            engine (colossalai.legacy.engine.Engine): Colossalai engine for training and inference.
             data_iter (Iterable): Data iterator from which get a batch of data, obtained by calling iter(dataloader).
             forward_only (bool): If True, the process won't include backward.
             return_loss (bool, optional): If False, the loss won't be returned.
