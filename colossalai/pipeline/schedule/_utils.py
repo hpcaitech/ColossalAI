@@ -4,7 +4,28 @@ from typing import Any, List, Optional, Tuple
 import torch
 import torch.cuda
 from torch.nn import Module
-from torch.utils._pytree import SUPPORTED_NODES, LeafSpec, TreeSpec, _is_leaf, tree_flatten, tree_map, tree_unflatten
+from torch.utils._pytree import (
+    SUPPORTED_NODES,
+    LeafSpec,
+    TreeSpec,
+    _is_leaf,
+    _register_pytree_node,
+    tree_flatten,
+    tree_map,
+    tree_unflatten,
+)
+
+
+# this register are for torch under version 1.13.1, maybe removed in the future
+def _odict_flatten(d: 'OrderedDict[Any, Any]') -> Tuple[List[Any], Any]:
+    return list(d.values()), list(d.keys())
+
+
+def _odict_unflatten(values: List[Any], context: Any) -> 'OrderedDict[Any, Any]':
+    return OrderedDict((key, value) for key, value in zip(context, values))
+
+
+_register_pytree_node(OrderedDict, _odict_flatten, _odict_unflatten)
 
 
 def tree_map_hf(fn: Any, pytree: Any):
@@ -14,11 +35,11 @@ def tree_map_hf(fn: Any, pytree: Any):
 
 # use this flatten function to handle the ModelingOutput Class instance.
 def tree_flatten_hf(pytree: Any) -> Tuple[List[Any], TreeSpec]:
-    """Flattens a pytree into a list of values and a TreeSpec that can be used
+    """Flattens a pytree into a list of values an a TreeSpec that can be used
     to reconstruct the pytree.
     """
     if isinstance(pytree, OrderedDict):
-        print("pytree: ")
+        print("pytree: Ordered dict")
         node_type = OrderedDict
         flatten_fn = SUPPORTED_NODES[node_type].flatten_fn
         child_pytrees, context = flatten_fn(pytree)
@@ -162,5 +183,4 @@ def merge_batch(data: List[Any], batch_size_dim=0) -> Any:
                 merged_data.append(torch.cat(elem_batch, dim=batch_size_dim))
         else:
             merged_data.append(list(elem_batch))
-    print("merged_data: ", merged_data)
     return tree_unflatten(merged_data, tree_spec)
