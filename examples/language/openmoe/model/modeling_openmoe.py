@@ -340,7 +340,6 @@ class LlamaAttention(nn.Module):
         use_cache: bool = False,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         bsz, q_len, _ = hidden_states.size()
-        # import pdb; pdb.set_trace()
 
         if self.pretraining_tp > 1:
             key_value_slicing = (self.num_key_value_heads * self.head_dim) // self.pretraining_tp
