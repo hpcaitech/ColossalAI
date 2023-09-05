@@ -74,42 +74,27 @@ def run_llama_test(test_config):
     model = LlamaForCausalLM.from_pretrained(llama_model_path, pad_token_id=tokenizer.eos_token_id)
     init_to_get_rotary(model.model, base=10000)
     model = model.half()
-    input = ""
-    for i in range(1022):
-        input += "a "
+
     model_config = model.config
-    text = [input]
 
-    batch_size = 32
-    input_ids = tokenizer.batch_encode_plus(text, return_tensors='pt', padding=True, device='cuda')
-
-    print("input ids ", input_ids)
     infer_engine = TPInferEngine(model.half(), BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
     shard_config = ShardConfig(enable_tensor_parallelism=False, inference_only=True)
     shardformer = ShardFormer(shard_config=shard_config)
 
     infer_engine.prepare_with_shard_config(shard_config)
     infer_engine.shard_model_by(shardformer)
-    print("input.shape: ", input_ids["input_ids"].shape)
 
+    batch_size = 2
     max_new_tokens = 128
-    generate_kwargs = dict(max_new_tokens=max_new_tokens, do_sample=False)
-    outputs = infer_engine.generate(input_ids, generate_kwargs)
-    infer_engine.cache_manager.free_all()
-    print("outputs.shape: ", outputs.shape)
-
     input_len = 1024
+
+    generate_kwargs = dict(max_new_tokens=max_new_tokens, do_sample=False)
     input_tokens = {
         "input_ids": torch.randint(1, 1000, (batch_size, input_len), device='cuda'),
         "attention_mask": torch.ones((batch_size, input_len), device='cuda')
     }
-    input_tokens["input_ids"][:, 0] = 0
-    # print("inputs ", input_tokens)
-    # print(input_tokens["input_ids"].shape)
-    input_len = input_tokens["input_ids"].shape[1]
 
     iters = 10
-
     times = []
 
     for i in range(iters):

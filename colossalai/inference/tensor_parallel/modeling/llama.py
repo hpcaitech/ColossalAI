@@ -125,22 +125,6 @@ class LlamaInferenceForwards:
                 # infer_state.decode_key_buffer = torch.empty((batch_size, self.tp_head_num_, self.head_dim_), dtype=torch.float16, device="cuda")
                 # infer_state.decode_value_buffer = torch.empty((batch_size, self.tp_head_num_, self.head_dim_), dtype=torch.float16, device="cuda")
                 infer_state.block_loc[:, seq_length_with_past - 1] = infer_state.decode_mem_index
-
-        if infer_state.is_context_stage:
-            b_seq_len_numpy = infer_state.seq_len.cpu().numpy()
-            position_ids = torch.from_numpy(
-                np.concatenate([np.arange(0, b_seq_len_numpy[i]) for i in range(len(b_seq_len_numpy))], axis=0)).cuda()
-
-            infer_state.position_cos = torch.index_select(self._cos_cached, 0,
-                                                          position_ids).view(position_ids.shape[0], -1)
-            infer_state.position_sin = torch.index_select(self._sin_cached, 0,
-                                                          position_ids).view(position_ids.shape[0], -1)
-            position_ids = None
-        else:
-            seq_len = infer_state.seq_len
-            infer_state.position_cos = torch.index_select(self._cos_cached, 0, seq_len - 1).view(seq_len.shape[0], -1)
-            infer_state.position_sin = torch.index_select(self._sin_cached, 0, seq_len - 1).view(seq_len.shape[0], -1)
-
         if position_ids is None:
             device = input_ids.device if input_ids is not None else inputs_embeds.device
             position_ids = torch.arange(past_key_values_length,
@@ -150,6 +134,17 @@ class LlamaInferenceForwards:
             position_ids = position_ids.unsqueeze(0).view(-1, seq_length)
         else:
             position_ids = position_ids.view(-1, seq_length).long()
+
+        if infer_state.is_context_stage:
+
+            infer_state.position_cos = torch.index_select(self._cos_cached, 0, position_ids.view(-1)).view(
+                position_ids.view(-1).shape[0], -1)
+            infer_state.position_sin = torch.index_select(self._sin_cached, 0, position_ids.view(-1)).view(
+                position_ids.view(-1).shape[0], -1)
+        else:
+            seq_len = infer_state.seq_len
+            infer_state.position_cos = torch.index_select(self._cos_cached, 0, seq_len - 1).view(seq_len.shape[0], -1)
+            infer_state.position_sin = torch.index_select(self._sin_cached, 0, seq_len - 1).view(seq_len.shape[0], -1)
 
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
