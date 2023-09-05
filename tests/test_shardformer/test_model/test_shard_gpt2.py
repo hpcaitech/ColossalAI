@@ -102,6 +102,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     torch.cuda.empty_cache()
 
 
+@pytest.mark.skip(reason="This test will hang in CI")
 @parameterize('test_config', [{
     'tp_size': 2,
     'pp_size': 2,
