@@ -1,10 +1,11 @@
 import os
+import time
 
 import numpy as np
 import pytest
 import torch
 import torch.distributed as dist
-from packaging import version
+from torch.profiler import ProfilerActivity, profile, record_function
 from transformers import LlamaForCausalLM, LlamaTokenizer
 
 import colossalai
@@ -16,11 +17,9 @@ from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_ad
 
 os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
 TPSIZE = 1
-BATCH_SIZE = 8
-MAX_INPUT_LEN = 12
-MAX_OUTPUT_LEN = 100
-
-CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse('11.5')
+BATCH_SIZE = 32
+MAX_INPUT_LEN = 1024
+MAX_OUTPUT_LEN = 256
 
 
 def init_to_get_rotary(self, base=10000):
@@ -46,41 +45,80 @@ def init_to_get_rotary(self, base=10000):
     return
 
 
+def print_perf_stats(latency_set, config, warmup=3):
+    # trim warmup queries
+    latency_set = list(latency_set)
+    latency_set = latency_set[warmup:]
+    count = len(latency_set)
+
+    if count > 0:
+        latency_set.sort()
+        avg = sum(latency_set) / count
+        num_layers = getattr(config, "num_layers", config.num_hidden_layers)
+        num_parameters = num_layers * config.hidden_size * config.hidden_size * 12
+        num_bytes = 2
+
+        print("Avg Per Token Latency: {0:8.2f} ms".format(avg * 1000))
+        print("Avg BW: {0:8.2f} GB/s".format(1 / avg * num_parameters * num_bytes / 1e9))
+        print("Avg flops: {0:8.2f} TFlops/s".format(1 / avg * num_parameters * num_bytes * BATCH_SIZE / 1e12))
+
+
 @parameterize('test_config', [{
     'tp_size': TPSIZE,
 }])
 def run_llama_test(test_config):
 
     llama_model_path = "/data/scratch/llama-7b-hf"
-    if os.path.isdir(llama_model_path) is False:
-        return
-
     tokenizer = LlamaTokenizer.from_pretrained(llama_model_path)
     tokenizer.pad_token_id = tokenizer.unk_token_id
     model = LlamaForCausalLM.from_pretrained(llama_model_path, pad_token_id=tokenizer.eos_token_id)
     init_to_get_rotary(model.model, base=10000)
     model = model.half()
 
-    text = ["how is weather today?", "i am "]
-    input_ids = tokenizer.batch_encode_plus(text, return_tensors='pt', padding=True, device='cuda')
+    model_config = model.config
 
-    #print("input ids ", input_ids)
     infer_engine = TPInferEngine(model.half(), BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
-    shard_config = ShardConfig(enable_tensor_parallelism=True, inference_only=True)
+    shard_config = ShardConfig(enable_tensor_parallelism=False, inference_only=True)
     shardformer = ShardFormer(shard_config=shard_config)
 
     infer_engine.prepare_with_shard_config(shard_config)
     infer_engine.shard_model_by(shardformer)
 
-    generate_kwargs = dict(max_new_tokens=MAX_OUTPUT_LEN, do_sample=False)
-    outputs = infer_engine.generate(input_ids, generate_kwargs)
-    #print("outputs.shape: ", outputs.shape)
+    batch_size = 2
+    max_new_tokens = 128
+    input_len = 1024
 
-    #print("outputs: ", outputs)
-    if not dist.is_initialized() or dist.get_rank() == 0:
-        for o in outputs:
-            output_text = tokenizer.decode(o)
-            #print(output_text)
+    generate_kwargs = dict(max_new_tokens=max_new_tokens, do_sample=False)
+    input_tokens = {
+        "input_ids": torch.randint(1, 1000, (batch_size, input_len), device='cuda'),
+        "attention_mask": torch.ones((batch_size, input_len), device='cuda')
+    }
+
+    iters = 10
+    times = []
+
+    for i in range(iters):
+        torch.cuda.synchronize()
+        start = time.time()
+        outputs = infer_engine.generate(input_tokens, generate_kwargs)
+        torch.cuda.synchronize()
+        end = time.time()
+        out_len = outputs.shape[1]
+        print("generation time {} s".format(str(end - start)))
+        times.append((end - start) / (out_len - input_len))
+        infer_engine.cache_manager.free_all()
+
+    print("outputs, ", len(outputs))
+    outputs = tokenizer.batch_decode(outputs)
+
+    print_perf_stats(times, model_config)
+
+    with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA], record_shapes=True) as prof:
+        with record_function("model_inference"):
+            torch.cuda.synchronize()
+            outputs = infer_engine.generate(input_tokens, generate_kwargs)
+            torch.cuda.synchronize()
+    print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=10))
 
 
 def check_llama(rank, world_size, port):
@@ -89,7 +127,6 @@ def check_llama(rank, world_size, port):
     run_llama_test()
 
 
-@pytest.mark.skipif(not CUDA_SUPPORT, reason="kv-cache manager engine requires cuda version to be higher than 11.5")
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()

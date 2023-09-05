@@ -181,10 +181,11 @@ class TPInferEngine:
         max_len_in_batch = -1
         if isinstance(inputs, (BatchEncoding, dict)):
             for i, attn_mask in enumerate(attention_mask):
-                if isinstance(attn_mask, torch.Tensor):
-                    curr_seq_len = int(torch.sum(attn_mask))
-                else:
-                    curr_seq_len = int(sum(attn_mask))
+                curr_seq_len = len(attn_mask)
+                # if isinstance(attn_mask, torch.Tensor):
+                #     curr_seq_len = int(torch.sum(attn_mask))
+                # else:
+                #     curr_seq_len = int(sum(attn_mask))
                 seq_lengths[i] = curr_seq_len
                 seq_start_indexes[i] = start_index
                 start_index += curr_seq_len
@@ -196,7 +197,6 @@ class TPInferEngine:
                 seq_start_indexes[i] = start_index
                 start_index += curr_seq_len
                 max_len_in_batch = curr_seq_len if curr_seq_len > max_len_in_batch else max_len_in_batch
-
         block_loc = torch.empty((batch_size, self.max_input_len + self.max_output_len), dtype=torch.long, device='cuda')
         batch_infer_state = BatchInferState(batch_size, max_len_in_batch)
         batch_infer_state.seq_len = seq_lengths.to('cuda')    # might want to assign specific device
