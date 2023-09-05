@@ -94,24 +94,24 @@ For various models, experiments were conducted using multiple batch sizes under 
 
 ### Single GPU Performance:
 
-Currently the stats below are calculated based on A100 (single GPU), and we calculate token latency based on average values of context-forward and decoding forward process, which means we combine both of processes to calculate token generation times. We are actively developing new features and methods to furthur optimize the performance of LLM models. Please stay tuned. 
+Currently the stats below are calculated based on A100 (single GPU), and we calculate token latency based on average values of context-forward and decoding forward process, which means we combine both of processes to calculate token generation times. We are actively developing new features and methods to furthur optimize the performance of LLM models. Please stay tuned.
 
 #### Llama
 
 |       batch_size        |   8    |   16   |   32   |
 | :---------------------: | :----: | :----: | :----: |
-| hugging-face torch fp16 | 199.12 | 246.56 | 246.56 |
-|   colossal-inference    | 241.12 | 451.84 | 643.52 |
+| hugging-face torch fp16 | 199.12 | 246.56 | 278.4  |
+|   colossal-inference    | 326.4  | 582.72 | 816.64 |
 
-![llama](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference/Infer-llama.png)
+![llama](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference/Infer-llama7b.png)
 
 ### Bloom
 
-|       batch_size        |   4    |   8    |
-| :---------------------: | :----: | :----: |
-| hugging-face torch fp16 | 145.28 | 189.68 |
-|   colossal-inference    | 187.48 | 323.28 |
+|       batch_size        |   8    |   16   |   32   |
+| :---------------------: | :----: | :----: | :----: |
+| hugging-face torch fp16 | 189.68 | 226.66 | 249.61 |
+|   colossal-inference    | 323.28 | 538.52 | 611.64 |
 
-![bloom](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference/Infer-bloom.png)
+![bloom](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference/Infer-bloom7b.png)
 
 The results of more models are coming soon!
