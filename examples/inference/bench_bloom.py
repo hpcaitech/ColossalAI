@@ -81,7 +81,7 @@ def bench_bloom(test_config):
         outputs = infer_engine.generate(input_tokens, generate_kwargs)
         torch.cuda.synchronize()
         end = time.time()
-        # infer_engine.cache_manager.free_all()
+        infer_engine.cache_manager.free_all()
         out_len = outputs.shape[1]
         print(f" iter {i}: out len {str(out_len)}, generation time {str(end - start)} s")
         times.append((end - start) / (out_len - input_len))
