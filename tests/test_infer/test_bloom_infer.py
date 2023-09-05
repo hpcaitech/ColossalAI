@@ -1,8 +1,9 @@
 import os
+
 import pytest
-from packaging import version
 import torch
 import torch.distributed as dist
+from packaging import version
 from transformers import AutoModelForCausalLM, AutoTokenizer, BloomForCausalLM
 
 import colossalai
@@ -20,10 +21,10 @@ CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse('11.5')
 
 
 def run():
-    model_path = "/data3/data/model_eval_for_commerical_use/phoenix-inst-chat-7b"
+    model_path = "/data3/models/bloom-7b1"
     if os.path.isdir(model_path) is False:
-        return 
-    
+        return
+
     tokenizer = AutoTokenizer.from_pretrained(model_path)
     tokenizer.pad_token = tokenizer.eos_token
 
@@ -53,6 +54,7 @@ def check_engine(rank, world_size, port):
     disable_existing_loggers()
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     run()
+
 
 @pytest.mark.skipif(not CUDA_SUPPORT, reason="kv-cache manager engine requires cuda version to be higher than 11.5")
 @pytest.mark.dist
