@@ -612,7 +612,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             p_id = id(p)
             if p_id in self._param_store.working_to_master_param:
                 master_param = self._param_store.working_to_master_param[p_id]
-                padding_size = self._param_store.get_param_padding_size(p_id)
+                padding_size = self._param_store.get_param_padding_size(p)
                 working_param = p.data.view(-1)
                 if padding_size > 0:
                     working_param = torch.nn.functional.pad(working_param, [0, padding_size])
