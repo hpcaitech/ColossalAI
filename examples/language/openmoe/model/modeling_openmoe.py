@@ -300,15 +300,12 @@ class LlamaAttention(nn.Module):
         self.config = config
         self.hidden_size = config.hidden_size
         self.num_heads = config.num_attention_heads
-        self.head_dim = self.hidden_size // self.num_heads
+        self.head_dim = config.head_dim
         self.num_key_value_heads = config.num_key_value_heads
         self.num_key_value_groups = self.num_heads // self.num_key_value_heads
         self.pretraining_tp = config.pretraining_tp
         self.max_position_embeddings = config.max_position_embeddings
 
-        if (self.head_dim * self.num_heads) != self.hidden_size:
-            raise ValueError(f"hidden_size must be divisible by num_heads (got `hidden_size`: {self.hidden_size}"
-                             f" and `num_heads`: {self.num_heads}).")
         self.q_proj = nn.Linear(self.hidden_size, self.num_heads * self.head_dim, bias=False)
         self.k_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=False)
         self.v_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=False)
@@ -421,7 +418,7 @@ class LlamaAttention(nn.Module):
                              f" {attn_output.size()}")
 
         attn_output = attn_output.transpose(1, 2).contiguous()
-        attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
+        attn_output = attn_output.reshape(bsz, q_len, self.num_heads * self.head_dim)
 
         if self.pretraining_tp > 1:
             attn_output = attn_output.split(self.hidden_size // self.pretraining_tp, dim=2)
@@ -446,18 +443,18 @@ class LlamaDecoderLayer(nn.Module):
         self.input_layernorm = T5LayerNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.post_attention_layernorm = T5LayerNorm(config.hidden_size, eps=config.rms_norm_eps)
         if self.moe:
-            self.mlp = SparseMLP(num_experts=16,
-                                 top_k=2,
-                                 capacity_factor_train=1.25,
-                                 capacity_factor_eval=2.,
-                                 min_capacity=4,
-                                 noisy_policy=None,
-                                 drop_tks=True,
-                                 expert_parallel=None,
+            self.mlp = SparseMLP(num_experts=config.num_experts,
+                                 top_k=config.topk,
+                                 capacity_factor_train=config.capacity_factor_train,
+                                 capacity_factor_eval=config.capacity_factor_eval,
+                                 min_capacity=config.min_capacity,
+                                 noisy_policy=config.noisy_policy,
+                                 drop_tks=config.drop_tks,
+                                 expert_parallel=config.expert_parallel,
                                  hidden_size=config.hidden_size,
                                  intermediate_size=config.intermediate_size,
                                  activation=config.hidden_act,
-                                 gated=True)
+                                 gated=config.gated)
             self.pre_extra_mlp_layernorm = T5LayerNorm(config.hidden_size, eps=config.rms_norm_eps)
             self.extra_mlp = LlamaMLP(config)
         else:
@@ -653,7 +650,8 @@ class LlamaModel(LlamaPreTrainedModel):
 
         self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
         self.layers = nn.ModuleList([
-            LlamaDecoderLayer(config, moe=True if (i + 1) % 4 == 0 else False) for i in range(config.num_hidden_layers)
+            LlamaDecoderLayer(config, moe=True if (i + 1) % config.moe_layer_interval == 0 else False)
+            for i in range(config.num_hidden_layers)
         ])
         self.norm = T5LayerNorm(config.hidden_size, eps=config.rms_norm_eps)
 

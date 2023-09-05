@@ -99,7 +99,7 @@ def t5x_layer_norm_lookup(params, i, prefix, layer_name):
     return params[f"{prefix}/layers_{i}/{layer_name}/scale"]
 
 
-def convert_t5x_to_pytorch(variables: dict, *, num_layers: int):
+def convert_t5x_to_pytorch(variables: dict, *, num_layers: int, moe_interval: int):
     """Converts the parameters from T5X-Flax to Transformers-PyTorch."""
     old = traverse_util.flatten_dict(variables["target"])
     old = {"/".join(k): v for k, v in old.items()}
@@ -131,7 +131,7 @@ def convert_t5x_to_pytorch(variables: dict, *, num_layers: int):
         layer_norm = t5x_layer_norm_lookup(old, i, "decoder", "pre_mlp_layer_norm")
         new[f"model.layers.{i}.post_attention_layernorm.weight"] = layer_norm
 
-        if (i + 1) % 4 == 0:
+        if (i + 1) % moe_interval == 0:
             # moe
             gate = t5x_gate_lookup(old, i, "decoder", split_mlp_wi)
             new[f"model.layers.{i}.mlp.gate_weight"] = gate.T
@@ -172,7 +172,9 @@ def make_state_dict(converted_params):
 def load_t5x_weights_in_t5(model, config, t5x_checkpoint_path):
     """Replaces the params in model witht the T5X converted params."""
     variables = checkpoints.load_t5x_checkpoint(t5x_checkpoint_path)
-    converted = convert_t5x_to_pytorch(variables, num_layers=config.num_hidden_layers)
+    converted = convert_t5x_to_pytorch(variables,
+                                       num_layers=config.num_hidden_layers,
+                                       moe_interval=config.moe_layer_interval)
     state_dict = make_state_dict(converted)
     model.load_state_dict(state_dict, strict=True)
 
