@@ -5,42 +5,53 @@ import torch.distributed as dist
 import colossalai
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
-from colossalai.utils.cuda import get_current_device
-from colossalai.zero import ColoInitContext, ZeroDDP, ZeroOptimizer
-from colossalai.zero.gemini.chunk import ChunkManager, search_chunk_configuration
-from colossalai.zero.gemini.gemini_mgr import GeminiManager
+from colossalai.zero import GeminiDDP, GeminiOptimizer
+from colossalai.zero.gemini.chunk import search_chunk_configuration
 from tests.components_to_test.registry import non_distributed_component_funcs
-from tests.test_tensor.common_utils import debug_print, set_seed
+from tests.test_tensor.common_utils import set_seed
+
+PLACEMENT_CONFIGS = [
+    {
+        'placement_policy': 'static',
+        'shard_param_frac': 0.0,
+        'offload_optim_frac': 0.0
+    },    # zero2
+    {
+        'placement_policy': 'static',
+        'shard_param_frac': 0.0,
+        'offload_optim_frac': 1.0
+    },    # zero2-offload
+    {
+        'placement_policy': 'static',
+        'shard_param_frac': 0.0,
+        'offload_optim_frac': 0.5
+    },    # zero2-offload-half
+    {
+        'placement_policy': 'auto'
+    }
+]
 
 
-@parameterize('placement_policy', ['cuda', 'cpu', 'auto'])
+@parameterize('placement_config', PLACEMENT_CONFIGS)
 @parameterize('keep_gathered', [True, False])
-def exam_zero_optim_state_dict(placement_policy, keep_gathered):
+def exam_zero_optim_state_dict(placement_config, keep_gathered):
     set_seed(431)
     get_components_func = non_distributed_component_funcs.get_callable('gpt2')
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
 
-    with ColoInitContext(device=get_current_device()):
-        model = model_builder()
+    model = model_builder()
 
     set_seed(451)
-    torch_model = model_builder()    # get a different model
 
     world_size = torch.distributed.get_world_size()
     config_dict, *_ = search_chunk_configuration(model, search_range_m=1, search_interval=100)
     config_dict[world_size]['chunk_size'] = 5000
     config_dict[world_size]['keep_gathered'] = keep_gathered
 
-    if placement_policy != 'cuda':
-        init_device = torch.device('cpu')
-    else:
-        init_device = None
-    chunk_manager = ChunkManager(config_dict, init_device=init_device)
-    gemini_manager = GeminiManager(placement_policy, chunk_manager)
-    model = ZeroDDP(model, gemini_manager, pin_memory=True)
+    model = GeminiDDP(model, config_dict, **placement_config, pin_memory=True)
 
     optimizer = HybridAdam(model.parameters())
-    optim = ZeroOptimizer(optimizer, model, initial_scale=32)    # initialize the link between chunk16 and chunk32
+    optim = GeminiOptimizer(optimizer, model, initial_scale=32)    # initialize the link between chunk16 and chunk32
 
     set_seed(dist.get_rank() * 3 + 128)
     model.train()
