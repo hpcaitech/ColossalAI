@@ -3,7 +3,7 @@ import torch
 
 import colossalai
 from colossalai.context import MOE_CONTEXT
-from colossalai.engine.gradient_handler import MoeGradientHandler
+from colossalai.legacy.engine.gradient_handler import MoeGradientHandler
 from colossalai.nn import MoeLoss
 from colossalai.testing import assert_equal_in_group, parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.zero.legacy.init_ctx import ZeroInitContext

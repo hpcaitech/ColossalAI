@@ -34,11 +34,11 @@ import colossalai
 import colossalai.nn as col_nn
 import torch
 import torch.nn as nn
-from colossalai.builder import build_pipeline_model
-from colossalai.engine.schedule import (InterleavedPipelineSchedule,
+from colossalai.legacy.builder import build_pipeline_model
+from colossalai.legacy.engine.schedule import (InterleavedPipelineSchedule,
                                         PipelineSchedule)
 from colossalai.logging import disable_existing_loggers, get_dist_logger
-from colossalai.trainer import Trainer, hooks
+from colossalai.legacy.trainer import Trainer, hooks
 from colossalai.utils import MultiTimer, get_dataloader
 from timm.models import vision_transformer as vit
 from torchvision import transforms
@@ -51,17 +51,17 @@ from torchvision.datasets import CIFAR10
 
 Generally, we provide 3 ways to build a pipelined model:
 
-1. `colossalai.builder.build_pipeline_model_from_cfg`
-2. `colossalai.builder.build_pipeline_model`
+1. `colossalai.legacy.builder.build_pipeline_model_from_cfg`
+2. `colossalai.legacy.builder.build_pipeline_model`
 3. Split the model by stages by yourself
 
 When your memory can fit the model, you can use the first two methods to build your model, otherwise you must split the model by yourself. The first two methods first build the whole model on CPU, then split the model, and finally you can just move the corresponding part of model to GPU.
 
-`colossalai.builder.build_pipeline_model_from_cfg()` receives a config file of model, and it can split the model uniformly (by layer) or balanced (by parameter size).
+`colossalai.legacy.builder.build_pipeline_model_from_cfg()` receives a config file of model, and it can split the model uniformly (by layer) or balanced (by parameter size).
 
-If you are familiar with `PyTorch`, you can use  `colossalai.builder.build_pipeline_model()` which receives a `torch.nn.Sequential` model and split it by layer uniformly.
+If you are familiar with `PyTorch`, you can use  `colossalai.legacy.builder.build_pipeline_model()` which receives a `torch.nn.Sequential` model and split it by layer uniformly.
 
-In this tutorial, we will modify [TIMM/ViT](https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision_transformer.py) to `torch.nn.Sequential` and then use `colossalai.builder.build_pipeline_model()` to build the pipelined model.
+In this tutorial, we will modify [TIMM/ViT](https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision_transformer.py) to `torch.nn.Sequential` and then use `colossalai.legacy.builder.build_pipeline_model()` to build the pipelined model.
 
 When the data is **one** `Tensor`, you can use the positional argument in `forward()` of your model to get the data tensor. For the first stage of pipeline, the first positional argument of `forward()` is the data tensor loaded from data loader. For other stages, the first positional argument of `forward()` is the output tensor from the previous stage. Note that if the stage is not the last stage, the return of `forward()` must be a `Tensor`.
 
@@ -245,3 +245,4 @@ def train():
                 hooks=hook_list,
                 display_progress=True)
 ```
+<!-- doc-test-command: echo  -->
