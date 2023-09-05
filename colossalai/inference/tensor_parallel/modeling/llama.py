@@ -3,16 +3,12 @@ from typing import List, Optional, Tuple
 import numpy as np
 import torch
 from transformers.modeling_outputs import BaseModelOutputWithPast
-from transformers.models.llama.modeling_llama import (
-    LlamaAttention,
-    LlamaDecoderLayer,
-    LlamaModel,
-    LlamaRMSNorm,
-)
+from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecoderLayer, LlamaModel, LlamaRMSNorm
 
 from colossalai.inference.tensor_parallel.batch_infer_state import BatchInferState
 from colossalai.kernel.triton.context_attention import llama_context_attn_fwd
 from colossalai.kernel.triton.copy_kv_cache_dest import copy_kv_cache_to_dest
+from colossalai.kernel.triton.rotary_embedding_kernel import rotary_embedding_fwd
 from colossalai.kernel.triton.token_attention_kernel import token_attention_fwd
 
 try:
@@ -28,23 +24,25 @@ except:
     )
     HAS_VLLM_KERNERL = False
 
+
 def rotate_half(x):
     """Rotates half the hidden dims of the input."""
-    x1 = x[..., : x.shape[-1] // 2]
-    x2 = x[..., x.shape[-1] // 2 :]
+    x1 = x[..., :x.shape[-1] // 2]
+    x2 = x[..., x.shape[-1] // 2:]
     return torch.cat((-x2, x1), dim=-1)
 
 
 def apply_rotary_pos_emb(q, k, cos, sin, position_ids):
     # The first two dimensions of cos and sin are always 1, so we can `squeeze` them.
-    cos = cos.squeeze(1).squeeze(0)  # [seq_len, dim]
-    sin = sin.squeeze(1).squeeze(0)  # [seq_len, dim]
-    cos = cos[position_ids].unsqueeze(1)  # [bs, 1, seq_len, dim]
-    sin = sin[position_ids].unsqueeze(1)  # [bs, 1, seq_len, dim]
-    
+    cos = cos.squeeze(1).squeeze(0)    # [seq_len, dim]
+    sin = sin.squeeze(1).squeeze(0)    # [seq_len, dim]
+    cos = cos[position_ids].unsqueeze(1)    # [bs, 1, seq_len, dim]
+    sin = sin[position_ids].unsqueeze(1)    # [bs, 1, seq_len, dim]
+
     q_embed = (q * cos) + (rotate_half(q) * sin)
     k_embed = (k * cos) + (rotate_half(k) * sin)
     return q_embed, k_embed
+
 
 def _copy_kv_to_mem_cache(layer_id, key_buffer, value_buffer, context_mem_index, mem_manager):
     copy_kv_cache_to_dest(key_buffer, context_mem_index, mem_manager.key_buffer[layer_id])
@@ -75,17 +73,6 @@ class LlamaInferenceForwards:
         batch_size = input_ids.shape[0]    # input_ids.shape[0]
 
         infer_state = self.infer_state
-        b_seq_len_numpy = infer_state.seq_len.cpu().numpy()
-
-        if HAS_VLLM_KERNERL:
-            position_ids = torch.from_numpy(
-                np.concatenate([np.arange(0, b_seq_len_numpy[i]) for i in range(len(b_seq_len_numpy))], axis=0)).cuda()
-
-            # this equals
-            infer_state.position_cos = torch.index_select(self._cos_cached, 0,
-                                                          position_ids).view(position_ids.shape[0], -1)
-            infer_state.position_sin = torch.index_select(self._sin_cached, 0,
-                                                          position_ids).view(position_ids.shape[0], -1)
 
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
@@ -138,7 +125,6 @@ class LlamaInferenceForwards:
                 # infer_state.decode_key_buffer = torch.empty((batch_size, self.tp_head_num_, self.head_dim_), dtype=torch.float16, device="cuda")
                 # infer_state.decode_value_buffer = torch.empty((batch_size, self.tp_head_num_, self.head_dim_), dtype=torch.float16, device="cuda")
                 infer_state.block_loc[:, seq_length_with_past - 1] = infer_state.decode_mem_index
-
         if position_ids is None:
             device = input_ids.device if input_ids is not None else inputs_embeds.device
             position_ids = torch.arange(past_key_values_length,
@@ -148,6 +134,17 @@ class LlamaInferenceForwards:
             position_ids = position_ids.unsqueeze(0).view(-1, seq_length)
         else:
             position_ids = position_ids.view(-1, seq_length).long()
+
+        if infer_state.is_context_stage:
+
+            infer_state.position_cos = torch.index_select(self._cos_cached, 0, position_ids.view(-1)).view(
+                position_ids.view(-1).shape[0], -1)
+            infer_state.position_sin = torch.index_select(self._sin_cached, 0, position_ids.view(-1)).view(
+                position_ids.view(-1).shape[0], -1)
+        else:
+            seq_len = infer_state.seq_len
+            infer_state.position_cos = torch.index_select(self._cos_cached, 0, seq_len - 1).view(seq_len.shape[0], -1)
+            infer_state.position_sin = torch.index_select(self._sin_cached, 0, seq_len - 1).view(seq_len.shape[0], -1)
 
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
@@ -271,11 +268,9 @@ class LlamaInferenceForwards:
         # key_states            [bs, seq_len, num_heads, head_dim/embed_size_per_head]
         # key_states_transposed [bs, num_heads, seq_len, head_dim/embed_size_per_head]
 
-        query_states = self.q_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
+        query_states = self.q_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim)
         key_states = self.k_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim)
-        key_states_transposed = key_states.transpose(1, 2)
         value_states = self.v_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim)
-        
 
         # NOTE might want to revise
         #   need some way to record the length of past key values cache
@@ -283,38 +278,20 @@ class LlamaInferenceForwards:
         if infer_state.decode_layer_id == 0:    # once per model.forward
             infer_state.cache_manager.past_key_values_length += q_len    # seq_len
 
-        if HAS_VLLM_KERNERL:
-            # NOTE: fix rotatry embedding precision problem
-            cos, sin = infer_state.position_cos, infer_state.position_sin
-            
-            # value_states_transposed = value_states.transpose(1, 2)
+        cos, sin = infer_state.position_cos, infer_state.position_sin
+        # print("shape ", cos.shape, query_states.view(-1, self.num_heads, self.head_dim).shape, )
 
-            # cos, sin = self.rotary_emb(value_states_transposed,
-            #                 seq_len=infer_state.cache_manager.past_key_values_length)
-            
-            cos_sin_cache = torch.cat((cos, sin), dim=-1)
-            
-            key_states = key_states.view(-1, self.num_heads * self.head_dim)
-            query_states = query_states.transpose(1, 2).reshape(-1, self.num_heads * self.head_dim)
-            rotary_embedding_neox(position_ids.squeeze(1), query_states, key_states, self.head_dim, cos_sin_cache)
-            
-            
-            query_states = query_states.reshape(-1, self.num_heads, self.head_dim)
-            key_states = key_states.reshape(-1, self.num_heads, self.head_dim)
-            value_states = value_states.reshape(-1, self.num_heads, self.head_dim)
-            
-        else:
-            # NOTE: there are some issues for original rotary_embedding_neox of huggingface
+        rotary_embedding_fwd(query_states.view(-1, self.num_heads, self.head_dim), cos, sin)
+        rotary_embedding_fwd(key_states.view(-1, self.num_heads, self.head_dim), cos, sin)
 
-            value_states_transposed = value_states.transpose(1, 2)
-            cos, sin = self.rotary_emb(value_states_transposed,
-                                        seq_len=infer_state.cache_manager.past_key_values_length)
-                
-            query_states, key_states = apply_rotary_pos_emb(query_states, key_states_transposed, cos, sin, position_ids)
-            
-            query_states = query_states.transpose(1, 2).reshape(-1, self.num_heads, self.head_dim)
-            key_states = key_states.transpose(1, 2).reshape(-1, self.num_heads, self.head_dim)
-            value_states = value_states.reshape(-1, self.num_heads, self.head_dim)
+        def _copy_kv_to_mem_cache(layer_id, key_buffer, value_buffer, context_mem_index, mem_manager):
+            copy_kv_cache_to_dest(key_buffer, context_mem_index, mem_manager.key_buffer[layer_id])
+            copy_kv_cache_to_dest(value_buffer, context_mem_index, mem_manager.value_buffer[layer_id])
+            return
+
+        query_states = query_states.reshape(-1, self.num_heads, self.head_dim)
+        key_states = key_states.reshape(-1, self.num_heads, self.head_dim)
+        value_states = value_states.reshape(-1, self.num_heads, self.head_dim)
 
         if infer_state.is_context_stage:
             # first token generation
@@ -364,6 +341,7 @@ class LlamaInferenceForwards:
 def get_llama_vllm_rmsnorm_forward():
 
     if HAS_VLLM_KERNERL:
+
         def _vllm_rmsnorm_forward(self: LlamaRMSNorm, hidden_states: torch.Tensor):
             x = hidden_states
             out = torch.empty_like(x)
@@ -379,4 +357,3 @@ def get_llama_vllm_rmsnorm_forward():
         return _vllm_rmsnorm_forward
     else:
         return None
-
