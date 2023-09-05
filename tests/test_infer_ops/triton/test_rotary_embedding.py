@@ -50,8 +50,3 @@ def test_rotary_emb():
     # print("max delta:", torch.max(torch.abs(y_torch - y_triton)))
     # compare
     assert torch.allclose(y_torch, y_triton, atol=1e-2, rtol=1e-2)
-
-    # triton_latency = benchmark(rotary_embedding_fwd, x, cos, sin)
-    # torch_latency = benchmark(torch_rotary_emb, x, cos, sin)
-    # print("triton kernel latency:{:.6f} ms".format(triton_latency))
-    # print("torch kernel latency:{:.6f} ms".format(torch_latency))
