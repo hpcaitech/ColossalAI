@@ -11,6 +11,8 @@ try:
     import triton.language as tl
 
     from colossalai.kernel.triton.rotary_embedding_kernel import rotary_embedding_fwd
+    from tests.test_infer_ops.triton.utils import benchmark
+
     HAS_TRITON = True
 except ImportError:
     HAS_TRITON = False
@@ -31,9 +33,9 @@ def torch_rotary_emb(x, cos, sin):
 
 
 def test_rotary_emb():
-    SEQ_LEN = 512
-    HEAD_NUM = 16
-    HEAD_DIM = 64
+    SEQ_LEN = 1
+    HEAD_NUM = 32
+    HEAD_DIM = 128
     dtype = torch.half
     # create data
     x_shape = (SEQ_LEN, HEAD_NUM, HEAD_DIM)
@@ -45,7 +47,11 @@ def test_rotary_emb():
     y_torch = torch_rotary_emb(x, cos, sin)
     rotary_embedding_fwd(x, cos, sin)
     y_triton = x
-
+    # print("max delta:", torch.max(torch.abs(y_torch - y_triton)))
     # compare
-    print("max delta:", torch.max(torch.abs(y_torch - y_triton)))
     assert torch.allclose(y_torch, y_triton, atol=1e-2, rtol=1e-2)
+
+    # triton_latency = benchmark(rotary_embedding_fwd, x, cos, sin)
+    # torch_latency = benchmark(torch_rotary_emb, x, cos, sin)
+    # print("triton kernel latency:{:.6f} ms".format(triton_latency))
+    # print("torch kernel latency:{:.6f} ms".format(torch_latency))
