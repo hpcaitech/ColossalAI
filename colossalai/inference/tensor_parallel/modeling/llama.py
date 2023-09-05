@@ -3,13 +3,7 @@ from typing import List, Optional, Tuple
 import numpy as np
 import torch
 from transformers.modeling_outputs import BaseModelOutputWithPast
-from transformers.models.llama.modeling_llama import (
-    LlamaAttention,
-    LlamaDecoderLayer,
-    LlamaModel,
-    LlamaRMSNorm,
-    apply_rotary_pos_emb,
-)
+from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecoderLayer, LlamaModel, LlamaRMSNorm
 
 from colossalai.inference.tensor_parallel.batch_infer_state import BatchInferState
 from colossalai.kernel.triton.context_attention import llama_context_attn_fwd
@@ -29,6 +23,31 @@ except:
         "if falied to install vllm, please use this branch to install: https://github.com/tiandiao123/vllm/tree/setup_branch"
     )
     HAS_VLLM_KERNERL = False
+
+
+def rotate_half(x):
+    """Rotates half the hidden dims of the input."""
+    x1 = x[..., :x.shape[-1] // 2]
+    x2 = x[..., x.shape[-1] // 2:]
+    return torch.cat((-x2, x1), dim=-1)
+
+
+def apply_rotary_pos_emb(q, k, cos, sin, position_ids):
+    # The first two dimensions of cos and sin are always 1, so we can `squeeze` them.
+    cos = cos.squeeze(1).squeeze(0)    # [seq_len, dim]
+    sin = sin.squeeze(1).squeeze(0)    # [seq_len, dim]
+    cos = cos[position_ids].unsqueeze(1)    # [bs, 1, seq_len, dim]
+    sin = sin[position_ids].unsqueeze(1)    # [bs, 1, seq_len, dim]
+
+    q_embed = (q * cos) + (rotate_half(q) * sin)
+    k_embed = (k * cos) + (rotate_half(k) * sin)
+    return q_embed, k_embed
+
+
+def _copy_kv_to_mem_cache(layer_id, key_buffer, value_buffer, context_mem_index, mem_manager):
+    copy_kv_cache_to_dest(key_buffer, context_mem_index, mem_manager.key_buffer[layer_id])
+    copy_kv_cache_to_dest(value_buffer, context_mem_index, mem_manager.value_buffer[layer_id])
+    return
 
 
 class LlamaInferenceForwards:
