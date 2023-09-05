@@ -1,3 +1,4 @@
+import warnings
 from functools import partial
 from typing import Callable, Dict, List, Union
 
@@ -34,6 +35,10 @@ class LlamaPolicy(Policy):
         from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecoderLayer, LlamaModel
 
         policy = {}
+
+        if self.shard_config.enable_sequence_parallelism:
+            self.shard_config.enable_sequence_parallelism = False
+            warnings.warn("Llama dosen't support sequence parallelism now, will ignore the sequence parallelism flag.")
 
         if self.shard_config.enable_tensor_parallelism:
             policy[LlamaDecoderLayer] = ModulePolicyDescription(
@@ -105,9 +110,11 @@ class LlamaPolicy(Policy):
                                                         target_key=LlamaModel)
 
         if self.shard_config.enable_flash_attention:
-            policy[LlamaAttention] = ModulePolicyDescription(method_replacement={
+            self.append_or_create_method_replacement(description={
                 'forward': get_llama_flash_attention_forward(),
-            })
+            },
+                                                     policy=policy,
+                                                     target_key=LlamaAttention)
 
         return policy
 

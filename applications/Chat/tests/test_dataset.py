@@ -14,29 +14,43 @@ from transformers.models.gpt2.tokenization_gpt2 import GPT2Tokenizer
 from coati.models.chatglm.chatglm_tokenizer import ChatGLMTokenizer
 SFT_DATASET = [
     {
-        "instruction": "Provide a list of the top 10 most popular mobile games in Asia",
-        "input": "",
-        "output": "The top 10 most popular mobile games in Asia are:\n1) PUBG Mobile\n2) Pokemon Go\n3) Candy Crush Saga\n4) Free Fire\n5) Clash of Clans\n6) Mario Kart Tour\n7) Arena of Valor\n8) Fantasy Westward Journey\n9) Subway Surfers\n10) ARK Survival Evolved",
-        "id": 0
+        "instruction":
+            "Provide a list of the top 10 most popular mobile games in Asia",
+        "input":
+            "",
+        "output":
+            "The top 10 most popular mobile games in Asia are:\n1) PUBG Mobile\n2) Pokemon Go\n3) Candy Crush Saga\n4) Free Fire\n5) Clash of Clans\n6) Mario Kart Tour\n7) Arena of Valor\n8) Fantasy Westward Journey\n9) Subway Surfers\n10) ARK Survival Evolved",
+        "id":
+            0
     },
     {
-        "instruction": "Please provide an action plan for reducing carbon footprint on a corporate level",
-        "input": "",
-        "output": "An action plan for reducing carbon footprint on a corporate level could include switching to renewable energy sources (e.g., solar or wind powered), investing in energy efficient infrastructure, implementing green production practices (e.g., reduce water and paper usage, dispose of materials responsibly, recycle/reuse materials), reducing or eliminating travel, encouraging employees to be conscious of and reduce their own energy usage, and incentivizing employees to participate in sustainable work practices.",
-        "id": 1
+        "instruction":
+            "Please provide an action plan for reducing carbon footprint on a corporate level",
+        "input":
+            "",
+        "output":
+            "An action plan for reducing carbon footprint on a corporate level could include switching to renewable energy sources (e.g., solar or wind powered), investing in energy efficient infrastructure, implementing green production practices (e.g., reduce water and paper usage, dispose of materials responsibly, recycle/reuse materials), reducing or eliminating travel, encouraging employees to be conscious of and reduce their own energy usage, and incentivizing employees to participate in sustainable work practices.",
+        "id":
+            1
     },
     {
-        "instruction": "Write a persuasive email to your boss explaining why you should have a pay raise",
-        "input": "",
-        "output": "Dear [Boss], \n\nI hope this message finds you well. I am writing to request a pay raise.\n\nAs you know, I have been a dedicated and hardworking member of the team since I started working here [insert number] of months/years ago. My enthusiasm and passion for my job has remained consistent over the years, and I have always given 100% to my role. \n\nI understand that the current financial situation is challenging, however, I would sincerely appreciate you taking the time to consider my request. I believe that my dedication to the job and the value that I bring to the organization warrants a raise. I work diligently and am confident that I can continue to be an asset to the company. \n\nI hope my request is taken into account and I thank you in advance for your understanding. I look forward to our conversation. \n\nSincerely,\n[Your Name]",
-        "id": 2
+        "instruction":
+            "Write a persuasive email to your boss explaining why you should have a pay raise",
+        "input":
+            "",
+        "output":
+            "Dear [Boss], \n\nI hope this message finds you well. I am writing to request a pay raise.\n\nAs you know, I have been a dedicated and hardworking member of the team since I started working here [insert number] of months/years ago. My enthusiasm and passion for my job has remained consistent over the years, and I have always given 100% to my role. \n\nI understand that the current financial situation is challenging, however, I would sincerely appreciate you taking the time to consider my request. I believe that my dedication to the job and the value that I bring to the organization warrants a raise. I work diligently and am confident that I can continue to be an asset to the company. \n\nI hope my request is taken into account and I thank you in advance for your understanding. I look forward to our conversation. \n\nSincerely,\n[Your Name]",
+        "id":
+            2
     },
 ]
 
 PROMPT_DATASET = [
     {
-        "instruction": "Edit this paragraph to make it more concise: \"Yesterday, I went to the store and bought some things. Then, I came home and put them away. After that, I went for a walk and met some friends.\"",
-        "id": 0
+        "instruction":
+            "Edit this paragraph to make it more concise: \"Yesterday, I went to the store and bought some things. Then, I came home and put them away. After that, I went for a walk and met some friends.\"",
+        "id":
+            0
     },
     {
         "instruction": "Write a descriptive paragraph about a memorable vacation you went on",
@@ -73,9 +87,7 @@ def make_tokenizer(model: str):
     return tokenizer
 
 
-def check_content(input_ids_stripped: torch.Tensor,
-                  tokenizer: PreTrainedTokenizer,
-                  model: str):
+def check_content(input_ids_stripped: torch.Tensor, tokenizer: PreTrainedTokenizer, model: str):
     if model == "opt":
         # NOTE:  Contrary to GPT2, OPT adds the EOS token </s> to the beginning of every prompt.
         assert input_ids_stripped[0] == tokenizer.eos_token_id
@@ -98,13 +110,10 @@ def check_content(input_ids_stripped: torch.Tensor,
         assert input_ids_stripped != tokenizer.mask_token_id
 
 
-@pytest.mark.cpu
 @pytest.mark.parametrize("model", ["gpt2", "bloom", "opt", "llama"])
 @pytest.mark.parametrize("max_length", [32, 1024])
 @pytest.mark.parametrize("max_datasets_size", [2])
-def test_prompt_dataset(model: str,
-                        max_datasets_size: int,
-                        max_length: int):
+def test_prompt_dataset(model: str, max_datasets_size: int, max_length: int):
     with tempfile.TemporaryDirectory() as tmp_dir:
         dataset_name = "prompt_dataset.json"
         with open(os.path.join(tmp_dir, dataset_name), "w") as f:
@@ -127,19 +136,12 @@ def test_prompt_dataset(model: str,
             check_content(input_ids.masked_select(attention_mask), tokenizer, model)
 
 
-@pytest.mark.cpu
 @pytest.mark.parametrize("model", ["gpt2", "bloom", "opt", "llama"])
-@pytest.mark.parametrize(["dataset_path", "subset"], [
-    ("Anthropic/hh-rlhf", "harmless-base"),
-    ("Dahoas/rm-static", None)
-])
+@pytest.mark.parametrize(["dataset_path", "subset"], [("Anthropic/hh-rlhf", "harmless-base"),
+                                                      ("Dahoas/rm-static", None)])
 @pytest.mark.parametrize("max_datasets_size", [32])
 @pytest.mark.parametrize("max_length", [32, 1024])
-def test_reward_dataset(model: str,
-                        dataset_path: str,
-                        subset: Optional[str],
-                        max_datasets_size: int,
-                        max_length: int):
+def test_reward_dataset(model: str, dataset_path: str, subset: Optional[str], max_datasets_size: int, max_length: int):
     data = load_dataset(dataset_path, data_dir=subset)
     assert max_datasets_size <= len(data["train"]) \
         and max_datasets_size <= len(data["test"])
@@ -196,15 +198,12 @@ def test_reward_dataset(model: str,
             assert torch.all(r_mask)
 
 
-@pytest.mark.cpu
+
 @pytest.mark.parametrize("model", ["gpt2", "bloom", "opt", "llama", "chatglm"])
 @pytest.mark.parametrize("dataset_path", ["yizhongw/self_instruct", None])
 @pytest.mark.parametrize("max_dataset_size", [2])
 @pytest.mark.parametrize("max_length", [32, 1024])
-def test_sft_dataset(model: str,
-                     dataset_path: Optional[str],
-                     max_dataset_size: int,
-                     max_length: int):
+def test_sft_dataset(model: str, dataset_path: Optional[str], max_dataset_size: int, max_length: int):
     tokenizer = make_tokenizer(model)
     if dataset_path == "yizhongw/self_instruct":
         data = load_dataset(dataset_path, "super_natural_instructions")
@@ -253,10 +252,7 @@ def test_sft_dataset(model: str,
 
 
 if __name__ == "__main__":
-    test_sft_dataset(model="bloom",
-                     dataset_path="yizhongw/self_instruct",
-                     max_dataset_size=2,
-                     max_length=256)
+    test_sft_dataset(model="bloom", dataset_path="yizhongw/self_instruct", max_dataset_size=2, max_length=256)
 
     test_reward_dataset(model="gpt2",
                         dataset_path="Anthropic/hh-rlhf",
@@ -267,3 +263,4 @@ if __name__ == "__main__":
     test_prompt_dataset(model="opt",
                         max_datasets_size=2,
                         max_length=128)
+

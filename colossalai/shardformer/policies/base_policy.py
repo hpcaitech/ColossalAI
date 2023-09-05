@@ -11,15 +11,10 @@ from torch.nn import Module
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
 
+from ..layer.parallel_module import ParallelModule
 from ..shard.shard_config import ShardConfig
 
 __all__ = ["ParallelModule", "SubModuleReplacementDescription", "ModulePolicyDescription", "Policy"]
-
-
-class ParallelModule():
-
-    def __init__(self):
-        pass
 
 
 @dataclass

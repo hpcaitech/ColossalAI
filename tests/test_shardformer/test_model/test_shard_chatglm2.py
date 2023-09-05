@@ -1,5 +1,6 @@
 import pytest
 import torch
+from torch import distributed as dist
 
 import colossalai
 from colossalai.logging import disable_existing_loggers
@@ -38,30 +39,30 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     tp_group = booster.plugin.tp_group
 
     # unwrap model
-    vit_model = unwrap_model(org_model, 'ViTModel', 'vit')
-    shard_vit_model = unwrap_model(sharded_model, 'ViTModel', 'vit')
+    chatglm_model = unwrap_model(org_model, 'ChatGLMModel', 'transformer')
+    shard_chatglm_model = unwrap_model(sharded_model, 'ChatGLMModel', 'transformer')
 
-    # check grad
-    row_layer_for_check = ['encoder.layer[0].attention.attention.query', 'embeddings.patch_embeddings.projection']
-    col_layer_for_check = ['encoder.layer[0].attention.output.dense']
+    row_layer_for_check = ['encoder.layers[0].self_attention.query_key_value', 'embedding.word_embeddings']
+    col_layer_for_check = ['encoder.layers[0].self_attention.dense']
 
-    # Save gradient tensors for comparison between the original model and the sharded model before optimizer step.
+    # Save gradient tensors for comparison between the original model and the sharded model.
     grads_to_check = {}
     if (stage_manager is None or stage_manager.is_first_stage()) and booster.plugin.zero_stage == 0:
         if test_config['precision'] == 'fp32':
-            atol, rtol = 1e-5, 1e-3
+            atol, rtol = 1e-6, 1e-3
         else:
             atol, rtol = 5e-3, 5e-3
-        row_layer_grads = get_grad_tensors_for_check(vit_model,
-                                                     shard_vit_model,
+        row_layer_grads = get_grad_tensors_for_check(chatglm_model,
+                                                     shard_chatglm_model,
                                                      row_layer_for_check,
                                                      tp_group,
                                                      atol=atol,
                                                      rtol=rtol,
                                                      dim=0,
                                                      verbose=False)
-        col_layer_grads = get_grad_tensors_for_check(vit_model,
-                                                     shard_vit_model,
+
+        col_layer_grads = get_grad_tensors_for_check(chatglm_model,
+                                                     shard_chatglm_model,
                                                      col_layer_for_check,
                                                      tp_group,
                                                      atol=atol,
@@ -82,18 +83,19 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         else:
             atol, rtol = 5e-3, 5e-3
 
-        if org_model.__class__.__name__ == 'ViTModel':
-            check_output_hidden_state(org_output, sharded_output, stage_manager, atol=atol, rtol=rtol)
+        if org_model.__class__.__name__ == 'ChatGLMModel':
+            check_output_hidden_state(org_output, sharded_output, stage_manager, atol=atol, rtol=rtol, dim=1)
+
         check_loss(org_loss, sharded_loss, atol=atol, rtol=rtol)
 
     # check weights
     if stage_manager is None or stage_manager.is_first_stage():
         if test_config['precision'] == 'fp32':
-            atol, rtol = 5e-3, 1e-3
+            atol, rtol = 1e-4, 1e-3
         else:
             atol, rtol = 5e-3, 5e-3
-        check_weight(vit_model,
-                     shard_vit_model,
+        check_weight(chatglm_model,
+                     shard_chatglm_model,
                      col_layer_for_check,
                      tp_group,
                      atol=atol,
@@ -104,16 +106,16 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     # check grads
     check_all_grad_tensors(grads_to_check)
 
+    Randomizer.reset_index()
     torch.cuda.empty_cache()
 
 
-#TODO: num_microbatch size = 2 inf loss
 @parameterize('test_config', [{
     'tp_size': 2,
     'pp_size': 2,
     'num_microbatches': 4,
     'enable_all_optimization': True,
-    'use_lazy_init': False,
+    'use_lazy_init': True,
     'precision': 'fp16',
     'initial_scale': 1,
 }, {
@@ -139,30 +141,19 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     'tp_size': 2,
     'pp_size': 1,
     'enable_all_optimization': True,
-    'use_lazy_init': False,
+    'use_lazy_init': True,
     'zero_stage': 2,
     'precision': 'fp16',
     'initial_scale': 1
-}, {
-    'tp_size': 1,
-    'pp_size': 2,
-    'num_microbatches': 4,
-    'enable_all_optimization': True,
-    'use_lazy_init': False,
-    'zero_stage': 1,
-    'precision': 'fp16',
-    'initial_scale': 1
 }])
-def run_vit_test(test_config):
+def run_chatglm_test(test_config):
 
-    # TODO: fix bug when settign lazy_init for Conv2D Layers in ViT models
+    sub_model_zoo = model_zoo.get_sub_registry('transformers_chatglm')
 
-    sub_model_zoo = model_zoo.get_sub_registry('transformers_vit')
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
 
     clear_layout_converter()
-    Randomizer.reset_index()
     torch.cuda.empty_cache()
 
 
@@ -179,15 +170,16 @@ def run_vit_test(test_config):
     {
         'tp_size': 2,
         'pp_size': 2,
-        'num_microbatches': 2,
+        'num_microbatches': 4,
         'enable_all_optimization': False,
         'use_lazy_init': False,
-        'precision': 'fp32',
+        'precision': 'fp16',
+        'zero_stage': 1,
         'initial_scale': 1,
     },
 ])
-def run_vit_3d_test(test_config):
-    sub_model_zoo = model_zoo.get_sub_registry('transformers_vit')
+def run_chatglm_3d_test(test_config):
+    sub_model_zoo = model_zoo.get_sub_registry('transformers_chatglm')
 
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
@@ -196,32 +188,32 @@ def run_vit_3d_test(test_config):
     torch.cuda.empty_cache()
 
 
-def check_vit(rank, world_size, port):
+def check_chatglm(rank, world_size, port):
     disable_existing_loggers()
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    run_vit_test()
+    run_chatglm_test()
 
 
-def check_vit_3d(rank, world_size, port):
+def check_chatglm_3d(rank, world_size, port):
     disable_existing_loggers()
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    run_vit_3d_test()
+    run_chatglm_3d_test()
 
 
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()
-def test_vit():
-    spawn(check_vit, 4)
+def test_chatglm():
+    spawn(check_chatglm, 4)
 
 
 @pytest.mark.largedist
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()
-def test_vit_3d():
-    spawn(check_vit_3d, 8)
+def test_chatglm_3d():
+    spawn(check_chatglm_3d, 8)
 
 
 if __name__ == "__main__":
-    test_vit()
-    test_vit_3d()
+    test_chatglm()
+    test_chatglm_3d()

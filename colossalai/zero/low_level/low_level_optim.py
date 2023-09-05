@@ -338,6 +338,24 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
         self.zero_grad()
 
+    def backward_by_grad(self, tensor, grad):
+        assert not(self._partition_grads and not self.require_grad_sync), \
+            "ZeRO2(partition_grads) and gradient accumulation(no_sync) are not compatible"
+
+        if self.mixed_precision_mixin is not None:
+            grad = self.mixed_precision_mixin.pre_backward_by_grad(tensor, grad)
+        torch.autograd.backward(tensor, grad)
+
+        if not self.require_grad_sync:
+            return
+        self._reduce_grad(self._partition_grads)
+
+        # clear reduced grads
+        if self._overlap_communication:
+            torch.cuda.synchronize()
+
+        self.zero_grad()
+
     def zero_grad(self, set_to_none=True):
         """
         Set parameter gradients to zero. If set_to_none = True, gradient
@@ -363,7 +381,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
     def step(self, closure=None):
         assert closure is None, 'closure is not supported by step()'
-
         if not self.require_grad_sync:
             return
 

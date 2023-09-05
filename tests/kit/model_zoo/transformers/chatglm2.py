@@ -12,8 +12,8 @@ from ..registry import ModelAttribute, model_zoo
 
 
 def data_gen():
-    input_ids = torch.tensor([[5941, 15, 2670, 3543, 632, 2075]], dtype=torch.int64)
-    attention_mask = torch.tensor([[1, 1, 1, 1, 1, 1]])
+    input_ids = torch.tensor([[5941, 15, 2670, 3543, 632, 2075, 632, 2075]], dtype=torch.int64)
+    attention_mask = torch.tensor([[1, 1, 1, 1, 1, 1, 1, 1]])
     return dict(input_ids=input_ids, attention_mask=attention_mask)
 
 
