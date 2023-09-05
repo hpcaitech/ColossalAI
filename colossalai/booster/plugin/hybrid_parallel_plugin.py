@@ -21,7 +21,7 @@ from colossalai.cluster import ProcessGroupMesh
 from colossalai.interface import ModelWrapper, OptimizerWrapper
 from colossalai.pipeline.schedule import OneForwardOneBackwardSchedule
 from colossalai.pipeline.stage_manager import PipelineStageManager
-from colossalai.shardformer import ShardConfig, ShardFormer, Policy
+from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.zero.low_level import LowLevelZeroOptimizer
 
 from .pp_plugin_base import PipelinePluginBase
@@ -38,7 +38,7 @@ def _convert_floating_point(x, dtype: torch.dtype = torch.float16):
 class HybridParallelModule(ModelWrapper):
 
     def __init__(self, module: Module, precision: str, shard_config: ShardConfig, dp_group: ProcessGroup, use_ddp: bool,
-            ddp_config: dict, policy: Optional[Policy]=None) -> None:
+            ddp_config: dict, policy: Optional[object]=None) -> None:
 
         self.stage_manager = shard_config.pipeline_stage_manager
         self.dp_group = dp_group
@@ -268,7 +268,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         cpu_offload (bool, optional): Whether to open cpu_offload when using ZeRO. Defaults to False.
         communication_dtype (torch.dtype, optional): Communication dtype when using ZeRO. If not specified, the dtype of param will be used. Defaults to None.
         overlap_communication (bool, optional): Whether to overlap communication and computation when using ZeRO. Defaults to True.
-        policy (Policy, optional): Shardformer policy when using custom model. If not specified, ShardFormer will try to fetch the policy automatically.
+        policy (object, optional): Shardformer policy when using custom model. If not specified, ShardFormer will try to fetch the policy automatically.
     """
 
     def __init__(self,
@@ -301,7 +301,7 @@ class HybridParallelPlugin(PipelinePluginBase):
                  cpu_offload: bool = False,
                  communication_dtype: Optional[torch.dtype] = None,
                  overlap_communication: bool = True,
-                 policy: Optional[Policy] = None) -> None:
+                 policy: Optional[object] = None) -> None:
 
         super().__init__()
         assert dist.get_world_size() % (
