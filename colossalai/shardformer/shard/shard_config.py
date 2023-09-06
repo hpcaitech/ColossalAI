@@ -33,6 +33,8 @@ class ShardConfig:
     enable_sequence_parallelism: bool = False
     enable_sequence_overlap: bool = False
     inference_only: bool = False
+    enable_sequence_parallelism: bool = False
+    enable_sequence_overlap: bool = False
 
     # pipeline_parallel_size: int
     # data_parallel_size: int

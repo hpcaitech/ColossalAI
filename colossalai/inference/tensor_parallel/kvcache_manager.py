@@ -3,8 +3,7 @@
 # https://github.com/ModelTC/lightllm/blob/050af3ce65edca617e2f30ec2479397d5bb248c9/lightllm/common/mem_manager.py
 
 import torch
-
-from colossalai.logging import get_dist_logger
+from transformers.utils import logging
 
 
 class MemoryManager:
@@ -27,7 +26,7 @@ class MemoryManager:
                  head_dim: int,
                  layer_num: int,
                  device: torch.device = torch.device('cuda')):
-        self.logger = get_dist_logger(__name__)
+        self.logger = logging.get_logger(__name__)
         self.available_size = size
         self.past_key_values_length = 0
         self._init_mem_states(size, device)
