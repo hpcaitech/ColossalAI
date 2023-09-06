@@ -3,14 +3,17 @@ from typing import List, Optional, Tuple
 import numpy as np
 import torch
 from transformers.modeling_outputs import BaseModelOutputWithPast
-from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecoderLayer, LlamaModel, LlamaRMSNorm
 
 from colossalai.inference.tensor_parallel.batch_infer_state import BatchInferState
 from colossalai.kernel.triton.context_attention import llama_context_attn_fwd
 from colossalai.kernel.triton.copy_kv_cache_dest import copy_kv_cache_to_dest
 from colossalai.kernel.triton.rotary_embedding_kernel import rotary_embedding_fwd
 from colossalai.kernel.triton.token_attention_kernel import token_attention_fwd
-from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import ChatGLMForConditionalGeneration, ChatGLMModel
+from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import (
+    ChatGLMForConditionalGeneration,
+    ChatGLMModel,
+    GLMTransformer,
+)
 
 try:
     from vllm import layernorm_ops, pos_encoding_ops
@@ -133,7 +136,7 @@ class ChatGLM2InferenceForwards:
             kv_caches=past_key_values,
             use_cache=use_cache,
             output_hidden_states=output_hidden_states,
-        )
+            infer_state=infer_state)
 
         if not return_dict:
             return tuple(v for v in [
@@ -149,3 +152,59 @@ class ChatGLM2InferenceForwards:
             hidden_states=all_hidden_states,
             attentions=all_self_attentions,
         )
+
+    @staticmethod
+    def chatglm_encoder_forward(
+        self: GLMTransformer,
+        hidden_states,
+        attention_mask,
+        rotary_pos_emb,
+        kv_caches=None,
+        use_cache: Optional[bool] = True,
+        output_hidden_states: Optional[bool] = False,
+    ):
+        if not kv_caches:
+            kv_caches = [None for _ in range(self.num_layers)]
+        presents = () if use_cache else None
+        if self.gradient_checkpointing and self.training:
+            if use_cache:
+                logger.warning_once(
+                    "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`...")
+                use_cache = False
+
+        all_self_attentions = None
+        all_hidden_states = () if output_hidden_states else None
+        for index in range(self.num_layers):
+            if output_hidden_states:
+                all_hidden_states = all_hidden_states + (hidden_states,)
+
+            layer = self._get_layer(index)
+            if self.gradient_checkpointing and self.training:
+                layer_ret = torch.utils.checkpoint.checkpoint(
+                    layer,
+                    hidden_states,
+                    attention_mask,
+                    rotary_pos_emb,
+                    kv_caches[index],
+                    use_cache,
+                )
+            else:
+                layer_ret = layer(
+                    hidden_states,
+                    attention_mask,
+                    rotary_pos_emb,
+                    kv_cache=kv_caches[index],
+                    use_cache=use_cache,
+                )
+            hidden_states, kv_cache = layer_ret
+            if use_cache:
+                presents = presents + (kv_cache,)
+
+        if output_hidden_states:
+            all_hidden_states = all_hidden_states + (hidden_states,)
+
+        # Final layer norm.
+        if self.post_layer_norm:
+            hidden_states = self.final_layernorm(hidden_states)
+
+        return hidden_states, presents, all_hidden_states, all_self_attentions
