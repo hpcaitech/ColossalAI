@@ -8,6 +8,7 @@ import torch.nn as nn
 from colossalai.context import ParallelMode, seed
 from colossalai.context.moe_context import MOE_CONTEXT
 from colossalai.nn.layer.moe._operation import MoeInGradScaler, MoeOutGradScaler
+from colossalai.nn.layer.moe.utils import get_activation
 from colossalai.tensor.moe_tensor.api import get_dp_group, get_ep_group, get_ep_size, set_moe_tensor_info
 
 
@@ -24,11 +25,13 @@ class BaseMLPExperts(nn.Module):
         expert_parallel: str = None,
         activation: str = None,
         drop_rate: float = 0,
+        gated: bool = False,
     ):
         super().__init__()
         assert expert_parallel in ["EP", "TP", None]
         self.expert_parallel = expert_parallel
         self.num_total_experts = num_experts
+        self.gated = gated
 
         # get expert parallel info
         if expert_parallel is not None:
@@ -47,14 +50,19 @@ class BaseMLPExperts(nn.Module):
             self.num_local_experts = self.num_total_experts
             self.ep_size = 1
 
-        self.wi = nn.Parameter(torch.empty(num_experts, hidden_size, intermediate_size))
+        if gated:
+            self.wi_gate = nn.Parameter(torch.empty(num_experts, hidden_size, intermediate_size * 2))
+            self.wi_up = nn.Parameter(torch.empty(num_experts, hidden_size, intermediate_size))
+        else:
+            self.wi = nn.Parameter(torch.empty(num_experts, hidden_size, intermediate_size))
         self.wo = nn.Parameter(torch.empty(num_experts, intermediate_size, hidden_size))
 
-        with seed(ParallelMode.TENSOR):
-            nn.init.trunc_normal_(self.wi, std=math.sqrt(0.1 / hidden_size))
-            nn.init.trunc_normal_(self.wo, std=math.sqrt(0.1 / intermediate_size))
+        if expert_parallel is not None:
+            with seed(ParallelMode.TENSOR):
+                nn.init.trunc_normal_(self.wi, std=math.sqrt(0.1 / hidden_size))
+                nn.init.trunc_normal_(self.wo, std=math.sqrt(0.1 / intermediate_size))
 
-        self.act = nn.GELU() if activation is None else activation
+        self.act = get_activation(activation)
         self.drop = nn.Dropout(p=drop_rate)
 
         if expert_parallel is not None:
@@ -71,10 +79,15 @@ class BaseMLPExperts(nn.Module):
         inshape = x.shape
         x = x.reshape(e, -1, h)
 
-        x = torch.bmm(x, self.wi)
-        x = self.act(x)
-        with seed(ParallelMode.TENSOR):
-            x = self.drop(x)
+        if self.gated:
+            x = self.act(torch.bmm(x, self.wi_gate)) * torch.bmm(x, self.wi_up)
+        else:
+            x = torch.bmm(x, self.wi)
+            x = self.act(x)
+
+        if self.expert_parallel is not None:
+            with seed(ParallelMode.TENSOR):
+                x = self.drop(x)
         x = torch.bmm(x, self.wo)
 
         x = x.reshape(inshape)
@@ -93,8 +106,9 @@ class EPMLPExperts(BaseMLPExperts):
                  hidden_size: int,
                  intermediate_size: int,
                  activation=None,
-                 drop_rate: float = 0):
-        super().__init__(num_experts, hidden_size, intermediate_size, "EP", activation, drop_rate)
+                 drop_rate: float = 0,
+                 gated: bool = False):
+        super().__init__(num_experts, hidden_size, intermediate_size, "EP", activation, drop_rate, gated)
 
     def state_dict(self, destination=None, prefix='', keep_vars=False):
         dp_rank = dist.get_rank(get_dp_group(self))
@@ -134,8 +148,9 @@ class TPMLPExperts(BaseMLPExperts):
                  hidden_size: int,
                  intermediate_size: int,
                  activation: str = None,
-                 drop_rate: float = 0):
-        super().__init__(num_experts, hidden_size, intermediate_size, "TP", activation, drop_rate)
+                 drop_rate: float = 0,
+                 gated: bool = False):
+        super().__init__(num_experts, hidden_size, intermediate_size, "TP", activation, drop_rate, gated)
 
 
 def get_expert_class(name: str) -> BaseMLPExperts:
@@ -147,3 +162,13 @@ def get_expert_class(name: str) -> BaseMLPExperts:
         return BaseMLPExperts
     else:
         raise ValueError(f"Unknown expert class name: {name}")
+
+
+def build_ffn_experts(num_experts: int, d_model: int, d_ff: int, activation=None, drop_rate: float = 0):
+    mep_size = MOE_CONTEXT.max_ep_size
+    if num_experts % mep_size == 0 or mep_size % num_experts == 0:
+        return EPMLPExperts(num_experts, d_model, d_ff, activation, drop_rate)
+    elif d_ff % mep_size == 0:
+        return TPMLPExperts(num_experts, d_model, d_ff, activation, drop_rate)
+    else:
+        raise NotImplementedError(f"Can not build {num_experts} experts in {mep_size} GPUS.")
