@@ -38,7 +38,7 @@ def run(test_config):
     model = model.half()
 
     infer_engine = TPInferEngine(model, MAX_BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
-    # infer_engine.optimize_model(test_config)
+    infer_engine.optimize_model(test_config)
 
     generate_kwargs = dict(do_sample=False)
     outputs = infer_engine.generate(input_ids, **generate_kwargs)

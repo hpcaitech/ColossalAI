@@ -46,7 +46,10 @@ def init_to_get_rotary(self, base=10000):
     return
 
 
-def run_llama_test():
+@parameterize('test_config', [{
+    'tp_size': TPSIZE,
+}])
+def run_llama_test(test_config):
 
     llama_model_path = "/data/scratch/llama-7b-hf"
     if os.path.isdir(llama_model_path) is False:
