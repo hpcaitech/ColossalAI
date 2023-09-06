@@ -1,6 +1,7 @@
 import datasets
 import torch
 import transformers
+from huggingface_hub import snapshot_download
 from model.modeling_openmoe import OpenMoeForCausalLM
 from torch.utils.data import Dataset
 from tqdm import tqdm
@@ -46,7 +47,7 @@ def parse_args():
     parser = get_default_parser()
     parser.add_argument("--model_name_or_path",
                         type=str,
-                        default="/data3/users/lczxl/OpenMoE/openmoe_base_pytorch",
+                        default="base",
                         help="Path to pretrained model or model identifier from huggingface.co/models.")
     parser.add_argument("--output_path",
                         type=str,
@@ -93,10 +94,12 @@ def main():
         transformers.utils.logging.set_verbosity_error()
 
     # Build OpenMoe model
-    config = LlamaConfig.from_pretrained(args.model_name_or_path)
+    repo_name = "hpcaitech/openmoe-" + args.model_name_or_path
+    config = LlamaConfig.from_pretrained(repo_name)
     with skip_init():
         model = OpenMoeForCausalLM(config)
-    MoeCheckpintIO().load_model(model, args.model_name_or_path + "/pytorch_model.bin")
+    ckpt_path = snapshot_download(repo_name)
+    MoeCheckpintIO().load_model(model, ckpt_path + "/pytorch_model.bin")
     logger.info(f"Finish init model with config:\n{config}", ranks=[0])
 
     # Enable gradient checkpointing
