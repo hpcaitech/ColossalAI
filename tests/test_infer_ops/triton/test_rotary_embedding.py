@@ -11,7 +11,6 @@ try:
     import triton.language as tl
 
     from colossalai.kernel.triton.rotary_embedding_kernel import rotary_embedding_fwd
-    from tests.test_infer_ops.triton.utils import benchmark
 
     HAS_TRITON = True
 except ImportError:
