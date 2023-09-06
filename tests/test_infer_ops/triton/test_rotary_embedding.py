@@ -49,7 +49,6 @@ def test_rotary_emb():
     y_torch = torch_rotary_emb(x, cos, sin)
     rotary_embedding_fwd(x, cos, sin)
     y_triton = x
-    # print("max delta:", torch.max(torch.abs(y_torch - y_triton)))
     # compare
     assert torch.allclose(y_torch, y_triton, atol=1e-2, rtol=1e-2)
 
