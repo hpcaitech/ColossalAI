@@ -36,11 +36,11 @@ class TPInferEngine:
         self.max_output_len = max_output_len
         self.max_total_token_num = self.max_batch_size * (self.max_input_len + self.max_output_len)
 
-        # Constraints relatable with specs of devices
+        # Constraints relatable with specs of devices and model
+        # This may change into an optional arg in the future
         assert self.max_batch_size <= 64, "Max batch size exceeds the constraint"
-        assert self.max_input_len + self.max_output_len <= 2048, "Max length exceeds the constraint"
+        assert self.max_input_len + self.max_output_len <= 4096, "Max length exceeds the constraint"
 
-        torch.device(device=device)
         self.dtype = dtype
 
         self.head_dim = self.model.config.hidden_size // self.model.config.num_attention_heads
@@ -94,7 +94,7 @@ class TPInferEngine:
     def _supported_models() -> List[str]:
         return _supported_models
 
-    def generate(self, input_tokens, generate_kwargs) -> torch.Tensor:
+    def generate(self, input_tokens: Union[BatchEncoding, dict, list, torch.Tensor], **generate_kwargs) -> torch.Tensor:
         if isinstance(input_tokens, torch.Tensor):
             input_tokens = dict(input_ids=input_tokens, attention_mask=torch.ones_like(input_tokens, dtype=torch.bool))
         for t in input_tokens:
@@ -102,12 +102,12 @@ class TPInferEngine:
                 input_tokens[t] = input_tokens[t].cuda()
 
         if self.sharded_model is not None:
-            return self.generate_by_set_infer_state(input_tokens, generate_kwargs)
+            return self.generate_by_set_infer_state(input_tokens, **generate_kwargs)
 
         return self.model.generate(**input_tokens, **generate_kwargs)
 
     @torch.no_grad()
-    def generate_by_set_infer_state(self, input_tokens, generate_kwargs) -> torch.Tensor:
+    def generate_by_set_infer_state(self, input_tokens, **generate_kwargs) -> torch.Tensor:
         """
         Generate output tokens by setting BatchInferState as an attribute to the model and calling model.generate
 
