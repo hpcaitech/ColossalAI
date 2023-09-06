@@ -191,8 +191,9 @@ class TPInferEngine:
                 start_index += curr_seq_len
                 max_len_in_batch = curr_seq_len if curr_seq_len > max_len_in_batch else max_len_in_batch
         else:
+            length = max(len(input_id) for input_id in input_ids_list)
             for i, input_ids in enumerate(input_ids_list):
-                curr_seq_len = len(input_ids)
+                curr_seq_len = length
                 seq_lengths[i] = curr_seq_len
                 seq_start_indexes[i] = start_index
                 start_index += curr_seq_len
