@@ -41,7 +41,7 @@ for epoch in range(num_epochs):
 
 #### Save when using trainer
 ```python
-from colossalai.trainer import Trainer, hooks
+from colossalai.legacy.trainer import Trainer, hooks
 model = ...
 engine, _, _, _ = colossalai.initialize(model=model, ...)
 trainer = Trainer(engine, ...)
@@ -61,3 +61,4 @@ model = ...
 load_checkpoint('xxx.pt', model)
 ... # train or test
 ```
+<!-- doc-test-command: echo  -->

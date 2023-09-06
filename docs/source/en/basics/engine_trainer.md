@@ -64,7 +64,7 @@ Trainer is a more high-level wrapper for the user to execute training with fewer
 
 ```python
 from colossalai.logging import get_dist_logger
-from colossalai.trainer import Trainer, hooks
+from colossalai.legacy.trainer import Trainer, hooks
 
 # build components and initialize with colossalai.initialize
 ...
@@ -107,7 +107,7 @@ If you want to customize your own hook class, you can inherit `hooks.BaseHook` a
 
 ```python
 from colossalai.logging import get_dist_logger
-from colossalai.trainer import hooks
+from colossalai.legacy.trainer import hooks
 
 class LogMessageHook(hooks.BaseHook):
 
@@ -345,7 +345,7 @@ If you wish to train with a trainer object, you can follow the code snippet belo
 
 ```python
 from colossalai.nn.metric import Accuracy
-from colossalai.trainer import Trainer, hooks
+from colossalai.legacy.trainer import Trainer, hooks
 
 
 # create a trainer object
@@ -387,3 +387,4 @@ python -m torch.distributed.launch --nproc_per_node <num_gpus> --master_addr loc
 # with trainer
 python -m torch.distributed.launch --nproc_per_node <num_gpus> --master_addr localhost --master_port 29500 run_resnet_cifar10_with_trainer.py
 ```
+<!-- doc-test-command: echo  -->

@@ -1,6 +1,7 @@
 from torch.optim.lr_scheduler import CosineAnnealingLR as _CosineAnnealingLR
 
-from colossalai.registry import LR_SCHEDULERS
+from colossalai.legacy.registry import LR_SCHEDULERS
+
 from .delayed import DelayerScheduler, WarmupDelayerScheduler, WarmupScheduler
 
 

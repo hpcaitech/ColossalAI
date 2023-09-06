@@ -8,7 +8,7 @@ Licensed under the MIT License.
 '''
 import torch
 
-from colossalai.registry import OPTIMIZERS
+from colossalai.legacy.registry import OPTIMIZERS
 from colossalai.utils import multi_tensor_applier
 
 
