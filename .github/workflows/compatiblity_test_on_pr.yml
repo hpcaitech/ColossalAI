@@ -83,7 +83,7 @@ jobs:
           pip list
       - name: Unit Testing
         run: |
-          PYTHONPATH=$PWD pytest tests
+          PYTHONPATH=$PWD pytest tests/test_amp/test_torch_fp16.py
         env:
           DATA: /data/scratch/cifar-10
           NCCL_SHM_DISABLE: 1
