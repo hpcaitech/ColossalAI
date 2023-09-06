@@ -77,12 +77,8 @@ def run_llama_test(test_config):
 
     model_config = model.config
 
-    infer_engine = TPInferEngine(model.half(), BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
-    shard_config = ShardConfig(enable_tensor_parallelism=False, inference_only=True)
-    shardformer = ShardFormer(shard_config=shard_config)
-
-    infer_engine.prepare_with_shard_config(shard_config)
-    infer_engine.shard_model_by(shardformer)
+    infer_engine = TPInferEngine(model, BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
+    infer_engine.optimize_model(test_config)
 
     batch_size = 2
     max_new_tokens = 128
@@ -106,7 +102,6 @@ def run_llama_test(test_config):
         out_len = outputs.shape[1]
         print("generation time {} s".format(str(end - start)))
         times.append((end - start) / (out_len - input_len))
-        infer_engine.cache_manager.free_all()
 
     print("outputs, ", len(outputs))
     outputs = tokenizer.batch_decode(outputs)
