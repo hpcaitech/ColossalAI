@@ -21,7 +21,7 @@ CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse('11.5')
 
 
 def run():
-    model_path = "/data3/models/bloom-7b1"
+    model_path = "/home/lczyh/data3/models/bloom-7b1"
     if os.path.isdir(model_path) is False:
         return
 
@@ -43,7 +43,7 @@ def run():
     infer_engine.shard_model_by(shardformer)
 
     generate_kwargs = dict(do_sample=False)
-    outputs = infer_engine.generate(input_ids, generate_kwargs)
+    outputs = infer_engine.generate(input_ids, **generate_kwargs)
 
     if not dist.is_initialized() or dist.get_rank() == 0:
         output_text = tokenizer.decode(outputs[0])
