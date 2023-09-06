@@ -3,18 +3,23 @@ from argparse import ArgumentParser
 import torch
 from model.modeling_openmoe import OpenMoeForCausalLM
 from transformers import T5Tokenizer
+from transformers.models.llama import LlamaConfig
 
 
 def parse_args():
     parser = ArgumentParser()
-    parser.add_argument("--model", default="base", type=str, help="model path", choices=["base", "8b"])
+    parser.add_argument("--model", default="base", type=str, help="model path", choices=["base", "8b", "test"])
     return parser.parse_args()
 
 
 def inference(args):
 
     tokenizer = T5Tokenizer.from_pretrained("google/umt5-small")
-    model = OpenMoeForCausalLM.from_pretrained(f"hpcaitech/openmoe-{args.model}")
+    if args.model == "test":
+        config = LlamaConfig.from_pretrained("hpcaitech/openmoe-base")
+        model = OpenMoeForCausalLM(config)
+    else:
+        model = OpenMoeForCausalLM.from_pretrained(f"hpcaitech/openmoe-{args.model}")
     model = model.eval().bfloat16()
     model = model.to(torch.cuda.current_device())
 
