@@ -151,7 +151,7 @@ class Booster:
                          data_iter: Iterator,
                          model: nn.Module,
                          criterion: Callable[[Any, Any], torch.Tensor],
-                         optimizer: Optimizer,
+                         optimizer: Optional[Optimizer] = None,
                          return_loss: bool = True,
                          return_outputs: bool = False) -> dict:
         # run pipeline forward backward pass
