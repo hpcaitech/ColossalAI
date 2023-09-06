@@ -2,13 +2,14 @@ from typing import Any, Optional, Tuple
 
 import torch
 import torch.distributed as dist
-from colossalai.communication.collective import (all_gather, all_reduce, reduce, reduce_scatter)
-from colossalai.context.parallel_mode import ParallelMode
-from colossalai.core import global_context as gpc
-from colossalai.utils import get_current_device
 from torch import Tensor
 from torch.cuda.amp import custom_bwd, custom_fwd
+
+from colossalai.context.parallel_mode import ParallelMode
+from colossalai.core import global_context as gpc
 from colossalai.global_variables import tensor_parallel_env as env
+from colossalai.legacy.communication.collective import all_gather, all_reduce, reduce, reduce_scatter
+from colossalai.utils import get_current_device
 
 
 def matmul_2d(
@@ -226,9 +227,9 @@ class Matmul_AB_2D(torch.autograd.Function):
         col_group = gpc.get_group(col_parallel_mode)
 
         src_a = summa_dim * row_rank + data_parallel_rank * pipeline_parallel_size * tensor_parallel_size + \
-                pipeline_parallel_rank * tensor_parallel_size
+            pipeline_parallel_rank * tensor_parallel_size
         src_b = col_rank + data_parallel_rank * pipeline_parallel_size * tensor_parallel_size + \
-                pipeline_parallel_rank * tensor_parallel_size
+            pipeline_parallel_rank * tensor_parallel_size
 
         opa = [None] * 2
         opb = [None] * 2
@@ -351,9 +352,9 @@ class Matmul_ABT_2D(torch.autograd.Function):
         col_group = gpc.get_group(col_parallel_mode)
 
         src_b = col_rank + data_parallel_rank * pipeline_parallel_size * tensor_parallel_size + \
-                pipeline_parallel_rank * tensor_parallel_size
+            pipeline_parallel_rank * tensor_parallel_size
         src_c = summa_dim * row_rank + data_parallel_rank * pipeline_parallel_size * tensor_parallel_size + \
-                pipeline_parallel_rank * tensor_parallel_size
+            pipeline_parallel_rank * tensor_parallel_size
 
         opb = [None] * 2
         opr = [None] * 2
@@ -484,9 +485,9 @@ class Matmul_ATB_2D(torch.autograd.Function):
         col_group = gpc.get_group(col_parallel_mode)
 
         src_a = summa_dim * row_rank + data_parallel_rank * pipeline_parallel_size * tensor_parallel_size + \
-                pipeline_parallel_rank * tensor_parallel_size
+            pipeline_parallel_rank * tensor_parallel_size
         src_c = col_rank + data_parallel_rank * pipeline_parallel_size * tensor_parallel_size + \
-                pipeline_parallel_rank * tensor_parallel_size
+            pipeline_parallel_rank * tensor_parallel_size
 
         opa = [None] * 2
         opr = [None] * 2
