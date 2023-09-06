@@ -6,8 +6,6 @@ import torch.nn.functional as F
 from colossalai.context.moe_context import MOE_CONTEXT
 from colossalai.utils import get_current_device
 
-from .experts import EPMLPExperts, TPMLPExperts
-
 
 class ForceFP32Parameter(torch.nn.Parameter):
 
@@ -60,16 +58,6 @@ def autocast_softmax(logit: torch.Tensor, dim: int):
     return F.softmax(logit, dim=dim, detype=torch.float32)
 
 
-def build_ffn_experts(num_experts: int, d_model: int, d_ff: int, activation=None, drop_rate: float = 0):
-    mep_size = MOE_CONTEXT.max_ep_size
-    if num_experts % mep_size == 0 or mep_size % num_experts == 0:
-        return EPMLPExperts(num_experts, d_model, d_ff, activation, drop_rate)
-    elif d_ff % mep_size == 0:
-        return TPMLPExperts(num_experts, d_model, d_ff, activation, drop_rate)
-    else:
-        raise NotImplementedError(f"Can not build {num_experts} experts in {mep_size} GPUS.")
-
-
 def get_noise_generator(noise_type: str, num_experts: int) -> Callable:
     if noise_type is None:
         return None
@@ -80,3 +68,26 @@ def get_noise_generator(noise_type: str, num_experts: int) -> Callable:
     else:
         raise NotImplementedError("Unsupported input noisy policy")
     return noisy_func
+
+
+def get_activation(act: str) -> Callable:
+    if act is None or act == 'relu':
+        return torch.nn.ReLU()
+    elif act == 'gelu':
+        return torch.nn.GELU()
+    elif act == 'swiglu':
+        return SwiGLU
+    else:
+        raise NotImplementedError("Unsupported activation function")
+
+
+def SwiGLU(x):
+    """Gated linear unit activation function.
+    Args:
+        x : input array
+        axis: the axis along which the split should be computed (default: -1)
+    """
+    size = x.shape[-1]
+    assert size % 2 == 0, "axis size must be divisible by 2"
+    x1, x2 = torch.split(x, size // 2, -1)
+    return x1 * (x2 * torch.sigmoid(x2))
