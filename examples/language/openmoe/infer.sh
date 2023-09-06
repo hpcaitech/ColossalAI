@@ -1,1 +1,1 @@
-python infer.py --path /path/to/openmoe
+python infer.py --model "base"

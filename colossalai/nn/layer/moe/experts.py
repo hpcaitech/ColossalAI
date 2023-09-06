@@ -140,3 +140,13 @@ def get_expert_class(name: str) -> BaseMLPExperts:
         return BaseMLPExperts
     else:
         raise ValueError(f"Unknown expert class name: {name}")
+
+
+def build_ffn_experts(num_experts: int, d_model: int, d_ff: int, activation=None, drop_rate: float = 0):
+    mep_size = MOE_CONTEXT.max_ep_size
+    if num_experts % mep_size == 0 or mep_size % num_experts == 0:
+        return EPMLPExperts(num_experts, d_model, d_ff, activation, drop_rate)
+    elif d_ff % mep_size == 0:
+        return TPMLPExperts(num_experts, d_model, d_ff, activation, drop_rate)
+    else:
+        raise NotImplementedError(f"Can not build {num_experts} experts in {mep_size} GPUS.")
