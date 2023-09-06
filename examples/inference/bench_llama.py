@@ -96,7 +96,7 @@ def run_llama_test(test_config):
     for i in range(iters):
         torch.cuda.synchronize()
         start = time.time()
-        outputs = infer_engine.generate(input_tokens, generate_kwargs)
+        outputs = infer_engine.generate(input_tokens, **generate_kwargs)
         torch.cuda.synchronize()
         end = time.time()
         out_len = outputs.shape[1]
