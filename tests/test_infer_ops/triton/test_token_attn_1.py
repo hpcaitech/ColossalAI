@@ -59,24 +59,14 @@ def test_attn_1():
         kv_cache_seq_len[i] = seq_len
         b_loc[i] = i * seq_len + torch.arange(0, seq_len, dtype=torch.int32, device="cuda")
 
-    # Warm up
-    for _ in range(10):
-        token_attn_fwd_1(q, k, attn_out, b_loc, kv_cache_start_loc, kv_cache_seq_len, seq_len)
-        
-    run_iter = 1000
-    torch.cuda.synchronize()
-    t1 = time.time()
-    for _ in range(run_iter):
-        token_attn_fwd_1(q, k, attn_out, b_loc, kv_cache_start_loc, kv_cache_seq_len, seq_len)
-    torch.cuda.synchronize()
-    t2 = time.time()
-    print("Time cost {}".format((t2 - t1) / run_iter))
+    token_attn_fwd_1(q, k, attn_out, b_loc, kv_cache_start_loc, kv_cache_seq_len, seq_len)
 
     torch_out = torch_attn(q, k, batch_size, seq_len, head_num, head_dim).squeeze()
     o = attn_out.squeeze()
     print("max ", torch.max(torch.abs(torch_out - o)))
     print("mean ", torch.mean(torch.abs(torch_out - o)))
     assert torch.allclose(torch_out, o, atol=1e-2, rtol=0)
+
 
 if __name__ == "__main__":
     test_attn_1()
