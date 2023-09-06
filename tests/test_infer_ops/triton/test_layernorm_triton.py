@@ -4,7 +4,6 @@ from packaging import version
 
 from colossalai.kernel.triton import layer_norm
 from colossalai.testing.utils import parameterize
-from tests.test_infer_ops.triton.utils import benchmark
 
 try:
     import triton
