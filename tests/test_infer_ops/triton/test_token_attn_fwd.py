@@ -56,7 +56,6 @@ def test():
         kv_cache_loc[i, :] = torch.arange(i * seq_len, (i + 1) * seq_len, dtype=torch.int32, device="cuda")
 
     token_attention_fwd(q, k, v, o, kv_cache_loc, kv_cache_start_loc, kv_cache_seq_len, max_kv_cache_len, alibi=alibi)
-    torch_att(q, k, v, Z, seq_len, head_num, head_dim)
     torch_out = torch_att(q, k, v, Z, seq_len, head_num, head_dim)
 
     print("max ", torch.max(torch.abs(torch_out - o)))
