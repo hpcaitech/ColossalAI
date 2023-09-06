@@ -50,7 +50,7 @@ def run(test_config):
         # print(output_text)
         for o in outputs:
             output_text = tokenizer.decode(o)
-            print(output_text)
+            # print(output_text)
 
 
 def check_engine(rank, world_size, port):
