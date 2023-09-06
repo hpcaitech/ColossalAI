@@ -7,16 +7,9 @@ from transformers.modeling_outputs import (
     CausalLMOutputWithPast,
     SequenceClassifierOutputWithPast,
 )
-from transformers.models.llama.modeling_llama import (
-    LlamaAttention,
-    LlamaForCausalLM,
-    LlamaForSequenceClassification,
-    LlamaModel,
-    apply_rotary_pos_emb,
-)
+from transformers.models.llama.modeling_llama import LlamaForCausalLM, LlamaForSequenceClassification, LlamaModel
 from transformers.utils import logging
 
-from colossalai.kernel.cuda_native import AttnMaskType, ColoAttention
 from colossalai.pipeline.stage_manager import PipelineStageManager
 
 
@@ -399,6 +392,10 @@ class LlamaPipelineForwards:
 
 
 def get_llama_flash_attention_forward():
+
+    from transformers.models.llama.modeling_llama import LlamaAttention, apply_rotary_pos_emb
+
+    from colossalai.kernel.cuda_native import AttnMaskType, ColoAttention
 
     def forward(
         self: LlamaAttention,
