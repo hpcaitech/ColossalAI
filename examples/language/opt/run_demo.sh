@@ -9,7 +9,7 @@ OUTPUT_PATH="./output_model.bin"
 
 # plugin(training strategy)
 # can only be one of "torch_ddp"/"torch_ddp_fp16"/"low_level_zero"/"gemini"
-PLUGIN="gemini"
+PLUGIN="hybrid_parallel"
 
 # number of gpus to use
 GPUNUM=4

@@ -1,3 +1,4 @@
+import warnings
 from typing import Callable, List, Optional, Tuple
 
 import torch
@@ -392,6 +393,11 @@ def get_llama_flash_attention_forward():
 
     from transformers.models.llama.modeling_llama import LlamaAttention, apply_rotary_pos_emb
 
+    try:
+        from transformers.models.llama.modeling_llama import repeat_kv
+    except:
+        warnings.warn("llama1 has no repeat_kv function")
+
     from colossalai.kernel.cuda_native import AttnMaskType, ColoAttention
 
     def forward(
@@ -423,6 +429,10 @@ def get_llama_flash_attention_forward():
             value_states = torch.cat([past_key_value[1], value_states], dim=2)
 
         past_key_value = (key_states, value_states) if use_cache else None
+
+        # repeat k/v heads if n_kv_heads < n_heads
+        key_states = repeat_kv(key_states, self.num_key_value_groups)
+        value_states = repeat_kv(value_states, self.num_key_value_groups)
 
         me_input_shape = (bsz, q_len, self.num_heads, self.head_dim)
         query_states = query_states.transpose(1, 2).contiguous().view(*me_input_shape)
