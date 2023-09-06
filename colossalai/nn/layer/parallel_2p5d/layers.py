@@ -8,10 +8,10 @@ import torch.nn.functional as F
 from torch import Tensor
 from torch.nn import Parameter
 
-from colossalai.communication import broadcast
 from colossalai.context import ParallelMode, seed
 from colossalai.core import global_context as gpc
 from colossalai.global_variables import tensor_parallel_env as env
+from colossalai.legacy.communication import broadcast
 from colossalai.legacy.registry import LAYERS
 from colossalai.nn import init as init
 from colossalai.utils.checkpointing import (

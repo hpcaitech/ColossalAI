@@ -7,9 +7,9 @@ from typing import Callable
 import torch
 import torch.distributed as dist
 
-from colossalai.communication import all_reduce
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
+from colossalai.legacy.communication import all_reduce
 from colossalai.legacy.registry import HOOKS
 from colossalai.utils import get_current_device, is_no_pp_or_last_stage
 
