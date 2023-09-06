@@ -40,6 +40,7 @@ class MicroBatchDescription():
         the state is DONE, otherwise GENERATE
 
         """
+        # TODO: add the condition for early stopping
         if self.cur_length == self.target_length:
             return Status.DONE
         else:
@@ -156,8 +157,8 @@ class MicroBatchManager():
         return self.cur_state
 
     def export_new_tokens(self):
-        list = [i.new_tokens.tolist()[0] for i in self.mb_descrption_buffer.values()]
-        return list
+        new_tokens_list = [i.new_tokens[0].tolist() for i in self.mb_descrption_buffer.values()]
+        return new_tokens_list
 
     def is_micro_batch_done(self):
         if len(self.mb_descrption_buffer) == 0:
