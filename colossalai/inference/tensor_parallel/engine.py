@@ -66,7 +66,6 @@ class TPInferEngine:
         shardformer = ShardFormer(shard_config=shard_config)
         self._prepare_with_shard_config(shard_config=shard_config)
         self._shard_model_by(shardformer)
-        print("  optimize_model tensor_parallel_size: ", shard_config.tensor_parallel_size)
         self.model = None
 
     def _prepare_with_shard_config(self, shard_config: Optional[ShardConfig] = None) -> ShardConfig:
