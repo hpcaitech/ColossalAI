@@ -1,3 +1,5 @@
+import os
+
 import datasets
 import torch
 import transformers
@@ -22,6 +24,19 @@ from colossalai.utils import get_current_device
 
 def move_to_cuda(batch, device):
     return {k: v.to(device) for k, v in batch.items()}
+
+
+def load_ckpt(repo_name: str, model: OpenMoeForCausalLM):
+    ckpt_path = snapshot_download(repo_name)
+    # single ckpt
+    if os.path.exists(os.path.join(ckpt_path, "pytorch_model.bin")):
+        ckpt_path = os.path.join(ckpt_path, "pytorch_model.bin")
+    # shard ckpt
+    elif os.path.exists(os.path.join(ckpt_path, "pytorch_model.bin.index.json")):
+        ckpt_path = os.path.join(ckpt_path, "pytorch_model.bin.index.json")
+    else:
+        raise ValueError(f"Invalid checkpoint path: {ckpt_path}")
+    MoeCheckpintIO().load_model(model, ckpt_path)
 
 
 class RandomDataset(Dataset):
@@ -98,8 +113,7 @@ def main():
     config = LlamaConfig.from_pretrained(repo_name)
     with skip_init():
         model = OpenMoeForCausalLM(config)
-    ckpt_path = snapshot_download(repo_name)
-    MoeCheckpintIO().load_model(model, ckpt_path + "/pytorch_model.bin")
+    load_ckpt(repo_name, model)
     logger.info(f"Finish init model with config:\n{config}", ranks=[0])
 
     # Enable gradient checkpointing
