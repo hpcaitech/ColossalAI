@@ -78,8 +78,6 @@ class GeneralCheckpointIO(CheckpointIO):
         for shard_file in checkpoint_files:
             state_dict = load_shard_state_dict(Path(shard_file), use_safetensors=False)
             load_states_into_optimizer(optimizer, state_dict, id_map)
-            del state_dict
-            gc.collect()
 
         sharded_optimizer_loading_epilogue(optimizer)
 
