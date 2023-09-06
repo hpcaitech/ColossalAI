@@ -16,7 +16,6 @@ from transformers.models.llama.modeling_llama import (
 )
 from transformers.utils import logging
 
-from colossalai.kernel.cuda_native import AttnMaskType, ColoAttention
 from colossalai.pipeline.stage_manager import PipelineStageManager
 
 
@@ -399,6 +398,8 @@ class LlamaPipelineForwards:
 
 
 def get_llama_flash_attention_forward():
+    
+    from colossalai.kernel.cuda_native import AttnMaskType, ColoAttention
 
     def forward(
         self: LlamaAttention,
