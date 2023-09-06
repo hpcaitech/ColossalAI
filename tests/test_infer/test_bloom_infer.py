@@ -43,7 +43,7 @@ def run():
     infer_engine.shard_model_by(shardformer)
 
     generate_kwargs = dict(do_sample=False)
-    outputs = infer_engine.generate(input_ids, generate_kwargs)
+    outputs = infer_engine.generate(input_ids, **generate_kwargs)
 
     if not dist.is_initialized() or dist.get_rank() == 0:
         output_text = tokenizer.decode(outputs[0])

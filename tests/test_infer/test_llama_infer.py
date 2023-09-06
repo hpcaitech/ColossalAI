@@ -73,7 +73,7 @@ def run_llama_test(test_config):
     infer_engine.shard_model_by(shardformer)
 
     generate_kwargs = dict(max_new_tokens=MAX_OUTPUT_LEN, do_sample=False)
-    outputs = infer_engine.generate(input_ids, generate_kwargs)
+    outputs = infer_engine.generate(input_ids, **generate_kwargs)
     #print("outputs.shape: ", outputs.shape)
 
     #print("outputs: ", outputs)

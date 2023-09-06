@@ -50,7 +50,7 @@ def test_rotary_emb():
     rotary_embedding_fwd(x, cos, sin)
     y_triton = x
     # compare
-    assert torch.allclose(y_torch, y_triton, atol=1e-2, rtol=1e-2)
+    assert torch.allclose(y_torch, y_triton, atol=1e-2, rtol=0)
 
 
 if __name__ == "__main__":
