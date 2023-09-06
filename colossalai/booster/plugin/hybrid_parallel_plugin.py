@@ -38,7 +38,7 @@ def _convert_floating_point(x, dtype: torch.dtype = torch.float16):
 class HybridParallelModule(ModelWrapper):
 
     def __init__(self, module: Module, precision: str, shard_config: ShardConfig, dp_group: ProcessGroup, use_ddp: bool,
-                ddp_config: dict) -> None:
+                 ddp_config: dict) -> None:
 
         self.stage_manager = shard_config.pipeline_stage_manager
         self.dp_group = dp_group
