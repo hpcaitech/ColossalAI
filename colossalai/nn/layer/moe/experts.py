@@ -59,7 +59,11 @@ class BaseMLPExperts(nn.Module):
 
         if expert_parallel is not None:
             with seed(ParallelMode.TENSOR):
-                nn.init.trunc_normal_(self.wi, std=math.sqrt(0.1 / hidden_size))
+                if gated:
+                    nn.init.trunc_normal_(self.wi_gate, std=math.sqrt(0.1 / hidden_size))
+                    nn.init.trunc_normal_(self.wi_up, std=math.sqrt(0.1 / hidden_size))
+                else:
+                    nn.init.trunc_normal_(self.wi, std=math.sqrt(0.1 / hidden_size))
                 nn.init.trunc_normal_(self.wo, std=math.sqrt(0.1 / intermediate_size))
 
         self.act = get_activation(activation)
@@ -109,32 +113,6 @@ class EPMLPExperts(BaseMLPExperts):
                  drop_rate: float = 0,
                  gated: bool = False):
         super().__init__(num_experts, hidden_size, intermediate_size, "EP", activation, drop_rate, gated)
-
-    def state_dict(self, destination=None, prefix='', keep_vars=False):
-        dp_rank = dist.get_rank(get_dp_group(self))
-        ep_rank = dist.get_rank(get_ep_group(self))
-        ep_size = get_ep_size(self)
-        # dp rank 0 will save the state dict
-        if dp_rank == 0:
-            for name, param in self.named_parameters():
-                if param is self:
-                    continue
-                # create buffer
-                buffer_module = deepcopy(param)
-                # gather param from every ep rank
-                for source_rank in range(ep_size):
-                    current_prefix = f"{prefix}{source_rank}."
-                    if ep_rank == source_rank:
-                        dist.broadcast(param.data, src=source_rank, group=self.moe_info.ep_group)
-                    else:
-                        dist.broadcast(buffer_module.data, src=source_rank, group=self.moe_info.ep_group)
-                    if ep_rank == 0:
-                        if keep_vars:
-                            destination[current_prefix + name] = buffer_module.cpu()
-                        else:
-                            destination[current_prefix + name] = buffer_module.data.cpu()
-
-        dist.barrier()
 
 
 class TPMLPExperts(BaseMLPExperts):
