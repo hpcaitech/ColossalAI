@@ -80,6 +80,7 @@ jobs:
         run: |
           pip install -v --no-cache-dir .
           pip install -r requirements/requirements-test.txt
+          pip list
       - name: Unit Testing
         run: |
           PYTHONPATH=$PWD pytest tests
