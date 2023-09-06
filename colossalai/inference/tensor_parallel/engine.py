@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, List, Optional, Set, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
 import torch.nn as nn
@@ -7,7 +7,6 @@ from transformers.generation import GenerationConfig
 from transformers.generation.stopping_criteria import StoppingCriteriaList
 from transformers.tokenization_utils_base import BatchEncoding
 
-from colossalai.cluster import ProcessGroupMesh
 from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.shardformer.policies.auto_policy import get_autopolicy
 
@@ -29,6 +28,7 @@ class TPInferEngine:
                  dtype: torch.dtype = torch.float16,
                  device: str = 'cuda') -> None:
         self.model = model
+        self.model = self.model.to(device)
         self.sharded_model = None
 
         self.max_batch_size = max_batch_size
@@ -57,7 +57,19 @@ class TPInferEngine:
         self.cache_manager = MemoryManager(self.max_total_token_num, self.dtype, self.head_num, self.head_dim,
                                            self.layer_num)
 
-    def prepare_with_shard_config(self, shard_config: Optional[ShardConfig] = None) -> ShardConfig:
+    def optimize_model(self, config: Optional[Dict[Any, Any]] = None) -> None:
+        """ Apply shardformer to optimize the model. In future generation, use sharded model instead of original model. """
+        tp_size = 1 if config is None else config.get('tp_size', 1)
+        # NOTE we will change to use an inference config later with additional attrs we want
+        # tp_size = getattr(config, 'tp_size', 1)
+        shard_config = ShardConfig(enable_tensor_parallelism=True if tp_size > 1 else False, inference_only=True)
+        shardformer = ShardFormer(shard_config=shard_config)
+        self._prepare_with_shard_config(shard_config=shard_config)
+        self._shard_model_by(shardformer)
+        print("  optimize_model tensor_parallel_size: ", shard_config.tensor_parallel_size)
+        self.model = None
+
+    def _prepare_with_shard_config(self, shard_config: Optional[ShardConfig] = None) -> ShardConfig:
         """ Prepare the engine with a given ShardConfig, or create a default one with tp size 1 """
         self.tp_size = 1
         if shard_config is None:
@@ -80,7 +92,7 @@ class TPInferEngine:
 
         return shard_config
 
-    def shard_model_by(self, shardformer: ShardFormer) -> None:
+    def _shard_model_by(self, shardformer: ShardFormer) -> None:
         """ Shard the model and store the sharded model by given ShardFormer """
         assert self.tp_size == shardformer.shard_config.tensor_parallel_size, \
             "Discrepancy between the tp size of TPInferEngine and the tp size of shard config"
@@ -100,11 +112,13 @@ class TPInferEngine:
         for t in input_tokens:
             if torch.is_tensor(input_tokens[t]):
                 input_tokens[t] = input_tokens[t].cuda()
+        if 'max_new_tokens' not in generate_kwargs:
+            generate_kwargs.update(max_new_tokens=self.max_output_len)
 
         if self.sharded_model is not None:
             return self.generate_by_set_infer_state(input_tokens, **generate_kwargs)
 
-        return self.model.generate(**input_tokens, **generate_kwargs)
+        return self.model.generate(input_tokens.get('input_ids'), **generate_kwargs)
 
     @torch.no_grad()
     def generate_by_set_infer_state(self, input_tokens, **generate_kwargs) -> torch.Tensor:
@@ -135,8 +149,11 @@ class TPInferEngine:
             model = self.sharded_model.transformer
         setattr(model, 'infer_state', batch_infer_state)
 
-        generate_kwargs.update(max_new_tokens=self.max_output_len)
         outputs = self.sharded_model.generate(**input_tokens, **generate_kwargs, early_stopping=False)
+
+        # NOTE In future development, we're going to let the scheduler to handle the cache,
+        #      instead of freeing space explicitly at the end of generation
+        self.cache_manager.free_all()
 
         return outputs
 

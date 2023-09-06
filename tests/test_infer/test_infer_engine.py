@@ -85,9 +85,8 @@ def test_orig_generate():
 
     shard_config = ShardConfig(enable_tensor_parallelism=False)
 
-    # init TPInferEngine and
+    # init TPInferEngine
     infer_engine = TPInferEngine(model, MAX_BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
-    infer_engine.prepare_with_shard_config(shard_config)
 
     # original model generate
     generate_kwargs = dict(do_sample=False)
@@ -96,18 +95,17 @@ def test_orig_generate():
     torch.cuda.empty_cache()
 
 
-def run():
+@parameterize('test_config', [{
+    'tp_size': TP_SIZE,
+}])
+def run(test_config):
     model_config = BloomConfig()
     model = BloomForCausalLM(model_config)
     model = model.half()
     model.to(torch.cuda.current_device())
 
-    shard_config = ShardConfig(enable_tensor_parallelism=True, inference_only=True)
-    shardformer = ShardFormer(shard_config=shard_config)
-
     infer_engine = TPInferEngine(model, MAX_BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
-    infer_engine.prepare_with_shard_config(shard_config=shard_config)
-    infer_engine.shard_model_by(shardformer)
+    infer_engine.optimize_model(test_config)
 
     assert infer_engine.cache_manager is not None
     assert infer_engine.tp_size == TP_SIZE

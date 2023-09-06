@@ -61,19 +61,14 @@ def run_llama_test():
     text = ["how is weather today?", "i am "]
     input_ids = tokenizer.batch_encode_plus(text, return_tensors='pt', padding=True, device='cuda')
 
-    #print("input ids ", input_ids)
-    infer_engine = TPInferEngine(model.half(), BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
-    shard_config = ShardConfig(enable_tensor_parallelism=True, inference_only=True)
-    shardformer = ShardFormer(shard_config=shard_config)
-
-    infer_engine.prepare_with_shard_config(shard_config)
-    infer_engine.shard_model_by(shardformer)
+    infer_engine = TPInferEngine(model, BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
+    infer_engine.optimize_model(test_config)
 
     generate_kwargs = dict(max_new_tokens=MAX_OUTPUT_LEN, do_sample=False)
     outputs = infer_engine.generate(input_ids, **generate_kwargs)
-    #print("outputs.shape: ", outputs.shape)
 
-    #print("outputs: ", outputs)
+    assert outputs is not None
+
     if not dist.is_initialized() or dist.get_rank() == 0:
         for o in outputs:
             output_text = tokenizer.decode(o)
