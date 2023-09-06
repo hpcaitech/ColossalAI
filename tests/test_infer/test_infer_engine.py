@@ -1,9 +1,9 @@
-from itertools import accumulate
-
 import pytest
+from itertools import accumulate
+from packaging import version
+
 import torch
 import torch.nn as nn
-from packaging import version
 from transformers import BloomConfig, BloomForCausalLM, LlamaConfig, LlamaForCausalLM
 from transformers.tokenization_utils_base import BatchEncoding
 
@@ -20,7 +20,6 @@ MAX_INPUT_LEN = 16
 MAX_OUTPUT_LEN = 8
 
 CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse('11.5')
-
 
 @pytest.mark.skipif(not CUDA_SUPPORT, reason="kv-cache manager engine requires cuda version to be higher than 11.5")
 def test_prepare_data():
@@ -55,24 +54,22 @@ def test_prepare_data():
         attention_mask[i][max_seq_len - len(li):] = [1 for _ in range(len(li))]
     data = dict(input_ids=input_ids_list, attention_mask=attention_mask)
     inputs_batch_encoding = BatchEncoding(data=data)
+
     seq_lengths = [len(li) for li in input_ids_list]
     start_loc = list(accumulate([0] + seq_lengths[:-1]))
     seq_lengths = torch.tensor(seq_lengths, dtype=torch.int32)
     start_loc = torch.tensor(start_loc, dtype=torch.int32)
+
     # input token id list as inputs
     batch_state_out1 = infer_engine.prepare_batch_state(inputs_batch_encoding)
     # BatchEncoding as inputs
     batch_state_out2 = infer_engine.prepare_batch_state(input_ids_list)
 
     assert batch_state_out1.batch_size == batch_state_out2.batch_size == batch_size
-    assert torch.equal(batch_state_out1.seq_len, batch_state_out2.seq_len)
-
-    # The following tests are discarded for now, and will be reused after all features are added
-    # assert torch.equal(batch_state_out1.seq_len.to(seq_lengths.device), seq_lengths)
-    # assert torch.equal(batch_state_out2.seq_len.to(seq_lengths.device), seq_lengths)
-    # assert torch.equal(batch_state_out1.start_loc.to(start_loc.device), start_loc)
-    # assert torch.equal(batch_state_out2.start_loc.to(start_loc.device), start_loc)
-
+    assert torch.equal(batch_state_out1.seq_len.to(seq_lengths.device), seq_lengths)
+    assert torch.equal(batch_state_out2.seq_len.to(seq_lengths.device), seq_lengths)
+    assert torch.equal(batch_state_out1.start_loc.to(start_loc.device), start_loc)
+    assert torch.equal(batch_state_out2.start_loc.to(start_loc.device), start_loc)
 
 @pytest.mark.skipif(not CUDA_SUPPORT, reason="kv-cache manager engine requires cuda version to be higher than 11.5")
 def test_orig_generate():
@@ -91,7 +88,7 @@ def test_orig_generate():
 
     # original model generate
     generate_kwargs = dict(do_sample=False)
-    infer_engine.generate(input_ids, **generate_kwargs)
+    infer_engine.generate(input_ids, generate_kwargs)
 
     torch.cuda.empty_cache()
 
