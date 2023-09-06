@@ -46,12 +46,5 @@ def test_llama_context_attention():
     
     assert torch.allclose(torch_out.cpu(), o.cpu(), rtol=1e-3, atol=1e-3), "outputs from triton and torch are not matched"
     
-    latency_1 = benchmark(llama_context_attn_fwd, query, k, v, o, b_start, b_len, max_input_len)
-    latency_2 = benchmark(torch_context_attention, query, k, v, bs, seq_len, head_num, head_dim)
-    
-    print("the triton op latency is {} ms".format(str(latency_1)))
-    print("the torch op latency is {} ms".format(str(latency_2)))
-    
-
 if __name__ == "__main__":
     test_llama_context_attention()
