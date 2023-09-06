@@ -48,17 +48,11 @@ def bench_bloom(test_config):
     tokenizer.pad_token = tokenizer.eos_token
     model = BloomForCausalLM.from_pretrained(model_path, pad_token_id=tokenizer.eos_token_id)
     model = model.half()
-    # To benchmark torch original, uncommment the following line
-    # model.to(torch.cuda.current_device())
 
-    # init TPInferEngine and shard original model by shardformer
-    # To benchmark torch original, comment out lines of creating, preparing, and sharding by the shardformer
+    # init TPInferEngine and shard the original model
+    # To benchmark torch original, comment out lines of optimizing model
     infer_engine = TPInferEngine(model, MAX_BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
-    shard_config = ShardConfig(enable_tensor_parallelism=True if test_config['tp_size'] > 1 else False,
-                               inference_only=True)
-    shardformer = ShardFormer(shard_config=shard_config)
-    infer_engine.prepare_with_shard_config(shard_config)
-    infer_engine.shard_model_by(shardformer)
+    infer_engine.optimize_model(test_config)
 
     # prepare data for generation
     batch_size = MAX_BATCH_SIZE
@@ -78,10 +72,9 @@ def bench_bloom(test_config):
     for i in range(iters):
         torch.cuda.synchronize()
         start = time.time()
-        outputs = infer_engine.generate(input_tokens, generate_kwargs)
+        outputs = infer_engine.generate(input_tokens, **generate_kwargs)
         torch.cuda.synchronize()
         end = time.time()
-        infer_engine.cache_manager.free_all()
         out_len = outputs.shape[1]
         print(f" iter {i}: out len {str(out_len)}, generation time {str(end - start)} s")
         times.append((end - start) / (out_len - input_len))
