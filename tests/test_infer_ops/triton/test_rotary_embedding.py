@@ -11,7 +11,6 @@ try:
     import triton.language as tl
 
     from colossalai.kernel.triton.rotary_embedding_kernel import rotary_embedding_fwd
-    from tests.test_infer_ops.triton.utils import benchmark
 
     HAS_TRITON = True
 except ImportError:
@@ -50,7 +49,7 @@ def test_rotary_emb():
     rotary_embedding_fwd(x, cos, sin)
     y_triton = x
     # compare
-    assert torch.allclose(y_torch, y_triton, atol=1e-2, rtol=1e-2)
+    assert torch.allclose(y_torch, y_triton, atol=1e-2, rtol=0)
 
 
 if __name__ == "__main__":
