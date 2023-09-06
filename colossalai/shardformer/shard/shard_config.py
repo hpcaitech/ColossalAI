@@ -29,6 +29,8 @@ class ShardConfig:
     enable_flash_attention: bool = False
     enable_jit_fused: bool = False
     inference_only: bool = False
+    enable_sequence_parallelism: bool = False
+    enable_sequence_overlap: bool = False
 
     # pipeline_parallel_size: int
     # data_parallel_size: int
@@ -58,6 +60,8 @@ class ShardConfig:
         self.enable_fused_normalization = True
         self.enable_flash_attention = True
         self.enable_jit_fused = True
+        self.enable_sequence_parallelism = True
+        self.enable_sequence_overlap = True
 
     def _infer(self):
         """

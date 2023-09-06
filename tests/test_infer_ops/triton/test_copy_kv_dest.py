@@ -32,9 +32,6 @@ def test_kv_cache_copy_op():
     
     assert torch.allclose(cache.cpu(), dest_data.cpu(), rtol=1e-3, atol=1e-3), "copy_kv_cache_to_dest outputs from triton and torch are not matched"
     
-    latency = benchmark(copy_kv_cache_to_dest, cache, dest_index, dest_data)
-    print("the average latency is {} ms".format(str(latency)))
-    
 
 if __name__ == "__main__":
     test_kv_cache_copy_op()
