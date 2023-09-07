@@ -15,7 +15,7 @@ from .kvcache_manager import MemoryManager
 
 DP_AXIS, PP_AXIS, TP_AXIS = 0, 1, 2
 
-_supported_models = ['LlamaForCausalLM', 'LlamaModel', 'BloomForCausalLM']
+_supported_models = ['LlamaForCausalLM', 'LlamaModel', 'BloomForCausalLM', 'ChatGLMModel']
 
 
 class TPInferEngine:
@@ -59,9 +59,12 @@ class TPInferEngine:
 
         self.dtype = dtype
 
-        self.head_dim = model.config.hidden_size // model.config.num_attention_heads
-        self.head_num = model.config.num_attention_heads
-        self.layer_num = model.config.num_hidden_layers
+        self.head_dim = self.model.config.hidden_size // self.model.config.num_attention_heads
+        self.head_num = self.model.config.num_attention_heads
+
+        num_hidden_layers = self.model.config.num_hidden_layers if hasattr(self.model.config, "num_hidden_layers") \
+            else self.model.config.num_layers
+        self.layer_num = num_hidden_layers
 
         self.tp_size = -1    # to be set with given shard config in self.prepare_shard_config
         self.cache_manager = None
