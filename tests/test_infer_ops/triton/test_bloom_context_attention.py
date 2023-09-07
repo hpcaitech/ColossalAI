@@ -11,7 +11,7 @@ try:
     import triton.language as tl
 
     from colossalai.kernel.triton import bloom_context_attn_fwd
-    from tests.test_infer_ops.triton.utils import torch_context_attention
+    from tests.test_infer_ops.triton.kernel_utils import torch_context_attention
     HAS_TRITON = True
 except ImportError:
     HAS_TRITON = False
