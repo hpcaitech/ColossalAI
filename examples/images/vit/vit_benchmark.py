@@ -97,15 +97,12 @@ def main():
     optimizer = HybridAdam(model.parameters(), lr=(args.learning_rate * world_size))
 
     # Set criterion (loss function)
-    criterion = lambda x: x.loss
-
-    def _criterion(outputs, inputs):
-        loss = criterion(outputs)
-        return loss
+    def criterion(outputs, inputs):
+        return outputs.loss
 
     # Set booster
     booster = Booster(plugin=plugin, **booster_kwargs)
-    model, optimizer, _criterion, _, _ = booster.boost(model, optimizer, criterion=_criterion)
+    model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion=criterion)
 
     # Start training.
     logger.info(f"Start testing", ranks=[0])
@@ -124,13 +121,13 @@ def main():
             batch = iter([batch])
             outputs = booster.execute_pipeline(batch,
                                                model,
-                                               _criterion,
+                                               criterion,
                                                optimizer,
                                                return_loss=True,
                                                return_outputs=True)
         else:
             outputs = model(**batch)
-            loss = _criterion(outputs, None)
+            loss = criterion(outputs, None)
             # Backward
             booster.backward(loss, optimizer)
 

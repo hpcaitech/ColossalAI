@@ -19,7 +19,6 @@ from colossalai.cluster import DistCoordinator
 from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.utils import get_current_device
 
 
 def move_to_cuda(batch, device):
@@ -200,11 +199,8 @@ def main():
     optimizer = HybridAdam(model.parameters(), lr=(args.learning_rate * world_size), weight_decay=args.weight_decay)
 
     # Set criterion (loss function)
-    criterion = lambda x: x.loss
-
-    def _criterion(outputs, inputs):
-        loss = criterion(outputs)
-        return loss
+    def criterion(outputs, inputs):
+        return outputs.loss
 
     # Set lr scheduler
     total_steps = len(train_dataloader) * args.num_epoch
@@ -217,15 +213,15 @@ def main():
     booster = Booster(plugin=plugin, **booster_kwargs)
     model, optimizer, _criterion, train_dataloader, lr_scheduler = booster.boost(model=model,
                                                                                  optimizer=optimizer,
-                                                                                 criterion=_criterion,
+                                                                                 criterion=criterion,
                                                                                  dataloader=train_dataloader,
                                                                                  lr_scheduler=lr_scheduler)
 
     # Finetuning
     logger.info(f"Start finetuning", ranks=[0])
     for epoch in range(args.num_epoch):
-        train_epoch(epoch, model, optimizer, _criterion, lr_scheduler, train_dataloader, booster, coordinator)
-        evaluate_model(epoch, model, _criterion, eval_dataloader, booster, coordinator)
+        train_epoch(epoch, model, optimizer, criterion, lr_scheduler, train_dataloader, booster, coordinator)
+        evaluate_model(epoch, model, criterion, eval_dataloader, booster, coordinator)
     logger.info(f"Finish finetuning", ranks=[0])
 
     # Save the finetuned model
