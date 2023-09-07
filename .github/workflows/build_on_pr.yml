@@ -61,7 +61,7 @@ jobs:
       run:
         shell: bash
     concurrency:
-      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-repare-cache
       cancel-in-progress: true
     steps:
       - name: Copy testmon cache
@@ -87,7 +87,7 @@ jobs:
       anyLibraryFileChanged: ${{ steps.find-lib-change.outputs.any_changed }}
     runs-on: ubuntu-latest
     concurrency:
-      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-detect-change
       cancel-in-progress: true
     steps:
       - uses: actions/checkout@v2
@@ -147,7 +147,7 @@ jobs:
       run:
         shell: bash
     concurrency:
-      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-run-test
       cancel-in-progress: true
     steps:
       - name: Checkout TensorNVMe
