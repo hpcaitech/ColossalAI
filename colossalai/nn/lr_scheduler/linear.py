@@ -1,9 +1,6 @@
 from torch.optim.lr_scheduler import _LRScheduler
 
-from colossalai.legacy.registry import LR_SCHEDULERS
 
-
-@LR_SCHEDULERS.register_module
 class LinearWarmupLR(_LRScheduler):
     """Linearly warmup learning rate and then linearly decay.
 
