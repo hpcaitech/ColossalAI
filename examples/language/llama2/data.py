@@ -44,7 +44,7 @@ class GLUEDataBuilder:
     def setup(self):
         self.dataset = datasets.load_dataset("yizhongw/self_instruct", self.task_name)
 
-        for split in ["train"]:
+        for split in self.dataset.keys():
             self.dataset[split] = self.dataset[split].map(
                 self.convert_to_features,
                 batched=True,
