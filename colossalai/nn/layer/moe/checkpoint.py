@@ -7,11 +7,11 @@ import torch.distributed as dist
 import torch.nn as nn
 from torch.optim import Optimizer
 
-from colossalai.checkpoint_io import CheckpointIO
+from colossalai.checkpoint_io import GeneralCheckpointIO
 from colossalai.tensor.moe_tensor.api import get_dp_rank, get_ep_group, get_ep_rank, get_ep_size, is_moe_tensor
 
 
-class MoeCheckpintIO(CheckpointIO):
+class MoeCheckpintIO(GeneralCheckpointIO):
 
     def __init__(self) -> None:
         super().__init__()
