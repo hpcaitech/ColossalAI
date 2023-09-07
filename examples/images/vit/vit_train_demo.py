@@ -140,6 +140,11 @@ def main():
     else:
         transformers.utils.logging.set_verbosity_error()
 
+    # Reset tp_size and pp_size to 1 if not using hybrid parallel.
+    if args.plugin != 'hybrid_parallel':
+        args.tp_size = 1
+        args.pp_size = 1
+
     # Prepare Dataset
     image_processor = ViTImageProcessor.from_pretrained(args.model_name_or_path)
     train_dataset = BeansDataset(image_processor, args.tp_size, split='train')

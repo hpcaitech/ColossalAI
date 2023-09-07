@@ -26,11 +26,11 @@ def parse_demo_args():
                         help="Batch size (per dp group) for the training dataloader.")
     parser.add_argument("--tp_size",
                         type=int,
-                        default=2,
+                        default=1,
                         help="The size along tensor parallel dimension, only be used when enabling hybrid parallel.")
     parser.add_argument("--pp_size",
                         type=int,
-                        default=2,
+                        default=1,
                         help="The size along pipeline parallel dimension, only be used when enabling hybrid parallel.")
     parser.add_argument("--learning_rate",
                         type=float,
