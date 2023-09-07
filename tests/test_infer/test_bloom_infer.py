@@ -43,14 +43,11 @@ def run(test_config):
     generate_kwargs = dict(do_sample=False)
     outputs = infer_engine.generate(input_ids, **generate_kwargs)
 
-    assert outputs is not None
+    assert outputs is not None, "the outpus is none, the outputs has something wrong"
 
     if not dist.is_initialized() or dist.get_rank() == 0:
-        # output_text = tokenizer.decode(outputs[0])
-        # print(output_text)
         for o in outputs:
             output_text = tokenizer.decode(o)
-            # print(output_text)
 
 
 def check_engine(rank, world_size, port):

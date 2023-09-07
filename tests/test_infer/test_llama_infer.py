@@ -70,12 +70,11 @@ def run_llama_test(test_config):
     generate_kwargs = dict(max_new_tokens=MAX_OUTPUT_LEN, do_sample=False)
     outputs = infer_engine.generate(input_ids, **generate_kwargs)
 
-    assert outputs is not None
+    assert outputs is not None, "did not get any ouput, output has something wrong."
 
     if not dist.is_initialized() or dist.get_rank() == 0:
         for o in outputs:
             output_text = tokenizer.decode(o)
-            # print(output_text)
 
 
 def check_llama(rank, world_size, port):
