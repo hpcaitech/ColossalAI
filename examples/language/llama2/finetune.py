@@ -6,7 +6,7 @@ import evaluate
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-from data import GLUEDataBuilder
+from data import DataBuilder
 from torch.optim import Adam, Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch.utils.data import DataLoader
@@ -81,7 +81,7 @@ def main():
     # Parse Arguments
     # ==============================
     parser = argparse.ArgumentParser()
-    parser.add_argument('-t', '--task', default='super_natural_instructions', help="GLUE task to run")
+    parser.add_argument('-t', '--task', default='super_natural_instructions', help="llama2 task to run")
     parser.add_argument('-p',
                         '--plugin',
                         type=str,
@@ -132,11 +132,11 @@ def main():
     # ==============================
     # Prepare Dataloader
     # ==============================
-    data_builder = GLUEDataBuilder(args.model_path,
-                                   plugin,
-                                   args.task,
-                                   train_batch_size=BATCH_SIZE,
-                                   eval_batch_size=BATCH_SIZE)
+    data_builder = DataBuilder(args.model_path,
+                               plugin,
+                               args.task,
+                               train_batch_size=BATCH_SIZE,
+                               eval_batch_size=BATCH_SIZE)
     train_dataloader = data_builder.train_dataloader()
     test_dataloader = data_builder.test_dataloader()
 

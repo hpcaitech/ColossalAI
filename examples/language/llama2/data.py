@@ -6,7 +6,7 @@ from transformers import AutoTokenizer, PreTrainedTokenizer
 from colossalai.booster.plugin.dp_plugin_base import DPPluginBase
 
 
-class GLUEDataBuilder:
+class DataBuilder:
 
     task_text_field_map = {"super_natural_instructions": ["prompt", "completion"]}
 
@@ -53,10 +53,6 @@ class GLUEDataBuilder:
             self.dataset[split].set_format(type="torch", columns=self.columns)
 
         self.eval_splits = [x for x in self.dataset.keys() if "validation" in x]
-
-    def prepare_data(self):
-        datasets.load_dataset("glue", self.task_name)
-        AutoTokenizer.from_pretrained(self.model_name_or_path, use_fast=True)
 
     def train_dataloader(self):
         return self.plugin.prepare_dataloader(self.dataset["train"],
