@@ -1,17 +1,17 @@
-import os
-from typing import List
-from colossalai.engine import Engine
-from torch.profiler import profile as torch_profile
-from torch.profiler.profiler import ProfilerAction
-from typing import Any, Callable, Iterable, Optional
-from torch.autograd import ProfilerActivity
+import gzip
 import json
 import os
 import tempfile
-import gzip
+from typing import Any, Callable, Iterable, List, Optional
+
+from torch.autograd import ProfilerActivity
+from torch.profiler import profile as torch_profile
+from torch.profiler.profiler import ProfilerAction
+
+from colossalai.legacy.engine import Engine
+from colossalai.logging import get_dist_logger
 from colossalai.utils.profiler.extention import ProfilerExtension
 from colossalai.utils.profiler.stateful_tensor_mem_extention import StatefulTensorMemoryProfilerExtention
-from colossalai.logging import get_dist_logger
 
 
 class profile(torch_profile):

@@ -177,7 +177,7 @@ class TorchFSDPPlugin(DPPluginBase):
     def support_no_sync(self) -> bool:
         False
 
-    def no_sync(self, model: nn.Module) -> Iterator[None]:
+    def no_sync(self, model: nn.Module, optimizer: OptimizerWrapper) -> Iterator[None]:
         raise NotImplementedError("Torch fsdp no_sync func not supported yet.")
 
     def control_precision(self) -> bool:

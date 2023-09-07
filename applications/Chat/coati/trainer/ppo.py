@@ -1,11 +1,11 @@
 from typing import Dict, List
 
 import torch.nn as nn
+from coati.experience_buffer import NaiveExperienceBuffer
 from coati.experience_maker import Experience, NaiveExperienceMaker
 from coati.models.base import Actor, Critic, get_base_model
 from coati.models.loss import GPTLMLoss, PolicyLoss, ValueLoss
 from coati.models.utils import calc_action_log_probs
-from coati.replay_buffer import NaiveReplayBuffer
 from torch import Tensor
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader, DistributedSampler
@@ -86,9 +86,9 @@ class PPOTrainer(OnPolicyTrainer):
             assert not offload_inference_models, \
                 "GeminiPlugin is not compatible with manual model.to('cpu')"
 
-        buffer = NaiveReplayBuffer(train_batch_size, buffer_limit, buffer_cpu_offload)
+        data_buffer = NaiveExperienceBuffer(train_batch_size, buffer_limit, buffer_cpu_offload)
         super().__init__(
-            strategy, buffer,
+            strategy, data_buffer,
             sample_buffer, dataloader_pin_memory,
             callbacks
         )
@@ -170,7 +170,7 @@ class PPOTrainer(OnPolicyTrainer):
 
         # buffer may be empty at first, we should rebuild at each training
         if self.sample_buffer:
-            experience = self.buffer.sample()
+            experience = self.data_buffer.sample()
             self._on_learn_batch_start()
             experience.to_device(self.device)
             metrics = self._training_step(experience)

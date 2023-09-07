@@ -104,7 +104,7 @@ def main():
                         '--plugin',
                         type=str,
                         default='torch_ddp',
-                        choices=['torch_ddp', 'torch_ddp_fp16', 'low_level_zero'],
+                        choices=['torch_ddp', 'torch_ddp_fp16', 'low_level_zero', 'gemini'],
                         help="plugin to use")
     parser.add_argument('-r', '--resume', type=int, default=-1, help="resume from the epoch's checkpoint")
     parser.add_argument('-c', '--checkpoint', type=str, default='./checkpoint', help="checkpoint directory")
@@ -141,7 +141,7 @@ def main():
     if args.plugin.startswith('torch_ddp'):
         plugin = TorchDDPPlugin()
     elif args.plugin == 'gemini':
-        plugin = GeminiPlugin(placement_policy='cuda', strict_ddp_mode=True, initial_scale=2**5)
+        plugin = GeminiPlugin(initial_scale=2**5)
     elif args.plugin == 'low_level_zero':
         plugin = LowLevelZeroPlugin(initial_scale=2**5)
 

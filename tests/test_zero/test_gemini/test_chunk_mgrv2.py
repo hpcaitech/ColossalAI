@@ -1,8 +1,9 @@
 import pytest
 import torch
+from torch.distributed.distributed_c10d import _get_default_group
 
 import colossalai
-from colossalai.tensor import ColoTensor, ColoTensorSpec, ProcessGroup
+from colossalai.tensor import ColoTensor
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.zero.gemini.chunk import ChunkManager
 from tests.test_tensor.common_utils import debug_print
@@ -15,19 +16,18 @@ CPU_MEM = {True: {True: 0, False: 0}, False: {True: 512, False: 0}}
 @parameterize('keep_gathered', [True, False])
 @parameterize('pin_memory', [True, False])
 def exam_chunk_memory(keep_gathered, pin_memory):
-    pg = ProcessGroup()
-
     debug_print([0], "keep_gathered: {}, pin_memory: {}".format(keep_gathered, pin_memory))
 
-    params = [ColoTensor(torch.rand(8, 8), spec=ColoTensorSpec(pg)) for _ in range(3)]
+    params = [ColoTensor(torch.rand(8, 8)) for _ in range(3)]
     config = {2: dict(chunk_size=128, keep_gathered=keep_gathered)}
 
     chunk_manager = ChunkManager(config)
     assert chunk_manager.total_mem['cpu'] == 0
     assert chunk_manager.total_mem['cuda'] == 0
 
+    process_group = _get_default_group()
     for p in params:
-        chunk_manager.register_tensor(p, 'param', 2, pin_memory=pin_memory)
+        chunk_manager.register_tensor(p, 'param', 2, process_group, pin_memory=pin_memory)
     chunk_manager.close_all_groups()
     assert chunk_manager.total_mem['cpu'] == CPU_MEM[keep_gathered][pin_memory]
     assert chunk_manager.total_mem['cuda'] == CUDA_MEM_0[keep_gathered]

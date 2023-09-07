@@ -7,7 +7,8 @@ import numpy as np
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-from coati.replay_buffer import ReplayBuffer
+from coati.experience_buffer import ExperienceBuffer
+from coati.models import Actor, Critic, RewardModel
 from torch.utils.data import DataLoader
 from transformers.modeling_utils import PreTrainedModel
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
@@ -71,13 +72,13 @@ class DDPStrategy(Strategy):
         np.random.seed(seed)
         torch.manual_seed(seed)
 
-    def setup_dataloader(self, replay_buffer: ReplayBuffer, pin_memory: bool = False) -> DataLoader:
-        return self.plugin.prepare_dataloader(replay_buffer,
-                                              batch_size=replay_buffer.sample_batch_size,
+    def setup_dataloader(self, data_buffer: ExperienceBuffer, pin_memory: bool = False) -> DataLoader:
+        return self.plugin.prepare_dataloader(data_buffer,
+                                              batch_size=data_buffer.sample_batch_size,
                                               shuffle=True,
                                               drop_last=True,
                                               pin_memory=pin_memory,
-                                              collate_fn=replay_buffer.collate_fn)
+                                              collate_fn=data_buffer.collate_fn)
 
     def setup_sampler(self, dataset) -> DistributedSampler:
         # FIXME(cwher): this is only invoked in train_on_ray, not tested after adapt Boost API.
@@ -92,13 +93,33 @@ class DDPStrategy(Strategy):
                         path: str,
                         only_rank0: bool = True,
                         tokenizer: Optional[PreTrainedTokenizerBase] = None) -> None:
-        if only_rank0 and dist.get_rank() != 0:
-            return
-        unwrapped_model = self.unwrap_model(model)
-        assert isinstance(unwrapped_model, PreTrainedModel)
-        unwrapped_model.save_pretrained(path)
-        if tokenizer is not None:
-            tokenizer.save_pretrained(path)
+        if not only_rank0 or dist.get_rank() == 0:
+            unwrapped_model = self.unwrap_model(model)
+            assert isinstance(unwrapped_model, (Actor, Critic, RewardModel))
+            pretrained_model = unwrapped_model.model
+            assert isinstance(pretrained_model, PreTrainedModel)
+            # HACK: only use hf save_pretrained to save config
+            pretrained_model.save_pretrained(path, save_function=lambda *args, **kwargs: None)
+            if tokenizer is not None:
+                tokenizer.save_pretrained(path)
+        model_path = os.path.join(path, "pytorch_model.bin")
+        self.save_model(model,
+                        model_path,
+                        only_rank0=only_rank0)
+
+        def _replace_keys(model_path: str,
+                          replace_fn: Callable):
+            state_dict = torch.load(model_path, map_location="cpu")
+            state_dict = {
+                replace_fn(k): v
+                for k, v in state_dict.items()
+            }
+            torch.save(state_dict, model_path)
+
+        # FIXME: save_model would add "model." prefix to keys of pytorch_model.bin
+        # HACK: rename keys of pytorch_model.bin
+        if dist.get_rank() == 0:
+            _replace_keys(model_path, lambda k: k.replace("model.", "", 1))
 
     def get_model_state_dict_shard(self, model: nn.Module, **config):
         # TODO: implement sharding on naive strategy

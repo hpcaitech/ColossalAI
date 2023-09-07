@@ -61,7 +61,7 @@ class Plugin(ABC):
         pass
 
     @abstractmethod
-    def no_sync(self, model: nn.Module) -> Iterator[None]:
+    def no_sync(self, model: nn.Module, optimizer: OptimizerWrapper) -> Iterator[None]:
         """
         Context manager to disable gradient synchronization.
         """

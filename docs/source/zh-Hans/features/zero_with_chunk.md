@@ -53,32 +53,37 @@
 
 我们将运用`GeminiDDP`的方式来使用基于Chunk内存管理的ZeRO。这是我们新包装的torch.Module ，它使用 ZeRO-DP 和 Gemini，其中ZeRO 用于并行，Gemini 用于内存管理。
 
-同样需要确保你的模型是在 `ColoInitContext` 的上下文中初始化的。
+Gemini支持惰性初始化, 它可以节省多卡初始化大模型时的显存使用.
 
+如果你的模型有 `N` billion 个参数，你的 GPU 内存为 `M` GB, 当 `4N >= M` 时，我们推荐使用 LazyInitContext。否则，LazyInitContext 是可选的。
+
+<!--- doc-test-ignore-start -->
 ```python
-with ColoInitContext(device='cpu', default_dist_spec=default_dist_spec, default_pg=default_pg):
+with LazyInitContext(default_device=torch.device('cuda')):
   model = gpt2_medium(checkpoint=True)
 ```
+<!--- doc-test-ignore-end -->
 
-定义模型参数如下:
+我们提供了 `Booster` API，它用户友好。我们推荐你使用 `Booster` API。如果您仍然想使用底层 API，您可以继续阅读本节其他内容。
 
+使用 `GeminiDDP` 包装模型。
+
+<!--- doc-test-ignore-start -->
 ```python
-chunk_manager = init_chunk_manager(model=module,
-                                   init_device=device,
-                                   hidden_dim=hidden_dim,
-                                   search_range_m=search_range_m,
-                                   min_chunk_size_m=min_chunk_size_m)
-gemini_manager = GeminiManager(placement_policy, chunk_manager)
-model = ZeroDDP(model, gemini_manager)
+model = GeminiDDP(model, hidden_dim=hidden_dim, min_chunk_size_m=min_chunk_size_m)
 ```
+<!--- doc-test-ignore-end -->
 
 `hidden dim`是DNN的隐藏维度。用户可以提供这个参数来加快搜索速度。如果用户在训练前不知道这个参数也可以。 我们将使用默认值 1024。`min_chunk_size_m`是以兆（2^20）为单位的最小块大小。如果参数的总大小仍然小于最小块大小，则所有参数将被压缩为一个小块。
 
 初始化优化器。
+<!--- doc-test-ignore-start -->
 ```python
 optimizer = GeminiAdamOptimizer(model, lr=1e-3, initial_scale=2**5)
 ```
+<!--- doc-test-ignore-end -->
 
+<!--- doc-test-ignore-start -->
 训练
 ```python
 optimizer.zero_grad()
@@ -87,6 +92,7 @@ loss = criterion(outputs, input_ids)
 optimizer.backward(loss)
 optimizer.step()
 ```
+<!--- doc-test-ignore-end -->
 > ⚠️ 注意：请不要使用`loss.backward()`，规范写法是`optimizer.backward(loss)`。
 
 ### 训练GPT
@@ -143,47 +149,6 @@ class GPTLMLoss(nn.Module):
         return self.loss_fn(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
 ```
 
-定义张量并行和参数分片策略：
-
-```python
-def tensor_parallelize(model: torch.nn.Module, pg: ProcessGroup):
-    for mn, module in model.named_modules():
-        for pn, param in module.named_parameters(recurse=False):
-            if hasattr(param, 'visited'):
-                continue
-            param.set_dist_spec(ReplicaSpec())
-            if 'mlp.c_fc' in mn:
-                if 'weight' in pn or 'bias' in pn:
-                    split_param_col_tp1d(param, pg)
-                    param.compute_spec.set_output_replicate(False)
-                else:
-                    param.set_dist_spec(ReplicaSpec())
-            elif 'mlp.c_proj' in mn:
-                if 'weight' in pn:
-                    split_param_row_tp1d(param, pg)
-                else:
-                    param.set_dist_spec(ReplicaSpec())
-            elif 'wte' in mn or 'wpe' in mn:
-                split_param_col_tp1d(param, pg)
-            elif 'c_attn' in mn or 'c_proj' in mn:
-                split_param_col_tp1d(param, pg)
-            else:
-                param.set_dist_spec(ReplicaSpec())
-
-            param.visited = True
-def split_param_single_dim_tp1d(dim: int, param: ColoParameter, pg: ProcessGroup):
-    spec = (ShardSpec([dim], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
-    param.set_tensor_spec(*spec)
-
-
-def split_param_row_tp1d(param: ColoParameter, pg: ProcessGroup):
-    split_param_single_dim_tp1d(0, param, pg)
-
-
-def split_param_col_tp1d(param: ColoParameter, pg: ProcessGroup):
-    split_param_single_dim_tp1d(-1, param, pg)
-```
-
 写一个获得随机输入的函数:
 
 ```python
@@ -200,7 +165,7 @@ def get_data(batch_size, seq_len, vocab_size):
 from colossalai.nn.optimizer import HybridAdam
 
 from colossalai.booster import Booster
-from colossalai.zero import ColoInitContext
+from colossalai.lazy import LazyInitContext
 from colossalai.booster.plugin import GeminiPlugin
 
 def main():
@@ -216,17 +181,13 @@ def main():
     optimizer = HybridAdam(model.parameters(), lr=0.001)
 
     torch.manual_seed(123)
-    default_pg = ProcessGroup(tp_degree=args.tp_degree)
-    default_dist_spec = ShardSpec([-1], [args.tp_degree])
     # build GPT model
-    with ColoInitContext(device='cpu', default_dist_spec=default_dist_spec, default_pg=default_pg):
+    with ColoInitContext(default_device=torch.device('cuda')):
       model = gpt2_medium(checkpoint=True)
-    pg = default_pg
-    # Tensor Parallelism (TP)
-    tensor_parallelize(model, pg)
 
-    # Gemini + ZeRO DP, Note it must be used after TP
-    plugin = GeminiPlugin(placement_policy='cuda', max_norm=1.0, initial_scale=2**5)
+
+    # Gemini + ZeRO DP
+    plugin = GeminiPlugin(max_norm=1.0, initial_scale=2**5)
     booster = Booster(plugin=plugin)
     model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
 
