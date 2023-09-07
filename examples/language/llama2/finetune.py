@@ -1,4 +1,5 @@
 import argparse
+import warnings
 from contextlib import nullcontext
 from typing import Callable, List, Union
 
@@ -41,31 +42,33 @@ def move_to_cuda(batch):
 def train_epoch(epoch: int, model: nn.Module, optimizer: Optimizer, _criterion: Callable, lr_scheduler: LRScheduler,
                 train_dataloader: DataLoader, booster: Booster, coordinator: DistCoordinator):
 
+    use_pipeline = isinstance(booster.plugin, HybridParallelPlugin) and booster.plugin.pp_size > 1
+    is_pp_last_stage = use_pipeline and booster.plugin.stage_manager.is_last_stage()
+    total_step = len(train_dataloader)
+
     model.train()
-    is_pp_last_stage = hasattr(
-        booster.plugin,
-        "stage_manager") and booster.plugin.stage_manager is not None and booster.plugin.stage_manager.is_last_stage()
-    with tqdm(train_dataloader,
+    optimizer.zero_grad()
+    train_dataloader = iter(train_dataloader)
+    with tqdm(range(total_step),
               desc=f'Epoch [{epoch + 1}/{NUM_EPOCHS}]',
               disable=not (coordinator.is_master() or is_pp_last_stage)) as pbar:
-        for batch in pbar:
-            # Forward pass
-            batch = move_to_cuda(batch)
-            if hasattr(booster.plugin, "stage_manager") and booster.plugin.stage_manager is not None:
-                #TODO pass train_dataloader to execute_pipeline directly
-                batch = iter([batch])
-                outputs = booster.execute_pipeline(batch,
+        # Forward pass
+        for _ in pbar:
+            if use_pipeline:
+                outputs = booster.execute_pipeline(train_dataloader,
                                                    model,
                                                    _criterion,
                                                    optimizer,
                                                    return_loss=True,
                                                    return_outputs=True)
                 # Backward and optimize
-                if booster.plugin.stage_manager.is_last_stage():
+                if is_pp_last_stage:
                     loss = outputs['loss']
                     pbar.set_postfix({'loss': loss.item()})
             else:
-                outputs = model(**batch)
+                data = next(train_dataloader)
+                data = move_to_cuda(data)
+                outputs = model(**data)
                 loss = _criterion(outputs, None)
                 # Backward
                 booster.backward(loss, optimizer)
@@ -89,7 +92,8 @@ def main():
                         choices=['torch_ddp', 'torch_ddp_fp16', 'gemini', 'low_level_zero', 'hybrid_parallel'],
                         help="plugin to use")
 
-    parser.add_argument('--model_path', type=str, help="model checkpoints path must be passed.")
+    parser.add_argument('--model_path', type=str, help="path to load model.")
+    parser.add_argument('--output_path', type=str, default=None, help="path to save model.")
     parser.add_argument('--target_f1', type=float, default=None, help="target f1 score. Raise exception if not reached")
     parser.add_argument('--use_lazy_init', type=bool, default=False, help="for initiating lazy init context")
     args = parser.parse_args()
@@ -103,6 +107,8 @@ def main():
     # local_batch_size = BATCH_SIZE // coordinator.world_size
     lr = LEARNING_RATE * coordinator.world_size
 
+    save_shard_model = False
+
     # ==============================
     # Instantiate Plugin and Booster
     # ==============================
@@ -115,6 +121,7 @@ def main():
         plugin = GeminiPlugin(initial_scale=2**5)
     elif args.plugin == 'low_level_zero':
         plugin = LowLevelZeroPlugin(initial_scale=2**5)
+        save_shard_model = True
     elif args.plugin == 'hybrid_parallel':
 
         # modify the param accordingly for finetuning test cases
@@ -138,7 +145,6 @@ def main():
                                train_batch_size=BATCH_SIZE,
                                eval_batch_size=BATCH_SIZE)
     train_dataloader = data_builder.train_dataloader()
-    test_dataloader = data_builder.test_dataloader()
 
     # ====================================
     # Prepare model, optimizer
@@ -146,7 +152,13 @@ def main():
 
     cfg = AutoConfig.from_pretrained(args.model_path)
 
-    model = LlamaForCausalLM.from_pretrained(args.model_path, config=cfg).cuda()
+    if args.use_lazy_init:
+        args.use_lazy_init = False
+        warnings.warn("lazy init is not compatible with from_pretrained now")
+
+    ctx = LazyInitContext() if args.use_lazy_init else nullcontext()
+    with ctx:
+        model = LlamaForCausalLM.from_pretrained(args.model_path, config=cfg).cuda()
 
     # optimizer
     no_decay = ["bias", "LayerNorm.weight"]
@@ -193,6 +205,10 @@ def main():
 
     if coordinator.is_master():
         print(f"Finish finetuning")
+
+    if args.output_path is not None:
+        booster.save_model(model, args.output_path, shard=save_shard_model)
+        print(f"Saving model checkpoint to {args.output_path}")
 
 
 if __name__ == '__main__':

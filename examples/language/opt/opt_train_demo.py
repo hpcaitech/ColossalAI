@@ -31,36 +31,34 @@ def move_to_cuda(batch, device):
 def train_epoch(epoch, model, optimizer, _criterion, lr_scheduler, dataloader, booster, coordinator):
 
     torch.cuda.synchronize()
+
+    use_pipeline = isinstance(booster.plugin, HybridParallelPlugin) and booster.plugin.pp_size > 1
+    is_pp_last_stage = use_pipeline and booster.plugin.stage_manager.is_last_stage()
+    total_step = len(dataloader)
+
     model.train()
-
-    is_pp_last_stage = hasattr(
-        booster.plugin,
-        "stage_manager") and booster.plugin.stage_manager is not None and booster.plugin.stage_manager.is_last_stage()
-
-    with tqdm(dataloader, desc=f'Epoch [{epoch + 1}]',
+    optimizer.zero_grad()
+    dataloader = iter(dataloader)
+    with tqdm(range(total_step), desc=f'Epoch [{epoch + 1}]',
               disable=not (coordinator.is_master() or is_pp_last_stage)) as pbar:
 
-        for batch in pbar:
-
-            # Forward
-            optimizer.zero_grad()
-            batch = move_to_cuda(batch, torch.cuda.current_device())
-
-            if hasattr(booster.plugin, "stage_manager") and booster.plugin.stage_manager is not None:
-                #TODO pass train_dataloader to execute_pipeline directly
-                batch = iter([batch])
-                outputs = booster.execute_pipeline(batch,
+        # Forward pass
+        for _ in pbar:
+            if use_pipeline:
+                outputs = booster.execute_pipeline(dataloader,
                                                    model,
                                                    _criterion,
                                                    optimizer,
                                                    return_loss=True,
                                                    return_outputs=True)
                 # Backward and optimize
-                if booster.plugin.stage_manager.is_last_stage():
+                if is_pp_last_stage:
                     loss = outputs['loss']
                     pbar.set_postfix({'loss': loss.item()})
             else:
-                outputs = model(use_cache=False, **batch)
+                data = next(dataloader)
+                data = move_to_cuda(data)
+                outputs = model(**data)
                 loss = _criterion(outputs, None)
                 # Backward
                 booster.backward(loss, optimizer)
