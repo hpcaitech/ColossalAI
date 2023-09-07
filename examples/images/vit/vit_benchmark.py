@@ -112,7 +112,7 @@ def main():
     start_time = time.time()
 
     with tqdm(range(args.max_train_steps), desc="Training Step", disable=not coordinator.is_master()) as pbar:
-        for _ in range(args.max_train_steps):
+        for _ in pbar:
             optimizer.zero_grad()
             batch = get_data_batch(args.batch_size, args.num_labels, 3, 224, 224)
 
@@ -134,7 +134,6 @@ def main():
             optimizer.step()
 
             torch.cuda.synchronize()
-            pbar.update(1)
 
     # Compute Statistics
     end_time = time.time()

@@ -67,7 +67,7 @@ def train_epoch(epoch: int, model: nn.Module, optimizer: Optimizer, criterion: C
     model.train()
 
     with tqdm(range(num_steps), desc=f'Epoch [{epoch + 1}]', disable=not enable_pbar) as pbar:
-        for _ in range(num_steps):
+        for _ in pbar:
             loss, _ = run_forward_backward(model, optimizer, criterion, data_iter, booster)
             optimizer.step()
             lr_scheduler.step()
@@ -75,7 +75,6 @@ def train_epoch(epoch: int, model: nn.Module, optimizer: Optimizer, criterion: C
             # Print batch loss
             if enable_pbar:
                 pbar.set_postfix({'loss': loss.item()})
-                pbar.update(1)
 
 
 @torch.no_grad()
