@@ -62,18 +62,15 @@ def evaluate_model(
         use_pipeline = isinstance(booster.plugin, HybridParallelPlugin) and booster.plugin.pp_size > 1
         is_pp_last_stage = use_pipeline and booster.plugin.stage_manager.is_last_stage()
 
-        dataloader = iter(dataloader)
         accum_loss = torch.zeros(1, device=get_current_device())
         for batch in dataloader:
             batch = move_to_cuda(batch)
             labels = batch["labels"]
-            batch_size = batch["input_ids"].shape[0]
             if use_pipeline:
                 pg_mesh = booster.plugin.pg_mesh
                 pp_group = booster.plugin.pp_group
                 current_pp_group_ranks = pg_mesh.get_ranks_in_group(pp_group)
                 current_rank = dist.get_rank()
-                # Can't pass dataloader to execute_pipeline directly, Because we need the actual batch size from batch to broadcast output.
                 batch = iter([batch])
                 outputs = booster.execute_pipeline(batch,
                                                    model,
@@ -83,10 +80,8 @@ def evaluate_model(
                                                    return_outputs=True)
 
                 if is_pp_last_stage:
-                    val_loss = outputs["loss"]
-
                     logits = outputs["outputs"]["logits"]
-
+                    val_loss = outputs["loss"]
                     accum_loss.add_(val_loss)
 
                     if num_labels > 1:
@@ -94,19 +89,15 @@ def evaluate_model(
                     elif num_labels == 1:
                         preds = logits.squeeze()
 
-                    dist.broadcast(preds, src=current_rank, group=pp_group)
-                    dist.broadcast(val_loss, src=current_rank, group=pp_group)
+                    dist.broadcast_object_list([preds, val_loss], src=current_pp_group_ranks[-1], group=pp_group)
 
                     metric.add_batch(predictions=preds, references=labels)
                 elif current_rank in current_pp_group_ranks:
-                    val_loss = torch.empty((1,), device=get_current_device())
-                    preds = torch.empty((batch_size,), dtype=torch.int64, device=get_current_device())
+                    object_list = [None, None]
+                    dist.broadcast_object_list(object_list, src=current_pp_group_ranks[-1], group=pp_group)
 
-                    dist.broadcast(preds, src=current_pp_group_ranks[-1], group=pp_group)
-                    dist.broadcast(val_loss, src=current_pp_group_ranks[-1], group=pp_group)
-
-                    accum_loss.add_(val_loss)
-                    metric.add_batch(predictions=preds, references=labels)
+                    metric.add_batch(predictions=object_list[0].to(get_current_device()), references=labels)
+                    accum_loss.add_(object_list[1].to(get_current_device()))
 
             else:
                 batch = move_to_cuda(batch)
@@ -148,14 +139,14 @@ def train_epoch(epoch: int, model: nn.Module, optimizer: Optimizer, _criterion: 
 
     model.train()
     optimizer.zero_grad()
-    train_dataloader = iter(train_dataloader)
+    train_dataloader_iter = iter(train_dataloader)
     with tqdm(range(total_step),
               desc=f'Epoch [{epoch + 1}/{NUM_EPOCHS}]',
               disable=not (coordinator.is_master() or is_pp_last_stage)) as pbar:
         # Forward pass
         for _ in pbar:
             if use_pipeline:
-                outputs = booster.execute_pipeline(train_dataloader,
+                outputs = booster.execute_pipeline(train_dataloader_iter,
                                                    model,
                                                    _criterion,
                                                    optimizer,
@@ -166,7 +157,7 @@ def train_epoch(epoch: int, model: nn.Module, optimizer: Optimizer, _criterion: 
                     loss = outputs['loss']
                     pbar.set_postfix({'loss': loss.item()})
             else:
-                data = next(train_dataloader)
+                data = next(train_dataloader_iter)
                 data = move_to_cuda(data)
                 outputs = model(**data)
                 loss = _criterion(outputs, None)

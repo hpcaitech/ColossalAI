@@ -97,7 +97,6 @@ def main():
     model.gradient_checkpointing_enable()
 
     # Set plugin
-    save_shard_model = False
     booster_kwargs = {}
     if args.plugin == 'torch_ddp_fp16':
         booster_kwargs['mixed_precision'] = 'fp16'
@@ -111,13 +110,11 @@ def main():
         # modify the param accordingly for finetuning test cases
         plugin = HybridParallelPlugin(tp_size=2,
                                       pp_size=2,
-                                      num_microbatches=None,
-                                      microbatch_size=1,
-                                      enable_jit_fused=False,
+                                      num_microbatches=2,
+                                      enable_all_optimization=True,
                                       zero_stage=0,
-                                      precision='fp32',
+                                      precision='fp16',
                                       initial_scale=1)
-        save_shard_model = True
 
     logger.info(f"Set plugin as {args.plugin}", ranks=[0])
 
@@ -161,7 +158,7 @@ def main():
 
     # Finish training and evaluate
     logger.info(f"Finish finetuning", ranks=[0])
-    booster.save_model(model, args.output_path, shard=save_shard_model)
+    booster.save_model(model, args.output_path, shard=True)
     logger.info(f"Saving model checkpoint to {args.output_path}", ranks=[0])
 
 

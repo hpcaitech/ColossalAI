@@ -53,7 +53,7 @@ if HAS_LLAMA:
                          num_labels=16)
 
     if hasattr(config, "pad_token_id"):
-        config.pad_token_id = 2
+        config.pad_token_id = config.eos_token_id
 
     # register the following models
     # transformers.LlamaModel,
