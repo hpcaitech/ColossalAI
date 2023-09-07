@@ -1,7 +1,6 @@
 import os
 from typing import List, Optional, Tuple
 
-import _utils
 import numpy as np
 import torch
 from torch.nn import CrossEntropyLoss
@@ -18,8 +17,10 @@ from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import (
     GLMBlock,
     GLMTransformer,
     SelfAttention,
-    apply_rotary_pos_emb,
+    split_tensor_along_last_dim,
 )
+
+from ._utils import _copy_kv_to_mem_cache
 
 try:
     from vllm import layernorm_ops, pos_encoding_ops
@@ -381,7 +382,6 @@ class ChatGLM2InferenceForwards:
 
         # Attention heads [sq, b, h] --> [sq, b, (np * 3 * hn)]
         mixed_x_layer = self.query_key_value(hidden_states)
-
         if self.multi_query_attention:
             (query_layer, key_layer, value_layer) = mixed_x_layer.split(
                 [
@@ -391,6 +391,9 @@ class ChatGLM2InferenceForwards:
                 ],
                 dim=-1,
             )
+
+            print(key_layer.shape)
+            print(value_layer.shape)
             query_layer = query_layer.view(query_layer.size()[:-1] + (
                 self.num_attention_heads_per_partition,
                 self.hidden_size_per_attention_head,
@@ -403,6 +406,7 @@ class ChatGLM2InferenceForwards:
                 self.num_multi_query_groups_per_partition,
                 self.hidden_size_per_attention_head,
             ))
+
         else:
             new_tensor_shape = mixed_x_layer.size()[:-1] + (
                 self.num_attention_heads_per_partition,
@@ -419,8 +423,18 @@ class ChatGLM2InferenceForwards:
         #     query_layer = apply_rotary_pos_emb(query_layer, rotary_pos_emb)
         #     key_layer = apply_rotary_pos_emb(key_layer, rotary_pos_emb)
 
-        rotary_embedding_fwd(query_layer.view(-1, self.num_heads, self.head_dim), cos, sin)
-        rotary_embedding_fwd(key_layer.view(-1, self.num_heads, self.head_dim), cos, sin)
+        rotary_embedding_fwd(
+            query_layer.view(-1, self.num_attention_heads_per_partition, self.hidden_size_per_attention_head), cos, sin)
+        if self.multi_query_attention:
+            rotary_embedding_fwd(
+                key_layer.view(-1, self.num_multi_query_groups_per_partition, self.hidden_size_per_attention_head), cos,
+                sin)
+        else:
+            rotary_embedding_fwd(
+                key_layer.view(-1, self.num_attention_heads_per_partition, self.hidden_size_per_attention_head), cos,
+                sin)
+
+        #The shape of key value pair will return to [sq, b , num_heads, num_hidden_size] after rotary embedding, the logic is kept same as original
 
         if self.multi_query_attention:
             key_layer = key_layer.unsqueeze(-2)
@@ -447,21 +461,25 @@ class ChatGLM2InferenceForwards:
                 self.num_attention_heads_per_partition,
                 self.hidden_size_per_attention_head,
             ))
+            print('key,value shape', key_layer.shape, value_layer.shape)
 
-        query_layer = query_layer.reshape(-1, self.num_heads, self.head_dim)
-        key_layer = key_layer.reshape(-1, self.num_heads, self.head_dim)
-        value_layer = value_layer.reshape(-1, self.num_heads, self.head_dim)
+        query_layer = query_layer.reshape(-1, self.num_attention_heads_per_partition,
+                                          self.hidden_size_per_attention_head)
+        key_layer = key_layer.reshape(-1, self.num_attention_heads_per_partition, self.hidden_size_per_attention_head)
+        value_layer = value_layer.reshape(-1, self.num_attention_heads_per_partition,
+                                          self.hidden_size_per_attention_head)
 
         if infer_state.is_context_stage:
             # first token generation:
             # copy key and value calculated in current step to memory manager
-            _utils._copy_kv_to_mem_cache(infer_state.decode_layer_id, key_layer, value_layer,
-                                         infer_state.context_mem_index, infer_state.cache_manager)
+            _copy_kv_to_mem_cache(infer_state.decode_layer_id, key_layer, value_layer, infer_state.context_mem_index,
+                                  infer_state.cache_manager)
 
             attn_output = torch.empty_like(query_layer)
 
             llama2_context_attn_fwd(query_layer, key_layer, value_layer, attn_output, infer_state.start_loc,
                                     infer_state.seq_len, infer_state.cache_manager.past_key_values_length)
+            print('context stage', attn_output.shape)
         else:
             if infer_state.decode_is_contiguous:
                 # if decode is contiguous, then we copy to key cache and value cache in cache manager directly
@@ -474,8 +492,8 @@ class ChatGLM2InferenceForwards:
             else:
                 # if decode is not contiguous, use triton kernel to copy key and value cache
                 # k, v shape: [batch_size, num_heads, head_dim/embed_size_per_head
-                _utils._copy_kv_to_mem_cache(infer_state.decode_layer_id, key_layer, value_layer,
-                                             infer_state.decode_mem_index, infer_state.cache_manager)
+                _copy_kv_to_mem_cache(infer_state.decode_layer_id, key_layer, value_layer, infer_state.decode_mem_index,
+                                      infer_state.cache_manager)
 
             # second token and follows
             # kv = torch.stack((key_states, value_states), dim=2)
@@ -491,13 +509,13 @@ class ChatGLM2InferenceForwards:
         # ==================================
         # core attention computation
         # ==================================
-
-        context_layer = self.core_attention(query_layer, key_layer, value_layer, attention_mask)
+        print('attn_out', attn_output.shape)
+        #context_layer = self.core_attention(query_layer, key_layer, value_layer, attention_mask)
 
         # =================
         # Output. [sq, b, h]
         # =================
 
-        output = self.dense(context_layer)
+        output = self.dense(attn_output)
 
         return output, kv_cache
