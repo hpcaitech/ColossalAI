@@ -38,98 +38,6 @@ def move_to_cuda(batch):
     return {k: v.cuda() for k, v in batch.items()}
 
 
-@torch.no_grad()
-def evaluate_model(
-    model: nn.Module,
-    optimizer,
-    criterion,
-    test_dataloader: Union[DataLoader, List[DataLoader]],
-    num_labels: int,
-    task_name: str,
-    eval_splits: List[str],
-    booster: Booster,
-    coordinator: DistCoordinator,
-):
-    metric = evaluate.load("glue", task_name, process_id=coordinator.rank, num_process=coordinator.world_size)
-    model.eval()
-
-    def evaluate_subset(dataloader: DataLoader):
-        accum_loss = torch.zeros(1, device=get_current_device())
-        for batch in dataloader:
-            batch = move_to_cuda(batch)
-            labels = batch["labels"]
-            batch_size = batch["input_ids"].shape[0]
-            if hasattr(booster.plugin, "stage_manager") and booster.plugin.stage_manager is not None:
-                pg_mesh = booster.plugin.pg_mesh
-                pp_group = booster.plugin.pp_group
-                current_pp_group_ranks = pg_mesh.get_ranks_in_group(pp_group)
-                current_rank = dist.get_rank()
-                #TODO pass dataloader to execute_pipeline directly
-                batch = iter([batch])
-                outputs = booster.execute_pipeline(batch,
-                                                   model,
-                                                   criterion,
-                                                   optimizer,
-                                                   return_loss=True,
-                                                   return_outputs=True)
-
-                if booster.plugin.stage_manager.is_last_stage():
-                    val_loss = outputs["loss"]
-
-                    logits = outputs["outputs"]["logits"]
-
-                    accum_loss.add_(val_loss)
-
-                    if num_labels > 1:
-                        preds = torch.argmax(logits, axis=1)
-                    elif num_labels == 1:
-                        preds = logits.squeeze()
-
-                    dist.broadcast(preds, src=current_rank, group=pp_group)
-                    dist.broadcast(val_loss, src=current_rank, group=pp_group)
-
-                    metric.add_batch(predictions=preds, references=labels)
-                elif current_rank in current_pp_group_ranks:
-                    val_loss = torch.empty((1,), device=get_current_device())
-                    preds = torch.empty((batch_size,), dtype=torch.int64, device=get_current_device())
-
-                    dist.broadcast(preds, src=current_pp_group_ranks[-1], group=pp_group)
-                    dist.broadcast(val_loss, src=current_pp_group_ranks[-1], group=pp_group)
-
-                    accum_loss.add_(val_loss)
-                    metric.add_batch(predictions=preds, references=labels)
-
-            else:
-                batch = move_to_cuda(batch)
-                outputs = model(**batch)
-                val_loss, logits = outputs[:2]
-                accum_loss.add_(val_loss)
-
-                if num_labels > 1:
-                    preds = torch.argmax(logits, axis=1)
-                elif num_labels == 1:
-                    preds = logits.squeeze()
-
-                metric.add_batch(predictions=preds, references=labels)
-
-        results = metric.compute()
-        dist.all_reduce(accum_loss.div_(len(dataloader)))
-        if coordinator.is_master() and results is not None:
-            results['loss'] = accum_loss.item() / coordinator.world_size
-
-        return results
-
-    if isinstance(test_dataloader, DataLoader):
-        return evaluate_subset(test_dataloader)
-    else:
-        assert len(test_dataloader) == len(eval_splits)
-        final_results = {}
-        for split, sub_loader in zip(eval_splits, test_dataloader):
-            results = evaluate_subset(sub_loader)
-            final_results.update({f'{k}_{split}': v for k, v in results.items()})
-        return final_results
-
-
 def train_epoch(epoch: int, model: nn.Module, optimizer: Optimizer, _criterion: Callable, lr_scheduler: LRScheduler,
                 train_dataloader: DataLoader, booster: Booster, coordinator: DistCoordinator):
 
@@ -141,7 +49,6 @@ def train_epoch(epoch: int, model: nn.Module, optimizer: Optimizer, _criterion: 
               desc=f'Epoch [{epoch + 1}/{NUM_EPOCHS}]',
               disable=not (coordinator.is_master() or is_pp_last_stage)) as pbar:
         for batch in pbar:
-            # print(str(batch))
             # Forward pass
             batch = move_to_cuda(batch)
             if hasattr(booster.plugin, "stage_manager") and booster.plugin.stage_manager is not None:
@@ -174,7 +81,7 @@ def main():
     # Parse Arguments
     # ==============================
     parser = argparse.ArgumentParser()
-    parser.add_argument('-t', '--task', default='mrpc', help="GLUE task to run")
+    parser.add_argument('-t', '--task', default='super_natural_instructions', help="GLUE task to run")
     parser.add_argument('-p',
                         '--plugin',
                         type=str,
@@ -238,9 +145,9 @@ def main():
     # ====================================
     # bert pretrained model
 
-    cfg = AutoConfig.from_pretrained(args.model_path, num_labels=data_builder.num_labels)
+    cfg = AutoConfig.from_pretrained(args.model_path)
 
-    model = LlamaForSequenceClassification.from_pretrained(args.model_path, config=cfg).cuda()
+    model = LlamaForCausalLM.from_pretrained(args.model_path, config=cfg).cuda()
 
     # optimizer
     no_decay = ["bias", "LayerNorm.weight"]
@@ -285,13 +192,8 @@ def main():
     for epoch in range(NUM_EPOCHS):
         train_epoch(epoch, model, optimizer, _criterion, lr_scheduler, train_dataloader, booster, coordinator)
 
-    results = evaluate_model(model, optimizer, _criterion, test_dataloader, data_builder.num_labels, args.task,
-                             data_builder.eval_splits, booster, coordinator)
-
     if coordinator.is_master():
-        print(results)
-        if args.target_f1 is not None and 'f1' in results:
-            assert results['f1'] >= args.target_f1, f'f1 score {results["f1"]} is lower than target {args.target_f1}'
+        print(f"Finish finetuning")
 
 
 if __name__ == '__main__':

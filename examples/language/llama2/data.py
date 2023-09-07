@@ -1,3 +1,5 @@
+import copy
+
 import datasets
 from transformers import AutoTokenizer, PreTrainedTokenizer
 
@@ -6,39 +8,12 @@ from colossalai.booster.plugin.dp_plugin_base import DPPluginBase
 
 class GLUEDataBuilder:
 
-    task_text_field_map = {
-        "cola": ["sentence"],
-        "sst2": ["sentence"],
-        "mrpc": ["sentence1", "sentence2"],
-        "qqp": ["question1", "question2"],
-        "stsb": ["sentence1", "sentence2"],
-        "mnli": ["premise", "hypothesis"],
-        "qnli": ["question", "sentence"],
-        "rte": ["sentence1", "sentence2"],
-        "wnli": ["sentence1", "sentence2"],
-        "ax": ["premise", "hypothesis"],
-    }
-
-    glue_task_num_labels = {
-        "cola": 2,
-        "sst2": 2,
-        "mrpc": 2,
-        "qqp": 2,
-        "stsb": 1,
-        "mnli": 3,
-        "qnli": 2,
-        "rte": 2,
-        "wnli": 2,
-        "ax": 3,
-    }
+    task_text_field_map = {"super_natural_instructions": ["prompt", "completion"]}
 
     loader_columns = [
         "datasets_idx",
         "input_ids",
-    # "token_type_ids",
         "attention_mask",
-        "start_positions",
-        "end_positions",
         "labels",
     ]
 
@@ -61,20 +36,18 @@ class GLUEDataBuilder:
         self.plugin = plugin
 
         self.text_fields = self.task_text_field_map[task_name]
-        self.num_labels = self.glue_task_num_labels[task_name]
         self.tokenizer: PreTrainedTokenizer = AutoTokenizer.from_pretrained(self.model_name_or_path, use_fast=True)
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
         self.setup()
 
     def setup(self):
-        self.dataset = datasets.load_dataset("glue", self.task_name)
+        self.dataset = datasets.load_dataset("yizhongw/self_instruct", self.task_name)
 
-        for split in self.dataset.keys():
+        for split in ["train"]:
             self.dataset[split] = self.dataset[split].map(
                 self.convert_to_features,
                 batched=True,
-                remove_columns=["label"],
             )
             self.columns = [c for c in self.dataset[split].column_names if c in self.loader_columns]
             self.dataset[split].set_format(type="torch", columns=self.columns)
@@ -124,6 +97,6 @@ class GLUEDataBuilder:
                                                     truncation=True)
 
         # Rename label to labels to make it easier to pass to model forward
-        features["labels"] = example_batch["label"]
+        features["labels"] = copy.deepcopy(features["input_ids"])
 
         return features
