@@ -9,16 +9,16 @@ OUTPUT_PATH="./output_model"
 
 # plugin(training strategy)
 # can only be one of "torch_ddp"/"torch_ddp_fp16"/"low_level_zero"/"gemini"/"hybrid_parallel"
-PLUGIN="gemini"
+PLUGIN="hybrid_parallel"
 
-# configuration of hybrid parallel, only used when setting PLUGIN to "hybrid_parallel"
+# configuration of parallel group sizes, only used when setting PLUGIN to "hybrid_parallel"
 TP_SIZE=2
 PP_SIZE=2
 
 # number of gpus to use
 GPUNUM=4
 
-# batch size per gpu
+# batch size per data parallel group
 BS=16
 
 # learning rate

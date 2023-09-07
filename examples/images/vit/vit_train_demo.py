@@ -60,6 +60,7 @@ def train_epoch(epoch: int, model: nn.Module, optimizer: Optimizer, criterion: C
     torch.cuda.synchronize()
 
     num_steps = len(dataloader)
+    data_iter = iter(dataloader)
     enable_pbar = coordinator.is_master()
     if isinstance(booster.plugin, HybridParallelPlugin) and booster.plugin.pp_size > 1:
         # when using pp, only the last stage of master pipeline (dp_rank and tp_rank are both zero) shows pbar
@@ -72,7 +73,7 @@ def train_epoch(epoch: int, model: nn.Module, optimizer: Optimizer, criterion: C
     model.train()
 
     for _ in range(num_steps):
-        loss, _ = run_forward_backward(model, optimizer, criterion, iter(dataloader), booster, forward_only=False)
+        loss, _ = run_forward_backward(model, optimizer, criterion, data_iter, booster, forward_only=False)
         optimizer.step()
         lr_scheduler.step()
 
