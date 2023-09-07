@@ -64,18 +64,18 @@ def train_epoch(epoch: int, model: nn.Module, optimizer: Optimizer, criterion: C
         enable_pbar = tp_rank == 0 and dp_rank == 0 \
                       and booster.plugin.stage_manager.is_last_stage()
 
-    progress_bar = tqdm.tqdm(total=num_steps, desc=f'Epoch [{epoch + 1}]', disable=not enable_pbar)
     model.train()
 
-    for _ in range(num_steps):
-        loss, _ = run_forward_backward(model, optimizer, criterion, data_iter, booster)
-        optimizer.step()
-        lr_scheduler.step()
+    with tqdm.tqdm(total=num_steps, desc=f'Epoch [{epoch + 1}]', disable=not enable_pbar) as pbar:
+        for _ in range(num_steps):
+            loss, _ = run_forward_backward(model, optimizer, criterion, data_iter, booster)
+            optimizer.step()
+            lr_scheduler.step()
 
-        # Print batch loss
-        if enable_pbar:
-            progress_bar.set_postfix({'loss': loss.item()})
-            progress_bar.update(1)
+            # Print batch loss
+            if enable_pbar:
+                pbar.set_postfix({'loss': loss.item()})
+                pbar.update(1)
 
 
 @torch.no_grad()

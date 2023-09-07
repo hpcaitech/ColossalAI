@@ -106,35 +106,35 @@ def main():
 
     # Start training.
     logger.info(f"Start testing", ranks=[0])
-    progress_bar = tqdm.tqdm(total=args.max_train_steps, desc="Training Step", disable=not coordinator.is_master())
 
     torch.cuda.synchronize()
     model.train()
     start_time = time.time()
 
-    for _ in range(args.max_train_steps):
-        optimizer.zero_grad()
-        batch = get_data_batch(args.batch_size, args.num_labels, 3, 224, 224)
+    with tqdm.tqdm(total=args.max_train_steps, desc="Training Step", disable=not coordinator.is_master()) as pbar:
+        for _ in range(args.max_train_steps):
+            optimizer.zero_grad()
+            batch = get_data_batch(args.batch_size, args.num_labels, 3, 224, 224)
 
-        if hasattr(booster.plugin, "stage_manager") and booster.plugin.stage_manager is not None:
-            # run pipeline forward backward
-            batch = iter([batch])
-            outputs = booster.execute_pipeline(batch,
-                                               model,
-                                               criterion,
-                                               optimizer,
-                                               return_loss=True,
-                                               return_outputs=True)
-        else:
-            outputs = model(**batch)
-            loss = criterion(outputs, None)
-            # Backward
-            booster.backward(loss, optimizer)
+            if hasattr(booster.plugin, "stage_manager") and booster.plugin.stage_manager is not None:
+                # run pipeline forward backward
+                batch = iter([batch])
+                outputs = booster.execute_pipeline(batch,
+                                                   model,
+                                                   criterion,
+                                                   optimizer,
+                                                   return_loss=True,
+                                                   return_outputs=True)
+            else:
+                outputs = model(**batch)
+                loss = criterion(outputs, None)
+                # Backward
+                booster.backward(loss, optimizer)
 
-        optimizer.step()
+            optimizer.step()
 
-        torch.cuda.synchronize()
-        progress_bar.update(1)
+            torch.cuda.synchronize()
+            pbar.update(1)
 
     # Compute Statistics
     end_time = time.time()
