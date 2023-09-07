@@ -4,7 +4,7 @@ from typing import Optional, Set
 import torch
 import torch.nn as nn
 
-from colossalai.nn.parallel.data_parallel import _cast_float
+from colossalai.utils import _cast_float
 from colossalai.zero.legacy.gemini.tensor_utils import free_storage
 
 from .region_manager import RegionManager

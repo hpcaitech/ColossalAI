@@ -2,7 +2,6 @@ from contextlib import contextmanager
 
 import torch
 import torch.distributed as dist
-# from colossalai.nn.layer.utils import divide
 from numpy import prod
 
 from colossalai.tensor.distspec import DistPlacementPattern, _DistSpec
