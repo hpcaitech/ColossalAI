@@ -3,13 +3,13 @@ from typing import Any, Callable, Iterator
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-import tqdm
 import transformers
 from args import parse_demo_args
 from data import BeansDataset, beans_collator
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 from transformers import ViTConfig, ViTForImageClassification, ViTImageProcessor
 
 import colossalai
@@ -66,7 +66,7 @@ def train_epoch(epoch: int, model: nn.Module, optimizer: Optimizer, criterion: C
 
     model.train()
 
-    with tqdm.tqdm(total=num_steps, desc=f'Epoch [{epoch + 1}]', disable=not enable_pbar) as pbar:
+    with tqdm(range(num_steps), desc=f'Epoch [{epoch + 1}]', disable=not enable_pbar) as pbar:
         for _ in range(num_steps):
             loss, _ = run_forward_backward(model, optimizer, criterion, data_iter, booster)
             optimizer.step()
@@ -158,7 +158,7 @@ def main():
     logger.info(f"Finish loading model from {args.model_name_or_path}", ranks=[0])
 
     # Enable gradient checkpointing
-    if args.grad_accum:
+    if args.grad_checkpoint:
         model.gradient_checkpointing_enable()
 
     # Set plugin

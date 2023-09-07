@@ -41,7 +41,7 @@ def parse_demo_args():
                         default=0.3,
                         help="Ratio of warmup steps against total training steps.")
     parser.add_argument("--weight_decay", type=float, default=0.1, help="Weight decay to use.")
-    parser.add_argument("--grad_accum", type=bool, default=True, help="Whether to use Gradient Accumulation.")
+    parser.add_argument("--grad_checkpoint", type=bool, default=True, help="Whether to use gradient checkpointing.")
     parser.add_argument("--seed", type=int, default=42, help="A seed for reproducible training.")
 
     args = parser.parse_args()
@@ -73,7 +73,7 @@ def parse_benchmark_args():
                         default=5e-5,
                         help="Initial learning rate (after the potential warmup period) to use.")
     parser.add_argument("--weight_decay", type=float, default=0.0, help="Weight decay to use.")
-    parser.add_argument("--grad_accum", type=bool, default=True, help="Whether to use Gradient Accumulation.")
+    parser.add_argument("--grad_checkpoint", type=bool, default=True, help="Whether to use gradient checkpointing.")
     parser.add_argument("--max_train_steps", type=int, default=20, help="Total number of training steps to perform.")
     parser.add_argument("--seed", type=int, default=42, help="A seed for reproducible training.")
     parser.add_argument("--mem_cap", type=int, default=0, help="Limit on the usage of space for each GPU (in GB).")

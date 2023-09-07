@@ -1,9 +1,9 @@
 import time
 
 import torch
-import tqdm
 import transformers
 from args import parse_benchmark_args
+from tqdm import tqdm
 from transformers import ViTConfig, ViTForImageClassification
 
 import colossalai
@@ -70,7 +70,7 @@ def main():
     logger.info(f"Finish loading model from {args.model_name_or_path}", ranks=[0])
 
     # Enable gradient checkpointing
-    if args.grad_accum:
+    if args.grad_checkpoint:
         model.gradient_checkpointing_enable()
 
     # Set plugin
@@ -111,7 +111,7 @@ def main():
     model.train()
     start_time = time.time()
 
-    with tqdm.tqdm(total=args.max_train_steps, desc="Training Step", disable=not coordinator.is_master()) as pbar:
+    with tqdm(range(args.max_train_steps), desc="Training Step", disable=not coordinator.is_master()) as pbar:
         for _ in range(args.max_train_steps):
             optimizer.zero_grad()
             batch = get_data_batch(args.batch_size, args.num_labels, 3, 224, 224)
