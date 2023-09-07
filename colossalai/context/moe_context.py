@@ -21,6 +21,7 @@ class MoeContext(metaclass=SingletonMeta):
         self.max_ep_size = None
         self.min_dp_size = None
         self.aux_loss = None
+        self.parallel = None
         self.use_kernel_optim = True
 
         self.has_setup = False
@@ -34,13 +35,14 @@ class MoeContext(metaclass=SingletonMeta):
     def is_initialized(self):
         return self.has_setup
 
-    def setup(self, seed: int, use_kernel_optim: bool = True, max_ep_size: int = 8):
+    def setup(self, seed: int, use_kernel_optim: bool = True, max_ep_size: int = 8, parallel: bool = None):
         assert not self.is_initialized, "MoE distributed context shouldn't be set up again"
         assert torch.cuda.is_available(), "MoE requires to enable CUDA first"
 
         self.world_size = dist.get_world_size()
         self.max_ep_size = min(max_ep_size, dist.get_world_size())
         self.min_dp_size = self.world_size // self.max_ep_size
+        self.parallel = parallel
 
         # Enabling kernel optimization may raise error in some cases
         # Users can close kernel optimization manually
@@ -102,6 +104,9 @@ class MoeContext(metaclass=SingletonMeta):
 
     def get_loss(self):
         return self.aux_loss
+
+    def get_parallel(self):
+        return self.parallel
 
 
 MOE_CONTEXT = MoeContext()
