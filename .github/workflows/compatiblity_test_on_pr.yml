@@ -58,7 +58,6 @@ jobs:
       - name: Install tensornvme
         run: |
           cd TensorNVMe
-          conda install cmake
           pip install -r requirements.txt
           pip install -v .
       - uses: actions/checkout@v2
