@@ -251,6 +251,12 @@ class GPT2PipelineForwards:
             """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
+        # If is first stage and after warmup, go throught lm_head first
+        if stage_manager.is_first_stage() and hidden_states is not None:
+            lm_logits = self.lm_head(hidden_states)
+            return {'logits': lm_logits}
+
+        # Not first stage or before warmup, go through gpt2 model
         outputs = GPT2PipelineForwards.gpt2_model_forward(self.transformer,
                                                           input_ids,
                                                           past_key_values=past_key_values,
@@ -269,24 +275,4 @@ class GPT2PipelineForwards:
                                                           hidden_states=hidden_states,
                                                           stage_index=stage_index)
 
-        # If not at the last stage, return hidden_states as in GPT2Model
-        if not stage_manager.is_last_stage():
-            return outputs
-
-        hidden_states = outputs['hidden_states']
-        lm_logits = self.lm_head(hidden_states)
-        loss = None
-        if labels is not None:
-            # move labels to correct device to enable model parallelism
-            labels = labels.to(lm_logits.device)
-            # Shift so that tokens < n predict n
-            shift_logits = lm_logits[..., :-1, :].contiguous()
-            shift_labels = labels[..., 1:].contiguous()
-            # Flatten the tokens
-            loss_fct = CrossEntropyLoss()
-            loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
-        if not return_dict:
-            output = (lm_logits,) + outputs[1:]
-            return ((loss,) + output) if loss is not None else output
-
-        return {'hidden_states': lm_logits, 'past_key_values': outputs['past_key_values']}
+        return outputs

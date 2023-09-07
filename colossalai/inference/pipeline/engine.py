@@ -69,7 +69,8 @@ class PPInferEngine:
         self.pp_size = pp_size
         self.pg_mesh = ProcessGroupMesh(pp_size)
         self.stage_manager = PipelineStageManager(self.pg_mesh, 0, True)
-        self.mb_manager = MicroBatchManager(new_length, micro_batch_size, micro_batch_buffer_size or pp_size)
+        self.mb_manager = MicroBatchManager(self.stage_manager.stage, new_length, micro_batch_size,
+                                            micro_batch_buffer_size or pp_size)
         self.schedule = GenerateSchedule(self.stage_manager, self.mb_manager)
         self.model = pp_model or self._shardformer(model, model_policy)
 
