@@ -143,7 +143,6 @@ def main():
     # ====================================
     # Prepare model, optimizer
     # ====================================
-    # bert pretrained model
 
     cfg = AutoConfig.from_pretrained(args.model_path)
 
