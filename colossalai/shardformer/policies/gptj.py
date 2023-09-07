@@ -6,6 +6,7 @@ from torch import Tensor, nn
 import colossalai.shardformer.layer as col_nn
 
 from .._utils import getattr_, setattr_
+from ..modeling.gptj import GPTJPipelineForwards, get_gptj_flash_attention_forward, gptj_sequence_parallel_forward_fn
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = [
@@ -143,7 +144,7 @@ class GPTJPolicy(Policy):
                                                         target_key=GPTJAttention)
 
         if self.shard_config.enable_sequence_parallelism:
-            policy[GPTJModel].method_replacement = {"forward": gpt2_sequence_parallel_forward_fn(self.shard_config)}
+            policy[GPTJModel].method_replacement = {"forward": gptj_sequence_parallel_forward_fn(self.shard_config)}
 
         return policy
 
@@ -154,7 +155,7 @@ class GPTJPolicy(Policy):
         """Get pipeline layers for current stage."""
         assert self.pipeline_stage_manager is not None
 
-        if self.model.__class__.__name__ == 'GPT2Model':
+        if self.model.__class__.__name__ == 'GPTJModel':
             module = self.model
         else:
             module = self.model.transformer
@@ -164,7 +165,7 @@ class GPTJPolicy(Policy):
         layers_per_stage = self.distribute_layers(len(module.h), stage_manager.num_stages)
         if stage_manager.is_first_stage():
             held_layers.append(module.wte)
-            held_layers.append(module.wpe)
+            #held_layers.append(module.wpe)
             held_layers.append(module.drop)
         start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
         held_layers.extend(module.h[start_idx:end_idx])
@@ -178,7 +179,7 @@ class GPTJPolicy(Policy):
         if not self.pipeline_stage_manager:
             raise ValueError("set_pipeline_forward method can only be called when pipeline parallel is enabled.")
         stage_manager = self.pipeline_stage_manager
-        if self.model.__class__.__name__ == 'GPT2Model':
+        if self.model.__class__.__name__ == 'GPTJModel':
             module = self.model
         else:
             module = self.model.transformer
@@ -193,25 +194,124 @@ class GPTJPolicy(Policy):
                         shard_config=self.shard_config)
         }
         self.append_or_create_method_replacement(description=method_replacement, policy=policy, target_key=model_cls)
-  
-          
-          
 
 # GPTJModel
 class GPTJModelPolicy(GPTJPolicy):
+    
+    def __init__(self) -> None:
+        super().__init__()
+
+    def module_policy(self):
+        from transformers.models.gptj.modeling_gptj import GPTJModel
+
+        policy = super().module_policy()
+
+        if self.pipeline_stage_manager is not None:
+            self.set_pipeline_forward(model_cls=GPTJModel,
+                                      new_forward=GPTJPipelineForwards.gptj_model_forward,
+                                      policy=policy)
+        return policy
+
+    def get_held_layers(self) -> List[nn.Module]:
+        return super().get_held_layers()
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        """No shared params in GPT2Model."""
+        return []
 
 # GPTJForCausalLM
 class GPTJForCausalLMPolicy(GPTJPolicy):
+    
+    def __init__(self) -> None:
+        super().__init__()
+
+    def module_policy(self):
+        from transformers.models.gptj.modeling_gptj import GPTJForCausalLM
+
+        policy = super().module_policy()
+        
+        if self.shard_config.enable_tensor_parallelism:
+            addon_module = {
+                GPTJForCausalLM:
+                    ModulePolicyDescription(sub_module_replacement=[
+                        SubModuleReplacementDescription(
+                            suffix="lm_head", target_module=col_nn.Linear1D_Col, kwargs={"gather_output": True})
+                    ])
+            }
+            policy.update(addon_module)
+
+        if self.pipeline_stage_manager is not None:
+            self.set_pipeline_forward(model_cls=GPTJForCausalLM,
+                                      new_forward=GPTJPipelineForwards.gptj_causallm_model_forward,
+                                      policy=policy)
+        return policy
+
+    def get_held_layers(self) -> List[nn.Module]:
+        held_layers = super().get_held_layers()
+        if self.pipeline_stage_manager.is_last_stage():
+            held_layers.append(self.model.lm_head)
+        return held_layers
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        '''The weights of wte and lm_head are shared.'''
+        module = self.model
+        stage_manager = self.pipeline_stage_manager
+        if stage_manager is not None:
+            if stage_manager.num_stages > 1 and id(module.transformer.wte.weight) == id(module.lm_head.weight):
+                first_stage, last_stage = 0, stage_manager.num_stages - 1
+                return [{first_stage: module.transformer.wte.weight, last_stage: module.lm_head.weight}]
+        return []
   
 # GPTJForSequenceClassification
 class GPTJForSequenceClassificationPolicy(GPTJPolicy):
+    
+    def __init__(self) -> None:
+        super().__init__()
+
+    def module_policy(self):
+        from transformers.models.gptj.modeling_gptj import GPTJForCausalLM
+
+        policy = super().module_policy()
+
+        if self.pipeline_stage_manager is not None:
+            self.set_pipeline_forward(model_cls=GPTJForCausalLM,
+                                      new_forward=GPTJPipelineForwards.gptj_for_sequence_classification_forward,
+                                      policy=policy)
+        return policy
+
+    def get_held_layers(self) -> List[nn.Module]:
+        held_layers = super().get_held_layers()
+        if self.pipeline_stage_manager.is_last_stage():
+            held_layers.append(self.model.score)
+        return held_layers
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        """No shared params in GPTJForSequenceClassification."""
+        return []
   
 # GPTJForQuestionAnswering
 class GPTJForQuestionAnsweringPolicy(GPTJPolicy):
-  
-# FlaxGPTJModel
-class FlaxGPTJPolicy(GPTJPolicy):  
+    
+    def __init__(self) -> None:
+        super().__init__()
 
-# FlaxGPTJForCausalLMModel
-class FlaxGPTJForCausalLMPolicy(GPTJPolicy):  
+    def module_policy(self):
+        from transformers.models.gptj.modeling_gptj import GPTJForQuestionAnswering
 
+        policy = super().module_policy()
+
+        if self.pipeline_stage_manager is not None:
+            self.set_pipeline_forward(model_cls=GPTJForQuestionAnswering,
+                                      new_forward=GPTJPipelineForwards.gptj_for_question_answering_forward,
+                                      policy=policy)
+        return policy
+
+    def get_held_layers(self) -> List[nn.Module]:
+        held_layers = super().get_held_layers()
+        if self.pipeline_stage_manager.is_last_stage():
+            held_layers.append(self.model.score)
+        return held_layers
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        """No shared params in GPT2ForQuestionAnswering."""
+        return []
