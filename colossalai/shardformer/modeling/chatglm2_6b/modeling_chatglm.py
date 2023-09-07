@@ -520,7 +520,6 @@ class SelfAttention(torch.nn.Module):
                 self.num_attention_heads_per_partition,
                 self.hidden_size_per_attention_head,
             ))
-
         # ==================================
         # core attention computation
         # ==================================
@@ -530,7 +529,6 @@ class SelfAttention(torch.nn.Module):
         # =================
         # Output. [sq, b, h]
         # =================
-
         output = self.dense(context_layer)
 
         return output, kv_cache

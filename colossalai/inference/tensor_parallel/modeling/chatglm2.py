@@ -20,7 +20,7 @@ from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import (
     split_tensor_along_last_dim,
 )
 
-from ._utils import _copy_kv_to_mem_cache
+from ._utils import copy_kv_to_mem_cache
 
 try:
     from vllm import layernorm_ops, pos_encoding_ops
@@ -372,7 +372,7 @@ class ChatGLM2InferenceForwards:
     ):
         assert use_cache is True, "use_cache should be set to True using this chatglm attention"
         # hidden_states: [sq, b, h]
-
+        batch_size = hidden_states.shape[1]
         # =================================================
         # Pre-allocate memory for key-values for inference.
         # =================================================
@@ -468,12 +468,12 @@ class ChatGLM2InferenceForwards:
         key_layer = key_layer.reshape(-1, self.num_attention_heads_per_partition, self.hidden_size_per_attention_head)
         value_layer = value_layer.reshape(-1, self.num_attention_heads_per_partition,
                                           self.hidden_size_per_attention_head)
-
+        print('reshaped', query_layer.shape, key_layer.shape, value_layer.shape)
         if infer_state.is_context_stage:
             # first token generation:
             # copy key and value calculated in current step to memory manager
-            _copy_kv_to_mem_cache(infer_state.decode_layer_id, key_layer, value_layer, infer_state.context_mem_index,
-                                  infer_state.cache_manager)
+            copy_kv_to_mem_cache(infer_state.decode_layer_id, key_layer, value_layer, infer_state.context_mem_index,
+                                 infer_state.cache_manager)
 
             attn_output = torch.empty_like(query_layer)
 
@@ -481,6 +481,7 @@ class ChatGLM2InferenceForwards:
                                     infer_state.seq_len, infer_state.cache_manager.past_key_values_length)
             print('context stage', attn_output.shape)
         else:
+            print('token attention')
             if infer_state.decode_is_contiguous:
                 # if decode is contiguous, then we copy to key cache and value cache in cache manager directly
                 cache_k = infer_state.cache_manager.key_buffer[infer_state.decode_layer_id][
@@ -492,8 +493,8 @@ class ChatGLM2InferenceForwards:
             else:
                 # if decode is not contiguous, use triton kernel to copy key and value cache
                 # k, v shape: [batch_size, num_heads, head_dim/embed_size_per_head
-                _copy_kv_to_mem_cache(infer_state.decode_layer_id, key_layer, value_layer, infer_state.decode_mem_index,
-                                      infer_state.cache_manager)
+                copy_kv_to_mem_cache(infer_state.decode_layer_id, key_layer, value_layer, infer_state.decode_mem_index,
+                                     infer_state.cache_manager)
 
             # second token and follows
             # kv = torch.stack((key_states, value_states), dim=2)
@@ -509,13 +510,13 @@ class ChatGLM2InferenceForwards:
         # ==================================
         # core attention computation
         # ==================================
-        print('attn_out', attn_output.shape)
+
         #context_layer = self.core_attention(query_layer, key_layer, value_layer, attention_mask)
 
         # =================
-        # Output. [sq, b, h]
+        # Output. [sq, b, h] 7,2,4096 for test
         # =================
 
-        output = self.dense(attn_output)
+        output = self.dense(attn_output.view(-1, batch_size, self.projection_size))
 
         return output, kv_cache
