@@ -58,7 +58,7 @@ jobs:
       - name: Install tensornvme
         run: |
           cd TensorNVMe
-          apt install -y cmake
+          apt update && apt install -y cmake
           pip install -r requirements.txt
           pip install -v .
       - uses: actions/checkout@v2
