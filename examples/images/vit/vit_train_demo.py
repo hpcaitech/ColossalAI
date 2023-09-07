@@ -26,14 +26,10 @@ def move_to_cuda(batch, device):
     return {k: v.to(device) for k, v in batch.items()}
 
 
-def run_forward_backward(model: nn.Module,
-                         optimizer: Optimizer,
-                         criterion: Callable[[Any, Any], torch.Tensor],
-                         data_iter: Iterator,
-                         booster: Booster,
-                         forward_only: bool = False):
-
-    optimizer.zero_grad()
+def run_forward_backward(model: nn.Module, optimizer: Optimizer, criterion: Callable[[Any, Any], torch.Tensor],
+                         data_iter: Iterator, booster: Booster):
+    if optimizer is not None:
+        optimizer.zero_grad()
     if isinstance(booster.plugin, HybridParallelPlugin) and booster.plugin.pp_size > 1:
         # run pipeline forward backward when enabling pp in hybrid parallel plugin
         output_dict = booster.execute_pipeline(data_iter,
@@ -48,7 +44,7 @@ def run_forward_backward(model: nn.Module,
         batch = move_to_cuda(batch, torch.cuda.current_device())
         outputs = model(**batch)
         loss = criterion(outputs, None)
-        if not forward_only:
+        if optimizer is not None:
             booster.backward(loss, optimizer)
 
     return loss, outputs
@@ -73,7 +69,7 @@ def train_epoch(epoch: int, model: nn.Module, optimizer: Optimizer, criterion: C
     model.train()
 
     for _ in range(num_steps):
-        loss, _ = run_forward_backward(model, optimizer, criterion, data_iter, booster, forward_only=False)
+        loss, _ = run_forward_backward(model, optimizer, criterion, data_iter, booster)
         optimizer.step()
         lr_scheduler.step()
 
@@ -84,7 +80,7 @@ def train_epoch(epoch: int, model: nn.Module, optimizer: Optimizer, criterion: C
 
 
 @torch.no_grad()
-def evaluate_model(epoch: int, model: nn.Module, optimizer: Optimizer, criterion: Callable[[Any, Any], torch.Tensor],
+def evaluate_model(epoch: int, model: nn.Module, criterion: Callable[[Any, Any], torch.Tensor],
                    eval_dataloader: DataLoader, booster: Booster, coordinator: DistCoordinator):
 
     torch.cuda.synchronize()
@@ -95,7 +91,7 @@ def evaluate_model(epoch: int, model: nn.Module, optimizer: Optimizer, criterion
 
     for batch in eval_dataloader:
         batch = move_to_cuda(batch, torch.cuda.current_device())
-        loss, outputs = run_forward_backward(model, optimizer, criterion, iter([batch]), booster, forward_only=True)
+        loss, outputs = run_forward_backward(model, None, criterion, iter([batch]), booster)
 
         to_accum = True
         if isinstance(booster.plugin, HybridParallelPlugin):
@@ -162,6 +158,10 @@ def main():
                                                       ignore_mismatched_sizes=True)
     logger.info(f"Finish loading model from {args.model_name_or_path}", ranks=[0])
 
+    # Enable gradient checkpointing
+    if args.grad_accum:
+        model.gradient_checkpointing_enable()
+
     # Set plugin
     booster_kwargs = {}
     if args.plugin == 'torch_ddp_fp16':
@@ -225,7 +225,7 @@ def main():
     logger.info(f"Start finetuning", ranks=[0])
     for epoch in range(args.num_epoch):
         train_epoch(epoch, model, optimizer, _criterion, lr_scheduler, train_dataloader, booster, coordinator)
-        evaluate_model(epoch, model, optimizer, _criterion, eval_dataloader, booster, coordinator)
+        evaluate_model(epoch, model, _criterion, eval_dataloader, booster, coordinator)
     logger.info(f"Finish finetuning", ranks=[0])
 
     # Save the finetuned model

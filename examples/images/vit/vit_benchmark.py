@@ -69,6 +69,10 @@ def main():
     model = ViTForImageClassification(config)
     logger.info(f"Finish loading model from {args.model_name_or_path}", ranks=[0])
 
+    # Enable gradient checkpointing
+    if args.grad_accum:
+        model.gradient_checkpointing_enable()
+
     # Set plugin
     booster_kwargs = {}
     if args.plugin == 'torch_ddp_fp16':
