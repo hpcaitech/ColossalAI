@@ -63,25 +63,20 @@ class LowLevelZeroStrategy(DDPStrategy):
         assert placement_policy in ("cpu", "cuda"), f'Unsupported placement policy "{placement_policy}"'
         assert precision in ("fp32", "fp16"), f'Unsupported precision "{precision}"'
 
-        plugin_initializer = lambda: LowLevelZeroPlugin(
-        # zero_config
-            stage=stage,
-            precision=precision,
-        # zero_optim_config
-            reduce_bucket_size_in_m=reduce_bucket_size,
-            overlap_communication=overlap_communication,
-            cpu_offload=(placement_policy == 'cpu'),
-        # optim_config
-            initial_scale=initial_scale,
-            growth_factor=growth_factor,
-            backoff_factor=backoff_factor,
-            growth_interval=growth_interval,
-            hysteresis=hysteresis,
-            min_scale=min_scale,
-            max_scale=max_scale,
-            max_norm=max_norm,
-            norm_type=norm_type,
-        )
+        plugin_initializer = lambda: LowLevelZeroPlugin(stage=stage,
+                                                        precision=precision,
+                                                        reduce_bucket_size_in_m=reduce_bucket_size,
+                                                        overlap_communication=overlap_communication,
+                                                        cpu_offload=(placement_policy == 'cpu'),
+                                                        initial_scale=initial_scale,
+                                                        growth_factor=growth_factor,
+                                                        backoff_factor=backoff_factor,
+                                                        growth_interval=growth_interval,
+                                                        hysteresis=hysteresis,
+                                                        min_scale=min_scale,
+                                                        max_scale=max_scale,
+                                                        max_norm=max_norm,
+                                                        norm_type=norm_type)
 
         super().__init__(seed, plugin_initializer)
 
@@ -163,30 +158,25 @@ class GeminiStrategy(DDPStrategy):
         warnings.warn(f"Stage 3 only supports fp16. Precision is set to fp16.")
 
         # NOTE: dist should be initialized before calling get_current_device()
-        plugin_initializer = lambda: GeminiPlugin(
-        # gemini_config
-            device=get_current_device(),
-            placement_policy=placement_policy,
-            precision="fp16",
-            pin_memory=pin_memory,
-            force_outputs_fp32=force_outputs_fp32,
-            strict_ddp_mode=shard_init,
-            search_range_m=search_range_m,
-            hidden_dim=hidden_dim,
-            min_chunk_size_m=min_chunk_size_m,
-        # zero_optim_config
-            gpu_margin_mem_ratio=gpu_margin_mem_ratio,
-        # optim_config
-            initial_scale=initial_scale,
-            growth_factor=growth_factor,
-            backoff_factor=backoff_factor,
-            growth_interval=growth_interval,
-            hysteresis=hysteresis,
-            min_scale=min_scale,
-            max_scale=max_scale,
-            max_norm=max_norm,
-            norm_type=norm_type,
-        )
+        plugin_initializer = lambda: GeminiPlugin(device=get_current_device(),
+                                                  placement_policy=placement_policy,
+                                                  precision='fp16',
+                                                  pin_memory=pin_memory,
+                                                  force_outputs_fp32=force_outputs_fp32,
+                                                  strict_ddp_mode=shard_init,
+                                                  search_range_m=search_range_m,
+                                                  hidden_dim=hidden_dim,
+                                                  min_chunk_size_m=min_chunk_size_m,
+                                                  gpu_margin_mem_ratio=gpu_margin_mem_ratio,
+                                                  initial_scale=initial_scale,
+                                                  growth_factor=growth_factor,
+                                                  backoff_factor=backoff_factor,
+                                                  growth_interval=growth_interval,
+                                                  hysteresis=hysteresis,
+                                                  min_scale=min_scale,
+                                                  max_scale=max_scale,
+                                                  max_norm=max_norm,
+                                                  norm_type=norm_type)
 
         super().__init__(seed, plugin_initializer)
 
