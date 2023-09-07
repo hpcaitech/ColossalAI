@@ -38,7 +38,8 @@ class MoeRouter(nn.Module, ABC):
         self.min_capacity = min_capacity
         self.noisy_func = noisy_func
         self.drop_tks = drop_tks
-        self._routing_loss = None
+        self._aux_loss = None
+        self._z_loss = None
 
     def get_capacity(self, logits_shape):
         capacity_factor = self.capacity_factor_train if self.training else self.capacity_factor_eval
@@ -48,15 +49,26 @@ class MoeRouter(nn.Module, ABC):
         assert capacity > 0
         return capacity
 
-    def set_routing_loss(self, aux_loss: torch.Tensor) -> None:
-        assert self._routing_loss is None
-        self._routing_loss = aux_loss
+    def set_aux_loss(self, logits: torch.Tensor, cmask: torch.Tensor, num_experts: int) -> None:
+        assert self._aux_loss is None
+        me = torch.mean(logits, dim=0)
+        ce = torch.mean(cmask.float(), dim=0)
+        aux_loss = num_experts * torch.sum(me * ce)
+        self._aux_loss = aux_loss
 
-    def pop_routing_loss(self) -> torch.Tensor:
-        assert self._routing_loss is not None
-        reservation = self._routing_loss
-        self._routing_loss = None
-        return reservation
+    def set_z_loss(self, router_logits: torch.Tensor):
+        assert self._z_loss is None
+        n, _ = router_logits.shape
+        log_z = torch.logsumexp(router_logits, axis=-1)
+        z_loss = log_z**2
+        z_loss = torch.sum(z_loss, dtype=torch.float32) / n
+        self._z_loss = z_loss
+
+    def pop_router_loss(self) -> torch.Tensor:
+        assert self._aux_loss is not None
+        MOE_CONTEXT.add_loss(self._aux_loss, self._z_loss)
+        self._aux_loss = None
+        self._z_loss = None
 
 
 class Top1Router(MoeRouter):
@@ -105,11 +117,10 @@ class Top1Router(MoeRouter):
         top1_idx = torch.argmax(inputs, dim=-1)
         mask = F.one_hot(top1_idx, num_classes=num_experts).to(torch.int32)
 
-        # caculate the auxiliary loss
-        me = torch.mean(logits, dim=0)
-        ce = torch.mean(mask.float(), dim=0)
-        l_aux = num_experts * torch.sum(me * ce)
-        self.set_routing_loss(l_aux)
+        # caculate router loss
+        self.set_aux_loss(logits, mask, num_experts)
+        self.set_z_loss(inputs)
+        self.pop_router_loss()
 
         if not self.training and not self.drop_tks and ep_group is not None:
             max_num = torch.max(torch.sum(mask, dim=0))
@@ -183,12 +194,12 @@ class Top2Router(MoeRouter):
         mask2 = F.one_hot(top2_idx, num_classes=num_experts).to(torch.int32)
 
         cmask = (mask1 + mask2)    # loss: [s, e]
+        cmask = cmask.float() / 2.0    # div 2 to normalize it to 1
 
-        # caculate the auxiliary loss
-        me = torch.mean(logits, dim=0)
-        ce = torch.mean(cmask.float(), dim=0)
-        l_aux = num_experts * torch.sum(me * ce) / 2.0    # div 2 to normalize it to 1
-        self.set_routing_loss(l_aux)
+        # caculate loss
+        self.set_aux_loss(logits, cmask, num_experts)
+        self.set_z_loss(inputs)
+        self.pop_router_loss()
 
         if not self.training and not self.drop_tks and ep_group is not None:
             max_num = torch.max(torch.sum(cmask, dim=0))

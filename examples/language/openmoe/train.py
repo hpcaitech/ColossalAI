@@ -7,7 +7,7 @@ from huggingface_hub import snapshot_download
 from model.modeling_openmoe import OpenMoeForCausalLM
 from torch.utils.data import Dataset
 from tqdm import tqdm
-from transformers import T5Tokenizer, get_linear_schedule_with_warmup
+from transformers import Adafactor, T5Tokenizer
 from transformers.models.llama import LlamaConfig
 
 import colossalai
@@ -60,7 +60,7 @@ class RandomDataset(Dataset):
 
 def parse_args():
     parser = get_default_parser()
-    parser.add_argument("--model_name_or_path",
+    parser.add_argument("--model_name",
                         type=str,
                         default="base",
                         help="Path to pretrained model or model identifier from huggingface.co/models.")
@@ -73,16 +73,16 @@ def parse_args():
                         type=int,
                         default=4,
                         help="Batch size (per dp group) for the training dataloader.")
-    parser.add_argument("--learning_rate",
-                        type=float,
-                        default=5e-5,
-                        help="Initial learning rate (after the potential warmup period) to use.")
-    parser.add_argument("--warmup_ratio",
-                        type=float,
-                        default=0.1,
-                        help="Ratio of warmup steps against total training steps.")
-    parser.add_argument("--weight_decay", type=float, default=0.01, help="Weight decay to use.")
     parser.add_argument("--seed", type=int, default=42, help="A seed for reproducible training.")
+    # loss
+    parser.add_argument("--router_aux_loss_factor", type=float, default=0.01, help="router_aux_loss_factor.")
+    parser.add_argument("--router_z_loss_factor", type=float, default=0.0001, help="router_z_loss_factor.")
+    parser.add_argument("--label_smoothing", type=float, default=0.0, help="label_smoothing.")
+    parser.add_argument("--z_loss_factor", type=float, default=0.0001, help="z_loss_factor.")
+    # optim
+    parser.add_argument("--decay_rate", type=float, default=-0.8, help="adafactor optim decay rate.")
+    parser.add_argument("--weight_decay", type=float, default=0.01, help="Weight decay to use.")
+
     args = parser.parse_args()
     return args
 
@@ -93,7 +93,6 @@ def main():
     # Launch ColossalAI
     colossalai.launch_from_torch(config={}, seed=args.seed)
     coordinator = DistCoordinator()
-    world_size = coordinator.world_size
 
     # Set up moe
     MOE_CONTEXT.setup(seed=42, parallel="EP")
@@ -109,8 +108,12 @@ def main():
         transformers.utils.logging.set_verbosity_error()
 
     # Build OpenMoe model
-    repo_name = "hpcaitech/openmoe-" + args.model_name_or_path
+    repo_name = "hpcaitech/openmoe-" + args.model_name
     config = LlamaConfig.from_pretrained(repo_name)
+    setattr(config, "router_aux_loss_factor", args.router_aux_loss_factor)
+    setattr(config, "router_z_loss_factor", args.router_z_loss_factor)
+    setattr(config, "label_smoothing", args.label_smoothing)
+    setattr(config, "z_loss_factor", args.z_loss_factor)
     with skip_init():
         model = OpenMoeForCausalLM(config)
     load_ckpt(repo_name, model)
@@ -130,23 +133,11 @@ def main():
     dataloader = plugin.prepare_dataloader(dataset, batch_size=args.batch_size, shuffle=True, drop_last=True)
 
     # Set optimizer
-    optimizer = torch.optim.Adam(model.parameters(),
-                                 lr=(args.learning_rate * world_size),
-                                 weight_decay=args.weight_decay)
-
-    # Set lr scheduler
-    total_steps = len(dataloader) * args.num_epoch
-    num_warmup_steps = int(args.warmup_ratio * total_steps)
-    lr_scheduler = get_linear_schedule_with_warmup(optimizer,
-                                                   num_warmup_steps=num_warmup_steps,
-                                                   num_training_steps=len(dataloader) * args.num_epoch)
+    optimizer = Adafactor(model.parameters(), decay_rate=args.decay_rate, weight_decay=args.weight_decay)
 
     # Set booster
     booster = Booster(plugin=plugin, **booster_kwargs)
-    model, optimizer, _, dataloader, lr_scheduler = booster.boost(model=model,
-                                                                  optimizer=optimizer,
-                                                                  dataloader=dataloader,
-                                                                  lr_scheduler=lr_scheduler)
+    model, optimizer, _, dataloader, _ = booster.boost(model=model, optimizer=optimizer, dataloader=dataloader)
     logger.info(f"Finish init booster", ranks=[0])
 
     # Start finetuning
@@ -165,7 +156,6 @@ def main():
                 # Backward
                 booster.backward(loss, optimizer)
                 optimizer.step()
-                lr_scheduler.step()
 
                 # Print batch loss
                 pbar.set_postfix({'loss': loss.item()})

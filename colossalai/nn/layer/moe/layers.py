@@ -135,8 +135,7 @@ class SparseMLP(nn.Module):
             ans = torch.matmul(combine_weights, expert_output)
 
         ans = ans.reshape(inputs.shape)
-        l_aux = self.router.pop_routing_loss()
-        return ans, l_aux
+        return ans
 
     def _local_process(self, expert_in: torch.Tensor) -> torch.Tensor:
         expert_in = expert_in.unsqueeze(0)
