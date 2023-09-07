@@ -11,7 +11,7 @@ from torch.optim import Adam, Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from transformers import AutoConfig, LlamaForCausalLM, LlamaForSequenceClassification, get_linear_schedule_with_warmup
+from transformers import AutoConfig, LlamaForCausalLM, get_linear_schedule_with_warmup
 
 import colossalai
 from colossalai.booster import Booster
