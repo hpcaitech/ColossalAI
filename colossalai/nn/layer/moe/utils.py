@@ -1,3 +1,4 @@
+import contextlib
 from typing import Callable
 
 import torch
@@ -91,3 +92,30 @@ def SwiGLU(x):
     assert size % 2 == 0, "axis size must be divisible by 2"
     x1, x2 = torch.split(x, size // 2, -1)
     return x1 * (x2 * torch.sigmoid(x2))
+
+
+@contextlib.contextmanager
+def skip_init():
+    """
+    skip param random init
+    """
+
+    def _skip_init(x, *args, **kwargs):
+        return x
+
+    # __enter__
+    fn_saved = []
+    init_fn_list = [
+        torch.nn.init.constant_, torch.nn.init.uniform_, torch.nn.init.normal_, torch.nn.init.xavier_uniform_,
+        torch.nn.init.xavier_normal_, torch.nn.init.kaiming_uniform_, torch.nn.init.kaiming_normal_
+    ]
+    for fn in init_fn_list:
+        fn_saved.append(fn)
+        fn = _skip_init
+
+    yield
+
+    # __exit__
+    for fn, fn_saved in zip(init_fn_list, fn_saved):
+        fn = fn_saved
+    return

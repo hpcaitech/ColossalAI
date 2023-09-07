@@ -37,6 +37,7 @@ from transformers.utils import (
     replace_return_docstrings,
 )
 
+from colossalai.context import MOE_CONTEXT
 from colossalai.nn.layer.moe.layers import SparseMLP
 
 logger = logging.get_logger(__name__)
@@ -99,11 +100,14 @@ def generate_fixed_pos_embedding(features, length, min_timescale=1.0, max_timesc
 
     sinusoid_inp = torch.cat([sinusoid_inp, sinusoid_inp], dim=-1)
 
-    return torch.sin(sinusoid_inp).to(torch.bfloat16), torch.cos(sinusoid_inp).to(torch.bfloat16)
+    return torch.sin(sinusoid_inp), torch.cos(sinusoid_inp)
 
 
 def apply_rotary_embedding(q, k, cos, sin, decode=False, rotary_index=None):
     """Helper function to apply Rotary Embeddings."""
+    cos = cos.to(q.dtype)
+    sin = sin.to(q.dtype)
+
     if len(k.shape) == 3:
         # for multi query attention
         k = k.unsqueeze(2)
@@ -405,6 +409,8 @@ class LlamaAttention(nn.Module):
             if attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
                 raise ValueError(
                     f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.size()}")
+            if self.training:
+                attention_mask = attention_mask.clone().detach()
             attention_mask[:, :, :, 0] = 0
             attn_weights = attn_weights + attention_mask
 
@@ -442,18 +448,19 @@ class LlamaDecoderLayer(nn.Module):
         self.input_layernorm = T5LayerNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.post_attention_layernorm = T5LayerNorm(config.hidden_size, eps=config.rms_norm_eps)
         if self.moe:
-            self.mlp = SparseMLP(num_experts=config.num_experts,
-                                 top_k=config.topk,
-                                 capacity_factor_train=config.capacity_factor_train,
-                                 capacity_factor_eval=config.capacity_factor_eval,
-                                 min_capacity=config.min_capacity,
-                                 noisy_policy=config.noisy_policy,
-                                 drop_tks=config.drop_tks,
-                                 expert_parallel=config.expert_parallel,
-                                 hidden_size=config.hidden_size,
-                                 intermediate_size=config.intermediate_size,
-                                 activation=config.hidden_act,
-                                 gated=config.gated)
+            self.mlp = SparseMLP(
+                num_experts=config.num_experts,
+                top_k=config.topk,
+                capacity_factor_train=config.capacity_factor_train,
+                capacity_factor_eval=config.capacity_factor_eval,
+                min_capacity=config.min_capacity,
+                noisy_policy=config.noisy_policy,
+                drop_tks=config.drop_tks,
+                expert_parallel=MOE_CONTEXT.get_parallel() if MOE_CONTEXT.is_initialized else config.expert_parallel,
+                hidden_size=config.hidden_size,
+                intermediate_size=config.intermediate_size,
+                activation=config.hidden_act,
+                gated=config.gated)
             self.pre_extra_mlp_layernorm = T5LayerNorm(config.hidden_size, eps=config.rms_norm_eps)
             self.extra_mlp = LlamaMLP(config)
         else:
@@ -860,6 +867,7 @@ class OpenMoeForCausalLM(LlamaPreTrainedModel):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        chunk_head: Optional[bool] = None,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         r"""
         Args:
@@ -910,22 +918,59 @@ class OpenMoeForCausalLM(LlamaPreTrainedModel):
             lm_head_slices = self.lm_head.weight.split(self.vocab_size // self.pretraining_tp, dim=0)
             logits = [F.linear(hidden_states, lm_head_slices[i]) for i in range(self.pretraining_tp)]
             logits = torch.cat(logits, dim=-1)
-        else:
-            logits = self.lm_head(hidden_states)
-        logits = logits.float()
 
         loss = None
-        if labels is not None:
-            # Shift so that tokens < n predict n
-            shift_logits = logits[..., :-1, :].contiguous()
-            shift_labels = labels[..., 1:].contiguous()
-            # Flatten the tokens
-            loss_fct = CrossEntropyLoss()
-            shift_logits = shift_logits.view(-1, self.config.vocab_size)
-            shift_labels = shift_labels.view(-1)
-            # Enable model parallelism
-            shift_labels = shift_labels.to(shift_logits.device)
-            loss = loss_fct(shift_logits, shift_labels)
+        # if no training, just do forward
+        if labels is None:
+            logits = self.lm_head(hidden_states)
+            logits = logits.float()
+        # the vocab size for openmoe is 30w+
+        # which causes great activation memory in training, up to 20G for one sequence
+        # so we use chunk and checkpoint to reduce memory
+        else:
+            if chunk_head == True:
+
+                def create_custom_forward(module):
+
+                    def custom_forward(*inputs):
+                        logits = module(inputs[0])
+                        logits = logits.float()
+                        # Shift so that tokens < n predict n
+                        shift_logits = logits[..., :-1, :].contiguous().float()
+                        shift_labels = inputs[1][..., 1:].contiguous()
+                        # Flatten the tokens
+                        loss_fct = CrossEntropyLoss()
+                        shift_logits = shift_logits.view(-1, self.config.vocab_size)
+                        shift_labels = shift_labels.view(-1)
+                        # Enable model parallelism
+                        shift_labels = shift_labels.to(shift_logits.device)
+                        loss = loss_fct(shift_logits, shift_labels)
+                        return loss
+
+                    return custom_forward
+
+                loss = 0.
+                for batch_idx in range(hidden_states.shape[0]):
+                    loss = loss + torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(self.lm_head),
+                        hidden_states[batch_idx, :],
+                        labels[batch_idx, :],
+                    )
+                loss = loss / hidden_states.shape[0]
+                logits = None
+            else:
+                logits = self.lm_head(hidden_states)
+                logits = logits.float()
+                # Shift so that tokens < n predict n
+                shift_logits = logits[..., :-1, :].contiguous()
+                shift_labels = labels[..., 1:].contiguous()
+                # Flatten the tokens
+                loss_fct = CrossEntropyLoss()
+                shift_logits = shift_logits.view(-1, self.config.vocab_size)
+                shift_labels = shift_labels.view(-1)
+                # Enable model parallelism
+                shift_labels = shift_labels.to(shift_logits.device)
+                loss = loss_fct(shift_logits, shift_labels)
 
         if not return_dict:
             output = (logits,) + outputs[1:]
