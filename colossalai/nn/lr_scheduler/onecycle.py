@@ -1,6 +1,6 @@
 from torch.optim.lr_scheduler import OneCycleLR as _OneCycleLR
 
-from colossalai.registry import LR_SCHEDULERS
+from colossalai.legacy.registry import LR_SCHEDULERS
 
 
 @LR_SCHEDULERS.register_module

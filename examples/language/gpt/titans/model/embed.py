@@ -8,11 +8,11 @@ from torch.nn.parameter import Parameter
 
 from colossalai.context import ParallelMode, seed
 from colossalai.core import global_context as gpc
+from colossalai.legacy.registry import LAYERS, LOSSES, MODELS
 from colossalai.nn.layer.base_layer import ParallelLayer
 from colossalai.nn.layer.parallel_1d._utils import gather_forward_split_backward, reduce_grad, reduce_input
 from colossalai.nn.layer.parallel_1d.layers import Linear1D_Row
 from colossalai.nn.layer.utils import divide
-from colossalai.registry import LAYERS, LOSSES, MODELS
 from colossalai.utils import get_current_device
 
 

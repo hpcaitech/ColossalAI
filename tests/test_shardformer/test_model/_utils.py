@@ -1,4 +1,5 @@
 import copy
+import math
 from contextlib import nullcontext
 from typing import Any, Callable, Dict, List, Optional
 
@@ -12,6 +13,7 @@ from torch.optim import Adam, Optimizer
 
 from colossalai.booster import Booster
 from colossalai.booster.plugin import HybridParallelPlugin
+from colossalai.booster.plugin.hybrid_parallel_plugin import HybridParallelModule
 from colossalai.lazy import LazyInitContext
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig, ShardFormer
@@ -25,6 +27,7 @@ def build_model(model_fn,
                 enable_tensor_parallelism=True,
                 enable_flash_attention=False,
                 enable_jit_fused=False,
+                enable_sequence_parallelism=False,
                 use_lazy_init: bool = False):
     # create new model
     ctx = LazyInitContext() if use_lazy_init else nullcontext()
@@ -38,7 +41,8 @@ def build_model(model_fn,
     shard_config = ShardConfig(enable_fused_normalization=enable_fused_normalization,
                                enable_tensor_parallelism=enable_tensor_parallelism,
                                enable_flash_attention=enable_flash_attention,
-                               enable_jit_fused=enable_jit_fused)
+                               enable_jit_fused=enable_jit_fused,
+                               enable_sequence_parallelism=enable_sequence_parallelism)
     model_copy = copy.deepcopy(org_model)
     shard_former = ShardFormer(shard_config=shard_config)
     sharded_model, shared_params = shard_former.optimize(model_copy)
@@ -135,6 +139,16 @@ def run_forward_backward_with_hybrid_plugin(org_model: Module, sharded_model: Mo
         return loss
 
     data = data_gen_fn()
+
+    if booster.plugin.enable_sequence_parallelism and booster.plugin.tp_size != 0:
+        seq_len = data['input_ids'].shape[1]
+        lcm = booster.plugin.tp_size * seq_len // math.gcd(booster.plugin.tp_size, seq_len)
+        times = lcm // seq_len
+        input_shape = data['input_ids'].shape
+        for k, v in data.items():
+            if v.shape == input_shape:
+                data[k] = v.repeat(1, times)
+
     sharded_model.train()
     if booster.plugin.stage_manager is not None:
         for k, v in data.items():
@@ -177,11 +191,10 @@ def check_output_hidden_state(org_output: Tensor,
 
     org_hidden_state = org_output.last_hidden_state
 
-    if stage_manager is None:
-        sharded_hidden_state = sharded_output.last_hidden_state
-
     if stage_manager and stage_manager.is_last_stage():
-        sharded_hidden_state = torch.cat([output.last_hidden_state for output in sharded_output['outputs']], dim=dim)
+        sharded_hidden_state = sharded_output['outputs']['last_hidden_state']
+    else:
+        sharded_hidden_state = sharded_output.last_hidden_state
 
     assert torch.allclose(org_hidden_state.float(), sharded_hidden_state.float(), atol=atol, rtol=rtol), \
         f"shard model's output hidden state is not equal to origin model's last hidden state\n{org_hidden_state}\n{sharded_hidden_state}"
@@ -219,6 +232,43 @@ def check_weight(org_model: Module,
             f"shard model weight {suffix} is not equal to origin model weight\n{org_weight}\n{sharded_weight}"
 
 
+def get_grad_tensors_for_check(org_model: Module,
+                               sharded_model: Module,
+                               layer_suffix: List[str],
+                               tp_group: ProcessGroup = None,
+                               dim: int = 0,
+                               atol: float = 1e-5,
+                               rtol: float = 1e-3,
+                               verbose: bool = False,
+                               name: str = None):
+
+    grad_to_check = {}
+    for suffix in layer_suffix:
+        org_grad = getattr_(org_model, suffix).weight.grad
+        shard_grad = getattr_(sharded_model, suffix).weight.grad
+        shard_weight = getattr_(sharded_model, suffix).weight
+        if is_distributed_tensor(shard_weight) or is_customized_distributed_tensor(shard_weight):
+            shard_grad_list = [torch.zeros_like(shard_grad).to('cuda') for _ in range(dist.get_world_size(tp_group))]
+            dist.all_gather(shard_grad_list, shard_grad, tp_group)
+            shard_grad = torch.cat(shard_grad_list, dim=dim)
+
+        # embedding may be resized when using tensor parallel
+        if shard_grad.shape[0] > org_grad.shape[0]:
+            shard_grad = shard_grad[:org_grad.shape[0], :]
+        if verbose and dist.get_rank() == 0:
+            print(f"'{suffix}' grad: {org_grad}, {shard_grad}")
+
+        grad_to_check[suffix] = {
+            "org_grad": org_grad.float(),
+            "shard_grad": shard_grad.float(),
+            "rtol": rtol,
+            "atol": atol
+        }
+
+    return grad_to_check
+
+
+# used by sam/blip2
 def check_grad(org_model: Module,
                sharded_model: Module,
                layer_suffix: List[str],
@@ -231,7 +281,6 @@ def check_grad(org_model: Module,
         org_grad = getattr_(org_model, suffix).weight.grad
         shard_grad = getattr_(sharded_model, suffix).weight.grad
         shard_weight = getattr_(sharded_model, suffix).weight
-
         if is_distributed_tensor(shard_weight) or is_customized_distributed_tensor(shard_weight):
             shard_grad_list = [torch.zeros_like(shard_grad).to('cuda') for _ in range(dist.get_world_size(tp_group))]
             dist.all_gather(shard_grad_list, shard_grad, tp_group)
@@ -245,4 +294,31 @@ def check_grad(org_model: Module,
 
         assert torch.allclose(
             org_grad.float(), shard_grad.float(), rtol=rtol, atol=atol
+        ), f"error attribute '{suffix}', orgin model grad is not equal to shard model grad\n{org_grad}\n{shard_grad}"
+
+
+def unwrap_model(module: Module,
+                 base_model_class_name: Optional[str] = None,
+                 base_model_attribute_name: Optional[str] = None):
+    if isinstance(module, HybridParallelModule):
+        module = module.unwrap()
+    if base_model_class_name is None:
+        return module
+    if module.__class__.__name__ == base_model_class_name:
+        return module
+    return getattr(module, base_model_attribute_name, None)
+
+
+def check_all_grad_tensors(check_tensors):
+    """
+    "org_grad": tensor to be compared from the original model
+    "shard_grad": tensor to be compared from the sharded model
+    """
+    for suffix, check_info in check_tensors.items():
+        org_grad = check_info["org_grad"]
+        shard_grad = check_info["shard_grad"]
+        rtol = check_info["rtol"]
+        atol = check_info["atol"]
+        assert torch.allclose(
+            org_grad, shard_grad, atol=atol, rtol=rtol
         ), f"error attribute '{suffix}', orgin model grad is not equal to shard model grad\n{org_grad}\n{shard_grad}"

@@ -4,7 +4,7 @@ from typing import Optional
 import torch
 
 from colossalai.kernel.op_builder import CPUAdamBuilder
-from colossalai.registry import OPTIMIZERS
+from colossalai.legacy.registry import OPTIMIZERS
 
 from .nvme_optimizer import NVMeOptimizer
 

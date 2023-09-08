@@ -61,7 +61,7 @@ Trainer 的参数 `schedule` 默认值是 `None` 。在大多数情况下，除�
 
 ```python
 from colossalai.logging import get_dist_logger
-from colossalai.trainer import Trainer, hooks
+from colossalai.legacy.trainer import Trainer, hooks
 
 # build components and initialize with colossalai.initialize
 ...
@@ -104,7 +104,7 @@ trainer.fit(
 
 ```python
 from colossalai.logging import get_dist_logger
-from colossalai.trainer import hooks
+from colossalai.legacy.trainer import hooks
 
 class LogMessageHook(hooks.BaseHook):
 
@@ -341,7 +341,7 @@ for epoch in range(gpc.config.NUM_EPOCHS):
 
 ```python
 from colossalai.nn.metric import Accuracy
-from colossalai.trainer import Trainer, hooks
+from colossalai.legacy.trainer import Trainer, hooks
 
 
 # create a trainer object
@@ -384,3 +384,4 @@ python -m torch.distributed.launch --nproc_per_node <num_gpus> --master_addr loc
 # with trainer
 python -m torch.distributed.launch --nproc_per_node <num_gpus> --master_addr localhost --master_port 29500 run_resnet_cifar10_with_trainer.py
 ```
+<!-- doc-test-command: echo  -->

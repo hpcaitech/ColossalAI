@@ -429,12 +429,13 @@ As shown in the figures above, when the sequence length is around 1000 or greate
 ### Convergence
 
 
-To validate that training the model using shardformers does not impact its convergence. We [fine-tuned the BERT model](./examples/convergence_benchmark.py) using both shardformer and non-shardformer approaches. We compared the accuracy, loss, F1 score of the training results.
+To validate that training the model using shardformers does not impact its convergence. We [fine-tuned the BERT model](../../examples/language/bert/finetune.py) using both shardformer and non-shardformer approaches. The example that utilizes Shardformer simultaneously with Pipeline Parallelism and Data Parallelism (Zero1). We then compared the accuracy, loss, and F1 score of the training results.
 
-| accuracy |   f1    |  loss   | GPU number | model shard |
+
+| accuracy |   f1    |  loss   | GPU number | model sharded |
 | :------: | :-----: | :-----: | :--------: | :---------: |
-| 0.82594  | 0.87441 | 0.09913 |     4      |    True     |
-| 0.81884  | 0.87299 | 0.10120 |     2      |    True     |
-| 0.81855  | 0.87124 | 0.10357 |     1      |    False    |
+| 0.84589  | 0.88613 | 0.43414 |     4      |    True    |
+| 0.83594  | 0.88064 | 0.43298 |     1      |    False    |
+
 
 Overall, the results demonstrate that using shardformers during model training does not affect the convergence.

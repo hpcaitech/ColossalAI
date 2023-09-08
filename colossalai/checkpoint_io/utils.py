@@ -1,4 +1,5 @@
 # coding=utf-8
+import copy
 import os
 import re
 from collections import abc as container_abcs
@@ -10,10 +11,17 @@ from typing import Iterator, List, Mapping, Optional, OrderedDict, Tuple
 import torch
 import torch.nn as nn
 from torch.optim import Optimizer
+from transformers.modeling_utils import PreTrainedModel, get_parameter_dtype
+from transformers.modeling_utils import unwrap_model as unwrap_huggingface_model
 
-from colossalai.interface import OptimizerWrapper
+from colossalai.interface import ModelWrapper, OptimizerWrapper
 from colossalai.nn.optimizer import ColossalaiOptimizer
-from colossalai.tensor.d_tensor import is_distributed_tensor
+from colossalai.tensor.d_tensor import (
+    is_customized_distributed_tensor,
+    is_distributed_tensor,
+    to_global,
+    to_global_for_customized_distributed_tensor,
+)
 
 SAFE_WEIGHTS_NAME = "model.safetensors"
 WEIGHTS_NAME = "pytorch_model.bin"
@@ -88,8 +96,35 @@ def is_safetensor_checkpoint(checkpoint_file_path: str) -> bool:
         return False
 
 
+def search_tp_partition_dim(current_shape: torch.Size, original_shape: torch.Size, tp_size: int) -> Optional[int]:
+    """
+    Given the current shape of parameter and the shape of parameter before sharding,
+    return the dimension along which the parameter is sharded when using tensor parallel.
+    If tensor parallel is not used, return None.
+
+    Args:
+        current_shape (torch.Size): The current shape of parameter after sharding.
+        original_shape (torch.Size): The shape of parameter before sharding.
+        tp_size (int): The size of tp group.
+
+    Returns:
+        Optional[int]: The dimension along which parameter is partitioned.
+    """
+    partition_dim = None
+    for dim, length in enumerate(original_shape):
+        if length > current_shape[dim]:
+            partition_dim = dim
+            break
+    if partition_dim is not None:
+        assert original_shape[partition_dim] == tp_size * current_shape[partition_dim], \
+            f"The parameter isn't evenly distributed among tensor parallel group: \
+                shape before sharding {original_shape}, shape after sharding {current_shape}"
+
+    return partition_dim
+
+
 # ======================================
-# Helper functions for saving shard file
+# Helper classes and functions for saving shard file
 # ======================================
 def unwrap_optimizer(optimizer: OptimizerWrapper):
     '''
@@ -104,88 +139,32 @@ def unwrap_optimizer(optimizer: OptimizerWrapper):
     return unwrapped_optim
 
 
-def save_state_dict_shards(sharded_state_dict: Iterator[Tuple[OrderedDict, int]],
-                           checkpoint: str,
-                           index_file: "CheckpointIndexFile",
-                           base_filename: str,
-                           is_master: bool,
-                           use_safetensors: bool = False) -> int:
-    '''
-    Save sharded state dict only on master rank, this method can be used by both model and optimizer states.
-    Args:
-        sharded_state_dict (Iterator[Tuple[OrderedDict, int]]): a generator of shards, each shard contains state dict and shard size.
-        checkpoint (str): The path of checkpoint directory as string.
-        index_file (CheckpointIndexFile): The index file object to be updated.
-        base_filename (str): Decides the prefix of filenames of shards.
-        is_master (bool): Whether current rank is master.
-        use_safetensors (bool): Whether to use safetensors to save checkpoint.
+class StateDictSharder:
 
-    Returns:
-        int: the total size of shards
-    '''
+    def __init__(self, size_per_shard: int) -> None:
+        self.max_shard_size = size_per_shard
+        self.current_block = OrderedDict()
+        self.current_block_size = 0
 
-    total_size = 0
-    for idx, shard_pair in enumerate(sharded_state_dict):
-        if not is_master:
-            continue
-        shard, current_size = shard_pair
-        shard_file = get_shard_filename(base_filename, idx)
-        total_size = total_size + current_size
-        for key in shard.keys():
-            index_file.append_weight_map(key, shard_file)
-        checkpoint_file_path = os.path.join(checkpoint, shard_file)
+    def append_param(self, name: str, tensor: torch.Tensor) -> Tuple[Optional[OrderedDict], int]:
 
-        # Only save on master rank.
-        save_state_dict(shard, checkpoint_file_path, use_safetensors=use_safetensors)
-
-    return total_size
-
-
-def shard_model_checkpoint(state_dict: torch.Tensor, max_shard_size: int = 1024) -> Iterator[Tuple[OrderedDict, int]]:
-    """
-    Splits a model state dictionary in sub-checkpoints so that the final size of each sub-checkpoint does not exceed a
-    given size.
-    """
-    current_block = {}
-    current_block_size = 0
-
-    for key, weight in state_dict.items():
+        tensor_size = calculate_tensor_size(tensor)
         ret_block = None
         ret_block_size = 0
-        if not is_distributed_tensor(weight):
-            weight_size = calculate_tensor_size(weight)
 
-            # If this weight is going to tip up over the maximal size, we split.
-            if current_block_size + weight_size > max_shard_size and current_block_size > 0:
-                ret_block = current_block
-                ret_block_size = current_block_size
-                current_block = {}
-                current_block_size = 0
-            current_block[key] = weight
-            current_block_size += weight_size
+        # before we return the current block and create a new block,
+        # we need to ensure that the current block is not empty
+        if self.current_block_size + tensor_size > self.max_shard_size and self.current_block_size > 0:
+            ret_block = self.current_block
+            ret_block_size = self.current_block_size
+            self.current_block = OrderedDict()
+            self.current_block_size = 0
 
-        if ret_block != None:
-            yield ret_block, ret_block_size
+        self.current_block[name] = tensor
+        self.current_block_size += tensor_size
+        return ret_block, ret_block_size
 
-    yield current_block, current_block_size
-
-
-def shard_optimizer_checkpoint(state_dict: dict, max_shard_size: int = 1024) -> Iterator[Tuple[OrderedDict, int]]:
-    """
-    Splits an optimizer state dictionary in sub-checkpoints so that the final size of each sub-checkpoint does not exceed a
-    given size.
-    """
-
-    # Only split state_dict['state']; state_dict['param_group'] is not considered in this function.
-    states = state_dict['state']
-
-    current_block = {}
-    current_block_size = 0
-
-    for param_id, state in states.items():
-
-        ret_block = None
-        ret_block_size = 0
+    def append_optim_state(self, param_id: int, state: OrderedDict) -> Tuple[Optional[OrderedDict], int]:
 
         # A state might contain more than one tensors.
         # e.g. each Adam state includes: 'step', 'exp_avg', 'exp_avg_sq'
@@ -204,21 +183,319 @@ def shard_optimizer_checkpoint(state_dict: dict, max_shard_size: int = 1024) -> 
                 isDTensor = True
             state_size += calculate_tensor_size(state_tensor)
 
-        if not isDTensor:
+        ret_block = None
+        ret_block_size = 0
 
-            if current_block_size + state_size > max_shard_size and current_block_size > 0:
-                ret_block = current_block
-                ret_block_size = current_block_size
-                current_block = {}
-                current_block_size = 0
+        # directly return if state is stored as distributed tensor
+        if isDTensor:
+            return ret_block, ret_block_size
 
-            current_block[param_id] = state
-            current_block_size += state_size
+        # before we return the current block and create a new block,
+        # we need to ensure that the current block is not empty
+        if self.current_block_size + state_size > self.max_shard_size and self.current_block_size > 0:
+            ret_block = self.current_block
+            ret_block_size = self.current_block_size
+            self.current_block = OrderedDict()
+            self.current_block_size = 0
 
-        if ret_block != None:
-            yield ret_block, ret_block_size
+        self.current_block[param_id] = state
+        self.current_block_size += state_size
+        return ret_block, ret_block_size
 
-    yield current_block, current_block_size
+
+def gather_distributed_param(param: torch.Tensor, keep_vars: bool = False) -> torch.Tensor:
+    """
+    Gather the complete parameter for saving if passed in param is distributed under tp setting.
+
+    Args:
+        param (torch.Tensor): A model parameter, might be d_tensor.
+        keep_vars (bool, optional): Whether to return the parameter in calculation graph. Defaults to False.
+
+    Returns:
+        torch.Tensor: the complete parameter
+    """
+    param_ = param if keep_vars else param.detach()
+    if is_distributed_tensor(param_):
+        return to_global(param_)
+    elif is_customized_distributed_tensor(param_):
+        return to_global_for_customized_distributed_tensor(param_)
+    else:
+        return param_
+
+
+def save_state_dict_shards(sharded_state_dict: Iterator[Tuple[OrderedDict, int]],
+                           checkpoint: str,
+                           index_file: "CheckpointIndexFile",
+                           base_filename: str,
+                           is_master: bool,
+                           use_safetensors: bool = False,
+                           use_pp_format: bool = False) -> int:
+    '''
+    Save sharded state dict only on master rank, this method can be used by both model and optimizer states.
+    Args:
+        sharded_state_dict (Iterator[Tuple[OrderedDict, int]]): a generator of shards, each shard contains state dict and shard size.
+        checkpoint (str): The path of checkpoint directory as string.
+        index_file (CheckpointIndexFile): The index file object to be updated.
+        base_filename (str): Decides the prefix of filenames of shards.
+        is_master (bool): Whether current rank is main process.
+        use_safetensors (bool, optional): Whether to use safetensors to save checkpoint. Defaults to False.
+        use_pp_format: (bool, optional): Whether to save the files in pipeline format including stage information. Defaults to False.
+
+    Returns:
+        int: the total size of shards
+    '''
+
+    total_size = 0
+    shard_filenames = []
+    for idx, shard_pair in enumerate(sharded_state_dict):
+        shard, current_size = shard_pair
+        if not is_master:
+            del shard
+            continue
+        shard_file = get_shard_filename(base_filename, idx)
+        total_size = total_size + current_size
+        for key in shard.keys():
+            index_file.append_weight_map(key, shard_file)
+        checkpoint_file_path = os.path.join(checkpoint, shard_file)
+
+        # Only save on master rank.
+        save_state_dict(shard, checkpoint_file_path, use_safetensors=use_safetensors)
+        shard_filenames.append(shard_file)
+        del shard
+
+    # Clean folder, deleted unneeded files.
+    clean_folder(checkpoint, base_filename, shard_filenames, is_master=is_master, use_pp_format=use_pp_format)
+
+    return total_size
+
+
+def shard_model_checkpoint(state_dict: torch.Tensor, max_shard_size: int = 1024) -> Iterator[Tuple[OrderedDict, int]]:
+    """
+    Splits a model state dictionary in sub-checkpoints so that the final size of each sub-checkpoint does not exceed a
+    given size.
+    """
+    state_dict_sharder = StateDictSharder(max_shard_size)
+
+    for key, weight in state_dict.items():
+        if not is_distributed_tensor(weight):
+            block, block_size = state_dict_sharder.append_param(key, weight)
+
+        if block != None:
+            yield block, block_size
+
+    # Return the last block in sharder.
+    yield state_dict_sharder.current_block, state_dict_sharder.current_block_size
+
+
+def shard_optimizer_checkpoint(state_dict: dict, max_shard_size: int = 1024) -> Iterator[Tuple[OrderedDict, int]]:
+    """
+    Splits an optimizer state dictionary in sub-checkpoints so that the final size of each sub-checkpoint does not exceed a
+    given size.
+    """
+
+    # Only split state_dict['state']; state_dict['param_group'] is not considered in this function.
+    states = state_dict['state']
+    state_dict_sharder = StateDictSharder(max_shard_size)
+
+    for param_id, state in states.items():
+        block, block_size = state_dict_sharder.append_optim_state(param_id, state)
+        if block != None:
+            yield block, block_size
+
+    # Return the last block in sharder.
+    yield state_dict_sharder.current_block, state_dict_sharder.current_block_size
+
+
+# ======================================
+# Helper functions for saving state dict
+# ======================================
+
+
+def save_state_dict(state_dict: dict, checkpoint_file_path: str, use_safetensors: bool) -> None:
+    """
+    Save state dict to checkpoint.
+
+    Args:
+        state_dict (dict): state dict.
+        checkpoint_file_path (str): path to the checkpoint file.
+        use_safetensors (bool): whether to use safetensors to save the checkpoint.
+    """
+    if use_safetensors:
+        assert is_safetensors_available(), "safetensors is not available."
+        assert checkpoint_file_path.endswith('.safetensors'), \
+            "safetensors only supports .safetensors suffix for checkpoint file."
+        from safetensors.torch import save_file as safe_save_file
+        safe_save_file(state_dict, checkpoint_file_path, metadata={"format": "pt"})
+    else:
+        torch.save(state_dict, checkpoint_file_path)
+
+
+def save_param_groups(state_dict: dict, group_file_path: str) -> None:
+    """
+    Save information of param_groups to given file path.
+
+    Args:
+        state_dict (dict): state dict.
+        group_file_path (str): path to the group file.
+    """
+    param_groups = state_dict["param_groups"]
+    torch.save(param_groups, group_file_path)
+
+
+def clean_folder(checkpoint_path: str,
+                 weights_name: str,
+                 shard_filenames: List[str],
+                 is_master: bool = True,
+                 use_pp_format: bool = False):
+    """
+    Clean the unneeded files in checkpoint directory after shards of state_dict have been saved.
+
+    Args:
+        checkpoint_path (str): Path to the checkpoint directory.
+        weights_name (str): Decides the prefix of filenames of weight shards.
+        shard_filenames (List[str]): The list of saved shard filenames which should not be removed.
+        is_master (bool, optional): Whether current rank is main process. Defaults to True.
+        use_pp_format: (bool, optional): Whether to save the files in pipeline format including stage information. Defaults to False.
+
+    """
+    if is_master:
+        for filename in os.listdir(checkpoint_path):
+            full_filename = os.path.join(checkpoint_path, filename)
+            weights_no_suffix = weights_name.replace(".bin", "").replace(".safetensors", "")
+            filename_no_suffix = filename.replace(".bin", "").replace(".safetensors", "")
+            if not use_pp_format:
+                reg = re.compile(r"(.*?)-\d{5}")
+            else:
+                # When this checkpoint is created by pipeline parallel process, the pattern is a little different.
+                reg = re.compile(r"(.*?)-stage-\d{5}-shard-\d{5}")
+            if (filename.startswith(weights_no_suffix) and os.path.isfile(full_filename)
+                    and filename not in shard_filenames and reg.fullmatch(filename_no_suffix) is not None):
+                os.remove(full_filename)
+
+
+def save_config_file(model: nn.Module, checkpoint_path: str, is_master: bool = True):
+    """
+    Save config.json/generation_config.json if model is a Huggingface pretrained model.
+    This method can only be called when a model is saved in a sharded way.
+
+    Args:
+        model (nn.Module): The model whose config should be saved if it's a huggingface model.
+        checkpoint_path (str): Path to the checkpoint directory.
+        is_master (bool): Whether current rank is main process.
+    """
+    if not isinstance(model, PreTrainedModel):
+        return
+
+    model = unwrap_huggingface_model(model)
+
+    # save the string version of dtype to the config, e.g. convert torch.float32 => "float32"
+    dtype = get_parameter_dtype(model)
+    model.config.torch_dtype = str(dtype).split(".")[1]
+
+    # Attach architecture to the config
+    model.config.architectures = [model.__class__.__name__]
+
+    # Save the config
+    if is_master:
+        model.config.save_pretrained(checkpoint_path)
+        if model.can_generate():
+            model.generation_config.save_pretrained(checkpoint_path)
+
+
+def save_dtensor(name: str, tensor: torch.Tensor, index_file: "CheckpointIndexFile", use_safetensors: bool) -> None:
+    """
+    Save distributed tensor to checkpoint. This checkpoint will be a dictionary which contains
+    only one tensor.
+
+    Args:
+        tensor (Tensor): tensor to be saved.
+        index_file (CheckpointIndexFile): path to the checkpoint file.
+        size_per_shard (int): size per shard in MB.
+    """
+    root_path = index_file.root_path
+    output_root_path = root_path.joinpath('dtensor')
+
+    # create directory
+    output_root_path.mkdir(exist_ok=True)
+
+    # save tensor to this directory
+    # TODO(YuliangLiu): get index of the tensor shard
+    # e.g. index =
+    index = 0
+
+    # save tensor to file
+    ckpt_file_name = generate_dtensor_file_name(name, index, use_safetensors)
+    ckpt_file_path = output_root_path.joinpath(ckpt_file_name)
+
+    # dtensor ckpt file always contains only one tensor
+    state_dict = {name: tensor}
+    save_state_dict(state_dict, str(ckpt_file_path), use_safetensors)
+
+    # update the weight map
+    # * means all shards
+    ckpt_file_name_in_weight_map = 'dtensor/' + generate_dtensor_file_name(name, '*', use_safetensors)
+    index_file.append_weight_map(name, ckpt_file_name_in_weight_map)
+
+
+def get_checkpoint_file_suffix(use_safetensors: bool) -> str:
+    """
+    Get checkpoint file suffix.
+
+    Args:
+        use_safetensors (bool): whether to use safetensors to save the checkpoint.
+
+    Returns:
+        str: checkpoint file suffix.
+    """
+    if use_safetensors:
+        return '.safetensors'
+    else:
+        return '.bin'
+
+
+def generate_checkpoint_shard_file_name(index: int,
+                                        total_number: int,
+                                        use_safetensors: bool,
+                                        prefix: str = None) -> str:
+    """
+    Generate checkpoint shard file name.
+
+    Args:
+        index (int): index of the shard.
+        total_number (int): total number of shards.
+        use_safetensors (bool): whether to use safetensors to save the checkpoint.
+        prefix (str): prefix of the shard file name. Default: None.
+
+    Returns:
+        str: checkpoint shard file name.
+    """
+    suffix = get_checkpoint_file_suffix(use_safetensors)
+
+    if prefix is None:
+        return f"{index:05d}-of-{total_number:05d}.{suffix}"
+    else:
+        return f"{prefix}-{index:05d}-of-{total_number:05d}.{suffix}"
+
+
+def generate_dtensor_file_name(param_name: str, index: int, use_safetensors: bool) -> str:
+    """
+    Generate dtensor file name.
+
+    Args:
+        param_name (str): name of the distributed parameter.
+        index (int): index of the shard.
+        use_safetensors (bool): whether to use safetensors to save the checkpoint.
+
+    Returns:
+        str: dtensor file name.
+    """
+    suffix = get_checkpoint_file_suffix(use_safetensors)
+    return f'{param_name}.{index}.{suffix}'
+
+
+# ========================================
+# Helper functions for loading state dict
+# ========================================
 
 
 def load_shard_state_dict(checkpoint_file: Path, use_safetensors: bool = False):
@@ -331,16 +608,20 @@ def load_param_groups_into_optimizer(optimizer: Optimizer, param_group_path: str
     return id_map
 
 
-def load_states_into_optimizer(optimizer: Optimizer, state_dict: dict, id_map: dict):
+def load_states_into_optimizer(optimizer: Optimizer, state_dict: dict, id_map: dict, strict: bool = False):
     r"""Copies states from `state_dict` into an Optimizer object.
 
     Args:
         optimizer(Optimizer): An initialized Optimizer object to be loaded
-        state_dict(dict): a mapping from tensor index (an integer)
+        state_dict(dict): A mapping from tensor index (an integer)
             to its states to be loaded (a mapping from state name to a tensor).
-        id_map(dict): a mapping from tensor index (an integer)
+        id_map(dict): A mapping from tensor index (an integer)
             to its corresponding parameter (a tensor) whose states will be updated.
+        strict(bool, optional): If set to True, only load the parameters with its id in id_map. Defaults to False.
     """
+
+    # Ensure that the keys of state_dict are integers.
+    state_dict = {int(k): v for k, v in state_dict.items()}
 
     def cast(param, value, key=None):
         r"""Make a deep copy of value, casting all tensors to device of param."""
@@ -368,7 +649,7 @@ def load_states_into_optimizer(optimizer: Optimizer, state_dict: dict, id_map: d
         if k in id_map:
             param = id_map[k]
             new_states[param] = cast(param, v)
-        else:
+        elif not strict:
             new_states[k] = v
 
     optimizer.state.update(new_states)
@@ -384,165 +665,6 @@ def sharded_optimizer_loading_epilogue(optimizer: Optimizer):
     # Do the cleaning up as in src code of Pytorch.
     optimizer._hook_for_profile()    # To support multiprocessing pickle/unpickle.
     optimizer.defaults.setdefault('differentiable', False)
-
-
-# ======================================
-# Helper functions for saving state dict
-# ======================================
-
-
-def save_state_dict(state_dict: dict, checkpoint_file_path: str, use_safetensors: bool) -> None:
-    """
-    Save state dict to checkpoint.
-
-    Args:
-        state_dict (dict): state dict.
-        checkpoint_file_path (str): path to the checkpoint file.
-        use_safetensors (bool): whether to use safetensors to save the checkpoint.
-    """
-    if use_safetensors:
-        assert is_safetensors_available(), "safetensors is not available."
-        assert checkpoint_file_path.endswith('.safetensors'), \
-            "safetensors only supports .safetensors suffix for checkpoint file."
-        from safetensors.torch import save_file as safe_save_file
-        safe_save_file(state_dict, checkpoint_file_path, metadata={"format": "pt"})
-    else:
-        torch.save(state_dict, checkpoint_file_path)
-
-
-def save_param_groups(state_dict: dict, group_file_path: str) -> None:
-    """
-    Save information of param_groups to given file path.
-
-    Args:
-        state_dict (dict): state dict.
-        group_file_path (str): path to the group file.
-    """
-    param_groups = state_dict["param_groups"]
-    torch.save(param_groups, group_file_path)
-
-
-def save_dtensor(name: str, tensor: torch.Tensor, index_file: "CheckpointIndexFile", use_safetensors: bool) -> None:
-    """
-    Save distributed tensor to checkpoint. This checkpoint will be a dictionary which contains
-    only one tensor.
-
-    Args:
-        tensor (Tensor): tensor to be saved.
-        index_file (CheckpointIndexFile): path to the checkpoint file.
-        size_per_shard (int): size per shard in MB.
-    """
-    root_path = index_file.root_path
-    output_root_path = root_path.joinpath('dtensor')
-
-    # create directory
-    output_root_path.mkdir(exist_ok=True)
-
-    # save tensor to this directory
-    # TODO(YuliangLiu): get index of the tensor shard
-    # e.g. index =
-    index = 0
-
-    # save tensor to file
-    ckpt_file_name = generate_dtensor_file_name(name, index, use_safetensors)
-    ckpt_file_path = output_root_path.joinpath(ckpt_file_name)
-
-    # dtensor ckpt file always contains only one tensor
-    state_dict = {name: tensor}
-    save_state_dict(state_dict, str(ckpt_file_path), use_safetensors)
-
-    # update the weight map
-    # * means all shards
-    ckpt_file_name_in_weight_map = 'dtensor/' + generate_dtensor_file_name(name, '*', use_safetensors)
-    index_file.append_weight_map(name, ckpt_file_name_in_weight_map)
-
-
-def get_checkpoint_file_suffix(use_safetensors: bool) -> str:
-    """
-    Get checkpoint file suffix.
-
-    Args:
-        use_safetensors (bool): whether to use safetensors to save the checkpoint.
-
-    Returns:
-        str: checkpoint file suffix.
-    """
-    if use_safetensors:
-        return '.safetensors'
-    else:
-        return '.bin'
-
-
-def generate_checkpoint_shard_file_name(index: int,
-                                        total_number: int,
-                                        use_safetensors: bool,
-                                        prefix: str = None) -> str:
-    """
-    Generate checkpoint shard file name.
-
-    Args:
-        index (int): index of the shard.
-        total_number (int): total number of shards.
-        use_safetensors (bool): whether to use safetensors to save the checkpoint.
-        prefix (str): prefix of the shard file name. Default: None.
-
-    Returns:
-        str: checkpoint shard file name.
-    """
-    suffix = get_checkpoint_file_suffix(use_safetensors)
-
-    if prefix is None:
-        return f"{index:05d}-of-{total_number:05d}.{suffix}"
-    else:
-        return f"{prefix}-{index:05d}-of-{total_number:05d}.{suffix}"
-
-
-def generate_dtensor_file_name(param_name: str, index: int, use_safetensors: bool) -> str:
-    """
-    Generate dtensor file name.
-
-    Args:
-        param_name (str): name of the distributed parameter.
-        index (int): index of the shard.
-        use_safetensors (bool): whether to use safetensors to save the checkpoint.
-
-    Returns:
-        str: dtensor file name.
-    """
-    suffix = get_checkpoint_file_suffix(use_safetensors)
-    return f'{param_name}.{index}.{suffix}'
-
-
-def save_state_dict_as_shard(
-    state_dict: dict,
-    checkpoint_path: str,
-    index: int,
-    total_number: int,
-    use_safetensors: bool,
-    prefix: str = None,
-) -> None:
-    """
-    Save state dict as shard.
-
-    Args:
-        state_dict (dict): state dict.
-        checkpoint_path (str): path to the checkpoint file.
-        index (int): index of the shard.
-        total_number (int): total number of shards.
-        prefix (str): prefix of the shard file name.
-        use_safetensors (bool): whether to use safetensors to save the checkpoint.
-    """
-    # generate the shard name
-    shard_file_name = generate_checkpoint_shard_file_name(index, total_number, use_safetensors, prefix)
-    shard_file_path = Path(checkpoint_path).joinpath(shard_file_name).absolute()
-
-    # save the shard
-    save_state_dict(state_dict, str(shard_file_path), use_safetensors)
-
-
-# ========================================
-# Helper functions for loading state dict
-# ========================================
 
 
 def has_index_file(checkpoint_path: str) -> Tuple[bool, Optional[Path]]:
@@ -654,5 +776,5 @@ def get_shard_filename(weights_name: str, idx: int):
     get shard file name
     """
     shard_file = weights_name.replace(".bin", f"-{idx+1:05d}.bin")
-    shard_file = shard_file.replace(".safetensors", f"-{idx + 1:05d}.safetensors")
+    shard_file = shard_file.replace(".safetensors", f"-{idx+1:05d}.safetensors")
     return shard_file
