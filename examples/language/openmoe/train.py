@@ -109,14 +109,19 @@ def main():
 
     # Build OpenMoe model
     repo_name = "hpcaitech/openmoe-" + args.model_name
-    config = LlamaConfig.from_pretrained(repo_name)
+    if args.model_name == "test":
+        config = LlamaConfig.from_pretrained("hpcaitech/openmoe-base")
+        config.vocab_size = 32000
+    else:
+        config = LlamaConfig.from_pretrained(repo_name)
     setattr(config, "router_aux_loss_factor", args.router_aux_loss_factor)
     setattr(config, "router_z_loss_factor", args.router_z_loss_factor)
     setattr(config, "label_smoothing", args.label_smoothing)
     setattr(config, "z_loss_factor", args.z_loss_factor)
     with skip_init():
         model = OpenMoeForCausalLM(config)
-    load_ckpt(repo_name, model)
+    if args.model_name != "test":
+        load_ckpt(repo_name, model)
     logger.info(f"Finish init model with config:\n{config}", ranks=[0])
 
     # Enable gradient checkpointing
@@ -129,7 +134,7 @@ def main():
 
     # Prepare tokenizer and dataloader
     tokenizer = T5Tokenizer.from_pretrained("google/umt5-small")
-    dataset = RandomDataset()
+    dataset = RandomDataset(num_samples=1000 if args.model_name != "test" else 1)
     dataloader = plugin.prepare_dataloader(dataset, batch_size=args.batch_size, shuffle=True, drop_last=True)
 
     # Set optimizer
