@@ -29,8 +29,6 @@ from colossalai.engine.schedule import (
     get_tensor_shape,
 )
 from colossalai.logging import get_dist_logger
-from colossalai.moe.manager import MOE_MANAGER
-from colossalai.moe.moe import sync_moe_model_param
 from colossalai.nn.optimizer.colossalai_optimizer import ColossalaiOptimizer
 from colossalai.utils import get_current_device, is_using_ddp, is_using_pp, is_using_sequence, sync_model_param
 from colossalai.zero.legacy import ShardedOptimizerV2, convert_to_zero_v2
@@ -306,8 +304,6 @@ def initialize(model: nn.Module,
     if not use_zero:
         if is_using_sequence():
             sync_model_param(model, ParallelMode.SEQUENCE_DP)
-        elif MOE_MANAGER.is_initialized:
-            sync_moe_model_param(model)
         elif is_using_ddp():
             sync_model_param(model, ParallelMode.DATA)
     else:
@@ -357,13 +353,6 @@ def initialize(model: nn.Module,
             if verbose:
                 logger.info(
                     "Training with zero is detected, ZeROGradientHandler is automatically "
-                    "added even though not specified in the configuration",
-                    ranks=[0])
-        elif is_using_ddp() and MOE_MANAGER.is_initialized:
-            gradient_handler_cfg = [dict(type='MoeGradientHandler')]
-            if verbose:
-                logger.info(
-                    "Data parallel training is detected with moe parallel, MoeGradientHandler is automatically "
                     "added even though not specified in the configuration",
                     ranks=[0])
         elif is_using_sequence():

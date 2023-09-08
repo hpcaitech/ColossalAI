@@ -1,15 +1,14 @@
 import pytest
 import torch
+import torch.distributed as dist
 
 import colossalai
-from colossalai.context import ParallelMode
-from colossalai.core import global_context as gpc
 from colossalai.moe import SparseMLP
 from colossalai.moe.manager import MOE_MANAGER
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 from colossalai.utils import get_current_device
 
-BATCH_SIZE = 16
+BATCH_SIZE = 4
 NUM_EXPERTS = 4
 
 
@@ -22,7 +21,7 @@ def run_routing(rank, world_size, port, rs=2, hidden_size=128, data_type=torch.f
     torch.backends.cuda.matmul.allow_tf32 = False
 
     colossalai.launch(config=dict(), rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    local_rank = gpc.get_local_rank(ParallelMode.GLOBAL)
+    local_rank = dist.get_rank()
 
     MOE_MANAGER.setup(42)    # MOE environment initialization
     MOE_MANAGER.reset_loss()

@@ -23,6 +23,7 @@ class MoeManager(metaclass=SingletonMeta):
         self.router_aux_loss = []
         self.router_z_loss = []
         self.parallel = None
+        self.seed = None
         self.use_kernel_optim = True
 
         self.has_setup = False
@@ -41,6 +42,7 @@ class MoeManager(metaclass=SingletonMeta):
         assert torch.cuda.is_available(), "MoE requires to enable CUDA first"
 
         self.world_size = dist.get_world_size()
+        self.seed = seed + dist.get_rank()
         self.max_ep_size = min(max_ep_size, dist.get_world_size())
         self.min_dp_size = self.world_size // self.max_ep_size
         self.parallel = parallel
@@ -49,8 +51,6 @@ class MoeManager(metaclass=SingletonMeta):
         # Users can close kernel optimization manually
         self.use_kernel_optim = use_kernel_optim
 
-        from ..context.random import moe_set_seed
-        moe_set_seed(seed)
         self.has_setup = True
 
     def get_info(self, num_experts: int, use_tp: bool = False) -> Tuple[int, MoeParallelInfo]:

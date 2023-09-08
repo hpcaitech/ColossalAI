@@ -2,10 +2,8 @@ import torch.nn as nn
 from torch.nn.modules.loss import _Loss
 
 from colossalai.moe.manager import MOE_MANAGER
-from colossalai.registry import LOSSES
 
 
-@LOSSES.register_module
 class MoeCrossEntropyLoss(_Loss):
     r"""torch.nn.CrossEntropyLoss added with auxiliary loss.
 
@@ -49,7 +47,6 @@ class MoeCrossEntropyLoss(_Loss):
         return main_loss + self.aux_weight * aux_loss
 
 
-@LOSSES.register_module
 class MoeLoss(_Loss):
     """A wrapper class for any loss module to add with auxiliary loss.
 

@@ -54,10 +54,11 @@ def run_test(rank, world_size, port):
 
 
 @pytest.mark.dist
+@pytest.mark.parametrize("world_size", [2])
 @rerun_if_address_is_in_use()
-def test_moe_ep_tp():
-    spawn(run_test, 2)
+def test_moe_local(world_size):
+    spawn(run_test, world_size)
 
 
 if __name__ == '__main__':
-    test_moe_ep_tp()
+    test_moe_local()

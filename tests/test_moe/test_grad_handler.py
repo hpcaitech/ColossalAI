@@ -9,10 +9,10 @@ from colossalai.moe.manager import MOE_MANAGER
 from colossalai.moe.moe import sync_moe_model_param
 from colossalai.testing import assert_equal_in_group, rerun_if_address_is_in_use, spawn
 from colossalai.utils import get_current_device
-from tests.test_moe.moe_utils import MoeGradientHandler
+from tests.test_moe.moe_utils import MoeGradientHandler, assert_not_equal_in_group
 
 BATCH_SIZE = 4
-DIM = 16
+DIM = 4
 
 
 def run_test(rank, world_size, port):
@@ -32,13 +32,22 @@ def run_test(rank, world_size, port):
 
     model = nn.ModuleList(layer_list)
     model = model.to(get_current_device())
+    dist_dict = MOE_MANAGER.parallel_info_dict
+    assert_not_equal_in_group(layer_list[0].experts.wi.data, dist_dict[1].dp_group)
+    assert_not_equal_in_group(layer_list[0].experts.wo.data, dist_dict[1].dp_group)
+    assert_not_equal_in_group(layer_list[1].experts.wi.data, dist_dict[2].dp_group)
+    assert_not_equal_in_group(layer_list[1].experts.wo.data, dist_dict[2].dp_group)
+    assert_not_equal_in_group(layer_list[2].experts.wi.data, dist_dict[4].dp_group)
+    assert_not_equal_in_group(layer_list[2].experts.wo.data, dist_dict[4].dp_group)
+
     sync_moe_model_param(model)
 
-    dist_dict = MOE_MANAGER.parallel_info_dict
     assert_equal_in_group(layer_list[0].experts.wi.data, dist_dict[1].dp_group)
     assert_equal_in_group(layer_list[0].experts.wo.data, dist_dict[1].dp_group)
     assert_equal_in_group(layer_list[1].experts.wi.data, dist_dict[2].dp_group)
     assert_equal_in_group(layer_list[1].experts.wo.data, dist_dict[2].dp_group)
+    assert_equal_in_group(layer_list[2].experts.wi.data, dist_dict[4].dp_group)
+    assert_equal_in_group(layer_list[2].experts.wo.data, dist_dict[4].dp_group)
     # MoE model synchronization passed
 
     grad_handler = MoeGradientHandler(model, 0)
@@ -58,6 +67,8 @@ def run_test(rank, world_size, port):
     assert_equal_in_group(layer_list[0].experts.wo.grad, dist_dict[1].dp_group)
     assert_equal_in_group(layer_list[1].experts.wi.grad, dist_dict[2].dp_group)
     assert_equal_in_group(layer_list[1].experts.wo.grad, dist_dict[2].dp_group)
+    assert_equal_in_group(layer_list[2].experts.wi.grad, dist_dict[4].dp_group)
+    assert_equal_in_group(layer_list[2].experts.wo.grad, dist_dict[4].dp_group)
     # MoE grad handler test passed
 
 

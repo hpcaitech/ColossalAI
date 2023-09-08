@@ -1,12 +1,13 @@
 import math
+from contextlib import nullcontext
 
 import torch
 import torch.nn as nn
 
-from colossalai.context import ParallelMode, seed
 from colossalai.moe._operation import MoeInGradScaler, MoeOutGradScaler
 from colossalai.moe.manager import MOE_MANAGER
 from colossalai.moe.utils import get_activation
+from colossalai.shardformer.layer.utils import Randomizer
 from colossalai.tensor.moe_tensor.api import get_ep_size, set_moe_tensor_info
 
 
@@ -55,14 +56,18 @@ class BaseMLPExperts(nn.Module):
             self.wi = nn.Parameter(torch.empty(num_experts, hidden_size, intermediate_size))
         self.wo = nn.Parameter(torch.empty(num_experts, intermediate_size, hidden_size))
 
+        # expert param should be different
         if expert_parallel is not None:
-            with seed(ParallelMode.TENSOR):
-                if gated:
-                    nn.init.trunc_normal_(self.wi_gate, std=math.sqrt(0.1 / hidden_size))
-                    nn.init.trunc_normal_(self.wi_up, std=math.sqrt(0.1 / hidden_size))
-                else:
-                    nn.init.trunc_normal_(self.wi, std=math.sqrt(0.1 / hidden_size))
-                nn.init.trunc_normal_(self.wo, std=math.sqrt(0.1 / intermediate_size))
+            seed_ctx = Randomizer(MOE_MANAGER.seed).fork_rng(enable_cpu=True)
+        else:
+            seed_ctx = nullcontext()
+        with seed_ctx:
+            if gated:
+                nn.init.trunc_normal_(self.wi_gate, std=math.sqrt(0.1 / hidden_size))
+                nn.init.trunc_normal_(self.wi_up, std=math.sqrt(0.1 / hidden_size))
+            else:
+                nn.init.trunc_normal_(self.wi, std=math.sqrt(0.1 / hidden_size))
+            nn.init.trunc_normal_(self.wo, std=math.sqrt(0.1 / intermediate_size))
 
         self.act = get_activation(activation)
         self.drop = nn.Dropout(p=drop_rate)
@@ -86,10 +91,7 @@ class BaseMLPExperts(nn.Module):
         else:
             x = torch.bmm(x, self.wi)
             x = self.act(x)
-
-        if self.expert_parallel is not None:
-            with seed(ParallelMode.TENSOR):
-                x = self.drop(x)
+        x = self.drop(x)
         x = torch.bmm(x, self.wo)
 
         x = x.reshape(inshape)
