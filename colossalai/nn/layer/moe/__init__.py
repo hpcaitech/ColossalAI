@@ -1,3 +1,12 @@
 MoeModule = None
 MoeLayer = None
 build_ffn_experts = None
+EPMLPExperts = None
+TPMLPExperts = None
+Top1Router = None
+Top2Router = None
+NormalNoiseGenerator = None
+UniformNoiseGenerator = None
+SparseMLP = None
+MoeRouter = None
+MoeCheckpintIO = None
