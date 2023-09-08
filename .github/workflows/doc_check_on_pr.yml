@@ -68,8 +68,12 @@ jobs:
       - name: Build docs
         run: |
           cache_dir=ColossalAI-Documentation/doc-build/.cache
+          cwd=$(pwd)
           mkdir $cache_dir
           mv ColossalAI $cache_dir
+          cd $cache_dir/ColossalAI
+          git branch -avv
+          cd $cwd
           cd ColossalAI-Documentation
           pip install -v ./doc-build/third_party/hf-doc-builder
           pip install -v ./doc-build
