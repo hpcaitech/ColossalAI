@@ -11,8 +11,6 @@ from typing import Iterator, List, Mapping, Optional, OrderedDict, Tuple
 import torch
 import torch.nn as nn
 from torch.optim import Optimizer
-from transformers.modeling_utils import PreTrainedModel, get_parameter_dtype
-from transformers.modeling_utils import unwrap_model as unwrap_huggingface_model
 
 from colossalai.interface import ModelWrapper, OptimizerWrapper
 from colossalai.nn.optimizer import ColossalaiOptimizer
@@ -383,6 +381,11 @@ def save_config_file(model: nn.Module, checkpoint_path: str, is_master: bool = T
         checkpoint_path (str): Path to the checkpoint directory.
         is_master (bool): Whether current rank is main process.
     """
+    try:
+        from transformers.modeling_utils import PreTrainedModel, get_parameter_dtype
+        from transformers.modeling_utils import unwrap_model as unwrap_huggingface_model
+    except ImportError:
+        return
     if not isinstance(model, PreTrainedModel):
         return
 

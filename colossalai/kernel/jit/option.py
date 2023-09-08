@@ -1,6 +1,6 @@
 import torch
 
-from colossalai.nn.layer.colossalai_layer import Embedding, Linear
+from colossalai.legacy.nn.layer.colossalai_layer import Embedding, Linear
 from colossalai.utils import get_current_device
 
 from .bias_dropout_add import bias_dropout_add_fused_train
