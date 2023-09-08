@@ -1,6 +1,5 @@
 import os
 
-import numpy as np
 import pytest
 import torch
 import torch.distributed as dist
@@ -8,10 +7,8 @@ from packaging import version
 from transformers import LlamaForCausalLM, LlamaTokenizer
 
 import colossalai
-from colossalai.cluster import ProcessGroupMesh
 from colossalai.inference.tensor_parallel.engine import TPInferEngine
 from colossalai.logging import disable_existing_loggers
-from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
 from tests.kit.model_zoo import model_zoo
 
@@ -55,7 +52,7 @@ def run_llama_test(test_config):
     llama_model_path = "/data/scratch/llama-7b-hf"
 
     if os.path.isdir(llama_model_path) is False:
-        sub_model_zoo = model_zoo.get_sub_registry('transformers_llama_for_causal_lm')
+        sub_model_zoo = model_zoo.get_sub_registry('transformers_llama_for_casual_lm')
         for name, (model_fn, data_gen_fn, _, _, _) in sub_model_zoo.items():
             orig_model = model_fn()
             orig_model = orig_model.half()
