@@ -271,7 +271,7 @@ def main():
 
         with tqdm(range(step_nums),
                   desc=f'Epoch {epoch}',
-                  disable=not coordinator.is_master(),
+                  disable=not ((not use_pipeline and coordinator.is_master()) or (use_pipeline and is_pp_last_stage)),
                   total=num_steps_per_epoch,
                   initial=start_step) as pbar:
             for step in pbar:
@@ -294,7 +294,6 @@ def main():
                 lr_scheduler.step()
                 optimizer.zero_grad()
 
-                loss = all_reduce_mean(loss)
                 pbar.set_postfix({'loss': loss.item()})
                 if ((not is_pp_last_stage) and coordinator.is_master()) or (is_pp_last_stage and
                                                                             (not coordinator.is_master())):
