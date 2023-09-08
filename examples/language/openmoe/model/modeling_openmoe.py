@@ -18,14 +18,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """ PyTorch OpenMoE model."""
+import math
 from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
 from torch import nn
-from torch.nn import CrossEntropyLoss
-from transformers.activations import ACT2FN
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.modeling_utils import PreTrainedModel
 from transformers.models.llama import LlamaConfig
@@ -508,8 +507,6 @@ class LlamaDecoderLayer(nn.Module):
         residual = hidden_states
         hidden_states = self.post_attention_layernorm(hidden_states)
         hidden_states = self.mlp(hidden_states)
-        if self.moe:
-            hidden_states = hidden_states[0]
         hidden_states = residual + hidden_states
 
         if self.moe:
@@ -742,7 +739,6 @@ class LlamaModel(LlamaPreTrainedModel):
 
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
-        # import pdb; pdb.set_trace()
         # embed positions
         if attention_mask is None:
             attention_mask = torch.ones((batch_size, seq_length_with_past),
@@ -894,6 +890,8 @@ class OpenMoeForCausalLM(LlamaPreTrainedModel):
         >>> tokenizer.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
         "Hey, are you conscious? Can you talk to me?\nI'm not conscious, but I can talk to you."
         ```"""
+        # reset moe loss
+        MOE_CONTEXT.reset_loss()
 
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (output_hidden_states
@@ -939,24 +937,19 @@ class OpenMoeForCausalLM(LlamaPreTrainedModel):
                         shift_logits = logits[..., :-1, :].contiguous().float()
                         shift_labels = inputs[1][..., 1:].contiguous()
                         # Flatten the tokens
-                        loss_fct = CrossEntropyLoss()
-                        shift_logits = shift_logits.view(-1, self.config.vocab_size)
-                        shift_labels = shift_labels.view(-1)
-                        # Enable model parallelism
-                        shift_labels = shift_labels.to(shift_logits.device)
-                        loss = loss_fct(shift_logits, shift_labels)
+                        loss = self._calculate_loss(shift_logits, shift_labels)
                         return loss
 
                     return custom_forward
 
-                loss = 0.
+                aux_loss, z_loss = self._calculate_router_loss()
+                loss = aux_loss + z_loss
                 for batch_idx in range(hidden_states.shape[0]):
                     loss = loss + torch.utils.checkpoint.checkpoint(
                         create_custom_forward(self.lm_head),
-                        hidden_states[batch_idx, :],
-                        labels[batch_idx, :],
+                        hidden_states[batch_idx:batch_idx + 1, :],
+                        labels[batch_idx:batch_idx + 1, :],
                     )
-                loss = loss / hidden_states.shape[0]
                 logits = None
             else:
                 logits = self.lm_head(hidden_states)
@@ -965,12 +958,9 @@ class OpenMoeForCausalLM(LlamaPreTrainedModel):
                 shift_logits = logits[..., :-1, :].contiguous()
                 shift_labels = labels[..., 1:].contiguous()
                 # Flatten the tokens
-                loss_fct = CrossEntropyLoss()
-                shift_logits = shift_logits.view(-1, self.config.vocab_size)
-                shift_labels = shift_labels.view(-1)
-                # Enable model parallelism
-                shift_labels = shift_labels.to(shift_logits.device)
-                loss = loss_fct(shift_logits, shift_labels)
+                aux_loss, z_loss = self._calculate_router_loss()
+                loss = aux_loss + z_loss
+                loss = loss + self._calculate_loss(shift_logits, shift_labels)
 
         if not return_dict:
             output = (logits,) + outputs[1:]
@@ -1022,3 +1012,69 @@ class OpenMoeForCausalLM(LlamaPreTrainedModel):
             reordered_past += (tuple(
                 past_state.index_select(0, beam_idx.to(past_state.device)) for past_state in layer_past),)
         return reordered_past
+
+    def _calculate_router_loss(self):
+        aux_loss, z_loss = MOE_CONTEXT.get_loss()
+        assert len(aux_loss) == len(z_loss) == self.config.num_hidden_layers // self.config.moe_layer_interval
+        aux_loss = self.config.router_aux_loss_factor * sum(aux_loss) / len(aux_loss)
+        z_loss = self.config.router_z_loss_factor * sum(z_loss) / len(z_loss)
+        return aux_loss, z_loss
+
+    def _calculate_loss(self, logits, targets):
+        if len(logits.shape) != len(targets.shape) + 1:
+            raise ValueError('Incorrect shapes. Got shape %s logits and %s targets' %
+                             (str(logits.shape), str(targets.shape)))
+        vocab_size = logits.shape[-1]
+        confidence = 1.0 - self.config.label_smoothing
+        low_confidence = (1.0 - confidence) / (vocab_size - 1)
+        normalizing_constant = -(confidence * math.log(confidence) +
+                                 (vocab_size - 1) * low_confidence * math.log(low_confidence + 1e-20))
+
+        # one hot
+        soft_targets = targets[..., None] == \
+            torch.arange(vocab_size, device=targets.device).reshape((1,) * len(targets.shape) + (-1,))
+        soft_targets = torch.where(soft_targets, torch.full_like(soft_targets, confidence),
+                                   torch.full_like(soft_targets, low_confidence))
+        soft_targets = soft_targets.to(torch.float32)
+
+        # cross entropy
+        total_loss = ZLossCrossEntropy.apply(logits, soft_targets, self.config.z_loss_factor)
+        total_loss = total_loss - normalizing_constant
+        total_loss = torch.mean(torch.sum(total_loss, dim=-1), dim=0)
+        return total_loss
+
+
+class ZLossCrossEntropy(torch.autograd.Function):
+
+    @staticmethod
+    def forward(ctx, logits, targets, z_loss):
+        max_logit = torch.max(logits, dim=-1, keepdim=True)[0]
+        shifted = logits - max_logit
+        exp_shifted = torch.exp(shifted)
+        sum_exp = torch.sum(exp_shifted, axis=-1, keepdims=True)
+        log_softmax = shifted - torch.log(sum_exp)
+        loss = -torch.sum(targets * log_softmax, axis=-1)
+        # Add auxilliary z-loss term.
+        log_z = torch.squeeze(torch.log(sum_exp) + max_logit, axis=-1)
+        total_z_loss = z_loss * torch.square(log_z)
+        loss += total_z_loss
+        ctx.z_loss = z_loss
+        ctx.save_for_backward(logits, targets, exp_shifted, sum_exp, log_softmax, log_z)
+        return loss
+
+    @staticmethod
+    def backward(ctx, *grad_outputs):
+        assert len(grad_outputs) == 1
+        g = grad_outputs[0]
+        z_loss = ctx.z_loss
+        logits, targets, exp_shifted, sum_exp, log_softmax, log_z = ctx.saved_tensors
+        # z-loss term adds the (2 * z_loss * log_z) factor.
+        deriv = ((1 + 2 * z_loss * log_z).unsqueeze(-1) * exp_shifted / sum_exp - targets)
+        g_logits = g.unsqueeze(-1) * deriv
+        g_targets = -g.unsqueeze(-1) * log_softmax
+
+        return (
+            g_logits.to(logits.dtype),
+            g_targets.to(targets.dtype),
+            None,
+        )

@@ -30,9 +30,9 @@ class MoeModel(nn.Module):
                 self.proj = nn.Linear(16, 4)
 
             def _forward(self, x):
-                x, y = self.moe(x)
+                x = self.moe(x)
                 x = self.proj(x)
-                return x, y
+                return x
 
         super().__init__()
         self.test_embed = nn.Linear(4, 16)
@@ -42,9 +42,8 @@ class MoeModel(nn.Module):
         MOE_CONTEXT.reset_loss()
 
         x = self.test_embed(x)
-        x, y = self.test_transform(x)
+        x = self.test_transform(x)
 
-        MOE_CONTEXT.add_loss(y)
         return x
 
 
