@@ -1,7 +1,6 @@
 import os
 import time
 
-import pytest
 import torch
 from transformers import BloomForCausalLM, BloomTokenizerFast
 
@@ -50,9 +49,11 @@ def bench_bloom(test_config):
     model = model.half()
 
     # init TPInferEngine and shard the original model
-    # To benchmark torch original, comment out lines of optimizing model
-    infer_engine = TPInferEngine(model, MAX_BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
-    infer_engine.optimize_model(test_config)
+    # To benchmark torch original, comment out the line of optimizing model
+    shard_config = ShardConfig(enable_tensor_parallelism=True if test_config['tp_size'] > 1 else False,
+                               inference_only=True)
+    infer_engine = TPInferEngine(model, shard_config, MAX_BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
+    infer_engine.optimize_model()
 
     # prepare data for generation
     batch_size = MAX_BATCH_SIZE
@@ -88,7 +89,6 @@ def check_bloom(rank, world_size, port):
     bench_bloom()
 
 
-@pytest.mark.dist
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()
 def test_bloom():

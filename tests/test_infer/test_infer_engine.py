@@ -44,7 +44,8 @@ def test_prepare_data():
 
     dummy_config = DummyModelConfig()
     model = DummyModule(dummy_config)
-    infer_engine = TPInferEngine(model, MAX_BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
+    shard_config = ShardConfig(enable_tensor_parallelism=False)
+    infer_engine = TPInferEngine(model, shard_config, MAX_BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
 
     input_ids_list = [[80540, 15473, 3331, 11970, 90472, 361, 61335], [80540, 15473, 3331, 11970],
                       [80540, 15473, 3331, 11970], [80540, 15473]]
@@ -86,7 +87,7 @@ def test_orig_generate():
     shard_config = ShardConfig(enable_tensor_parallelism=False)
 
     # init TPInferEngine
-    infer_engine = TPInferEngine(model, MAX_BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
+    infer_engine = TPInferEngine(model, shard_config, MAX_BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
 
     # original model generate
     generate_kwargs = dict(do_sample=False)
@@ -104,8 +105,10 @@ def run(test_config):
     model = model.half()
     model.to(torch.cuda.current_device())
 
-    infer_engine = TPInferEngine(model, MAX_BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
-    infer_engine.optimize_model(test_config)
+    shard_config = ShardConfig(enable_tensor_parallelism=True if test_config['tp_size'] > 1 else False,
+                               inference_only=True)
+    infer_engine = TPInferEngine(model, shard_config, MAX_BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
+    infer_engine.optimize_model()
 
     assert infer_engine.cache_manager is not None
     assert infer_engine.tp_size == TP_SIZE
