@@ -594,8 +594,10 @@ def get_gptj_flash_attention_forward():
             key = apply_rotary_pos_emb(key, sin, cos)
             query = apply_rotary_pos_emb(query, sin, cos)
 
-        key = key.permute(0, 2, 1, 3)
-        query = query.permute(0, 2, 1, 3)
+        # key = key.permute(0, 2, 1, 3)
+        # query = query.permute(0, 2, 1, 3)
+        key = key.to(dtype=value.dtype)  # fp16 compatability
+        query = query.to(dtype=value.dtype)
 
         if layer_past is not None:
             past_key = layer_past[0]
@@ -609,9 +611,8 @@ def get_gptj_flash_attention_forward():
             present = None
 
         # use AttnMaskType and ColoAttention
-        if not self.is_cross_attention:
-            attn_mask_type = AttnMaskType.causal
-            flash_attention_mask = None
+        attn_mask_type = AttnMaskType.causal
+        flash_attention_mask = None
         if attention_mask != None:
             if attn_mask_type == AttnMaskType.causal:
                 attn_mask_type == AttnMaskType.paddedcausal
@@ -621,8 +622,9 @@ def get_gptj_flash_attention_forward():
 
         # use coloattention
         scale = value.size(-1) ** -0.5
+
         attention = ColoAttention(
-            embed_dim=self.embed_dim, num_heads=self.num_heads, dropout=self.attn_dropout.p, scale=scale
+            embed_dim=self.embed_dim, num_heads=self.num_attention_heads, dropout=self.attn_dropout.p, scale=scale
         )
 
         attn_output = attention(query, key, value, attn_mask=flash_attention_mask, attn_mask_type=attn_mask_type)
@@ -632,6 +634,8 @@ def get_gptj_flash_attention_forward():
         outputs = (attn_output, present, None)
 
         return outputs  # a, present, (attentions)
+
+    return forward
 
 
 def gptj_sequence_parallel_forward_fn(shard_config: ShardConfig):

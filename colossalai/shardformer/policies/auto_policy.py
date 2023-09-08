@@ -86,6 +86,17 @@ _POLICY_LIST = {
     "transformers.models.gpt2.modeling_gpt2.GPT2ForSequenceClassification": PolicyLocation(
         file_name="gpt2", class_name="GPT2ForSequenceClassificationPolicy"
     ),
+    # GPTJ
+    "transformers.models.gptj.modeling_gptj.GPTJModel": PolicyLocation(file_name="gptj", class_name="GPTJModelPolicy"),
+    "transformers.models.gptj.modeling_gptj.GPTJForCausalLM": PolicyLocation(
+        file_name="gptj", class_name="GPTJForCausalLMPolicy"
+    ),
+    "transformers.models.gptj.modeling_gptj.GPTJForQuestionAnswering": PolicyLocation(
+        file_name="gptj", class_name="GPTJForQuestionAnsweringPolicy"
+    ),
+    "transformers.models.gptj.modeling_gptj.GPTJForSequenceClassification": PolicyLocation(
+        file_name="gptj", class_name="GPTJForSequenceClassificationPolicy"
+    ),
     # ViT
     "transformers.models.vit.modeling_vit.ViTModel": PolicyLocation(file_name="vit", class_name="ViTModelPolicy"),
     "transformers.models.vit.modeling_vit.ViTForImageClassification": PolicyLocation(

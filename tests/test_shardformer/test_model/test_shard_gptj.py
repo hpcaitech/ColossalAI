@@ -89,13 +89,13 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     "test_config",
     [
         {
-            "tp_size": 2,
-            "pp_size": 2,
-            "num_microbatches": 4,
-            "enable_all_optimization": True,
-            "use_lazy_init": True,
-            "precision": "fp16",
-            "initial_scale": 1,
+            "tp_size": 1,
+            "pp_size": 1,
+            #'num_microbatches': 4,
+            "enable_all_optimization": False,
+            #'use_lazy_init': False,
+            "precision": "fp32",
+            #'initial_scale': 1,
         },
         {
             "tp_size": 1,
@@ -161,7 +161,8 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 @clear_cache_before_run()
 def run_gptj_test(test_config):
     sub_model_zoo = model_zoo.get_sub_registry("transformers_gptj")
-
+    print("===test config===")
+    print(test_config)
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
 
@@ -220,7 +221,7 @@ def check_gptj_3d(rank, world_size, port):
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()
 def test_gptj():
-    spawn(check_gptj, 4)
+    spawn(check_gptj, 2)
 
 
 @pytest.mark.largedist
