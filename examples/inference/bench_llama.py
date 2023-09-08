@@ -77,8 +77,10 @@ def run_llama_test(test_config):
 
     model_config = model.config
 
-    infer_engine = TPInferEngine(model, BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
-    infer_engine.optimize_model(test_config)
+    shard_config = ShardConfig(enable_tensor_parallelism=True if test_config['tp_size'] > 1 else False,
+                               inference_only=True)
+    infer_engine = TPInferEngine(model, shard_config, BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
+    infer_engine.optimize_model()
 
     batch_size = 2
     max_new_tokens = 128
