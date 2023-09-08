@@ -8,8 +8,8 @@ from colossalai.tensor.moe_tensor.api import get_moe_info
 from colossalai.tensor.moe_tensor.moe_info import MoeParallelInfo
 
 
-class MoeContext(metaclass=SingletonMeta):
-    """MoE parallel context manager. This class manages different
+class MoeManager(metaclass=SingletonMeta):
+    """MoE manager. This class manages different
     parallel groups in MoE context and MoE loss in training.
     """
 
@@ -49,7 +49,7 @@ class MoeContext(metaclass=SingletonMeta):
         # Users can close kernel optimization manually
         self.use_kernel_optim = use_kernel_optim
 
-        from .random import moe_set_seed
+        from ..context.random import moe_set_seed
         moe_set_seed(seed)
         self.has_setup = True
 
@@ -112,4 +112,4 @@ class MoeContext(metaclass=SingletonMeta):
         return self.parallel
 
 
-MOE_CONTEXT = MoeContext()
+MOE_MANAGER = MoeManager()

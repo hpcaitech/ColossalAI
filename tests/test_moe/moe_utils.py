@@ -3,11 +3,11 @@ import torch.distributed as dist
 import torch.nn as nn
 
 from colossalai.context import MOE_CONTEXT
-from colossalai.context.moe_context import MOE_CONTEXT
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.engine.gradient_handler._base_gradient_handler import BaseGradientHandler
 from colossalai.engine.gradient_handler.utils import bucket_allreduce
+from colossalai.moe.manager import MOE_MANAGER
 from colossalai.nn import CheckpointModule
 from colossalai.nn.layer import SparseMLP
 from colossalai.registry import GRADIENT_HANDLER
@@ -39,7 +39,7 @@ class MoeModel(nn.Module):
         self.test_transform = TestSubModule()
 
     def forward(self, x):
-        MOE_CONTEXT.reset_loss()
+        MOE_MANAGER.reset_loss()
 
         x = self.test_embed(x)
         x = self.test_transform(x)
@@ -80,9 +80,9 @@ class MoeGradientHandler(BaseGradientHandler):
                 bucket_allreduce(param_list=epsize_param_dict[1], group=gpc.get_group(ParallelMode.DATA))
 
             for ep_size in epsize_param_dict:
-                if ep_size != 1 and ep_size != MOE_CONTEXT.world_size:
+                if ep_size != 1 and ep_size != MOE_MANAGER.world_size:
                     bucket_allreduce(param_list=epsize_param_dict[ep_size],
-                                     group=MOE_CONTEXT.parallel_info_dict[ep_size].dp_group)
+                                     group=MOE_MANAGER.parallel_info_dict[ep_size].dp_group)
 
 
 def sync_tp_from_ep(tp_model: SparseMLP, ep_model: SparseMLP, assert_grad_flag: bool = False) -> None:

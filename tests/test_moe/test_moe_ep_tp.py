@@ -3,7 +3,7 @@ import torch
 import torch.distributed as dist
 
 import colossalai
-from colossalai.context.moe_context import MOE_CONTEXT
+from colossalai.moe.manager import MOE_MANAGER
 from colossalai.nn.layer.moe import SparseMLP
 from colossalai.testing import assert_equal_in_group, rerun_if_address_is_in_use, spawn
 from colossalai.utils import get_current_device
@@ -16,7 +16,7 @@ DIM = 4
 
 def run_test(rank, world_size, port):
     colossalai.launch(config=dict(), rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    MOE_CONTEXT.setup(42)    # MOE initialization
+    MOE_MANAGER.setup(42)    # MOE initialization
 
     ep_model = SparseMLP(num_experts=4, expert_parallel="EP", hidden_size=DIM, intermediate_size=DIM)
     tp_model = SparseMLP(num_experts=4, expert_parallel="TP", hidden_size=DIM, intermediate_size=DIM)
@@ -25,7 +25,7 @@ def run_test(rank, world_size, port):
 
     # sync ep param
     sync_moe_model_param(ep_model)
-    dist_dict = MOE_CONTEXT.parallel_info_dict
+    dist_dict = MOE_MANAGER.parallel_info_dict
     assert_equal_in_group(ep_model.experts.wi.data, dist_dict[2].dp_group)
     assert_equal_in_group(ep_model.experts.wo.data, dist_dict[2].dp_group)
     grad_handler = MoeGradientHandler(ep_model)
@@ -38,9 +38,9 @@ def run_test(rank, world_size, port):
     ep_data = tp_data.detach()[2 * rank:2 * (rank + 1)]
 
     out_tp = tp_model(tp_data)
-    MOE_CONTEXT.reset_loss()
+    MOE_MANAGER.reset_loss()
     out_ep = ep_model(ep_data)
-    MOE_CONTEXT.reset_loss()
+    MOE_MANAGER.reset_loss()
     assert torch.allclose(out_ep, out_tp[2 * rank:2 * (rank + 1)])
 
     out_tp.mean().backward()

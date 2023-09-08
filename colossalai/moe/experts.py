@@ -6,7 +6,7 @@ import torch.distributed as dist
 import torch.nn as nn
 
 from colossalai.context import ParallelMode, seed
-from colossalai.context.moe_context import MOE_CONTEXT
+from colossalai.moe.manager import MOE_MANAGER
 from colossalai.nn.layer.moe._operation import MoeInGradScaler, MoeOutGradScaler
 from colossalai.nn.layer.moe.utils import get_activation
 from colossalai.tensor.moe_tensor.api import get_dp_group, get_ep_group, get_ep_size, set_moe_tensor_info
@@ -35,13 +35,13 @@ class BaseMLPExperts(nn.Module):
 
         # get expert parallel info
         if expert_parallel is not None:
-            self.num_local_experts, self.moe_info = MOE_CONTEXT.get_info(
+            self.num_local_experts, self.moe_info = MOE_MANAGER.get_info(
                 num_experts, use_tp=True if expert_parallel == "TP" else False)
             # get settings for different parallel
             if expert_parallel == "TP":
-                assert intermediate_size % MOE_CONTEXT.max_ep_size == 0, \
+                assert intermediate_size % MOE_MANAGER.max_ep_size == 0, \
                     "intermediate_size should be divide by maximum expert parallel size"
-                intermediate_size = intermediate_size // MOE_CONTEXT.max_ep_size
+                intermediate_size = intermediate_size // MOE_MANAGER.max_ep_size
                 num_experts = self.num_total_experts
             else:
                 num_experts = self.num_local_experts
@@ -143,7 +143,7 @@ def get_expert_class(name: str) -> BaseMLPExperts:
 
 
 def build_ffn_experts(num_experts: int, d_model: int, d_ff: int, activation=None, drop_rate: float = 0):
-    mep_size = MOE_CONTEXT.max_ep_size
+    mep_size = MOE_MANAGER.max_ep_size
     if num_experts % mep_size == 0 or mep_size % num_experts == 0:
         return EPMLPExperts(num_experts, d_model, d_ff, activation, drop_rate)
     elif d_ff % mep_size == 0:

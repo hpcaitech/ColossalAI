@@ -3,8 +3,8 @@ import torch
 
 import colossalai
 from colossalai.context import ParallelMode
-from colossalai.context.moe_context import MOE_CONTEXT
 from colossalai.core import global_context as gpc
+from colossalai.moe.manager import MOE_MANAGER
 from colossalai.nn.layer.moe import SparseMLP
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 from colossalai.utils import get_current_device
@@ -24,8 +24,8 @@ def run_routing(rank, world_size, port, rs=2, hidden_size=128, data_type=torch.f
     colossalai.launch(config=dict(), rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     local_rank = gpc.get_local_rank(ParallelMode.GLOBAL)
 
-    MOE_CONTEXT.setup(42)    # MOE environment initialization
-    MOE_CONTEXT.reset_loss()
+    MOE_MANAGER.setup(42)    # MOE environment initialization
+    MOE_MANAGER.reset_loss()
     torch.manual_seed(rs + local_rank)    # set each process has different random seed
 
     # get randomized data

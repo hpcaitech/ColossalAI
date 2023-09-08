@@ -19,7 +19,6 @@ from colossalai.amp import AMP_TYPE, convert_to_amp
 from colossalai.amp.naive_amp import NaiveAMPModel
 from colossalai.builder.builder import build_gradient_handler
 from colossalai.context import Config, ConfigException, ParallelMode
-from colossalai.context.moe_context import MOE_CONTEXT
 from colossalai.core import global_context as gpc
 from colossalai.engine import Engine
 from colossalai.engine.gradient_accumulation import accumulate_gradient
@@ -30,6 +29,7 @@ from colossalai.engine.schedule import (
     get_tensor_shape,
 )
 from colossalai.logging import get_dist_logger
+from colossalai.moe.manager import MOE_MANAGER
 from colossalai.nn.optimizer.colossalai_optimizer import ColossalaiOptimizer
 from colossalai.utils import get_current_device, is_using_ddp, is_using_pp, is_using_sequence, sync_model_param
 from colossalai.utils.moe import sync_moe_model_param
@@ -306,7 +306,7 @@ def initialize(model: nn.Module,
     if not use_zero:
         if is_using_sequence():
             sync_model_param(model, ParallelMode.SEQUENCE_DP)
-        elif MOE_CONTEXT.is_initialized:
+        elif MOE_MANAGER.is_initialized:
             sync_moe_model_param(model)
         elif is_using_ddp():
             sync_model_param(model, ParallelMode.DATA)
@@ -359,7 +359,7 @@ def initialize(model: nn.Module,
                     "Training with zero is detected, ZeROGradientHandler is automatically "
                     "added even though not specified in the configuration",
                     ranks=[0])
-        elif is_using_ddp() and MOE_CONTEXT.is_initialized:
+        elif is_using_ddp() and MOE_MANAGER.is_initialized:
             gradient_handler_cfg = [dict(type='MoeGradientHandler')]
             if verbose:
                 logger.info(

@@ -3,7 +3,7 @@ import torch.distributed as dist
 import torch.nn as nn
 
 import colossalai
-from colossalai.context.moe_context import MOE_CONTEXT
+from colossalai.moe.manager import MOE_MANAGER
 from colossalai.nn.layer.moe import EPMLPExperts, TPMLPExperts
 from colossalai.testing import assert_equal_in_group, rerun_if_address_is_in_use, spawn
 from colossalai.utils import get_current_device
@@ -31,7 +31,7 @@ def run_moe_init(expert_cls):
         assert exp2.num_local_experts == 4
         assert exp3.num_local_experts == 8
 
-    parallel_info_dict = MOE_CONTEXT.parallel_info_dict
+    parallel_info_dict = MOE_MANAGER.parallel_info_dict
     rank = dist.get_rank()
 
     # group creation assert
@@ -59,7 +59,7 @@ def run_moe_init(expert_cls):
 
 def _run_test(rank, world_size, port, expert_cls):
     colossalai.launch(config=dict(), rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    MOE_CONTEXT.setup(seed=42)
+    MOE_MANAGER.setup(seed=42)
     run_moe_init(expert_cls)
 
 

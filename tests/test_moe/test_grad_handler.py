@@ -4,7 +4,7 @@ import torch.distributed as dist
 import torch.nn as nn
 
 import colossalai
-from colossalai.context.moe_context import MOE_CONTEXT
+from colossalai.moe.manager import MOE_MANAGER
 from colossalai.nn.layer.moe import SparseMLP
 from colossalai.testing import assert_equal_in_group, rerun_if_address_is_in_use, spawn
 from colossalai.utils import get_current_device
@@ -18,7 +18,7 @@ DIM = 16
 def run_test(rank, world_size, port):
     colossalai.launch(config=dict(), rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
 
-    MOE_CONTEXT.setup(42)    # MOE initialization
+    MOE_MANAGER.setup(42)    # MOE initialization
     num_experts_list = [1, 2, 4]
     layer_list = []
     for num_experts in num_experts_list:
@@ -34,7 +34,7 @@ def run_test(rank, world_size, port):
     model = model.to(get_current_device())
     sync_moe_model_param(model)
 
-    dist_dict = MOE_CONTEXT.parallel_info_dict
+    dist_dict = MOE_MANAGER.parallel_info_dict
     assert_equal_in_group(layer_list[0].experts.wi.data, dist_dict[1].dp_group)
     assert_equal_in_group(layer_list[0].experts.wo.data, dist_dict[1].dp_group)
     assert_equal_in_group(layer_list[1].experts.wi.data, dist_dict[2].dp_group)
@@ -48,7 +48,7 @@ def run_test(rank, world_size, port):
     data = torch.randn(BATCH_SIZE, DIM, device=get_current_device())
     grad = torch.randn_like(data)
 
-    MOE_CONTEXT.reset_loss()
+    MOE_MANAGER.reset_loss()
     for layer in layer_list:
         data = layer(data)
     data.backward(grad)

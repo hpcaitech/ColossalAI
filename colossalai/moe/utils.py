@@ -4,7 +4,7 @@ from typing import Callable
 import torch
 import torch.nn.functional as F
 
-from colossalai.context.moe_context import MOE_CONTEXT
+from colossalai.moe.manager import MOE_MANAGER
 from colossalai.utils import get_current_device
 
 

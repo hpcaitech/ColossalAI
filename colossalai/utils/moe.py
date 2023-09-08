@@ -1,10 +1,13 @@
-import torch.nn as nn
-import torch.distributed as dist
-from colossalai.core import global_context as gpc
-from colossalai.context.moe_context import MOE_CONTEXT
-from colossalai.context import ParallelMode
-from .common import is_using_ddp
 from typing import Dict, List
+
+import torch.distributed as dist
+import torch.nn as nn
+
+from colossalai.context import ParallelMode
+from colossalai.core import global_context as gpc
+from colossalai.moe.manager import MOE_MANAGER
+
+from .common import is_using_ddp
 
 
 def get_moe_epsize_param_dict(model: nn.Module) -> Dict[int, List[nn.Parameter]]:
@@ -46,7 +49,7 @@ def sync_moe_model_param(model: nn.Module):
 
         for ep_size in param_dict:
             # When ep_size = world_size, communication is not needed
-            if ep_size != 1 and ep_size != MOE_CONTEXT.world_size:
-                src_rank = dist.get_rank(MOE_CONTEXT.parallel_info_dict[ep_size].ep_group)
+            if ep_size != 1 and ep_size != MOE_MANAGER.world_size:
+                src_rank = dist.get_rank(MOE_MANAGER.parallel_info_dict[ep_size].ep_group)
                 for param in param_dict[ep_size]:
                     dist.broadcast(param, src=src_rank, group=param.moe_info.dp_group)
