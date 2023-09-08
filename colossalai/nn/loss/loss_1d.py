@@ -1,10 +1,11 @@
 import torch
 import torch.distributed as dist
-from colossalai.context import ParallelMode
-from colossalai.core import global_context as gpc
-from colossalai.registry import LOSSES
 from torch.cuda.amp import custom_bwd, custom_fwd
 from torch.nn.modules.loss import _Loss
+
+from colossalai.context import ParallelMode
+from colossalai.core import global_context as gpc
+from colossalai.legacy.registry import LOSSES
 
 
 class _VocabParallelCrossEntropy1D(torch.autograd.Function):

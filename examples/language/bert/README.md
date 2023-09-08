@@ -7,13 +7,15 @@ This directory includes two parts: Using the Booster API finetune Huggingface Be
 bash test_ci.sh
 ```
 
-### Results on 2-GPU
+### Bert-Finetune Results
 
-| Plugin         | Accuracy | F1-score |
-| -------------- | -------- | -------- |
-| torch_ddp      | 84.4%    | 88.6%    |
-| torch_ddp_fp16 | 84.7%    | 88.8%    |
-| gemini         | 84.0%    | 88.4%    |
+| Plugin         | Accuracy | F1-score | GPU number |
+| -------------- | -------- | -------- | -------- |
+| torch_ddp      | 84.4%    | 88.6%    |    2     |
+| torch_ddp_fp16 | 84.7%    | 88.8%    |    2     |
+| gemini         | 84.0%    | 88.4%    |    2     |
+| hybrid_parallel | 84.5%    | 88.6%    |    4     |
+
 
 ## Benchmark
 ```

@@ -53,8 +53,7 @@ def rearrange(tensor: torch.Tensor, dim: int):
     return rearanged_tensor
 
 
-@parameterize('lazy_init', [False, True])
-def check_linear_conv_1d_col(lazy_init: bool):
+def check_linear_conv_1d_col(lazy_init: bool, seq_parallel: bool, overlap: bool):
     ctx = LazyInitContext() if lazy_init else nullcontext()
     linear = Conv1D(192, 48).cuda()
     with ctx:
@@ -62,7 +61,9 @@ def check_linear_conv_1d_col(lazy_init: bool):
     linear_conv_col = GPT2FusedLinearConv1D_Col.from_native_module(linear_copy,
                                                                    process_group=None,
                                                                    gather_output=True,
-                                                                   n_fused=3)
+                                                                   seq_parallel=seq_parallel,
+                                                                   n_fused=3,
+                                                                   overlap=overlap)
 
     assert linear.weight.shape == torch.Size([48, 192])
     assert linear.bias.shape == torch.Size([192])
@@ -76,10 +77,11 @@ def check_linear_conv_1d_col(lazy_init: bool):
     linear.load_state_dict(linear_conv_col.state_dict())
 
     # check computation correctness
-    x = torch.rand(4, 48).cuda()
+    x = torch.rand(1, 4, 48).cuda()
     out = linear(x)
-    gather_out = linear_conv_col(x)
-    assert_close(rearrange(out, 1), gather_out)
+    x_for_shard = x.expand_as(x.clone()) if seq_parallel is False else torch.chunk(x.clone(), 2, dim=1)[dist.get_rank()]
+    gather_out = linear_conv_col(x_for_shard)
+    assert_close(rearrange(out, -1), gather_out)
 
     # check backward correctness
     out.sum().backward()
@@ -89,14 +91,16 @@ def check_linear_conv_1d_col(lazy_init: bool):
     assert_close(target_grad, linear_conv_col.weight.grad)
 
 
-@parameterize('lazy_init', [False, True])
-def check_linear_conv_1d_row(lazy_init: bool):
+def check_linear_conv_1d_row(lazy_init: bool, seq_parallel: bool):
     ctx = LazyInitContext() if lazy_init else nullcontext()
 
     linear = Conv1D(192, 48).cuda()
     with ctx:
         linear_copy = Conv1D(192, 48).cuda()
-    linear_row = GPT2FusedLinearConv1D_Row.from_native_module(linear_copy, process_group=None, parallel_input=False)
+    linear_row = GPT2FusedLinearConv1D_Row.from_native_module(linear_copy,
+                                                              process_group=None,
+                                                              parallel_input=False,
+                                                              seq_parallel=seq_parallel)
 
     assert linear.weight.shape == torch.Size([48, 192])
     assert linear_row.weight.shape == torch.Size([24, 192])
@@ -109,10 +113,11 @@ def check_linear_conv_1d_row(lazy_init: bool):
     linear.load_state_dict(linear_row.state_dict())
 
     # check computation correctness
-    x = torch.rand(4, 48).cuda()
+    x = torch.rand(1, 4, 48).cuda()
     out = linear(x)
     gather_out = linear_row(x)
-    assert_close(out, gather_out)
+    target_out = out if seq_parallel is False else torch.chunk(out.clone(), 2, dim=1)[dist.get_rank()]
+    assert_close(target_out, gather_out)
 
     # check backward correctness
     out.sum().backward()
@@ -123,12 +128,19 @@ def check_linear_conv_1d_row(lazy_init: bool):
     assert_close(target_grad, linear_row.weight.grad)
 
 
+@parameterize('lazy_init', [False, True])
+@parameterize('seq_parallel', [False, True])
+@parameterize('overlap', [True])
+def check_gpt2_qkv_fused_linear_1d(lazy_init: bool, seq_parallel: bool, overlap: bool):
+    check_linear_conv_1d_col(lazy_init, seq_parallel, overlap)
+    check_linear_conv_1d_row(lazy_init, seq_parallel)
+
+
 def run_dist(rank, world_size, port):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
 
     # test for linear conv
-    check_linear_conv_1d_col()
-    check_linear_conv_1d_row()
+    check_gpt2_qkv_fused_linear_1d()
 
 
 @rerun_if_address_is_in_use()

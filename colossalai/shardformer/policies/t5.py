@@ -1,6 +1,8 @@
+import warnings
 from functools import partial
 from typing import Callable, Dict, List, Optional, Tuple
 
+import numpy as np
 from torch import Tensor, nn
 
 from colossalai.shardformer.layer import (
@@ -57,6 +59,10 @@ class T5BasePolicy(Policy):
         )
 
         policy = {}
+
+        if self.shard_config.enable_sequence_parallelism:
+            self.shard_config.enable_sequence_parallelism = False
+            warnings.warn("T5 dosen't support sequence parallelism now, will ignore the sequence parallelism flag.")
 
         if self.shard_config.enable_tensor_parallelism:
             policy[T5Stack] = ModulePolicyDescription(sub_module_replacement=[
@@ -178,24 +184,33 @@ class T5BasePolicy(Policy):
 
         # use flash attention
         if self.shard_config.enable_flash_attention:
-            policy[T5Attention] = ModulePolicyDescription(method_replacement={
+            self.append_or_create_method_replacement(description={
                 'forward': get_t5_flash_attention_forward(),
-            })
+            },
+                                                     policy=policy,
+                                                     target_key=T5Attention)
 
         # use jit operator
         if self.shard_config.enable_jit_fused:
-            policy[T5LayerFF] = ModulePolicyDescription(method_replacement={
+            self.append_or_create_method_replacement(description={
                 'forward': get_jit_fused_T5_layer_ff_forward(),
                 'dropout_add': get_jit_fused_dropout_add_func(),
-            })
-            policy[T5LayerSelfAttention] = ModulePolicyDescription(method_replacement={
+            },
+                                                     policy=policy,
+                                                     target_key=T5LayerFF)
+            self.append_or_create_method_replacement(description={
                 'forward': get_T5_layer_self_attention_forward(),
                 'dropout_add': get_jit_fused_dropout_add_func(),
-            })
-            policy[T5LayerCrossAttention] = ModulePolicyDescription(method_replacement={
+            },
+                                                     policy=policy,
+                                                     target_key=T5LayerSelfAttention)
+            self.append_or_create_method_replacement(description={
                 'forward': get_T5_layer_cross_attention_forward(),
                 'dropout_add': get_jit_fused_dropout_add_func(),
-            })
+            },
+                                                     policy=policy,
+                                                     target_key=T5LayerCrossAttention)
+
         return policy
 
     def postprocess(self):
@@ -228,13 +243,7 @@ class T5BasePolicy(Policy):
         def objective(num_encoder_stages):
             return abs(num_encoder_layers / num_encoder_stages - num_decoder_layers / (num_stages - num_encoder_stages))
 
-        num_encoder_stages = 0
-        optimal_diff = 2**31 - 1
-        for i in range(1, num_stages):
-            attempt = objective(i)
-            if attempt < optimal_diff:
-                num_encoder_stages = i
-                optimal_diff = attempt
+        num_encoder_stages = np.argmin([objective(i) for i in range(1, num_stages)]) + 1
         num_decoder_stages = num_stages - num_encoder_stages
 
         encoder_distribution = Policy.distribute_layers(num_encoder_layers, num_encoder_stages)

@@ -8,7 +8,6 @@ import pytest
 from colossalai.context.config import Config
 
 
-@pytest.mark.cpu
 def test_load_config():
     filename = Path(__file__).parent.joinpath('sample_config.py')
     config = Config.from_file(filename)

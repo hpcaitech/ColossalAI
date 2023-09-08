@@ -1,7 +1,7 @@
 # modified from https://github.com/NVIDIA/apex/blob/master/apex/optimizers/fused_lamb.py
 import torch
 
-from colossalai.registry import OPTIMIZERS
+from colossalai.legacy.registry import OPTIMIZERS
 from colossalai.utils import multi_tensor_applier
 
 
