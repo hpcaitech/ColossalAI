@@ -1,7 +1,6 @@
 import os
 import time
 
-import pytest
 import torch
 from transformers import BloomForCausalLM, BloomTokenizerFast
 
@@ -90,7 +89,6 @@ def check_bloom(rank, world_size, port):
     bench_bloom()
 
 
-@pytest.mark.dist
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()
 def test_bloom():

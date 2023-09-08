@@ -1,8 +1,6 @@
 import os
 import time
 
-import numpy as np
-import pytest
 import torch
 import torch.distributed as dist
 from torch.profiler import ProfilerActivity, profile, record_function
@@ -124,7 +122,6 @@ def check_llama(rank, world_size, port):
     run_llama_test()
 
 
-@pytest.mark.dist
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()
 def test_llama():
