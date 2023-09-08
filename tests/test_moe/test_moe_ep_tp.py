@@ -5,7 +5,7 @@ import torch.distributed as dist
 import colossalai
 from colossalai.moe import SparseMLP
 from colossalai.moe.manager import MOE_MANAGER
-from colossalai.moe.moe import sync_moe_model_param
+from colossalai.moe.utils import sync_moe_model_param
 from colossalai.testing import assert_equal_in_group, rerun_if_address_is_in_use, spawn
 from colossalai.utils import get_current_device
 from tests.test_moe.moe_utils import MoeGradientHandler, sync_tp_from_ep
