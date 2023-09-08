@@ -30,9 +30,9 @@ from colossalai.engine.schedule import (
 )
 from colossalai.logging import get_dist_logger
 from colossalai.moe.manager import MOE_MANAGER
+from colossalai.moe.moe import sync_moe_model_param
 from colossalai.nn.optimizer.colossalai_optimizer import ColossalaiOptimizer
 from colossalai.utils import get_current_device, is_using_ddp, is_using_pp, is_using_sequence, sync_model_param
-from colossalai.utils.moe import sync_moe_model_param
 from colossalai.zero.legacy import ShardedOptimizerV2, convert_to_zero_v2
 from colossalai.zero.legacy.gemini.ophooks import BaseOpHook
 

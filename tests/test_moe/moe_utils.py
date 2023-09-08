@@ -2,17 +2,16 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 
-from colossalai.context import MOE_CONTEXT
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.engine.gradient_handler._base_gradient_handler import BaseGradientHandler
 from colossalai.engine.gradient_handler.utils import bucket_allreduce
+from colossalai.moe import SparseMLP
 from colossalai.moe.manager import MOE_MANAGER
+from colossalai.moe.moe import get_moe_epsize_param_dict
 from colossalai.nn import CheckpointModule
-from colossalai.nn.layer import SparseMLP
 from colossalai.registry import GRADIENT_HANDLER
 from colossalai.tensor.moe_tensor.api import get_ep_group, get_ep_rank, get_ep_size, is_moe_tensor
-from colossalai.utils.moe import get_moe_epsize_param_dict
 
 
 class MoeModel(nn.Module):

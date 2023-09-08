@@ -3,11 +3,11 @@ import torch.distributed as dist
 import torch.nn as nn
 
 import colossalai
+from colossalai.moe import EPMLPExperts, TPMLPExperts
 from colossalai.moe.manager import MOE_MANAGER
-from colossalai.nn.layer.moe import EPMLPExperts, TPMLPExperts
+from colossalai.moe.moe import sync_moe_model_param
 from colossalai.testing import assert_equal_in_group, rerun_if_address_is_in_use, spawn
 from colossalai.utils import get_current_device
-from colossalai.utils.moe import sync_moe_model_param
 
 HIDDEN_SIZE = 4
 INTERMEDIATE_SIZE = 8

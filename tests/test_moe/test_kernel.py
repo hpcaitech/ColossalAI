@@ -4,8 +4,8 @@ import torch
 import colossalai
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
+from colossalai.moe import SparseMLP
 from colossalai.moe.manager import MOE_MANAGER
-from colossalai.nn.layer.moe import SparseMLP
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 from colossalai.utils import get_current_device
 

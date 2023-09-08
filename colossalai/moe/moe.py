@@ -7,7 +7,7 @@ from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.moe.manager import MOE_MANAGER
 
-from .common import is_using_ddp
+from ..utils.common import is_using_ddp
 
 
 def get_moe_epsize_param_dict(model: nn.Module) -> Dict[int, List[nn.Parameter]]:

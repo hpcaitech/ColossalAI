@@ -1,15 +1,13 @@
 import math
-from copy import deepcopy
 
 import torch
-import torch.distributed as dist
 import torch.nn as nn
 
 from colossalai.context import ParallelMode, seed
+from colossalai.moe._operation import MoeInGradScaler, MoeOutGradScaler
 from colossalai.moe.manager import MOE_MANAGER
-from colossalai.nn.layer.moe._operation import MoeInGradScaler, MoeOutGradScaler
-from colossalai.nn.layer.moe.utils import get_activation
-from colossalai.tensor.moe_tensor.api import get_dp_group, get_ep_group, get_ep_size, set_moe_tensor_info
+from colossalai.moe.utils import get_activation
+from colossalai.tensor.moe_tensor.api import get_ep_size, set_moe_tensor_info
 
 
 class BaseMLPExperts(nn.Module):

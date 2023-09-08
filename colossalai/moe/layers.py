@@ -5,18 +5,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from colossalai.moe._operation import COL_MOE_KERNEL_FLAG, AllGather, AllToAll, MoeCombine, MoeDispatch, ReduceScatter
+from colossalai.moe.experts import BaseMLPExperts, get_expert_class
 from colossalai.moe.manager import MOE_MANAGER
-from colossalai.nn.layer.moe._operation import (
-    COL_MOE_KERNEL_FLAG,
-    AllGather,
-    AllToAll,
-    MoeCombine,
-    MoeDispatch,
-    ReduceScatter,
-)
-from colossalai.nn.layer.moe.experts import BaseMLPExperts, get_expert_class
-from colossalai.nn.layer.moe.routers import MoeRouter, get_router_cls
-from colossalai.nn.layer.moe.utils import get_noise_generator
+from colossalai.moe.routers import MoeRouter, get_router_cls
+from colossalai.moe.utils import get_noise_generator
 from colossalai.tensor.moe_tensor.api import get_ep_group, get_ep_size
 
 
