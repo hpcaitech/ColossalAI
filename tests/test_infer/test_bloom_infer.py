@@ -9,6 +9,7 @@ from transformers import AutoTokenizer, BloomForCausalLM
 import colossalai
 from colossalai.inference.tensor_parallel import TPInferEngine
 from colossalai.logging import disable_existing_loggers
+from colossalai.shardformer import ShardConfig
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
 
 TP_SIZE = 2
@@ -37,8 +38,10 @@ def run(test_config):
     model = BloomForCausalLM.from_pretrained(model_path, pad_token_id=tokenizer.eos_token_id)
     model = model.half()
 
-    infer_engine = TPInferEngine(model, MAX_BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
-    infer_engine.optimize_model(test_config)
+    shard_config = ShardConfig(enable_tensor_parallelism=True if test_config['tp_size'] > 1 else False,
+                               inference_only=True)
+    infer_engine = TPInferEngine(model, shard_config, MAX_BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
+    infer_engine.optimize_model()
 
     generate_kwargs = dict(do_sample=False)
     outputs = infer_engine.generate(input_ids, **generate_kwargs)
@@ -46,14 +49,12 @@ def run(test_config):
     assert outputs is not None
 
     if not dist.is_initialized() or dist.get_rank() == 0:
-        # output_text = tokenizer.decode(outputs[0])
-        # print(output_text)
         for o in outputs:
             output_text = tokenizer.decode(o)
             # print(output_text)
 
 
-def check_engine(rank, world_size, port):
+def check_bloom(rank, world_size, port):
     disable_existing_loggers()
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     run()
@@ -63,9 +64,9 @@ def check_engine(rank, world_size, port):
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()
-def test_engine_infer():
-    spawn(check_engine, TP_SIZE)
+def test_bloom_infer():
+    spawn(check_bloom, TP_SIZE)
 
 
 if __name__ == '__main__':
-    test_engine_infer()
+    test_bloom_infer()

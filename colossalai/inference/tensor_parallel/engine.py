@@ -19,9 +19,30 @@ _supported_models = ['LlamaForCausalLM', 'LlamaModel', 'BloomForCausalLM']
 
 
 class TPInferEngine:
+    """Engine class for tensor parallel inference.
+
+    Args:
+        model (Module): original model, e.g. huggingface CausalLM
+        shard_config (ShardConfig): The config for sharding original model
+        max_batch_size (int): maximum batch size
+        max_input_len (int): maximum input length of sequence
+        max_output_len (int): maximum output length of output tokens
+        dtype (torch.dtype): datatype used to init KV cache space
+        device (str): device the KV cache of engine to be initialized on
+
+    Examples:
+        >>> # define model and shard config for your inference
+        >>> model = ...
+        >>> generate_kwargs = ...
+        >>> shard_config = ShardConfig(enable_tensor_parallelism=True, inference_only=True)
+        >>> infer_engine = TPInferEngine(model, shard_config, MAX_BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
+        >>> infer_engine.optimize_model()
+        >>> outputs = infer_engine.generate(input_ids, **generate_kwargs)
+    """
 
     def __init__(self,
                  model: nn.Module,
+                 shard_config: ShardConfig,
                  max_batch_size: int,
                  max_input_len: int,
                  max_output_len: int,
@@ -29,6 +50,7 @@ class TPInferEngine:
                  device: str = 'cuda') -> None:
         self.model = model
         self.model = self.model.to(device)
+        self.shard_config = shard_config
         self.sharded_model = None
 
         self.max_batch_size = max_batch_size
@@ -57,21 +79,15 @@ class TPInferEngine:
         self.cache_manager = MemoryManager(self.max_total_token_num, self.dtype, self.head_num, self.head_dim,
                                            self.layer_num)
 
-    def optimize_model(self, config: Optional[Dict[Any, Any]] = None) -> None:
-        """ Optimize the original model by sharding with ShardFormer.
-        In further generation, use the sharded model instead of original model.
-
-        Args:
-            config (dict): config given to specify engine and inference settings, such as tensor parallel size.
-                The ShardConfig is created based on given config.
-                We might change to use an inference config as the other components of inference pipeline being built.
+    def optimize_model(self) -> None:
         """
-        tp_size = 1 if config is None else config.get('tp_size', 1)
+        Optimize the original model by sharding with ShardFormer.
+        In further generation, use the sharded model instead of original model.
+        """
         # NOTE we will change to use an inference config later with additional attrs we want
-        # tp_size = getattr(config, 'tp_size', 1)
-        shard_config = ShardConfig(enable_tensor_parallelism=True if tp_size > 1 else False, inference_only=True)
-        shardformer = ShardFormer(shard_config=shard_config)
-        self._prepare_with_shard_config(shard_config=shard_config)
+        assert self.shard_config.inference_only is True
+        shardformer = ShardFormer(shard_config=self.shard_config)
+        self._prepare_with_shard_config(shard_config=self.shard_config)
         self._shard_model_by(shardformer)
         self.model = None
 
@@ -114,7 +130,7 @@ class TPInferEngine:
         self.sharded_model = self.sharded_model.cuda()
 
     @property
-    def supported_models() -> List[str]:
+    def supported_models(self) -> List[str]:
         return _supported_models
 
     def generate(self, input_tokens: Union[BatchEncoding, dict, list, torch.Tensor], **generate_kwargs) -> torch.Tensor:
