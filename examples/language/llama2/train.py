@@ -261,6 +261,7 @@ def main():
     num_steps_per_epoch = len(dataloader)
     use_pipeline = isinstance(booster.plugin, HybridParallelPlugin) and booster.plugin.pp_size > 1
     is_pp_last_stage = use_pipeline and booster.plugin.stage_manager.is_last_stage()
+    print_flag = (not use_pipeline and coordinator.is_master()) or (use_pipeline and is_pp_last_stage)
 
     # if resume training, set the sampler start index to the correct value
     dataloader.sampler.set_start_index(sampler_start_idx)
@@ -271,7 +272,7 @@ def main():
 
         with tqdm(range(step_nums),
                   desc=f'Epoch {epoch}',
-                  disable=not ((not use_pipeline and coordinator.is_master()) or (use_pipeline and is_pp_last_stage)),
+                  disable=not print_flag,
                   total=num_steps_per_epoch,
                   initial=start_step) as pbar:
             for step in pbar:
@@ -295,8 +296,7 @@ def main():
                 optimizer.zero_grad()
 
                 pbar.set_postfix({'loss': loss.item()})
-                if ((not is_pp_last_stage) and coordinator.is_master()) or (is_pp_last_stage and
-                                                                            (not coordinator.is_master())):
+                if print_flag:
                     writer.add_scalar('loss', loss.item(), epoch * num_steps_per_epoch + step)
 
                 if args.save_interval > 0 and (step + 1) % args.save_interval == 0:
