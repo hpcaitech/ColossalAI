@@ -137,9 +137,12 @@ class TPInferEngine:
         elif isinstance(model, BloomForCausalLM):
             model = self.sharded_model.transformer
         setattr(model, 'infer_state', batch_infer_state)
-
         generate_kwargs.update(max_new_tokens=self.max_output_len)
         outputs = self.sharded_model.forward(input_tokens['input_ids'], input_tokens['attention_mask'])
+        print(input_tokens['input_ids'][:, 0])
+        outputs = self.sharded_model.forward(input_tokens['input_ids'][:, 0].unsqueeze(1),
+                                             input_tokens['attention_mask'])
+
         # outputs = self.sharded_model.generate(**input_tokens, **generate_kwargs, early_stopping=False)
 
         return outputs
