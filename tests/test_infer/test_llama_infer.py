@@ -12,6 +12,7 @@ from colossalai.inference.tensor_parallel.engine import TPInferEngine
 from colossalai.logging import disable_existing_loggers
 from colossalai.shardformer import ShardConfig
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
+from tests.kit.model_zoo import model_zoo
 
 os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
 TPSIZE = 2
@@ -50,34 +51,22 @@ def init_to_get_rotary(self, base=10000):
 }])
 def run_llama_test(test_config):
 
-    llama_model_path = "/data/scratch/llama-7b-hf"
-    if os.path.isdir(llama_model_path) is False:
-        warnings.warn("Model path does not exist")
-        return
+    sub_model_zoo = model_zoo.get_sub_registry('transformers_llama_for_casual_lm')
+    for name, (model_fn, data_gen_fn, _, _, _) in sub_model_zoo.items():
+        orig_model = model_fn()
+        init_to_get_rotary(orig_model.model, base=10000)
+        orig_model = orig_model.half()
+        data = data_gen_fn()
 
-    tokenizer = LlamaTokenizer.from_pretrained(llama_model_path)
-    tokenizer.pad_token_id = tokenizer.unk_token_id
-    model = LlamaForCausalLM.from_pretrained(llama_model_path, pad_token_id=tokenizer.eos_token_id)
-    init_to_get_rotary(model.model, base=10000)
-    model = model.half()
+        shard_config = ShardConfig(enable_tensor_parallelism=True if test_config['tp_size'] > 1 else False,
+                                   inference_only=True)
+        infer_engine = TPInferEngine(orig_model, shard_config, BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
+        infer_engine.optimize_model()
 
-    text = ["how is weather today?", "i am "]
-    input_ids = tokenizer.batch_encode_plus(text, return_tensors='pt', padding=True, device='cuda')
+        generate_kwargs = dict(do_sample=False)
+        outputs = infer_engine.generate(data, **generate_kwargs)
 
-    shard_config = ShardConfig(enable_tensor_parallelism=True if test_config['tp_size'] > 1 else False,
-                               inference_only=True)
-    infer_engine = TPInferEngine(model, shard_config, BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
-    infer_engine.optimize_model()
-
-    generate_kwargs = dict(max_new_tokens=MAX_OUTPUT_LEN, do_sample=False)
-    outputs = infer_engine.generate(input_ids, **generate_kwargs)
-
-    assert outputs is not None
-
-    if not dist.is_initialized() or dist.get_rank() == 0:
-        for o in outputs:
-            output_text = tokenizer.decode(o)
-            # print(output_text)
+        assert outputs is not None
 
 
 def check_llama(rank, world_size, port):

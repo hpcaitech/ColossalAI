@@ -1,5 +1,4 @@
 import os
-import warnings
 
 import pytest
 import torch
@@ -12,6 +11,7 @@ from colossalai.inference.tensor_parallel import TPInferEngine
 from colossalai.logging import disable_existing_loggers
 from colossalai.shardformer import ShardConfig
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
+from tests.kit.model_zoo import model_zoo
 
 TP_SIZE = 2
 MAX_BATCH_SIZE = 4
@@ -25,35 +25,22 @@ CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse('11.5')
     'tp_size': TP_SIZE,
 }])
 def run(test_config):
-    model_path = "/data3/models/bloom-7b1"
-    if os.path.isdir(model_path) is False:
-        warnings.warn("Model path does not exist")
-        return
 
-    tokenizer = AutoTokenizer.from_pretrained(model_path)
-    tokenizer.pad_token = tokenizer.eos_token
+    sub_model_zoo = model_zoo.get_sub_registry('transformers_bloom_for_causal_lm')
+    for name, (model_fn, data_gen_fn, _, _, _) in sub_model_zoo.items():
+        orig_model = model_fn()
+        orig_model = orig_model.half()
+        data = data_gen_fn()
 
-    text1 = "Introduce some landmarks in Beijing"
-    text2 = "how is weather today?"
-    input_ids = tokenizer.batch_encode_plus([text1, text2], return_tensors='pt', padding=True)
+        shard_config = ShardConfig(enable_tensor_parallelism=True if test_config['tp_size'] > 1 else False,
+                                   inference_only=True)
+        infer_engine = TPInferEngine(orig_model, shard_config, MAX_BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
+        infer_engine.optimize_model()
 
-    model = BloomForCausalLM.from_pretrained(model_path, pad_token_id=tokenizer.eos_token_id)
-    model = model.half()
+        generate_kwargs = dict(do_sample=False)
+        outputs = infer_engine.generate(data, **generate_kwargs)
 
-    shard_config = ShardConfig(enable_tensor_parallelism=True if test_config['tp_size'] > 1 else False,
-                               inference_only=True)
-    infer_engine = TPInferEngine(model, shard_config, MAX_BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
-    infer_engine.optimize_model()
-
-    generate_kwargs = dict(do_sample=False)
-    outputs = infer_engine.generate(input_ids, **generate_kwargs)
-
-    assert outputs is not None
-
-    if not dist.is_initialized() or dist.get_rank() == 0:
-        for o in outputs:
-            output_text = tokenizer.decode(o)
-            # print(output_text)
+        assert outputs is not None
 
 
 def check_bloom(rank, world_size, port):
