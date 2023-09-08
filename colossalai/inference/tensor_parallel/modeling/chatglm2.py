@@ -159,8 +159,13 @@ class ChatGLM2InferenceForwards:
         batch_size, seq_length = input_ids.shape
 
         infer_state = self.infer_state
-        seq_length_with_past = seq_length
         past_key_values_length = 0
+
+        #  NOT READY FOR PRIME TIME
+        #  dummy but work, revise it
+        past_key_values_length = infer_state.cache_manager.past_key_values_length
+        # past_key_values_length = past_key_values[0][0].shape[2]
+        seq_length_with_past = seq_length + past_key_values_length
 
         # prefill stage at first
         if use_cache and seq_length != 1:
@@ -169,6 +174,7 @@ class ChatGLM2InferenceForwards:
             infer_state.init_block_loc(infer_state.block_loc, infer_state.seq_len, seq_length,
                                        infer_state.context_mem_index)
         else:
+            print('total token num', infer_state.total_token_num)
             infer_state.is_context_stage = False
             alloc_mem = infer_state.cache_manager.alloc_contiguous(batch_size)
             if alloc_mem is not None:
@@ -200,7 +206,8 @@ class ChatGLM2InferenceForwards:
             seq_len = infer_state.seq_len
             infer_state.position_cos = torch.index_select(self._cos_cached, 0, seq_len - 1).view(seq_len.shape[0], -1)
             infer_state.position_sin = torch.index_select(self._sin_cached, 0, seq_len - 1).view(seq_len.shape[0], -1)
-            infer_state.other_kv_index = infer_state.block_loc[0, infer_state.max_len_in_batch - 1].item()
+            print('max_len_in_batch', infer_state.max_len_in_batch)
+            infer_state.other_kv_index = infer_state.block_loc[0, infer_state.max_len_in_batch].item()
 
         if inputs_embeds is None:
             inputs_embeds = self.embedding(input_ids)
@@ -247,6 +254,7 @@ class ChatGLM2InferenceForwards:
         # infer_state.block_loc[:, infer_state.max_len_in_batch-1] = infer_state.total_token_num + torch.arange(0, batch_size, dtype=torch.int32, device="cuda")
         infer_state.start_loc = infer_state.start_loc + torch.arange(0, batch_size, dtype=torch.int32, device="cuda")
         infer_state.seq_len += 1
+        infer_state.cache_manager.past_key_values_length += seq_length
 
         if not return_dict:
             return tuple(v for v in [
@@ -472,6 +480,7 @@ class ChatGLM2InferenceForwards:
         if infer_state.is_context_stage:
             # first token generation:
             # copy key and value calculated in current step to memory manager
+
             copy_kv_to_mem_cache(infer_state.decode_layer_id, key_layer, value_layer, infer_state.context_mem_index,
                                  infer_state.cache_manager)
 
@@ -506,11 +515,20 @@ class ChatGLM2InferenceForwards:
             attn_output = torch.empty_like(query_layer.view(-1, self.projection_size))
 
             print('in token attn kernel')
-            Llama2TokenAttentionForwards.token_attn(
-                query_layer, infer_state.cache_manager.key_buffer[infer_state.decode_layer_id],
-                infer_state.cache_manager.value_buffer[infer_state.decode_layer_id], attn_output, infer_state.block_loc,
-                infer_state.start_loc, infer_state.seq_len, infer_state.cache_manager.past_key_values_length,
-                infer_state.other_kv_index)
+            print('other kv index', infer_state.other_kv_index)
+            print('query_layer', query_layer.shape)
+            print('kv', key_layer.shape, value_layer.shape)
+            print('attn_output', attn_output.shape)
+
+            cache_k = infer_state.cache_manager.key_buffer[
+                infer_state.decode_layer_id][:infer_state.decode_mem_end, :, :]
+            cache_v = infer_state.cache_manager.value_buffer[
+                infer_state.decode_layer_id][:infer_state.decode_mem_end, :, :]
+
+            Llama2TokenAttentionForwards.token_attn(query_layer, cache_k, cache_v, attn_output, infer_state.block_loc,
+                                                    infer_state.start_loc, infer_state.seq_len,
+                                                    infer_state.cache_manager.past_key_values_length,
+                                                    infer_state.other_kv_index)
 
         # ==================================
         # core attention computation
@@ -522,6 +540,6 @@ class ChatGLM2InferenceForwards:
         # Output. [sq, b, h] 7,2,4096 for test
         # =================
 
-        output = self.dense(attn_output).reshape(7, 2, 4096)
+        output = self.dense(attn_output).reshape(-1, batch_size, self.projection_size)
 
         return output, kv_cache
