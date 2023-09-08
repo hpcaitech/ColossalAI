@@ -1,4 +1,5 @@
 import os
+import warnings
 
 import pytest
 import torch
@@ -26,6 +27,7 @@ CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse('11.5')
 def run(test_config):
     model_path = "/data3/models/bloom-7b1"
     if os.path.isdir(model_path) is False:
+        warnings.warn("Model path does not exist")
         return
 
     tokenizer = AutoTokenizer.from_pretrained(model_path)

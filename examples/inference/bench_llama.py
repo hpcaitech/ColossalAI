@@ -111,7 +111,7 @@ def run_llama_test(test_config):
     with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA], record_shapes=True) as prof:
         with record_function("model_inference"):
             torch.cuda.synchronize()
-            outputs = infer_engine.generate(input_tokens, generate_kwargs)
+            outputs = infer_engine.generate(input_tokens, **generate_kwargs)
             torch.cuda.synchronize()
     print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=10))
 

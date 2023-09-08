@@ -1,4 +1,5 @@
 import os
+import warnings
 
 import pytest
 import torch
@@ -51,6 +52,7 @@ def run_llama_test(test_config):
 
     llama_model_path = "/data/scratch/llama-7b-hf"
     if os.path.isdir(llama_model_path) is False:
+        warnings.warn("Model path does not exist")
         return
 
     tokenizer = LlamaTokenizer.from_pretrained(llama_model_path)
