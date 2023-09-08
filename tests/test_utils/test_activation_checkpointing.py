@@ -40,7 +40,6 @@ def forward_inplace(x, weight):
     return out
 
 
-@pytest.mark.gpu
 @clear_cache_before_run()
 @parameterize("use_reentrant", [True, False])
 @parameterize("cpu_offload", [True, False])

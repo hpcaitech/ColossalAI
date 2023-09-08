@@ -1,12 +1,14 @@
 import os
 import threading
 import time
-import torch
 from enum import Enum
 from typing import List
-from colossalai.gemini.stateful_tensor import StatefulTensor
+
+import torch
+
 from colossalai.gemini.ophooks import BaseOpHook
-from colossalai.engine import Engine
+from colossalai.gemini.stateful_tensor import StatefulTensor
+from colossalai.legacy.engine import Engine
 from colossalai.utils.profiler.extention import ProfilerExtension
 
 

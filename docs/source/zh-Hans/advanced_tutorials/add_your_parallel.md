@@ -81,14 +81,14 @@ Colossal-AI 为用户提供了一个全局 context，使他们能够轻松地管
 ## 梯度 Handler
 
 梯度 handler 是对参数的梯度执行 all-reduce 操作的对象。由于不同的 all-reduce 策略或许在不同的并行中被执行，用户可以继承
-`colossalai.engine.gradient_handler.BaseGradientHandler` 来实现其策略。目前，Colossal-AI 使用普通的数据并行梯度 handler 在数据并行的 rank 间 all-reduce 梯度。
+`colossalai.legacy.engine.gradient_handler.BaseGradientHandler` 来实现其策略。目前，Colossal-AI 使用普通的数据并行梯度 handler 在数据并行的 rank 间 all-reduce 梯度。
 如果数据并行被检测到，梯度 handler 会被自动添加进 engine。
 
 你可以添加你自己的梯度 handler，如下所示：
 
 ```python
-from colossalai.registry import GRADIENT_HANDLER
-from colossalai.engine import BaseGradientHandler
+from colossalai.legacy.registry import GRADIENT_HANDLER
+from colossalai.legacy.engine import BaseGradientHandler
 
 @GRADIENT_HANDLER.register_module
 class YourGradientHandler(BaseGradientHandler):
@@ -109,4 +109,5 @@ gradient_handlers = [
 ## Schedule
 
 Schedule 包含了如何执行前向和后向计算。目前， Colossal-AI 提供了流水和非流水的 schedule。
-如果你想修改前向和后向计算的执行方式，你可以继承 `colossalai.engine.schedule.BaseSchedule` 并实现 `forward_back_step` 函数。
+如果你想修改前向和后向计算的执行方式，你可以继承 `colossalai.legacy.engine.schedule.BaseSchedule` 并实现 `forward_back_step` 函数。
+<!-- doc-test-command: echo  -->

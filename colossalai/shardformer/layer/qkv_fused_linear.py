@@ -25,7 +25,9 @@ from colossalai.tensor.d_tensor.api import (
 
 from ._operation import (
     gather_forward_split_backward,
+    linear_reducescatter_forward_gather_backward,
     linear_with_async_comm,
+    matmul_gather_forward_reducescatter_backward,
     matmul_with_async_comm,
     reduce_backward,
     reduce_forward,
@@ -150,6 +152,7 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
         device (`torch.device`): The device of parameters, defaults to None.
         n_fused (int): The number items fused, defaults to 3 (QKV).
         process_group (`torch.distributed.ProcessGroup`): The process group to be used for weight sharding and communication, defaults to None.
+        seq_parallel (`bool`): If set to ``True``, it will use sequence parallel, defaults to False.
         gather_output (bool, optional): If true, call all-gather on output and make Y available
                     to all GPUs, otherwise, every GPU will have its output
                     which is :math:`Y_i = XA_i`, defaults to False
@@ -173,6 +176,8 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
                  process_group: ProcessGroup = None,
                  async_communication: bool = False,
                  gather_output: bool = False,
+                 seq_parallel: bool = False,
+                 overlap: bool = False,
                  skip_bias_add: bool = False,
                  n_fused: int = 3,
                  weight: Optional[Parameter] = None,
@@ -185,6 +190,8 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
         self.in_features = in_features
         self.out_features = out_features
         self.gather_output = gather_output
+        self.seq_parallel = seq_parallel
+        self.overlap = overlap
         self.skip_bias_add = skip_bias_add
         self.device = device
         self.n_fused = n_fused
@@ -296,15 +303,19 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
         assert input_.shape[-1] == self.weight.shape[0], \
             'Invalid shapes in Linear1D_Col forward: input={}, weight={}. Expected last dim of input {}.'.format(
                 input_.shape, self.weight.shape, self.weight.shape[-1])
-        # Set up backprop all-reduce.
-        input_parallel = reduce_backward(input_, self.process_group)
-        # input_parallel = input_
 
         # Matrix multiply.
         bias = self.bias if not self.skip_bias_add else None
 
-        output_parallel = matmul_with_async_comm(input_parallel, self.weight, bias, self.process_group,
-                                                 self.async_communication)
+        if self.seq_parallel:
+            input_parallel = input_
+            output_parallel = matmul_gather_forward_reducescatter_backward(input_parallel, self.weight, bias,
+                                                                           self.process_group, True, 1, self.overlap)
+        else:
+            # Set up backprop all-reduce.
+            input_parallel = reduce_backward(input_, self.process_group)
+            output_parallel = matmul_with_async_comm(input_parallel, self.weight, bias, self.process_group,
+                                                     self.async_communication)
 
         if self.gather_output:
             # All-gather across the partitions.
@@ -329,6 +340,7 @@ class GPT2FusedLinearConv1D_Row(ParallelModule):
         dtype (`torch.dtype`): The dtype of parameters, defaults to None.
         parallel_input (bool): If set to ``True``, it's assumed that the input is split, defaults to False.
         skip_bias_add (bool): If set to ``True``, it will skip bias add for linear layer,
+        seq_parallel (`bool`): If set to ``True``, it will use sequence parallel, defaults to False.
             which is preserved for kernel fusion, defaults to False
         weight_initializer (:class:`typing.Callable`, optional):
             The initializer of weight, defaults to kaiming uniform initializer.
@@ -346,6 +358,7 @@ class GPT2FusedLinearConv1D_Row(ParallelModule):
                  dtype: torch.dtype = None,
                  device: torch.device = None,
                  process_group: ProcessGroup = None,
+                 seq_parallel: bool = False,
                  parallel_input: bool = True,
                  skip_bias_add: bool = False,
                  weight: Optional[Parameter] = None,
@@ -363,6 +376,7 @@ class GPT2FusedLinearConv1D_Row(ParallelModule):
         self.parallel_input = parallel_input
         self.skip_bias_add = skip_bias_add
         self.process_group = process_group
+        self.seq_parallel = seq_parallel
         self.num_partitions = dist.get_world_size(self.process_group)
 
         if skip_bias_add and not bias:
@@ -499,7 +513,10 @@ class GPT2FusedLinearConv1D_Row(ParallelModule):
                 output = torch.cat(output_parallel_list, dim=-1)
         else:
             output_parallel = torch.matmul(input_, self.weight)
-            output = reduce_forward(output_parallel, self.process_group)
+            if self.seq_parallel:
+                output = linear_reducescatter_forward_gather_backward(output_parallel, self.process_group, 1)
+            else:
+                output = reduce_forward(output_parallel, self.process_group)
 
         if not self.skip_bias_add:
             if self.bias is not None:

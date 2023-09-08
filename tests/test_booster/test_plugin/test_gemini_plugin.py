@@ -98,7 +98,7 @@ def check_gemini_plugin(subset: str, init_method: str = 'none', early_stop: bool
         ]:
             continue
         err = run_fn(init_method, model_fn, data_gen_fn, output_transform_fn)
-
+        torch.cuda.empty_cache()
         if err is None:
             passed_models.append(name)
         else:

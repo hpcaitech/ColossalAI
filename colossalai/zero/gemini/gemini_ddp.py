@@ -10,8 +10,9 @@ import torch.nn as nn
 from torch.distributed import ProcessGroup
 from torch.distributed.distributed_c10d import _get_default_group
 
-from colossalai.checkpoint_io.utils import calculate_tensor_size
+from colossalai.checkpoint_io.utils import calculate_tensor_size, StateDictSharder
 from colossalai.interface import ModelWrapper
+
 from colossalai.lazy import LazyTensor
 from colossalai.logging import get_dist_logger
 from colossalai.nn.parallel.data_parallel import _cast_float, free_storage
@@ -733,7 +734,7 @@ class GeminiDDP(ModelWrapper):
         Yields:
             Iterator[OrderedDict]: A generator of state dict shard
         """
-        sharder = _StateDictSharder(max_shard_size)
+        sharder = StateDictSharder(max_shard_size)
 
         # get the mapping between copies and fp16 parameters
         fp16_to_fp32 = dict()
@@ -755,7 +756,7 @@ class GeminiDDP(ModelWrapper):
                         gathered_param_buffer.update(self._get_chunk_to_save_data(chunk, only_rank_0, dtype))
                     gathered_param = gathered_param_buffer.pop(fp32_param)
 
-                block, block_size = sharder.append(prefix + name, gathered_param)
+                block, block_size = sharder.append_param(prefix + name, gathered_param)
                 if block is not None:
                     yield block, block_size
 
@@ -766,7 +767,7 @@ class GeminiDDP(ModelWrapper):
         for name, buf in self.named_buffers():
             if buf is not None and name not in self._non_persistent_buffers_set:
                 buffer = buf if keep_vars else buf.detach()
-                block, block_size = sharder.append(prefix + name, buffer)
+                block, block_size = sharder.append_param(prefix + name, buffer)
                 if block is not None:
                     yield block, block_size
         # save extra states
@@ -774,32 +775,10 @@ class GeminiDDP(ModelWrapper):
         if getattr(self.__class__, "get_extra_state",
                    torch.nn.Module.get_extra_state) is not torch.nn.Module.get_extra_state:
             extra_state = self.get_extra_state()
-            block, block_size = sharder.append(extra_state_key, extra_state)
+            block, block_size = sharder.append_param(extra_state_key, extra_state)
             if block is not None:
                 yield block, block_size
 
         yield sharder.current_block, sharder.current_block_size
 
 
-class _StateDictSharder:
-
-    def __init__(self, max_shard_size: int) -> None:
-        self.max_shard_size = max_shard_size
-        self.current_block = OrderedDict()
-        self.current_block_size = 0
-
-    def append(self, name: str, tensor: torch.Tensor) -> Tuple[Optional[OrderedDict], int]:
-        tensor_size = calculate_tensor_size(tensor)
-        ret_block = None
-        ret_block_size = 0
-
-        # before we return the current block and create a new block,
-        # we need to ensure that the current block is not empty
-        if self.current_block_size + tensor_size > self.max_shard_size and self.current_block_size > 0:
-            ret_block = self.current_block
-            ret_block_size = self.current_block_size
-            self.current_block = OrderedDict()
-            self.current_block_size = 0
-        self.current_block[name] = tensor
-        self.current_block_size += tensor_size
-        return ret_block, ret_block_size
