@@ -7,6 +7,7 @@ import torch
 from torch.distributed import ProcessGroup
 from torch.distributed.distributed_c10d import _get_default_group
 from torch.utils.data import DataLoader, Dataset, DistributedSampler
+from transformers.models.llama.tokenization_llama import LlamaTokenizer
 
 from colossalai.utils import get_current_device
 
@@ -117,3 +118,17 @@ class RandomDataset(Dataset):
             'attention_mask': self.attention_mask[idx],
             'labels': self.input_ids[idx]
         }
+
+
+def tokenize_batch_for_pretrain(batch, tokenizer: Optional[LlamaTokenizer] = None, max_length: int = 2048):
+    texts = [sample['text'] for sample in batch]
+    data = tokenizer(texts, return_tensors="pt", padding='max_length', truncation=True, max_length=max_length)
+    data['labels'] = data['input_ids'].clone()
+    return data
+
+
+def tokenize_batch_for_finetune(batch, tokenizer: Optional[LlamaTokenizer] = None, max_length: int = 2048):
+    texts = [sample['prompt'] + sample["completion"] for sample in batch]
+    data = tokenizer(texts, return_tensors="pt", padding='max_length', truncation=True, max_length=max_length)
+    data['labels'] = data['input_ids'].clone()
+    return data

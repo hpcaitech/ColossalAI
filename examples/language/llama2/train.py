@@ -9,7 +9,13 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 from attn import SUPPORT_XFORMERS, replace_xformers
-from data_utils import load_json, prepare_dataloader, save_json
+from data_utils import (
+    load_json,
+    prepare_dataloader,
+    save_json,
+    tokenize_batch_for_finetune,
+    tokenize_batch_for_pretrain,
+)
 from datasets import load_dataset
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
@@ -21,7 +27,7 @@ from transformers.models.llama.tokenization_llama import LlamaTokenizer
 
 import colossalai
 from colossalai.booster import Booster
-from colossalai.booster.plugin import GeminiPlugin, LowLevelZeroPlugin
+from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLevelZeroPlugin
 from colossalai.cluster import DistCoordinator
 from colossalai.lazy import LazyInitContext
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
@@ -65,13 +71,6 @@ def format_numel_str(numel: int) -> str:
         return f'{numel}'
 
 
-def tokenize_batch(batch, tokenizer: Optional[LlamaTokenizer] = None, max_length: int = 2048):
-    texts = [sample['text'] for sample in batch]
-    data = tokenizer(texts, return_tensors="pt", padding='max_length', truncation=True, max_length=max_length)
-    data['labels'] = data['input_ids'].clone()
-    return data
-
-
 def all_reduce_mean(tensor: torch.Tensor) -> torch.Tensor:
     dist.all_reduce(tensor, op=dist.ReduceOp.SUM)
     tensor.div_(dist.get_world_size())
@@ -110,9 +109,16 @@ def main():
     # ==============================
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config', type=str, default='7b', help='Model configuration')
+    parser.add_argument('-m',
+                        '--mode',
+                        type=str,
+                        choices=["pretrain", "finetune"],
+                        default='pretrain',
+                        help='chose to finetune or pretrain the model')
+    parser.add_argument('--model_path', type=str, help="pretrained checkpoint path, used with mode==finetune")
     parser.add_argument('-p',
                         '--plugin',
-                        choices=['gemini', 'gemini_auto', 'zero2', 'zero2_cpu'],
+                        choices=['gemini', 'gemini_auto', 'zero2', 'zero2_cpu', 'hybrid_parallel'],
                         default='gemini',
                         help='Choose which plugin to use')
     parser.add_argument('-d',
@@ -120,6 +126,7 @@ def main():
                         type=str,
                         default='togethercomputer/RedPajama-Data-1T-Sample',
                         help='Data set path')
+    parser.add_argument('--task_name', type=str, default=None, help='task to run')
     parser.add_argument('-e', '--num_epochs', type=int, default=1, help='Number of epochs')
     parser.add_argument('-b', '--batch_size', type=int, default=2, help='Local batch size')
     parser.add_argument('--lr', type=float, default=3e-4, help='Learning rate')
@@ -170,10 +177,36 @@ def main():
                                     initial_scale=2**16,
                                     cpu_offload=True,
                                     max_norm=args.grad_clip)
+    elif args.plugin == 'hybrid_parallel':
+        plugin = HybridParallelPlugin(tp_size=4,
+                                      pp_size=1,
+                                      num_microbatches=None,
+                                      microbatch_size=1,
+                                      enable_jit_fused=False,
+                                      zero_stage=0,
+                                      precision='fp16',
+                                      initial_scale=1)
     else:
         raise ValueError(f'Unknown plugin {args.plugin}')
 
     booster = Booster(plugin=plugin)
+
+    # ==============================
+    # Initialize Model, Optimizer and LR Scheduler
+    # ==============================
+    if args.mode == 'finetune':
+        config = LlamaConfig.from_pretrained(args.model_path)
+        model = LlamaForCausalLM.from_pretrained(args.model_path, config=config).cuda()
+        collate_fn = tokenize_batch_for_finetune
+    elif args.mode == "pretrain":
+        config = MODEL_CONFIGS[args.config]
+        # use lazy init when using GeminiPlugin and mode is pretrain
+        init_ctx = LazyInitContext(
+            default_device=get_current_device()) if isinstance(plugin, GeminiPlugin) else nullcontext()
+
+        with init_ctx:
+            model = LlamaForCausalLM(config)
+        collate_fn = tokenize_batch_for_pretrain
 
     # ==============================
     # Initialize Tokenizer, Dataset and Dataloader
@@ -182,23 +215,13 @@ def main():
     # follows fast chat: https://github.com/lm-sys/FastChat/blob/main/fastchat/train/train.py#L257
     tokenizer.pad_token = tokenizer.unk_token
 
-    dataset = load_dataset(args.dataset)
+    dataset = load_dataset(args.dataset, args.task_name)
     train_ds = dataset['train']
     dataloader = prepare_dataloader(train_ds,
                                     batch_size=args.batch_size,
                                     shuffle=True,
                                     drop_last=True,
-                                    collate_fn=partial(tokenize_batch, tokenizer=tokenizer, max_length=args.max_length))
-
-    # ==============================
-    # Initialize Model, Optimizer and LR Scheduler
-    # ==============================
-    config = MODEL_CONFIGS[args.config]
-    init_ctx = LazyInitContext(
-        default_device=get_current_device()) if isinstance(plugin, GeminiPlugin) else nullcontext()
-
-    with init_ctx:
-        model = LlamaForCausalLM(config)
+                                    collate_fn=partial(collate_fn, tokenizer=tokenizer, max_length=args.max_length))
 
     if args.grad_checkpoint:
         model.gradient_checkpointing_enable()
@@ -236,27 +259,45 @@ def main():
         coordinator.print_on_master(f'Loaded checkpoint {args.load} at epoch {start_epoch} step {start_step}')
 
     num_steps_per_epoch = len(dataloader)
+    use_pipeline = isinstance(booster.plugin, HybridParallelPlugin) and booster.plugin.pp_size > 1
+    is_pp_last_stage = use_pipeline and booster.plugin.stage_manager.is_last_stage()
+
     # if resume training, set the sampler start index to the correct value
     dataloader.sampler.set_start_index(sampler_start_idx)
     for epoch in range(start_epoch, args.num_epochs):
         dataloader.sampler.set_epoch(epoch)
-        with tqdm(enumerate(dataloader),
+        step_nums = num_steps_per_epoch - start_step
+        dataloader_iter = iter(dataloader)
+
+        with tqdm(range(step_nums),
                   desc=f'Epoch {epoch}',
                   disable=not coordinator.is_master(),
                   total=num_steps_per_epoch,
                   initial=start_step) as pbar:
-            for step, batch in pbar:
-                batch = {k: v.cuda() for k, v in batch.items()}
-                outputs = model(**batch)
-                loss = outputs[0]
-                booster.backward(loss, optimizer)
+            for step in pbar:
+                if use_pipeline:
+                    outputs = booster.execute_pipeline(dataloader_iter,
+                                                       model,
+                                                       lambda x: x.loss,
+                                                       optimizer,
+                                                       return_loss=True,
+                                                       return_outputs=True)
+                    loss = outputs["loss"]
+                else:
+                    batch = next(dataloader_iter)
+                    batch = {k: v.cuda() for k, v in batch.items()}
+                    outputs = model(**batch)
+                    loss = outputs[0]
+                    booster.backward(loss, optimizer)
+
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
 
-                all_reduce_mean(loss)
+                loss = all_reduce_mean(loss)
                 pbar.set_postfix({'loss': loss.item()})
-                if coordinator.is_master():
+                if ((not is_pp_last_stage) and coordinator.is_master()) or (is_pp_last_stage and
+                                                                            (not coordinator.is_master())):
                     writer.add_scalar('loss', loss.item(), epoch * num_steps_per_epoch + step)
 
                 if args.save_interval > 0 and (step + 1) % args.save_interval == 0:
