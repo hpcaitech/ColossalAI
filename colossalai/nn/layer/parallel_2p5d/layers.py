@@ -5,22 +5,34 @@ from typing import Callable
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch import Tensor
+from torch.nn import Parameter
+
 from colossalai.communication import broadcast
 from colossalai.context import ParallelMode, seed
 from colossalai.core import global_context as gpc
 from colossalai.global_variables import tensor_parallel_env as env
+from colossalai.legacy.registry import LAYERS
 from colossalai.nn import init as init
-from colossalai.registry import LAYERS
-from colossalai.utils.checkpointing import (broadcast_state_dict, gather_tensor_parallel_state_dict,
-                                            partition_tensor_parallel_state_dict)
+from colossalai.utils.checkpointing import (
+    broadcast_state_dict,
+    gather_tensor_parallel_state_dict,
+    partition_tensor_parallel_state_dict,
+)
 from colossalai.utils.cuda import get_current_device
-from torch import Tensor
-from torch.nn import Parameter
 
 from ..base_layer import ParallelLayer
 from ..utils import divide, set_tensor_parallel_attribute_by_partition, to_2tuple
-from ._operation import (Matmul_AB_2p5D, Matmul_ABT_2p5D, add_bias_2p5d, all_gather_tensor_2p5d, classifier_2p5d,
-                         layernorm_2p5d, reduce_scatter_tensor_2p5d, split_batch_2p5d)
+from ._operation import (
+    Matmul_AB_2p5D,
+    Matmul_ABT_2p5D,
+    add_bias_2p5d,
+    all_gather_tensor_2p5d,
+    classifier_2p5d,
+    layernorm_2p5d,
+    reduce_scatter_tensor_2p5d,
+    split_batch_2p5d,
+)
 from ._utils import assert_tesseract_initialization, get_tesseract_dim_dep_from_env
 
 

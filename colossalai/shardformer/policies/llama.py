@@ -1,3 +1,4 @@
+import warnings
 from functools import partial
 from typing import Callable, Dict, List, Union
 
@@ -35,14 +36,24 @@ class LlamaPolicy(Policy):
 
         policy = {}
 
+        if self.shard_config.enable_sequence_parallelism:
+            self.shard_config.enable_sequence_parallelism = False
+            warnings.warn("Llama dosen't support sequence parallelism now, will ignore the sequence parallelism flag.")
+
+
         if self.shard_config.enable_tensor_parallelism:
+            decoder_attribute_replacement = {
+                "self_attn.hidden_size":
+                    self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
+                "self_attn.num_heads":
+                    self.model.config.num_attention_heads // self.shard_config.tensor_parallel_size,
+            }
+            if getattr(self.model.config, "num_key_value_heads", False):
+                decoder_attribute_replacement["self_attn.num_key_value_heads"] = \
+                    self.model.config.num_key_value_heads // self.shard_config.tensor_parallel_size
+
             policy[LlamaDecoderLayer] = ModulePolicyDescription(
-                attribute_replacement={
-                    "self_attn.hidden_size":
-                        self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
-                    "self_attn.num_heads":
-                        self.model.config.num_attention_heads // self.shard_config.tensor_parallel_size,
-                },
+                attribute_replacement=decoder_attribute_replacement,
                 sub_module_replacement=[
                     SubModuleReplacementDescription(
                         suffix="self_attn.q_proj",
@@ -105,9 +116,11 @@ class LlamaPolicy(Policy):
                                                         target_key=LlamaModel)
 
         if self.shard_config.enable_flash_attention:
-            policy[LlamaAttention] = ModulePolicyDescription(method_replacement={
+            self.append_or_create_method_replacement(description={
                 'forward': get_llama_flash_attention_forward(),
-            })
+            },
+                                                     policy=policy,
+                                                     target_key=LlamaAttention)
 
         return policy
 

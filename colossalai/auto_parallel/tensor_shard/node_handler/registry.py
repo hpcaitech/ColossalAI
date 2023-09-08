@@ -1,5 +1,5 @@
 class Registry:
-    # TODO: refactor the registry classes used in colossalai.registry, colossalai.fx and here
+    # TODO: refactor the registry classes used in colossalai.legacy.registry, colossalai.fx and here
 
     def __init__(self, name):
         self.name = name

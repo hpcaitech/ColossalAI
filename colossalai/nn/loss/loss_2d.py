@@ -1,14 +1,15 @@
 import torch
 import torch.distributed as dist
-from colossalai.context import ParallelMode
-from colossalai.core import global_context as gpc
-from colossalai.nn.layer.parallel_2d import reduce_by_batch_2d, split_batch_2d
-from colossalai.nn.layer.parallel_2d._utils import assert_summa_initialization
-from colossalai.registry import LOSSES
-from colossalai.utils import get_current_device
 from torch.cuda.amp import custom_bwd, custom_fwd
 from torch.nn.functional import cross_entropy
 from torch.nn.modules.loss import _Loss
+
+from colossalai.context import ParallelMode
+from colossalai.core import global_context as gpc
+from colossalai.legacy.registry import LOSSES
+from colossalai.nn.layer.parallel_2d import reduce_by_batch_2d, split_batch_2d
+from colossalai.nn.layer.parallel_2d._utils import assert_summa_initialization
+from colossalai.utils import get_current_device
 
 
 @LOSSES.register_module

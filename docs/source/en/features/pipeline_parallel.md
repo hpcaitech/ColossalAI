@@ -79,7 +79,7 @@ import colossalai.nn as col_nn
 
 from colossalai.core import global_context as gpc
 from colossalai.logging import disable_existing_loggers, get_dist_logger
-from colossalai.trainer import Trainer, hooks
+from colossalai.legacy.trainer import Trainer, hooks
 from colossalai.utils import MultiTimer, get_dataloader
 from colossalai.context import ParallelMode
 from colossalai.pipeline.pipelinable import PipelinableContext
@@ -157,3 +157,4 @@ trainer.fit(train_dataloader=train_dataloader,
 ```
 
 We use `2` pipeline stages and the batch will be split into `4` micro batches.
+<!-- doc-test-command: echo  -->

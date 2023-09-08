@@ -6,6 +6,7 @@ from typing import Dict, Iterator, Optional, Tuple
 
 import torch
 import torch.distributed as dist
+import torch.nn as nn
 from torch.distributed import ProcessGroup
 from torch.optim import Optimizer
 
@@ -307,7 +308,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         # or got a grad of param from another group
         # after reduction, the bucket will be empty
         if self._bucket_store.num_elements_in_bucket() + param_size > self._reduce_bucket_size or \
-            group_id != self._bucket_store.current_group_id:
+                group_id != self._bucket_store.current_group_id:
             self._run_reduction()
 
         padding_size = self._param_store.get_param_padding_size(param)
@@ -329,6 +330,24 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         if not self.require_grad_sync:
             return
 
+        self._reduce_grad(self._partition_grads)
+
+        # clear reduced grads
+        if self._overlap_communication:
+            torch.cuda.synchronize()
+
+        self.zero_grad()
+
+    def backward_by_grad(self, tensor, grad):
+        assert not(self._partition_grads and not self.require_grad_sync), \
+            "ZeRO2(partition_grads) and gradient accumulation(no_sync) are not compatible"
+
+        if self.mixed_precision_mixin is not None:
+            grad = self.mixed_precision_mixin.pre_backward_by_grad(tensor, grad)
+        torch.autograd.backward(tensor, grad)
+
+        if not self.require_grad_sync:
+            return
         self._reduce_grad(self._partition_grads)
 
         # clear reduced grads
@@ -362,7 +381,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
     def step(self, closure=None):
         assert closure is None, 'closure is not supported by step()'
-
         if not self.require_grad_sync:
             return
 
@@ -553,11 +571,9 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                         if padding_size > 0:
                             v = torch.nn.functional.pad(v, [0, padding_size])
                         v_list = v.split(v.numel() // self._world_size)
-                        device = 'cpu' if self._cpu_offload else 'cuda'
-                        zero_state_dict['state'][param_idx][k] = v_list[self._local_rank].to(device).detach()
+                        zero_state_dict['state'][param_idx][k] = v_list[self._local_rank].detach().clone()
 
         self.optim.load_state_dict(zero_state_dict)
-        zero_state_dict = dict()
 
     def state_dict_shard(self, max_shard_size: int = 1024) -> Iterator[Tuple[Dict, int]]:
         """Returns dictionaries containing a whole state of the module one by one. The max size of dictionary shard is specified by ``max_shard_size``.
@@ -602,3 +618,19 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             ret_block_size += current_block_size
 
         yield ret_block, ret_block_size
+
+    def update_master_params(self, model: nn.Module) -> None:
+        """Update master params from working params
+
+        Args:
+            model (nn.Module): The model to update master params
+        """
+        for p in model.parameters():
+            p_id = id(p)
+            if p_id in self._param_store.working_to_master_param:
+                master_param = self._param_store.working_to_master_param[p_id]
+                padding_size = self._param_store.get_param_padding_size(p)
+                working_param = p.data.view(-1)
+                if padding_size > 0:
+                    working_param = torch.nn.functional.pad(working_param, [0, padding_size])
+                master_param.copy_(working_param.chunk(self._world_size)[self._local_rank])
