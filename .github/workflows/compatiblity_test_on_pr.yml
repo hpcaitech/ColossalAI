@@ -13,7 +13,7 @@ jobs:
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     concurrency:
-      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-prepare-matrix
       cancel-in-progress: true
     steps:
       - uses: actions/checkout@v3
@@ -44,7 +44,7 @@ jobs:
       options: --gpus all --rm -v /data/scratch/cifar-10:/data/scratch/cifar-10
     timeout-minutes: 120
     concurrency:
-      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-run-test
       cancel-in-progress: true
     steps:
       - name: Install dependencies
@@ -58,7 +58,7 @@ jobs:
       - name: Install tensornvme
         run: |
           cd TensorNVMe
-          conda install cmake
+          apt update && apt install -y cmake
           pip install -r requirements.txt
           pip install -v .
       - uses: actions/checkout@v2
@@ -78,7 +78,7 @@ jobs:
 
       - name: Install Colossal-AI
         run: |
-          pip install -v --no-cache-dir .
+          CUDA_EXT=1 pip install -v .
           pip install -r requirements/requirements-test.txt
       - name: Unit Testing
         run: |
