@@ -475,10 +475,14 @@ class ChatGLM2InferenceForwards:
             copy_kv_to_mem_cache(infer_state.decode_layer_id, key_layer, value_layer, infer_state.context_mem_index,
                                  infer_state.cache_manager)
 
-            attn_output = torch.empty_like(query_layer)
+            print(query_layer)
 
-            llama2_context_attn_fwd(query_layer, key_layer, value_layer, attn_output, infer_state.start_loc,
-                                    infer_state.seq_len, infer_state.cache_manager.past_key_values_length)
+            attn_output = torch.empty_like(query_layer.view(-1, self.projection_size))
+
+            llama2_context_attn_fwd(
+                query_layer, key_layer, value_layer,
+                attn_output.view(-1, self.num_attention_heads_per_partition, self.hidden_size_per_attention_head),
+                infer_state.start_loc, infer_state.seq_len, infer_state.cache_manager.past_key_values_length)
             print('context stage', attn_output.shape)
         else:
             print('token attention')
@@ -499,8 +503,9 @@ class ChatGLM2InferenceForwards:
             # second token and follows
             # kv = torch.stack((key_states, value_states), dim=2)
             # (batch_size, seqlen, nheads, headdim)
-            attn_output = torch.empty_like(query_layer)
+            attn_output = torch.empty_like(query_layer.view(-1, self.projection_size))
 
+            print('in token attn kernel')
             Llama2TokenAttentionForwards.token_attn(
                 query_layer, infer_state.cache_manager.key_buffer[infer_state.decode_layer_id],
                 infer_state.cache_manager.value_buffer[infer_state.decode_layer_id], attn_output, infer_state.block_loc,
@@ -517,6 +522,6 @@ class ChatGLM2InferenceForwards:
         # Output. [sq, b, h] 7,2,4096 for test
         # =================
 
-        output = self.dense(attn_output.view(-1, batch_size, self.projection_size))
+        output = self.dense(attn_output).reshape(7, 2, 4096)
 
         return output, kv_cache
