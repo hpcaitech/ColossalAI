@@ -24,49 +24,48 @@ CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse('11.5')
     'tp_size': TP_SIZE,
 }])
 def run(test_config):
-    # model_path = "/data3/models/bloom-7b1"
-    # if os.path.isdir(model_path) is False:
-    #     return
 
-    # tokenizer = AutoTokenizer.from_pretrained(model_path)
-    # tokenizer.pad_token = tokenizer.eos_token
+    model_path = "/data3/models/bloom-7b1"
 
-    # text1 = "Introduce some landmarks in Beijing"
-    # text2 = "how is weather today?"
-    # input_ids = tokenizer.batch_encode_plus([text1, text2], return_tensors='pt', padding=True)
+    if os.path.isdir(model_path) is False:
+        sub_model_zoo = model_zoo.get_sub_registry('transformers_bloom_for_causal_lm')
+        for name, (model_fn, data_gen_fn, _, _, _) in sub_model_zoo.items():
+            orig_model = model_fn()
+            orig_model = orig_model.half()
+            data = data_gen_fn()
 
-    # model = BloomForCausalLM.from_pretrained(model_path, pad_token_id=tokenizer.eos_token_id)
-    # model = model.half()
+            infer_engine = TPInferEngine(orig_model, MAX_BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
+            infer_engine.optimize_model(test_config)
 
-    # infer_engine = TPInferEngine(model, MAX_BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
-    # infer_engine.optimize_model(test_config)
+            generate_kwargs = dict(do_sample=False)
+            outputs = infer_engine.generate(data, **generate_kwargs)
 
-    # generate_kwargs = dict(do_sample=False)
-    # outputs = infer_engine.generate(input_ids, **generate_kwargs)
+            assert outputs is not None
 
-    # assert outputs is not None
+            print(outputs)
+    else:
+        tokenizer = AutoTokenizer.from_pretrained(model_path)
+        tokenizer.pad_token = tokenizer.eos_token
 
-    # if not dist.is_initialized() or dist.get_rank() == 0:
-    #     # output_text = tokenizer.decode(outputs[0])
-    #     # print(output_text)
-    #     for o in outputs:
-    #         output_text = tokenizer.decode(o)
-    #         # print(output_text)
+        text1 = "Introduce some landmarks in Beijing"
+        text2 = "how is weather today?"
+        input_ids = tokenizer.batch_encode_plus([text1, text2], return_tensors='pt', padding=True)
 
-    sub_model_zoo = model_zoo.get_sub_registry('transformers_bloom_for_causal_lm')
-    for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
-        orig_model = model_fn()
-        orig_model = orig_model.half()
-        data = data_gen_fn()
-        print(data)
+        model = BloomForCausalLM.from_pretrained(model_path, pad_token_id=tokenizer.eos_token_id)
+        model = model.half()
 
-        infer_engine = TPInferEngine(orig_model, MAX_BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
+        infer_engine = TPInferEngine(model, MAX_BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
         infer_engine.optimize_model(test_config)
 
         generate_kwargs = dict(do_sample=False)
-        outputs = infer_engine.generate(data, **generate_kwargs)
+        outputs = infer_engine.generate(input_ids, **generate_kwargs)
 
-        print(outputs)
+        assert outputs is not None
+
+        if not dist.is_initialized() or dist.get_rank() == 0:
+            for o in outputs:
+                output_text = tokenizer.decode(o)
+                # print(output_text)
 
 
 def check_bloom(rank, world_size, port):

@@ -117,7 +117,7 @@ class TPInferEngine:
         if self.sharded_model is not None:
             return self.generate_by_set_infer_state(input_tokens, **generate_kwargs)
 
-        return self.model.generate(input_tokens.get('input_ids'), **generate_kwargs)
+        return self.model.generate(**input_tokens, **generate_kwargs)
 
     @torch.no_grad()
     def generate_by_set_infer_state(self, input_tokens, **generate_kwargs) -> torch.Tensor:
