@@ -40,7 +40,7 @@ def run_fwd_bwd(model, data, label, criterion, optimizer, enable_autocast=False)
 
 
 def run_zero_test(local_rank, world_size, stage=1):
-    criterion = MoeLoss(aux_weight=0.01, loss_fn=torch.nn.CrossEntropyLoss)
+    criterion = torch.nn.CrossEntropyLoss()
 
     zero_model = MoeModel(checkpoint=True)
     optimizer = torch.optim.Adam(zero_model.parameters())

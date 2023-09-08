@@ -37,9 +37,9 @@ def run_test(rank, world_size, port):
     tp_data = torch.randn(BATCH_SIZE, DIM, device=get_current_device())
     ep_data = tp_data.detach()[2 * rank:2 * (rank + 1)]
 
-    out_tp = tp_model(tp_data)[0]
+    out_tp = tp_model(tp_data)
     MOE_CONTEXT.reset_loss()
-    out_ep = ep_model(ep_data)[0]
+    out_ep = ep_model(ep_data)
     MOE_CONTEXT.reset_loss()
     assert torch.allclose(out_ep, out_tp[2 * rank:2 * (rank + 1)])
 
