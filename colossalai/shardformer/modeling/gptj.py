@@ -535,7 +535,7 @@ def get_gptj_flash_attention_forward():
         """
         new_shape = tensor.size()[:-1] + (num_attention_heads, attn_head_size)
         tensor = tensor.view(new_shape)
-        if rotary or len(tensor.shape) in [4,5]:
+        if rotary or len(tensor.shape) in [4, 5]:
             return tensor
         else:
             raise ValueError(f"Input tensor rank should be one of [4, 5], but is: {len(tensor.shape)}")
@@ -556,6 +556,7 @@ def get_gptj_flash_attention_forward():
         query = self.q_proj(hidden_states)
         key = self.k_proj(hidden_states)
         value = self.v_proj(hidden_states)
+        
 
         query = split_heads(query, self.num_attention_heads, self.head_dim, True)
         key = split_heads(key, self.num_attention_heads, self.head_dim, True)
@@ -588,8 +589,10 @@ def get_gptj_flash_attention_forward():
             key = apply_rotary_pos_emb(key, sin, cos)
             query = apply_rotary_pos_emb(query, sin, cos)
 
-        key = key.permute(0, 2, 1, 3)
-        query = query.permute(0, 2, 1, 3)
+        #key = key.permute(0, 2, 1, 3)
+        #query = query.permute(0, 2, 1, 3)
+        key = key.to(dtype=value.dtype) #fp16 compatability
+        query = query.to(dtype=value.dtype)
 
         if layer_past is not None:
             past_key = layer_past[0]
@@ -603,9 +606,8 @@ def get_gptj_flash_attention_forward():
             present = None
 
         # use AttnMaskType and ColoAttention
-        if not self.is_cross_attention:
-            attn_mask_type = AttnMaskType.causal
-            flash_attention_mask = None
+        attn_mask_type = AttnMaskType.causal
+        flash_attention_mask = None
         if attention_mask != None:
             if attn_mask_type == AttnMaskType.causal:
                 attn_mask_type == AttnMaskType.paddedcausal
@@ -615,8 +617,9 @@ def get_gptj_flash_attention_forward():
 
         # use coloattention
         scale = value.size(-1)**-0.5
+
         attention = ColoAttention(embed_dim=self.embed_dim,
-                                  num_heads=self.num_heads,
+                                  num_heads=self.num_attention_heads,
                                   dropout=self.attn_dropout.p,
                                   scale=scale)
 
@@ -627,6 +630,8 @@ def get_gptj_flash_attention_forward():
         outputs = (attn_output, present, None)
 
         return outputs  # a, present, (attentions)
+    
+    return forward
       
 def gptj_sequence_parallel_forward_fn(shard_config: ShardConfig):
 

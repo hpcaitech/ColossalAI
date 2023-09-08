@@ -140,8 +140,8 @@ class GPTJPolicy(Policy):
             self.append_or_create_method_replacement(description={
                 'forward': get_gptj_flash_attention_forward(),
             },
-                                                        policy=policy,
-                                                        target_key=GPTJAttention)
+                                                    policy=policy,
+                                                    target_key=GPTJAttention)
 
         if self.shard_config.enable_sequence_parallelism:
             policy[GPTJModel].method_replacement = {"forward": gptj_sequence_parallel_forward_fn(self.shard_config)}
