@@ -55,6 +55,7 @@ def run_llama_test(test_config):
         sub_model_zoo = model_zoo.get_sub_registry('transformers_llama_for_casual_lm')
         for name, (model_fn, data_gen_fn, _, _, _) in sub_model_zoo.items():
             orig_model = model_fn()
+            init_to_get_rotary(orig_model.model, base=10000)
             orig_model = orig_model.half()
             data = data_gen_fn()
 
