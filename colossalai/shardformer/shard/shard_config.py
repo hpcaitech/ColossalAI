@@ -20,6 +20,8 @@ class ShardConfig:
         enable_tensor_parallelism (bool): Whether to turn on tensor parallelism, default is True.
         enable_fused_normalization (bool): Whether to use fused layernorm, default is False.
         enable_all_optimization (bool): Whether to turn on all optimization, default is False.
+        enable_sequence_parallelism (bool): Whether to turn on sequence parallelism, default is False.
+        enable_sequence_overlap (bool): Whether to turn on sequence overlap, default is False.
     """
     tensor_parallel_process_group: Optional[ProcessGroup] = None
     pipeline_stage_manager: Optional[PipelineStageManager] = None
@@ -28,6 +30,8 @@ class ShardConfig:
     enable_all_optimization: bool = False
     enable_flash_attention: bool = False
     enable_jit_fused: bool = False
+    enable_sequence_parallelism: bool = False
+    enable_sequence_overlap: bool = False
 
     # pipeline_parallel_size: int
     # data_parallel_size: int
@@ -40,6 +44,11 @@ class ShardConfig:
         return self._tensor_parallel_size
 
     def __post_init__(self):
+        if not self.enable_tensor_parallelism and self.enable_sequence_parallelism:
+            raise ValueError(
+                "enable_sequence_parallelism can only be set to True when enable_tensor_parallelism is True")
+        if not self.enable_sequence_parallelism and self.enable_sequence_overlap:
+            raise ValueError("enable_sequence_overlap can only be set to True when enable_sequence_parallelism is True")
         if not self.enable_tensor_parallelism:
             self._tensor_parallel_size = 1
         else:
@@ -57,3 +66,5 @@ class ShardConfig:
         self.enable_fused_normalization = True
         self.enable_flash_attention = True
         self.enable_jit_fused = True
+        self.enable_sequence_parallelism = True
+        self.enable_sequence_overlap = True

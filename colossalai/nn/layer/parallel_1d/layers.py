@@ -15,8 +15,8 @@ from colossalai.context import ParallelMode, seed
 from colossalai.core import global_context as gpc
 from colossalai.global_variables import tensor_parallel_env as env
 from colossalai.kernel import LayerNorm
+from colossalai.legacy.registry import LAYERS
 from colossalai.nn import init as init
-from colossalai.registry import LAYERS
 from colossalai.utils.checkpointing import (
     broadcast_state_dict,
     gather_tensor_parallel_state_dict,

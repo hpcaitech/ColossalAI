@@ -267,7 +267,7 @@ from pathlib import Path
 from colossalai.core import global_context as gpc
 from colossalai.logging import get_dist_logger
 from colossalai.utils import get_dataloader
-from colossalai.trainer import Trainer, hooks
+from colossalai.legacy.trainer import Trainer, hooks
 from colossalai.nn.lr_scheduler import LinearWarmupLR
 from timm.models import vit_base_patch16_224
 from torchvision import datasets, transforms
