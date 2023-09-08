@@ -20,7 +20,8 @@ class MoeContext(metaclass=SingletonMeta):
         # When we have a maximum expert parallel size, we have a minimum data parallel size naturally
         self.max_ep_size = None
         self.min_dp_size = None
-        self.aux_loss = None
+        self.router_aux_loss = []
+        self.router_z_loss = []
         self.parallel = None
         self.use_kernel_optim = True
 
@@ -100,13 +101,15 @@ class MoeContext(metaclass=SingletonMeta):
         self.use_kernel_optim = False
 
     def reset_loss(self):
-        self.aux_loss = 0
+        self.router_aux_loss, self.router_z_loss = [], []
 
-    def add_loss(self, loss):
-        self.aux_loss += loss
+    def add_loss(self, aux_loss: float = 0., z_loss: float = 0.):
+        self.router_aux_loss.append(aux_loss)
+        self.router_z_loss.append(z_loss)
 
     def get_loss(self):
-        return self.aux_loss
+        cur_loss = self.router_aux_loss, self.router_z_loss
+        return cur_loss
 
     def get_parallel(self):
         return self.parallel

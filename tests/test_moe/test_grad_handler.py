@@ -50,7 +50,7 @@ def run_test(rank, world_size, port):
 
     MOE_CONTEXT.reset_loss()
     for layer in layer_list:
-        data, _ = layer(data)
+        data = layer(data)
     data.backward(grad)
     grad_handler.handle_gradient()
 
