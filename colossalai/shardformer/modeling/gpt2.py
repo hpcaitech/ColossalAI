@@ -884,6 +884,7 @@ def gpt2_sequence_parallel_forward_fn(shard_config: ShardConfig):
 
         if self.gradient_checkpointing and self.training:
             if use_cache:
+                logger = logging.get_logger(__name__)
                 logger.warning_once(
                     "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`...")
                 use_cache = False
