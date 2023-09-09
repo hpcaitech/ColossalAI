@@ -89,12 +89,12 @@ class GPTJPipelineForwards:
 
             if token_type_ids is not None:
                 token_type_ids = token_type_ids.view(-1, seq_length)
-            else:
-                if hidden_states is None:
-                    raise ValueError("hidden_states shouldn't be None for stages other than the first stage.")
-                input_shape = hidden_states.size()[:-1]
-                batch_size, seq_length = input_shape[0], input_shape[1]
-                device = hidden_states.device
+        else:
+            if hidden_states is None:
+                raise ValueError("hidden_states shouldn't be None for stages other than the first stage.")
+            input_shape = hidden_states.size()[:-1]
+            batch_size, seq_length = input_shape[0], input_shape[1]
+            device = hidden_states.device
 
         # Attention mask.
         if attention_mask is not None:
@@ -122,23 +122,20 @@ class GPTJPipelineForwards:
         # head_mask has shape n_layer x batch x num_attention_heads x N x N
         head_mask = self.get_head_mask(head_mask, self.config.n_layer)
 
+        # position id to be asssigned not just for the first stage for attn input
+        if position_ids is not None:
+            position_ids = position_ids.view(-1, seq_length)
+        else:
+            position_ids = torch.arange(0, seq_length, dtype=torch.long, device=device)
+            position_ids = position_ids.unsqueeze(0).view(-1, input_shape[-1])
         if stage_manager.is_first_stage():
-            if position_ids is not None:
-                position_ids = position_ids.view(-1, seq_length)
-            else:
-                position_ids = torch.arange(0, seq_length, dtype=torch.long, device=device)
-                position_ids = position_ids.unsqueeze(0).view(-1, input_shape[-1])
-
-        if inputs_embeds is None:
-            inputs_embeds = self.wte(input_ids)
-
-        hidden_states = inputs_embeds
-
-        if token_type_ids is not None:
-            token_type_embeds = self.wte(token_type_ids)
-            hidden_states = hidden_states + token_type_embeds
-
-        hidden_states = self.drop(hidden_states)
+            if inputs_embeds is None:
+                inputs_embeds = self.wte(input_ids)
+            hidden_states = inputs_embeds
+            if token_type_ids is not None:
+                token_type_embeds = self.wte(token_type_ids)
+                hidden_states = hidden_states + token_type_embeds
+            hidden_states = self.drop(hidden_states)
 
         output_shape = input_shape + (hidden_states.size(-1),)
 
