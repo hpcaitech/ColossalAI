@@ -680,13 +680,9 @@ class Llama2TokenAttentionForwards:
     @torch.no_grad()
     def token_attn(q, k, v, attn_out, kv_cache_loc, kv_cache_start_loc, kv_cache_seq_len, max_len_in_batch,
                    other_kv_index):
-        print('key buffer', k.shape)
         total_token_num = k.shape[0]
-        print('total_token_num', total_token_num)
         head_num = k.shape[1]
-        print('head num', head_num)
         batch_size = kv_cache_seq_len.shape[0]
-        print('batch size', batch_size)
         calcu_shape1 = (batch_size, head_num, k.shape[2])
 
         att_m_tensor = torch.empty((head_num, total_token_num), dtype=q.dtype, device="cuda")
@@ -700,9 +696,6 @@ class Llama2TokenAttentionForwards:
             kv_cache_seq_len,
             max_len_in_batch,
         )
-        print('in kernel')
-        print('query ', q.shape)
-        print('att_m_tensor', att_m_tensor.shape)
 
         if triton.__version__ == "2.0.0":
             prob = torch.empty_like(att_m_tensor)
@@ -712,7 +705,6 @@ class Llama2TokenAttentionForwards:
 
             Llama2TokenAttentionForwards.token_att_fwd2(prob, v, attn_out.view(calcu_shape1), kv_cache_loc,
                                                         kv_cache_start_loc, kv_cache_seq_len, max_len_in_batch)
-            print(attn_out.shape)
             prob = None
 
             return
