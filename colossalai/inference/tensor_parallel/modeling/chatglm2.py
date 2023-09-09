@@ -174,7 +174,6 @@ class ChatGLM2InferenceForwards:
             infer_state.init_block_loc(infer_state.block_loc, infer_state.seq_len, seq_length,
                                        infer_state.context_mem_index)
         else:
-            print('total token num', infer_state.total_token_num)
             infer_state.is_context_stage = False
             alloc_mem = infer_state.cache_manager.alloc_contiguous(batch_size)
             if alloc_mem is not None:
@@ -206,7 +205,6 @@ class ChatGLM2InferenceForwards:
             seq_len = infer_state.seq_len
             infer_state.position_cos = torch.index_select(self._cos_cached, 0, seq_len - 1).view(seq_len.shape[0], -1)
             infer_state.position_sin = torch.index_select(self._sin_cached, 0, seq_len - 1).view(seq_len.shape[0], -1)
-            print('max_len_in_batch', infer_state.max_len_in_batch)
             infer_state.other_kv_index = infer_state.block_loc[0, infer_state.max_len_in_batch].item()
 
         if inputs_embeds is None:
@@ -297,7 +295,6 @@ class ChatGLM2InferenceForwards:
             layer_ret = layer(
                 hidden_states,
                 attention_mask,
-                rotary_pos_emb,
                 kv_cache=kv_caches[index],
                 use_cache=use_cache,
                 infer_state=infer_state,
@@ -323,7 +320,6 @@ class ChatGLM2InferenceForwards:
         self: GLMBlock,
         hidden_states,
         attention_mask,
-        rotary_pos_emb,
         kv_cache=None,
         use_cache=True,
         infer_state: Optional[BatchInferState] = None,
@@ -336,7 +332,6 @@ class ChatGLM2InferenceForwards:
         attention_output, kv_cache = self.self_attention(
             layernorm_output,
             attention_mask,
-            rotary_pos_emb,
             kv_cache=kv_cache,
             use_cache=use_cache,
             infer_state=infer_state,
@@ -373,7 +368,6 @@ class ChatGLM2InferenceForwards:
         self: SelfAttention,
         hidden_states,
         attention_mask,
-        rotary_pos_emb,
         kv_cache=None,
         use_cache=True,
         infer_state: Optional[BatchInferState] = None,
@@ -399,9 +393,6 @@ class ChatGLM2InferenceForwards:
                 ],
                 dim=-1,
             )
-
-            print(key_layer.shape)
-            print(value_layer.shape)
             query_layer = query_layer.view(query_layer.size()[:-1] + (
                 self.num_attention_heads_per_partition,
                 self.hidden_size_per_attention_head,
@@ -425,11 +416,6 @@ class ChatGLM2InferenceForwards:
             (query_layer, key_layer, value_layer) = split_tensor_along_last_dim(mixed_x_layer, 3)
 
         cos, sin = infer_state.position_cos, infer_state.position_sin
-
-        # apply relative positional encoding (rotary embedding)
-        # if rotary_pos_emb is not None:
-        #     query_layer = apply_rotary_pos_emb(query_layer, rotary_pos_emb)
-        #     key_layer = apply_rotary_pos_emb(key_layer, rotary_pos_emb)
 
         rotary_embedding_fwd(
             query_layer.view(-1, self.num_attention_heads_per_partition, self.hidden_size_per_attention_head), cos, sin)
@@ -469,32 +455,26 @@ class ChatGLM2InferenceForwards:
                 self.num_attention_heads_per_partition,
                 self.hidden_size_per_attention_head,
             ))
-            print('key,value shape', key_layer.shape, value_layer.shape)
-
+        # reshape q k v  to [bsz*sql, num_heads, head_dim]
         query_layer = query_layer.reshape(-1, self.num_attention_heads_per_partition,
                                           self.hidden_size_per_attention_head)
         key_layer = key_layer.reshape(-1, self.num_attention_heads_per_partition, self.hidden_size_per_attention_head)
         value_layer = value_layer.reshape(-1, self.num_attention_heads_per_partition,
                                           self.hidden_size_per_attention_head)
-        print('reshaped', query_layer.shape, key_layer.shape, value_layer.shape)
         if infer_state.is_context_stage:
             # first token generation:
             # copy key and value calculated in current step to memory manager
 
             copy_kv_to_mem_cache(infer_state.decode_layer_id, key_layer, value_layer, infer_state.context_mem_index,
                                  infer_state.cache_manager)
-
             print(query_layer)
-
             attn_output = torch.empty_like(query_layer.view(-1, self.projection_size))
 
             llama2_context_attn_fwd(
                 query_layer, key_layer, value_layer,
                 attn_output.view(-1, self.num_attention_heads_per_partition, self.hidden_size_per_attention_head),
                 infer_state.start_loc, infer_state.seq_len, infer_state.cache_manager.past_key_values_length)
-            print('context stage', attn_output.shape)
         else:
-            print('token attention')
             if infer_state.decode_is_contiguous:
                 # if decode is contiguous, then we copy to key cache and value cache in cache manager directly
                 cache_k = infer_state.cache_manager.key_buffer[infer_state.decode_layer_id][
@@ -514,12 +494,6 @@ class ChatGLM2InferenceForwards:
             # (batch_size, seqlen, nheads, headdim)
             attn_output = torch.empty_like(query_layer.view(-1, self.projection_size))
 
-            print('in token attn kernel')
-            print('other kv index', infer_state.other_kv_index)
-            print('query_layer', query_layer.shape)
-            print('kv', key_layer.shape, value_layer.shape)
-            print('attn_output', attn_output.shape)
-
             cache_k = infer_state.cache_manager.key_buffer[
                 infer_state.decode_layer_id][:infer_state.decode_mem_end, :, :]
             cache_v = infer_state.cache_manager.value_buffer[
@@ -531,13 +505,13 @@ class ChatGLM2InferenceForwards:
                                                     infer_state.other_kv_index)
 
         # ==================================
-        # core attention computation
+        # core attention computation is replaced by triton kernel
         # ==================================
 
-        #context_layer = self.core_attention(query_layer, key_layer, value_layer, attention_mask)
+        # context_layer = self.core_attention(query_layer, key_layer, value_layer, attention_mask)
 
         # =================
-        # Output. [sq, b, h] 7,2,4096 for test
+        # Output. [sq, b, h]
         # =================
 
         output = self.dense(attn_output).reshape(-1, batch_size, self.projection_size)
