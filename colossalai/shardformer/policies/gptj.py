@@ -51,72 +51,72 @@ class GPTJPolicy(Policy):
                 ),
             ])
         
-        policy[GPTJBlock] = ModulePolicyDescription(
-            attribute_replacement={
-                "attn.embed_dim": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
-                "attn.rotary_dim": self.model.config.rotary_dim // self.shard_config.tensor_parallel_size,
-                "attn.num_attention_heads": self.model.config.num_attention_heads // self.shard_config.tensor_parallel_size,
-            },
-            sub_module_replacement=[
-                SubModuleReplacementDescription(
-                    suffix="attn.k_proj",
-                    target_module=col_nn.GPT2FusedLinearConv1D_Col,
-                    kwargs={
-                        "n_fused": 3,
-                        "seq_parallel": use_sequence_parallel,
-                        "overlap": overlap
-                    },
-                ),
-                SubModuleReplacementDescription(
-                    suffix="attn.q_proj",
-                    target_module=col_nn.GPT2FusedLinearConv1D_Col,
-                    kwargs={
-                        "n_fused": 3,
-                        "seq_parallel": use_sequence_parallel,
-                        "overlap": overlap
-                    },
-                ),
-                SubModuleReplacementDescription(
-                    suffix="attn.v_proj",
-                    target_module=col_nn.GPT2FusedLinearConv1D_Col,
-                    kwargs={
-                        "n_fused": 3,
-                        "seq_parallel": use_sequence_parallel,
-                        "overlap": overlap
-                    },
-                ),
-                SubModuleReplacementDescription(suffix="attn.out_proj",
-                                                target_module=col_nn.GPT2FusedLinearConv1D_Row,
-                                                kwargs={
-                                                    "seq_parallel": use_sequence_parallel,
-                                                }),
-                SubModuleReplacementDescription(
-                    suffix="mlp.fc_in",
-                    target_module=col_nn.GPT2FusedLinearConv1D_Col,
-                    kwargs={
-                        "n_fused": 1,
-                        "seq_parallel": use_sequence_parallel,
-                        "overlap": overlap
-                    },
-                ),
-                SubModuleReplacementDescription(suffix="mlp.fc_out",
-                                                target_module=col_nn.GPT2FusedLinearConv1D_Row,
-                                                kwargs={
-                                                    "seq_parallel": use_sequence_parallel,
-                                                }),
-                SubModuleReplacementDescription(
-                    suffix="attn.attn_dropout",
-                    target_module=col_nn.DropoutForParallelInput,
-                ),
-                SubModuleReplacementDescription(
-                    suffix="attn.resid_dropout",
-                    target_module=col_nn.DropoutForParallelInput,
-                ),
-                SubModuleReplacementDescription(
-                    suffix="mlp.dropout",
-                    target_module=col_nn.DropoutForParallelInput,
-                ),
-            ])
+            policy[GPTJBlock] = ModulePolicyDescription(
+                attribute_replacement={
+                    "attn.embed_dim": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
+                    "attn.rotary_dim": self.model.config.rotary_dim // self.shard_config.tensor_parallel_size,
+                    "attn.num_attention_heads": self.model.config.num_attention_heads // self.shard_config.tensor_parallel_size,
+                },
+                sub_module_replacement=[
+                    SubModuleReplacementDescription(
+                        suffix="attn.k_proj",
+                        target_module=col_nn.GPT2FusedLinearConv1D_Col,
+                        kwargs={
+                            "n_fused": 3,
+                            "seq_parallel": use_sequence_parallel,
+                            "overlap": overlap
+                        },
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="attn.q_proj",
+                        target_module=col_nn.GPT2FusedLinearConv1D_Col,
+                        kwargs={
+                            "n_fused": 3,
+                            "seq_parallel": use_sequence_parallel,
+                            "overlap": overlap
+                        },
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="attn.v_proj",
+                        target_module=col_nn.GPT2FusedLinearConv1D_Col,
+                        kwargs={
+                            "n_fused": 3,
+                            "seq_parallel": use_sequence_parallel,
+                            "overlap": overlap
+                        },
+                    ),
+                    SubModuleReplacementDescription(suffix="attn.out_proj",
+                                                    target_module=col_nn.GPT2FusedLinearConv1D_Row,
+                                                    kwargs={
+                                                        "seq_parallel": use_sequence_parallel,
+                                                    }),
+                    SubModuleReplacementDescription(
+                        suffix="mlp.fc_in",
+                        target_module=col_nn.GPT2FusedLinearConv1D_Col,
+                        kwargs={
+                            "n_fused": 1,
+                            "seq_parallel": use_sequence_parallel,
+                            "overlap": overlap
+                        },
+                    ),
+                    SubModuleReplacementDescription(suffix="mlp.fc_out",
+                                                    target_module=col_nn.GPT2FusedLinearConv1D_Row,
+                                                    kwargs={
+                                                        "seq_parallel": use_sequence_parallel,
+                                                    }),
+                    SubModuleReplacementDescription(
+                        suffix="attn.attn_dropout",
+                        target_module=col_nn.DropoutForParallelInput,
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="attn.resid_dropout",
+                        target_module=col_nn.DropoutForParallelInput,
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="mlp.dropout",
+                        target_module=col_nn.DropoutForParallelInput,
+                    ),
+                ])
     
         # optimization configuration
         if self.shard_config.enable_fused_normalization:
@@ -269,12 +269,12 @@ class GPTJForSequenceClassificationPolicy(GPTJPolicy):
         super().__init__()
 
     def module_policy(self):
-        from transformers.models.gptj.modeling_gptj import GPTJForCausalLM
+        from transformers.models.gptj.modeling_gptj import GPTJForSequenceClassification
 
         policy = super().module_policy()
 
         if self.pipeline_stage_manager is not None:
-            self.set_pipeline_forward(model_cls=GPTJForCausalLM,
+            self.set_pipeline_forward(model_cls=GPTJForSequenceClassification,
                                       new_forward=GPTJPipelineForwards.gptj_for_sequence_classification_forward,
                                       policy=policy)
         return policy
@@ -309,7 +309,7 @@ class GPTJForQuestionAnsweringPolicy(GPTJPolicy):
     def get_held_layers(self) -> List[nn.Module]:
         held_layers = super().get_held_layers()
         if self.pipeline_stage_manager.is_last_stage():
-            held_layers.append(self.model.score)
+            held_layers.append(self.model.qa_outputs)
         return held_layers
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
