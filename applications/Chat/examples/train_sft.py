@@ -6,24 +6,23 @@ import torch
 import torch.distributed as dist
 from coati.dataset import SFTDataset, SupervisedDataset
 from coati.models.bloom import BLOOMActor
+from coati.models.chatglm import ChatGLMActor
+from coati.models.chatglm.chatglm_tokenizer import ChatGLMTokenizer
 from coati.models.gpt import GPTActor
 from coati.models.llama import LlamaActor
 from coati.models.opt import OPTActor
-from coati.models.chatglm import ChatGLMActor
 from coati.trainer import SFTTrainer
 from coati.trainer.strategies import DDPStrategy, GeminiStrategy, LowLevelZeroStrategy
 from datasets import load_dataset
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
-from transformers import AutoTokenizer, BloomTokenizerFast, LlamaTokenizer, AutoModel
-from coati.models.chatglm.chatglm_tokenizer import ChatGLMTokenizer
+from transformers import AutoTokenizer, BloomTokenizerFast, LlamaTokenizer
 from transformers.models.gpt2.tokenization_gpt2 import GPT2Tokenizer
 from transformers.trainer import get_scheduler
 
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.tensor import ColoParameter
 
 
 def train(args):
@@ -31,7 +30,7 @@ def train(args):
     if args.strategy == 'ddp':
         strategy = DDPStrategy()
     elif args.strategy == 'colossalai_gemini':
-        strategy = GeminiStrategy(placement_policy='cuda')
+        strategy = GeminiStrategy(placement_policy='auto')
     elif args.strategy == 'colossalai_zero2':
         strategy = LowLevelZeroStrategy(stage=2, placement_policy='cuda')
     elif args.strategy == 'colossalai_zero2_cpu':
@@ -90,16 +89,6 @@ def train(args):
             "THUDM/chatglm-6b" if args.tokenizer is None else args.tokenizer, trust_remote_code=True)
     else:
         raise ValueError(f'Unsupported model "{args.model}"')
-
-    if args.model == 'llama' and args.strategy == 'colossalai_gemini':
-        # this is a hack to deal with the resized embedding
-        # to make sure all parameters are ColoParameter for Colossal-AI Gemini Compatibility
-        for name, param in model.named_parameters():
-            if not isinstance(param, ColoParameter):
-                sub_module_name = '.'.join(name.split('.')[:-1])
-                weight_name = name.split('.')[-1]
-                sub_module = model.get_submodule(sub_module_name)
-                setattr(sub_module, weight_name, ColoParameter(param))
 
     # configure optimizer
     if args.strategy.startswith('colossalai'):
