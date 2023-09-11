@@ -36,8 +36,8 @@ from transformers.utils import (
     replace_return_docstrings,
 )
 
-from colossalai.context import MOE_CONTEXT
-from colossalai.nn.layer.moe.layers import SparseMLP
+from colossalai.moe.layers import SparseMLP
+from colossalai.moe.manager import MOE_MANAGER
 
 logger = logging.get_logger(__name__)
 
@@ -455,7 +455,7 @@ class LlamaDecoderLayer(nn.Module):
                 min_capacity=config.min_capacity,
                 noisy_policy=config.noisy_policy,
                 drop_tks=config.drop_tks,
-                expert_parallel=MOE_CONTEXT.get_parallel() if MOE_CONTEXT.is_initialized else config.expert_parallel,
+                expert_parallel=MOE_MANAGER.get_parallel() if MOE_MANAGER.is_initialized else config.expert_parallel,
                 hidden_size=config.hidden_size,
                 intermediate_size=config.intermediate_size,
                 activation=config.hidden_act,
@@ -891,7 +891,7 @@ class OpenMoeForCausalLM(LlamaPreTrainedModel):
         "Hey, are you conscious? Can you talk to me?\nI'm not conscious, but I can talk to you."
         ```"""
         # reset moe loss
-        MOE_CONTEXT.reset_loss()
+        MOE_MANAGER.reset_loss()
 
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (output_hidden_states
@@ -1014,7 +1014,7 @@ class OpenMoeForCausalLM(LlamaPreTrainedModel):
         return reordered_past
 
     def _calculate_router_loss(self):
-        aux_loss, z_loss = MOE_CONTEXT.get_loss()
+        aux_loss, z_loss = MOE_MANAGER.get_loss()
         assert len(aux_loss) == len(z_loss) == self.config.num_hidden_layers // self.config.moe_layer_interval
         aux_loss = self.config.router_aux_loss_factor * sum(aux_loss) / len(aux_loss)
         z_loss = self.config.router_z_loss_factor * sum(z_loss) / len(z_loss)

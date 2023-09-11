@@ -1,15 +1,14 @@
 import math
-from copy import deepcopy
+from contextlib import nullcontext
 
 import torch
-import torch.distributed as dist
 import torch.nn as nn
 
-from colossalai.context import ParallelMode, seed
-from colossalai.context.moe_context import MOE_CONTEXT
-from colossalai.nn.layer.moe._operation import MoeInGradScaler, MoeOutGradScaler
-from colossalai.nn.layer.moe.utils import get_activation
-from colossalai.tensor.moe_tensor.api import get_dp_group, get_ep_group, get_ep_size, set_moe_tensor_info
+from colossalai.moe._operation import MoeInGradScaler, MoeOutGradScaler
+from colossalai.moe.manager import MOE_MANAGER
+from colossalai.moe.utils import get_activation
+from colossalai.shardformer.layer.utils import Randomizer
+from colossalai.tensor.moe_tensor.api import get_ep_size, set_moe_tensor_info
 
 
 class BaseMLPExperts(nn.Module):
@@ -35,13 +34,13 @@ class BaseMLPExperts(nn.Module):
 
         # get expert parallel info
         if expert_parallel is not None:
-            self.num_local_experts, self.moe_info = MOE_CONTEXT.get_info(
+            self.num_local_experts, self.moe_info = MOE_MANAGER.get_info(
                 num_experts, use_tp=True if expert_parallel == "TP" else False)
             # get settings for different parallel
             if expert_parallel == "TP":
-                assert intermediate_size % MOE_CONTEXT.max_ep_size == 0, \
+                assert intermediate_size % MOE_MANAGER.max_ep_size == 0, \
                     "intermediate_size should be divide by maximum expert parallel size"
-                intermediate_size = intermediate_size // MOE_CONTEXT.max_ep_size
+                intermediate_size = intermediate_size // MOE_MANAGER.max_ep_size
                 num_experts = self.num_total_experts
             else:
                 num_experts = self.num_local_experts
@@ -57,14 +56,18 @@ class BaseMLPExperts(nn.Module):
             self.wi = nn.Parameter(torch.empty(num_experts, hidden_size, intermediate_size))
         self.wo = nn.Parameter(torch.empty(num_experts, intermediate_size, hidden_size))
 
+        # expert param should be different
         if expert_parallel is not None:
-            with seed(ParallelMode.TENSOR):
-                if gated:
-                    nn.init.trunc_normal_(self.wi_gate, std=math.sqrt(0.1 / hidden_size))
-                    nn.init.trunc_normal_(self.wi_up, std=math.sqrt(0.1 / hidden_size))
-                else:
-                    nn.init.trunc_normal_(self.wi, std=math.sqrt(0.1 / hidden_size))
-                nn.init.trunc_normal_(self.wo, std=math.sqrt(0.1 / intermediate_size))
+            seed_ctx = Randomizer(MOE_MANAGER.seed).fork_rng(enable_cpu=True)
+        else:
+            seed_ctx = nullcontext()
+        with seed_ctx:
+            if gated:
+                nn.init.trunc_normal_(self.wi_gate, std=math.sqrt(0.1 / hidden_size))
+                nn.init.trunc_normal_(self.wi_up, std=math.sqrt(0.1 / hidden_size))
+            else:
+                nn.init.trunc_normal_(self.wi, std=math.sqrt(0.1 / hidden_size))
+            nn.init.trunc_normal_(self.wo, std=math.sqrt(0.1 / intermediate_size))
 
         self.act = get_activation(activation)
         self.drop = nn.Dropout(p=drop_rate)
@@ -88,10 +91,7 @@ class BaseMLPExperts(nn.Module):
         else:
             x = torch.bmm(x, self.wi)
             x = self.act(x)
-
-        if self.expert_parallel is not None:
-            with seed(ParallelMode.TENSOR):
-                x = self.drop(x)
+        x = self.drop(x)
         x = torch.bmm(x, self.wo)
 
         x = x.reshape(inshape)
@@ -143,7 +143,7 @@ def get_expert_class(name: str) -> BaseMLPExperts:
 
 
 def build_ffn_experts(num_experts: int, d_model: int, d_ff: int, activation=None, drop_rate: float = 0):
-    mep_size = MOE_CONTEXT.max_ep_size
+    mep_size = MOE_MANAGER.max_ep_size
     if num_experts % mep_size == 0 or mep_size % num_experts == 0:
         return EPMLPExperts(num_experts, d_model, d_ff, activation, drop_rate)
     elif d_ff % mep_size == 0:

@@ -2,17 +2,14 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 
-from colossalai.context import MOE_CONTEXT
-from colossalai.context.moe_context import MOE_CONTEXT
-from colossalai.context.parallel_mode import ParallelMode
-from colossalai.core import global_context as gpc
 from colossalai.engine.gradient_handler._base_gradient_handler import BaseGradientHandler
 from colossalai.engine.gradient_handler.utils import bucket_allreduce
+from colossalai.moe import SparseMLP
+from colossalai.moe.manager import MOE_MANAGER
+from colossalai.moe.utils import get_moe_epsize_param_dict
 from colossalai.nn import CheckpointModule
-from colossalai.nn.layer import SparseMLP
 from colossalai.registry import GRADIENT_HANDLER
 from colossalai.tensor.moe_tensor.api import get_ep_group, get_ep_rank, get_ep_size, is_moe_tensor
-from colossalai.utils.moe import get_moe_epsize_param_dict
 
 
 class MoeModel(nn.Module):
@@ -39,7 +36,7 @@ class MoeModel(nn.Module):
         self.test_transform = TestSubModule()
 
     def forward(self, x):
-        MOE_CONTEXT.reset_loss()
+        MOE_MANAGER.reset_loss()
 
         x = self.test_embed(x)
         x = self.test_transform(x)
@@ -68,21 +65,19 @@ class MoeGradientHandler(BaseGradientHandler):
         Then running an all-reduce operation for all parameters in experts
         across moe model parallel group
         """
-        global_data = gpc.data_parallel_size
-
-        if global_data > 1:
+        if dist.get_world_size() > 1:
             epsize_param_dict = get_moe_epsize_param_dict(self._model)
 
             # epsize is 1, indicating the params are replicated among processes in data parallelism
             # use the ParallelMode.DATA to get data parallel group
             # reduce gradients for all parameters in data parallelism
             if 1 in epsize_param_dict:
-                bucket_allreduce(param_list=epsize_param_dict[1], group=gpc.get_group(ParallelMode.DATA))
+                bucket_allreduce(param_list=epsize_param_dict[1])
 
             for ep_size in epsize_param_dict:
-                if ep_size != 1 and ep_size != MOE_CONTEXT.world_size:
+                if ep_size != 1 and ep_size != MOE_MANAGER.world_size:
                     bucket_allreduce(param_list=epsize_param_dict[ep_size],
-                                     group=MOE_CONTEXT.parallel_info_dict[ep_size].dp_group)
+                                     group=MOE_MANAGER.parallel_info_dict[ep_size].dp_group)
 
 
 def sync_tp_from_ep(tp_model: SparseMLP, ep_model: SparseMLP, assert_grad_flag: bool = False) -> None:
@@ -160,3 +155,17 @@ def sync_local_from_ep(local_model: SparseMLP, ep_model: SparseMLP, assert_grad_
             assert torch.allclose(local_param.grad, all_grad)
         else:
             local_param.data.copy_(all_param.data)
+
+
+def assert_not_equal_in_group(tensor, process_group=None):
+    # all gather tensors from different ranks
+    world_size = dist.get_world_size(process_group)
+    tensor_list = [torch.empty_like(tensor) for _ in range(world_size)]
+    dist.all_gather(tensor_list, tensor, group=process_group)
+
+    # check if they are equal one by one
+    for i in range(world_size - 1):
+        a = tensor_list[i]
+        b = tensor_list[i + 1]
+        assert not torch.allclose(
+            a, b), f'expected tensors on rank {i} and {i + 1} to be equal but they are not, {a} vs {b}'
