@@ -1,4 +1,5 @@
 import argparse
+import math
 import os
 import resource
 from contextlib import nullcontext
@@ -103,7 +104,6 @@ def main():
     parser.add_argument('-b', '--batch_size', type=int, default=2, help='Local batch size')
     parser.add_argument('--lr', type=float, default=3e-4, help='Learning rate')
     parser.add_argument('-w', '--weigth_decay', type=float, default=0.1, help='Weight decay')
-    parser.add_argument('-s', '--warmup_steps', type=int, default=2000, help='Warmup steps')
     parser.add_argument('-g', '--grad_checkpoint', action='store_true', help='Use gradient checkpointing')
     parser.add_argument('-l', '--max_length', type=int, default=4096, help='Max sequence length')
     parser.add_argument('-x', '--mixed_precision', default='fp16', choices=['fp16', 'bf16'], help='Mixed precision')
@@ -150,7 +150,7 @@ def main():
                                     cpu_offload=True,
                                     max_norm=args.grad_clip)
     elif args.plugin == 'hybrid_parallel':
-        # modify the param accordingly for finetuning test cases
+        # modify the param accordingly, default configuration is for llama2-7b
         plugin = HybridParallelPlugin(tp_size=4,
                                       pp_size=1,
                                       num_microbatches=None,
@@ -175,8 +175,6 @@ def main():
 
     with init_ctx:
         model = LlamaForCausalLM(config)
-
-    model = LlamaForCausalLM.from_pretrained(args.model_path, config=config).cuda()
 
     # ==============================
     # Initialize Tokenizer, Dataset and Dataloader
@@ -205,9 +203,10 @@ def main():
     coordinator.print_on_master(f'Model params: {format_numel_str(model_numel)}')
 
     optimizer = HybridAdam(model.parameters(), lr=args.lr, betas=(0.9, 0.95), weight_decay=args.weigth_decay)
+    total_step = args.num_epochs * len(dataloader)
     lr_scheduler = CosineAnnealingWarmupLR(optimizer,
-                                           total_steps=args.num_epochs * len(dataloader),
-                                           warmup_steps=args.warmup_steps,
+                                           total_steps=total_step,
+                                           warmup_steps=math.ceil(total_step * 0.03),
                                            eta_min=0.1 * args.lr)
     default_dtype = torch.float16 if args.mixed_precision == 'fp16' else torch.bfloat16
     torch.set_default_dtype(default_dtype)
@@ -216,6 +215,8 @@ def main():
                                                                   dataloader=dataloader,
                                                                   lr_scheduler=lr_scheduler)
     torch.set_default_dtype(torch.float)
+
+    model = booster.load_model(model, args.model_path).cuda()
 
     coordinator.print_on_master(f'Booster init max CUDA memory: {torch.cuda.max_memory_allocated()/1024**2:.2f} MB')
     coordinator.print_on_master(
@@ -269,8 +270,8 @@ def main():
 
                 if not use_pipeline:
                     all_reduce_mean(loss)
-                pbar.set_postfix({'loss': loss.item()})
                 if print_flag:
+                    pbar.set_postfix({'loss': loss.item()})
                     writer.add_scalar('loss', loss.item(), epoch * num_steps_per_epoch + step)
 
                 if args.save_interval > 0 and (step + 1) % args.save_interval == 0:

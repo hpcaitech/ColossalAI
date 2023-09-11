@@ -171,9 +171,9 @@ def main():
                                     cpu_offload=True,
                                     max_norm=args.grad_clip)
     elif args.plugin == 'hybrid_parallel':
-        # modify the param accordingly for finetuning test cases
-        plugin = HybridParallelPlugin(tp_size=2,
-                                      pp_size=2,
+        # modify the param accordingly, default configuration is for llama2-7b
+        plugin = HybridParallelPlugin(tp_size=4,
+                                      pp_size=1,
                                       num_microbatches=None,
                                       microbatch_size=1,
                                       enable_jit_fused=False,
@@ -287,8 +287,8 @@ def main():
 
                 if not use_pipeline:
                     all_reduce_mean(loss)
-                pbar.set_postfix({'loss': loss.item()})
                 if print_flag:
+                    pbar.set_postfix({'loss': loss.item()})
                     writer.add_scalar('loss', loss.item(), epoch * num_steps_per_epoch + step)
 
                 if args.save_interval > 0 and (step + 1) % args.save_interval == 0:
