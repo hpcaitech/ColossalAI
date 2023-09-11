@@ -142,9 +142,9 @@ class TPInferEngine:
         print(outputs[0])
         outputs = self.sharded_model.forward(input_tokens['input_ids'][:, 0].unsqueeze(1),
                                              input_tokens['attention_mask'])
-        print(outputs[0])
-        outputs = self.sharded_model.forward(input_tokens['input_ids'][:, 1].unsqueeze(1),
-                                             input_tokens['attention_mask'])
+        # print(outputs[0])
+        # outputs = self.sharded_model.forward(input_tokens['input_ids'][:, 1].unsqueeze(1),
+        #                                      input_tokens['attention_mask'])
 
         # outputs = self.sharded_model.generate(**input_tokens, **generate_kwargs, early_stopping=False)
 

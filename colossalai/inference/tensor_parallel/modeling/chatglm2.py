@@ -303,6 +303,7 @@ class ChatGLM2InferenceForwards:
             infer_state.decode_layer_id += 1
 
             hidden_states, kv_cache = layer_ret
+            print(hidden_states[0][0])
             if use_cache:
                 presents = presents + (kv_cache,)
 
@@ -327,7 +328,9 @@ class ChatGLM2InferenceForwards:
         # hidden_states: [s, b, h]
 
         # Layer norm at the beginning of the transformer layer.
+        print('glm block', hidden_states[0][0])
         layernorm_output = self.input_layernorm(hidden_states)
+        print('after layernorm', layernorm_output[0][0])
         # Self attention.
         attention_output, kv_cache = self.self_attention(
             layernorm_output,
@@ -336,19 +339,20 @@ class ChatGLM2InferenceForwards:
             use_cache=use_cache,
             infer_state=infer_state,
         )
-
+        print(attention_output.shape)
+        print('attn output', attention_output[0][0])
         # Residual connection.
         if self.apply_residual_connection_post_layernorm:
             residual = layernorm_output
         else:
             residual = hidden_states
-
+        print('attn output', attention_output[0][1])
         layernorm_input = torch.nn.functional.dropout(attention_output, p=self.hidden_dropout, training=self.training)
         layernorm_input = residual + layernorm_input
-
+        print('layernorm input', layernorm_input[0][0])
         # Layer norm post the self attention.
         layernorm_output = self.post_attention_layernorm(layernorm_input)
-
+        print('layernorm output', layernorm_output[0][0])
         # MLP.
         mlp_output = self.mlp(layernorm_output)
 
@@ -467,13 +471,18 @@ class ChatGLM2InferenceForwards:
 
             copy_kv_to_mem_cache(infer_state.decode_layer_id, key_layer, value_layer, infer_state.context_mem_index,
                                  infer_state.cache_manager)
-            print(query_layer)
+            if infer_state.decode_layer_id <= 2:
+                print(torch.isnan(query_layer).any())
+                print(torch.isnan(key_layer).any())
+                print(torch.isnan(value_layer).any())
             attn_output = torch.empty_like(query_layer.view(-1, self.projection_size))
 
             llama2_context_attn_fwd(
                 query_layer, key_layer, value_layer,
                 attn_output.view(-1, self.num_attention_heads_per_partition, self.hidden_size_per_attention_head),
                 infer_state.start_loc, infer_state.seq_len, infer_state.cache_manager.past_key_values_length)
+            if infer_state.decode_layer_id <= 2:
+                print('attn output', attn_output)
         else:
             if infer_state.decode_is_contiguous:
                 # if decode is contiguous, then we copy to key cache and value cache in cache manager directly
@@ -498,7 +507,8 @@ class ChatGLM2InferenceForwards:
                 infer_state.decode_layer_id][:infer_state.decode_mem_end, :, :]
             cache_v = infer_state.cache_manager.value_buffer[
                 infer_state.decode_layer_id][:infer_state.decode_mem_end, :, :]
-
+            #print(infer_state.decode_layer_id)
+            #print('cache k,v',cache_k[0],cache_v[0])
             Llama2TokenAttentionForwards.token_attn(query_layer, cache_k, cache_v, attn_output, infer_state.block_loc,
                                                     infer_state.start_loc, infer_state.seq_len,
                                                     infer_state.cache_manager.past_key_values_length,
@@ -515,5 +525,5 @@ class ChatGLM2InferenceForwards:
         # =================
 
         output = self.dense(attn_output).reshape(-1, batch_size, self.projection_size)
-
+        print('after dense', output[0][0])
         return output, kv_cache
