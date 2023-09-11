@@ -7,7 +7,6 @@ import torch
 from torch.distributed import ProcessGroup
 from torch.distributed.distributed_c10d import _get_default_group
 from torch.utils.data import DataLoader, Dataset, DistributedSampler
-from transformers.models.llama.tokenization_llama import LlamaTokenizer
 
 from colossalai.utils import get_current_device
 

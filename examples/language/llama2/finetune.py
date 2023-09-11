@@ -28,24 +28,6 @@ from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.utils import get_current_device
 
-MODEL_CONFIGS = {
-    '7b':
-        LlamaConfig(max_position_embeddings=4096),
-    '13b':
-        LlamaConfig(hidden_size=5120,
-                    intermediate_size=13824,
-                    num_hidden_layers=40,
-                    num_attention_heads=40,
-                    max_position_embeddings=4096),
-    '70b':
-        LlamaConfig(hidden_size=8192,
-                    intermediate_size=28672,
-                    num_hidden_layers=80,
-                    num_attention_heads=64,
-                    max_position_embeddings=4096,
-                    num_key_value_heads=8),
-}
-
 
 def get_model_numel(model: nn.Module) -> int:
     return sum(p.numel() for p in model.parameters())
@@ -65,8 +47,8 @@ def format_numel_str(numel: int) -> str:
         return f'{numel}'
 
 
-def tokenize_batch_for_pretrain(batch, tokenizer: Optional[LlamaTokenizer] = None, max_length: int = 2048):
-    texts = [sample['text'] for sample in batch]
+def tokenize_batch_for_finetune(batch, tokenizer: Optional[LlamaTokenizer] = None, max_length: int = 2048):
+    texts = [sample['prompt'] + sample["completion"] for sample in batch]
     data = tokenizer(texts, return_tensors="pt", padding='max_length', truncation=True, max_length=max_length)
     data['labels'] = data['input_ids'].clone()
     return data
@@ -109,17 +91,14 @@ def main():
     # Parse Arguments
     # ==============================
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--config', type=str, default='7b', help='Model configuration')
+    parser.add_argument('--model_path', type=str, help="pretrained checkpoint path, used with mode==finetune")
     parser.add_argument('-p',
                         '--plugin',
                         choices=['gemini', 'gemini_auto', 'zero2', 'zero2_cpu', 'hybrid_parallel'],
                         default='gemini',
                         help='Choose which plugin to use')
-    parser.add_argument('-d',
-                        '--dataset',
-                        type=str,
-                        default='togethercomputer/RedPajama-Data-1T-Sample',
-                        help='Data set path')
+    parser.add_argument('-d', '--dataset', type=str, default='yizhongw/self_instruct', help='Data set path')
+    parser.add_argument('--task_name', type=str, default="super_natural_instructions", help='task to run')
     parser.add_argument('-e', '--num_epochs', type=int, default=1, help='Number of epochs')
     parser.add_argument('-b', '--batch_size', type=int, default=2, help='Local batch size')
     parser.add_argument('--lr', type=float, default=3e-4, help='Learning rate')
@@ -172,8 +151,8 @@ def main():
                                     max_norm=args.grad_clip)
     elif args.plugin == 'hybrid_parallel':
         # modify the param accordingly for finetuning test cases
-        plugin = HybridParallelPlugin(tp_size=2,
-                                      pp_size=2,
+        plugin = HybridParallelPlugin(tp_size=4,
+                                      pp_size=1,
                                       num_microbatches=None,
                                       microbatch_size=1,
                                       enable_jit_fused=False,
@@ -186,32 +165,35 @@ def main():
     booster = Booster(plugin=plugin)
 
     # ==============================
-    # Initialize Tokenizer, Dataset and Dataloader
-    # ==============================
-    tokenizer = LlamaTokenizer.from_pretrained('hf-internal-testing/llama-tokenizer')
-    # follows fast chat: https://github.com/lm-sys/FastChat/blob/main/fastchat/train/train.py#L257
-    tokenizer.pad_token = tokenizer.unk_token
-
-    dataset = load_dataset(args.dataset)
-    train_ds = dataset['train']
-    dataloader = prepare_dataloader(train_ds,
-                                    batch_size=args.batch_size,
-                                    shuffle=True,
-                                    drop_last=True,
-                                    collate_fn=partial(tokenize_batch_for_pretrain,
-                                                       tokenizer=tokenizer,
-                                                       max_length=args.max_length))
-
-    # ==============================
     # Initialize Model, Optimizer and LR Scheduler
     # ==============================
-    config = MODEL_CONFIGS[args.config]
+
+    config = LlamaConfig.from_pretrained(args.model_path)
     # use lazy init when using GeminiPlugin
     init_ctx = LazyInitContext(
         default_device=get_current_device()) if isinstance(plugin, GeminiPlugin) else nullcontext()
 
     with init_ctx:
         model = LlamaForCausalLM(config)
+
+    model = LlamaForCausalLM.from_pretrained(args.model_path, config=config).cuda()
+
+    # ==============================
+    # Initialize Tokenizer, Dataset and Dataloader
+    # ==============================
+    tokenizer = LlamaTokenizer.from_pretrained('hf-internal-testing/llama-tokenizer')
+    # follows fast chat: https://github.com/lm-sys/FastChat/blob/main/fastchat/train/train.py#L257
+    tokenizer.pad_token = tokenizer.unk_token
+
+    dataset = load_dataset(args.dataset, args.task_name)
+    train_ds = dataset['train']
+    dataloader = prepare_dataloader(train_ds,
+                                    batch_size=args.batch_size,
+                                    shuffle=True,
+                                    drop_last=True,
+                                    collate_fn=partial(tokenize_batch_for_finetune,
+                                                       tokenizer=tokenizer,
+                                                       max_length=args.max_length))
 
     if args.grad_checkpoint:
         model.gradient_checkpointing_enable()
