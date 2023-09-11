@@ -20,7 +20,7 @@ jobs:
       any_changed: ${{ steps.changed-files.outputs.any_changed }}
       changed_files: ${{ steps.changed-files.outputs.all_changed_files }}
     concurrency:
-      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-detect-change
       cancel-in-progress: true
     name: Detect changed example files
     steps:
@@ -63,7 +63,7 @@ jobs:
       run:
         shell: bash
     concurrency:
-      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-run-doctest
       cancel-in-progress: true
     steps:
       - name: Checkout ColossalAI-Documentation

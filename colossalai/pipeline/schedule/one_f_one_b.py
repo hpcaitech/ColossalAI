@@ -210,18 +210,18 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
 
     def forward_backward_step(self,
                               model: Module,
-                              optimizer: OptimizerWrapper,
                               data_iter: Iterable,
                               criterion: Callable[..., Any],
+                              optimizer: Optional[OptimizerWrapper] = None,
                               return_loss: bool = False,
                               return_outputs: bool = False) -> dict:
         """Runs non-interleaved 1F1B schedule, with communication between pipeline stages.
 
         Args:
             model (Module): Model to be trained.
-            optimizer (OptimizerWrapper): Optimizer to be used.
             data_iter (Iterable): Data iterator.
             criterion (Callable[[Any, Any], Tensor]): Criterion to be used. It should take two arguments: model outputs and inputs, and returns loss tensor.
+            optimizer (OptimizerWrapper, optional): Optimizer to be used. Can be None when only forward is executed. Defaults to None.
             return_loss (bool, optional): Whether to return loss. Defaults to False. Whether to return loss.
             return_outputs (bool, optional): Whether to return model outputs. Defaults to False. Whether to return model outputs.
 
@@ -229,6 +229,8 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
             dict: A dict with keys: 'loss' and 'outputs'.
         """
         forward_only = not torch.is_grad_enabled()
+        if optimizer is None:
+            assert forward_only, "Optimizer should be passed when doing backward."
 
         self.load_batch(data_iter)
 

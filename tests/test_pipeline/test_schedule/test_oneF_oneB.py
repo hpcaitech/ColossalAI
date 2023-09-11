@@ -90,9 +90,9 @@ def examine_pp():
     torch_loss.backward()
 
     pp_ret = schedule.forward_backward_step(sharded_model,
-                                            pp_optimizer,
                                             iter(input_list),
                                             criterion,
+                                            pp_optimizer,
                                             return_loss=True,
                                             return_outputs=True)
 

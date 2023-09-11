@@ -46,7 +46,6 @@ def move_to_cuda(batch):
 @torch.no_grad()
 def evaluate_model(
     model: nn.Module,
-    optimizer,
     criterion,
     test_dataloader: Union[DataLoader, List[DataLoader]],
     num_labels: int,
@@ -72,12 +71,7 @@ def evaluate_model(
                 current_pp_group_ranks = pg_mesh.get_ranks_in_group(pp_group)
                 current_rank = dist.get_rank()
                 batch = iter([batch])
-                outputs = booster.execute_pipeline(batch,
-                                                   model,
-                                                   criterion,
-                                                   optimizer,
-                                                   return_loss=True,
-                                                   return_outputs=True)
+                outputs = booster.execute_pipeline(batch, model, criterion, return_loss=True, return_outputs=True)
 
                 if is_pp_last_stage:
                     logits = outputs["outputs"]["logits"]
@@ -301,7 +295,7 @@ def main():
     for epoch in range(NUM_EPOCHS):
         train_epoch(epoch, model, optimizer, _criterion, lr_scheduler, train_dataloader, booster, coordinator)
 
-    results = evaluate_model(model, optimizer, _criterion, test_dataloader, data_builder.num_labels, args.task,
+    results = evaluate_model(model, _criterion, test_dataloader, data_builder.num_labels, args.task,
                              data_builder.eval_splits, booster, coordinator)
 
     if coordinator.is_master():
