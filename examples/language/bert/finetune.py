@@ -239,7 +239,6 @@ def main():
     # ==============================
     # Prepare Dataloader
     # ==============================
-    
     data_builder = GLUEDataBuilder(model_name,
                                    plugin,
                                    args.task,
@@ -274,11 +273,7 @@ def main():
             "weight_decay": 0.0,
         },
     ]
-
-    #TODO something wrong with HybridAdam when using pp
     optimizer = HybridAdam(optimizer_grouped_parameters, lr=lr, eps=1e-8)
-    #optimizer = HybridAdam(model.parameters(), lr=lr, eps=1e-8)
-    # optimizer = Adam(optimizer_grouped_parameters, lr=1e-3)
 
     # lr scheduler
     total_steps = len(train_dataloader) * NUM_EPOCHS
@@ -312,7 +307,6 @@ def main():
                              data_builder.eval_splits, booster, coordinator)
 
     if coordinator.is_master():
-        #print(results)
         if args.target_f1 is not None and 'f1' in results:
             assert results['f1'] >= args.target_f1, f'f1 score {results["f1"]} is lower than target {args.target_f1}'
 
