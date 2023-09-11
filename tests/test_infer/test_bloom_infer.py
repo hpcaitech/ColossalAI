@@ -2,9 +2,7 @@ import os
 
 import pytest
 import torch
-import torch.distributed as dist
 from packaging import version
-from transformers import AutoTokenizer, BloomForCausalLM
 
 import colossalai
 from colossalai.inference.tensor_parallel import TPInferEngine
@@ -35,7 +33,6 @@ def run(test_config):
         shard_config = ShardConfig(enable_tensor_parallelism=True if test_config['tp_size'] > 1 else False,
                                    inference_only=True)
         infer_engine = TPInferEngine(orig_model, shard_config, MAX_BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
-        infer_engine.optimize_model()
 
         generate_kwargs = dict(do_sample=False)
         outputs = infer_engine.generate(data, **generate_kwargs)
