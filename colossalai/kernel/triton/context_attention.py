@@ -488,7 +488,11 @@ if HAS_TRITON:
                 num_stages=1,
             )
             return
+
         elif triton.__version__ == "2.0.0":
+            #print('query',q[0])
+            # print('key',k[0])
+            # print('value',v[0])
             BLOCK = 128
             # shape constraints
             Lq, Lk, Lv = q.shape[-1], k.shape[-1], v.shape[-1]
@@ -500,7 +504,6 @@ if HAS_TRITON:
             kv_group_num = q.shape[1] // k.shape[1]
 
             grid = (batch, head, triton.cdiv(max_input_len, BLOCK))
-
             tmp = torch.empty((batch, head, max_input_len + 256), device=q.device, dtype=torch.float32)
             num_warps = 4 if Lk <= 64 else 8
             # num_warps = 4
