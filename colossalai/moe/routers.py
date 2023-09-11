@@ -8,8 +8,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributed import ProcessGroup
 
-from colossalai.context import MOE_CONTEXT
-from colossalai.nn.layer.moe._operation import moe_cumsum
+from colossalai.moe._operation import moe_cumsum
+from colossalai.moe.manager import MOE_MANAGER
 from colossalai.utils import get_current_device
 
 
@@ -66,7 +66,7 @@ class MoeRouter(nn.Module, ABC):
 
     def pop_router_loss(self) -> torch.Tensor:
         assert self._aux_loss is not None
-        MOE_CONTEXT.add_loss(self._aux_loss, self._z_loss)
+        MOE_MANAGER.add_loss(self._aux_loss, self._z_loss)
         self._aux_loss = None
         self._z_loss = None
 

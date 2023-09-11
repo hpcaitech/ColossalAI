@@ -107,3 +107,29 @@ def get_dp_rank(tensor: torch.Tensor) -> int:
         int: The data parallel rank of the given tensor.
     """
     return dist.get_rank(get_dp_group(tensor))
+
+
+def get_ep_group_ranks(tensor: torch.Tensor) -> int:
+    """
+    Get the expert parallel group ranks of the given tensor.
+
+    Args:
+        tensor (torch.Tensor): The tensor to be checked.
+
+    Returns:
+        int: The expert parallel group ranks of the given tensor.
+    """
+    return tensor.moe_info.ep_group_ranks
+
+
+def get_dp_group_ranks(tensor: torch.Tensor) -> int:
+    """
+    Get the data parallel group ranks of the given tensor.
+
+    Args:
+        tensor (torch.Tensor): The tensor to be checked.
+
+    Returns:
+        int: The data parallel group ranks of the given tensor.
+    """
+    return tensor.moe_info.dp_group_ranks
