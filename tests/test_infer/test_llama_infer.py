@@ -3,9 +3,7 @@ import warnings
 
 import pytest
 import torch
-import torch.distributed as dist
 from packaging import version
-from transformers import LlamaForCausalLM, LlamaTokenizer
 
 import colossalai
 from colossalai.inference.tensor_parallel.engine import TPInferEngine

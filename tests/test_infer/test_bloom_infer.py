@@ -2,9 +2,7 @@ import os
 
 import pytest
 import torch
-import torch.distributed as dist
 from packaging import version
-from transformers import AutoTokenizer, BloomForCausalLM
 
 import colossalai
 from colossalai.inference.tensor_parallel import TPInferEngine
