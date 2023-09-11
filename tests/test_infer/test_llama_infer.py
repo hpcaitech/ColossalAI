@@ -61,7 +61,6 @@ def run_llama_test(test_config):
         shard_config = ShardConfig(enable_tensor_parallelism=True if test_config['tp_size'] > 1 else False,
                                    inference_only=True)
         infer_engine = TPInferEngine(orig_model, shard_config, BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
-        infer_engine.optimize_model()
 
         generate_kwargs = dict(do_sample=False)
         outputs = infer_engine.generate(data, **generate_kwargs)

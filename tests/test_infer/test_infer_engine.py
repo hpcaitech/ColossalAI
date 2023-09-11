@@ -76,7 +76,7 @@ def test_prepare_data():
 
 
 @pytest.mark.skipif(not CUDA_SUPPORT, reason="kv-cache manager engine requires cuda version to be higher than 11.5")
-def test_orig_generate():
+def test_generate():
     input_ids = torch.randint(low=10, high=1000, size=(MAX_BATCH_SIZE, MAX_INPUT_LEN))
 
     model_config = LlamaConfig()
@@ -108,7 +108,6 @@ def run(test_config):
     shard_config = ShardConfig(enable_tensor_parallelism=True if test_config['tp_size'] > 1 else False,
                                inference_only=True)
     infer_engine = TPInferEngine(model, shard_config, MAX_BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
-    infer_engine.optimize_model()
 
     assert infer_engine.cache_manager is not None
     assert infer_engine.tp_size == TP_SIZE
@@ -127,11 +126,11 @@ def check_engine(rank, world_size, port):
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()
-def test_engine_infer():
+def test_engine_tp():
     spawn(check_engine, TP_SIZE)
 
 
 if __name__ == '__main__':
     test_prepare_data()
-    test_orig_generate()
-    test_engine_infer()
+    test_generate()
+    test_engine_tp()
