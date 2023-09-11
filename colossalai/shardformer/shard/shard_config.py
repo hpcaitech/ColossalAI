@@ -76,4 +76,4 @@ class ShardConfig:
         """
         Set default params for inference.
         """
-        self.pipeline_stage_manager = None
+        assert self.pipeline_stage_manager is None, "pipeline parallelism is not supported in inference for now"
