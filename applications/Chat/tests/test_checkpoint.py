@@ -40,7 +40,7 @@ def run_test_checkpoint(strategy_name: str,
     if strategy_name == "ddp":
         strategy = DDPStrategy()
     elif strategy_name == "colossalai_gemini":
-        strategy = GeminiStrategy(placement_policy="cuda", initial_scale=2**5)
+        strategy = GeminiStrategy(placement_policy="auto", initial_scale=2**5)
     elif strategy_name == "colossalai_zero2":
         strategy = LowLevelZeroStrategy(stage=2, placement_policy="cuda")
     else:
