@@ -20,6 +20,7 @@ class LlamaPipelineForwards:
     under pipeline setting.
     '''
 
+    @staticmethod
     def llama_model_forward(
         self: LlamaModel,
         input_ids: torch.LongTensor = None,
@@ -170,6 +171,7 @@ class LlamaPipelineForwards:
         # always return dict for imediate stage
         return {'hidden_states': hidden_states}
 
+    @staticmethod
     def llama_for_causal_lm_forward(
         self: LlamaForCausalLM,
         input_ids: torch.LongTensor = None,
@@ -277,6 +279,7 @@ class LlamaPipelineForwards:
             hidden_states = outputs.get('hidden_states')
             return {'hidden_states': hidden_states}
 
+    @staticmethod
     def llama_for_sequence_classification_forward(
         self: LlamaForSequenceClassification,
         input_ids: torch.LongTensor = None,
@@ -390,6 +393,8 @@ class LlamaPipelineForwards:
 
 
 def get_llama_flash_attention_forward():
+    
+    from colossalai.kernel.cuda_native import AttnMaskType, ColoAttention
 
     from transformers.models.llama.modeling_llama import LlamaAttention, apply_rotary_pos_emb
 
@@ -423,6 +428,7 @@ def get_llama_flash_attention_forward():
             kv_seq_len += past_key_value[0].shape[-2]
 
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
+
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
 
         if past_key_value is not None:
