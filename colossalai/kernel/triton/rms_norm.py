@@ -7,21 +7,21 @@ try:
 except ImportError:
     HAS_TRITON = False
     print("please install triton from https://github.com/openai/triton")
-    
 
 if HAS_TRITON:
     '''
-        this kernel function is modified from 
+        this kernel function is modified from
         https://github.com/ModelTC/lightllm/blob/main/lightllm/models/llama/triton_kernel/rmsnorm.py
     '''
+
     @triton.jit
     def _rms_norm_fwd_fused(
-        X,  # pointer to the input
-        Y,  # pointer to the output
-        W,  # pointer to the weights
-        stride,  # how much to increase the pointer when moving by 1 row
-        N,  # number of columns in X
-        eps,  # epsilon to avoid division by zero
+        X,    # pointer to the input
+        Y,    # pointer to the output
+        W,    # pointer to the weights
+        stride,    # how much to increase the pointer when moving by 1 row
+        N,    # number of columns in X
+        eps,    # epsilon to avoid division by zero
         BLOCK_SIZE: tl.constexpr,
     ):
         # Map the program id to the row of X and Y it should compute.
@@ -47,7 +47,6 @@ if HAS_TRITON:
             # Write output
             tl.store(Y + cols, y.to(tl.float16), mask=mask)
 
-
     def rmsnorm_forward(x, weight, eps):
         # allocate output
         y = torch.empty_like(x)
@@ -66,7 +65,5 @@ if HAS_TRITON:
         BLOCK_SIZE = 128 * 2 * 2 * 2 * 2 * 2 * 2 * 2
         num_warps = 8
         # enqueue kernel
-        _rms_norm_fwd_fused[(M,)](x_arg, y, weight,
-                                x_arg.stride(0), N, eps,
-                                BLOCK_SIZE=BLOCK_SIZE, num_warps=num_warps)
+        _rms_norm_fwd_fused[(M,)](x_arg, y, weight, x_arg.stride(0), N, eps, BLOCK_SIZE=BLOCK_SIZE, num_warps=num_warps)
         return y

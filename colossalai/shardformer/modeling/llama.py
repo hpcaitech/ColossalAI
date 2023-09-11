@@ -393,10 +393,10 @@ class LlamaPipelineForwards:
 
 
 def get_llama_flash_attention_forward():
-    
-    from colossalai.kernel.cuda_native import AttnMaskType, ColoAttention
 
     from transformers.models.llama.modeling_llama import LlamaAttention, apply_rotary_pos_emb
+
+    from colossalai.kernel.cuda_native import AttnMaskType, ColoAttention
 
     llama_version = 2
     try:

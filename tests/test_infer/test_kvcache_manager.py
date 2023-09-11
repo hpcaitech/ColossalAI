@@ -1,7 +1,8 @@
 import os
-from packaging import version
+
 import pytest
 import torch
+from packaging import version
 
 from colossalai.inference.tensor_parallel import MemoryManager
 from colossalai.logging import disable_existing_loggers
@@ -15,6 +16,7 @@ HEAD_NUM = 32
 HEAD_DIM = 128
 
 CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse('11.5')
+
 
 def create_cache_manager(rank, world_size, port, batch_size, input_len, output_len, layer_num, head_num, head_dim):
     os.environ['RANK'] = str(rank)
@@ -42,6 +44,7 @@ def create_cache_manager(rank, world_size, port, batch_size, input_len, output_l
     assert torch.sum(kvcache_manager.mem_state).item() == size - total_token_prefill
     kvcache_manager.alloc_contiguous(batch_size)
     assert torch.all(kvcache_manager.mem_state[:total_token_prefill + batch_size] == False)
+
 
 @pytest.mark.skipif(not CUDA_SUPPORT, reason="kv-cache manager engine requires cuda version to be higher than 11.5")
 @pytest.mark.dist

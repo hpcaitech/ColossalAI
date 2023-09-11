@@ -1,7 +1,5 @@
 from .cuda_native import FusedScaleMaskSoftmax, LayerNorm, MultiHeadAttention
-from .triton import llama_context_attn_fwd, bloom_context_attn_fwd
-from .triton import softmax
-from .triton import copy_kv_cache_to_dest
+from .triton import bloom_context_attn_fwd, copy_kv_cache_to_dest, llama_context_attn_fwd, softmax
 
 __all__ = [
     "LayerNorm",
