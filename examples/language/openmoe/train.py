@@ -15,10 +15,10 @@ from colossalai import get_default_parser
 from colossalai.booster import Booster
 from colossalai.booster.plugin import LowLevelZeroPlugin
 from colossalai.cluster import DistCoordinator
-from colossalai.context import MOE_CONTEXT
 from colossalai.logging import disable_existing_loggers, get_dist_logger
-from colossalai.nn.layer.moe import MoeCheckpintIO
-from colossalai.nn.layer.moe.utils import skip_init
+from colossalai.moe import MoeCheckpintIO
+from colossalai.moe.manager import MOE_MANAGER
+from colossalai.moe.utils import skip_init
 from colossalai.utils import get_current_device
 
 
@@ -95,7 +95,7 @@ def main():
     coordinator = DistCoordinator()
 
     # Set up moe
-    MOE_CONTEXT.setup(seed=42, parallel="EP")
+    MOE_MANAGER.setup(seed=42, parallel="EP")
 
     # Manage loggers
     disable_existing_loggers()

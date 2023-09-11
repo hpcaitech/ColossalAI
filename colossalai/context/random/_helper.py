@@ -7,8 +7,8 @@ from contextlib import contextmanager
 import torch.cuda
 from torch import Tensor
 
-from .seed_manager import SeedManager
 from ..parallel_mode import ParallelMode
+from .seed_manager import SeedManager
 
 _SEED_MANAGER = SeedManager()
 
@@ -157,15 +157,6 @@ def with_seed(func, parallel_mode: ParallelMode):
         return out
 
     return wrapper
-
-
-def moe_set_seed(seed):
-    if torch.cuda.is_available():
-        from colossalai.core import global_context as gpc
-        global_rank = gpc.get_global_rank()
-        diff_seed = seed + global_rank
-        add_seed(ParallelMode.TENSOR, diff_seed, True)
-        print(f"moe seed condition: {global_rank} with tensor seed {diff_seed}", flush=True)
 
 
 def reset_seeds():
