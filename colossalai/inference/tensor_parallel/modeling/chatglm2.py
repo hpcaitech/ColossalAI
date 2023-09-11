@@ -483,6 +483,7 @@ class ChatGLM2InferenceForwards:
                 infer_state.start_loc, infer_state.seq_len, infer_state.cache_manager.past_key_values_length)
             if infer_state.decode_layer_id <= 2:
                 print('attn output', attn_output)
+                print(torch.isnan(attn_output).any())
         else:
             if infer_state.decode_is_contiguous:
                 # if decode is contiguous, then we copy to key cache and value cache in cache manager directly
