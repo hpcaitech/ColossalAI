@@ -5,8 +5,8 @@ import torch
 import torch.distributed as dist
 
 import colossalai
-from colossalai.context import MOE_CONTEXT
-from colossalai.nn.layer.moe import MoeCheckpintIO
+from colossalai.moe import MoeCheckpintIO
+from colossalai.moe.manager import MOE_MANAGER
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 from colossalai.utils import get_current_device
 from tests.test_moe.moe_utils import MoeModel
@@ -32,7 +32,7 @@ def exam_moe_checkpoint():
 
 def _run_dist(rank, world_size, port):
     colossalai.launch(config=dict(), rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    MOE_CONTEXT.setup(seed=42)
+    MOE_MANAGER.setup(seed=42)
     exam_moe_checkpoint()
 
 

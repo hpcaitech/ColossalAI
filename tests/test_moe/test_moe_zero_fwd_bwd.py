@@ -5,8 +5,7 @@ import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin import LowLevelZeroPlugin
 from colossalai.booster.plugin.low_level_zero_plugin import LowLevelZeroModel
-from colossalai.context import MOE_CONTEXT
-from colossalai.nn import MoeLoss
+from colossalai.moe.manager import MOE_MANAGER
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 from colossalai.testing.random import seed_all
 from tests.test_moe.moe_utils import MoeGradientHandler, MoeModel
@@ -87,7 +86,7 @@ def run_zero_test(local_rank, world_size, stage=1):
 
 def run_dist(rank, world_size, port):
     colossalai.launch(config=dict(), rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    MOE_CONTEXT.setup(seed=42)
+    MOE_MANAGER.setup(seed=42)
     seed_all(42 + rank)
     run_zero_test(rank, world_size, stage=1)
     run_zero_test(rank, world_size, stage=2)

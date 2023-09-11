@@ -5,19 +5,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from colossalai.context.moe_context import MOE_CONTEXT
-from colossalai.legacy.zero.init_ctx import no_shard_zero_context, no_shard_zero_decrator
-from colossalai.nn.layer.moe._operation import (
-    COL_MOE_KERNEL_FLAG,
-    AllGather,
-    AllToAll,
-    MoeCombine,
-    MoeDispatch,
-    ReduceScatter,
-)
-from colossalai.nn.layer.moe.experts import BaseMLPExperts, get_expert_class
-from colossalai.nn.layer.moe.routers import MoeRouter, get_router_cls
-from colossalai.nn.layer.moe.utils import get_noise_generator
+from colossalai.moe._operation import COL_MOE_KERNEL_FLAG, AllGather, AllToAll, MoeCombine, MoeDispatch, ReduceScatter
+from colossalai.moe.experts import BaseMLPExperts, get_expert_class
+from colossalai.moe.manager import MOE_MANAGER
+from colossalai.moe.routers import MoeRouter, get_router_cls
+from colossalai.moe.utils import get_noise_generator
 from colossalai.tensor.moe_tensor.api import get_ep_group, get_ep_size
 
 
@@ -66,7 +58,7 @@ class SparseMLP(nn.Module):
         super().__init__()
         self.hidden_size = hidden_size
         self.num_experts = num_experts
-        self.use_kernel = True if COL_MOE_KERNEL_FLAG and MOE_CONTEXT.use_kernel_optim else False
+        self.use_kernel = True if COL_MOE_KERNEL_FLAG and MOE_MANAGER.use_kernel_optim else False
         self.expert_parallel = expert_parallel
         assert expert_parallel in ["EP", "TP", None], f"Unsupported expert parallel type {expert_parallel}"
 
@@ -157,45 +149,3 @@ class SparseMLP(nn.Module):
         expert_out = self.experts(expert_in)
         expert_out = ReduceScatter.apply(expert_out, self.ep_group)
         return expert_out
-
-
-class MoeModule(SparseMLP):
-    """
-    For other dependency
-    """
-
-    def __init__(self,
-                 num_experts: int,
-                 top_k: int = 1,
-                 capacity_factor_train: float = 1.25,
-                 capacity_factor_eval: float = 2.0,
-                 min_capacity: int = 4,
-                 noisy_policy: Optional[str] = None,
-                 drop_tks: bool = True,
-                 expert_parallel: str = "EP",
-                 hidden_size: int = 2048,
-                 intermediate_size: int = 2048,
-                 activation: str = None):
-        super().__init__(num_experts, top_k, capacity_factor_train, capacity_factor_eval, min_capacity, noisy_policy,
-                         drop_tks, expert_parallel, hidden_size, intermediate_size, activation)
-
-
-class MoeLayer(SparseMLP):
-    """
-    For other dependency
-    """
-
-    def __init__(self,
-                 num_experts: int,
-                 top_k: int = 1,
-                 capacity_factor_train: float = 1.25,
-                 capacity_factor_eval: float = 2.0,
-                 min_capacity: int = 4,
-                 noisy_policy: Optional[str] = None,
-                 drop_tks: bool = True,
-                 expert_parallel: str = "EP",
-                 hidden_size: int = 2048,
-                 intermediate_size: int = 2048,
-                 activation: str = None):
-        super().__init__(num_experts, top_k, capacity_factor_train, capacity_factor_eval, min_capacity, noisy_policy,
-                         drop_tks, expert_parallel, hidden_size, intermediate_size, activation)
