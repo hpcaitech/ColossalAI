@@ -8,10 +8,8 @@ HOSTFILE=$(realpath hosts.txt)
 
 cd ../..
 
-torchrun --standalone --nproc_per_node 4 train.py \
-    --mode "finetune" \
+torchrun --standalone --nproc_per_node 4 finetune.py \
     --plugin "hybrid_parallel" \
-    --config "7b" \
     --dataset "yizhongw/self_instruct" \
-    --model_path "/path/llama" \
+    --model_path "/home/lcjmy/data3/llama" \
     --task_name "super_natural_instructions"
