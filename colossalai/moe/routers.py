@@ -368,7 +368,7 @@ class TopKRouter(MoeRouter):
             router_probs,
             dispatch_mask)
 
-        return dispatch_mask, combine_array
+        return combine_array, dispatch_mask
 
 
 def get_router_cls(top_k: int,
