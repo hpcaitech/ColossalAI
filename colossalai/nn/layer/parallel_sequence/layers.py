@@ -2,20 +2,20 @@
 # -*- encoding: utf-8 -*-
 
 import math
-import colossalai
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn import Parameter
 
+import colossalai
+from colossalai.context import seed
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.nn.layer.parallel_sequence._operation import RingQK, RingAV
-from colossalai.registry import LAYERS
-from colossalai.kernel.cuda_native.scaled_softmax import AttnMaskType
 from colossalai.kernel import FusedScaleMaskSoftmax
-from colossalai.context import seed
+from colossalai.kernel.cuda_native.scaled_softmax import AttnMaskType
+from colossalai.legacy.registry import LAYERS
+from colossalai.nn.layer.parallel_sequence._operation import RingAV, RingQK
 
 
 @LAYERS.register_module

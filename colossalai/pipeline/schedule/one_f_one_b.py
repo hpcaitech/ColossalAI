@@ -6,25 +6,47 @@ import torch.cuda
 from torch.nn import Module
 from torch.utils._pytree import tree_map
 
-from colossalai.interface import OptimizerWrapper
+from colossalai.interface import ModelWrapper, OptimizerWrapper
 from colossalai.pipeline.p2p import PipelineP2PCommunication
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.utils.cuda import get_current_device
 
-from ._utils import detach, get_batch_size, get_micro_batch, merge_batch, model_forward, retain_grad, to_device
+from ._utils import (
+    detach,
+    get_batch_size,
+    get_micro_batch,
+    merge_batch,
+    model_forward,
+    retain_grad,
+    to_device,
+    tree_map_hf,
+)
 from .base import PipelineSchedule
 
 
 class OneForwardOneBackwardSchedule(PipelineSchedule):
 
-    def __init__(self, num_microbatches: int, stage_manager: PipelineStageManager) -> None:
+    def __init__(self,
+                 stage_manager: PipelineStageManager,
+                 num_microbatches: Optional[int] = None,
+                 microbatch_size: Optional[int] = None) -> None:
+        """1F1B pipeline schedule.
+
+        Args:
+            stage_manager (PipelineStageManager): Pipeline stage manager
+            num_microbatches (Optional[int], optional): The number of microbatches. If not provided, it will be derived from microbatch size. Defaults to None.
+            microbatch_size (Optional[int], optional): Microbatch size. If num_microbatches is provided, this will be ignored. Defaults to None.
+        """
         super().__init__(stage_manager)
+        assert num_microbatches is not None or microbatch_size is not None, \
+            "Either num_microbatches or microbatch_size should be provided"
         self.comm = PipelineP2PCommunication(stage_manager)
         self.num_microbatches = num_microbatches
+        self.microbatch_size = microbatch_size
         self.batch: Optional[Any] = None
         self.batch_size: Optional[int] = None
         self.microbatch_offset: Optional[int] = None
-        self.microbatch_size: Optional[int] = None
+        self._use_microbatch_size = num_microbatches is None
 
     def load_batch(self, data_iter: Iterable, device: Optional[torch.device] = None) -> None:
         """Load a batch from data iterator.
@@ -39,9 +61,14 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
         self.batch = batch
         self.batch_size = get_batch_size(batch)
         self.microbatch_offset = 0
-        assert self.batch_size % self.num_microbatches == 0, \
-            "Batch size should divided by the number of microbatches"
-        self.microbatch_size = self.batch_size // self.num_microbatches
+        if not self._use_microbatch_size:
+            assert self.batch_size % self.num_microbatches == 0, \
+                "Batch size should divided by the number of microbatches"
+            self.microbatch_size = self.batch_size // self.num_microbatches
+        else:
+            assert self.batch_size % self.microbatch_size == 0, \
+                "Batch size should divided by the microbatch size"
+            self.num_microbatches = self.batch_size // self.microbatch_size
 
     def load_micro_batch(self) -> Any:
         """Load a micro batch from the current batch.
@@ -137,7 +164,7 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
             if accum_loss is not None:
                 accum_loss.add_(loss.detach())
             if outputs is not None:
-                outputs.append(tree_map(detach, output_obj))
+                outputs.append(tree_map_hf(detach, output_obj))
             return loss
         else:
             return output_obj
@@ -285,5 +312,7 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
                 self.send_backward(input_obj_grad)
 
         if outputs is not None:
-            outputs = merge_batch(outputs)
+            if isinstance(model, ModelWrapper):
+                model = model.unwrap()
+            outputs = merge_batch(outputs, getattr(model, 'batch_size_dim', 0))
         return {'loss': accum_loss, 'outputs': outputs}

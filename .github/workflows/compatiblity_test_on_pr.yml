@@ -13,8 +13,8 @@ jobs:
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     concurrency:
-      group: ${{ github.head_ref }}
-      cancel-in-progress: false
+      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v3
       - id: set-matrix
@@ -44,8 +44,8 @@ jobs:
       options: --gpus all --rm -v /data/scratch/cifar-10:/data/scratch/cifar-10
     timeout-minutes: 120
     concurrency:
-      group: ${{ github.head_ref }}
-      cancel-in-progress: false
+      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
     steps:
       - name: Install dependencies
         run: |

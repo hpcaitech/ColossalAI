@@ -180,7 +180,6 @@ class _LinearWithGatherForwardReduceScatterBackward(torch.autograd.Function):
         overlap = ctx.overlap
 
         if not overlap:
-            # TODO: overlap SP input with gradient computation
             input_parallel = _gather(input_, dim, process_group)
 
             total_input = input_parallel
@@ -191,7 +190,6 @@ class _LinearWithGatherForwardReduceScatterBackward(torch.autograd.Function):
                 grad_output = grad_output.view(-1, grad_output.shape[-1])
                 total_input = total_input.view(-1, total_input.shape[-1])
 
-            # TODO: overlap SP input with gradient computation
             if ctx.async_grad_reduce_scatter:
                 # Asynchronous reduce-scatter
                 input_list = [

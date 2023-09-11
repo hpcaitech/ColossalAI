@@ -141,10 +141,10 @@ def get_param_info(optim: Optimizer):
 
 
 def init_pipeline_optimizer(optim: Optimizer, model: Module):
-    params = set(model.parameters())
+    model_params = set(model.parameters())
     new_param_groups = []
     for group in optim.param_groups:
-        params = [p for p in group['params'] if p in params]
+        params = [p for p in group['params'] if p in model_params]
         new_param_groups.append({**group, 'params': params})
     optim.__setstate__({'param_groups': new_param_groups})
 
@@ -247,6 +247,9 @@ class HybridParallelPlugin(PipelinePluginBase):
         enable_flash_attention (bool, optional): Whether to switch on flash attention. Defaults to False.
         enable_jit_fused (bool, optional): Whether to switch on JIT. Default to Falase.
         num_microbatches (int, optional): Number of microbatches when using pipeline parallelism. Defaults to None.
+        microbatch_size (int, optional): Microbatch size when using pipeline parallelism.
+            Either ``num_microbatches`` or ``microbatch_size`` should be provided if using pipeline.
+            If ``num_microbatches`` is provided, this will be ignored. Defaults to None.
         initial_scale (float, optional): The initial loss scale of AMP. Defaults to 2**16.
         min_scale (float, optional): The minimum loss scale of AMP. Defaults to 1.
         growth_factor (float, optional): The multiplication factor for increasing loss scale when using AMP. Defaults to 2.
@@ -277,7 +280,9 @@ class HybridParallelPlugin(PipelinePluginBase):
                  enable_flash_attention: bool = False,
                  enable_jit_fused: bool = False,
                  enable_sequence_parallelism: bool = False,
+                 enable_sequence_overlap: bool = False,
                  num_microbatches: Optional[int] = None,
+                 microbatch_size: Optional[int] = None,
                  initial_scale: float = 2**16,
                  min_scale: float = 1,
                  growth_factor: float = 2,
@@ -321,10 +326,12 @@ class HybridParallelPlugin(PipelinePluginBase):
         self.schedule = None
         assert zero_stage in (0, 1, 2)
         if self.pp_size > 1:
-            assert num_microbatches is not None, 'num_microbatches must be specified when using pipeline parallelism'
+            assert num_microbatches is not None or microbatch_size is not None, 'num_microbatches or microbatch_size must be specified when using pipeline parallelism'
             assert self.zero_stage <= 1, 'zero stage must be 0 or 1 when using pipeline parallelism'
             self.stage_manager = PipelineStageManager(self.pg_mesh, PP_AXIS)
-            self.schedule = OneForwardOneBackwardSchedule(num_microbatches, self.stage_manager)
+            self.schedule = OneForwardOneBackwardSchedule(self.stage_manager,
+                                                          num_microbatches=num_microbatches,
+                                                          microbatch_size=microbatch_size)
         self.tp_group = self.pg_mesh.get_group_along_axis(TP_AXIS)
         self.dp_group = self.pg_mesh.get_group_along_axis(DP_AXIS)
         self.pp_group = self.pg_mesh.get_group_along_axis(PP_AXIS)
@@ -335,7 +342,8 @@ class HybridParallelPlugin(PipelinePluginBase):
                                         enable_fused_normalization=self.enable_fused_normalization,
                                         enable_flash_attention=self.enable_flash_attention,
                                         enable_jit_fused=self.enable_jit_fused,
-                                        enable_sequence_parallelism=enable_sequence_parallelism)
+                                        enable_sequence_parallelism=enable_sequence_parallelism,
+                                        enable_sequence_overlap=enable_sequence_overlap)
         self.amp_config = dict(
             initial_scale=initial_scale,
             growth_factor=growth_factor,

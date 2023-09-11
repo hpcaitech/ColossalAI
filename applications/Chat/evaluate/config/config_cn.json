@@ -16,10 +16,9 @@
     "chat": {
       "GPT": [
         "language organization",
-        "relevance",
         "naturalness",
         "engagingness",
-        "reasonableness"
+        "fidelity"
       ],
       "Metrics": [
         "Distinct"
@@ -27,7 +26,6 @@
     },
     "classification": {
       "GPT": [
-        "language organization",
         "relevance",
         "correctness"
       ],
@@ -40,7 +38,6 @@
     },
     "closed_qa": {
       "GPT": [
-        "language organization",
         "relevance",
         "correctness"
       ],
@@ -53,7 +50,6 @@
     },
     "extraction": {
       "GPT": [
-        "language organization",
         "relevance",
         "correctness"
       ],
@@ -74,7 +70,20 @@
         "BLEU",
         "ROUGE",
         "BERTScore"
-      ]
+      ]   
+    },
+    "logical_reasoning": {
+      "GPT": [
+        "correctness",
+        "relevance",
+        "reasonableness"
+      ],
+      "Metrics": [
+        "BLEU",
+        "ROUGE",
+        "BERTScore",
+        "CHRF"
+      ]   
     },
     "open_qa": {
       "GPT": [
@@ -117,11 +126,79 @@
         "conciseness"
       ],
       "Metrics": [
-        "BLEU",
-        "ROUGE",
-        "BERTScore",
-        "CHRF"
-      ]
+      ]   
+    },
+    "Finance": {
+      "GPT": [
+        "relevance",
+        "correctness"
+      ],
+      "Metrics": [
+      ] 
+    },
+    "Law": {
+      "GPT": [
+        "relevance",
+        "correctness"
+      ],
+      "Metrics": [
+      ]   
+    },
+    "Education": {
+      "GPT": [
+        "relevance",
+        "correctness"
+      ],
+      "Metrics": [
+      ]   
+    },
+    "Medical": {
+      "GPT": [
+        "relevance",
+        "correctness"
+      ],
+      "Metrics": [
+      ]   
+    },
+    "STEM": {
+      "GPT": [
+        "relevance",
+        "correctness"
+      ],
+      "Metrics": [
+      ]   
+    },
+    "SocialScience": {
+      "GPT": [
+        "relevance",
+        "correctness"
+      ],
+      "Metrics": [
+      ]   
+    },
+    "Humanity": {
+      "GPT": [
+        "relevance",
+        "correctness"
+      ],
+      "Metrics": [
+      ]   
+    },
+    "Other": {
+      "GPT": [
+        "relevance",
+        "correctness"
+      ],
+      "Metrics": [
+      ]   
+    },
+    "ethics": {
+      "GPT": [
+        "relevance",
+        "correctness"
+      ],
+      "Metrics": [
+      ]   
     }
   }
 }

@@ -2,7 +2,7 @@
 import copy
 import math
 import warnings
-from typing import Any, Dict, Iterator, OrderedDict, Set, Tuple
+from typing import Any, Dict, Iterator, OrderedDict, Set, Tuple, Union
 
 import torch
 import torch.distributed as dist
@@ -10,16 +10,17 @@ from torch.nn import Parameter
 from torch.optim import Optimizer
 
 from colossalai.amp.naive_amp.mixed_precision_mixin import BF16MixedPrecisionMixin, FP16MixedPrecisionMixin
-from colossalai.checkpoint_io.utils import StateDictSharder
+from colossalai.checkpoint_io.utils import calculate_tensor_size, StateDictSharder
+from colossalai.interface import OptimizerWrapper
 from colossalai.logging import get_dist_logger
-from colossalai.nn.optimizer import ColossalaiOptimizer, CPUAdam, FusedAdam, HybridAdam
+from colossalai.nn.optimizer import CPUAdam, FusedAdam, HybridAdam
 from colossalai.tensor.d_tensor import is_distributed_tensor
 from colossalai.utils import disposable, get_current_device, is_ddp_ignored
 
 from .chunk import Chunk, ChunkManager
-from .gemini_ddp import ZeroDDP
+from .gemini_ddp import GeminiDDP
 
-__all__ = ['ZeroOptimizer', 'GeminiAdamOptimizer']
+__all__ = ['GeminiOptimizer', 'GeminiAdamOptimizer']
 
 _AVAIL_OPTIM_LIST = {FusedAdam, CPUAdam, HybridAdam}
 
@@ -27,7 +28,7 @@ _AVAIL_OPTIM_LIST = {FusedAdam, CPUAdam, HybridAdam}
 class GeminiFP16MixedPrecisionMixin(FP16MixedPrecisionMixin):
 
     def __init__(self,
-                 module: ZeroDDP,
+                 module: GeminiDDP,
                  initial_scale: float = 2**16,
                  min_scale: float = 1,
                  growth_factor: float = 2,
@@ -46,11 +47,11 @@ class GeminiFP16MixedPrecisionMixin(FP16MixedPrecisionMixin):
         self.module.overflow_counter = 0
 
 
-class ZeroOptimizer(ColossalaiOptimizer):
-    """A wrapper for optimizer. ``ZeroDDP`` and ``ZeroOptimizer`` implement Zero Redundancy Optimizer (ZeRO state-3).
+class GeminiOptimizer(OptimizerWrapper):
+    """A wrapper for optimizer. ``GeminiDDP`` and ``GeminiOptimizer`` implement Zero Redundancy Optimizer (ZeRO state-3).
 
     Note:
-        You must use ``ZeroDDP`` with ``ZeroOptimizer``.
+        You must use ``GeminiDDP`` with ``GeminiOptimizer``.
 
     Note:
         Make sure you set ``placement_policy`` of ``GeminiManager`` to `"auto"`,
@@ -58,7 +59,7 @@ class ZeroOptimizer(ColossalaiOptimizer):
 
     Args:
         optim (Optimizer): An Optimizer instance.
-        module (ZeroDDP): A ``ZeroDDP`` instance.
+        module (GeminiDDP): A ``GeminiDDP`` instance.
         gpu_margin_mem_ratio (float, optional): The ratio of GPU remaining memory (after the first forward-backward)
             which will be used when using hybrid CPU optimizer.
             This argument is meaningless when `placement_policy` of `GeminiManager` is not "auto".
@@ -70,15 +71,15 @@ class ZeroOptimizer(ColossalaiOptimizer):
         growth_interval (float, optional): Growth_interval used by DynamicGradScaler. Defaults to 1000.
         hysteresis (float, optional): Hysteresis used by DynamicGradScaler. Defaults to 2.
         max_scale (int, optional): Max_scale used by DynamicGradScaler. Defaults to 2**32.
-        clipping_norm (float, optional): The norm value used to clip gradient. Defaults to 0.0.
+        max_norm (float, optional): The norm value used to clip gradient. Defaults to 0.0.
         norm_type (float, optional): The type of norm used for gradient clipping. Currently, only L2-norm (norm_type=2.0)
-            is supported in ZeroOptimizer. Defaults to 2.0.
+            is supported in GeminiOptimizer. Defaults to 2.0.
         verbose (bool, optional): Whether to print verbose information, including grad overflow info. Defaults to False.
     """
 
     def __init__(self,
                  optim: Optimizer,
-                 module: ZeroDDP,
+                 module: GeminiDDP,
                  gpu_margin_mem_ratio: float = 0.0,
                  initial_scale: float = 2**32,
                  min_scale: float = 1,
@@ -87,12 +88,12 @@ class ZeroOptimizer(ColossalaiOptimizer):
                  growth_interval: int = 1000,
                  hysteresis: int = 2,
                  max_scale: float = 2**32,
-                 clipping_norm: float = 0.0,
+                 max_norm: float = 0.0,
                  norm_type: float = 2.0,
                  verbose: bool = False,
                  **defaults: Any):
         super().__init__(optim)
-        assert isinstance(module, ZeroDDP)
+        assert isinstance(module, GeminiDDP)
         assert type(optim) in _AVAIL_OPTIM_LIST, "You should use an optimizer in the available list:\n" \
             f"{_AVAIL_OPTIM_LIST}"
         self.module = module
@@ -101,8 +102,8 @@ class ZeroOptimizer(ColossalaiOptimizer):
         self.param_to_range: Dict[Parameter, Tuple[int, int]] = dict()
         self.param_to_chunk32: Dict[Parameter, Chunk] = dict()
         self.chunk16_set: Set[Chunk] = set()
-        self.clipping_flag = clipping_norm > 0.0
-        self.max_norm = clipping_norm
+        self.clipping_flag = max_norm > 0.0
+        self.max_norm = max_norm
         self.verbose = verbose
         self.param_groups_backup = list()
 
@@ -111,7 +112,7 @@ class ZeroOptimizer(ColossalaiOptimizer):
         self.id_to_fake_params: Dict[int, Parameter] = dict()
 
         if self.clipping_flag:
-            assert norm_type == 2.0, "ZeroOptimizer only supports L2 norm now"
+            assert norm_type == 2.0, "GeminiOptimizer only supports L2 norm now"
 
         ddp_param_list = []
         for name, param in module.named_parameters():
@@ -703,8 +704,19 @@ class ZeroOptimizer(ColossalaiOptimizer):
 
         yield sharder.current_block, sharder.current_block_size
 
+    def clip_grad_by_value(self, clip_value: float, *args, **kwargs) -> None:
+        raise NotImplementedError('Gemini does not support clip_grad_by_value')
 
-class GeminiAdamOptimizer(ZeroOptimizer):
+    def clip_grad_by_norm(self,
+                          max_norm: Union[float, int],
+                          norm_type: Union[float, int] = 2,
+                          error_if_nonfinite: bool = False,
+                          *args,
+                          **kwargs) -> torch.Tensor:
+        warnings.warn(f'Gemini controls grad clipping by itself, so you should not use clip_grad_by_norm')
+
+
+class GeminiAdamOptimizer(GeminiOptimizer):
 
     def __init__(self, model: torch.nn.Module, **defaults: Any) -> None:
         optimizer = HybridAdam(model.parameters(), **defaults)

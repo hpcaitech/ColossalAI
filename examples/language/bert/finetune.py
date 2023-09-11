@@ -64,14 +64,23 @@ def evaluate_model(
             batch = move_to_cuda(batch)
             labels = batch["labels"]
             batch_size = batch["input_ids"].shape[0]
+<<<<<<< HEAD
             if hasattr(booster.plugin, "stage_manager") and booster.plugin.stage_manager is not None and booster.plugin.pp_size>1:
+=======
+            if hasattr(booster.plugin, "stage_manager") and booster.plugin.stage_manager is not None:
+>>>>>>> efba0f44b99f595731598d29792f5f229c7c0696
                 pg_mesh = booster.plugin.pg_mesh
                 pp_group = booster.plugin.pp_group
                 current_pp_group_ranks = pg_mesh.get_ranks_in_group(pp_group)
                 current_rank = dist.get_rank()
+<<<<<<< HEAD
 
                 batch = iter([batch])
 
+=======
+                #TODO pass dataloader to execute_pipeline directly
+                batch = iter([batch])
+>>>>>>> efba0f44b99f595731598d29792f5f229c7c0696
                 outputs = booster.execute_pipeline(batch,
                                                    model,
                                                    criterion,
@@ -82,6 +91,7 @@ def evaluate_model(
                 if booster.plugin.stage_manager.is_last_stage():
                     val_loss = outputs["loss"]
 
+<<<<<<< HEAD
                     #TODO get merged output
                     #logits = outputs["outputs"].logits
                     #print("===outputs===")
@@ -101,10 +111,17 @@ def evaluate_model(
                     print(num_labels)
                     '''
                     
+=======
+                    logits = outputs["outputs"]["logits"]
+
+                    accum_loss.add_(val_loss)
+
+>>>>>>> efba0f44b99f595731598d29792f5f229c7c0696
                     if num_labels > 1:
                         preds = torch.argmax(logits, axis=1)
                     elif num_labels == 1:
                         preds = logits.squeeze()
+<<<<<<< HEAD
                     
                     '''
                     print("===preds===")
@@ -113,6 +130,8 @@ def evaluate_model(
                     print(labels)
                     '''
                     
+=======
+>>>>>>> efba0f44b99f595731598d29792f5f229c7c0696
 
                     dist.broadcast(preds, src=current_rank, group=pp_group)
                     dist.broadcast(val_loss, src=current_rank, group=pp_group)
@@ -143,7 +162,10 @@ def evaluate_model(
 
         results = metric.compute()
         dist.all_reduce(accum_loss.div_(len(dataloader)))
+<<<<<<< HEAD
 
+=======
+>>>>>>> efba0f44b99f595731598d29792f5f229c7c0696
         if coordinator.is_master() and results is not None:
             results['loss'] = accum_loss.item() / coordinator.world_size
 
@@ -164,6 +186,7 @@ def train_epoch(epoch: int, model: nn.Module, optimizer: Optimizer, _criterion: 
                 train_dataloader: DataLoader, booster: Booster, coordinator: DistCoordinator):
 
     model.train()
+<<<<<<< HEAD
     '''
     if hasattr(booster.plugin, "stage_manager") and booster.plugin.stage_manager is not None:
         last_stage =  booster.plugin.stage_manager.is_last_stage()
@@ -178,6 +201,19 @@ def train_epoch(epoch: int, model: nn.Module, optimizer: Optimizer, _criterion: 
             # Forward pass
             batch = move_to_cuda(batch)
             if hasattr(booster.plugin, "stage_manager") and booster.plugin.stage_manager is not None and booster.plugin.pp_size>1:
+=======
+    is_pp_last_stage = hasattr(
+        booster.plugin,
+        "stage_manager") and booster.plugin.stage_manager is not None and booster.plugin.stage_manager.is_last_stage()
+    with tqdm(train_dataloader,
+              desc=f'Epoch [{epoch + 1}/{NUM_EPOCHS}]',
+              disable=not (coordinator.is_master() or is_pp_last_stage)) as pbar:
+        for batch in pbar:
+            # Forward pass
+            batch = move_to_cuda(batch)
+            if hasattr(booster.plugin, "stage_manager") and booster.plugin.stage_manager is not None:
+                #TODO pass train_dataloader to execute_pipeline directly
+>>>>>>> efba0f44b99f595731598d29792f5f229c7c0696
                 batch = iter([batch])
                 outputs = booster.execute_pipeline(batch,
                                                    model,
@@ -247,7 +283,7 @@ def main():
     if args.plugin.startswith('torch_ddp'):
         plugin = TorchDDPPlugin()
     elif args.plugin == 'gemini':
-        plugin = GeminiPlugin(placement_policy='cuda', strict_ddp_mode=True, initial_scale=2**5)
+        plugin = GeminiPlugin(initial_scale=2**5)
     elif args.plugin == 'low_level_zero':
         plugin = LowLevelZeroPlugin(initial_scale=2**5)
     elif args.plugin == 'hybrid_parallel':
@@ -255,6 +291,7 @@ def main():
         # modify the param accordingly for finetuning test cases
         plugin = HybridParallelPlugin(tp_size=1,
                                       pp_size=2,
+<<<<<<< HEAD
                                       #enable_sequence_parallelism=True,
                                       num_microbatches=1)
                                       #enable_all_optimization=True,
@@ -262,6 +299,14 @@ def main():
                                       #precision='fp16',
                                       #initial_scale=1,
                                       #overlap_communication=True)
+=======
+                                      num_microbatches=None,
+                                      microbatch_size=1,
+                                      enable_all_optimization=True,
+                                      zero_stage=1,
+                                      precision='fp16',
+                                      initial_scale=1)
+>>>>>>> efba0f44b99f595731598d29792f5f229c7c0696
 
     booster = Booster(plugin=plugin, **booster_kwargs)
 
@@ -326,7 +371,10 @@ def main():
     # ==============================
     # Boost with ColossalAI
     # ==============================
+<<<<<<< HEAD
     #print("===before boost===")
+=======
+>>>>>>> efba0f44b99f595731598d29792f5f229c7c0696
     model, optimizer, _criterion, _, lr_scheduler = booster.boost(model,
                                                                   optimizer,
                                                                   criterion=_criterion,

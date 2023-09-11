@@ -113,6 +113,7 @@ def data_gen_for_qa():
 output_transform_fn = lambda x: x
 
 # define loss funciton
+
 loss_fn_for_bert_model = lambda x: torch.nn.functional.mse_loss(x.last_hidden_state, torch.ones_like(x.last_hidden_state
                                                                                                     ))
 loss_fn = lambda x: x.loss
@@ -126,7 +127,7 @@ config = transformers.BertConfig(hidden_size=128,
 
 # register the BERT variants
 model_zoo.register(name='transformers_bert',
-                   model_fn=lambda: transformers.BertModel(config),
+                   model_fn=lambda: transformers.BertModel(config, add_pooling_layer=False),
                    data_gen_fn=data_gen,
                    output_transform_fn=output_transform_fn,
                    loss_fn=loss_fn_for_bert_model,

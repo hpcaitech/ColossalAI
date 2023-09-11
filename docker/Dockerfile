@@ -18,7 +18,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # install torch
-RUN conda install pytorch==1.12.1 torchvision==0.13.1 torchaudio==0.12.1 cudatoolkit=11.3 -c pytorch
+RUN conda install -y pytorch==1.12.1 torchvision==0.13.1 torchaudio==0.12.1 cudatoolkit=11.3 -c pytorch
 
 # install ninja
 RUN apt-get update && \
@@ -43,8 +43,9 @@ RUN git clone -b ${VERSION} https://github.com/hpcaitech/ColossalAI.git \
 RUN pip install --no-cache-dir titans
 
 # install tensornvme
-RUN conda install cmake && \
+RUN conda install -y cmake && \
     git clone https://github.com/hpcaitech/TensorNVMe.git && \
     cd TensorNVMe && \
+    apt update -y && apt install -y libaio-dev && \
     pip install -r requirements.txt && \
     pip install -v --no-cache-dir .

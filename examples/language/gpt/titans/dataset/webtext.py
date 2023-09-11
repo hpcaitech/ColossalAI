@@ -6,7 +6,7 @@ import torch
 from torch.utils.data import Dataset
 from transformers import GPT2Tokenizer
 
-from colossalai.registry import DATASETS
+from colossalai.legacy.registry import DATASETS
 
 
 @DATASETS.register_module

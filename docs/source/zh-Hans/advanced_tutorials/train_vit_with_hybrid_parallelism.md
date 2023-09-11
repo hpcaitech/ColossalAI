@@ -74,7 +74,7 @@ from colossalai.core import global_context as gpc
 from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.nn.lr_scheduler import LinearWarmupLR
 from colossalai.nn.metric import Accuracy
-from colossalai.trainer import Trainer, hooks
+from colossalai.legacy.trainer import Trainer, hooks
 ```
 
 - 其他模块
@@ -256,8 +256,8 @@ SEQ_LENGTH = (IMG_SIZE // PATCH_SIZE) ** 2 + 1  # add 1 for cls token
 
 ### 构建流水线模型 (`/hybrid_parallel/model/vit.py`)
 Colossal-AI 提供了两种从现有模型构建流水线模型的方法。
-- `colossalai.builder.build_pipeline_model_from_cfg`
-- `colossalai.builder.build_pipeline_model`
+- `colossalai.legacy.builder.build_pipeline_model_from_cfg`
+- `colossalai.legacy.builder.build_pipeline_model`
 
 此外，您还可以使用 Colossal-AI 从头开始构建流水线模型。
 ```python
@@ -266,11 +266,11 @@ from typing import Callable
 import inspect
 import torch
 from colossalai import nn as col_nn
-from colossalai.registry import LAYERS, MODELS
+from colossalai.legacy.registry import LAYERS, MODELS
 from colossalai.logging import get_dist_logger
 from colossalai.core import global_context as gpc
 from colossalai.context import ParallelMode
-from colossalai.builder.pipeline import partition_uniform
+from colossalai.legacy.builder.pipeline import partition_uniform
 from torch import dtype, nn
 from model_zoo.vit.vit import ViTBlock, ViTEmbedding, ViTHead
 @MODELS.register_module
@@ -380,7 +380,7 @@ def build_pipeline_vit(num_layers, num_chunks, device=torch.device('cuda'), **kw
 
 #### 导入模块
 ```python
-from colossalai.engine.schedule import (InterleavedPipelineSchedule,
+from colossalai.legacy.engine.schedule import (InterleavedPipelineSchedule,
                                         PipelineSchedule)
 from colossalai.utils import MultiTimer
 import os
@@ -589,3 +589,4 @@ torchrun --standalone --nproc_per_node <NUM_GPUs>  train_hybrid.py --config ./co
 # If your torch >= 1.9.0
 # python -m torch.distributed.run --standalone --nproc_per_node= <NUM_GPUs> train_hybrid.py --config ./configs/config_hybrid_parallel.py
 ```
+<!-- doc-test-command: echo  -->
