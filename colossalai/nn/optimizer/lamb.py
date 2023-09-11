@@ -5,10 +5,7 @@ Adapted from the pytorch-lamb library at https://github.com/cybertronai/pytorch-
 import torch
 from torch.optim import Optimizer
 
-from colossalai.legacy.registry import OPTIMIZERS
 
-
-@OPTIMIZERS.register_module
 class Lamb(Optimizer):
     r"""Implements Lamb algorithm.
     It has been proposed in `Large Batch Optimization for Deep Learning: Training BERT in 76 minutes`_.

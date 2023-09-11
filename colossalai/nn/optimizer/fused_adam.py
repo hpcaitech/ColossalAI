@@ -8,11 +8,9 @@ Licensed under the MIT License.
 '''
 import torch
 
-from colossalai.legacy.registry import OPTIMIZERS
 from colossalai.utils import multi_tensor_applier
 
 
-@OPTIMIZERS.register_module
 class FusedAdam(torch.optim.Optimizer):
     """Implements Adam algorithm.
 

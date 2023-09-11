@@ -5,10 +5,10 @@ from typing import Iterable, Tuple
 
 import torch.cuda
 
-import colossalai.communication.p2p_v2 as comm
-from colossalai import engine
+import colossalai.legacy.communication.p2p_v2 as comm
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
+from colossalai.legacy.engine import Engine
 from colossalai.utils.cuda import get_current_device
 
 from ._pipeline_schedule import PipelineSchedule
@@ -60,7 +60,7 @@ class PipelineScheduleV2(PipelineSchedule):
     """
 
     def forward_backward_step(self,
-                              engine: engine.Engine,
+                              engine: Engine,
                               data_iter: Iterable,
                               forward_only=False,
                               return_loss=True,

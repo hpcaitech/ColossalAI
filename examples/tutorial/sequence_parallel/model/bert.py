@@ -1,33 +1,37 @@
-from colossalai.context.parallel_mode import ParallelMode
+import inspect
+
 import torch
 import torch.nn as nn
-import inspect
-from .layers import Embedding, BertLayer, BertDualHead, PreProcessor, VocabEmbedding
-from .layers.init_method import init_normal, output_init_normal
-from colossalai.core import global_context as gpc
+
 from colossalai.context import ParallelMode
+from colossalai.context.parallel_mode import ParallelMode
+from colossalai.core import global_context as gpc
 from colossalai.kernel import LayerNorm
-from colossalai.nn.layer.wrapper import PipelineSharedModuleWrapper
+from colossalai.legacy.nn.layer.wrapper import PipelineSharedModuleWrapper
 from colossalai.logging import get_dist_logger
 from colossalai.pipeline.utils import partition_uniform
+
+from .layers import BertDualHead, BertLayer, Embedding, PreProcessor, VocabEmbedding
+from .layers.init_method import init_normal, output_init_normal
 
 
 class BertForPretrain(nn.Module):
 
-    def __init__(self,
-                 vocab_size,
-                 hidden_size,
-                 max_sequence_length,
-                 num_attention_heads,
-                 num_layers,
-                 add_binary_head,
-                 is_naive_fp16,
-                 num_tokentypes=2,
-                 dropout_prob=0.1,
-                 mlp_ratio=4,
-                 init_std=0.02,
-                 convert_fp16_to_fp32_in_softmax=False,
-                 ):
+    def __init__(
+        self,
+        vocab_size,
+        hidden_size,
+        max_sequence_length,
+        num_attention_heads,
+        num_layers,
+        add_binary_head,
+        is_naive_fp16,
+        num_tokentypes=2,
+        dropout_prob=0.1,
+        mlp_ratio=4,
+        init_std=0.02,
+        convert_fp16_to_fp32_in_softmax=False,
+    ):
         super().__init__()
         self.seq_parallel_size = gpc.get_world_size(ParallelMode.SEQUENCE)
         assert max_sequence_length % self.seq_parallel_size == 0, 'sequence length is not divisible by the sequence parallel size'
@@ -47,19 +51,19 @@ class BertForPretrain(nn.Module):
         self.bert_layers = nn.ModuleList()
 
         for i in range(num_layers):
-            bert_layer = BertLayer(layer_number=i+1,
+            bert_layer = BertLayer(layer_number=i + 1,
                                    hidden_size=hidden_size,
                                    num_attention_heads=num_attention_heads,
                                    attention_dropout=dropout_prob,
                                    mlp_ratio=mlp_ratio,
                                    hidden_dropout=dropout_prob,
                                    convert_fp16_to_fp32_in_softmax=convert_fp16_to_fp32_in_softmax,
-                                   is_naive_fp16=is_naive_fp16
-                                   )
+                                   is_naive_fp16=is_naive_fp16)
             self.bert_layers.append(bert_layer)
 
         self.layer_norm = LayerNorm(hidden_size)
-        self.head = BertDualHead(hidden_size, self.embedding.word_embedding_weight.size(0),
+        self.head = BertDualHead(hidden_size,
+                                 self.embedding.word_embedding_weight.size(0),
                                  add_binary_head=add_binary_head)
         self.reset_parameters()
 
@@ -166,22 +170,20 @@ class PipelineBertForPretrain(nn.Module):
             end_idx = num_layers
 
         for i in range(start_idx, end_idx):
-            bert_layer = BertLayer(layer_number=i+1,
+            bert_layer = BertLayer(layer_number=i + 1,
                                    hidden_size=hidden_size,
                                    num_attention_heads=num_attention_heads,
                                    attention_dropout=dropout_prob,
                                    mlp_ratio=mlp_ratio,
                                    hidden_dropout=dropout_prob,
                                    convert_fp16_to_fp32_in_softmax=convert_fp16_to_fp32_in_softmax,
-                                   is_naive_fp16=is_naive_fp16
-                                   )
+                                   is_naive_fp16=is_naive_fp16)
             self.bert_layers.append(bert_layer)
 
         if self.last_stage:
             self.word_embeddings = VocabEmbedding(vocab_size, hidden_size)
             self.layer_norm = LayerNorm(hidden_size)
-            self.head = BertDualHead(hidden_size, vocab_size,
-                                     add_binary_head=add_binary_head)
+            self.head = BertDualHead(hidden_size, vocab_size, add_binary_head=add_binary_head)
         self.reset_parameters()
 
     def _init_normal(self, tensor):

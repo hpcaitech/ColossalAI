@@ -7,7 +7,7 @@ import pytest
 import torch
 import torch.nn as nn
 
-import colossalai.nn as col_nn
+import colossalai.legacy.nn as col_nn
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.initialize import launch

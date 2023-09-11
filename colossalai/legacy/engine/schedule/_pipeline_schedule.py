@@ -6,7 +6,7 @@ from typing import Callable, List, Tuple, Union
 
 import torch.cuda
 
-import colossalai.communication as comm
+import colossalai.legacy.communication as comm
 from colossalai.amp.naive_amp import NaiveAMPModel
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc

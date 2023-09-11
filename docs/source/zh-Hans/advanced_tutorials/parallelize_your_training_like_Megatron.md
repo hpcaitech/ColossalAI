@@ -160,7 +160,7 @@ for mn, module in model.named_modules():
 
 ```python
 def gemini_zero_dpp(model: torch.nn.Module, pg: ProcessGroup, placement_policy: str = "auto"):
-    from colossalai.nn.parallel import GeminiDDP
+    from colossalai.zero import GeminiDDP
     model = GeminiDDP(model,
                         device=get_current_device(),
                         placement_policy=placement_policy,

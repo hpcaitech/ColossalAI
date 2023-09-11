@@ -2,12 +2,9 @@ from typing import List
 
 from torch.optim.lr_scheduler import MultiStepLR as _MultiStepLR
 
-from colossalai.legacy.registry import LR_SCHEDULERS
-
 from .delayed import WarmupScheduler
 
 
-@LR_SCHEDULERS.register_module
 class MultiStepLR(_MultiStepLR):
     """Decays the learning rate of each parameter group by gamma once the
     number of epoch reaches one of the milestones. Notice that such decay can
@@ -33,7 +30,6 @@ class MultiStepLR(_MultiStepLR):
         super().__init__(optimizer, milestones, gamma=gamma, last_epoch=last_epoch)
 
 
-@LR_SCHEDULERS.register_module
 class MultiStepWarmupLR(WarmupScheduler):
     """Multistep learning rate scheduler with warmup.
 

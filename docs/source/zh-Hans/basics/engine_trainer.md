@@ -340,7 +340,7 @@ for epoch in range(gpc.config.NUM_EPOCHS):
 
 
 ```python
-from colossalai.nn.metric import Accuracy
+from colossalai.legacy.nn.metric import Accuracy
 from colossalai.legacy.trainer import Trainer, hooks
 
 
