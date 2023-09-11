@@ -80,12 +80,12 @@ Zero-2 不支持局部梯度累积。如果您坚持使用，虽然可以积累�
 
 3. Torch DDP: 当流水线并行和Zero不被使用的时候，插件会自动采用Pytorch DDP作为数据并行的策略。更多关于Torch DDP的参数配置的详细信息请参考 [Pytorch DDP 文档](https://pytorch.org/docs/main/generated/torch.nn.parallel.DistributedDataParallel.html#torch.nn.parallel.DistributedDataParallel)。
 
-4. Zero: 在初始化插件的时候，可以通过将`zero_stage`参数设置为1或2来让插件采用Zero 1/2作为数据并行的策略。更多关于Zero的参数配置的详细信息请参考 [Low Level Zero 插件](#low-level-zero-插件).
+4. Zero: 在初始化插件的时候，可以通过将`zero_stage`参数设置为1或2来让插件采用Zero 1/2作为数据并行的策略。与DDP不同，Zero可以和流水线并行策略同时使用。更多关于Zero的参数配置的详细信息请参考 [Low Level Zero 插件](#low-level-zero-插件).
 
 > ⚠ 在使用该插件的时候, 只有支持Shardformer的部分Huggingface transformers模型才能够使用张量并行、流水线并行以及优化工具。Llama 1、Llama 2、OPT、Bloom、Bert以及GPT2等主流transformers模型均已支持Shardformer。
 
 > ⚠ 该插件当前只对模型和优化器支持分片的checkpoint方法。不分片的checkpoint方法会在未来的版本中被支持。
 
-{{ autodoc:colossalai.booster.plugin。HybridParallelPlugin }}
+{{ autodoc:colossalai.booster.plugin.HybridParallelPlugin }}
 
 <!-- doc-test-command: echo  -->

@@ -1,6 +1,6 @@
 import warnings
 from contextlib import contextmanager
-from typing import Any, Callable, Iterator, List, Optional, Union
+from typing import Any, Callable, Dict, Iterator, List, Optional, Union
 
 import torch
 import torch.nn as nn
@@ -119,9 +119,9 @@ class Booster:
                                The model might be decorated or partitioned by plugin's strategy after execution of this method.
             optimizer (Optimizer, optional): Convert optimizer into a wrapped optimizer for distributive training.
                                              The optimizer's param groups or states might be decorated or partitioned by plugin's strategy after execution of this method. Defaults to None.
-            criterion (Callable, optional): The function that calculates loss. It will not be modified, but will be utilized during wrapping of model and optimizer. Defaults to None.
-            dataloader (DataLoader, optional): The prepared dataloader for training. It will not be modified, but will be utilized during wrapping of model and optimizer. Defaults to None.
-            lr_scheduler (LRScheduler, optional): The learning scheduler for training. It will not be modified, but will be utilized during wrapping of model and optimizer. Defaults to None.
+            criterion (Callable, optional): The function that calculates loss. Defaults to None.
+            dataloader (DataLoader, optional): The prepared dataloader for training. Defaults to None.
+            lr_scheduler (LRScheduler, optional): The learning scheduler for training. Defaults to None.
 
         Returns:
             List[Union[nn.Module, Optimizer, LRScheduler, DataLoader]]: The list of boosted input arguments.
@@ -160,7 +160,7 @@ class Booster:
                          criterion: Callable[[Any, Any], torch.Tensor],
                          optimizer: Optional[Optimizer] = None,
                          return_loss: bool = True,
-                         return_outputs: bool = False) -> dict[str, Any]:
+                         return_outputs: bool = False) -> Dict[str, Any]:
         """
         Execute forward & backward when utilizing pipeline parallel.
         Return loss or Huggingface style model outputs if needed.
@@ -181,9 +181,9 @@ class Booster:
             return_output (bool, optional): Whether to return Huggingface style model outputs in the dict returned by this method. Defaults to False.
 
         Returns:
-            dict[str, Any]: Output dict in the form of {'loss': ..., 'outputs': ...}.
+            Dict[str, Any]: Output dict in the form of {'loss': ..., 'outputs': ...}.
                             ret_dict['loss'] is the loss of forward if return_loss is set to True, else None.
-                            ret_dict['outputs] is the Huggingface style model outputs during forward if return_output is set to True, else None.
+                            ret_dict['outputs'] is the Huggingface style model outputs during forward if return_output is set to True, else None.
         """
         assert isinstance(self.plugin,
                           PipelinePluginBase), f'The plugin {self.plugin.__class__.__name__} does not support pipeline.'
