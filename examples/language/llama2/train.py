@@ -295,6 +295,8 @@ def main():
                 lr_scheduler.step()
                 optimizer.zero_grad()
 
+                if not use_pipeline:
+                    all_reduce_mean(loss)
                 pbar.set_postfix({'loss': loss.item()})
                 if print_flag:
                     writer.add_scalar('loss', loss.item(), epoch * num_steps_per_epoch + step)
