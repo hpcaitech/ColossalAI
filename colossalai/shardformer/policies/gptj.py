@@ -1,3 +1,8 @@
+from functools import partial
+from typing import Callable, Dict, List
+
+from torch import Tensor, nn
+
 import colossalai.shardformer.layer as col_nn
 
 from ..modeling.gptj import GPTJPipelineForwards, get_gptj_flash_attention_forward, gptj_sequence_parallel_forward_fn
@@ -54,44 +59,39 @@ class GPTJPolicy(Policy):
             policy[GPTJBlock] = ModulePolicyDescription(
                 attribute_replacement={
                     "attn.embed_dim": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
-                    "attn.rotary_dim": self.model.config.rotary_dim // self.shard_config.tensor_parallel_size,
                     "attn.num_attention_heads": self.model.config.num_attention_heads
                     // self.shard_config.tensor_parallel_size,
                 },
                 sub_module_replacement=[
                     SubModuleReplacementDescription(
                         suffix="attn.k_proj",
-                        target_module=col_nn.GPT2FusedLinearConv1D_Col,
-                        kwargs={"n_fused": 3, "seq_parallel": use_sequence_parallel, "overlap": overlap},
+                        target_module=col_nn.Linear1D_Col,
+                        kwargs={"seq_parallel": use_sequence_parallel, "overlap": overlap},
                     ),
                     SubModuleReplacementDescription(
                         suffix="attn.q_proj",
-                        target_module=col_nn.GPT2FusedLinearConv1D_Col,
-                        kwargs={"n_fused": 3, "seq_parallel": use_sequence_parallel, "overlap": overlap},
+                        target_module=col_nn.Linear1D_Col,
+                        kwargs={"seq_parallel": use_sequence_parallel, "overlap": overlap},
                     ),
                     SubModuleReplacementDescription(
                         suffix="attn.v_proj",
-                        target_module=col_nn.GPT2FusedLinearConv1D_Col,
-                        kwargs={"n_fused": 3, "seq_parallel": use_sequence_parallel, "overlap": overlap},
+                        target_module=col_nn.Linear1D_Col,
+                        kwargs={"seq_parallel": use_sequence_parallel, "overlap": overlap},
                     ),
                     SubModuleReplacementDescription(
                         suffix="attn.out_proj",
-                        target_module=col_nn.GPT2FusedLinearConv1D_Row,
-                        kwargs={
-                            "seq_parallel": use_sequence_parallel,
-                        },
+                        target_module=col_nn.Linear1D_Row,
+                        kwargs={"seq_parallel": use_sequence_parallel},
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.fc_in",
-                        target_module=col_nn.GPT2FusedLinearConv1D_Col,
-                        kwargs={"n_fused": 1, "seq_parallel": use_sequence_parallel, "overlap": overlap},
+                        target_module=col_nn.Linear1D_Col,
+                        kwargs={"seq_parallel": use_sequence_parallel},
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.fc_out",
-                        target_module=col_nn.GPT2FusedLinearConv1D_Row,
-                        kwargs={
-                            "seq_parallel": use_sequence_parallel,
-                        },
+                        target_module=col_nn.Linear1D_Row,
+                        kwargs={"seq_parallel": use_sequence_parallel},
                     ),
                     SubModuleReplacementDescription(
                         suffix="attn.attn_dropout",

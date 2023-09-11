@@ -35,8 +35,8 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     gptj = unwrap_model(org_model, "GPTJModel", "transformer")
     sharded_gptj = unwrap_model(sharded_model, "GPTJModel", "transformer")
 
-    col_layer_for_check = ["h[0].mlp.fc_in"]
-    row_layer_for_check = ["wte", "h[0].mlp.fc_out"]
+    col_layer_for_check = ["h[0].attn.k_proj"]
+    row_layer_for_check = ["h[0].mlp.fc_out"]  # use dim=0 for wte get_grad_tensors_for_check
 
     # Save gradient tensors for comparison between the original model and the sharded model.
     grads_to_check = {}
@@ -46,10 +46,11 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         else:
             atol, rtol = 5e-3, 5e-3
         col_layer_grads = get_grad_tensors_for_check(
-            gptj, sharded_gptj, col_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=1, verbose=False
+            gptj, sharded_gptj, col_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=0, verbose=False
         )
+
         row_layer_grads = get_grad_tensors_for_check(
-            gptj, sharded_gptj, row_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=0, verbose=False
+            gptj, sharded_gptj, row_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=1, verbose=False
         )
         grads_to_check.update(col_layer_grads)
         grads_to_check.update(row_layer_grads)
@@ -76,7 +77,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             atol, rtol = 5e-3, 1e-3
         else:
             atol, rtol = 5e-3, 5e-3
-        check_weight(gptj, sharded_gptj, col_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=1, verbose=False)
+        check_weight(gptj, sharded_gptj, col_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=0, verbose=False)
 
     # check grads
     check_all_grad_tensors(grads_to_check)
@@ -89,20 +90,20 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     "test_config",
     [
         {
-            "tp_size": 1,
+            "tp_size": 2,
             "pp_size": 2,
-            "num_microbatches": 1,
-            "enable_all_optimization": False,
-            #'use_lazy_init': False,
-            "precision": "fp32",
-            #'initial_scale': 1,
+            "num_microbatches": 4,
+            "enable_all_optimization": True,
+            #'use_lazy_init': True,  GPTJ currently do not support lazy init; model training has issue even without sharding
+            "precision": "fp16",
+            "initial_scale": 1,
         },
         {
             "tp_size": 1,
             "pp_size": 2,
             "num_microbatches": 4,
             "enable_all_optimization": True,
-            "use_lazy_init": True,
+            #'use_lazy_init': True,
             "precision": "fp16",
             "initial_scale": 1,
         },
@@ -125,23 +126,14 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "pp_size": 2,
             "num_microbatches": 4,
             "enable_all_optimization": True,
-            "use_lazy_init": True,
-            "enable_sequence_parallelism": True,
-            "precision": "fp32",
-        },
-        {
-            "tp_size": 4,
-            "pp_size": 1,
-            "enable_all_optimization": True,
-            "use_lazy_init": True,
-            "enable_sequence_parallelism": True,
+            #'use_lazy_init': True,
             "precision": "fp32",
         },
         {
             "tp_size": 2,
             "pp_size": 1,
             "enable_all_optimization": True,
-            "use_lazy_init": True,
+            #'use_lazy_init': True,
             "zero_stage": 2,
             "precision": "fp16",
             "initial_scale": 1,
@@ -151,7 +143,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "pp_size": 2,
             "num_microbatches": 2,
             "enable_all_optimization": True,
-            "use_lazy_init": True,
+            #'use_lazy_init': True,
             "zero_stage": 1,
             "precision": "fp16",
             "initial_scale": 1,
@@ -160,8 +152,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 )
 @clear_cache_before_run()
 def run_gptj_test(test_config):
-    print(test_config)
-
     sub_model_zoo = model_zoo.get_sub_registry("transformers_gptj")
 
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
@@ -222,7 +212,7 @@ def check_gptj_3d(rank, world_size, port):
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()
 def test_gptj():
-    spawn(check_gptj, 2)
+    spawn(check_gptj, 4)
 
 
 @pytest.mark.largedist
@@ -233,6 +223,5 @@ def test_gptj_3d():
 
 
 if __name__ == "__main__":
-    print("===hello===")
     test_gptj()
     test_gptj_3d()

@@ -14,13 +14,13 @@ def data_gen():
     # Generated from following code snippet
     #
     # from transformers import AutoTokenizer
-    # input = 'Hello, my dog is cute'
+    # input = 'Hello, my dog is cute is cute' (last two words repeated to satisfy length requirement)
     # tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-j-6B")
     # tokenized_input = tokenizer(input, return_tensors='pt')
     # input_ids = tokenized_input['input_ids']
     # attention_mask = tokenized_input['attention_mask']
-    input_ids = torch.tensor([[15496, 11, 616, 3290, 318, 13779]], dtype=torch.int64)
-    attention_mask = torch.tensor([[1, 1, 1, 1, 1, 1]], dtype=torch.int64)
+    input_ids = torch.tensor([[15496, 11, 616, 3290, 318, 13779, 318, 13779]], dtype=torch.int64)
+    attention_mask = torch.tensor([[1, 1, 1, 1, 1, 1, 1, 1]], dtype=torch.int64)
     return dict(input_ids=input_ids, attention_mask=attention_mask)
 
 
@@ -66,7 +66,6 @@ config = transformers.GPTJConfig(
     attn_pdrop=0,
     embd_pdrop=0,
     resid_pdrop=0,
-    summary_first_dropout=0,
     hidden_dropout=0,
     problem_type="single_label_classification",
     pad_token_id=50256,
