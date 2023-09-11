@@ -67,7 +67,7 @@ class TPInferEngine:
         self.cache_manager = None
 
         self.shard_config = shard_config
-        self.sharded_model = None
+        self.model = None
         # optimize the original model by sharding with ShardFormer
         self._optimize_model(model=model.to(device))
 
@@ -124,8 +124,8 @@ class TPInferEngine:
         model_name = model.__class__.__name__
         assert model_name in self.supported_models, f"Unsupported model cls {model_name} for TP inference."
         policy = get_autopolicy(model, inference_only=True)
-        self.sharded_model, _ = shardformer.optimize(model, policy)
-        self.sharded_model = self.sharded_model.cuda()
+        self.model, _ = shardformer.optimize(model, policy)
+        self.model = self.model.cuda()
 
     @property
     def supported_models(self) -> List[str]:
@@ -234,7 +234,7 @@ class TPInferEngine:
         """
 
         # for testing, always use sharded model
-        assert self.sharded_model is not None, "sharded model does not exist"
+        assert self.model is not None, "sharded model does not exist"
 
         batch_infer_state = self.prepare_batch_state(input_tokens)
         assert batch_infer_state.max_len_in_batch <= self.max_input_len, "max length in batch exceeds limit"
@@ -243,14 +243,14 @@ class TPInferEngine:
         # NOTE this is not a preferable way to pass BatchInferState during inference
         #   we might want to rewrite generate function (e.g. _generate_by_pass_infer_state)
         #   and pass BatchInferState via model forward
-        model = self.sharded_model
+        model = self.model
         if isinstance(model, LlamaForCausalLM):
-            model = self.sharded_model.model
+            model = self.model.model
         elif isinstance(model, BloomForCausalLM):
-            model = self.sharded_model.transformer
+            model = self.model.transformer
         setattr(model, 'infer_state', batch_infer_state)
 
-        outputs = self.sharded_model.generate(**input_tokens, **generate_kwargs, early_stopping=False)
+        outputs = self.model.generate(**input_tokens, **generate_kwargs, early_stopping=False)
 
         # NOTE In future development, we're going to let the scheduler to handle the cache,
         #      instead of freeing space explicitly at the end of generation
