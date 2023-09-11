@@ -7,4 +7,3 @@ transformers
 scipy
 scikit-learn
 ptflops
-xformers
