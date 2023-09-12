@@ -27,7 +27,7 @@ class ModelSharder(object):
 
     def __init__(self, model: nn.Module, policy: Policy, shard_config: ShardConfig = None) -> None:
         self.model = model
-        self.policy = get_autopolicy(self.model) if policy is None else policy
+        self.policy = get_autopolicy(self.model, shard_config.inference_only) if policy is None else policy
         self.shard_config = shard_config
 
     def shard(self) -> List[Dict[int, Tensor]]:

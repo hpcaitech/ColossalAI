@@ -12,12 +12,10 @@ from torch.utils.data import DataLoader, Dataset, Sampler
 
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.legacy.registry import DATA_SAMPLERS
 
 T_co = TypeVar('T_co', covariant=True)
 
 
-@DATA_SAMPLERS.register_module
 class DataParallelSampler(Sampler):
     """A data sampler for distributed data parallelism.
 

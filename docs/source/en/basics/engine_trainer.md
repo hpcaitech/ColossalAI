@@ -344,7 +344,7 @@ for epoch in range(gpc.config.NUM_EPOCHS):
 If you wish to train with a trainer object, you can follow the code snippet below:
 
 ```python
-from colossalai.nn.metric import Accuracy
+from colossalai.legacy.nn.metric import Accuracy
 from colossalai.legacy.trainer import Trainer, hooks
 
 

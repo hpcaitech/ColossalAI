@@ -1,3 +1,4 @@
+import warnings
 from typing import Callable, List, Optional, Tuple
 
 import torch
@@ -19,6 +20,7 @@ class LlamaPipelineForwards:
     under pipeline setting.
     '''
 
+    @staticmethod
     def llama_model_forward(
         self: LlamaModel,
         input_ids: torch.LongTensor = None,
@@ -169,6 +171,7 @@ class LlamaPipelineForwards:
         # always return dict for imediate stage
         return {'hidden_states': hidden_states}
 
+    @staticmethod
     def llama_for_causal_lm_forward(
         self: LlamaForCausalLM,
         input_ids: torch.LongTensor = None,
@@ -276,6 +279,7 @@ class LlamaPipelineForwards:
             hidden_states = outputs.get('hidden_states')
             return {'hidden_states': hidden_states}
 
+    @staticmethod
     def llama_for_sequence_classification_forward(
         self: LlamaForSequenceClassification,
         input_ids: torch.LongTensor = None,
@@ -389,8 +393,17 @@ class LlamaPipelineForwards:
 
 
 def get_llama_flash_attention_forward():
+    
+    from colossalai.kernel.cuda_native import AttnMaskType, ColoAttention
 
     from transformers.models.llama.modeling_llama import LlamaAttention, apply_rotary_pos_emb
+
+    llama_version = 2
+    try:
+        from transformers.models.llama.modeling_llama import repeat_kv
+    except:
+        warnings.warn("using llamav1, llamav1 hasn't repeat_kv function")
+        llama_version = 1
 
     from colossalai.kernel.cuda_native import AttnMaskType, ColoAttention
 
@@ -415,6 +428,7 @@ def get_llama_flash_attention_forward():
             kv_seq_len += past_key_value[0].shape[-2]
 
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
+
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
 
         if past_key_value is not None:
@@ -423,6 +437,11 @@ def get_llama_flash_attention_forward():
             value_states = torch.cat([past_key_value[1], value_states], dim=2)
 
         past_key_value = (key_states, value_states) if use_cache else None
+
+        # repeat k/v heads if n_kv_heads < n_heads
+        if llama_version == 2:
+            key_states = repeat_kv(key_states, self.num_key_value_groups)
+            value_states = repeat_kv(value_states, self.num_key_value_groups)
 
         me_input_shape = (bsz, q_len, self.num_heads, self.head_dim)
         query_states = query_states.transpose(1, 2).contiguous().view(*me_input_shape)

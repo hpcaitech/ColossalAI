@@ -10,15 +10,13 @@ import torch.nn as nn
 from torch.distributed import ProcessGroup
 from torch.distributed.distributed_c10d import _get_default_group
 
-from colossalai.checkpoint_io.utils import calculate_tensor_size, StateDictSharder
+from colossalai.checkpoint_io.utils import StateDictSharder, calculate_tensor_size
 from colossalai.interface import ModelWrapper
-
 from colossalai.lazy import LazyTensor
 from colossalai.logging import get_dist_logger
-from colossalai.nn.parallel.data_parallel import _cast_float, free_storage
 from colossalai.tensor.colo_parameter import ColoParameter
 from colossalai.tensor.param_op_hook import ColoParamOpHookManager
-from colossalai.utils import get_current_device, is_ddp_ignored
+from colossalai.utils import _cast_float, free_storage, get_current_device, is_ddp_ignored
 
 from .chunk import Chunk, ChunkManager, TensorState, init_chunk_manager
 from .gemini_hook import GeminiZeROHook
@@ -780,5 +778,3 @@ class GeminiDDP(ModelWrapper):
                 yield block, block_size
 
         yield sharder.current_block, sharder.current_block_size
-
-

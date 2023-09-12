@@ -1,11 +1,8 @@
 from torch.optim.lr_scheduler import CosineAnnealingLR as _CosineAnnealingLR
 
-from colossalai.legacy.registry import LR_SCHEDULERS
-
 from .delayed import DelayerScheduler, WarmupDelayerScheduler, WarmupScheduler
 
 
-@LR_SCHEDULERS.register_module
 class CosineAnnealingLR(_CosineAnnealingLR):
     r"""Set the learning rate of each parameter group using a cosine annealing
     schedule, where :math:`\eta_{max}` is set to the initial lr and
@@ -49,7 +46,6 @@ class CosineAnnealingLR(_CosineAnnealingLR):
         super().__init__(optimizer, total_steps, eta_min=eta_min, last_epoch=last_epoch)
 
 
-@LR_SCHEDULERS.register_module
 class CosineAnnealingWarmupLR(WarmupScheduler):
     """Cosine annealing learning rate scheduler with learning rate warmup. A linear warmup schedule will be applied.
 
@@ -70,7 +66,6 @@ class CosineAnnealingWarmupLR(WarmupScheduler):
         super().__init__(optimizer, warmup_steps, base_scheduler)
 
 
-@LR_SCHEDULERS.register_module
 class FlatAnnealingLR(DelayerScheduler):
     """Flat and cosine annealing learning rate scheduler. The learning rate will be a fixed value before starting decay.
 
@@ -91,7 +86,6 @@ class FlatAnnealingLR(DelayerScheduler):
         super().__init__(optimizer, flat_steps, base_scheduler, last_epoch=last_epoch)
 
 
-@LR_SCHEDULERS.register_module
 class FlatAnnealingWarmupLR(WarmupDelayerScheduler):
     """Flat and cosine annealing learning rate scheduler with learning rate warmup. A linear warmup schedule will be
     applied, and then the learning rate will be a fixed value before starting decay.

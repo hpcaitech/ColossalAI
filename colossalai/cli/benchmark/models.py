@@ -1,6 +1,6 @@
 import torch
 
-import colossalai.nn as col_nn
+import colossalai.legacy.nn as col_nn
 
 
 class MLP(torch.nn.Module):
