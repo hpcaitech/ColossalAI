@@ -101,10 +101,16 @@ class GenerateSchedule(PipelineSchedule):
     def verbose_info(self, timestamps: List):
         prefill = []
         encoder = []
+        end2end = []
         for timestamp in timestamps:
             prefill.append(timestamp[1] - timestamp[0])
-            encoder.append(sum(timestamp[i + 1] - timestamp[i] for i in range(1, len(timestamp) - 1)))
-        print(f"Average prefill time: {sum(prefill)/len(prefill)},   Average encode time: {sum(encoder)/len(encoder)}")
+            encoder.append(
+                sum(timestamp[i + 1] - timestamp[i] for i in range(1,
+                                                                   len(timestamp) - 1)) / (len(timestamp) - 2))
+            end2end.append(timestamp[-1] - timestamp[0])
+        print(f"Average prefill time: {sum(prefill)/len(prefill)}")
+        print(f"Average encode time: {sum(encoder)/len(encoder)}")
+        print(f"Average end2end time: {sum(end2end)/len(end2end)}")
 
     @torch.no_grad()
     def generate_step(self, model: Module, data_iter: Iterable) -> Union[torch.Tensor, dict]:
