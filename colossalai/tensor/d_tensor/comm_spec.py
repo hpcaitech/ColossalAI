@@ -28,7 +28,7 @@ class CommSpec:
     to determine the buffer shape, and logical_process_axis
 
     Argument:
-        comm_pattern(CollectiveCommPattern): decribe the communication method used in this spec.
+        comm_pattern(CollectiveCommPattern): describe the communication method used in this spec.
         process_group_dict(Dict): A dict which contains the process groups used to apply this CommSpec.
         gather_dim(int, Optional): The gather_dim of the tensor will be gathered.
         shard_dim(int, Optional): The shard_dim of the tensor will be sharded.
