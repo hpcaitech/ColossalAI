@@ -141,15 +141,15 @@ class Top1Router(MoeRouter):
             inputs = self.noisy_func(inputs)
 
         assert inputs.dtype == torch.float
-        logits = F.softmax(inputs, dim=-1)
-        num_experts = logits.size(-1)
-        capacity = self.get_capacity(logits.shape)
+        probs = F.softmax(inputs, dim=-1)
+        num_experts = probs.size(-1)
+        capacity = self.get_capacity(inputs.shape)
 
         top1_idx = torch.argmax(inputs, dim=-1)
         mask = F.one_hot(top1_idx, num_classes=num_experts).to(torch.int32)
 
         # caculate router loss
-        self.set_aux_loss(logits, mask, num_experts)
+        self.set_aux_loss(probs, mask, num_experts)
         self.set_z_loss(inputs)
         self.pop_router_loss()
 
@@ -175,10 +175,10 @@ class Top1Router(MoeRouter):
             mask = torch.sum(mask, dim=-1)
             mask = torch.stack([mask], dim=0).to(torch.int32)
             dest_idx = torch.stack([top1_idx * capacity + ranks], dim=0).to(torch.int32)
-            return logits, mask, dest_idx, num_experts * capacity
+            return probs, mask, dest_idx, num_experts * capacity
         else:
             ranks = F.one_hot(ranks, num_classes=capacity)
-            weight = mask * logits.type_as(inputs)
+            weight = mask * probs.type_as(inputs)
             combine_weights = weight.unsqueeze(2) * ranks.unsqueeze(1)
             sec_mask = combine_weights.bool()
             return combine_weights, sec_mask
@@ -230,13 +230,13 @@ class Top2Router(MoeRouter):
             inputs = self.noisy_func(inputs)
 
         assert inputs.dtype == torch.float
-        logits = F.softmax(inputs, dim=-1)    # logits: [s, e]
-        num_experts = logits.size(-1)
-        capacity = self.get_capacity(logits.shape)
+        probs = F.softmax(inputs, dim=-1)
+        num_experts = probs.size(-1)
+        capacity = self.get_capacity(inputs.shape)
 
-        top1_idx = torch.argmax(logits, dim=-1)
+        top1_idx = torch.argmax(probs, dim=-1)
         mask1 = F.one_hot(top1_idx, num_classes=num_experts).to(torch.int32)
-        logits_except1 = logits.masked_fill(mask1.bool(), float("-inf"))
+        logits_except1 = probs.masked_fill(mask1.bool(), float("-inf"))
         top2_idx = torch.argmax(logits_except1, dim=-1)
         mask2 = F.one_hot(top2_idx, num_classes=num_experts).to(torch.int32)
 
@@ -244,7 +244,7 @@ class Top2Router(MoeRouter):
         cmask = cmask.float() / 2.0    # div 2 to normalize it to 1
 
         # caculate loss
-        self.set_aux_loss(logits, cmask, num_experts)
+        self.set_aux_loss(probs, cmask, num_experts)
         self.set_z_loss(inputs)
         self.pop_router_loss()
 
@@ -270,10 +270,10 @@ class Top2Router(MoeRouter):
             mask = torch.stack([mask1, mask2], dim=0).to(torch.int32)
             dest_idx = torch.stack([top1_idx * capacity + rank1, top2_idx * capacity + rank2], dim=0).to(torch.int32)
 
-            return logits, mask, dest_idx, num_experts * capacity
+            return probs, mask, dest_idx, num_experts * capacity
         else:
-            weight1 = mask1 * logits.type_as(inputs)
-            weight2 = mask2 * logits.type_as(inputs)
+            weight1 = mask1 * probs.type_as(inputs)
+            weight2 = mask2 * probs.type_as(inputs)
             rank1_sc = F.one_hot(rank1, num_classes=capacity)
             rank2_sc = F.one_hot(rank2, num_classes=capacity)
 
@@ -335,7 +335,9 @@ class TopKRouter(MoeRouter):
         # Shape: [num_groups, tokens_per_group, num_selected_experts].
         expert_gate, expert_index = torch.topk(router_probs, self.k_value)
 
-        # TODO
+        # TODO:
+        #   1. add router loss
+        #   2. add parallel group
         # auxiliary_loss = _load_balancing_loss(router_probs, expert_index)
 
         # Make num_selected_experts the leading axis to ensure that top-1 choices
