@@ -6,18 +6,18 @@ import torch
 import torch.distributed as dist
 from coati.dataset import SFTDataset, SupervisedDataset
 from coati.models.bloom import BLOOMActor
+from coati.models.chatglm import ChatGLMActor
+from coati.models.chatglm.chatglm_tokenizer import ChatGLMTokenizer
 from coati.models.gpt import GPTActor
 from coati.models.llama import LlamaActor
 from coati.models.opt import OPTActor
-from coati.models.chatglm import ChatGLMActor
 from coati.trainer import SFTTrainer
 from coati.trainer.strategies import DDPStrategy, GeminiStrategy, LowLevelZeroStrategy
 from datasets import load_dataset
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
-from transformers import AutoTokenizer, BloomTokenizerFast, LlamaTokenizer, AutoModel
-from coati.models.chatglm.chatglm_tokenizer import ChatGLMTokenizer
+from transformers import AutoModel, AutoTokenizer, BloomTokenizerFast, LlamaTokenizer
 from transformers.models.gpt2.tokenization_gpt2 import GPT2Tokenizer
 from transformers.trainer import get_scheduler
 
@@ -31,7 +31,7 @@ def train(args):
     if args.strategy == 'ddp':
         strategy = DDPStrategy()
     elif args.strategy == 'colossalai_gemini':
-        strategy = GeminiStrategy(placement_policy='cuda')
+        strategy = GeminiStrategy(placement_policy='auto')
     elif args.strategy == 'colossalai_zero2':
         strategy = LowLevelZeroStrategy(stage=2, placement_policy='cuda')
     elif args.strategy == 'colossalai_zero2_cpu':
@@ -45,21 +45,13 @@ def train(args):
         args.grad_checkpoint = False
     with strategy.model_init_context():
         if args.model == 'bloom':
-            model = BLOOMActor(pretrained=args.pretrain,
-                               lora_rank=args.lora_rank,
-                               checkpoint=args.grad_checkpoint)
+            model = BLOOMActor(pretrained=args.pretrain, lora_rank=args.lora_rank, checkpoint=args.grad_checkpoint)
         elif args.model == 'opt':
-            model = OPTActor(pretrained=args.pretrain,
-                             lora_rank=args.lora_rank,
-                             checkpoint=args.grad_checkpoint)
+            model = OPTActor(pretrained=args.pretrain, lora_rank=args.lora_rank, checkpoint=args.grad_checkpoint)
         elif args.model == 'gpt2':
-            model = GPTActor(pretrained=args.pretrain,
-                             lora_rank=args.lora_rank,
-                             checkpoint=args.grad_checkpoint)
+            model = GPTActor(pretrained=args.pretrain, lora_rank=args.lora_rank, checkpoint=args.grad_checkpoint)
         elif args.model == 'llama':
-            model = LlamaActor(pretrained=args.pretrain,
-                               lora_rank=args.lora_rank,
-                               checkpoint=args.grad_checkpoint)
+            model = LlamaActor(pretrained=args.pretrain, lora_rank=args.lora_rank, checkpoint=args.grad_checkpoint)
         elif args.model == 'chatglm':
             model = ChatGLMActor(pretrained=args.pretrain)
         else:
@@ -69,16 +61,14 @@ def train(args):
 
     # configure tokenizer
     if args.model == 'gpt2':
-        tokenizer = GPT2Tokenizer.from_pretrained(
-            'gpt2' if args.tokenizer is None else args.tokenizer)
+        tokenizer = GPT2Tokenizer.from_pretrained('gpt2' if args.tokenizer is None else args.tokenizer)
         tokenizer.pad_token = tokenizer.eos_token
     elif args.model == 'bloom':
         tokenizer = BloomTokenizerFast.from_pretrained(
             'bigscience/bloom-560m' if args.tokenizer is None else args.tokenizer)
         tokenizer.pad_token = tokenizer.eos_token
     elif args.model == 'opt':
-        tokenizer = AutoTokenizer.from_pretrained(
-            "facebook/opt-350m" if args.tokenizer is None else args.tokenizer)
+        tokenizer = AutoTokenizer.from_pretrained("facebook/opt-350m" if args.tokenizer is None else args.tokenizer)
         tokenizer.pad_token = tokenizer.eos_token
     elif args.model == 'llama':
         tokenizer = LlamaTokenizer.from_pretrained(
@@ -86,8 +76,8 @@ def train(args):
         tokenizer.eos_token = '<\s>'
         tokenizer.pad_token = tokenizer.unk_token
     elif args.model == 'chatglm':
-        tokenizer = ChatGLMTokenizer.from_pretrained(
-            "THUDM/chatglm-6b" if args.tokenizer is None else args.tokenizer, trust_remote_code=True)
+        tokenizer = ChatGLMTokenizer.from_pretrained("THUDM/chatglm-6b" if args.tokenizer is None else args.tokenizer,
+                                                     trust_remote_code=True)
     else:
         raise ValueError(f'Unsupported model "{args.model}"')
 
