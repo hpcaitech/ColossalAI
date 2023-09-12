@@ -1,9 +1,9 @@
 import math
 from contextlib import nullcontext
+from typing import Callable, Optional
 
 import torch
 import torch.nn as nn
-
 from colossalai.moe._operation import MoeInGradScaler, MoeOutGradScaler
 from colossalai.moe.manager import MOE_MANAGER
 from colossalai.moe.utils import get_activation
@@ -14,6 +14,15 @@ from colossalai.tensor.moe_tensor.api import get_ep_size, set_moe_tensor_info
 class BaseMLPExperts(nn.Module):
     """
     SparseMLP is a multi-layer perceptron with sparse expert parallel layers.
+
+    Args:
+        num_experts (int): The number of experts
+        forward: hidden_size --> intermediate_size --> hidden_size
+            hidden_size (int): The hidden size of MLP
+            intermediate_size (int): The intermediate size of MLP
+        expert_parallel (str, optional): The parallelism of experts. Now we have 'EP' and 'TP'.
+        activation (optional): The activation function of MLP
+        drop_rate (float, optional): The drop rate of MLP
     """
 
     def __init__(
@@ -21,8 +30,8 @@ class BaseMLPExperts(nn.Module):
         num_experts: int,
         hidden_size: int,
         intermediate_size: int,
-        expert_parallel: str = None,
-        activation: str = None,
+        expert_parallel: Optional[str] = None,
+        activation: Optional[Callable] = None,
         drop_rate: float = 0,
         gated: bool = False,
     ):
@@ -76,7 +85,14 @@ class BaseMLPExperts(nn.Module):
             for param in self.parameters():
                 set_moe_tensor_info(param, self.moe_info)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:    # inputs [g, e, c, h]
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            x (torch.Tensor): The input tensor of shape (num_groups, num_experts, capacity, hidden_size)
+
+        Returns:
+            torch.Tensor: The output tensor of shape (num_groups, num_experts, capacity, hidden_size)
+        """
         x = MoeInGradScaler.apply(x, self.ep_size)
 
         e = x.size(1)
@@ -97,7 +113,7 @@ class BaseMLPExperts(nn.Module):
         x = x.reshape(inshape)
         x = x.transpose(0, 1).contiguous()
         x = MoeOutGradScaler.apply(x, self.ep_size)
-        return x    # outputs [g, e, c, h]
+        return x
 
 
 class EPMLPExperts(BaseMLPExperts):
