@@ -20,6 +20,7 @@ from colossalai.amp.naive_amp import NaiveAMPModel
 from colossalai.context import Config, ConfigException, ParallelMode
 from colossalai.context.moe_context import MOE_CONTEXT
 from colossalai.core import global_context as gpc
+from colossalai.interface import OptimizerWrapper
 from colossalai.legacy.builder.builder import build_gradient_handler
 from colossalai.legacy.engine import Engine
 from colossalai.legacy.engine.gradient_accumulation import accumulate_gradient
@@ -30,7 +31,6 @@ from colossalai.legacy.engine.schedule import (
     get_tensor_shape,
 )
 from colossalai.logging import get_dist_logger
-from colossalai.nn.optimizer.colossalai_optimizer import ColossalaiOptimizer
 from colossalai.utils import get_current_device, is_using_ddp, is_using_pp, is_using_sequence, sync_model_param
 from colossalai.utils.moe import sync_moe_model_param
 from colossalai.zero.legacy import ShardedOptimizerV2, convert_to_zero_v2
@@ -445,9 +445,9 @@ def initialize(model: nn.Module,
     else:
         gradient_handlers = [build_gradient_handler(cfg, model, optimizer) for cfg in gradient_handler_cfg]
 
-    # check if optimizer is ColossalaiOptimizer
-    if not isinstance(optimizer, (ColossalaiOptimizer, ShardedOptimizerV2)):
-        optimizer = ColossalaiOptimizer(optim=optimizer)
+    # check if optimizer is OptimizerWrapper
+    if not isinstance(optimizer, (OptimizerWrapper, ShardedOptimizerV2)):
+        optimizer = OptimizerWrapper(optim=optimizer)
 
     # gradient accumulation
     grad_accum_size = gpc.config.get('gradient_accumulation', None)

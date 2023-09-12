@@ -13,7 +13,6 @@ import torch.nn as nn
 from torch.optim import Optimizer
 
 from colossalai.interface import ModelWrapper, OptimizerWrapper
-from colossalai.nn.optimizer import ColossalaiOptimizer
 from colossalai.tensor.d_tensor import (
     is_customized_distributed_tensor,
     is_distributed_tensor,
@@ -130,10 +129,7 @@ def unwrap_optimizer(optimizer: OptimizerWrapper):
     This method should be used before saving/loading it to/from sharded checkpoints.
     '''
 
-    # TODO(Baizhou): ColossalaiOptimizer will be replaced with OptimizerWrapper in the future
     unwrapped_optim = optimizer.optim
-    if isinstance(unwrapped_optim, ColossalaiOptimizer):
-        unwrapped_optim = unwrapped_optim.optim
     return unwrapped_optim
 
 

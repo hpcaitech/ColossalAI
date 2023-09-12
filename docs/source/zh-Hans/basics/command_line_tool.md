@@ -26,22 +26,4 @@ Colossal-AI给用户提供了命令行工具，目前命令行工具可以用来
 
 在分布式训练时，我们可以使用`colossalai run`来启动单节点或者多节点的多进程，详细的内容可以参考[启动 Colossal-AI](./launch_colossalai.md)。
 
-## 张量并行基准测试
-
-Colossal-AI提供了多种张量并行，想要充分理解这些方法需要一定的学习成本，对于新手来说很难靠经验选择一个并行方式。
-所以我们提供了一个简单的基准测试，能够让用户在自己的机器上测试不同张量并行的性能。这个基准测试跑一个并行的MLP模型，
-输入数据的维度为`（批大小，序列长度，隐藏层维度）`。通过指定GPU的数量，Colossal-AI会搜索所有可行的并行配置。用户可以通过查看`colossalai benchmark --help`来自定义相关的测试参数。
-
-```shell
-# 使用4个GPU
-colossalai benchmark --gpus 4
-
-# 使用8个GPU
-colossalai benchmark --gpus 8
-```
-
-:::caution
-
-目前仅支持单节点的基准测试。
-
-:::
+<!-- doc-test-command: echo  -->

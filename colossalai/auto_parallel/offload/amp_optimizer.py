@@ -5,8 +5,8 @@ import torch
 from torch.optim import Optimizer
 
 from colossalai.amp.naive_amp.grad_scaler import DynamicGradScaler
+from colossalai.interface import OptimizerWrapper
 from colossalai.logging import get_dist_logger
-from colossalai.nn.optimizer import ColossalaiOptimizer
 from colossalai.utils import get_current_device
 
 from .base_offload_module import BaseOffloadModule
@@ -19,7 +19,7 @@ class OptimState(Enum):
     UNSCALED = 1
 
 
-class AMPOptimizer(ColossalaiOptimizer):
+class AMPOptimizer(OptimizerWrapper):
     """
     A wrapper for Optimizer.
     Code reference: https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/optimizer/zero_optimizer.py
