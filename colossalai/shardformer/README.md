@@ -446,9 +446,9 @@ warmup_fraction = 0.03
 
 | accuracy |   f1    |  loss   | GPU number | model sharded |
 | :------: | :-----: | :-----: | :--------: | :---------: |
-| 0.82594  | 0.87441 | 0.09913 |     4      |    True     |
-| 0.81884  | 0.87299 | 0.10120 |     2      |    True     |
-| 0.81855  | 0.87124 | 0.10357 |     1      |    False    |
+| 0.82971  | 0.87713 | 0.23194 |     4      |    True     |
+| 0.83797  | 0.88006 | 0.22683 |     2      |    True     |
+| 0.84521  | 0.88700 | 0.21822 |     1      |    False    |
 
 
 Overall, the results demonstrate that using shardformers during model training does not affect the convergence.
