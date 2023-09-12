@@ -9,7 +9,7 @@ from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import (
     SelfAttention,
 )
 # import colossalai
-from colossalai.shardformer.policies.chatglm import ChatGLMModelPolicy
+from colossalai.shardformer.policies.chatglm2 import ChatGLMModelPolicy
 
 from ..modeling.chatglm2 import ChatGLM2InferenceForwards, _init_to_get_rotary
 

@@ -22,6 +22,7 @@ class TPInferEngine:
 
     def __init__(self,
                  model: nn.Module,
+                 shard_config: ShardConfig,
                  max_batch_size: int,
                  max_input_len: int,
                  max_output_len: int,
@@ -41,8 +42,8 @@ class TPInferEngine:
 
         self.head_dim = model.config.hidden_size // model.config.num_attention_heads
         self.head_num = model.config.num_attention_heads
-        num_hidden_layers = self.model.config.num_hidden_layers if hasattr(self.model.config, "num_hidden_layers") \
-            else self.model.config.num_layers
+        num_hidden_layers = model.config.num_hidden_layers if hasattr(model.config, "num_hidden_layers") \
+            else model.config.num_layers
         self.layer_num = num_hidden_layers
 
         self.tp_size = -1    # to be set with given shard config in self.prepare_shard_config
@@ -231,10 +232,10 @@ class TPInferEngine:
         elif isinstance(model, BloomForCausalLM):
             model = self.model.transformer
         setattr(model, 'infer_state', batch_infer_state)
-        outputs = self.sharded_model.forward(input_tokens['input_ids'], input_tokens['attention_mask'])
+
+        outputs = self.model.forward(input_tokens['input_ids'], input_tokens['attention_mask'])
         print(outputs[0])
-        outputs = self.sharded_model.forward(input_tokens['input_ids'][:, 0].unsqueeze(1),
-                                             input_tokens['attention_mask'])
+        outputs = self.model.forward(input_tokens['input_ids'][:, 0].unsqueeze(1), input_tokens['attention_mask'])
         # FOR test chatglm2
         #outputs = self.model.generate(**input_tokens, **generate_kwargs, early_stopping=False)
 

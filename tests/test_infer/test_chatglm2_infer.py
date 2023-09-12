@@ -23,7 +23,10 @@ MAX_OUTPUT_LEN = 100
 CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse('11.5')
 
 
-def run_chatglm2_test():
+@parameterize('test_config', [{
+    'tp_size': TPSIZE,
+}])
+def run_chatglm2_test(test_config):
 
     chatglm2_model_path = "/home/lccjh/data2/lccjh/chatglm2-6b"
     assert os.path.isdir(chatglm2_model_path) is True
@@ -37,17 +40,13 @@ def run_chatglm2_test():
 
     text = ["how is weather today?", "i am "]
     input_ids = tokenizer.batch_encode_plus(text, return_tensors='pt', padding=True)
-
+    shard_config = ShardConfig(enable_tensor_parallelism=True if test_config['tp_size'] > 1 else False,
+                               inference_only=True)
     #print("input ids ", input_ids)
-    infer_engine = TPInferEngine(model.half(), BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
-    shard_config = ShardConfig(enable_tensor_parallelism=True, inference_only=True)
-    shardformer = ShardFormer(shard_config=shard_config)
-
-    infer_engine.prepare_with_shard_config(shard_config)
-    infer_engine.shard_model_by(shardformer)
+    infer_engine = TPInferEngine(model, shard_config, BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
 
     generate_kwargs = dict(max_new_tokens=MAX_OUTPUT_LEN, do_sample=False)
-    outputs = infer_engine.generate(input_ids, generate_kwargs)
+    outputs = infer_engine.generate(input_ids, **generate_kwargs)
     print("outputs.shape: ", outputs[0].shape)
 
     print("outputs: ", outputs[0])
