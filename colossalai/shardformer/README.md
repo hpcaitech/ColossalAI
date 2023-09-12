@@ -30,27 +30,48 @@
 
 ### Quick Start
 
-The sample API usage is given below(If you enable the use of flash attention, please install `flash_attn`. In addition, xformers's `cutlass_op` provide a supplementary optimization, It requires that the sequence length be a multiple of 8.):
+The sample API usage is given below(If you enable the use of flash attention, please install `flash_attn`. In addition, xformers's `cutlass_op` provide a supplementary optimization):
 
 ```python
-from colossalai.shardformer import ShardConfig, Shard
+from colossalai.shardformer import ShardConfig, ShardFormer
 from transformers import BertForMaskedLM
+import colossalai
 
 # launch colossalai
-colossalai.launch_from_torch()
+colossalai.launch_from_torch(config={})
 
 # create model
 config = BertConfig.from_pretrained('bert-base-uncased')
 model = BertForMaskedLM.from_pretrained('bert-base-uncased', config=config)
 
 # create huggingface model as normal
-shard_config = ShardConfig()
+shard_config = ShardConfig(tensor_parallel_process_group=tp_group,
+                        pipeline_stage_manager=stage_manager,
+                        enable_tensor_parallelism=True,
+                        enable_fused_normalization=True,
+                        enable_flash_attention=True,
+                        enable_jit_fused=True,
+                        enable_sequence_parallelism=True,
+                        enable_sequence_overlap=True)
+
 shard_former = ShardFormer(shard_config=shard_config)
-sharded_model = shard_former.optimize(model).to('cuda')
+sharded_model, shared_params = shard_former.optimize(model).to('cuda')
 
 # do everything like normal
 ...
 ```
+shardformer configuration
+
+`tensor_parallel_process_group`: the process group of tensor parallelism, it's necessary when using tensor parallel.
+`pipeline_stage_manager`: If using pipeline parallelism, it's necessary to specify a pipeline stage manager for inter-process communication in pipeline parallelism.
+{{ autodoc:colossalai.pipeline.stage_manager.PipelineStageManager }}
+`enable_tensor_parallelism`: using tensor parallel
+`enable_fused_normalization`: using apex fused layernorm
+`enable_flash_attention`: using flash attention
+`enable_jit_fused`: using jit fused operators
+`enable_sequence_parallelism`: using sequence parallelism, partition these non-tensor parallel regions along the sequence dimension.
+`enable_sequence_overlap`: overlap the computation and communication in the sequence parallelism, it's used with `enable_sequence_parallelism`.
+
 
 ### Write your own policy
 
