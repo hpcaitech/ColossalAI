@@ -94,9 +94,6 @@ class MoeRouter(nn.Module, ABC):
 
         Args:
             router_logits: <float>[num_groups, tokens_per_group, num_experts] router logits.
-
-        Returns:
-            Scalar router z-loss.
         """
         assert self._z_loss is None
         if router_logits.dim() == 2:
@@ -327,9 +324,9 @@ class TopKRouter(MoeRouter):
     processed by an expert, or that each expert receives at least one token.
 
     Attributes:
-      num_selected_experts: Maximum number of experts to which each token is
-        routed. Tokens may be routed to fewer experts if particular experts are
-        oversubscribed / reach capacity.
+        num_selected_experts: Maximum number of experts to which each token is
+            routed. Tokens may be routed to fewer experts if particular experts are
+            oversubscribed / reach capacity.
     """
 
     def __init__(self,
@@ -359,16 +356,15 @@ class TopKRouter(MoeRouter):
         Returns:
             Dispatch and combine arrays for routing with masked matmuls.
         """
+        # TODO: add parallel group
         num_groups, _, num_experts = router_probs.shape
 
         # Top-k router probability and corresponding expert indices for each token.
         # Shape: [num_groups, tokens_per_group, num_selected_experts].
         expert_gate, expert_index = torch.topk(router_probs, self.k_value)
 
-        # TODO:
-        #   1. add router loss
-        #   2. add parallel group
-        # auxiliary_loss = _load_balancing_loss(router_probs, expert_index)
+        self.set_aux_loss(router_probs, expert_index, num_experts)
+        self.pop_router_loss()
 
         # Make num_selected_experts the leading axis to ensure that top-1 choices
         # have priority over top-2 choices, which have priority over top-3 choices,
