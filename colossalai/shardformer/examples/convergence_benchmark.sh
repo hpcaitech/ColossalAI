@@ -1,4 +1,4 @@
-torchrun --standalone --nproc_per_node=1 convergence_benchmark.py \
+torchrun --standalone --nproc_per_node=4 convergence_benchmark.py \
     --model "bert" \
     --pretrain "bert-base-uncased" \
     --max_epochs 3 \
