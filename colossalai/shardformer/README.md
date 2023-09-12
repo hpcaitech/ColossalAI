@@ -103,56 +103,30 @@ We will follow this roadmap to develop Shardformer:
 - [x] API Implementation
 - [x] Unit Testing
 - [ ] Policy Implementation
-  - [ ] Hugging Face
-    - [ ] NLP
-      - [x] BERT
-      - [x] T5
-      - [x] LlaMa
-      - [x] GPT2
-      - [x] OPT
-      - [x] BLOOM
-      - [x] GLM
-      - [ ] RoBERTa
-      - [ ] ALBERT
-      - [ ] ERNIE
-      - [ ] GPT Neo
-      - [ ] GPT-J
-      - [ ] Qwen
-    - [ ] CV
-      - [x] ViT
-      - [ ] BEiT
-      - [ ] SwinTransformer
-      - [ ] SwinTransformer V2
-    - [ ] Audio
-      - [x] Whisper
-    - [ ] Multi-modal
-      - [x] SAM
-      - [x] BLIP-2
-- [ ] Flash Attention Support
-    - [ ] NLP
-      - [x] BERT
-      - [x] T5
-      - [x] LlaMa
-      - [x] GPT2
-      - [x] OPT
-      - [x] BLOOM
-      - [x] GLM
-      - [ ] RoBERTa
-      - [ ] ALBERT
-      - [ ] ERNIE
-      - [ ] GPT Neo
-      - [ ] GPT-J
-      - [ ] Qwen
-    - [ ] CV
-      - [x] ViT
-      - [ ] BEiT
-      - [ ] SwinTransformer
-      - [ ] SwinTransformer V2
-    - [ ] Audio
-      - [x] Whisper
-    - [ ] Multi-modal
-      - [x] SAM
-      - [x] BLIP-2
+
+| model |   tensor parallel    |  pipeline parallel   |   lazy initialization |  xformer   |  flash attn2 | jit fused operator | fused layernorm |  sequence parallel |  overlap |
+| :------: | :-----: | :-----: | :--------: | :---------: | :------: | :-----: | :-----: | :--------: | :---------: |
+| bert |   [x]   |  [x]   |   [x] |  [x]   |  [x] | [x] | [x] |  [x] |  [x] |
+| t5 |   [x]   |  [x]   |   [x] |  [x]   |  [x] | [x] | [x] |  [ ] |  [ ] |
+| llama V1/V2 |   [x]   |  [x]   |   [x] |  [x]   |  [x] | [x] | [x] |  [ ] |  [ ] |
+| gpt2 |   [x]   |  [x]   |   [x] |  [x]   |  [x] | [x] | [x] |  [x] |  [x] |
+| opt |   [x]   |  [x]   |   [x] |  [x]   |  [x] | [x] | [x] |  [ ] |  [ ] |
+| bloom |   [x]   |  [x]   |   [x] |  [x]   |  [x] | [x] | [x] |  [x] |  [x] |
+| chatglm2 |   [x]   |  [x]   |   [x] |  [x]   |  [x] | [x] | [x] |  [x] |  [x] |
+| vit |   [x]   |  [x]   |   [ ] |  [x]   |  [x] | [x] | [x] |  [ ] |  [ ] |
+| whisper |   [x]   |  [x]   |   [x] |  [x]   |  [x] | [x] | [x] |  [ ] |  [ ] |
+| sam |   [x]   |  [ ]   |   [ ] |  [x]   |  [x] | [x] | [x] |  [ ] |  [ ] |
+| blip2 |   [x]   |  [ ]   |   [ ] |  [x]   |  [x] | [x] | [x] |  [ ] |  [ ] |
+| roberta |   [ ]   |  [ ]   |   [ ] |  [ ]   |  [ ] | [ ] | [ ] |  [ ] |  [ ] |
+| albert |   [ ]   |  [ ]   |   [ ] |  [ ]   |  [ ] | [ ] | [ ] |  [ ] |  [ ] |
+| ernie |   [ ]   |  [ ]   |   [ ] |  [ ]   |  [ ] | [ ] | [ ] |  [ ] |  [ ] |
+| gpt-neo |   [ ]   |  [ ]   |   [ ] |  [ ]   |  [ ] | [ ] | [ ] |  [ ] |  [ ] |
+| gpt-j |   [ ]   |  [ ]   |   [ ] |  [ ]   |  [ ] | [ ] | [ ] |  [ ] |  [ ] |
+| beit |   [ ]   |  [ ]   |   [ ] |  [ ]   |  [ ] | [ ] | [ ] |  [ ] |  [ ] |
+| swin |   [ ]   |  [ ]   |   [ ] |  [ ]   |  [ ] | [ ] | [ ] |  [ ] |  [ ] |
+| swin V2 |   [ ]   |  [ ]   |   [ ] |  [ ]   |  [ ] | [ ] | [ ] |  [ ] |  [ ] |
+| qwen |   [ ]   |  [ ]   |   [ ] |  [ ]   |  [ ] | [ ] | [ ] |  [ ] |  [ ] |
+
 
 ## 💡 API Design
 
@@ -457,13 +431,24 @@ As shown in the figures above, when the sequence length is around 1000 or greate
 ### Convergence
 
 
-To validate that training the model using shardformers does not impact its convergence. We [fine-tuned the BERT model](../../examples/language/bert/finetune.py) using both shardformer and non-shardformer approaches. The example that utilizes Shardformer simultaneously with Pipeline Parallelism and Data Parallelism (Zero1). We then compared the accuracy, loss, and F1 score of the training results.
+To validate that training the model using shardformers does not impact its convergence. We [fine-tuned the BERT model](./examples/convergence_benchmark.py) using both shardformer and non-shardformer approaches. The example that utilizes Shardformer simultaneously with Pipeline Parallelism and Data Parallelism (Zero1). We then compared the accuracy, loss, and F1 score of the training results.
+
+the configurations are as follows:
+```python
+batch_size = 2
+epoch = 3
+lr = 2.4e-5
+accumulation_steps = 8
+warmup_fraction = 0.03
+```
+
 
 
 | accuracy |   f1    |  loss   | GPU number | model sharded |
 | :------: | :-----: | :-----: | :--------: | :---------: |
-| 0.84589  | 0.88613 | 0.43414 |     4      |    True    |
-| 0.83594  | 0.88064 | 0.43298 |     1      |    False    |
+| 0.82594  | 0.87441 | 0.09913 |     4      |    True     |
+| 0.81884  | 0.87299 | 0.10120 |     2      |    True     |
+| 0.81855  | 0.87124 | 0.10357 |     1      |    False    |
 
 
 Overall, the results demonstrate that using shardformers during model training does not affect the convergence.
