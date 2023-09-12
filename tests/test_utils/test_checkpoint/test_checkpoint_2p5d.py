@@ -18,7 +18,7 @@ from colossalai.utils.checkpointing import gather_pipeline_parallel_state_dict, 
 
 
 def build_pipeline(model):
-    from colossalai.pipeline.utils import partition_uniform
+    from colossalai.legacy.pipeline.utils import partition_uniform
 
     pipeline_size = gpc.get_world_size(ParallelMode.PIPELINE)
     pipeline_rank = gpc.get_local_rank(ParallelMode.PIPELINE)

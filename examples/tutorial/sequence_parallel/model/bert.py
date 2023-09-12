@@ -8,8 +8,8 @@ from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.kernel import LayerNorm
 from colossalai.legacy.nn.layer.wrapper import PipelineSharedModuleWrapper
+from colossalai.legacy.pipeline.utils import partition_uniform
 from colossalai.logging import get_dist_logger
-from colossalai.pipeline.utils import partition_uniform
 
 from .layers import BertDualHead, BertLayer, Embedding, PreProcessor, VocabEmbedding
 from .layers.init_method import init_normal, output_init_normal

@@ -1,11 +1,12 @@
 import torch
-from torch import nn
-from torch import autograd
+from rpc_test_utils import RpcTestModel, parse_args, rpc_run
+from torch import autograd, nn
+from torch.optim import SGD, Adam, Optimizer, RMSprop
 
-from colossalai.pipeline.rpc._pipeline_schedule import FillDrainPipelineEngine, OneFOneBPipelineEngine
+from colossalai.legacy.pipeline.rpc._pipeline_schedule import FillDrainPipelineEngine, OneFOneBPipelineEngine
 from colossalai.testing import assert_close
-from rpc_test_utils import rpc_run, parse_args, RpcTestModel
 
+# global variable for model created
 feat_num = 100
 h = 100
 
@@ -25,7 +26,9 @@ def run_master(args):
     actual_stage_num = stage_num * chunk
     use_checkpoint = args.use_checkpoint
     num_microbatches = args.num_microbatches
+    optimizer_class = globals()[args.optimizer]
 
+    lr = 1e-3
     sample_num = 1024
     batch_size = 1024
 
@@ -40,28 +43,32 @@ def run_master(args):
                                     chunk=chunk,
                                     checkpoint=use_checkpoint)
 
-    forward_result = engine.forward_backward(input_sample)
+    engine.initialize_optimizer(optimizer_class, lr=lr)
+
+    _ = engine.forward_backward(input_sample)
 
     cuda_rpc_result = []
     single_result = []
     actual_stage_num = engine._get_actual_stage_num()
 
-    # compute forward result and backward grad of parameters in cuda rpc
-    cuda_rpc_result.append(sum(forward_result[0]))
-    grad = engine.remote_grad()
+    # compute parameters after updating in cuda rpc
+    parameters = engine.remote_parameters()
     for stage_id in range(actual_stage_num):
-        for p in grad[stage_id]:
+        for p in parameters[stage_id]:
             cuda_rpc_result.append(p)
 
     # compute forward result and backward grad of parameters just in rank_0
     test_model = nn.Sequential(
         *[partition(pp_rank, chunk, actual_stage_num) for pp_rank in range(actual_stage_num)]).to(device)
+    optimizer: Optimizer = optimizer_class(test_model.parameters(), lr=lr)
     input_sample = input_sample.requires_grad_()
     out_val = test_model(input_sample).sum()
     autograd.backward(out_val)
-    single_result.append(out_val)
+    optimizer.step()
+    optimizer.zero_grad()
+
     for p in test_model.parameters():
-        single_result.append(p.grad)
+        single_result.append(p)
 
     assert len(cuda_rpc_result) == len(single_result)
     for r_c, r_s in zip(cuda_rpc_result, single_result):

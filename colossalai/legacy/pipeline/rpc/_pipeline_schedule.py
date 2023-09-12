@@ -6,8 +6,8 @@ import torch.distributed as dist
 from torch._C._distributed_rpc import PyRRef
 from torch.futures import Future
 
-from colossalai.pipeline.pipeline_process_group import ppg
-from colossalai.pipeline.rpc._pipeline_base import Phase, PipelineEngineBase, UniqueKey, WorkerBase, WorkItem
+from colossalai.legacy.pipeline.pipeline_process_group import ppg
+from colossalai.legacy.pipeline.rpc._pipeline_base import Phase, PipelineEngineBase, UniqueKey, WorkerBase, WorkItem
 
 # Implementation of different Pipeline schedule
 # <strategy>Worker defines the worker for each stage
@@ -78,7 +78,7 @@ class OneFOneBWorker(WorkerBase):
         # 1. forward times reach actual_stage_num, this is the end of continuous forward
         # 2. forward times reach num_microbatches, this is the end of 1F1B mode
         if not is_last_stage and \
-            target_key.phase == Phase.FORWARD:
+                target_key.phase == Phase.FORWARD:
             if target_key.microbatch_id == actual_stage_num - 1 and num_microbatches > 2:
                 # Why need num_microbatches > 2 ? Because there is no steady stage when num_microbatches <= 2
                 outstanding_min = actual_stage_num - pp_rank - 1
@@ -144,7 +144,7 @@ class ChimeraWorker(WorkerBase):
         forward_block_num = self.forward_times // forward_block_size
 
         if self.forward_times >= real_microbatch_num or \
-            ((pp_rank + 1) % stage_num == 0 and forward_block_num > self.backward_times):
+                ((pp_rank + 1) % stage_num == 0 and forward_block_num > self.backward_times):
             target_phase = Phase.BACKWARD
             target_microbatch_id = self.backward_times
         else:    # others

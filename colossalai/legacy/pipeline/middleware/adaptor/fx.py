@@ -1,6 +1,8 @@
-from torch.fx.graph_module import GraphModule
-from colossalai.pipeline.middleware.topo import Partition, PartitionInputVal, PartitionOutputVal, Topo
 import torch
+from torch.fx.graph_module import GraphModule
+
+from colossalai.legacy.pipeline.middleware.topo import Partition, PartitionInputVal, PartitionOutputVal, Topo
+
 
 def partition_name_to_id(partition_name, is_input=False, is_output=False):
     if is_input:
@@ -12,6 +14,7 @@ def partition_name_to_id(partition_name, is_input=False, is_output=False):
         partition_id = int(partition_name.split(prefix)[-1]) + 2
     return partition_id
 
+
 # There are two kinds of def in fx.graph
 # 1. non direct_use & non direct_def, which means the output is used by next partition with a temporary mid value.
 #    e.g. submod1 = call_module(...)
@@ -20,6 +23,8 @@ def partition_name_to_id(partition_name, is_input=False, is_output=False):
 # 2. direct_use & direct_def, which means the output is used by next partition directly.
 #    e.g. submod1 = call_module(...)
 #         submod2 = call_module(submod1, ...)
+
+
 def find_input_in_partition(node, partitions, input_partitions=None):
     p_input_val = None
     direct_def = not node.name.startswith('getitem')
@@ -45,9 +50,10 @@ def find_input_in_partition(node, partitions, input_partitions=None):
                     partition_id = partition_name_to_id(partition.name)
                     p_input_val = PartitionInputVal(partition_id=partition_id, offset=offset)
                     return p_input_val
-        
+
     return p_input_val
-        
+
+
 def find_output_in_partition(node, partitions, output_partitions=None):
     p_output_val = PartitionOutputVal()
     for user in node.users:
@@ -70,7 +76,7 @@ def find_output_in_partition(node, partitions, output_partitions=None):
                         if arg == user:
                             p_output_val.add(partition_id=partition_id, offset=i)
                             break
-        
+
         # user is output
         if output_partitions is not None:
             output_node = output_partitions[0]
@@ -84,10 +90,11 @@ def find_output_in_partition(node, partitions, output_partitions=None):
                         break
     return p_output_val
 
+
 def get_topology(gm: GraphModule):
     topo = Topo()
     topo_output_partition = Partition()
-    
+
     input_partitions = []
     partitions = []
     output_partitions = []
@@ -109,7 +116,7 @@ def get_topology(gm: GraphModule):
         topo_input_partition.add_output_val(p_output_val)
     topo.set_partitions(partition_id=0, partition=topo_input_partition)
     topo.set_input_partition_id(partition_id=0)
-    
+
     for i, partition in enumerate(partitions):
         topo_mid_partition = Partition()
         # set input for submodule
@@ -131,14 +138,15 @@ def get_topology(gm: GraphModule):
             for user in partition.users:
                 cur_node = user
                 p_output_val = find_output_in_partition(cur_node, partitions, output_partitions)
-                topo_mid_partition.add_output_val(p_output_val)  
-        topo.set_partitions(partition_id=i+2, partition=topo_mid_partition)
-        
+                topo_mid_partition.add_output_val(p_output_val)
+        topo.set_partitions(partition_id=i + 2, partition=topo_mid_partition)
+
     # set input for output_partition
     for partition in output_partitions:
         topo_output_partition = Partition()
-        torch.fx.graph.map_arg(partition.args[0], lambda n: topo_output_partition.add_input_val(
-            find_input_in_partition(n, partitions, input_partitions)))
+        torch.fx.graph.map_arg(
+            partition.args[0],
+            lambda n: topo_output_partition.add_input_val(find_input_in_partition(n, partitions, input_partitions)))
     topo.set_partitions(partition_id=1, partition=topo_output_partition)
     topo.set_output_partition_id(partition_id=1)
 

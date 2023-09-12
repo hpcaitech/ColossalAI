@@ -1,9 +1,11 @@
 import torch
+
 from colossalai.utils.model.utils import call_to_str
+
 
 class LayerSpec:
     """
-    
+
     """
 
     def __init__(self, typename, *module_args, **module_kwargs):
