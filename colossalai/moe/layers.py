@@ -88,7 +88,16 @@ class SparseMLP(nn.Module):
         self.gate_weight = torch.nn.Parameter(torch.empty(num_experts, self.hidden_size))
         nn.init.trunc_normal_(self.gate_weight, std=math.sqrt(0.1 / self.hidden_size))
 
-    def forward(self, inputs: torch.Tensor) -> Tuple:
+    def forward(self,
+                inputs: torch.Tensor) \
+            -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Args:
+            inputs (torch.Tensor): The input tensor of shape (batch_size, seq_len, hidden_size)
+
+        Returns:
+            torch.Tensor: The output tensor of shape (batch_size, seq_len, hidden_size)
+        """
         # reshape the input tokens
         tokens = inputs.reshape(-1, self.hidden_size)
 
@@ -100,6 +109,7 @@ class SparseMLP(nn.Module):
         # the result from the router
         route_result_list = self.router(inputs=gate_output, use_kernel=self.use_kernel, ep_group=self.ep_group)
 
+        # dispatch_data: (num_experts, capacity, hidden_size)
         if self.use_kernel:
             dispatch_data = MoeDispatch.apply(tokens, *route_result_list[1:])
             dispatch_data = dispatch_data.reshape(self.num_experts, -1, self.hidden_size)
@@ -107,7 +117,7 @@ class SparseMLP(nn.Module):
             sec_mask_f = route_result_list[1].type_as(inputs)
             dispatch_data = torch.matmul(sec_mask_f.permute(1, 2, 0), tokens)
 
-        # dispatch_data [e, c, h]
+        # expert_output: (num_groups, num_experts, capacity, hidden_size)
         if self.expert_parallel == "EP":
             expert_output = self._ep_process(dispatch_data)
         elif self.expert_parallel == "TP":
@@ -115,9 +125,9 @@ class SparseMLP(nn.Module):
         elif self.expert_parallel is None:
             expert_output = self._local_process(dispatch_data)
         else:
-            raise NotImplementedError("This kind of communication has not been implemented yet.\n Please use Experts "
-                                      "build function.")
-        # expert_output [e, c, h]
+            raise NotImplementedError("This kind of communication has not been implemented yet.\n"
+                                      "Please use Experts build function.")
+
         if self.use_kernel:
             expert_output = expert_output.reshape(-1, self.hidden_size)
             ans = MoeCombine.apply(expert_output, *route_result_list)
