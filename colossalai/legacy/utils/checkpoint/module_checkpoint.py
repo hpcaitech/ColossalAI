@@ -5,7 +5,8 @@ import torch.distributed as dist
 
 from colossalai.interface import OptimizerWrapper
 from colossalai.tensor import ColoTensor
-from colossalai.utils.checkpoint.utils import gather_tensor, scatter_tensor
+
+from .utils import gather_tensor, scatter_tensor
 
 
 def save_checkpoint(path: str,

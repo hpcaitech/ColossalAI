@@ -8,7 +8,7 @@ from torch.nn.modules.loss import _Loss
 from torch.optim import Optimizer
 
 from colossalai.interface import OptimizerWrapper
-from colossalai.utils import clip_grad_norm_fp32
+from colossalai.legacy.utils import clip_grad_norm_fp32
 
 from ._grad_scaler import GradScaler
 

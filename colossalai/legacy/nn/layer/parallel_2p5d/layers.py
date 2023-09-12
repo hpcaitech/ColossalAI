@@ -13,12 +13,12 @@ from colossalai.core import global_context as gpc
 from colossalai.global_variables import tensor_parallel_env as env
 from colossalai.legacy.communication import broadcast
 from colossalai.legacy.registry import LAYERS
-from colossalai.nn import init as init
-from colossalai.utils.checkpointing import (
+from colossalai.legacy.utils.checkpointing import (
     broadcast_state_dict,
     gather_tensor_parallel_state_dict,
     partition_tensor_parallel_state_dict,
 )
+from colossalai.nn import init as init
 from colossalai.utils.cuda import get_current_device
 
 from ..base_layer import ParallelLayer

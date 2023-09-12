@@ -11,7 +11,7 @@ except ImportError:
 from torch import Tensor
 
 from colossalai.interface import OptimizerWrapper
-from colossalai.utils import clip_grad_norm_fp32
+from colossalai.legacy.utils import clip_grad_norm_fp32
 
 
 class ApexAMPOptimizer(OptimizerWrapper):

@@ -7,8 +7,8 @@ import torch.nn.functional as F
 
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.context.random import add_seed, reset_seeds, seed, set_mode
+from colossalai.legacy.utils.activation_checkpoint import checkpoint
 from colossalai.testing import clear_cache_before_run, parameterize
-from colossalai.utils.activation_checkpoint import checkpoint
 
 
 def forward(x, weight):

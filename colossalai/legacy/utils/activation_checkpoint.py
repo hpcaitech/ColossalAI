@@ -1,13 +1,13 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
+import weakref
+
 import torch
 from torch.utils.checkpoint import check_backward_validity, detach_variable
 
-from colossalai.context.random import get_states, get_current_mode, set_seed_states, set_mode, sync_states
-from .cuda import get_current_device
-
-import weakref
+from colossalai.context.random import get_current_mode, get_states, set_mode, set_seed_states, sync_states
+from colossalai.utils import get_current_device
 
 
 def copy_to_device(obj, device):
@@ -143,7 +143,7 @@ def checkpoint(function, activation_offload, *args, use_reentrant: bool = True):
 
     Args:
         function: Describe the forward pass function. It should know how to handle the input tuples.
-        activation_offload: The variable to check whether we should offload activation to cpu 
+        activation_offload: The variable to check whether we should offload activation to cpu
         args (list): Tuple containing the parameters of the function
         use_reentrant: Bool type to check if we need to use_reentrant, if use_reentrant=False, there
         might be more flexibility for user to define there checkpoint function
@@ -227,12 +227,12 @@ def _checkpoint_without_reentrant(function, activation_offload=False, *args):
             # rerun forward, the inner_pack will store all the activations in storage
             if has_autocast_in_fwd:
                 with torch.enable_grad(), \
-                     torch.cuda.amp.autocast(), \
-                     torch.autograd.graph.saved_tensors_hooks(inner_pack, inner_unpack):
+                        torch.cuda.amp.autocast(), \
+                        torch.autograd.graph.saved_tensors_hooks(inner_pack, inner_unpack):
                     _unused = function(*args)
             else:
                 with torch.enable_grad(), \
-                     torch.autograd.graph.saved_tensors_hooks(inner_pack, inner_unpack):
+                        torch.autograd.graph.saved_tensors_hooks(inner_pack, inner_unpack):
                     _unused = function(*args)
 
         if x not in storage:

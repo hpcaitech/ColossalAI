@@ -11,10 +11,10 @@ import colossalai.legacy.nn as col_nn
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.initialize import launch
+from colossalai.legacy.utils import is_using_pp
+from colossalai.legacy.utils.checkpointing import gather_pipeline_parallel_state_dict, load_checkpoint, save_checkpoint
 from colossalai.logging import disable_existing_loggers
 from colossalai.testing import rerun_if_address_is_in_use, skip_if_not_enough_gpus, spawn
-from colossalai.utils import is_using_pp
-from colossalai.utils.checkpointing import gather_pipeline_parallel_state_dict, load_checkpoint, save_checkpoint
 
 
 def build_pipeline(model):
@@ -37,8 +37,8 @@ def check_equal(A, B):
     assert torch.allclose(A, B, rtol=1e-3, atol=1e-2)
 
 
-def check_checkpoint_3d(rank, world_size, port):
-    config = dict(parallel=dict(pipeline=dict(size=1), tensor=dict(size=8, mode="3d")),)
+def check_checkpoint_1d(rank, world_size, port):
+    config = dict(parallel=dict(pipeline=dict(size=2), tensor=dict(size=4, mode="1d")),)
 
     disable_existing_loggers()
     launch(config=config, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
@@ -69,9 +69,9 @@ def check_checkpoint_3d(rank, world_size, port):
 @pytest.mark.skip("takes too long")
 @skip_if_not_enough_gpus(min_gpus=8)
 @rerun_if_address_is_in_use()
-def test_checkpoint_3d():
-    spawn(check_checkpoint_3d, 8)
+def test_checkpoint_1d():
+    spawn(check_checkpoint_1d, 8)
 
 
 if __name__ == "__main__":
-    test_checkpoint_3d()
+    test_checkpoint_1d()

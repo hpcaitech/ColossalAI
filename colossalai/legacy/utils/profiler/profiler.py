@@ -9,9 +9,9 @@ from torch.profiler import profile as torch_profile
 from torch.profiler.profiler import ProfilerAction
 
 from colossalai.legacy.engine import Engine
+from colossalai.legacy.utils.profiler.extention import ProfilerExtension
+from colossalai.legacy.utils.profiler.stateful_tensor_mem_extention import StatefulTensorMemoryProfilerExtention
 from colossalai.logging import get_dist_logger
-from colossalai.utils.profiler.extention import ProfilerExtension
-from colossalai.utils.profiler.stateful_tensor_mem_extention import StatefulTensorMemoryProfilerExtention
 
 
 class profile(torch_profile):

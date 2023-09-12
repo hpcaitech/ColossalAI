@@ -15,7 +15,8 @@ from colossalai.legacy.nn import (
     VocabParallelCrossEntropyLoss1D,
     VocabParallelEmbedding1D,
 )
-from colossalai.utils import get_current_device, print_rank_0
+from colossalai.legacy.utils import print_rank_0
+from colossalai.utils import get_current_device
 
 from .common import BATCH_SIZE, DEPTH, HIDDEN_SIZE, NUM_CLASSES, SEQ_LENGTH, VOCAB_SIZE, check_equal
 

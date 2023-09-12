@@ -1,7 +1,7 @@
 from typing import Optional
 
+from colossalai.legacy.utils.memory import colo_device_memory_capacity
 from colossalai.utils import get_current_device
-from colossalai.utils.memory import colo_device_memory_capacity
 from colossalai.zero.gemini.chunk import ChunkManager
 
 from .memory_stats import MemStats

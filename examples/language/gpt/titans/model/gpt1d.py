@@ -14,8 +14,8 @@ from colossalai.kernel.cuda_native.scaled_softmax import AttnMaskType
 from colossalai.legacy.nn.layer import Linear1D_Col, Linear1D_Row
 from colossalai.legacy.nn.layer.base_layer import ParallelLayer
 from colossalai.legacy.nn.layer.utils import ACT2FN, divide
+from colossalai.legacy.utils.activation_checkpoint import checkpoint
 from colossalai.utils import checkpoint
-from colossalai.utils.activation_checkpoint import checkpoint
 
 __all__ = [
     'GPTMLP1D', 'GPTSelfAttention1D', 'GPTTransformerLayer1D', 'FusedGPTSelfAttention1D', 'FusedGPTTransformerLayer1D'

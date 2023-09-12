@@ -12,8 +12,8 @@ from torchvision import datasets, transforms
 import colossalai
 from colossalai.context import Config, ParallelMode
 from colossalai.core import global_context as gpc
+from colossalai.legacy.utils import get_dataloader
 from colossalai.testing import rerun_if_address_is_in_use, spawn
-from colossalai.utils import get_dataloader
 
 CONFIG = Config(dict(
     parallel=dict(

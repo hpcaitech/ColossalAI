@@ -15,12 +15,12 @@ from colossalai.global_variables import tensor_parallel_env as env
 from colossalai.legacy.communication import all_reduce, broadcast
 from colossalai.legacy.nn.layer.base_layer import ParallelLayer
 from colossalai.legacy.registry import LAYERS
-from colossalai.nn import init as init
-from colossalai.utils.checkpointing import (
+from colossalai.legacy.utils.checkpointing import (
     broadcast_state_dict,
     gather_tensor_parallel_state_dict,
     partition_tensor_parallel_state_dict,
 )
+from colossalai.nn import init as init
 from colossalai.utils.cuda import get_current_device
 
 from ..utils import divide, set_tensor_parallel_attribute_by_partition, to_2tuple

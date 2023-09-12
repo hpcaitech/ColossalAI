@@ -1,14 +1,14 @@
-import torch
 import gc
-import psutil
 from collections import namedtuple
 
-from colossalai.context.parallel_mode import ParallelMode
-from colossalai.utils import get_current_device
-from colossalai.core import global_context as gpc
-from colossalai.context.parallel_mode import ParallelMode
-from colossalai.logging import get_dist_logger
+import psutil
+import torch
+import torch.distributed as dist
 from packaging import version
+
+from colossalai.core import global_context as gpc
+from colossalai.logging import get_dist_logger
+from colossalai.utils import get_current_device
 
 _GLOBAL_CUDA_MEM_FRACTION = 1.0
 _GLOBAL_CPU_MEM_CAPACITY = -1
@@ -68,7 +68,7 @@ def report_memory_usage(message, logger=None, report_cpu=False):
     Raises:
         EnvironmentError: Raise error if no distributed environment has been initialized.
     """
-    if not gpc.is_initialized(ParallelMode.GLOBAL):
+    if not dist.is_initialized():
         raise EnvironmentError("No distributed environment is initialized")
 
     gpu_allocated = _bytes_to_MB(torch.cuda.memory_allocated())
@@ -138,7 +138,7 @@ def colo_device_memory_used(device: torch.device) -> int:
 
 
 def colo_set_process_memory_fraction(ratio: float) -> None:
-    """colo_set_process_memory_fraction 
+    """colo_set_process_memory_fraction
 
     set how much cuda memory used on the gpu belonging to the current process.
 

@@ -5,8 +5,8 @@ from typing import List, Optional, Type
 
 import torch
 
+from colossalai.legacy.utils.memory import colo_device_memory_capacity
 from colossalai.utils import get_current_device
-from colossalai.utils.memory import colo_device_memory_capacity
 from colossalai.zero.gemini.memory_tracer import MemStatsCollector
 
 from .stateful_tensor import StatefulTensor
