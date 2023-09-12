@@ -1,4 +1,5 @@
 import torch
+from torch import Tensor
 
 
 def bias_dropout_add(x, bias, residual, prob, training):

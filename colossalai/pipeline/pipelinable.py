@@ -1,15 +1,24 @@
-import torch
 import inspect
+
+import torch
+
+from colossalai.context import ParallelMode
+from colossalai.core import global_context as gpc
+from colossalai.legacy.nn.layer.utils import CheckpointModule
+from colossalai.tensor import ColoParameter
 from colossalai.utils.model.utils import InsertPostInitMethodToModuleSubClasses
 
-from .utils import partition_uniform, partition_balanced, build_kwargs_for_function, \
-                build_kwargs_for_module, exec_func_with_kwargs, exec_funcs_with_kwargs, \
-                call_module, customized_partition
-from colossalai.nn.layer.utils import CheckpointModule
-from colossalai.tensor import ColoParameter
-from colossalai.core import global_context as gpc
-from colossalai.context import ParallelMode
 from .layer_spec import LayerSpec
+from .utils import (
+    build_kwargs_for_function,
+    build_kwargs_for_module,
+    call_module,
+    customized_partition,
+    exec_func_with_kwargs,
+    exec_funcs_with_kwargs,
+    partition_balanced,
+    partition_uniform,
+)
 
 
 class PipelinableContext(InsertPostInitMethodToModuleSubClasses):

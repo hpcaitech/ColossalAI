@@ -55,7 +55,7 @@ def size_processing(size: Union[int, torch.Size],
 
 
 def solution_annotation_pass(gm: torch.fx.GraphModule, solution: List[int],
-                               strategies_constructor: StrategiesConstructor):
+                             strategies_constructor: StrategiesConstructor):
     """
     This method is used to stick the solution strategy to the nodes and add the information
     required in runtime into graph as placeholder nodes.
@@ -144,7 +144,7 @@ def size_value_converting_pass(gm: torch.fx.GraphModule, device_mesh: DeviceMesh
 
     # DeviceMesh information instructs the scaling of the size value
     device_mesh_info = {}
-    for dim, dim_size in enumerate(device_mesh.mesh_shape):
+    for dim, dim_size in enumerate(device_mesh.shape):
         device_mesh_info[dim] = dim_size
 
     def _extract_target_dim(node):

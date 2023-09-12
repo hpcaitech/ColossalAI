@@ -98,18 +98,18 @@ class LoraLinear(lora.LoRALayer, nn.Module):
             return F.linear(x, T(self.weight), bias=self.bias)
 
 
-def lora_linear_wrapper(linear: nn.Linear, lora_rank: int) -> LoraLinear:
+def _lora_linear_wrapper(linear: nn.Linear, lora_rank: int) -> LoraLinear:
     assert lora_rank <= linear.in_features, f'LoRA rank ({lora_rank}) must be less than or equal to in features ({linear.in_features})'
     lora_linear = LoraLinear(linear.weight, linear.bias, r=lora_rank, merge_weights=False)
     return lora_linear
 
 
-def convert_to_lora_recursively(module: nn.Module, lora_rank: int) -> None:
+def _convert_to_lora_recursively(module: nn.Module, lora_rank: int) -> None:
     for name, child in module.named_children():
         if isinstance(child, nn.Linear):
-            setattr(module, name, lora_linear_wrapper(child, lora_rank))
+            setattr(module, name, _lora_linear_wrapper(child, lora_rank))
         else:
-            convert_to_lora_recursively(child, lora_rank)
+            _convert_to_lora_recursively(child, lora_rank)
 
 
 def convert_to_lora_module(module: nn.Module, lora_rank: int, lora_train_bias: str = 'none') -> nn.Module:
@@ -124,7 +124,7 @@ def convert_to_lora_module(module: nn.Module, lora_rank: int, lora_train_bias: s
     """
     if lora_rank <= 0:
         return module
-    convert_to_lora_recursively(module, lora_rank)
+    _convert_to_lora_recursively(module, lora_rank)
     lora.mark_only_lora_as_trainable(module, lora_train_bias)
     return module
 

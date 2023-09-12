@@ -19,6 +19,7 @@ except ImportError:
 class AttnMaskType(enum.Enum):
     padding = 1
     causal = 2
+    paddedcausal = 3
 
 
 class ScaledUpperTriangMaskedSoftmax(torch.autograd.Function):
@@ -139,7 +140,7 @@ class FusedScaleMaskSoftmax(nn.Module):
             if 0 <= sk <= 2048:
                 batch_per_block = self.get_batch_per_block(sq, sk, b, np)
 
-                if self.attn_mask_type == AttnMaskType.causal:
+                if self.attn_mask_type.value > 1:
                     if attn_batches % batch_per_block == 0:
                         return True
                 else:
@@ -151,7 +152,7 @@ class FusedScaleMaskSoftmax(nn.Module):
         b, np, sq, sk = input.size()
         scale = self.scale if self.scale is not None else 1.0
 
-        if self.attn_mask_type == AttnMaskType.causal:
+        if self.attn_mask_type.value > 1:
             assert sq == sk, "causal mask is only for self attention"
 
             # input is 3D tensor (attn_batches, sq, sk)

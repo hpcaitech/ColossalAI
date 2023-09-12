@@ -53,7 +53,7 @@ def test_torchrec_dlrm_models():
     torch.backends.cudnn.deterministic = True
     dlrm_models = model_zoo.get_sub_registry('dlrm')
 
-    for name, (model_fn, data_gen_fn, output_transform_fn, attribute) in dlrm_models.items():
+    for name, (model_fn, data_gen_fn, output_transform_fn, _, attribute) in dlrm_models.items():
         data = data_gen_fn()
 
         # dlrm_interactionarch is not supported

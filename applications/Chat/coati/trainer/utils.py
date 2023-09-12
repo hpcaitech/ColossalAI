@@ -14,15 +14,20 @@ class CycledDataLoader:
     NOTE: next(iter(dataloader)) is not equivalent to for batch in dataloader: break, it causes slightly different behavior.
     """
 
-    def __init__(self,
-                 dataloader: DataLoader,
-                 ) -> None:
+    def __init__(
+        self,
+        dataloader: DataLoader,
+    ) -> None:
         self.dataloader = dataloader
 
         self.count = 0
-        self.dataloader_iter = iter(dataloader)
+        self.dataloader_iter = None
 
     def next(self):
+        # defer initialization
+        if self.dataloader_iter is None:
+            self.dataloader_iter = iter(self.dataloader)
+
         self.count += 1
         try:
             return next(self.dataloader_iter)

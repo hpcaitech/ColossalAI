@@ -4,11 +4,10 @@ on:
   pull_request:
     types: [synchronize, opened, reopened]
     paths:
-      - 'applications/Chat/coati/**'
-      - 'applications/Chat/requirements.txt'
-      - 'applications/Chat/setup.py'
-      - 'applications/Chat/examples/**'
-
+      - "applications/Chat/coati/**"
+      - "applications/Chat/requirements.txt"
+      - "applications/Chat/setup.py"
+      - "applications/Chat/examples/**"
 
 jobs:
   tests:
@@ -29,25 +28,23 @@ jobs:
       - name: Checkout ColossalAI
         uses: actions/checkout@v2
 
-      - name: Install ColossalAI and ChatGPT
+      - name: Install ChatGPT
         run: |
-          pip install -e .
           cd applications/Chat
           pip install -v .
           pip install -r examples/requirements.txt
 
       - name: Install Transformers
         run: |
-          cd applications/Chat
-          git clone https://github.com/hpcaitech/transformers
-          cd transformers
-          pip install -v .
+          pip install transformers==4.30.2
 
       - name: Execute Examples
         run: |
           cd applications/Chat
           rm -rf ~/.cache/colossalai
-          ./examples/test_ci.sh
+          ./tests/test_inference.sh
+          ./tests/test_benchmarks.sh
+          ./tests/test_train.sh
         env:
           NCCL_SHM_DISABLE: 1
           MAX_JOBS: 8

@@ -3,7 +3,7 @@ name: Build on Schedule
 on:
   schedule:
     # run at 00:00 of every Sunday
-    - cron:  '0 0 * * *'
+    - cron: "0 0 * * *"
   workflow_dispatch:
 
 jobs:
@@ -60,7 +60,7 @@ jobs:
       - name: Unit Testing
         if: steps.check-avai.outputs.avai == 'true'
         run: |
-          PYTHONPATH=$PWD pytest tests
+          PYTHONPATH=$PWD pytest --durations=0 tests
         env:
           DATA: /data/scratch/cifar-10
           LD_LIBRARY_PATH: /github/home/.tensornvme/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
