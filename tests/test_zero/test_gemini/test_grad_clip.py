@@ -8,16 +8,38 @@ import colossalai
 from colossalai.amp import convert_to_apex_amp
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
-from colossalai.utils.cuda import get_current_device
-from colossalai.zero import ColoInitContext, ZeroDDP, ZeroOptimizer
-from colossalai.zero.gemini.chunk import ChunkManager, search_chunk_configuration
-from colossalai.zero.gemini.gemini_mgr import GeminiManager
+from colossalai.zero import GeminiDDP, GeminiOptimizer
+from colossalai.zero.gemini.chunk import search_chunk_configuration
 from tests.components_to_test import run_fwd_bwd
 from tests.components_to_test.registry import non_distributed_component_funcs
 from tests.test_tensor.common_utils import set_seed
 
+PLACEMENT_CONFIGS = [
+    {
+        'placement_policy': 'static',
+        'shard_param_frac': 0.0,
+        'offload_optim_frac': 0.0,
+        'offload_param_frac': 0.0
+    },    # zero2
+    {
+        'placement_policy': 'static',
+        'shard_param_frac': 0.0,
+        'offload_optim_frac': 1.0,
+        'offload_param_frac': 0.0
+    },    # zero2-offload
+    {
+        'placement_policy': 'static',
+        'shard_param_frac': 0.0,
+        'offload_optim_frac': 0.5,
+        'offload_param_frac': 0.0
+    },    # zero2-offload-half
+    {
+        'placement_policy': 'auto'
+    }
+]
 
-def check_param(model: ZeroDDP, torch_model: torch.nn.Module):
+
+def check_param(model: GeminiDDP, torch_model: torch.nn.Module):
     zero_dict = model.state_dict(only_rank_0=False)
     torch_dict = torch_model.state_dict()
 
@@ -30,9 +52,9 @@ def check_param(model: ZeroDDP, torch_model: torch.nn.Module):
         assert_close(value, temp_zero_value, rtol=1e-3, atol=4e-3)
 
 
-@parameterize('placement_policy', ['cuda', 'cpu', 'auto', 'const'])
+@parameterize('placement_config', PLACEMENT_CONFIGS)
 @parameterize('model_name', ['gpt2'])
-def exam_grad_clipping(placement_policy, model_name: str):
+def exam_grad_clipping(placement_config, model_name: str):
     set_seed(1912)
     get_components_func = non_distributed_component_funcs.get_callable(model_name)
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
@@ -43,9 +65,7 @@ def exam_grad_clipping(placement_policy, model_name: str):
     torch_model, torch_optim = convert_to_apex_amp(torch_model, torch_optim, amp_config)
     torch_model = DDP(torch_model, device_ids=[dist.get_rank()])
 
-    init_dev = get_current_device()
-    with ColoInitContext(device=init_dev):
-        model = model_builder()
+    model = model_builder()
 
     for torch_p, p in zip(torch_model.parameters(), model.parameters()):
         p.data.copy_(torch_p.data)
@@ -54,16 +74,19 @@ def exam_grad_clipping(placement_policy, model_name: str):
     config_dict, *_ = search_chunk_configuration(model, search_range_m=1, search_interval=100)
     config_dict[world_size]['chunk_size'] = 5000
     config_dict[world_size]['keep_gathered'] = False
-    if placement_policy != 'cuda':
+    if placement_config['placement_policy'] != 'cuda':
         init_device = torch.device('cpu')
     else:
         init_device = None
-    chunk_manager = ChunkManager(config_dict, init_device=init_device)
-    gemini_manager = GeminiManager(placement_policy, chunk_manager)
-    model = ZeroDDP(model, gemini_manager, pin_memory=True)
+
+    model = GeminiDDP(model,
+                      chunk_config_dict=config_dict,
+                      chunk_init_device=init_device,
+                      pin_memory=True,
+                      **placement_config)
 
     optimizer = HybridAdam(model.parameters(), lr=1e-3)
-    zero_optim = ZeroOptimizer(optimizer, model, initial_scale=32, clipping_norm=1.0)
+    zero_optim = GeminiOptimizer(optimizer, model, initial_scale=32, clipping_norm=1.0)
 
     model.train()
     torch_model.train()

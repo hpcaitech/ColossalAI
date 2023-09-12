@@ -57,8 +57,8 @@ class GradientStore(BaseStore):
             self._grads_of_params[group_id][param_id].append(grad)
 
     def add_gradients_by_param_id(self, grad: Tensor, grad_idx: int, group_id: int, param_id: int):
-        """For old gradient accumulation, not in use now.
-        Add a gradient slice on an existing slice of the parameter's gradient
+        """Add a gradient slice on an existing slice of the parameter's gradient
+        Used when no_sync is not activated.
 
         Args:
             grad (Tensor): The split gradient to append to list

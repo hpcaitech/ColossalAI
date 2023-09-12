@@ -265,6 +265,10 @@ def launch_multi_processes(args: Config) -> None:
     # establish remote connection
     runner.connect(host_info_list=active_device_pool, workdir=curr_path, env=env)
 
+    # overwrite master addr when num_nodes > 1 and not specified
+    if len(active_device_pool) > 1 and args.master_addr == "127.0.0.1":
+        args.master_addr = active_device_pool.hostinfo_list[0].hostname
+
     # execute distributed launching command
     for node_id, hostinfo in enumerate(active_device_pool):
         cmd = get_launch_command(master_addr=args.master_addr,

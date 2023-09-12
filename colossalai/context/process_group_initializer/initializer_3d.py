@@ -6,7 +6,7 @@ import math
 import torch.distributed as dist
 
 from colossalai.global_variables import tensor_parallel_env as env
-from colossalai.registry import DIST_GROUP_INITIALIZER
+from colossalai.legacy.registry import DIST_GROUP_INITIALIZER
 
 from ..parallel_mode import ParallelMode
 from .process_group_initializer import ProcessGroupInitializer

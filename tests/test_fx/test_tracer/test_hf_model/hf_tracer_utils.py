@@ -22,6 +22,7 @@ def trace_model_and_compare_output(model, data_gen, ignore_data: List[str] = Non
     try:
         meta_args = {k: v.to('meta') for k, v in inputs.items()}
         gm = symbolic_trace(model, meta_args=meta_args)
+
     except Exception as e:
         raise RuntimeError(f"Failed to trace {model.__class__.__name__}, error: {e}")
 

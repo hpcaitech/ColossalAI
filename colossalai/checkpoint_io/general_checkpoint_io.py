@@ -23,6 +23,7 @@ from .utils import (
     load_state_dict,
     load_state_dict_into_model,
     load_states_into_optimizer,
+    save_config_file,
     save_param_groups,
     save_state_dict,
     save_state_dict_shards,
@@ -78,8 +79,6 @@ class GeneralCheckpointIO(CheckpointIO):
         for shard_file in checkpoint_files:
             state_dict = load_shard_state_dict(Path(shard_file), use_safetensors=False)
             load_states_into_optimizer(optimizer, state_dict, id_map)
-            del state_dict
-            gc.collect()
 
         sharded_optimizer_loading_epilogue(optimizer)
 
@@ -185,6 +184,7 @@ class GeneralCheckpointIO(CheckpointIO):
 
         index_file.append_meta_data("total_size", total_size)
         index_file.write_index_file(save_index_file)
+        save_config_file(model, checkpoint_path, is_master=True)
         logging.info(f"The model is going to be split to checkpoint shards. "
                      f"You can find where each parameters has been saved in the "
                      f"index located at {save_index_file}.")

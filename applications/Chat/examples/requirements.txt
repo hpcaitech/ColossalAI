@@ -1,2 +1,3 @@
 pandas>=1.4.1
 sentencepiece
+colossalai==0.3.1
