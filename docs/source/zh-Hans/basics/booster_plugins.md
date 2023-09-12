@@ -1,6 +1,6 @@
 # Booster 插件
 
-作者: [Hongxin Liu](https://github.com/ver217)
+作者: [Hongxin Liu](https://github.com/ver217), [Baizhou Zhang](https://github.com/Fridge003)
 
 **前置教程:**
 - [Booster API](./booster_api.md)
@@ -11,10 +11,11 @@
 
 我们现在提供以下插件:
 
-- [Low Level Zero 插件](#low-level-zero-plugin): 它包装了 `colossalai.zero.low_level.LowLevelZeroOptimizer`，可用于使用 Zero-dp 训练模型。它仅支持 Zero 阶段1和阶段2。
-- [Gemini 插件](#gemini-plugin): 它包装了 [Gemini](../features/zero_with_chunk.md)，Gemini 实现了基于Chunk内存管理和异构内存管理的 Zero-3。
-- [Torch DDP 插件](#torch-ddp-plugin): 它包装了 `torch.nn.parallel.DistributedDataParallel` 并且可用于使用数据并行训练模型。
-- [Torch FSDP 插件](#torch-fsdp-plugin): 它包装了 `torch.distributed.fsdp.FullyShardedDataParallel` 并且可用于使用 Zero-dp 训练模型。
+- [Low Level Zero 插件](#low-level-zero-插件): 它包装了 `colossalai.zero.low_level.LowLevelZeroOptimizer`，可用于使用 Zero-dp 训练模型。它仅支持 Zero 阶段1和阶段2。
+- [Gemini 插件](#gemini-插件): 它包装了 [Gemini](../features/zero_with_chunk.md)，Gemini 实现了基于Chunk内存管理和异构内存管理的 Zero-3。
+- [Torch DDP 插件](#torch-ddp-插件): 它包装了 `torch.nn.parallel.DistributedDataParallel` 并且可用于使用数据并行训练模型。
+- [Torch FSDP 插件](#torch-fsdp-插件): 它包装了 `torch.distributed.fsdp.FullyShardedDataParallel` 并且可用于使用 Zero-dp 训练模型。
+- [Hybrid Pararllel 插件](#hybrid-parallel-插件): 它为Shardformer，流水线管理器，混合精度运算，TorchDDP以及Zero-1/Zero-2功能提供了一个统一且简洁的接口。使用该插件可以简单高效地实现transformer模型在张量并行，流水线并行以及数据并行（DDP, Zero）间任意组合并行训练策略，同时支持多种训练速度和内存的优化工具。有关这些训练策略和优化工具的具体信息将在下一章中阐述。
 
 更多插件即将推出。
 
@@ -43,8 +44,6 @@ Zero-2 不支持局部梯度累积。如果您坚持使用，虽然可以积累�
 
 兼容性问题将在未来修复。
 
-> ⚠ 该插件现在只能加载自己保存的且具有相同进程数的优化器 Checkpoint。这将在未来得到解决。
-
 ### Gemini 插件
 
 这个插件实现了基于Chunk内存管理和异构内存管理的 Zero-3。它可以训练大型模型而不会损失太多速度。它也不支持局部梯度累积。更多详细信息，请参阅 [Gemini 文档](../features/zero_with_chunk.md).
@@ -69,5 +68,24 @@ Zero-2 不支持局部梯度累积。如果您坚持使用，虽然可以积累�
 更多详细信息，请参阅 [Pytorch 文档](https://pytorch.org/docs/main/fsdp.html).
 
 {{ autodoc:colossalai.booster.plugin.TorchFSDPPlugin }}
+
+
+### Hybrid Parallel 插件
+
+这个插件实现了多种并行训练策略和优化工具的组合。Hybrid Parallel插件支持的功能大致可以被分为以下四个部分：
+
+1. Shardformer: Shardformer负责在张量并行以及流水线并行下切分模型的逻辑，以及前向/后向方法的重载，这个插件为Shardformer功能提供了一个简单易用的接口。与此同时，Shardformer还负责将包括fused normalization, flash attention (xformers), JIT和序列并行在内的各类优化工具融入重载后的前向/后向方法。
+
+2. 混合精度训练：插件支持fp16/bf16的混合精度训练。更多关于混合精度训练的参数配置的详细信息请参考 [混合精度训练文档](../features/mixed_precision_training_with_booster.md)。
+
+3. Torch DDP: 当流水线并行和Zero不被使用的时候，插件会自动采用Pytorch DDP作为数据并行的策略。更多关于Torch DDP的参数配置的详细信息请参考 [Pytorch DDP 文档](https://pytorch.org/docs/main/generated/torch.nn.parallel.DistributedDataParallel.html#torch.nn.parallel.DistributedDataParallel)。
+
+4. Zero: 在初始化插件的时候，可以通过将`zero_stage`参数设置为1或2来让插件采用Zero 1/2作为数据并行的策略。Zero 1可以和流水线并行策略同时使用, 而Zero 2则不可以和流水线并行策略同时使用。更多关于Zero的参数配置的详细信息请参考 [Low Level Zero 插件](#low-level-zero-插件).
+
+> ⚠ 在使用该插件的时候, 只有支持Shardformer的部分Huggingface transformers模型才能够使用张量并行、流水线并行以及优化工具。Llama 1、Llama 2、OPT、Bloom、Bert以及GPT2等主流transformers模型均已支持Shardformer。
+
+> ⚠ 该插件当前只对模型和优化器支持分片的checkpoint方法。不分片的checkpoint方法会在未来的版本中被支持。
+
+{{ autodoc:colossalai.booster.plugin.HybridParallelPlugin }}
 
 <!-- doc-test-command: echo  -->
