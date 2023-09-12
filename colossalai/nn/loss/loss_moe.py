@@ -1,7 +1,8 @@
 import torch.nn as nn
-from colossalai.registry import LOSSES
 from torch.nn.modules.loss import _Loss
+
 from colossalai.context.moe_context import MOE_CONTEXT
+from colossalai.legacy.registry import LOSSES
 
 
 @LOSSES.register_module

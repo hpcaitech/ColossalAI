@@ -3,14 +3,12 @@ from typing import Any, Optional
 import torch
 from torch.optim import Adam
 
-from op_builder import FusedOptimBuilder
-from colossalai.registry import OPTIMIZERS
+from colossalai.kernel.op_builder import FusedOptimBuilder
 from colossalai.utils import multi_tensor_applier
 
 from .cpu_adam import CPUAdam
 
 
-@OPTIMIZERS.register_module
 class HybridAdam(CPUAdam):
     """Implements Adam algorithm.
 

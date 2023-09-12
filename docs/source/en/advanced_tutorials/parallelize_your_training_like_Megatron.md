@@ -176,12 +176,12 @@ In our latest example, a Gemini + ZeRO DDP model is also defined to reduce overh
 
 ```python
 def gemini_zero_dpp(model: torch.nn.Module, pg: ProcessGroup, placement_policy: str = "auto"):
-    from colossalai.nn.parallel import GeminiDDP
+    from colossalai.zero import GeminiDDP
     model = GeminiDDP(model,
                         device=get_current_device(),
                         placement_policy=placement_policy,
                         pin_memory=True,
-                        search_range_mb=32)
+                        search_range_m=32)
     return model
 ```
 
@@ -190,3 +190,5 @@ def gemini_zero_dpp(model: torch.nn.Module, pg: ProcessGroup, placement_policy: 
 The above optimization we made allows us to pretrain the GPT-2 model on a single GPU. We only need to set the parameter `GPUNUM`=1 in `run.sh`, and then we can complete the model training on a single GPU when running the file.
 
 The GPT-2 example is accessible at [Train GPT with Colossal-AI](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/gpt).
+
+<!-- doc-test-command: torchrun --standalone --nproc_per_node=1 parallelize_your_training_like_Megatron.py  -->

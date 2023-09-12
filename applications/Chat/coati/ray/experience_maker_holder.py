@@ -8,9 +8,9 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 import ray
 import torch
 import torch.nn as nn
+from coati.experience_buffer.utils import BufferItem, make_experience_batch, split_experience_batch
 from coati.experience_maker import Experience, ExperienceMaker, NaiveExperienceMaker
 from coati.models.base import Actor, Critic, RewardModel
-from coati.replay_buffer.utils import BufferItem, make_experience_batch, split_experience_batch
 from coati.trainer.callbacks import Callback
 from coati.trainer.strategies import Strategy
 from coati.trainer.strategies.sampler import DistributedSampler
@@ -19,13 +19,9 @@ from torch import Tensor
 from tqdm import tqdm
 
 from .callbacks import ExperienceMakerPerformanceEvaluator, MakerCallback
-from .utils import (get_model_numel, 
-                    get_rank, 
-                    get_world_size, 
-                    is_rank_0, 
-                    set_dist_env,
-                    state_dict_to)
 from .lora_constructor import LoRAConstructor
+from .utils import get_model_numel, get_rank, get_world_size, is_rank_0, set_dist_env, state_dict_to
+
 
 @ray.remote(concurrency_groups={"experience_io": 1, "model_io": 1, "compute": 1})
 class ExperienceMakerHolder:
@@ -41,7 +37,7 @@ class ExperienceMakerHolder:
             self,
             detached_trainer_name_list: List[str],
             strategy_fn: Callable[[], Strategy],
-    # a function returns (actor, critic, reward_model, initial_model)
+        # a function returns (actor, critic, reward_model, initial_model)
             model_fn: Callable[[], Tuple[Actor, Critic, RewardModel, Actor]],
             env_info: Dict[str, str] = None,
             sync_models_from_trainers: bool = False,
@@ -205,15 +201,19 @@ class ExperienceMakerHolder:
                     self.experience_maker.actor.model.load_state_dict(new_actor_state_dict, strict=False)
                 else:
                     new_actor_state_dict = state_dict_to(new_actor_state_dict, device=torch.cuda.current_device())
-                    state_dict_increase = self.actor_lora_constructor.reconstruct_increase(new_actor_state_dict, new_actor_lora_config_dict)
-                    self.actor_lora_constructor.load_state_dict_increase(self.experience_maker.actor.model, state_dict_increase)
+                    state_dict_increase = self.actor_lora_constructor.reconstruct_increase(
+                        new_actor_state_dict, new_actor_lora_config_dict)
+                    self.actor_lora_constructor.load_state_dict_increase(
+                        self.experience_maker.actor.model, state_dict_increase)
             if new_critic_state_dict is not None:
                 if not self._update_lora_weights or fully_update:
                     self.experience_maker.critic.load_state_dict(new_critic_state_dict, strict=False)
                 else:
                     new_critic_state_dict = state_dict_to(new_critic_state_dict, device=torch.cuda.current_device())
-                    state_dict_increase = self.critic_lora_constructor.reconstruct_increase(new_critic_state_dict, new_critic_lora_config_dict)
-                    self.critic_lora_constructor.load_state_dict_increase(self.experience_maker.critic, state_dict_increase)
+                    state_dict_increase = self.critic_lora_constructor.reconstruct_increase(
+                        new_critic_state_dict, new_critic_lora_config_dict)
+                    self.critic_lora_constructor.load_state_dict_increase(
+                        self.experience_maker.critic, state_dict_increase)
 
         # the lock must be released after both actor and critic being updated
         if chunk_end:

@@ -92,14 +92,14 @@ follow the steps below to create a new distributed initialization.
 
 Gradient handlers are objects which execute the all-reduce operations on parameters' gradients. As different all-reduce
 strategies may be executed for different kinds of parallelism, users can
-inherit `colossalai.engine.gradient_handler.BaseGradientHandler` to implement their strategies. Currently, the library
+inherit `colossalai.legacy.engine.gradient_handler.BaseGradientHandler` to implement their strategies. Currently, the library
 uses the normal data parallel gradient handler which all-reduces the gradients across data parallel ranks. The data
 parallel gradient handler is added to the engine automatically if data parallel is detected. You can add your own
 gradient handler like below:
 
 ```python
-from colossalai.registry import GRADIENT_HANDLER
-from colossalai.engine import BaseGradientHandler
+from colossalai.legacy.registry import GRADIENT_HANDLER
+from colossalai.legacy.engine import BaseGradientHandler
 
 @GRADIENT_HANDLER.register_module
 class YourGradientHandler(BaseGradientHandler):
@@ -121,4 +121,5 @@ gradient_handlers = [
 
 Schedule entails how to execute a forward and backward pass. Currently, Colossal-AI provides pipeline and non-pipeline
 schedules. If you want to modify how the forward and backward passes are executed, you can
-inherit `colossalai.engine.schedule.BaseSchedule` and implement the `forward_back_step` function.
+inherit `colossalai.legacy.engine.schedule.BaseSchedule` and implement the `forward_back_step` function.
+<!-- doc-test-command: echo  -->

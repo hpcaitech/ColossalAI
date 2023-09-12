@@ -1,10 +1,10 @@
 import pytest
 import torch
 import torch.distributed as dist
+from torch.distributed.distributed_c10d import _get_default_group
 
 import colossalai
 from colossalai.tensor import ColoParameter
-from colossalai.tensor import ProcessGroup as ColoProcessGroup
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.utils import get_current_device
 from colossalai.zero.gemini import TensorState
@@ -36,7 +36,7 @@ def check_equal(param, param_cp):
 @parameterize('pin_memory', [True, False])
 def exam_chunk_basic(init_device, keep_gathered, pin_memory):
     world_size = torch.distributed.get_world_size()
-    pg = ColoProcessGroup()
+    pg = _get_default_group()
     my_chunk = Chunk(chunk_size=1024,
                      process_group=pg,
                      dtype=torch.float32,

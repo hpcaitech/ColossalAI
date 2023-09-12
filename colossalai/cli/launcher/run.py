@@ -164,9 +164,7 @@ def get_launch_command(
         ]
     else:
         # extra launch args for torch distributed launcher with torch >= 1.9
-        default_torchrun_rdzv_args = dict(rdzv_backend="c10d",
-                                          rdzv_endpoint=f"{master_addr}:{master_port}",
-                                          rdzv_id="colossalai-default-job")
+        default_torchrun_rdzv_args = dict(master_addr=master_addr, master_port=master_port)
 
         # update rdzv arguments
         for key in default_torchrun_rdzv_args.keys():
@@ -266,6 +264,10 @@ def launch_multi_processes(args: Config) -> None:
 
     # establish remote connection
     runner.connect(host_info_list=active_device_pool, workdir=curr_path, env=env)
+
+    # overwrite master addr when num_nodes > 1 and not specified
+    if len(active_device_pool) > 1 and args.master_addr == "127.0.0.1":
+        args.master_addr = active_device_pool.hostinfo_list[0].hostname
 
     # execute distributed launching command
     for node_id, hostinfo in enumerate(active_device_pool):

@@ -285,7 +285,7 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
         comm_pattern = CollectiveCommPattern.SPLIT_FWD_GATHER_BWD
 
         # legal sharding dims means the mesh_id is still available to use.
-        legal_sharding_dims = [i for i in range(len(source_spec.device_mesh.mesh_shape))]
+        legal_sharding_dims = [i for i in range(len(source_spec.device_mesh.shape))]
         for dim, shard_list in source_spec.dim_partition_dict.items():
             for element in shard_list:
                 legal_sharding_dims.remove(element)
@@ -339,7 +339,7 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
         RS01 -> RR
         '''
         valid_spec_dict = {}
-        comm_pathern = CollectiveCommPattern.MIXGATHER_FWD_SPLIT_BWD
+        comm_pattern = CollectiveCommPattern.MIXGATHER_FWD_SPLIT_BWD
         tensor_dims = len(source_spec.entire_shape)
         for f_index in range(tensor_dims - 1):
             for b_index in range(f_index + 1, tensor_dims):
@@ -362,7 +362,7 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
                         b_target_pair = (b_index, [])
 
                 gather_dim, logical_process_axes = mix_gather_simulator(f_target_pair, b_target_pair)
-                comm_spec = CommSpec(comm_pathern,
+                comm_spec = CommSpec(comm_pattern,
                                      sharding_spec=source_spec,
                                      gather_dim=gather_dim,
                                      logical_process_axis=logical_process_axes,
@@ -435,7 +435,7 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
             """
             input_shape = compute_shape(comm_spec.sharding_spec)
             input_numel = np.prod(input_shape)
-            output_numel = input_numel * comm_spec.device_mesh.mesh_shape[comm_spec.logical_process_axis]
+            output_numel = input_numel * comm_spec.device_mesh.shape[comm_spec.logical_process_axis]
             peak_numel = max(peak_numel, alloc_numel + output_numel * 2)
             alloc_numel += output_numel
             if discard_input:
@@ -461,7 +461,7 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
                 # generate a new tensor
                 input_shape = compute_shape(comm_spec.sharding_spec)
                 input_numel = np.prod(input_shape)
-                output_numel = input_numel // comm_spec.device_mesh.mesh_shape[comm_spec.logical_process_axis]
+                output_numel = input_numel // comm_spec.device_mesh.shape[comm_spec.logical_process_axis]
                 alloc_numel += output_numel
                 peak_numel = max(peak_numel, alloc_numel)
                 if discard_input:

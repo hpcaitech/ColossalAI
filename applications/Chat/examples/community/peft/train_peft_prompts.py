@@ -9,8 +9,7 @@ from coati.models.gpt import GPTRM, GPTActor, GPTCritic
 from coati.models.llama import LlamaActor, LlamaCritic, LlamaRM
 from coati.models.opt import OPTRM, OPTActor, OPTCritic
 from coati.trainer import PPOTrainer
-from coati.trainer.strategies import ColossalAIStrategy, DDPStrategy, NaiveStrategy
-from coati.utils import prepare_llama_tokenizer_and_embedding
+from coati.trainer.strategies import DDPStrategy, GeminiStrategy, LowLevelZeroStrategy
 from easy_dataset import EasyPromptsDataset, EasySupervisedDataset
 from easy_models import BLOOMActor
 from peft import PeftModel
@@ -24,14 +23,12 @@ from colossalai.nn.optimizer import HybridAdam
 
 def main(args):
     # configure strategy
-    if args.strategy == 'naive':
-        strategy = NaiveStrategy()
-    elif args.strategy == 'ddp':
+    if args.strategy == 'ddp':
         strategy = DDPStrategy()
     elif args.strategy == 'colossalai_gemini':
-        strategy = ColossalAIStrategy(stage=3, placement_policy='cpu', initial_scale=2**5)
+        strategy = GeminiStrategy(placement_policy='cpu', initial_scale=2**5)
     elif args.strategy == 'colossalai_zero2':
-        strategy = ColossalAIStrategy(stage=2, placement_policy='cpu')
+        strategy = LowLevelZeroStrategy(stage=2, placement_policy='cpu')
     else:
         raise ValueError(f'Unsupported strategy "{args.strategy}"')
 
@@ -114,20 +111,19 @@ def main(args):
     # configure tokenizer
     if args.model == 'gpt2':
         tokenizer = GPT2Tokenizer.from_pretrained(args.rm_pretrain)
+        tokenizer.pad_token = tokenizer.eos_token
     elif args.model == 'bloom':
         tokenizer = BloomTokenizerFast.from_pretrained(args.rm_pretrain)
+        tokenizer.pad_token = tokenizer.eos_token
     elif args.model == 'opt':
         tokenizer = AutoTokenizer.from_pretrained(args.rm_pretrain)
+        tokenizer.pad_token = tokenizer.eos_token
     elif args.model == 'llama':
         tokenizer = LlamaTokenizer.from_pretrained(args.pretrain)
         tokenizer.eos_token = '<\s>'
+        tokenizer.pad_token = tokenizer.unk_token
     else:
         raise ValueError(f'Unsupported model "{args.model}"')
-
-    if args.model == 'llama':
-        tokenizer = prepare_llama_tokenizer_and_embedding(tokenizer, actor)
-    else:
-        tokenizer.pad_token = tokenizer.eos_token
 
     data_collator = DataCollatorForSupervisedDataset(tokenizer=tokenizer)
 
@@ -171,7 +167,6 @@ def main(args):
         critic_optim,
         kl_coef=args.kl_coef,
         ptx_coef=args.ptx_coef,
-        max_epochs=args.max_epochs,
         train_batch_size=args.train_batch_size,
         experience_batch_size=args.experience_batch_size,
         tokenizer=tokenize_fn,
@@ -186,8 +181,8 @@ def main(args):
     trainer.fit(prompt_dataloader=prompt_dataloader,
                 pretrain_dataloader=pretrain_dataloader,
                 num_episodes=args.num_episodes,
-                max_timesteps=args.max_timesteps,
-                update_timesteps=args.update_timesteps)
+                num_update_steps=args.num_update_steps,
+                num_collect_steps=args.num_collect_steps)
 
     # save model checkpoint after fitting
     trainer.save_model(args.save_path, only_rank0=True, tokenizer=tokenizer)
@@ -203,8 +198,8 @@ if __name__ == '__main__':
     parser.add_argument('--prompt_path', type=str, default=None, help='path to the prompt dataset')
     parser.add_argument('--pretrain_dataset', type=str, default=None, help='path to the pretrained dataset')
     parser.add_argument('--strategy',
-                        choices=['naive', 'ddp', 'colossalai_gemini', 'colossalai_zero2'],
-                        default='naive',
+                        choices=['ddp', 'colossalai_gemini', 'colossalai_zero2'],
+                        default='ddp',
                         help='strategy to use')
     parser.add_argument('--model', default='gpt2', choices=['gpt2', 'bloom', 'opt', 'llama'])
     parser.add_argument('--pretrain', type=str, default=None)
@@ -215,9 +210,8 @@ if __name__ == '__main__':
     parser.add_argument('--save_path', type=str, default='actor_checkpoint_prompts')
     parser.add_argument('--need_optim_ckpt', type=bool, default=False)
     parser.add_argument('--num_episodes', type=int, default=10)
-    parser.add_argument('--max_timesteps', type=int, default=10)
-    parser.add_argument('--update_timesteps', type=int, default=10)
-    parser.add_argument('--max_epochs', type=int, default=5)
+    parser.add_argument('--num_collect_steps', type=int, default=10)
+    parser.add_argument('--num_update_steps', type=int, default=5)
     parser.add_argument('--train_batch_size', type=int, default=2)
     parser.add_argument('--ptx_batch_size', type=int, default=1)
     parser.add_argument('--experience_batch_size', type=int, default=8)
