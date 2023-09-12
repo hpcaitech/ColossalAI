@@ -57,11 +57,26 @@ class MoeRouter(nn.Module, ABC):
         self._aux_loss = aux_loss
 
     def set_z_loss(self, router_logits: torch.Tensor):
+        """Compute router z-loss.
+
+        The router z-loss was introduced in Designing Effective Sparse Expert Models
+        (https://arxiv.org/abs/2202.08906). It encourages router logits to remain
+        small in an effort to improve stability.
+
+        Args:
+            router_logits: <float>[num_groups, tokens_per_group, num_experts] router logits.
+
+        Returns:
+            Scalar router z-loss.
+        """
         assert self._z_loss is None
-        n, _ = router_logits.shape
-        log_z = torch.logsumexp(router_logits, axis=-1)
-        z_loss = log_z**2
-        z_loss = torch.sum(z_loss, dtype=torch.float32) / n
+        if router_logits.dim() == 2:
+            router_logits = router_logits.unsqueeze(0)
+        assert router_logits.dim() == 3, "router_logits must be 3D tensor"
+        num_groups, tokens_per_group, _ = router_logits.shape
+        log_z = torch.logsumexp(router_logits, dim=-1)
+        z_loss = torch.sum(log_z**2, dtype=torch.float32
+                           ) / (num_groups * tokens_per_group)
         self._z_loss = z_loss
 
     def pop_router_loss(self) -> torch.Tensor:
