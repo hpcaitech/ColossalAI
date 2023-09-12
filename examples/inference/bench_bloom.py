@@ -1,22 +1,17 @@
+import argparse
 import os
 import time
 
-import pytest
 import torch
 from transformers import BloomForCausalLM, BloomTokenizerFast
 
 import colossalai
-from colossalai.cluster import ProcessGroupMesh
 from colossalai.inference.tensor_parallel.engine import TPInferEngine
 from colossalai.logging import disable_existing_loggers
-from colossalai.shardformer import ShardConfig, ShardFormer
-from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
+from colossalai.shardformer import ShardConfig
+from colossalai.testing import clear_cache_before_run, rerun_if_address_is_in_use, spawn
 
 os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
-TPSIZE = 1
-MAX_BATCH_SIZE = 32
-MAX_INPUT_LEN = 1024
-MAX_OUTPUT_LEN = 128
 
 
 def print_perf_stats(latency_set, config, bs, warmup=3):
@@ -38,35 +33,27 @@ def print_perf_stats(latency_set, config, bs, warmup=3):
         print("Avg Throughput: tokens/s: {}".format((1000 / (avg * 1000)) * bs))
 
 
-@parameterize('test_config', [{
-    'tp_size': TPSIZE,
-}])
-def bench_bloom(test_config):
+def bench_bloom(args):
+    model_path = args.path
+    max_batch_size = args.batch_size
+    max_input_len = args.input_len
+    max_output_len = args.output_len
 
-    model_path = "/home/lczyh/data3/models/bloom-7b1"
     tokenizer = BloomTokenizerFast.from_pretrained(model_path)
     tokenizer.pad_token = tokenizer.eos_token
     model = BloomForCausalLM.from_pretrained(model_path, pad_token_id=tokenizer.eos_token_id)
     model = model.half()
-    # To benchmark torch original, uncommment the following line
-    # model.to(torch.cuda.current_device())
 
-    # init TPInferEngine and shard original model by shardformer
-    # To benchmark torch original, comment out lines of creating, preparing, and sharding by the shardformer
-    infer_engine = TPInferEngine(model, MAX_BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
-    shard_config = ShardConfig(enable_tensor_parallelism=True if test_config['tp_size'] > 1 else False,
-                               inference_only=True)
-    shardformer = ShardFormer(shard_config=shard_config)
-    infer_engine.prepare_with_shard_config(shard_config)
-    infer_engine.shard_model_by(shardformer)
+    # init TPInferEngine and shard the original model
+    # To benchmark torch original, comment out the line of optimizing model
+    shard_config = ShardConfig(enable_tensor_parallelism=True if args.tp_size > 1 else False, inference_only=True)
+    infer_engine = TPInferEngine(model, shard_config, max_batch_size, max_input_len, max_output_len)
 
     # prepare data for generation
-    batch_size = MAX_BATCH_SIZE
-    input_len = MAX_INPUT_LEN
-    generate_kwargs = dict(max_new_tokens=MAX_OUTPUT_LEN, do_sample=False)
+    generate_kwargs = dict(max_new_tokens=max_output_len, do_sample=False)
     input_tokens = {
-        "input_ids": torch.randint(10, 1000, (batch_size, input_len)),
-        "attention_mask": torch.ones((batch_size, input_len))
+        "input_ids": torch.randint(10, 1000, (max_batch_size, max_input_len)),
+        "attention_mask": torch.ones((max_batch_size, max_input_len))
     }
     for t in input_tokens:
         if torch.is_tensor(input_tokens[t]):
@@ -78,29 +65,36 @@ def bench_bloom(test_config):
     for i in range(iters):
         torch.cuda.synchronize()
         start = time.time()
-        outputs = infer_engine.generate(input_tokens, generate_kwargs)
+        outputs = infer_engine.generate(input_tokens, **generate_kwargs)
         torch.cuda.synchronize()
         end = time.time()
-        infer_engine.cache_manager.free_all()
         out_len = outputs.shape[1]
         print(f" iter {i}: out len {str(out_len)}, generation time {str(end - start)} s")
-        times.append((end - start) / (out_len - input_len))
+        times.append((end - start) / (out_len - max_input_len))
 
-    print_perf_stats(times, model.config, batch_size)
+    print_perf_stats(times, model.config, max_batch_size)
 
 
-def check_bloom(rank, world_size, port):
+def check_bloom(rank, world_size, port, args):
     disable_existing_loggers()
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    bench_bloom()
+    bench_bloom(args)
 
 
-@pytest.mark.dist
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()
-def test_bloom():
-    spawn(check_bloom, TPSIZE)
+def test_bloom(args):
+    spawn(check_bloom, args.tp_size, args=args)
 
 
 if __name__ == "__main__":
-    test_bloom()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-p', '--path', type=str, help='Model path', required=True)
+    parser.add_argument('-tp', '--tp_size', type=int, default=1, help='Tensor parallel size')
+    parser.add_argument('-b', '--batch_size', type=int, default=16, help='Maximum batch size')
+    parser.add_argument('--input_len', type=int, default=1024, help='Maximum input length')
+    parser.add_argument('--output_len', type=int, default=128, help='Maximum output length')
+
+    args = parser.parse_args()
+
+    test_bloom(args)

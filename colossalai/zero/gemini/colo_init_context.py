@@ -87,7 +87,7 @@ class ColoInitContext(InsertPostInitMethodToModuleSubClasses):
         self._default_dist_spec = default_dist_spec
 
     def _register_colo_modules(self):
-        from colossalai.nn.parallel.layers import ColoEmbedding, ColoLinear, register_colo_module
+        from colossalai.legacy.nn.parallel.layers import ColoEmbedding, ColoLinear, register_colo_module
         register_colo_module(torch.nn.Linear, ColoLinear())
         register_colo_module(torch.nn.Embedding, ColoEmbedding())
 

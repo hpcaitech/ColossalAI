@@ -9,7 +9,7 @@ class MemStats(object):
 
     def __init__(self) -> None:
         """
-        Store the non model data statistics used for Gemini and ZeroOptimizer.
+        Store the non model data statistics used for Gemini and GeminiOptimizer.
         """
         # (preop_step, List[param])
         self._step_param_dict = dict()

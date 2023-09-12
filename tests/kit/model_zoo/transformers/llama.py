@@ -52,6 +52,9 @@ if HAS_LLAMA:
                          max_position_embeddings=128,
                          num_labels=16)
 
+    if hasattr(config, "pad_token_id"):
+        config.pad_token_id = config.eos_token_id
+
     # register the following models
     # transformers.LlamaModel,
     # transformers.LlamaForCausalLM,

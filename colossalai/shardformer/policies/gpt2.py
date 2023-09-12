@@ -6,7 +6,7 @@ from torch import Tensor, nn
 import colossalai.shardformer.layer as col_nn
 
 from .._utils import getattr_, setattr_
-from ..modeling.gpt2 import GPT2PipelineForwards, get_gpt2_flash_attention_forward
+from ..modeling.gpt2 import GPT2PipelineForwards, get_gpt2_flash_attention_forward, gpt2_sequence_parallel_forward_fn
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = [
@@ -37,7 +37,8 @@ class GPT2Policy(Policy):
         from transformers.models.gpt2.modeling_gpt2 import GPT2Attention, GPT2Block, GPT2Model
 
         policy = {}
-
+        use_sequence_parallel = self.shard_config.enable_sequence_parallelism
+        overlap = self.shard_config.enable_sequence_overlap
         if self.shard_config.enable_tensor_parallelism:
             policy[GPT2Model] = ModulePolicyDescription(sub_module_replacement=[
                 SubModuleReplacementDescription(
@@ -49,47 +50,55 @@ class GPT2Policy(Policy):
                     target_module=col_nn.DropoutForParallelInput,
                 ),
             ])
-            policy[GPT2Block] = ModulePolicyDescription(attribute_replacement={
-                "attn.embed_dim": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
-                "attn.split_size": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
-                "attn.num_heads": self.model.config.num_attention_heads // self.shard_config.tensor_parallel_size,
-            },
-                                                        sub_module_replacement=[
-                                                            SubModuleReplacementDescription(
-                                                                suffix="attn.c_attn",
-                                                                target_module=col_nn.GPT2FusedLinearConv1D_Col,
-                                                                kwargs={
-                                                                    "n_fused": 3,
-                                                                },
-                                                            ),
-                                                            SubModuleReplacementDescription(
-                                                                suffix="attn.c_proj",
-                                                                target_module=col_nn.GPT2FusedLinearConv1D_Row,
-                                                            ),
-                                                            SubModuleReplacementDescription(
-                                                                suffix="mlp.c_fc",
-                                                                target_module=col_nn.GPT2FusedLinearConv1D_Col,
-                                                                kwargs={
-                                                                    "n_fused": 1,
-                                                                },
-                                                            ),
-                                                            SubModuleReplacementDescription(
-                                                                suffix="mlp.c_proj",
-                                                                target_module=col_nn.GPT2FusedLinearConv1D_Row,
-                                                            ),
-                                                            SubModuleReplacementDescription(
-                                                                suffix="attn.attn_dropout",
-                                                                target_module=col_nn.DropoutForParallelInput,
-                                                            ),
-                                                            SubModuleReplacementDescription(
-                                                                suffix="attn.resid_dropout",
-                                                                target_module=col_nn.DropoutForParallelInput,
-                                                            ),
-                                                            SubModuleReplacementDescription(
-                                                                suffix="mlp.dropout",
-                                                                target_module=col_nn.DropoutForParallelInput,
-                                                            ),
-                                                        ])
+
+            policy[GPT2Block] = ModulePolicyDescription(
+                attribute_replacement={
+                    "attn.embed_dim": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
+                    "attn.split_size": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
+                    "attn.num_heads": self.model.config.num_attention_heads // self.shard_config.tensor_parallel_size,
+                },
+                sub_module_replacement=[
+                    SubModuleReplacementDescription(
+                        suffix="attn.c_attn",
+                        target_module=col_nn.GPT2FusedLinearConv1D_Col,
+                        kwargs={
+                            "n_fused": 3,
+                            "seq_parallel": use_sequence_parallel,
+                            "overlap": overlap
+                        },
+                    ),
+                    SubModuleReplacementDescription(suffix="attn.c_proj",
+                                                    target_module=col_nn.GPT2FusedLinearConv1D_Row,
+                                                    kwargs={
+                                                        "seq_parallel": use_sequence_parallel,
+                                                    }),
+                    SubModuleReplacementDescription(
+                        suffix="mlp.c_fc",
+                        target_module=col_nn.GPT2FusedLinearConv1D_Col,
+                        kwargs={
+                            "n_fused": 1,
+                            "seq_parallel": use_sequence_parallel,
+                            "overlap": overlap
+                        },
+                    ),
+                    SubModuleReplacementDescription(suffix="mlp.c_proj",
+                                                    target_module=col_nn.GPT2FusedLinearConv1D_Row,
+                                                    kwargs={
+                                                        "seq_parallel": use_sequence_parallel,
+                                                    }),
+                    SubModuleReplacementDescription(
+                        suffix="attn.attn_dropout",
+                        target_module=col_nn.DropoutForParallelInput,
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="attn.resid_dropout",
+                        target_module=col_nn.DropoutForParallelInput,
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="mlp.dropout",
+                        target_module=col_nn.DropoutForParallelInput,
+                    ),
+                ])
 
         # optimization configuration
         if self.shard_config.enable_fused_normalization:
@@ -117,9 +126,15 @@ class GPT2Policy(Policy):
                                                         target_key=GPT2Block)
 
         if self.shard_config.enable_flash_attention:
-            policy[GPT2Attention] = ModulePolicyDescription(method_replacement={
+            self.append_or_create_method_replacement(description={
                 'forward': get_gpt2_flash_attention_forward(),
-            })
+            },
+                                                     policy=policy,
+                                                     target_key=GPT2Attention)
+
+        if self.shard_config.enable_sequence_parallelism:
+            policy[GPT2Model].method_replacement = {"forward": gpt2_sequence_parallel_forward_fn(self.shard_config)}
+
         return policy
 
     def postprocess(self):
@@ -160,7 +175,13 @@ class GPT2Policy(Policy):
 
         layers_per_stage = Policy.distribute_layers(len(module.h), stage_manager.num_stages)
         stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
-        method_replacement = {'forward': partial(new_forward, stage_manager=stage_manager, stage_index=stage_index)}
+        method_replacement = {
+            'forward':
+                partial(new_forward,
+                        stage_manager=stage_manager,
+                        stage_index=stage_index,
+                        shard_config=self.shard_config)
+        }
         self.append_or_create_method_replacement(description=method_replacement, policy=policy, target_key=model_cls)
 
 

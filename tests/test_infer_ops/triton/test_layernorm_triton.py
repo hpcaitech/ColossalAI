@@ -4,7 +4,6 @@ from packaging import version
 
 from colossalai.kernel.triton import layer_norm
 from colossalai.testing.utils import parameterize
-from tests.test_infer_ops.triton.utils import benchmark
 
 try:
     import triton
@@ -39,25 +38,6 @@ def test_layer_norm(M, N):
     assert y_triton.dtype == y_torch.dtype
     print("max delta: ", torch.max(torch.abs(y_triton - y_torch)))
     assert torch.allclose(y_triton, y_torch, atol=1e-2, rtol=0)
-
-
-@pytest.mark.skipif(not TRITON_CUDA_SUPPORT or not HAS_TRITON,
-                    reason="triton requires cuda version to be higher than 11.4")
-@parameterize('M', [4])
-@parameterize('N', [128])
-def test_benchmark(M, N):
-    dtype = torch.float16
-    eps = 1e-5
-    x_shape = (M, N)
-    w_shape = (x_shape[-1],)
-    weight = torch.rand(w_shape, dtype=dtype, device='cuda')
-    bias = torch.rand(w_shape, dtype=dtype, device='cuda')
-    x = -2.3 + 0.5 * torch.randn(x_shape, dtype=dtype, device='cuda')
-
-    latency_1 = benchmark(layer_norm, x, weight, bias, eps)
-    latency_2 = benchmark(torch.nn.functional.layer_norm, x, w_shape, weight, bias, eps)
-    print("the triton op latency is {} ms".format(str(latency_1)))
-    print("the torch op latency is {} ms".format(str(latency_2)))
 
 
 if __name__ == "__main__":

@@ -126,9 +126,22 @@ _POLICY_LIST = {
 
     # ChatGLM
     "colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm.ChatGLMModel":
-        PolicyLocation(file_name="chatglm", class_name="ChatGLMModelPolicy"),
+        PolicyLocation(file_name="chatglm2", class_name="ChatGLMModelPolicy"),
     "colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm.ChatGLMForConditionalGeneration":
-        PolicyLocation(file_name="chatglm", class_name="ChatGLMForConditionalGenerationPolicy"),
+        PolicyLocation(file_name="chatglm2", class_name="ChatGLMForConditionalGenerationPolicy"),
+}
+
+_INFER_POLICY_LIST = {
+    # LlaMa
+    "transformers.models.llama.modeling_llama.LlamaModel":
+        PolicyLocation(file_name="llama", class_name="LlamaModelInferPolicy"),
+    "transformers.models.llama.modeling_llama.LlamaForCausalLM":
+        PolicyLocation(file_name="llama", class_name="LlamaModelInferPolicy"),
+    # Bloom
+    "transformers.models.bloom.modeling_bloom.BloomModel":
+        PolicyLocation(file_name="bloom", class_name="BloomModelInferPolicy"),
+    "transformers.models.bloom.modeling_bloom.BloomForCausalLM":
+        PolicyLocation(file_name="bloom", class_name="BloomModelInferPolicy"),
 }
 
 _INFER_POLICY_LIST = {

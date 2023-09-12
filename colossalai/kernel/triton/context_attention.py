@@ -73,7 +73,6 @@ if HAS_TRITON:
         m_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float("inf")
         l_i = tl.zeros([BLOCK_M], dtype=tl.float32)
         acc = tl.zeros([BLOCK_M, BLOCK_DMODEL], dtype=tl.float32)
-
         if alibi_ptr is not None:
             alibi_m = tl.load(alibi_ptr + cur_head)
 

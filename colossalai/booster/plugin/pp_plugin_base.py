@@ -1,5 +1,5 @@
 from abc import abstractmethod
-from typing import Any, Callable, Iterator
+from typing import Any, Callable, Iterator, Optional
 
 import torch
 
@@ -15,7 +15,7 @@ class PipelinePluginBase(Plugin):
                          data_iter: Iterator,
                          model: ModelWrapper,
                          criterion: Callable[[Any, Any], torch.Tensor],
-                         optimizer: OptimizerWrapper,
+                         optimizer: Optional[OptimizerWrapper] = None,
                          return_loss: bool = True,
                          return_outputs: bool = False) -> dict:
         pass

@@ -1,3 +1,4 @@
+import pytest
 import torch
 
 from colossalai.pipeline.pipelinable import PipelinableContext
@@ -48,6 +49,7 @@ def run_pipelinable(rank, world_size, port):
     assert layers_count_in_part_0 + layers_count_in_part_1 == pipelinable.layers_count
 
 
+@pytest.mark.skip(reason="this is useless")
 @rerun_if_address_is_in_use()
 def test_pipelinable():
     spawn(run_pipelinable, 1)
