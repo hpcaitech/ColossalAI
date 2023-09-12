@@ -65,7 +65,7 @@ shardformer configuration
 `tensor_parallel_process_group`: the process group of tensor parallelism, it's necessary when using tensor parallel.
 `pipeline_stage_manager`: If using pipeline parallelism, it's necessary to specify a pipeline stage manager for inter-process communication in pipeline parallelism.
 {{ autodoc:colossalai.pipeline.stage_manager.PipelineStageManager }}
-`enable_tensor_parallelism`: using tensor parallel
+`enable_tensor_parallelism`: using tensor parallel, partition the model along the columns or along the rows
 `enable_fused_normalization`: using apex fused layernorm
 `enable_flash_attention`: using flash attention
 `enable_jit_fused`: using jit fused operators
@@ -111,12 +111,13 @@ We will follow this roadmap to develop Shardformer:
       - [x] GPT2
       - [x] OPT
       - [x] BLOOM
-      - [ ] GLM
+      - [x] GLM
       - [ ] RoBERTa
       - [ ] ALBERT
       - [ ] ERNIE
       - [ ] GPT Neo
       - [ ] GPT-J
+      - [ ] Qwen
     - [ ] CV
       - [x] ViT
       - [ ] BEiT
@@ -135,12 +136,23 @@ We will follow this roadmap to develop Shardformer:
       - [x] GPT2
       - [x] OPT
       - [x] BLOOM
-      - [ ] GLM
+      - [x] GLM
       - [ ] RoBERTa
       - [ ] ALBERT
       - [ ] ERNIE
       - [ ] GPT Neo
       - [ ] GPT-J
+      - [ ] Qwen
+    - [ ] CV
+      - [x] ViT
+      - [ ] BEiT
+      - [ ] SwinTransformer
+      - [ ] SwinTransformer V2
+    - [ ] Audio
+      - [x] Whisper
+    - [ ] Multi-modal
+      - [x] SAM
+      - [x] BLIP-2
 
 ## 💡 API Design
 
@@ -307,41 +319,36 @@ class ShardFormer:
 
     Example:
 
+    org_model = BertForMaskedLM.from_pretrained('bert-base-uncased')
+    shard_config = ShardConfig()
     shard_former = ShardFormer(shard_config=shard_config)
-    shard_former.init_distributed()
-    model = shard_former.optimize(model, policy=policy)
-    dataloader = shard_former.shard_dataset(dataset)
+    model, shared_params = shard_former.optimize(org_model)
 
     """
 
     def __init__(self, shard_config: ShardConfig):
         """
         Do two things:
-        1. Create a colossalai.cluster.process_group_manager to manage process groups for dp, tp and pp
+        1. Create a distribute coordinator
         2. serve as a store for shard config
         """
         self.shard_config = shard_config
-        self.pg_manager = None
+        self.coordinator = DistCoordinator()
 
-    def init_distributed(self) -> colossalai.cluster.ProcessGroupManager:
-        """
-        Initialize the distributed process group according to the
-        """
-        pg_manager = ...
-        self.pg_manager = pg_manager
-        return pg_manager
+    def optimize(self, model: nn.Module, policy: Policy = None) -> Tuple[nn.Module, List[Dict[int, Tensor]]]:
+        r"""
+        This method will optimize the model based on the given policy.
 
-    def shard_model(self, model: torch.nn.Module，policy: Policy) -> torch.nn.Module:
-        """
-        Shard model for TP and PP
-        """
-        ...
+        Args:
+            model (`torch.nn.Model`): the origin huggingface model
+            shard_config (`ShardConfig`): the config for distribute information
+            policy (`Policy`): the custom policy for sharding
 
-    def shard_dataset(self, dataset: Dataset) -> Dataloader:
+        Returns: the sharded model and the shared parameters
         """
-        Shard dataset for DP
-        """
-        ...
+        sharder = ModelSharder(model=model, shard_config=self.shard_config, policy=policy)
+        shared_params = sharder.shard()
+        return model, shared_params
 ```
 
 ## ⌨️ Development Notes
