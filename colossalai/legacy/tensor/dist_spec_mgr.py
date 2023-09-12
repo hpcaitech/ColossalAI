@@ -4,12 +4,12 @@ import torch
 import torch.distributed as dist
 from numpy import prod
 
-from colossalai.tensor.distspec import DistPlacementPattern, _DistSpec
-from colossalai.tensor.process_group import ProcessGroup
+from colossalai.legacy.tensor.distspec import DistPlacementPattern, _DistSpec
+from colossalai.legacy.tensor.process_group import ProcessGroup
 
 
 # TODO(jiaruifang) circle import, move the divide to colossalai.commons.
-# colossalai.tensor shall not import any submodule from colossal.nn
+# colossalai.legacy.tensor shall not import any submodule from colossal.nn
 def divide(numerator, denominator):
     """Only allow exact division.
 

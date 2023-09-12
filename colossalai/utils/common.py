@@ -9,6 +9,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Union
 
+import numpy as np
 import torch
 import torch.distributed as dist
 from torch import inf
@@ -18,7 +19,8 @@ from colossalai.constants import IS_TENSOR_PARALLEL, NUM_PARTITIONS, TENSOR_PARA
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.global_variables import tensor_parallel_env as env
-from colossalai.tensor import ColoParameter, ProcessGroup
+from colossalai.legacy.tensor import ProcessGroup
+from colossalai.tensor import ColoParameter
 
 from .multi_tensor_apply import multi_tensor_applier
 
@@ -489,3 +491,9 @@ def _cast_float(args, dtype: torch.dtype):
     elif isinstance(args, dict):
         args = {k: _cast_float(v, dtype) for k, v in args.items()}
     return args
+
+
+def set_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)

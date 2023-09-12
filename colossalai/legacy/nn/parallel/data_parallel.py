@@ -5,7 +5,7 @@ from typing import Iterable, Optional, Set
 import torch
 import torch.distributed as dist
 
-from colossalai.tensor import ProcessGroup as ColoProcessGroup
+from colossalai.legacy.tensor import ProcessGroup as ColoProcessGroup
 from colossalai.utils import is_ddp_ignored
 
 from .reducer import Reducer

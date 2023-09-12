@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 from typing import Optional
 
-from colossalai.tensor.distspec import DistPlacementPattern, _DistSpec
-from colossalai.tensor.process_group import ProcessGroup
+from colossalai.legacy.tensor.distspec import DistPlacementPattern, _DistSpec
+from colossalai.legacy.tensor.process_group import ProcessGroup
 
 from .compute_spec import ComputeSpec
 

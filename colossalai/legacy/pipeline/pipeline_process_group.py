@@ -5,7 +5,7 @@ from typing import Dict, List, Tuple
 import torch.distributed as dist
 from torch.distributed import rpc
 
-from colossalai.tensor import ProcessGroup
+from colossalai.legacy.tensor import ProcessGroup
 
 
 class PipelineProcessGroup:

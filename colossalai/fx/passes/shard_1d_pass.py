@@ -1,9 +1,11 @@
+import operator
+
 import torch
 import torch.nn as nn
-import operator
-from colossalai.tensor import ProcessGroup
-from colossalai.tensor.distspec import ShardSpec
-from colossalai.tensor.compute_spec import ComputePattern, ComputeSpec
+
+from colossalai.legacy.tensor import ProcessGroup
+from colossalai.legacy.tensor.compute_spec import ComputePattern, ComputeSpec
+from colossalai.legacy.tensor.distspec import ShardSpec
 
 ELEMENTWISE_MODULE_OP = [torch.nn.Dropout, torch.nn.ReLU]
 ELEMENTWISE_FUNC_OP = [
@@ -13,7 +15,7 @@ ELEMENTWISE_FUNC_OP = [
 
 
 def weight_split(weight: torch.nn.parameter.Parameter, dim: int, col_normal: bool) -> torch.nn.parameter.Parameter:
-    """weight_split 
+    """weight_split
     split a nn.Parameter
 
     Args:
@@ -60,9 +62,9 @@ def row_shard_linear_pass(gm: torch.fx.GraphModule):
 
 def transformer_mlp_pass(graph_module: torch.fx.GraphModule, process_group: ProcessGroup):
     """
-    This IR pass checks for transformer MLP like structure and annotate column and row sharding to the linear layers. 
+    This IR pass checks for transformer MLP like structure and annotate column and row sharding to the linear layers.
     """
-    #TODO: Needs to handle special cases, like x = linear(x) + linear(x)
+    # TODO: Needs to handle special cases, like x = linear(x) + linear(x)
     graph = graph_module.graph
     world_size = process_group.world_size()
 

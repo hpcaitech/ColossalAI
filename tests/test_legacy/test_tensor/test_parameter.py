@@ -3,7 +3,7 @@ import torch
 from common_utils import tensor_equal
 
 import colossalai
-from colossalai.tensor import ColoParameter, ColoTensor, ColoTensorSpec, ProcessGroup
+from colossalai.tensor import ColoParameter, ColoTensor
 from colossalai.testing import free_port
 
 

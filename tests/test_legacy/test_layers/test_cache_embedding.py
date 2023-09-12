@@ -14,7 +14,8 @@ from colossalai.legacy.nn.parallel.layers import (
     ParallelCachedEmbeddingBagTablewise,
     TablewiseEmbeddingBagConfig,
 )
-from colossalai.tensor import ColoTensor, ComputePattern, ComputeSpec, ProcessGroup, ShardSpec
+from colossalai.legacy.tensor import ComputePattern, ComputeSpec, ProcessGroup, ShardSpec
+from colossalai.tensor import ColoTensor
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
 
 NUM_EMBED, EMBED_DIM = 10, 8

@@ -8,7 +8,7 @@ from torch.testing import assert_close
 
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.tensor import ComputePattern, ComputeSpec, ShardSpec
+from colossalai.legacy.tensor import ComputePattern, ComputeSpec, ShardSpec
 
 
 def set_seed(seed):
