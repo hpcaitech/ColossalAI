@@ -2,6 +2,8 @@
 
 作者: Zhengda Bian, Yongbin Li
 
+> ⚠️ 此页面上的信息已经过时并将被废弃。请在[Shardformer](./shardformer.md)页面查阅更新。
+
 **前置教程**
 - [定义配置文件](../basics/define_your_config.md)
 - [并行配置](../basics/configure_parallelization.md)

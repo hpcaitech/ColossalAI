@@ -2,6 +2,8 @@
 
 Author: Zhengda Bian, Yongbin Li
 
+> ⚠️ The information on this page is outdated and will be deprecated. Please check [Shardformer](./shardformer.md) for more information.
+
 **Prerequisite**
 - [Define Your Configuration](../basics/define_your_config.md)
 - [Configure Parallelization](../basics/configure_parallelization.md)

@@ -6,7 +6,7 @@ Author: [Baizhou Zhang](https://github.com/Fridge003)
 - [Paradigms of Parallelism](../concepts/paradigms_of_parallelism.md)
 
 **Example Code**
-
+- [Training with Shardformer](https://github.com/hpcaitech/ColossalAI/tree/main/colossalai/shardformer/examples)
 
 **Related Paper**
 - [Efficient Large-Scale Language Model Training on GPU Clusters Using Megatron-LM](https://arxiv.org/abs/2104.04473)
