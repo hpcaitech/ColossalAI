@@ -184,7 +184,9 @@ class MicroBatchManager():
         return self.cur_state
 
     def export_new_tokens(self):
-        new_tokens_list = [i.new_tokens[0].tolist() for i in self.mb_descrption_buffer.values()]
+        new_tokens_list = []
+        for i in self.mb_descrption_buffer.values():
+            new_tokens_list.extend(i.new_tokens.tolist())
         return new_tokens_list
 
     def is_micro_batch_done(self):
