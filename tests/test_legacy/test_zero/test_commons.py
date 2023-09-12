@@ -1,9 +1,9 @@
 import torch
 
 import colossalai
+from colossalai.legacy.zero.gemini.tensor_utils import colo_model_data_tensor_move, colo_model_data_tensor_move_inline
+from colossalai.legacy.zero.sharded_param import ShardedTensor
 from colossalai.testing import rerun_if_address_is_in_use, spawn
-from colossalai.zero.legacy.gemini.tensor_utils import colo_model_data_tensor_move, colo_model_data_tensor_move_inline
-from colossalai.zero.legacy.sharded_param import ShardedTensor
 
 
 def run_tensor_move(rank, world_size, port):

@@ -3,7 +3,7 @@ from typing import Any, Callable, List, Tuple, Union
 import torch
 import torch.nn.functional as F
 
-from colossalai.zero.legacy.gemini.stateful_tensor import StatefulTensor
+from colossalai.legacy.zero.gemini.stateful_tensor import StatefulTensor
 
 
 def get_gradient_predivide_factor(world_size: int) -> float:

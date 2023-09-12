@@ -16,8 +16,8 @@ from colossalai.legacy.engine.schedule import (
     NonPipelineSchedule,
     PipelineSchedule,
 )
+from colossalai.legacy.zero.gemini import BaseOpHook, register_ophooks_recursively
 from colossalai.logging import get_dist_logger
-from colossalai.zero.legacy.gemini import BaseOpHook, register_ophooks_recursively
 
 
 class Engine:
