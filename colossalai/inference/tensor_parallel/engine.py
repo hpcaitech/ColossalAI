@@ -23,6 +23,7 @@ class TPInferEngine:
 
     def __init__(self,
                  model: nn.Module,
+                 shard_config: ShardConfig,
                  max_batch_size: int,
                  max_input_len: int,
                  max_output_len: int,
@@ -43,11 +44,10 @@ class TPInferEngine:
         torch.device(device=device)
         self.dtype = dtype
 
-        self.head_dim = self.model.config.hidden_size // self.model.config.num_attention_heads
-        self.head_num = self.model.config.num_attention_heads
-
-        num_hidden_layers = self.model.config.num_hidden_layers if hasattr(self.model.config, "num_hidden_layers") \
-            else self.model.config.num_layers
+        self.head_dim = model.config.hidden_size // model.config.num_attention_heads
+        self.head_num = model.config.num_attention_heads
+        num_hidden_layers = model.config.num_hidden_layers if hasattr(model.config, "num_hidden_layers") \
+            else model.config.num_layers
         self.layer_num = num_hidden_layers
 
         self.tp_size = -1    # to be set with given shard config in self.prepare_shard_config
@@ -217,6 +217,47 @@ class TPInferEngine:
         batch_infer_state.is_context_stage = True
         batch_infer_state.set_cache_manager(self.cache_manager)
         return batch_infer_state
+
+    @torch.no_grad()
+    def _generate_by_set_infer_state(self, input_tokens, **generate_kwargs) -> torch.Tensor:
+        """
+        Generate output tokens by setting BatchInferState as an attribute to the model and calling model.generate
+
+        Args:
+            inputs: should be one of the following types
+                1. BatchEncoding or dict (e.g. tokenizer batch_encode)
+                2. list of input token ids (e.g. appended result of tokenizer encode)
+                3. torch.Tensor (e.g. tokenizer encode with return_tensors='pt')
+        """
+
+        # for testing, always use sharded model
+        assert self.model is not None, "sharded model does not exist"
+
+        batch_infer_state = self.prepare_batch_state(input_tokens)
+        assert batch_infer_state.max_len_in_batch <= self.max_input_len, "max length in batch exceeds limit"
+
+        # set BatchInferState for the current batch as attr to model
+        # NOTE this is not a preferable way to pass BatchInferState during inference
+        #   we might want to rewrite generate function (e.g. _generate_by_pass_infer_state)
+        #   and pass BatchInferState via model forward
+        model = self.model
+        if isinstance(model, LlamaForCausalLM):
+            model = self.model.model
+        elif isinstance(model, BloomForCausalLM):
+            model = self.model.transformer
+        setattr(model, 'infer_state', batch_infer_state)
+
+        outputs = self.model.forward(input_tokens['input_ids'], input_tokens['attention_mask'])
+        print(outputs[0])
+        outputs = self.model.forward(input_tokens['input_ids'][:, 0].unsqueeze(1), input_tokens['attention_mask'])
+        # FOR test chatglm2
+        #outputs = self.model.generate(**input_tokens, **generate_kwargs, early_stopping=False)
+
+        # NOTE In future development, we're going to let the scheduler to handle the cache,
+        #      instead of freeing space explicitly at the end of generation
+        self.cache_manager.free_all()
+
+        return outputs
 
     # TODO might want to implement the func that generates output tokens by passing BatchInferState
     #      as an arg into model.forward
