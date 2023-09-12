@@ -5,7 +5,7 @@ import torch
 import torch.distributed as dist
 
 import colossalai
-from colossalai.tensor import DistSpecManager, ProcessGroup, ReplicaSpec, ShardSpec
+from colossalai.legacy.tensor import DistSpecManager, ProcessGroup, ReplicaSpec, ShardSpec
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 

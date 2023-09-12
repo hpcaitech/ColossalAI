@@ -1,4 +1,4 @@
-from colossalai.tensor import ComputePattern, ProcessGroup, ShardSpec, distspec
+from colossalai.legacy.tensor import ComputePattern, ProcessGroup, ShardSpec, distspec
 
 from .colo_module import ColoModule
 

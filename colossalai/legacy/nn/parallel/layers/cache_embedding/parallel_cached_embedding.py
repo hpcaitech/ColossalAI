@@ -4,7 +4,8 @@ import torch
 import torch.nn.functional as F
 
 from colossalai.legacy.nn._ops._utils import dual_all_to_all
-from colossalai.tensor import ColoParameter, ColoTensor, ColoTensorSpec, ComputePattern, ProcessGroup, ShardSpec
+from colossalai.legacy.tensor import ColoTensorSpec, ComputePattern, ProcessGroup, ShardSpec
+from colossalai.tensor import ColoParameter, ColoTensor
 
 from .cache_mgr import CachedParamMgr, EvictionStrategy
 from .cached_embedding import CachedEmbeddingBag

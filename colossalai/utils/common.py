@@ -18,7 +18,8 @@ from colossalai.constants import IS_TENSOR_PARALLEL, NUM_PARTITIONS, TENSOR_PARA
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.global_variables import tensor_parallel_env as env
-from colossalai.tensor import ColoParameter, ProcessGroup
+from colossalai.legacy.tensor import ProcessGroup
+from colossalai.tensor import ColoParameter
 
 from .multi_tensor_apply import multi_tensor_applier
 

@@ -1,8 +1,5 @@
-from typing import (
-    Callable,
-    Dict,
-)
 import functools
+from typing import Callable, Dict
 
 # Custom sharded ops
 _COLOSSAL_OPS: Dict[str, Callable] = {}

@@ -3,7 +3,8 @@ from typing import Any, Dict, Iterator, Optional, Tuple, Union
 import torch
 from torch import nn
 
-from colossalai.tensor import ColoParameter, ColoTensor, ProcessGroup
+from colossalai.legacy.tensor import ProcessGroup
+from colossalai.tensor import ColoParameter, ColoTensor
 from colossalai.utils.model.utils import InsertPostInitMethodToModuleSubClasses
 
 # find named_params includes replica
