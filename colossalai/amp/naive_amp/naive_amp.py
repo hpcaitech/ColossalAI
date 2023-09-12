@@ -13,12 +13,12 @@ from torch.optim import Optimizer
 
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.nn.optimizer import ColossalaiOptimizer
+from colossalai.interface import OptimizerWrapper
 
 from ._fp16_optimizer import FP16Optimizer
 
 
-class NaiveAMPOptimizer(ColossalaiOptimizer):
+class NaiveAMPOptimizer(OptimizerWrapper):
     """A wrapper class for optimizer to cast all parameters to fp16
 
     Args:

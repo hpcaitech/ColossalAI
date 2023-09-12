@@ -1,25 +1,27 @@
+from typing import Dict, Optional
+
 import torch
 import torch.distributed as dist
+
+from colossalai.interface import OptimizerWrapper
 from colossalai.tensor import ColoTensor
-from colossalai.nn.optimizer import ColossalaiOptimizer
 from colossalai.utils.checkpoint.utils import gather_tensor, scatter_tensor
-from typing import Optional, Dict
 
 
 def save_checkpoint(path: str,
                     epoch: int,
                     model: torch.nn.Module,
-                    optimizer: Optional[ColossalaiOptimizer] = None,
+                    optimizer: Optional[OptimizerWrapper] = None,
                     lr_scheduler: torch.optim.lr_scheduler._LRScheduler = None,
                     *args,
                     **kwargs):
-    """save_checkpoint 
+    """save_checkpoint
     save a model, whose parameters are `ColoTensor`s.
     Args:
         path (str): directory to save the checkpoint files.
         epoch (int): the number of epoch
         model (torch.nn.Module): a torch module initialized by ColoInitContext
-        optimizer (ColossalaiOptimizer, optional): optimizers. Defaults to None.
+        optimizer (OptimizerWrapper, optional): optimizers. Defaults to None.
         lr_scheduler (torch.optim.lr_scheduler._LRScheduler, optional): lr schedule. Defaults to None.
     """
     rank = dist.get_rank()
@@ -74,17 +76,17 @@ def save_checkpoint(path: str,
 def load_checkpoint(path: str,
                     epoch: int,
                     model: torch.nn.Module,
-                    optimizer: Optional[ColossalaiOptimizer] = None,
+                    optimizer: Optional[OptimizerWrapper] = None,
                     lr_scheduler: torch.optim.lr_scheduler._LRScheduler = None,
                     torch_load_kwargs: Optional[Dict] = None,
                     load_state_dict_kwargs: Optional[Dict] = None):
-    """load_checkpoint 
+    """load_checkpoint
     load a model, whose parameters are `ColoTensor`s.
     Args:
         path (str): directory to save the checkpoint files.
         epoch (int): the number of epoch
         model (torch.nn.Module): a torch module initialized by ColoInitContext
-        optimizer (ColossalaiOptimizer, optional): optimizers. Defaults to None.
+        optimizer (OptimizerWrapper, optional): optimizers. Defaults to None.
         lr_scheduler (torch.optim.lr_scheduler._LRScheduler, optional): lr schedule. Defaults to None.
         torch_load_kwargs: (dict, optional): The kwargs of torch.load inside the function
         load_state_dict_kwargs (dict, optional): The kwargs of load_state_dict inside the function

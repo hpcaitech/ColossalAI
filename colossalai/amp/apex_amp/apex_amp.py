@@ -10,11 +10,11 @@ except ImportError:
 
 from torch import Tensor
 
-from colossalai.nn.optimizer import ColossalaiOptimizer
+from colossalai.interface import OptimizerWrapper
 from colossalai.utils import clip_grad_norm_fp32
 
 
-class ApexAMPOptimizer(ColossalaiOptimizer):
+class ApexAMPOptimizer(OptimizerWrapper):
     """ A wrapper class for APEX optimizer and it implements apex-specific backward and clip_grad_norm
     methods
     """

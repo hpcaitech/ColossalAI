@@ -1,6 +1,5 @@
 import click
 
-from .benchmark import benchmark
 from .check import check
 from .launcher import run
 
@@ -19,7 +18,6 @@ def cli():
 
 cli.add_command(run)
 cli.add_command(check)
-cli.add_command(benchmark)
 
 if __name__ == '__main__':
     cli()
