@@ -4,8 +4,8 @@ import torch
 import torch.distributed as dist
 from torch._utils import _flatten_dense_tensors as flatten
 
+from colossalai.legacy.zero.sharded_param.sharded_tensor import ShardedTensor
 from colossalai.utils import get_current_device
-from colossalai.zero.legacy.sharded_param.sharded_tensor import ShardedTensor
 
 from .tensor_shard_strategy import TensorShardStrategy
 

@@ -30,11 +30,11 @@ from colossalai.legacy.engine.schedule import (
     PipelineSchedule,
     get_tensor_shape,
 )
+from colossalai.legacy.zero import ShardedOptimizerV2, convert_to_zero_v2
+from colossalai.legacy.zero.gemini.ophooks import BaseOpHook
 from colossalai.logging import get_dist_logger
 from colossalai.utils import get_current_device, is_using_ddp, is_using_pp, is_using_sequence, sync_model_param
 from colossalai.utils.moe import sync_moe_model_param
-from colossalai.zero.legacy import ShardedOptimizerV2, convert_to_zero_v2
-from colossalai.zero.legacy.gemini.ophooks import BaseOpHook
 
 
 def get_default_parser():

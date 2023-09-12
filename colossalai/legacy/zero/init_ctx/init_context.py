@@ -11,12 +11,12 @@ import torch.nn as nn
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.context.singleton_meta import SingletonMeta
 from colossalai.core import global_context as gpc
+from colossalai.legacy.zero.shard_utils import BaseShardStrategy
+from colossalai.legacy.zero.sharded_model._utils import cast_tensor_to_bf16, cast_tensor_to_fp16
+from colossalai.legacy.zero.sharded_model.sharded_model_v2 import ShardedModelV2
+from colossalai.legacy.zero.sharded_param import ShardedParamV2
 from colossalai.logging import get_dist_logger
 from colossalai.utils.model.utils import InsertPostInitMethodToModuleSubClasses
-from colossalai.zero.legacy.shard_utils import BaseShardStrategy
-from colossalai.zero.legacy.sharded_model._utils import cast_tensor_to_bf16, cast_tensor_to_fp16
-from colossalai.zero.legacy.sharded_model.sharded_model_v2 import ShardedModelV2
-from colossalai.zero.legacy.sharded_param import ShardedParamV2
 
 
 @dataclass

@@ -15,12 +15,12 @@ from colossalai.amp.naive_amp.grad_scaler import DynamicGradScaler
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.interface import OptimizerWrapper
+from colossalai.legacy.zero.gemini.stateful_tensor import StatefulTensor, TensorState
+from colossalai.legacy.zero.gemini.tensor_placement_policy import AutoTensorPlacementPolicy
+from colossalai.legacy.zero.gemini.tensor_utils import colo_model_data_tensor_move_inline, colo_tensor_mem_usage
+from colossalai.legacy.zero.sharded_model import ShardedModelV2
+from colossalai.legacy.zero.sharded_model._utils import cast_tensor_to_fp32
 from colossalai.logging import get_dist_logger
-from colossalai.zero.legacy.gemini.stateful_tensor import StatefulTensor, TensorState
-from colossalai.zero.legacy.gemini.tensor_placement_policy import AutoTensorPlacementPolicy
-from colossalai.zero.legacy.gemini.tensor_utils import colo_model_data_tensor_move_inline, colo_tensor_mem_usage
-from colossalai.zero.legacy.sharded_model import ShardedModelV2
-from colossalai.zero.legacy.sharded_model._utils import cast_tensor_to_fp32
 
 
 class OptimState(Enum):

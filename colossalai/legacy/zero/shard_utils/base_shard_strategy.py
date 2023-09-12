@@ -3,7 +3,7 @@ from typing import List, Optional
 
 import torch.distributed as dist
 
-from colossalai.zero.legacy.sharded_param.sharded_tensor import ShardedTensor
+from colossalai.legacy.zero.sharded_param.sharded_tensor import ShardedTensor
 
 
 class BaseShardStrategy(ABC):

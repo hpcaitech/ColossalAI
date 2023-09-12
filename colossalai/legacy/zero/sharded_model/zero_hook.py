@@ -4,13 +4,13 @@ import torch
 import torch.distributed as dist
 
 from colossalai.legacy.registry import OPHOOKS
+from colossalai.legacy.zero.gemini.ophooks import BaseOpHook
+from colossalai.legacy.zero.gemini.stateful_tensor import TensorState
+from colossalai.legacy.zero.gemini.stateful_tensor_mgr import StatefulTensorMgr
+from colossalai.legacy.zero.shard_utils import BaseShardStrategy
 from colossalai.logging import get_dist_logger
 from colossalai.utils import get_current_device
 from colossalai.zero.gemini.memory_tracer import MemStatsCollector
-from colossalai.zero.legacy.gemini.ophooks import BaseOpHook
-from colossalai.zero.legacy.gemini.stateful_tensor import TensorState
-from colossalai.zero.legacy.gemini.stateful_tensor_mgr import StatefulTensorMgr
-from colossalai.zero.legacy.shard_utils import BaseShardStrategy
 
 
 @OPHOOKS.register_module
