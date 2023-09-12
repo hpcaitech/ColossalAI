@@ -157,7 +157,7 @@ class Engine:
         """Execute parameter update
         """
         self._all_reduce_gradients()
-        self.optimizer.clip_grad_norm(self.model, self._clip_grad_norm)
+        self.optimizer.clip_grad_by_norm(self._clip_grad_norm)
         return self.optimizer.step()
 
     def backward(self, loss: Tensor):

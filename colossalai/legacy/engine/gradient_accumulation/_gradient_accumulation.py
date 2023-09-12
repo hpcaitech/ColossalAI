@@ -74,7 +74,7 @@ class GradAccumOptimizer(OptimizerWrapper):
         if self.accumulate_step < self.accumulate_size:
             pass
         else:
-            self.optim.clip_grad_norm(model, max_norm)
+            self.optim.clip_grad_by_norm(max_norm)
 
     def backward(self, loss: Tensor) -> None:
         """Execute backward pass.
