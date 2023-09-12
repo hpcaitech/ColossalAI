@@ -20,6 +20,7 @@ from .common import (
     multi_tensor_applier,
     param_is_not_tensor_parallel_duplicate,
     print_rank_0,
+    set_seed,
     switch_virtual_pipeline_parallel_rank,
     sync_model_param,
 )
@@ -76,4 +77,5 @@ __all__ = [
     'colo_get_cpu_memory_capacity',
     '_cast_float',
     'free_storage',
+    'set_seed',
 ]

@@ -9,6 +9,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Union
 
+import numpy as np
 import torch
 import torch.distributed as dist
 from torch import inf
@@ -490,3 +491,9 @@ def _cast_float(args, dtype: torch.dtype):
     elif isinstance(args, dict):
         args = {k: _cast_float(v, dtype) for k, v in args.items()}
     return args
+
+
+def set_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)

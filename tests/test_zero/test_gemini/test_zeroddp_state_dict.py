@@ -4,10 +4,10 @@ from torch.testing import assert_close
 
 import colossalai
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
+from colossalai.utils import set_seed
 from colossalai.zero import GeminiDDP
 from colossalai.zero.gemini.chunk import search_chunk_configuration
 from tests.components_to_test.registry import non_distributed_component_funcs
-from tests.test_tensor.common_utils import set_seed
 
 PLACEMENT_CONFIGS = [
     {
