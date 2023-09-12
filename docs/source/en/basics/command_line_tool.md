@@ -29,3 +29,5 @@ This command will inform you information regarding the version compatibility and
 
 To launch distributed jobs on single or multiple nodes, the command `colossalai run` can be used for process launching.
 You may refer to [Launch Colossal-AI](./launch_colossalai.md) for more details.
+
+<!-- doc-test-command: echo  -->

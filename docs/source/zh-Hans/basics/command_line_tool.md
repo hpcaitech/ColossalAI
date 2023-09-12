@@ -25,3 +25,5 @@ Colossal-AI给用户提供了命令行工具，目前命令行工具可以用来
 ## 启动分布式训练
 
 在分布式训练时，我们可以使用`colossalai run`来启动单节点或者多节点的多进程，详细的内容可以参考[启动 Colossal-AI](./launch_colossalai.md)。
+
+<!-- doc-test-command: echo  -->
