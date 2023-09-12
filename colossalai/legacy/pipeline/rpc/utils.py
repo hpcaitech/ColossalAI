@@ -10,7 +10,7 @@ from torch._C._distributed_rpc import _is_current_rpc_agent_set
 from torch.futures import Future
 
 from colossalai.initialize import launch
-from colossalai.pipeline.pipeline_process_group import ppg
+from colossalai.legacy.pipeline.pipeline_process_group import ppg
 
 
 def pyobj_map(obj: Any, fn: Callable, process_types: Union[Type, Tuple[Type]] = ()) -> Any:

@@ -12,9 +12,9 @@ from torch import autograd, nn, optim
 from torch._C._distributed_rpc import PyRRef
 from torch.futures import Future
 
-from colossalai.pipeline.middleware import Partition, PartitionInputVal, PartitionOutputVal, Topo
-from colossalai.pipeline.pipeline_process_group import ppg
-from colossalai.pipeline.rpc.utils import (
+from colossalai.legacy.pipeline.middleware import Partition, PartitionInputVal, PartitionOutputVal, Topo
+from colossalai.legacy.pipeline.pipeline_process_group import ppg
+from colossalai.legacy.pipeline.rpc.utils import (
     get_batch_lengths,
     pyobj_map,
     pytree_filter,

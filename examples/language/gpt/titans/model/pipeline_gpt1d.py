@@ -10,8 +10,8 @@ from colossalai import nn as col_nn
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.legacy.nn.layer.wrapper import PipelineSharedModuleWrapper
+from colossalai.legacy.pipeline.utils import partition_uniform
 from colossalai.logging import get_dist_logger
-from colossalai.pipeline.utils import partition_uniform
 
 from .embed import HiddenParallelEmbedding, HiddenParallelGPTLMHead1D, VocabParallelEmbedding, VocabParallelGPTLMHead1D
 from .gpt1d import FusedGPTTransformerLayer1D, GPTTransformerLayer1D

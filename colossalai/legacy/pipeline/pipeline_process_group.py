@@ -1,9 +1,9 @@
-from typing import List, Dict, Tuple
 import os
 import threading
+from typing import Dict, List, Tuple
 
-from torch.distributed import rpc
 import torch.distributed as dist
+from torch.distributed import rpc
 
 from colossalai.tensor import ProcessGroup
 

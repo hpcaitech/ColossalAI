@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from colossalai.pipeline.pipelinable import PipelinableContext
+from colossalai.legacy.pipeline.pipelinable import PipelinableContext
 from colossalai.testing import rerun_if_address_is_in_use, rerun_on_exception, spawn
 
 NUM_CHUNKS = 1

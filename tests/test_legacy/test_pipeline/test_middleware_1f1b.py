@@ -10,10 +10,10 @@ from torch._C._distributed_rpc import _is_current_rpc_agent_set
 from colossalai import launch
 from colossalai.fx import ColoTracer
 from colossalai.fx.passes.adding_split_node_pass import balanced_split_pass, split_with_split_nodes_pass
+from colossalai.legacy.pipeline.middleware.adaptor import get_fx_topology
+from colossalai.legacy.pipeline.pipeline_process_group import ppg
+from colossalai.legacy.pipeline.rpc._pipeline_schedule import OneFOneBPipelineEngine
 from colossalai.logging import disable_existing_loggers
-from colossalai.pipeline.middleware.adaptor import get_fx_topology
-from colossalai.pipeline.pipeline_process_group import ppg
-from colossalai.pipeline.rpc._pipeline_schedule import OneFOneBPipelineEngine
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 
 # global variable for model created
