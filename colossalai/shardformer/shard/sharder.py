@@ -94,8 +94,6 @@ class ModelSharder(object):
             sub_module_replacement ((List[SubModuleReplacementDescription]): The function list to get sub module shard information in policy
             include (Set[nn.Module], optional): The set of modules to keep on current device when pipeline parallel is enabled. Defaults to None
         """
-        # released layers are not shardable
-        can_replace_param_or_layer = include is None or module in include
         if (isinstance(origin_cls, str) and origin_cls == module.__class__.__name__) or \
            (module.__class__ == origin_cls):
             if attr_replacement is not None:

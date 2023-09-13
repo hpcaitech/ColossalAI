@@ -66,8 +66,7 @@ def check_linear_conv_1d_col(lazy_init: bool):
 
     assert linear.weight.shape == torch.Size([48, 192])
     assert linear.bias.shape == torch.Size([192])
-    assert linear_conv_col.weight.shape == torch.Size(
-        [96, 48]), f"{linear_conv_col.weight.shape} is expected to be {torch.Size([96, 48])}"
+    assert linear_conv_col.weight.shape == torch.Size([48, 96])
     assert linear_conv_col.bias.shape == torch.Size([96])
     assert linear_copy.weight is linear_conv_col.weight
     assert linear_copy.bias is linear_conv_col.bias
@@ -86,7 +85,7 @@ def check_linear_conv_1d_col(lazy_init: bool):
     out.sum().backward()
     gather_out.sum().backward()
 
-    target_grad = split_fused_qkv_in_gpt2_style(linear.weight.grad, 3, None, False)
+    target_grad = split_fused_qkv_in_gpt2_style(linear.weight.grad, 3, None, True)
     assert_close(target_grad, linear_conv_col.weight.grad)
 
 
@@ -129,6 +128,7 @@ def run_dist(rank, world_size, port):
 
     # test for linear conv
     check_linear_conv_1d_col()
+    check_linear_conv_1d_row()
 
 
 @rerun_if_address_is_in_use()

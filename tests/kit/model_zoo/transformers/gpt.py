@@ -128,12 +128,6 @@ model_zoo.register(name='transformers_gpt_for_question_answering',
                    output_transform_fn=output_transform_fn,
                    loss_fn=loss_fn,
                    model_attribute=ModelAttribute(has_control_flow=True))
-model_zoo.register(name='transformers_gpt_for_question_answering',
-                   model_fn=lambda: transformers.GPT2ForQuestionAnswering(config),
-                   data_gen_fn=data_gen_for_question_answering,
-                   output_transform_fn=output_transform_fn,
-                   loss_fn=loss_fn,
-                   model_attribute=ModelAttribute(has_control_flow=True))
 model_zoo.register(name='transformers_gpt_for_token_classification',
                    model_fn=lambda: transformers.GPT2ForTokenClassification(config_for_token_classification),
                    data_gen_fn=data_gen_for_token_classification,
