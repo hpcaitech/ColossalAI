@@ -23,8 +23,10 @@ from langchain.indexes import SQLRecordManager
 # llm = VllmLLM(n=1)
 
 # local coati api
-model_path = os.environ.get('LLAMA2_PATH')
-coati_api = CoatiAPI('llama', model_path)
+model_path = os.environ.get('EN_MODEL_PATH')
+model_name = os.environ.get('EN_MODEL_NAME')
+print(model_name, model_path)
+coati_api = CoatiAPI(model_name, model_path)
 llm = CoatiLLM(n=1, api=coati_api)
 
 # define the retriever

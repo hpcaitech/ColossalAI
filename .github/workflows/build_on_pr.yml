@@ -193,6 +193,15 @@ jobs:
           CUDA_EXT=1 pip install -v -e .
           pip install -r requirements/requirements-test.txt
 
+      - name: Set Environment Variables for ColossalQA
+        run: |
+          export ZH_MODEL_PATH="/data3/data/model_eval_for_non_commercial_use/chatglm2-6b"
+          export ZH_MODEL_NAME="chatglm"
+          export EN_MODEL_PATH="/data3/data/model_eval_for_commerical_use/Llama-2-7b-hf"
+          export EN_MODEL_NAME="llama"
+          export TEST_DATA_PATH_EN="/home/lcyab/data3/ColossalAI/applications/langchain/data/test_data/companies.txt"
+          export TEST_DATA_PATH_ZH="/home/lcyab/data3/ColossalAI/applications/langchain/data/test_data/companies_zh.txt"
+                 
       - name: Store Colossal-AI Cache
         run: |
           # -p flag is required to preserve the file timestamp to avoid ninja rebuild

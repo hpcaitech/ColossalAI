@@ -14,8 +14,9 @@ from colossalqa.memory import ConversationBufferWithSummary
 from colossalqa.prompt.prompt import SUMMARY_PROMPT_ZH, PROMPT_RETRIEVAL_QA_ZH, PROMPT_DISAMBIGUATE_ZH
 
 # local coati api
-model_path = os.environ.get('CHATGLM_PATH')
-coati_api = CoatiAPI('chatglm2', model_path)
+model_path = os.environ.get('ZH_MODEL_PATH')
+model_name = os.environ.get('ZH_MODEL_NAME')
+coati_api = CoatiAPI(model_name, model_path)
 llm = CoatiLLM(n=1, api=coati_api)
 
 # setup embedding model locally
