@@ -5,8 +5,8 @@ from titans.model.vit.vit import _create_vit_model
 from tqdm import tqdm
 
 import colossalai
-from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
+from colossalai.legacy.context import ParallelMode
 from colossalai.legacy.nn import CrossEntropyLoss
 from colossalai.legacy.pipeline.pipelinable import PipelinableContext
 from colossalai.logging import get_dist_logger

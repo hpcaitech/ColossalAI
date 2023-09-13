@@ -7,7 +7,7 @@ from torch import Tensor
 from torch import nn as nn
 from torch.nn.parameter import Parameter
 
-from colossalai.context import seed
+from colossalai.legacy.context import seed
 from colossalai.legacy.registry import LAYERS
 from colossalai.nn import init as init
 from colossalai.utils.cuda import get_current_device
@@ -64,7 +64,7 @@ class WrappedDropout(nn.Module):
     Args:
         p (float, optional): probability of an element to be zeroed, defaults 0.5.
         inplace (bool, optional): whether to do dropout in-place, default to be False.
-        mode (:class:`colossalai.context.ParallelMode`): The chosen parallel mode.
+        mode (:class:`colossalai.legacy.context.ParallelMode`): The chosen parallel mode.
 
     Note:
         The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
@@ -101,7 +101,7 @@ class WrappedDropPath(nn.Module):
 
     Args:
         p (float, optional): probability of dropping path, defaults 0.0.
-        mode (:class:`colossalai.context.ParallelMode`): The chosen parallel mode.
+        mode (:class:`colossalai.legacy.context.ParallelMode`): The chosen parallel mode.
 
     Note:
         The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found

@@ -110,12 +110,12 @@ class ParallelContext(metaclass=SingletonMeta):
         """Adds the global rank of the current device for `parallel_mode` to the context.
 
         Args:
-            parallel_mode (:class:`colossalai.context.ParallelMode`): The parallel mode for the rank.
+            parallel_mode (:class:`colossalai.legacy.context.ParallelMode`): The parallel mode for the rank.
             rank (int): The rank to be added
 
         Raises:
             AssertionError: Raises an AssertionError if `parallel_mode` is not an instance
-                of :class:`colossalai.context.ParallelMode`.
+                of :class:`colossalai.legacy.context.ParallelMode`.
         """
         self._check_parallel_mode(parallel_mode)
         self._global_ranks[parallel_mode] = rank
@@ -124,11 +124,11 @@ class ParallelContext(metaclass=SingletonMeta):
         """Returns the local rank of the current device.
 
         Args:
-            parallel_mode (:class:`colossalai.context.ParallelMode`): The chosen parallel mode.
+            parallel_mode (:class:`colossalai.legacy.context.ParallelMode`): The chosen parallel mode.
 
         Raises:
             AssertionError: Raises an AssertionError if `parallel_mode` is not an instance
-                of :class:`colossalai.context.ParallelMode`.
+                of :class:`colossalai.legacy.context.ParallelMode`.
 
         Returns:
             int: The local rank of the current device for `parallel_mode`.
@@ -140,12 +140,12 @@ class ParallelContext(metaclass=SingletonMeta):
         """Adds the local rank of the current device for `parallel_mode` to the context.
 
         Args:
-            parallel_mode (:class:`colossalai.context.ParallelMode`): The parallel mode for the rank.
+            parallel_mode (:class:`colossalai.legacy.context.ParallelMode`): The parallel mode for the rank.
             rank (int): The rank to be added.
 
         Raises:
             AssertionError: Raises an AssertionError if `parallel_mode` is not an instance
-                of :class:`colossalai.context.ParallelMode`.
+                of :class:`colossalai.legacy.context.ParallelMode`.
         """
         self._check_parallel_mode(parallel_mode)
         self._local_ranks[parallel_mode] = rank
@@ -154,11 +154,11 @@ class ParallelContext(metaclass=SingletonMeta):
         """Returns the global rank of the next device.
 
         Args:
-            parallel_mode (:class:`colossalai.context.ParallelMode`): The chosen parallel mode.
+            parallel_mode (:class:`colossalai.legacy.context.ParallelMode`): The chosen parallel mode.
 
         Raises:
             AssertionError: Raises an AssertionError if `parallel_mode` is not an instance
-                of :class:`colossalai.context.ParallelMode`.
+                of :class:`colossalai.legacy.context.ParallelMode`.
 
         Returns:
             int: The global rank of the next device for `parallel_mode`.
@@ -176,11 +176,11 @@ class ParallelContext(metaclass=SingletonMeta):
         """Returns the global rank of the previous device.
 
         Args:
-            parallel_mode (:class:`colossalai.context.ParallelMode`): The chosen parallel mode.
+            parallel_mode (:class:`colossalai.legacy.context.ParallelMode`): The chosen parallel mode.
 
         Raises:
             AssertionError: Raises an AssertionError if `parallel_mode` is not an instance
-                of :class:`colossalai.context.ParallelMode`.
+                of :class:`colossalai.legacy.context.ParallelMode`.
 
         Returns:
             int: The global rank of the previous device for `parallel_mode`.
@@ -199,11 +199,11 @@ class ParallelContext(metaclass=SingletonMeta):
         among its group for `parallel_mode`.
 
         Args:
-            parallel_mode (:class:`colossalai.context.ParallelMode`): The chosen parallel mode.
+            parallel_mode (:class:`colossalai.legacy.context.ParallelMode`): The chosen parallel mode.
 
         Raises:
             AssertionError: Raises an AssertionError if `parallel_mode` is not an instance
-                of :class:`colossalai.context.ParallelMode`.
+                of :class:`colossalai.legacy.context.ParallelMode`.
 
         Returns:
             bool: a boolean value indicating whether the current device is the first one
@@ -217,11 +217,11 @@ class ParallelContext(metaclass=SingletonMeta):
         among its group for `parallel_mode`.
 
         Args:
-            parallel_mode (:class:`colossalai.context.ParallelMode`): The chosen parallel mode.
+            parallel_mode (:class:`colossalai.legacy.context.ParallelMode`): The chosen parallel mode.
 
         Raises:
             AssertionError: Raises an AssertionError if `parallel_mode` is not an instance
-                of :class:`colossalai.context.ParallelMode`.
+                of :class:`colossalai.legacy.context.ParallelMode`.
 
         Returns:
             bool: a boolean value indicating whether the current device is the first one
@@ -248,11 +248,11 @@ class ParallelContext(metaclass=SingletonMeta):
         """Returns the world size for `parallel_mode`.
 
         Args:
-            parallel_mode (:class:`colossalai.context.ParallelMode`): The chosen parallel mode.
+            parallel_mode (:class:`colossalai.legacy.context.ParallelMode`): The chosen parallel mode.
 
         Raises:
             AssertionError: Raises an AssertionError if `parallel_mode` is not an instance
-                of :class:`colossalai.context.ParallelMode`.
+                of :class:`colossalai.legacy.context.ParallelMode`.
 
         Returns:
             int: The world size for `parallel_mode`.
@@ -264,12 +264,12 @@ class ParallelContext(metaclass=SingletonMeta):
         """Adds world size for `parallel_mode`.
 
         Args:
-            parallel_mode (:class:`colossalai.context.ParallelMode`): The parallel mode corresponding to the process group
+            parallel_mode (:class:`colossalai.legacy.context.ParallelMode`): The parallel mode corresponding to the process group
             world_size (int): The world size to be added
 
         Raises:
             AssertionError: Raises an AssertionError if `parallel_mode` is not an instance
-                of :class:`colossalai.context.ParallelMode`.
+                of :class:`colossalai.legacy.context.ParallelMode`.
         """
         self._check_parallel_mode(parallel_mode)
         self._world_sizes[parallel_mode] = world_size
@@ -278,11 +278,11 @@ class ParallelContext(metaclass=SingletonMeta):
         """Returns the group of the current device for `parallel_mode`.
 
         Args:
-            parallel_mode (:class:`colossalai.context.ParallelMode`): The chosen parallel mode.
+            parallel_mode (:class:`colossalai.legacy.context.ParallelMode`): The chosen parallel mode.
 
         Raises:
             AssertionError: Raises an AssertionError if `parallel_mode` is not an instance
-                of :class:`colossalai.context.ParallelMode`.
+                of :class:`colossalai.legacy.context.ParallelMode`.
 
         Returns:
             torch.distributed.ProcessGroup: The group of the current device for `parallel_mode`.
@@ -294,12 +294,12 @@ class ParallelContext(metaclass=SingletonMeta):
         """Adds the group of the current device for `parallel_mode`.
 
         Args:
-            parallel_mode (:class:`colossalai.context.ParallelMode`): The chosen parallel mode.
+            parallel_mode (:class:`colossalai.legacy.context.ParallelMode`): The chosen parallel mode.
             group (torch.distributed.ProcessGroup): The group to be added
 
         Raises:
             AssertionError: Raises an AssertionError if `parallel_mode` is not an instance
-                of :class:`colossalai.context.ParallelMode`.
+                of :class:`colossalai.legacy.context.ParallelMode`.
         """
         self._check_parallel_mode(parallel_mode)
         self._groups[parallel_mode] = group
@@ -308,9 +308,9 @@ class ParallelContext(metaclass=SingletonMeta):
         """Returns the Gloo group of the current device for `parallel_mode`.
 
         :param parallel_mode: The chosen parallel mode
-        :type parallel_mode: :class:`colossalai.context.ParallelMode`
+        :type parallel_mode: :class:`colossalai.legacy.context.ParallelMode`
         :raises AssertionError: Raises an AssertionError if `parallel_mode` is not an instance
-            of :class:`colossalai.context.ParallelMode`
+            of :class:`colossalai.legacy.context.ParallelMode`
         :return: The group of the current device for `parallel_mode`
         :rtype: torch.distributed.ProcessGroup
         """
@@ -321,11 +321,11 @@ class ParallelContext(metaclass=SingletonMeta):
         """Adds the Gloo group of the current device for `parallel_mode`.
 
         :param parallel_mode: The chosen parallel mode
-        :type parallel_mode: :class:`colossalai.context.ParallelMode`
+        :type parallel_mode: :class:`colossalai.legacy.context.ParallelMode`
         :param group: The group to be added
         :type group: torch.distributed.ProcessGroup
         :raises AssertionError: Raises an AssertionError if `parallel_mode` is not an instance
-            of :class:`colossalai.context.ParallelMode`
+            of :class:`colossalai.legacy.context.ParallelMode`
         """
         self._check_parallel_mode(parallel_mode)
         self._cpu_groups[parallel_mode] = group
@@ -334,11 +334,11 @@ class ParallelContext(metaclass=SingletonMeta):
         """Returns the rank of the current device for `parallel_mode` in the group.
 
         Args:
-            parallel_mode (:class:`colossalai.context.ParallelMode`): The chosen parallel mode.
+            parallel_mode (:class:`colossalai.legacy.context.ParallelMode`): The chosen parallel mode.
 
         Raises:
             AssertionError: Raises an AssertionError if `parallel_mode` is not an instance
-                of :class:`colossalai.context.ParallelMode`.
+                of :class:`colossalai.legacy.context.ParallelMode`.
 
         Returns:
             int: The rank of the current device for `parallel_mode` in the group.
@@ -350,12 +350,12 @@ class ParallelContext(metaclass=SingletonMeta):
         """Adds the ranks of the current device for `parallel_mode` in the group.
 
         Args:
-            parallel_mode (:class:`colossalai.context.ParallelMode`): The chosen parallel mode.
+            parallel_mode (:class:`colossalai.legacy.context.ParallelMode`): The chosen parallel mode.
             ranks (list): List of ranks to be added
 
         Raises:
             AssertionError: Raises an AssertionError if `parallel_mode` is not an instance
-                of :class:`colossalai.context.ParallelMode`.
+                of :class:`colossalai.legacy.context.ParallelMode`.
         """
         self._check_parallel_mode(parallel_mode)
         self._ranks_in_group[parallel_mode] = ranks
@@ -489,7 +489,7 @@ class ParallelContext(metaclass=SingletonMeta):
         in the current system.
 
         Args:
-            parallel_mode (:class:`colossalai.context.ParallelMode`): The chosen parallel mode.
+            parallel_mode (:class:`colossalai.legacy.context.ParallelMode`): The chosen parallel mode.
 
         Returns:
             bool: a boolean value indicating whether `parallel_mode` is initialized in the current system.

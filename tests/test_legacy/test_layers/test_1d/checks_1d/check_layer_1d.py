@@ -2,9 +2,9 @@ import torch
 import torch.distributed as dist
 from torch.nn import Parameter
 
-from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.global_variables import tensor_parallel_env as env
+from colossalai.legacy.context.parallel_mode import ParallelMode
 from colossalai.legacy.nn import (
     Classifier1D,
     Embedding1D,

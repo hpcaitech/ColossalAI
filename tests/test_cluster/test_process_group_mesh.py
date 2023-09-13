@@ -7,8 +7,8 @@ from colossalai.testing import spawn
 
 
 def check_process_group_mesh_with_gpc():
-    from colossalai.context import ParallelMode
     from colossalai.core import global_context as gpc
+    from colossalai.legacy.context import ParallelMode
 
     DP_DIM, PP_DIM, TP_DIM = 0, 1, 2
     pg_mesh = ProcessGroupMesh(1, 2, 2)

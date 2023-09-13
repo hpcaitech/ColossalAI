@@ -10,8 +10,8 @@ from torchvision.datasets import CIFAR10
 from torchvision.models import resnet18
 
 import colossalai
-from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
+from colossalai.legacy.context.parallel_mode import ParallelMode
 from colossalai.legacy.trainer import Trainer
 from colossalai.legacy.utils import get_dataloader
 from colossalai.logging import get_dist_logger

@@ -6,8 +6,8 @@ import torch
 import torch.distributed as dist
 from torch.testing import assert_close
 
-from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
+from colossalai.legacy.context import ParallelMode
 from colossalai.legacy.tensor import ComputePattern, ComputeSpec, ShardSpec
 
 

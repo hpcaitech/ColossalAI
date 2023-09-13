@@ -11,8 +11,8 @@ import torch.nn as nn
 from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
 
-from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
+from colossalai.legacy.context.parallel_mode import ParallelMode
 from colossalai.legacy.utils.memory import colo_device_memory_capacity
 from colossalai.legacy.zero.gemini.ophooks import register_ophooks_recursively
 from colossalai.legacy.zero.gemini.paramhooks import BaseParamHookMgr

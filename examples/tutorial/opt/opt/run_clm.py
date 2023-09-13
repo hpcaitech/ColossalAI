@@ -51,8 +51,8 @@ from transformers import (
 from transformers.utils.versions import require_version
 
 import colossalai
-from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
+from colossalai.legacy.context import ParallelMode
 from colossalai.legacy.tensor import ProcessGroup
 from colossalai.legacy.utils import get_dataloader
 from colossalai.logging import disable_existing_loggers, get_dist_logger

@@ -1,6 +1,6 @@
-from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.global_variables import tensor_parallel_env as env
+from colossalai.legacy.context.parallel_mode import ParallelMode
 
 
 def get_tesseract_dim_dep_from_env():

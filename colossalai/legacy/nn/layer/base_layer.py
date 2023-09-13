@@ -5,8 +5,8 @@ from contextlib import contextmanager
 
 import torch.nn as nn
 
-from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
+from colossalai.legacy.context import ParallelMode
 
 
 class ParallelLayer(nn.Module):

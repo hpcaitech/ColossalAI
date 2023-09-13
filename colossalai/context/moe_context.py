@@ -3,7 +3,6 @@ from typing import Tuple
 import torch
 import torch.distributed as dist
 
-from colossalai.context.parallel_mode import ParallelMode
 from colossalai.context.singleton_meta import SingletonMeta
 from colossalai.legacy.tensor import ProcessGroup
 

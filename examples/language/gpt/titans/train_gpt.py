@@ -8,8 +8,8 @@ from titans.model.gpt import GPTLMLoss
 
 import colossalai
 import colossalai.utils as utils
-from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
+from colossalai.legacy.context.parallel_mode import ParallelMode
 from colossalai.legacy.trainer import Trainer, hooks
 from colossalai.legacy.zero.init_ctx import ZeroInitContext
 from colossalai.logging import disable_existing_loggers, get_dist_logger
