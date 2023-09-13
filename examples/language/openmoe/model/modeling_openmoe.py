@@ -283,7 +283,7 @@ class LlamaMLP(nn.Module):
             down_proj = sum(down_proj)
         else:
             if HAS_TRITON:
-                down_proj = LlamaActCombine.apply(self.gate_proj(x), self.up_proj(x))
+                down_proj = self.down_proj(LlamaActCombine.apply(self.gate_proj(x), self.up_proj(x)))
             else:
                 down_proj = self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
 

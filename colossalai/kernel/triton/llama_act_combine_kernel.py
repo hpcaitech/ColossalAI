@@ -41,18 +41,11 @@ if HAS_TRITON:
         for off in range(0, N, BLOCK_SIZE):
             cols = off + tl.arange(0, BLOCK_SIZE)
             mask = cols < N
-            x_gate1 = tl.load(X_GATE1 + cols, mask=mask, other=0.).to(tl.float32)
-            x_gate2 = tl.load(X_GATE2 + cols, mask=mask, other=0.).to(tl.float32)
-            x_up = tl.load(X_UP + cols, mask=mask, other=0.).to(tl.float32)
-            y = x_gate1 * x_gate2 * tl.sigmoid(x_gate2) * x_up
-
-            # if PRECISION == 0:
-            #     pass
-            # elif PRECISION == 1:
-            #     y = y.to(tl.float16)
-            # elif PRECISION == 2:
-            #     y = y.to(tl.bfloat16)
-
+            x_gate1 = tl.load(X_GATE1 + cols, mask=mask, other=0.)
+            x_gate2 = tl.load(X_GATE2 + cols, mask=mask, other=0.)
+            x_up = tl.load(X_UP + cols, mask=mask, other=0.)
+            x_gate2_sigmoid = tl.sigmoid(x_gate2.to(tl.float32)).to(x_gate2.dtype)
+            y = x_gate1 * x_gate2 * x_gate2_sigmoid * x_up
             # Write output
             tl.store(Y + cols, y, mask=mask)
 
@@ -83,13 +76,13 @@ if HAS_TRITON:
         for off in range(0, N, BLOCK_SIZE):
             cols = off + tl.arange(0, BLOCK_SIZE)
             mask = cols < N
-            x_gate1 = tl.load(X_GATE1 + cols, mask=mask, other=0.).to(tl.float32)
-            x_gate2 = tl.load(X_GATE2 + cols, mask=mask, other=0.).to(tl.float32)
-            x_up = tl.load(X_UP + cols, mask=mask, other=0.).to(tl.float32)
-            y_grad = tl.load(Y_GRAD + cols, mask=mask, other=0.).to(tl.float32)
+            x_gate1 = tl.load(X_GATE1 + cols, mask=mask, other=0.)
+            x_gate2 = tl.load(X_GATE2 + cols, mask=mask, other=0.)
+            x_up = tl.load(X_UP + cols, mask=mask, other=0.)
+            y_grad = tl.load(Y_GRAD + cols, mask=mask, other=0.)
 
             # forward: y = x_gate1 * x_gate2 * tl.sigmoid(x_gate2) * x_up
-            x_gate2_sigmoid = tl.sigmoid(x_gate2)
+            x_gate2_sigmoid = tl.sigmoid(x_gate2.to(tl.float32)).to(x_gate2.dtype)
             x_gate2_act = y_grad * x_gate2 * x_gate2_sigmoid
             x_up_grad = x_gate2_act * x_gate1
             x_gate1_grad = x_gate2_act * x_up
@@ -114,12 +107,8 @@ if HAS_TRITON:
         """
 
         @staticmethod
-        @custom_fwd(cast_inputs=torch.float32)
-        def forward(ctx: Any,
-                    x_gate: torch.Tensor,
-                    x_up: torch.Tensor,
-                    activation: str = "swiglu",
-                    precision: str = "fp32") -> torch.Tensor:
+        @custom_fwd
+        def forward(ctx: Any, x_gate: torch.Tensor, x_up: torch.Tensor, activation: str = "swiglu") -> torch.Tensor:
             """
             act(x_gate) * x_up
 
@@ -127,11 +116,8 @@ if HAS_TRITON:
                 x_gate (torch.Tensor): (b, l, 2d) x gate
                 x_up (torch.Tensor): (b, l, d) x up
                 activation (str): only support swiglu
-                precision (str): fp32, fp16, bf16
             """
             assert activation == "swiglu", "Only swiglu is supported"
-            assert precision in PRECISION_MAP
-            precision, dtype = PRECISION_MAP[precision]
 
             # split x gate
             assert x_gate.shape[-1] % 2 == 0, "axis size must be divisible by 2"
@@ -148,7 +134,7 @@ if HAS_TRITON:
                 ctx.save_for_backward(x_gate1, x_gate2, x_up)
 
             # allocate output
-            y = torch.empty_like(x_up, dtype=dtype)
+            y = torch.empty_like(x_up)
             M, N = reduce(lambda x, y: x * y, x_up.shape[:-1]), x_up.shape[-1]
 
             # Less than 64KB per feature: enqueue fused kernel
