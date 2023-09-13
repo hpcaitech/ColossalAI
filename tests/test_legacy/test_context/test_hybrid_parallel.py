@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 import torch
 
-from colossalai import launch
+from colossalai.legacy import launch
 from colossalai.legacy.context import reset_seeds
 from colossalai.legacy.context.parallel_mode import ParallelMode
 from colossalai.legacy.core import global_context as gpc

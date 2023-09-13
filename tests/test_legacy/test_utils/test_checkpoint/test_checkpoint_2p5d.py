@@ -8,9 +8,9 @@ import torch
 import torch.nn as nn
 
 import colossalai.legacy.nn as col_nn
-from colossalai.initialize import launch
 from colossalai.legacy.context.parallel_mode import ParallelMode
 from colossalai.legacy.core import global_context as gpc
+from colossalai.legacy.initialize import launch
 from colossalai.legacy.utils import is_using_pp
 from colossalai.legacy.utils.checkpointing import gather_pipeline_parallel_state_dict, load_checkpoint, save_checkpoint
 from colossalai.logging import disable_existing_loggers

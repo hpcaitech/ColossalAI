@@ -37,7 +37,7 @@ CONFIG = Config(
 
 def run_data_sampler(rank, world_size, port):
     dist_args = dict(config=CONFIG, rank=rank, world_size=world_size, backend='gloo', port=port, host='localhost')
-    colossalai.launch(**dist_args)
+    colossalai.legacy.launch(**dist_args)
 
     # build dataset
     transform_pipeline = [transforms.ToTensor(), transforms.RandomCrop(size=32, padding=4)]

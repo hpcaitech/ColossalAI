@@ -24,7 +24,7 @@ from colossalai.legacy.zero.shard_utils import BaseShardStrategy
 from colossalai.legacy.zero.sharded_model.reduce_scatter import ReduceScatterBucketer
 from colossalai.logging import get_dist_logger
 from colossalai.utils import disposable, get_current_device
-from colossalai.zero.gemini.memory_tracer import MemStatsCollector, StaticMemStatsCollector
+from colossalai.zero.gemini.memory_tracer import MemStatsCollector
 
 from ._utils import (
     cast_float_arguments,

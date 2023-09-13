@@ -29,7 +29,12 @@ CONFIG = dict(
 
 
 def run_trainer_with_pipeline(rank, world_size, port):
-    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.legacy.launch(config=CONFIG,
+                             rank=rank,
+                             world_size=world_size,
+                             host='localhost',
+                             port=port,
+                             backend='nccl')
 
     # build model
     model = resnet18(num_classes=10)
@@ -64,10 +69,10 @@ def run_trainer_with_pipeline(rank, world_size, port):
     optimizer = Adam(model.parameters(), lr=0.001)
     criterion = nn.CrossEntropyLoss()
 
-    engine, train_dataloader, *args = colossalai.initialize(model=model,
-                                                            optimizer=optimizer,
-                                                            criterion=criterion,
-                                                            train_dataloader=train_dataloader)
+    engine, train_dataloader, *args = colossalai.legacy.initialize(model=model,
+                                                                   optimizer=optimizer,
+                                                                   criterion=criterion,
+                                                                   train_dataloader=train_dataloader)
 
     logger = get_dist_logger()
     logger.info("engine is built", ranks=[0])

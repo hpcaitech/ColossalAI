@@ -120,7 +120,7 @@ def check_ring_av(rank, world_size):
 
 
 def run_test(rank, world_size, port):
-    colossalai.launch(rank=rank, world_size=world_size, config=CONFIG, host='localhost', port=port)
+    colossalai.legacy.launch(rank=rank, world_size=world_size, config=CONFIG, host='localhost', port=port)
 
     # check_ring_qk(rank, world_size)
     check_ring_av(rank, world_size)

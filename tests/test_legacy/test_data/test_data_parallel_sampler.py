@@ -27,7 +27,7 @@ CONFIG = Config(dict(
 
 def run_data_sampler(rank, world_size, port):
     dist_args = dict(config=CONFIG, rank=rank, world_size=world_size, backend='gloo', port=port, host='localhost')
-    colossalai.launch(**dist_args)
+    colossalai.legacy.launch(**dist_args)
     print('finished initialization')
 
     # build dataset

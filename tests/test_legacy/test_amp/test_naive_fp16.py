@@ -78,7 +78,7 @@ def run_naive_amp():
 
 
 def run_dist(rank, world_size, port):
-    colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host='localhost')
+    colossalai.legacy.launch(config=dict(), rank=rank, world_size=world_size, port=port, host='localhost')
     run_naive_amp()
 
 

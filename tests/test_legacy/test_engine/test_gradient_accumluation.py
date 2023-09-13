@@ -27,7 +27,12 @@ CONFIG = dict(parallel=dict(pipeline=dict(size=1), tensor=dict(size=1, mode=None
 def run_no_pipeline(rank, world_size, port):
 
     # init dist env
-    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.legacy.launch(config=CONFIG,
+                             rank=rank,
+                             world_size=world_size,
+                             host='localhost',
+                             port=port,
+                             backend='nccl')
 
     # build model
     model = resnet18(num_classes=10)
@@ -49,10 +54,10 @@ def run_no_pipeline(rank, world_size, port):
     optimizer = Adam(model.parameters(), lr=0.001)
     criterion = nn.CrossEntropyLoss()
 
-    engine, train_dataloader, *args = colossalai.initialize(model=model,
-                                                            optimizer=optimizer,
-                                                            criterion=criterion,
-                                                            train_dataloader=train_dataloader)
+    engine, train_dataloader, *args = colossalai.legacy.initialize(model=model,
+                                                                   optimizer=optimizer,
+                                                                   criterion=criterion,
+                                                                   train_dataloader=train_dataloader)
     logger = get_dist_logger()
     rank = torch.distributed.get_rank()
     param_track = []
