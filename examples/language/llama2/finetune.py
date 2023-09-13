@@ -165,6 +165,7 @@ def main():
     use_pipeline = isinstance(booster.plugin, HybridParallelPlugin) and booster.plugin.pp_size > 1
     is_pp_last_stage = use_pipeline and booster.plugin.stage_manager.is_last_stage()
     print_flag = (not use_pipeline and coordinator.is_master()) or (use_pipeline and is_pp_last_stage)
+
     # ==============================
     # Initialize Tensorboard
     # ==============================
@@ -177,7 +178,6 @@ def main():
     # ==============================
 
     config = LlamaConfig.from_pretrained(args.model_path)
-    # config =  LlamaConfig(max_position_embeddings=4096)
     # use lazy init when using GeminiPlugin
     init_ctx = LazyInitContext(
         default_device=get_current_device()) if isinstance(plugin, GeminiPlugin) else nullcontext()
@@ -188,8 +188,7 @@ def main():
     # ==============================
     # Initialize Tokenizer, Dataset and Dataloader
     # ==============================
-    # tokenizer = LlamaTokenizer.from_pretrained('hf-internal-testing/llama-tokenizer')
-    tokenizer = LlamaTokenizer.from_pretrained(args.model_path)
+    tokenizer = LlamaTokenizer.from_pretrained('hf-internal-testing/llama-tokenizer')
     # follows fast chat: https://github.com/lm-sys/FastChat/blob/main/fastchat/train/train.py#L257
     tokenizer.pad_token = tokenizer.unk_token
 
