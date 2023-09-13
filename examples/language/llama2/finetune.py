@@ -49,8 +49,9 @@ def format_numel_str(numel: int) -> str:
 
 
 def tokenize_batch_for_finetune(batch, tokenizer: Optional[LlamaTokenizer] = None, max_length: int = 2048):
-    texts = [sample['prompt'] + sample["completion"] for sample in batch]
+    texts = [sample['prompt'] + sample['completion'] for sample in batch]
     data = tokenizer(texts, return_tensors="pt", padding='max_length', truncation=True, max_length=max_length)
+    data = {k: v.cuda() for k, v in data.items()}
     data['labels'] = data['input_ids'].clone()
     return data
 
@@ -85,6 +86,10 @@ def load(booster: Booster, model: nn.Module, optimizer: Optimizer, lr_scheduler:
     booster.load_lr_scheduler(lr_scheduler, os.path.join(load_dir, 'lr_scheduler'))
     running_states = load_json(os.path.join(load_dir, 'running_states.json'))
     return running_states['epoch'], running_states['step'], running_states['sample_start_index']
+
+
+def _criterion(outputs, inputs):
+    return outputs.loss
 
 
 def main():
@@ -122,13 +127,6 @@ def main():
     coordinator = DistCoordinator()
 
     # ==============================
-    # Initialize Tensorboard
-    # ==============================
-    if coordinator.is_master():
-        os.makedirs(args.tensorboard_dir, exist_ok=True)
-        writer = SummaryWriter(args.tensorboard_dir)
-
-    # ==============================
     # Initialize Booster
     # ==============================
     if args.plugin == 'gemini':
@@ -151,8 +149,8 @@ def main():
                                     max_norm=args.grad_clip)
     elif args.plugin == 'hybrid_parallel':
         # modify the param accordingly, default configuration is for llama2-7b
-        plugin = HybridParallelPlugin(tp_size=4,
-                                      pp_size=1,
+        plugin = HybridParallelPlugin(tp_size=2,
+                                      pp_size=2,
                                       num_microbatches=None,
                                       microbatch_size=1,
                                       enable_jit_fused=False,
@@ -164,11 +162,22 @@ def main():
 
     booster = Booster(plugin=plugin)
 
+    use_pipeline = isinstance(booster.plugin, HybridParallelPlugin) and booster.plugin.pp_size > 1
+    is_pp_last_stage = use_pipeline and booster.plugin.stage_manager.is_last_stage()
+    print_flag = (not use_pipeline and coordinator.is_master()) or (use_pipeline and is_pp_last_stage)
+    # ==============================
+    # Initialize Tensorboard
+    # ==============================
+    if print_flag:
+        os.makedirs(args.tensorboard_dir, exist_ok=True)
+        writer = SummaryWriter(args.tensorboard_dir)
+
     # ==============================
     # Initialize Model, Optimizer and LR Scheduler
     # ==============================
 
     config = LlamaConfig.from_pretrained(args.model_path)
+    # config =  LlamaConfig(max_position_embeddings=4096)
     # use lazy init when using GeminiPlugin
     init_ctx = LazyInitContext(
         default_device=get_current_device()) if isinstance(plugin, GeminiPlugin) else nullcontext()
@@ -179,7 +188,8 @@ def main():
     # ==============================
     # Initialize Tokenizer, Dataset and Dataloader
     # ==============================
-    tokenizer = LlamaTokenizer.from_pretrained('hf-internal-testing/llama-tokenizer')
+    # tokenizer = LlamaTokenizer.from_pretrained('hf-internal-testing/llama-tokenizer')
+    tokenizer = LlamaTokenizer.from_pretrained(args.model_path)
     # follows fast chat: https://github.com/lm-sys/FastChat/blob/main/fastchat/train/train.py#L257
     tokenizer.pad_token = tokenizer.unk_token
 
@@ -216,7 +226,7 @@ def main():
                                                                   lr_scheduler=lr_scheduler)
     torch.set_default_dtype(torch.float)
 
-    model = booster.load_model(model, args.model_path).cuda()
+    booster.load_model(model, args.model_path)
 
     coordinator.print_on_master(f'Booster init max CUDA memory: {torch.cuda.max_memory_allocated()/1024**2:.2f} MB')
     coordinator.print_on_master(
@@ -232,9 +242,6 @@ def main():
         coordinator.print_on_master(f'Loaded checkpoint {args.load} at epoch {start_epoch} step {start_step}')
 
     num_steps_per_epoch = len(dataloader)
-    use_pipeline = isinstance(booster.plugin, HybridParallelPlugin) and booster.plugin.pp_size > 1
-    is_pp_last_stage = use_pipeline and booster.plugin.stage_manager.is_last_stage()
-    print_flag = (not use_pipeline and coordinator.is_master()) or (use_pipeline and is_pp_last_stage)
 
     # if resume training, set the sampler start index to the correct value
     dataloader.sampler.set_start_index(sampler_start_idx)
@@ -252,14 +259,13 @@ def main():
                 if use_pipeline:
                     outputs = booster.execute_pipeline(dataloader_iter,
                                                        model,
-                                                       lambda x: x.loss,
+                                                       _criterion,
                                                        optimizer,
                                                        return_loss=True,
                                                        return_outputs=True)
                     loss = outputs["loss"]
                 else:
                     batch = next(dataloader_iter)
-                    batch = {k: v.cuda() for k, v in batch.items()}
                     outputs = model(**batch)
                     loss = outputs[0]
                     booster.backward(loss, optimizer)

@@ -11,3 +11,5 @@ cd ../..
 torchrun --standalone --nproc_per_node 4 pretrain.py \
     --plugin "hybrid_parallel" \
     --config "7b" \
+    --max_length 512 \
+    --save_interval 10
