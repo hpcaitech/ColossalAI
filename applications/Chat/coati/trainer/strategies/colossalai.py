@@ -156,7 +156,7 @@ class GeminiStrategy(DDPStrategy):
         warnings.warn(f'Stage 3 only supports fp16. Precision is set to fp16.')
 
         # NOTE: dist should be initialized before calling get_current_device()
-        plugin_initializer = lambda: GeminiPlugin(chunk_init_device=get_current_device(),
+        plugin_initializer = lambda: GeminiPlugin(device=get_current_device(),
                                                   placement_policy=placement_policy,
                                                   precision='fp16',
                                                   pin_memory=pin_memory,
