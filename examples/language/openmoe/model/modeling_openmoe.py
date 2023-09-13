@@ -125,16 +125,16 @@ def apply_rotary_embedding(q, k, cos, sin, decode=False, rotary_index=None):
     if decode and qlen == 1 and rotary_index is not None:
         qcos = cos[rotary_index + 1, :]
         qsin = sin[rotary_index + 1, :]
-        qcos = qcos.unsqueeze(2).expand(batch, qlen, qheads, d)
-        qsin = qsin.unsqueeze(2).expand(batch, qlen, qheads, d)
+        qcos = qcos.unsqueeze(2)
+        qsin = qsin.unsqueeze(2)
+        kcos, ksin = cos[:klen, :], sin[:klen, :]
+        kcos = kcos.unsqueeze(0).unsqueeze(2)
+        ksin = ksin.unsqueeze(0).unsqueeze(2)
     else:
         qcos, qsin = cos[:qlen, :], sin[:qlen, :]
-        qcos = qcos.unsqueeze(0).unsqueeze(2).expand(batch, qlen, qheads, d)
-        qsin = qsin.unsqueeze(0).unsqueeze(2).expand(batch, qlen, qheads, d)
-
-    kcos, ksin = cos[:klen, :], sin[:klen, :]
-    kcos = kcos.unsqueeze(0).unsqueeze(2).expand(batch, klen, kheads, d)
-    ksin = ksin.unsqueeze(0).unsqueeze(2).expand(batch, klen, kheads, d)
+        qcos = qcos.unsqueeze(0).unsqueeze(2)
+        qsin = qsin.unsqueeze(0).unsqueeze(2)
+        kcos, ksin = qcos, qsin
 
     out_q = (q * qcos) + (rotate_half(q) * qsin)
     out_k = (k * kcos) + (rotate_half(k) * ksin)
@@ -393,6 +393,7 @@ class LlamaAttention(nn.Module):
         max_length = max(query_states.shape[1], key_states.shape[1])
         assert max_length <= self.sin.shape[0]
         sin, cos = self.sin[:max_length], self.cos[:max_length]
+        # TODO: for inference, we can add emb kv into cache to avoid computation
         query_states, key_states = apply_rotary_embedding(query_states,
                                                           key_states,
                                                           cos,

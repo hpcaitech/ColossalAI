@@ -4,11 +4,16 @@ from typing import Callable, Optional
 
 import torch
 import torch.nn as nn
+
+from colossalai.kernel.triton.llama_act_combine_kernel import HAS_TRITON
 from colossalai.moe._operation import MoeInGradScaler, MoeOutGradScaler
 from colossalai.moe.manager import MOE_MANAGER
 from colossalai.moe.utils import get_activation
 from colossalai.shardformer.layer.utils import Randomizer
 from colossalai.tensor.moe_tensor.api import get_ep_size, set_moe_tensor_info
+
+if HAS_TRITON:
+    from colossalai.kernel.triton.llama_act_combine_kernel import LlamaActCombine
 
 
 class BaseMLPExperts(nn.Module):
@@ -78,6 +83,7 @@ class BaseMLPExperts(nn.Module):
                 nn.init.trunc_normal_(self.wi, std=math.sqrt(0.1 / hidden_size))
             nn.init.trunc_normal_(self.wo, std=math.sqrt(0.1 / intermediate_size))
 
+        self.act_name = activation
         self.act = get_activation(activation)
         self.drop = nn.Dropout(p=drop_rate)
 
@@ -103,7 +109,10 @@ class BaseMLPExperts(nn.Module):
         x = x.reshape(e, -1, h)
 
         if self.gated:
-            x = self.act(torch.bmm(x, self.wi_gate)) * torch.bmm(x, self.wi_up)
+            if HAS_TRITON and self.act_name == "swiglu":
+                x = LlamaActCombine.apply(torch.bmm(x, self.wi_gate), torch.bmm(x, self.wi_up))
+            else:
+                x = self.act(torch.bmm(x, self.wi_gate)) * torch.bmm(x, self.wi_up)
         else:
             x = torch.bmm(x, self.wi)
             x = self.act(x)
