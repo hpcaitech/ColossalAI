@@ -32,7 +32,7 @@ def SwiGLU(x):
 
 @pytest.mark.skipif(not (HAS_TRITON and TRITON_CUDA_SUPPORT), reason="requires triton")
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
-def test_llama_act_combine(dtype: str = torch.float16):
+def test_llama_act_combine(dtype: str):
     x_gate = torch.randn(BATCH_SIZE, SEQ_LEN, HIDDEN_SIZE * 2, dtype=dtype).cuda()
     x_gate_torch = nn.Parameter(x_gate.detach().clone())
     x_gate_kernel = nn.Parameter(x_gate.detach().clone())
@@ -53,4 +53,4 @@ def test_llama_act_combine(dtype: str = torch.float16):
 
 
 if __name__ == '__main__':
-    test_llama_act_combine()
+    test_llama_act_combine(torch.float16)
