@@ -85,7 +85,7 @@ class TPInferEngine:
         self.max_inner_outer_dim = 1
         self.gptq_temp_state_buffer = None
         self.gptq_temp_dq_buffer = None
-        self.bits = 4
+        self.bits = -1
         self.use_act_order = False
 
         self.shard_config = shard_config
@@ -109,6 +109,9 @@ class TPInferEngine:
                 if self.use_act_order:
                     self.max_inner_outer_dim = max(self.max_inner_outer_dim, submodule.infeatures,
                                                    submodule.outfeatures)
+                self.bits = submodule.bits
+        if not (HAS_GPTQ_CUDA and self.bits == 4):
+            return
 
         max_input_len = 1
         if self.use_act_order:
@@ -184,8 +187,7 @@ class TPInferEngine:
             setattr(policy, "gptq", True)
             tp_rank = dist.get_rank(self.shard_config.tensor_parallel_process_group)
             replace_autogptq_linear(model, tp_size=self.tp_size, tp_rank=tp_rank)
-            if HAS_GPTQ_CUDA and self.bits == 4:
-                self._post_init_gptq_buffer(model)
+            self._post_init_gptq_buffer(model)
         self.model, _ = shardformer.optimize(model, policy)
         self.model = self.model.cuda()
 
