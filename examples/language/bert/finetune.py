@@ -273,7 +273,6 @@ def main():
             "weight_decay": 0.0,
         },
     ]
-
     optimizer = HybridAdam(optimizer_grouped_parameters, lr=lr, eps=1e-8)
 
     # lr scheduler
@@ -308,7 +307,6 @@ def main():
                              data_builder.eval_splits, booster, coordinator)
 
     if coordinator.is_master():
-        print(results)
         if args.target_f1 is not None and 'f1' in results:
             assert results['f1'] >= args.target_f1, f'f1 score {results["f1"]} is lower than target {args.target_f1}'
 

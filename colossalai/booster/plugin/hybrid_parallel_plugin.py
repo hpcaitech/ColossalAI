@@ -308,7 +308,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         ) == 0, f'world size {dist.get_world_size()} is not divisible by tp_size {tp_size} * pp_size {pp_size}'
 
         if enable_sequence_parallelism:
-            assert tp_size > 1, 'Sequence parallelism must be enabled when using tensor parallelism'
+            assert tp_size > 1, 'Tensor parallelism must be enabled when using sequence parallelism'
 
         self.tp_size = tp_size
         self.pp_size = pp_size
@@ -422,7 +422,7 @@ class HybridParallelPlugin(PipelinePluginBase):
                                                              use_pipeline=self.enable_pipeline_parallelism,
                                                              param_info=param_info)
             else:
-                assert self.dp_size > 1, "Please use Zero when data parallel size is greater than 1."
+                assert self.dp_size > 1, "Data parallel size should be greater than 1 when using Zero."
                 assert self.precision != 'fp32', "Please set precision to 'fp16' or 'bf16' when using ZeRO."
                 optimizer = HybridParallelZeroOptimizer(optimizer,
                                                         model,
