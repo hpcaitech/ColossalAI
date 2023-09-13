@@ -1,5 +1,3 @@
-import inspect
-
 import torch
 
 from colossalai.context import ParallelMode
@@ -10,11 +8,9 @@ from colossalai.utils.model.utils import InsertPostInitMethodToModuleSubClasses
 
 from .layer_spec import LayerSpec
 from .utils import (
-    build_kwargs_for_function,
     build_kwargs_for_module,
     call_module,
     customized_partition,
-    exec_func_with_kwargs,
     exec_funcs_with_kwargs,
     partition_balanced,
     partition_uniform,
@@ -135,8 +131,10 @@ class PipelinableContext(InsertPostInitMethodToModuleSubClasses):
             children_name = []
             for child in self._root_children:
                 layer_spec = self._layer_spec_dict[id(child)]
-                if layer_spec.typename in (torch.nn.modules.container.ModuleList,
-                                           torch.nn.modules.container.Sequential):
+                if layer_spec.typename in (
+                        torch.nn.modules.container.ModuleList,
+                        torch.nn.modules.container.Sequential,
+                ):
                     for child_in_container in layer_spec.children:
                         self._layer_spec_list.append(self._layer_spec_dict[id(child_in_container)])
                         for name, module in self._model.named_modules():
@@ -155,9 +153,11 @@ class PipelinableContext(InsertPostInitMethodToModuleSubClasses):
             named_modules = dict(self._model.named_modules())
             for index, element in enumerate(exec_seq):
                 if isinstance(element, str):
-                    if element == 'SPLIT_NODE':
+                    if element == "SPLIT_NODE":
                         continue
-                    assert element in named_modules, f'Found invalid module name {element}, please check if you spell the module name correctly.'
+                    assert (
+                        element in named_modules
+                    ), f"Found invalid module name {element}, please check if you spell the module name correctly."
 
                     # get the layer spec based on the module ID
                     module = named_modules[element]
@@ -198,11 +198,12 @@ class PipelinableContext(InsertPostInitMethodToModuleSubClasses):
                     param_counts.append(layer_spec.count_params())
                 parts = partition_balanced(param_counts, pipeline_size, num_chunks)[rank]
             elif self._policy == "customized":
-                assert self._exec_seq is not None, f'An explicit exec_seq must be defined by user in customized policy mode.'
+                assert (self._exec_seq
+                        is not None), f"An explicit exec_seq must be defined by user in customized policy mode."
                 self.customized_parts = customized_partition(self._exec_seq)
                 assert len(self.customized_parts) == gpc.get_world_size(
                     ParallelMode.PIPELINE
-                ), f'World size is {gpc.get_world_size(ParallelMode.PIPELINE)}, but the number of partitions is {len(self.customized_parts)}'
+                ), f"World size is {gpc.get_world_size(ParallelMode.PIPELINE)}, but the number of partitions is {len(self.customized_parts)}"
                 parts = self.customized_parts[rank]
             else:
                 raise ValueError("A string partition policy should be one of ['uniform', 'balanced', 'customized'].")
@@ -241,7 +242,6 @@ class PipelinableModel(torch.nn.Module):
 
     def forward(self, *input_tensor, **kwargs):
         for module in self._module_list:
-
             if id(module) in self._front_func_dict:
                 input_tensor = exec_funcs_with_kwargs(self._front_func_dict, id(module), input_tensor, kwargs)
 

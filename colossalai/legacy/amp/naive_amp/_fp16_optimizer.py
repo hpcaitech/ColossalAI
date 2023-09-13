@@ -6,6 +6,7 @@ import torch.distributed as dist
 from torch.distributed import ProcessGroup
 from torch.optim import Optimizer
 
+from colossalai.amp.naive_amp.grad_scaler import BaseGradScaler
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.kernel.op_builder import FusedOptimBuilder
@@ -14,7 +15,6 @@ from colossalai.logging import get_dist_logger
 from colossalai.utils import multi_tensor_applier
 
 from ._utils import has_inf_or_nan, zero_gard_by_list
-from .grad_scaler import BaseGradScaler
 
 try:
     from colossalai._C import fused_optim

@@ -15,12 +15,12 @@ from torch.optim.lr_scheduler import _LRScheduler
 from torch.optim.optimizer import Optimizer
 from torch.utils.data import DataLoader
 
-from colossalai.amp import AMP_TYPE, convert_to_amp
-from colossalai.amp.naive_amp import NaiveAMPModel
 from colossalai.context import Config, ConfigException, ParallelMode
 from colossalai.context.moe_context import MOE_CONTEXT
 from colossalai.core import global_context as gpc
 from colossalai.interface import OptimizerWrapper
+from colossalai.legacy.amp import AMP_TYPE, convert_to_amp
+from colossalai.legacy.amp.naive_amp import NaiveAMPModel
 from colossalai.legacy.builder.builder import build_gradient_handler
 from colossalai.legacy.engine import Engine
 from colossalai.legacy.engine.gradient_accumulation import accumulate_gradient
