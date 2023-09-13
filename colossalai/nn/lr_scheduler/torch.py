@@ -1,12 +1,9 @@
+from torch.optim.lr_scheduler import ExponentialLR as _ExponentialLR
 from torch.optim.lr_scheduler import LambdaLR as _LambdaLR
 from torch.optim.lr_scheduler import MultiplicativeLR as _MultiplicativeLR
 from torch.optim.lr_scheduler import StepLR as _StepLR
-from torch.optim.lr_scheduler import ExponentialLR as _ExponentialLR
-
-from colossalai.registry import LR_SCHEDULERS
 
 
-@LR_SCHEDULERS.register_module
 class LambdaLR(_LambdaLR):
     """Sets the learning rate of each parameter group to the initial lr
     times a given function. When last_epoch=-1, sets initial lr as lr.
@@ -24,7 +21,6 @@ class LambdaLR(_LambdaLR):
         super().__init__(optimizer, lr_lambda, last_epoch=last_epoch)
 
 
-@LR_SCHEDULERS.register_module
 class MultiplicativeLR(_MultiplicativeLR):
     """Multiply the learning rate of each parameter group by the factor given
     in the specified function. When last_epoch=-1, sets initial lr as lr.
@@ -42,7 +38,6 @@ class MultiplicativeLR(_MultiplicativeLR):
         super().__init__(optimizer, lr_lambda, last_epoch=last_epoch)
 
 
-@LR_SCHEDULERS.register_module
 class StepLR(_StepLR):
     """Decays the learning rate of each parameter group by gamma every
     step_size epochs. Notice that such decay can happen simultaneously with
@@ -61,7 +56,6 @@ class StepLR(_StepLR):
         super().__init__(optimizer, step_size, gamma=gamma, last_epoch=last_epoch)
 
 
-@LR_SCHEDULERS.register_module
 class ExponentialLR(_ExponentialLR):
     """Decays the learning rate of each parameter group by gamma every epoch.
     When last_epoch=-1, sets initial lr as lr

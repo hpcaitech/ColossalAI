@@ -27,7 +27,7 @@ class ModelSharder(object):
 
     def __init__(self, model: nn.Module, policy: Policy, shard_config: ShardConfig = None) -> None:
         self.model = model
-        self.policy = get_autopolicy(self.model) if policy is None else policy
+        self.policy = get_autopolicy(self.model, shard_config.inference_only) if policy is None else policy
         self.shard_config = shard_config
 
     def shard(self) -> List[Dict[int, Tensor]]:
@@ -92,6 +92,7 @@ class ModelSharder(object):
             param_replacement (List[Callable]): The function list to get parameter shard information in policy
             method_replacement (Dict[str, Callable]):  Key is the method name, value is the method for replacement
             sub_module_replacement ((List[SubModuleReplacementDescription]): The function list to get sub module shard information in policy
+            include (Set[nn.Module], optional): The set of modules to keep on current device when pipeline parallel is enabled. Defaults to None
         """
         # released layers are not shardable
         can_replace_param_or_layer = include is None or module in include
@@ -100,14 +101,14 @@ class ModelSharder(object):
             if attr_replacement is not None:
                 self._replace_attr(module, attr_replacement)
 
-            if param_replacement is not None and can_replace_param_or_layer:
+            if param_replacement is not None and (include is None or module in include):
                 self._replace_param(module, param_replacement)
 
             if method_replacement is not None:
                 self._replace_method(module, method_replacement)
 
-            if sub_module_replacement is not None and can_replace_param_or_layer:
-                self._replace_sub_module(module, sub_module_replacement)
+            if sub_module_replacement is not None:
+                self._replace_sub_module(module, sub_module_replacement, include)
 
         for name, child in module.named_children():
             self._recursive_replace_layer(child,
@@ -154,18 +155,17 @@ class ModelSharder(object):
             bound_method = MethodType(new_method, module)
             setattr(module, method_name, bound_method)
 
-    def _replace_sub_module(
-        self,
-        org_layer: nn.Module,
-        sub_module_replacement: List[SubModuleReplacementDescription],
-    ) -> None:
+    def _replace_sub_module(self,
+                            org_layer: nn.Module,
+                            sub_module_replacement: List[SubModuleReplacementDescription],
+                            include: Optional[Set[nn.Module]] = None) -> None:
         r"""
         Shard one layer according to the policy, the layer should be the same class as the key in policy's argument_policy return dict
 
         Args:
             org_layer (torch.nn.Module): The origin layer object to shard
             sub_module_replacement (List[SubModuleReplacementDescription]): The sub module replacement description list
-
+            include (Set[nn.Module], optional): The set of modules to keep on current device when pipeline parallel is enabled. Defaults to None
         """
         for description in sub_module_replacement:
             suffix = description.suffix
@@ -174,8 +174,11 @@ class ModelSharder(object):
 
             assert target_module is not None, 'target_module should not be None'
 
-            # TODO: support different parallel mode
             native_sub_module = getattr_(org_layer, suffix, ignore=True)
+
+            # Skip replacement if submodule is not kept by current device when pipeline parallel is enabled.
+            if (include is not None) and (native_sub_module is not None) and (native_sub_module not in include):
+                continue
 
             assert not isinstance(native_sub_module, target_module), \
                 f"The module with suffix {suffix} has been replaced, please check the policy"

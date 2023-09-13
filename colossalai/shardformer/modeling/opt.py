@@ -518,7 +518,6 @@ def get_opt_flash_attention_forward():
         # for the decoder
         is_cross_attention = key_value_states is not None
         bsz, tgt_len, _ = hidden_states.size()
-        assert tgt_len % 4 == 0, "Flash Attention Error: The sequence length should be a multiple of 4."
 
         attention_input_shape = (bsz, -1, self.num_heads, self.head_dim)
         # get query proj

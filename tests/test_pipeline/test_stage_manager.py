@@ -21,7 +21,7 @@ def check_stage_manager():
         1: [0, 1],
         2: [2, 3],
         3: [2, 3],
-    }   
+    }
     pg_mesh = ProcessGroupMesh(DP_SIZE, PP_SIZE)
     stage_manager = PipelineStageManager(pg_mesh, PP_DIM)
     rank = dist.get_rank()
@@ -48,15 +48,6 @@ def check_stage_manager():
     if not is_last_stage:
         next_rank = ranks_in_group[ranks_in_group.index(rank) + 1]
         assert stage_manager.get_next_rank() == next_rank
-
-    # check virtual stage
-    stage_manager.set_num_virtual_stages(PP_SIZE * 2)
-    assert stage_manager.num_virtual_stages == PP_SIZE * 2
-    stage_manager.set_virtual_stage(stage_manager.stage * 2)
-    assert stage_manager.virtual_stage == stage_manager.stage * 2
-    with stage_manager.switch_virtual_stage(stage_manager.stage * 2 + 1):
-        assert stage_manager.virtual_stage == stage_manager.stage * 2 + 1
-    assert stage_manager.virtual_stage == stage_manager.stage * 2
 
     # check p2p groups
     for prev, cur in zip(ranks_in_group[:-1], ranks_in_group[1:]):

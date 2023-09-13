@@ -127,4 +127,10 @@ def test_cross_attention(proj_shape, dtype):
     assert list(y.shape) == [B, T, D]
 
     dy = torch.rand_like(y)
-    y.backward(dy)
+    grad_q, grad_k, grad_v = torch.autograd.grad(y, (q, k, v), dy)
+    grad_ref_q, grad_ref_k, grad_ref_v = torch.autograd.grad(out_ref, (q, k, v), dy)
+
+    torch.allclose(y, out_ref, atol=1e-18), f"{(y - out_ref).abs().max()}"
+    torch.allclose(grad_q, grad_ref_q, atol=1e-7), f"{(grad_q - grad_ref_q).abs().max()}"
+    torch.allclose(grad_k, grad_ref_k, atol=1e-7), f"{(grad_k - grad_ref_k).abs().max()}"
+    torch.allclose(grad_v, grad_ref_v, atol=1e-7), f"{(grad_v - grad_ref_v).abs().max()}"

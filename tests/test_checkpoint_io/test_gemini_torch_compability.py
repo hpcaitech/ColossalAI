@@ -60,12 +60,11 @@ def exam_torch_load_from_gemini(shard: bool, model_name: str):
         new_booster.load_model(new_model, model_ckpt_path, strict=True)
 
         # Add prefix to get aligned with pytorch parameter names.
-        check_state_dict_equal(
-            model.unwrap().state_dict(only_rank_0=False, prefix='module.module.', dtype=torch.float32),
-            new_model.state_dict(), False)
+        check_state_dict_equal(model.state_dict(only_rank_0=False, prefix='module.module.', dtype=torch.float32),
+                               new_model.state_dict(), False)
 
         new_booster.load_optimizer(new_optimizer, optimizer_ckpt_path)
-        check_state_dict_equal(optimizer.unwrap().state_dict(only_rank_0=False), new_optimizer.state_dict(), False)
+        check_state_dict_equal(optimizer.state_dict(only_rank_0=False), new_optimizer.state_dict(), False)
 
         # Check the new model/optimizer can successfully run.
         data = data_gen_fn()
@@ -124,13 +123,12 @@ def exam_gemini_load_from_torch(shard: bool, model_name: str):
         new_booster.load_model(new_model, model_ckpt_path, strict=True)
 
         # Add prefix to get aligned with pytorch parameter names.
-        check_state_dict_equal(
-            new_model.unwrap().state_dict(only_rank_0=False, prefix='module.module.', dtype=torch.float32),
-            model.state_dict(), False)
+        check_state_dict_equal(new_model.state_dict(only_rank_0=False, prefix='module.module.', dtype=torch.float32),
+                               model.state_dict(), False)
 
         new_booster.load_optimizer(new_optimizer, optimizer_ckpt_path)
         old_state_dict = optimizer.state_dict()
-        new_state_dict = new_optimizer.unwrap().state_dict(only_rank_0=False)
+        new_state_dict = new_optimizer.state_dict(only_rank_0=False)
 
         # Comparison of param_groups needs special care here,
         # since not all hyperparameters in Adam are used by HybridAdam
@@ -138,7 +136,7 @@ def exam_gemini_load_from_torch(shard: bool, model_name: str):
         for old_group, new_group in zip(old_state_dict['param_groups'], new_state_dict['param_groups']):
             for k in hyperparameters_to_examine:
                 assert k in old_group and k in new_group, \
-                        f"Old group's keys: {list(old_group.keys())}, New group's keys: {list(new_group.keys())}"
+                    f"Old group's keys: {list(old_group.keys())}, New group's keys: {list(new_group.keys())}"
                 assert old_group[k] == new_group[k]
         check_state_dict_equal(old_state_dict['state'], new_state_dict['state'], False)
 

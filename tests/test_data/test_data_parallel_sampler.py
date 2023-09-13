@@ -53,7 +53,6 @@ def run_data_sampler(rank, world_size, port):
     torch.cuda.empty_cache()
 
 
-@pytest.mark.cpu
 @rerun_if_address_is_in_use()
 def test_data_sampler():
     spawn(run_data_sampler, 4)

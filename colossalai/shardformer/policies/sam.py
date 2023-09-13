@@ -199,12 +199,16 @@ class SamPolicy(Policy):
 
         # use flash attention
         if self.shard_config.enable_flash_attention:
-            policy[SamAttention] = ModulePolicyDescription(method_replacement={
+            self.append_or_create_method_replacement(description={
                 'forward': get_sam_flash_attention_forward(),
-            })
-            policy[SamVisionAttention] = ModulePolicyDescription(method_replacement={
+            },
+                                                     policy=policy,
+                                                     target_key=SamAttention)
+            self.append_or_create_method_replacement(description={
                 'forward': get_sam_vision_flash_attention_forward(),
-            })
+            },
+                                                     policy=policy,
+                                                     target_key=SamVisionAttention)
 
         return policy
 
