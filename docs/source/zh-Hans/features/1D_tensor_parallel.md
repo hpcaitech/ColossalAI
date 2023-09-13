@@ -120,3 +120,5 @@ Output of the first linear layer: torch.Size([16, 512])
 Output of the second linear layer: torch.Size([16, 256])
 ```
 第一个线性层的输出被划分成2块 (每个形状为 `[16, 512]`), 而第二层在整个 GPU 上的输出是相同的。
+
+<!-- doc-test-command: echo  -->

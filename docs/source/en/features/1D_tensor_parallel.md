@@ -118,3 +118,5 @@ Output of the first linear layer: torch.Size([16, 512])
 Output of the second linear layer: torch.Size([16, 256])
 ```
 The output of the first linear layer is split into 2 partitions (each has the shape `[16, 512]`), while the second layer has identical outputs across the GPUs.
+
+<!-- doc-test-command: echo  -->
