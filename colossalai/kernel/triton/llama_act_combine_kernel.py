@@ -119,7 +119,7 @@ if HAS_TRITON:
                     x_gate: torch.Tensor,
                     x_up: torch.Tensor,
                     activation: str = "swiglu",
-                    precision: str = "fp32"):
+                    precision: str = "fp32") -> torch.Tensor:
             """
             act(x_gate) * x_up
 
@@ -173,7 +173,7 @@ if HAS_TRITON:
 
         @staticmethod
         @custom_bwd
-        def backward(ctx: Any, *grad_outputs: Tensor) -> Tuple[Tensor, None]:
+        def backward(ctx: Any, *grad_outputs: Tensor) -> Tuple[Tensor, Tensor, None, None]:
             # restore from ctx
             (x_gate1, x_gate2, x_up) = ctx.saved_tensors
             M, N, BLOCK_SIZE, num_warps = ctx.M, ctx.N, ctx.BLOCK_SIZE, ctx.num_warps

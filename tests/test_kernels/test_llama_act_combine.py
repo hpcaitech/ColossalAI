@@ -1,5 +1,6 @@
 import pytest
 import torch
+from packaging import version
 from torch import nn
 
 from colossalai.kernel.triton.llama_act_combine_kernel import LlamaActCombine
@@ -10,6 +11,7 @@ try:
 except ImportError:
     HAS_TRITON = False
     print("please install triton from https://github.com/openai/triton")
+TRITON_CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse('11.4')
 
 BATCH_SIZE = 4
 SEQ_LEN = 16
@@ -28,7 +30,7 @@ def SwiGLU(x):
     return x1 * (x2 * torch.sigmoid(x2))
 
 
-@pytest.mark.skipif(not HAS_TRITON, reason="requires triton")
+@pytest.mark.skipif(not (HAS_TRITON and TRITON_CUDA_SUPPORT), reason="requires triton")
 def test_llama_act_combine():
     x_gate = torch.randn(BATCH_SIZE, SEQ_LEN, HIDDEN_SIZE * 2).cuda()
     x_gate_torch = nn.Parameter(x_gate.detach().clone())
