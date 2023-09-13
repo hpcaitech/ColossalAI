@@ -42,7 +42,7 @@ def make_and_consume_experience(strategy):
     elif strategy == 'colossalai-zero2':
         strategy = LowLevelZeroStrategy()
     elif strategy == 'colossalai-gemini':
-        strategy = GeminiStrategy(placement_policy='cuda')
+        strategy = GeminiStrategy(placement_policy='auto')
     else:
         raise ValueError(f'Unsupported strategy "{strategy}"')
 

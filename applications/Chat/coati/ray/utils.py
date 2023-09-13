@@ -71,11 +71,9 @@ def get_strategy_from_args(strategy: str):
     if strategy == 'ddp':
         strategy_ = DDPStrategy()
     elif strategy == 'colossalai_gemini':
-        strategy_ = GeminiStrategy(placement_policy='cuda', initial_scale=2**5)
+        strategy_ = GeminiStrategy(placement_policy='auto', initial_scale=2**5)
     elif strategy == 'colossalai_zero2':
         strategy_ = LowLevelZeroStrategy(stage=2, placement_policy='cuda')
-    elif strategy == 'colossalai_gemini_cpu':
-        strategy_ = GeminiStrategy(placement_policy='cpu', initial_scale=2**5)
     elif strategy == 'colossalai_zero2_cpu':
         strategy_ = LowLevelZeroStrategy(stage=2, placement_policy='cpu')
     else:

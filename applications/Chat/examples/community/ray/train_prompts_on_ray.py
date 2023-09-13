@@ -102,7 +102,7 @@ class BasePPORole(DistributedTorchRayActor):
         if strategy == 'ddp':
             self._strategy = DDPStrategy()
         elif strategy == 'colossalai_gemini':
-            self._strategy = GeminiStrategy(placement_policy='cuda', initial_scale=2**5)
+            self._strategy = GeminiStrategy(placement_policy='auto', initial_scale=2**5)
         elif strategy == 'colossalai_zero2':
             self._strategy = LowLevelZeroStrategy(stage=2, placement_policy='cuda')
         else:
@@ -531,9 +531,7 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--prompt_csv_url', type=str)
-    parser.add_argument('--strategy',
-                        choices=['ddp', 'colossalai_gemini', 'colossalai_zero2'],
-                        default='ddp')
+    parser.add_argument('--strategy', choices=['ddp', 'colossalai_gemini', 'colossalai_zero2'], default='ddp')
     parser.add_argument('--model', default='gpt2', choices=['gpt2', 'bloom', 'opt'])
     parser.add_argument('--pretrain', type=str, default='gpt2')
     parser.add_argument('--save_path', type=str, default='actor_checkpoint_prompts.pt')
