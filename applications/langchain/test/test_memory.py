@@ -15,7 +15,7 @@ def test_memory_long():
     data_path = os.environ.get('TEST_DATA_PATH_EN')
     coati_api = CoatiAPI('llama', model_path)
     llm = CoatiLLM(n=4, api=coati_api)
-    memory = ConversationBufferWithSummary(llm=llm,
+    memory = ConversationBufferWithSummary(llm=llm, max_tokens=600,
         llm_kwargs={'max_new_tokens':50, 'temperature':0.6, 'do_sample':True})
     retriever_data = DocumentLoader([[data_path, 'company information']]).all_data
 
@@ -46,6 +46,7 @@ def test_memory_long():
     have_summarization_flag = False
     for i in range(40):
         chat_history = memory.load_memory_variables({'question':"this is a test input.", "input_documents":docs})['chat_history']
+        
         assert memory.get_conversation_length()<=remain
         memory.save_context({'question':"this is a test input."}, {"output":"this is a test output."})
         if "A summarization of historical conversation:" in chat_history:

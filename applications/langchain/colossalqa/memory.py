@@ -82,10 +82,8 @@ class ConversationBufferWithSummary(ConversationSummaryMemory):
                 self.existing_summary = self.predict_new_summary(self.summarized_history_temp.messages[i*2:i*2+2], 
                                                 self.existing_summary, stop=['\n\n']).strip().split('\n')[0].strip()
             for i in range(int(len(self.summarized_history_temp.messages)/2)):
-                temp = self.summarized_history_temp.messages.pop(0)
-                self.summarized_history.messages.append(temp)
-                temp = self.summarized_history_temp.messages.pop(0)
-                self.summarized_history.messages.append(temp)
+                self.summarized_history_temp.messages.pop(0)
+                self.summarized_history_temp.messages.pop(0)
         conversation_buffer = []
         for t in self.buffered_history.messages:
             if t.type=='human':
