@@ -37,13 +37,12 @@ def print_perf_stats(latency_set, config, bs, warmup=3):
 
 
 def bench_bloom(args):
-    # model_path = args.path
+
+    pretrained_model_dir = args.path
+    quantized_model_dir = args.quantized_path
     max_batch_size = args.batch_size
     max_input_len = args.input_len
     max_output_len = args.output_len
-
-    pretrained_model_dir = "/home/lczyh/data3/models/bloom-7b1"
-    quantized_model_dir = "/home/lcxk/data3/test_gptq_llama/bloom-7b-no-act-4bit"
 
     tokenizer = BloomTokenizerFast.from_pretrained(pretrained_model_dir)
     tokenizer.pad_token = tokenizer.eos_token
@@ -120,7 +119,8 @@ def test_bloom(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    # parser.add_argument('-p', '--path', type=str, help='Model path', required=True)
+    parser.add_argument('-p', '--path', type=str, help='Model path', required=True)
+    parser.add_argument('-p', '--quantized_path', type=str, help='Model path', required=True)
     parser.add_argument('-tp', '--tp_size', type=int, default=1, help='Tensor parallel size')
     parser.add_argument('-b', '--batch_size', type=int, default=16, help='Maximum batch size')
     parser.add_argument('--input_len', type=int, default=1024, help='Maximum input length')
