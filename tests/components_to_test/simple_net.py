@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from colossalai.nn import CheckpointModule
+from colossalai.legacy.nn import CheckpointModule
 from colossalai.utils.cuda import get_current_device
 
 from .registry import non_distributed_component_funcs

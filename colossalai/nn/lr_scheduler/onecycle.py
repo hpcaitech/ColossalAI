@@ -1,9 +1,6 @@
 from torch.optim.lr_scheduler import OneCycleLR as _OneCycleLR
 
-from colossalai.legacy.registry import LR_SCHEDULERS
 
-
-@LR_SCHEDULERS.register_module
 class OneCycleLR(_OneCycleLR):
     r"""Sets the learning rate of each parameter group according to the
     1cycle learning rate policy. The 1cycle policy anneals the learning

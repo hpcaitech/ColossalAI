@@ -59,7 +59,7 @@ class DeviceMesh:
         # 2. directly supply the logical mesh id
         assert mesh_shape is None or logical_mesh_id is None, \
             "Only one of mesh_shape and logical_mesh_id can be specified." \
-            "Logical mesh IDs are obtained from either mesh_shape + phyiscal_mesh_id or directly from the user-supplied logical_mesh_id"
+            "Logical mesh IDs are obtained from either mesh_shape + physical_mesh_id or directly from the user-supplied logical_mesh_id"
 
         if logical_mesh_id is None:
             self._mesh_shape = mesh_shape
@@ -74,7 +74,7 @@ class DeviceMesh:
         assert torch.equal(torch.unique(self._physical_mesh_id), torch.unique(self.logical_mesh_id)), \
             "physical and logical mesh IDs should contain the same elements, please check if you have consistent physical_mesh_id and logical_mesh_id."
         assert torch.unique(self._physical_mesh_id).numel() == self._physical_mesh_id.numel(), \
-            "Found duplicate IDs in the phyiscal_mesh_id and this is not allowed, please check your physical_mesh_id again."
+            "Found duplicate IDs in the physical_mesh_id and this is not allowed, please check your physical_mesh_id again."
         assert torch.unique(self.logical_mesh_id).numel() == self.logical_mesh_id.numel(), \
             "Found duplicate IDs in the logical_mesh_id and this is not allowed, please check your logical_mesh_id again."
 
@@ -118,7 +118,7 @@ class DeviceMesh:
         self._global_rank_of_current_process = None
         self._is_initialized = False
 
-        # attribute used to inidicate whether this objectd
+        # attribute used to indicate whether this object
         # is created using DeviceMesh.from_process_group
         # this attribute can be used to do some check in methods
         # such get_process_group as no global rank information
@@ -395,7 +395,7 @@ class DeviceMesh:
         Example:
 
         ```python
-        sphysical_mesh_id = torch.arange(0, 16)
+        physical_mesh_id = torch.arange(0, 16)
         mesh_shape = (4, 4)
 
         # logical mesh will look like
@@ -438,7 +438,7 @@ class DeviceMesh:
             # the _local_rank refers to the local rank of the current process
             for _local_rank in range(self.logical_mesh_id.shape[dim]):
 
-                # if this dimension is not initailized yet,
+                # if this dimension is not initialized yet,
                 # initialize it with an empty array
                 if dim not in processes_in_the_same_process_group:
                     processes_in_the_same_process_group[dim] = []
@@ -447,7 +447,7 @@ class DeviceMesh:
                 process_coordinates = self._global_to_local_rank_mapping[global_rank].copy()
 
                 # replace the local rank in the given dimension with the
-                # lcoal rank of the current process iterated
+                # local rank of the current process iterated
                 process_coordinates[dim] = _local_rank
                 processes_in_the_same_process_group[dim].append(process_coordinates)
 

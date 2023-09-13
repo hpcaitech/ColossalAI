@@ -42,7 +42,7 @@ from colossalai.core import global_context as gpc
 from colossalai.legacy.engine.schedule import (InterleavedPipelineSchedule,
                                         PipelineSchedule)
 from colossalai.logging import disable_existing_loggers, get_dist_logger
-from colossalai.nn.layer.wrapper import PipelineSharedModuleWrapper
+from colossalai.legacy.nn.layer.wrapper import PipelineSharedModuleWrapper
 from colossalai.legacy.trainer import Trainer, hooks
 from colossalai.utils.timer import MultiTimer
 from model_zoo.gpt import GPTLMLoss

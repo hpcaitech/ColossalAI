@@ -1,12 +1,14 @@
 from .activation_checkpoint import checkpoint
 from .checkpointing import load_checkpoint, save_checkpoint
 from .common import (
+    _cast_float,
     clip_grad_norm_fp32,
     conditional_context,
     copy_tensor_parallel_attributes,
     count_zeros_fp32,
     disposable,
     ensure_path_exists,
+    free_storage,
     is_ddp_ignored,
     is_dp_rank_0,
     is_model_parallel_parameter,
@@ -72,4 +74,6 @@ __all__ = [
     'disposable',
     'colo_set_cpu_memory_capacity',
     'colo_get_cpu_memory_capacity',
+    '_cast_float',
+    'free_storage',
 ]
