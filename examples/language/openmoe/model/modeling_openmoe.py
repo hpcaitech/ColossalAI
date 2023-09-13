@@ -95,7 +95,7 @@ def generate_fixed_pos_embedding(features, length, min_timescale=1.0, max_timesc
     timescale = min_timescale * (max_timescale / min_timescale)**fraction
     rotational_frequency = 1. / timescale
 
-    sinusoid_inp = torch.einsum('i,j->ij', torch.arange(length, dtype=torch.float64).cuda(), rotational_frequency)
+    sinusoid_inp = torch.einsum('i,j->ij', torch.arange(length, dtype=torch.float32).cuda(), rotational_frequency)
 
     sinusoid_inp = torch.cat([sinusoid_inp, sinusoid_inp], dim=-1)
 
@@ -313,6 +313,7 @@ class LlamaAttention(nn.Module):
         self.k_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=False)
         self.v_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=False)
         self.o_proj = nn.Linear(self.num_heads * self.head_dim, self.hidden_size, bias=False)
+        self.sin, self.cos = generate_fixed_pos_embedding(self.head_dim, self.max_position_embeddings, 1e4)
         self._init_rope()
 
     def _init_rope(self):
@@ -382,9 +383,9 @@ class LlamaAttention(nn.Module):
 
         query_states = query_states.transpose(1, 2)
         key_states = key_states.transpose(1, 2)
-        dim = query_states.shape[-1]
         max_length = max(query_states.shape[1], key_states.shape[1])
-        sin, cos = generate_fixed_pos_embedding(dim, max_length, max_timescale=1e4)
+        assert max_length <= self.sin.shape[0]
+        sin, cos = self.sin[:max_length], self.cos[:max_length]
         query_states, key_states = apply_rotary_embedding(query_states,
                                                           key_states,
                                                           cos,
