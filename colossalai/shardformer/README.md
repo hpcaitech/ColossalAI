@@ -60,18 +60,28 @@ sharded_model, shared_params = shard_former.optimize(model).to('cuda')
 # do everything like normal
 ...
 ```
-shardformer configuration
 
-`tensor_parallel_process_group`: the process group of tensor parallelism, it's necessary when using tensor parallel.
-`pipeline_stage_manager`: If using pipeline parallelism, it's necessary to specify a pipeline stage manager for inter-process communication in pipeline parallelism.
-{{ autodoc:colossalai.pipeline.stage_manager.PipelineStageManager }}
-`enable_tensor_parallelism`: using tensor parallel, partition the model along the columns or along the rows
-`enable_fused_normalization`: using apex fused layernorm
-`enable_flash_attention`: using flash attention
-`enable_jit_fused`: using jit fused operators
-`enable_sequence_parallelism`: using sequence parallelism, partition these non-tensor parallel regions along the sequence dimension.
-`enable_sequence_overlap`: overlap the computation and communication in the sequence parallelism, it's used with `enable_sequence_parallelism`.
+Following are the description `ShardConfig`'s arguments:
 
+- `tensor_parallel_process_group`: The process group of tensor parallelism, it's necessary when using tensor parallel. Defaults to None, which is the global process group.
+
+- `pipeline_stage_manager`: If using pipeline parallelism, it's necessary to specify a pipeline stage manager for inter-process communication in pipeline parallelism. Defaults to None, which means not using pipeline parallelism.
+
+- `enable_tensor_parallelism`: Whether to use tensor parallelism. Defaults to True.
+
+- `enable_fused_normalization`: Whether to use fused layernorm. Defaults to False.
+
+- `enable_flash_attention`:  Whether to switch on flash attention. Defaults to False.
+
+- `enable_jit_fused`: Whether to switch on JIT fused operators. Defaults to False.
+
+- `enable_sequence_parallelism`:  Whether to turn on sequence parallelism, which partitions non-tensor-parallel regions along the sequence dimension. Defaults to False.
+
+- `enable_sequence_overlap`: Whether to turn on sequence overlap, wheich overlap the computation and communication in sequence parallelism. It can only be used when `enable_sequence_parallelism` is True. Defaults to False.
+
+-  `enable_all_optimization`: Whether to turn on all optimization tools including `fused normalizaion`, `flash attention`, `JIT fused operators`, `sequence parallelism` and `sequence overlap`. Defaults to False.
+
+- `inference_only`: Whether only doing forward passing. Defaults to False.
 
 ### Write your own policy
 

@@ -52,63 +52,38 @@ If you want to delve deeper into the design of Shardformer or customize your own
 
 ## Usage
 
-### Usage 1: Training Through Shardformer APIs
+### Shardformer Configuration
 
-The sample API usages are given below. If you want to enable the usage of flash attention, please install `flash_attn` through pip, and xformers's `cutlass_op` provides a supplementary optimization:
+The configuration of Shardformer is controlled by class `ShardConfig`:
+{{ autodoc:colossalai.shardformer.ShardConfig }}
 
-```python
-from colossalai.shardformer import ShardConfig, ShardFormer
-from transformers import BertForMaskedLM
-import colossalai
+If you want to enable Apex fused layernorm, please install `apex`.
+If you want to enable the usage of flash attention, please install `flash_attn`.
+In addition, xFormers's `cutlass_op` provides a supplementary optimization.
 
-# launch colossalai
-colossalai.launch_from_torch(config={})
+### Enabling Shardformer
 
-# create model
-config = BertConfig.from_pretrained('bert-base-uncased')
-model = BertForMaskedLM.from_pretrained('bert-base-uncased', config=config)
+#### 1. Enabling Shardformer Through Booster (Recommended)
 
-# create huggingface model as normal
-shard_config = ShardConfig(tensor_parallel_process_group=tp_group,
-                        pipeline_stage_manager=stage_manager,
-                        enable_tensor_parallelism=True,
-                        enable_fused_normalization=True,
-                        enable_flash_attention=True,
-                        enable_jit_fused=True,
-                        enable_sequence_parallelism=True,
-                        enable_sequence_overlap=True)
+Enabling `Shardformer` through `Booster` initialized with `HybridParallelPlugin` is the recommended way to awaken the power of Shardformer.
+The main reason is that pipeline parallelism cannot successfully work without the calling of `execute_pipeline` method of `Booster`. Besides, `HybridParallelPlugin` provides the capacity to combine the features of `Shardformer` with other useful features, such as mixed precision training or Zero.
 
-shard_former = ShardFormer(shard_config=shard_config)
-sharded_model, shared_params = shard_former.optimize(model).to('cuda')
+More details about this usage can be found in chapter [Booster API](../basics/booster_api.md) and [Booster Plugins](../basics/booster_plugins.md).
 
-# do everything like normal
-...
-```
-shardformer configuration
-
-`tensor_parallel_process_group`: the process group of tensor parallelism, it's necessary when using tensor parallel.
-`pipeline_stage_manager`: If using pipeline parallelism, it's necessary to specify a pipeline stage manager for inter-process communication in pipeline parallelism.
-{{ autodoc:colossalai.pipeline.stage_manager.PipelineStageManager }}
-`enable_tensor_parallelism`: using tensor parallel, partition the model along the columns or along the rows
-`enable_fused_normalization`: using apex fused layernorm
-`enable_flash_attention`: using flash attention
-`enable_jit_fused`: using jit fused operators
-`enable_sequence_parallelism`: using sequence parallelism, partition these non-tensor parallel regions along the sequence dimension.
-`enable_sequence_overlap`: overlap the computation and communication in the sequence parallelism, it's used with `enable_sequence_parallelism`.
-
-example:
-- [Tensor Parallelism with Shardformer](https://github.com/hpcaitech/ColossalAI/tree/main/colossalai/shardformer/examples)
+[Here](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/bert) is an example on how to trigger `Shardformer` through `HybridParallelPlugin`. Please be aware that there's a difference in the way of doing forward and backward between the situation of using pipeline and not using pipeline.
 
 
-### Usage 2: Training Through HybridParallelPlugin
+#### 2. Enabling Shardformer Through Shardformer APIs (Not Recommended)
 
-Need a link to booster_plugin.md here
+You can also use Shardformer through manually calling Shardformer APIs. The sample API usages are given below. This usage is not recommended since pipeline parallelism can't run without `Booster`.
 
-example:
-- [Enabling Shardformer using HybridPrallelPlugin](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/bert)
+[Here](https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/shardformer/examples/convergence_benchmark.py)
+is an example on how to trigger `Shardformer` through calling Shardformer APIs.
 
 
-Awakening Shardformer using Hybrid Parallel Plugin (Here should be a link) is more recommended.
+### Precautions
+
+When you use Shardformer to process classification models such as `GPT2ForSequenceClassification`, `ViTForImageClassification`, please ensure that the total number of labels should be integer multiple of tensor parallel size, otherwise Shardformer can't process the classifier layer correctly. A simple fix could be appending dummy labels in transformers config. This bug will be fixed in future version of Shardformer.
 
 The case of training ChatGLM-2 6B is a little special: since Huggingface transformers doesn't officially support ChatGLM at present, please import the configuration/model classes through
 ```python
