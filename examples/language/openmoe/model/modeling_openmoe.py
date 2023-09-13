@@ -1020,7 +1020,19 @@ class OpenMoeForCausalLM(LlamaPreTrainedModel):
         z_loss = self.config.router_z_loss_factor * sum(z_loss) / len(z_loss)
         return aux_loss, z_loss
 
-    def _calculate_loss(self, logits, targets):
+    def _calculate_loss(self,
+                        logits: torch.Tensor,
+                        targets: torch.Tensor
+                        ) -> torch.Tensor:
+        """Compute cross entropy and entropy for log probs and targets.
+
+        Args:
+            logits: [batch, length, num_classes] float array.
+            targets: categorical targets [batch, length] int array.
+
+        Returns:
+            Tuple of scalar loss.
+        """
         if len(logits.shape) != len(targets.shape) + 1:
             raise ValueError('Incorrect shapes. Got shape %s logits and %s targets' %
                              (str(logits.shape), str(targets.shape)))
@@ -1045,6 +1057,28 @@ class OpenMoeForCausalLM(LlamaPreTrainedModel):
 
 
 class ZLossCrossEntropy(torch.autograd.Function):
+    """Computes cross entropy loss with stable custom gradient.
+
+    Computes a stabilized-gradient version of:
+        -jnp.sum(targets * nn.log_softmax(logits), axis=-1)
+
+    If z_loss > 0, then an auxiliary loss equal to z_loss*log(z)^2
+    will be added to the cross entropy loss (z = softmax normalization constant).
+    The two uses of z_loss are:
+    1. To keep the logits from drifting too far from zero, which can cause
+        unacceptable roundoff errors in bfloat16.
+    2. To encourage the logits to be normalized log-probabilities.
+
+    Args:
+        logits: [batch, length, num_classes] float array.
+        targets: categorical one-hot targets [batch, length, num_classes] float
+        array.
+        z_loss: coefficient for auxilliary z-loss loss term.
+
+    Returns:
+        tuple with the total loss and the z_loss, both
+        float arrays with shape [batch, length].
+    """
 
     @staticmethod
     def forward(ctx, logits, targets, z_loss):
