@@ -1,11 +1,8 @@
 from torch.optim.lr_scheduler import _LRScheduler
 
-from colossalai.legacy.registry import LR_SCHEDULERS
-
 from .delayed import WarmupScheduler
 
 
-@LR_SCHEDULERS.register_module
 class PolynomialLR(_LRScheduler):
     """Polynomial learning rate scheduler.
 
@@ -41,7 +38,6 @@ class PolynomialLR(_LRScheduler):
                 for base_lr in self.base_lrs]
 
 
-@LR_SCHEDULERS.register_module
 class PolynomialWarmupLR(WarmupScheduler):
     """Polynomial learning rate scheduler with warmup.
 

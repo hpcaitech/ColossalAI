@@ -5,10 +5,7 @@ from typing import Iterable
 import torch
 from torch.optim import Optimizer
 
-from colossalai.legacy.registry import OPTIMIZERS
 
-
-@OPTIMIZERS.register_module
 class Lars(Optimizer):
     r"""Implements the LARS optimizer from `"Large batch training of convolutional networks"
     <https://arxiv.org/pdf/1708.03888.pdf>`_.

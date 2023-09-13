@@ -32,6 +32,9 @@ class ShardConfig:
     enable_jit_fused: bool = False
     enable_sequence_parallelism: bool = False
     enable_sequence_overlap: bool = False
+    inference_only: bool = False
+    enable_sequence_parallelism: bool = False
+    enable_sequence_overlap: bool = False
 
     # pipeline_parallel_size: int
     # data_parallel_size: int
@@ -68,3 +71,9 @@ class ShardConfig:
         self.enable_jit_fused = True
         self.enable_sequence_parallelism = True
         self.enable_sequence_overlap = True
+
+    def _infer(self):
+        """
+        Set default params for inference.
+        """
+        assert self.pipeline_stage_manager is None, "pipeline parallelism is not supported in inference for now"

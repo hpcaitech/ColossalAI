@@ -43,10 +43,8 @@ class LlamaPolicy(Policy):
 
         if self.shard_config.enable_tensor_parallelism:
             decoder_attribute_replacement = {
-                "self_attn.hidden_size":
-                    self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
-                "self_attn.num_heads":
-                    self.model.config.num_attention_heads // self.shard_config.tensor_parallel_size,
+                "self_attn.hidden_size": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
+                "self_attn.num_heads": self.model.config.num_attention_heads // self.shard_config.tensor_parallel_size,
             }
             if getattr(self.model.config, "num_key_value_heads", False):
                 decoder_attribute_replacement["self_attn.num_key_value_heads"] = \

@@ -1,11 +1,9 @@
 # modified from https://github.com/NVIDIA/apex/blob/master/apex/optimizers/fused_lamb.py
 import torch
 
-from colossalai.legacy.registry import OPTIMIZERS
 from colossalai.utils import multi_tensor_applier
 
 
-@OPTIMIZERS.register_module
 class FusedLAMB(torch.optim.Optimizer):
     """Implements LAMB algorithm.
 

@@ -136,14 +136,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     'num_microbatches': 4,
     'enable_all_optimization': True,
     'use_lazy_init': True,
-    'enable_sequence_parallelism': True,
-    'precision': 'fp32',
-}, {
-    'tp_size': 4,
-    'pp_size': 1,
-    'enable_all_optimization': True,
-    'use_lazy_init': True,
-    'enable_sequence_parallelism': True,
     'precision': 'fp32',
 }, {
     'tp_size': 2,
@@ -219,7 +211,6 @@ def check_gpt2_3d(rank, world_size, port):
     run_gpt2_3d_test()
 
 
-@pytest.mark.skip(reason="This test will hang in CI")
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()

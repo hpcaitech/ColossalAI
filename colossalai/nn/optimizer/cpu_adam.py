@@ -4,12 +4,10 @@ from typing import Optional
 import torch
 
 from colossalai.kernel.op_builder import CPUAdamBuilder
-from colossalai.legacy.registry import OPTIMIZERS
 
 from .nvme_optimizer import NVMeOptimizer
 
 
-@OPTIMIZERS.register_module
 class CPUAdam(NVMeOptimizer):
     """Implements Adam algorithm.
 
