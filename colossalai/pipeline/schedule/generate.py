@@ -178,6 +178,17 @@ class GenerateSchedule(PipelineSchedule):
         self.action_interval_buffer.hidden_states = ret
 
     def genAction(self, model: Module):
+        """
+        In p2p step method, we use `P2POp` asynchronous communication method, so the communication need to be done
+        at the begin of each microbatch, it's a more clear way to use an action list to do so. In this function, it will
+        generate a sequence action for current state, and do the action one by one.
+
+        Args:
+            model (Module): Model to be run.
+
+        Returns:
+            List[Callable]: A list of action, each action is a callable function, and it will be called in order.
+        """
         actions = []
         if self.stage_manager.is_first_stage():
             if self.mb_manager.cur_state is Status.PREFILL:
@@ -211,8 +222,25 @@ class GenerateSchedule(PipelineSchedule):
         print(f"Average encode time: {sum(encoder)/len(encoder)}")
         print(f"Average end2end time: {sum(end2end)/len(end2end)}")
 
-    @torch.no_grad()
     def generate_step(self, model: Module, data_iter: Iterable) -> Union[torch.Tensor, dict]:
+        if self.stage_manager.num_stages == 2:
+            return self.generate_step_p2p(model, data_iter)
+        else:
+            return self.generate_step_broadcast(model, data_iter)
+
+    @torch.no_grad()
+    def generate_step_p2p(self, model: Module, data_iter: Iterable) -> Union[torch.Tensor, dict]:
+        """
+        Forward one step of the pipeline, when pipeline size is 2, the schedule is a circle, broadcast communication will be
+        blocked, so we use `P2POp` asynchronous communication method.
+
+        Args:
+            model (Module): Model to be run.
+            data_iter (Iterable): Data iterator.
+
+        Returns:
+            Union[torch.Tensor, dict]: The intermediate output (dict) of the current stage. If it is the last stage, the output is the loss (Tensor).
+        """
         output_sequence = []
         self.load_batch(data_iter)
         model.eval()
@@ -225,23 +253,21 @@ class GenerateSchedule(PipelineSchedule):
             while self.mb_manager.is_micro_batch_done() is False:
                 actions = self.genAction(model)
                 for action in actions:
-                    print(f"rank {self.stage_manager.stage}, {action.func.__name__}")
                     action()
-                    # print(f"rank {self.stage_manager.stage}, {self.action_interval_buffer}")
                 self.mb_manager.next()
             # All microbatch in current round is DONE
             if self.stage_manager.is_first_stage():
                 output_sequence.extend(self.mb_manager.export_new_tokens())
             else:
                 self.CommAction(False)
-                print(f"rank {self.stage_manager.stage}, Final Comm")
             self.mb_manager.clear()
 
         return output_sequence
 
     @torch.no_grad()
-    def generate_step1(self, model: Module, data_iter: Iterable) -> Union[torch.Tensor, dict]:
-        """Forward one step of the pipeline
+    def generate_step_broadcast(self, model: Module, data_iter: Iterable) -> Union[torch.Tensor, dict]:
+        """
+        Forward one step of the pipeline
 
         Args:
             model (Module): Model to be run.
