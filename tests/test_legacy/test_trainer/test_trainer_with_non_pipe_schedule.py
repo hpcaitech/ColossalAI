@@ -2,7 +2,7 @@ import pytest
 import torch
 
 import colossalai
-from colossalai.amp.amp_type import AMP_TYPE
+from colossalai.legacy.amp.amp_type import AMP_TYPE
 from colossalai.legacy.trainer import Trainer
 from colossalai.logging import get_dist_logger
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn

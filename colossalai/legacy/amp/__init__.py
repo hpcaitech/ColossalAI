@@ -22,7 +22,7 @@ def convert_to_amp(model: nn.Module, optimizer: Optimizer, criterion: _Loss, mod
         param model (:class:`torch.nn.Module`): your model object.
         optimizer (:class:`torch.optim.Optimizer`): your optimizer object.
         criterion (:class:`torch.nn.modules.loss._Loss`): your loss function object.
-        mode (:class:`colossalai.amp.AMP_TYPE`): amp mode.
+        mode (:class:`colossalai.legacy.amp.AMP_TYPE`): amp mode.
         amp_config (Union[:class:`colossalai.context.Config`, dict]): configuration for different amp modes.
 
     Returns:

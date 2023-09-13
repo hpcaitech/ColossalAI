@@ -4,7 +4,7 @@ import pytest
 import torch
 
 import colossalai
-from colossalai.amp import convert_to_apex_amp, convert_to_naive_amp
+from colossalai.legacy.amp import convert_to_apex_amp, convert_to_naive_amp
 from colossalai.testing import assert_close_loose, clear_cache_before_run, rerun_if_address_is_in_use, spawn
 from tests.components_to_test.registry import non_distributed_component_funcs
 

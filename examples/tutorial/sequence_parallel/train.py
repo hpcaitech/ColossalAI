@@ -8,10 +8,10 @@ from lr_scheduler import AnnealingLR
 from model.bert import BertForPretrain, build_pipeline_bert
 
 import colossalai
-from colossalai.amp import AMP_TYPE
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.kernel import LayerNorm
+from colossalai.legacy.amp import AMP_TYPE
 from colossalai.legacy.engine.schedule import PipelineSchedule
 from colossalai.legacy.utils import is_using_pp
 from colossalai.logging import get_dist_logger
