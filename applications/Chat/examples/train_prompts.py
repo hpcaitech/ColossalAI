@@ -23,7 +23,7 @@ def main(args):
     if args.strategy == 'ddp':
         strategy = DDPStrategy()
     elif args.strategy == 'colossalai_gemini':
-        strategy = GeminiStrategy(placement_policy='cuda', initial_scale=2**5)
+        strategy = GeminiStrategy(placement_policy='auto', initial_scale=2**5)
     elif args.strategy == 'colossalai_zero2':
         strategy = LowLevelZeroStrategy(stage=2, placement_policy='cuda')
     else:
@@ -108,16 +108,14 @@ def main(args):
 
     # configure tokenizer
     if args.model == 'gpt2':
-        tokenizer = GPT2Tokenizer.from_pretrained(
-            'gpt2' if args.tokenizer is None else args.tokenizer)
+        tokenizer = GPT2Tokenizer.from_pretrained('gpt2' if args.tokenizer is None else args.tokenizer)
         tokenizer.pad_token = tokenizer.eos_token
     elif args.model == 'bloom':
         tokenizer = BloomTokenizerFast.from_pretrained(
             'bigscience/bloom-560m' if args.tokenizer is None else args.tokenizer)
         tokenizer.pad_token = tokenizer.eos_token
     elif args.model == 'opt':
-        tokenizer = AutoTokenizer.from_pretrained(
-            "facebook/opt-350m" if args.tokenizer is None else args.tokenizer)
+        tokenizer = AutoTokenizer.from_pretrained("facebook/opt-350m" if args.tokenizer is None else args.tokenizer)
         tokenizer.pad_token = tokenizer.eos_token
     elif args.model == 'llama':
         tokenizer = LlamaTokenizer.from_pretrained(
@@ -155,26 +153,24 @@ def main(args):
         strategy.prepare((actor, actor_optim), (critic, critic_optim), reward_model, initial_model)
 
     # configure trainer
-    trainer = PPOTrainer(
-        strategy,
-        actor,
-        critic,
-        reward_model,
-        initial_model,
-        actor_optim,
-        critic_optim,
-        kl_coef=args.kl_coef,
-        ptx_coef=args.ptx_coef,
-        train_batch_size=args.train_batch_size,
-        max_length=args.max_seq_len,
-        use_cache=True,
-        do_sample=True,
-        temperature=1.0,
-        top_k=50,
-        pad_token_id=tokenizer.pad_token_id,
-        eos_token_id=tokenizer.eos_token_id,
-        offload_inference_models=args.strategy != 'colossalai_gemini'
-    )
+    trainer = PPOTrainer(strategy,
+                         actor,
+                         critic,
+                         reward_model,
+                         initial_model,
+                         actor_optim,
+                         critic_optim,
+                         kl_coef=args.kl_coef,
+                         ptx_coef=args.ptx_coef,
+                         train_batch_size=args.train_batch_size,
+                         max_length=args.max_seq_len,
+                         use_cache=True,
+                         do_sample=True,
+                         temperature=1.0,
+                         top_k=50,
+                         pad_token_id=tokenizer.pad_token_id,
+                         eos_token_id=tokenizer.eos_token_id,
+                         offload_inference_models=args.strategy != 'colossalai_gemini')
 
     trainer.fit(prompt_dataloader=prompt_dataloader,
                 pretrain_dataloader=pretrain_dataloader,

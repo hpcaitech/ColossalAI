@@ -9,10 +9,9 @@ import colossalai
 from colossalai.booster.plugin import GeminiPlugin, LowLevelZeroPlugin
 # from colossalai.booster.plugin.gemini_plugin import GeminiModel
 from colossalai.booster.plugin.low_level_zero_plugin import LowLevelZeroModel
-# from colossalai.zero import ColoInitContext
-from colossalai.lazy.lazy_init import LazyInitContext
 from colossalai.tensor import ProcessGroup, ShardSpec
 from colossalai.utils import get_current_device
+from colossalai.zero import ColoInitContext
 from colossalai.zero.gemini.gemini_ddp import GeminiDDP
 
 from .ddp import DDPStrategy
@@ -65,24 +64,20 @@ class LowLevelZeroStrategy(DDPStrategy):
         assert placement_policy in ('cpu', 'cuda'), f'Unsupported placement policy "{placement_policy}"'
         assert precision in ('fp32', 'fp16'), f'Unsupported precision "{precision}"'
 
-        plugin_initializer = lambda: LowLevelZeroPlugin(
-        # zero_config
-            stage=stage,
-            precision=precision,
-        # zero_optim_config
-            reduce_bucket_size_in_m=reduce_bucket_size,
-            overlap_communication=overlap_communication,
-            cpu_offload=(placement_policy == 'cpu'),
-        # optim_config
-            initial_scale=initial_scale,
-            growth_factor=growth_factor,
-            backoff_factor=backoff_factor,
-            growth_interval=growth_interval,
-            hysteresis=hysteresis,
-            min_scale=min_scale,
-            max_scale=max_scale,
-            max_norm=max_norm,
-            norm_type=norm_type)
+        plugin_initializer = lambda: LowLevelZeroPlugin(stage=stage,
+                                                        precision=precision,
+                                                        reduce_bucket_size_in_m=reduce_bucket_size,
+                                                        overlap_communication=overlap_communication,
+                                                        cpu_offload=(placement_policy == 'cpu'),
+                                                        initial_scale=initial_scale,
+                                                        growth_factor=growth_factor,
+                                                        backoff_factor=backoff_factor,
+                                                        growth_interval=growth_interval,
+                                                        hysteresis=hysteresis,
+                                                        min_scale=min_scale,
+                                                        max_scale=max_scale,
+                                                        max_norm=max_norm,
+                                                        norm_type=norm_type)
 
         super().__init__(seed, plugin_initializer)
 
@@ -161,29 +156,25 @@ class GeminiStrategy(DDPStrategy):
         warnings.warn(f'Stage 3 only supports fp16. Precision is set to fp16.')
 
         # NOTE: dist should be initialized before calling get_current_device()
-        plugin_initializer = lambda: GeminiPlugin(
-        # gemini_config
-            chunk_init_device=get_current_device(),
-            placement_policy=placement_policy,
-            precision='fp16',
-            pin_memory=pin_memory,
-            force_outputs_fp32=force_outputs_fp32,
-            strict_ddp_mode=shard_init,
-            search_range_m=search_range_m,
-            hidden_dim=hidden_dim,
-            min_chunk_size_m=min_chunk_size_m,
-        # zero_optim_config
-            gpu_margin_mem_ratio=gpu_margin_mem_ratio,
-        # optim_config
-            initial_scale=initial_scale,
-            growth_factor=growth_factor,
-            backoff_factor=backoff_factor,
-            growth_interval=growth_interval,
-            hysteresis=hysteresis,
-            min_scale=min_scale,
-            max_scale=max_scale,
-            max_norm=max_norm,
-            norm_type=norm_type)
+        plugin_initializer = lambda: GeminiPlugin(chunk_init_device=get_current_device(),
+                                                  placement_policy=placement_policy,
+                                                  precision='fp16',
+                                                  pin_memory=pin_memory,
+                                                  force_outputs_fp32=force_outputs_fp32,
+                                                  strict_ddp_mode=shard_init,
+                                                  search_range_m=search_range_m,
+                                                  hidden_dim=hidden_dim,
+                                                  min_chunk_size_m=min_chunk_size_m,
+                                                  gpu_margin_mem_ratio=gpu_margin_mem_ratio,
+                                                  initial_scale=initial_scale,
+                                                  growth_factor=growth_factor,
+                                                  backoff_factor=backoff_factor,
+                                                  growth_interval=growth_interval,
+                                                  hysteresis=hysteresis,
+                                                  min_scale=min_scale,
+                                                  max_scale=max_scale,
+                                                  max_norm=max_norm,
+                                                  norm_type=norm_type)
 
         super().__init__(seed, plugin_initializer)
 
@@ -195,7 +186,13 @@ class GeminiStrategy(DDPStrategy):
         colossalai.launch_from_torch({}, seed=self.seed)
 
     def model_init_context(self):
-        return super().model_init_context()
+        world_size = dist.get_world_size()
+        shard_pg = ProcessGroup(tp_degree=world_size) if self.shard_init else None
+        default_dist_spec = ShardSpec([-1], [world_size]) if self.shard_init else None
+        return ColoInitContext(device=get_current_device(),
+                               dtype=torch.half,
+                               default_pg=shard_pg,
+                               default_dist_spec=default_dist_spec)
 
     def unwrap_model(self, model: nn.Module) -> nn.Module:
         # assert isinstance(model, GeminiModel)
