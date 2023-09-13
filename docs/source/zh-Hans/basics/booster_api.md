@@ -1,4 +1,4 @@
-# booster 使用
+# Booster API
 
 作者: [Mingyan Jiang](https://github.com/jiangmingyan), [Jianghai Chen](https://github.com/CjhHa1), [Baizhou Zhang](https://github.com/Fridge003)
 

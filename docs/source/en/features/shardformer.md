@@ -22,24 +22,30 @@ Author: [Baizhou Zhang](https://github.com/Fridge003)
 
 When training large transformer models such as LLaMa-2 70B or OPT 175B, model parallelism methods that divide a huge model into smaller shards, including tensor parallelism or pipeline parallism, are essential so as to meet the limitation of GPU memory.
 However, manually cutting model and rewriting its forward/backword logic could be difficult for users who are not familiar with distributed training.
-Meanwhile, the Huggingface transformers has gradually become users' first choice of model source, and most mainstream large models have been open-sourced in Huggingface model library.
+Meanwhile, the Huggingface transformers library has gradually become users' first choice of model source, and most mainstream large models have been open-sourced in Huggingface transformers model library.
 
 Out of this motivation, the ColossalAI team develops **Shardformer**, a feature that automatically does preparation of model parallelism (tensor parallelism/pipeline parallelism) for popular transformer models in HuggingFace.
 This module aims to make parallelization hassle-free for users who are not from the system background.
-Within a few lines of codes, users can turn a large pretrained Huggingface model into a state ready for distributed training.
-Also, Shardformer can be configured to adopt some optimization tools for acceleration and memory saving during forward/backward pass.
+Within a few lines of codes, users can turn a model into a state ready for distributed training.
+Also, Shardformer contains various optimization tools for acceleration and memory saving during forward/backward pass.
 
 
 ## How Shardformer Works
 
 Generally, Shardformer works through the following four kinds of *replacements*:
 
-1. Replacing original PyTorch module (e.g. `nn.Linear`, `nn.Embedding`) with a crafted distributed module. The distributed module keeps the same attributes as the original module but replaces the original parameters with distributed parameters. Also, new `forward` methods will replace original ones so as to execute distributed computation, such as linear layers' split /gather operations executed under tensor parallelism. Each distributed module implements its `from_native_module` static method to convert the PyTorch module to its corresponding distributed module.
+1. Replacing original PyTorch module (e.g. `nn.Linear`, `nn.Embedding`) with a crafted distributed module.
+The distributed module keeps the same attributes as the original module but replaces the original parameters with distributed parameters.
+Also, new `forward` methods will replace original ones so as to execute distributed computation, such as linear layers' split /gather operations executed under tensor parallelism.
+Each distributed module implements its `from_native_module` static method to convert the PyTorch module to its corresponding distributed module.
 
-2. Replacing attributes of original Huggingface Transformers layers with appropriate attributes for distributed training. For example, when training LlaMa-2 with tensor parallel size as 2, the attribute `num_heads` of `LlamaDecoderLayer` (the number of attention heads in each layer) should be replaced with `model.config.num_attention_heads // 2`.
+2. Replacing attributes of original Huggingface Transformers layers with appropriate attributes for distributed training.
+For example, when training LlaMa-2 with tensor parallel size as 2, the attribute `num_heads` of `LlamaDecoderLayer` (the number of attention heads in each layer) should be replaced with `model.config.num_attention_heads // 2`.
 
 3. Replacing the `forward` methods implemented by original Huggingface
-Transformers libraries with our customized `forward` methods. This replacement is essential for pipeline paralellism, where a customiozed function is needed to pass intermediate hidden states between different pipeline stages. Also, optimization methods such as flash attention or sequence parallel can be injected into the `forward` process through our customized `forward` method.
+Transformers libraries with our customized `forward` methods.
+This replacement is essential for pipeline paralellism, where a customiozed function is needed to pass intermediate hidden states between different pipeline stages.
+Also, optimization methods such as flash attention or sequence parallel can be injected into the `forward` process through our customized `forward` method.
 
 4. Replacing the whole copy of model parameters and optimizer states with incomplete ones controlled by current device (this is why it's called Shardformer).
 By executing `ModelSharder.shard` method, current device will only keep the part of model parameters it's supposed to take care of.
@@ -55,11 +61,12 @@ If you want to delve deeper into the design of Shardformer or customize your own
 ### Shardformer Configuration
 
 The configuration of Shardformer is controlled by class `ShardConfig`:
+
 {{ autodoc:colossalai.shardformer.ShardConfig }}
 
-If you want to enable Apex fused layernorm, please install `apex`.
+If you want to enable Apex Fused Layernorm, please install `apex`.
 If you want to enable the usage of flash attention, please install `flash_attn`.
-In addition, xFormers's `cutlass_op` provides a supplementary optimization.
+In addition, xFormers's `cutlass_op` can serve as a backup for flash attention.
 
 ### Enabling Shardformer
 
@@ -75,7 +82,7 @@ More details about this usage can be found in chapter [Booster API](../basics/bo
 
 #### 2. Enabling Shardformer Through Shardformer APIs (Not Recommended)
 
-You can also use Shardformer through manually calling Shardformer APIs. The sample API usages are given below. This usage is not recommended since pipeline parallelism can't run without `Booster`.
+You can also use Shardformer through manually calling Shardformer APIs. However, this usage is not recommended since pipeline parallelism can't run without `Booster`.
 
 [Here](https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/shardformer/examples/convergence_benchmark.py)
 is an example on how to trigger `Shardformer` through calling Shardformer APIs.
@@ -83,14 +90,16 @@ is an example on how to trigger `Shardformer` through calling Shardformer APIs.
 
 ### Precautions
 
-When you use Shardformer to process classification models such as `GPT2ForSequenceClassification`, `ViTForImageClassification`, please ensure that the total number of labels should be integer multiple of tensor parallel size, otherwise Shardformer can't process the classifier layer correctly. A simple fix could be appending dummy labels in transformers config. This bug will be fixed in future version of Shardformer.
+1. When enabling pipeline parallel, please don't do the forward/backward pass in the conventional way (`model(input)`, `loss.backward()`), which will cause unexpected errors. Rather, please do forward/backward pass through calling `booster.execute_pipeline` method.
 
-The case of training ChatGLM-2 6B is a little special: since Huggingface transformers doesn't officially support ChatGLM at present, please import the configuration/model classes through
-```python
-from colossalai.shardformer.modeling.chatglm2_6b.configuration_chatglm import ChatGLMConfig
-from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import ChatGLMForConditionalGeneration, ChatGLMModel
-```
-when training ChatGLM-2 with Shardformer, and initialize your model with these imported classes.
+2. When you use Shardformer to process classification models such as `GPT2ForSequenceClassification`, `ViTForImageClassification`, please ensure that the total number of labels should be integer multiple of tensor parallel size, otherwise Shardformer can't process the classifier layer correctly. A simple fix could be appending dummy labels in transformers config. This bug will be fixed in future version of Shardformer.
+
+3. The case of training ChatGLM-2 6B is a little special: since Huggingface transformers doesn't officially support ChatGLM at present, please import the configuration/model classes through
+    ```python
+    from colossalai.shardformer.modeling.chatglm2_6b.configuration_chatglm import ChatGLMConfig
+    from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import ChatGLMForConditionalGeneration, ChatGLMModel
+    ```
+    when training ChatGLM-2 with Shardformer, and initialize your model with these imported classes.
 
 
 ## Supporting Information
@@ -126,7 +135,7 @@ List of model families we plan to support in the near future:
 - SwinTransformer V1/V2
 - qwen
 
-These lists will grow longer as more models and optimization tools emerge in the future. If you have any suggestions on the models/optimization we should support, please mention it in [Issues](https://github.com/hpcaitech/ColossalAI/issues) section of our project.
+These lists will grow longer as more models and optimization tools emerge in the future. If you have any suggestions on the models/optimization we should support, please feel free to mention it in [Issues](https://github.com/hpcaitech/ColossalAI/issues) section of our project.
 
 For more details about compatibility between each optimization tool and each supported model, please refer to chapter Roadmap in our [develop document](https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/shardformer/README.md).
 
