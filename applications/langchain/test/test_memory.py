@@ -32,9 +32,8 @@ def test_memory_long():
 
     # create retriever    
     retriever=vectordb.as_retriever(search_kwargs={"k":3})
-    information_retriever = CustomRetriever()
+    information_retriever = CustomRetriever(k=3)
     information_retriever.set_retriever(retriever=retriever)
-    information_retriever.set_k(k=3)
 
     memory.initiate_document_retrieval_chain(llm, PROMPT_RETRIEVAL_QA_ZH, information_retriever, 
         chain_type_kwargs={'chat_history':'', })
@@ -75,9 +74,8 @@ def test_memory_short():
 
     # create retriever    
     retriever=vectordb.as_retriever(search_kwargs={"k":3})
-    information_retriever = CustomRetriever()
+    information_retriever = CustomRetriever(k=3)
     information_retriever.set_retriever(retriever=retriever)
-    information_retriever.set_k(k=3)
 
     memory.initiate_document_retrieval_chain(llm, PROMPT_RETRIEVAL_QA_ZH, information_retriever, 
         chain_type_kwargs={'chat_history':'', })
