@@ -23,7 +23,7 @@ llm = OpenAI(temperature = 0.6)
 
 information_retriever = CustomRetriever()
 # VectorDB
-embedding =  HuggingFaceEmbeddings(model_name="moka-ai/m3e-base",
+embedding = HuggingFaceEmbeddings(model_name="moka-ai/m3e-base",
                            model_kwargs={'device': 'cpu'},encode_kwargs={'normalize_embeddings': False})
 
 # define memory with summarization ability

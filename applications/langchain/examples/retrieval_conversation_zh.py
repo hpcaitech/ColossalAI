@@ -19,7 +19,7 @@ coati_api = CoatiAPI('chatglm2', model_path)
 llm = CoatiLLM(n=1, api=coati_api)
 
 # setup embedding model locally
-embedding =  HuggingFaceEmbeddings(model_name="moka-ai/m3e-base",
+embedding = HuggingFaceEmbeddings(model_name="moka-ai/m3e-base",
                            model_kwargs={'device': 'cpu'},encode_kwargs={'normalize_embeddings': False})
 # define the retriever
 information_retriever = CustomRetriever()

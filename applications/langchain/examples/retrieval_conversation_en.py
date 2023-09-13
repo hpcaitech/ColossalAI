@@ -29,7 +29,7 @@ llm = CoatiLLM(n=1, api=coati_api)
 information_retriever = CustomRetriever()
 
 # setup embedding model locally
-embedding =  HuggingFaceEmbeddings(model_name="moka-ai/m3e-base",
+embedding = HuggingFaceEmbeddings(model_name="moka-ai/m3e-base",
                            model_kwargs={'device': 'cpu'},encode_kwargs={'normalize_embeddings': False})
 
 # define memory with summarization ability

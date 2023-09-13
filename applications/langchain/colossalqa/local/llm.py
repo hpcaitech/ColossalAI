@@ -86,7 +86,7 @@ class VllmAPI:
         # configure model
         self.host = host
         self.port = port
-        self.url =  f"http://{self.host}:{self.port}/generate"
+        self.url = f"http://{self.host}:{self.port}/generate"
 
     def generate(self, input: str, **kwargs):    
         output = get_response(post_http_request(input, self.url, **kwargs))[0]

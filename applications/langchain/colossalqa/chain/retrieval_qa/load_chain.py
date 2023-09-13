@@ -45,7 +45,6 @@ def _load_stuff_chain(
         callbacks=callbacks,
         llm_kwargs =llm_kwargs
     )
-    # TODO: document prompt
     return CustomStuffDocumentsChain(
         llm_chain=llm_chain,
         document_variable_name=document_variable_name,

@@ -24,7 +24,7 @@ def test_memory_long():
     text_splitter = NeuralTextSplitter()
     splits = text_splitter.split_documents(retriever_data)
 
-    embedding =  HuggingFaceEmbeddings(model_name="moka-ai/m3e-base",
+    embedding = HuggingFaceEmbeddings(model_name="moka-ai/m3e-base",
                            model_kwargs={'device': 'cpu'},encode_kwargs={'normalize_embeddings': False})
 
     # create vector store
@@ -67,7 +67,7 @@ def test_memory_short():
     text_splitter = NeuralTextSplitter()
     splits = text_splitter.split_documents(retriever_data)
 
-    embedding =  HuggingFaceEmbeddings(model_name="moka-ai/m3e-base",
+    embedding = HuggingFaceEmbeddings(model_name="moka-ai/m3e-base",
                            model_kwargs={'device': 'cpu'},encode_kwargs={'normalize_embeddings': False})
 
     # create vector store
