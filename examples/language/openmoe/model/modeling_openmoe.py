@@ -36,8 +36,12 @@ from transformers.utils import (
     replace_return_docstrings,
 )
 
+from colossalai.kernel.triton.llama_act_combine_kernel import HAS_TRITON
 from colossalai.moe.layers import SparseMLP
 from colossalai.moe.manager import MOE_MANAGER
+
+if HAS_TRITON:
+    from colossalai.kernel.triton.llama_act_combine_kernel import LlamaActCombine
 
 logger = logging.get_logger(__name__)
 
@@ -278,7 +282,10 @@ class LlamaMLP(nn.Module):
             down_proj = [F.linear(intermediate_states[i], down_proj_slices[i]) for i in range(self.pretraining_tp)]
             down_proj = sum(down_proj)
         else:
-            down_proj = self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
+            if HAS_TRITON:
+                down_proj = LlamaActCombine.apply(self.gate_proj(x), self.up_proj(x))
+            else:
+                down_proj = self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
 
         return down_proj
 

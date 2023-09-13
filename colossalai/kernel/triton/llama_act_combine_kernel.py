@@ -107,8 +107,8 @@ if HAS_TRITON:
         act(x_gate) * x_up
 
         Args:
-            x_gate (torch.Tensor): (b, l, 2d) x gate
-            x_up (torch.Tensor): (b, l, d) x up
+            x_gate (torch.Tensor): (b, l, 2d) x_gate
+            x_up (torch.Tensor): (b, l, d) x_up
             activation (str): only support swiglu
             precision (str): fp32, fp16, bf16
         """
