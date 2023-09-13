@@ -1,8 +1,8 @@
 import torch
 
-from colossalai.core import global_context as gpc
 from colossalai.legacy.context import ParallelMode
 from colossalai.legacy.context.parallel_context import ParallelContext
+from colossalai.legacy.core import global_context as gpc
 from colossalai.logging import get_dist_logger
 
 from .datasets.builder import build_train_valid_test_datasets

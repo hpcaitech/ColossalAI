@@ -7,9 +7,9 @@ from torch.distributed import ProcessGroup
 from torch.optim import Optimizer
 
 from colossalai.amp.naive_amp.grad_scaler import BaseGradScaler
-from colossalai.core import global_context as gpc
 from colossalai.kernel.op_builder import FusedOptimBuilder
 from colossalai.legacy.context import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 from colossalai.legacy.utils import clip_grad_norm_fp32, copy_tensor_parallel_attributes
 from colossalai.logging import get_dist_logger
 from colossalai.utils import multi_tensor_applier

@@ -12,9 +12,9 @@ from torch.nn.parameter import Parameter
 from torch.optim import Optimizer
 
 from colossalai.amp.naive_amp.grad_scaler import DynamicGradScaler
-from colossalai.core import global_context as gpc
 from colossalai.interface import OptimizerWrapper
 from colossalai.legacy.context.parallel_mode import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 from colossalai.legacy.zero.gemini.stateful_tensor import StatefulTensor, TensorState
 from colossalai.legacy.zero.gemini.tensor_placement_policy import AutoTensorPlacementPolicy
 from colossalai.legacy.zero.gemini.tensor_utils import colo_model_data_tensor_move_inline, colo_tensor_mem_usage

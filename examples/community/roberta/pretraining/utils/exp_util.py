@@ -5,7 +5,7 @@ import shutil
 import psutil
 import torch
 
-from colossalai.core import global_context as gpc
+from colossalai.legacy.core import global_context as gpc
 
 
 def logging(s, log_path, print_=True, log_=True):

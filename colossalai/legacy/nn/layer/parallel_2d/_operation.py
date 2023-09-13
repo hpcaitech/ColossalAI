@@ -5,10 +5,10 @@ import torch.distributed as dist
 from torch import Tensor
 from torch.cuda.amp import custom_bwd, custom_fwd
 
-from colossalai.core import global_context as gpc
-from colossalai.global_variables import tensor_parallel_env as env
 from colossalai.legacy.communication.collective import all_gather, all_reduce, reduce, reduce_scatter
 from colossalai.legacy.context.parallel_mode import ParallelMode
+from colossalai.legacy.core import global_context as gpc
+from colossalai.legacy.global_variables import tensor_parallel_env as env
 from colossalai.utils import get_current_device
 
 

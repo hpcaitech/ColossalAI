@@ -1,7 +1,6 @@
 import pytest
 import torch
 
-from colossalai.core import global_context as gpc
 from colossalai.initialize import launch
 from colossalai.legacy.communication.p2p import (
     recv_backward,
@@ -12,6 +11,7 @@ from colossalai.legacy.communication.p2p import (
     send_forward_recv_backward,
 )
 from colossalai.legacy.context import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 CONFIG = dict(parallel=dict(pipeline=2))

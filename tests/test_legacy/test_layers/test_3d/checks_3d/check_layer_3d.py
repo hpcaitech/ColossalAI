@@ -5,8 +5,8 @@ import time
 
 import torch
 
-from colossalai.constants import INPUT_GROUP_3D, OUTPUT_GROUP_3D, WEIGHT_GROUP_3D
-from colossalai.core import global_context
+from colossalai.legacy.constants import INPUT_GROUP_3D, OUTPUT_GROUP_3D, WEIGHT_GROUP_3D
+from colossalai.legacy.core import global_context
 from colossalai.legacy.nn import (
     Classifier3D,
     CrossEntropyLoss3D,

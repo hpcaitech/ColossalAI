@@ -3,8 +3,8 @@ import torch
 import torch.distributed as dist
 
 import colossalai
-from colossalai.core import global_context as gpc
 from colossalai.legacy.context import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 from colossalai.legacy.nn.layer.parallel_sequence import RingAV, RingQK
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 

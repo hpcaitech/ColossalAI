@@ -4,7 +4,7 @@ from torchvision.models import resnet18
 from tqdm import tqdm
 
 import colossalai
-from colossalai.core import global_context as gpc
+from colossalai.legacy.core import global_context as gpc
 from colossalai.logging import get_dist_logger
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.nn.optimizer import Lamb, Lars

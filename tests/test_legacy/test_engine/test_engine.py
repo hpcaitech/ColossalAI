@@ -1,8 +1,8 @@
 import pytest
 
 import colossalai
-from colossalai.core import global_context as gpc
 from colossalai.legacy.amp import AMP_TYPE
+from colossalai.legacy.core import global_context as gpc
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from tests.components_to_test.registry import non_distributed_component_funcs
 

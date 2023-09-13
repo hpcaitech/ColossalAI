@@ -4,9 +4,9 @@ from itertools import chain
 import torch
 import torch.distributed as dist
 
-from colossalai.constants import IS_TENSOR_PARALLEL
-from colossalai.core import global_context as gpc
+from colossalai.legacy.constants import IS_TENSOR_PARALLEL
 from colossalai.legacy.context.parallel_mode import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 
 try:
     from torch.nn.modules.module import _EXTRA_STATE_KEY_SUFFIX

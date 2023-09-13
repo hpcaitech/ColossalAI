@@ -4,9 +4,9 @@ import torch.nn.functional as F
 from loss_func.cross_entropy import vocab_cross_entropy
 
 import colossalai
-from colossalai.core import global_context as gpc
 from colossalai.kernel import LayerNorm
 from colossalai.legacy.context import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 
 from .embedding import VocabEmbedding
 from .linear import Linear

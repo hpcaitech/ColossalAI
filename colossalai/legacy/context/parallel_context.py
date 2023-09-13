@@ -11,10 +11,10 @@ import numpy as np
 import torch
 import torch.distributed as dist
 
-from colossalai.constants import ALLOWED_MODES, INITIALIZER_MAPPING
 from colossalai.context.config import Config
 from colossalai.context.singleton_meta import SingletonMeta
-from colossalai.global_variables import tensor_parallel_env as env
+from colossalai.legacy.constants import ALLOWED_MODES, INITIALIZER_MAPPING
+from colossalai.legacy.global_variables import tensor_parallel_env as env
 from colossalai.legacy.registry import DIST_GROUP_INITIALIZER
 from colossalai.logging import get_dist_logger
 

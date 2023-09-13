@@ -8,7 +8,7 @@ from colossalai.legacy.tensor import ProcessGroup
 
 
 def _check_sanity():
-    from colossalai.core import global_context as gpc
+    from colossalai.legacy.core import global_context as gpc
     if gpc.tensor_parallel_size > 1 or gpc.pipeline_parallel_size > 1:
         raise NotImplementedError("Moe is not compatible with tensor or "
                                   "pipeline parallel at present.")
@@ -60,7 +60,7 @@ class MoeContext(metaclass=SingletonMeta):
 
         self.world_size = dist.get_world_size()
 
-        from colossalai.core import global_context as gpc
+        from colossalai.legacy.core import global_context as gpc
         self.max_ep_size = gpc.config.get('max_ep_size', self.world_size)
         assert self.world_size % self.max_ep_size == 0, \
             "Maximum expert parallel size must be a factor of the number of GPUs"

@@ -16,8 +16,8 @@
 
 from abc import ABC, abstractmethod
 
-from colossalai.core import global_context as gpc
 from colossalai.legacy.context import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 
 from .bert_tokenization import FullTokenizer as FullBertTokenizer
 

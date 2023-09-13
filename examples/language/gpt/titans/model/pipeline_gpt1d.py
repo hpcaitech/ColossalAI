@@ -7,8 +7,8 @@ import torch.nn as nn
 
 from colossalai import kernel
 from colossalai import nn as col_nn
-from colossalai.core import global_context as gpc
 from colossalai.legacy.context.parallel_mode import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 from colossalai.legacy.nn.layer.wrapper import PipelineSharedModuleWrapper
 from colossalai.legacy.pipeline.utils import partition_uniform
 from colossalai.logging import get_dist_logger
