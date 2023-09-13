@@ -27,27 +27,29 @@ def SwiGLU(x):
     size = x.shape[-1]
     assert size % 2 == 0, "axis size must be divisible by 2"
     x1, x2 = torch.split(x, size // 2, -1)
-    return x1 * (x2 * torch.sigmoid(x2))
+    return x1 * (x2 * torch.sigmoid(x2.to(torch.float32)).to(x.dtype))
 
 
 @pytest.mark.skipif(not (HAS_TRITON and TRITON_CUDA_SUPPORT), reason="requires triton")
-def test_llama_act_combine():
-    x_gate = torch.randn(BATCH_SIZE, SEQ_LEN, HIDDEN_SIZE * 2).cuda()
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+def test_llama_act_combine(dtype: str = torch.float16):
+    x_gate = torch.randn(BATCH_SIZE, SEQ_LEN, HIDDEN_SIZE * 2, dtype=dtype).cuda()
     x_gate_torch = nn.Parameter(x_gate.detach().clone())
     x_gate_kernel = nn.Parameter(x_gate.detach().clone())
-    x_up = torch.randn(BATCH_SIZE, SEQ_LEN, HIDDEN_SIZE).cuda()
+    x_up = torch.randn(BATCH_SIZE, SEQ_LEN, HIDDEN_SIZE, dtype=dtype).cuda()
     x_up_torch = nn.Parameter(x_up.detach().clone())
     x_up_kernel = nn.Parameter(x_up.detach().clone())
 
     torch_out = SwiGLU(x_gate_torch) * x_up_torch
     kernel_out = LlamaActCombine.apply(x_gate_kernel, x_up_kernel)
-    assert torch.allclose(torch_out, kernel_out, atol=1e-5)
+    atol = 1e-5 if dtype == torch.float32 else 5e-2
+    assert torch.allclose(torch_out, kernel_out, atol=atol)
 
     torch_out.mean().backward()
     kernel_out.mean().backward()
     assert all(grad is not None for grad in [x_gate_torch.grad, x_up_torch.grad, x_gate_kernel.grad, x_up_kernel.grad])
-    assert torch.allclose(x_gate_torch.grad, x_gate_kernel.grad, atol=1e-5)
-    assert torch.allclose(x_up_torch.grad, x_up_kernel.grad, atol=1e-5)
+    assert torch.allclose(x_gate_torch.grad, x_gate_kernel.grad, atol=atol)
+    assert torch.allclose(x_up_torch.grad, x_up_kernel.grad, atol=atol)
 
 
 if __name__ == '__main__':
