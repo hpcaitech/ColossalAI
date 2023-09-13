@@ -149,7 +149,7 @@ def main():
                                     max_norm=args.grad_clip)
     elif args.plugin == 'hybrid_parallel':
         # modify the param accordingly, default configuration is for llama2-7b
-        plugin = HybridParallelPlugin(tp_size=2,
+        plugin = HybridParallelPlugin(tp_size=4,
                                       pp_size=2,
                                       num_microbatches=None,
                                       microbatch_size=1,
