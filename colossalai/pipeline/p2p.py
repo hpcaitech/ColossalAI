@@ -174,7 +174,6 @@ def _p2p_comm_shape(
         recv_prev_shape = torch.empty((3), device=torch.cuda.current_device(), dtype=torch.int64)
 
     ops = []
-    # print(f"send shape: {None if send_next_shape is None else send_next_shape.shape}, recv_prev_shape: {None if recv_prev_shape is None else recv_prev_shape.shape}")
     if send_next_shape is not None:
         send_next_op = dist.P2POp(dist.isend, send_next_shape, peer=peer, group=group)
         ops.append(send_next_op)
@@ -187,12 +186,10 @@ def _p2p_comm_shape(
         )
         ops.append(recv_prev_op)
 
-    print(f"rank: {dist.get_rank()}, {ops}")
     if len(ops) > 0:
         reqs = dist.batch_isend_irecv(ops)
         for req in reqs:
             req.wait()
-    # torch.cuda.synchronize()
 
     if recv_prev_shape is not None:
         recv_prev_shape = recv_prev_shape.tolist()
@@ -209,10 +206,8 @@ def _p2p_comm(
 ):
     tensor_recv_prev = None
     recv_prev_shape = _p2p_comm_shape(tensor_send_next, recv_pre, peer, group)
-    print(f"get shape: {recv_prev_shape}, rank: {dist.get_rank()}")
     if recv_pre:
         tensor_recv_prev = torch.empty(recv_prev_shape, device=torch.cuda.current_device(), dtype=comm_type)
-        print(tensor_recv_prev.shape)
 
     ops = []
     if tensor_send_next is not None:
@@ -236,7 +231,6 @@ def _p2p_comm(
         reqs = dist.batch_isend_irecv(ops)
         for req in reqs:
             req.wait()
-    # torch.cuda.synchronize()
     return tensor_recv_prev
 
 

@@ -10,6 +10,7 @@ class Status(Enum):
     PREFILL = 1
     GENERATE = 2
     DONE = 3
+    COOLDOWN = 4
 
 
 class MicroBatchDescription():
@@ -52,6 +53,8 @@ class MicroBatchDescription():
         # TODO: add the condition for early stopping
         if self.cur_length == self.target_length:
             return Status.DONE
+        elif self.cur_length == self.target_length - 1:
+            return Status.COOLDOWN
         else:
             return Status.GENERATE
 

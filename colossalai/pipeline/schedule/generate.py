@@ -16,6 +16,17 @@ from ._utils import get_batch_size, get_micro_batch, model_forward, to_device
 from .base import PipelineSchedule
 
 
+class ActionIntervalBuffer():
+
+    def __int__(self):
+        self.hidden_states = None
+        self.new_token = None
+
+    def clear(self):
+        self.hidden_states = None
+        self.new_token = None
+
+
 class GenerateSchedule(PipelineSchedule):
     '''
     GenerateSchedule is a class that handles the pipeline parallel inference.
@@ -38,6 +49,7 @@ class GenerateSchedule(PipelineSchedule):
         self.microbatch_offset: Optional[int] = None
         self.num_microbatches: Optional[int] = None
         self.verbose = verbose
+        self.action_interval_buffer = ActionIntervalBuffer()
 
     def load_batch(self, data_iter: Iterable, device: Optional[torch.device] = None) -> None:
         """Load a batch from data iterator.
@@ -98,6 +110,93 @@ class GenerateSchedule(PipelineSchedule):
         input_ids = torch.argmax(last_hidden_state, dim=-1).unsqueeze(1)
         return input_ids
 
+    def _recv_pre_stage(self) -> Any:
+        '''
+        Receive the output from previous stage
+
+        Returns:
+            Any: The output from previous stage
+        '''
+        if self.stage_manager.num_stages == 2:
+            return self.comm.p2p_recv()
+        return self.comm.recv_forward()
+
+    def LoadStageAction(self, model: Module) -> None:
+        """
+        In this action, 1.load micro_batch 2.do the forward 3.step to update
+        """
+        inputs_dict = self.load_micro_batch()
+        output_dict = model_forward(model, inputs_dict, None)
+
+        self.mb_manager.step(inputs_dict, output_dict, None)
+        self.action_interval_buffer.hidden_states = output_dict['hidden_states']
+
+    def GenTokenAction(self, model: Module):
+        """
+        In this action, 1.do the forward with hidden_states to generate new tokens 2.step to update
+        """
+        hidden_states = self.action_interval_buffer.hidden_states
+        assert hidden_states is not None, "When first stage in GENERATE phase, the hidden states should not be None"
+        hidden_states = {'hidden_states': hidden_states}
+        logits = model_forward(model, None, hidden_states)
+        assert 'logits' in logits, f"When first stage in GENERATE phase, the ouput should have attribute `logits`, but has {logits.keys()}"
+        new_token = self._get_token_id(logits['logits'])
+
+        self.mb_manager.step(None, None, new_token)
+        self.action_interval_buffer.new_token = new_token
+        self.action_interval_buffer.hidden_states = None
+
+    def HeadEncodingAction(self, model: Module):
+        """
+        In this action, 1.prepare inputs for encoding for first stage. 2.do the forward to get hidden states 3.step to update
+        """
+        new_token = self.action_interval_buffer.new_token
+        assert new_token is not None, "When first stage in GENERATE phase, the new token should not be None"
+        inputs_dict = self._prepare_inputs_for_new_token(new_token)
+        output_dict = model_forward(model, inputs_dict, None)
+
+        self.mb_manager.step(inputs_dict, output_dict, None)
+        self.action_interval_buffer.hidden_states = output_dict['hidden_states']
+
+    def BodyEncodingAction(self, model: Module):
+        hidden_states = self.action_interval_buffer.hidden_states
+        assert hidden_states is not None, "When not first stage, the hidden states should not be None"
+        inputs_dict = self._prepare_inputs_for_interval_stage()
+        hidden_states = {'hidden_states': hidden_states}
+        output_dict = model_forward(model, inputs_dict, hidden_states)
+
+        self.mb_manager.step(inputs_dict, output_dict, None)
+        self.action_interval_buffer.hidden_states = output_dict['hidden_states']
+
+    def CommAction(self, recv_pre: bool) -> torch.Tensor:
+        """
+        In this action, 1.receive the hidden_states from previous stage 2.send the hidden_states to next stage
+        """
+        hidden_states = self.action_interval_buffer.hidden_states
+        ret = self.comm.p2p_communicate(hidden_states, recv_pre)
+
+        self.action_interval_buffer.hidden_states = ret
+
+    def genAction(self, model: Module):
+        actions = []
+        if self.stage_manager.is_first_stage():
+            if self.mb_manager.cur_state is Status.PREFILL:
+                actions.append(partial(self.CommAction, False))
+                actions.append(partial(self.LoadStageAction, model))
+            elif self.stage_manager.is_first_stage() and self.mb_manager.cur_state is Status.GENERATE:
+                actions.append(partial(self.CommAction, True))
+                actions.append(partial(self.GenTokenAction, model))
+                actions.append(partial(self.HeadEncodingAction, model))
+            elif self.stage_manager.is_first_stage() and self.mb_manager.cur_state is Status.COOLDOWN:
+                actions.append(partial(self.CommAction, True))
+                actions.append(partial(self.GenTokenAction, model))
+        # other stage
+        else:
+            actions.append(partial(self.CommAction, True))
+            actions.append(partial(self.BodyEncodingAction, model))
+
+        return actions
+
     def verbose_info(self, timestamps: List):
         prefill = []
         encoder = []
@@ -114,6 +213,34 @@ class GenerateSchedule(PipelineSchedule):
 
     @torch.no_grad()
     def generate_step(self, model: Module, data_iter: Iterable) -> Union[torch.Tensor, dict]:
+        output_sequence = []
+        self.load_batch(data_iter)
+        model.eval()
+
+        whole_timestamp = []
+
+        #run by round
+        for _ in range(self.round):
+            self.action_interval_buffer.clear()
+            while self.mb_manager.is_micro_batch_done() is False:
+                actions = self.genAction(model)
+                for action in actions:
+                    print(f"rank {self.stage_manager.stage}, {action.func.__name__}")
+                    action()
+                    # print(f"rank {self.stage_manager.stage}, {self.action_interval_buffer}")
+                self.mb_manager.next()
+            # All microbatch in current round is DONE
+            if self.stage_manager.is_first_stage():
+                output_sequence.extend(self.mb_manager.export_new_tokens())
+            else:
+                self.CommAction(False)
+                print(f"rank {self.stage_manager.stage}, Final Comm")
+            self.mb_manager.clear()
+
+        return output_sequence
+
+    @torch.no_grad()
+    def generate_step1(self, model: Module, data_iter: Iterable) -> Union[torch.Tensor, dict]:
         """Forward one step of the pipeline
 
         Args:
