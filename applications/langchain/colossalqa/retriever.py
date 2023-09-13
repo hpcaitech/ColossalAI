@@ -1,22 +1,18 @@
 from langchain.schema.retriever import BaseRetriever, Document
 from langchain.callbacks.manager import CallbackManagerForRetrieverRun
-from typing import List, Callable, Dict, Any
+from typing import List, Callable, Dict, Any, Union
 
 class CustomRetriever(BaseRetriever):
-    retriever: BaseRetriever = None
+    retriever: List[BaseRetriever] = None
     sql_db_chains = []
     k = 3
     rephrase_handler:Callable = None
     buffer: Dict = []
     buffer_size: int = 5
 
-    def set_retriever(self, retriever:BaseRetriever):
+    def set_retriever(self, retriever:Union[BaseRetriever, List[BaseRetriever]]):
         '''update retriever. Useful when you want to change the supporting documents'''
-        self.retriever = retriever
-
-    def set_k(self, k:int=3):
-        '''update k, k is the number of document to retrieve'''
-        self.k = k
+        self.retriever = [retriever] if isinstance(retriever, BaseRetriever) else retriever
 
     def set_sql_database_chain(self, db_chains):
         '''
@@ -32,7 +28,8 @@ class CustomRetriever(BaseRetriever):
         self.rephrase_handler = handler
 
     def _get_relevant_documents(
-        self, query: str, *, run_manager: CallbackManagerForRetrieverRun=None
+        self, query: str, *, run_manager: CallbackManagerForRetrieverRun=None, 
+        score_threshold: float = None
     ) -> List[Document]:
         '''
         This function is called by the retriever to get the relevant documents.
@@ -52,7 +49,14 @@ class CustomRetriever(BaseRetriever):
         if self.rephrase_handler:
             query = self.rephrase_handler(query)
         documents = []
-        documents.extend(self.retriever.get_relevant_documents(query, callbacks=run_manager.get_child() if run_manager else None))
+        for retriever in self.retriever:
+            # retrieve documents from each retriever
+            k = retriever.search_kwargs['k'] if 'k' in retriever.search_kwargs else self.k
+            documents.extend(retriever.vectorstore.similarity_search_with_relevance_scores(query, k, score_threshold=score_threshold))
+        # return the top k documents among all retrievers
+        documents = sorted(documents, key=lambda x: x[1], reverse=True)[:self.k]
+        documents = [doc[0] for doc in documents]
+        # retrieve documents from sql database (not applicable for the local chains)
         for sql_chain in self.sql_db_chains:
             documents.append(Document(page_content = f"Query: {query}  Answer: {sql_chain.run(query)}", metadata={"source": "sql_query"}))
         if len(self.buffer)<self.buffer_size:

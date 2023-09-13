@@ -12,6 +12,8 @@ from colossalqa.retriever import CustomRetriever
 from colossalqa.text_splitter import NeuralTextSplitter
 from colossalqa.memory import ConversationBufferWithSummary
 from colossalqa.prompt.prompt import PROMPT_RETRIEVAL_QA_EN, PROMPT_DISAMBIGUATE_EN
+from colossalqa.indexes.utils import create_empty_sql_database, destroy_sql_database
+from langchain.indexes import SQLRecordManager 
 
 # vllm
 # start the vllm server with

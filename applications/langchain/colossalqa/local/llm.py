@@ -1,29 +1,25 @@
 import argparse
 
 import torch
-from transformers import AutoTokenizer, BloomTokenizerFast, GPT2Tokenizer, LlamaTokenizer, AutoModel
+from transformers import AutoTokenizer, BloomTokenizerFast, GPT2Tokenizer, AutoModel
 from langchain.callbacks.manager import CallbackManagerForLLMRun
 from langchain.llms.base import LLM
 from typing import Optional, List, Dict, Mapping, Any
 from .utils import post_http_request, get_response
-from coati.models.bloom import BLOOMActor
-from coati.models.gpt import GPTActor
-from coati.models.llama import LlamaActor
-from coati.models.opt import OPTActor
+from transformers import LlamaForCausalLM, LlamaTokenizer
 
 class CoatiAPI:
     def __init__(self, model_type: str, pretrain: str, ckpt_path: str=None) -> None:
         # configure model'
         self.model_type = model_type
         if model_type == 'gpt2':
-            self.actor = GPTActor(pretrained=pretrain)
+            self.actor = AutoModel.from_pretrained(pretrained=pretrain)
         elif model_type == 'bloom':
-            self.actor = BLOOMActor(pretrained=pretrain)
+            self.actor = AutoModel.from_pretrained(pretrained=pretrain)
         elif model_type == 'opt':
-            self.actor = OPTActor(pretrained=pretrain)
+            self.actor = AutoModel.from_pretrained(pretrained=pretrain)
         elif model_type == 'llama':
-            self.actor = LlamaActor(pretrained=pretrain)
-            # self.actor = LlamaForCausalLM.from_pretrained(pretrain, torch_dtype=torch.float16, trust_remote_code=True)
+            self.actor = LlamaForCausalLM.from_pretrained(pretrain, torch_dtype=torch.float16, trust_remote_code=True)
         elif model_type == 'chatglm' or model_type == 'chatglm2':
             self.actor = AutoModel.from_pretrained(pretrain, torch_dtype=torch.float16, trust_remote_code=True)
         else:
@@ -60,23 +56,14 @@ class CoatiAPI:
     def generate(self, input: str, **kwargs):    
         if self.model_type in ['chatglm', 'chatglm2']:
             inputs = {k: v.to(torch.cuda.current_device()) for k, v in self.tokenizer(input, return_tensors="pt").items()}
-            output = self.actor.generate(**inputs, **kwargs)
-            output = output.cpu()
-            prompt_len = inputs['input_ids'].size(1)
-            response = output[0, prompt_len:]
-            output = self.tokenizer.decode(response, skip_special_tokens=True)
-            return output
         else:
             inputs = {'input_ids': self.tokenizer(input, return_tensors="pt")['input_ids'].to(torch.cuda.current_device())}
-            # kwargs['max_length'] = kwargs['max_new_tokens'] + input_ids.size()[-1]
-            outputs = self.actor.model.generate(
-                            **inputs,
-                            **kwargs)
-            output = outputs.cpu()
-            prompt_len = inputs['input_ids'].size(1)
-            response = output[0, prompt_len:]
-            output = self.tokenizer.decode(response, skip_special_tokens=True)
-            return output
+        output = self.actor.generate(**inputs, **kwargs)
+        output = output.cpu()
+        prompt_len = inputs['input_ids'].size(1)
+        response = output[0, prompt_len:]
+        output = self.tokenizer.decode(response, skip_special_tokens=True)
+        return output
                 
     def get_embedding(self, input: str):
         pass

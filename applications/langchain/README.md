@@ -51,5 +51,5 @@ We provided scripts for Chinese document retrieval based conversation system, En
 - [x] build document retrieval QA tool
 - [x] Add long + short term memory
 - [x] Add demo for AI agent with SQL query
-- [ ] Add customer retriever for fast construction and retrieving
+- [ ] Add customer retriever for fast construction and retrieving (with incremental mode)
 - [ ] 

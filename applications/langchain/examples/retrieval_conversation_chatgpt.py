@@ -21,7 +21,7 @@ os.environ["OPENAI_API_KEY"] = openai_key
 
 llm = OpenAI(temperature = 0.6)
 
-information_retriever = CustomRetriever()
+information_retriever = CustomRetriever(k=3)
 # VectorDB
 embedding = HuggingFaceEmbeddings(model_name="moka-ai/m3e-base",
                            model_kwargs={'device': 'cpu'},encode_kwargs={'normalize_embeddings': False})
@@ -49,7 +49,6 @@ print(vectordb._collection.count())
 # create retriever    
 retriever=vectordb.as_retriever(search_kwargs={"k":3})
 information_retriever.set_retriever(retriever=retriever)
-information_retriever.set_k(k=3)
 
 
 

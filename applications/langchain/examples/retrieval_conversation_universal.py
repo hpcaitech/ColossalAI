@@ -89,9 +89,8 @@ class UniversalRetrievalConversation:
         print(f"Number of supporting documents: {vectordb_zh._collection.count()}")
         # create retriever for Chinese
         retriever_zh=vectordb_zh.as_retriever(search_kwargs={"k":3})
-        self.information_retriever_zh = CustomRetriever()
+        self.information_retriever_zh = CustomRetriever(k=3)
         self.information_retriever_zh.set_retriever(retriever=retriever_zh)
-        self.information_retriever_zh.set_k(k=3)
 
         docs_en = self.load_supporting_docs(files=files_en)
         # create vector store for English
@@ -99,9 +98,8 @@ class UniversalRetrievalConversation:
         print(f"Number of supporting documents: {vectordb_en._collection.count()}")
         # create retriever for English
         retriever_en=vectordb_en.as_retriever(search_kwargs={"k":3})
-        self.information_retriever_en = CustomRetriever()
+        self.information_retriever_en = CustomRetriever(k=3)
         self.information_retriever_en.set_retriever(retriever=retriever_en)
-        self.information_retriever_en.set_k(k=3)
 
         self.chinese_retrieval_conversation = ChineseRetrievalConversation.from_retriever(self.information_retriever_zh)
         self.english_retrieval_conversation = EnglishRetrievalConversation.from_retriever(self.information_retriever_en)

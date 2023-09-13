@@ -1,14 +1,10 @@
 import pandas as pd
 import os
-import pandas as pd
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 from sqlalchemy import MetaData
 from sqlalchemy import create_engine
 from sqlalchemy.engine.url import URL
 from sqlalchemy.ext.declarative import declarative_base
-from typing import Any, Dict, List
-import logging
+from typing import Any
 
 SUPPORTED_DATA_FORMAT = ['.csv','.xlsx', '.xls','.json','.html','.h5', '.hdf5','.parquet','.feather','.dta']
 
@@ -34,7 +30,7 @@ class TableLoader:
         self.sql_path = sql_path
         self.kwargs = kwargs
         self.sql_engine = create_engine(self.sql_path)
-        drop_table('users', self.sql_engine)
+        drop_table(self.sql_engine)
         
         self.sql_engine = create_engine(self.sql_path)
         for item in files:
@@ -94,6 +90,13 @@ class TableLoader:
     
     def get_sql_path(self):
         return self.sql_path
+
+    def __del__(self):
+        if self.sql_engine:
+            drop_table(self.sql_engine)
+            self.sql_engine.dispose()
+            del self.data
+            del self.sql_engine
 
 
 

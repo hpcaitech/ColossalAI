@@ -3,13 +3,14 @@ tqdm
 datasets
 colossalai
 torch<2.0.0, >=1.12.1
-langchain
+langchain==0.0.284
 tokenizers
-modelscope
-sentencepiece
+modelscope==1.9.0
+sentencepiece==0.1.99
 gpustat
-coati # install from ../Chat
+pytest
+# coati install from ../Chat
 sentence-transformers
-chromadb
+chromadb==0.4.9
 openai #used for chatgpt please install directly from openai repo
-tiktokens
+tiktoken
