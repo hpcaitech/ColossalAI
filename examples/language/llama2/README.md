@@ -149,6 +149,9 @@ Finally, run the following command to start training:
 ```bash
 bash gemini.sh
 ```
+
+If you encounter out-of-memory(OOM) error during training with script `gemini.sh`, changing to script `gemini_auto.sh` might be a solution, since gemini_auto will set a upper limit on GPU memory usage through offloading part of the model parameters and optimizer states back to CPU memory. But there's a trade-off: `gemini_auto.sh` will be a bit slower, since more data are transmitted between CPU and GPU.
+
 #### c. Results
 If you run the above command successfully, you will get the following results:
 `max memory usage:  55491.10 MB, throughput:  24.26 samples/s, TFLOPS/GPU:  167.43`.
