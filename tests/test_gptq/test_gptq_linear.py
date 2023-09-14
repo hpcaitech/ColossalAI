@@ -17,16 +17,11 @@ except ImportError:
     print("please install triton from https://github.com/openai/triton")
 
 try:
-    from auto_gptq import AutoGPTQForCausalLM, exllama_set_max_input_length
-    from auto_gptq.modeling._utils import autogptq_post_init, find_layers, pack_model
-    from auto_gptq.nn_modules.qlinear.qlinear_exllama import QuantLinear
-    from auto_gptq.nn_modules.qlinear.qlinear_triton import QuantLinear
-    from auto_gptq.quantization import GPTQ
-    from auto_gptq.quantization.quantizer import Quantizer
+    from auto_gptq.modeling._utils import autogptq_post_init
     from auto_gptq.utils.import_utils import dynamically_import_QuantLinear
     from exllama_kernels import prepare_buffers, set_tuning_params
 
-    from colossalai.gptq import CaiGPTQLinearOp, CaiQuantLinear
+    from colossalai.gptq import CaiQuantLinear
     HAS_AUTO_GPTQ = True
 except:
     HAS_AUTO_GPTQ = False
