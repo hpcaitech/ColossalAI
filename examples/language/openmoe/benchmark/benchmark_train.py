@@ -60,7 +60,7 @@ def parse_args():
 def main():
     args = parse_args()
 
-    LOSS_CONFIG = {
+    MDOEL_CONFIG = {
         "architectures": [
             "OpenMoeForCausalLM"
         ],
@@ -97,6 +97,11 @@ def main():
         "weight_decay": 0.01,
     }
 
+    # update config from args
+    for k in MDOEL_CONFIG:
+        if hasattr(args, k):
+            MDOEL_CONFIG[k] = getattr(args, k)
+
     # Launch ColossalAI
     colossalai.launch_from_torch(config={}, seed=args.seed)
     coordinator = DistCoordinator()
@@ -116,7 +121,7 @@ def main():
 
     # Build OpenMoe model
     config = LlamaConfig()
-    for k, v in LOSS_CONFIG.items():
+    for k, v in MDOEL_CONFIG.items():
         setattr(config, k, v)
 
     with skip_init():
