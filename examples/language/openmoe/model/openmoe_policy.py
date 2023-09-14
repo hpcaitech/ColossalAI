@@ -1,32 +1,21 @@
 import warnings
 from functools import partial
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Union
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
-from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, Module, MSELoss
-from transformers.modeling_outputs import (
-    BaseModelOutputWithPast,
-    CausalLMOutputWithPast,
-    SequenceClassifierOutputWithPast,
-)
+from torch.nn import Module
+from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.utils import logging
 
 from colossalai.moe.manager import MOE_MANAGER
 from colossalai.pipeline.stage_manager import PipelineStageManager
-from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col, Linear1D_Row, VocabParallelEmbedding1D
+from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col
 from colossalai.shardformer.policies.base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
-from .modeling_openmoe import (
-    OpenMoeAttention,
-    OpenMoeDecoderLayer,
-    OpenMoeForCausalLM,
-    OpenMoeMLP,
-    OpenMoeModel,
-    OpenMoePreTrainedModel,
-)
+from .modeling_openmoe import OpenMoeDecoderLayer, OpenMoeForCausalLM, OpenMoeModel
 
 __all__ = ['OpenMoePolicy', 'OpenMoeForCausalLMPolicy']
 
