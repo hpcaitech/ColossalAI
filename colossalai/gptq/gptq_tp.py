@@ -95,7 +95,7 @@ if HAS_AUTO_GPTQ:
         model_type_name = model.config.model_type
 
         gptq_model_config = model_config_map[model_type_name]
-        layers = get_module_by_name_prefix(model.model, gptq_model_config.layer_blocks)
+        layers = get_module_by_name_prefix(model, gptq_model_config.layer_blocks)
 
         for layer in layers:
 

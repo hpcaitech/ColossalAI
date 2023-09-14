@@ -3,6 +3,8 @@ from functools import partial
 import torch
 from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecoderLayer, LlamaModel, LlamaRMSNorm
 
+from colossalai.shardformer.layer import VocabParallelEmbedding1D
+from colossalai.shardformer.policies.base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 # import colossalai
 from colossalai.shardformer.policies.llama import LlamaForCausalLMPolicy
 
@@ -33,7 +35,16 @@ class LlamaModelInferPolicy(LlamaForCausalLMPolicy):
         super().__init__()
 
     def module_policy(self):
-        policy = super().module_policy()
+        policy = {}
+        if not self.shard_config.inference_gptq:
+            policy = super().module_policy()
+        else:
+            self.append_or_create_submodule_replacement(description=SubModuleReplacementDescription(
+                suffix="embed_tokens",
+                target_module=VocabParallelEmbedding1D,
+            ),
+                                                        policy=policy,
+                                                        target_key=LlamaModel)
         self.shard_config._infer()
 
         infer_forward = LlamaInferenceForwards.llama_model_forward
