@@ -24,24 +24,23 @@ from typing import List, Optional, Tuple, Union
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
-from torch import nn
-from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
-from transformers.modeling_utils import PreTrainedModel
-from transformers.models.llama import LlamaConfig
-from transformers.models.t5.modeling_t5 import T5LayerNorm
-from transformers.utils import (
-    add_start_docstrings,
-    add_start_docstrings_to_model_forward,
-    logging,
-    replace_return_docstrings,
-)
-
+from colossalai.kernel.cuda_native.mha.flash_attn_2 import HAS_FLASH_ATTN
 from colossalai.kernel.triton.llama_act_combine_kernel import HAS_TRITON
 from colossalai.moe.layers import SparseMLP
 from colossalai.moe.manager import MOE_MANAGER
+from torch import nn
+from transformers.modeling_outputs import (BaseModelOutputWithPast,
+                                           CausalLMOutputWithPast)
+from transformers.modeling_utils import PreTrainedModel
+from transformers.models.llama import LlamaConfig
+from transformers.models.t5.modeling_t5 import T5LayerNorm
+from transformers.utils import (add_start_docstrings,
+                                add_start_docstrings_to_model_forward, logging,
+                                replace_return_docstrings)
 
 if HAS_TRITON:
-    from colossalai.kernel.triton.llama_act_combine_kernel import LlamaActCombine
+    from colossalai.kernel.triton.llama_act_combine_kernel import \
+        LlamaActCombine
 
 logger = logging.get_logger(__name__)
 
@@ -408,7 +407,7 @@ class LlamaAttention(nn.Module):
         key_states = repeat_kv(key_states, self.num_key_value_groups)
         value_states = repeat_kv(value_states, self.num_key_value_groups)
 
-        if use_kernel:
+        if HAS_FLASH_ATTN and use_kernel:
             from flash_attn import flash_attn_func
             query_states = query_states.transpose(1, 2)
             key_states = key_states.transpose(1, 2)
