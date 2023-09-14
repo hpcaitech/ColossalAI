@@ -4,19 +4,9 @@ from sqlalchemy import MetaData
 from sqlalchemy import create_engine
 from sqlalchemy.engine.url import URL
 from sqlalchemy.ext.declarative import declarative_base
-from typing import Any
+from colossalqa.utils import drop_table
 
 SUPPORTED_DATA_FORMAT = ['.csv','.xlsx', '.xls','.json','.html','.h5', '.hdf5','.parquet','.feather','.dta']
-
-def drop_table(engine: Any) -> None:
-    # drop all existing table
-    Base = declarative_base()
-    metadata = MetaData()
-    metadata.reflect(bind=engine)
-    for key in metadata.tables:
-        table = metadata.tables[key]
-        if table is not None:
-            Base.metadata.drop_all(engine, [table], checkfirst=True)
 
 class TableLoader:
     def __init__(self, files: str, sql_path:str='sqlite:///mydatabase.db', **kwargs) -> None:

@@ -132,7 +132,7 @@ class ConversationBufferWithSummary(ConversationSummaryMemory):
             docs = inputs['input_documents']
         else:
             # for test
-            docs = self.retriever._get_relevant_documents(inputs[self.input_key])
+            docs = self.retriever.get_relevant_documents(inputs[self.input_key])
         inputs[self.memory_key] = ''
         inputs = {k:v for k,v in inputs.items() if k in [self.chain.input_key, self.input_key, self.memory_key]}
         prompt_length = self.chain.prompt_length(docs, **inputs)

@@ -62,11 +62,8 @@ if __name__ == '__main__':
         text_splitter = NeuralTextSplitter()
         splits = text_splitter.split_documents(retriever_data)
         documents.extend(splits)
-    # create vector store
-    vectordb = Chroma.from_documents(documents=documents, embedding=embedding)
-    # initiate retriever    
-    retriever=vectordb.as_retriever(search_kwargs={"k":3})
-    information_retriever.set_retriever(retriever=retriever)
+    # create retriever
+    information_retriever.add_documents(docs=documents, cleanup='incremental', mode='by_source', embedding=embedding)
 
     # set document retrieval chain, we need this chain to calculate prompt length
     memory.initiate_document_retrieval_chain(llm, PROMPT_RETRIEVAL_QA_EN, information_retriever, 

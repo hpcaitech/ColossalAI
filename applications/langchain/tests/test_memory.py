@@ -28,13 +28,9 @@ def test_memory_long():
     embedding = HuggingFaceEmbeddings(model_name="moka-ai/m3e-base",
                            model_kwargs={'device': 'cpu'},encode_kwargs={'normalize_embeddings': False})
 
-    # create vector store
-    vectordb = Chroma.from_documents(documents=splits, embedding=embedding)
-
-    # create retriever    
-    retriever=vectordb.as_retriever(search_kwargs={"k":3})
+    # create retriever
     information_retriever = CustomRetriever(k=3)
-    information_retriever.set_retriever(retriever=retriever)
+    information_retriever.add_documents(docs=splits, cleanup='incremental', mode='by_source', embedding=embedding)
 
     memory.initiate_document_retrieval_chain(llm, PROMPT_RETRIEVAL_QA_ZH, information_retriever, 
         chain_type_kwargs={'chat_history':'', })
@@ -71,13 +67,9 @@ def test_memory_short():
     embedding = HuggingFaceEmbeddings(model_name="moka-ai/m3e-base",
                            model_kwargs={'device': 'cpu'},encode_kwargs={'normalize_embeddings': False})
 
-    # create vector store
-    vectordb = Chroma.from_documents(documents=splits, embedding=embedding)
-
-    # create retriever    
-    retriever=vectordb.as_retriever(search_kwargs={"k":3})
+    # create retriever
     information_retriever = CustomRetriever(k=3)
-    information_retriever.set_retriever(retriever=retriever)
+    information_retriever.add_documents(docs=splits, cleanup='incremental', mode='by_source', embedding=embedding)
 
     memory.initiate_document_retrieval_chain(llm, PROMPT_RETRIEVAL_QA_ZH, information_retriever, 
         chain_type_kwargs={'chat_history':'', })

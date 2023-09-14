@@ -43,14 +43,8 @@ while True:
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=200, chunk_overlap=0)
     splits = text_splitter.split_documents(retriever_data)
     documents.extend(splits)
-# create vector store
-vectordb = Chroma.from_documents(documents=documents, embedding=embedding)
-print(vectordb._collection.count())
-# create retriever    
-retriever=vectordb.as_retriever(search_kwargs={"k":3})
-information_retriever.set_retriever(retriever=retriever)
-
-
+# create retriever
+information_retriever.add_documents(docs=documents, cleanup='incremental', mode='by_source', embedding=embedding)
 
 prompt_template = """Always answer as helpfully as possible, while being safe. Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. Please ensure that your responses are socially unbiased and positive in nature.
 If the answer cannot be infered based on the given context, please don't share false information.

@@ -24,7 +24,7 @@ llm = CoatiLLM(n=1, api=coati_api)
 embedding = HuggingFaceEmbeddings(model_name="moka-ai/m3e-base",
                            model_kwargs={'device': 'cpu'},encode_kwargs={'normalize_embeddings': False})
 # define the retriever
-information_retriever = CustomRetriever()
+information_retriever = CustomRetriever(k=3)
 
 # define memory with summarization ability
 memory = ConversationBufferWithSummary(llm=llm, prompt=SUMMARY_PROMPT_ZH,
@@ -57,11 +57,8 @@ if __name__ == '__main__':
         text_splitter = NeuralTextSplitter()
         splits = text_splitter.split_documents(retriever_data)
         documents.extend(splits)
-    # create vector store
-    vectordb = Chroma.from_documents(documents=documents, embedding=embedding)
-    # create retriever    
-    retriever=vectordb.as_retriever(search_kwargs={"k":3})
-    information_retriever.set_retriever(retriever=retriever)
+    # create retriever
+    information_retriever.add_documents(docs=documents, cleanup='incremental', mode='by_source', embedding=embedding)
 
     # set document retrieval chain, we need this chain to calculate prompt length
     memory.initiate_document_retrieval_chain(llm, PROMPT_RETRIEVAL_QA_ZH, information_retriever, 

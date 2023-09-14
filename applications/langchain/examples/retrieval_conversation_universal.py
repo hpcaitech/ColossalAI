@@ -84,22 +84,14 @@ class UniversalRetrievalConversation:
                            encode_kwargs={'normalize_embeddings': False})
 
         docs_zh = self.load_supporting_docs(files=files_zh)
-        # create vector store for Chinese
-        vectordb_zh = Chroma.from_documents(documents=docs_zh, embedding=self.embedding, collection_name='doc_zh')
-        print(f"Number of supporting documents: {vectordb_zh._collection.count()}")
         # create retriever for Chinese
-        retriever_zh=vectordb_zh.as_retriever(search_kwargs={"k":3})
         self.information_retriever_zh = CustomRetriever(k=3)
-        self.information_retriever_zh.set_retriever(retriever=retriever_zh)
+        self.information_retriever_zh.add_documents(docs=docs_zh, cleanup='incremental', mode='by_source', embedding=self.embedding)
 
         docs_en = self.load_supporting_docs(files=files_en)
-        # create vector store for English
-        vectordb_en = Chroma.from_documents(documents=docs_en, embedding=self.embedding, collection_name='doc_en')
-        print(f"Number of supporting documents: {vectordb_en._collection.count()}")
-        # create retriever for English
-        retriever_en=vectordb_en.as_retriever(search_kwargs={"k":3})
+        # create retriever for Chinese
         self.information_retriever_en = CustomRetriever(k=3)
-        self.information_retriever_en.set_retriever(retriever=retriever_en)
+        self.information_retriever_en.add_documents(docs=docs_en, cleanup='incremental', mode='by_source', embedding=self.embedding)
 
         self.chinese_retrieval_conversation = ChineseRetrievalConversation.from_retriever(self.information_retriever_zh)
         self.english_retrieval_conversation = EnglishRetrievalConversation.from_retriever(self.information_retriever_en)
@@ -116,11 +108,6 @@ class UniversalRetrievalConversation:
                 text_splitter = NeuralTextSplitter()
                 splits = text_splitter.split_documents(retriever_data)
                 documents.extend(splits)
-            # create vector store
-            vectordb = Chroma.from_documents(documents=documents, embedding=self.embedding)
-            print(f"Number of supporting documents: {vectordb._collection.count()}")
-            # create retriever    
-            retriever=vectordb.as_retriever(search_kwargs={"k":3})
         else:
             while True:
                 file = input("Select a file to load or enter Esc to exit:")
