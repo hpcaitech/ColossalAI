@@ -64,7 +64,7 @@ class CustomRetriever(BaseRetriever):
             if source not in self.vector_stores:
                 _, sql_path = create_empty_sql_database(f"sqlite:///{source.replace('.','_')}.db")
                 self.vector_stores[source] = Chroma(embedding_function=embedding, 
-                        collection_name=hashlib.sha3_256(source.encode()).hexdigest())
+                        collection_name=hashlib.sha3_224(source.encode()).hexdigest())
                 self.sql_index_database[source] = sql_path
                 self.record_managers[source] = SQLRecordManager(source, db_url=sql_path)
                 self.record_managers[source].create_schema()
