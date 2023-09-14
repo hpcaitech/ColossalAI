@@ -4,14 +4,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
-from modeling_openmoe import (
-    OpenMoeAttention,
-    OpenMoeDecoderLayer,
-    OpenMoeForCausalLM,
-    OpenMoeMLP,
-    OpenMoeModel,
-    OpenMoePreTrainedModel,
-)
+import torch.nn.functional as F
 from torch import Tensor
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, Module, MSELoss
 from transformers.modeling_outputs import (
@@ -21,9 +14,19 @@ from transformers.modeling_outputs import (
 )
 from transformers.utils import logging
 
+from colossalai.moe.manager import MOE_MANAGER
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col, Linear1D_Row, VocabParallelEmbedding1D
 from colossalai.shardformer.policies.base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
+
+from .modeling_openmoe import (
+    OpenMoeAttention,
+    OpenMoeDecoderLayer,
+    OpenMoeForCausalLM,
+    OpenMoeMLP,
+    OpenMoeModel,
+    OpenMoePreTrainedModel,
+)
 
 __all__ = ['OpenMoePolicy', 'OpenMoeForCausalLMPolicy']
 
@@ -375,6 +378,7 @@ class OpenMoePipelineForwards:
         stage_manager: Optional[PipelineStageManager] = None,
         hidden_states: Optional[torch.FloatTensor] = None,
         stage_index: Optional[List[int]] = None,
+        chunk_head: Optional[bool] = None,
     ):
         r"""
             Args:
@@ -401,6 +405,9 @@ class OpenMoePipelineForwards:
             >>> tokenizer.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
             "Hey, are you consciours? Can you talk to me?\nI'm not consciours, but I can talk to you."
             ```"""
+        # reset moe loss
+        MOE_MANAGER.reset_loss()
+
         logger = logging.get_logger(__name__)
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (output_hidden_states
@@ -438,19 +445,55 @@ class OpenMoePipelineForwards:
 
         if stage_manager.is_last_stage():
             hidden_states = outputs[0]
-            logits = self.lm_head(hidden_states)
+            if self.pretraining_tp > 1:
+                lm_head_slices = self.lm_head.weight.split(self.vocab_size // self.pretraining_tp, dim=0)
+                logits = [F.linear(hidden_states, lm_head_slices[i]) for i in range(self.pretraining_tp)]
+                logits = torch.cat(logits, dim=-1)
+
             loss = None
-            if labels is not None:
-                # Shift so that tokens < n predict n
-                shift_logits = logits[..., :-1, :].contiguous()
-                shift_labels = labels[..., 1:].contiguous()
-                # Flatten the tokens
-                loss_fct = CrossEntropyLoss()
-                shift_logits = shift_logits.view(-1, self.config.vocab_size)
-                shift_labels = shift_labels.view(-1)
-                # Enable model parallelism
-                shift_labels = shift_labels.to(shift_logits.device)
-                loss = loss_fct(shift_logits, shift_labels)
+            # if no training, just do forward
+            if labels is None:
+                logits = self.lm_head(hidden_states)
+                logits = logits.float()
+            # the vocab size for openmoe is 30w+
+            # which causes great activation memory in training, up to 20G for one sequence
+            # so we use chunk and checkpoint to reduce memory
+            else:
+                if chunk_head == True:
+
+                    def create_custom_forward(module):
+
+                        def custom_forward(*inputs):
+                            logits = module(inputs[0])
+                            logits = logits.float()
+                            # Shift so that tokens < n predict n
+                            shift_logits = logits[..., :-1, :].contiguous().float()
+                            shift_labels = inputs[1][..., 1:].contiguous()
+                            # Flatten the tokens
+                            loss = self._calculate_loss(shift_logits, shift_labels)
+                            return loss
+
+                        return custom_forward
+
+                    aux_loss, z_loss = self._calculate_router_loss()
+                    loss = aux_loss + z_loss
+                    for batch_idx in range(hidden_states.shape[0]):
+                        loss = loss + torch.utils.checkpoint.checkpoint(
+                            create_custom_forward(self.lm_head),
+                            hidden_states[batch_idx:batch_idx + 1, :],
+                            labels[batch_idx:batch_idx + 1, :],
+                        )
+                    logits = None
+                else:
+                    logits = self.lm_head(hidden_states)
+                    logits = logits.float()
+                    # Shift so that tokens < n predict n
+                    shift_logits = logits[..., :-1, :].contiguous()
+                    shift_labels = labels[..., 1:].contiguous()
+                    # Flatten the tokens
+                    aux_loss, z_loss = self._calculate_router_loss()
+                    loss = aux_loss + z_loss
+                    loss = loss + self._calculate_loss(shift_logits, shift_labels)
 
             if not return_dict:
                 output = (logits,) + outputs[1:]
