@@ -3,12 +3,11 @@
 作者: Guangyang Lu, Hongxin Liu, Yongbin Li
 
 **前置教程**
-- [定义配置文件](../basics/define_your_config.md)
-- [在训练中使用Engine和Trainer](../basics/engine_trainer.md)
-- [并行配置](../basics/configure_parallelization.md)
+- [使用booster进行训练](../basics/booster_api.md)
+- [Shardformer](../features/shardformer.md)
 
 **示例代码**
-- [ColossalAI-Examples ResNet with pipeline](https://github.com/hpcaitech/ColossalAI-Examples/tree/main/features/pipeline_parallel)
+- [使用pipeline并行策略训练ResNet](https://github.com/hpcaitech/ColossalAI/blob/main/examples/images/resnet/train.py)
 
 **相关论文**
 - [Colossal-AI: A Unified Deep Learning System For Large-Scale Parallel Training](https://arxiv.org/abs/2110.14883)
@@ -67,93 +66,146 @@
 
 ## 使用流水线训练 ResNet
 
-我们首先用Colossal PipelinableContext方式建立 `ResNet` 模型:
+首先我们定义好需要的训练组件，包括`model`, `dataloader`, `optimizer`, `lr_scheduler`, `criterion` 等:
 ```python
-import os
-from typing import Callable, List, Optional, Type, Union
+import argparse
+from contextlib import nullcontext
+from typing import Callable, List, Union
+
+import evaluate
 import torch
+import torch.distributed as dist
 import torch.nn as nn
+from data import GLUEDataBuilder
+from torch.optim import Adam, Optimizer
+from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+from transformers import (
+    AlbertForSequenceClassification,
+    AutoConfig,
+    BertForSequenceClassification,
+    get_linear_schedule_with_warmup,
+)
+
 import colossalai
-import colossalai.nn as col_nn
-
-from colossalai.core import global_context as gpc
-from colossalai.logging import disable_existing_loggers, get_dist_logger
-from colossalai.legacy.trainer import Trainer, hooks
-from colossalai.utils import MultiTimer, get_dataloader
-from colossalai.context import ParallelMode
-from colossalai.pipeline.pipelinable import PipelinableContext
-
-from titans.dataloader.cifar10 import build_cifar
-from torchvision.models import resnet50
-from torchvision.models.resnet import BasicBlock, Bottleneck, conv1x1
+from colossalai.booster import Booster
+from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLevelZeroPlugin, TorchDDPPlugin
+from colossalai.cluster import DistCoordinator
+from colossalai.lazy import LazyInitContext
+from colossalai.nn.optimizer import HybridAdam
+from colossalai.utils import get_current_device
 
 # Define some config
-BATCH_SIZE = 64
-NUM_EPOCHS = 2
-NUM_CHUNKS = 1
-CONFIG = dict(NUM_MICRO_BATCHES=4, parallel=dict(pipeline=2))
+NUM_EPOCHS = 3
+BATCH_SIZE = 32
+LEARNING_RATE = 2.4e-5
+WEIGHT_DECAY = 0.01
+WARMUP_FRACTION = 0.1
 
-# Train
-disable_existing_loggers()
-parser = colossalai.get_default_parser()
-args = parser.parse_args()
-colossalai.launch_from_torch(backend=args.backend, config=CONFIG)
-logger = get_dist_logger()
-pipelinable = PipelinableContext()
+def move_to_cuda(batch):
+    return {k: v.cuda() for k, v in batch.items()}
 
-# build model
-with pipelinable:
-    model = resnet50()
-```
 
-给定切分顺序，module直接给出name，部分函数需要手动添加。
-```python
-exec_seq = [
-    'conv1', 'bn1', 'relu', 'maxpool', 'layer1', 'layer2', 'layer3', 'layer4', 'avgpool',
-    (lambda x: torch.flatten(x, 1), "behind"), 'fc'
-]
-pipelinable.to_layer_list(exec_seq)
-```
+# Define 'criterion' function
+def _criterion(outputs, inputs):
+    return outputs.loss
 
-将模型切分成流水线阶段。
-```python
-model = pipelinable.partition(NUM_CHUNKS, gpc.pipeline_parallel_size, gpc.get_local_rank(ParallelMode.PIPELINE))
-```
-
-我们使用`Trainer`训练`ResNet`:
-```python
-# build criterion
-criterion = nn.CrossEntropyLoss()
-
-# optimizer
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-
-# build dataloader
-root = os.environ.get('DATA', './data')
-train_dataloader, test_dataloader = build_cifar(BATCH_SIZE, root, padding=4, crop=32, resize=32)
-
-lr_scheduler = col_nn.lr_scheduler.LinearWarmupLR(optimizer, NUM_EPOCHS, warmup_steps=1)
-engine, train_dataloader, test_dataloader, lr_scheduler = colossalai.initialize(model, optimizer, criterion,
-                                                                                train_dataloader, test_dataloader,
-                                                                                lr_scheduler)
-timer = MultiTimer()
-
-trainer = Trainer(engine=engine, timer=timer, logger=logger)
-
-hook_list = [
-    hooks.LossHook(),
-    hooks.AccuracyHook(col_nn.metric.Accuracy()),
-    hooks.LogMetricByEpochHook(logger),
-    hooks.LRSchedulerHook(lr_scheduler, by_epoch=True)
+# Define optimizer
+no_decay = ["bias", "LayerNorm.weight"]
+optimizer_grouped_parameters = [
+    {
+        "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
+        "weight_decay": WEIGHT_DECAY,
+    },
+    {
+        "params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)],
+        "weight_decay": 0.0,
+    },
 ]
 
-trainer.fit(train_dataloader=train_dataloader,
-            epochs=NUM_EPOCHS,
-            test_dataloader=test_dataloader,
-            test_interval=1,
-            hooks=hook_list,
-            display_progress=True)
+optimizer = HybridAdam(optimizer_grouped_parameters, lr=lr, eps=1e-8)
+
+
+# Define lr_scheduler
+total_steps = len(train_dataloader) * NUM_EPOCHS
+num_warmup_steps = int(WARMUP_FRACTION * total_steps)
+lr_scheduler = get_linear_schedule_with_warmup(
+    optimizer,
+    num_warmup_steps=num_warmup_steps,
+    num_training_steps=total_steps,
+)
+
+
+# Define Bert model
+    model = BertForSequenceClassification.from_pretrained("bert-base-uncased", config=cfg).cuda()
+
+# Define a dataloader
+data_builder = GLUEDataBuilder(model_name,
+                                plugin,
+                                args.task,
+                                train_batch_size=BATCH_SIZE,
+                                eval_batch_size=BATCH_SIZE)
+train_dataloader = data_builder.train_dataloader()
 ```
 
-我们使用 `2` 个流水段，并且 batch 将被切分为 `4` 个 micro batches。
+使用'HybridParallelPlugin'初始化一个booster.
+```python
+plugin = HybridParallelPlugin(tp_size=1,
+                                pp_size=2,
+                                num_microbatches=None,
+                                microbatch_size=1,
+                                enable_all_optimization=True,
+                                zero_stage=1,
+                                precision='fp16',
+                                initial_scale=1)
+booster = Booster(plugin=plugin)
+```
+
+使用`booster`将优化特性注入到训练组件中。
+```python
+model, optimizer, _criterion, _, lr_scheduler = booster.boost(model,
+                                                                optimizer,
+                                                                criterion=_criterion,
+                                                                lr_scheduler=lr_scheduler)
+```
+
+最后训练模型
+```python
+# Define a train function
+def train_epoch(epoch: int, model: nn.Module, optimizer: Optimizer, _criterion: Callable, lr_scheduler: LRScheduler,
+                train_dataloader: DataLoader, booster: Booster, coordinator: DistCoordinator):
+
+    is_pp_last_stage = booster.plugin.stage_manager.is_last_stage()
+    total_step = len(train_dataloader)
+
+    model.train()
+    optimizer.zero_grad()
+    train_dataloader_iter = iter(train_dataloader)
+    with tqdm(range(total_step),
+              desc=f'Epoch [{epoch + 1}/{NUM_EPOCHS}]',
+              disable=not (is_pp_last_stage)) as pbar:
+        # Forward pass
+        for _ in pbar:
+            outputs = booster.execute_pipeline(train_dataloader_iter,
+                                                model,
+                                                _criterion,
+                                                optimizer,
+                                                return_loss=True,
+                                                return_outputs=True)
+            # Backward and optimize
+            if is_pp_last_stage:
+                loss = outputs['loss']
+                pbar.set_postfix({'loss': loss.item()})
+
+            optimizer.step()
+            optimizer.zero_grad()
+            lr_scheduler.step()
+
+# Train model
+for epoch in range(NUM_EPOCHS):
+    train_epoch(epoch, model, optimizer, _criterion, lr_scheduler, train_dataloader, booster, coordinator)
+```
+
+我们使用 `2` 个流水段，并且 batch 将被切分为 `1` 个 micro batches。（这些参数都可根据实际情况设置为合适的值）
 <!-- doc-test-command: echo  -->
