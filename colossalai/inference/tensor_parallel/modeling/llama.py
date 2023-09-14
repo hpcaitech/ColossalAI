@@ -6,10 +6,12 @@ from transformers.modeling_outputs import BaseModelOutputWithPast
 from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecoderLayer, LlamaModel, LlamaRMSNorm
 
 from colossalai.inference.tensor_parallel.batch_infer_state import BatchInferState
-from colossalai.kernel.triton.context_attention import llama_context_attn_fwd
-from colossalai.kernel.triton.copy_kv_cache_dest import copy_kv_cache_to_dest
-from colossalai.kernel.triton.rotary_embedding_kernel import rotary_embedding_fwd
-from colossalai.kernel.triton.token_attention_kernel import token_attention_fwd
+from colossalai.kernel.triton import (
+    copy_kv_cache_to_dest,
+    llama_context_attn_fwd,
+    rotary_embedding_fwd,
+    token_attention_fwd,
+)
 
 try:
     from vllm import layernorm_ops, pos_encoding_ops
