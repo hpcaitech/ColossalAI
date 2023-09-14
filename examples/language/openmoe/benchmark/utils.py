@@ -36,7 +36,7 @@ class TimingItem():
 
 
 class SimpleTimer():
-    def __init__(self, warmup: int = 10) -> None:
+    def __init__(self, warmup: int = 20) -> None:
         self.timing_items: Dict[str, TimingItem] = {}
         self.warmup = warmup
 

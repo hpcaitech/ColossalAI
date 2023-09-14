@@ -51,7 +51,7 @@ def parse_args():
     parser.add_argument("--num_epoch", type=int, default=1, help="Number of epochs.")
     parser.add_argument("--batch_size", type=int, default=4, help="Batch size (per dp group) for the training dataloader.")
     parser.add_argument("--seed", type=int, default=42, help="A seed for reproducible training.")
-    parser.add_argument("--num_samples", type=int, default=200, help="Number of samples in the dataset.")
+    parser.add_argument("--num_samples", type=int, default=1000, help="Number of samples in the dataset.")
 
     args = parser.parse_args()
     return args
