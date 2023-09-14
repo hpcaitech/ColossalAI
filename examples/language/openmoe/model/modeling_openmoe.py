@@ -36,8 +36,12 @@ from transformers.utils import (
     replace_return_docstrings,
 )
 
+from colossalai.kernel.triton.llama_act_combine_kernel import HAS_TRITON
 from colossalai.moe.layers import SparseMLP
 from colossalai.moe.manager import MOE_MANAGER
+
+if HAS_TRITON:
+    from colossalai.kernel.triton.llama_act_combine_kernel import LlamaActCombine
 
 logger = logging.get_logger(__name__)
 
@@ -95,7 +99,7 @@ def generate_fixed_pos_embedding(features, length, min_timescale=1.0, max_timesc
     timescale = min_timescale * (max_timescale / min_timescale)**fraction
     rotational_frequency = 1. / timescale
 
-    sinusoid_inp = torch.einsum('i,j->ij', torch.arange(length, dtype=torch.float64).cuda(), rotational_frequency)
+    sinusoid_inp = torch.einsum('i,j->ij', torch.arange(length, dtype=torch.float32).cuda(), rotational_frequency)
 
     sinusoid_inp = torch.cat([sinusoid_inp, sinusoid_inp], dim=-1)
 
@@ -121,16 +125,16 @@ def apply_rotary_embedding(q, k, cos, sin, decode=False, rotary_index=None):
     if decode and qlen == 1 and rotary_index is not None:
         qcos = cos[rotary_index + 1, :]
         qsin = sin[rotary_index + 1, :]
-        qcos = qcos.unsqueeze(2).expand(batch, qlen, qheads, d)
-        qsin = qsin.unsqueeze(2).expand(batch, qlen, qheads, d)
+        qcos = qcos.unsqueeze(2)
+        qsin = qsin.unsqueeze(2)
+        kcos, ksin = cos[:klen, :], sin[:klen, :]
+        kcos = kcos.unsqueeze(0).unsqueeze(2)
+        ksin = ksin.unsqueeze(0).unsqueeze(2)
     else:
         qcos, qsin = cos[:qlen, :], sin[:qlen, :]
-        qcos = qcos.unsqueeze(0).unsqueeze(2).expand(batch, qlen, qheads, d)
-        qsin = qsin.unsqueeze(0).unsqueeze(2).expand(batch, qlen, qheads, d)
-
-    kcos, ksin = cos[:klen, :], sin[:klen, :]
-    kcos = kcos.unsqueeze(0).unsqueeze(2).expand(batch, klen, kheads, d)
-    ksin = ksin.unsqueeze(0).unsqueeze(2).expand(batch, klen, kheads, d)
+        qcos = qcos.unsqueeze(0).unsqueeze(2)
+        qsin = qsin.unsqueeze(0).unsqueeze(2)
+        kcos, ksin = qcos, qsin
 
     out_q = (q * qcos) + (rotate_half(q) * qsin)
     out_k = (k * kcos) + (rotate_half(k) * ksin)
@@ -278,7 +282,10 @@ class LlamaMLP(nn.Module):
             down_proj = [F.linear(intermediate_states[i], down_proj_slices[i]) for i in range(self.pretraining_tp)]
             down_proj = sum(down_proj)
         else:
-            down_proj = self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
+            if HAS_TRITON:
+                down_proj = self.down_proj(LlamaActCombine.apply(self.gate_proj(x), self.up_proj(x)))
+            else:
+                down_proj = self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
 
         return down_proj
 
@@ -313,6 +320,7 @@ class LlamaAttention(nn.Module):
         self.k_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=False)
         self.v_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=False)
         self.o_proj = nn.Linear(self.num_heads * self.head_dim, self.hidden_size, bias=False)
+        self.sin, self.cos = generate_fixed_pos_embedding(self.head_dim, self.max_position_embeddings, 1e4)
         self._init_rope()
 
     def _init_rope(self):
@@ -382,9 +390,10 @@ class LlamaAttention(nn.Module):
 
         query_states = query_states.transpose(1, 2)
         key_states = key_states.transpose(1, 2)
-        dim = query_states.shape[-1]
         max_length = max(query_states.shape[1], key_states.shape[1])
-        sin, cos = generate_fixed_pos_embedding(dim, max_length, max_timescale=1e4)
+        assert max_length <= self.sin.shape[0]
+        sin, cos = self.sin[:max_length], self.cos[:max_length]
+        # TODO: for inference, we can add emb kv into cache to avoid computation
         query_states, key_states = apply_rotary_embedding(query_states,
                                                           key_states,
                                                           cos,
