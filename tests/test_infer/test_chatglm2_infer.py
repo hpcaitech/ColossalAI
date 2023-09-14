@@ -12,7 +12,7 @@ from colossalai.cluster import ProcessGroupMesh
 from colossalai.inference.tensor_parallel.engine import TPInferEngine
 from colossalai.logging import disable_existing_loggers
 from colossalai.shardformer import ShardConfig, ShardFormer
-from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import ChatGLMModel
+from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import ChatGLMForConditionalGeneration, ChatGLMModel
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
 
 os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
@@ -34,7 +34,7 @@ def run_chatglm2_test(test_config):
     tokenizer = AutoTokenizer.from_pretrained("THUDM/chatglm2-6b", trust_remote_code=True)
     # pad_token_id = 0
 
-    model = ChatGLMModel.from_pretrained(chatglm2_model_path, pad_token_id=tokenizer.eos_token_id)
+    model = ChatGLMForConditionalGeneration.from_pretrained(chatglm2_model_path, pad_token_id=tokenizer.eos_token_id)
     #init_to_get_rotary(model.model, base=10000)
     model = model.half()
 

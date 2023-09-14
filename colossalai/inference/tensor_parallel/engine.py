@@ -15,7 +15,9 @@ from .kvcache_manager import MemoryManager
 
 DP_AXIS, PP_AXIS, TP_AXIS = 0, 1, 2
 
-_supported_models = ['LlamaForCausalLM', 'LlamaModel', 'BloomForCausalLM', 'ChatGLMModel']
+_supported_models = [
+    'LlamaForCausalLM', 'LlamaModel', 'BloomForCausalLM', 'ChatGLMModel', 'ChatGLMForConditionalGeneration'
+]
 
 
 class TPInferEngine:
@@ -252,6 +254,11 @@ class TPInferEngine:
             model = self.model.transformer
         setattr(model, 'infer_state', batch_infer_state)
 
+        # outputs = self.model.forward(input_tokens['input_ids'], attention_mask=input_tokens['attention_mask'])
+        # outputs = self.model.forward(input_tokens['input_ids'][:, 0].unsqueeze(1), attention_mask=input_tokens['attention_mask'])
+        # outputs = self.model.forward(input_tokens['input_ids'][:, 1].unsqueeze(1), attention_mask=input_tokens['attention_mask'])
+
+        # FOR test chatglm2
         outputs = self.model.generate(**input_tokens, **generate_kwargs, early_stopping=False)
 
         # NOTE In future development, we're going to let the scheduler to handle the cache,

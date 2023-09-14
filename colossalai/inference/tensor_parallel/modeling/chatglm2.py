@@ -72,6 +72,28 @@ def _init_to_get_rotary(self, base=10000):
     return
 
 
+def get_masks(self, input_ids, past_length, padding_mask=None):
+    batch_size, seq_length = input_ids.shape
+    full_attention_mask = torch.ones(batch_size, seq_length, seq_length, device=input_ids.device)
+    full_attention_mask.tril_()
+    if past_length:
+        full_attention_mask = torch.cat(
+            (
+                torch.ones(batch_size, seq_length, past_length, device=input_ids.device),
+                full_attention_mask,
+            ),
+            dim=-1,
+        )
+
+    if padding_mask is not None:
+        full_attention_mask = full_attention_mask * padding_mask.unsqueeze(1)
+    if not past_length and padding_mask is not None:
+        full_attention_mask -= padding_mask.unsqueeze(-1) - 1
+    full_attention_mask = (full_attention_mask < 0.5).bool()
+    full_attention_mask.unsqueeze_(1)
+    return full_attention_mask
+
+
 class ChatGLM2InferenceForwards:
     """
     This class holds forwards for Chatglm2 inference.
@@ -95,17 +117,74 @@ class ChatGLM2InferenceForwards:
     ):
         use_cache = use_cache if use_cache is not None else self.config.use_cache
         return_dict = (return_dict if return_dict is not None else self.config.use_return_dict)
+        infer_state = self.infer_state
 
-        transformer_outputs = self.transformer(
-            input_ids=input_ids,
-            position_ids=position_ids,
-            attention_mask=attention_mask,
-            past_key_values=past_key_values,
-            inputs_embeds=inputs_embeds,
-            use_cache=use_cache,
-            output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
-        )
+        if input_ids is not None and inputs_embeds is not None:
+            raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
+        elif input_ids is not None:
+            batch_size, seq_length = input_ids.shape
+        elif inputs_embeds is not None:
+            batch_size, seq_length, _ = inputs_embeds.shape
+        else:
+            raise ValueError("You have to specify either input_ids or inputs_embeds")
+
+        past_key_values_length = 0
+
+        #  NOT READY FOR PRIME TIME
+        #  dummy but work, revise it
+        past_key_values_length = infer_state.cache_manager.past_key_values_length
+        seq_length_with_past = seq_length + past_key_values_length
+        infer_state.seq_length_with_past = seq_length_with_past
+
+        # prefill stage at first
+        if use_cache and seq_length != 1:
+            infer_state.is_context_stage = True
+            infer_state.context_mem_index = infer_state.cache_manager.alloc(infer_state.total_token_num)
+            infer_state.init_block_loc(infer_state.block_loc, infer_state.seq_len, seq_length,
+                                       infer_state.context_mem_index)
+        else:
+            infer_state.is_context_stage = False
+            alloc_mem = infer_state.cache_manager.alloc_contiguous(batch_size)
+            if alloc_mem is not None:
+                infer_state.decode_is_contiguous = True
+                infer_state.decode_mem_index = alloc_mem[0]
+                infer_state.decode_mem_start = alloc_mem[1]
+                infer_state.decode_mem_end = alloc_mem[2]
+                infer_state.block_loc[:, seq_length_with_past - 1] = infer_state.decode_mem_index
+            else:
+                print(f" *** Encountered allocation non-contiguous")
+                print(
+                    f"    infer_state.cache_manager.past_key_values_length: {infer_state.cache_manager.past_key_values_length}"
+                )
+                infer_state.decode_is_contiguous = False
+                alloc_mem = infer_state.cache_manager.alloc(batch_size)
+                infer_state.decode_mem_index = alloc_mem
+                # infer_state.decode_key_buffer = torch.empty((batch_size, self.tp_head_num_, self.head_dim_), dtype=torch.float16, device="cuda")
+                # infer_state.decode_value_buffer = torch.empty((batch_size, self.tp_head_num_, self.head_dim_), dtype=torch.float16, device="cuda")
+                infer_state.block_loc[:, seq_length_with_past - 1] = infer_state.decode_mem_index
+
+        #related to rotary embedding
+        if infer_state.is_context_stage:
+
+            infer_state.position_cos = torch.index_select(self._cos_cached, 0, position_ids.view(-1)).view(
+                position_ids.view(-1).shape[0], -1)
+            infer_state.position_sin = torch.index_select(self._sin_cached, 0, position_ids.view(-1)).view(
+                position_ids.view(-1).shape[0], -1)
+        else:
+            seq_len = infer_state.seq_len
+            infer_state.position_cos = torch.index_select(self._cos_cached, 0, seq_len - 1).view(seq_len.shape[0], -1)
+            infer_state.position_sin = torch.index_select(self._sin_cached, 0, seq_len - 1).view(seq_len.shape[0], -1)
+            infer_state.other_kv_index = infer_state.block_loc[0, infer_state.max_len_in_batch].item()
+
+        transformer_outputs = self.transformer(input_ids=input_ids,
+                                               position_ids=position_ids,
+                                               attention_mask=attention_mask,
+                                               past_key_values=past_key_values,
+                                               inputs_embeds=inputs_embeds,
+                                               use_cache=use_cache,
+                                               output_hidden_states=output_hidden_states,
+                                               return_dict=return_dict,
+                                               infer_state=infer_state)
 
         hidden_states = transformer_outputs[0]
         if return_last_logit:
@@ -151,62 +230,13 @@ class ChatGLM2InferenceForwards:
         use_cache: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        infer_state: BatchInferState = None,
     ):
         output_hidden_states = (output_hidden_states
                                 if output_hidden_states is not None else self.config.output_hidden_states)
         use_cache = use_cache if use_cache is not None else self.config.use_cache
         return_dict = (return_dict if return_dict is not None else self.config.use_return_dict)
         batch_size, seq_length = input_ids.shape
-
-        infer_state = self.infer_state
-        past_key_values_length = 0
-
-        #  NOT READY FOR PRIME TIME
-        #  dummy but work, revise it
-        past_key_values_length = infer_state.cache_manager.past_key_values_length
-        # past_key_values_length = past_key_values[0][0].shape[2]
-        seq_length_with_past = seq_length + past_key_values_length
-
-        # prefill stage at first
-        if use_cache and seq_length != 1:
-            infer_state.is_context_stage = True
-            infer_state.context_mem_index = infer_state.cache_manager.alloc(infer_state.total_token_num)
-            infer_state.init_block_loc(infer_state.block_loc, infer_state.seq_len, seq_length,
-                                       infer_state.context_mem_index)
-        else:
-            infer_state.is_context_stage = False
-            alloc_mem = infer_state.cache_manager.alloc_contiguous(batch_size)
-            if alloc_mem is not None:
-                infer_state.decode_is_contiguous = True
-                infer_state.decode_mem_index = alloc_mem[0]
-                infer_state.decode_mem_start = alloc_mem[1]
-                infer_state.decode_mem_end = alloc_mem[2]
-                infer_state.block_loc[:, seq_length_with_past - 1] = infer_state.decode_mem_index
-            else:
-                print(f" *** Encountered allocation non-contiguous")
-                print(
-                    f"    infer_state.cache_manager.past_key_values_length: {infer_state.cache_manager.past_key_values_length}"
-                )
-                infer_state.decode_is_contiguous = False
-                alloc_mem = infer_state.cache_manager.alloc(batch_size)
-                infer_state.decode_mem_index = alloc_mem
-                # infer_state.decode_key_buffer = torch.empty((batch_size, self.tp_head_num_, self.head_dim_), dtype=torch.float16, device="cuda")
-                # infer_state.decode_value_buffer = torch.empty((batch_size, self.tp_head_num_, self.head_dim_), dtype=torch.float16, device="cuda")
-                infer_state.block_loc[:, seq_length_with_past - 1] = infer_state.decode_mem_index
-
-        #related to rotary embedding
-        if infer_state.is_context_stage:
-
-            infer_state.position_cos = torch.index_select(self._cos_cached, 0, position_ids.view(-1)).view(
-                position_ids.view(-1).shape[0], -1)
-            infer_state.position_sin = torch.index_select(self._sin_cached, 0, position_ids.view(-1)).view(
-                position_ids.view(-1).shape[0], -1)
-        else:
-            seq_len = infer_state.seq_len
-            infer_state.position_cos = torch.index_select(self._cos_cached, 0, seq_len - 1).view(seq_len.shape[0], -1)
-            infer_state.position_sin = torch.index_select(self._sin_cached, 0, seq_len - 1).view(seq_len.shape[0], -1)
-            infer_state.other_kv_index = infer_state.block_loc[0, infer_state.max_len_in_batch].item()
-
         if inputs_embeds is None:
             inputs_embeds = self.embedding(input_ids)
 
@@ -225,10 +255,12 @@ class ChatGLM2InferenceForwards:
                     ],
                     dim=-1,
                 )
-
         if full_attention_mask is None:
             if (attention_mask is not None and not attention_mask.all()) or (past_key_values and seq_length != 1):
-                full_attention_mask = self.get_masks(input_ids, past_key_values, padding_mask=attention_mask)
+                full_attention_mask = get_masks(self,
+                                                input_ids,
+                                                infer_state.cache_manager.past_key_values_length,
+                                                padding_mask=attention_mask)
 
         # Rotary positional embeddings
         rotary_pos_emb = self.rotary_pos_emb(self.seq_length)
@@ -303,7 +335,6 @@ class ChatGLM2InferenceForwards:
             infer_state.decode_layer_id += 1
 
             hidden_states, kv_cache = layer_ret
-            print(hidden_states[0][0])
             if use_cache:
                 presents = presents + (kv_cache,)
 
@@ -328,9 +359,7 @@ class ChatGLM2InferenceForwards:
         # hidden_states: [s, b, h]
 
         # Layer norm at the beginning of the transformer layer.
-        print('glm block', hidden_states[0][0])
         layernorm_output = self.input_layernorm(hidden_states)
-        print('after layernorm', layernorm_output[0][0])
         # Self attention.
         attention_output, kv_cache = self.self_attention(
             layernorm_output,
@@ -339,20 +368,15 @@ class ChatGLM2InferenceForwards:
             use_cache=use_cache,
             infer_state=infer_state,
         )
-        print(attention_output.shape)
-        print('attn output', attention_output[0][0])
         # Residual connection.
         if self.apply_residual_connection_post_layernorm:
             residual = layernorm_output
         else:
             residual = hidden_states
-        print('attn output', attention_output[0][1])
         layernorm_input = torch.nn.functional.dropout(attention_output, p=self.hidden_dropout, training=self.training)
         layernorm_input = residual + layernorm_input
-        print('layernorm input', layernorm_input[0][0])
         # Layer norm post the self attention.
         layernorm_output = self.post_attention_layernorm(layernorm_input)
-        print('layernorm output', layernorm_output[0][0])
         # MLP.
         mlp_output = self.mlp(layernorm_output)
 
@@ -382,9 +406,6 @@ class ChatGLM2InferenceForwards:
         # =================================================
         # Pre-allocate memory for key-values for inference.
         # =================================================
-        # =====================
-        # Query, Key, and Value
-        # =====================
 
         # Attention heads [sq, b, h] --> [sq, b, (np * 3 * hn)]
         mixed_x_layer = self.query_key_value(hidden_states)
@@ -459,6 +480,7 @@ class ChatGLM2InferenceForwards:
                 self.num_attention_heads_per_partition,
                 self.hidden_size_per_attention_head,
             ))
+
         # reshape q k v  to [bsz*sql, num_heads, head_dim]
         query_layer = query_layer.reshape(-1, self.num_attention_heads_per_partition,
                                           self.hidden_size_per_attention_head)
@@ -471,19 +493,15 @@ class ChatGLM2InferenceForwards:
 
             copy_kv_to_mem_cache(infer_state.decode_layer_id, key_layer, value_layer, infer_state.context_mem_index,
                                  infer_state.cache_manager)
-            if infer_state.decode_layer_id <= 2:
-                print(torch.isnan(query_layer).any())
-                print(torch.isnan(key_layer).any())
-                print(torch.isnan(value_layer).any())
+
             attn_output = torch.empty_like(query_layer.view(-1, self.projection_size))
 
+            # NOTE: no bug in context attn fwd (del it )
             llama2_context_attn_fwd(
                 query_layer, key_layer, value_layer,
                 attn_output.view(-1, self.num_attention_heads_per_partition, self.hidden_size_per_attention_head),
-                infer_state.start_loc, infer_state.seq_len, infer_state.cache_manager.past_key_values_length)
-            if infer_state.decode_layer_id <= 2:
-                print('attn output', attn_output)
-                print(torch.isnan(attn_output).any())
+                infer_state.start_loc, infer_state.seq_len, infer_state.seq_length_with_past)
+
         else:
             if infer_state.decode_is_contiguous:
                 # if decode is contiguous, then we copy to key cache and value cache in cache manager directly
@@ -500,31 +518,24 @@ class ChatGLM2InferenceForwards:
                                      infer_state.cache_manager)
 
             # second token and follows
-            # kv = torch.stack((key_states, value_states), dim=2)
-            # (batch_size, seqlen, nheads, headdim)
             attn_output = torch.empty_like(query_layer.view(-1, self.projection_size))
 
             cache_k = infer_state.cache_manager.key_buffer[
                 infer_state.decode_layer_id][:infer_state.decode_mem_end, :, :]
             cache_v = infer_state.cache_manager.value_buffer[
                 infer_state.decode_layer_id][:infer_state.decode_mem_end, :, :]
-            #print(infer_state.decode_layer_id)
-            #print('cache k,v',cache_k[0],cache_v[0])
+
+            # ==================================
+            # core attention computation is replaced by triton kernel
+            # ==================================
             Llama2TokenAttentionForwards.token_attn(query_layer, cache_k, cache_v, attn_output, infer_state.block_loc,
                                                     infer_state.start_loc, infer_state.seq_len,
-                                                    infer_state.cache_manager.past_key_values_length,
-                                                    infer_state.other_kv_index)
-
-        # ==================================
-        # core attention computation is replaced by triton kernel
-        # ==================================
-
-        # context_layer = self.core_attention(query_layer, key_layer, value_layer, attention_mask)
+                                                    infer_state.seq_length_with_past, infer_state.other_kv_index)
+            #print('after attention',torch.isnan(attn_output).any())
 
         # =================
-        # Output. [sq, b, h]
+        # Output:[sq, b, h] ,it is kept same as original.
         # =================
 
         output = self.dense(attn_output).reshape(-1, batch_size, self.projection_size)
-        print('after dense', output[0][0])
         return output, kv_cache
