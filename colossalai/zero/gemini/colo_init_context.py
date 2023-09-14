@@ -126,7 +126,7 @@ class ColoInitContext(InsertPostInitMethodToModuleSubClasses):
                 replaced_tensors[param] = colo_param
             delattr(submodule, param_name)
             setattr(submodule, param_name, colo_param)
-            # colo_param.shared_param_modules.append(submodule)
+            colo_param.shared_param_modules.append(submodule)
 
         param_number = 0
         meta_param_number = 0
