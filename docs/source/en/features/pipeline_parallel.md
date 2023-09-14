@@ -59,11 +59,13 @@ In this schedule, each device can perform computation for multiple subsets of la
 
 This mode is both memory-efficient and time-efficient.
 
-## Usage of non-interleaved and interleaved schedule
+## Colossal-AI's Implement
 
-In Colossal-AI, we provided both non-interleaved(as `PipelineSchedule`) and interleaved schedule(as  `InterleavedPipelineSchedule`).
+In Colossal-AI, pipeline parallelism relies on the `scheduler` and `Shardformer`. We provide both non-interleaved (`OneForwardOneBackwardSchedule`) and interleaved (`InterleavedSchedule`) schedules. While `Shardformer` implements layer splitting for models and replaces the `forward` function of the model to make it compatible with the scheduler.
 
-You just need to set `NUM_MICRO_BATCHES` in config file and set `NUM_CHUNKS` in config file if you want to use Interleaved Pipeline Schedule. If you certainly know the shape of each pipeline stage's output tensor and the shapes are all the same, you can set `TENSOR_SHAPE` in config file to further reduce communication. Otherwise, you can just ignore `tensor_shape`, and the shape will be exchanged over pipeline stages automatically. Then we will generate an appropriate schedule for you.
+In Colossal-AI, the `HybridParallelPlugin` encapsulates pipeline execution strategies. It manages pipeline parallel communication groups and a scheduler. When boosting the model with this plugin, the model's layers are split by calling the `shardformer.optimize` function, and then `execute_pipeline` is called to execute the model in segments using either `OneForwardOneBackwardSchedule` or `InterleavedSchedule`.
+
+You can customize your parallel strategy by setting parameters for the HybridParallelPlugin.
 
 ## Fine-tune Bert with pipeline
 

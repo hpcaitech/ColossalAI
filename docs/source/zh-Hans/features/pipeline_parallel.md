@@ -58,13 +58,15 @@
 
 这种模式既节省内存又节省时间。
 
-## 使用schedule
+## Colossal-AI中的实现
 
-在 Colossal-AI 中, 我们提供非交错(`PipelineSchedule`) 和交错(`InterleavedPipelineSchedule`)schedule。
+在 Colossal-AI 中，流水线并行依赖于 `scheduler` 和 `Shardformer`。我们提供了非交错的（`OneForwardOneBackwardSchedule`）和交错的（`InterleavedSchedule`）两种调度方式。而 Shardformer 实现了对模型的层分割，并替换了模型的 `forward` 函数，使其与调度器兼容。
 
-你只需要在配置文件中，设置 `NUM_MICRO_BATCHES` 并在你想使用交错schedule的时候，设置 `NUM_CHUNKS`。 如果你确定性地知道每个管道阶段的输出张量的形状，而且形状都是一样的，你可以设置 `tensor_shape` 以进一步减少通信。否则，你可以忽略 `tensor_shape` , 形状将在管道阶段之间自动交换。 我们将会根据用户提供的配置文件，生成一个合适schedule来支持用户的流水并行训练。
+在 Colossal-AI 中，`HybridParallelPlugin` 封装了流水线执行策略。它管理流水线并行通信组和一个 `scheduler`。当使用此插件增强模型时，模型的层将通过调用 `shardformer.optimize` 函数进行分割，然后调用 `execute_pipeline` 使用 `scheduler` 来分别执行模型的各个部分。
 
-## 使用流水线训练 ResNet
+您可以通过设置 HybridParallelPlugin 的参数来自定义您的并行策略。
+
+## 使用流水线微调 Bert模型
 
 首先我们定义好需要的训练组件，包括`model`, `dataloader`, `optimizer`, `lr_scheduler`, `criterion` 等:
 ```python
