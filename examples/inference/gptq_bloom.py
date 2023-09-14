@@ -59,16 +59,6 @@ def bench_bloom(args):
     infer_engine = TPInferEngine(model, shard_config, max_batch_size, max_input_len, max_output_len, gptq=True)
     generate_kwargs = dict(max_new_tokens=max_output_len, do_sample=False)
 
-    # inference with model.generate
-    print("input is:", "auto-gptq is")
-    print(
-        tokenizer.decode(
-            infer_engine.generate(tokenizer("auto-gptq is", return_tensors="pt").to('cuda'), max_new_tokens=128)[0]))
-    print("input is:", "today is")
-    print(
-        tokenizer.decode(
-            infer_engine.generate(tokenizer("today is ", return_tensors="pt").to('cuda'), max_new_tokens=128)[0]))
-
     input_tokens = {
         "input_ids": torch.randint(1, 1000, (max_batch_size, max_input_len), device='cuda'),
         "attention_mask": torch.ones((max_batch_size, max_input_len), device='cuda')
@@ -120,7 +110,7 @@ def test_bloom(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('-p', '--path', type=str, help='Model path', required=True)
-    parser.add_argument('-p', '--quantized_path', type=str, help='Model path', required=True)
+    parser.add_argument('-q', '--quantized_path', type=str, help='Model path', required=True)
     parser.add_argument('-tp', '--tp_size', type=int, default=1, help='Tensor parallel size')
     parser.add_argument('-b', '--batch_size', type=int, default=16, help='Maximum batch size')
     parser.add_argument('--input_len', type=int, default=1024, help='Maximum input length')
