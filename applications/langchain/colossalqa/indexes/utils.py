@@ -13,12 +13,13 @@ def create_empty_sql_database(sql_path: str)-> Tuple[Engine, str]:
     sql_engine = create_engine(sql_path)
     return sql_engine, sql_path
 
-def destroy_sql_database(sql_engine: Engine) -> None:
+def destroy_sql_database(sql_engine: Union[Engine, str]) -> None:
     '''
     destroy an sql database
     '''
-    if sql_engine:
-        drop_table('users', sql_engine)
-        sql_engine.dispose()
-        sql_engine = None
+    if isinstance(sql_engine, str):
+        sql_engine = create_engine(sql_engine)
+    drop_table('users', sql_engine)
+    sql_engine.dispose()
+    sql_engine = None
 

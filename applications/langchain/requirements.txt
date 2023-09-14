@@ -1,7 +1,6 @@
 transformers>=4.20.1
 tqdm
 datasets
-colossalai
 torch<2.0.0, >=1.12.1
 langchain==0.0.284
 tokenizers

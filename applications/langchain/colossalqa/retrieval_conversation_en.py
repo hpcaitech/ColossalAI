@@ -12,8 +12,7 @@ from colossalqa.retriever import CustomRetriever
 from colossalqa.text_splitter import NeuralTextSplitter
 from colossalqa.memory import ConversationBufferWithSummary
 from colossalqa.prompt.prompt import PROMPT_RETRIEVAL_QA_EN, PROMPT_DISAMBIGUATE_EN
-from colossalqa.indexes.utils import create_empty_sql_database, destroy_sql_database
-from langchain.indexes import SQLRecordManager 
+
 
 # vllm
 # start the vllm server with
@@ -65,6 +64,7 @@ if __name__ == '__main__':
         splits = text_splitter.split_documents(retriever_data)
         documents.extend(splits)
     # create vector store
+    # information_retriever.add_documents(docs=documents, method='append', mode='by_source', embedding=embedding)
     vectordb = Chroma.from_documents(documents=documents, embedding=embedding)
     # initiate retriever    
     retriever=vectordb.as_retriever(search_kwargs={"k":3})
