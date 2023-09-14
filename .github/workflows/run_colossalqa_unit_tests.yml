@@ -20,7 +20,10 @@ jobs:
     runs-on: [self-hosted, 8-gpu]
     container:
       image: hpcaitech/pytorch-cuda:1.12.0-11.3.0
-      options: --gpus all --rm -v /data/scratch/chatgpt:/data/scratch/chatgpt
+      volumes:
+        - /data/scratch/test_data_colossalqa:/data/scratch/test_data_colossalqa
+        - /data3/data:/data3/data
+      options: --gpus all --rm
     timeout-minutes: 30
     defaults:
       run:
@@ -45,5 +48,5 @@ jobs:
           ZH_MODEL_NAME: chatglm2
           EN_MODEL_PATH: /data3/data/model_eval_for_commerical_use/Llama-2-7b-hf
           EN_MODEL_NAME: llama
-          TEST_DATA_PATH_EN: /data3/users/lcyab/ColossalAI/applications/langchain/data/test_data/companies.txt
-          TEST_DATA_PATH_ZH: /data3/users/lcyab/ColossalAI/applications/langchain/data/test_data/companies_zh.txt
+          TEST_DATA_PATH_EN: /data/scratch/test_data_colossalqa/companies.txt
+          TEST_DATA_PATH_ZH: /data/scratch/test_data_colossalqa/companies_zh.txt
