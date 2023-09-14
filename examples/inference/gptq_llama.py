@@ -81,8 +81,10 @@ def run_llama_test(args):
     init_to_get_rotary(model.model.model, base=10000)
 
     model_config = model.config
-    shard_config = ShardConfig(enable_tensor_parallelism=True if args.tp_size > 1 else False, inference_only=True)
-    infer_engine = TPInferEngine(model, shard_config, max_batch_size, max_input_len, max_output_len, gptq=True)
+    shard_config = ShardConfig(enable_tensor_parallelism=True if args.tp_size > 1 else False,
+                               inference_only=True,
+                               inference_gptq=True)
+    infer_engine = TPInferEngine(model, shard_config, max_batch_size, max_input_len, max_output_len)
 
     generate_kwargs = dict(max_new_tokens=max_output_len, do_sample=False)
 

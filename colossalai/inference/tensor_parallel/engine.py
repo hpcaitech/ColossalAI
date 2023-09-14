@@ -59,7 +59,6 @@ class TPInferEngine:
                  max_input_len: int,
                  max_output_len: int,
                  dtype: torch.dtype = torch.float16,
-                 gptq: bool = False,
                  device: str = 'cuda') -> None:
         self.max_batch_size = max_batch_size
         self.max_input_len = max_input_len
@@ -80,7 +79,6 @@ class TPInferEngine:
         self.tp_size = -1    # to be set with given shard config in self.prepare_shard_config
         self.cache_manager = None
 
-        self.gptq = gptq
         self.max_dq_buffer_size = 1
         self.max_inner_outer_dim = 1
         self.gptq_temp_state_buffer = None
@@ -181,10 +179,8 @@ class TPInferEngine:
         model_name = model.__class__.__name__
         assert model_name in self.supported_models, f"Unsupported model cls {model_name} for TP inference."
         policy = get_autopolicy(model, inference_only=True)
-        if not hasattr(policy, "gptq"):
-            setattr(policy, "gptq", False)
-        if self.gptq:
-            setattr(policy, "gptq", True)
+
+        if self.shard_config.inference_gptq:
             tp_rank = dist.get_rank(self.shard_config.tensor_parallel_process_group)
             replace_autogptq_linear(model, tp_size=self.tp_size, tp_rank=tp_rank)
             self._post_init_gptq_buffer(model)

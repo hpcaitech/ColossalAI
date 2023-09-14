@@ -37,7 +37,7 @@ class BloomModelInferPolicy(BloomForCausalLMPolicy):
     def module_policy(self):
         from transformers.models.bloom.modeling_bloom import BloomAttention, BloomBlock, BloomForCausalLM, BloomModel
         policy = {}
-        if not self.gptq:
+        if not self.shard_config.inference_gptq:
             policy = super().module_policy()
         else:
             policy[BloomModel] = ModulePolicyDescription(

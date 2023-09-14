@@ -36,7 +36,7 @@ class LlamaModelInferPolicy(LlamaForCausalLMPolicy):
 
     def module_policy(self):
         policy = {}
-        if not self.gptq:
+        if not self.shard_config.inference_gptq:
             policy = super().module_policy()
         else:
             self.append_or_create_submodule_replacement(description=SubModuleReplacementDescription(
