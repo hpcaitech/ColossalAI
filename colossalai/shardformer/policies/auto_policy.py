@@ -145,6 +145,8 @@ _INFER_POLICY_LIST = {
     # ChatGLM2
     "colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm.ChatGLMModel":
         PolicyLocation(file_name="chatglm2", class_name="ChatGLM2InferPolicy"),
+    "colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm.ChatGLMForConditionalGeneration":
+        PolicyLocation(file_name="chatglm2", class_name="ChatGLM2ForConditionalGenerationInferPolicy"),
 }
 
 

@@ -3,6 +3,7 @@ from functools import partial
 import torch
 
 from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import (
+    ChatGLMForConditionalGeneration,
     ChatGLMModel,
     GLMBlock,
     GLMTransformer,
@@ -57,3 +58,21 @@ class ChatGLM2InferPolicy(ChatGLMModelPolicy):
     def postprocess(self):
         _init_to_get_rotary(self.model)
         return self.model
+
+
+class ChatGLM2ForConditionalGenerationInferPolicy(ChatGLM2InferPolicy):
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    def module_policy(self):
+        policy = super().module_policy()
+        model_infer_forward = ChatGLM2InferenceForwards.chatglm_for_conditional_generation_forward
+        method_replacement = {'forward': partial(model_infer_forward)}
+        self.append_or_create_method_replacement(description=method_replacement,
+                                                 policy=policy,
+                                                 target_key=ChatGLMForConditionalGeneration)
+        return policy
+
+    def postprocess(self):
+        return super().postprocess()
