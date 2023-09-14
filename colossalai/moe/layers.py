@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from colossalai.moe._operation import COL_MOE_KERNEL_FLAG, AllGather, AllToAll, MoeCombine, MoeDispatch, ReduceScatter
+from colossalai.moe._operation import AllGather, AllToAll, MoeCombine, MoeDispatch, ReduceScatter
 from colossalai.moe.experts import BaseMLPExperts, get_expert_class
 from colossalai.moe.manager import MOE_MANAGER
 from colossalai.moe.routers import MoeRouter, get_router_cls
@@ -58,7 +58,7 @@ class SparseMLP(nn.Module):
         super().__init__()
         self.hidden_size = hidden_size
         self.num_experts = num_experts
-        self.use_kernel = True if COL_MOE_KERNEL_FLAG and MOE_MANAGER.use_kernel_optim else False
+        self.use_kernel = True if MOE_MANAGER.use_kernel_optim else False
         self.expert_parallel = expert_parallel
         assert expert_parallel in ["EP", "TP", None], f"Unsupported expert parallel type {expert_parallel}"
 
