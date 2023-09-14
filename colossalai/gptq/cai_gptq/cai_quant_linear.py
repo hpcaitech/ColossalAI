@@ -2,11 +2,16 @@
 
 import math
 import warnings
+from typing import Callable, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
+import torch.distributed as dist
 import torch.nn as nn
-import triton
+from torch.distributed import ProcessGroup
+
+from colossalai.lazy import LazyInitContext
+from colossalai.shardformer.layer import ParallelModule
 
 from .gptq_op import CaiGPTQLinearOp
 
@@ -21,14 +26,6 @@ except ImportError:
 
 
 class CaiQuantLinear(nn.Module):
-    max_dq_buffer_size = 1
-    max_inner_outer_dim = 1
-    max_input_len = 1
-    prepared_buffers = False
-    device_to_buffers = {
-        "temp_state": None,
-        "temp_dq": None,
-    }
 
     def __init__(self, bits, groupsize, infeatures, outfeatures, bias, tp_size=1, tp_rank=0, row_split=False):
         super().__init__()
@@ -82,12 +79,6 @@ class CaiQuantLinear(nn.Module):
         if linear.bias is not None:
             self.bias = linear.bias.clone().half()
 
-        # wn = 16
-        # pbits = 64
-        # ptype = torch.int64
-        # unsign_type = np.uint64
-        # sign_type = np.int64
-
         wn = 8
         pbits = 32
         ptype = torch.int32
@@ -107,9 +98,6 @@ class CaiQuantLinear(nn.Module):
 
         i = 0
         row = 0
-        # print("weight shape ", intweight.shape, qweight.shape, out_qweight.shape, bits)
-        # print("weight shape ", intweight[0].shape, qweight[0].shape, out_qweight[0].shape)
-        # print("weight value ", intweight[0], qweight[0])
 
         while row < qweight.shape[0]:
             if self.bits in [2, 4, 8]:
@@ -200,6 +188,176 @@ class CaiQuantLinear(nn.Module):
                 bias=bias,
             )
         return output.view(outshape)
+
+
+def split_column_copy(gptq_linear, cai_linear, tp_size=1, tp_rank=0, split_num=1):
+
+    qweights = gptq_linear.qweight.split(gptq_linear.out_features // split_num, dim=-1)
+    qzeros = gptq_linear.qzeros.split(gptq_linear.out_features // (32 // cai_linear.bits) // split_num, dim=-1)
+    scales = gptq_linear.scales.split(gptq_linear.out_features // split_num, dim=-1)
+    g_idx = gptq_linear.g_idx
+    if gptq_linear.bias is not None:
+        bias = gptq_linear.bias.split(gptq_linear.out_features // split_num, dim=-1)
+
+    cai_split_out_features = cai_linear.outfeatures // split_num
+    zero_split_block = cai_linear.outfeatures // (32 // cai_linear.bits) // split_num
+
+    for i in range(split_num):
+        cai_linear.qweight[:, i * cai_split_out_features:(i + 1) *
+                           cai_split_out_features] = qweights[i][:, tp_rank * cai_split_out_features:(tp_rank + 1) *
+                                                                 cai_split_out_features]
+        cai_linear.qzeros[:, i * zero_split_block:(i + 1) *
+                          zero_split_block] = qzeros[i][:, tp_rank * zero_split_block:(tp_rank + 1) * zero_split_block]
+        cai_linear.scales[:, i * cai_split_out_features:(i + 1) *
+                          cai_split_out_features] = scales[i][:, tp_rank * cai_split_out_features:(tp_rank + 1) *
+                                                              cai_split_out_features]
+        if cai_linear.bias is not None:
+            cai_linear.bias[i * cai_split_out_features:(i + 1) *
+                            cai_split_out_features] = bias[i][tp_rank * cai_split_out_features:(tp_rank + 1) *
+                                                              cai_split_out_features]
+
+    cai_linear.g_idx.copy_(g_idx)
+
+
+def split_row_copy(gptq_linear, cai_linear, tp_rank=0, split_num=1):
+
+    qweights = gptq_linear.qweight.split(gptq_linear.in_features // split_num, dim=0)
+    qzeros = gptq_linear.qzeros.split(gptq_linear.in_features // split_num, dim=0)
+    scales = gptq_linear.scales.split(gptq_linear.in_features // split_num, dim=0)
+    g_idxs = gptq_linear.g_idx.split(gptq_linear.in_features // split_num, dim=0)
+
+    cai_split_in_features = cai_linear.infeatures // (32 // cai_linear.bits) // split_num
+    zero_split_block = cai_linear.infeatures // cai_linear.groupsize // split_num
+    idx_split_features = cai_linear.infeatures // split_num
+
+    for i in range(split_num):
+        cai_linear.qweight[i * cai_split_in_features:(i + 1) *
+                           cai_split_in_features, :] = qweights[i][tp_rank * cai_split_in_features:(tp_rank + 1) *
+                                                                   cai_split_in_features, :]
+        cai_linear.qzeros[i * zero_split_block:(i + 1) *
+                          zero_split_block, :] = qzeros[i][tp_rank * zero_split_block:(tp_rank + 1) *
+                                                           zero_split_block, :]
+        cai_linear.scales[i * zero_split_block:(i + 1) *
+                          zero_split_block, :] = scales[i][tp_rank * zero_split_block:(tp_rank + 1) *
+                                                           zero_split_block, :]
+        cai_linear.g_idx[i * idx_split_features:(i + 1) *
+                         idx_split_features] = g_idxs[i][tp_rank * idx_split_features:(tp_rank + 1) *
+                                                         idx_split_features]
+    if cai_linear.bias is not None:
+        cai_linear.bias.copy_(gptq_linear.bias)
+
+
+class RowCaiQuantLinear(CaiQuantLinear, ParallelModule):
+
+    def __init__(self, bits, groupsize, infeatures, outfeatures, bias, tp_size=1, tp_rank=0, row_split=False):
+
+        super().__init__(bits,
+                         groupsize,
+                         infeatures,
+                         outfeatures,
+                         bias,
+                         tp_size=tp_size,
+                         tp_rank=tp_rank,
+                         row_split=row_split)
+        self.process_group = None
+
+    @staticmethod
+    def from_native_module(module: nn.Module, process_group: Union[ProcessGroup, List[ProcessGroup]], *args,
+                           **kwargs) -> ParallelModule:
+        LazyInitContext.materialize(module)
+        # get the attributes
+        in_features = module.in_features
+        out_features = module.out_features
+        bias = module.bias is not None
+        device = module.weight.device
+
+        # ensure only one process group is passed
+        if isinstance(process_group, (list, tuple)):
+            assert len(process_group) == 1, \
+                f'Expected only one process group, got {len(process_group)}.'
+            process_group = process_group[0]
+
+        tp_size = dist.get_world_size(process_group)
+        tp_rank = dist.get_rank(process_group)
+
+        if in_features < tp_size:
+            return module
+
+        if in_features % tp_size != 0:
+            raise ValueError(
+                f"The size of in_features:{in_features} is not integer multiples of tensor parallel size: {tp_size}!")
+        linear_1d = RowCaiQuantLinear(module.bits,
+                                      module.group_size,
+                                      module.in_features // tp_size,
+                                      module.out_features,
+                                      module.bias is not None,
+                                      tp_size=tp_size,
+                                      tp_rank=tp_rank,
+                                      row_split=True)
+        linear_1d.process_group = process_group
+
+        split_row_copy(module, linear_1d, tp_rank=tp_rank, **kwargs)
+        return linear_1d
+
+    def forward(self, x):
+        output = super().forward(x)
+        if self.tp_size > 1:
+            dist.all_reduce(output, op=dist.ReduceOp.SUM, group=self.process_group)
+            if self.bias is not None:
+                output.add_(self.bias)
+        return output
+
+
+class ColCaiQuantLinear(CaiQuantLinear, ParallelModule):
+
+    def __init__(self, bits, groupsize, infeatures, outfeatures, bias, tp_size=1, tp_rank=0, row_split=False):
+
+        super().__init__(bits,
+                         groupsize,
+                         infeatures,
+                         outfeatures,
+                         bias,
+                         tp_size=tp_size,
+                         tp_rank=tp_rank,
+                         row_split=row_split)
+        self.process_group = None
+
+    @staticmethod
+    def from_native_module(module: nn.Module, process_group: Union[ProcessGroup, List[ProcessGroup]], *args,
+                           **kwargs) -> ParallelModule:
+        LazyInitContext.materialize(module)
+        # get the attributes
+        in_features = module.in_features
+        out_features = module.out_features
+        bias = module.bias is not None
+        device = module.weight.device
+
+        # ensure only one process group is passed
+        if isinstance(process_group, (list, tuple)):
+            assert len(process_group) == 1, \
+                f'Expected only one process group, got {len(process_group)}.'
+            process_group = process_group[0]
+
+        tp_size = dist.get_world_size(process_group)
+        tp_rank = dist.get_rank(process_group)
+
+        if in_features < tp_size:
+            return module
+
+        if in_features % tp_size != 0:
+            raise ValueError(
+                f"The size of in_features:{in_features} is not integer multiples of tensor parallel size: {tp_size}!")
+        linear_1d = ColCaiQuantLinear(module.bits,
+                                      module.group_size,
+                                      module.in_features,
+                                      module.out_features // tp_size,
+                                      module.bias is not None,
+                                      tp_size=tp_size,
+                                      tp_rank=tp_rank)
+        linear_1d.process_group = process_group
+
+        split_column_copy(module, linear_1d, tp_rank=tp_rank, **kwargs)
+        return linear_1d
 
 
 def make_cai_quant_linear(module, names, bits, groupsize, name=''):
