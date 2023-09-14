@@ -407,6 +407,15 @@ def get_llama_flash_attention_forward():
 
     from colossalai.kernel.cuda_native import AttnMaskType, ColoAttention
 
+    llama_version = 2
+    try:
+        from transformers.models.llama.modeling_llama import repeat_kv
+    except:
+        warnings.warn("using llamav1, llamav1 hasn't repeat_kv function")
+        llama_version = 1
+
+    from colossalai.kernel.cuda_native import AttnMaskType, ColoAttention
+
     def forward(
         self: LlamaAttention,
         hidden_states: torch.Tensor,

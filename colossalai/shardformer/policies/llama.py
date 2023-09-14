@@ -40,7 +40,6 @@ class LlamaPolicy(Policy):
             self.shard_config.enable_sequence_parallelism = False
             warnings.warn("Llama dosen't support sequence parallelism now, will ignore the sequence parallelism flag.")
 
-
         if self.shard_config.enable_tensor_parallelism:
             decoder_attribute_replacement = {
                 "self_attn.hidden_size": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
