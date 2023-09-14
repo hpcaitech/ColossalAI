@@ -180,11 +180,13 @@ class TPInferEngine:
         assert model_name in self.supported_models, f"Unsupported model cls {model_name} for TP inference."
         policy = get_autopolicy(model, inference_only=True)
 
-        if self.shard_config.inference_gptq:
-            tp_rank = dist.get_rank(self.shard_config.tensor_parallel_process_group)
-            replace_autogptq_linear(model, tp_size=self.tp_size, tp_rank=tp_rank)
-            self._post_init_gptq_buffer(model)
+        # if self.shard_config.inference_gptq:
+        #     tp_rank = dist.get_rank(self.shard_config.tensor_parallel_process_group)
+        #     replace_autogptq_linear(model, tp_size=self.tp_size, tp_rank=tp_rank)
         self.model, _ = shardformer.optimize(model, policy)
+        if self.shard_config.inference_gptq:
+            self._post_init_gptq_buffer(model)
+
         self.model = self.model.cuda()
 
     @property
