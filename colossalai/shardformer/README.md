@@ -114,7 +114,7 @@ We will follow this roadmap to develop Shardformer:
 | bloom |   [x]   |  [x]   |   [x] |  [x]   |  [x] | [x] | [x] |  [x] |  [x] |
 | chatglm2 |   [x]   |  [x]   |   [x] |  [x]   |  [x] | [x] | [x] |  [x] |  [x] |
 | vit |   [x]   |  [x]   |   [ ] |  [x]   |  [x] | [x] | [x] |  [ ] |  [ ] |
-| whisper |   [x]   |  [x]   |   [x] |  [x]   |  [x] | [x] | [x] |  [ ] |  [ ] |
+| whisper |   [x]   |  [x]   |   [x] |  [x]   |  [x] | [ ] | [x] |  [ ] |  [ ] |
 | sam |   [x]   |  [ ]   |   [ ] |  [x]   |  [x] | [x] | [x] |  [ ] |  [ ] |
 | blip2 |   [x]   |  [ ]   |   [ ] |  [x]   |  [x] | [x] | [x] |  [ ] |  [ ] |
 | roberta |   [ ]   |  [ ]   |   [ ] |  [ ]   |  [ ] | [ ] | [ ] |  [ ] |  [ ] |
