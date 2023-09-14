@@ -65,6 +65,16 @@ Titans provides a customized GPT model, which uses distributed operators as buil
 In [./titans/README.md], we provide a hybrid parallelism of ZeRO, TP and PP.
 You can switch parallel strategies using a config file.
 
+### Hybridparallelism
+
+Hybridparallelism provides a user friendly plugin to set multiple parallelism method for training and inference. In [./hybridparallelism], we provide a n example to finetune gpt2 using Hybridparallelism.
+
+Quick run
+```bash
+cd ./hybridparallelism
+bash run.sh
+```
+
 ## Performance
 
 Testbed: a cluster of 8xA100 (80GB) and 1xAMD EPYC 7543 32-Core Processor (512 GB). GPUs are connected via PCI-e.
