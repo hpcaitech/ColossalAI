@@ -17,7 +17,7 @@
     - [Arg List](#arg-list-2)
   - [Inference example - After Stage3](#inference-example---after-stage3)
   - [Attention](#attention)
-      - [data](#data)
+    - [data](#data)
   - [Support Model](#support-model)
     - [GPT](#gpt)
     - [BLOOM](#bloom)
@@ -28,8 +28,8 @@
     - [Reward model](#reward-model)
     - [Critic model](#critic-model)
 
-
 ---
+
 ## Install requirements
 
 ```shell
@@ -38,10 +38,11 @@ pip install -r requirements.txt
 
 ## Supervised datasets collection
 
-We collected 104K bilingual dataset of Chinese and English, and you can find the datasets in this repo
-[InstructionWild](https://github.com/XueFuzhao/InstructionWild).
+We collected 104K bilingual datasets of Chinese and English, and you can find the datasets in this repo
+[InstructionWild](https://github.com/XueFuzhao/InstructionWild) and in this [file](https://github.com/XueFuzhao/InstructionWild/blob/main/data/README.md).
 
-The following pic shows how we collected the data.
+Here is how we collected the data
+
 <p align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/data-collect.png" width=500/>
 </p>
@@ -52,38 +53,40 @@ In order to further improve the model's ability to handle multi-turn conversatio
 
 A sample of conversation dataset should have the following fields:
 
-* `type` (str, optional): The type of the data sample.
-* `language` (str, optional): The language of the data sample.
-* `dataset` (str, optional): The dataset the data sample originates from.
-* `conversations` (str, compulsory): Conversation content of the data sample.
-* `id` (int, optional): The ID of the data sample.
+- `type` (str, optional): The type of the data sample.
+- `language` (str, optional): The language of the data sample.
+- `dataset` (str, optional): The dataset the data sample originates from.
+- `conversations` (str, compulsory): Conversation content of the data sample.
+- `id` (int, optional): The ID of the data sample.
 
 A simple example:
+
 ```json
 {
-    "type": "instruction",
-    "language": "English",
-    "dataset": "Alpaca",
-    "conversations": [
-        {
-            "from": "human",
-            "value": "Give three tips for staying healthy."
-        },
-        {
-            "from": "gpt",
-            "value": "1.Eat a balanced diet and make sure to include plenty of fruits and vegetables. \n2. Exercise regularly to keep your body active and strong. \n3. Get enough sleep and maintain a consistent sleep schedule."
-        }
-    ],
-    "id": 1
+  "type": "instruction",
+  "language": "English",
+  "dataset": "Alpaca",
+  "conversations": [
+    {
+      "from": "human",
+      "value": "Give three tips for staying healthy."
+    },
+    {
+      "from": "gpt",
+      "value": "1.Eat a balanced diet and make sure to include plenty of fruits and vegetables. \n2. Exercise regularly to keep your body active and strong. \n3. Get enough sleep and maintain a consistent sleep schedule."
+    }
+  ],
+  "id": 1
 }
 ```
 
-> **NOTE:**  Only key `conversations` is compulsary for training and other keys serve as metadata. The length of `conversations` varies.
+> **NOTE:** Only key `conversations` is compulsary for training and other keys serve as metadata. The length of `conversations` varies.
 
 You can run the `examples/generate_conversation_dataset.py` to generate a conversation dataset supported by ColossalChat.
 
 You can use the following cmd to generate conversation dataset.
-```
+
+```bash
 python generate_conversation_dataset.py \
     --dataset "All"
     --save_path "/path/to/dataset"
@@ -97,12 +100,12 @@ Stage1 is supervised instructs fine-tuning, which uses the datasets mentioned ea
 You can run the `examples/train_sft.sh` to start a supervised instructs fine-tuning.
 
 You can also use the following cmd to start a supervised instructs fine-tuning with your own settings.
-```
+
+```bash
 torchrun --standalone --nproc_per_node=4 train_sft.py \
     --pretrain "/path/to/LLaMa-7B/" \
     --model 'llama' \
     --strategy colossalai_zero2 \
-    --log_interval 10 \
     --save_path  /path/to/Coati-7B \
     --dataset /path/to/data.json \
     --batch_size 4 \
@@ -112,18 +115,33 @@ torchrun --standalone --nproc_per_node=4 train_sft.py \
     --max_epochs 1 \
     --grad_checkpoint
 ```
+
+**Note**: the supervised dataset follows the following format,
+
+```json
+[
+    {
+        "instruction": "Provide a list of the top 10 most popular mobile games in Asia",
+        "input": "",
+        "output": "The top 10 most popular mobile games in Asia are:\n1) PUBG Mobile\n2) Pokemon Go\n3) Candy Crush Saga\n4) Free Fire\n5) Clash of Clans\n6) Mario Kart Tour\n7) Arena of Valor\n8) Fantasy Westward Journey\n9) Subway Surfers\n10) ARK Survival Evolved",
+        "id": 0
+    },
+    ...
+]
+```
+
 ### Arg List
-- --strategy:          the strategy using for training, choices=['ddp', 'colossalai_gemini', 'colossalai_zero2'], default='colossalai_zero2'
-- --model:             model type, choices=['gpt2', 'bloom', 'opt', 'llama'], default='bloom'
-- --pretrain:          pretrain model, type=str, default=None
-- --max_datasets_size: the max size of dataset, type=int, default=None
-- --save_path:         path to save the model, type=str, default='output'
-- --need_optim_ckpt:   whether to save optim ckpt, type=bool, default=False
-- --max_epochs:        max epochs for training, type=int, default=3
-- --batch_size:        batch size while training, type=int, default=4
-- --lora_rank:         low-rank adaptation matrices rank, type=int, default=0
-- --log_interval:      how many steps to log, type=int, default=100
-- --grad_checkpoint:   enable gradient checkpointing, type=bool, default=False
+
+- `--strategy`: the strategy using for training, choices=['ddp', 'colossalai_gemini', 'colossalai_zero2'], default='colossalai_zero2'
+- `--model`: model type, choices=['gpt2', 'bloom', 'opt', 'llama'], default='bloom'
+- `--pretrain`: pretrain model, type=str, default=None
+- `--max_datasets_size`: the max size of dataset, type=int, default=None
+- `--save_path`: path to save the model, type=str, default='output'
+- `--need_optim_ckpt`: whether to save optim ckpt, type=bool, default=False
+- `--max_epochs`: max epochs for training, type=int, default=3
+- `--batch_size`: batch size while training, type=int, default=4
+- `--lora_rank`: low-rank adaptation matrices rank, type=int, default=0
+- `--grad_checkpoint`: enable gradient checkpointing, type=bool, default=False
 
 ## Stage2 - Training reward model
 
@@ -133,7 +151,8 @@ We train a reward model in stage 2, which obtains corresponding scores by manual
 You can run the `examples/train_rm.sh` to start a reward model training.
 
 You can also use the following cmd to start training a reward model.
-```
+
+```bash
 torchrun --standalone --nproc_per_node=4 train_reward_model.py \
     --pretrain "/path/to/LLaMa-7B/" \
     --model 'llama' \
@@ -141,16 +160,19 @@ torchrun --standalone --nproc_per_node=4 train_reward_model.py \
     --loss_fn 'log_exp'\
     --save_path 'rmstatic.pt' \
 ```
+
 ### Features and tricks in RM training
+
 - We support [Anthropic/hh-rlhf](https://huggingface.co/datasets/Anthropic/hh-rlhf)and[rm-static](https://huggingface.co/datasets/Dahoas/rm-static) datasets.
-- We support 2 kinds of loss_function named 'log_sig'(used by OpenAI) and 'log_exp'(used by Anthropic).
-- We change the loss to valid_acc and pair_dist to monitor progress during training.
+- We support 2 kinds of loss function named `log_sig`(used by OpenAI) and `log_exp`(used by Anthropic).
+- We change the loss to `valid_acc` and `pair_dist` to monitor progress during training.
 - We add special token to the end of the sequence to get better result.
 - We use cosine-reducing lr-scheduler for RM training.
 - We set value_head as 1 liner layer and initialize the weight of value_head using N(0，1/(d_model + 1)) distribution.
 - We train a Bloom-560m reward model for 1 epoch and find the test acc of the model achieve the performance mentions in [Anthropics paper](https://arxiv.org/abs/2204.05862).
 
 ### Experiment result
+
 Model performance in [Anthropics paper](https://arxiv.org/abs/2204.05862):
 
 <div align=middle> <img width="512" alt="image" src="https://user-images.githubusercontent.com/70618399/225263321-8d64c3a8-6877-4cc8-9b61-0e1c52d3d94f.png">
@@ -162,20 +184,20 @@ Model performance in [Anthropics paper](https://arxiv.org/abs/2204.05862):
 <div align=left>We also train the reward model based on LLaMA-7B, which reaches the ACC of 72.06% after 1 epoch, performing almost the same as Anthropic's best RM.
 
 ### Arg List
-- --strategy:          the strategy using for training, choices=['ddp', 'colossalai_gemini', 'colossalai_zero2'], default='colossalai_zero2'
-- --model:             model type, choices=['gpt2', 'bloom', 'opt', 'llama'], default='bloom'
-- --pretrain:          pretrain model, type=str, default=None
-- --model_path:        the path of rm model(if continue to train), type=str, default=None
-- --save_path:         path to save the model, type=str, default='output'
-- --need_optim_ckpt:   whether to save optim ckpt, type=bool, default=False
-- --max_epochs:        max epochs for training, type=int, default=3
-- --dataset:           dataset name, type=str, choices=['Anthropic/hh-rlhf', 'Dahoas/rm-static']
-- --subset:            subset of the dataset, type=str, default=None
-- --batch_size:        batch size while training, type=int, default=4
-- --lora_rank:         low-rank adaptation matrices rank, type=int, default=0
-- --loss_func:         which kind of loss function, choices=['log_sig', 'log_exp']
-- --max_len:           max sentence length for generation, type=int, default=512
-- --test:              whether is only testing, if it's true, the dataset will be small
+
+- `--strategy`: the strategy using for training, choices=['ddp', 'colossalai_gemini', 'colossalai_zero2'], default='colossalai_zero2'
+- `--model`: model type, choices=['gpt2', 'bloom', 'opt', 'llama'], default='bloom'
+- `--pretrain`: pretrain model, type=str, default=None
+- `--model_path`: the path of rm model(if continue to train), type=str, default=None
+- `--save_path`: path to save the model, type=str, default='output'
+- `--need_optim_ckpt`: whether to save optim ckpt, type=bool, default=False
+- `--max_epochs`: max epochs for training, type=int, default=3
+- `--dataset`: dataset name, type=str, choices=['Anthropic/hh-rlhf', 'Dahoas/rm-static']
+- `--subset`: subset of the dataset, type=str, default=None
+- `--batch_size`: batch size while training, type=int, default=4
+- `--lora_rank`: low-rank adaptation matrices rank, type=int, default=0
+- `--loss_func`: which kind of loss function, choices=['log_sig', 'log_exp']
+- `--max_len`: max sentence length for generation, type=int, default=512
 
 ## Stage3 - Training model using prompts with RL
 
@@ -186,53 +208,89 @@ Stage3 uses reinforcement learning algorithm, which is the most complex part of 
 </p>
 
 You can run the `examples/train_prompts.sh` to start PPO training.
+
 You can also use the cmd following to start PPO training.
 [[Stage3 tutorial video]](https://www.youtube.com/watch?v=Z8wwSHxPL9g)
 
-```
+```bash
 torchrun --standalone --nproc_per_node=4 train_prompts.py \
-         --pretrain "/path/to/LLaMa-7B/" \
-         --model 'llama' \
-         --strategy colossalai_zero2 \
-         --prompt_dataset /path/to/your/prompt_dataset \
-         --pretrain_dataset /path/to/your/pretrain_dataset \
-         --rm_pretrain /your/pretrain/rm/definition \
-         --rm_path /your/rm/model/path
+    --pretrain "/path/to/LLaMa-7B/" \
+    --model 'llama' \
+    --strategy colossalai_zero2 \
+    --prompt_dataset /path/to/your/prompt_dataset \
+    --pretrain_dataset /path/to/your/pretrain_dataset \
+    --rm_pretrain /your/pretrain/rm/definition \
+    --rm_path /your/rm/model/path
 ```
 
 Prompt dataset: the instruction dataset mentioned in the above figure which includes the instructions, e.g. you can use the [script](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat/examples/generate_prompt_dataset.py) which samples `instinwild_en.json` or `instinwild_ch.json` in [InstructionWild](https://github.com/XueFuzhao/InstructionWild/tree/main/data#instructwild-data) to generate the prompt dataset.
 Pretrain dataset: the pretrain dataset including the instruction and corresponding response, e.g. you can use the [InstructWild Data](https://github.com/XueFuzhao/InstructionWild/tree/main/data) in stage 1 supervised instructs tuning.
 
+**Note**: the required datasets follow the following format,
+
+- `pretrain dataset`
+
+  ```json
+  [
+      {
+          "instruction": "Provide a list of the top 10 most popular mobile games in Asia",
+          "input": "",
+          "output": "The top 10 most popular mobile games in Asia are:\n1) PUBG Mobile\n2) Pokemon Go\n3) Candy Crush Saga\n4) Free Fire\n5) Clash of Clans\n6) Mario Kart Tour\n7) Arena of Valor\n8) Fantasy Westward Journey\n9) Subway Surfers\n10) ARK Survival Evolved",
+          "id": 0
+      },
+      ...
+  ]
+  ```
+
+- `prompt dataset`
+
+  ```json
+  [
+      {
+          "instruction": "Edit this paragraph to make it more concise: \"Yesterday, I went to the store and bought some things. Then, I came home and put them away. After that, I went for a walk and met some friends.\"",
+          "id": 0
+      },
+      {
+          "instruction": "Write a descriptive paragraph about a memorable vacation you went on",
+          "id": 1
+      },
+      ...
+  ]
+  ```
+
 ### Arg List
-- --strategy:          the strategy using for training, choices=['ddp', 'colossalai_gemini', 'colossalai_zero2'], default='colossalai_zero2'
-- --model:             model type of actor, choices=['gpt2', 'bloom', 'opt', 'llama'], default='bloom'
-- --pretrain:          pretrain model, type=str, default=None
-- --rm_model:          reward model type, type=str, choices=['gpt2', 'bloom', 'opt', 'llama'], default=None
-- --rm_pretrain:       pretrain model for reward model, type=str, default=None
-- --rm_path:           the path of rm model, type=str, default=None
-- --save_path:         path to save the model, type=str, default='output'
-- --prompt_dataset:       path of the prompt dataset, type=str, default=None
-- --pretrain_dataset:  path of the ptx dataset, type=str, default=None
-- --need_optim_ckpt:   whether to save optim ckpt, type=bool, default=False
-- --num_episodes:      num of episodes for training, type=int, default=10
-- --num_update_steps:  number of steps to update policy per episode, type=int
-- --num_collect_steps: number of steps to collect experience per episode, type=int
-- --train_batch_size:  batch size while training, type=int, default=8
-- --ptx_batch_size:    batch size to compute ptx loss, type=int, default=1
-- --experience_batch_size: batch size to make experience, type=int, default=8
-- --lora_rank:         low-rank adaptation matrices rank, type=int, default=0
-- --kl_coef:           kl_coef using for computing reward, type=float, default=0.1
-- --ptx_coef:          ptx_coef using for computing policy loss, type=float, default=0.9
+
+- `--strategy`: the strategy using for training, choices=['ddp', 'colossalai_gemini', 'colossalai_zero2'], default='colossalai_zero2'
+- `--model`: model type of actor, choices=['gpt2', 'bloom', 'opt', 'llama'], default='bloom'
+- `--pretrain`: pretrain model, type=str, default=None
+- `--rm_model`: reward model type, type=str, choices=['gpt2', 'bloom', 'opt', 'llama'], default=None
+- `--rm_pretrain`: pretrain model for reward model, type=str, default=None
+- `--rm_path`: the path of rm model, type=str, default=None
+- `--save_path`: path to save the model, type=str, default='output'
+- `--prompt_dataset`: path of the prompt dataset, type=str, default=None
+- `--pretrain_dataset`: path of the ptx dataset, type=str, default=None
+- `--need_optim_ckpt`: whether to save optim ckpt, type=bool, default=False
+- `--num_episodes`: num of episodes for training, type=int, default=10
+- `--num_update_steps`: number of steps to update policy per episode, type=int
+- `--num_collect_steps`: number of steps to collect experience per episode, type=int
+- `--train_batch_size`: batch size while training, type=int, default=8
+- `--ptx_batch_size`: batch size to compute ptx loss, type=int, default=1
+- `--experience_batch_size`: batch size to make experience, type=int, default=8
+- `--lora_rank`: low-rank adaptation matrices rank, type=int, default=0
+- `--kl_coef`: kl_coef using for computing reward, type=float, default=0.1
+- `--ptx_coef`: ptx_coef using for computing policy loss, type=float, default=0.9
 
 ## Inference example - After Stage3
+
 We support different inference options, including int8 and int4 quantization.
 For details, see [`inference/`](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat/inference).
 
-
 ## Attention
+
 The examples are demos for the whole training process.You need to change the hyper-parameters to reach great performance.
 
 #### data
+
 - [x] [rm-static](https://huggingface.co/datasets/Dahoas/rm-static)
 - [x] [hh-rlhf](https://huggingface.co/datasets/Anthropic/hh-rlhf)
 - [ ] [openai/summarize_from_feedback](https://huggingface.co/datasets/openai/summarize_from_feedback)
@@ -242,14 +300,16 @@ The examples are demos for the whole training process.You need to change the hyp
 ## Support Model
 
 ### GPT
-- [x]  GPT2-S (s)
-- [x]  GPT2-M (m)
-- [x]  GPT2-L (l)
-- [x]  GPT2-XL (xl)
-- [x]  GPT2-4B (4b)
-- [ ]  GPT2-6B (6b)
+
+- [x] GPT2-S (s)
+- [x] GPT2-M (m)
+- [x] GPT2-L (l)
+- [x] GPT2-XL (xl)
+- [x] GPT2-4B (4b)
+- [ ] GPT2-6B (6b)
 
 ### BLOOM
+
 - [x] [BLOOM-560m](https://huggingface.co/bigscience/bloom-560m)
 - [x] [BLOOM-1b1](https://huggingface.co/bigscience/bloom-1b1)
 - [x] [BLOOM-3b](https://huggingface.co/bigscience/bloom-3b)
@@ -257,6 +317,7 @@ The examples are demos for the whole training process.You need to change the hyp
 - [ ] [BLOOM-175b](https://huggingface.co/bigscience/bloom)
 
 ### OPT
+
 - [x] [OPT-125M](https://huggingface.co/facebook/opt-125m)
 - [x] [OPT-350M](https://huggingface.co/facebook/opt-350m)
 - [x] [OPT-1.3B](https://huggingface.co/facebook/opt-1.3b)
@@ -266,10 +327,11 @@ The examples are demos for the whole training process.You need to change the hyp
 - [ ] [OPT-30B](https://huggingface.co/facebook/opt-30b)
 
 ### [LLaMA](https://github.com/facebookresearch/llama/blob/main/MODEL_CARD.md)
-- [x]  LLaMA-7B
-- [x]  LLaMA-13B
-- [ ]  LLaMA-33B
-- [ ]  LLaMA-65B
+
+- [x] LLaMA-7B
+- [x] LLaMA-13B
+- [ ] LLaMA-33B
+- [ ] LLaMA-65B
 
 ## Add your own models
 
@@ -282,12 +344,12 @@ if it is supported in huggingface [transformers](https://github.com/huggingface/
 r you can build your own model by yourself.
 
 ### Actor model
-```
+
+```python
 from ..base import Actor
 from transformers.models.coati import CoatiModel
 
 class CoatiActor(Actor):
-
     def __init__(self,
                  pretrained: Optional[str] = None,
                  checkpoint: bool = False,
@@ -302,7 +364,8 @@ class CoatiActor(Actor):
 ```
 
 ### Reward model
-```
+
+```python
 from ..base import RewardModel
 from transformers.models.coati import CoatiModel
 
@@ -325,12 +388,11 @@ class CoatiRM(RewardModel):
 
 ### Critic model
 
-```
+```python
 from ..base import Critic
 from transformers.models.coati import CoatiModel
 
 class CoatiCritic(Critic):
-
     def __init__(self,
                  pretrained: Optional[str] = None,
                  checkpoint: bool = False,

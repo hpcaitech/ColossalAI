@@ -1,3 +1,4 @@
+import warnings
 from functools import partial
 from typing import Callable, Dict, List
 
@@ -39,6 +40,9 @@ class OPTPolicy(Policy):
         from transformers.models.opt.modeling_opt import OPTAttention, OPTDecoder, OPTDecoderLayer
 
         policy = {}
+        if self.shard_config.enable_sequence_parallelism:
+            self.shard_config.enable_sequence_parallelism = False
+            warnings.warn("OPT dosen't support sequence parallelism now, will ignore the sequence parallelism flag.")
 
         if self.shard_config.enable_tensor_parallelism:
             policy[OPTDecoder] = ModulePolicyDescription(sub_module_replacement=[
@@ -100,16 +104,20 @@ class OPTPolicy(Policy):
 
         # use flash attention
         if self.shard_config.enable_flash_attention:
-            policy[OPTAttention] = ModulePolicyDescription(method_replacement={
+            self.append_or_create_method_replacement(description={
                 'forward': get_opt_flash_attention_forward(),
-            })
+            },
+                                                     policy=policy,
+                                                     target_key=OPTAttention)
 
         # use jit fused operator
         if self.shard_config.enable_jit_fused:
-            policy[OPTDecoderLayer] = ModulePolicyDescription(method_replacement={
+            self.append_or_create_method_replacement(description={
                 'forward': get_jit_fused_opt_decoder_layer_forward(),
                 'dropout_add': get_jit_fused_dropout_add_func(),
-            })
+            },
+                                                     policy=policy,
+                                                     target_key=OPTDecoderLayer)
 
         return policy
 

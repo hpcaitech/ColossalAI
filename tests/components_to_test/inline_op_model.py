@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from colossalai.nn import CheckpointModule
+from colossalai.legacy.nn import CheckpointModule
 
 from .registry import non_distributed_component_funcs
 from .utils.dummy_data_generator import DummyDataGenerator

@@ -20,21 +20,21 @@ Tha data is from [LLaMA Int8 4bit ChatBot Guide v2](https://rentry.org/llama-tar
 
 ### 8-bit
 
-| Model | Min GPU RAM | Recommended GPU RAM | Min RAM/Swap | Card examples |
-| :---: | :---: | :---: | :---: | :---: |
-| LLaMA-7B | 9.2GB | 10GB | 24GB | 3060 12GB, RTX 3080 10GB, RTX 3090 |
-| LLaMA-13B | 16.3GB | 20GB | 32GB | RTX 3090 Ti, RTX 4090 |
-| LLaMA-30B | 36GB | 40GB | 64GB | A6000 48GB, A100 40GB |
-| LLaMA-65B | 74GB | 80GB | 128GB | A100 80GB |
+|   Model   | Min GPU RAM | Recommended GPU RAM | Min RAM/Swap |           Card examples            |
+| :-------: | :---------: | :-----------------: | :----------: | :--------------------------------: |
+| LLaMA-7B  |    9.2GB    |        10GB         |     24GB     | 3060 12GB, RTX 3080 10GB, RTX 3090 |
+| LLaMA-13B |   16.3GB    |        20GB         |     32GB     |       RTX 3090 Ti, RTX 4090        |
+| LLaMA-30B |    36GB     |        40GB         |     64GB     |       A6000 48GB, A100 40GB        |
+| LLaMA-65B |    74GB     |        80GB         |    128GB     |             A100 80GB              |
 
 ### 4-bit
 
-| Model | Min GPU RAM | Recommended GPU RAM | Min RAM/Swap | Card examples |
-| :---: | :---: | :---: | :---: | :---: |
-| LLaMA-7B | 3.5GB | 6GB | 16GB | RTX 1660, 2060, AMD 5700xt, RTX 3050, 3060 |
-| LLaMA-13B | 6.5GB | 10GB | 32GB | AMD 6900xt, RTX 2060 12GB, 3060 12GB, 3080, A2000 |
-| LLaMA-30B | 15.8GB | 20GB | 64GB | RTX 3080 20GB, A4500, A5000, 3090, 4090, 6000, Tesla V100 |
-| LLaMA-65B | 31.2GB | 40GB | 128GB | A100 40GB, 2x3090, 2x4090, A40, RTX A6000, 8000, Titan Ada |
+|   Model   | Min GPU RAM | Recommended GPU RAM | Min RAM/Swap |                       Card examples                        |
+| :-------: | :---------: | :-----------------: | :----------: | :--------------------------------------------------------: |
+| LLaMA-7B  |    3.5GB    |         6GB         |     16GB     |         RTX 1660, 2060, AMD 5700xt, RTX 3050, 3060         |
+| LLaMA-13B |    6.5GB    |        10GB         |     32GB     |     AMD 6900xt, RTX 2060 12GB, 3060 12GB, 3080, A2000      |
+| LLaMA-30B |   15.8GB    |        20GB         |     64GB     | RTX 3080 20GB, A4500, A5000, 3090, 4090, 6000, Tesla V100  |
+| LLaMA-65B |   31.2GB    |        40GB         |    128GB     | A100 40GB, 2x3090, 2x4090, A40, RTX A6000, 8000, Titan Ada |
 
 ## General setup
 

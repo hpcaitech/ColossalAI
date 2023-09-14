@@ -4,8 +4,8 @@ from typing import Dict, List, Optional
 
 import torch
 import torch.distributed as dist
+from torch.distributed import ProcessGroup
 
-from colossalai.tensor import ProcessGroup as ColoProcessGroup
 from colossalai.utils import get_current_device
 
 
@@ -55,7 +55,7 @@ class Chunk:
 
     def __init__(self,
                  chunk_size: int,
-                 process_group: ColoProcessGroup,
+                 process_group: ProcessGroup,
                  dtype: torch.dtype,
                  init_device: Optional[torch.device] = None,
                  cpu_shard_init: bool = False,
@@ -69,7 +69,7 @@ class Chunk:
 
         Args:
             chunk_size (int): the number of elements in the chunk
-            process_group (ColoProcessGroup): the process group of this chunk
+            process_group (ProcessGroup): the process group of this chunk
             dtype (torch.dtype): the data type of the chunk
             init_device (torch.device): optional, During the chunk construction process, where the tensor is stored.
                 The default value is None, which is the current GPU
@@ -83,7 +83,7 @@ class Chunk:
         self.chunk_size = chunk_size
         self.utilized_size = 0
 
-        self.torch_pg = process_group.dp_process_group()
+        self.torch_pg = process_group
         self.pg_size = dist.get_world_size(self.torch_pg)
         self.pg_rank = dist.get_rank(self.torch_pg)
 
@@ -218,7 +218,7 @@ class Chunk:
             return False
         else:
             return self.tensor_state_cnter[TensorState.HOLD] + \
-                   self.tensor_state_cnter[TensorState.HOLD_AFTER_BWD] == self.num_tensors
+                self.tensor_state_cnter[TensorState.HOLD_AFTER_BWD] == self.num_tensors
 
     @property
     def can_reduce(self):

@@ -7,7 +7,7 @@ imageio-ffmpeg==0.4.2
 torchmetrics==0.7
 omegaconf==2.1.1
 test-tube>=0.7.5
-streamlit>=0.73.1
+streamlit>=1.11.1
 einops==0.3.0
 transformers
 webdataset==0.2.5

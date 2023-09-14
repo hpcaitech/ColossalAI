@@ -1,10 +1,12 @@
 import torch
 import torch.nn as nn
-from colossalai.nn.layer.parallel_sequence import TransformerSelfAttentionRing
-from colossalai.kernel.jit import bias_dropout_add_fused_train, bias_dropout_add_fused_inference
+
 from colossalai.kernel.cuda_native import LayerNorm
-from .mlp import TransformerMLP
+from colossalai.kernel.jit import bias_dropout_add_fused_inference, bias_dropout_add_fused_train
+from colossalai.legacy.nn.layer.parallel_sequence import TransformerSelfAttentionRing
+
 from .dropout import get_bias_dropout_add
+from .mlp import TransformerMLP
 
 
 def attention_mask_func(attention_scores, attention_mask):
@@ -48,8 +50,7 @@ class BertLayer(nn.Module):
             layer_number=layer_number,
             apply_query_key_layer_scaling=True,
             convert_fp16_to_fp32_in_softmax=convert_fp16_to_fp32_in_softmax,
-            fp16=is_naive_fp16
-        )
+            fp16=is_naive_fp16)
 
         self.hidden_dropout = hidden_dropout
         self.bias_dropout_fusion = bias_dropout_fusion
@@ -89,11 +90,8 @@ class BertLayer(nn.Module):
 
         # re-enable torch grad to enable fused optimization.
         with torch.enable_grad():
-            layernorm_input = bias_dropout_add_func(
-                attention_output,
-                attention_bias.expand_as(residual),
-                residual,
-                self.hidden_dropout)
+            layernorm_input = bias_dropout_add_func(attention_output, attention_bias.expand_as(residual), residual,
+                                                    self.hidden_dropout)
 
         # Layer norm post the self attention.
         layernorm_output = self.post_attention_layernorm(layernorm_input)
@@ -109,10 +107,6 @@ class BertLayer(nn.Module):
 
         # re-enable torch grad to enable fused optimization.
         with torch.enable_grad():
-            output = bias_dropout_add_func(
-                mlp_output,
-                mlp_bias.expand_as(residual),
-                residual,
-                self.hidden_dropout)
+            output = bias_dropout_add_func(mlp_output, mlp_bias.expand_as(residual), residual, self.hidden_dropout)
 
         return output

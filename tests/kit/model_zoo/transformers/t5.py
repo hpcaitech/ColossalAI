@@ -43,7 +43,7 @@ def data_gen_for_t5_model():
 # output transform function
 output_transform_fn = lambda x: x
 
-# define loss funciton
+# define loss function
 loss_fn_for_t5_model = lambda x: x.last_hidden_state.mean()
 loss_fn_for_encoder_only = lambda x: x.last_hidden_state.mean()
 loss_fn_for_conditional_generation = lambda x: x.loss

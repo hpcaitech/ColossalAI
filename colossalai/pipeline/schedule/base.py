@@ -1,4 +1,4 @@
-from typing import Any, Callable, Iterable
+from typing import Any, Callable, Iterable, Optional
 
 from torch import Tensor
 from torch.nn import Module
@@ -14,18 +14,18 @@ class PipelineSchedule:
 
     def forward_backward_step(self,
                               model: Module,
-                              optimizer: OptimizerWrapper,
                               data_iter: Iterable,
                               criterion: Callable[[Any, Any], Tensor],
+                              optimizer: Optional[OptimizerWrapper] = None,
                               return_loss: bool = False,
                               return_outputs: bool = False) -> dict:
         """Forward and backward step for pipeline training.
 
         Args:
             model (Module): Model to be trained.
-            optimizer (OptimizerWrapper): Optimizer to be used.
             data_iter (Iterable): Data iterator.
             criterion (Callable[[Any, Any], Tensor]): Criterion to be used. It should take two arguments: model outputs and inputs, and returns loss tensor.
+            optimizer (OptimizerWrapper, optional): Optimizer to be used. Can be None when only forward is executed. Defaults to None.
             return_loss (bool, optional): Whether to return loss. Defaults to False. Whether to return loss.
             return_outputs (bool, optional): Whether to return model outputs. Defaults to False. Whether to return model outputs.
 
