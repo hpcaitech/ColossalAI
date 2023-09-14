@@ -11,9 +11,10 @@ from colossalqa.prompt.prompt import PROMPT_RETRIEVAL_QA_ZH
 from langchain.chains import RetrievalQA
 
 def test_memory_long():
-    model_path = os.environ.get('LLAMA2_PATH')
+    model_path = os.environ.get('EN_MODEL_PATH')
     data_path = os.environ.get('TEST_DATA_PATH_EN')
-    coati_api = CoatiAPI('llama', model_path)
+    model_name = os.environ.get('EN_MODEL_NAME')
+    coati_api = CoatiAPI(model_name, model_path)
     llm = CoatiLLM(n=4, api=coati_api)
     memory = ConversationBufferWithSummary(llm=llm, max_tokens=600,
         llm_kwargs={'max_new_tokens':50, 'temperature':0.6, 'do_sample':True})
@@ -53,9 +54,10 @@ def test_memory_long():
     assert have_summarization_flag==True
 
 def test_memory_short():
-    model_path = os.environ.get('LLAMA2_PATH')
+    model_path = os.environ.get('EN_MODEL_PATH')
     data_path = os.environ.get('TEST_DATA_PATH_EN')
-    coati_api = CoatiAPI('llama', model_path)
+    model_name = os.environ.get('EN_MODEL_NAME')
+    coati_api = CoatiAPI(model_name, model_path)
     llm = CoatiLLM(n=4, api=coati_api)
     memory = ConversationBufferWithSummary(llm=llm,
         llm_kwargs={'max_new_tokens':50, 'temperature':0.6, 'do_sample':True})

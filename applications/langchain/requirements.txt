@@ -8,6 +8,7 @@ tokenizers
 modelscope==1.9.0
 sentencepiece==0.1.99
 gpustat
+sqlalchemy
 pytest
 # coati install from ../Chat
 sentence-transformers

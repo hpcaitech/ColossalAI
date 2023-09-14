@@ -138,7 +138,7 @@ jobs:
     name: Build and Test Colossal-AI
     needs: detect
     if: needs.detect.outputs.anyLibraryFileChanged == 'true'
-    runs-on: [self-hosted, gpu]
+    runs-on: [self-hosted, 8-gpu]
     container:
       image: hpcaitech/pytorch-cuda:1.12.0-11.3.0
       options: --gpus all --rm -v /data/scratch/cifar-10:/data/scratch/cifar-10 -v /data/scratch/llama-tiny:/data/scratch/llama-tiny
@@ -192,16 +192,8 @@ jobs:
         run: |
           CUDA_EXT=1 pip install -v -e .
           pip install -r requirements/requirements-test.txt
+          pip install -e applications/langchain
 
-      - name: Set Environment Variables for ColossalQA
-        run: |
-          export ZH_MODEL_PATH="/data3/data/model_eval_for_non_commercial_use/chatglm2-6b"
-          export ZH_MODEL_NAME="chatglm"
-          export EN_MODEL_PATH="/data3/data/model_eval_for_commerical_use/Llama-2-7b-hf"
-          export EN_MODEL_NAME="llama"
-          export TEST_DATA_PATH_EN="/home/lcyab/data3/ColossalAI/applications/langchain/data/test_data/companies.txt"
-          export TEST_DATA_PATH_ZH="/home/lcyab/data3/ColossalAI/applications/langchain/data/test_data/companies_zh.txt"
-                 
       - name: Store Colossal-AI Cache
         run: |
           # -p flag is required to preserve the file timestamp to avoid ninja rebuild
@@ -215,7 +207,18 @@ jobs:
         env:
           PR_NUMBER: ${{ github.event.number }}
 
-      - name: Execute Unit Testing
+      - name: Execute Unit Testing Colossalqa
+        run: |
+          pytest applications/langchain/tests
+        env:
+          ZH_MODEL_PATH: /data3/data/model_eval_for_non_commercial_use/chatglm2-6b
+          ZH_MODEL_NAME: chatglm2
+          EN_MODEL_PATH: /data3/data/model_eval_for_commerical_use/Llama-2-7b-hf
+          EN_MODEL_NAME: llama
+          TEST_DATA_PATH_EN: /data3/users/lcyab/ColossalAI/applications/langchain/data/test_data/companies.txt
+          TEST_DATA_PATH_ZH: /data3/users/lcyab/ColossalAI/applications/langchain/data/test_data/companies_zh.txt
+
+      - name: Execute Unit Testing ColossalAI
         run: |
           CURL_CA_BUNDLE="" PYTHONPATH=$PWD pytest -m "not largedist" --testmon --testmon-forceselect --testmon-cov=. --durations=10 tests/
         env:

@@ -69,7 +69,6 @@ if __name__ == '__main__':
     # initiate retriever    
     retriever=vectordb.as_retriever(search_kwargs={"k":3})
     information_retriever.set_retriever(retriever=retriever)
-    information_retriever.set_k(k=3)
 
     # set document retrieval chain, we need this chain to calculate prompt length
     memory.initiate_document_retrieval_chain(llm, PROMPT_RETRIEVAL_QA_EN, information_retriever, 
