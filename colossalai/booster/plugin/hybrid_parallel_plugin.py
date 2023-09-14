@@ -45,6 +45,8 @@ class HybridParallelModule(ModelWrapper):
         self.dp_group = dp_group
 
         shardformer = ShardFormer(shard_config)
+        if custom_policy is not None:
+            assert isinstance(custom_policy, object)
         module, self.shared_params = shardformer.optimize(module, policy=custom_policy)
 
         # setting process groups for shared parameters
