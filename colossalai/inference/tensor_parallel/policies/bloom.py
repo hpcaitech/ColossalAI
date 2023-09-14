@@ -8,10 +8,10 @@ from colossalai.shardformer.policies.bloom import BloomForCausalLMPolicy
 from ..modeling.bloom import BloomInferenceForwards
 
 try:
-    from colossalai.kernel.triton.fused_layernorm import layer_norm
+    from colossalai.kernel.triton import layer_norm
     HAS_TRITON_NORM = True
 except:
-    print("you should install triton from https://github.com/openai/triton")
+    print("Some of our kernels require triton. You might want to install triton from https://github.com/openai/triton")
     HAS_TRITON_NORM = False
 
 
