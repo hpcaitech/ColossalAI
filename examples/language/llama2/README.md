@@ -205,7 +205,7 @@ Here is details about CLI arguments:
 - Pretrained checkpoint path: `--model_path`, the path of your model checkpoint, it can be your local directory or a Hugging Face tag.
 - Booster plugin: `-p`, `--plugin`. `gemini`, `gemini_auto`, `zero2`, `hybrid_parallel` and `zero2_cpu` are supported. For more details, please refer to [Booster plugins](https://colossalai.org/docs/basics/booster_plugins).
 - Dataset path: `-d`, `--dataset`. The default dataset is `yizhongw/self_instruct`. It support any dataset from `datasets` with the same data format as `yizhongw/self_instruct`.
-- task name: `--task_name`, the task to fine-tune, it's also related to the target of loading dataset.
+- task name: `--task_name`, the task to fine-tune, it's also related to the target of loading dataset, The default value is `super_natural_instructions`.
 - Number of epochs: `-e`, `--num_epochs`. The default value is 1.
 - Local batch size: `-b`, `--batch_size`. Batch size per GPU. The default value is 2.
 - Learning rate: `--lr`. The default value is 3e-4.
