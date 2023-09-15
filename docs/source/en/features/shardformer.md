@@ -29,33 +29,6 @@ This module aims to make parallelization hassle-free for users who are not from 
 Within a few lines of codes, users can turn a model into a state ready for distributed training.
 Also, Shardformer contains various optimization tools for acceleration and memory saving during forward/backward pass.
 
-
-## How Shardformer Works
-
-Generally, Shardformer works through the following four kinds of *replacements*:
-
-1. Replacing original PyTorch module (e.g. `nn.Linear`, `nn.Embedding`) with a crafted distributed module.
-The distributed module keeps the same attributes as the original module but replaces the original parameters with distributed parameters.
-Also, new `forward` methods will replace original ones so as to execute distributed computation, such as linear layers' split /gather operations executed under tensor parallelism.
-Each distributed module implements its `from_native_module` static method to convert the PyTorch module to its corresponding distributed module.
-
-2. Replacing attributes of original Huggingface Transformers layers with appropriate attributes for distributed training.
-For example, when training LlaMa-2 with tensor parallel size as 2, the attribute `num_heads` of `LlamaDecoderLayer` (the number of attention heads in each layer) should be replaced with `model.config.num_attention_heads // 2`.
-
-3. Replacing the `forward` methods implemented by original Huggingface
-Transformers libraries with our customized `forward` methods.
-This replacement is essential for pipeline paralellism, where a customiozed function is needed to pass intermediate hidden states between different pipeline stages.
-Also, optimization methods such as flash attention or sequence parallel can be injected into the `forward` process through our customized `forward` method.
-
-4. Replacing the whole copy of model parameters and optimizer states with incomplete ones controlled by current device (this is why it's called Shardformer).
-By executing `ModelSharder.shard` method, current device will only keep the part of model parameters it's supposed to take care of.
-To be specific, they should be the assigned parameter shards when using tensor parallelism, or the parameters belonging to current pipeline stage when using pipeline parallelism, or both of them.
-All other parameters are released so as to liberate memory usage.
-As a result, the optimizer will only compute the states corresponding to these part of parameters, causing the usage of memory to be further saved.
-
-All of these replacements are implemented with manually written policies and forward functions.
-If you want to delve deeper into the design of Shardformer or customize your own Shardformer policies, please refer to our [Shardformer development document](https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/shardformer/README.md) and [pipeline parallelism design](https://github.com/hpcaitech/ColossalAI/discussions/4050) for more details.
-
 ## Usage
 
 ### Shardformer Configuration
@@ -101,6 +74,31 @@ is an example on how to trigger `Shardformer` through calling Shardformer APIs.
     ```
     when training ChatGLM-2 with Shardformer, and initialize your model with these imported classes.
 
+## How Shardformer Works
+
+Generally, Shardformer works through the following four kinds of *replacements*:
+
+1. Replacing original PyTorch module (e.g. `nn.Linear`, `nn.Embedding`) with a crafted distributed module.
+The distributed module keeps the same attributes as the original module but replaces the original parameters with distributed parameters.
+Also, new `forward` methods will replace original ones so as to execute distributed computation, such as linear layers' split /gather operations executed under tensor parallelism.
+Each distributed module implements its `from_native_module` static method to convert the PyTorch module to its corresponding distributed module.
+
+2. Replacing attributes of original Huggingface Transformers layers with appropriate attributes for distributed training.
+For example, when training LlaMa-2 with tensor parallel size as 2, the attribute `num_heads` of `LlamaDecoderLayer` (the number of attention heads in each layer) should be replaced with `model.config.num_attention_heads // 2`.
+
+3. Replacing the `forward` methods implemented by original Huggingface
+Transformers libraries with our customized `forward` methods.
+This replacement is essential for pipeline paralellism, where a customiozed function is needed to pass intermediate hidden states between different pipeline stages.
+Also, optimization methods such as flash attention or sequence parallel can be injected into the `forward` process through our customized `forward` method.
+
+4. Replacing the whole copy of model parameters and optimizer states with incomplete ones controlled by current device (this is why it's called Shardformer).
+By executing `ModelSharder.shard` method, current device will only keep the part of model parameters it's supposed to take care of.
+To be specific, they should be the assigned parameter shards when using tensor parallelism, or the parameters belonging to current pipeline stage when using pipeline parallelism, or both of them.
+All other parameters are released so as to liberate memory usage.
+As a result, the optimizer will only compute the states corresponding to these part of parameters, causing the usage of memory to be further saved.
+
+All of these replacements are implemented with manually written policies and forward functions.
+If you want to delve deeper into the design of Shardformer or customize your own Shardformer policies, please refer to our [Shardformer development document](https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/shardformer/README.md) and [pipeline parallelism design](https://github.com/hpcaitech/ColossalAI/discussions/4050) for more details.
 
 ## Supporting Information
 
@@ -109,15 +107,15 @@ Model/Feature Compatibility Matrix:
 <table>
   <tr>
     <th nowrap="nowrap">Model/Feature</th>
-    <th nowrap="nowrap" title="Tensor Parallel">Tensor<br>Parallel</th>
-    <th nowrap="nowrap" align="center" title="Pipeline Parallel">Pipeline<br>Parallel</th>
-    <th nowrap="nowrap" align="center" title="Lazy Initialization">Lazy<br>Initialization</th>
+    <th nowrap="nowrap" title="Tensor Parallel">Tensor<br />Parallel</th>
+    <th nowrap="nowrap" align="center" title="Pipeline Parallel">Pipeline<br />Parallel</th>
+    <th nowrap="nowrap" align="center" title="Lazy Initialization">Lazy<br />Initialization</th>
     <th nowrap="nowrap" align="center" title="xFormers">xFormers</th>
-    <th nowrap="nowrap" align="center" title="Flash Attention 2">Flash<br>Attention 2</th>
-    <th nowrap="nowrap" align="center" title="JIT Fused Operators">JIT Fused<br>Operators</th>
-    <th nowrap="nowrap" align="center" title="Fused LayerNorm">Fused<br>LayerNorm</th>
-    <th nowrap="nowrap" align="center" title="Sequence Parallel">Sequence<br>Parallel</th>
-    <th nowrap="nowrap" align="center" title="Sequence Overlap">Sequence<br>Overlap</th>
+    <th nowrap="nowrap" align="center" title="Flash Attention 2">Flash<br />Attention 2</th>
+    <th nowrap="nowrap" align="center" title="JIT Fused Operators">JIT Fused<br />Operators</th>
+    <th nowrap="nowrap" align="center" title="Fused LayerNorm">Fused<br />LayerNorm</th>
+    <th nowrap="nowrap" align="center" title="Sequence Parallel">Sequence<br />Parallel</th>
+    <th nowrap="nowrap" align="center" title="Sequence Overlap">Sequence<br />Overlap</th>
   </tr>
   <tr>
     <td nowrap="nowrap">Llama V1/V2</td>

@@ -24,23 +24,6 @@ Author: [Baizhou Zhang](https://github.com/Fridge003)
 
 出于这种动机，ColossalAI团队开发了**Shardformer**，该功能可以自动为HuggingFace中主流的Transformer模型进行封装，用于张量并行以及流水线并行的训练策略。如此一来，对系统了解不多的用户也可以轻松地在transformers模型上进行并行训练：只需几行代码，用户就可以将模型转变为并行训练的状态。此外，Shardformer也包括了多种优化工具，用于在前向/后向的传递过程中实现加速和节省内存。
 
-
-## Shardformer的工作原理
-
-通常来说，Shardformer通过以下四种“替换”进行工作：
-
-1. 用我们设计的分布式模块替换原始的PyTorch模块（例如`nn.Linear`、`nn.Embedding`）。
-分布式模块保持与原始模块相同的属性，但分布式模块会用新的参数替换原始模块的参数。新的前向函数将取代原来的前向函数，用于执行分布式计算，例如在张量并行下执行线性层的split/gather操作。每个分布式模块都应当实现其`from_native_module`静态方法，以将PyTorch模块转换为其相应的分布式模块。
-
-2. 将原始Huggingface Transformers中间层的属性为适用于并行训练的属性。例如，当使用并行度为2的张量并行训练LlaMa-2时,`LlamaDecoderLayer`   的属性`num_heads`（每一层注意力头的数量）应替换为`model.config.num_attention_heads // 2`。
-
-3. 将原来Huggingface transformers库实现的前向函数替换为我们定制的前向函数。前向函数的替换对于流水线并行性至关重要，因为流水线并行需要特殊的前向函数去在不同的流水线阶段之间传递中间的隐藏状态。此外，可以通过我们定制的前向函数将例如`flash attention`或序列并行的优化方法注入到前向的过程中。
-
-4. 将完整的模型参数和优化器状态替换为只由当前设备控制的部分模型参数和优化器状态。通过执行`ModelSharder.shard`方法，当前设备仅会保留它应该处理的那部分模型参数。具体来说，这部分参数可以是使用张量并行时分配到当前机器的参数分片，或者使用流水线并行时当前流水线阶段的模型参数，或者兼而有之。除此之外的所有其他参数都被释放，用于节省内存的空间。
-如此一来，优化器只会计算保留的部分参数对应的状态，从而进一步节省内存的使用。
-
-所有这些替换都是通过手动编写的策略和前向函数来实现的。如果您想更深入地研究Shardformer的设计方案，或者定制您自己的Shardformer策略，请参考[Shardformer 开发者文档](https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/shardformer/README.md)和[流水并行设计方案](https://github.com/hpcaitech/ColossalAI/discussions/4050)以获得更多细节。
-
 ## 用法
 
 ### Shardformer的参数配置
@@ -81,6 +64,24 @@ Shardformer的配置由类`ShardConfig`的参数控制：
     ```
     并且使用这些导入的类初始化模型。
 
+
+## Shardformer的工作原理
+
+通常来说，Shardformer通过以下四种“替换”进行工作：
+
+1. 用我们设计的分布式模块替换原始的PyTorch模块（例如`nn.Linear`、`nn.Embedding`）。
+分布式模块保持与原始模块相同的属性，但分布式模块会用新的参数替换原始模块的参数。新的前向函数将取代原来的前向函数，用于执行分布式计算，例如在张量并行下执行线性层的split/gather操作。每个分布式模块都应当实现其`from_native_module`静态方法，以将PyTorch模块转换为其相应的分布式模块。
+
+2. 将原始Huggingface Transformers中间层的属性为适用于并行训练的属性。例如，当使用并行度为2的张量并行训练LlaMa-2时,`LlamaDecoderLayer`   的属性`num_heads`（每一层注意力头的数量）应替换为`model.config.num_attention_heads // 2`。
+
+3. 将原来Huggingface transformers库实现的前向函数替换为我们定制的前向函数。前向函数的替换对于流水线并行性至关重要，因为流水线并行需要特殊的前向函数去在不同的流水线阶段之间传递中间的隐藏状态。此外，可以通过我们定制的前向函数将例如`flash attention`或序列并行的优化方法注入到前向的过程中。
+
+4. 将完整的模型参数和优化器状态替换为只由当前设备控制的部分模型参数和优化器状态。通过执行`ModelSharder.shard`方法，当前设备仅会保留它应该处理的那部分模型参数。具体来说，这部分参数可以是使用张量并行时分配到当前机器的参数分片，或者使用流水线并行时当前流水线阶段的模型参数，或者兼而有之。除此之外的所有其他参数都被释放，用于节省内存的空间。
+如此一来，优化器只会计算保留的部分参数对应的状态，从而进一步节省内存的使用。
+
+所有这些替换都是通过手动编写的策略和前向函数来实现的。如果您想更深入地研究Shardformer的设计方案，或者定制您自己的Shardformer策略，请参考[Shardformer 开发者文档](https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/shardformer/README.md)和[流水并行设计方案](https://github.com/hpcaitech/ColossalAI/discussions/4050)以获得更多细节。
+
+
 ## 支持信息
 
 模型/功能 兼容性矩阵：
@@ -88,15 +89,15 @@ Shardformer的配置由类`ShardConfig`的参数控制：
 <table>
   <tr>
     <th nowrap="nowrap">Model/Feature</th>
-    <th nowrap="nowrap" title="Tensor Parallel">Tensor<br>Parallel</th>
-    <th nowrap="nowrap" align="center" title="Pipeline Parallel">Pipeline<br>Parallel</th>
-    <th nowrap="nowrap" align="center" title="Lazy Initialization">Lazy<br>Initialization</th>
+    <th nowrap="nowrap" title="Tensor Parallel">Tensor<br />Parallel</th>
+    <th nowrap="nowrap" align="center" title="Pipeline Parallel">Pipeline<br />Parallel</th>
+    <th nowrap="nowrap" align="center" title="Lazy Initialization">Lazy<br />Initialization</th>
     <th nowrap="nowrap" align="center" title="xFormers">xFormers</th>
-    <th nowrap="nowrap" align="center" title="Flash Attention 2">Flash<br>Attention 2</th>
-    <th nowrap="nowrap" align="center" title="JIT Fused Operators">JIT Fused<br>Operators</th>
-    <th nowrap="nowrap" align="center" title="Fused LayerNorm">Fused<br>LayerNorm</th>
-    <th nowrap="nowrap" align="center" title="Sequence Parallel">Sequence<br>Parallel</th>
-    <th nowrap="nowrap" align="center" title="Sequence Overlap">Sequence<br>Overlap</th>
+    <th nowrap="nowrap" align="center" title="Flash Attention 2">Flash<br />Attention 2</th>
+    <th nowrap="nowrap" align="center" title="JIT Fused Operators">JIT Fused<br />Operators</th>
+    <th nowrap="nowrap" align="center" title="Fused LayerNorm">Fused<br />LayerNorm</th>
+    <th nowrap="nowrap" align="center" title="Sequence Parallel">Sequence<br />Parallel</th>
+    <th nowrap="nowrap" align="center" title="Sequence Overlap">Sequence<br />Overlap</th>
   </tr>
   <tr>
     <td nowrap="nowrap">Llama V1/V2</td>
