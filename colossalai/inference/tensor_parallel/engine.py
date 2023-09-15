@@ -9,18 +9,8 @@ from transformers.generation import GenerationConfig
 from transformers.generation.stopping_criteria import StoppingCriteriaList
 from transformers.tokenization_utils_base import BatchEncoding
 
-from colossalai.gptq.cai_gptq import CaiQuantLinear
 from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.shardformer.policies.auto_policy import get_autopolicy
-
-HAS_GPTQ_CUDA = False
-try:
-    from colossalai.kernel.op_builder.gptq import GPTQBuilder
-    gptq_cuda = GPTQBuilder().load()
-    HAS_GPTQ_CUDA = True
-except ImportError:
-    warnings.warn('CUDA gptq is not installed')
-    HAS_GPTQ_CUDA = False
 
 from .batch_infer_state import BatchInferState
 from .kvcache_manager import MemoryManager
@@ -98,6 +88,15 @@ class TPInferEngine:
                                            self.layer_num)
 
     def _post_init_gptq_buffer(self, model: nn.Module) -> None:
+        from colossalai.gptq.cai_gptq import CaiQuantLinear
+        HAS_GPTQ_CUDA = False
+        try:
+            from colossalai.kernel.op_builder.gptq import GPTQBuilder
+            gptq_cuda = GPTQBuilder().load()
+            HAS_GPTQ_CUDA = True
+        except ImportError:
+            warnings.warn('CUDA gptq is not installed')
+            HAS_GPTQ_CUDA = False
 
         for name, submodule in model.named_modules():
             if isinstance(submodule, CaiQuantLinear):
