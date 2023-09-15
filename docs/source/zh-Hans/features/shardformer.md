@@ -1,6 +1,6 @@
 # Shardformer
 
-Author: [Baizhou Zhang](https://github.com/Fridge003)
+Author: [Baizhou Zhang](https://github.com/Fridge003), [Bin Jia](https://github.com/FoolPlayer)
 
 **预备知识**
 - [并行技术](../concepts/paradigms_of_parallelism.md)
@@ -16,6 +16,7 @@ Author: [Baizhou Zhang](https://github.com/Fridge003)
 - [GPipe: Efficient Training of Giant Neural Networks using Pipeline Parallelism](https://arxiv.org/abs/1811.06965)
 - [FlashAttention-2: Faster Attention with Better Parallelism and Work Partitioning](https://arxiv.org/abs/2307.08691)
 - [Sequence Parallelism: Long Sequence Training from System Perspective](https://arxiv.org/abs/2105.13120)
+- [Reducing Activation Recomputation in Large Transformer Models](https://arxiv.org/abs/2205.05198)
 
 
 ## 简介
@@ -63,6 +64,19 @@ Shardformer的配置由类`ShardConfig`的参数控制：
     from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import ChatGLMForConditionalGeneration, ChatGLMModel
     ```
     并且使用这些导入的类初始化模型。
+
+
+### 序列并行 Sequence Parallelism
+
+在`Shardformer`中，序列并行与[此处](https://colossalai.org/docs/basics/configure_parallelization/#sequence-parallel)稍有不同，后者侧重于ring attention。在`Shardformer`中，序列并行仅与1D张量并行一起使用，以进一步减少计算中activation的内存占用。
+
+1. 在普通的[1D张量并行](https://colossalai.org/docs/features/1D_tensor_parallel)中，有两个通信操作$g$和$\vec{g}$，$g$在反向传播中进行一次全局归约以获取来自所有设备的梯度，而$\vec{g}$在正向传播中进行一次All-Reduce以获取来自所有设备的输出。
+
+2. 当使用序列并行时，$\vec{g}$需要在正向传播过程中进行All-Gather以获取序列维度上的输入，并在反向传播过程中进行Reduce-Scatter以分割梯度。$\vec{g}$需要进行Reduce-Scatter以将序列维度上的行线性层输出分割到所有设备上，并进行All-Gather以获取完整的梯度。
+
+3. 使用NCCL的All-reduce实现采用了`Ring All-Reduce`方法，由一次Reduce-Scatter和一次All-Gather组成，两者的开销相等。因此，与序列并行和张量并行相比，它并不会引入额外的通信开销。
+
+4. 需要注意的一点是，在张量并行的 “Column Linear” 中进行序列并行时，梯度的反向计算过程中需要获取完整的输入。在前向传播过程中，仅保留沿序列维度分割的输入部分，张量的形状例如$(batch, sequence\_len/k, hidden\_states)$。因此，需要进行额外的全局收集操作以获取完整的输入进行梯度计算。但是，在实现中，可以将梯度计算与全局收集通信操作重叠，这不会引入额外的通信开销（对应`Shardformer`中的`enable_sequence_overlap`参数）。
 
 
 ## Shardformer的工作原理

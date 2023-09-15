@@ -1,6 +1,6 @@
 # Shardformer
 
-Author: [Baizhou Zhang](https://github.com/Fridge003)
+Author: [Baizhou Zhang](https://github.com/Fridge003), [Bin Jia](https://github.com/FoolPlayer)
 
 **Prerequisite**
 - [Paradigms of Parallelism](../concepts/paradigms_of_parallelism.md)
@@ -16,7 +16,7 @@ Author: [Baizhou Zhang](https://github.com/Fridge003)
 - [GPipe: Efficient Training of Giant Neural Networks using Pipeline Parallelism](https://arxiv.org/abs/1811.06965)
 - [FlashAttention-2: Faster Attention with Better Parallelism and Work Partitioning](https://arxiv.org/abs/2307.08691)
 - [Sequence Parallelism: Long Sequence Training from System Perspective](https://arxiv.org/abs/2105.13120)
-
+- [Reducing Activation Recomputation in Large Transformer Models](https://arxiv.org/abs/2205.05198)
 
 ## Introduction
 
@@ -74,6 +74,18 @@ is an example on how to trigger `Shardformer` through calling Shardformer APIs.
     ```
     when training ChatGLM-2 with Shardformer, and initialize your model with these imported classes.
 
+### Sequence Parallelism
+
+Sequence parallelism in `Shardformer` is a little different from [this one](https://colossalai.org/docs/basics/configure_parallelization/#sequence-parallel) which focuses on ring attention. In `Shardformer`, sequence parallelism just use with 1D tensor parallelism to to further reduce the memory occupation of activations in computations.
+
+1. In normal [1D tensor parallel](https://colossalai.org/docs/features/1D_tensor_parallel), there are 2 communication operations, $g$ and $\vec{g}$, $g$ will do one time All-Reduce in backward to get all gradient from all the devices and $\vec{g}$ will do one time All-Reduce in forward to get whole outputs from all the device.
+
+2. When using sequence parallelism, $\vec{g}$ needs to do All-Gather to gather the inputs in sequence dimension during forward and Reduce-Scatter to splite the gradient during backward. $\vec{g}$ needs to do Reduce-Scatter to splite the output of row linear layer of tensor parallel to all devices in sequence dimension, and All-Gather to get the whole gradient during backward.
+
+3. The implementation of All-Reduce using NCCL adopts the `Ring All-Reduce` approach, which consists of a Reduce-Scatter operation and an All-Gather operation with equal costs. Therefore, compared to sequence parallelism and tensor parallelism, it does not introduce additional communication overhead.
+
+4. One important thing to note is that when using sequence parallelism with 'Column Linear' of tensor parallelism,, during the backward computation of gradients, the complete input needs to be obtained. During the forward pass, only the portion of the input that is split along the sequence dimension is retained, shape like $(batch, sequence_len/k, hidden_states)$. Therefore, an additional All-Gather operation is required to obtain the complete input for gradient computation. However, in the implementation, it is possible to overlap the gradient computation with the All-Gather communication operation, which would not introduce additional communication overhead (corresponding to the `enable_sequence_overlap` parameter in `Shardformer`).
+
 ## How Shardformer Works
 
 Generally, Shardformer works through the following four kinds of *replacements*:
@@ -99,6 +111,7 @@ As a result, the optimizer will only compute the states corresponding to these p
 
 All of these replacements are implemented with manually written policies and forward functions.
 If you want to delve deeper into the design of Shardformer or customize your own Shardformer policies, please refer to our [Shardformer development document](https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/shardformer/README.md) and [pipeline parallelism design](https://github.com/hpcaitech/ColossalAI/discussions/4050) for more details.
+
 
 ## Supporting Information
 
