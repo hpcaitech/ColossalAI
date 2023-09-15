@@ -3,4 +3,5 @@ colossalai
 evaluate
 tqdm
 scipy
-sklearn
+scikit-learn
+numpy
