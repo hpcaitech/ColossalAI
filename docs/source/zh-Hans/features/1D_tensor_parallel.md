@@ -2,6 +2,8 @@
 
 作者: Zhengda Bian, Yongbin Li
 
+> ⚠️ 此页面上的信息已经过时并将被废弃。请在[Shardformer](./shardformer.md)页面查阅更新。
+
 **前置教程**
 - [定义配置文件](../basics/define_your_config.md)
 - [并行配置](../basics/configure_parallelization.md)
@@ -118,3 +120,5 @@ Output of the first linear layer: torch.Size([16, 512])
 Output of the second linear layer: torch.Size([16, 256])
 ```
 第一个线性层的输出被划分成2块 (每个形状为 `[16, 512]`), 而第二层在整个 GPU 上的输出是相同的。
+
+<!-- doc-test-command: echo  -->
