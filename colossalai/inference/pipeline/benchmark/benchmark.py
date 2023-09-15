@@ -79,7 +79,7 @@ if __name__ == '__main__':
     parser.add_argument('--new_length', type=int, default=4, help='new tokens length')
     parser.add_argument('--mb_size', type=int, default=1, help='micro_batch_size')
     parser.add_argument('--pp_size', type=int, default=2, help='pipeline size')
-    parser.add_argument('--fp16', type=bool, default=True, help='wheather to use fp16')
+    parser.add_argument('--fp16', action="store_true", help='wheather to use fp16')
     args = parser.parse_args()
 
     if args.model == 'toy':
@@ -90,9 +90,8 @@ if __name__ == '__main__':
         model = transformers.LlamaForCausalLM.from_pretrained('decapoda-research/llatma-13b-hf')
     else:
         raise NotImplementedError
-    # if args.fp16:
-    #     model = model.half()    
-    engine = PPInferEngine(pp_size=args.pp_size, micro_batch_size=args.mb_size, new_length=args.new_length, model=model, model_policy=LlamaForCausalLMPipelinePolicy(),verbose=True)
+  
+    engine = PPInferEngine(pp_size=args.pp_size, fp16=args.fp16, micro_batch_size=args.mb_size, new_length=args.new_length, model=model, model_policy=LlamaForCausalLMPipelinePolicy(),verbose=True)
     data = data_gen(args.batch_size, args.seq_len)
     output, timestamps = engine.inference([data])
     if dist.get_rank() == 0:

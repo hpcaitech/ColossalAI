@@ -202,12 +202,12 @@ def _p2p_comm(
     recv_pre: bool,
     peer: int,
     group: ProcessGroup,
-    comm_type: torch.dtype = torch.float32,
+    comm_dtype: torch.dtype = torch.float16,
 ):
     tensor_recv_prev = None
     recv_prev_shape = _p2p_comm_shape(tensor_send_next, recv_pre, peer, group)
     if recv_pre:
-        tensor_recv_prev = torch.empty(recv_prev_shape, device=torch.cuda.current_device(), dtype=comm_type)
+        tensor_recv_prev = torch.empty(recv_prev_shape, device=torch.cuda.current_device(), dtype=comm_dtype)
 
     ops = []
     if tensor_send_next is not None:
@@ -296,7 +296,7 @@ class PipelineP2PCommunication:
         cur_rank = self.stage_manager.get_rank()
         _send_object(input_object, cur_rank, prev_rank, self.stage_manager.get_p2p_process_group(cur_rank, prev_rank))
 
-    def p2p_communicate(self, output_object: Any, recv_pre: bool, peer: int = None) -> None:
+    def p2p_communicate(self, output_object: Any, recv_pre: bool, peer: int = None, comm_dtype: torch.dtype = torch.float16) -> None:
         """
         Sends the input tensor to the next stage in pipeline, using `P2Pop` in torch.
 
@@ -307,5 +307,5 @@ class PipelineP2PCommunication:
         if peer is None:
             peer = self.stage_manager.get_next_rank()
         cur_rank = self.stage_manager.get_rank()
-        recv_tensor = _p2p_comm(output_object, recv_pre, peer, self.stage_manager.get_p2p_process_group(cur_rank, peer))
+        recv_tensor = _p2p_comm(output_object, recv_pre, peer, self.stage_manager.get_p2p_process_group(cur_rank, peer), comm_dtype)
         return recv_tensor

@@ -51,6 +51,7 @@ class GenerateSchedule(PipelineSchedule):
         self.action_interval_buffer = ActionIntervalBuffer()
         self.verbose = verbose
         self.timestamps = None
+        self.comm_dtype = None
 
     def load_batch(self, data_iter: Iterable, device: Optional[torch.device] = None) -> None:
         """Load a batch from data iterator.
@@ -178,7 +179,7 @@ class GenerateSchedule(PipelineSchedule):
         In this action, 1.receive the hidden_states from previous stage 2.send the hidden_states to next stage
         """
         hidden_states = self.action_interval_buffer.hidden_states
-        ret = self.comm.p2p_communicate(hidden_states, recv_pre)
+        ret = self.comm.p2p_communicate(hidden_states, recv_pre, comm_dtype=self.comm_dtype)
 
         self.action_interval_buffer.hidden_states = ret
 
@@ -214,7 +215,6 @@ class GenerateSchedule(PipelineSchedule):
         return actions
 
     def generate_step(self, model: Module, data_iter: Iterable) -> Union[torch.Tensor, dict]:
-        model = model.half()
         if self.stage_manager.num_stages == 2:
             return self.generate_step_p2p(model, data_iter)
         else:
@@ -236,6 +236,7 @@ class GenerateSchedule(PipelineSchedule):
         output_sequence = []
         self.load_batch(data_iter)
         model.eval()
+        self.comm_dtype = model.dtype
 
         whole_timestamp = []
 

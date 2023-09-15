@@ -3,6 +3,7 @@ cd "${script_dir}"
 
 CUDA_VISIBLE_DEVICES=0,1 colossalai run --nproc_per_node 2 --master_port 29800 ./benchmark.py \
     --model="7b" \
+    --fp16 \
     --batch_size=2 \
     --seq_len=1024 \
     --new_length=128 \
@@ -11,6 +12,7 @@ CUDA_VISIBLE_DEVICES=0,1 colossalai run --nproc_per_node 2 --master_port 29800 .
 
 CUDA_VISIBLE_DEVICES=0,1 colossalai run --nproc_per_node 2 --master_port 29800 ./benchmark.py \
     --model="7b" \
+    --fp16 \
     --batch_size=4 \
     --seq_len=1024 \
     --new_length=128 \
@@ -19,6 +21,7 @@ CUDA_VISIBLE_DEVICES=0,1 colossalai run --nproc_per_node 2 --master_port 29800 .
 
 CUDA_VISIBLE_DEVICES=0,1 colossalai run --nproc_per_node 2 --master_port 29800 ./benchmark.py \
     --model="7b" \
+    --fp16 \
     --batch_size=8 \
     --seq_len=1024 \
     --new_length=128 \
@@ -27,6 +30,7 @@ CUDA_VISIBLE_DEVICES=0,1 colossalai run --nproc_per_node 2 --master_port 29800 .
 
 CUDA_VISIBLE_DEVICES=0,1 colossalai run --nproc_per_node 2 --master_port 29800 ./benchmark.py \
     --model="7b" \
+    --fp16 \
     --batch_size=16 \
     --seq_len=1024 \
     --new_length=128 \

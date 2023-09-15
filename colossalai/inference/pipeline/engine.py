@@ -54,6 +54,7 @@ class PPInferEngine:
     def __init__(
         self,
         pp_size: int,
+        fp16: bool = True,
         pp_model: nn.Module = None,
         model: nn.Module = None,
         model_policy: Policy = None,
@@ -74,6 +75,8 @@ class PPInferEngine:
                                             micro_batch_buffer_size or pp_size)
         self.schedule = GenerateSchedule(self.stage_manager, self.mb_manager, verbose)
         self.model = pp_model or self._shardformer(model, model_policy)
+        if fp16:
+            self.model.half()
 
     def inference(self, input_list):
         out = self.schedule.generate_step(self.model, iter(input_list))
