@@ -51,6 +51,7 @@ export ZH_MODEL_PATH=XXX
 export ZH_MODEL_NAME: chatglm2
 export EN_MODEL_PATH: XXX
 export EN_MODEL_NAME: llama
+export SQL_FILE_PATH: XXX
 python retrieval_conversation_universal.py
 ```
 
@@ -58,6 +59,7 @@ To run retrieval_conversation_en.py. set the following environmental variables.
 ```bash
 export EN_MODEL_PATH=XXX
 export EN_MODEL_NAME: llama
+export SQL_FILE_PATH: XXX
 python retrieval_conversation_en.py
 ```
 
@@ -65,6 +67,7 @@ To run retrieval_conversation_zh.py. set the following environmental variables.
 ```bash
 export ZH_MODEL_PATH=XXX
 export ZH_MODEL_NAME: chatglm2
+export SQL_FILE_PATH: XXX
 python retrieval_conversation_en.py
 ```
 
