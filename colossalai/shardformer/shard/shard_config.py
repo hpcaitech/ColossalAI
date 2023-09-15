@@ -15,32 +15,28 @@ class ShardConfig:
     The config for sharding the huggingface model
 
     Args:
-        tensor_parallel_process_group (Optional[ProcessGroup]): The process group for tensor parallelism, defaults to None, which is the global process group.
-        pipeline_stage_manager (Optional[PipelineStageManager]): The pipeline stage manager, defaults to None, which means no pipeline.
-        enable_tensor_parallelism (bool): Whether to turn on tensor parallelism, default is True.
-        enable_fused_normalization (bool): Whether to use fused layernorm, default is False.
-        enable_all_optimization (bool): Whether to turn on all optimization, default is False.
-        enable_sequence_parallelism (bool): Whether to turn on sequence parallelism, default is False.
-        enable_sequence_overlap (bool): Whether to turn on sequence overlap, default is False.
+        tensor_parallel_process_group (Optional[ProcessGroup]): The process group of tensor parallelism, it's necessary when using tensor parallel. Defaults to None, which is the global process group.
+        pipeline_stage_manager (Optional[PipelineStageManager]): If using pipeline parallelism, it's necessary to specify a pipeline stage manager for inter-process communication in pipeline parallelism. Defaults to None, which means not using pipeline parallelism.
+        enable_tensor_parallelism (bool): Whether to use tensor parallelism. Defaults to True.
+        enable_fused_normalization (bool): Whether to use fused layernorm. Defaults to False.
+        enable_flash_attention (bool, optional): Whether to switch on flash attention. Defaults to False.
+        enable_jit_fused (bool, optional): Whether to switch on JIT fused operators. Defaults to False.
+        enable_sequence_parallelism (bool): Whether to turn on sequence parallelism, which partitions non-tensor-parallel regions along the sequence dimension. Defaults to False.
+        enable_sequence_overlap (bool): Whether to turn on sequence overlap, wheich overlap the computation and communication in sequence parallelism. It can only be used when enable_sequence_parallelism is True. Defaults to False.
+        enable_all_optimization (bool): Whether to turn on all optimization tools including 'fused normalizaion', 'flash attention', 'JIT fused operators', 'sequence parallelism' and 'sequence overlap'. Defaults to False.
+        inference_only (bool): Whether only doing forward passing. Defaults to False.
     """
     tensor_parallel_process_group: Optional[ProcessGroup] = None
     pipeline_stage_manager: Optional[PipelineStageManager] = None
     enable_tensor_parallelism: bool = True
     enable_fused_normalization: bool = False
-    enable_all_optimization: bool = False
     enable_flash_attention: bool = False
     enable_jit_fused: bool = False
     enable_sequence_parallelism: bool = False
     enable_sequence_overlap: bool = False
+    enable_all_optimization: bool = False
     inference_only: bool = False
-    enable_sequence_parallelism: bool = False
-    enable_sequence_overlap: bool = False
-
-    # pipeline_parallel_size: int
-    # data_parallel_size: int
     # tensor_parallel_mode: Literal['1d', '2d', '2.5d', '3d']
-    # inference_only: bool = True
-    # gather_output: bool = True
 
     @property
     def tensor_parallel_size(self):

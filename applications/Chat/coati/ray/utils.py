@@ -116,7 +116,7 @@ def get_model_numel(model: nn.Module) -> int:
 def get_receivers_per_sender(sender_idx: int, num_senders: int, num_receivers: int, allow_idle_sender: bool) -> list:
     target_receivers = []
     if num_senders <= num_receivers or allow_idle_sender:
-        # a sender will send data to one or more than one receivers
+        # a sender will send data to one or more receivers
         # a receiver only has one sender
         for i in range(num_receivers):
             if i % num_senders == sender_idx:

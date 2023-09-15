@@ -200,7 +200,6 @@ We provide an online inference server and a benchmark. We aim to run inference o
 We support 8-bit quantization (RTN), 4-bit quantization (GPTQ), and FP16 inference.
 
 Online inference server scripts can help you deploy your own services.
-
 For more details, see [`inference/`](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat/inference).
 
 ## Coati7B examples
@@ -428,7 +427,7 @@ Thanks so much to all of our amazing contributors!
    </a>
 </div>
 
-- An open-source low cost solution for cloning [ChatGPT](https://openai.com/blog/chatgpt/) with a complete RLHF pipeline. [[demo]](https://chat.colossalai.org)
+- An open-source low-cost solution for cloning [ChatGPT](https://openai.com/blog/chatgpt/) with a complete RLHF pipeline. [[demo]](https://chat.colossalai.org)
 
 <p id="ChatGPT_scaling" align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chatgpt/ChatGPT%20scaling.png" width=800/>
@@ -469,8 +468,7 @@ Coati is developed by ColossalAI Team:
 - [ofey404](https://github.com/ofey404)
 - [Wenhao Chen](https://github.com/CWHer)
 
-The Phd student from [(HPC-AI) Lab](https://ai.comp.nus.edu.sg/) also contributed a lot to this project.
-
+The PhD student from [(HPC-AI) Lab](https://ai.comp.nus.edu.sg/) also contributed a lot to this project.
 - [Zangwei Zheng](https://github.com/zhengzangw)
 - [Xue Fuzhao](https://github.com/XueFuzhao)
 
