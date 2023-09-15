@@ -7,7 +7,7 @@
 - [Booster API](../basics/booster_api.md)
 - [使用booster进行训练](../basics/booster_api.md)
 - [Shardformer](../features/shardformer.md)
-- [Booster 插件]((../basics/booster_plugins.md))
+- [Booster 插件](../basics/booster_plugins.md)
 
 **示例代码**
 - [使用pipeline并行策略训练ResNet](https://github.com/hpcaitech/ColossalAI/blob/main/examples/images/resnet/train.py)
