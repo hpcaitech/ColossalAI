@@ -76,11 +76,11 @@ is an example on how to trigger `Shardformer` through calling Shardformer APIs.
 
 ### Sequence Parallelism
 
-Sequence parallelism in `Shardformer` is a little different from [this one](https://colossalai.org/docs/basics/configure_parallelization/#sequence-parallel) which foces on ring attention. In `Shardformer`, sequence parallelism just use with 1D tensor parallelism to to further reduce the memory occupation of activations in computations.
+Sequence parallelism in `Shardformer` is a little different from [this one](https://colossalai.org/docs/basics/configure_parallelization/#sequence-parallel) which focuses on ring attention. In `Shardformer`, sequence parallelism just use with 1D tensor parallelism to to further reduce the memory occupation of activations in computations.
 
-1. In normal [1D tensor parallel](https://colossalai.org/docs/features/1D_tensor_parallel), there are 2 communication operation $g$ and $\vec{g}$, $g$ will do one time allreduce in backward to get all gradient from all the device and $\vec{g}$ will do one time allreduce in forward to get all output from all the device.
+1. In normal [1D tensor parallel](https://colossalai.org/docs/features/1D_tensor_parallel), there are 2 communication operations, $g$ and $\vec{g}$, $g$ will do one time All-Reduce in backward to get all gradient from all the devices and $\vec{g}$ will do one time All-Reduce in forward to get whole outputs from all the device.
 
-2. When using sequence parallelism, $\vec{g}$ need to do allgather to gather the inputs in sequence dimension during forward and Reduce-Scatter to splite the gradient during backward. $\vec{g}$ needs to do Reduce-Scatter to splite the output of row linear layer of tensor parallel to all devices in sequence dimension, and All-Gather to get the whole gradient during backward.
+2. When using sequence parallelism, $\vec{g}$ needs to do All-Gather to gather the inputs in sequence dimension during forward and Reduce-Scatter to splite the gradient during backward. $\vec{g}$ needs to do Reduce-Scatter to splite the output of row linear layer of tensor parallel to all devices in sequence dimension, and All-Gather to get the whole gradient during backward.
 
 3. The implementation of All-Reduce using NCCL adopts the `Ring All-Reduce` approach, which consists of a Reduce-Scatter operation and an All-Gather operation with equal costs. Therefore, compared to sequence parallelism and tensor parallelism, it does not introduce additional communication overhead.
 
