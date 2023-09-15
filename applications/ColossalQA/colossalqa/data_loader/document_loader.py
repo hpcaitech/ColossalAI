@@ -5,17 +5,20 @@ class for loading document type data
 import os
 import logging
 from langchain.document_loaders.csv_loader import CSVLoader
-from langchain.document_loaders import DirectoryLoader
-from langchain.document_loaders import JSONLoader
-from langchain.document_loaders import UnstructuredHTMLLoader
-from langchain.document_loaders import UnstructuredMarkdownLoader
-from langchain.document_loaders import PyPDFLoader
-from langchain.document_loaders import TextLoader
+from langchain.document_loaders import (
+    JSONLoader,
+    UnstructuredHTMLLoader,
+    UnstructuredMarkdownLoader,
+    PyPDFLoader,
+    TextLoader
+)
 from typing import List, Union, Dict, Any
 import glob
+from colossalqa.logging import get_logger
 
+logger = get_logger()
 
-SUPPORTED_DATA_FORMAT = ['.csv','.xlsx', '.xls','.json','.html','.sql','.h5', '.hdf5','.parquet','.feather','.msgpack','.dta','.dta', 'txt']
+SUPPORTED_DATA_FORMAT = ['.csv','.json','.html','.md','.pdf','.txt','.jsonl']
 
 
 class DocumentLoader:
@@ -27,22 +30,12 @@ class DocumentLoader:
         '''
         self.data = {}
         self.kwargs = kwargs
+
         for item in files:
             path = item[0]
-            files = []
-            try:
-                files = glob.glob(path)
-            except Exception:
-                pass
-            if len(files)==0:
-                if not os.path.exists(path):
-                    raise FileNotFoundError(f"{path} doesn't exists")
-                if not any([path.endswith(i) for i in SUPPORTED_DATA_FORMAT]):
-                    raise TypeError(f"{path} not supported. Supported type {SUPPORTED_DATA_FORMAT}")
-            
-            print("loading data")
+            logger.info(f"Loading data from {path}")
             self.load_data(path)
-            print("data loaded")
+            logger.info("Data loaded")
 
         self.all_data = []
         for key in self.data:
@@ -60,7 +53,24 @@ class DocumentLoader:
         Args:
             path: path to a file
         '''
-        print(f"load {path}")
+        files = []
+
+        # handle glob expression
+        try:
+            files = glob.glob(path)
+        except Exception as e:
+            logger.error(e)
+        if len(files)==0:
+            raise ValueError("Unsupported file/directory format. For directories, please use glob expression")
+        elif len(files)==1:
+            path = files[0]
+        else:
+            for file in files:
+                self.load_data(file)
+            return
+
+        # load data if the path is a file
+        logger.info(f"load {path}", verbose=True)
         if path.endswith('.csv'):
             # load csv
             loader = CSVLoader(file_path=path, encoding='utf8')
@@ -97,17 +107,11 @@ class DocumentLoader:
             data = loader.load_and_split()
             self.data[path] = data
         else:
-            file = []
-            try:
-                files = glob.glob(path)
-            except Exception:
-                pass
-            if len(files)==0:
-                raise ValueError("Unsupported file/directory format. For directories, please use glob expression")
+            if '.' in path.split('/')[-1]:
+                raise ValueError(f"Unsupported file format {path}. Supported formats: {SUPPORTED_DATA_FORMAT}")
             else:
-                loader = DirectoryLoader(path)
-                self.data[path] = data
-        
+                # may ba a directory, we strictly follow the glob path and will not load files in subdirectories
+                pass
         
         
 

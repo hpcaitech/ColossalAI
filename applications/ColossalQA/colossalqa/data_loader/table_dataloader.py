@@ -1,15 +1,22 @@
+'''
+class for loading table type data. please refer to Pandas-Input/Output for file format details.
+'''
+
 import pandas as pd
 import os
-from sqlalchemy import MetaData
-from sqlalchemy import create_engine
+from sqlalchemy import MetaData, create_engine
 from sqlalchemy.engine.url import URL
 from sqlalchemy.ext.declarative import declarative_base
 from colossalqa.utils import drop_table
+from colossalqa.logging import get_logger
+import glob
+
+logger = get_logger()
 
 SUPPORTED_DATA_FORMAT = ['.csv','.xlsx', '.xls','.json','.html','.h5', '.hdf5','.parquet','.feather','.dta']
 
 class TableLoader:
-    def __init__(self, files: str, sql_path:str='sqlite:///mydatabase.db', **kwargs) -> None:
+    def __init__(self, files: str, sql_path:str='sqlite:///mydatabase.db', verbose=False, **kwargs) -> None:
         '''
         Args:
             files: list of files (list[file path, name])
@@ -17,6 +24,7 @@ class TableLoader:
             **kwargs: keyword type arguments, useful for certain document types 
         '''
         self.data = {}
+        self.verbose = verbose
         self.sql_path = sql_path
         self.kwargs = kwargs
         self.sql_engine = create_engine(self.sql_path)
@@ -31,9 +39,9 @@ class TableLoader:
             if not any([path.endswith(i) for i in SUPPORTED_DATA_FORMAT]):
                 raise TypeError(f"{path} not supported. Supported type {SUPPORTED_DATA_FORMAT}")
             
-            print("loading data")
+            logger.info("loading data", verbose=self.verbose)
             self.load_data(path)
-            print("data loaded")
+            logger.info("data loaded", verbose=self.verbose)
             self.to_sql(path, dataset_name)
 
     def load_data(self, path):
@@ -41,6 +49,20 @@ class TableLoader:
         load data and serve the data as sql database.
         data must be in pandas format
         '''
+        files = []
+        # handle glob expression
+        try:
+            files = glob.glob(path)
+        except Exception as e:
+            print(e)
+        if len(files)==0:
+            raise ValueError("Unsupported file/directory format. For directories, please use glob expression")
+        elif len(files)==1:
+            path = files[0]
+        else:
+            for file in files:
+                self.load_data(file)
+
         if path.endswith('.csv'):
             # load csv
             self.data[path] = (pd.read_csv(path))

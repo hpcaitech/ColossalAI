@@ -3,8 +3,7 @@ code for custom retriver with incremental update
 '''
 from langchain.schema.retriever import BaseRetriever, Document
 from langchain.callbacks.manager import CallbackManagerForRetrieverRun
-from typing import List, Callable, Dict, Any, Union
-from colossalqa.utils import create_empty_sql_database, destroy_sql_database
+from typing import List, Callable, Dict, Any
 from langchain.indexes import SQLRecordManager 
 from langchain.embeddings.base import Embeddings
 from langchain.indexes import index
@@ -12,6 +11,12 @@ from collections import defaultdict
 from langchain.vectorstores.base import VectorStore
 from langchain.vectorstores.chroma import Chroma
 import hashlib
+import copy
+from colossalqa.logging import get_logger
+import os
+
+logger = get_logger()
+SQL_FILE_PATH = os.environ.get("SQL_FILE_PATH")
 
 class CustomRetriever(BaseRetriever):
     vector_stores: Dict[str, VectorStore] = {}
@@ -22,6 +27,7 @@ class CustomRetriever(BaseRetriever):
     rephrase_handler:Callable = None
     buffer: Dict = []
     buffer_size: int = 5
+    verbose: bool = True
 
     @classmethod
     def from_documents(
@@ -47,12 +53,8 @@ class CustomRetriever(BaseRetriever):
         '''
         if cleanup == "full":
             # cleanup
-            for k in self.vector_stores:
-                if self.sql_index_database[k]:
-                    destroy_sql_database(self.sql_index_database[k])
-            self.vector_stores = {}
-            self.sql_index_database = {}
-            self.record_managers = {}
+            for source in self.vector_stores:
+                os.remove(self.sql_index_database[source])
         # add documents
         data_by_source = defaultdict(list)
         if mode == "by_source":
@@ -62,10 +64,12 @@ class CustomRetriever(BaseRetriever):
             data_by_source['merged'] = docs
         for source in data_by_source:
             if source not in self.vector_stores:
-                _, sql_path = create_empty_sql_database(f"sqlite:///{source.replace('.','_')}.db")
+                hash_encoding = hashlib.sha3_224(source.encode()).hexdigest()
+                # create a new sql database to store indexes, sql files are stored in the same directory as the source file
+                sql_path = f"sqlite:///{SQL_FILE_PATH}/{hash_encoding}.db"
                 self.vector_stores[source] = Chroma(embedding_function=embedding, 
-                        collection_name=hashlib.sha3_224(source.encode()).hexdigest())
-                self.sql_index_database[source] = sql_path
+                        collection_name=hash_encoding)
+                self.sql_index_database[source] = f"{SQL_FILE_PATH}/{hash_encoding}.db"
                 self.record_managers[source] = SQLRecordManager(source, db_url=sql_path)
                 self.record_managers[source].create_schema()
             index(
@@ -76,8 +80,10 @@ class CustomRetriever(BaseRetriever):
                 source_id_key="source"
             )
 
-    def __del__(self) -> None:
-        self.add_documents([], cleanup='full')
+    def __del__(self):
+        for source in self.sql_index_database:
+            if os.path.exists(self.sql_index_database[source]):
+                os.remove(self.sql_index_database[source])
 
     def set_sql_database_chain(self, db_chains) -> None:
         '''
@@ -122,6 +128,7 @@ class CustomRetriever(BaseRetriever):
         documents = sorted(documents, key=lambda x: x[1], reverse=True)[:self.k]
         if return_scores:
             # return score
+            documents = copy.deepcopy(documents)
             for doc in documents:
                 doc[0].metadata['score'] = doc[1]
         documents = [doc[0] for doc in documents]
@@ -133,6 +140,6 @@ class CustomRetriever(BaseRetriever):
         else:
             self.buffer.pop(0)
             self.buffer.append([query_, documents])
-        print("retrieved documents:")
-        print(documents)  
+
+        logger.info("retrieved documents:\n{documents}", verbose=self.verbose)
         return documents

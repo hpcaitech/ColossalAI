@@ -1,59 +1,50 @@
-import argparse
-
+'''
+API and LLM warpper class for running LLMs locally
+'''
 import torch
-from transformers import AutoTokenizer, BloomTokenizerFast, GPT2Tokenizer, AutoModel
+from transformers import AutoTokenizer, AutoModel
 from langchain.callbacks.manager import CallbackManagerForLLMRun
 from langchain.llms.base import LLM
-from typing import Optional, List, Dict, Mapping, Any
+from typing import Optional, List, Mapping, Any
 from .utils import post_http_request, get_response
 from transformers import LlamaForCausalLM, LlamaTokenizer
+from colossalqa.logging import get_logger
 
-class CoatiAPI:
+logger = get_logger()
+
+class ColossalAPI:
     def __init__(self, model_type: str, pretrain: str, ckpt_path: str=None) -> None:
-        # configure model'
+        '''
+        configurate model
+        '''
         self.model_type = model_type
-        if model_type == 'gpt2':
-            self.actor = AutoModel.from_pretrained(pretrained=pretrain)
-        elif model_type == 'bloom':
-            self.actor = AutoModel.from_pretrained(pretrained=pretrain)
-        elif model_type == 'opt':
-            self.actor = AutoModel.from_pretrained(pretrained=pretrain)
-        elif model_type == 'llama':
+        if model_type == 'llama':
             self.actor = LlamaForCausalLM.from_pretrained(pretrain, torch_dtype=torch.float16, trust_remote_code=True)
-        elif model_type == 'chatglm' or model_type == 'chatglm2':
-            self.actor = AutoModel.from_pretrained(pretrain, torch_dtype=torch.float16, trust_remote_code=True)
         else:
-            raise ValueError(f'Unsupported model "{model_type}"')
-
+            self.actor = AutoModel.from_pretrained(pretrain, torch_dtype=torch.float16, trust_remote_code=True)
+    
         if ckpt_path is not None:
             state_dict = torch.load(ckpt_path)
             self.actor.load_state_dict(state_dict)
         self.actor.to(torch.cuda.current_device())
 
         # configure tokenizer
-        if model_type == 'gpt2':
-            self.tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
-            self.tokenizer.pad_token = self.tokenizer.eos_token
-        elif model_type == 'bloom':
-            self.tokenizer = BloomTokenizerFast.from_pretrained('bigscience/bloom-560m')
-            self.tokenizer.pad_token = self.tokenizer.eos_token
-        elif model_type == 'opt':
-            self.tokenizer = AutoTokenizer.from_pretrained("facebook/opt-350m")
-            self.tokenizer.pad_token = self.tokenizer.eos_token
-        elif model_type == 'llama':
-            self.tokenizer = LlamaTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
-            self.tokenizer.eos_token = '<\s>'
-            self.tokenizer.pad_token = self.tokenizer.unk_token
-        elif model_type == "chatglm":
-            self.tokenizer = AutoTokenizer.from_pretrained("THUDM/chatglm-6b", trust_remote_code=True)
-        elif model_type == "chatglm2":
-            self.tokenizer = AutoTokenizer.from_pretrained("THUDM/chatglm2-6b", trust_remote_code=True)
+        if model_type == 'llama':
+            self.tokenizer = LlamaTokenizer.from_pretrained(pretrain)
         else:
-            raise ValueError(f'Unsupported model "{model_type}"')
-
+            self.tokenizer = AutoTokenizer.from_pretrained(pretrain, trust_remote_code=True)
+        
         self.actor.eval()
 
-    def generate(self, input: str, **kwargs):    
+    def generate(self, input: str, **kwargs)->str: 
+        '''
+        Generate response given the prompt
+        Args:
+            input: input string
+            **kwargs: language model keyword type arguments, such as top_k, top_p, temperature, max_new_tokens...
+        Returns:
+            output: output string
+        '''   
         if self.model_type in ['chatglm', 'chatglm2']:
             inputs = {k: v.to(torch.cuda.current_device()) for k, v in self.tokenizer(input, return_tensors="pt").items()}
         else:
@@ -64,9 +55,7 @@ class CoatiAPI:
         response = output[0, prompt_len:]
         output = self.tokenizer.decode(response, skip_special_tokens=True)
         return output
-                
-    def get_embedding(self, input: str):
-        pass
+    
 
 class VllmAPI:
     def __init__(self, host:str='localhost', port:int=8077) -> None:
@@ -79,11 +68,9 @@ class VllmAPI:
         output = get_response(post_http_request(input, self.url, **kwargs))[0]
         return output[len(input):]
     
-    def get_embedding(self, input: str):
-        pass
 
 # langchain LLM wrapper
-class CoatiLLM(LLM):
+class ColossalLLM(LLM):
     n: int
     api: Any
     kwargs = {}
@@ -98,19 +85,18 @@ class CoatiLLM(LLM):
         run_manager: Optional[CallbackManagerForLLMRun] = None,
         **kwargs: Any
     ) -> str:
-        print(f"kwargs:{kwargs}, prompt:{prompt}, stop:{stop}")
+        logger.info(f"kwargs:{kwargs}\nstop:{stop}\nprompt:{prompt}", verbose=self.verbose)
         for k in self.kwargs:
             if k not in kwargs:
                 kwargs[k] = self.kwargs[k]
 
         generate_args = {k:kwargs[k] for k in kwargs if k not in ['stop', 'n']}
         out = self.api.generate(prompt, **generate_args)
-        print("---------------------------")
         if len(stop)!=0:
             for stopping_words in stop:
                 if stopping_words in out:
                     out = out.split(stopping_words)[0]
-        print(out)
+        logger.info(f"-----------------\n{out}", verbose=self.verbose)
         return out
     
     def set_api(self, api: Any, **kwargs) -> None:
@@ -147,19 +133,17 @@ class VllmLLM(LLM):
         run_manager: Optional[CallbackManagerForLLMRun] = None,
         **kwargs: Any
     ) -> str:
-        # print(kwargs)
         for k in self.kwargs:
             if k not in kwargs:
                 kwargs[k] = self.kwargs[k]
-        # print(prompt)
+        logger.info(f"kwargs:{kwargs}\nstop:{stop}\nprompt:{prompt}", verbose=self.verbose)
         generate_args = {k:kwargs[k] for k in kwargs if k in ['n','max_tokens','temperature','stream']}
         out = self.api.generate(prompt, **generate_args)
-        # print("---------------------------")
         if len(stop)!=0:
             for stopping_words in stop:
                 if stopping_words in out:
                     out = out.split(stopping_words)[0]
-        # print(out)
+        logger.info(f"-----------------\n{out}", verbose=self.verbose)
         return out
     
     def set_host_port(self, host: str='localhost', port: int=8077, **kwargs) -> None:
@@ -176,47 +160,7 @@ class VllmLLM(LLM):
     
 if __name__ == '__main__':
     import os
-    llm = CoatiLLM(n=10)
-    model_path = os.environ.get('CHATGLM_PATH')
-    llm.set_llm("chatglm", model_path)
-    template = '''Have a conversation with a human, answering the following questions as best you can. You have access to the following tools. If none of the tools available can be applied to answer the question or you think answering the question doesn't need any additional tool, try to answer the question directly
-
-Query the SQL database regarding /home/lcyab/data3/langchain/langchain/data/test_csv_organization_100.csv: useful for when you need to answer questions based on data stored on a SQL database regarding /home/lcyab/data3/langchain/langchain/data/test_csv_organization_100.csv
-
-Use the following format:
-
-Question: the input question you must answer
-Thought: you should always think about what to do
-Action: the action to take, should be one of [Query the SQL database regarding /home/lcyab/data3/langchain/langchain/data/test_csv_organization_100.csv, Answer directly]
-Action Input: the input to the action
-Observation: the result of the action
-... (this Thought/Action/Action Input/Observation can repeat N times)
-Thought: I now know the final answer
-Final Answer: the final answer to the original input question
-
-Please follow the output format of the following examples.
-Example 1:
-Question: Which companies are located in China
-Output:
-Thought: I should use a tool that will allow me to do calculation
-Action: Calculate
-Action Input: 1 + 1
-
-Example 2: 
-Question: Hi
-Output:
-Thought: How do I greet someone?
-Action: None needed.
-Final Answer: Hi!
-
-You are provided with the following background knowledge:
-Begin!"
-Historical conversation:
-
-Supporting materials:
-
-
-Question: Hi
-Output:
-'''
+    llm = ColossalLLM(n=10)
+    model_path = os.environ.get('ZH_MODEL_PATH')
+    llm.set_llm("chatglm2", model_path)
     print(llm("Question: what dog doesn't bark? Answer:", max_new_tokens=10))

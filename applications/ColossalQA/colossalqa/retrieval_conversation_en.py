@@ -6,7 +6,7 @@ from langchain.embeddings import HuggingFaceEmbeddings
 from langchain import LLMChain
 from colossalqa.chain.retrieval_qa.base import RetrievalQA
 from langchain.vectorstores import Chroma
-from colossalqa.local.llm import VllmLLM, CoatiAPI, CoatiLLM
+from colossalqa.local.llm import VllmLLM, ColossalAPI, ColossalLLM
 from colossalqa.data_loader.document_loader import DocumentLoader
 from colossalqa.retriever import CustomRetriever
 from colossalqa.text_splitter import NeuralTextSplitter
@@ -25,8 +25,8 @@ from colossalqa.prompt.prompt import PROMPT_RETRIEVAL_QA_EN, PROMPT_DISAMBIGUATE
 model_path = os.environ.get('EN_MODEL_PATH')
 model_name = os.environ.get('EN_MODEL_NAME')
 print(model_name, model_path)
-coati_api = CoatiAPI(model_name, model_path)
-llm = CoatiLLM(n=1, api=coati_api)
+colossal_api = ColossalAPI(model_name, model_path)
+llm = ColossalLLM(n=1, api=colossal_api)
 
 # define the retriever
 information_retriever = CustomRetriever(k=3)

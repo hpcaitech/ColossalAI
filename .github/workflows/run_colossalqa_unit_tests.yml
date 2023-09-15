@@ -29,17 +29,14 @@ jobs:
       run:
         shell: bash
     steps:
-      - name: Checkout ColossalAI
-        uses: actions/checkout@v2
-
       - name: Install colossalqa
         run: |
-          cd applications/langchain
+          cd applications/ColossalQA
           pip install -e .
 
       - name: Execute Unit Testing
         run: |
-          cd applications/langchain
+          cd applications/ColossalQA
           pytest tests/
         env:
           NCCL_SHM_DISABLE: 1
@@ -50,3 +47,5 @@ jobs:
           EN_MODEL_NAME: llama
           TEST_DATA_PATH_EN: /data/scratch/test_data_colossalqa/companies.txt
           TEST_DATA_PATH_ZH: /data/scratch/test_data_colossalqa/companies_zh.txt
+          TEST_DOCUMENT_LOADER_DATA_PATH: /data/scratch/test_data_colossalqa/data_loader_test/*
+          SQL_FILE_PATH: /data/scratch/test_data_colossalqa/sql_file_path

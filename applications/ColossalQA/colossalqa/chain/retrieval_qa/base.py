@@ -43,9 +43,9 @@ class CustomBaseRetrievalQA(BaseRetrievalQA):
             llm_kwargs = {}
         _prompt = prompt or PROMPT_SELECTOR.get_prompt(llm)
         llm_chain = LLMChain(llm=llm, prompt=_prompt, callbacks=callbacks, llm_kwargs=llm_kwargs)
-        document_prompt = PromptTemplate(
+        document_prompt = kwargs.get("document_prompt", PromptTemplate(
             input_variables=["page_content"], template="Context:\n{page_content}"
-        )
+        )) 
         combine_documents_chain = CustomStuffDocumentsChain(
             llm_chain=llm_chain,
             document_variable_name="context",

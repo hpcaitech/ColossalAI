@@ -7,6 +7,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.engine.url import URL
 from sqlalchemy.ext.declarative import declarative_base
 
+from sqlalchemy import create_engine, MetaData
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.exc import SQLAlchemyError
 
 def drop_table(engine: Engine) -> None:
     '''
@@ -20,15 +24,33 @@ def drop_table(engine: Engine) -> None:
         if table is not None:
             Base.metadata.drop_all(engine, [table], checkfirst=True)
 
-def create_empty_sql_database(sql_path: str)-> Tuple[Engine, str]:
-    '''
-    create an empty sql database
-    '''
-    sql_engine = create_engine(sql_path)
-    drop_table(sql_engine)
+# def create_empty_sql_database(sql_path: str)-> Tuple[Engine, str]:
+#     '''
+#     create an empty sql database
+#     Args:
+#         sql_path: the path to the sql database, please use absolute path only
+#             so that you can easily find the database file and remove it later
+#     '''
+#     print(sql_path)
+#     sql_engine = create_engine(sql_path)
+#     drop_table(sql_engine)
+#     sql_engine.dispose()
     
-    sql_engine = create_engine(sql_path)
-    return sql_engine, sql_path
+#     sql_engine = create_engine(sql_path)
+#     return sql_engine, sql_path
+
+def create_empty_sql_database(database_uri):
+    try:
+        # Create an SQLAlchemy engine to connect to the database
+        engine = create_engine(database_uri)
+
+        # Create the database
+        engine.connect()
+
+        print(f"Database created at {database_uri}")
+    except SQLAlchemyError as e:
+        print(f"Error creating database: {str(e)}")
+    return engine, database_uri
 
 def destroy_sql_database(sql_engine: Union[Engine, str]) -> None:
     '''
