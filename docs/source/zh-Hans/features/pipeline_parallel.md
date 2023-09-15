@@ -71,12 +71,9 @@
 首先我们定义好需要的训练组件，包括`model`, `dataloader`, `optimizer`, `lr_scheduler`, `criterion` 等:
 ```python
 import argparse
-from contextlib import nullcontext
 from typing import Callable, List, Union
 
-import evaluate
 import torch
-import torch.distributed as dist
 import torch.nn as nn
 from data import GLUEDataBuilder
 from torch.optim import Adam, Optimizer
@@ -92,11 +89,9 @@ from transformers import (
 
 import colossalai
 from colossalai.booster import Booster
-from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLevelZeroPlugin, TorchDDPPlugin
+from colossalai.booster.plugin import HybridParallelPlugin
 from colossalai.cluster import DistCoordinator
-from colossalai.lazy import LazyInitContext
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.utils import get_current_device
 
 # Define some config
 NUM_EPOCHS = 3
@@ -104,6 +99,8 @@ BATCH_SIZE = 32
 LEARNING_RATE = 2.4e-5
 WEIGHT_DECAY = 0.01
 WARMUP_FRACTION = 0.1
+
+coordinator = DistCoordinator()
 
 def move_to_cuda(batch):
     return {k: v.cuda() for k, v in batch.items()}
@@ -114,6 +111,7 @@ def _criterion(outputs, inputs):
     return outputs.loss
 
 # Define optimizer
+lr = LEARNING_RATE
 no_decay = ["bias", "LayerNorm.weight"]
 optimizer_grouped_parameters = [
     {
@@ -140,7 +138,7 @@ lr_scheduler = get_linear_schedule_with_warmup(
 
 
 # Define Bert model
-    model = BertForSequenceClassification.from_pretrained("bert-base-uncased", config=cfg).cuda()
+model = BertForSequenceClassification.from_pretrained("bert-base-uncased", config=cfg).cuda()
 
 # Define a dataloader
 data_builder = GLUEDataBuilder(model_name,
