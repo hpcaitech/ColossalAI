@@ -29,6 +29,9 @@ jobs:
       run:
         shell: bash
     steps:
+      - name: Checkout ColossalAI
+        uses: actions/checkout@v2
+        
       - name: Install colossalqa
         run: |
           cd applications/ColossalQA
