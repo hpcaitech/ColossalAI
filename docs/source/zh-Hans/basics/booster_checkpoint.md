@@ -19,6 +19,30 @@
 
 模型在加载前必须被 `colossalai.booster.Booster` 封装。它会自动检测 checkpoint 格式，并以相应的方式加载。
 
+如果您想从Huggingface加载预训练好的模型，但模型太大以至于无法在单个设备上通过“from_pretrained”直接加载，推荐的方法是将预训练的模型权重下载到本地，并在封装模型后使用`booster.load`直接从本地路径加载。为了避免内存不足，模型需要在`Lazy Initialization`的环境下初始化。以下是示例伪代码：
+```python
+from colossalai.lazy import LazyInitContext
+from huggingface_hub import snapshot_download
+...
+
+# Initialize model under lazy init context
+init_ctx = LazyInitContext(default_device=get_current_device)
+with init_ctx:
+     model = LlamaForCausalLM(config)
+
+...
+
+# Wrap the model through Booster.boost
+model, optimizer, _, _, _ = booster.boost(model, optimizer)
+
+# download huggingface pretrained model to local directory.
+model_dir = snapshot_download(repo_id="lysandre/arxiv-nlp")
+
+# load model using booster.load
+booster.load(model, model_dir)
+...
+```
+
 ## 优化器 Checkpoint
 
 
