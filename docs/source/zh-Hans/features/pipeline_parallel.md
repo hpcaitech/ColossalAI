@@ -1,6 +1,6 @@
 # 流水并行
 
-作者: Guangyang Lu, Hongxin Liu, Yongbin Li
+作者: Guangyang Lu, Hongxin Liu, Yongbin Li, Mingyan Jiang
 
 **前置教程**
 - [并行技术](../concepts/paradigms_of_parallelism.md)
