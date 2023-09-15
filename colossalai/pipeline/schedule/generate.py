@@ -48,8 +48,9 @@ class GenerateSchedule(PipelineSchedule):
         self.batch_size: Optional[int] = None
         self.microbatch_offset: Optional[int] = None
         self.num_microbatches: Optional[int] = None
-        self.verbose = verbose
         self.action_interval_buffer = ActionIntervalBuffer()
+        self.verbose = verbose
+        self.timestamps = None
 
     def load_batch(self, data_iter: Iterable, device: Optional[torch.device] = None) -> None:
         """Load a batch from data iterator.
@@ -126,6 +127,8 @@ class GenerateSchedule(PipelineSchedule):
         In this action, 1.load micro_batch 2.do the forward 3.step to update
         """
         inputs_dict = self.load_micro_batch()
+        if self.verbose and self.stage_manager.is_first_stage():
+            self.timestamps[self.mb_manager.idx].append(time.time())
         output_dict = model_forward(model, inputs_dict, None)
 
         self.mb_manager.step(inputs_dict, output_dict, None)
@@ -139,6 +142,8 @@ class GenerateSchedule(PipelineSchedule):
         assert hidden_states is not None, "When first stage in GENERATE phase, the hidden states should not be None"
         hidden_states = {'hidden_states': hidden_states}
         logits = model_forward(model, None, hidden_states)
+        if self.verbose and self.stage_manager.is_first_stage():
+            self.timestamps[self.mb_manager.idx].append(time.time())
         assert 'logits' in logits, f"When first stage in GENERATE phase, the ouput should have attribute `logits`, but has {logits.keys()}"
         new_token = self._get_token_id(logits['logits'])
 
@@ -208,21 +213,8 @@ class GenerateSchedule(PipelineSchedule):
 
         return actions
 
-    def verbose_info(self, timestamps: List):
-        prefill = []
-        encoder = []
-        end2end = []
-        for timestamp in timestamps:
-            prefill.append(timestamp[1] - timestamp[0])
-            encoder.append(
-                sum(timestamp[i + 1] - timestamp[i] for i in range(1,
-                                                                   len(timestamp) - 1)) / (len(timestamp) - 2))
-            end2end.append(timestamp[-1] - timestamp[0])
-        print(f"Average prefill time: {sum(prefill)/len(prefill)}")
-        print(f"Average encode time: {sum(encoder)/len(encoder)}")
-        print(f"Average end2end time: {sum(end2end)/len(end2end)}")
-
     def generate_step(self, model: Module, data_iter: Iterable) -> Union[torch.Tensor, dict]:
+        model = model.half()
         if self.stage_manager.num_stages == 2:
             return self.generate_step_p2p(model, data_iter)
         else:
@@ -249,6 +241,8 @@ class GenerateSchedule(PipelineSchedule):
 
         #run by round
         for _ in range(self.round):
+            self.timestamps = [[] for _ in range(self.stage_manager.num_stages)
+                                ] if self.verbose and self.stage_manager.is_first_stage() else None
             self.action_interval_buffer.clear()
             while self.mb_manager.is_micro_batch_done() is False:
                 actions = self.genAction(model)
@@ -261,8 +255,10 @@ class GenerateSchedule(PipelineSchedule):
             else:
                 self.CommAction(False)
             self.mb_manager.clear()
+            if self.verbose and self.stage_manager.is_first_stage():
+                whole_timestamp.extend(self.timestamps)
 
-        return output_sequence
+        return output_sequence, whole_timestamp
 
     @torch.no_grad()
     def generate_step_broadcast(self, model: Module, data_iter: Iterable) -> Union[torch.Tensor, dict]:
@@ -283,7 +279,7 @@ class GenerateSchedule(PipelineSchedule):
         whole_timestamp = []
         # run by round
         for _ in range(self.round):
-            timestampes = [[] for _ in range(self.stage_manager.num_stages)
+            self.timestamps = [[] for _ in range(self.stage_manager.num_stages)
                           ] if self.verbose and self.stage_manager.is_first_stage() else None
             while self.mb_manager.is_micro_batch_done() is False:
                 inputs_dict = None
@@ -294,7 +290,7 @@ class GenerateSchedule(PipelineSchedule):
                 if self.stage_manager.is_first_stage() and self.mb_manager.cur_state is Status.PREFILL:
                     inputs_dict = self.load_micro_batch()
                     if self.verbose and self.stage_manager.is_first_stage():
-                        timestampes[self.mb_manager.idx].append(time.time())
+                        self.timestamps[self.mb_manager.idx].append(time.time())
                     output_dict = model_forward(model, inputs_dict, None)
                     self.mb_manager.step(inputs_dict, output_dict, None)
                 # In GENERATE phase
@@ -306,7 +302,7 @@ class GenerateSchedule(PipelineSchedule):
                         assert hidden_states is not None, "When first stage in GENERATE phase, the hidden states should not be None"
                         logits = model_forward(model, None, hidden_states)
                         if self.verbose and self.stage_manager.is_first_stage():
-                            timestampes[self.mb_manager.idx].append(time.time())
+                            self.timestamps[self.mb_manager.idx].append(time.time())
                         assert 'logits' in logits, f"When first stage in GENERATE phase, the ouput should have attribute `logits`, but has {logits.keys()}"
                         new_token = self._get_token_id(logits['logits'])
                         self.mb_manager.step(None, None, new_token)
@@ -332,9 +328,6 @@ class GenerateSchedule(PipelineSchedule):
                 output_sequence.extend(self.mb_manager.export_new_tokens())
             self.mb_manager.clear()
             if self.verbose and self.stage_manager.is_first_stage():
-                whole_timestamp.extend(timestampes)
+                whole_timestamp.extend(self.timestamps)
 
-        if self.verbose and self.stage_manager.is_first_stage():
-            self.verbose_info(whole_timestamp)
-
-        return output_sequence
+        return output_sequence, whole_timestamp
