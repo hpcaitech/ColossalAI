@@ -1,7 +1,7 @@
 import pytest
 import torch
-from colossalai.moe.routers import (MoeRouter, Top1Router, Top2Router,
-                                    TopKRouter, get_router_cls)
+
+from colossalai.moe.routers import MoeRouter, Top1Router, Top2Router, TopKRouter
 
 
 @pytest.mark.parametrize(["router", "num_groups"], [
@@ -9,19 +9,12 @@ from colossalai.moe.routers import (MoeRouter, Top1Router, Top2Router,
     (Top2Router(), 1),
     (TopKRouter(num_selected_experts=3), 4),
 ])
-@pytest.mark.parametrize(
-    ["batch_size", "seq_len", "num_experts"],
-    [
-        (4, 5, 8),
-        (3, 4, 4),
-    ]
-)
-def test_router_forward(router: MoeRouter,
-                        batch_size: int,
-                        seq_len: int,
-                        num_experts: int,
-                        num_groups: int):
-    x = torch.randn((batch_size * seq_len, num_experts))
+@pytest.mark.parametrize(["batch_size", "seq_len", "num_experts"], [
+    (4, 5, 8),
+    (3, 4, 4),
+])
+def test_router_forward(router: MoeRouter, batch_size: int, seq_len: int, num_experts: int, num_groups: int):
+    x = torch.randn((batch_size * seq_len, num_experts)).cuda()
     if num_groups > 1:
         x = x.expand(num_groups, -1, -1)
 

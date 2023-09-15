@@ -11,7 +11,7 @@ from colossalai.utils import get_current_device
 from tests.test_moe.moe_utils import MoeGradientHandler, sync_local_from_ep
 
 BATCH_SIZE = 4
-DIM = 4
+DIM = 16
 
 
 def run_test(rank, world_size, port):
