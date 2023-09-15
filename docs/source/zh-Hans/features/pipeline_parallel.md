@@ -108,8 +108,7 @@ coordinator = DistCoordinator()
 def move_to_cuda(batch):
     return {k: v.cuda() for k, v in batch.items()}
 
-
-# Define 'criterion' function
+# Define 'criterion' function with two inputs, which will be passed to 'execute_pipeline'.
 def _criterion(outputs, inputs):
     return outputs.loss
 
@@ -184,6 +183,7 @@ def train_epoch(epoch: int, model: nn.Module, optimizer: Optimizer, _criterion: 
 
     model.train()
     optimizer.zero_grad()
+    # convert train_dataloader to a iterator
     train_dataloader_iter = iter(train_dataloader)
     with tqdm(range(total_step),
               desc=f'Epoch [{epoch + 1}/{NUM_EPOCHS}]',

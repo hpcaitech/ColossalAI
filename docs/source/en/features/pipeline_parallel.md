@@ -68,6 +68,7 @@ In Colossal-AI, pipeline parallelism relies on the `scheduler` and [`Shardformer
 In Colossal-AI, the `HybridParallelPlugin` encapsulates pipeline execution strategies. It manages pipeline parallel communication groups and a scheduler. When boosting the model with this plugin, the model's layers are split by calling the `shardformer.optimize` function, and then `execute_pipeline` is called to execute the model in segments using `OneForwardOneBackwardSchedule` which is default scheduler used in `HybridParallelPlugin`, and `InterleavedSchedule` will be integrated later.
 
 You can customize your parallel strategy by setting parameters for the `HybridParallelPlugin`.
+
 For more usage details, please refer to the [documentation](../basics/booster_plugins.md) for `HybridParallelPlugin`.
 
 ## Fine-tune Bert with pipeline
@@ -110,7 +111,7 @@ def move_to_cuda(batch):
     return {k: v.cuda() for k, v in batch.items()}
 
 
-# Define 'criterion' function
+# Define 'criterion' function with two inputs, which will be passed to 'execute_pipeline'.
 def _criterion(outputs, inputs):
     return outputs.loss
 
@@ -186,6 +187,7 @@ def train_epoch(epoch: int, model: nn.Module, optimizer: Optimizer, _criterion: 
 
     model.train()
     optimizer.zero_grad()
+    # convert train_dataloader to a iterator
     train_dataloader_iter = iter(train_dataloader)
     with tqdm(range(total_step),
               desc=f'Epoch [{epoch + 1}/{NUM_EPOCHS}]',
