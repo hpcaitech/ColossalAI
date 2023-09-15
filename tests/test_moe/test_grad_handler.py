@@ -12,7 +12,7 @@ from colossalai.utils import get_current_device
 from tests.test_moe.moe_utils import MoeGradientHandler, assert_not_equal_in_group
 
 BATCH_SIZE = 4
-DIM = 4
+DIM = 16
 
 
 def run_test(rank, world_size, port):

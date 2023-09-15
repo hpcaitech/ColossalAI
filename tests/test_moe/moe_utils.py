@@ -2,13 +2,13 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 
-from colossalai.engine.gradient_handler._base_gradient_handler import BaseGradientHandler
-from colossalai.engine.gradient_handler.utils import bucket_allreduce
+from colossalai.legacy.engine.gradient_handler._base_gradient_handler import BaseGradientHandler
+from colossalai.legacy.engine.gradient_handler.utils import bucket_allreduce
+from colossalai.legacy.nn import CheckpointModule
+from colossalai.legacy.registry import GRADIENT_HANDLER
 from colossalai.moe import SparseMLP
 from colossalai.moe.manager import MOE_MANAGER
 from colossalai.moe.utils import get_moe_epsize_param_dict
-from colossalai.nn import CheckpointModule
-from colossalai.registry import GRADIENT_HANDLER
 from colossalai.tensor.moe_tensor.api import get_ep_group, get_ep_rank, get_ep_size, is_moe_tensor
 
 
