@@ -5,12 +5,11 @@
 **前置教程**
 - [并行技术](../concepts/paradigms_of_parallelism.md)
 - [Booster API](../basics/booster_api.md)
-- [使用booster进行训练](../basics/booster_api.md)
 - [Shardformer](../features/shardformer.md)
 - [Booster 插件](../basics/booster_plugins.md)
 
 **示例代码**
-- [使用pipeline并行策略训练ResNet](https://github.com/hpcaitech/ColossalAI/blob/main/examples/images/resnet/train.py)
+- [使用pipeline并行策略微调Bert](https://github.com/hpcaitech/ColossalAI/blob/main/examples/language/bert/finetune.py)
 
 **相关论文**
 - [Colossal-AI: A Unified Deep Learning System For Large-Scale Parallel Training](https://arxiv.org/abs/2110.14883)
@@ -19,7 +18,7 @@
 
 ## 快速预览
 
-在本教程中，你将学习如何使用流水并行。在 Colossal-AI 中, 我们使用 NVIDIA 推出的 1F1B 流水线。由于在本例中, 使用 ViT 和 ImageNet 太过庞大，因此我们使用 ResNet 和 CIFAR 为例.
+在本教程中，你将学习如何使用流水并行。在 Colossal-AI 中, 我们使用 NVIDIA 推出的 1F1B 流水线。由于在本例中, 使用 ViT 和 ImageNet 太过庞大，因此我们使用 Bert 和 Glue数据集 为例.
 
 ## 目录
 
@@ -27,7 +26,7 @@
 
 1. 介绍 1F1B 流水线；
 2. 使用非交错和交错 schedule；
-3. 使用流水线训练 ResNet。
+3. 使用流水线微调 Bert
 
 ## 认识 1F1B 流水线
 
@@ -65,7 +64,7 @@
 
 在 Colossal-AI 中，流水线并行依赖于 `scheduler` 和 `Shardformer`。我们提供了非交错的（`OneForwardOneBackwardSchedule`）和交错的（`InterleavedSchedule`）两种调度方式。而 Shardformer 实现了对模型的层分割，并替换了模型的 `forward` 函数，使其与调度器兼容。
 
-在 Colossal-AI 中，`HybridParallelPlugin` 封装了流水线执行策略。它管理流水线并行通信组和一个 `scheduler`。当使用此插件增强模型时，模型的层将通过调用 `shardformer.optimize` 函数进行分割，然后调用 `execute_pipeline` 使用 `scheduler` 来分别执行模型的各个部分, `HybridParallelPlugin`暂时只支持`OneForwardOneBackwardSchedule`, `InterleavedSchedule`将会在不久后支持。
+在 Colossal-AI 中，`HybridParallelPlugin` 封装了流水线执行策略。它管理流水线并行通信组和一个 `scheduler`。当使用此插件增强模型时，模型的层将通过调用 `shardformer.optimize` 函数进行分割，然后调用 `execute_pipeline` 使用 `scheduler` 来分别执行模型的各个部分。 `HybridParallelPlugin`暂时只支持`OneForwardOneBackwardSchedule`, `InterleavedSchedule`将会在不久后支持。
 
 您可以通过设置 `HybridParallelPlugin` 的参数来自定义您的并行策略。更多使用细节请参考`HybridParallelPlugin`的[使用文档](../basics/booster_plugins.md)。
 
