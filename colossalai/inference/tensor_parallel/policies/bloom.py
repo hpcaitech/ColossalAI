@@ -38,7 +38,7 @@ class BloomModelInferPolicy(BloomForCausalLMPolicy):
         from transformers.models.bloom.modeling_bloom import BloomAttention, BloomBlock, BloomForCausalLM, BloomModel
         policy = super().module_policy()
         if self.shard_config.inference_gptq:
-            from colossalai.gptq.cai_gptq import ColCaiQuantLinear, RowCaiQuantLinear
+            from colossalai.inference.quant.gptq.cai_gptq import ColCaiQuantLinear, RowCaiQuantLinear
             policy[BloomBlock] = ModulePolicyDescription(attribute_replacement={
                 "self_attention.hidden_size": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
                 "self_attention.split_size": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,

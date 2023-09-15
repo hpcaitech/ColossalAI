@@ -88,7 +88,7 @@ class TPInferEngine:
                                            self.layer_num)
 
     def _post_init_gptq_buffer(self, model: nn.Module) -> None:
-        from colossalai.gptq.cai_gptq import CaiQuantLinear
+        from colossalai.inference.quant.gptq.cai_gptq import CaiQuantLinear
         HAS_GPTQ_CUDA = False
         try:
             from colossalai.kernel.op_builder.gptq import GPTQBuilder
