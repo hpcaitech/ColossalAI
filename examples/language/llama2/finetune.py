@@ -1,4 +1,5 @@
 import argparse
+import math
 import os
 import resource
 from contextlib import nullcontext
@@ -28,24 +29,6 @@ from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.utils import get_current_device
 
-MODEL_CONFIGS = {
-    '7b':
-        LlamaConfig(max_position_embeddings=4096),
-    '13b':
-        LlamaConfig(hidden_size=5120,
-                    intermediate_size=13824,
-                    num_hidden_layers=40,
-                    num_attention_heads=40,
-                    max_position_embeddings=4096),
-    '70b':
-        LlamaConfig(hidden_size=8192,
-                    intermediate_size=28672,
-                    num_hidden_layers=80,
-                    num_attention_heads=64,
-                    max_position_embeddings=4096,
-                    num_key_value_heads=8),
-}
-
 
 def get_model_numel(model: nn.Module) -> int:
     return sum(p.numel() for p in model.parameters())
@@ -65,8 +48,8 @@ def format_numel_str(numel: int) -> str:
         return f'{numel}'
 
 
-def tokenize_batch_for_pretrain(batch, tokenizer: Optional[LlamaTokenizer] = None, max_length: int = 2048):
-    texts = [sample['text'] for sample in batch]
+def tokenize_batch_for_finetune(batch, tokenizer: Optional[LlamaTokenizer] = None, max_length: int = 2048):
+    texts = [sample['prompt'] + sample['completion'] for sample in batch]
     data = tokenizer(texts, return_tensors="pt", padding='max_length', truncation=True, max_length=max_length)
     data = {k: v.cuda() for k, v in data.items()}
     data['labels'] = data['input_ids'].clone()
@@ -114,22 +97,18 @@ def main():
     # Parse Arguments
     # ==============================
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--config', type=str, default='7b', help='Model configuration')
+    parser.add_argument('--model_path', type=str, help="pretrained checkpoint path, used with mode==finetune")
     parser.add_argument('-p',
                         '--plugin',
                         choices=['gemini', 'gemini_auto', 'zero2', 'zero2_cpu', 'hybrid_parallel'],
                         default='gemini',
                         help='Choose which plugin to use')
-    parser.add_argument('-d',
-                        '--dataset',
-                        type=str,
-                        default='togethercomputer/RedPajama-Data-1T-Sample',
-                        help='Data set path')
+    parser.add_argument('-d', '--dataset', type=str, default='yizhongw/self_instruct', help='Data set path')
+    parser.add_argument('--task_name', type=str, default="super_natural_instructions", help='task to run')
     parser.add_argument('-e', '--num_epochs', type=int, default=1, help='Number of epochs')
     parser.add_argument('-b', '--batch_size', type=int, default=2, help='Local batch size')
     parser.add_argument('--lr', type=float, default=3e-4, help='Learning rate')
     parser.add_argument('-w', '--weigth_decay', type=float, default=0.1, help='Weight decay')
-    parser.add_argument('-s', '--warmup_steps', type=int, default=2000, help='Warmup steps')
     parser.add_argument('-g', '--grad_checkpoint', action='store_true', help='Use gradient checkpointing')
     parser.add_argument('-l', '--max_length', type=int, default=4096, help='Max sequence length')
     parser.add_argument('-x', '--mixed_precision', default='fp16', choices=['fp16', 'bf16'], help='Mixed precision')
@@ -195,32 +174,33 @@ def main():
         writer = SummaryWriter(args.tensorboard_dir)
 
     # ==============================
-    # Initialize Tokenizer, Dataset and Dataloader
-    # ==============================
-    tokenizer = LlamaTokenizer.from_pretrained('hf-internal-testing/llama-tokenizer')
-    # follows fast chat: https://github.com/lm-sys/FastChat/blob/main/fastchat/train/train.py#L257
-    tokenizer.pad_token = tokenizer.unk_token
-
-    dataset = load_dataset(args.dataset)
-    train_ds = dataset['train']
-    dataloader = prepare_dataloader(train_ds,
-                                    batch_size=args.batch_size,
-                                    shuffle=True,
-                                    drop_last=True,
-                                    collate_fn=partial(tokenize_batch_for_pretrain,
-                                                       tokenizer=tokenizer,
-                                                       max_length=args.max_length))
-
-    # ==============================
     # Initialize Model, Optimizer and LR Scheduler
     # ==============================
-    config = MODEL_CONFIGS[args.config]
+
+    config = LlamaConfig.from_pretrained(args.model_path)
     # use lazy init when using GeminiPlugin
     init_ctx = LazyInitContext(
         default_device=get_current_device()) if isinstance(plugin, GeminiPlugin) else nullcontext()
 
     with init_ctx:
         model = LlamaForCausalLM(config)
+
+    # ==============================
+    # Initialize Tokenizer, Dataset and Dataloader
+    # ==============================
+    tokenizer = LlamaTokenizer.from_pretrained('hf-internal-testing/llama-tokenizer')
+    # follows fast chat: https://github.com/lm-sys/FastChat/blob/main/fastchat/train/train.py#L257
+    tokenizer.pad_token = tokenizer.unk_token
+
+    dataset = load_dataset(args.dataset, args.task_name)
+    train_ds = dataset['train']
+    dataloader = prepare_dataloader(train_ds,
+                                    batch_size=args.batch_size,
+                                    shuffle=True,
+                                    drop_last=True,
+                                    collate_fn=partial(tokenize_batch_for_finetune,
+                                                       tokenizer=tokenizer,
+                                                       max_length=args.max_length))
 
     if args.grad_checkpoint:
         model.gradient_checkpointing_enable()
@@ -232,9 +212,10 @@ def main():
     coordinator.print_on_master(f'Model params: {format_numel_str(model_numel)}')
 
     optimizer = HybridAdam(model.parameters(), lr=args.lr, betas=(0.9, 0.95), weight_decay=args.weigth_decay)
+    total_step = args.num_epochs * len(dataloader)
     lr_scheduler = CosineAnnealingWarmupLR(optimizer,
-                                           total_steps=args.num_epochs * len(dataloader),
-                                           warmup_steps=args.warmup_steps,
+                                           total_steps=total_step,
+                                           warmup_steps=math.ceil(total_step * 0.03),
                                            eta_min=0.1 * args.lr)
     default_dtype = torch.float16 if args.mixed_precision == 'fp16' else torch.bfloat16
     torch.set_default_dtype(default_dtype)
@@ -243,6 +224,8 @@ def main():
                                                                   dataloader=dataloader,
                                                                   lr_scheduler=lr_scheduler)
     torch.set_default_dtype(torch.float)
+
+    booster.load_model(model, args.model_path)
 
     coordinator.print_on_master(f'Booster init max CUDA memory: {torch.cuda.max_memory_allocated()/1024**2:.2f} MB')
     coordinator.print_on_master(

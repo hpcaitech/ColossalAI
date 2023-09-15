@@ -13,6 +13,7 @@ from torch.distributed import ProcessGroup
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 
+from colossalai.cluster import DistCoordinator
 from colossalai.interface import OptimizerWrapper
 
 from .general_checkpoint_io import GeneralCheckpointIO
@@ -71,6 +72,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         self.verbose = verbose
         self.working_to_master_map = None
         self.master_to_working_map = None
+        self.coordinator = DistCoordinator()
 
     @staticmethod
     def _model_sharder(model: nn.Module,
@@ -655,7 +657,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                     dist.all_gather(gather_tensor, v, group=tp_group)
                     v = torch.cat(gather_tensor, dim=partition_dim)
 
-            state_[k] = v.detach().clone().cpu()
+                state_[k] = v.detach().clone().cpu()
 
         return state_
 

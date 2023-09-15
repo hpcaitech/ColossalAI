@@ -92,7 +92,7 @@ Make sure master node can access all nodes (including itself) by ssh without pas
 Here is details about CLI arguments:
 
 - Model configuration: `-c`, `--config`. `7b`, `13b`, `30b` and `65b` are supported for LLaMA-1, `7b`, `13b`, and `70b` are supported for LLaMA-2.
-- Booster plugin: `-p`, `--plugin`. `gemini`, `gemini_auto`, `zero2` and `zero2_cpu` are supported. For more details, please refer to [Booster plugins](https://colossalai.org/docs/basics/booster_plugins).
+- Booster plugin: `-p`, `--plugin`. `gemini`, `gemini_auto`, `zero2`, `hybrid_parallel` and `zero2_cpu` are supported. For more details, please refer to [Booster plugins](https://colossalai.org/docs/basics/booster_plugins).
 - Dataset path: `-d`, `--dataset`. The default dataset is `togethercomputer/RedPajama-Data-1T-Sample`. It support any dataset from `datasets` with the same data format as RedPajama.
 - Number of epochs: `-e`, `--num_epochs`. The default value is 1.
 - Local batch size: `-b`, `--batch_size`. Batch size per GPU. The default value is 2.
@@ -194,4 +194,41 @@ If you run the above command successfully, you will get the following results:
   journal={arXiv preprint arXiv:2302.13971},
   year={2023}
 }
+```
+
+
+# Fine-tune Llama2
+
+We also provide a example to fine-tune llama2 in `finetune.py`,
+
+Make sure master node can access all nodes (including itself) by ssh without password.
+
+Here is details about CLI arguments:
+
+- Pretrained checkpoint path: `--model_path`, the path of your model checkpoint, it can be your local directory or a Hugging Face tag.
+- Booster plugin: `-p`, `--plugin`. `gemini`, `gemini_auto`, `zero2`, `hybrid_parallel` and `zero2_cpu` are supported. For more details, please refer to [Booster plugins](https://colossalai.org/docs/basics/booster_plugins).
+- Dataset path: `-d`, `--dataset`. The default dataset is `yizhongw/self_instruct`. It support any dataset from `datasets` with the same data format as `yizhongw/self_instruct`.
+- task name: `--task_name`, the task to fine-tune, it's also related to the target of loading dataset, The default value is `super_natural_instructions`.
+- Number of epochs: `-e`, `--num_epochs`. The default value is 1.
+- Local batch size: `-b`, `--batch_size`. Batch size per GPU. The default value is 2.
+- Learning rate: `--lr`. The default value is 3e-4.
+- Weight decay: `-w`, `--weight_decay`. The default value is 0.1.
+- Gradient checkpointing: `-g`, `--gradient_checkpoint`. The default value is `False`. This saves memory at the cost of speed. You'd better enable this option when training with a large batch size.
+- Max length: `-l`, `--max_length`. The default value is 4096.
+- Mixed precision: `-x`, `--mixed_precision`. The default value is "fp16". "fp16" and "bf16" are supported.
+- Save interval: `-i`, `--save_interval`. The interval (steps) of saving checkpoints. The default value is 1000.
+- Checkpoint directory: `-o`, `--save_dir`. The directoty path to save checkpoints. The default value is `checkpoint`.
+- Checkpoint to load: `-f`, `--load`. The checkpoint path to load. The default value is `None`.
+- Gradient clipping: `--gradient_clipping`. The default value is 1.0.
+- Tensorboard log directory: `-t`, `--tensorboard_dir`. The directory path to save tensorboard logs. The default value is `tb_logs`.
+- Flash attention: `-a`, `--flash_attention`. If you want to use flash attention, you must install `flash-attn`. The default value is `False`. This is helpful to accelerate training while saving memory. We recommend you always use flash attention.
+
+
+```shell
+torchrun --standalone --nproc_per_node 8 finetune.py \
+    --plugin "hybrid_parallel" \
+    --dataset "yizhongw/self_instruct" \
+    --model_path "/path/llama" \
+    --task_name "super_natural_instructions" \
+    --save_dir "/path/output"
 ```
