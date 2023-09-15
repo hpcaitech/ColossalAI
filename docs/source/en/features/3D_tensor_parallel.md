@@ -67,85 +67,9 @@ Given $P=q \times q \times q$ processors, we present the theoretical computation
 
 ## Usage
 
-To enable 3D tensor parallelism for our model, e.g. on 8 GPUs, we need to configure the parallelism setting as below.
-```python
-CONFIG = dict(parallel=dict(
-    data=1,
-    pipeline=1,
-    tensor=dict(size=8, mode='3d'),
-))
-```
-Then Colossal-AI will automatically apply 3D parallelism to all the layers from `colossalai.nn`.
+Currently the newest version of ColossalAI doesn't support 3D tensor parallelism, but this feature will be integrated into `Shardformer` in future releases.
+For more details about ideas and usages of `Shardformer`, please refer to [Shardformer Doc](./shardformer.md).
 
-Let's define a model that consists of a two-layer multi-layer perceptron (MLP) as below.
-```python
-import colossalai
-import colossalai.nn as col_nn
-import torch
-from colossalai.utils import print_rank_0
+For users of older version of ColossalAI, please refer to [ColossalAI-Examples - 3D Tensor Parallelism](https://github.com/hpcaitech/ColossalAI-Examples/blob/main/features/tensor_parallel/README.md).
 
-class MLP(torch.nn.Module):
-    def __init__(self, dim: int = 256):
-        super().__init__()
-        intermediate_dim = dim * 4
-        self.dense_1 = col_nn.Linear(dim, intermediate_dim)
-        print_rank_0(f'Weight of the first linear layer: {self.dense_1.weight.shape}')
-        self.activation = torch.nn.GELU()
-        self.dense_2 = col_nn.Linear(intermediate_dim, dim)
-        print_rank_0(f'Weight of the second linear layer: {self.dense_2.weight.shape}')
-        self.dropout = col_nn.Dropout(0.1)
-
-    def forward(self, x):
-        x = self.dense_1(x)
-        print_rank_0(f'Output of the first linear layer: {x.shape}')
-        x = self.activation(x)
-        x = self.dense_2(x)
-        print_rank_0(f'Output of the second linear layer: {x.shape}')
-        x = self.dropout(x)
-        return x
-```
-Launch Colossal-AI on 8 GPUs and build the model
-```python
-parser = colossalai.get_default_parser()
-colossalai.launch(config=CONFIG,
-                  rank=args.rank,
-                  world_size=args.world_size,
-                  local_rank=args.local_rank,
-                  host=args.host,
-                  port=args.port)
-
-m = MLP()
-```
-We will see the shapes of partitioned parameters(e.g. weights) in the MLP model.
-```shell
-Weight of the first linear layer: torch.Size([128, 256])
-Weight of the second linear layer: torch.Size([512, 64])
-```
-The complete weight of the first linear layer is supposed to have the shape `[256, 1024]`. After the partitioning of 3D parallelism, it becomes `[128, 256]` on each GPU.
-Similarly, the second layer partitions the weight `[1024, 256]` into `[512, 64]`.
-
-We can run the model with some random inputs.
-```python
-from colossalai.context import ParallelMode
-from colossalai.core import global_context as gpc
-from colossalai.utils import get_current_device
-
-x = torch.randn((16, 256), device=get_current_device())
-# partition input
-torch.distributed.broadcast(x, src=0)
-x = torch.chunk(x, 2, dim=0)[gpc.get_local_rank(ParallelMode.PARALLEL_3D_WEIGHT)]
-x = torch.chunk(x, 2, dim=0)[gpc.get_local_rank(ParallelMode.PARALLEL_3D_INPUT)]
-x = torch.chunk(x, 2, dim=-1)[gpc.get_local_rank(ParallelMode.PARALLEL_3D_OUTPUT)]
-print_rank_0(f'Input: {x.shape}')
-
-x = m(x)
-```
-Then we can see the shapes of activation results.
-```shell
-Input: torch.Size([4, 128])
-Output of the first linear layer: torch.Size([4, 512])
-Output of the second linear layer: torch.Size([4, 128])
-```
-The activation tensors in 3D parallelism are all split by $q^2$ in the row and $q$ in the column.
-E.g. the output of the first linear layer has the shape `[4, 512]`), while the second layer has the output of `[4, 128]`.
-Note, although the results of 3D parallelism have the same shape as that of 2.5D parallelism for weights here, the content of each partition is different.
+<!-- doc-test-command: echo  -->

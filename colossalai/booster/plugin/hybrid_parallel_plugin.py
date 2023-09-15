@@ -243,9 +243,11 @@ class HybridParallelPlugin(PipelinePluginBase):
         enable_all_optimization (bool, optional): Whether to switch on all the optimizations supported by Shardformer.
                                                     Currently all the optimization methods include fused normalization, flash attention and JIT.
                                                     Defaults to False.
-        enable_fused_normalization (bool, optional): Whether to switch on fused normalization. Defaults to False.
-        enable_flash_attention (bool, optional): Whether to switch on flash attention. Defaults to False.
-        enable_jit_fused (bool, optional): Whether to switch on JIT. Default to Falase.
+        enable_fused_normalization (bool, optional): Whether to switch on fused normalization in Shardformer. Defaults to False.
+        enable_flash_attention (bool, optional): Whether to switch on flash attention in Shardformer. Defaults to False.
+        enable_jit_fused (bool, optional): Whether to switch on JIT in Shardformer. Default to False.
+        enable_sequence_parallelism (bool): Whether to turn on sequence parallelism in Shardformer. Defaults to False.
+        enable_sequence_overlap (bool): Whether to turn on sequence overlap in Shardformer. Defaults to False.
         num_microbatches (int, optional): Number of microbatches when using pipeline parallelism. Defaults to None.
         microbatch_size (int, optional): Microbatch size when using pipeline parallelism.
             Either ``num_microbatches`` or ``microbatch_size`` should be provided if using pipeline.

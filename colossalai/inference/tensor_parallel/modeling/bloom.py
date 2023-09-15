@@ -17,9 +17,7 @@ from transformers.models.bloom.modeling_bloom import (
 from transformers.utils import logging
 
 from colossalai.inference.tensor_parallel.batch_infer_state import BatchInferState
-from colossalai.kernel.triton.context_attention import bloom_context_attn_fwd
-from colossalai.kernel.triton.copy_kv_cache_dest import copy_kv_cache_to_dest
-from colossalai.kernel.triton.token_attention_kernel import token_attention_fwd
+from colossalai.kernel.triton import bloom_context_attn_fwd, copy_kv_cache_to_dest, token_attention_fwd
 
 
 def generate_alibi(n_head, dtype=torch.float16):

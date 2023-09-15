@@ -9,7 +9,8 @@ Author: [Mingyan Jiang](https://github.com/jiangmingyan), [Jianghai Chen](https:
 
 **Example Code**
 
-- [Train with Booster](https://github.com/hpcaitech/ColossalAI/blob/main/examples/tutorial/new_api/cifar_resnet)
+- [Train ResNet on CIFAR-10 with Booster](https://github.com/hpcaitech/ColossalAI/blob/main/examples/tutorial/new_api/cifar_resnet)
+- [Train LLaMA-1/2 on RedPajama with Booster](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/llama2)
 
 ## Introduction
 
