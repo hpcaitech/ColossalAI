@@ -2,3 +2,4 @@ transformers >= 4.23
 colossalai
 evaluate
 tqdm
+scipy
