@@ -4,7 +4,6 @@ import torch
 from torch.nn import LayerNorm
 
 import colossalai.shardformer.layer as col_nn
-from colossalai.gptq.cai_gptq import ColCaiQuantLinear, RowCaiQuantLinear
 from colossalai.shardformer.modeling.bloom import build_bloom_alibi_tensor_fn
 from colossalai.shardformer.policies.base_policy import ModulePolicyDescription, SubModuleReplacementDescription
 from colossalai.shardformer.policies.bloom import BloomForCausalLMPolicy
@@ -37,10 +36,9 @@ class BloomModelInferPolicy(BloomForCausalLMPolicy):
 
     def module_policy(self):
         from transformers.models.bloom.modeling_bloom import BloomAttention, BloomBlock, BloomForCausalLM, BloomModel
-        policy = {}
-        if not self.shard_config.inference_gptq:
-            policy = super().module_policy()
-        else:
+        policy = super().module_policy()
+        if self.shard_config.inference_gptq:
+            from colossalai.gptq.cai_gptq import ColCaiQuantLinear, RowCaiQuantLinear
             policy[BloomBlock] = ModulePolicyDescription(attribute_replacement={
                 "self_attention.hidden_size": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
                 "self_attention.split_size": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
@@ -68,19 +66,6 @@ class BloomModelInferPolicy(BloomForCausalLMPolicy):
                                                                  target_module=RowCaiQuantLinear,
                                                                  kwargs={'split_num': 1}),
                                                          ])
-            policy[BloomModel] = ModulePolicyDescription(
-                attribute_replacement={
-                    "num_heads": self.model.config.n_head // self.shard_config.tensor_parallel_size,
-                },
-                method_replacement={
-                    "build_alibi_tensor": build_bloom_alibi_tensor_fn(self.shard_config.tensor_parallel_process_group)
-                },
-                sub_module_replacement=[
-                    SubModuleReplacementDescription(
-                        suffix="word_embeddings",
-                        target_module=col_nn.VocabParallelEmbedding1D,
-                    )
-                ])
         # NOTE set inference mode to shard config
         self.shard_config._infer()
 

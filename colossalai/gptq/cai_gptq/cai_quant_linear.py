@@ -2,7 +2,7 @@
 
 import math
 import warnings
-from typing import Callable, List, Optional, Tuple, Union
+from typing import List, Union
 
 import numpy as np
 import torch
@@ -267,9 +267,6 @@ class RowCaiQuantLinear(CaiQuantLinear, ParallelModule):
         LazyInitContext.materialize(module)
         # get the attributes
         in_features = module.in_features
-        out_features = module.out_features
-        bias = module.bias is not None
-        device = module.weight.device
 
         # ensure only one process group is passed
         if isinstance(process_group, (list, tuple)):
@@ -328,9 +325,6 @@ class ColCaiQuantLinear(CaiQuantLinear, ParallelModule):
         LazyInitContext.materialize(module)
         # get the attributes
         in_features = module.in_features
-        out_features = module.out_features
-        bias = module.bias is not None
-        device = module.weight.device
 
         # ensure only one process group is passed
         if isinstance(process_group, (list, tuple)):
