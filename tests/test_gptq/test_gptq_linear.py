@@ -21,7 +21,7 @@ try:
     from auto_gptq.utils.import_utils import dynamically_import_QuantLinear
     from exllama_kernels import prepare_buffers, set_tuning_params
 
-    from colossalai.gptq import CaiQuantLinear
+    from colossalai.inference.quant.gptq import CaiQuantLinear
     HAS_AUTO_GPTQ = True
 except:
     HAS_AUTO_GPTQ = False
