@@ -1,4 +1,7 @@
-"""Load question answering chains."""
+"""
+Load question answering chains.
+For now, only the stuffed chain is modified
+"""
 from typing import Any, Mapping, Optional, Protocol
 
 from langchain.callbacks.base import BaseCallbackManager

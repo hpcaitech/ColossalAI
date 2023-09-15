@@ -1,3 +1,7 @@
+'''
+implement a memory class for storing conversation history
+support long term and short term memory
+'''
 from typing import List, Dict, Any
 from langchain.memory.chat_message_histories.in_memory import ChatMessageHistory
 from colossalqa.chain.retrieval_qa.load_chain import load_qa_chain

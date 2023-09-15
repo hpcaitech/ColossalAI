@@ -13,7 +13,6 @@ from colossalqa.text_splitter import NeuralTextSplitter
 from colossalqa.memory import ConversationBufferWithSummary
 from colossalqa.prompt.prompt import PROMPT_RETRIEVAL_QA_EN, PROMPT_DISAMBIGUATE_EN
 
-
 # vllm
 # start the vllm server with
 # python -m vllm.entrypoints.api_server --model "/path to model/Llama-2-7b-hf" --swap-space 16 --disable-log-requests --host localhost --port 8077 --max-num-seqs 256 --gpu-memory-utilization 0.5

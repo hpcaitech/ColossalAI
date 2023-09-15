@@ -1,9 +1,11 @@
-# -----------------------------------------------------------------------------
-# This code incorporates an algorithm based on:
-#   Author: miraged3
-#   Title: "chatchat-space/Langchain-Chatchat"
-#   URL: https://github.com/chatchat-space/Langchain-Chatchat
-# -----------------------------------------------------------------------------
+'''
+Code for neural text splitter
+
+This code incorporates an algorithm based on:
+  Author: miraged3
+  Title: "chatchat-space/Langchain-Chatchat"
+  URL: https://github.com/chatchat-space/Langchain-Chatchat
+'''
 
 from modelscope.pipelines import pipeline
 from langchain.text_splitter import CharacterTextSplitter
