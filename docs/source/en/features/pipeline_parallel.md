@@ -1,10 +1,12 @@
 # Pipeline Parallel
 
-Author: Guangyang Lu, Hongxin Liu, Yongbin Li
+Author: Guangyang Lu, Hongxin Liu, Yongbin Li, Mingyan Jiang
 
 **Prerequisite**
+- [Paradigms of Parallelism](../concepts/paradigms_of_parallelism.md)
 - [Use Booster to Training](../basics/booster_api.md)
 - [Shardformer](../features/shardformer.md)
+- [Plugin of Booster](../basics/booster_plugins.md)
 
 **Example Code**
 - [Fine-tune Bert with pipeline](https://github.com/hpcaitech/ColossalAI/blob/main/examples/language/bert/finetune.py)
@@ -59,13 +61,14 @@ In this schedule, each device can perform computation for multiple subsets of la
 
 This mode is both memory-efficient and time-efficient.
 
-## Colossal-AI's Implement
+## Colossal-AI's Implementation
 
-In Colossal-AI, pipeline parallelism relies on the `scheduler` and `Shardformer`. We provide both non-interleaved (`OneForwardOneBackwardSchedule`) and interleaved (`InterleavedSchedule`) schedules. While `Shardformer` implements layer splitting for models and replaces the `forward` function of the model to make it compatible with the scheduler.
+In Colossal-AI, pipeline parallelism relies on the `scheduler` and [`Shardformer`](../features/shardformer.md). We provide both non-interleaved (`OneForwardOneBackwardSchedule`) and interleaved (`InterleavedSchedule`) schedules. While `Shardformer` implements layer splitting for models and replaces the `forward` function of the model to make it compatible with the scheduler.
 
-In Colossal-AI, the `HybridParallelPlugin` encapsulates pipeline execution strategies. It manages pipeline parallel communication groups and a scheduler. When boosting the model with this plugin, the model's layers are split by calling the `shardformer.optimize` function, and then `execute_pipeline` is called to execute the model in segments using either `OneForwardOneBackwardSchedule` or `InterleavedSchedule`.
+In Colossal-AI, the `HybridParallelPlugin` encapsulates pipeline execution strategies. It manages pipeline parallel communication groups and a scheduler. When boosting the model with this plugin, the model's layers are split by calling the `shardformer.optimize` function, and then `execute_pipeline` is called to execute the model in segments using `OneForwardOneBackwardSchedule` which is default scheduler used in `HybridParallelPlugin`, and `InterleavedSchedule` will be integrated later.
 
-You can customize your parallel strategy by setting parameters for the HybridParallelPlugin.
+You can customize your parallel strategy by setting parameters for the `HybridParallelPlugin`.
+For more usage details, please refer to the [documentation](../basics/booster_plugins.md) for `HybridParallelPlugin`.
 
 ## Fine-tune Bert with pipeline
 
@@ -150,7 +153,7 @@ data_builder = GLUEDataBuilder(model_name,
 train_dataloader = data_builder.train_dataloader()
 ```
 
-Define a booster with the 'HybridParallelPlugin'.
+Define a booster with the `HybridParallelPlugin`.
 ```python
 plugin = HybridParallelPlugin(tp_size=1,
                                 pp_size=2,

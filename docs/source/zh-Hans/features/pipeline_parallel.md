@@ -3,8 +3,11 @@
 作者: Guangyang Lu, Hongxin Liu, Yongbin Li
 
 **前置教程**
+- [并行技术](../concepts/paradigms_of_parallelism.md)
+- [Booster API](../basics/booster_api.md)
 - [使用booster进行训练](../basics/booster_api.md)
 - [Shardformer](../features/shardformer.md)
+- [Booster 插件]((../basics/booster_plugins.md))
 
 **示例代码**
 - [使用pipeline并行策略训练ResNet](https://github.com/hpcaitech/ColossalAI/blob/main/examples/images/resnet/train.py)
@@ -62,9 +65,9 @@
 
 在 Colossal-AI 中，流水线并行依赖于 `scheduler` 和 `Shardformer`。我们提供了非交错的（`OneForwardOneBackwardSchedule`）和交错的（`InterleavedSchedule`）两种调度方式。而 Shardformer 实现了对模型的层分割，并替换了模型的 `forward` 函数，使其与调度器兼容。
 
-在 Colossal-AI 中，`HybridParallelPlugin` 封装了流水线执行策略。它管理流水线并行通信组和一个 `scheduler`。当使用此插件增强模型时，模型的层将通过调用 `shardformer.optimize` 函数进行分割，然后调用 `execute_pipeline` 使用 `scheduler` 来分别执行模型的各个部分。
+在 Colossal-AI 中，`HybridParallelPlugin` 封装了流水线执行策略。它管理流水线并行通信组和一个 `scheduler`。当使用此插件增强模型时，模型的层将通过调用 `shardformer.optimize` 函数进行分割，然后调用 `execute_pipeline` 使用 `scheduler` 来分别执行模型的各个部分, `HybridParallelPlugin`暂时只支持`OneForwardOneBackwardSchedule`, `InterleavedSchedule`将会在不久后支持。
 
-您可以通过设置 HybridParallelPlugin 的参数来自定义您的并行策略。
+您可以通过设置 `HybridParallelPlugin` 的参数来自定义您的并行策略。更多使用细节请参考`HybridParallelPlugin`的[使用文档](../basics/booster_plugins.md)。
 
 ## 使用流水线微调 Bert模型
 
@@ -149,7 +152,7 @@ data_builder = GLUEDataBuilder(model_name,
 train_dataloader = data_builder.train_dataloader()
 ```
 
-使用'HybridParallelPlugin'初始化一个booster.
+使用`HybridParallelPlugin`初始化一个booster.
 ```python
 plugin = HybridParallelPlugin(tp_size=1,
                                 pp_size=2,
