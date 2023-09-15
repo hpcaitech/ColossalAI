@@ -104,28 +104,159 @@ is an example on how to trigger `Shardformer` through calling Shardformer APIs.
 
 ## Supporting Information
 
-List of Huggingface transformers model families currently supported by Shardformer:
-- LlaMa-1/LlaMa-2
-- GPT2
-- BERT
-- OPT
-- BLOOM
-- T5
-- ViT
-- ChatGLM-2 6B
-- Whisper
+Model/Feature Compatibility Matrix:
 
-List of optimization tools currently supported by Shardformer:
-- Flash Attention 2
-- JIT Fused Operator
-- xFormers
-- Fused Layer Normalization
-- Sequence Parallel
-- Sequence Overlap
+<table>
+  <tr>
+    <th nowrap="nowrap">Model/Feature</th>
+    <th nowrap="nowrap" title="Tensor Parallel">Tensor<br>Parallel</th>
+    <th nowrap="nowrap" align="center" title="Pipeline Parallel">Pipeline<br>Parallel</th>
+    <th nowrap="nowrap" align="center" title="Lazy Initialization">Lazy<br>Initialization</th>
+    <th nowrap="nowrap" align="center" title="xFormers">xFormers</th>
+    <th nowrap="nowrap" align="center" title="Flash Attention 2">Flash<br>Attention 2</th>
+    <th nowrap="nowrap" align="center" title="JIT Fused Operators">JIT Fused<br>Operators</th>
+    <th nowrap="nowrap" align="center" title="Fused LayerNorm">Fused<br>LayerNorm</th>
+    <th nowrap="nowrap" align="center" title="Sequence Parallel">Sequence<br>Parallel</th>
+    <th nowrap="nowrap" align="center" title="Sequence Overlap">Sequence<br>Overlap</th>
+  </tr>
+  <tr>
+    <td nowrap="nowrap">Llama V1/V2</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">❌</td>
+    <td nowrap="nowrap" align="center">❌</td>
+  </tr>
+  <tr>
+    <td nowrap="nowrap">OPT</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">❌</td>
+    <td nowrap="nowrap" align="center">❌</td>
+  </tr>
+    <tr>
+    <td nowrap="nowrap">BLOOM</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+  </tr>
+  <tr>
+    <td nowrap="nowrap">ChatGLM 2</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+  </tr>
+  <tr>
+    <td nowrap="nowrap">BERT</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+  </tr>
+  <tr>
+    <td nowrap="nowrap">GPT 2</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+  </tr>
+  <tr>
+    <td nowrap="nowrap">T5</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">❌</td>
+    <td nowrap="nowrap" align="center">❌</td>
+  </tr>
+  <tr>
+    <td nowrap="nowrap">ViT</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">❌</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">❌</td>
+    <td nowrap="nowrap" align="center">❌</td>
+  </tr>
+  <tr>
+    <td nowrap="nowrap">Whisper</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">❌</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">❌</td>
+    <td nowrap="nowrap" align="center">❌</td>
+  </tr>
+  <tr>
+    <td nowrap="nowrap">SAM</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">❌</td>
+    <td nowrap="nowrap" align="center">❌</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">❌</td>
+    <td nowrap="nowrap" align="center">❌</td>
+  </tr>
+  <tr>
+    <td nowrap="nowrap">Blip2</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">❌</td>
+    <td nowrap="nowrap" align="center">❌</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">❌</td>
+    <td nowrap="nowrap" align="center">❌</td>
+  </tr>
+  <tr>
+    <td colspan="39"></td>
+  </tr>
+</table>
 
 List of model families we plan to support in the near future:
-- SAM
-- Blip2
 - RoBERTa
 - ALBERT
 - ERNIE
@@ -135,9 +266,6 @@ List of model families we plan to support in the near future:
 - SwinTransformer V1/V2
 - qwen
 
-These lists will grow longer as more models and optimization tools emerge in the future. If you have any suggestions on the models/optimization we should support, please feel free to mention it in [Issues](https://github.com/hpcaitech/ColossalAI/issues) section of our project.
-
-For more details about compatibility between each optimization tool and each supported model, please refer to chapter Roadmap in our [develop document](https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/shardformer/README.md).
-
+The support matrix will grow larger as more models and optimization tools emerge in the future. If you have any suggestions on the models/optimization we should support, please feel free to mention it in [Issues](https://github.com/hpcaitech/ColossalAI/issues) section of our project.
 
 <!-- doc-test-command: echo  -->
