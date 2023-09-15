@@ -11,4 +11,3 @@ ninja
 torch>=1.12
 safetensors
 einops
-triton==2.0.0.dev20221202
