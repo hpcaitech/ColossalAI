@@ -130,11 +130,10 @@ class OpenMoeModelPolicy(OpenMoePolicy):
 
     def module_policy(self):
         policy = super().module_policy()
-        from transformers.models.llama.modeling_llama import LlamaModel
         if self.pipeline_stage_manager:
             # set None as default
-            self.set_pipeline_forward(model_cls=LlamaModel,
-                                      new_forward=OpenMoePipelineForwards.llama_model_forward,
+            self.set_pipeline_forward(model_cls=OpenMoeModel,
+                                      new_forward=OpenMoePipelineForwards.openmoe_model_forward,
                                       policy=policy)
         return policy
 
@@ -201,7 +200,7 @@ class OpenMoePipelineForwards:
     '''
 
     @staticmethod
-    def llama_model_forward(
+    def openmoe_model_forward(
         self: OpenMoeModel,
         input_ids: torch.LongTensor = None,
         attention_mask: Optional[torch.Tensor] = None,
@@ -215,7 +214,12 @@ class OpenMoePipelineForwards:
         stage_manager: Optional[PipelineStageManager] = None,
         hidden_states: Optional[torch.FloatTensor] = None,
         stage_index: Optional[List[int]] = None,
+        past_router_aux_loss: Optional[torch.FloatTensor] = None,
+        past_router_z_loss: Optional[torch.FloatTensor] = None,
     ):
+        # reset moe loss for different data
+        MOE_MANAGER.reset_loss()
+
         logger = logging.get_logger(__name__)
 
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
@@ -339,17 +343,17 @@ class OpenMoePipelineForwards:
         if output_hidden_states:
             all_hidden_states += (hidden_states,)
         next_cache = next_decoder_cache if use_cache else None
+
+        # concat past losses with current ones
+        router_aux_loss, router_z_loss = MOE_MANAGER.get_loss()
+        if past_router_aux_loss is not None and past_router_z_loss is not None:
+            router_aux_loss = past_router_aux_loss + router_aux_loss
+            router_z_loss = past_router_z_loss + router_z_loss
+
         if stage_manager.is_last_stage():
-            if not return_dict:
-                return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)
-            return BaseModelOutputWithPast(
-                last_hidden_state=hidden_states,
-                past_key_values=next_cache,
-                hidden_states=all_hidden_states,
-                attentions=all_self_attns,
-            )
+            return tuple([hidden_states, next_cache, all_hidden_states, all_self_attns, router_aux_loss, router_z_loss])
         # always return dict for imediate stage
-        return {'hidden_states': hidden_states}
+        return {'hidden_states': hidden_states, 'router_aux_loss': router_aux_loss, 'router_z_loss': router_z_loss}
 
     @staticmethod
     def llama_for_causal_lm_forward(
@@ -368,6 +372,8 @@ class OpenMoePipelineForwards:
         hidden_states: Optional[torch.FloatTensor] = None,
         stage_index: Optional[List[int]] = None,
         chunk_head: Optional[bool] = None,
+        past_router_aux_loss: Optional[torch.FloatTensor] = None,
+        past_router_z_loss: Optional[torch.FloatTensor] = None,
     ):
         r"""
             Args:
@@ -394,9 +400,6 @@ class OpenMoePipelineForwards:
             >>> tokenizer.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
             "Hey, are you consciours? Can you talk to me?\nI'm not consciours, but I can talk to you."
             ```"""
-        # reset moe loss
-        MOE_MANAGER.reset_loss()
-
         logger = logging.get_logger(__name__)
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (output_hidden_states
@@ -412,7 +415,7 @@ class OpenMoePipelineForwards:
             output_hidden_states = False
 
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
-        outputs = OpenMoePipelineForwards.llama_model_forward(
+        outputs = OpenMoePipelineForwards.openmoe_model_forward(
             self.model,
             input_ids=input_ids,
             attention_mask=attention_mask,
@@ -426,14 +429,13 @@ class OpenMoePipelineForwards:
             stage_manager=stage_manager,
             hidden_states=hidden_states,
             stage_index=stage_index,
+            past_router_aux_loss=past_router_aux_loss,
+            past_router_z_loss=past_router_z_loss,
         )
-        past_key_values = None
-        all_hidden_states = None
-        all_self_attentions = None
-        all_cross_attentions = None
 
         if stage_manager.is_last_stage():
-            hidden_states = outputs[0]
+            hidden_states, past_key_values, all_hidden_states, attentions, router_aux_loss, router_z_loss = outputs
+
             if self.pretraining_tp > 1:
                 lm_head_slices = self.lm_head.weight.split(self.vocab_size // self.pretraining_tp, dim=0)
                 logits = [F.linear(hidden_states, lm_head_slices[i]) for i in range(self.pretraining_tp)]
@@ -464,7 +466,7 @@ class OpenMoePipelineForwards:
 
                         return custom_forward
 
-                    aux_loss, z_loss = self._calculate_router_loss()
+                    aux_loss, z_loss = self._calculate_router_loss(router_aux_loss, router_z_loss)
                     loss = aux_loss + z_loss
                     for batch_idx in range(hidden_states.shape[0]):
                         loss = loss + torch.utils.checkpoint.checkpoint(
@@ -480,7 +482,7 @@ class OpenMoePipelineForwards:
                     shift_logits = logits[..., :-1, :].contiguous()
                     shift_labels = labels[..., 1:].contiguous()
                     # Flatten the tokens
-                    aux_loss, z_loss = self._calculate_router_loss()
+                    aux_loss, z_loss = self._calculate_router_loss(router_aux_loss, router_z_loss)
                     loss = aux_loss + z_loss
                     loss = loss + self._calculate_loss(shift_logits, shift_labels)
 
@@ -491,10 +493,16 @@ class OpenMoePipelineForwards:
             return CausalLMOutputWithPast(
                 loss=loss,
                 logits=logits,
-                past_key_values=outputs.past_key_values,
-                hidden_states=outputs.hidden_states,
-                attentions=outputs.attentions,
+                past_key_values=past_key_values,
+                hidden_states=all_hidden_states,
+                attentions=attentions,
             )
         else:
-            hidden_states = outputs.get('hidden_states')
-            return {'hidden_states': hidden_states}
+            hidden_states = outputs['hidden_states']
+            router_aux_loss = outputs['router_aux_loss']
+            router_z_loss = outputs['router_z_loss']
+            return {
+                'hidden_states': hidden_states,
+                'past_router_aux_loss': router_aux_loss,
+                'past_router_z_loss': router_z_loss
+            }

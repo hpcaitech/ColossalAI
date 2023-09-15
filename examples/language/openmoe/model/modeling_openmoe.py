@@ -914,8 +914,9 @@ class OpenMoeForCausalLM(OpenMoePreTrainedModel):
                 past_state.index_select(0, beam_idx.to(past_state.device)) for past_state in layer_past),)
         return reordered_past
 
-    def _calculate_router_loss(self):
-        aux_loss, z_loss = MOE_MANAGER.get_loss()
+    def _calculate_router_loss(self, aux_loss: list = None, z_loss: list = None):
+        if aux_loss is None or z_loss is None:
+            aux_loss, z_loss = MOE_MANAGER.get_loss()
         assert len(aux_loss) == len(z_loss) == self.config.num_hidden_layers // self.config.moe_layer_interval
         aux_loss = self.config.router_aux_loss_factor * sum(aux_loss) / len(aux_loss)
         z_loss = self.config.router_z_loss_factor * sum(z_loss) / len(z_loss)

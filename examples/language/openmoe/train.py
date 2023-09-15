@@ -78,7 +78,7 @@ def parse_args():
     parser.add_argument("--seed", type=int, default=42, help="A seed for reproducible training.")
     parser.add_argument("--plugin",
                         type=str,
-                        default="zero2",
+                        default="hybrid",
                         help="parallel plugin",
                         choices=["zero1", "zero2", "hybrid"])
     # hybrid plugin
@@ -157,7 +157,7 @@ def main():
 
     # Prepare tokenizer and dataloader
     tokenizer = T5Tokenizer.from_pretrained("google/umt5-small")
-    dataset = RandomDataset(num_samples=1000 if args.model_name != "test" else 10)
+    dataset = RandomDataset(num_samples=1000 if args.model_name != "test" else 50)
     dataloader = plugin.prepare_dataloader(dataset, batch_size=args.batch_size, shuffle=True, drop_last=True)
 
     # Set optimizer
@@ -176,15 +176,14 @@ def main():
         model.train()
         train_dataloader_iter = iter(dataloader)
         total_len = len(train_dataloader_iter)
-        with tqdm(range(total_len),
-                  desc=f'Epoch [{epoch + 1}/{args.num_epoch}]',
-                  disable=not (coordinator.is_master() or is_pp_last_stage)) as pbar:
+        with tqdm(range(total_len), desc=f'Epoch [{epoch + 1}/{args.num_epoch}]',
+                  disable=not coordinator.is_master()) as pbar:
             # Forward pass
             for _ in pbar:
                 if use_pipeline:
                     outputs = booster.execute_pipeline(train_dataloader_iter,
                                                        model,
-                                                       lambda x: x,
+                                                       lambda x, y: x.loss,
                                                        optimizer,
                                                        return_loss=True,
                                                        return_outputs=True)
