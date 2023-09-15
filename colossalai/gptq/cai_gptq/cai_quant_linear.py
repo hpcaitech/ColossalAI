@@ -358,17 +358,3 @@ class ColCaiQuantLinear(CaiQuantLinear, ParallelModule):
 
         split_column_copy(module, linear_1d, tp_rank=tp_rank, **kwargs)
         return linear_1d
-
-
-def make_cai_quant_linear(module, names, bits, groupsize, name=''):
-    if isinstance(module, CaiQuantLinear):
-        return
-    for attr in dir(module):
-        tmp = getattr(module, attr)
-        name1 = name + '.' + attr if name != '' else attr
-        if name1 in names:
-            delattr(module, attr)
-            setattr(module, attr,
-                    CaiQuantLinear(bits, groupsize, tmp.in_features, tmp.out_features, tmp.bias is not None))
-    for name1, child in module.named_children():
-        make_cai_quant_linear(child, names, bits, groupsize, name + '.' + name1 if name != '' else name1)
