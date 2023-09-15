@@ -469,6 +469,7 @@ Coati is developed by ColossalAI Team:
 - [Wenhao Chen](https://github.com/CWHer)
 
 The PhD student from [(HPC-AI) Lab](https://ai.comp.nus.edu.sg/) also contributed a lot to this project.
+
 - [Zangwei Zheng](https://github.com/zhengzangw)
 - [Xue Fuzhao](https://github.com/XueFuzhao)
 
