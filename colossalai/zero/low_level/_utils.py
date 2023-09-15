@@ -7,8 +7,8 @@ from torch import Tensor, inf
 from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 from torch.distributed import ProcessGroup
 
+from colossalai.legacy.utils import is_model_parallel_parameter
 from colossalai.tensor import ColoParameter
-from colossalai.utils import is_model_parallel_parameter
 
 
 def flatten(input_):

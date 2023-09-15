@@ -10,7 +10,7 @@ from torch import Tensor, nn
 
 from colossalai.constants import IS_TENSOR_PARALLEL, NUM_PARTITIONS
 from colossalai.global_variables import tensor_parallel_env as env
-from colossalai.utils import checkpoint
+from colossalai.legacy.utils import checkpoint
 
 
 class CheckpointModule(nn.Module):

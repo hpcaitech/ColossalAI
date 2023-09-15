@@ -9,8 +9,9 @@ from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.legacy.registry import HOOKS
 from colossalai.legacy.trainer.hooks._metric_hook import ThroughputMetric
+from colossalai.legacy.utils import is_dp_rank_0, is_no_pp_or_last_stage, is_tp_rank_0, report_memory_usage
 from colossalai.logging import DistributedLogger
-from colossalai.utils import MultiTimer, is_dp_rank_0, is_no_pp_or_last_stage, is_tp_rank_0, report_memory_usage
+from colossalai.utils import MultiTimer
 
 from ._base_hook import BaseHook
 from ._commons_ import _format_number

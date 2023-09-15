@@ -11,10 +11,10 @@ import colossalai.legacy.nn as col_nn
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.initialize import launch
+from colossalai.legacy.utils import is_using_pp
+from colossalai.legacy.utils.checkpointing import gather_pipeline_parallel_state_dict, load_checkpoint, save_checkpoint
 from colossalai.logging import disable_existing_loggers
 from colossalai.testing import rerun_if_address_is_in_use, skip_if_not_enough_gpus, spawn
-from colossalai.utils import is_using_pp
-from colossalai.utils.checkpointing import gather_pipeline_parallel_state_dict, load_checkpoint, save_checkpoint
 
 
 def build_pipeline(model):

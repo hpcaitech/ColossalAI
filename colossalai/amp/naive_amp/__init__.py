@@ -3,7 +3,7 @@ import inspect
 import torch.nn as nn
 from torch.optim import Optimizer
 
-from colossalai.utils import is_no_pp_or_last_stage
+from colossalai.legacy.utils import is_no_pp_or_last_stage
 
 from ._fp16_optimizer import FP16Optimizer
 from .grad_scaler import ConstantGradScaler, DynamicGradScaler

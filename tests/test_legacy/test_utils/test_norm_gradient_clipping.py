@@ -4,12 +4,12 @@ from torch.nn.parameter import Parameter
 from torch.nn.utils import clip_grad_norm_
 
 import colossalai
+from colossalai.legacy.tensor import ColoTensorSpec, ProcessGroup, distspec
+from colossalai.legacy.utils.common import clip_grad_norm
 from colossalai.logging import disable_existing_loggers
-from colossalai.tensor import ColoTensorSpec, ProcessGroup, distspec
 from colossalai.tensor.colo_parameter import ColoParameter
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.utils import get_current_device
-from colossalai.utils.common import clip_grad_norm
 
 
 def close(num: float, other: float, rtol: float = 1e-5, atol: float = 1e-8):

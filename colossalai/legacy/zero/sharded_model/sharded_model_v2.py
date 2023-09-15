@@ -13,6 +13,7 @@ from torch.nn.parameter import Parameter
 
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
+from colossalai.legacy.utils.memory import colo_device_memory_capacity
 from colossalai.legacy.zero.gemini.ophooks import register_ophooks_recursively
 from colossalai.legacy.zero.gemini.paramhooks import BaseParamHookMgr
 from colossalai.legacy.zero.gemini.stateful_tensor import TensorState
@@ -23,7 +24,6 @@ from colossalai.legacy.zero.shard_utils import BaseShardStrategy
 from colossalai.legacy.zero.sharded_model.reduce_scatter import ReduceScatterBucketer
 from colossalai.logging import get_dist_logger
 from colossalai.utils import disposable, get_current_device
-from colossalai.utils.memory import colo_device_memory_capacity
 from colossalai.zero.gemini.memory_tracer import MemStatsCollector, StaticMemStatsCollector
 
 from ._utils import (

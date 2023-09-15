@@ -5,7 +5,8 @@ from time import sleep, time
 
 import torch
 
-from colossalai.utils import colo_device_memory_used, get_current_device
+from colossalai.legacy.utils import colo_device_memory_used
+from colossalai.utils import get_current_device
 
 
 class MemoryMonitor:

@@ -9,8 +9,9 @@ from torch.optim import Optimizer
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.kernel.op_builder import FusedOptimBuilder
+from colossalai.legacy.utils import clip_grad_norm_fp32, copy_tensor_parallel_attributes
 from colossalai.logging import get_dist_logger
-from colossalai.utils import clip_grad_norm_fp32, copy_tensor_parallel_attributes, multi_tensor_applier
+from colossalai.utils import multi_tensor_applier
 
 from ._utils import has_inf_or_nan, zero_gard_by_list
 from .grad_scaler import BaseGradScaler

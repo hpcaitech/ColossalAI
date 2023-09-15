@@ -13,9 +13,10 @@ import colossalai
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.legacy.trainer import Trainer
+from colossalai.legacy.utils import get_dataloader
 from colossalai.logging import get_dist_logger
 from colossalai.testing import rerun_if_address_is_in_use, spawn
-from colossalai.utils import MultiTimer, get_dataloader
+from colossalai.utils import MultiTimer
 
 BATCH_SIZE = 4
 IMG_SIZE = 32

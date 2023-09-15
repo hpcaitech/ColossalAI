@@ -11,7 +11,8 @@ from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.legacy.communication import all_reduce
 from colossalai.legacy.registry import HOOKS
-from colossalai.utils import get_current_device, is_no_pp_or_last_stage
+from colossalai.legacy.utils import is_no_pp_or_last_stage
+from colossalai.utils import get_current_device
 
 from ._base_hook import BaseHook
 from ._commons_ import _format_number
