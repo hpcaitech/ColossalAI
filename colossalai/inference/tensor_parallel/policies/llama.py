@@ -38,7 +38,8 @@ class LlamaModelInferPolicy(LlamaForCausalLMPolicy):
         policy = super().module_policy()
 
         if self.shard_config.inference_gptq:
-            from colossalai.gptq.cai_gptq import ColCaiQuantLinear, RowCaiQuantLinear
+            from colossalai.inference.quant.gptq.cai_gptq import ColCaiQuantLinear, RowCaiQuantLinear
+
             decoder_attribute_replacement = {
                 "self_attn.hidden_size": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
                 "self_attn.num_heads": self.model.config.num_attention_heads // self.shard_config.tensor_parallel_size,
