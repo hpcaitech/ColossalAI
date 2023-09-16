@@ -5,9 +5,9 @@ import pytest
 import torch
 from torch.fx import symbolic_trace
 
-from colossalai.core import global_context as gpc
 from colossalai.fx.passes import column_shard_linear_pass
 from colossalai.initialize import launch
+from colossalai.legacy.core import global_context as gpc
 from colossalai.logging import disable_existing_loggers
 from colossalai.testing import clear_cache_before_run, rerun_if_address_is_in_use, spawn
 

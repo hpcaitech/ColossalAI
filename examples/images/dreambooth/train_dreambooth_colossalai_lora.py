@@ -23,8 +23,8 @@ from transformers import AutoTokenizer, PretrainedConfig
 import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin, LowLevelZeroPlugin, TorchDDPPlugin
-from colossalai.context.parallel_mode import ParallelMode
-from colossalai.core import global_context as gpc
+from colossalai.legacy.context.parallel_mode import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.utils import get_current_device

@@ -8,11 +8,17 @@ import torch.nn.functional as F
 from torch import Tensor
 from torch.nn import Parameter
 
-from colossalai.constants import INPUT_GROUP_3D, INPUT_X_WEIGHT_3D, OUTPUT_GROUP_3D, OUTPUT_X_WEIGHT_3D, WEIGHT_GROUP_3D
-from colossalai.context import ParallelMode, seed
-from colossalai.core import global_context as gpc
-from colossalai.global_variables import tensor_parallel_env as env
 from colossalai.legacy.communication import all_reduce, broadcast
+from colossalai.legacy.constants import (
+    INPUT_GROUP_3D,
+    INPUT_X_WEIGHT_3D,
+    OUTPUT_GROUP_3D,
+    OUTPUT_X_WEIGHT_3D,
+    WEIGHT_GROUP_3D,
+)
+from colossalai.legacy.context import ParallelMode, seed
+from colossalai.legacy.core import global_context as gpc
+from colossalai.legacy.global_variables import tensor_parallel_env as env
 from colossalai.legacy.nn.layer.base_layer import ParallelLayer
 from colossalai.legacy.registry import LAYERS
 from colossalai.legacy.utils.checkpointing import (

@@ -3,7 +3,7 @@ import os
 import torch.distributed.rpc as rpc
 from rpc_test_utils import pg_parse_args, rpc_is_initialized
 
-from colossalai.initialize import launch
+from colossalai.legacy.initialize import launch
 from colossalai.legacy.pipeline.pipeline_process_group import ppg
 from colossalai.logging import disable_existing_loggers
 from colossalai.testing import spawn

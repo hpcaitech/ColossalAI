@@ -10,8 +10,8 @@ import torch.distributed as dist
 from torch.distributed import ProcessGroupNCCL
 from torch.distributed import distributed_c10d as c10d
 
-from colossalai.context.parallel_mode import ParallelMode
-from colossalai.core import global_context as gpc
+from colossalai.legacy.context.parallel_mode import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 
 TensorShape = Union[torch.Size, List[int], Tuple[int]]
 _pg_manager = {}

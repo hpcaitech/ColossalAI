@@ -4,9 +4,9 @@ import torch.nn.functional as F
 from torch.utils.checkpoint import checkpoint
 
 import colossalai
-from colossalai.core import global_context as gpc
 from colossalai.fx import ColoTracer
 from colossalai.fx.graph_module import ColoGraphModule
+from colossalai.legacy.core import global_context as gpc
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 try:

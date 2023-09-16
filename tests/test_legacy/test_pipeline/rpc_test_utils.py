@@ -10,7 +10,7 @@ from torch import nn
 from torch._C._distributed_rpc import _is_current_rpc_agent_set
 from torch.optim import SGD, Adam, Optimizer, RMSprop
 
-from colossalai import launch
+from colossalai.legacy import launch
 from colossalai.legacy.pipeline.pipeline_process_group import ppg
 from colossalai.logging import disable_existing_loggers
 

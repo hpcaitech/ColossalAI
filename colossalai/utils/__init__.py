@@ -7,7 +7,7 @@ from .common import (
     is_ddp_ignored,
     set_seed,
 )
-from .cuda import empty_cache, get_current_device, set_to_cuda, synchronize
+from .cuda import empty_cache, get_current_device, set_device, set_to_cuda, synchronize
 from .multi_tensor_apply import multi_tensor_applier
 from .tensor_detector import TensorDetector
 from .timer import MultiTimer, Timer
@@ -28,4 +28,5 @@ __all__ = [
     'free_storage',
     'set_seed',
     'is_ddp_ignored',
+    'set_device',
 ]

@@ -34,8 +34,8 @@ class ColoDDP(torch.nn.Module):
     """Distributed data parallel for ColoTensor. Nested ColoDDP is not supported now.
 
     Example:
-        >>> from colossalai.core import global_context as gpc
-        >>> from colossalai.context import ParallelMode
+        >>> from colossalai.legacy.core import global_context as gpc
+        >>> from colossalai.legacy.context import ParallelMode
         >>> model = torch.nn.Linear(20, 1)
         >>> pg = ProcessGroup(tp_degree = world_size//2)
         >>> model = ColoDDP(model, pg)

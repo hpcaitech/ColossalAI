@@ -8,8 +8,8 @@ import numpy as np
 import torch
 from torch import Tensor, nn
 
-from colossalai.constants import IS_TENSOR_PARALLEL, NUM_PARTITIONS
-from colossalai.global_variables import tensor_parallel_env as env
+from colossalai.legacy.constants import IS_TENSOR_PARALLEL, NUM_PARTITIONS
+from colossalai.legacy.global_variables import tensor_parallel_env as env
 from colossalai.legacy.utils import checkpoint
 
 

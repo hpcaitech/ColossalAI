@@ -3,9 +3,9 @@ import torch
 import torch.nn as nn
 
 import colossalai
-from colossalai.context import ParallelMode
 from colossalai.context.moe_context import MOE_CONTEXT
-from colossalai.core import global_context as gpc
+from colossalai.legacy.context import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 from colossalai.nn.layer.moe import Experts, MoeLayer, Top1Router, Top2Router
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 from colossalai.utils import get_current_device

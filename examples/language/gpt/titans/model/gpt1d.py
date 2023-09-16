@@ -9,8 +9,8 @@ from torch import nn as nn
 
 from colossalai import kernel
 from colossalai import nn as col_nn
-from colossalai.core import global_context as gpc
 from colossalai.kernel.cuda_native.scaled_softmax import AttnMaskType
+from colossalai.legacy.core import global_context as gpc
 from colossalai.legacy.nn.layer import Linear1D_Col, Linear1D_Row
 from colossalai.legacy.nn.layer.base_layer import ParallelLayer
 from colossalai.legacy.nn.layer.utils import ACT2FN, divide

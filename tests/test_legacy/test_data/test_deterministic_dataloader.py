@@ -10,8 +10,9 @@ import torch.distributed as dist
 from torchvision import datasets, transforms
 
 import colossalai
-from colossalai.context import Config, ParallelMode
-from colossalai.core import global_context as gpc
+from colossalai.context import Config
+from colossalai.legacy.context import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 from colossalai.legacy.utils import get_dataloader
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 
@@ -36,7 +37,7 @@ CONFIG = Config(
 
 def run_data_sampler(rank, world_size, port):
     dist_args = dict(config=CONFIG, rank=rank, world_size=world_size, backend='gloo', port=port, host='localhost')
-    colossalai.launch(**dist_args)
+    colossalai.legacy.launch(**dist_args)
 
     # build dataset
     transform_pipeline = [transforms.ToTensor(), transforms.RandomCrop(size=32, padding=4)]

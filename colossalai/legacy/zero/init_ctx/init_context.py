@@ -8,9 +8,9 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 
-from colossalai.context.parallel_mode import ParallelMode
 from colossalai.context.singleton_meta import SingletonMeta
-from colossalai.core import global_context as gpc
+from colossalai.legacy.context.parallel_mode import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 from colossalai.legacy.zero.shard_utils import BaseShardStrategy
 from colossalai.legacy.zero.sharded_model._utils import cast_tensor_to_bf16, cast_tensor_to_fp16
 from colossalai.legacy.zero.sharded_model.sharded_model_v2 import ShardedModelV2

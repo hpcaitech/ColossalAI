@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 import torch
+import torch.distributed as dist
 import torch.nn.functional as F
 import torch.utils.checkpoint
 from diffusers import AutoencoderKL, DDPMScheduler, DiffusionPipeline, UNet2DConditionModel
@@ -21,13 +22,9 @@ from transformers import AutoTokenizer, PretrainedConfig
 import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin, LowLevelZeroPlugin, TorchDDPPlugin
-from colossalai.context.parallel_mode import ParallelMode
-from colossalai.core import global_context as gpc
 from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.utils import get_current_device
-from colossalai.zero import ColoInitContext
-from colossalai.zero.gemini import get_static_torch_model
 
 disable_existing_loggers()
 logger = get_dist_logger()
@@ -366,8 +363,8 @@ def main(args):
     else:
         colossalai.launch_from_torch(config={}, seed=args.seed)
 
-    local_rank = gpc.get_local_rank(ParallelMode.DATA)
-    world_size = gpc.get_world_size(ParallelMode.DATA)
+    local_rank = dist.get_rank()
+    world_size = dist.get_world_size()
 
     if args.with_prior_preservation:
         class_images_dir = Path(args.class_data_dir)

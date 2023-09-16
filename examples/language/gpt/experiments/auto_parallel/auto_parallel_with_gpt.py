@@ -7,8 +7,8 @@ import transformers
 from gpt_modules import GPT2LMHeadModel, GPTLMLoss
 
 from colossalai.auto_parallel.tensor_shard.initialize import autoparallelize
-from colossalai.core import global_context as gpc
 from colossalai.initialize import launch_from_torch
+from colossalai.legacy.core import global_context as gpc
 from colossalai.logging import disable_existing_loggers, get_dist_logger
 
 BATCH_SIZE = 16

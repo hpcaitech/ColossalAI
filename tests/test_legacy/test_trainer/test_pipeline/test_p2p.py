@@ -5,9 +5,6 @@ import pytest
 import torch
 import torch.distributed as dist
 
-from colossalai.context.parallel_mode import ParallelMode
-from colossalai.core import global_context as gpc
-from colossalai.initialize import launch
 from colossalai.legacy.communication import (
     recv_backward,
     recv_forward,
@@ -18,6 +15,9 @@ from colossalai.legacy.communication import (
     send_forward_recv_backward,
     send_obj_meta,
 )
+from colossalai.legacy.context.parallel_mode import ParallelMode
+from colossalai.legacy.core import global_context as gpc
+from colossalai.legacy.initialize import launch
 from colossalai.logging import get_dist_logger
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 from colossalai.utils import get_current_device

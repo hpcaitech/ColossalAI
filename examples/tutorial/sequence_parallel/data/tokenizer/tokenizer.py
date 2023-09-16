@@ -12,13 +12,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 """Megatron tokenizers."""
 
-from abc import ABC
-from abc import abstractmethod
-from colossalai.core import global_context as gpc
-from colossalai.context import ParallelMode
+from abc import ABC, abstractmethod
+
+from colossalai.legacy.context import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 
 from .bert_tokenization import FullTokenizer as FullBertTokenizer
 
@@ -26,18 +25,13 @@ from .bert_tokenization import FullTokenizer as FullBertTokenizer
 def build_tokenizer(vocab_file, tokenizer_type, vocab_extra_ids=0):
     """Initialize tokenizer."""
     if not gpc.is_initialized(ParallelMode.GLOBAL) or gpc.get_global_rank() == 0:
-        print('> building {} tokenizer ...'.format(tokenizer_type),
-              flush=True)
+        print('> building {} tokenizer ...'.format(tokenizer_type), flush=True)
 
     # Select and instantiate the tokenizer.
     if tokenizer_type == 'BertWordPieceLowerCase':
-        tokenizer = _BertWordPieceTokenizer(vocab_file=vocab_file,
-                                            lower_case=True,
-                                            vocab_extra_ids=vocab_extra_ids)
+        tokenizer = _BertWordPieceTokenizer(vocab_file=vocab_file, lower_case=True, vocab_extra_ids=vocab_extra_ids)
     elif tokenizer_type == 'BertWordPieceCase':
-        tokenizer = _BertWordPieceTokenizer(vocab_file=vocab_file,
-                                            lower_case=False,
-                                            vocab_extra_ids=vocab_extra_ids)
+        tokenizer = _BertWordPieceTokenizer(vocab_file=vocab_file, lower_case=False, vocab_extra_ids=vocab_extra_ids)
     else:
         raise NotImplementedError('{} tokenizer is not '
                                   'implemented.'.format(tokenizer_type))
@@ -62,8 +56,8 @@ def _vocab_size_with_padding(orig_vocab_size, make_vocab_size_divisible_by=128):
         after += 1
     if not gpc.is_initialized(ParallelMode.GLOBAL) or gpc.get_global_rank() == 0:
         print(' > padded vocab (size: {}) with {} dummy tokens '
-              '(new size: {})'.format(
-                  orig_vocab_size, after - orig_vocab_size, after), flush=True)
+              '(new size: {})'.format(orig_vocab_size, after - orig_vocab_size, after),
+              flush=True)
     return after
 
 
@@ -142,8 +136,7 @@ class _BertWordPieceTokenizer(AbstractTokenizer):
         self._additional_special_tokens = []
 
         # (dsachan) Add BOS and EOS tokens
-        SPECIAL_TOKENS = {'eos_token': '[EOS]',
-                          'bos_token': '[BOS]'}
+        SPECIAL_TOKENS = {'eos_token': '[EOS]', 'bos_token': '[BOS]'}
         self._bos_token = '[BOS]'
         self.add_token(self._bos_token)
         self._bos_token_id = self.vocab.get(self._bos_token)
@@ -155,8 +148,7 @@ class _BertWordPieceTokenizer(AbstractTokenizer):
         # (dsachan) Add additional special tokens
         # These can be used as sentinel tokens in T5 model inputs
         additional_special_tokens = []
-        additional_special_tokens.extend(
-            ["<extra_id_{}>".format(i) for i in range(vocab_extra_ids)])
+        additional_special_tokens.extend(["<extra_id_{}>".format(i) for i in range(vocab_extra_ids)])
         self.add_additional_special_tokens(additional_special_tokens)
 
     def add_token(self, token):
