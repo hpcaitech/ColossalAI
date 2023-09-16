@@ -48,7 +48,7 @@ class LoraLinear(lora.LoRALayer, nn.Module):
 
     def reset_parameters(self):
         if hasattr(self, 'lora_A'):
-            # initialize A the same way as the default for nn.Linear and B to zero
+            # Initialize A with the default values for nn.Linear and set B to zero.
             nn.init.kaiming_uniform_(self.lora_A, a=math.sqrt(5))
             nn.init.zeros_(self.lora_B)
 

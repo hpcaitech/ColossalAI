@@ -348,7 +348,7 @@ For example, if you want to add a new metric `persuasiveness` into category `bra
 
 <details><summary><b>How can I add a new UniEval evaluation metric?</b></summary>
 
-For example, if you want to add a new metric `persuasiveness` into task `data2text`, you should add a Boolean QA question about the metric in function `add_question` in `unieval/utils.py`. Please do note that how effectively the model would evaluate this metric is unknown and you may need some experiments to test whether the model is capable of evaluating this metric.
+For example, if you want to add a new metric `persuasiveness` into task `data2text`, you should add a Boolean QA question about the metric in function `add_question` in `unieval/utils.py`. Please do note that how effectively the model would evaluate this metric is unknown, and you may need some experiments to test whether the model is capable of evaluating this metric.
 
 ```python
 if task == 'data2text':

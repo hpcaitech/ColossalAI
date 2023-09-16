@@ -10,7 +10,7 @@ from coati.models.base import Actor
 @dataclass
 class Experience:
     """Experience is a batch of data.
-    These data should have the the sequence length and number of actions.
+    These data should have the sequence length and number of actions.
     Left padding for sequences is applied.
 
     Shapes of each tensor:

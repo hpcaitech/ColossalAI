@@ -13,6 +13,7 @@ from torch.distributed import ProcessGroup
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 
+from colossalai.cluster import DistCoordinator
 from colossalai.interface import OptimizerWrapper
 
 from .general_checkpoint_io import GeneralCheckpointIO
@@ -39,7 +40,7 @@ except ImportError:
     _EXTRA_STATE_KEY_SUFFIX = '_extra_state'
 
 
-class HypridParallelCheckpointIO(GeneralCheckpointIO):
+class HybridParallelCheckpointIO(GeneralCheckpointIO):
     """
     CheckpointIO for Hybrid Parallel Training.
 
@@ -71,6 +72,7 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
         self.verbose = verbose
         self.working_to_master_map = None
         self.master_to_working_map = None
+        self.coordinator = DistCoordinator()
 
     @staticmethod
     def _model_sharder(model: nn.Module,
@@ -136,7 +138,7 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
 
             param_id = param_info['param2id'][id(working_param)]
             original_shape = param_info['param2shape'][id(working_param)]
-            state_ = HypridParallelCheckpointIO.gather_from_sharded_optimizer_state(state,
+            state_ = HybridParallelCheckpointIO.gather_from_sharded_optimizer_state(state,
                                                                                     working_param,
                                                                                     original_shape=original_shape,
                                                                                     dp_group=dp_group,
@@ -189,7 +191,7 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
 
         # Then collect the sharded parameters & buffers along tp_group.
         # Only devices with tp_rank == 0 are responsible for model saving.
-        state_dict_shard = HypridParallelCheckpointIO._model_sharder(model, size_per_shard=size_per_shard)
+        state_dict_shard = HybridParallelCheckpointIO._model_sharder(model, size_per_shard=size_per_shard)
         weights_name, save_index_file = get_model_base_filenames(prefix, use_safetensors)
         index_file = CheckpointIndexFile(checkpoint)
         control_saving = (self.tp_rank == 0)
@@ -385,7 +387,7 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
 
         # Then collect the sharded states along dp_group(if using zero)/tp_group.
         # Only devices with (dp_rank == 0 and tp_rank == 0) are responsible for states saving.
-        state_dict_shard = HypridParallelCheckpointIO._optimizer_sharder(
+        state_dict_shard = HybridParallelCheckpointIO._optimizer_sharder(
             optimizer,
             use_zero=self.use_zero,
             dp_group=self.dp_group,
@@ -655,7 +657,7 @@ class HypridParallelCheckpointIO(GeneralCheckpointIO):
                     dist.all_gather(gather_tensor, v, group=tp_group)
                     v = torch.cat(gather_tensor, dim=partition_dim)
 
-            state_[k] = v.detach().clone().cpu()
+                state_[k] = v.detach().clone().cpu()
 
         return state_
 
