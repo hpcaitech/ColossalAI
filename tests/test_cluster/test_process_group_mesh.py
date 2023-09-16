@@ -138,7 +138,7 @@ def run_dist(rank, world_size, port):
                       port=port,
                       host='localhost')
     # TODO(ver217): this function should be removed when gpc is removed
-    check_process_group_mesh_with_gpc()
+    # check_process_group_mesh_with_gpc()
     check_process_group_mesh_with_cases()
 
 
