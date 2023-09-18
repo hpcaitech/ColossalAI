@@ -18,6 +18,7 @@ on:
       - "!tests/**.md" # ignore doc change
       - "pytest.ini" # test config change
       - "setup.py" # install command change
+      - "!applications/ColossalQA/**" # ignore ColossalQA change
   create:
   delete:
 
