@@ -1,74 +1,26 @@
 '''
 Multilingual retrieval based conversation system
 '''
-
-import colossalqa.retrieval_conversation_en as en_utils
-import colossalqa.retrieval_conversation_zh as zh_utils
-from typing import Dict, Any, List, Tuple
-from langchain.vectorstores import Chroma
-from colossalqa.data_loader.document_loader import DocumentLoader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from colossalqa.text_splitter import NeuralTextSplitter
-from colossalqa.chain.retrieval_qa.base import RetrievalQA
-from colossalqa.memory import ConversationBufferWithSummary
-from colossalqa.retriever import CustomRetriever
+from typing import List
 from langchain.embeddings import HuggingFaceEmbeddings
+from colossalqa.data_loader.document_loader import DocumentLoader
+from colossalqa.text_splitter import NeuralTextSplitter
+from colossalqa.retriever import CustomRetriever
 from colossalqa.utils import detect_lang_naive
+from colossalqa.mylogging import get_logger
+from colossalqa.retrieval_conversation_zh import ChineseRetrievalConversation
+from colossalqa.retrieval_conversation_en import EnglishRetrievalConversation
 
-class ChineseRetrievalConversation:
-    def __init__(self, retriever) -> None:
-        '''
-        setup retrieval qa chain for Chinese retrieval based QA
-        '''
-        self.retriever = retriever
-        self.retriever.set_rephrase_handler(zh_utils.disambiguity)
-        self.memory = zh_utils.memory
-        self.memory.initiate_document_retrieval_chain(zh_utils.llm, 
-                                    zh_utils.PROMPT_RETRIEVAL_QA_ZH, self.retriever, chain_type_kwargs={'chat_history':'', })
-        self.retrieval_chain = RetrievalQA.from_chain_type(llm=zh_utils.llm, verbose=False, chain_type="stuff", 
-                retriever=self.retriever, chain_type_kwargs={"prompt": zh_utils.PROMPT_RETRIEVAL_QA_ZH,"memory":self.memory },
-                llm_kwargs={'max_new_tokens':50, 'temperature':0.75, 'do_sample':True})
-  
-    @classmethod
-    def from_retriever(cls, retriever) -> "ChineseRetrievalConversation":
-        return cls(retriever)
-
-    def run(self, user_input: str, memory: ConversationBufferWithSummary) -> Tuple[str, ConversationBufferWithSummary]:
-        if memory:
-            # TODO add translation chain here
-            self.memory.buffered_history.messages = memory.buffered_history.messages
-            self.memory.summarized_history.messages = memory.summarized_history.messages
-            self.memory.summarized_history_temp.messages = memory.summarized_history_temp.messages
-        return self.retrieval_chain.run(query=user_input, stop=[self.memory.human_prefix+': ']).split('\n')[0], self.memory
-    
-class EnglishRetrievalConversation:
-    def __init__(self, retriever) -> None:
-        '''
-        setup retrieval qa chain for English retrieval based QA
-        '''
-        self.retriever = retriever
-        self.retriever.set_rephrase_handler(en_utils.disambiguity)
-        self.memory = en_utils.memory
-        self.memory.initiate_document_retrieval_chain(en_utils.llm, en_utils.PROMPT_RETRIEVAL_QA_EN, self.retriever,
-                chain_type_kwargs={'chat_history':'', })
-        self.retrieval_chain = RetrievalQA.from_chain_type(llm=en_utils.llm, verbose=False, chain_type="stuff", 
-                retriever=self.retriever, chain_type_kwargs={"prompt": en_utils.PROMPT_RETRIEVAL_QA_EN,"memory":self.memory },
-                llm_kwargs={'max_new_tokens':50, 'temperature':0.75, 'do_sample':True})
-  
-    @classmethod
-    def from_retriever(cls, retriever) -> "EnglishRetrievalConversation":
-        return cls(retriever)
-
-    def run(self, user_input: str, memory: ConversationBufferWithSummary) -> Tuple[str, ConversationBufferWithSummary]:
-        if memory:
-            # TODO add translation chain here
-            self.memory.buffered_history.messages = memory.buffered_history.messages
-            self.memory.summarized_history.messages = memory.summarized_history.messages
-            self.memory.summarized_history_temp.messages = memory.summarized_history_temp.messages
-        return self.retrieval_chain.run(query=user_input, stop=[self.memory.human_prefix+': ']).split('\n')[0], self.memory
-    
+logger = get_logger()
+ 
 class UniversalRetrievalConversation:
-    def __init__(self, embedding_model_path: str="moka-ai/m3e-base", embedding_model_device: str="cpu", 
+    '''
+    Wrapper class for bilingual retrieval conversation system
+    '''
+    def __init__(self, embedding_model_path: str="moka-ai/m3e-base", embedding_model_device: str="cpu",
+                 zh_model_path: str=None, zh_model_name:str =None,
+                 en_model_path: str=None, en_model_name: str=None, 
+                 sql_file_path: str=None,
                  files_zh:List[List[str]]=None,
                 files_en:List[List[str]]=None) -> None:
         '''
@@ -85,16 +37,18 @@ class UniversalRetrievalConversation:
 
         docs_zh = self.load_supporting_docs(files=files_zh)
         # create retriever
-        self.information_retriever_zh = CustomRetriever(k=3)
+        self.information_retriever_zh = CustomRetriever(k=3, sql_file_path=sql_file_path, verbose=True)
         self.information_retriever_zh.add_documents(docs=docs_zh, cleanup='incremental', mode='by_source', embedding=self.embedding)
         
         docs_en = self.load_supporting_docs(files=files_en)
         # create retriever
-        self.information_retriever_en = CustomRetriever(k=3)
+        self.information_retriever_en = CustomRetriever(k=3, sql_file_path=sql_file_path, verbose=True)
         self.information_retriever_en.add_documents(docs=docs_en, cleanup='incremental', mode='by_source', embedding=self.embedding)
 
-        self.chinese_retrieval_conversation = ChineseRetrievalConversation.from_retriever(self.information_retriever_zh)
-        self.english_retrieval_conversation = EnglishRetrievalConversation.from_retriever(self.information_retriever_en)
+        self.chinese_retrieval_conversation = ChineseRetrievalConversation.from_retriever(self.information_retriever_zh, 
+                                              model_path=zh_model_path, model_name=zh_model_name)
+        self.english_retrieval_conversation = EnglishRetrievalConversation.from_retriever(self.information_retriever_en,
+                                              model_path=en_model_path, model_name=en_model_name)
         self.memory = None
 
     def load_supporting_docs(self, files:List[List[str]]=None):
@@ -129,7 +83,6 @@ class UniversalRetrievalConversation:
         '''
         while True:
             user_input = input("User: ")
-            print(f"User: {user_input}")
             lang = detect_lang_naive(user_input)
             if 'END' == user_input:
                 print("Agent: Happy to chat with you ：)")
@@ -152,7 +105,4 @@ class UniversalRetrievalConversation:
             agent_response, self.memory = self.english_retrieval_conversation.run(user_input, self.memory)
         return agent_response.split('\n')[0]
     
-if __name__ == '__main__':
-    session = UniversalRetrievalConversation()
-    session.start_test_session()
         

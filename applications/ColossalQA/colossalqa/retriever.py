@@ -1,24 +1,26 @@
 '''
 code for custom retriver with incremental update
 '''
+import os
+import hashlib
+import copy
+from typing import List, Callable, Dict, Any
+from collections import defaultdict
 from langchain.schema.retriever import BaseRetriever, Document
 from langchain.callbacks.manager import CallbackManagerForRetrieverRun
-from typing import List, Callable, Dict, Any
 from langchain.indexes import SQLRecordManager 
 from langchain.embeddings.base import Embeddings
 from langchain.indexes import index
-from collections import defaultdict
 from langchain.vectorstores.base import VectorStore
 from langchain.vectorstores.chroma import Chroma
-import hashlib
-import copy
-from colossalqa.logging import get_logger
-import os
+from colossalqa.mylogging import get_logger
 
 logger = get_logger()
-SQL_FILE_PATH = os.environ.get("SQL_FILE_PATH")
 
 class CustomRetriever(BaseRetriever):
+    '''
+    Custom retriever class with support for incremental update of indexes
+    '''
     vector_stores: Dict[str, VectorStore] = {}
     sql_index_database: Dict[str, str] = {}
     record_managers: Dict[str, SQLRecordManager]={}
@@ -27,7 +29,8 @@ class CustomRetriever(BaseRetriever):
     rephrase_handler:Callable = None
     buffer: Dict = []
     buffer_size: int = 5
-    verbose: bool = True
+    verbose: bool = False
+    sql_file_path:str = None
 
     @classmethod
     def from_documents(
@@ -66,10 +69,10 @@ class CustomRetriever(BaseRetriever):
             if source not in self.vector_stores:
                 hash_encoding = hashlib.sha3_224(source.encode()).hexdigest()
                 # create a new sql database to store indexes, sql files are stored in the same directory as the source file
-                sql_path = f"sqlite:///{SQL_FILE_PATH}/{hash_encoding}.db"
+                sql_path = f"sqlite:///{self.sql_file_path}/{hash_encoding}.db"
                 self.vector_stores[source] = Chroma(embedding_function=embedding, 
                         collection_name=hash_encoding)
-                self.sql_index_database[source] = f"{SQL_FILE_PATH}/{hash_encoding}.db"
+                self.sql_index_database[source] = f"{self.sql_file_path}/{hash_encoding}.db"
                 self.record_managers[source] = SQLRecordManager(source, db_url=sql_path)
                 self.record_managers[source].create_schema()
             index(
@@ -123,7 +126,7 @@ class CustomRetriever(BaseRetriever):
         for k in self.vector_stores:
             # retrieve documents from each retriever
             vectorstore = self.vector_stores[k]
-            documents.extend(vectorstore.similarity_search_with_relevance_scores(query, self.k, score_threshold=score_threshold))
+            documents.extend(vectorstore.similarity_search_with_score(query, self.k, score_threshold=score_threshold))
         # return the top k documents among all retrievers
         documents = sorted(documents, key=lambda x: x[1], reverse=True)[:self.k]
         if return_scores:

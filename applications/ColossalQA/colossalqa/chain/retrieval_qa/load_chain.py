@@ -2,20 +2,19 @@
 Load question answering chains.
 For now, only the stuffed chain is modified
 """
+import copy
 from typing import Any, Mapping, Optional, Protocol
-
 from langchain.callbacks.base import BaseCallbackManager
 from langchain.callbacks.manager import Callbacks
 from langchain.chains.combine_documents.base import BaseCombineDocumentsChain
-from colossalqa.chain.retrieval_qa.stuff import CustomStuffDocumentsChain
-# from colossalqa.chain.llm_chain import LLMChain
 from langchain.chains.llm import LLMChain
 from langchain.chains.question_answering import (
     stuff_prompt,
 )
 from langchain.schema.language_model import BaseLanguageModel
 from langchain.schema.prompt_template import BasePromptTemplate
-import copy
+from colossalqa.chain.retrieval_qa.stuff import CustomStuffDocumentsChain
+# from colossalqa.chain.llm_chain import LLMChain
 
 class LoadingCallable(Protocol):
     """Interface for loading the combine documents chain."""

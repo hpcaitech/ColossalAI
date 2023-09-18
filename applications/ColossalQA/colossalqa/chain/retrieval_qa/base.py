@@ -2,26 +2,22 @@
 from __future__ import annotations
 
 import inspect
-from abc import abstractmethod
 from typing import Any, Dict, List, Optional
 import copy
-
-
 from langchain.callbacks.manager import (
     AsyncCallbackManagerForChainRun,
     CallbackManagerForChainRun,
     Callbacks,
 )
-
-from colossalqa.chain.retrieval_qa.stuff import CustomStuffDocumentsChain
 from langchain.chains.llm import LLMChain
-from colossalqa.chain.retrieval_qa.load_chain import load_qa_chain
 from langchain.chains.question_answering.stuff_prompt import PROMPT_SELECTOR
 from langchain.prompts import PromptTemplate
 from langchain.pydantic_v1 import Field
 from langchain.schema import BaseRetriever, Document
 from langchain.schema.language_model import BaseLanguageModel
 from langchain.chains.retrieval_qa.base import BaseRetrievalQA
+from colossalqa.chain.retrieval_qa.stuff import CustomStuffDocumentsChain
+from colossalqa.chain.retrieval_qa.load_chain import load_qa_chain
 
 
 class CustomBaseRetrievalQA(BaseRetrievalQA):
@@ -140,8 +136,9 @@ class CustomBaseRetrievalQA(BaseRetrievalQA):
             docs = await self._aget_docs(question, run_manager=_run_manager)
         else:
             docs = await self._aget_docs(question)  # type: ignore[call-arg]
+        kwargs = {k:v for k,v in inputs.items() if k in ['stop', 'temperature', 'top_k', 'top_p', 'max_new_tokens']}
         answer = await self.combine_documents_chain.arun(
-            input_documents=docs, question=question, callbacks=_run_manager.get_child()
+            input_documents=docs, question=question, callbacks=_run_manager.get_child(), **kwargs
         )
 
         if self.return_source_documents:

@@ -1,52 +1,57 @@
 '''
 Script for English retrieval based conversation system backed by LLaMa2
 '''
-import os
+import argparse
 from langchain.embeddings import HuggingFaceEmbeddings
 from langchain import LLMChain
 from colossalqa.chain.retrieval_qa.base import RetrievalQA
-from langchain.vectorstores import Chroma
-from colossalqa.local.llm import VllmLLM, ColossalAPI, ColossalLLM
+from colossalqa.local.llm import ColossalAPI, ColossalLLM # VllmLLM
 from colossalqa.data_loader.document_loader import DocumentLoader
 from colossalqa.retriever import CustomRetriever
 from colossalqa.text_splitter import NeuralTextSplitter
 from colossalqa.memory import ConversationBufferWithSummary
 from colossalqa.prompt.prompt import PROMPT_RETRIEVAL_QA_EN, PROMPT_DISAMBIGUATE_EN
 
-# vllm
-# start the vllm server with
-# python -m vllm.entrypoints.api_server --model "/path to model/Llama-2-7b-hf" --swap-space 16 --disable-log-requests --host localhost --port 8077 --max-num-seqs 256 --gpu-memory-utilization 0.5
 
-# setup LLM
-# llm = VllmLLM(n=1)
-
-# local coati api
-
-model_path = os.environ.get('EN_MODEL_PATH')
-model_name = os.environ.get('EN_MODEL_NAME')
-colossal_api = ColossalAPI(model_name, model_path)
-llm = ColossalLLM(n=1, api=colossal_api)
-
-# define the retriever
-information_retriever = CustomRetriever(k=3)
-
-# setup embedding model locally
-embedding = HuggingFaceEmbeddings(model_name="moka-ai/m3e-base",
-                           model_kwargs={'device': 'cpu'},encode_kwargs={'normalize_embeddings': False})
-
-# define memory with summarization ability
-memory = ConversationBufferWithSummary(llm=llm, max_tokens=2000,
-        llm_kwargs={'max_new_tokens':50, 'temperature':0.6, 'do_sample':True})
-
-# define the chain to preprocess the input
-# disambiguate the input. e.g. "What is the capital of that country?" -> "What is the capital of France?"
-llm_chain_disambiguate = LLMChain(llm=llm, prompt=PROMPT_DISAMBIGUATE_EN, llm_kwargs={'max_new_tokens':30, 'temperature':0.6, 'do_sample':True})
-
-def disambiguity(input):
-    out = llm_chain_disambiguate.run(input=input, chat_history=memory.buffer, stop=['\n'])
-    return out.split('\n')[0] 
 
 if __name__ == '__main__':
+    # parse arguments
+    parser = argparse.ArgumentParser(description='English retrieval based conversation system backed by LLaMa2')
+    parser.add_argument('--model_path', type=str, default=None, help='path to the model')
+    parser.add_argument('--model_name', type=str, default=None, help='name of the model')
+    parser.add_argument('--sql_file_path', type=str, default=None, help='path to the a empty folder for storing sql files for indexing')
+   
+    args = parser.parse_args()
+
+    # vllm
+    # start the vllm server with
+    # python -m vllm.entrypoints.api_server --model "/path to model/Llama-2-7b-hf" --swap-space 16 --disable-log-requests --host localhost --port 8077 --max-num-seqs 256 --gpu-memory-utilization 0.5
+
+    # setup LLM
+    # llm = VllmLLM(n=1)
+
+    colossal_api = ColossalAPI(args.model_name, args.model_path)
+    llm = ColossalLLM(n=1, api=colossal_api)
+
+    # define the retriever
+    information_retriever = CustomRetriever(k=3, sql_file_path=args.sql_file_path, verbose=True)
+
+    # setup embedding model locally
+    embedding = HuggingFaceEmbeddings(model_name="moka-ai/m3e-base",
+                            model_kwargs={'device': 'cpu'},encode_kwargs={'normalize_embeddings': False})
+
+    # define memory with summarization ability
+    memory = ConversationBufferWithSummary(llm=llm, max_tokens=2000,
+            llm_kwargs={'max_new_tokens':50, 'temperature':0.6, 'do_sample':True})
+
+    # define the chain to preprocess the input
+    # disambiguate the input. e.g. "What is the capital of that country?" -> "What is the capital of France?"
+    llm_chain_disambiguate = LLMChain(llm=llm, prompt=PROMPT_DISAMBIGUATE_EN, llm_kwargs={'max_new_tokens':30, 'temperature':0.6, 'do_sample':True})
+
+    def disambiguity(input):
+        out = llm_chain_disambiguate.run(input=input, chat_history=memory.buffer, stop=['\n'])
+        return out.split('\n')[0] 
+
     # Load data to vector store
     print("Select files for constructing retriever")
     documents = []

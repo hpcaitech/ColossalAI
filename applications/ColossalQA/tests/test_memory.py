@@ -1,19 +1,17 @@
-import pytest
 import os
+from langchain.embeddings import HuggingFaceEmbeddings
 from colossalqa.memory import ConversationBufferWithSummary
 from colossalqa.local.llm import ColossalLLM, ColossalAPI
 from colossalqa.data_loader.document_loader import DocumentLoader
 from colossalqa.text_splitter import NeuralTextSplitter
-from langchain.vectorstores import Chroma
 from colossalqa.retriever import CustomRetriever
-from langchain.embeddings import HuggingFaceEmbeddings
 from colossalqa.prompt.prompt import PROMPT_RETRIEVAL_QA_ZH
-from langchain.chains import RetrievalQA
 
 def test_memory_long():
     model_path = os.environ.get('EN_MODEL_PATH')
     data_path = os.environ.get('TEST_DATA_PATH_EN')
     model_name = os.environ.get('EN_MODEL_NAME')
+    sql_file_path = os.environ.get('SQL_FILE_PATH')
     colossal_api = ColossalAPI(model_name, model_path)
     llm = ColossalLLM(n=4, api=colossal_api)
     memory = ConversationBufferWithSummary(llm=llm, max_tokens=600,
@@ -29,7 +27,7 @@ def test_memory_long():
                            model_kwargs={'device': 'cpu'},encode_kwargs={'normalize_embeddings': False})
 
     # create retriever
-    information_retriever = CustomRetriever(k=3)
+    information_retriever = CustomRetriever(k=3, sql_file_path=sql_file_path)
     information_retriever.add_documents(docs=splits, cleanup='incremental', mode='by_source', embedding=embedding)
 
     memory.initiate_document_retrieval_chain(llm, PROMPT_RETRIEVAL_QA_ZH, information_retriever, 
@@ -53,6 +51,7 @@ def test_memory_short():
     model_path = os.environ.get('EN_MODEL_PATH')
     data_path = os.environ.get('TEST_DATA_PATH_EN')
     model_name = os.environ.get('EN_MODEL_NAME')
+    sql_file_path = os.environ.get('SQL_FILE_PATH')
     colossal_api = ColossalAPI(model_name, model_path)
     llm = ColossalLLM(n=4, api=colossal_api)
     memory = ConversationBufferWithSummary(llm=llm,
@@ -68,7 +67,7 @@ def test_memory_short():
                            model_kwargs={'device': 'cpu'},encode_kwargs={'normalize_embeddings': False})
 
     # create retriever
-    information_retriever = CustomRetriever(k=3)
+    information_retriever = CustomRetriever(k=3, sql_file_path=sql_file_path)
     information_retriever.add_documents(docs=splits, cleanup='incremental', mode='by_source', embedding=embedding)
 
     memory.initiate_document_retrieval_chain(llm, PROMPT_RETRIEVAL_QA_ZH, information_retriever, 

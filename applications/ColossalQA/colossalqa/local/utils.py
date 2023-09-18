@@ -20,7 +20,7 @@ def post_http_request(prompt: str,
         "max_tokens": max_tokens,
         "stream": stream,
     }
-    response = requests.post(api_url, headers=headers, json=pload, stream=True)
+    response = requests.post(api_url, headers=headers, json=pload, stream=True, timeout=3)
     return response
 
 def get_response(response: requests.Response) -> List[str]:

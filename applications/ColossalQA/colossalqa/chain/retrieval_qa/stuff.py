@@ -1,10 +1,8 @@
 """Chain that combines documents by stuffing into context."""
 
-from typing import Any, Dict, List, Optional, Tuple
-
+from typing import Any, List
 from langchain.chains.combine_documents.stuff import StuffDocumentsChain
 from langchain.docstore.document import Document
-from langchain.prompts.prompt import PromptTemplate
 from langchain.schema import format_document
 
 class CustomStuffDocumentsChain(StuffDocumentsChain):

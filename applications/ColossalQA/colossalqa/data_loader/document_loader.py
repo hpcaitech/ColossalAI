@@ -2,8 +2,8 @@
 class for loading document type data
 '''
 
-import os
-import logging
+from typing import List
+import glob
 from langchain.document_loaders.csv_loader import CSVLoader
 from langchain.document_loaders import (
     JSONLoader,
@@ -12,9 +12,7 @@ from langchain.document_loaders import (
     PyPDFLoader,
     TextLoader
 )
-from typing import List, Union, Dict, Any
-import glob
-from colossalqa.logging import get_logger
+from colossalqa.mylogging import get_logger
 
 logger = get_logger()
 
@@ -22,6 +20,9 @@ SUPPORTED_DATA_FORMAT = ['.csv','.json','.html','.md','.pdf','.txt','.jsonl']
 
 
 class DocumentLoader:
+    '''
+    Load documents from different files into list of langchain Documents
+    '''
     def __init__(self, files:List[List[str]], **kwargs) -> None:
         '''
         Args:
@@ -52,6 +53,9 @@ class DocumentLoader:
             for sepcific format requirements.
         Args:
             path: path to a file
+                To load files with glob path, here are some examples.
+                    Load all file from directory: folder1/folder2/*
+                    Load all pdf file from directory: folder1/folder2/*.pdf
         '''
         files = []
 

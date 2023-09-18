@@ -2,21 +2,25 @@
 class for loading table type data. please refer to Pandas-Input/Output for file format details.
 '''
 
-import pandas as pd
+
 import os
-from sqlalchemy import MetaData, create_engine
-from sqlalchemy.engine.url import URL
-from sqlalchemy.ext.declarative import declarative_base
-from colossalqa.utils import drop_table
-from colossalqa.logging import get_logger
 import glob
+import pandas as pd
+from sqlalchemy import create_engine
+from colossalqa.utils import drop_table
+from colossalqa.mylogging import get_logger
 
 logger = get_logger()
 
 SUPPORTED_DATA_FORMAT = ['.csv','.xlsx', '.xls','.json','.html','.h5', '.hdf5','.parquet','.feather','.dta']
 
 class TableLoader:
-    def __init__(self, files: str, sql_path:str='sqlite:///mydatabase.db', verbose=False, **kwargs) -> None:
+    '''
+    Load tables from different files and serve a sql database for database operations
+    '''
+    def __init__(self, files: str, 
+                 sql_path:str='sqlite:///mydatabase.db', 
+                 verbose=False, **kwargs) -> None:
         '''
         Args:
             files: list of files (list[file path, name])
@@ -54,7 +58,7 @@ class TableLoader:
         try:
             files = glob.glob(path)
         except Exception as e:
-            print(e)
+            logger.error(e)
         if len(files)==0:
             raise ValueError("Unsupported file/directory format. For directories, please use glob expression")
         elif len(files)==1:
@@ -65,30 +69,30 @@ class TableLoader:
 
         if path.endswith('.csv'):
             # load csv
-            self.data[path] = (pd.read_csv(path))
+            self.data[path] = pd.read_csv(path)
         elif path.endswith('.xlsx') or path.endswith('.xls'):
             # load excel
-            self.data[path] = (pd.read_excel(path))  # You can adjust the sheet_name as needed
+            self.data[path] = pd.read_excel(path)  # You can adjust the sheet_name as needed
         elif path.endswith('.json'):
             # load json
-            self.data[path] = (pd.read_json(path))
+            self.data[path] = pd.read_json(path)
         elif path.endswith('.html'):
             # load html
             html_tables = pd.read_html(path)
             # Choose the desired table from the list of DataFrame objects
-            self.data[path] = (html_tables[0])  # You may need to adjust this index
+            self.data[path] = html_tables[0]  # You may need to adjust this index
         elif path.endswith('.h5') or path.endswith('.hdf5'):
             # load h5
-            self.data[path] = (pd.read_hdf(path, key=self.kwargs.get('key', 'data')))  # You can adjust the key as needed
+            self.data[path] = pd.read_hdf(path, key=self.kwargs.get('key', 'data'))  # You can adjust the key as needed
         elif path.endswith('.parquet'):
             # load parquet
-            self.data[path] = (pd.read_parquet(path, engine='fastparquet'))
+            self.data[path] = pd.read_parquet(path, engine='fastparquet')
         elif path.endswith('.feather'):
             # load feather
-            self.data[path] = (pd.read_feather(path))
+            self.data[path] = pd.read_feather(path)
         elif path.endswith('.dta'):
             # load dta
-            self.data[path] = (pd.read_stata(path))
+            self.data[path] = pd.read_stata(path)
         else:
             raise ValueError("Unsupported file format")
         
@@ -97,7 +101,7 @@ class TableLoader:
         serve the data as sql database.
         '''
         self.data[path].to_sql(table_name, con=self.sql_engine, if_exists='replace', index=False)
-        print(f"loaded to Sqlite3\nPath: {path}")
+        logger.info(f"loaded to Sqlite3\nPath: {path}", verbose=self.verbose)
         return self.sql_path
     
     def get_sql_path(self):

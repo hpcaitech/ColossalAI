@@ -1,21 +1,28 @@
 '''
 API and LLM warpper class for running LLMs locally
 '''
+from typing import Optional, List, Mapping, Any
 import torch
-from transformers import AutoTokenizer, AutoModel
+from transformers import (
+    AutoTokenizer,
+    AutoModel,
+    LlamaForCausalLM,
+    LlamaTokenizer
+)
 from langchain.callbacks.manager import CallbackManagerForLLMRun
 from langchain.llms.base import LLM
-from typing import Optional, List, Mapping, Any
+from colossalqa.mylogging import get_logger
 from .utils import post_http_request, get_response
-from transformers import LlamaForCausalLM, LlamaTokenizer
-from colossalqa.logging import get_logger
 
 logger = get_logger()
 
 class ColossalAPI:
+    '''
+    API for calling LLM.generate
+    '''
     def __init__(self, model_type: str, pretrain: str, ckpt_path: str=None) -> None:
         '''
-        configurate model
+        Configurate model
         '''
         self.model_type = model_type
         if model_type == 'llama':
@@ -104,10 +111,10 @@ class ColossalLLM(LLM):
             kwargs['max_new_tokens']=100
         self.kwargs = kwargs
         self.api = api
-        print("done")
+        logger.info("done")
 
     def set_kwargs(self, **kwargs) -> None:
-        print(f"set kwargs:{kwargs}")
+        logger.info(f"set kwargs:{kwargs}")
         if 'max_new_tokens' not in kwargs:
             kwargs['max_new_tokens']=100
         self.kwargs = kwargs
@@ -163,4 +170,4 @@ if __name__ == '__main__':
     llm = ColossalLLM(n=10)
     model_path = os.environ.get('ZH_MODEL_PATH')
     llm.set_llm("chatglm2", model_path)
-    print(llm("Question: what dog doesn't bark? Answer:", max_new_tokens=10))
+    logger.info(llm("Question: what dog doesn't bark? Answer:", max_new_tokens=10))

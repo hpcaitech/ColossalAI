@@ -1,27 +1,34 @@
 '''
 Multilingual retrieval based conversation system backed by ChatGPT
 '''
-from colossalqa.local.llm import VllmLLM
-from colossalqa.data_loader.document_loader import DocumentLoader
+
+import os
+import argparse
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.embeddings import HuggingFaceEmbeddings
 from langchain import LLMChain
-from langchain.vectorstores import Chroma
+from langchain.llms import OpenAI
 from langchain.prompts.prompt import PromptTemplate
-from colossalqa.retriever import CustomRetriever
 from langchain.chains import RetrievalQA
 from colossalqa.memory import ConversationBufferWithSummary
-from langchain.llms import OpenAI
-import os
+from colossalqa.data_loader.document_loader import DocumentLoader
+from colossalqa.retriever import CustomRetriever
 
+
+parser = argparse.ArgumentParser(description='English retrieval based conversation system backed by LLaMa2')
+parser.add_argument('--open_ai_key_path', type=str, default=None, help='path to the model')
+parser.add_argument('--sql_file_path', type=str, default=None, help='path to the a empty folder for storing sql files for indexing')
+
+args = parser.parse_args()
+    
 # setup openai key
 # Set env var OPENAI_API_KEY or load from a file
-openai_key = open("/home/lcyab/openai_key.txt").read()
+openai_key = open(args.open_ai_key_path).read()
 os.environ["OPENAI_API_KEY"] = openai_key
 
 llm = OpenAI(temperature = 0.6)
 
-information_retriever = CustomRetriever(k=3)
+information_retriever = CustomRetriever(k=3, sql_file_path=args.sql_file_path, verbose=True)
 # VectorDB
 embedding = HuggingFaceEmbeddings(model_name="moka-ai/m3e-base",
                            model_kwargs={'device': 'cpu'},encode_kwargs={'normalize_embeddings': False})

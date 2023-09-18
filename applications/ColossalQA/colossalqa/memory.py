@@ -3,14 +3,14 @@ implement a memory class for storing conversation history
 support long term and short term memory
 '''
 from typing import List, Dict, Any
-from langchain.memory.chat_message_histories.in_memory import ChatMessageHistory
-from colossalqa.chain.retrieval_qa.load_chain import load_qa_chain
-from langchain.schema.messages import BaseMessage, get_buffer_string
-from colossalqa.chain.memory.summary import ConversationSummaryMemory
 from pydantic import Field
+from langchain.schema.messages import BaseMessage
 from langchain.schema import BaseChatMessageHistory
+from langchain.memory.chat_message_histories.in_memory import ChatMessageHistory
 from langchain.schema.retriever import BaseRetriever
 from langchain.chains.combine_documents.base import BaseCombineDocumentsChain
+from colossalqa.chain.retrieval_qa.load_chain import load_qa_chain
+from colossalqa.chain.memory.summary import ConversationSummaryMemory
 
 class ConversationBufferWithSummary(ConversationSummaryMemory):
     """Memory class for storing information about entities."""
@@ -51,7 +51,6 @@ class ConversationBufferWithSummary(ConversationSummaryMemory):
     def clear(self):
         '''Clear all the memory'''
         self.buffered_history.clear()
-        self.summarized_history.clear()
         self.summarized_history_temp.clear()
 
     def initiate_document_retrieval_chain(self, llm: Any, prompt_template: Any, retriever: Any,
@@ -79,7 +78,7 @@ class ConversationBufferWithSummary(ConversationSummaryMemory):
         """Define the variables we are providing to the prompt."""
         return [self.memory_key]
     
-    def format_dialogue(self) -> str:
+    def format_dialogue(self, lang:str='en') -> str:
         '''format memory into two parts. summarization of historical conversation and most recent conversation'''
         if len(self.summarized_history_temp.messages)!=0:
             for i in range(int(len(self.summarized_history_temp.messages)/2)):
@@ -97,7 +96,12 @@ class ConversationBufferWithSummary(ConversationSummaryMemory):
             conversation_buffer.append(prefix+': '+t.content)
         conversation_buffer = '\n'.join(conversation_buffer)
         if len(self.existing_summary)>0:
-            message = f"A summarization of historical conversation:\n{self.existing_summary}\nMost recent conversation:\n{conversation_buffer}"
+            if lang=='en':
+                message = f"A summarization of historical conversation:\n{self.existing_summary}\nMost recent conversation:\n{conversation_buffer}"
+            elif lang=='zh':
+                message = f"历史对话概要:\n{self.existing_summary}\n最近的对话:\n{conversation_buffer}"
+            else:
+                raise ValueError("Unsupported language")
             return message
         else:
             message = conversation_buffer
@@ -110,8 +114,7 @@ class ConversationBufferWithSummary(ConversationSummaryMemory):
         return length
 
     def load_memory_variables(self, inputs: Dict[str, Any]) -> Dict[str, str]:
-        """Load the memory variables."""
-        '''
+        """Load the memory variables.
         Summarize oversize conversation to fit into the length constraint defined by max_tokene
         Args:
             inputs: the kwargs of the chain of your definition
@@ -129,7 +132,7 @@ class ConversationBufferWithSummary(ConversationSummaryMemory):
                 Human: XXX
                 AI: XXX
                 ...
-        '''
+        """
         # calculate remain length
         if 'input_documents' in inputs:
             # run in a retrieval qa chain
@@ -143,7 +146,7 @@ class ConversationBufferWithSummary(ConversationSummaryMemory):
         remain = self.max_tokens - prompt_length
         while self.get_conversation_length() > remain:
             if len(self.buffered_history.messages)<=2:
-                raise Exception('Exeeed max_tokens, trunck size of retrieved documents is too large')
+                raise RuntimeError('Exeeed max_tokens, trunck size of retrieved documents is too large')
             # for i in range(min(5, max(1, int(len(self.buffered_history.messages)/2)-1))):
             temp = self.buffered_history.messages.pop(0)
             self.summarized_history_temp.messages.append(temp)

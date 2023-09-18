@@ -1,5 +1,6 @@
-from colossalqa.data_loader.document_loader import DocumentLoader
 import os
+from colossalqa.data_loader.document_loader import DocumentLoader
+
 
 def test_add_document():
     PATH = os.environ.get('TEST_DOCUMENT_LOADER_DATA_PATH')

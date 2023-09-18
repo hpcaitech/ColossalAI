@@ -19,7 +19,9 @@ from langchain.schema.messages import BaseMessage, SystemMessage, get_buffer_str
 
 
 class SummarizerMixin(BaseModel):
-    """Mixin for summarizer."""
+    """
+    Mixin for summarizer.
+    """
 
     human_prefix: str = "Human"
     ai_prefix: str = "AI"
@@ -31,6 +33,10 @@ class SummarizerMixin(BaseModel):
     def predict_new_summary(
         self, messages: List[BaseMessage], existing_summary: str, stop:List=[]
     ) -> str:
+        '''
+        recursively summarize a conversation by generating a new summary using
+        the last round of conversation and the existing summary.
+        '''
         new_lines = get_buffer_string(
             messages,
             human_prefix=self.human_prefix,
@@ -43,7 +49,6 @@ class SummarizerMixin(BaseModel):
 
 class ConversationSummaryMemory(BaseChatMemory, SummarizerMixin):
     """Conversation summarizer to chat memory."""
-
     buffer: str = ""
     memory_key: str = "history"  #: :meta private:
 

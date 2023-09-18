@@ -1,45 +1,50 @@
 '''
 Script for Chinese retrieval based conversation system backed by ChatGLM
 '''
-import os
+import argparse
 from langchain.embeddings import HuggingFaceEmbeddings
 from langchain import LLMChain
 from colossalqa.chain.retrieval_qa.base import RetrievalQA
-from langchain.vectorstores import Chroma
-from colossalqa.local.llm import VllmLLM, ColossalAPI, ColossalLLM
+from colossalqa.local.llm import ColossalAPI, ColossalLLM # VllmLLM
 from colossalqa.data_loader.document_loader import DocumentLoader
 from colossalqa.retriever import CustomRetriever
 from colossalqa.text_splitter import NeuralTextSplitter
 from colossalqa.memory import ConversationBufferWithSummary
 from colossalqa.prompt.prompt import SUMMARY_PROMPT_ZH, PROMPT_RETRIEVAL_QA_ZH, PROMPT_DISAMBIGUATE_ZH
 
-# local coati api
-model_path = os.environ.get('ZH_MODEL_PATH')
-model_name = os.environ.get('ZH_MODEL_NAME')
-colossal_api = ColossalAPI(model_name, model_path)
-llm = ColossalLLM(n=1, api=colossal_api)
-
-# setup embedding model locally
-embedding = HuggingFaceEmbeddings(model_name="moka-ai/m3e-base",
-                           model_kwargs={'device': 'cpu'},encode_kwargs={'normalize_embeddings': False})
-# define the retriever
-information_retriever = CustomRetriever(k=3)
-
-# define memory with summarization ability
-memory = ConversationBufferWithSummary(llm=llm, prompt=SUMMARY_PROMPT_ZH,
-                                        human_prefix="用户", ai_prefix="AI", max_tokens=2000,
-                                        llm_kwargs={'max_new_tokens':50, 'temperature':0.6, 'do_sample':True})
-
-# define the chain to preprocess the input
-# disambiguate the input. e.g. "What is the capital of that country?" -> "What is the capital of France?"
-llm_chain_disambiguate = LLMChain(llm=llm, prompt=PROMPT_DISAMBIGUATE_ZH, 
-                                  llm_kwargs={'max_new_tokens':30, 'temperature':0.6, 'do_sample':True})
-
-def disambiguity(input:str):
-    out = llm_chain_disambiguate.run(input=input, chat_history=memory.buffer, stop=['\n'])
-    return out.split('\n')[0]
 
 if __name__ == '__main__':
+    # local coati api
+    parser = argparse.ArgumentParser(description='English retrieval based conversation system backed by LLaMa2')
+    parser.add_argument('--model_path', type=str, default=None, help='path to the model')
+    parser.add_argument('--model_name', type=str, default=None, help='name of the model')
+    parser.add_argument('--sql_file_path', type=str, default=None, help='path to the a empty folder for storing sql files for indexing')
+    
+    args = parser.parse_args()
+
+    colossal_api = ColossalAPI(args.model_name, args.model_path)
+    llm = ColossalLLM(n=1, api=colossal_api)
+
+    # setup embedding model locally
+    embedding = HuggingFaceEmbeddings(model_name="moka-ai/m3e-base",
+                            model_kwargs={'device': 'cpu'},encode_kwargs={'normalize_embeddings': False})
+    # define the retriever
+    information_retriever = CustomRetriever(k=3, sql_file_path=args.sql_file_path, verbose=True)
+
+    # define memory with summarization ability
+    memory = ConversationBufferWithSummary(llm=llm, prompt=SUMMARY_PROMPT_ZH,
+                                            human_prefix="用户", ai_prefix="AI", max_tokens=2000,
+                                            llm_kwargs={'max_new_tokens':50, 'temperature':0.6, 'do_sample':True})
+
+    # define the chain to preprocess the input
+    # disambiguate the input. e.g. "What is the capital of that country?" -> "What is the capital of France?"
+    llm_chain_disambiguate = LLMChain(llm=llm, prompt=PROMPT_DISAMBIGUATE_ZH, 
+                                    llm_kwargs={'max_new_tokens':30, 'temperature':0.6, 'do_sample':True})
+
+    def disambiguity(input:str):
+        out = llm_chain_disambiguate.run(input=input, chat_history=memory.buffer, stop=['\n'])
+        return out.split('\n')[0]
+
     # Load data to vector store
     print("Select files for constructing retriever")
     documents = []

@@ -57,8 +57,8 @@ AI: 我认识一个叫张三的人
 消除歧义的句子:"""
 
 _EN_RETRIEVAL_QA_PROMPT = """[INST] <<SYS>>Always answer as helpfully as possible, while being safe. Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. Please ensure that your responses are socially unbiased and positive in nature.
-If the answer cannot be infered based on the given context, please don't share false information.
-<</SYS>>Use the context and chat history to respond to the human's input at the end or carry on the conversation. You should generate one response only. No following up is needed.
+If the answer cannot be infered based on the given context, please don't share false information.<</SYS>>
+Use the context and chat history to respond to the human's input at the end or carry on the conversation. You should generate one response only. No following up is needed.
 
 context:
 {context}
@@ -69,8 +69,7 @@ chat history
 Human: {question}
 AI:"""
 
-_EN_DISAMBIGUATION_PROMPT = """[INST] <<SYS>>You are aEsc helpful, respectful and honest assistant. You always follow the instruction.
-<</SYS>>
+_EN_DISAMBIGUATION_PROMPT = """[INST] <<SYS>>You are a helpful, respectful and honest assistant. You always follow the instruction.<</SYS>>
 Please replace any ambiguous references in the given sentence with the specific names or entities mentioned in the chat history or just output the original sentence if no chat history is provided or if the sentence doesn't contain ambiguous references. Your output should be the disambiguated sentence itself (in the same line as "disambiguated sentence:") and contain nothing else.
 
 Here is an example:
