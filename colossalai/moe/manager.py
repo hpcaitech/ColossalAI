@@ -25,7 +25,7 @@ class MoeManager(metaclass=SingletonMeta):
         self.parallel = None
         self.seed = None
         self.mode = None
-        self.use_kernel_optim = True
+        self.use_kernel_optim = False
 
         self.has_setup = False
         self._parallel_info_dict = dict()

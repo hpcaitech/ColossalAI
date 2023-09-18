@@ -128,7 +128,11 @@ def main():
 
     # Set up moe
     if args.plugin in ["zero1", "zero2"]:
-        MOE_MANAGER.setup(seed=42, parallel="EP")
+        MOE_MANAGER.setup(
+            seed=42,
+            parallel="EP",
+            use_kernel_optim=True if args.model_name != "test" else False,
+        )
     elif args.plugin == "hybrid":
         assert (args.dp_size * args.ep_size *
                 args.pp_size == coordinator.world_size), "dp_size * ep_size * pp_size must equal to world_size"
@@ -139,6 +143,7 @@ def main():
             fixed_dp_size=args.dp_size,
             fixed_ep_size=args.ep_size,
             fixed_pp_size=args.pp_size,
+            use_kernel_optim=True if args.model_name != "test" else False,
         )
 
     # Manage loggers
