@@ -3,6 +3,7 @@ import time
 from functools import partial
 
 import torch
+from model_zoo import model_builder
 from torch import nn
 from tqdm import tqdm
 
@@ -18,7 +19,6 @@ from colossalai.legacy.pipeline.rpc._pipeline_schedule import FillDrainPipelineE
 from colossalai.legacy.pipeline.rpc.utils import rpc_run
 from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.nn.optimizer import HybridAdam
-from model_zoo import model_builder
 
 
 def parse_args():
