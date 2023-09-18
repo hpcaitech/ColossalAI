@@ -47,7 +47,7 @@ class MoeRouter(nn.Module, ABC):
         capacity += capacity % 2
         capacity = max(capacity, self.min_capacity)
         assert capacity > 0
-        return capacity
+        return int(capacity)
 
     def set_aux_loss(self,
                      router_probs: torch.Tensor,
@@ -299,15 +299,27 @@ class Top2Router(MoeRouter):
 
             return probs, mask, dest_idx, num_experts * capacity
         else:
+            # >>> original code
+            # weight1 = mask1 * probs.type_as(inputs)
+            # weight2 = mask2 * probs.type_as(inputs)
+            # rank1_sc = F.one_hot(rank1, num_classes=capacity)
+            # rank2_sc = F.one_hot(rank2, num_classes=capacity)
+
+            # cb_weight1 = weight1.unsqueeze(2) * rank1_sc.unsqueeze(1)
+            # cb_weight2 = weight2.unsqueeze(2) * rank2_sc.unsqueeze(1)
+            # cb_weight = cb_weight1 + cb_weight2
+            # sec_mask = cb_weight.bool()
+
             weight1 = mask1 * probs.type_as(inputs)
             weight2 = mask2 * probs.type_as(inputs)
-            rank1_sc = F.one_hot(rank1, num_classes=capacity)
-            rank2_sc = F.one_hot(rank2, num_classes=capacity)
 
-            cb_weight1 = weight1.unsqueeze(2) * rank1_sc.unsqueeze(1)
-            cb_weight2 = weight2.unsqueeze(2) * rank2_sc.unsqueeze(1)
-            cb_weight = cb_weight1 + cb_weight2
-            sec_mask = cb_weight.bool()
+            cb_weight = torch.zeros(inputs.shape + (capacity, ), device=inputs.device)
+            sec_mask = torch.zeros_like(cb_weight, dtype=torch.bool)
+            indices = torch.arange(0, inputs.shape[0], device=inputs.device)
+            cb_weight[indices, top1_idx[indices], rank1[indices]] += weight1[indices, top1_idx[indices]]
+            cb_weight[indices, top2_idx[indices], rank2[indices]] += weight2[indices, top2_idx[indices]]
+            sec_mask[indices, top1_idx[indices], rank1[indices]] |= mask1.bool()[indices, top1_idx[indices]]
+            sec_mask[indices, top2_idx[indices], rank2[indices]] |= mask2.bool()[indices, top2_idx[indices]]
 
             return cb_weight, sec_mask
 
