@@ -9,7 +9,6 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
-import torch.distributed as dist
 from colossalai.logging import DistributedLogger
 
 from .base import SLTrainer
@@ -128,7 +127,7 @@ class SFTTrainer(SLTrainer):
             wandb.init(project="Coati", name=time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
             wandb.watch(self.model)
         if tensorboard_dir:
-            self.tensorboard_writer = SummaryWriter(log_dir=tensorboard_dir) if dist.get_rank() == 0 else None
+            self.tensorboard_writer = SummaryWriter(log_dir=tensorboard_dir) if is_rank_0() else None
 
         self.total_loss = 0
         self.no_epoch_bar = True
