@@ -207,7 +207,7 @@ if __name__ == '__main__':
     parser.add_argument('--lr', type=float, default=5e-6)
     parser.add_argument('--accumulation_steps', type=int, default=8)
     parser.add_argument('--use_wandb', default=False, action='store_true')
-    parser.add_argument('--tensorboard_dir', default="", action='store_true')
+    parser.add_argument('--tensorboard_dir', type=str, default="")
     parser.add_argument('--grad_checkpoint', default=False, action='store_true')
     args = parser.parse_args()
     train(args)

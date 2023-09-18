@@ -16,12 +16,13 @@ set_n_least_used_CUDA_VISIBLE_DEVICES() {
 set_n_least_used_CUDA_VISIBLE_DEVICES 4
 
 torchrun --standalone --nproc_per_node=4 train_sft.py \
-    --pretrain "/path/to/LLaMa-7B/" \
-    --model 'llama' \
+    --pretrain 'bigscience/bloom-560m' \
+    --model 'bloom' \
     --strategy colossalai_zero2 \
     --log_interval 10 \
-    --save_path /path/to/Coati-7B \
-    --dataset /path/to/data.json \
+    --tensorboard_dir "/root/test-coati/ColossalAI/applications/Chat/examples/tensorboard" \
+    --save_path "/root/test-coati/ColossalAI/applications/Chat/examples/output" \
+    --dataset "/root/test-coati/ColossalAI/applications/Chat/examples/data.json" \
     --batch_size 4 \
     --accumulation_steps 8 \
     --lr 2e-5 \
