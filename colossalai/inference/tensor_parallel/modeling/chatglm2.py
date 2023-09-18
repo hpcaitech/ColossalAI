@@ -9,7 +9,7 @@ from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutpu
 from colossalai.inference.tensor_parallel.batch_infer_state import BatchInferState
 from colossalai.kernel.triton.context_attention import llama2_context_attn_fwd
 from colossalai.kernel.triton.copy_kv_cache_dest import copy_kv_cache_to_dest
-from colossalai.kernel.triton.rotary_embedding_kernel import rotary_embedding_fwd
+from colossalai.kernel.triton.rotary_embedding_kernel import Llama2Forwards
 from colossalai.kernel.triton.token_attention_kernel import Llama2TokenAttentionForwards
 from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import (
     ChatGLMForConditionalGeneration,
@@ -61,7 +61,6 @@ def _init_to_get_rotary(self, base=10000):
         base = base * (ntk_alpha**(self.head_dim_ / (self.head_dim_ - 2)))    #Base change formula
     except:
         pass
-
     n_elem = self.config.head_dim_ // 2
     inv_freq = 1.0 / (base**(torch.arange(0, n_elem, 2, device="cpu", dtype=torch.float32) / n_elem))
     t = torch.arange(max_seq_len + 1024 * 64, device="cpu", dtype=torch.float32) / rope_scaling_factor
@@ -174,7 +173,7 @@ class ChatGLM2InferenceForwards:
             seq_len = infer_state.seq_len
             infer_state.position_cos = torch.index_select(self._cos_cached, 0, seq_len - 1).view(seq_len.shape[0], -1)
             infer_state.position_sin = torch.index_select(self._sin_cached, 0, seq_len - 1).view(seq_len.shape[0], -1)
-            infer_state.other_kv_index = infer_state.block_loc[0, infer_state.max_len_in_batch].item()
+            infer_state.other_kv_index = infer_state.block_loc[0, infer_state.max_len_in_batch - 1].item()
 
         transformer_outputs = self.transformer(input_ids=input_ids,
                                                position_ids=position_ids,
@@ -237,6 +236,7 @@ class ChatGLM2InferenceForwards:
         use_cache = use_cache if use_cache is not None else self.config.use_cache
         return_dict = (return_dict if return_dict is not None else self.config.use_return_dict)
         batch_size, seq_length = input_ids.shape
+
         if inputs_embeds is None:
             inputs_embeds = self.embedding(input_ids)
 
@@ -284,6 +284,7 @@ class ChatGLM2InferenceForwards:
         # infer_state.block_loc[:, infer_state.max_len_in_batch-1] = infer_state.total_token_num + torch.arange(0, batch_size, dtype=torch.int32, device="cuda")
         infer_state.start_loc = infer_state.start_loc + torch.arange(0, batch_size, dtype=torch.int32, device="cuda")
         infer_state.seq_len += 1
+        infer_state.max_len_in_batch += 1
         infer_state.cache_manager.past_key_values_length += seq_length
 
         if not return_dict:
@@ -320,7 +321,6 @@ class ChatGLM2InferenceForwards:
         all_hidden_states = () if output_hidden_states else None
 
         infer_state.decode_layer_id = 0
-
         for index in range(self.num_layers):
             layer = self.layers[index]
 
@@ -388,7 +388,6 @@ class ChatGLM2InferenceForwards:
 
         output = torch.nn.functional.dropout(mlp_output, p=self.hidden_dropout, training=self.training)
         output = residual + output
-
         return output, kv_cache
 
     @staticmethod
@@ -408,7 +407,9 @@ class ChatGLM2InferenceForwards:
         # =================================================
 
         # Attention heads [sq, b, h] --> [sq, b, (np * 3 * hn)]
+
         mixed_x_layer = self.query_key_value(hidden_states)
+
         if self.multi_query_attention:
             (query_layer, key_layer, value_layer) = mixed_x_layer.split(
                 [
@@ -442,14 +443,14 @@ class ChatGLM2InferenceForwards:
 
         cos, sin = infer_state.position_cos, infer_state.position_sin
 
-        rotary_embedding_fwd(
+        Llama2Forwards.rotary_emb_fwd(
             query_layer.view(-1, self.num_attention_heads_per_partition, self.hidden_size_per_attention_head), cos, sin)
         if self.multi_query_attention:
-            rotary_embedding_fwd(
+            Llama2Forwards.rotary_emb_fwd(
                 key_layer.view(-1, self.num_multi_query_groups_per_partition, self.hidden_size_per_attention_head), cos,
                 sin)
         else:
-            rotary_embedding_fwd(
+            Llama2Forwards.rotary_emb_fwd(
                 key_layer.view(-1, self.num_attention_heads_per_partition, self.hidden_size_per_attention_head), cos,
                 sin)
 
@@ -481,7 +482,7 @@ class ChatGLM2InferenceForwards:
                 self.hidden_size_per_attention_head,
             ))
 
-        # reshape q k v  to [bsz*sql, num_heads, head_dim]
+        # reshape q k v  to [bsz*sql, num_heads, head_dim]   2*1 ,32 ,128
         query_layer = query_layer.reshape(-1, self.num_attention_heads_per_partition,
                                           self.hidden_size_per_attention_head)
         key_layer = key_layer.reshape(-1, self.num_attention_heads_per_partition, self.hidden_size_per_attention_head)
@@ -509,6 +510,7 @@ class ChatGLM2InferenceForwards:
                     infer_state.decode_mem_start:infer_state.decode_mem_end, :, :]
                 cache_v = infer_state.cache_manager.value_buffer[infer_state.decode_layer_id][
                     infer_state.decode_mem_start:infer_state.decode_mem_end, :, :]
+                # 2, 32, 128
                 cache_k.copy_(key_layer)
                 cache_v.copy_(value_layer)
             else:
@@ -519,18 +521,17 @@ class ChatGLM2InferenceForwards:
 
             # second token and follows
             attn_output = torch.empty_like(query_layer.view(-1, self.projection_size))
-
             cache_k = infer_state.cache_manager.key_buffer[
                 infer_state.decode_layer_id][:infer_state.decode_mem_end, :, :]
             cache_v = infer_state.cache_manager.value_buffer[
                 infer_state.decode_layer_id][:infer_state.decode_mem_end, :, :]
-
             # ==================================
             # core attention computation is replaced by triton kernel
             # ==================================
             Llama2TokenAttentionForwards.token_attn(query_layer, cache_k, cache_v, attn_output, infer_state.block_loc,
                                                     infer_state.start_loc, infer_state.seq_len,
-                                                    infer_state.seq_length_with_past, infer_state.other_kv_index)
+                                                    infer_state.max_len_in_batch, infer_state.other_kv_index)
+
             #print('after attention',torch.isnan(attn_output).any())
 
         # =================

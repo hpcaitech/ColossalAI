@@ -681,14 +681,12 @@ class Llama2TokenAttentionForwards:
     def token_attn(q, k, v, attn_out, kv_cache_loc, kv_cache_start_loc, kv_cache_seq_len, max_len_in_batch,
                    other_kv_index):
         total_token_num = k.shape[0]
-        head_num = k.shape[1]
-        batch_size = kv_cache_seq_len.shape[0]
-        calcu_shape1 = (batch_size, head_num, k.shape[2])
-
+        batch_size, head_num, head_dim = q.shape
+        calcu_shape1 = (batch_size, head_num, head_dim)
         att_m_tensor = torch.empty((head_num, total_token_num), dtype=q.dtype, device="cuda")
 
         Llama2TokenAttentionForwards.token_att_fwd(
-            q.view(calcu_shape1),
+            q,
             k,
             att_m_tensor,
             kv_cache_loc,
@@ -705,8 +703,8 @@ class Llama2TokenAttentionForwards:
 
             Llama2TokenAttentionForwards.token_att_fwd2(prob, v, attn_out.view(calcu_shape1), kv_cache_loc,
                                                         kv_cache_start_loc, kv_cache_seq_len, max_len_in_batch)
-            prob = None
 
+            prob = None
             return
 
         elif triton.__version__ >= "2.1.0":
