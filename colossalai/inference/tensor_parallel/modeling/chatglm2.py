@@ -313,7 +313,7 @@ class ChatGLM2InferenceForwards:
         output_hidden_states: Optional[bool] = False,
         infer_state: Optional[BatchInferState] = None,
     ):
-
+        hidden_states = hidden_states.transpose(0, 1).contiguous()
         if not kv_caches:
             kv_caches = [None for _ in range(self.num_layers)]
         presents = () if use_cache else None
@@ -342,6 +342,8 @@ class ChatGLM2InferenceForwards:
             all_hidden_states = all_hidden_states + (hidden_states,)
 
         # Final layer norm.
+        hidden_states = hidden_states.transpose(0, 1).contiguous()
+
         if self.post_layer_norm:
             hidden_states = self.final_layernorm(hidden_states)
 
@@ -401,13 +403,12 @@ class ChatGLM2InferenceForwards:
     ):
         assert use_cache is True, "use_cache should be set to True using this chatglm attention"
         # hidden_states: [sq, b, h]
-        batch_size = hidden_states.shape[1]
+        batch_size = hidden_states.shape[0]
         # =================================================
         # Pre-allocate memory for key-values for inference.
         # =================================================
 
         # Attention heads [sq, b, h] --> [sq, b, (np * 3 * hn)]
-
         mixed_x_layer = self.query_key_value(hidden_states)
 
         if self.multi_query_attention:
@@ -456,37 +457,38 @@ class ChatGLM2InferenceForwards:
 
         #The shape of key value pair will return to [sq, b , num_heads, num_hidden_size] after rotary embedding, the logic is kept same as original
 
-        if self.multi_query_attention:
-            key_layer = key_layer.unsqueeze(-2)
-            key_layer = key_layer.expand(
-                -1,
-                -1,
-                -1,
-                self.num_attention_heads_per_partition // self.num_multi_query_groups_per_partition,
-                -1,
-            )
-            key_layer = key_layer.contiguous().view(key_layer.size()[:2] + (
-                self.num_attention_heads_per_partition,
-                self.hidden_size_per_attention_head,
-            ))
-            value_layer = value_layer.unsqueeze(-2)
-            value_layer = value_layer.expand(
-                -1,
-                -1,
-                -1,
-                self.num_attention_heads_per_partition // self.num_multi_query_groups_per_partition,
-                -1,
-            )
-            value_layer = value_layer.contiguous().view(value_layer.size()[:2] + (
-                self.num_attention_heads_per_partition,
-                self.hidden_size_per_attention_head,
-            ))
+        # if self.multi_query_attention:
+        #     key_layer = key_layer.unsqueeze(-2)
+        #     key_layer = key_layer.expand(
+        #         -1,
+        #         -1,
+        #         -1,
+        #         self.num_attention_heads_per_partition // self.num_multi_query_groups_per_partition,
+        #         -1,
+        #     )
+        #     key_layer = key_layer.contiguous().view(key_layer.size()[:2] + (
+        #         self.num_attention_heads_per_partition,
+        #         self.hidden_size_per_attention_head,
+        #     ))
+        #     value_layer = value_layer.unsqueeze(-2)
+        #     value_layer = value_layer.expand(
+        #         -1,
+        #         -1,
+        #         -1,
+        #         self.num_attention_heads_per_partition // self.num_multi_query_groups_per_partition,
+        #         -1,
+        #     )
+        #     value_layer = value_layer.contiguous().view(value_layer.size()[:2] + (
+        #         self.num_attention_heads_per_partition,
+        #         self.hidden_size_per_attention_head,
+        #     ))
 
-        # reshape q k v  to [bsz*sql, num_heads, head_dim]   2*1 ,32 ,128
+        # reshape q k v  to [bsz*sql, num_heads, head_dim]   2*1 ,32/2 ,128
         query_layer = query_layer.reshape(-1, self.num_attention_heads_per_partition,
                                           self.hidden_size_per_attention_head)
-        key_layer = key_layer.reshape(-1, self.num_attention_heads_per_partition, self.hidden_size_per_attention_head)
-        value_layer = value_layer.reshape(-1, self.num_attention_heads_per_partition,
+        key_layer = key_layer.reshape(-1, self.num_multi_query_groups_per_partition,
+                                      self.hidden_size_per_attention_head)
+        value_layer = value_layer.reshape(-1, self.num_multi_query_groups_per_partition,
                                           self.hidden_size_per_attention_head)
         if infer_state.is_context_stage:
             # first token generation:
@@ -510,7 +512,6 @@ class ChatGLM2InferenceForwards:
                     infer_state.decode_mem_start:infer_state.decode_mem_end, :, :]
                 cache_v = infer_state.cache_manager.value_buffer[infer_state.decode_layer_id][
                     infer_state.decode_mem_start:infer_state.decode_mem_end, :, :]
-                # 2, 32, 128
                 cache_k.copy_(key_layer)
                 cache_v.copy_(value_layer)
             else:
@@ -525,6 +526,7 @@ class ChatGLM2InferenceForwards:
                 infer_state.decode_layer_id][:infer_state.decode_mem_end, :, :]
             cache_v = infer_state.cache_manager.value_buffer[
                 infer_state.decode_layer_id][:infer_state.decode_mem_end, :, :]
+
             # ==================================
             # core attention computation is replaced by triton kernel
             # ==================================
@@ -535,8 +537,8 @@ class ChatGLM2InferenceForwards:
             #print('after attention',torch.isnan(attn_output).any())
 
         # =================
-        # Output:[sq, b, h] ,it is kept same as original.
+        # Output:[b,sq, h]
         # =================
 
-        output = self.dense(attn_output).reshape(-1, batch_size, self.projection_size)
+        output = self.dense(attn_output).reshape(batch_size, -1, self.projection_size)
         return output, kv_cache

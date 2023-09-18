@@ -452,7 +452,6 @@ if HAS_TRITON:
             Lq, Lk, Lv = q.shape[-1], k.shape[-1], v.shape[-1]
             assert Lq == Lk and Lk == Lv
             assert Lk in {16, 32, 64, 128}
-
             sm_scale = 1.0 / (Lq**0.5)    # 计算scale系数
             batch, head = b_seq_len.shape[0], q.shape[1]
             kv_group_num = q.shape[1] // k.shape[1]
@@ -490,9 +489,6 @@ if HAS_TRITON:
             return
 
         elif triton.__version__ == "2.0.0":
-            #print('query',q[0])
-            # print('key',k[0])
-            # print('value',v[0])
             BLOCK = 128
             # shape constraints
             Lq, Lk, Lv = q.shape[-1], k.shape[-1], v.shape[-1]

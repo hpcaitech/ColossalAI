@@ -52,7 +52,6 @@ class ChatGLM2InferPolicy(ChatGLMModelPolicy):
                                                  target_key=SelfAttention)
 
         # for rmsnorm and others, we need to check the shape
-
         return policy
 
     def postprocess(self):

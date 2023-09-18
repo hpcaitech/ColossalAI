@@ -38,7 +38,7 @@ def run_chatglm2_test(test_config):
     #init_to_get_rotary(model.model, base=10000)
     model = model.half()
 
-    text = ["how is the weather today?"]
+    text = ["how is the weather today?", "i am ", "你好？"]
     input_ids = tokenizer.batch_encode_plus(text, return_tensors='pt', padding=True)
     shard_config = ShardConfig(enable_tensor_parallelism=True if test_config['tp_size'] > 1 else False,
                                inference_only=True)
@@ -46,6 +46,7 @@ def run_chatglm2_test(test_config):
 
     generate_kwargs = dict(max_new_tokens=MAX_OUTPUT_LEN, do_sample=False)
     outputs = infer_engine.generate(input_ids, **generate_kwargs)
+
     # print("outputs.shape: ", outputs[0].shape)
     # print("outputs: ", outputs[0])
     if not dist.is_initialized() or dist.get_rank() == 0:
