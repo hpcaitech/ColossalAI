@@ -31,7 +31,7 @@ def set_moe_tensor_info(tensor: torch.Tensor, moe_info: MoeParallelInfo) -> None
     tensor.__setattr__("moe_info", moe_info)
 
 
-def get_moe_info(ep_size: int, dp_size: int, pp_size: int) -> MoeParallelInfo:
+def get_moe_info(ep_size: int, dp_size: int, pp_size: int, ep_inside: bool) -> MoeParallelInfo:
     """
     Get moe info for the given tensor.
 
@@ -39,11 +39,12 @@ def get_moe_info(ep_size: int, dp_size: int, pp_size: int) -> MoeParallelInfo:
         ep_size (int): The expert parallel size.
         dp_size (int): The data parallel size.
         pp_size (int): The pipeline parallel size.
+        ep_inside (bool, optional): Use ep inside dp if True, dp inside ep if Fasle.
 
     Returns:
         dict: The moe info of the given tensor.
     """
-    return MoeParallelInfo(ep_size, dp_size, pp_size)
+    return MoeParallelInfo(ep_inside, ep_size, dp_size, pp_size)
 
 
 def get_ep_group(tensor: torch.Tensor) -> ProcessGroup:

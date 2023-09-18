@@ -26,6 +26,7 @@ class MoeManager(metaclass=SingletonMeta):
         self.seed = None
         self.mode = None
         self.use_kernel_optim = False
+        self.use_ep_inside = None
 
         self.has_setup = False
         self._parallel_info_dict = dict()
@@ -46,7 +47,8 @@ class MoeManager(metaclass=SingletonMeta):
               max_ep_size: int = 8,
               fixed_dp_size: int = 0,
               fixed_ep_size: int = 0,
-              fixed_pp_size: int = 0) -> None:
+              fixed_pp_size: int = 0,
+              use_ep_inside: bool = True) -> None:
         """
         Setup MoE distributed context.
 
@@ -61,6 +63,7 @@ class MoeManager(metaclass=SingletonMeta):
             fixed_dp_size (int, optional): Fixed dp size in fixed mode. Defaults to 0.
             fixed_ep_size (int, optional): Fixed ep size in fixed mode. Defaults to 0.
             fixed_pp_size (int, optional): Fixed pp size in fixed mode. Defaults to 0.
+            use_ep_inside (bool, optional): Use ep inside dp if True, dp inside ep if Fasle. Defaults to True.
         """
         assert not self.is_initialized, "MoE distributed context shouldn't be set up again"
         assert torch.cuda.is_available(), "MoE requires to enable CUDA first"
@@ -68,6 +71,7 @@ class MoeManager(metaclass=SingletonMeta):
         self.world_size = dist.get_world_size()
         self.seed = seed + dist.get_rank()
         self.parallel = parallel
+        self.use_ep_inside = use_ep_inside
 
         # init by mode
         self.mode = mode
@@ -135,7 +139,7 @@ class MoeManager(metaclass=SingletonMeta):
                 num_local_experts = num_experts // ep_size
 
         if not (ep_size in self.parallel_info_dict):
-            self.parallel_info_dict[ep_size] = get_moe_info(ep_size, dp_size, pp_size)
+            self.parallel_info_dict[ep_size] = get_moe_info(ep_size, dp_size, pp_size, ep_inside=self.use_ep_inside)
 
         return num_local_experts, self.parallel_info_dict[ep_size]
 
