@@ -7,6 +7,7 @@ from torch.fx import GraphModule
 
 from colossalai._analyzer.fx.graph_module import ColoGraphModule
 from colossalai._analyzer.fx.passes import shape_prop_pass
+
 # from colossalai.fx.tracer.tracer import ColoTracer
 from colossalai._analyzer.fx.tracer.tracer import ColoTracer
 from colossalai.auto_parallel.passes.runtime_apply_pass import runtime_apply_pass
@@ -16,29 +17,34 @@ from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationDat
 from colossalai.auto_parallel.tensor_shard.solver import StrategiesConstructor
 from colossalai.device.device_mesh import DeviceMesh
 
-if torch.__version__ >= '1.12.0':
+if torch.__version__ >= "1.12.0":
     from colossalai.auto_parallel.meta_profiler import ShardMetaInfo
 
 
-def mem_test_for_node_strategy(rank: int,
-                               model: torch.nn.Module,
-                               device_mesh: DeviceMesh,
-                               node_index: int,
-                               strategy_number: int,
-                               input_args: List[torch.Tensor],
-                               meta_arg_names: List[str],
-                               input_kwargs: Dict[str, torch.Tensor] = {}):
+def mem_test_for_node_strategy(
+    rank: int,
+    model: torch.nn.Module,
+    device_mesh: DeviceMesh,
+    node_index: int,
+    strategy_number: int,
+    input_args: List[torch.Tensor],
+    meta_arg_names: List[str],
+    input_kwargs: Dict[str, torch.Tensor] = {},
+):
     for strategy_index in range(strategy_number):
         # We need to copy the model to avoid do backward more than once in same graph
-        model_to_shard, args_to_shard, kwargs_to_shard = copy.deepcopy(model), copy.deepcopy(input_args), copy.deepcopy(
-            input_kwargs)
+        model_to_shard, args_to_shard, kwargs_to_shard = (
+            copy.deepcopy(model),
+            copy.deepcopy(input_args),
+            copy.deepcopy(input_kwargs),
+        )
 
         tracer = ColoTracer(bias_addition_split=True)
         input_sample = {}
         for input_arg, meta_arg_name in zip(input_args, meta_arg_names):
-            input_sample[meta_arg_name] = torch.rand(input_arg.shape).to('meta')
+            input_sample[meta_arg_name] = torch.rand(input_arg.shape).to("meta")
         for meta_kwarg_name, input_kwarg in input_kwargs.items():
-            input_sample[meta_kwarg_name] = torch.rand(input_kwarg.shape).to('meta')
+            input_sample[meta_kwarg_name] = torch.rand(input_kwarg.shape).to("meta")
         graph = tracer.trace(root=model_to_shard, meta_args=input_sample)
         gm = ColoGraphModule(model_to_shard, graph, model_to_shard.__class__.__name__)
         shape_prop_pass(gm, *input_sample.values())
@@ -57,13 +63,18 @@ def mem_test_for_node_strategy(rank: int,
         # construct the strategy for the output node
         placeholder_strategy = list(graph.nodes)[-1].strategies_vector[0]
 
-        output_key = next(key for key in target_node.strategies_vector[strategy_index].sharding_specs.keys()
-                          if key.type == OperationDataType.OUTPUT)
+        output_key = next(
+            key
+            for key in target_node.strategies_vector[strategy_index].sharding_specs.keys()
+            if key.type == OperationDataType.OUTPUT
+        )
         placeholder_strategy.sharding_specs[output_key] = target_node.strategies_vector[strategy_index].sharding_specs[
-            output_key]
+            output_key
+        ]
 
         gm, sharding_spec_dict, origin_spec_dict, comm_actions_dict = runtime_preparation_pass(
-            gm, solution, device_mesh, strategies_constructor)
+            gm, solution, device_mesh, strategies_constructor
+        )
         gm = runtime_apply_pass(gm)
         gm.recompile()
         gm: GraphModule
@@ -76,22 +87,26 @@ def mem_test_for_node_strategy(rank: int,
 
         # warmup
         with torch.no_grad():
-            output = gm(*args_to_shard,
-                        sharding_spec_convert_dict=sharding_spec_dict,
-                        origin_node_sharding_spec_dict=origin_spec_dict,
-                        comm_actions_dict=comm_actions_dict,
-                        **kwargs_to_shard)
+            output = gm(
+                *args_to_shard,
+                sharding_spec_convert_dict=sharding_spec_dict,
+                origin_node_sharding_spec_dict=origin_spec_dict,
+                comm_actions_dict=comm_actions_dict,
+                **kwargs_to_shard,
+            )
 
         del output
         # forward memory compare
         if rank == 0:
             torch.cuda.reset_peak_memory_stats()
             mem_stamp0 = torch.cuda.memory_allocated()
-        output = gm(*args_to_shard,
-                    sharding_spec_convert_dict=sharding_spec_dict,
-                    origin_node_sharding_spec_dict=origin_spec_dict,
-                    comm_actions_dict=comm_actions_dict,
-                    **kwargs_to_shard)
+        output = gm(
+            *args_to_shard,
+            sharding_spec_convert_dict=sharding_spec_dict,
+            origin_node_sharding_spec_dict=origin_spec_dict,
+            comm_actions_dict=comm_actions_dict,
+            **kwargs_to_shard,
+        )
 
         if rank == 0:
             # print forward memory allocated and peak memory stats in kb
@@ -113,8 +128,10 @@ def mem_test_for_node_strategy(rank: int,
 
             # estimated memory
             if target_node.op == "call_module":
-                metainfo = ShardMetaInfo(target_node.strategies_vector[strategy_index],
-                                         target_node.graph.owning_module.get_submodule(target_node.target))
+                metainfo = ShardMetaInfo(
+                    target_node.strategies_vector[strategy_index],
+                    target_node.graph.owning_module.get_submodule(target_node.target),
+                )
             else:
                 metainfo = ShardMetaInfo(target_node.strategies_vector[strategy_index], target_node.target)
 
@@ -134,8 +151,16 @@ def mem_test_for_node_strategy(rank: int,
             print("=======================")
 
 
-def print_results(input: List[torch.Tensor], output: List[torch.Tensor], compute_cost: TrainCycleItem,
-                  memory_cost: TrainCycleItem, fwd_allocated, fwd_peak, bwd_allocated, bwd_peak):
+def print_results(
+    input: List[torch.Tensor],
+    output: List[torch.Tensor],
+    compute_cost: TrainCycleItem,
+    memory_cost: TrainCycleItem,
+    fwd_allocated,
+    fwd_peak,
+    bwd_allocated,
+    bwd_peak,
+):
     """Print the results of the meta information test.
 
     Args:

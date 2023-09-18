@@ -18,12 +18,14 @@ class OPTActor(Actor):
         lora_train_bias (str): LoRA bias training mode.
     """
 
-    def __init__(self,
-                 pretrained: Optional[str] = None,
-                 config: Optional[OPTConfig] = None,
-                 checkpoint: bool = False,
-                 lora_rank: int = 0,
-                 lora_train_bias: str = 'none') -> None:
+    def __init__(
+        self,
+        pretrained: Optional[str] = None,
+        config: Optional[OPTConfig] = None,
+        checkpoint: bool = False,
+        lora_rank: int = 0,
+        lora_train_bias: str = "none",
+    ) -> None:
         if pretrained is not None:
             model = OPTForCausalLM.from_pretrained(pretrained)
         elif config is not None:

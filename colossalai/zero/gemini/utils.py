@@ -27,16 +27,15 @@ def get_temp_total_chunk_on_cuda(chunk: Chunk):
     return total_temp
 
 
-def _get_dfs_module_list(module: nn.Module, memo: Optional[Set[nn.Module]] = None, prefix: str = ''):
-    """Get a dfs module list of the given module. Its order is same as the order of creations of modules.
-    """
+def _get_dfs_module_list(module: nn.Module, memo: Optional[Set[nn.Module]] = None, prefix: str = ""):
+    """Get a dfs module list of the given module. Its order is same as the order of creations of modules."""
     if memo is None:
         memo = set()
     if module not in memo:
         for name, submodule in module._modules.items():
             if submodule is None:
                 continue
-            submodule_prefix = prefix + ('.' if prefix else '') + name
+            submodule_prefix = prefix + ("." if prefix else "") + name
             for m in _get_dfs_module_list(submodule, memo, submodule_prefix):
                 yield m
 
@@ -60,10 +59,9 @@ def _get_shallow_copy_model(model: nn.Module):
     return old_to_new[model]
 
 
-def get_static_torch_model(zero_ddp_model,
-                           device=torch.device("cpu"),
-                           dtype=torch.float32,
-                           only_rank_0=True) -> torch.nn.Module:
+def get_static_torch_model(
+    zero_ddp_model, device=torch.device("cpu"), dtype=torch.float32, only_rank_0=True
+) -> torch.nn.Module:
     """Get a static torch.nn.Module model from the given GeminiDDP module.
     You should notice that the original GeminiDDP model is not modified.
     Thus, you can use the original model in further training.
@@ -79,6 +77,7 @@ def get_static_torch_model(zero_ddp_model,
         torch.nn.Module: a static torch model used for saving checkpoints or numeric checks
     """
     from colossalai.zero.gemini.gemini_ddp import GeminiDDP
+
     assert isinstance(zero_ddp_model, GeminiDDP)
 
     state_dict = zero_ddp_model.state_dict(only_rank_0=only_rank_0)
@@ -86,15 +85,17 @@ def get_static_torch_model(zero_ddp_model,
     torch_model = _get_shallow_copy_model(colo_model)
 
     if not only_rank_0 or dist.get_rank() == 0:
-        for (name, colo_module), (_, torch_module) in \
-                zip(_get_dfs_module_list(colo_model), _get_dfs_module_list(torch_model)):
+        for (name, colo_module), (_, torch_module) in zip(
+            _get_dfs_module_list(colo_model), _get_dfs_module_list(torch_model)
+        ):
             # clean the parameter list of the new torch module
             torch_module._parameters = OrderedDict()
             for sufix_param_name, param in colo_module.named_parameters(recurse=False):
                 # get the full name of the parameter
-                full_param_name = name + ('.' if name else '') + sufix_param_name
-                assert full_param_name in state_dict, \
-                    f"Can not find parameter `{full_param_name}` in the GeminiDDP module"
+                full_param_name = name + ("." if name else "") + sufix_param_name
+                assert (
+                    full_param_name in state_dict
+                ), f"Can not find parameter `{full_param_name}` in the GeminiDDP module"
                 state_param = state_dict[full_param_name]
                 torch_param = torch.nn.Parameter(state_param.data.to(device=device, dtype=dtype))
 

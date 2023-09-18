@@ -36,12 +36,13 @@ class DistCoordinator(metaclass=SingletonMeta):
     """
 
     def __init__(self):
-        assert dist.is_initialized(
-        ), 'Distributed is not initialized. Please call `torch.distributed.init_process_group` or `colossalai.launch` first.'
+        assert (
+            dist.is_initialized()
+        ), "Distributed is not initialized. Please call `torch.distributed.init_process_group` or `colossalai.launch` first."
         self._rank = dist.get_rank()
         self._world_size = dist.get_world_size()
         # this is often passed by launchers such as torchrun
-        self._local_rank = os.environ.get('LOCAL_RANK', -1)
+        self._local_rank = os.environ.get("LOCAL_RANK", -1)
 
     @property
     def rank(self) -> int:
@@ -59,7 +60,9 @@ class DistCoordinator(metaclass=SingletonMeta):
         """
         Assert that the local rank is set. This is often passed by launchers such as torchrun.
         """
-        assert self.local_rank >= 0, 'The environment variable LOCAL_RANK is not set, thus the coordinator is not aware of the local rank of the current process.'
+        assert (
+            self.local_rank >= 0
+        ), "The environment variable LOCAL_RANK is not set, thus the coordinator is not aware of the local rank of the current process."
 
     def is_master(self, process_group: ProcessGroup = None) -> bool:
         """
@@ -183,7 +186,6 @@ class DistCoordinator(metaclass=SingletonMeta):
 
         # define an inner function
         def decorator(func):
-
             @functools.wraps(func)
             def wrapper(*args, **kwargs):
                 if is_master:

@@ -29,10 +29,9 @@ def check_all_gather(device_mesh, rank):
     sharding_spec = ShardingSpec(device_mesh, tensor_to_check.shape, dim_partition_dict=dim_partition_dict)
 
     # CommSpec:(comm_pattern:allgather, gather_dim:1, logical_process_axis:1)
-    comm_spec = CommSpec(CollectiveCommPattern.GATHER_FWD_SPLIT_BWD,
-                         sharding_spec,
-                         gather_dim=1,
-                         logical_process_axis=1)
+    comm_spec = CommSpec(
+        CollectiveCommPattern.GATHER_FWD_SPLIT_BWD, sharding_spec, gather_dim=1, logical_process_axis=1
+    )
     sharded_tensor_to_comm = sharded_tensor_to_comm = comm_spec.covert_spec_to_action(sharded_tensor_to_comm)
 
     assert sharded_tensor_to_comm.equal(tensor_to_check)
@@ -101,11 +100,9 @@ def check_all_to_all(device_mesh, rank):
     sharding_spec = ShardingSpec(device_mesh, torch.Size((4, 2)), dim_partition_dict=dim_partition_dict)
 
     # CommSpec:(comm_pattern:shard, shard_dim:1, logical_process_axis:1)
-    comm_spec = CommSpec(CollectiveCommPattern.ALL2ALL_FWD_ALL2ALL_BWD,
-                         sharding_spec,
-                         gather_dim=0,
-                         shard_dim=1,
-                         logical_process_axis=0)
+    comm_spec = CommSpec(
+        CollectiveCommPattern.ALL2ALL_FWD_ALL2ALL_BWD, sharding_spec, gather_dim=0, shard_dim=1, logical_process_axis=0
+    )
     tensor_to_comm = comm_spec.covert_spec_to_action(tensor_to_comm)
 
     assert tensor_to_comm.equal(tensor_to_check)
@@ -181,7 +178,7 @@ def check_all_reduce_in_flatten_device_mesh(device_mesh, rank):
 
 def check_comm(rank, world_size, port):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
 
     physical_mesh_id = torch.arange(0, 4)
     assert rank == dist.get_rank()
@@ -214,5 +211,5 @@ def test_comm_spec():
     spawn(check_comm, world_size)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_comm_spec()

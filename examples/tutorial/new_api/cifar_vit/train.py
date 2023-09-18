@@ -32,35 +32,37 @@ LEARNING_RATE = 1e-3
 def vit_cifar(**kwargs):
     pretrained_cfg = _cfg(num_classes=10, input_size=(3, 32, 32), crop_pct=1.0)
     model_kwargs = dict(patch_size=4, embed_dim=512, depth=6, num_heads=8, drop_rate=0.1, mlp_ratio=1.0, **kwargs)
-    model = _create_vision_transformer('vit_cifar', pretrained_cfg=pretrained_cfg, **model_kwargs)
+    model = _create_vision_transformer("vit_cifar", pretrained_cfg=pretrained_cfg, **model_kwargs)
     return model
 
 
 def build_dataloader(batch_size: int, coordinator: DistCoordinator, plugin: DPPluginBase):
     # transform
-    transform_train = transforms.Compose([
-        transforms.RandomCrop(32, padding=4),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        transforms.Normalize((0.49139968, 0.48215827, 0.44653124), (0.24703233, 0.24348505, 0.26158768)),
-    ])
-    transform_test = transforms.Compose([
-        transforms.Resize(32),
-        transforms.ToTensor(),
-        transforms.Normalize((0.49139968, 0.48215827, 0.44653124), (0.24703233, 0.24348505, 0.26158768)),
-    ])
+    transform_train = transforms.Compose(
+        [
+            transforms.RandomCrop(32, padding=4),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            transforms.Normalize((0.49139968, 0.48215827, 0.44653124), (0.24703233, 0.24348505, 0.26158768)),
+        ]
+    )
+    transform_test = transforms.Compose(
+        [
+            transforms.Resize(32),
+            transforms.ToTensor(),
+            transforms.Normalize((0.49139968, 0.48215827, 0.44653124), (0.24703233, 0.24348505, 0.26158768)),
+        ]
+    )
 
     # CIFAR-10 dataset
-    data_path = os.environ.get('DATA', './data')
+    data_path = os.environ.get("DATA", "./data")
     with coordinator.priority_execution():
-        train_dataset = torchvision.datasets.CIFAR10(root=data_path,
-                                                     train=True,
-                                                     transform=transform_train,
-                                                     download=True)
-        test_dataset = torchvision.datasets.CIFAR10(root=data_path,
-                                                    train=False,
-                                                    transform=transform_test,
-                                                    download=True)
+        train_dataset = torchvision.datasets.CIFAR10(
+            root=data_path, train=True, transform=transform_train, download=True
+        )
+        test_dataset = torchvision.datasets.CIFAR10(
+            root=data_path, train=False, transform=transform_test, download=True
+        )
 
     # Data loader
     train_dataloader = plugin.prepare_dataloader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
@@ -84,14 +86,21 @@ def evaluate(model: nn.Module, test_dataloader: DataLoader, coordinator: DistCoo
     dist.all_reduce(total)
     accuracy = correct.item() / total.item()
     if coordinator.is_master():
-        print(f'Accuracy of the model on the test images: {accuracy * 100:.2f} %')
+        print(f"Accuracy of the model on the test images: {accuracy * 100:.2f} %")
     return accuracy
 
 
-def train_epoch(epoch: int, model: nn.Module, optimizer: Optimizer, criterion: nn.Module, train_dataloader: DataLoader,
-                booster: Booster, coordinator: DistCoordinator):
+def train_epoch(
+    epoch: int,
+    model: nn.Module,
+    optimizer: Optimizer,
+    criterion: nn.Module,
+    train_dataloader: DataLoader,
+    booster: Booster,
+    coordinator: DistCoordinator,
+):
     model.train()
-    with tqdm(train_dataloader, desc=f'Epoch [{epoch + 1}/{NUM_EPOCHS}]', disable=not coordinator.is_master()) as pbar:
+    with tqdm(train_dataloader, desc=f"Epoch [{epoch + 1}/{NUM_EPOCHS}]", disable=not coordinator.is_master()) as pbar:
         for images, labels in pbar:
             images = images.cuda()
             labels = labels.cuda()
@@ -105,7 +114,7 @@ def train_epoch(epoch: int, model: nn.Module, optimizer: Optimizer, criterion: n
             optimizer.zero_grad()
 
             # Print log info
-            pbar.set_postfix({'loss': loss.item()})
+            pbar.set_postfix({"loss": loss.item()})
 
 
 def main():
@@ -114,19 +123,20 @@ def main():
     # ==============================
     parser = argparse.ArgumentParser()
     # FIXME(ver217): gemini is not supported resnet now
-    parser.add_argument('-p',
-                        '--plugin',
-                        type=str,
-                        default='torch_ddp',
-                        choices=['torch_ddp', 'torch_ddp_fp16', 'low_level_zero'],
-                        help="plugin to use")
-    parser.add_argument('-r', '--resume', type=int, default=-1, help="resume from the epoch's checkpoint")
-    parser.add_argument('-c', '--checkpoint', type=str, default='./checkpoint', help="checkpoint directory")
-    parser.add_argument('-i', '--interval', type=int, default=5, help="interval of saving checkpoint")
-    parser.add_argument('--target_acc',
-                        type=float,
-                        default=None,
-                        help="target accuracy. Raise exception if not reached")
+    parser.add_argument(
+        "-p",
+        "--plugin",
+        type=str,
+        default="torch_ddp",
+        choices=["torch_ddp", "torch_ddp_fp16", "low_level_zero"],
+        help="plugin to use",
+    )
+    parser.add_argument("-r", "--resume", type=int, default=-1, help="resume from the epoch's checkpoint")
+    parser.add_argument("-c", "--checkpoint", type=str, default="./checkpoint", help="checkpoint directory")
+    parser.add_argument("-i", "--interval", type=int, default=5, help="interval of saving checkpoint")
+    parser.add_argument(
+        "--target_acc", type=float, default=None, help="target accuracy. Raise exception if not reached"
+    )
     args = parser.parse_args()
 
     # ==============================
@@ -150,13 +160,13 @@ def main():
     # Instantiate Plugin and Booster
     # ==============================
     booster_kwargs = {}
-    if args.plugin == 'torch_ddp_fp16':
-        booster_kwargs['mixed_precision'] = 'fp16'
-    if args.plugin.startswith('torch_ddp'):
+    if args.plugin == "torch_ddp_fp16":
+        booster_kwargs["mixed_precision"] = "fp16"
+    if args.plugin.startswith("torch_ddp"):
         plugin = TorchDDPPlugin()
-    elif args.plugin == 'gemini':
-        plugin = GeminiPlugin(placement_policy='cuda', strict_ddp_mode=True, initial_scale=2**5)
-    elif args.plugin == 'low_level_zero':
+    elif args.plugin == "gemini":
+        plugin = GeminiPlugin(placement_policy="cuda", strict_ddp_mode=True, initial_scale=2**5)
+    elif args.plugin == "low_level_zero":
         plugin = LowLevelZeroPlugin(initial_scale=2**5)
 
     booster = Booster(plugin=plugin, **booster_kwargs)
@@ -182,19 +192,17 @@ def main():
     # ==============================
     # Boost with ColossalAI
     # ==============================
-    model, optimizer, criterion, train_dataloader, lr_scheduler = booster.boost(model,
-                                                                                optimizer,
-                                                                                criterion=criterion,
-                                                                                dataloader=train_dataloader,
-                                                                                lr_scheduler=lr_scheduler)
+    model, optimizer, criterion, train_dataloader, lr_scheduler = booster.boost(
+        model, optimizer, criterion=criterion, dataloader=train_dataloader, lr_scheduler=lr_scheduler
+    )
 
     # ==============================
     # Resume from checkpoint
     # ==============================
     if args.resume >= 0:
-        booster.load_model(model, f'{args.checkpoint}/model_{args.resume}.pth')
-        booster.load_optimizer(optimizer, f'{args.checkpoint}/optimizer_{args.resume}.pth')
-        booster.load_lr_scheduler(lr_scheduler, f'{args.checkpoint}/lr_scheduler_{args.resume}.pth')
+        booster.load_model(model, f"{args.checkpoint}/model_{args.resume}.pth")
+        booster.load_optimizer(optimizer, f"{args.checkpoint}/optimizer_{args.resume}.pth")
+        booster.load_lr_scheduler(lr_scheduler, f"{args.checkpoint}/lr_scheduler_{args.resume}.pth")
 
     # ==============================
     # Train model
@@ -206,14 +214,14 @@ def main():
 
         # save checkpoint
         if args.interval > 0 and (epoch + 1) % args.interval == 0:
-            booster.save_model(model, f'{args.checkpoint}/model_{epoch + 1}.pth')
-            booster.save_optimizer(optimizer, f'{args.checkpoint}/optimizer_{epoch + 1}.pth')
-            booster.save_lr_scheduler(lr_scheduler, f'{args.checkpoint}/lr_scheduler_{epoch + 1}.pth')
+            booster.save_model(model, f"{args.checkpoint}/model_{epoch + 1}.pth")
+            booster.save_optimizer(optimizer, f"{args.checkpoint}/optimizer_{epoch + 1}.pth")
+            booster.save_lr_scheduler(lr_scheduler, f"{args.checkpoint}/lr_scheduler_{epoch + 1}.pth")
 
     accuracy = evaluate(model, test_dataloader, coordinator)
     if args.target_acc is not None:
-        assert accuracy >= args.target_acc, f'Accuracy {accuracy} is lower than target accuracy {args.target_acc}'
+        assert accuracy >= args.target_acc, f"Accuracy {accuracy} is lower than target accuracy {args.target_acc}"
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

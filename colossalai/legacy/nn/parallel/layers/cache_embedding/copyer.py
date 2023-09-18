@@ -39,7 +39,7 @@ class LimitBuffIndexCopyer(object):
         for begin_pos in range(0, dim_size, self._buff_size):
             cur_len = min(self._buff_size, dim_size - begin_pos)
             src_idx_piece = src_index.narrow(0, begin_pos, cur_len)
-            if src_device.type == 'cpu' and tgt_device.type == 'cuda':
+            if src_device.type == "cpu" and tgt_device.type == "cuda":
                 cpu_tmp_buffer = src.index_select(dim, src_idx_piece).pin_memory()
                 tmp_buffer = torch.empty_like(cpu_tmp_buffer, device=tgt_device)
                 tmp_buffer.copy_(cpu_tmp_buffer)

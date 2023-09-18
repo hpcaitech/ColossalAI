@@ -1,20 +1,6 @@
 import copy
 
-import torch
-import torch.distributed as dist
-from torch import Tensor
-from torch import distributed as dist
-from torch.distributed import ProcessGroup
-from torch.nn import Module
-from torch.optim import Adam, Optimizer
-
-from colossalai.booster import Booster
-from colossalai.booster.plugin import HybridParallelPlugin
-from colossalai.booster.plugin.hybrid_parallel_plugin import HybridParallelModule
 from colossalai.shardformer import ShardConfig, ShardFormer
-from colossalai.shardformer._utils import getattr_
-from colossalai.shardformer.policies.auto_policy import Policy
-from colossalai.tensor.d_tensor.api import is_customized_distributed_tensor, is_distributed_tensor
 
 
 def build_model(
@@ -28,11 +14,13 @@ def build_model(
     org_model = model_fn()
 
     # shard model
-    shard_config = ShardConfig(enable_fused_normalization=enable_fused_normalization,
-                               enable_tensor_parallelism=enable_tensor_parallelism,
-                               enable_flash_attention=enable_flash_attention,
-                               enable_jit_fused=enable_jit_fused,
-                               inference_only=True)
+    shard_config = ShardConfig(
+        enable_fused_normalization=enable_fused_normalization,
+        enable_tensor_parallelism=enable_tensor_parallelism,
+        enable_flash_attention=enable_flash_attention,
+        enable_jit_fused=enable_jit_fused,
+        inference_only=True,
+    )
     model_copy = copy.deepcopy(org_model)
     shard_former = ShardFormer(shard_config=shard_config)
     sharded_model, shared_params = shard_former.optimize(model_copy)

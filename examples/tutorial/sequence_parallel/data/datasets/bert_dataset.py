@@ -41,10 +41,19 @@ except:
 
 
 class BertDataset(Dataset):
-
-    def __init__(self, name, indexed_dataset, data_prefix, num_epochs, max_num_samples, masked_lm_prob, max_seq_length,
-                 short_seq_prob, seed, binary_head):
-
+    def __init__(
+        self,
+        name,
+        indexed_dataset,
+        data_prefix,
+        num_epochs,
+        max_num_samples,
+        masked_lm_prob,
+        max_seq_length,
+        short_seq_prob,
+        seed,
+        binary_head,
+    ):
         # Params to store.
         self.name = name
         self.seed = seed
@@ -61,11 +70,12 @@ class BertDataset(Dataset):
             data_prefix,
             num_epochs,
             max_num_samples,
-            self.max_seq_length - 3,    # account for added tokens,
+            self.max_seq_length - 3,  # account for added tokens,
             short_seq_prob,
             self.seed,
             self.name,
-            self.binary_head)
+            self.binary_head,
+        )
 
         # Vocab stuff.
         tokenizer = get_tokenizer()
@@ -89,7 +99,7 @@ class BertDataset(Dataset):
         return build_training_sample(
             sample,
             seq_length,
-            self.max_seq_length,    # needed for padding
+            self.max_seq_length,  # needed for padding
             self.vocab_id_list,
             self.vocab_id_to_token_dict,
             self.cls_id,
@@ -98,37 +108,39 @@ class BertDataset(Dataset):
             self.pad_id,
             self.masked_lm_prob,
             np_rng,
-            self.binary_head)
+            self.binary_head,
+        )
 
 
-def get_samples_mapping_(indexed_dataset, data_prefix, num_epochs, max_num_samples, max_seq_length, short_seq_prob,
-                         seed, name, binary_head):
+def get_samples_mapping_(
+    indexed_dataset, data_prefix, num_epochs, max_num_samples, max_seq_length, short_seq_prob, seed, name, binary_head
+):
     logger = get_dist_logger()
     if not num_epochs:
         if not max_num_samples:
-            raise ValueError("Need to specify either max_num_samples "
-                             "or num_epochs")
+            raise ValueError("Need to specify either max_num_samples " "or num_epochs")
         num_epochs = np.iinfo(np.int32).max - 1
     if not max_num_samples:
         max_num_samples = np.iinfo(np.int64).max - 1
 
     # Filename of the index mapping
     indexmap_filename = data_prefix
-    indexmap_filename += '_{}_indexmap'.format(name)
+    indexmap_filename += "_{}_indexmap".format(name)
     if num_epochs != (np.iinfo(np.int32).max - 1):
-        indexmap_filename += '_{}ep'.format(num_epochs)
+        indexmap_filename += "_{}ep".format(num_epochs)
     if max_num_samples != (np.iinfo(np.int64).max - 1):
-        indexmap_filename += '_{}mns'.format(max_num_samples)
-    indexmap_filename += '_{}msl'.format(max_seq_length)
-    indexmap_filename += '_{:0.2f}ssp'.format(short_seq_prob)
-    indexmap_filename += '_{}s'.format(seed)
-    indexmap_filename += '.npy'
+        indexmap_filename += "_{}mns".format(max_num_samples)
+    indexmap_filename += "_{}msl".format(max_seq_length)
+    indexmap_filename += "_{:0.2f}ssp".format(short_seq_prob)
+    indexmap_filename += "_{}s".format(seed)
+    indexmap_filename += ".npy"
 
     # Build the indexed mapping if not exist.
-    if torch.distributed.get_rank() == 0 and \
-       not os.path.isfile(indexmap_filename):
-        print(' > WARNING: could not find index map file {}, building '
-              'the indices on rank 0 ...'.format(indexmap_filename))
+    if torch.distributed.get_rank() == 0 and not os.path.isfile(indexmap_filename):
+        print(
+            " > WARNING: could not find index map file {}, building "
+            "the indices on rank 0 ...".format(indexmap_filename)
+        )
 
         # Make sure the types match the helpers input types.
         assert indexed_dataset.doc_idx.dtype == np.int64
@@ -137,18 +149,27 @@ def get_samples_mapping_(indexed_dataset, data_prefix, num_epochs, max_num_sampl
         # Build samples mapping
         verbose = torch.distributed.get_rank() == 0
         start_time = time.time()
-        logger.info('\n > building samples index mapping for {} ...'.format(name), ranks=[0])
+        logger.info("\n > building samples index mapping for {} ...".format(name), ranks=[0])
         # First compile and then import.
-        samples_mapping = helpers.build_mapping(indexed_dataset.doc_idx, indexed_dataset.sizes, num_epochs,
-                                                max_num_samples, max_seq_length, short_seq_prob, seed, verbose,
-                                                2 if binary_head else 1)
-        logger.info('\n > done building samples index maping', ranks=[0])
+        samples_mapping = helpers.build_mapping(
+            indexed_dataset.doc_idx,
+            indexed_dataset.sizes,
+            num_epochs,
+            max_num_samples,
+            max_seq_length,
+            short_seq_prob,
+            seed,
+            verbose,
+            2 if binary_head else 1,
+        )
+        logger.info("\n > done building samples index maping", ranks=[0])
         np.save(indexmap_filename, samples_mapping, allow_pickle=True)
-        logger.info('\n > saved the index mapping in {}'.format(indexmap_filename), ranks=[0])
+        logger.info("\n > saved the index mapping in {}".format(indexmap_filename), ranks=[0])
         # Make sure all the ranks have built the mapping
-        logger.info('\n > elapsed time to build and save samples mapping '
-                    '(seconds): {:4f}'.format(time.time() - start_time),
-                    ranks=[0])
+        logger.info(
+            "\n > elapsed time to build and save samples mapping " "(seconds): {:4f}".format(time.time() - start_time),
+            ranks=[0],
+        )
     # This should be a barrier but nccl barrier assumes
     # device_index=rank which is not the case for model
     # parallel case
@@ -156,22 +177,38 @@ def get_samples_mapping_(indexed_dataset, data_prefix, num_epochs, max_num_sampl
     torch.distributed.all_reduce(counts, group=gpc.get_group(ParallelMode.DATA))
     if gpc.is_initialized(ParallelMode.PIPELINE):
         torch.distributed.all_reduce(counts, group=gpc.get_group(ParallelMode.PIPELINE))
-    assert counts[0].item() == (torch.distributed.get_world_size() //
-                                torch.distributed.get_world_size(group=gpc.get_group(ParallelMode.SEQUENCE)))
+    assert counts[0].item() == (
+        torch.distributed.get_world_size()
+        // torch.distributed.get_world_size(group=gpc.get_group(ParallelMode.SEQUENCE))
+    )
 
     # Load indexed dataset.
     start_time = time.time()
-    samples_mapping = np.load(indexmap_filename, allow_pickle=True, mmap_mode='r')
-    logger.info('\n > loading indexed mapping from {}'.format(indexmap_filename) +
-                '\n    loaded indexed file in {:3.3f} seconds'.format(time.time() - start_time) +
-                '\n    total number of samples: {}'.format(samples_mapping.shape[0]),
-                ranks=[0])
+    samples_mapping = np.load(indexmap_filename, allow_pickle=True, mmap_mode="r")
+    logger.info(
+        "\n > loading indexed mapping from {}".format(indexmap_filename)
+        + "\n    loaded indexed file in {:3.3f} seconds".format(time.time() - start_time)
+        + "\n    total number of samples: {}".format(samples_mapping.shape[0]),
+        ranks=[0],
+    )
 
     return samples_mapping
 
 
-def build_training_sample(sample, target_seq_length, max_seq_length, vocab_id_list, vocab_id_to_token_dict, cls_id,
-                          sep_id, mask_id, pad_id, masked_lm_prob, np_rng, binary_head):
+def build_training_sample(
+    sample,
+    target_seq_length,
+    max_seq_length,
+    vocab_id_list,
+    vocab_id_to_token_dict,
+    cls_id,
+    sep_id,
+    mask_id,
+    pad_id,
+    masked_lm_prob,
+    np_rng,
+    binary_head,
+):
     """Build training sample.
 
     Arguments:
@@ -215,22 +252,30 @@ def build_training_sample(sample, target_seq_length, max_seq_length, vocab_id_li
 
     # Masking.
     max_predictions_per_seq = masked_lm_prob * max_num_tokens
-    (tokens, masked_positions, masked_labels,
-     _) = create_masked_lm_predictions(tokens, vocab_id_list, vocab_id_to_token_dict, masked_lm_prob, cls_id, sep_id,
-                                       mask_id, max_predictions_per_seq, np_rng)
+    (tokens, masked_positions, masked_labels, _) = create_masked_lm_predictions(
+        tokens,
+        vocab_id_list,
+        vocab_id_to_token_dict,
+        masked_lm_prob,
+        cls_id,
+        sep_id,
+        mask_id,
+        max_predictions_per_seq,
+        np_rng,
+    )
 
     # Padding.
-    tokens_np, tokentypes_np, labels_np, padding_mask_np, loss_mask_np \
-        = pad_and_convert_to_numpy(tokens, tokentypes, masked_positions,
-                                   masked_labels, pad_id, max_seq_length)
+    tokens_np, tokentypes_np, labels_np, padding_mask_np, loss_mask_np = pad_and_convert_to_numpy(
+        tokens, tokentypes, masked_positions, masked_labels, pad_id, max_seq_length
+    )
 
     train_sample = {
-        'text': tokens_np,
-        'types': tokentypes_np,
-        'labels': labels_np,
-        'is_random': int(is_next_random),
-        'loss_mask': loss_mask_np,
-        'padding_mask': padding_mask_np,
-        'truncated': int(truncated)
+        "text": tokens_np,
+        "types": tokentypes_np,
+        "labels": labels_np,
+        "is_random": int(is_next_random),
+        "loss_mask": loss_mask_np,
+        "padding_mask": padding_mask_np,
+        "truncated": int(truncated),
     }
     return train_sample

@@ -132,8 +132,8 @@ class PipelinableContext(InsertPostInitMethodToModuleSubClasses):
             for child in self._root_children:
                 layer_spec = self._layer_spec_dict[id(child)]
                 if layer_spec.typename in (
-                        torch.nn.modules.container.ModuleList,
-                        torch.nn.modules.container.Sequential,
+                    torch.nn.modules.container.ModuleList,
+                    torch.nn.modules.container.Sequential,
                 ):
                     for child_in_container in layer_spec.children:
                         self._layer_spec_list.append(self._layer_spec_dict[id(child_in_container)])
@@ -198,8 +198,9 @@ class PipelinableContext(InsertPostInitMethodToModuleSubClasses):
                     param_counts.append(layer_spec.count_params())
                 parts = partition_balanced(param_counts, pipeline_size, num_chunks)[rank]
             elif self._policy == "customized":
-                assert (self._exec_seq
-                        is not None), f"An explicit exec_seq must be defined by user in customized policy mode."
+                assert (
+                    self._exec_seq is not None
+                ), f"An explicit exec_seq must be defined by user in customized policy mode."
                 self.customized_parts = customized_partition(self._exec_seq)
                 assert len(self.customized_parts) == gpc.get_world_size(
                     ParallelMode.PIPELINE
@@ -226,14 +227,14 @@ class PipelinableContext(InsertPostInitMethodToModuleSubClasses):
             elif (layer, "behind") in self._func_dict:
                 behind_func_dict_in_partition[id(module)] = self._func_dict[(layer, "behind")]
         module_list_in_partition = torch.nn.ModuleList(module_list_in_partition)
-        pipeline_model = PipelinableModel(module_list_in_partition, front_func_dict_in_partition,
-                                          behind_func_dict_in_partition)
+        pipeline_model = PipelinableModel(
+            module_list_in_partition, front_func_dict_in_partition, behind_func_dict_in_partition
+        )
 
         return pipeline_model
 
 
 class PipelinableModel(torch.nn.Module):
-
     def __init__(self, module_list, front_func_dict, behind_func_dict):
         super().__init__()
         self._module_list = module_list

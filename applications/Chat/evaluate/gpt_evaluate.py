@@ -14,20 +14,18 @@ import tqdm
 from utils import jdump, jload
 
 ref_step_template = {
-    "en":
-        "Now please compare the answer with the {adjective} answer, determine whether the answer is able to achieve the same level of {metric}.\n\n",
-    "cn":
-        "请比较答案与上面的{adjective}答案，确定答案是否可以达到与该{adjective}答案同样水平的{metric}。\n\n"
+    "en": "Now please compare the answer with the {adjective} answer, determine whether the answer is able to achieve the same level of {metric}.\n\n",
+    "cn": "请比较答案与上面的{adjective}答案，确定答案是否可以达到与该{adjective}答案同样水平的{metric}。\n\n",
 }
 
 ref_answer_template_general = {
     "en": "\nAn example answer with good quality is as follows:\n\n{answer}\n\n",
-    "cn": "\n一个优质的示例答案如下：\n\n{answer}\n\n"
+    "cn": "\n一个优质的示例答案如下：\n\n{answer}\n\n",
 }
 
 ref_answer_template_correctness = {
     "en": "\nA correct answer is as follows:\n\n{answer}\n\n",
-    "cn": "\n标准答案如下：\n\n{answer}\n\n"
+    "cn": "\n标准答案如下：\n\n{answer}\n\n",
 }
 
 
@@ -51,10 +49,7 @@ def get_battle_result(sys_prompt: str, user_prompt: str, id: int, max_tokens: in
             response = openai.ChatCompletion.create(
                 model="gpt-4",
                 messages=[
-                    {
-                        "role": "system",
-                        "content": sys_prompt
-                    },
+                    {"role": "system", "content": sys_prompt},
                     {
                         "role": "user",
                         "content": user_prompt,
@@ -106,7 +101,7 @@ def parse_battle_score(evaluation: str) -> List[float]:
             return [float(sp[0]), float(sp[1])]
         else:
             raise Exception(f"Invalid score pair. Got {evaluation}.")
-    except Exception as e:
+    except Exception:
         return [-1, -1]
 
 
@@ -125,9 +120,6 @@ def battle(answer1: List[Dict], answer2: List[Dict], prompt_dict: Dict[str, Any]
 
     assert len(answer1) == len(answer2)
 
-    handles = []
-    evaluation_file = []
-
     total_len = len(answer1)
     question_idx_list = list(range(total_len))
 
@@ -140,9 +132,12 @@ def battle(answer1: List[Dict], answer2: List[Dict], prompt_dict: Dict[str, Any]
             assert answer1[i]["id"] == answer2[i]["id"]
             answer_id = answer1[i]["id"]
 
-            ques = answer1[i]["instruction"] if answer1[i][
-                "input"] == "" else answer1[i]["instruction"] + " " + answer1[i]["input"]
-            cat = answer1[i]["category"]
+            ques = (
+                answer1[i]["instruction"]
+                if answer1[i]["input"] == ""
+                else answer1[i]["instruction"] + " " + answer1[i]["input"]
+            )
+            answer1[i]["category"]
             ans1 = answer1[i]["output"]
             ans2 = answer2[i]["output"]
 
@@ -267,7 +262,11 @@ def reference_template(metric: str, language: str, reference: Dict[str, Any]) ->
 
     step_to_add = ref_step_template[language]
 
-    for_the_given_answer = "{metric} (1-5) (directly give the score for the given answer):" if language == "en" else "{metric} (1-5) (直接对给定答案打分)"
+    for_the_given_answer = (
+        "{metric} (1-5) (directly give the score for the given answer):"
+        if language == "en"
+        else "{metric} (1-5) (直接对给定答案打分)"
+    )
 
     # adjective is used to describe the word "answer" in the prompt.
     adjective = "example" if language == "en" else "示例"
@@ -280,8 +279,9 @@ def reference_template(metric: str, language: str, reference: Dict[str, Any]) ->
         answer_to_add = ref_answer_template_correctness[language]
 
     answer_to_add = answer_to_add.format(answer=reference["target"] if reference["target"] else reference["output"])
-    step_to_add = step_to_add.format(metric=metric.lower(),
-                                     adjective=adjective) + for_the_given_answer.format(metric=metric)
+    step_to_add = step_to_add.format(metric=metric.lower(), adjective=adjective) + for_the_given_answer.format(
+        metric=metric
+    )
 
     return answer_to_add + step_to_add
 
@@ -329,7 +329,8 @@ def multiturn_chat_completion(user_messages: List[str], model: str, max_tokens: 
         for j in range(i):
             messages_to_send.append(fill_in_message("user", user_messages[j]))
             messages_to_send.append(
-                fill_in_message("assistant", assistant_responses[j]["choices"][0]["message"]["content"]))
+                fill_in_message("assistant", assistant_responses[j]["choices"][0]["message"]["content"])
+            )
 
         # Length of user messages == Length of assistant messages + 1
         # Because we always expect the api to response
@@ -351,13 +352,15 @@ def multiturn_chat_completion(user_messages: List[str], model: str, max_tokens: 
     return assistant_responses[-1]
 
 
-def get_gpt_evaluation_without_logprobs(prompt: Dict[str, Any],
-                                        inst: Dict[str, Any],
-                                        metrics: List[str],
-                                        language: str,
-                                        reference: Dict[str, Any] = None,
-                                        model: str = "gpt-3.5-turbo",
-                                        max_tokens: int = 2048) -> Dict[str, Any]:
+def get_gpt_evaluation_without_logprobs(
+    prompt: Dict[str, Any],
+    inst: Dict[str, Any],
+    metrics: List[str],
+    language: str,
+    reference: Dict[str, Any] = None,
+    model: str = "gpt-3.5-turbo",
+    max_tokens: int = 2048,
+) -> Dict[str, Any]:
     """
     Use chat models(gpt-3.5-turbo or gpt-4) to evaluate one model answer.
 
@@ -378,7 +381,7 @@ def get_gpt_evaluation_without_logprobs(prompt: Dict[str, Any],
 
     MAX_API_RETRY = 3
 
-    question = (inst["instruction"] if inst["input"] == "" else inst["instruction"] + "\n" + inst["input"])
+    question = inst["instruction"] if inst["input"] == "" else inst["instruction"] + "\n" + inst["input"]
     answer = inst["output"]
     inst["evaluation"] = {}
 
@@ -400,10 +403,9 @@ def get_gpt_evaluation_without_logprobs(prompt: Dict[str, Any],
 
                 if prompt_reference:
                     # Do a 2-round conversation
-                    response = multiturn_chat_completion([prompt_1st_round, prompt_reference],
-                                                         model,
-                                                         max_tokens=max_tokens,
-                                                         turns=2)
+                    response = multiturn_chat_completion(
+                        [prompt_1st_round, prompt_reference], model, max_tokens=max_tokens, turns=2
+                    )
                 else:
                     response = multiturn_chat_completion([prompt_1st_round], model, max_tokens=max_tokens, turns=1)
 
@@ -427,10 +429,9 @@ def get_gpt_evaluation_without_logprobs(prompt: Dict[str, Any],
     return inst
 
 
-def get_gpt_evaluation_with_logprobs(prompt: Dict[str, Any],
-                                     inst: Dict[str, Any],
-                                     metrics: List[str],
-                                     max_tokens: int = 2048) -> Dict[str, Any]:
+def get_gpt_evaluation_with_logprobs(
+    prompt: Dict[str, Any], inst: Dict[str, Any], metrics: List[str], max_tokens: int = 2048
+) -> Dict[str, Any]:
     """
     Use completion model(text-davinci-003) to evaluate one model answer.
     Only completion models can return log probabilities.
@@ -449,7 +450,7 @@ def get_gpt_evaluation_with_logprobs(prompt: Dict[str, Any],
 
     MAX_API_RETRY = 3
 
-    question = (inst["instruction"] if inst["input"] == "" else inst["instruction"] + "\n" + inst["input"])
+    question = inst["instruction"] if inst["input"] == "" else inst["instruction"] + "\n" + inst["input"]
     answer = inst["output"]
     inst["evaluation"] = {}
 
@@ -492,13 +493,15 @@ def get_gpt_evaluation_with_logprobs(prompt: Dict[str, Any],
     return inst
 
 
-def evaluate(answers: List[Dict],
-             prompt: Dict[str, Any],
-             metrics: List[str],
-             category: str,
-             model: str,
-             language: str,
-             references: List[Dict] = None) -> List[Dict]:
+def evaluate(
+    answers: List[Dict],
+    prompt: Dict[str, Any],
+    metrics: List[str],
+    category: str,
+    model: str,
+    language: str,
+    references: List[Dict] = None,
+) -> List[Dict]:
     """
     Use GPT models to evaluate model answers and save evaluation results.
 
@@ -529,21 +532,23 @@ def evaluate(answers: List[Dict],
             if model == "text-davinci-003":
                 future = executor.submit(get_gpt_evaluation_with_logprobs, prompt, inst, metrics, 1)
             else:
-                future = executor.submit(get_gpt_evaluation_without_logprobs,
-                                         prompt,
-                                         inst,
-                                         metrics,
-                                         language,
-                                         reference=None if references is None else references[idx],
-                                         model=model,
-                                         max_tokens=1)
+                future = executor.submit(
+                    get_gpt_evaluation_without_logprobs,
+                    prompt,
+                    inst,
+                    metrics,
+                    language,
+                    reference=None if references is None else references[idx],
+                    model=model,
+                    max_tokens=1,
+                )
 
             futures.append(future)
 
         for future in tqdm.tqdm(
-                concurrent.futures.as_completed(futures),
-                desc=f"{category}: ",
-                total=len(futures),
+            concurrent.futures.as_completed(futures),
+            desc=f"{category}: ",
+            total=len(futures),
         ):
             evaluations.append(future.result())
 
@@ -610,12 +615,13 @@ def calculate_scores_form_response(response: str, evaluation: Dict[str, Any]) ->
             return int(results[0])
         else:
             raise Exception(f"Invalid score pair. Got {evaluation}.")
-    except Exception as e:
+    except Exception:
         return 0
 
 
-def save_gpt_evaluation_results(model_name: str, gpt_evaluation_results: Dict[str, Any],
-                                save_path: str) -> Dict[str, Any]:
+def save_gpt_evaluation_results(
+    model_name: str, gpt_evaluation_results: Dict[str, Any], save_path: str
+) -> Dict[str, Any]:
     """
     Save evaluation results for different categories for one model.
 
@@ -667,10 +673,12 @@ def save_gpt_evaluation_statistics(model_name: str, evaluations: List[Dict], sav
                     scores[metric].append(0)
                 elif evaluation["evaluation"][metric]["logprobs"] is not None:
                     scores[metric].append(
-                        calculate_scores_form_logprobs(evaluation["evaluation"][metric]["logprobs"][0]))
+                        calculate_scores_form_logprobs(evaluation["evaluation"][metric]["logprobs"][0])
+                    )
                 else:
                     scores[metric].append(
-                        calculate_scores_form_response(evaluation["evaluation"][metric]["response"], evaluation))
+                        calculate_scores_form_response(evaluation["evaluation"][metric]["response"], evaluation)
+                    )
 
         statistics = {}
         for metric in metrics:
@@ -751,9 +759,9 @@ def analyze_gpt_evaluation_statistics(statistics_path: str, save_path: str) -> N
     frame_all.to_csv(os.path.join(save_path, "gpt_evaluation_statistics.csv"))
 
     for category in tqdm.tqdm(
-            frame_per_category.keys(),
-            desc=f"GPT evaluation: ",
-            total=len(frame_per_category.keys()),
+        frame_per_category.keys(),
+        desc=f"GPT evaluation: ",
+        total=len(frame_per_category.keys()),
     ):
         data = pd.DataFrame(frame_per_category[category])
 

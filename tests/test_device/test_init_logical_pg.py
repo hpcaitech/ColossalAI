@@ -9,7 +9,7 @@ from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 
 def check_layer(rank, world_size, port):
-    launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
 
     physical_mesh_id = torch.arange(0, 4)
     assert rank == dist.get_rank()
@@ -33,5 +33,5 @@ def test_logical_pg():
     spawn(check_layer, 4)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_logical_pg()

@@ -45,9 +45,11 @@ class NaiveAMPOptimizer(OptimizerWrapper):
     def clip_grad_norm(self, model: nn.Module, max_norm: float):
         if self.optim.max_norm == max_norm:
             return
-        raise RuntimeError("NaiveAMP optimizer has clipped gradients during optimizer.step(). "
-                           "If you have supplied clip_grad_norm in the amp_config, "
-                           "executing the method clip_grad_norm is not allowed.")
+        raise RuntimeError(
+            "NaiveAMP optimizer has clipped gradients during optimizer.step(). "
+            "If you have supplied clip_grad_norm in the amp_config, "
+            "executing the method clip_grad_norm is not allowed."
+        )
 
 
 class NaiveAMPModel(nn.Module):
@@ -66,11 +68,13 @@ class NaiveAMPModel(nn.Module):
         in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
     """
 
-    def __init__(self,
-                 model: nn.Module,
-                 output_to_fp32: bool = True,
-                 parallel_mode: ParallelMode = ParallelMode.DATA,
-                 sync_buffer: bool = True):
+    def __init__(
+        self,
+        model: nn.Module,
+        output_to_fp32: bool = True,
+        parallel_mode: ParallelMode = ParallelMode.DATA,
+        sync_buffer: bool = True,
+    ):
         super().__init__()
         self.model = model.half()
         self._output_to_fp32 = output_to_fp32

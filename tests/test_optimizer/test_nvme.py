@@ -1,4 +1,3 @@
-import pytest
 import torch
 
 from colossalai.nn.optimizer import CPUAdam, HybridAdam
@@ -15,23 +14,22 @@ def move_some_params_to_cuda(model, torch_model):
 
 def check_params_equal(model, torch_model):
     for p, torch_p in zip(model.parameters(), torch_model.parameters()):
-        assert torch.allclose(p, torch_p, atol=1e-3), f'diff: {torch.abs(p - torch_p)}'
+        assert torch.allclose(p, torch_p, atol=1e-3), f"diff: {torch.abs(p - torch_p)}"
 
 
 @clear_cache_before_run()
-@parameterize('nvme_offload_fraction', [0.0, 0.5, 1.0])
-@parameterize('nvme_offload_dir', ['./offload', None])
-@parameterize('adam_cls', [CPUAdam, HybridAdam])
+@parameterize("nvme_offload_fraction", [0.0, 0.5, 1.0])
+@parameterize("nvme_offload_dir", ["./offload", None])
+@parameterize("adam_cls", [CPUAdam, HybridAdam])
 def test_nvme_adam(nvme_offload_fraction, nvme_offload_dir, adam_cls):
-    get_components_func = non_distributed_component_funcs.get_callable('simple_net')
+    get_components_func = non_distributed_component_funcs.get_callable("simple_net")
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
     model = model_builder()
     torch_model = model_builder()
     move_some_params_to_cuda(model, torch_model)
-    optimizer = adam_cls(model.parameters(),
-                         lr=0.1,
-                         nvme_offload_fraction=nvme_offload_fraction,
-                         nvme_offload_dir=nvme_offload_dir)
+    optimizer = adam_cls(
+        model.parameters(), lr=0.1, nvme_offload_fraction=nvme_offload_fraction, nvme_offload_dir=nvme_offload_dir
+    )
     torch_optimizer = torch.optim.Adam(torch_model.parameters(), lr=0.1)
     with torch.no_grad():
         for p, torch_p in zip(model.parameters(), torch_model.parameters()):
@@ -45,5 +43,5 @@ def test_nvme_adam(nvme_offload_fraction, nvme_offload_dir, adam_cls):
             check_params_equal(model, torch_model)
 
 
-if __name__ == '__main__':
-    test_nvme_adam(0.5, './offload', CPUAdam)
+if __name__ == "__main__":
+    test_nvme_adam(0.5, "./offload", CPUAdam)

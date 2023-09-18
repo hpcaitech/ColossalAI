@@ -9,15 +9,14 @@ from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 try:
     from colossalai.fx.codegen import ActivationCheckpointCodeGen
+
     with_codegen = True
 except:
     # fall back to older pytorch version
-    from colossalai.fx.codegen import python_code_with_activation_checkpoint
     with_codegen = False
 
 
 class MyModule(torch.nn.Module):
-
     def __init__(self):
         super().__init__()
         self.linear1 = torch.nn.Linear(4, 4)
@@ -33,7 +32,7 @@ class MyModule(torch.nn.Module):
 
 def _run_act_ckpt_codegen(rank, world_size, port):
     # launch colossalai to make sure we could execute colossalai.utils.checkpoint currently
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
 
     # build model and run forward
     model = MyModule()
@@ -54,27 +53,34 @@ def _run_act_ckpt_codegen(rank, world_size, port):
     # annotate nested checkpoint
     for node in graph.nodes:
         if node.name == "linear1":
-            node.meta['activation_checkpoint'] = [0, 0, 0]
+            node.meta["activation_checkpoint"] = [0, 0, 0]
             continue
         if node.name == "linear2":
-            node.meta['activation_checkpoint'] = [0, 0, None]
+            node.meta["activation_checkpoint"] = [0, 0, None]
         if node.name == "linear3":
-            node.meta['activation_checkpoint'] = [0, 0, 1]
+            node.meta["activation_checkpoint"] = [0, 0, 1]
         if node.name == "linear4":
-            node.meta['activation_checkpoint'] = [0, 1, None]
+            node.meta["activation_checkpoint"] = [0, 1, None]
         if node.name == "linear5":
-            node.meta['activation_checkpoint'] = 1
+            node.meta["activation_checkpoint"] = 1
     gm = ColoGraphModule(model, graph)
     gm.recompile()
 
     # assert checkpoint function will be generated and
-    code = graph.python_code('self').src
-    assert 'colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_0_0, False, x, use_reentrant=False)' in code and \
-    'colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_0_1, False, linear3, use_reentrant=False)' in code and \
-    'colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_0_0_0, False, x, use_reentrant=False)' in code and \
-    'colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_0_0_1, False, linear2, use_reentrant=False)' in code and \
-    'colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_0, False, x, use_reentrant=False)' in code and \
-    'colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_1, False, linear4, use_reentrant=False)' in code
+    code = graph.python_code("self").src
+    assert (
+        "colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_0_0, False, x, use_reentrant=False)" in code
+        and "colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_0_1, False, linear3, use_reentrant=False)"
+        in code
+        and "colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_0_0_0, False, x, use_reentrant=False)"
+        in code
+        and "colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_0_0_1, False, linear2, use_reentrant=False)"
+        in code
+        and "colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_0, False, x, use_reentrant=False)"
+        in code
+        and "colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_1, False, linear4, use_reentrant=False)"
+        in code
+    )
 
     # recompile and verify the outputs are consistent
     fx_out = gm(data1)
@@ -83,14 +89,14 @@ def _run_act_ckpt_codegen(rank, world_size, port):
     gpc.destroy()
 
 
-@pytest.mark.skipif(not with_codegen, reason='torch version is lower than 1.12.0')
+@pytest.mark.skipif(not with_codegen, reason="torch version is lower than 1.12.0")
 def test_act_ckpt_codegen():
     spawn(_run_act_ckpt_codegen, 1)
 
 
 def _run_act_ckpt_python_code_torch11(rank, world_size, port):
     # launch colossalai to make sure we could execute colossalai.utils.checkpoint currently
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
 
     # build model and run forward
     model = MyModule()
@@ -111,27 +117,34 @@ def _run_act_ckpt_python_code_torch11(rank, world_size, port):
     # annotate nested checkpoint
     for node in graph.nodes:
         if node.name == "linear1":
-            node.meta['activation_checkpoint'] = [0, 0, 0]
+            node.meta["activation_checkpoint"] = [0, 0, 0]
             continue
         if node.name == "linear2":
-            node.meta['activation_checkpoint'] = [0, 0, None]
+            node.meta["activation_checkpoint"] = [0, 0, None]
         if node.name == "linear3":
-            node.meta['activation_checkpoint'] = [0, 0, 1]
+            node.meta["activation_checkpoint"] = [0, 0, 1]
         if node.name == "linear4":
-            node.meta['activation_checkpoint'] = [0, 1, None]
+            node.meta["activation_checkpoint"] = [0, 1, None]
         if node.name == "linear5":
-            node.meta['activation_checkpoint'] = 1
+            node.meta["activation_checkpoint"] = 1
     gm = ColoGraphModule(model, graph)
     gm.recompile()
 
     # assert checkpoint function will be generated and
-    code = graph.python_code('self').src
-    assert 'colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_0_0, False, x, use_reentrant=False)' in code and \
-    'colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_0_1, False, linear3, use_reentrant=False)' in code and \
-    'colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_0_0_0, False, x, use_reentrant=False)' in code and \
-    'colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_0_0_1, False, linear2, use_reentrant=False)' in code and \
-    'colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_0, False, x, use_reentrant=False)' in code and \
-    'colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_1, False, linear4, use_reentrant=False)' in code
+    code = graph.python_code("self").src
+    assert (
+        "colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_0_0, False, x, use_reentrant=False)" in code
+        and "colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_0_1, False, linear3, use_reentrant=False)"
+        in code
+        and "colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_0_0_0, False, x, use_reentrant=False)"
+        in code
+        and "colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_0_0_1, False, linear2, use_reentrant=False)"
+        in code
+        and "colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_0, False, x, use_reentrant=False)"
+        in code
+        and "colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_1, False, linear4, use_reentrant=False)"
+        in code
+    )
 
     # recompile and verify the outputs are consistent
     fx_out = gm(data1)
@@ -140,12 +153,12 @@ def _run_act_ckpt_python_code_torch11(rank, world_size, port):
     gpc.destroy()
 
 
-@pytest.mark.skipif(with_codegen, reason='torch version is equal to or higher than 1.12.0')
+@pytest.mark.skipif(with_codegen, reason="torch version is equal to or higher than 1.12.0")
 @pytest.mark.skip(reason="currently torch11 ColoGraphModule is not done")
 @rerun_if_address_is_in_use()
 def test_act_ckpt_python_code_torch11():
     spawn(_run_act_ckpt_python_code_torch11, 1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     _run_act_ckpt_codegen(rank=0)

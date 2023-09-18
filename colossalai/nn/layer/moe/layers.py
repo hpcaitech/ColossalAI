@@ -89,8 +89,9 @@ class MoeLayer(nn.Module):
         elif self.experts.comm_name == "all_gather":
             expert_output = self.tp_process(dispatch_data)
         else:
-            raise NotImplementedError("This kind of communication has not been implemented yet.\n Please use Experts "
-                                      "build function.")
+            raise NotImplementedError(
+                "This kind of communication has not been implemented yet.\n Please use Experts " "build function."
+            )
         # expert_output [e, c, h]
         if self.use_kernel:
             expert_output = expert_output.reshape(-1, self.d_model)
@@ -135,27 +136,29 @@ class MoeModule(nn.Module):
         https://arxiv.org/abs/2201.05596
     """
 
-    def __init__(self,
-                 dim_model: int,
-                 num_experts: int,
-                 top_k: int = 1,
-                 capacity_factor_train: float = 1.25,
-                 capacity_factor_eval: float = 2.0,
-                 min_capacity: int = 4,
-                 noisy_policy: Optional[str] = None,
-                 drop_tks: bool = True,
-                 use_residual: bool = False,
-                 residual_instance: Optional[nn.Module] = None,
-                 expert_instance: Optional[MoeExperts] = None,
-                 expert_cls: Optional[Type[nn.Module]] = None,
-                 **expert_args):
+    def __init__(
+        self,
+        dim_model: int,
+        num_experts: int,
+        top_k: int = 1,
+        capacity_factor_train: float = 1.25,
+        capacity_factor_eval: float = 2.0,
+        min_capacity: int = 4,
+        noisy_policy: Optional[str] = None,
+        drop_tks: bool = True,
+        use_residual: bool = False,
+        residual_instance: Optional[nn.Module] = None,
+        expert_instance: Optional[MoeExperts] = None,
+        expert_cls: Optional[Type[nn.Module]] = None,
+        **expert_args,
+    ):
         super().__init__()
 
         noisy_func = None
         if noisy_policy is not None:
-            if noisy_policy == 'Jitter':
+            if noisy_policy == "Jitter":
                 noisy_func = UniformNoiseGenerator()
-            elif noisy_policy == 'Gaussian':
+            elif noisy_policy == "Gaussian":
                 noisy_func = NormalNoiseGenerator(num_experts)
             else:
                 raise NotImplementedError("Unsupported input noisy policy")
@@ -167,18 +170,19 @@ class MoeModule(nn.Module):
         else:
             raise NotImplementedError("top_k > 2 is not supported yet")
 
-        self.moe_router = moe_router_cls(capacity_factor_train=capacity_factor_train,
-                                         capacity_factor_eval=capacity_factor_eval,
-                                         min_capacity=min_capacity,
-                                         noisy_func=noisy_func,
-                                         drop_tks=drop_tks)
+        self.moe_router = moe_router_cls(
+            capacity_factor_train=capacity_factor_train,
+            capacity_factor_eval=capacity_factor_eval,
+            min_capacity=min_capacity,
+            noisy_func=noisy_func,
+            drop_tks=drop_tks,
+        )
         self.use_residual = use_residual
         if use_residual:
             if residual_instance is not None:
                 self.residual_module = residual_instance
             else:
-                assert expert_cls is not None, \
-                    "Expert class can't be None when residual instance is not given"
+                assert expert_cls is not None, "Expert class can't be None when residual instance is not given"
                 self.residual_module = expert_cls(**expert_args)
 
             with no_shard_zero_context():
@@ -187,14 +191,12 @@ class MoeModule(nn.Module):
         if expert_instance is not None:
             my_experts = expert_instance
         else:
-            assert expert_cls is not None, \
-                "Expert class can't be None when experts instance is not given"
+            assert expert_cls is not None, "Expert class can't be None when experts instance is not given"
             my_experts = Experts(expert_cls, num_experts, **expert_args)
 
-        self.moe_layer = MoeLayer(dim_model=dim_model,
-                                  num_experts=num_experts,
-                                  router=self.moe_router,
-                                  experts=my_experts)
+        self.moe_layer = MoeLayer(
+            dim_model=dim_model, num_experts=num_experts, router=self.moe_router, experts=my_experts
+        )
 
     def forward(self, inputs: torch.Tensor):
         moe_output, l_aux = self.moe_layer(inputs)

@@ -111,6 +111,7 @@ class AsyncMemoryMonitor(MemoryMonitor):
 
     def _measure_usage(self):
         from colossalai.legacy.utils import colo_device_memory_used
+
         max_usage = 0
         while self.keep_measuring:
             max_usage = max(

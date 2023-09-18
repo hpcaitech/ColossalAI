@@ -5,7 +5,7 @@ from coati.experience_maker import Experience
 
 class TrainerCallback(ABC):
     """
-        Base callback class. It defines the interface for callbacks.
+    Base callback class. It defines the interface for callbacks.
     """
 
     def on_fit_start(self) -> None:
@@ -40,7 +40,6 @@ class TrainerCallback(ABC):
 
 
 class MakerCallback(ABC):
-
     def on_loop_start(self) -> None:
         pass
 

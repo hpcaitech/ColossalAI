@@ -2,7 +2,7 @@ import torch
 from rpc_test_utils import RpcTestModel, parse_args, rpc_run
 from torch import autograd, nn
 
-from colossalai.legacy.pipeline.rpc._pipeline_schedule import FillDrainPipelineEngine, OneFOneBPipelineEngine
+from colossalai.legacy.pipeline.rpc._pipeline_schedule import OneFOneBPipelineEngine
 from colossalai.testing import assert_close
 
 feat_num = 100
@@ -32,12 +32,14 @@ def run_master(args):
 
     input_sample = torch.randn((sample_num, feat_num), device=device)
 
-    engine = OneFOneBPipelineEngine(partition_fn=partition,
-                                    stage_num=stage_num,
-                                    num_microbatches=num_microbatches,
-                                    device=device,
-                                    chunk=chunk,
-                                    checkpoint=use_checkpoint)
+    engine = OneFOneBPipelineEngine(
+        partition_fn=partition,
+        stage_num=stage_num,
+        num_microbatches=num_microbatches,
+        device=device,
+        chunk=chunk,
+        checkpoint=use_checkpoint,
+    )
 
     forward_result = engine.forward_backward(input_sample)
 
@@ -54,7 +56,8 @@ def run_master(args):
 
     # compute forward result and backward grad of parameters just in rank_0
     test_model = nn.Sequential(
-        *[partition(pp_rank, chunk, actual_stage_num) for pp_rank in range(actual_stage_num)]).to(device)
+        *[partition(pp_rank, chunk, actual_stage_num) for pp_rank in range(actual_stage_num)]
+    ).to(device)
     input_sample = input_sample.requires_grad_()
     out_val = test_model(input_sample).sum()
     autograd.backward(out_val)

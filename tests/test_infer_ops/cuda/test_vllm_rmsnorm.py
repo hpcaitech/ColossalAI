@@ -1,22 +1,19 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
-import os
 import pytest
-import numpy as np
-from packaging import version
-
 import torch
 from torch import nn
-from torch.nn import functional as F
 
-try: 
+try:
     from vllm import layernorm_ops
+
     rms_norm = layernorm_ops.rms_norm
     HAS_VLLM_KERNERL = True
 except:
     print("please install vllm kernels to install rmsnorm")
     print("install vllm from https://github.com/vllm-project/vllm to accelerate your inference")
     HAS_VLLM_KERNERL = False
+
 
 class LlamaRMSNorm(nn.Module):
     def __init__(self, hidden_size, eps=1e-6):
@@ -34,6 +31,7 @@ class LlamaRMSNorm(nn.Module):
         hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
         return self.weight * hidden_states.to(input_dtype)
 
+
 def cuda_rmsnorm_forward(hidden_states, weight, variance_epsilon):
     x = hidden_states
     out = torch.empty_like(x)
@@ -45,6 +43,7 @@ def cuda_rmsnorm_forward(hidden_states, weight, variance_epsilon):
     )
     return out
 
+
 @pytest.mark.skipif(not HAS_VLLM_KERNERL, reason="You need to install llama supported cuda kernels to run this test")
 def test_rmsnorm():
     data = torch.randn((1024, 64), dtype=torch.float16, device="cuda")
@@ -55,6 +54,7 @@ def test_rmsnorm():
 
     check = torch.allclose(out_torch.cpu(), out_cuda.cpu(), rtol=1e-3, atol=1e-5)
     assert check is True, "cuda rmsnorm forward is not matched with torch rmsnorm forward"
+
 
 if __name__ == "__main__":
     test_rmsnorm()

@@ -28,7 +28,7 @@ def conditional_context(context_manager, enable=True):
 
 
 def is_ddp_ignored(p):
-    return getattr(p, '_ddp_to_ignore', False)
+    return getattr(p, "_ddp_to_ignore", False)
 
 
 def disposable(func: Callable) -> Callable:

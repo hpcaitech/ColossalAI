@@ -38,7 +38,9 @@ def check_equal(A, B):
 
 
 def check_checkpoint_1d(rank, world_size, port):
-    config = dict(parallel=dict(pipeline=dict(size=2), tensor=dict(size=4, mode="1d")),)
+    config = dict(
+        parallel=dict(pipeline=dict(size=2), tensor=dict(size=4, mode="1d")),
+    )
 
     disable_existing_loggers()
     launch(config=config, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")

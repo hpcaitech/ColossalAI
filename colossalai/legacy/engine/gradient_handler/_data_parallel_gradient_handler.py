@@ -20,8 +20,7 @@ class DataParallelGradientHandler(BaseGradientHandler):
     """
 
     def handle_gradient(self):
-        """A method running a all-reduce operation in a data parallel group.
-        """
+        """A method running a all-reduce operation in a data parallel group."""
         # TODO: add memory buffer
         if gpc.data_parallel_size > 1:
             bucket_allreduce(param_list=self._model.parameters(), group=gpc.get_group(ParallelMode.DATA))

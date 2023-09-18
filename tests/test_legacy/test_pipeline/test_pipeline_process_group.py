@@ -10,8 +10,8 @@ from colossalai.testing import spawn
 
 
 def run_worker(rank, args):
-    os.environ['MASTER_ADDR'] = args.master_addr
-    os.environ['MASTER_PORT'] = args.master_port
+    os.environ["MASTER_ADDR"] = args.master_addr
+    os.environ["MASTER_PORT"] = args.master_port
 
     device = args.device
     world_size = args.world_size
@@ -20,17 +20,19 @@ def run_worker(rank, args):
     num_worker_threads = args.num_worker_threads
     host = args.master_addr
     port = args.master_port
-    backend = 'nccl' if device == 'cuda' else 'gloo'
+    backend = "nccl" if device == "cuda" else "gloo"
 
     disable_existing_loggers()
     launch(dict(), rank, world_size, host, int(port), backend, verbose=False)
 
-    ppg.set_global_info(rank=rank,
-                        world_size=world_size,
-                        dp_degree=dp_degree,
-                        tp_degree=tp_degree,
-                        num_worker_threads=num_worker_threads,
-                        device=device)
+    ppg.set_global_info(
+        rank=rank,
+        world_size=world_size,
+        dp_degree=dp_degree,
+        tp_degree=tp_degree,
+        num_worker_threads=num_worker_threads,
+        device=device,
+    )
 
     if rpc_is_initialized():
         rpc.shutdown()

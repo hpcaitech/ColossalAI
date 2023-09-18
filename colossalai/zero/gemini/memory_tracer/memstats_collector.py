@@ -40,11 +40,12 @@ class MemStatsCollector:
         Returns:
             int: max non model data memory usage of current sampling period
         """
-        assert not self._start_flag, 'Cannot get mem stats info during collection phase.'
-        assert self._step_total > 0, 'Cannot get mem stats info before collection phase.'
-        assert len(self._memstats.non_model_data_list(device_type)) > self._step_idx, \
-            f"{len(self._memstats.non_model_data_list(device_type))} should be > than step idx {self._step_idx}, "\
+        assert not self._start_flag, "Cannot get mem stats info during collection phase."
+        assert self._step_total > 0, "Cannot get mem stats info before collection phase."
+        assert len(self._memstats.non_model_data_list(device_type)) > self._step_idx, (
+            f"{len(self._memstats.non_model_data_list(device_type))} should be > than step idx {self._step_idx}, "
             f"step total {self._step_total}"
+        )
         next_non_model_data = self._memstats.non_model_data_list(device_type)[self._step_idx]
         self._step_idx = (self._step_idx + 1) % self._step_total
         return next_non_model_data
@@ -60,9 +61,9 @@ class MemStatsCollector:
     def finish_collection(self):
         self.sample_overall_data()
         # self._step_total = len(self._sampling_time)
-        self._step_total = len(self._memstats.non_model_data_list('cuda'))
+        self._step_total = len(self._memstats.non_model_data_list("cuda"))
         self._start_flag = False
-        print(f'finish_collection {self._step_total}')
+        print(f"finish_collection {self._step_total}")
 
     # deprecated
     def record_model_data_volume(self) -> None:
@@ -73,7 +74,7 @@ class MemStatsCollector:
             from colossalai.legacy.zero.gemini import StatefulTensor
 
             # The following code work for ZeroInitContext, which is deprecated in v0.1.12
-            cuda_mem = StatefulTensor.GST_MGR.total_mem['cuda']
+            cuda_mem = StatefulTensor.GST_MGR.total_mem["cuda"]
             self._memstats.record_max_cuda_model_data(cuda_mem)
 
     def sample_overall_data(self) -> None:

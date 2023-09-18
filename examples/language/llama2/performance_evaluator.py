@@ -10,9 +10,9 @@ from colossalai.cluster import DistCoordinator
 
 def divide(x: float, y: float) -> float:
     if y == 0:
-        return float('inf')
-    elif y == float('inf'):
-        return float('nan')
+        return float("inf")
+    elif y == float("inf"):
+        return float("nan")
     return x / y
 
 
@@ -27,10 +27,9 @@ def all_reduce_mean(x: float, world_size: int) -> float:
 
 
 class Timer:
-
     def __init__(self) -> None:
         self.start_time: Optional[float] = None
-        self.duration: float = 0.
+        self.duration: float = 0.0
 
     def start(self) -> None:
         self.start_time = time()
@@ -41,7 +40,7 @@ class Timer:
         self.start_time = None
 
     def reset(self) -> None:
-        self.duration = 0.
+        self.duration = 0.0
 
 
 class PerformanceEvaluator:
@@ -56,11 +55,13 @@ class PerformanceEvaluator:
         ignore_episodes: The number of episodes to ignore when calculating the performance.
     """
 
-    def __init__(self,
-                 model_numel: int,
-                 enable_grad_checkpoint: bool = False,
-                 ignore_steps: int = 0,
-                 dp_world_size: Optional[int] = None) -> None:
+    def __init__(
+        self,
+        model_numel: int,
+        enable_grad_checkpoint: bool = False,
+        ignore_steps: int = 0,
+        dp_world_size: Optional[int] = None,
+    ) -> None:
         self.model_numel = model_numel
         self.enable_grad_checkpoint = enable_grad_checkpoint
         self.ignore_steps = ignore_steps
@@ -96,7 +97,9 @@ class PerformanceEvaluator:
         mp_world_size = self.coordinator.world_size // self.dp_world_size
         avg_tflops_per_gpu = self.flop / 1e12 / (avg_duration + 1e-12) / mp_world_size
         self.coordinator.print_on_master(
-            f'num_samples: {self.num_samples}, dp_world_size: {self.dp_world_size}, flop: {self.flop}, avg_duration: {avg_duration}, '
-            f'avg_throughput: {avg_throughput}')
+            f"num_samples: {self.num_samples}, dp_world_size: {self.dp_world_size}, flop: {self.flop}, avg_duration: {avg_duration}, "
+            f"avg_throughput: {avg_throughput}"
+        )
         self.coordinator.print_on_master(
-            f'Throughput: {avg_throughput:.2f} samples/sec, TFLOPS per GPU: {avg_tflops_per_gpu:.2f}')
+            f"Throughput: {avg_throughput:.2f} samples/sec, TFLOPS per GPU: {avg_tflops_per_gpu:.2f}"
+        )

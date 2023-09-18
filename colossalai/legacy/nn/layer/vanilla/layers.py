@@ -15,7 +15,7 @@ from colossalai.utils.cuda import get_current_device
 from ..utils import to_2tuple
 
 
-def drop_path(x, drop_prob: float = 0., training: bool = False):
+def drop_path(x, drop_prob: float = 0.0, training: bool = False):
     """Drop paths (Stochastic Depth) per sample (when applied in main path of residual blocks).
 
     This is the same as the DropConnect impl I created for EfficientNet, etc networks, however,
@@ -28,12 +28,12 @@ def drop_path(x, drop_prob: float = 0., training: bool = False):
         drop_prob (float, optional): probability of dropping path, defaults 0.0.
         training (bool, optional): whether in training progress, defaults False.
     """
-    if drop_prob == 0. or not training:
+    if drop_prob == 0.0 or not training:
         return x
     keep_prob = 1 - drop_prob
-    shape = (x.shape[0],) + (1,) * (x.ndim - 1)    # work with diff dim tensors, not just 2D ConvNets
+    shape = (x.shape[0],) + (1,) * (x.ndim - 1)  # work with diff dim tensors, not just 2D ConvNets
     random_tensor = keep_prob + torch.rand(shape, dtype=x.dtype, device=x.device)
-    random_tensor.floor_()    # binarize
+    random_tensor.floor_()  # binarize
     output = x.div(keep_prob) * random_tensor
     return output
 
@@ -74,8 +74,7 @@ class WrappedDropout(nn.Module):
     def __init__(self, p: float = 0.5, inplace: bool = False, mode=None):
         super().__init__()
         if p < 0 or p > 1:
-            raise ValueError("dropout probability has to be between 0 and 1, "
-                             "but got {}".format(p))
+            raise ValueError("dropout probability has to be between 0 and 1, " "but got {}".format(p))
         self.p = p
         self.inplace = inplace
         if mode is None:
@@ -108,7 +107,7 @@ class WrappedDropPath(nn.Module):
         in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_
     """
 
-    def __init__(self, p: float = 0., mode=None):
+    def __init__(self, p: float = 0.0, mode=None):
         super().__init__()
         self.p = p
         self.mode = mode
@@ -152,16 +151,18 @@ class VanillaPatchEmbedding(nn.Module):
     `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
 
-    def __init__(self,
-                 img_size: int,
-                 patch_size: int,
-                 in_chans: int,
-                 embed_size: int,
-                 flatten: bool = True,
-                 dtype: torch.dtype = None,
-                 weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
-                 bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
-                 position_embed_initializer: Callable = init.zeros_()):
+    def __init__(
+        self,
+        img_size: int,
+        patch_size: int,
+        in_chans: int,
+        embed_size: int,
+        flatten: bool = True,
+        dtype: torch.dtype = None,
+        weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
+        bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
+        position_embed_initializer: Callable = init.zeros_(),
+    ):
         super().__init__()
         img_size = to_2tuple(img_size)
         patch_size = to_2tuple(patch_size)
@@ -172,11 +173,13 @@ class VanillaPatchEmbedding(nn.Module):
         self.flatten = flatten
 
         self.weight = nn.Parameter(
-            torch.empty((embed_size, in_chans, *self.patch_size), device=get_current_device(), dtype=dtype))
+            torch.empty((embed_size, in_chans, *self.patch_size), device=get_current_device(), dtype=dtype)
+        )
         self.bias = nn.Parameter(torch.empty(embed_size, device=get_current_device(), dtype=dtype))
         self.cls_token = nn.Parameter(torch.zeros((1, 1, embed_size), device=get_current_device(), dtype=dtype))
         self.pos_embed = nn.Parameter(
-            torch.zeros((1, self.num_patches + 1, embed_size), device=get_current_device(), dtype=dtype))
+            torch.zeros((1, self.num_patches + 1, embed_size), device=get_current_device(), dtype=dtype)
+        )
 
         self.reset_parameters(weight_initializer, bias_initializer, position_embed_initializer)
 
@@ -188,11 +191,12 @@ class VanillaPatchEmbedding(nn.Module):
 
     def forward(self, input_: Tensor) -> Tensor:
         B, C, H, W = input_.shape
-        assert H == self.img_size[0] and W == self.img_size[1], \
-            f"Input image size ({H}*{W}) doesn't match model ({self.img_size[0]}*{self.img_size[1]})."
+        assert (
+            H == self.img_size[0] and W == self.img_size[1]
+        ), f"Input image size ({H}*{W}) doesn't match model ({self.img_size[0]}*{self.img_size[1]})."
         output = F.conv2d(input_, self.weight, self.bias, stride=self.patch_size)
         if self.flatten:
-            output = output.flatten(2).transpose(1, 2)    # BCHW -> BNC
+            output = output.flatten(2).transpose(1, 2)  # BCHW -> BNC
 
         cls_token = self.cls_token.expand(output.shape[0], -1, -1)
         output = torch.cat((cls_token, output), dim=1)
@@ -219,14 +223,16 @@ class VanillaClassifier(nn.Module):
     `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
 
-    def __init__(self,
-                 in_features: int,
-                 num_classes: int,
-                 weight: nn.Parameter = None,
-                 bias: bool = True,
-                 dtype: torch.dtype = None,
-                 weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
-                 bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1)):
+    def __init__(
+        self,
+        in_features: int,
+        num_classes: int,
+        weight: nn.Parameter = None,
+        bias: bool = True,
+        dtype: torch.dtype = None,
+        weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
+        bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
+    ):
         super().__init__()
         self.in_features = in_features
         self.num_classes = num_classes
@@ -236,7 +242,8 @@ class VanillaClassifier(nn.Module):
             self.has_weight = False
         else:
             self.weight = nn.Parameter(
-                torch.empty(self.num_classes, self.in_features, device=get_current_device(), dtype=dtype))
+                torch.empty(self.num_classes, self.in_features, device=get_current_device(), dtype=dtype)
+            )
             self.has_weight = True
         if bias:
             self.bias = nn.Parameter(torch.zeros(self.num_classes, device=get_current_device(), dtype=dtype))
@@ -280,7 +287,7 @@ class VanillaLayerNorm(nn.Module):
         self.normalized_shape = (normalized_shape,)
         self.variance_epsilon = eps
 
-        factory_kwargs = {'device': get_current_device(), 'dtype': dtype}
+        factory_kwargs = {"device": get_current_device(), "dtype": dtype}
 
         self.weight = nn.Parameter(torch.ones(normalized_shape, **factory_kwargs))
         if bias:
@@ -311,20 +318,22 @@ class VanillaLinear(nn.Module):
     `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
 
-    def __init__(self,
-                 in_features: int,
-                 out_features: int,
-                 bias: bool = True,
-                 dtype: torch.dtype = None,
-                 skip_bias_add: bool = False,
-                 weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
-                 bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
-                 **kwargs) -> None:
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        bias: bool = True,
+        dtype: torch.dtype = None,
+        skip_bias_add: bool = False,
+        weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
+        bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
+        **kwargs,
+    ) -> None:
         super().__init__()
         self.in_features = in_features
         self.out_features = out_features
         self.skip_bias_add = skip_bias_add
-        factory_kwargs = {'device': get_current_device(), 'dtype': dtype}
+        factory_kwargs = {"device": get_current_device(), "dtype": dtype}
         self.weight = Parameter(torch.empty(self.out_features, self.in_features, **factory_kwargs))
         if bias:
             self.bias = Parameter(torch.empty(self.out_features, **factory_kwargs))

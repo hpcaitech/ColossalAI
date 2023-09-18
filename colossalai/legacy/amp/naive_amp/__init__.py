@@ -41,7 +41,7 @@ def convert_to_naive_amp(model: nn.Module, optimizer: Optimizer, amp_config):
         output_to_fp32 = is_no_pp_or_last_stage()
         model = NaiveAMPModel(model, output_to_fp32=output_to_fp32)
 
-    use_dynamic_grad_scaler = amp_config.pop('dynamic_grad_scale', True)
+    use_dynamic_grad_scaler = amp_config.pop("dynamic_grad_scale", True)
     if use_dynamic_grad_scaler:
         scaler_class = DynamicGradScaler
     else:
@@ -57,4 +57,4 @@ def convert_to_naive_amp(model: nn.Module, optimizer: Optimizer, amp_config):
     return model, optimizer
 
 
-__all__ = ['convert_to_naive_amp', 'NaiveAMPOptimizer', 'FP16Optimizer']
+__all__ = ["convert_to_naive_amp", "NaiveAMPOptimizer", "FP16Optimizer"]

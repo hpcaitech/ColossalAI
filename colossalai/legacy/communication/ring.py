@@ -28,19 +28,20 @@ def ring_forward(tensor_send_next: torch.Tensor, parallel_mode: ParallelMode) ->
     ops = []
     current_rank = gpc.get_global_rank()
 
-    tensor_recv_prev = torch.empty(buffer_shape,
-                                   requires_grad=True,
-                                   device=get_current_device(),
-                                   dtype=tensor_send_next.dtype)
+    tensor_recv_prev = torch.empty(
+        buffer_shape, requires_grad=True, device=get_current_device(), dtype=tensor_send_next.dtype
+    )
 
     # send to next rank
-    send_next_op = torch.distributed.P2POp(torch.distributed.isend, tensor_send_next,
-                                           gpc.get_next_global_rank(parallel_mode))
+    send_next_op = torch.distributed.P2POp(
+        torch.distributed.isend, tensor_send_next, gpc.get_next_global_rank(parallel_mode)
+    )
     ops.append(send_next_op)
 
     # receive from prev rank
-    recv_prev_op = torch.distributed.P2POp(torch.distributed.irecv, tensor_recv_prev,
-                                           gpc.get_prev_global_rank(parallel_mode))
+    recv_prev_op = torch.distributed.P2POp(
+        torch.distributed.irecv, tensor_recv_prev, gpc.get_prev_global_rank(parallel_mode)
+    )
     ops.append(recv_prev_op)
 
     if current_rank % 2 == 0:

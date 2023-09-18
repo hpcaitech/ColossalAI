@@ -7,7 +7,7 @@ BATCH_SIZE = 1
 SEQ_LENGHT = 16
 
 
-@pytest.mark.skip('balance split v2 is not ready')
+@pytest.mark.skip("balance split v2 is not ready")
 def test_opt():
     MODEL_LIST = [
         transformers.OPTModel,
@@ -27,5 +27,5 @@ def test_opt():
         split_model_and_compare_output(model, data_gen)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_opt()

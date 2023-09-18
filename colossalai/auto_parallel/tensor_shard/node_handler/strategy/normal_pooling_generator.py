@@ -21,28 +21,31 @@ class NormalPoolStrategyGenerator(StrategyGenerator):
     """
 
     def validate(self) -> bool:
-        '''
+        """
         In sanity check, we need make sure the input data having correct dimension size.
         For Pool1d, the dim of input data should be 3([N, C, L]).
         For Pool2d, the dim of input data should be 4([N, C, H, W]).
         For Pool3d, the dim of input data should be 5([N, C, H, W, D]).
-        '''
-        input_op_data = self.op_data['input']
+        """
+        input_op_data = self.op_data["input"]
         assert input_op_data.data.dim() in (
-            3, 4, 5), f'We suppose the dim of input fed into Pool op should in range of [3, 5].'
+            3,
+            4,
+            5,
+        ), f"We suppose the dim of input fed into Pool op should in range of [3, 5]."
 
     def update_compute_cost(self, strategy: ShardingStrategy) -> TrainCycleItem:
-        '''
+        """
         Compute the computation cost per device with this specific strategy.
 
         Note: compute_cost need to be divided by TFLOPS, now it just shows the computation size.
-        '''
+        """
         # TODO: compute_cost need to be divided by TFLOPS, now it just shows the computation size.
         # 1D: (Lout) * N * C * kernel
         # 2D: (H * W) * N * Cout * Cin * kernel
         # 3D: (H * W  * D) * N * Cout * Cin * kernel
-        sharded_output_shape = strategy.sharding_specs[self.op_data['output']].get_sharded_shape_per_device()
-        sharded_input_shape = strategy.sharding_specs[self.op_data['input']].get_sharded_shape_per_device()
+        sharded_output_shape = strategy.sharding_specs[self.op_data["output"]].get_sharded_shape_per_device()
+        sharded_input_shape = strategy.sharding_specs[self.op_data["input"]].get_sharded_shape_per_device()
 
         kernel_size = self.op_data["other"].data
         if isinstance(kernel_size, int):
@@ -61,8 +64,8 @@ class NormalPoolStrategyGenerator(StrategyGenerator):
 
     def update_memory_cost(self, strategy: ShardingStrategy) -> ShardingStrategy:
         forward_size_mapping = {
-            'input': self._compute_size_in_bytes(strategy, "input"),
-            'output': self._compute_size_in_bytes(strategy, "output")
+            "input": self._compute_size_in_bytes(strategy, "input"),
+            "output": self._compute_size_in_bytes(strategy, "output"),
         }
 
         backward_size_mapping = copy.deepcopy(forward_size_mapping)
@@ -88,12 +91,16 @@ class NormalPoolStrategyGenerator(StrategyGenerator):
 
         sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)
 
-        name = f'{sharding_spec_mapping["output"].sharding_sequence} = {sharding_spec_mapping["input"].sharding_sequence}'
+        name = (
+            f'{sharding_spec_mapping["output"].sharding_sequence} = {sharding_spec_mapping["input"].sharding_sequence}'
+        )
         communication_action_mapping = {}
 
-        strategy = self.get_sharding_strategy(name=name,
-                                              sharding_spec_mapping=sharding_spec_mapping,
-                                              communication_action_mapping=communication_action_mapping)
+        strategy = self.get_sharding_strategy(
+            name=name,
+            sharding_spec_mapping=sharding_spec_mapping,
+            communication_action_mapping=communication_action_mapping,
+        )
 
         return strategy
 

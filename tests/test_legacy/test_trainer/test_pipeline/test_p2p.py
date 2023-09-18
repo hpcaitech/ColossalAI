@@ -8,12 +8,10 @@ import torch.distributed as dist
 from colossalai.legacy.communication import (
     recv_backward,
     recv_forward,
-    recv_obj_meta,
     send_backward,
     send_backward_recv_forward,
     send_forward,
     send_forward_recv_backward,
-    send_obj_meta,
 )
 from colossalai.legacy.context.parallel_mode import ParallelMode
 from colossalai.legacy.core import global_context as gpc
@@ -39,10 +37,10 @@ def check_forward(output_tensor, rank, logger):
         tensor = output_tensor.clone()
     else:
         tensor = recv_forward(output_tensor.shape)
-        logger.info('Rank {} received forward. Correct tensor: {}'.format(rank, check_equal(tensor, output_tensor)))
+        logger.info("Rank {} received forward. Correct tensor: {}".format(rank, check_equal(tensor, output_tensor)))
     if not gpc.is_last_rank(ParallelMode.PIPELINE):
         send_forward(tensor)
-        logger.info('Rank {} sent forward.'.format(rank))
+        logger.info("Rank {} sent forward.".format(rank))
 
 
 def check_backward(output_grad, rank, logger):
@@ -51,22 +49,26 @@ def check_backward(output_grad, rank, logger):
         grad = output_grad.clone()
     else:
         grad = recv_backward(output_grad.shape)
-        logger.info('Rank {} received backward. Correct grad: {}'.format(rank, check_equal(grad, output_grad)))
+        logger.info("Rank {} received backward. Correct grad: {}".format(rank, check_equal(grad, output_grad)))
     if not gpc.is_first_rank(ParallelMode.PIPELINE):
         send_backward(grad)
-        logger.info('Rank {} sent backward.'.format(rank))
+        logger.info("Rank {} sent backward.".format(rank))
 
 
 def check_forward_backward(output_tensor, output_grad, rank, logger):
     dist.barrier()
     if not gpc.is_first_rank(ParallelMode.PIPELINE):
         tensor = send_backward_recv_forward(output_grad, output_tensor.shape)
-        logger.info('Rank {} sent backward received forward. Correct tensor: {}'.format(
-            rank, check_equal(tensor, output_tensor)))
+        logger.info(
+            "Rank {} sent backward received forward. Correct tensor: {}".format(
+                rank, check_equal(tensor, output_tensor)
+            )
+        )
     if not gpc.is_last_rank(ParallelMode.PIPELINE):
         grad = send_forward_recv_backward(output_tensor, output_grad.shape)
-        logger.info('Rank {} sent forward received backward. Correct grad: {}'.format(
-            rank, check_equal(grad, output_grad)))
+        logger.info(
+            "Rank {} sent forward received backward. Correct grad: {}".format(rank, check_equal(grad, output_grad))
+        )
 
 
 def check_comm(size, rank, prev_rank, next_rank, logger):
@@ -84,13 +86,13 @@ def check_comm(size, rank, prev_rank, next_rank, logger):
 
 
 def run_check(rank, world_size, port):
-    launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    launch(config=CONFIG, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     logger = get_dist_logger()
     rank = gpc.get_global_rank()
     prev_rank = gpc.get_prev_global_rank(ParallelMode.PIPELINE)
     next_rank = gpc.get_next_global_rank(ParallelMode.PIPELINE)
-    logger.info('Rank {0}: prev rank {1}, next rank {2}'.format(rank, prev_rank, next_rank))
-    logger.info('Distributed environment is initialized.')
+    logger.info("Rank {0}: prev rank {1}, next rank {2}".format(rank, prev_rank, next_rank))
+    logger.info("Distributed environment is initialized.")
 
     check_comm(world_size, rank, prev_rank, next_rank, logger)
     gpc.destroy()
@@ -104,5 +106,5 @@ def test_p2p():
     spawn(run_check, world_size)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_p2p()

@@ -4,7 +4,6 @@
 import os
 from pathlib import Path
 
-import pytest
 import torch
 import torch.distributed as dist
 from torchvision import datasets, transforms
@@ -20,8 +19,8 @@ CONFIG = Config(
     dict(
         train_data=dict(
             dataset=dict(
-                type='CIFAR10',
-                root=Path(os.environ['DATA']),
+                type="CIFAR10",
+                root=Path(os.environ["DATA"]),
                 train=True,
                 download=True,
             ),
@@ -32,17 +31,18 @@ CONFIG = Config(
             tensor=dict(size=1, mode=None),
         ),
         seed=1024,
-    ))
+    )
+)
 
 
 def run_data_sampler(rank, world_size, port):
-    dist_args = dict(config=CONFIG, rank=rank, world_size=world_size, backend='gloo', port=port, host='localhost')
+    dist_args = dict(config=CONFIG, rank=rank, world_size=world_size, backend="gloo", port=port, host="localhost")
     colossalai.legacy.launch(**dist_args)
 
     # build dataset
     transform_pipeline = [transforms.ToTensor(), transforms.RandomCrop(size=32, padding=4)]
     transform_pipeline = transforms.Compose(transform_pipeline)
-    dataset = datasets.CIFAR10(root=Path(os.environ['DATA']), train=True, download=True, transform=transform_pipeline)
+    dataset = datasets.CIFAR10(root=Path(os.environ["DATA"]), train=True, download=True, transform=transform_pipeline)
 
     # build dataloader
     dataloader = get_dataloader(dataset, batch_size=8, add_sampler=False)
@@ -60,8 +60,9 @@ def run_data_sampler(rank, world_size, port):
     if gpc.get_local_rank(ParallelMode.DATA) != 0:
         # this is without sampler
         # this should be false if data parallel sampler to given to the dataloader
-        assert torch.equal(img,
-                           img_to_compare), 'Same image was distributed across ranks and expected it to be the same'
+        assert torch.equal(
+            img, img_to_compare
+        ), "Same image was distributed across ranks and expected it to be the same"
     torch.cuda.empty_cache()
 
 
@@ -70,5 +71,5 @@ def test_data_sampler():
     spawn(run_data_sampler, 4)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_data_sampler()

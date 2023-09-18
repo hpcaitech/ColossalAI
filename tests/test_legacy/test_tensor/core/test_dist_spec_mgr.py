@@ -48,17 +48,17 @@ def check_mem():
 
 
 def run_dist(rank, world_size, port):
-    colossalai.legacy.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.legacy.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     check_mem()
     run()
 
 
 @pytest.mark.dist
-@pytest.mark.parametrize('world_size', [1, 4])
+@pytest.mark.parametrize("world_size", [1, 4])
 @rerun_if_address_is_in_use()
 def test_dist_spec_mgr(world_size):
     spawn(run_dist, world_size)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_dist_spec_mgr(4)

@@ -2,7 +2,6 @@ from abc import ABC, abstractmethod
 
 
 class DummyDataGenerator(ABC):
-
     def __init__(self, length=10):
         self.length = length
 

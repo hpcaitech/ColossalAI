@@ -10,10 +10,10 @@ from colossalai.utils import _cast_float
 
 from .memory_stats import MemStats
 
-__all__ = ['RuntimeMemTracer']
+__all__ = ["RuntimeMemTracer"]
 
 
-class RuntimeMemTracer():
+class RuntimeMemTracer:
     """RuntimeMemTracer for the module training using ColoParameter.
 
     Trace non-model memory usage during fwd+bwd process.
