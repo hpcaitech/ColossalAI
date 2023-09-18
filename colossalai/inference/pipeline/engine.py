@@ -74,9 +74,10 @@ class PPInferEngine:
         self.mb_manager = MicroBatchManager(self.stage_manager.stage, new_length, micro_batch_size,
                                             micro_batch_buffer_size or pp_size)
         self.schedule = GenerateSchedule(self.stage_manager, self.mb_manager, verbose)
-        self.model = pp_model or self._shardformer(model, model_policy)
         if fp16:
-            self.model.half()
+            model.half()
+        self.model = pp_model or self._shardformer(model, model_policy)
+
 
     def inference(self, input_list):
         out = self.schedule.generate_step(self.model, iter(input_list))
