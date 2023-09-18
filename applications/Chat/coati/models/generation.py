@@ -58,13 +58,17 @@ def _sample(model: Actor,
     for _ in range(input_ids.size(1), max_length):
         model_inputs = prepare_inputs_fn(input_ids, **model_kwargs) \
             if prepare_inputs_fn is not None else {'input_ids': input_ids}
+        print(model_inputs)
         outputs = model(**model_inputs)
 
         next_token_logits = outputs['logits'][:, -1, :]
         # pre-process distribution
+        print("input_ids" + str(input_ids))
+        print("next_token_logits" + str(next_token_logits))
         next_token_logits = logits_processor(input_ids, next_token_logits)
         # sample
         probs = torch.softmax(next_token_logits, dim=-1, dtype=torch.float)
+        print(probs)
         next_tokens = torch.multinomial(probs, num_samples=1).squeeze(1)
 
         # finished sentences should have their next token be a padding token

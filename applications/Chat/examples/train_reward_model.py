@@ -46,7 +46,7 @@ def train(args):
         else:
             raise ValueError(f'Unsupported model "{args.model}"')
 
-        model.to(torch.float16).to(torch.cuda.current_device())
+        model.to(torch.bfloat16).to(torch.cuda.current_device())
 
         if args.model_path is not None:
             state_dict = torch.load(args.model_path)

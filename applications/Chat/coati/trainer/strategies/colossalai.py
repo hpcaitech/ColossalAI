@@ -186,6 +186,13 @@ class GeminiStrategy(DDPStrategy):
         colossalai.launch_from_torch({}, seed=self.seed)
 
     def model_init_context(self):
+        # world_size = dist.get_world_size()
+        # shard_pg = ProcessGroup(tp_degree=world_size) if self.shard_init else None
+        # default_dist_spec = ShardSpec([-1], [world_size]) if self.shard_init else None
+        # return ColoInitContext(device=get_current_device(),
+        #                        dtype=torch.half,
+        #                        default_pg=shard_pg,
+        #                        default_dist_spec=default_dist_spec)
         return super().model_init_context()
 
     def unwrap_model(self, model: nn.Module) -> nn.Module:

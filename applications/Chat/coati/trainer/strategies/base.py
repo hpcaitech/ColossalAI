@@ -49,6 +49,7 @@ class Strategy(ABC):
         pass
 
     def model_init_context(self):
+        print("aaaaaaa nullcontext")
         return nullcontext()
 
     def prepare(self, *boost_args: _BoostArgSpec) -> Union[List[_BoostArgSpec], _BoostArgSpec]:

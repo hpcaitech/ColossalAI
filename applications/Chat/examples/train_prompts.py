@@ -65,8 +65,8 @@ def main(args):
         if args.rm_path is not None:
             reward_model.load_state_dict(state_dict, strict=False)
 
-        initial_model.to(torch.float16).to(torch.cuda.current_device())
-        reward_model.to(torch.float16).to(torch.cuda.current_device())
+        initial_model.to(torch.bfloat16).to(torch.cuda.current_device())
+        reward_model.to(torch.bfloat16).to(torch.cuda.current_device())
 
         if args.model == 'gpt2':
             actor = GPTActor(pretrained=args.pretrain, lora_rank=args.lora_rank)
@@ -95,8 +95,8 @@ def main(args):
             del state_dict
 
     if args.strategy != 'colossalai_gemini':
-        critic.to(torch.float16).to(torch.cuda.current_device())
-        actor.to(torch.float16).to(torch.cuda.current_device())
+        critic.to(torch.bfloat16).to(torch.cuda.current_device())
+        actor.to(torch.bfloat16).to(torch.cuda.current_device())
 
     # configure optimizer
     if args.strategy.startswith('colossalai'):
