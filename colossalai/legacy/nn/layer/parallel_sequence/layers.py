@@ -9,11 +9,11 @@ import torch.nn.functional as F
 from torch.nn import Parameter
 
 import colossalai
-from colossalai.context import seed
-from colossalai.context.parallel_mode import ParallelMode
-from colossalai.core import global_context as gpc
 from colossalai.kernel import FusedScaleMaskSoftmax
 from colossalai.kernel.cuda_native.scaled_softmax import AttnMaskType
+from colossalai.legacy.context import seed
+from colossalai.legacy.context.parallel_mode import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 from colossalai.legacy.nn.layer.parallel_sequence._operation import RingAV, RingQK
 from colossalai.legacy.registry import LAYERS
 

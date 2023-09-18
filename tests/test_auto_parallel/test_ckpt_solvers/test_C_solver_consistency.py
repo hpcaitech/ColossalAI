@@ -6,12 +6,12 @@ import torch.fx
 import torchvision.models as tm
 
 import colossalai
-from colossalai.core import global_context as gpc
 from colossalai.fx import ColoGraphModule, ColoTracer
 from colossalai.fx._compatibility import is_compatible_with_meta
 # from colossalai.fx.passes.algorithms import solver_rotor
 # from colossalai.fx.passes.algorithms.operation import Sequence
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
+from colossalai.legacy.core import global_context as gpc
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 if is_compatible_with_meta():

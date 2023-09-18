@@ -51,12 +51,13 @@ from transformers import (
 from transformers.utils.versions import require_version
 
 import colossalai
-from colossalai.context import ParallelMode
-from colossalai.core import global_context as gpc
+from colossalai.legacy.context import ParallelMode
+from colossalai.legacy.core import global_context as gpc
+from colossalai.legacy.tensor import ProcessGroup
+from colossalai.legacy.utils import get_dataloader
 from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.tensor import ProcessGroup
-from colossalai.utils import get_current_device, get_dataloader
+from colossalai.utils import get_current_device
 from colossalai.zero import GeminiOptimizer
 
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt")

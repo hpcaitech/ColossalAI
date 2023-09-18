@@ -2,8 +2,8 @@ import pytest
 import torch
 
 import colossalai
-from colossalai.amp import convert_to_apex_amp
 from colossalai.context import MOE_CONTEXT
+from colossalai.legacy.amp import convert_to_apex_amp
 from colossalai.legacy.engine.gradient_handler import MoeGradientHandler
 from colossalai.nn import MoeLoss
 from colossalai.nn.optimizer import CPUAdam

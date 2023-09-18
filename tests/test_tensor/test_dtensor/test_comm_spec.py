@@ -1,7 +1,7 @@
 import pytest
 import torch
+import torch.distributed as dist
 
-from colossalai.core import global_context as gpc
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
@@ -127,7 +127,7 @@ def check_comm(rank, world_size, port):
     launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
 
     physical_mesh_id = torch.arange(0, 4)
-    assert rank == gpc.get_global_rank()
+    assert rank == dist.get_rank()
 
     mesh_shape = (2, 2)
     # [[0, 1,
@@ -148,8 +148,6 @@ def check_comm(rank, world_size, port):
     # test all reduce
     check_all_reduce_fwd(process_group_dict, rank)
     check_all_reduce_bwd(process_group_dict, rank)
-
-    gpc.destroy()
 
 
 @pytest.mark.dist

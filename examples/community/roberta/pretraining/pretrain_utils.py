@@ -16,7 +16,7 @@ from transformers import (
     get_linear_schedule_with_warmup,
 )
 
-from colossalai.core import global_context as gpc
+from colossalai.legacy.core import global_context as gpc
 from colossalai.nn.lr_scheduler import LinearWarmupLR
 from colossalai.nn.optimizer import FusedAdam, HybridAdam
 

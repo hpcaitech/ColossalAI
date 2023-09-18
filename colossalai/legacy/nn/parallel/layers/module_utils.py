@@ -2,7 +2,8 @@ from typing import Dict
 
 import torch
 
-from colossalai.tensor import ColoParameter, ComputeSpec, ProcessGroup, distspec
+from colossalai.legacy.tensor import ComputeSpec, ProcessGroup, distspec
+from colossalai.tensor import ColoParameter
 
 from . import ColoModule
 

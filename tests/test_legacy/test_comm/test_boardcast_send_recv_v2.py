@@ -1,10 +1,10 @@
 import pytest
 import torch
 
-from colossalai.context import ParallelMode
-from colossalai.core import global_context as gpc
-from colossalai.initialize import launch
 from colossalai.legacy.communication.p2p_v2 import _recv_object, _send_object
+from colossalai.legacy.context import ParallelMode
+from colossalai.legacy.core import global_context as gpc
+from colossalai.legacy.initialize import launch
 from colossalai.logging import disable_existing_loggers
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 

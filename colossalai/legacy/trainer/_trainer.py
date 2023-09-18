@@ -6,8 +6,9 @@ from tqdm import tqdm
 
 from colossalai.legacy.engine import Engine
 from colossalai.legacy.trainer.hooks import BaseHook
+from colossalai.legacy.utils import is_dp_rank_0, is_no_pp_or_last_stage, is_tp_rank_0
 from colossalai.logging import DistributedLogger
-from colossalai.utils import MultiTimer, is_dp_rank_0, is_no_pp_or_last_stage, is_tp_rank_0
+from colossalai.utils import MultiTimer
 
 
 class Trainer:

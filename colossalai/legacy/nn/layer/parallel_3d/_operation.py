@@ -7,10 +7,10 @@ import torch
 from torch import Tensor
 from torch.cuda.amp import custom_bwd, custom_fwd
 
-from colossalai.constants import INPUT_GROUP_3D, WEIGHT_GROUP_3D
-from colossalai.context.parallel_mode import ParallelMode
-from colossalai.core import global_context as gpc
 from colossalai.legacy.communication import all_gather, all_reduce, broadcast, reduce, reduce_scatter
+from colossalai.legacy.constants import INPUT_GROUP_3D, WEIGHT_GROUP_3D
+from colossalai.legacy.context.parallel_mode import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 
 from ._utils import get_parallel_mode_from_env, push_async_grad
 
@@ -73,9 +73,9 @@ def linear_3d(
     Args:
         input_ (:class:`torch.tensor`): input matrix.
         weight (:class:`torch.tensor`): matrix of weight.
-        input_parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`): input parallel mode.
-        weight_parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`): weight parallel mode.
-        output_parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`): output parallel mode.
+        input_parallel_mode (:class:`colossalai.legacy.context.parallel_mode.ParallelMode`): input parallel mode.
+        weight_parallel_mode (:class:`colossalai.legacy.context.parallel_mode.ParallelMode`): weight parallel mode.
+        output_parallel_mode (:class:`colossalai.legacy.context.parallel_mode.ParallelMode`): output parallel mode.
 
     Note:
         The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
@@ -166,9 +166,9 @@ def classifier_3d(
         input_ (:class:`torch.tensor`): input matrix.
         weight (:class:`torch.tensor`): matrix of weight.
         bias (:class:`torch.tensor`): matrix of bias.
-        input_parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`): input parallel mode.
-        weight_parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`): weight parallel mode.
-        output_parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`): output parallel mode.
+        input_parallel_mode (:class:`colossalai.legacy.context.parallel_mode.ParallelMode`): input parallel mode.
+        weight_parallel_mode (:class:`colossalai.legacy.context.parallel_mode.ParallelMode`): weight parallel mode.
+        output_parallel_mode (:class:`colossalai.legacy.context.parallel_mode.ParallelMode`): output parallel mode.
 
     Note:
         The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
@@ -260,9 +260,9 @@ def vocab_parallel_classifier_3d(
         input_ (:class:`torch.tensor`): input matrix.
         weight (:class:`torch.tensor`): matrix of weight.
         bias (:class:`torch.tensor`): matrix of bias.
-        input_parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`): input parallel mode.
-        weight_parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`): weight parallel mode.
-        output_parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`): output parallel mode.
+        input_parallel_mode (:class:`colossalai.legacy.context.parallel_mode.ParallelMode`): input parallel mode.
+        weight_parallel_mode (:class:`colossalai.legacy.context.parallel_mode.ParallelMode`): weight parallel mode.
+        output_parallel_mode (:class:`colossalai.legacy.context.parallel_mode.ParallelMode`): output parallel mode.
 
     Note:
         The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
@@ -378,8 +378,8 @@ def layernorm_3d(
             If a single integer is used, it is treated as a singleton list, and this module will
             normalize over the last dimension which is expected to be of that specific size.
         eps (float): a value added to the denominator for numerical stability
-        output_parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`): output parallel mode.
-        input_x_weight_parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`): input x weight parallel mode.
+        output_parallel_mode (:class:`colossalai.legacy.context.parallel_mode.ParallelMode`): output parallel mode.
+        input_x_weight_parallel_mode (:class:`colossalai.legacy.context.parallel_mode.ParallelMode`): input x weight parallel mode.
 
     Note:
         The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
@@ -404,7 +404,7 @@ def split_tensor_3d(tensor: Tensor, dim: int, parallel_mode: ParallelMode) -> Te
     Args:
         tensor (:class:`torch.tensor`): Input tensor.
         dim (int): Specified dimension in which to split.
-        parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`, optional): Parallel mode.
+        parallel_mode (:class:`colossalai.legacy.context.parallel_mode.ParallelMode`, optional): Parallel mode.
 
     Returns:
         :class:`torch.tensor`: The tensor has been split.
@@ -434,8 +434,8 @@ def split_batch_3d(input_: Tensor,
     Args:
         input_ (:class:`torch.tensor`): Input tensor.
         dim (int): Specified dimension in which to split.
-        input_parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`, optional): input parallel mode.
-        weight_parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`, optional): weight parallel mode.
+        input_parallel_mode (:class:`colossalai.legacy.context.parallel_mode.ParallelMode`, optional): input parallel mode.
+        weight_parallel_mode (:class:`colossalai.legacy.context.parallel_mode.ParallelMode`, optional): weight parallel mode.
 
     Returns:
         :class:`torch.tensor`: The tensor has been split.
@@ -471,7 +471,7 @@ def reduce_tensor_3d(tensor: Tensor, parallel_mode: ParallelMode) -> Tensor:
 
     Args:
         tensor (:class:`torch.tensor`): Input tensor.
-        parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`): Parallel mode.
+        parallel_mode (:class:`colossalai.legacy.context.parallel_mode.ParallelMode`): Parallel mode.
 
     Note:
         The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
@@ -501,7 +501,7 @@ def all_gather_tensor_3d(tensor: Tensor, dim: int, parallel_mode: ParallelMode) 
     Args:
         tensor (:class:`torch.tensor`): Input tensor.
         dim (int): Dimension to gather.
-        parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`): Parallel mode.
+        parallel_mode (:class:`colossalai.legacy.context.parallel_mode.ParallelMode`): Parallel mode.
 
     Note:
         The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
@@ -530,7 +530,7 @@ def reduce_scatter_tensor_3d(tensor: Tensor, dim: int, parallel_mode: ParallelMo
     Args:
         tensor (:class:`torch.tensor`): Input tensor.
         dim (int): Dimension to scatter.
-        parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`): Parallel mode.
+        parallel_mode (:class:`colossalai.legacy.context.parallel_mode.ParallelMode`): Parallel mode.
 
     Note:
         The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
@@ -578,8 +578,8 @@ def reduce_by_batch_3d(tensor: Tensor,
     r"""All-reduce the input from the model parallel region.
 
     Args:
-        input_parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`): input parallel mode.
-        weight_parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`): weight parallel mode.
+        input_parallel_mode (:class:`colossalai.legacy.context.parallel_mode.ParallelMode`): input parallel mode.
+        weight_parallel_mode (:class:`colossalai.legacy.context.parallel_mode.ParallelMode`): weight parallel mode.
         reduce_mean (bool, optional): If set to ``True``, it will divide the output by
             (input parallel size * weight parallel size), default to False.
 

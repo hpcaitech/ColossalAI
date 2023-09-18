@@ -1,10 +1,12 @@
-import torch.nn as nn
-import torch.distributed as dist
-from colossalai.core import global_context as gpc
-from colossalai.context.moe_context import MOE_CONTEXT
-from colossalai.context import ParallelMode
-from .common import is_using_ddp
 from typing import Dict, List
+
+import torch.distributed as dist
+import torch.nn as nn
+
+from colossalai.context.moe_context import MOE_CONTEXT
+from colossalai.legacy.context import ParallelMode
+from colossalai.legacy.core import global_context as gpc
+from colossalai.legacy.utils import is_using_ddp
 
 
 def get_moe_epsize_param_dict(model: nn.Module) -> Dict[int, List[nn.Parameter]]:

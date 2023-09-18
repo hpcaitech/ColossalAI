@@ -1,8 +1,8 @@
 import pytest
 
 import colossalai
-from colossalai.amp import AMP_TYPE
-from colossalai.core import global_context as gpc
+from colossalai.legacy.amp import AMP_TYPE
+from colossalai.legacy.core import global_context as gpc
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from tests.components_to_test.registry import non_distributed_component_funcs
 
@@ -20,10 +20,11 @@ def run_train(model_name, amp_mode):
     model_builder, train_dataloader, _, optimizer_class, criterion = get_components_func()
 
     model = model_builder(checkpoint=False)
-    engine, train_dataloader, *args = colossalai.initialize(model=model,
-                                                            optimizer=optimizer_class(model.parameters(), lr=1e-3),
-                                                            criterion=criterion,
-                                                            train_dataloader=train_dataloader)
+    engine, train_dataloader, *args = colossalai.legacy.initialize(model=model,
+                                                                   optimizer=optimizer_class(model.parameters(),
+                                                                                             lr=1e-3),
+                                                                   criterion=criterion,
+                                                                   train_dataloader=train_dataloader)
 
     try:
         engine.train()
@@ -48,7 +49,12 @@ def run_train(model_name, amp_mode):
 
 def run_engine(rank, world_size, port):
     # init dist env
-    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.legacy.launch(config=CONFIG,
+                             rank=rank,
+                             world_size=world_size,
+                             host='localhost',
+                             port=port,
+                             backend='nccl')
     run_train()
 
 

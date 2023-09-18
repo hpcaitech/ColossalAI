@@ -4,12 +4,12 @@ import torch.distributed as dist
 
 import colossalai
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
+from colossalai.utils import set_seed
 from colossalai.zero import GeminiDDP
 from colossalai.zero.gemini.chunk import search_chunk_configuration
 from colossalai.zero.gemini.memory_tracer.runtime_mem_tracer import RuntimeMemTracer
 from tests.components_to_test import run_fwd_bwd
 from tests.components_to_test.registry import non_distributed_component_funcs
-from tests.test_tensor.common_utils import set_seed
 
 # run gemini use the runtime memory tracer
 

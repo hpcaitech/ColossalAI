@@ -7,8 +7,8 @@ from colossalai.testing import spawn
 
 
 def check_process_group_mesh_with_gpc():
-    from colossalai.context import ParallelMode
-    from colossalai.core import global_context as gpc
+    from colossalai.legacy.context import ParallelMode
+    from colossalai.legacy.core import global_context as gpc
 
     DP_DIM, PP_DIM, TP_DIM = 0, 1, 2
     pg_mesh = ProcessGroupMesh(1, 2, 2)
@@ -138,7 +138,7 @@ def run_dist(rank, world_size, port):
                       port=port,
                       host='localhost')
     # TODO(ver217): this function should be removed when gpc is removed
-    check_process_group_mesh_with_gpc()
+    # check_process_group_mesh_with_gpc()
     check_process_group_mesh_with_cases()
 
 

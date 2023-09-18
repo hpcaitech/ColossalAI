@@ -1,7 +1,8 @@
-from colossalai.context.parallel_mode import ParallelMode
 import torch
 import torch.nn as nn
-from colossalai.core import global_context as gpc
+
+from colossalai.legacy.context.parallel_mode import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 
 
 class PreProcessor(nn.Module):
@@ -14,8 +15,8 @@ class PreProcessor(nn.Module):
         # Create position ids
         seq_length = token_ids.size(1)
         local_rank = gpc.get_local_rank(ParallelMode.SEQUENCE)
-        position_ids = torch.arange(seq_length*local_rank,
-                                    seq_length * (local_rank+1),
+        position_ids = torch.arange(seq_length * local_rank,
+                                    seq_length * (local_rank + 1),
                                     dtype=torch.long,
                                     device=token_ids.device)
         position_ids = position_ids.unsqueeze(0).expand_as(token_ids)

@@ -1,4 +1,4 @@
-from colossalai.amp import AMP_TYPE
+from colossalai.legacy.amp import AMP_TYPE
 
 # hyper-parameters
 TRAIN_ITERS = 10

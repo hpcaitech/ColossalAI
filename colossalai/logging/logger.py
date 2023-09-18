@@ -134,8 +134,6 @@ class DistributedLogger:
 
         Args:
             message (str): The message to be logged.
-            parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`):
-                The parallel mode used for logging. Defaults to ParallelMode.GLOBAL.
             ranks (List[int]): List of parallel ranks.
         """
         message_prefix = "{}:{} {}".format(*self.__get_call_info())
@@ -147,8 +145,6 @@ class DistributedLogger:
 
         Args:
             message (str): The message to be logged.
-            parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`):
-                The parallel mode used for logging. Defaults to ParallelMode.GLOBAL.
             ranks (List[int]): List of parallel ranks.
         """
         message_prefix = "{}:{} {}".format(*self.__get_call_info())
@@ -160,8 +156,6 @@ class DistributedLogger:
 
         Args:
             message (str): The message to be logged.
-            parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`):
-                The parallel mode used for logging. Defaults to ParallelMode.GLOBAL.
             ranks (List[int]): List of parallel ranks.
         """
         message_prefix = "{}:{} {}".format(*self.__get_call_info())
@@ -173,8 +167,6 @@ class DistributedLogger:
 
         Args:
             message (str): The message to be logged.
-            parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`):
-                The parallel mode used for logging. Defaults to ParallelMode.GLOBAL.
             ranks (List[int]): List of parallel ranks.
         """
         message_prefix = "{}:{} {}".format(*self.__get_call_info())

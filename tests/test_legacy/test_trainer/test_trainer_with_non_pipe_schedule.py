@@ -2,7 +2,7 @@ import pytest
 import torch
 
 import colossalai
-from colossalai.amp.amp_type import AMP_TYPE
+from colossalai.legacy.amp.amp_type import AMP_TYPE
 from colossalai.legacy.trainer import Trainer
 from colossalai.logging import get_dist_logger
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
@@ -22,10 +22,10 @@ def run_trainer(model_name):
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
     model = model_builder()
     optimizer = optimizer_class(model.parameters(), lr=1e-3)
-    engine, train_dataloader, *_ = colossalai.initialize(model=model,
-                                                         optimizer=optimizer,
-                                                         criterion=criterion,
-                                                         train_dataloader=train_dataloader)
+    engine, train_dataloader, *_ = colossalai.legacy.initialize(model=model,
+                                                                optimizer=optimizer,
+                                                                criterion=criterion,
+                                                                train_dataloader=train_dataloader)
 
     logger = get_dist_logger()
     logger.info("engine is built", ranks=[0])
@@ -45,7 +45,12 @@ def run_trainer(model_name):
 
 
 def run_dist(rank, world_size, port):
-    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.legacy.launch(config=CONFIG,
+                             rank=rank,
+                             world_size=world_size,
+                             host='localhost',
+                             port=port,
+                             backend='nccl')
 
 
 @pytest.mark.dist

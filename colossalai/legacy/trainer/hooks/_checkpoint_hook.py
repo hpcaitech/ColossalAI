@@ -4,8 +4,8 @@ import torch
 
 from colossalai.legacy.registry import HOOKS
 from colossalai.legacy.trainer.hooks import BaseHook
+from colossalai.legacy.utils.checkpointing import save_checkpoint
 from colossalai.logging import get_dist_logger
-from colossalai.utils.checkpointing import save_checkpoint
 
 from ._lr_scheduler_hook import LRSchedulerHook
 
