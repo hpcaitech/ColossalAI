@@ -96,6 +96,12 @@ def parse_args():
     parser.add_argument("--ep_size", type=int, default=2, help="ep size")
     parser.add_argument("--zero_stage", type=int, default=1, help="zero stage in hybrid plugin")
     parser.add_argument("--microbatch_size", type=int, default=1, help="microbatch size")
+    # kernel
+    parser.add_argument(
+        "--use_kernel",
+        action="store_true",
+        help="Use kernel optim. Need to install flash attention, apex, triton to enable all kernel optimizations.",
+    )
     # loss
     parser.add_argument(
         "--router_aux_loss_factor",
@@ -131,7 +137,7 @@ def main():
         MOE_MANAGER.setup(
             seed=42,
             parallel="EP",
-            use_kernel_optim=True if args.model_name != "test" else False,
+            use_kernel_optim=False if args.model_name == "test" else args.use_kernel,
         )
     elif args.plugin == "hybrid":
         assert (args.dp_size * args.ep_size *
@@ -143,7 +149,7 @@ def main():
             fixed_dp_size=args.dp_size,
             fixed_ep_size=args.ep_size,
             fixed_pp_size=args.pp_size,
-            use_kernel_optim=True if args.model_name != "test" else False,
+            use_kernel_optim=False if args.model_name == "test" else args.use_kernel,
         )
 
     # Manage loggers
@@ -189,6 +195,8 @@ def main():
             zero_stage=args.zero_stage,
             microbatch_size=args.microbatch_size,
             custom_policy=OpenMoeForCausalLMPolicy(),
+            enable_fused_normalization=args.use_kernel,
+            enable_jit_fused=args.use_kernel,
         )
     else:
         raise ValueError(f"Invalid plugin {args.plugin}")

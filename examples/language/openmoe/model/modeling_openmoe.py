@@ -175,6 +175,7 @@ class OpenMoeMLP(nn.Module):
         self.up_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
         self.down_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=False)
         self.act_fn = SwiGLU
+        self.use_kernel = True if MOE_MANAGER.use_kernel_optim else False
 
     def forward(self, x):
         if self.pretraining_tp > 1:
@@ -190,7 +191,7 @@ class OpenMoeMLP(nn.Module):
             down_proj = [F.linear(intermediate_states[i], down_proj_slices[i]) for i in range(self.pretraining_tp)]
             down_proj = sum(down_proj)
         else:
-            if HAS_TRITON:
+            if HAS_TRITON and self.use_kernel:
                 down_proj = self.down_proj(LlamaActCombine.apply(self.gate_proj(x), self.up_proj(x)))
             else:
                 down_proj = self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))

@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
 from torch.nn import Module
-from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
+from transformers.modeling_outputs import CausalLMOutputWithPast
 from transformers.utils import logging
 
 from colossalai.moe.manager import MOE_MANAGER
@@ -17,7 +17,7 @@ from colossalai.shardformer.policies.base_policy import ModulePolicyDescription,
 
 from .modeling_openmoe import OpenMoeDecoderLayer, OpenMoeForCausalLM, OpenMoeModel
 
-__all__ = ['OpenMoePolicy', 'OpenMoeForCausalLMPolicy']
+__all__ = ["OpenMoePolicy", "OpenMoeForCausalLMPolicy"]
 
 
 class OpenMoePolicy(Policy):
@@ -50,29 +50,34 @@ class OpenMoePolicy(Policy):
 
         # optimization configuration
         if self.shard_config.enable_fused_normalization:
-            self.append_or_create_submodule_replacement(description=[
-                SubModuleReplacementDescription(
-                    suffix="input_layernorm",
-                    target_module=FusedRMSNorm,
-                ),
-                SubModuleReplacementDescription(
-                    suffix="post_attention_layernorm",
-                    target_module=FusedRMSNorm,
-                ),
-                SubModuleReplacementDescription(
-                    suffix="pre_extra_mlp_layernorm",
-                    target_module=FusedRMSNorm,
-                )
-            ],
-                                                        policy=policy,
-                                                        target_key=OpenMoeDecoderLayer)
+            self.append_or_create_submodule_replacement(
+                description=[
+                    SubModuleReplacementDescription(
+                        suffix="input_layernorm",
+                        target_module=FusedRMSNorm,
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="post_attention_layernorm",
+                        target_module=FusedRMSNorm,
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="pre_extra_mlp_layernorm",
+                        target_module=FusedRMSNorm,
+                        ignore_if_not_exist=True,
+                    ),
+                ],
+                policy=policy,
+                target_key=OpenMoeDecoderLayer,
+            )
 
-            self.append_or_create_submodule_replacement(description=SubModuleReplacementDescription(
-                suffix="norm",
-                target_module=FusedRMSNorm,
-            ),
-                                                        policy=policy,
-                                                        target_key=OpenMoeModel)
+            self.append_or_create_submodule_replacement(
+                description=SubModuleReplacementDescription(
+                    suffix="norm",
+                    target_module=FusedRMSNorm,
+                ),
+                policy=policy,
+                target_key=OpenMoeModel,
+            )
 
         if self.shard_config.enable_flash_attention:
             raise NotImplementedError("Flash attention has already been replaced in openmoe.")
@@ -84,17 +89,17 @@ class OpenMoePolicy(Policy):
 
     def set_pipeline_forward(self, model_cls: nn.Module, new_forward: Callable, policy: Dict) -> None:
         """If under pipeline parallel setting, replacing the original forward method of huggingface
-           to customized forward method, and add this changing to policy."""
+        to customized forward method, and add this changing to policy."""
         if self.pipeline_stage_manager:
             stage_manager = self.pipeline_stage_manager
-            if self.model.__class__.__name__ == "LlamaModel":
+            if self.model.__class__.__name__ == "OpenMoeModel":
                 module = self.model
             else:
                 module = self.model.model
 
             layers_per_stage = Policy.distribute_layers(len(module.layers), stage_manager.num_stages)
             stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
-            method_replacement = {'forward': partial(new_forward, stage_manager=stage_manager, stage_index=stage_index)}
+            method_replacement = {"forward": partial(new_forward, stage_manager=stage_manager, stage_index=stage_index)}
             self.append_or_create_method_replacement(description=method_replacement,
                                                      policy=policy,
                                                      target_key=model_cls)
@@ -105,7 +110,7 @@ class OpenMoePolicy(Policy):
         """Get pipeline layers for current stage."""
         assert self.pipeline_stage_manager is not None
 
-        if self.model.__class__.__name__ == 'LlamaModel':
+        if self.model.__class__.__name__ == "LlamaModel":
             module = self.model
         else:
             module = self.model.model
@@ -132,9 +137,11 @@ class OpenMoeModelPolicy(OpenMoePolicy):
         policy = super().module_policy()
         if self.pipeline_stage_manager:
             # set None as default
-            self.set_pipeline_forward(model_cls=OpenMoeModel,
-                                      new_forward=OpenMoePipelineForwards.openmoe_model_forward,
-                                      policy=policy)
+            self.set_pipeline_forward(
+                model_cls=OpenMoeModel,
+                new_forward=OpenMoePipelineForwards.openmoe_model_forward,
+                policy=policy,
+            )
         return policy
 
     def get_held_layers(self) -> List[Module]:
@@ -150,7 +157,6 @@ class OpenMoeModelPolicy(OpenMoePolicy):
 class OpenMoeForCausalLMPolicy(OpenMoePolicy):
 
     def module_policy(self):
-
         policy = super().module_policy()
 
         if self.shard_config.enable_tensor_parallelism:
@@ -159,16 +165,21 @@ class OpenMoeForCausalLMPolicy(OpenMoePolicy):
                 OpenMoeForCausalLM:
                     ModulePolicyDescription(sub_module_replacement=[
                         SubModuleReplacementDescription(
-                            suffix="lm_head", target_module=Linear1D_Col, kwargs=dict(gather_output=True))
+                            suffix="lm_head",
+                            target_module=Linear1D_Col,
+                            kwargs=dict(gather_output=True),
+                        )
                     ])
             }
             policy.update(new_item)
 
         if self.pipeline_stage_manager:
             # set None as default
-            self.set_pipeline_forward(model_cls=OpenMoeForCausalLM,
-                                      new_forward=OpenMoePipelineForwards.llama_for_causal_lm_forward,
-                                      policy=policy)
+            self.set_pipeline_forward(
+                model_cls=OpenMoeForCausalLM,
+                new_forward=OpenMoePipelineForwards.llama_for_causal_lm_forward,
+                policy=policy,
+            )
 
         return policy
 
@@ -183,21 +194,21 @@ class OpenMoeForCausalLMPolicy(OpenMoePolicy):
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
         llama_model = self.model.model
         if self.pipeline_stage_manager and self.pipeline_stage_manager.num_stages > 1:
-            if id(llama_model.embed_tokens.weight) == id(
-                    self.model.lm_head.weight) and self.pipeline_stage_manager.num_stages > 1:
+            if (id(llama_model.embed_tokens.weight) == id(self.model.lm_head.weight)
+                    and self.pipeline_stage_manager.num_stages > 1):
                 # tie weights
                 return [{
                     0: llama_model.embed_tokens.weight,
-                    self.pipeline_stage_manager.num_stages - 1: self.model.lm_head.weight
+                    self.pipeline_stage_manager.num_stages - 1: self.model.lm_head.weight,
                 }]
         return []
 
 
 class OpenMoePipelineForwards:
-    '''
+    """
     This class serves as a micro library for forward function substitution of Llama models
     under pipeline setting.
-    '''
+    """
 
     @staticmethod
     def openmoe_model_forward(
@@ -222,12 +233,12 @@ class OpenMoePipelineForwards:
 
         logger = logging.get_logger(__name__)
 
-        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+        output_attentions = (output_attentions if output_attentions is not None else self.config.output_attentions)
         output_hidden_states = (output_hidden_states
                                 if output_hidden_states is not None else self.config.output_hidden_states)
         use_cache = use_cache if use_cache is not None else self.config.use_cache
 
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+        return_dict = (return_dict if return_dict is not None else self.config.use_return_dict)
 
         # retrieve input_ids and inputs_embeds
         if stage_manager.is_first_stage():
@@ -253,13 +264,13 @@ class OpenMoePipelineForwards:
 
         # TODO(jianghai): left the recording kv-value tensors as () or None type, this feature may be added in the future.
         if output_attentions:
-            logger.warning_once('output_attentions=True is not supported for pipeline models at the moment.')
+            logger.warning_once("output_attentions=True is not supported for pipeline models at the moment.")
             output_attentions = False
         if output_hidden_states:
-            logger.warning_once('output_hidden_states=True is not supported for pipeline models at the moment.')
+            logger.warning_once("output_hidden_states=True is not supported for pipeline models at the moment.")
             output_hidden_states = False
         if use_cache:
-            logger.warning_once('use_cache=True is not supported for pipeline models at the moment.')
+            logger.warning_once("use_cache=True is not supported for pipeline models at the moment.")
             use_cache = False
 
         if past_key_values is not None:
@@ -267,10 +278,12 @@ class OpenMoePipelineForwards:
             seq_length_with_past = seq_length_with_past + past_key_values_length
 
         if position_ids is None:
-            position_ids = torch.arange(past_key_values_length,
-                                        seq_length + past_key_values_length,
-                                        dtype=torch.long,
-                                        device=device)
+            position_ids = torch.arange(
+                past_key_values_length,
+                seq_length + past_key_values_length,
+                dtype=torch.long,
+                device=device,
+            )
             position_ids = position_ids.unsqueeze(0).view(-1, seq_length)
         else:
             position_ids = position_ids.view(-1, seq_length).long()
@@ -278,11 +291,17 @@ class OpenMoePipelineForwards:
         # embed positions, for the first stage, hidden_states is the input embeddings,
         # for the other stages, hidden_states is the output of the previous stage
         if attention_mask is None:
-            attention_mask = torch.ones((batch_size, seq_length_with_past),
-                                        dtype=torch.bool,
-                                        device=hidden_states.device)
-        attention_mask = self._prepare_decoder_attention_mask(attention_mask, (batch_size, seq_length), hidden_states,
-                                                              past_key_values_length)
+            attention_mask = torch.ones(
+                (batch_size, seq_length_with_past),
+                dtype=torch.bool,
+                device=hidden_states.device,
+            )
+        attention_mask = self._prepare_decoder_attention_mask(
+            attention_mask,
+            (batch_size, seq_length),
+            hidden_states,
+            past_key_values_length,
+        )
 
         if self.gradient_checkpointing and self.training:
             if use_cache:
@@ -300,7 +319,7 @@ class OpenMoePipelineForwards:
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
 
-            past_key_value = past_key_values[idx] if past_key_values is not None else None
+            past_key_value = (past_key_values[idx] if past_key_values is not None else None)
 
             if self.gradient_checkpointing and self.training:
 
@@ -351,9 +370,20 @@ class OpenMoePipelineForwards:
             router_z_loss = past_router_z_loss + router_z_loss
 
         if stage_manager.is_last_stage():
-            return tuple([hidden_states, next_cache, all_hidden_states, all_self_attns, router_aux_loss, router_z_loss])
+            return tuple([
+                hidden_states,
+                next_cache,
+                all_hidden_states,
+                all_self_attns,
+                router_aux_loss,
+                router_z_loss,
+            ])
         # always return dict for imediate stage
-        return {'hidden_states': hidden_states, 'router_aux_loss': router_aux_loss, 'router_z_loss': router_z_loss}
+        return {
+            "hidden_states": hidden_states,
+            "router_aux_loss": router_aux_loss,
+            "router_z_loss": router_z_loss,
+        }
 
     @staticmethod
     def llama_for_causal_lm_forward(
@@ -376,42 +406,42 @@ class OpenMoePipelineForwards:
         past_router_z_loss: Optional[torch.FloatTensor] = None,
     ):
         r"""
-            Args:
-                labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
-                    Labels for computing the masked language modeling loss. Indices should either be in `[0, ...,
-                    config.vocab_size]` or -100 (see `input_ids` docstring). Tokens with indices set to `-100` are ignored
-                    (masked), the loss is only computed for the tokens with labels in `[0, ..., config.vocab_size]`.
+        Args:
+            labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
+                Labels for computing the masked language modeling loss. Indices should either be in `[0, ...,
+                config.vocab_size]` or -100 (see `input_ids` docstring). Tokens with indices set to `-100` are ignored
+                (masked), the loss is only computed for the tokens with labels in `[0, ..., config.vocab_size]`.
 
-            Returns:
+        Returns:
 
-            Example:
+        Example:
 
-            ```python
-            >>> from transformers import AutoTokenizer, LlamaForCausalLM
+        ```python
+        >>> from transformers import AutoTokenizer, LlamaForCausalLM
 
-            >>> model = LlamaForCausalLM.from_pretrained(PATH_TO_CONVERTED_WEIGHTS)
-            >>> tokenizer = AutoTokenizer.from_pretrained(PATH_TO_CONVERTED_TOKENIZER)
+        >>> model = LlamaForCausalLM.from_pretrained(PATH_TO_CONVERTED_WEIGHTS)
+        >>> tokenizer = AutoTokenizer.from_pretrained(PATH_TO_CONVERTED_TOKENIZER)
 
-            >>> prompt = "Hey, are you consciours? Can you talk to me?"
-            >>> inputs = tokenizer(prompt, return_tensors="pt")
+        >>> prompt = "Hey, are you consciours? Can you talk to me?"
+        >>> inputs = tokenizer(prompt, return_tensors="pt")
 
-            >>> # Generate
-            >>> generate_ids = model.generate(inputs.input_ids, max_length=30)
-            >>> tokenizer.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
-            "Hey, are you consciours? Can you talk to me?\nI'm not consciours, but I can talk to you."
-            ```"""
+        >>> # Generate
+        >>> generate_ids = model.generate(inputs.input_ids, max_length=30)
+        >>> tokenizer.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
+        "Hey, are you consciours? Can you talk to me?\nI'm not consciours, but I can talk to you."
+        ```"""
         logger = logging.get_logger(__name__)
-        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+        output_attentions = (output_attentions if output_attentions is not None else self.config.output_attentions)
         output_hidden_states = (output_hidden_states
                                 if output_hidden_states is not None else self.config.output_hidden_states)
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+        return_dict = (return_dict if return_dict is not None else self.config.use_return_dict)
 
         # TODO(jianghai): left the recording kv-value tensors as () or None type, this feature may be added in the future.
         if output_attentions:
-            logger.warning_once('output_attentions=True is not supported for pipeline models at the moment.')
+            logger.warning_once("output_attentions=True is not supported for pipeline models at the moment.")
             output_attentions = False
         if output_hidden_states:
-            logger.warning_once('output_hidden_states=True is not supported for pipeline models at the moment.')
+            logger.warning_once("output_hidden_states=True is not supported for pipeline models at the moment.")
             output_hidden_states = False
 
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
@@ -434,7 +464,14 @@ class OpenMoePipelineForwards:
         )
 
         if stage_manager.is_last_stage():
-            hidden_states, past_key_values, all_hidden_states, attentions, router_aux_loss, router_z_loss = outputs
+            (
+                hidden_states,
+                past_key_values,
+                all_hidden_states,
+                attentions,
+                router_aux_loss,
+                router_z_loss,
+            ) = outputs
 
             if self.pretraining_tp > 1:
                 lm_head_slices = self.lm_head.weight.split(self.vocab_size // self.pretraining_tp, dim=0)
@@ -498,11 +535,11 @@ class OpenMoePipelineForwards:
                 attentions=attentions,
             )
         else:
-            hidden_states = outputs['hidden_states']
-            router_aux_loss = outputs['router_aux_loss']
-            router_z_loss = outputs['router_z_loss']
+            hidden_states = outputs["hidden_states"]
+            router_aux_loss = outputs["router_aux_loss"]
+            router_z_loss = outputs["router_z_loss"]
             return {
-                'hidden_states': hidden_states,
-                'past_router_aux_loss': router_aux_loss,
-                'past_router_z_loss': router_z_loss
+                "hidden_states": hidden_states,
+                "past_router_aux_loss": router_aux_loss,
+                "past_router_z_loss": router_z_loss,
             }
