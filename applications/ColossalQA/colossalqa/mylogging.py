@@ -49,6 +49,7 @@ class ColossalQALogger:
             verbose (bool): Whether to print the message to stdout.
         """
         if verbose:
+            logging.basicConfig(level=logging.INFO)
             self._logger.info(message)
 
     def warning(self, message: str, verbose: bool = False) -> None:
