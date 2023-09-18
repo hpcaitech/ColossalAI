@@ -127,11 +127,11 @@ def main():
     coordinator = DistCoordinator()
 
     # Set up moe
-    assert (args.dp_size * args.ep_size *
-            args.pp_size == coordinator.world_size), "dp_size * ep_size * pp_size must equal to world_size"
     if args.plugin in ["zero1", "zero2"]:
         MOE_MANAGER.setup(seed=42, parallel="EP")
     elif args.plugin == "hybrid":
+        assert (args.dp_size * args.ep_size *
+                args.pp_size == coordinator.world_size), "dp_size * ep_size * pp_size must equal to world_size"
         MOE_MANAGER.setup(
             seed=42,
             parallel="EP",

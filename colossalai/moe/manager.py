@@ -70,8 +70,9 @@ class MoeManager(metaclass=SingletonMeta):
         self.parallel = parallel
 
         # init by mode
-        assert mode in ["fixed", "dynamic"], "mode should be fixed or dynamic"
-        if mode == "dynamic":
+        self.mode = mode
+        assert self.mode in ["fixed", "dynamic"], "mode should be fixed or dynamic"
+        if self.mode == "dynamic":
             self.max_ep_size = min(max_ep_size, dist.get_world_size())
             self.min_dp_size = self.world_size // self.max_ep_size
         else:
@@ -118,7 +119,7 @@ class MoeManager(metaclass=SingletonMeta):
             ep_size = self.max_ep_size // dp_size
             # Don't forget to multiply minimum data parallel size
             dp_size *= self.min_dp_size
-            pp_size = None
+            pp_size = 1
         else:
             dp_size = self.dp_size
             ep_size = self.ep_size
