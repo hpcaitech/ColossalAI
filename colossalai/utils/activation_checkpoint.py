@@ -6,6 +6,7 @@ from torch.utils.checkpoint import check_backward_validity, detach_variable
 
 from colossalai.context.random import get_states, get_current_mode, set_seed_states, set_mode, sync_states
 from .cuda import get_current_device
+from .xpu import xpu_get_current_device
 
 import weakref
 
@@ -34,8 +35,10 @@ class CheckpointFunction(torch.autograd.Function):
         check_backward_validity(args)
         ctx.run_function = run_function
         ctx.activation_offload = activation_offload
-        ctx.device = get_current_device()
-
+        if torch.cuda.is_available():
+            ctx.device = get_current_device()
+        elif torch.xpu.is_available():
+            ctx.device = xpu_get_current_device()
         # preserve rng states
         ctx.fwd_cpu_rng_state = torch.get_rng_state()
         sync_states()
@@ -48,12 +51,12 @@ class CheckpointFunction(torch.autograd.Function):
             ctx.had_autocast_in_fwd = False
 
         if activation_offload:
-            inputs_cuda = copy_to_device(args, ctx.device)
+            inputs_device = copy_to_device(args, ctx.device)
         else:
-            inputs_cuda = args
+            inputs_device = args
 
         with torch.no_grad():
-            outputs = run_function(*inputs_cuda)
+            outputs = run_function(*inputs_device)
         # Save non-tensor inputs in ctx, keep a placeholder None for tensors
         # to be filled out during the backward.
         ctx.inputs = []
@@ -244,7 +247,10 @@ def _checkpoint_without_reentrant(function, activation_offload=False, *args):
 
     # get device if we need to offload the activation
     if activation_offload:
-        device = get_current_device()
+        if torch.cuda.is_available():
+            device = get_current_device()
+        elif torch.xpu.is_available():
+            device = xpu_get_current_device()
 
     # run function with pack and unpack as saved_tensors_hooks
     with torch.autograd.graph.saved_tensors_hooks(pack, unpack):

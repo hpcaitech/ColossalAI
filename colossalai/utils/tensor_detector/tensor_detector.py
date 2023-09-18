@@ -154,7 +154,10 @@ class TensorDetector():
         for device in self.devices:
             if device == torch.device('cpu'):
                 continue
-            gpu_mem_alloc = self.mem_format(torch.cuda.memory_allocated(device))
+            if torch.cuda.is_available() and device == torch.device('cuda'):
+                gpu_mem_alloc = self.mem_format(torch.cuda.memory_allocated(device))
+            elif torch.xpu.is_available() and device == torch.device('xpu'):
+                gpu_mem_alloc = self.mem_format(torch.xpu.memory_allocated(device))
             self.info += f"Total GPU Memory Allocated on {device} is {gpu_mem_alloc}\n"
         self.info += LINE
         self.info += '\n\n'

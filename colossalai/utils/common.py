@@ -158,6 +158,19 @@ def _get_tensor_norm(norm: Union[float, torch.Tensor], move_to_cuda) -> torch.Te
         norm = norm.to(torch.cuda.current_device())
     return norm
 
+def _move_norm_to_xpu(norm: Union[float, torch.Tensor]) -> Union[float, torch.Tensor]:
+    if torch.is_tensor(norm) and norm.device.type != 'xpu':
+        norm = norm.to(torch.xpu.current_device())
+    return norm
+
+
+def _get_tensor_norm_xpu(norm: Union[float, torch.Tensor], move_to_xpu) -> torch.Tensor:
+    if isinstance(norm, float):
+        norm = torch.Tensor([norm])
+    if move_to_xpu:
+        norm = norm.to(torch.xpu.current_device())
+    return norm
+
 
 # ======== Gradient Clipping =========
 
@@ -187,13 +200,19 @@ def _compute_buckets_lp(params: List[ColoParameter], norm_type: float) -> float:
             buckets[None].append(p)
         else:
             buckets[p.get_process_group().tp_process_group()].append(p)
+    device_type = params[0].grad.device.type
     total_lp = 0.0
     for group, bucket in buckets.items():
         local_lp = _compute_local_lp(bucket, norm_type)
         if group is not None:
-            local_lp_tensor = torch.tensor([local_lp], device=torch.cuda.current_device())
-            if norm_type == inf:
-                dist.all_reduce(local_lp_tensor, op=dist.ReduceOp.MAX, group=group)
+            if device_type == 'cuda':
+                local_lp_tensor = torch.tensor([local_lp], device=torch.cuda.current_device())
+                if norm_type == inf:
+                    dist.all_reduce(local_lp_tensor, op=dist.ReduceOp.MAX, group=group)
+            elif device_type == 'xpu':
+                local_lp_tensor = torch.tensor([local_lp], device=torch.xpu.current_device())
+                if norm_type == inf:
+                    dist.all_reduce(local_lp_tensor, op=dist.ReduceOp.MAX, group=group)
             else:
                 dist.all_reduce(local_lp_tensor, group=group)
             local_lp = local_lp_tensor.item()
@@ -204,13 +223,20 @@ def _compute_buckets_lp(params: List[ColoParameter], norm_type: float) -> float:
     return total_lp
 
 
-def _compute_pp_grad_lp(total_lp: float, norm_type: float) -> float:
+def _compute_pp_grad_lp(total_lp: float, norm_type: float, device_type: torch.device) -> float:
     if gpc.is_initialized(ParallelMode.PIPELINE) and gpc.get_world_size(ParallelMode.PIPELINE) > 1:
-        total_lp_tensor = torch.tensor([total_lp], device=torch.cuda.current_device())
-        if norm_type == inf:
-            dist.all_reduce(total_lp_tensor, op=dist.ReduceOp.MAX, group=gpc.get_group(ParallelMode.PIPELINE))
-        else:
-            dist.all_reduce(total_lp_tensor, group=gpc.get_group(ParallelMode.PIPELINE))
+        if device_type == 'cuda':
+            total_lp_tensor = torch.tensor([total_lp], device=torch.cuda.current_device())
+            if norm_type == inf:
+                dist.all_reduce(total_lp_tensor, op=dist.ReduceOp.MAX, group=gpc.get_group(ParallelMode.PIPELINE))
+            else:
+                dist.all_reduce(total_lp_tensor, group=gpc.get_group(ParallelMode.PIPELINE))
+        elif device_type == 'xpu':
+            total_lp_tensor = torch.tensor([total_lp], device=torch.xpu.current_device())
+            if norm_type == inf:
+                dist.all_reduce(total_lp_tensor, op=dist.ReduceOp.MAX, -group=gpc.get_group(ParallelMode.PIPELINE))
+            else:
+                dist.all_reduce(total_lp_tensor, group=gpc.get_group(ParallelMode.PIPELINE))
         total_lp = total_lp_tensor.item()
     return total_lp
 
@@ -221,6 +247,7 @@ def _compute_grad_lp(parameters, norm_type: float = 2.0) -> float:
     grad_dtype = None
     cpu_grad_params: List[ColoParameter] = []
     cuda_grad_params: List[ColoParameter] = []
+    xpu_grad_params: List[ColoParameter] = []
     for p in parameters:
         if p.grad is None:
             continue
@@ -230,16 +257,20 @@ def _compute_grad_lp(parameters, norm_type: float = 2.0) -> float:
         assert p.grad.dtype == grad_dtype, f'Expected all grads are {grad_dtype}, got {p.grad.dtype}'
         if p.grad.device.type == 'cuda':
             cuda_grad_params.append(p)
+        elif p.grad.device.type == 'xpu':
+            xpu_grad_params.append(p)
         else:
             cpu_grad_params.append(p)
+    device_type = parameters[0].grad.device.type
     norm_type = float(norm_type)
     cpu_lp = _compute_buckets_lp(cpu_grad_params, norm_type)
     cuda_lp = _compute_buckets_lp(cuda_grad_params, norm_type)
+    xpu_lp = _compute_buckets_lp(xpu_grad_params, norm_type)
     if norm_type == inf:
-        total_lp = max(cpu_lp, cuda_lp)
+        total_lp = max(max(cpu_lp, cuda_lp),xpu_lp)
     else:
-        total_lp = cpu_lp + cuda_lp
-    return _compute_pp_grad_lp(total_lp, norm_type)
+        total_lp = cpu_lp + cuda_lp + xpu_lp
+    return _compute_pp_grad_lp(total_lp, norm_type, device_type)
 
 
 def compute_grad_norm(parameters, norm_type: float = 2.0) -> float:
@@ -255,6 +286,7 @@ def _clip_grad_norm(parameters, max_norm: float, total_norm: float) -> None:
     if clip_coef < 1.0:
         cuda_grads: List[torch.Tensor] = []
         cpu_grads: List[torch.Tensor] = []
+        xpu_grads: List[torch.Tensor] = []
         if isinstance(parameters, torch.Tensor):
             parameters = [parameters]
         for p in parameters:
@@ -262,12 +294,20 @@ def _clip_grad_norm(parameters, max_norm: float, total_norm: float) -> None:
                 continue
             if p.grad.device.type == 'cuda':
                 cuda_grads.append(p.grad.detach())
+            elif p.grad.device.type == 'xpu':
+                xpu_grads.append(p.grad.detach())
             else:
                 cpu_grads.append(p.grad.detach())
         if len(cuda_grads) > 0:
             dummy_overflow_buf = torch.cuda.IntTensor([0])
             multi_tensor_applier(fused_optim.multi_tensor_scale, dummy_overflow_buf, [cuda_grads, cuda_grads],
                                  clip_coef)
+        if len(xpu_grads) > 0:
+            for g in xpu_grads:
+                g.mul_(clip_coef)
+            #dummy_overflow_buf = torch.xpu.IntTensor([0])
+            #multi_tensor_applier(fused_optim.multi_tensor_scale, dummy_overflow_buf, [xpu_grads, xpu_grads],
+            #                     clip_coef)
         for g in cpu_grads:
             g.mul_(clip_coef)
 
@@ -322,7 +362,7 @@ def clip_grad_norm_fp32(parameters, max_norm, norm_type=2):
     # Norm parameters.
     max_norm = float(max_norm)
     norm_type = float(norm_type)
-
+    device_type = params[0].grad.device.type
     # Parameters can be on CPU or CUDA
     # If parameters are on CPU, disable CUDA kernels
 
@@ -330,18 +370,32 @@ def clip_grad_norm_fp32(parameters, max_norm, norm_type=2):
     if norm_type == inf:
         total_norm = max(p.grad.data.abs().max() for p in params)
         total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+        total_norm_xpu = torch.xpu.FloatTensor([float(total_norm)])
         # Take max across all model-parallel GPUs.
-        if gpc.is_initialized(ParallelMode.MODEL) and gpc.get_world_size(ParallelMode.MODEL) > 1:
-            dist.all_reduce(total_norm_cuda,
-                            op=dist.ReduceOp.MAX,
-                            group=gpc.get_group(ParallelMode.MODEL),
-                            async_op=False)
-        if has_zero_shared_param:
-            dist.all_reduce(total_norm_cuda,
-                            op=dist.ReduceOp.MAX,
-                            group=gpc.get_group(ParallelMode.DATA),
-                            async_op=False)
-        total_norm = total_norm_cuda[0].item()
+        if device_type == 'cuda':
+            if gpc.is_initialized(ParallelMode.MODEL) and gpc.get_world_size(ParallelMode.MODEL) > 1:
+                dist.all_reduce(total_norm_cuda,
+                                op=dist.ReduceOp.MAX,
+                                group=gpc.get_group(ParallelMode.MODEL),
+                                async_op=False)
+            if has_zero_shared_param:
+                dist.all_reduce(total_norm_cuda,
+                                op=dist.ReduceOp.MAX,
+                                group=gpc.get_group(ParallelMode.DATA),
+                                async_op=False)
+            total_norm = total_norm_cuda[0].item()
+        elif device_type == 'xpu':
+            if gpc.is_initialized(ParallelMode.MODEL) and gpc.get_world_size(ParallelMode.MODEL) > 1:
+                dist.all_reduce(total_norm_xpu,
+                                op=dist.ReduceOp.MAX,
+                                group=gpc.get_group(ParallelMode.MODEL),
+                                async_op=False)
+            if has_zero_shared_param:
+                dist.all_reduce(total_norm_xpu,
+                                op=dist.ReduceOp.MAX,
+                                group=gpc.get_group(ParallelMode.DATA),
+                                async_op=False)
+            total_norm = total_norm_xpu[0].item()
     else:
         tensor_parallel_grads = []
         no_tensor_parallel_grads = []
@@ -364,14 +418,25 @@ def clip_grad_norm_fp32(parameters, max_norm, norm_type=2):
             no_tensor_parallel_norm = _calc_lp(no_tensor_parallel_grads, norm_type)
             zero_sharded_norm = _calc_lp(zero_sharded_grads, norm_type)
         # If norm is type of float, then we convert them into torch.Tensor.
-        tensor_parallel_norm = _get_tensor_norm(tensor_parallel_norm, enable_cuda_kernels)
-        no_tensor_parallel_norm = _get_tensor_norm(no_tensor_parallel_norm, enable_cuda_kernels)
-        zero_sharded_norm = _get_tensor_norm(zero_sharded_norm, enable_cuda_kernels)
+        if device_type == 'cuda':
+            tensor_parallel_norm = _get_tensor_norm(tensor_parallel_norm, enable_cuda_kernels)
+            no_tensor_parallel_norm = _get_tensor_norm(no_tensor_parallel_norm, enable_cuda_kernels)
+            zero_sharded_norm = _get_tensor_norm(zero_sharded_norm, enable_cuda_kernels)
+        elif device_type == 'xpu':
+            tensor_parallel_norm = _get_tensor_norm_xpu(tensor_parallel_norm, True)
+            no_tensor_parallel_norm = _get_tensor_norm_xpu(no_tensor_parallel_norm, True)
+            zero_sharded_norm = _get_tensor_norm_xpu(zero_sharded_norm, True)
         # If grads are on CPU, the norms is also on CPU. Cast them to CUDA tensors
         if not enable_cuda_kernels:
-            tensor_parallel_norm = _move_norm_to_cuda(tensor_parallel_norm)
-            no_tensor_parallel_norm = _move_norm_to_cuda(no_tensor_parallel_norm)
-            zero_sharded_norm = _move_norm_to_cuda(zero_sharded_norm)
+            if device_type == 'cuda':
+                tensor_parallel_norm = _move_norm_to_cuda(tensor_parallel_norm)
+                no_tensor_parallel_norm = _move_norm_to_cuda(no_tensor_parallel_norm)
+                zero_sharded_norm = _move_norm_to_cuda(zero_sharded_norm)
+            elif device_type == 'xpu':
+                tensor_parallel_norm = _move_norm_to_xpu(tensor_parallel_norm)
+                no_tensor_parallel_norm = _move_norm_to_xpu(no_tensor_parallel_norm)
+                zero_sharded_norm = _move_norm_to_xpu(zero_sharded_norm)
+
 
         # Sum across all model-parallel GPUs.
         if gpc.is_initialized(ParallelMode.TENSOR) and len(tensor_parallel_grads) > 0:
@@ -417,8 +482,11 @@ def count_zeros_fp32(parameters):
             num_zeros = grad.numel() - torch.count_nonzero(grad)
             total_num_zeros = num_zeros + total_num_zeros
 
-    total_num_zeros = torch.IntTensor([int(total_num_zeros)]).cuda()
-
+    device_type = params[0].grad.device.type
+    if device_type == 'cuda':
+        total_num_zeros = torch.IntTensor([int(total_num_zeros)]).cuda()
+    elif device_type == 'xpu':
+        total_num_zeros = torch.IntTensor([int(total_num_zeros)]).xpu()
     # Sum across all model-parallel GPUs.
     ops = []
     ops.append(

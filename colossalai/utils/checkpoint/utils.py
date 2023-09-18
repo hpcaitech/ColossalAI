@@ -8,7 +8,10 @@ def robust_broadcast(tensor):
     with torch.no_grad():
         is_cpu_ten = tensor.device.type == 'cpu'
         if is_cpu_ten:
-            b_data = tensor.cuda()
+            if torch.cuda.is_available():
+                b_data = tensor.cuda()
+            elif torch.xpu.is_available():
+                b_data = tensor.xpu()
         else:
             b_data = tensor
 
