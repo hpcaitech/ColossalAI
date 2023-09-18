@@ -8,7 +8,8 @@ import wandb
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import DataLoader
-
+from torch.utils.tensorboard import SummaryWriter
+import torch.distributed as dist
 from colossalai.logging import DistributedLogger
 
 from .base import SLTrainer
@@ -37,6 +38,7 @@ class SFTTrainer(SLTrainer):
         lr_scheduler: _LRScheduler,
         max_epochs: int = 2,
         accumulation_steps: int = 8,
+        tensorboard_dir: str = None,
     ) -> None:
         if accumulation_steps > 1:
             assert not isinstance(strategy, GeminiStrategy), \
@@ -72,6 +74,10 @@ class SFTTrainer(SLTrainer):
                 self.strategy.optimizer_step(self.optimizer)
                 self.optimizer.zero_grad()
                 self.scheduler.step()
+                if is_rank_0() and self.tensorboard_writer:
+                    self.tensorboard_writer.add_scalar('loss', self.total_loss / self.accumulation_steps)
+                    self.tensorboard_writer.add_scalar('lr', self.scheduler.get_last_lr()[0])
+                    self.tensorboard_writer.flush()
                 if is_rank_0() and self.use_wandb:
                     wandb.log({
                         "loss": self.total_loss / self.accumulation_steps,
@@ -105,7 +111,8 @@ class SFTTrainer(SLTrainer):
                     train_dataloader: DataLoader,
                     eval_dataloader: Optional[DataLoader] = None,
                     logger: Optional[DistributedLogger] = None,
-                    use_wandb: bool = False):
+                    use_wandb: bool = False,
+                    tensorboard_dir: str = None):
         """
         Args:
             train_dataloader: the dataloader to use for training
@@ -116,9 +123,12 @@ class SFTTrainer(SLTrainer):
 
         self.logger = logger
         self.use_wandb = use_wandb
+        self.tensorboard_writer = None
         if use_wandb:
             wandb.init(project="Coati", name=time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
             wandb.watch(self.model)
+        if tensorboard_dir:
+            self.tensorboard_writer = SummaryWriter(tensorboard_dir) if tensorboard_dir and dist.get_rank() == 0 else None
 
         self.total_loss = 0
         self.no_epoch_bar = True
