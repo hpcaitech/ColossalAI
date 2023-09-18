@@ -173,7 +173,7 @@ def get_launch_command(
                 value = extra_launch_args.pop(key)
                 default_torchrun_rdzv_args[key] = value
 
-        if torch_version.major == 1 and torch_version.minor < 10:
+        if torch_version.major == 1 and torch_version.minor == 9:
             # torch distributed launch cmd with torch == 1.9
             cmd = [
                 sys.executable, "-m", "torch.distributed.run", f"--nproc_per_node={nproc_per_node}",
