@@ -128,7 +128,7 @@ class SFTTrainer(SLTrainer):
             wandb.init(project="Coati", name=time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
             wandb.watch(self.model)
         if tensorboard_dir:
-            self.tensorboard_writer = SummaryWriter(tensorboard_dir) if tensorboard_dir and dist.get_rank() == 0 else None
+            self.tensorboard_writer = SummaryWriter(log_dir=tensorboard_dir) if dist.get_rank() == 0 else None
 
         self.total_loss = 0
         self.no_epoch_bar = True
