@@ -1,5 +1,5 @@
 '''
-class for logging with extra control for debugging
+Class for logging with extra control for debugging
 '''
 import logging
 
@@ -82,9 +82,8 @@ class ColossalQALogger:
 
 def get_logger(name: str = None, level=logging.INFO)->ColossalQALogger:
     '''
-    get the logger by name, if name is None, return the default logger
+    Get the logger by name, if name is None, return the default logger
     '''
-    logging.basicConfig(level=level)
     if name:
         logger = ColossalQALogger.get_instance(name=name)
     else:
@@ -94,5 +93,3 @@ def get_logger(name: str = None, level=logging.INFO)->ColossalQALogger:
 if __name__=='__main__':
     logger = get_logger()
     logger.info('test info', verbose=True)
-    # logger = logging.getLogger()
-    # logger.info('test info')

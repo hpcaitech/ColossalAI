@@ -1,5 +1,5 @@
 '''
-class for loading document type data
+Class for loading document type data
 '''
 
 from typing import List
@@ -49,7 +49,7 @@ class DocumentLoader:
 
     def load_data(self, path:str) -> None:
         '''
-        load data. Please refer to https://python.langchain.com/docs/modules/data_connection/document_loaders/ 
+        Load data. Please refer to https://python.langchain.com/docs/modules/data_connection/document_loaders/ 
             for sepcific format requirements.
         Args:
             path: path to a file
@@ -59,7 +59,7 @@ class DocumentLoader:
         '''
         files = []
 
-        # handle glob expression
+        # Handle glob expression
         try:
             files = glob.glob(path)
         except Exception as e:
@@ -73,40 +73,40 @@ class DocumentLoader:
                 self.load_data(file)
             return
 
-        # load data if the path is a file
+        # Load data if the path is a file
         logger.info(f"load {path}", verbose=True)
         if path.endswith('.csv'):
-            # load csv
+            # Load csv
             loader = CSVLoader(file_path=path, encoding='utf8')
             data = loader.load()
             self.data[path] = data
         elif path.endswith('.txt'):
-            # load txt
+            # Load txt
             loader = TextLoader(path, encoding='utf8')
             data = loader.load()
             self.data[path] = data
         elif path.endswith('html'):
-            # load html
+            # Load html
             loader = UnstructuredHTMLLoader(path, encoding='utf8')
             data = loader.load()
             self.data[path] = data
         elif path.endswith('json'):
-            # load json
+            # Load json
             loader = JSONLoader(file_path=path,jq_schema=self.kwargs.get('jq_schema','.data[].content'))
             data = loader.load()
             self.data[path] = data
         elif path.endswith('jsonl'):
-            # load jsonl
+            # Load jsonl
             loader = JSONLoader(file_path=path,jq_schema=self.kwargs.get('jq_schema','.data[].content'),json_lines=True)
             data = loader.load()
             self.data[path] = data
         elif path.endswith(".md"):
-            # load markdown
+            # Load markdown
             loader = UnstructuredMarkdownLoader(path)
             data = loader.load()
             self.data[path] = data
         elif path.endswith(".pdf"):
-            # load pdf
+            # Load pdf
             loader = PyPDFLoader(path)
             data = loader.load_and_split()
             self.data[path] = data
@@ -114,7 +114,7 @@ class DocumentLoader:
             if '.' in path.split('/')[-1]:
                 raise ValueError(f"Unsupported file format {path}. Supported formats: {SUPPORTED_DATA_FORMAT}")
             else:
-                # may ba a directory, we strictly follow the glob path and will not load files in subdirectories
+                # May ba a directory, we strictly follow the glob path and will not load files in subdirectories
                 pass
         
         

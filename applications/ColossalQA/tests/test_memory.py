@@ -19,21 +19,20 @@ def test_memory_long():
     retriever_data = DocumentLoader([[data_path, 'company information']]).all_data
 
     # Split
-    # text_splitter = RecursiveCharacterTextSplitter(chunk_size=200, chunk_overlap=0)
     text_splitter = NeuralTextSplitter()
     splits = text_splitter.split_documents(retriever_data)
 
     embedding = HuggingFaceEmbeddings(model_name="moka-ai/m3e-base",
                            model_kwargs={'device': 'cpu'},encode_kwargs={'normalize_embeddings': False})
 
-    # create retriever
+    # Create retriever
     information_retriever = CustomRetriever(k=3, sql_file_path=sql_file_path)
     information_retriever.add_documents(docs=splits, cleanup='incremental', mode='by_source', embedding=embedding)
 
     memory.initiate_document_retrieval_chain(llm, PROMPT_RETRIEVAL_QA_ZH, information_retriever, 
         chain_type_kwargs={'chat_history':'', })
     
-    # this keep the prompt length excluding dialogues the same
+    # This keep the prompt length excluding dialogues the same
     docs = information_retriever.get_relevant_documents("this is a test input.")
     prompt_length = memory.chain.prompt_length(docs, **{'question':"this is a test input.", 'chat_history':""})
     remain = 600 - prompt_length
@@ -59,7 +58,6 @@ def test_memory_short():
     retriever_data = DocumentLoader([[data_path, 'company information']]).all_data
 
     # Split
-    # text_splitter = RecursiveCharacterTextSplitter(chunk_size=200, chunk_overlap=0)
     text_splitter = NeuralTextSplitter()
     splits = text_splitter.split_documents(retriever_data)
 
@@ -73,7 +71,7 @@ def test_memory_short():
     memory.initiate_document_retrieval_chain(llm, PROMPT_RETRIEVAL_QA_ZH, information_retriever, 
         chain_type_kwargs={'chat_history':'', })
     
-    # this keep the prompt length excluding dialogues the same
+    # This keep the prompt length excluding dialogues the same
     docs = information_retriever.get_relevant_documents("this is a test input.", return_scores=True)
 
     for i in range(4):

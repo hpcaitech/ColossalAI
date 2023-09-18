@@ -22,7 +22,6 @@ class SummarizerMixin(BaseModel):
     """
     Mixin for summarizer.
     """
-
     human_prefix: str = "Human"
     ai_prefix: str = "AI"
     llm: BaseLanguageModel
@@ -34,7 +33,7 @@ class SummarizerMixin(BaseModel):
         self, messages: List[BaseMessage], existing_summary: str, stop:List=[]
     ) -> str:
         '''
-        recursively summarize a conversation by generating a new summary using
+        Recursively summarize a conversation by generating a new summary using
         the last round of conversation and the existing summary.
         '''
         new_lines = get_buffer_string(
@@ -70,10 +69,7 @@ class ConversationSummaryMemory(BaseChatMemory, SummarizerMixin):
 
     @property
     def memory_variables(self) -> List[str]:
-        """Will always return list of memory variables.
-
-        :meta private:
-        """
+        """Will always return list of memory variables."""
         return [self.memory_key]
 
     def load_memory_variables(self, inputs: Dict[str, Any]) -> Dict[str, Any]:

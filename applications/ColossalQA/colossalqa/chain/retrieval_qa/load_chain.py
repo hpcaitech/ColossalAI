@@ -14,7 +14,6 @@ from langchain.chains.question_answering import (
 from langchain.schema.language_model import BaseLanguageModel
 from langchain.schema.prompt_template import BasePromptTemplate
 from colossalqa.chain.retrieval_qa.stuff import CustomStuffDocumentsChain
-# from colossalqa.chain.llm_chain import LLMChain
 
 class LoadingCallable(Protocol):
     """Interface for loading the combine documents chain."""

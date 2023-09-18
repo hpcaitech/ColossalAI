@@ -1,6 +1,6 @@
 '''
-implement a memory class for storing conversation history
-support long term and short term memory
+Implement a memory class for storing conversation history
+Support long term and short term memory
 '''
 from typing import List, Dict, Any
 from pydantic import Field
@@ -16,14 +16,14 @@ class ConversationBufferWithSummary(ConversationSummaryMemory):
     """Memory class for storing information about entities."""
 
     # Define dictionary to store information about entities.
-    # store the most recent conversation history
+    # Store the most recent conversation history
     buffered_history: BaseChatMessageHistory = Field(default_factory=ChatMessageHistory)
-    # temp buffer
+    # Temp buffer
     summarized_history_temp: BaseChatMessageHistory = Field(default_factory=ChatMessageHistory)
     human_prefix: str = "Human"
     ai_prefix: str = "AI"
-    buffer: str = ''    # formated conversation in str
-    existing_summary: str = ''  # summarization of stale converstion in str
+    buffer: str = ''    # Formated conversation in str
+    existing_summary: str = ''  # Summarization of stale converstion in str
     # Define key to pass information about entities into prompt.
     memory_key: str = "chat_history"
     input_key: str='question'
@@ -79,7 +79,7 @@ class ConversationBufferWithSummary(ConversationSummaryMemory):
         return [self.memory_key]
     
     def format_dialogue(self, lang:str='en') -> str:
-        '''format memory into two parts. summarization of historical conversation and most recent conversation'''
+        '''Format memory into two parts--- summarization of historical conversation and most recent conversation'''
         if len(self.summarized_history_temp.messages)!=0:
             for i in range(int(len(self.summarized_history_temp.messages)/2)):
                 self.existing_summary = self.predict_new_summary(self.summarized_history_temp.messages[i*2:i*2+2], 
@@ -108,7 +108,7 @@ class ConversationBufferWithSummary(ConversationSummaryMemory):
             return message
 
     def get_conversation_length(self):
-        '''get the length of the formatted conversation'''
+        '''Get the length of the formatted conversation'''
         prompt = self.format_dialogue()
         length = self.llm.get_num_tokens(prompt)
         return length
@@ -133,12 +133,12 @@ class ConversationBufferWithSummary(ConversationSummaryMemory):
                 AI: XXX
                 ...
         """
-        # calculate remain length
+        # Calculate remain length
         if 'input_documents' in inputs:
-            # run in a retrieval qa chain
+            # Run in a retrieval qa chain
             docs = inputs['input_documents']
         else:
-            # for test
+            # For test
             docs = self.retriever.get_relevant_documents(inputs[self.input_key])
         inputs[self.memory_key] = ''
         inputs = {k:v for k,v in inputs.items() if k in [self.chain.input_key, self.input_key, self.memory_key]}
@@ -147,7 +147,6 @@ class ConversationBufferWithSummary(ConversationSummaryMemory):
         while self.get_conversation_length() > remain:
             if len(self.buffered_history.messages)<=2:
                 raise RuntimeError('Exeeed max_tokens, trunck size of retrieved documents is too large')
-            # for i in range(min(5, max(1, int(len(self.buffered_history.messages)/2)-1))):
             temp = self.buffered_history.messages.pop(0)
             self.summarized_history_temp.messages.append(temp)
             temp = self.buffered_history.messages.pop(0)

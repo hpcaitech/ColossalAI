@@ -18,24 +18,24 @@ class ChineseRetrievalConversation:
     '''
     def __init__(self, retriever: CustomRetriever, model_path: str, model_name: str) -> None:
         '''
-        setup retrieval qa chain for Chinese retrieval based QA
+        Setup retrieval qa chain for Chinese retrieval based QA
         '''
-        # local coati api
+        # Local coati api
         logger.info(f"model_name: {model_name}; model_path: {model_path}")
         colossal_api = ColossalAPI(model_name, model_path)
         self.llm = ColossalLLM(n=1, api=colossal_api)
         
-        # define the retriever
+        # Define the retriever
         self.retriever = retriever
 
-        # define the chain to preprocess the input
-        # disambiguate the input. e.g. "What is the capital of that country?" -> "What is the capital of France?"
-        # prompt is summarization prompt
+        # Define the chain to preprocess the input
+        # Disambiguate the input. e.g. "What is the capital of that country?" -> "What is the capital of France?"
+        # Prompt is summarization prompt
         self.llm_chain_disambiguate = LLMChain(llm=self.llm, prompt=PROMPT_DISAMBIGUATE_ZH, 
                                         llm_kwargs={'max_new_tokens':30, 'temperature':0.6, 'do_sample':True})
         
         self.retriever.set_rephrase_handler(self.disambiguity)
-        # define memory with summarization ability
+        # Define memory with summarization ability
         self.memory = ConversationBufferWithSummary(llm=self.llm, prompt=SUMMARY_PROMPT_ZH,
                                                 human_prefix="用户", ai_prefix="AI",
                                                 llm_kwargs={'max_new_tokens':50, 'temperature':0.6, 'do_sample':True})

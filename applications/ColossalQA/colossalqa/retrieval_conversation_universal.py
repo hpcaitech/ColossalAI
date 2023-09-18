@@ -36,12 +36,12 @@ class UniversalRetrievalConversation:
                            encode_kwargs={'normalize_embeddings': False})
 
         docs_zh = self.load_supporting_docs(files=files_zh)
-        # create retriever
+        # Create retriever
         self.information_retriever_zh = CustomRetriever(k=3, sql_file_path=sql_file_path, verbose=True)
         self.information_retriever_zh.add_documents(docs=docs_zh, cleanup='incremental', mode='by_source', embedding=self.embedding)
         
         docs_en = self.load_supporting_docs(files=files_en)
-        # create retriever
+        # Create retriever
         self.information_retriever_en = CustomRetriever(k=3, sql_file_path=sql_file_path, verbose=True)
         self.information_retriever_en.add_documents(docs=docs_en, cleanup='incremental', mode='by_source', embedding=self.embedding)
 
@@ -53,7 +53,7 @@ class UniversalRetrievalConversation:
 
     def load_supporting_docs(self, files:List[List[str]]=None):
         '''
-        load supporting documents, currently, all documents will be stored in one vector store
+        Load supporting documents, currently, all documents will be stored in one vector store
         '''
         documents = []
         if files:
@@ -71,7 +71,6 @@ class UniversalRetrievalConversation:
                 retriever_data = DocumentLoader([[file, data_name.replace(' ', '_')]]).all_data
 
                 # Split
-                # text_splitter = RecursiveCharacterTextSplitter(chunk_size=200, chunk_overlap=0)
                 text_splitter = NeuralTextSplitter()
                 splits = text_splitter.split_documents(retriever_data)
                 documents.extend(splits)
@@ -79,7 +78,7 @@ class UniversalRetrievalConversation:
 
     def start_test_session(self):
         '''
-        simple multilingual session for testing purpose, with naive language selection mechanism
+        Simple multilingual session for testing purpose, with naive language selection mechanism
         '''
         while True:
             user_input = input("User: ")

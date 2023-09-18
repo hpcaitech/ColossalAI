@@ -1,5 +1,5 @@
 '''
-code for custom retriver with incremental update
+Code for custom retriver with incremental update
 '''
 import os
 import hashlib
@@ -48,17 +48,17 @@ class CustomRetriever(BaseRetriever):
 
     def add_documents(self, docs:Dict[str, Document]=[], cleanup:str='incremental', mode:str='by_source', embedding:Embeddings=None) -> None:
         '''
-        add documents to retriever
+        Add documents to retriever
         Args:
             docs: the documents to add
             cleanup: choose from "incremental" (update embeddings, skip existing embeddings) and "full" (destory and rebuild retriever)
             mode: choose from "by source" (documents are grouped by source) and "merge" (documents are merged into one vector store)
         '''
         if cleanup == "full":
-            # cleanup
+            # Cleanup
             for source in self.vector_stores:
                 os.remove(self.sql_index_database[source])
-        # add documents
+        # Add documents
         data_by_source = defaultdict(list)
         if mode == "by_source":
             for doc in docs:
@@ -68,7 +68,7 @@ class CustomRetriever(BaseRetriever):
         for source in data_by_source:
             if source not in self.vector_stores:
                 hash_encoding = hashlib.sha3_224(source.encode()).hexdigest()
-                # create a new sql database to store indexes, sql files are stored in the same directory as the source file
+                # Create a new sql database to store indexes, sql files are stored in the same directory as the source file
                 sql_path = f"sqlite:///{self.sql_file_path}/{hash_encoding}.db"
                 self.vector_stores[source] = Chroma(embedding_function=embedding, 
                         collection_name=hash_encoding)
@@ -124,18 +124,18 @@ class CustomRetriever(BaseRetriever):
             query = self.rephrase_handler(query)
         documents = []
         for k in self.vector_stores:
-            # retrieve documents from each retriever
+            # Retrieve documents from each retriever
             vectorstore = self.vector_stores[k]
             documents.extend(vectorstore.similarity_search_with_score(query, self.k, score_threshold=score_threshold))
-        # return the top k documents among all retrievers
+        # Return the top k documents among all retrievers
         documents = sorted(documents, key=lambda x: x[1], reverse=True)[:self.k]
         if return_scores:
-            # return score
+            # Return score
             documents = copy.deepcopy(documents)
             for doc in documents:
                 doc[0].metadata['score'] = doc[1]
         documents = [doc[0] for doc in documents]
-        # retrieve documents from sql database (not applicable for the local chains)
+        # Retrieve documents from sql database (not applicable for the local chains)
         for sql_chain in self.sql_db_chains:
             documents.append(Document(page_content = f"Query: {query}  Answer: {sql_chain.run(query)}", metadata={"source": "sql_query"}))
         if len(self.buffer)<self.buffer_size:

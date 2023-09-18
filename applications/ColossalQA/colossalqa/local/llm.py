@@ -35,7 +35,7 @@ class ColossalAPI:
             self.actor.load_state_dict(state_dict)
         self.actor.to(torch.cuda.current_device())
 
-        # configure tokenizer
+        # Configurate tokenizer
         if model_type == 'llama':
             self.tokenizer = LlamaTokenizer.from_pretrained(pretrain)
         else:
@@ -66,7 +66,7 @@ class ColossalAPI:
 
 class VllmAPI:
     def __init__(self, host:str='localhost', port:int=8077) -> None:
-        # configure model
+        # Configurate api for model served through web
         self.host = host
         self.port = port
         self.url = f"http://{self.host}:{self.port}/generate"
@@ -76,8 +76,11 @@ class VllmAPI:
         return output[len(input):]
     
 
-# langchain LLM wrapper
+
 class ColossalLLM(LLM):
+    """
+    Langchain LLM wrapper for a local LLM
+    """
     n: int
     api: Any
     kwargs = {}
@@ -124,8 +127,11 @@ class ColossalLLM(LLM):
         """Get the identifying parameters."""
         return {"n": self.n}
     
-# langchain LLM wrapper
+
 class VllmLLM(LLM):
+    """
+    Langchain LLM wrapper for a local LLM
+    """
     n: int
     api: Any
     kwargs = {}

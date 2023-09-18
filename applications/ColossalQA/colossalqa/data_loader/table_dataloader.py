@@ -1,5 +1,5 @@
 '''
-class for loading table type data. please refer to Pandas-Input/Output for file format details.
+Class for loading table type data. please refer to Pandas-Input/Output for file format details.
 '''
 
 
@@ -50,11 +50,11 @@ class TableLoader:
 
     def load_data(self, path):
         '''
-        load data and serve the data as sql database.
-        data must be in pandas format
+        Load data and serve the data as sql database.
+        Data must be in pandas format
         '''
         files = []
-        # handle glob expression
+        # Handle glob expression
         try:
             files = glob.glob(path)
         except Exception as e:
@@ -68,40 +68,40 @@ class TableLoader:
                 self.load_data(file)
 
         if path.endswith('.csv'):
-            # load csv
+            # Load csv
             self.data[path] = pd.read_csv(path)
         elif path.endswith('.xlsx') or path.endswith('.xls'):
-            # load excel
+            # Load excel
             self.data[path] = pd.read_excel(path)  # You can adjust the sheet_name as needed
         elif path.endswith('.json'):
-            # load json
+            # Load json
             self.data[path] = pd.read_json(path)
         elif path.endswith('.html'):
-            # load html
+            # Load html
             html_tables = pd.read_html(path)
             # Choose the desired table from the list of DataFrame objects
             self.data[path] = html_tables[0]  # You may need to adjust this index
         elif path.endswith('.h5') or path.endswith('.hdf5'):
-            # load h5
+            # Load h5
             self.data[path] = pd.read_hdf(path, key=self.kwargs.get('key', 'data'))  # You can adjust the key as needed
         elif path.endswith('.parquet'):
-            # load parquet
+            # Load parquet
             self.data[path] = pd.read_parquet(path, engine='fastparquet')
         elif path.endswith('.feather'):
-            # load feather
+            # Load feather
             self.data[path] = pd.read_feather(path)
         elif path.endswith('.dta'):
-            # load dta
+            # Load dta
             self.data[path] = pd.read_stata(path)
         else:
             raise ValueError("Unsupported file format")
         
     def to_sql(self, path, table_name):
         '''
-        serve the data as sql database.
+        Serve the data as sql database.
         '''
         self.data[path].to_sql(table_name, con=self.sql_engine, if_exists='replace', index=False)
-        logger.info(f"loaded to Sqlite3\nPath: {path}", verbose=self.verbose)
+        logger.info(f"Loaded to Sqlite3\nPath: {path}", verbose=self.verbose)
         return self.sql_path
     
     def get_sql_path(self):
