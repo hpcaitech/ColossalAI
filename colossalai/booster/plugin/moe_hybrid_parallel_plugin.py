@@ -1,226 +1,38 @@
 import random
-from contextlib import nullcontext
-from functools import partial
-from typing import Any, Callable, Iterator, List, Optional, OrderedDict, Tuple, Union
+from typing import Any, Callable, Iterator, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
 import torch.distributed as dist
-from torch.distributed import ProcessGroup
-from torch.nn import Module, SyncBatchNorm
-from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.nn import Module
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
-from torch.utils._pytree import tree_map
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 
-from colossalai.amp.naive_amp.mixed_precision_optimizer import MixedPrecisionOptimizer
+from colossalai.booster.plugin.hybrid_parallel_plugin import (
+    HybridParallelAMPOptimizer,
+    HybridParallelModule,
+    HybridParallelNaiveOptimizer,
+    HybridParallelZeroOptimizer,
+    get_param_info,
+)
 from colossalai.checkpoint_io import CheckpointIO, HybridParallelCheckpointIO
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.interface import ModelWrapper, OptimizerWrapper
 from colossalai.pipeline.schedule import OneForwardOneBackwardSchedule
 from colossalai.pipeline.stage_manager import PipelineStageManager
-from colossalai.shardformer import ShardConfig, ShardFormer
+from colossalai.shardformer import ShardConfig
 from colossalai.shardformer.policies.base_policy import Policy
-from colossalai.zero.low_level import LowLevelZeroOptimizer
 
 from .pp_plugin_base import PipelinePluginBase
 
-DP_AXIS, PP_AXIS, TP_AXIS = 0, 1, 2
+PP_AXIS, DP_AXIS, TP_AXIS = 0, 1, 2
 
 
-def _convert_floating_point(x, dtype: torch.dtype = torch.float16):
-    if isinstance(x, torch.Tensor) and torch.is_floating_point(x):
-        return x.to(dtype)
-    return x
-
-
-class HybridParallelModule(ModelWrapper):
-
-    def __init__(self, module: Module, precision: str, shard_config: ShardConfig, dp_group: ProcessGroup, use_ddp: bool,
-                 ddp_config: dict, custom_policy: Policy) -> None:
-
-        self.stage_manager = shard_config.pipeline_stage_manager
-        self.dp_group = dp_group
-
-        shardformer = ShardFormer(shard_config)
-        if custom_policy is not None:
-            assert isinstance(custom_policy, object)
-        module, self.shared_params = shardformer.optimize(module, policy=custom_policy)
-
-        # setting process groups for shared parameters
-        self.shared_param_process_groups = []
-        for shared_param in self.shared_params:
-            if len(shared_param) > 0:
-                self.shared_param_process_groups.append(
-                    self.stage_manager.init_process_group_by_stages(list(shared_param.keys())))
-
-        # setting mixed_precision
-        self.mixed_precision = None
-        if precision == 'fp16':
-            self.mixed_precision = torch.float16
-        elif precision == 'bf16':
-            self.mixed_precision = torch.bfloat16
-        if self.mixed_precision is not None:
-            module = module.to(self.mixed_precision)
-        module = module.cuda()
-
-        # setting input type cast when using mixed precision
-        self.convert_fn = None
-        if self.mixed_precision is not None:
-            self.convert_fn = partial(_convert_floating_point, dtype=self.mixed_precision)
-
-        # setting ddp configs
-        if use_ddp:
-            # convert model to sync bn
-            module = SyncBatchNorm.convert_sync_batchnorm(module, dp_group)
-            # wrap the model with PyTorch DDP
-            module = DDP(module, process_group=dp_group, **ddp_config)
-
-        super().__init__(module)
-
-    def sync_shared_params(self):
-        for shared_param, group in zip(self.shared_params, self.shared_param_process_groups):
-            if self.stage_manager.stage in shared_param:
-                param = shared_param[self.stage_manager.stage]
-                dist.all_reduce(param.grad, group=group)
-            dist.barrier()
-
-    def no_sync(self) -> Iterator[None]:
-        # no sync grads across data parallel
-        return nullcontext()
-
-    def sync_grads(self):
-        # sync grad across data parallel
-        if self.dp_group.size() == 1:
-            return
-        for p in self.module.parameters():
-            if p.grad is not None:
-                dist.all_reduce(p.grad, group=self.dp_group)
-                p.grad.div_(self.dp_group.size())
-
-    def forward(self, *args, **kwargs):
-        if self.convert_fn is not None:
-            args = tree_map(self.convert_fn, args)
-            kwargs = tree_map(self.convert_fn, kwargs)
-        return super().forward(*args, **kwargs)
-
-    def unwrap(self):
-        module = super().unwrap()
-        if isinstance(module, DDP):
-            module = module.module
-        return module
-
-
-def get_param_info(optim: Optimizer):
-    # Get a backup of necessary information of parameters for future use, which includes:
-    # 1. A complete param_group, with params in the form of param_id
-    # 2. A mapping from param address (obtained using id(param)) to integer param_id
-    # 3. A mapping from integer param_id to param address.
-    # 4. A mapping from param_address (obtained using id(param)) to the original shape of parameter before sharding.
-    # When Zero is used, the params here are fp16/bf16 model params rather than fp32 master params in optimizer.
-
-    if optim is None:
-        return {}
-    param_info = {'param_groups': [], 'param2id': {}, 'id2param': {}, 'param2shape': {}}
-    start_index = 0
-    for group in optim.param_groups:
-
-        packed_group = {k: v for k, v in group.items() if k != 'params'}
-        packed_group['params'] = []
-
-        for param_id, param in enumerate(group['params'], start_index):
-            original_shape = param.shape if isinstance(param, torch.Tensor) else None
-            packed_group['params'].append(param_id)
-            param_info['param2id'][id(param)] = param_id
-            param_info['id2param'][param_id] = id(param)
-            param_info['param2shape'][id(param)] = original_shape
-
-        param_info['param_groups'].append(packed_group)
-        start_index += len(group['params'])
-
-    return param_info
-
-
-def init_pipeline_optimizer(optim: Optimizer, model: Module):
-    model_params = set(model.parameters())
-    new_param_groups = []
-    for group in optim.param_groups:
-        params = [p for p in group['params'] if p in model_params]
-        new_param_groups.append({**group, 'params': params})
-    optim.__setstate__({'param_groups': new_param_groups})
-
-
-class HybridParallelNaiveOptimizer(OptimizerWrapper):
-
-    def __init__(self, optim: Optimizer, model: Module, use_pipeline: bool, param_info: OrderedDict):
-        self.param_info = param_info
-        if use_pipeline:
-            init_pipeline_optimizer(optim, model)
-        super().__init__(optim)
-
-
-class HybridParallelAMPOptimizer(MixedPrecisionOptimizer):
-
-    def __init__(self,
-                 optim: Optimizer,
-                 model: Module,
-                 use_pipeline: bool,
-                 param_info: OrderedDict,
-                 precision: str = 'fp16',
-                 initial_scale: float = 2**16,
-                 min_scale: float = 1,
-                 growth_factor: float = 2,
-                 backoff_factor: float = 0.5,
-                 growth_interval: int = 1000,
-                 hysteresis: int = 2,
-                 max_scale: float = 2**32,
-                 max_norm: float = 0):
-        self.param_info = param_info
-        if use_pipeline:
-            init_pipeline_optimizer(optim, model)
-        super().__init__(optim, precision, initial_scale, min_scale, growth_factor, backoff_factor, growth_interval,
-                         hysteresis, max_scale, max_norm)
-
-
-class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
-
-    def __init__(
-            self,
-            optimizer: Optimizer,
-            model: Module,
-            use_pipeline: bool,
-            param_info: OrderedDict,
-            initial_scale: int = 2**16,    # grad scaler config
-            min_scale: int = 1,
-            growth_factor: float = 2.,
-            backoff_factor: float = .5,
-            growth_interval: int = 2000,
-            hysteresis: int = 2,
-            max_scale: int = 2**24,
-            clip_grad_norm: float = 0.0,    # grad clipping
-            verbose: bool = False,
-            reduce_bucket_size: int = 1024 * 1024,    # communication
-            communication_dtype: Optional[torch.dtype] = None,
-            overlap_communication: bool = True,
-            partition_grad: bool = False,    # stage 2 flag
-            cpu_offload: bool = False,    # cpu offload
-            dp_process_group: Optional[ProcessGroup] = None,    # the dp pg for comm
-            tp_process_group: Optional[ProcessGroup] = None,    # if using tp
-            forced_dtype: Optional[torch.dtype] = None):
-        self.param_info = param_info
-        if use_pipeline:
-            init_pipeline_optimizer(optimizer, model)
-        super().__init__(optimizer, initial_scale, min_scale, growth_factor, backoff_factor, growth_interval,
-                         hysteresis, max_scale, clip_grad_norm, verbose, reduce_bucket_size, communication_dtype,
-                         overlap_communication, partition_grad, cpu_offload, dp_process_group, tp_process_group,
-                         forced_dtype)
-
-
-class HybridParallelPlugin(PipelinePluginBase):
+class MoeHybridParallelPlugin(PipelinePluginBase):
     """
-    Plugin for Hybrid Parallel Training.
+    Plugin for Moe Hybrid Parallel Training.
     Tensor parallel, pipeline parallel and data parallel(DDP/ZeRO) can be picked and combined in this plugin.
     The size of tp and pp should be passed in by user, then the size of dp is automatically calculated from dp_size = world_size / (tp_size * pp_size).
 
@@ -327,7 +139,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         self.enable_flash_attention = enable_flash_attention
         self.enable_jit_fused = enable_jit_fused
         self.enable_sequence_parallelism = enable_sequence_parallelism
-        self.pg_mesh = ProcessGroupMesh(self.dp_size, self.pp_size, self.tp_size)
+        self.pg_mesh = ProcessGroupMesh(self.pp_size, self.dp_size, self.tp_size)
         self.stage_manager = None
         self.schedule = None
         self.custom_policy = custom_policy

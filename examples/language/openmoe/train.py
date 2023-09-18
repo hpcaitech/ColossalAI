@@ -14,7 +14,8 @@ from transformers.models.llama import LlamaConfig
 import colossalai
 from colossalai import get_default_parser
 from colossalai.booster import Booster
-from colossalai.booster.plugin import HybridParallelPlugin, LowLevelZeroPlugin
+from colossalai.booster.plugin import LowLevelZeroPlugin
+from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
 from colossalai.cluster import DistCoordinator
 from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.moe import MoeCheckpintIO
@@ -82,8 +83,9 @@ def parse_args():
                         help="parallel plugin",
                         choices=["zero1", "zero2", "hybrid"])
     # hybrid plugin
-    parser.add_argument("--tp_size", type=int, default=1, help="tp size")
     parser.add_argument("--pp_size", type=int, default=2, help="pp size")
+    parser.add_argument("--dp_size", type=int, default=1, help="dp size")
+    parser.add_argument("--ep_size", type=int, default=2, help="ep size")
     parser.add_argument("--zero_stage", type=int, default=1, help="zero stage in hybrid plugin")
     parser.add_argument("--microbatch_size", type=int, default=1, help="microbatch size")
     # loss
@@ -107,7 +109,14 @@ def main():
     coordinator = DistCoordinator()
 
     # Set up moe
-    MOE_MANAGER.setup(seed=42, parallel=None)
+    assert args.dp_size * args.ep_size * args.pp_size == coordinator.world_size, "dp_size * ep_size * pp_size must equal to world_size"
+    # MOE_MANAGER.setup(seed=42, parallel=None)
+    MOE_MANAGER.setup(seed=42,
+                      parallel="EP",
+                      mode="fixed",
+                      fixed_dp_size=args.dp_size,
+                      fixed_ep_size=args.ep_size,
+                      fixed_pp_size=args.pp_size)
 
     # Manage loggers
     disable_existing_loggers()
@@ -146,11 +155,11 @@ def main():
     elif args.plugin == "zero2":
         plugin = LowLevelZeroPlugin(initial_scale=2**5, stage=2)
     elif args.plugin == "hybrid":
-        plugin = HybridParallelPlugin(tp_size=args.tp_size,
-                                      pp_size=args.pp_size,
-                                      zero_stage=args.zero_stage,
-                                      microbatch_size=args.microbatch_size,
-                                      custom_policy=OpenMoeForCausalLMPolicy())
+        plugin = MoeHybridParallelPlugin(tp_size=1,
+                                         pp_size=args.pp_size,
+                                         zero_stage=args.zero_stage,
+                                         microbatch_size=args.microbatch_size,
+                                         custom_policy=OpenMoeForCausalLMPolicy())
     else:
         raise ValueError(f"Invalid plugin {args.plugin}")
     logger.info(f"Set plugin as {plugin}", ranks=[0])
@@ -166,7 +175,7 @@ def main():
     # Set booster
     booster = Booster(plugin=plugin, **booster_kwargs)
     model, optimizer, _, dataloader, _ = booster.boost(model=model, optimizer=optimizer, dataloader=dataloader)
-    use_pipeline = isinstance(booster.plugin, HybridParallelPlugin) and booster.plugin.pp_size > 1
+    use_pipeline = isinstance(booster.plugin, MoeHybridParallelPlugin) and booster.plugin.pp_size > 1
     is_pp_last_stage = use_pipeline and booster.plugin.stage_manager.is_last_stage()
     logger.info(f"Finish init booster", ranks=[0])
 
