@@ -5,7 +5,7 @@ from time import sleep, time
 
 import torch
 
-from colossalai.utils import colo_device_memory_used, get_current_device
+from colossalai.utils import get_current_device
 
 
 class MemoryMonitor:
@@ -110,6 +110,7 @@ class AsyncMemoryMonitor(MemoryMonitor):
         return max_usage
 
     def _measure_usage(self):
+        from colossalai.legacy.utils import colo_device_memory_used
         max_usage = 0
         while self.keep_measuring:
             max_usage = max(

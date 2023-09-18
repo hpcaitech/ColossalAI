@@ -14,11 +14,11 @@ from colossalai.fx.passes.adding_split_node_pass import (
     split_with_split_nodes_pass,
 )
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
+from colossalai.legacy.pipeline.middleware.adaptor import get_fx_topology
+from colossalai.legacy.pipeline.rpc._pipeline_schedule import FillDrainPipelineEngine, OneFOneBPipelineEngine
+from colossalai.legacy.pipeline.rpc.utils import rpc_run
 from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.pipeline.middleware.adaptor import get_fx_topology
-from colossalai.pipeline.rpc._pipeline_schedule import FillDrainPipelineEngine, OneFOneBPipelineEngine
-from colossalai.pipeline.rpc.utils import rpc_run
 
 
 def parse_args():

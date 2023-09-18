@@ -14,7 +14,8 @@ from colossalai.legacy.nn.parallel.layers import (
     ParallelCachedEmbeddingBagTablewise,
     TablewiseEmbeddingBagConfig,
 )
-from colossalai.tensor import ColoTensor, ComputePattern, ComputeSpec, ProcessGroup, ShardSpec
+from colossalai.legacy.tensor import ComputePattern, ComputeSpec, ProcessGroup, ShardSpec
+from colossalai.tensor import ColoTensor
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
 
 NUM_EMBED, EMBED_DIM = 10, 8
@@ -359,7 +360,7 @@ def run_parallel_freq_aware_embed_columnwise(rank, world_size):
 
 
 def run_dist(rank, world_size, port):
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.legacy.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     # run_parallel_freq_aware_embed_columnwise(rank, world_size)
     run_parallel_freq_aware_embed_tablewise(rank, world_size)
 

@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 
-from colossalai.constants import INPUT_GROUP_3D, WEIGHT_GROUP_3D
+from colossalai.legacy.constants import INPUT_GROUP_3D, WEIGHT_GROUP_3D
 from colossalai.legacy.nn.layer.parallel_3d import reduce_by_batch_3d, split_tensor_3d
 from colossalai.legacy.nn.layer.parallel_3d._utils import get_parallel_mode_from_env
 

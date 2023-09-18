@@ -8,12 +8,12 @@ import torchvision.models as tm
 from torch.fx import GraphModule
 
 import colossalai
-from colossalai.core import global_context as gpc
 from colossalai.fx import ColoTracer
 from colossalai.fx._compatibility import is_compatible_with_meta
 from colossalai.fx.graph_module import ColoGraphModule
 # from colossalai.fx.passes.algorithms import chen_greedy, solver_rotor
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
+from colossalai.legacy.core import global_context as gpc
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 if is_compatible_with_meta():

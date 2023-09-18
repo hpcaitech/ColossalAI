@@ -6,8 +6,8 @@ import torch.distributed as dist
 from torch import Tensor
 from torch.distributed import ReduceOp
 
-from colossalai.context import ParallelMode
-from colossalai.core import global_context as gpc
+from colossalai.legacy.context import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 
 _all_gather_func = dist._all_gather_base \
     if "all_gather_into_tensor" not in dir(dist) else dist.all_gather_into_tensor
@@ -26,7 +26,7 @@ def all_gather(tensor: Tensor, dim: int, parallel_mode: ParallelMode, async_op: 
     Args:
         tensor (:class:`torch.Tensor`): Tensor to be gathered.
         dim (int): The dimension concatenating in.
-        parallel_mode (:class:`colossalai.context.ParallelMode`): Parallel group mode used in this communication.
+        parallel_mode (:class:`colossalai.legacy.context.ParallelMode`): Parallel group mode used in this communication.
         async_op (bool, optional): Whether operations are asynchronous.
 
     Returns:
@@ -65,7 +65,7 @@ def reduce_scatter(tensor: Tensor,
     Args:
         tensor (:class:`torch.Tensor`): Tensor to be reduce_scattered.
         dim (int): The dimension concatenating in.
-        parallel_mode (:class:`colossalai.context.ParallelMode`): Parallel group mode used in this communication.
+        parallel_mode (:class:`colossalai.legacy.context.ParallelMode`): Parallel group mode used in this communication.
         op (torch.distributed.ReduceOp, optional): The type of reduce operation,
             should be included in [SUM, AVG, PRODUCT, MIN, MAX, BAND, BOR, BXOR].
             More details about ReduceOp please refer to
@@ -105,7 +105,7 @@ def all_reduce(tensor: Tensor,
 
     Args:
         tensor (:class:`torch.Tensor`): Tensor to be all-reduced.
-        parallel_mode (:class:`colossalai.context.ParallelMode`): Parallel group mode used in this communication.
+        parallel_mode (:class:`colossalai.legacy.context.ParallelMode`): Parallel group mode used in this communication.
         op (torch.distributed.ReduceOp, optional): The type of reduce operation,
             should be included in [SUM, AVG, PRODUCT, MIN, MAX, BAND, BOR, BXOR].
             More details about ReduceOp please refer to
@@ -141,7 +141,7 @@ def broadcast(tensor: Tensor, src: int, parallel_mode: ParallelMode, async_op: b
     Args:
         tensor (:class:`torch.Tensor`): Tensor to be broadcast.
         src (int): Source rank.
-        parallel_mode (:class:`colossalai.context.ParallelMode`): Parallel group mode used in this communication.
+        parallel_mode (:class:`colossalai.legacy.context.ParallelMode`): Parallel group mode used in this communication.
         async_op (bool, optional): Whether operations are asynchronous.
 
     Returns:
@@ -173,7 +173,7 @@ def reduce(tensor: Tensor, dst: int, parallel_mode: ParallelMode, op: ReduceOp =
     Args:
         tensor (:class:`torch.Tensor`): Tensor to be reduced.
         dst (int): Destination rank.
-        parallel_mode (:class:`colossalai.context.ParallelMode`): Parallel group mode used in this communication.
+        parallel_mode (:class:`colossalai.legacy.context.ParallelMode`): Parallel group mode used in this communication.
         async_op (bool, optional): Whether operations are asynchronous.
 
     Returns:

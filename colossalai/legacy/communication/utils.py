@@ -3,8 +3,8 @@ from typing import List, Tuple, Union
 import torch
 import torch.distributed as dist
 
-from colossalai.context.parallel_mode import ParallelMode
-from colossalai.core import global_context as gpc
+from colossalai.legacy.context.parallel_mode import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 from colossalai.utils import get_current_device
 
 TensorShape = Union[torch.Size, List[int], Tuple[int]]

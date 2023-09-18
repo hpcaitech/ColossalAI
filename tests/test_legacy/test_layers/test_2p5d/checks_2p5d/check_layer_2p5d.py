@@ -1,8 +1,8 @@
 import torch
 from torch.nn import Parameter
 
-from colossalai.context.parallel_mode import ParallelMode
-from colossalai.core import global_context as gpc
+from colossalai.legacy.context.parallel_mode import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 from colossalai.legacy.nn import (
     Classifier2p5D,
     CrossEntropyLoss2p5D,
@@ -16,7 +16,8 @@ from colossalai.legacy.nn import (
     VocabParallelCrossEntropyLoss2p5D,
     VocabParallelEmbedding2p5D,
 )
-from colossalai.utils import get_current_device, print_rank_0
+from colossalai.legacy.utils import print_rank_0
+from colossalai.utils import get_current_device
 
 from .common import *
 

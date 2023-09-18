@@ -21,8 +21,8 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
-from colossalai.context import ParallelMode
-from colossalai.core import global_context as gpc
+from colossalai.legacy.context import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 from colossalai.logging import get_dist_logger
 
 from ..tokenizer import get_tokenizer

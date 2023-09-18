@@ -4,8 +4,8 @@ from tqdm import tqdm
 
 import colossalai
 from colossalai.auto_parallel.tensor_shard.initialize import initialize_model
-from colossalai.core import global_context as gpc
 from colossalai.device.device_mesh import DeviceMesh
+from colossalai.legacy.core import global_context as gpc
 from colossalai.logging import get_dist_logger
 from colossalai.nn.lr_scheduler import CosineAnnealingLR
 

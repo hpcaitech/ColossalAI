@@ -1,7 +1,7 @@
 import torch
 import torch.distributed as dist
 
-from colossalai.core import global_context as gpc
+from colossalai.legacy.core import global_context as gpc
 
 try:
     import fused_mix_prec_layer_norm_cuda

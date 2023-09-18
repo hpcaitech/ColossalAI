@@ -1,11 +1,14 @@
-from torchvision.models import resnet18
-from .registry import non_distributed_component_funcs
-from pathlib import Path
 import os
+from pathlib import Path
+
 import torch
-from torchvision.transforms import transforms
 from torchvision.datasets import CIFAR10
-from colossalai.utils import get_dataloader
+from torchvision.models import resnet18
+from torchvision.transforms import transforms
+
+from colossalai.legacy.utils import get_dataloader
+
+from .registry import non_distributed_component_funcs
 
 
 def get_cifar10_dataloader(train):

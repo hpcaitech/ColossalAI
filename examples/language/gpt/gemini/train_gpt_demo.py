@@ -1,3 +1,4 @@
+import argparse
 import os
 from contextlib import nullcontext
 from functools import partial
@@ -9,7 +10,6 @@ import torch.nn as nn
 from commons.model_zoo import model_builder
 from commons.utils import get_data, get_profile_context, get_tflops, get_time_stamp
 from packaging import version
-from torch.nn.parallel import DistributedDataParallel as DDP
 
 import colossalai
 from colossalai.booster import Booster
@@ -23,7 +23,7 @@ CAI_VERSION = colossalai.__version__
 
 
 def parse_args():
-    parser = colossalai.get_default_parser()
+    parser = argparse.ArgumentParser()
     parser.add_argument(
         "--distplan",
         type=str,

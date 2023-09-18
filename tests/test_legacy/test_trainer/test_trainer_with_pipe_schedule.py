@@ -10,12 +10,13 @@ from torchvision.datasets import CIFAR10
 from torchvision.models import resnet18
 
 import colossalai
-from colossalai.context.parallel_mode import ParallelMode
-from colossalai.core import global_context as gpc
+from colossalai.legacy.context.parallel_mode import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 from colossalai.legacy.trainer import Trainer
+from colossalai.legacy.utils import get_dataloader
 from colossalai.logging import get_dist_logger
 from colossalai.testing import rerun_if_address_is_in_use, spawn
-from colossalai.utils import MultiTimer, get_dataloader
+from colossalai.utils import MultiTimer
 
 BATCH_SIZE = 4
 IMG_SIZE = 32
@@ -28,7 +29,12 @@ CONFIG = dict(
 
 
 def run_trainer_with_pipeline(rank, world_size, port):
-    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.legacy.launch(config=CONFIG,
+                             rank=rank,
+                             world_size=world_size,
+                             host='localhost',
+                             port=port,
+                             backend='nccl')
 
     # build model
     model = resnet18(num_classes=10)
@@ -63,10 +69,10 @@ def run_trainer_with_pipeline(rank, world_size, port):
     optimizer = Adam(model.parameters(), lr=0.001)
     criterion = nn.CrossEntropyLoss()
 
-    engine, train_dataloader, *args = colossalai.initialize(model=model,
-                                                            optimizer=optimizer,
-                                                            criterion=criterion,
-                                                            train_dataloader=train_dataloader)
+    engine, train_dataloader, *args = colossalai.legacy.initialize(model=model,
+                                                                   optimizer=optimizer,
+                                                                   criterion=criterion,
+                                                                   train_dataloader=train_dataloader)
 
     logger = get_dist_logger()
     logger.info("engine is built", ranks=[0])

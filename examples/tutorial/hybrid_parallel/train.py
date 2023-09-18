@@ -5,12 +5,12 @@ from titans.model.vit.vit import _create_vit_model
 from tqdm import tqdm
 
 import colossalai
-from colossalai.context import ParallelMode
-from colossalai.core import global_context as gpc
+from colossalai.legacy.context import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 from colossalai.legacy.nn import CrossEntropyLoss
+from colossalai.legacy.pipeline.pipelinable import PipelinableContext
 from colossalai.logging import get_dist_logger
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
-from colossalai.pipeline.pipelinable import PipelinableContext
 from colossalai.utils import is_using_pp
 
 
