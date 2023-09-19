@@ -48,7 +48,7 @@ def run(test_config):
         infer_engine.optimize_model()
 
         generate_kwargs = dict(do_sample=False)
-        outputs = infer_engine.generate(data, **generate_kwargs)
+        outputs = infer_engine.generate(prompt_token_ids=data, **generate_kwargs)
 
         assert outputs is not None
 
