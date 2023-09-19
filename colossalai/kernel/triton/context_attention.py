@@ -238,7 +238,7 @@ if HAS_TRITON:
         V,
         sm_scale,
         B_Start_Loc,
-        B_Seqlen,    # B_LOC 内部记录每个batch 输入的真实位置， B_SEQ_len 记录当前输入的真实长度
+        B_Seqlen,
         Out,
         stride_qbs,
         stride_qh,

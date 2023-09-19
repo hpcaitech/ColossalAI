@@ -32,21 +32,21 @@ class ChatGLM2InferPolicy(ChatGLMModelPolicy):
         self.shard_config._infer()
 
         model_infer_forward = ChatGLM2InferenceForwards.chatglm_model_forward
-        method_replacement = {'forward': partial(model_infer_forward)}
+        method_replacement = {'forward': model_infer_forward}
         self.append_or_create_method_replacement(description=method_replacement, policy=policy, target_key=ChatGLMModel)
 
         encoder_infer_forward = ChatGLM2InferenceForwards.chatglm_encoder_forward
-        method_replacement = {'forward': partial(encoder_infer_forward)}
+        method_replacement = {'forward': encoder_infer_forward}
         self.append_or_create_method_replacement(description=method_replacement,
                                                  policy=policy,
                                                  target_key=GLMTransformer)
 
         encoder_layer_infer_forward = ChatGLM2InferenceForwards.chatglm_glmblock_forward
-        method_replacement = {'forward': partial(encoder_layer_infer_forward)}
+        method_replacement = {'forward': encoder_layer_infer_forward}
         self.append_or_create_method_replacement(description=method_replacement, policy=policy, target_key=GLMBlock)
 
         attn_infer_forward = ChatGLM2InferenceForwards.chatglm_flash_attn_kvcache_forward
-        method_replacement = {'forward': partial(attn_infer_forward)}
+        method_replacement = {'forward': attn_infer_forward}
         self.append_or_create_method_replacement(description=method_replacement,
                                                  policy=policy,
                                                  target_key=SelfAttention)

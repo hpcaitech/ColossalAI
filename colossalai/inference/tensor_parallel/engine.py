@@ -260,11 +260,6 @@ class TPInferEngine:
             model = self.model.transformer
         setattr(model, 'infer_state', batch_infer_state)
 
-        # outputs = self.model.forward(input_tokens['input_ids'], attention_mask=input_tokens['attention_mask'])
-        # outputs = self.model.forward(input_tokens['input_ids'][:, 0].unsqueeze(1), attention_mask=input_tokens['attention_mask'])
-        # outputs = self.model.forward(input_tokens['input_ids'][:, 1].unsqueeze(1), attention_mask=input_tokens['attention_mask'])
-
-        # FOR test chatglm2
         outputs = self.model.generate(**input_tokens, **generate_kwargs, early_stopping=False)
 
         # NOTE In future development, we're going to let the scheduler to handle the cache,

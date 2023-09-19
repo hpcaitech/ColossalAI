@@ -22,19 +22,6 @@ from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import (
 
 from ._utils import copy_kv_to_mem_cache
 
-try:
-    from vllm import layernorm_ops, pos_encoding_ops
-    rms_norm = layernorm_ops.rms_norm
-    rotary_embedding_neox = pos_encoding_ops.rotary_embedding_neox
-    HAS_VLLM_KERNERL = True
-except:
-    print("fall back to original rotary_embedding_neox of huggingface")
-    print("install vllm from https://github.com/vllm-project/vllm to accelerate your inference")
-    print(
-        "if falied to install vllm, please use this branch to install: https://github.com/tiandiao123/vllm/tree/setup_branch"
-    )
-    HAS_VLLM_KERNERL = False
-
 
 # This func is same as Llama model init_to_get_rotary, we should move them into _utils.py
 def _init_to_get_rotary(self, base=10000):
@@ -262,19 +249,10 @@ class ChatGLM2InferenceForwards:
                                                 infer_state.cache_manager.past_key_values_length,
                                                 padding_mask=attention_mask)
 
-        # Rotary positional embeddings
-        rotary_pos_emb = self.rotary_pos_emb(self.seq_length)
-        if position_ids is not None:
-            rotary_pos_emb = rotary_pos_emb[position_ids]
-        else:
-            rotary_pos_emb = rotary_pos_emb[None, :seq_length]
-        rotary_pos_emb = rotary_pos_emb.transpose(0, 1).contiguous()
-
         # Run encoder.
         hidden_states, presents, all_hidden_states, all_self_attentions = self.encoder(
             inputs_embeds,
             full_attention_mask,
-            rotary_pos_emb=rotary_pos_emb,
             kv_caches=past_key_values,
             use_cache=use_cache,
             output_hidden_states=output_hidden_states,
@@ -307,7 +285,6 @@ class ChatGLM2InferenceForwards:
         self: GLMTransformer,
         hidden_states,
         attention_mask,
-        rotary_pos_emb,
         kv_caches=None,
         use_cache: Optional[bool] = True,
         output_hidden_states: Optional[bool] = False,
@@ -402,11 +379,8 @@ class ChatGLM2InferenceForwards:
         infer_state: Optional[BatchInferState] = None,
     ):
         assert use_cache is True, "use_cache should be set to True using this chatglm attention"
-        # hidden_states: [sq, b, h]
+        # hidden_states: original :[sq, b, h] --> this [b, sq, h]
         batch_size = hidden_states.shape[0]
-        # =================================================
-        # Pre-allocate memory for key-values for inference.
-        # =================================================
 
         # Attention heads [sq, b, h] --> [sq, b, (np * 3 * hn)]
         mixed_x_layer = self.query_key_value(hidden_states)
@@ -454,34 +428,6 @@ class ChatGLM2InferenceForwards:
             Llama2Forwards.rotary_emb_fwd(
                 key_layer.view(-1, self.num_attention_heads_per_partition, self.hidden_size_per_attention_head), cos,
                 sin)
-
-        #The shape of key value pair will return to [sq, b , num_heads, num_hidden_size] after rotary embedding, the logic is kept same as original
-
-        # if self.multi_query_attention:
-        #     key_layer = key_layer.unsqueeze(-2)
-        #     key_layer = key_layer.expand(
-        #         -1,
-        #         -1,
-        #         -1,
-        #         self.num_attention_heads_per_partition // self.num_multi_query_groups_per_partition,
-        #         -1,
-        #     )
-        #     key_layer = key_layer.contiguous().view(key_layer.size()[:2] + (
-        #         self.num_attention_heads_per_partition,
-        #         self.hidden_size_per_attention_head,
-        #     ))
-        #     value_layer = value_layer.unsqueeze(-2)
-        #     value_layer = value_layer.expand(
-        #         -1,
-        #         -1,
-        #         -1,
-        #         self.num_attention_heads_per_partition // self.num_multi_query_groups_per_partition,
-        #         -1,
-        #     )
-        #     value_layer = value_layer.contiguous().view(value_layer.size()[:2] + (
-        #         self.num_attention_heads_per_partition,
-        #         self.hidden_size_per_attention_head,
-        #     ))
 
         # reshape q k v  to [bsz*sql, num_heads, head_dim]   2*1 ,32/2 ,128
         query_layer = query_layer.reshape(-1, self.num_attention_heads_per_partition,
