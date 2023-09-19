@@ -4,7 +4,7 @@ import pytest
 import torch
 import torch.nn as nn
 from packaging import version
-from transformers import BloomConfig, BloomForCausalLM, LlamaConfig, LlamaForCausalLM
+from transformers import BloomConfig, BloomForCausalLM, LlamaConfig, LlamaForCausalLM, PreTrainedTokenizer
 from transformers.tokenization_utils_base import BatchEncoding
 
 import colossalai
@@ -22,19 +22,30 @@ MAX_OUTPUT_LEN = 8
 CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse('11.5')
 
 
+class DummyTokenizer(PreTrainedTokenizer):
+    pass
+
+
 @parameterize('test_config', [{
     'tp_size': TP_SIZE,
 }])
 def run(test_config):
     model_config = BloomConfig(num_hidden_layers=4, hidden_size=128, intermediate_size=256, num_attention_heads=4)
     model = BloomForCausalLM(model_config)
+    tokenizer = DummyTokenizer()
     model = model.half()
     model.to(torch.cuda.current_device())
 
     # 1. check TPInferEngine init and model optimization
     shard_config = ShardConfig(enable_tensor_parallelism=True if test_config['tp_size'] > 1 else False,
                                inference_only=True)
-    infer_engine = TPInferEngine(model, shard_config, MAX_BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
+    infer_engine = TPInferEngine(model,
+                                 shard_config,
+                                 MAX_BATCH_SIZE,
+                                 MAX_INPUT_LEN,
+                                 MAX_OUTPUT_LEN,
+                                 tokenizer=tokenizer)
+    infer_engine.optimize_model()
 
     assert infer_engine.cache_manager is not None
     assert infer_engine.tp_size == TP_SIZE
@@ -71,7 +82,7 @@ def run(test_config):
     # 3. check optimized model generate
     input_ids = torch.randint(low=10, high=1000, size=(MAX_BATCH_SIZE, MAX_INPUT_LEN))
     generate_kwargs = dict(do_sample=False)
-    infer_engine.generate(input_ids, **generate_kwargs)
+    infer_engine.generate(prompt_token_ids=input_ids, **generate_kwargs)
 
     torch.cuda.empty_cache()
 

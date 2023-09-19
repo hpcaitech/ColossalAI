@@ -3,6 +3,7 @@ import os
 import pytest
 import torch
 from packaging import version
+from transformers import PreTrainedTokenizer
 
 import colossalai
 from colossalai.inference.tensor_parallel import TPInferEngine
@@ -19,6 +20,10 @@ MAX_OUTPUT_LEN = 32
 CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse('11.5')
 
 
+class DummyTokenizer(PreTrainedTokenizer):
+    pass
+
+
 @parameterize('test_config', [{
     'tp_size': TP_SIZE,
 }])
@@ -27,12 +32,20 @@ def run(test_config):
     sub_model_zoo = model_zoo.get_sub_registry('transformers_bloom_for_causal_lm')
     for name, (model_fn, data_gen_fn, _, _, _) in sub_model_zoo.items():
         orig_model = model_fn()
+        tokenizer = DummyTokenizer()
         orig_model = orig_model.half()
         data = data_gen_fn()
 
         shard_config = ShardConfig(enable_tensor_parallelism=True if test_config['tp_size'] > 1 else False,
                                    inference_only=True)
-        infer_engine = TPInferEngine(orig_model, shard_config, MAX_BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
+        infer_engine = TPInferEngine(orig_model,
+                                     shard_config,
+                                     MAX_BATCH_SIZE,
+                                     MAX_INPUT_LEN,
+                                     MAX_OUTPUT_LEN,
+                                     tokenizer=tokenizer)
+
+        infer_engine.optimize_model()
 
         generate_kwargs = dict(do_sample=False)
         outputs = infer_engine.generate(data, **generate_kwargs)
