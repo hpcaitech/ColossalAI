@@ -6,7 +6,6 @@ import colossalai
 from colossalai.tensor import ColoTensor
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.zero.gemini.chunk import ChunkManager
-from tests.test_tensor.common_utils import debug_print
 
 CUDA_MEM_0 = {False: 512, True: 1024}
 CUDA_MEM_1 = {False: 0, True: 1024}
@@ -16,7 +15,6 @@ CPU_MEM = {True: {True: 0, False: 0}, False: {True: 512, False: 0}}
 @parameterize('keep_gathered', [True, False])
 @parameterize('pin_memory', [True, False])
 def exam_chunk_memory(keep_gathered, pin_memory):
-    debug_print([0], "keep_gathered: {}, pin_memory: {}".format(keep_gathered, pin_memory))
 
     params = [ColoTensor(torch.rand(8, 8)) for _ in range(3)]
     config = {2: dict(chunk_size=128, keep_gathered=keep_gathered)}

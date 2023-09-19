@@ -15,8 +15,8 @@ from checks_3d.check_layer_3d import (
     check_vocab_parallel_loss,
 )
 
-from colossalai.core import global_context as gpc
-from colossalai.initialize import launch
+from colossalai.legacy.core import global_context as gpc
+from colossalai.legacy.initialize import launch
 from colossalai.logging import disable_existing_loggers
 from colossalai.testing import rerun_if_address_is_in_use, skip_if_not_enough_gpus, spawn
 

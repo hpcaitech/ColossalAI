@@ -11,11 +11,11 @@ from torchvision.datasets import CIFAR10
 from torchvision.models import resnet18
 
 import colossalai
-from colossalai.context import ParallelMode
-from colossalai.core import global_context as gpc
-from colossalai.initialize import launch
+from colossalai.legacy.context import ParallelMode
+from colossalai.legacy.core import global_context as gpc
+from colossalai.legacy.initialize import launch
+from colossalai.legacy.utils import get_dataloader, print_rank_0
 from colossalai.testing import rerun_if_address_is_in_use, spawn
-from colossalai.utils import get_dataloader, print_rank_0
 
 BATCH_SIZE = 8
 
@@ -63,7 +63,7 @@ def run_schedule(rank, world_size, port):
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=0)
 
     # initialize
-    engine, train_dataloader, _, _ = colossalai.initialize(model, optimizer, criterion, train_dataloader)
+    engine, train_dataloader, _, _ = colossalai.legacy.initialize(model, optimizer, criterion, train_dataloader)
 
     # build pipeline schedule
     schedule = engine.schedule

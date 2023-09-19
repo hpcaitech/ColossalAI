@@ -70,7 +70,7 @@ class MemStatsCollector:
         Sampling model data statistics.
         """
         if self._start_flag and not self.use_outside_memstats:
-            from colossalai.zero.legacy.gemini import StatefulTensor
+            from colossalai.legacy.zero.gemini import StatefulTensor
 
             # The following code work for ZeroInitContext, which is deprecated in v0.1.12
             cuda_mem = StatefulTensor.GST_MGR.total_mem['cuda']

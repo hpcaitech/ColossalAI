@@ -1,6 +1,6 @@
 import torch.nn as nn
 
-from colossalai.context import ParallelMode, seed
+from colossalai.legacy.context import ParallelMode, seed
 
 from ..parallel_1d import *
 from ..utils import get_tensor_parallel_mode

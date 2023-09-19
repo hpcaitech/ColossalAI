@@ -13,10 +13,9 @@ from colossalai.device.device_mesh import DeviceMesh
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.tensor.process_group import ProcessGroup
 from colossalai.testing import assert_close, rerun_if_address_is_in_use, run_on_environment_flag, spawn
 from colossalai.utils import get_current_device
-from colossalai.zero import post_process_colo_init_ctx, zero_model_wrapper, zero_optim_wrapper
+from colossalai.zero import zero_model_wrapper, zero_optim_wrapper
 
 
 class MLP(torch.nn.Module):
@@ -70,14 +69,12 @@ def check_auto_parallel_with_gemini(rank, world_size, port):
             print(strategy)
         print('=' * msg_length)
 
-    dp_process_group = ProcessGroup(rank=rank, ranks=[0, 1, 2, 3], tp_degree=2, dp_degree=2)
     gemini_config = dict(strict_ddp_mode=False,
                          device=get_current_device(),
                          placement_policy='cpu',
                          pin_memory=True,
                          search_range_m=128)
 
-    post_process_colo_init_ctx(gm, device=get_current_device(), default_pg=dp_process_group)
     gm = zero_model_wrapper(gm, zero_stage=3, gemini_config=gemini_config)
     optimizer = HybridAdam(gm.parameters(), betas=(0, 0))
     optimizer = zero_optim_wrapper(gm, optimizer, initial_scale=1)

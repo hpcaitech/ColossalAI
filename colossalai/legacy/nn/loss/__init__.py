@@ -2,7 +2,7 @@ from torch import nn
 from torch.nn.modules.loss import *
 from torch.nn.modules.loss import _Loss
 
-from colossalai.global_variables import tensor_parallel_env as env
+from colossalai.legacy.global_variables import tensor_parallel_env as env
 from colossalai.legacy.nn.layer.utils import get_tensor_parallel_mode
 
 from .loss_1d import VocabParallelCrossEntropyLoss1D

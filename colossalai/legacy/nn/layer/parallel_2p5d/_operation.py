@@ -5,9 +5,9 @@ import torch.distributed as dist
 from torch import Tensor
 from torch.cuda.amp import custom_bwd, custom_fwd
 
-from colossalai.context.parallel_mode import ParallelMode
-from colossalai.core import global_context as gpc
 from colossalai.legacy.communication.collective import all_gather, all_reduce, reduce_scatter
+from colossalai.legacy.context.parallel_mode import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 from colossalai.utils import get_current_device
 
 
@@ -112,8 +112,8 @@ def classifier_2p5d(A: Tensor, B: Tensor, bias, tesseract_dim: int, out_shape: T
         out_shape (:class:`torch.size`): shape of output tensor.
         row_rank (int): the rank of row.
         col_rank (int): the rank of column.
-        row_parallel_mode (:class:`colossalai.context.ParallelMode`): row parallel mode.
-        col_parallel_mode (:class:`colossalai.context.ParallelMode`): column parallel mode.
+        row_parallel_mode (:class:`colossalai.legacy.context.ParallelMode`): row parallel mode.
+        col_parallel_mode (:class:`colossalai.legacy.context.ParallelMode`): column parallel mode.
         data_parallel_rank (int): data parallel rank.
         pipeline_parallel_rank (int): pipeline parallel rank
         pipeline_parallel_size (int): pipeline parallel size.
@@ -139,8 +139,8 @@ class Matmul_AB_2p5D(torch.autograd.Function):
         row_rank (int): the rank of row.
         col_rank (int): the rank of column.
         dep_rank (int): the rank of depth.
-        row_parallel_mode (:class:`colossalai.context.ParallelMode`): row parallel mode.
-        col_parallel_mode (:class:`colossalai.context.ParallelMode`): column parallel mode.
+        row_parallel_mode (:class:`colossalai.legacy.context.ParallelMode`): row parallel mode.
+        col_parallel_mode (:class:`colossalai.legacy.context.ParallelMode`): column parallel mode.
         data_parallel_rank (int): data parallel rank.
         pipeline_parallel_rank (int): pipeline parallel rank
         pipeline_parallel_size (int): pipeline parallel size.
@@ -264,8 +264,8 @@ class Matmul_ABT_2p5D(torch.autograd.Function):
         row_rank (int): the rank of row.
         col_rank (int): the rank of column.
         dep_rank (int): the rank of depth.
-        row_parallel_mode (:class:`colossalai.context.ParallelMode`): row parallel mode.
-        col_parallel_mode (:class:`colossalai.context.ParallelMode`): column parallel mode.
+        row_parallel_mode (:class:`colossalai.legacy.context.ParallelMode`): row parallel mode.
+        col_parallel_mode (:class:`colossalai.legacy.context.ParallelMode`): column parallel mode.
         data_parallel_rank (int): data parallel rank.
         pipeline_parallel_rank (int): pipeline parallel rank
         pipeline_parallel_size (int): pipeline parallel size.
@@ -394,8 +394,8 @@ class Matmul_ATB_2p5D(torch.autograd.Function):
         row_rank (int): the rank of row.
         col_rank (int): the rank of column.
         dep_rank (int): the rank of depth.
-        row_parallel_mode (:class:`colossalai.context.ParallelMode`): row parallel mode.
-        col_parallel_mode (:class:`colossalai.context.ParallelMode`): column parallel mode.
+        row_parallel_mode (:class:`colossalai.legacy.context.ParallelMode`): row parallel mode.
+        col_parallel_mode (:class:`colossalai.legacy.context.ParallelMode`): column parallel mode.
         data_parallel_rank (int): data parallel rank.
         pipeline_parallel_rank (int): pipeline parallel rank
         pipeline_parallel_size (int): pipeline parallel size.
@@ -606,7 +606,7 @@ def add_bias_2p5d(input: Tensor, bias: Tensor, output_size_per_partition: int, t
         row_rank (int): the rank of row.
         col_rank (int): the rank of column.
         dep_rank (int): the rank of depth.
-        col_parallel_mode (:class:`colossalai.context.ParallelMode`): column parallel mode.
+        col_parallel_mode (:class:`colossalai.legacy.context.ParallelMode`): column parallel mode.
         skip_bias_add (bool): If set to ``True``, it will skip bias add for linear layer,
             which is preserved for kernel fusion.
         data_parallel_rank (int): data parallel rank.
@@ -631,7 +631,7 @@ class _Layernorm2p5D(torch.autograd.Function):
         E_x (:class:`torch.tensor`): mean.
         Var_x (:class:`torch.tensor`): variance.
         hidden_size (int): hidden size.
-        row_parallel_mode (:class:`colossalai.context.ParallelMode`): row parallel mode.
+        row_parallel_mode (:class:`colossalai.legacy.context.ParallelMode`): row parallel mode.
 
     Note:
         The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
@@ -682,7 +682,7 @@ def layernorm_2p5d(input: Tensor, E_x: Tensor, Var_x: Tensor, hidden_size: int,
         E_x (:class:`torch.tensor`): mean.
         Var_x (:class:`torch.tensor`): variance.
         hidden_size (int): hidden size.
-        row_parallel_mode (:class:`colossalai.context.ParallelMode`): row parallel mode.
+        row_parallel_mode (:class:`colossalai.legacy.context.ParallelMode`): row parallel mode.
 
     Note:
         The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
@@ -715,7 +715,7 @@ def all_gather_tensor_2p5d(inputs: Tensor, dim: int, col_parallel_mode: Parallel
     Args:
         inputs (:class:`torch.tensor`): input tensor.
         dim (int): dimension of all-gather.
-        col_parallel_mode (:class:`colossalai.context.ParallelMode`): column parallel mode.
+        col_parallel_mode (:class:`colossalai.legacy.context.ParallelMode`): column parallel mode.
 
     Note:
         The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
@@ -730,7 +730,7 @@ class SplitFirst(torch.autograd.Function):
     Args:
         inputs (:class:`torch.tensor`): input tensor.
         tesseract_dim (int): dimension of TESSERACT fo 2.5D parallelism
-        col_parallel_mode (:class:`colossalai.context.ParallelMode`): column parallel mode.
+        col_parallel_mode (:class:`colossalai.legacy.context.ParallelMode`): column parallel mode.
 
     Note:
         The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
@@ -798,7 +798,7 @@ def reduce_tensor_2p5d(input_: Tensor, parallel_mode: ParallelMode) -> Tensor:
 
     Args:
         input_ (:class:`torch.tensor`): Input tensor.
-        parallel_mode (:class:`colossalai.context.ParallelMode`): The parallel mode tensor used.
+        parallel_mode (:class:`colossalai.legacy.context.ParallelMode`): The parallel mode tensor used.
 
     Note:
         The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
@@ -826,7 +826,7 @@ def reduce_scatter_tensor_2p5d(input_: Tensor, dim: int, parallel_mode: Parallel
     Args:
         input_ (:class:`torch.tensor`): Input tensor.
         dim (int): Dimension to reduce.
-        parallel_mode (:class:`colossalai.context.ParallelMode`): The parallel mode tensor used.
+        parallel_mode (:class:`colossalai.legacy.context.ParallelMode`): The parallel mode tensor used.
 
     Note:
         The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found

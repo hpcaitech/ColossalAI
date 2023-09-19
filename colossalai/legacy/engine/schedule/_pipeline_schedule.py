@@ -7,11 +7,11 @@ from typing import Callable, List, Tuple, Union
 import torch.cuda
 
 import colossalai.legacy.communication as comm
-from colossalai.amp.naive_amp import NaiveAMPModel
-from colossalai.context.parallel_mode import ParallelMode
-from colossalai.core import global_context as gpc
+from colossalai.legacy.amp.naive_amp import NaiveAMPModel
+from colossalai.legacy.context.parallel_mode import ParallelMode
+from colossalai.legacy.core import global_context as gpc
+from colossalai.legacy.utils import switch_virtual_pipeline_parallel_rank
 from colossalai.logging import get_dist_logger
-from colossalai.utils import switch_virtual_pipeline_parallel_rank
 from colossalai.utils.cuda import get_current_device
 
 from ._base_schedule import BaseSchedule
@@ -157,7 +157,7 @@ class PipelineSchedule(BaseSchedule):
         return self._move_to_device(micro_batch_data)
 
     def pre_processing(self, engine):
-        from colossalai.zero.legacy import ShardedModelV2
+        from colossalai.legacy.zero import ShardedModelV2
 
         # TODO: remove this after testing new zero with pipeline parallelism
         model = engine.model

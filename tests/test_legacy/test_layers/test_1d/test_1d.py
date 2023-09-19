@@ -5,8 +5,8 @@ import pytest
 import torch
 from checks_1d.check_layer_1d import *
 
-from colossalai.core import global_context as gpc
-from colossalai.initialize import launch
+from colossalai.legacy.core import global_context as gpc
+from colossalai.legacy.initialize import launch
 from colossalai.logging import disable_existing_loggers
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 

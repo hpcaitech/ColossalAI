@@ -3,8 +3,8 @@ import torch
 from checks_2p5d.check_layer_2p5d import *
 from checks_2p5d.check_operation_2p5d import check_AB, check_ABT, check_ATB
 
-from colossalai.core import global_context as gpc
-from colossalai.initialize import launch
+from colossalai.legacy.core import global_context as gpc
+from colossalai.legacy.initialize import launch
 from colossalai.logging import disable_existing_loggers
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 
